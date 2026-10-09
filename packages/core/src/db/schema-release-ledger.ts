@@ -111,7 +111,7 @@ export const releaseApprovals = pgTable(
     ),
     reasonChk: check(
       'release_approvals_reason_chk',
-      sql`(${t.decision} = 'returned') = (${t.reason} IS NOT NULL)`,
+      sql`(${t.decision} IS NOT NULL OR ${t.reason} IS NULL) AND (${t.decision} IS DISTINCT FROM 'returned' OR ${t.reason} IS NOT NULL)`,
     ),
     commitChk: check('release_approvals_commit_chk', sql`${t.evidenceCommit} ~ '^[0-9a-f]{40}$'`),
   }),

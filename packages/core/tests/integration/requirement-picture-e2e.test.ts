@@ -21,7 +21,8 @@ import {
 } from '../helpers/requirement-picture-world.js';
 
 const w = openPictureWorld();
-const { as, read, requirement, revision, history, picture, kindOf, agreeR1 } = pictureDoors(w);
+const { as, read, requirement, revision, history, picture, kindOf, agreeR1, ready } =
+  pictureDoors(w);
 
 /** A mockup row about a requirement, as REQ-35's predecessors left them on forge-dev (MK-1, MK-2). */
 async function requirementMockup(requirementId: string, status: 'proposed' | 'accepted') {
@@ -192,6 +193,7 @@ describe('a new revision carries the picture of its kind; a correction drops it 
   });
 
   it('a superseded revision takes neither a picture nor a kind', async () => {
+    await ready(key);
     ok(await as('owner', 'POST', `/requirements/${key}/revisions/2/propose`, {}));
     ok(await as('owner', 'POST', `/requirements/${key}/revisions/2/accept`, { reason: 'ok' }));
     expect(refusal(await picture(key, 1, PICTURES.rule))).toEqual([
@@ -241,8 +243,8 @@ describe('no picture gates the requirement (criterion 5)', () => {
          AND c.requirement_criterion_id IS NOT NULL`);
     if (!filed) throw new Error('the breakdown accept filed no traced criterion');
     await rows(sql`
-      INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, identity_kind, commit_sha, author_agency)
-      VALUES (${filed.criterion_id}, ${filed.issue_id}, 'pass', 'commit', ${'a'.repeat(40)}, 'human')`);
+      INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, identity_kind, commit_sha, author_agency, evidence)
+      VALUES (${filed.criterion_id}, ${filed.issue_id}, 'pass', 'commit', ${'a'.repeat(40)}, 'human', ARRAY['board-reload.png'])`);
     await rows(sql`UPDATE issues SET merged_at = now() WHERE id = ${filed.issue_id}`);
     await seedIssueStatus(filed.issue_id, 'closed');
     expect((await read(key)).standing.delivery.phase).toBe('delivered');

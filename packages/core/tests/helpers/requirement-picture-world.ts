@@ -11,7 +11,12 @@ import {
   startQueue,
   testEnv,
 } from './ecosystem-world.js';
-import { addProjectMember, createTestProject, createTestUser } from './factories.js';
+import {
+  addProjectMember,
+  createTestProject,
+  createTestUser,
+  makeAgreeReady,
+} from './factories.js';
 
 export type Who = 'owner' | 'member' | 'viewer';
 
@@ -130,7 +135,11 @@ export function pictureDoors(w: PictureWorld) {
       as(who, 'PUT', `/requirements/${key}/revisions/${n}/picture`, body),
     kindOf: (key: string, n: number, kind: string | null, who: Who = 'owner') =>
       as(who, 'PUT', `/requirements/${key}/revisions/${n}/kind`, { kind }),
+    /** Makes `key`'s written revisions answer the ready checklist's record, as a setup step (ISS-453). */
+    ready: (key: string): Promise<void> =>
+      makeAgreeReady(w.projectId, Number(key.slice(4)), w.ownerId),
     async agreeR1(key: string): Promise<void> {
+      await makeAgreeReady(w.projectId, Number(key.slice(4)), w.ownerId);
       ok(await as('owner', 'POST', `/requirements/${key}/revisions/1/propose`, {}));
       ok(
         await as('owner', 'POST', `/requirements/${key}/revisions/1/accept`, {

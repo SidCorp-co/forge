@@ -10,9 +10,16 @@
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { api, type Body, userToken } from '../helpers/api.js';
-import { addProjectMember, createTestProject, createTestUser, rows } from '../helpers/factories.js';
+import {
+  addProjectMember,
+  createTestProject,
+  createTestUser,
+  makeAgreeReady,
+  rows,
+} from '../helpers/factories.js';
 
 let owner = '';
+let ownerId = '';
 let member = '';
 let ba = '';
 let baAdmitter = '';
@@ -42,6 +49,7 @@ async function agreedWithDrafts(drafts: number): Promise<{ req: string; issues: 
       201,
     )
   ).key as string;
+  await makeAgreeReady(projectId, Number(req.slice(4)), ownerId);
   await ok(api(owner, 'POST', at(`/requirements/${req}/revisions/1/propose`), {}));
   await ok(api(owner, 'POST', at(`/requirements/${req}/revisions/1/accept`), { reason: 'ok' }));
   await ok(api(owner, 'POST', at(`/requirements/${req}/agree`), { revision: 1, reason: 'ok' }));
@@ -70,7 +78,7 @@ const statusOf = async (id: unknown) =>
   (await ok(api(owner, 'GET', `/api/issues/${id as string}`))).status;
 
 beforeAll(async () => {
-  const ownerId = (await createTestUser({ verified: true })).id;
+  ownerId = (await createTestUser({ verified: true })).id;
   owner = await userToken(ownerId);
   projectId = (await createTestProject(ownerId)).id;
   const memberId = (await createTestUser({ verified: true })).id;

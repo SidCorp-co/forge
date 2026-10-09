@@ -8,7 +8,7 @@ import { useId } from "react";
 import { CONTENT_LANGUAGE_CHOICES, contentLanguageName, contentLanguageProblem } from "@forge/contracts/content-language";
 import { SENSITIVE_DATA_LEVELS } from "@forge/contracts/data-policy";
 import { FEEDBACK_VERIFY_WINDOW } from "@forge/contracts/feedback";
-import { REQUIREMENT_READINESS_GATES } from "@forge/contracts/requirements";
+import { PERSON_GATES } from "@forge/contracts/person-gates";
 import { Input, Skeleton } from "@/design";
 import { useProjectDocument, useWriteProjectDocument } from "@/features/project-config/hooks";
 import { type DocumentDraft, sectionOf, useDocumentDraft } from "@/features/project-config/use-document-draft";
@@ -191,15 +191,16 @@ export function GeneralSection({ project, canEdit }: { project: ProjectDetail; c
 					effect={t("settings.project.general.verdictsEffect")}
 					disabled={off}
 				/>
-				<ChoiceSetting
-					draft={draft}
-					path={["requirements", "readinessGate"]}
-					unset="off"
-					options={optionsOf(t, "settings.project.general.readiness", REQUIREMENT_READINESS_GATES)}
-					label={t("settings.project.general.readinessGate")}
-					effect={t("settings.project.general.readinessGateEffect")}
-					disabled={off}
-				/>
+				{PERSON_GATES.map((gate) => (
+					<SwitchSetting
+						key={gate}
+						draft={draft}
+						path={["approvals", gate]}
+						fallback={false}
+						label={t(`settings.project.general.approvals.${gate}`)}
+						disabled={off}
+					/>
+				))}
 				<DaysField draft={draft} disabled={off} />
 				<ChoiceSetting
 					draft={draft}

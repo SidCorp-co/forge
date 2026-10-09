@@ -19,7 +19,12 @@ import {
   startQueue,
   testEnv,
 } from '../helpers/ecosystem-world.js';
-import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
+import {
+  addProjectMember,
+  createTestProject,
+  createTestUser,
+  makeAgreeReady,
+} from '../helpers/factories.js';
 
 let projectId = '';
 let ownerId = '';
@@ -43,6 +48,7 @@ async function proposedSuggestion(): Promise<string> {
     }),
     201,
   ).key as string;
+  await makeAgreeReady(projectId, Number(key.slice(4)), ownerId);
   ok(await say('session', 'POST', at(`/requirements/${key}/revisions/1/propose`), {}));
   ok(
     await say('session', 'POST', at(`/requirements/${key}/revisions/1/accept`), {

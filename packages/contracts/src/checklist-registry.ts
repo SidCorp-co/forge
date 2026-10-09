@@ -133,9 +133,293 @@ export const FEEDBACK_TRIAGE_CHECKLIST = defineChecklist({
 	],
 });
 
+const text = (maxLength: number) => ({ kind: "text", maxLength }) as const;
+const required = { blocking: true } as const;
+
+/** Requirement lifecycle r15, step ready_check: what a draft answers before it is agreed. */
+export const REQUIREMENT_READY_CHECKLIST = defineChecklist({
+	id: "requirement_ready",
+	title: "Requirement ready",
+	gates: { machine: "requirement", from: ["draft"], to: "agreed" },
+	design: { flow: "requirement-lifecycle", revision: 15, step: "ready_check" },
+	shapes: ["3d9941e4"],
+	questions: [
+		{
+			id: "problem",
+			prompt: "What problem does it solve?",
+			fix: 'State the problem in the goal, on a line starting "Problem:".',
+			answer: text(2000),
+			answeredBy: { by: "record", field: "revision.spec.goal", label: "goal" },
+			need: required,
+		},
+		{
+			id: "kind",
+			prompt: "Is it a process, a rule, a screen or a report?",
+			fix: "Set the kind of its head revision.",
+			answer: text(200),
+			answeredBy: { by: "record", field: "revision.kind", label: "kind" },
+			need: { blocking: false, recommended: "Not stated." },
+		},
+		{
+			id: "who",
+			prompt: "Who is it for?",
+			fix: "Name at least one persona it is for.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "revision.spec.personas", label: "personas" },
+			need: required,
+		},
+		{
+			id: "value",
+			prompt: "What value does it give them?",
+			fix: 'State the value in the goal, on a line starting "Value:".',
+			answer: text(2000),
+			answeredBy: { by: "record", field: "revision.spec.goal", label: "goal" },
+			need: required,
+		},
+		{
+			id: "measured",
+			prompt: "How is its success measured?",
+			fix: 'State the measure in the goal, on a line starting "Measured by:".',
+			answer: text(2000),
+			answeredBy: { by: "record", field: "revision.spec.goal", label: "goal" },
+			need: required,
+		},
+		{
+			id: "criteria",
+			prompt: "Which checkable business criteria does it hold?",
+			fix: "Write at least one business criterion on its head revision.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "revision.criteria", label: "business criteria" },
+			need: required,
+		},
+		{
+			id: "questions",
+			prompt: "Is a blocking question still open?",
+			fix: "Answer each blocking question, or mark it not blocking.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "revision.spec.openQuestions", label: "open questions" },
+			need: required,
+		},
+		{
+			id: "workflows",
+			prompt: "Which workflows does it touch?",
+			fix: "Link each workflow design it changes or serves.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "requirement.workflows", label: "linked workflow designs" },
+			need: required,
+		},
+		{
+			id: "outOfScope",
+			prompt: "What is out of scope?",
+			fix: "List what it leaves out, or leave it unanswered.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "revision.spec.scopeOut", label: "out of scope" },
+			need: { blocking: false, recommended: "Nothing stated." },
+		},
+		{
+			id: "roadmap",
+			prompt: "Which roadmap lane is it in?",
+			fix: 'State the lane in the goal, on a line starting "Roadmap:".',
+			answer: text(200),
+			answeredBy: { by: "record", field: "revision.spec.goal", label: "goal" },
+			need: { blocking: false, recommended: "Next." },
+		},
+	],
+});
+
+/** Requirement lifecycle r15, step acceptance_check: what a delivered requirement answers before it is accepted. */
+export const REQUIREMENT_ACCEPTANCE_CHECKLIST = defineChecklist({
+	id: "requirement_acceptance",
+	title: "Acceptance",
+	gates: { machine: "requirement", from: ["agreed"], to: "accepted" },
+	design: { flow: "requirement-lifecycle", revision: 15, step: "acceptance_check" },
+	shapes: ["57f88d2f"],
+	questions: [
+		{
+			id: "shipped",
+			prompt: "Has a release shipped every live issue?",
+			fix: "Wait for a release to ship each one, or drop those not being built.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "requirement.issues", label: "linked issues" },
+			need: required,
+		},
+		{
+			id: "verdicts",
+			prompt: "Does every current criterion pass on the running build?",
+			fix: "Have each one judged on the running build; a fail is filed as feedback.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "requirement.coverage", label: "verdicts on the running build" },
+			need: required,
+		},
+		{
+			id: "evidence",
+			prompt: "Does each counted verdict cite its evidence?",
+			fix: "Judge each one again, citing what the verdict was taken from.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "requirement.evidence", label: "verdict evidence" },
+			need: required,
+		},
+	],
+});
+
+/** Requirement lifecycle r15, step design_check: what a workflow design answers before it is approved. */
+export const WORKFLOW_APPROVAL_CHECKLIST = defineChecklist({
+	id: "workflow_approval",
+	title: "Workflow approval",
+	gates: { machine: "workflow_design", from: ["proposed"], to: "approved" },
+	design: { flow: "requirement-lifecycle", revision: 15, step: "design_check" },
+	shapes: ["b534fd6d"],
+	questions: [
+		{
+			id: "shape",
+			prompt: "Does it draw a flow, or a structure?",
+			fix: "Draw it in a diagram template.",
+			answer: {
+				kind: "choice",
+				options: [
+					{ value: "flow", label: "A flow: steps an item passes through" },
+					{ value: "structure", label: "A structure: parts and how they connect" },
+				],
+			},
+			answeredBy: { by: "record", field: "design.template", label: "diagram template" },
+			need: required,
+		},
+		{
+			id: "criteria",
+			prompt: "Which business criteria does each step serve?",
+			fix: "Trace the business criteria its steps serve, on the requirements linking it.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "design.traces", label: "criteria traced to its steps" },
+			need: required,
+		},
+		{
+			id: "roles",
+			prompt: "Who owns each step, and who does it wait on?",
+			fix: "Name an owner, lane or persona on its steps.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "design.owners", label: "step owners and lanes" },
+			need: required,
+		},
+		{
+			id: "exceptions",
+			prompt: "Is each refusal, return and failure drawn?",
+			fix: "Draw each refusal, return and failure as a condition, test or failure edge.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "design.exceptions", label: "conditions, tests and failure edges" },
+			need: required,
+			when: { question: "shape", isOneOf: ["flow"] },
+		},
+		{
+			id: "changes",
+			prompt: "What changed from the last approved revision?",
+			fix: "Propose the revision again so its change can be computed.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "design.changes", label: "computed change" },
+			need: required,
+		},
+	],
+});
+
+/** Requirement lifecycle r15, step breakdown_check: what a breakdown answers before it is accepted. */
+export const BREAKDOWN_CHECKLIST = defineChecklist({
+	id: "breakdown",
+	title: "Breakdown",
+	gates: { machine: "suggestion", from: ["proposed"], to: "accepted" },
+	design: { flow: "requirement-lifecycle", revision: 15, step: "breakdown_check" },
+	shapes: ["2fe61f83"],
+	questions: [
+		{
+			id: "kind",
+			prompt: "Is it a breakdown?",
+			fix: "Nothing to fix: the kind is the suggestion's own.",
+			answer: {
+				kind: "choice",
+				options: [
+					{ value: "breakdown", label: "A breakdown of a requirement into issues" },
+					{ value: "other", label: "Another kind of suggestion" },
+				],
+			},
+			answeredBy: { by: "record", field: "suggestion.kind", label: "kind" },
+			need: required,
+		},
+		{
+			id: "criteria",
+			prompt: "Does each issue hold criteria traced to a business criterion?",
+			fix: "Give each issue criteria, each tracing a current business criterion.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "payload.issues.criteria", label: "issue criteria" },
+			need: required,
+			when: { question: "kind", isOneOf: ["breakdown"] },
+		},
+		{
+			id: "coverage",
+			prompt: "Is every current business criterion traced, or listed uncovered?",
+			fix: "Trace each one from an issue, or list it uncovered with a reason.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "payload.uncovered", label: "traces and uncovered list" },
+			need: required,
+			when: { question: "kind", isOneOf: ["breakdown"] },
+		},
+		{
+			id: "complexity",
+			prompt: "Does each issue state its complexity?",
+			fix: "Give each issue a complexity.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "payload.issues.complexity", label: "complexity" },
+			need: required,
+			when: { question: "kind", isOneOf: ["breakdown"] },
+		},
+	],
+});
+
+/**
+ * Requirement lifecycle r15, step release_check: what an approver reads before a release goes to
+ * production, asked only where the project's `release.approval.required` is on. No machine holds a
+ * release approval's states yet, so its decision (core `release-batch/approvals.ts:decideApproval`)
+ * judges it, not the kernel, and it stays out of `CHECKLISTS`, the checklists a machine edge names:
+ * a reader of machine-gated moves (core `lifecycle/gated-moves.ts`) finds no table to count it in.
+ */
+export const RELEASE_APPROVAL_CHECKLIST = defineChecklist({
+	id: "release_approval",
+	title: "Release approval",
+	gates: { machine: "release_approval", from: ["pending"], to: "approved" },
+	design: { flow: "requirement-lifecycle", revision: 15, step: "release_check" },
+	shapes: ["48b305a2"],
+	questions: [
+		{
+			id: "carried",
+			prompt: "Which requirements does it carry, each at which revision?",
+			fix: "Cut the release again from issues that landed.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "release.requirements", label: "requirements carried" },
+			need: required,
+		},
+		{
+			id: "verdicts",
+			prompt: "Is every carried criterion's latest verdict a pass?",
+			fix: "Have each one judged on the commit it ships; a fail is filed as feedback.",
+			answer: text(2000),
+			answeredBy: { by: "record", field: "release.verdicts", label: "latest verdicts" },
+			need: required,
+		},
+		{
+			id: "reason",
+			prompt: "Why may it go to production?",
+			fix: "Say why you approve it.",
+			answer: text(1000),
+			answeredBy: { by: "mover" },
+			need: required,
+		},
+	],
+});
+
 export const CHECKLISTS = {
 	issue_ready: ISSUE_READY_CHECKLIST,
 	feedback_triage: FEEDBACK_TRIAGE_CHECKLIST,
+	requirement_ready: REQUIREMENT_READY_CHECKLIST,
+	requirement_acceptance: REQUIREMENT_ACCEPTANCE_CHECKLIST,
+	workflow_approval: WORKFLOW_APPROVAL_CHECKLIST,
+	breakdown: BREAKDOWN_CHECKLIST,
 } as const satisfies Readonly<Record<string, Checklist>>;
 
 export type ChecklistId = keyof typeof CHECKLISTS;

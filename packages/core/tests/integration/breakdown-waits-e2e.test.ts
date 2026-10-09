@@ -10,7 +10,7 @@ import {
   sender,
   writeInterfaces,
 } from '../helpers/ecosystem-world.js';
-import { bindTestRunner, createTestDevice } from '../helpers/factories.js';
+import { bindTestRunner, createTestDevice, makeAgreeReady } from '../helpers/factories.js';
 
 let w: EcosystemWorld;
 let say: ReturnType<typeof sender>;
@@ -67,6 +67,7 @@ describe('an agreed requirement to break down', () => {
     );
     req = made.key;
     expect(req).toMatch(/^REQ-\d+$/);
+    await makeAgreeReady(w.project.plugin, Number(req.slice(4)), w.user.plugin);
     ok(await say('plugin', 'POST', at(`/requirements/${req}/revisions/1/propose`), {}));
     ok(
       await say('plugin', 'POST', at(`/requirements/${req}/revisions/1/accept`), {
@@ -118,7 +119,7 @@ describe('a breakdown item carries its contract waits', () => {
     ]);
   });
 
-  it('files the issue at draft holding its wait, named in the accept effect', async () => {
+  it('files the issue holding its wait, named in the accept effect, and admits it where its checklist is complete', async () => {
     const proposed = ok(
       await say(
         'plugin',
@@ -158,8 +159,11 @@ describe('a breakdown item carries its contract waits', () => {
         reason: expect.stringContaining(`breakdown of ${req}`),
       }),
     ]);
+    // ISS-453: a breakdown's issue is born at draft and admitted under the issue-ready checklist;
+    // with approvals.admit off and its record complete it opens, and its wait still holds dispatch
+    expect(filed.admission).toEqual({ status: 'open', refusals: [] });
     const issue = ok(await say('plugin', 'GET', `/api/issues/${ids.issue}`));
-    expect(issue.status).toBe('draft');
+    expect(issue.status).toBe('open');
     ok(
       await say('plugin', 'PATCH', `/api/issues/${ids.issue}`, {
         plan: 'Send policyVersion from the open call, read from the policy the box loaded.',
@@ -180,6 +184,11 @@ describe('an accepted revision_diff lands its revision proposed', () => {
         baseRevision: 1,
         payload: {
           reason: 'the platform moved the field into the body',
+          // the accept of r2 re-agrees it, so r2 answers the ready checklist as r1 did (ISS-453)
+          spec: {
+            goal: 'Problem: the open call hides its policy version.\nValue: the box reads the version it runs.\nMeasured by: every open names it.',
+            personas: ['Plugin maintainer'],
+          },
           criteria: [
             {
               code: 'BC-1',

@@ -13,7 +13,7 @@ import {
   sender,
   writeInterfaces,
 } from '../helpers/ecosystem-world.js';
-import { seedIssueStatus } from '../helpers/factories.js';
+import { makeAgreeReady, seedIssueStatus } from '../helpers/factories.js';
 
 let w: EcosystemWorld;
 let say: ReturnType<typeof sender>;
@@ -95,6 +95,7 @@ describe('a requirement pins a design whose screen binds a provider element', ()
         contract: 'forge/forge-api',
       }),
     );
+    await makeAgreeReady(w.project.plugin, Number(req.slice(4)), w.user.plugin);
     ok(await say('plugin', 'POST', at(`/requirements/${req}/revisions/1/propose`), {}));
     ok(
       await say('plugin', 'POST', at(`/requirements/${req}/revisions/1/accept`), { reason: 'ok' }),

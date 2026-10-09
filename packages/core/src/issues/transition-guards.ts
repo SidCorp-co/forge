@@ -9,7 +9,9 @@
  *
  *   into               condition                                                code
  *   any (edge)         the move is an edge of the lifecycle                      ILLEGAL_TRANSITION
- *   open, from draft   the actor holds `issues.admit`                            PERMISSION_FORBIDDEN
+ *   open, from draft   the actor holds what `approvals.admit` asks: `issues.admit` PERMISSION_FORBIDDEN
+ *                      where it is on, `project.write` where it is off; the
+ *                      issue-ready checklist the kernel judges                  CHECKLIST_INCOMPLETE
  *   in_progress        a run or lease holds it; nothing admissible holds out     NO_HOLDER, ISSUE_BLOCKED, WORKFLOW_DESIGN_NOT_APPROVED,
  *                                                                               CONTRACT_WAIT_UNSETTLED
  *   approved           plan and criteria written; the actor holds `plans.approve`  PLAN_REQUIRED
@@ -38,13 +40,9 @@
 
 import { CHECKLIST_GUARD } from '@forge/contracts/checklists';
 import type { IssueTransitionRefusalCode } from '@forge/contracts/issue-machine';
-import {
-  ISSUE_ADMIT_PERMISSION,
-  ISSUE_MACHINE,
-  type IssueGuard,
-  PARK_STATUSES,
-} from '@forge/contracts/issue-machine';
-import type { ActorAgency } from '@forge/contracts/permissions';
+import { ISSUE_MACHINE, type IssueGuard, PARK_STATUSES } from '@forge/contracts/issue-machine';
+import type { ActorAgency, ProjectPermission } from '@forge/contracts/permissions';
+import { personGateAct, personGatePermission } from '@forge/contracts/person-gates';
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
@@ -106,6 +104,8 @@ export interface GuardContext {
 interface IssueMoveFacts {
   /** The project document sets `plan.approval.required`. */
   planApprovalRequired: boolean;
+  /** Who admits a draft to open: the permission the project's `approvals.admit` names, and the act its refusal says. */
+  admit: { permission: ProjectPermission; act: string };
   /** The mover's role and grants on the project. */
   permissions: PermissionFacts;
   /** Who is asking, as the run lane names a holder: the box the device or its token belongs to. */
@@ -164,6 +164,10 @@ export async function readIssueMoveFacts(args: {
       : null,
     holdOverride: asksForHolder ? await holdOverrideOf(args.actorUserId, issue.projectId) : null,
     planApprovalRequired: document?.plan?.approval.required === true,
+    admit: {
+      permission: personGatePermission(document?.approvals, 'admit'),
+      act: personGateAct(document?.approvals, 'admit'),
+    },
     permissions: await permissionFactsOf(args.actorUserId, issue.projectId),
     patternEntry: args.to === 'awaiting_release' ? await readMoveEntryFacts(issue) : null,
     catalog: args.to === 'approved' ? await catalogOf(issue.projectId) : null,
@@ -438,8 +442,8 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
     admit: async () => {
       const denied = permissionRefusal(
         base.facts.permissions,
-        ISSUE_ADMIT_PERMISSION,
-        'promoting a `draft` to `open`',
+        base.facts.admit.permission,
+        base.facts.admit.act,
       );
       return denied ? ({ ...denied, path: '/status' } as Refusal) : null;
     },

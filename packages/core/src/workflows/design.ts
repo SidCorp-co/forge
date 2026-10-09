@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { DesignStatus } from '@forge/contracts/design-status';
+import type { ProjectPermission } from '@forge/contracts/permissions';
 import { bandOfNode, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
 import type { DesignRefusalCode } from '@forge/contracts/workflows';
 import { RefusalError } from '../lib/refusal.js';
@@ -172,8 +173,16 @@ export function proposeRefusal(status: DesignStatus | null, flow: string): Desig
 
 // Deciding a design is an approval (ADR 0007): whoever holds workflow-designs.approve decides,
 // the project's master included when its role grants it.
-export function designApproverRefusal(facts: PermissionFacts): DesignRefusal | null {
-  return permissionRefusal(facts, 'workflow-designs.approve', 'deciding a workflow design');
+/**
+ * Who may decide a design: the permission the project's `approvals.designs` names
+ * (`project-config:personGateOf`) — workflow-designs.approve where it is on, workflow-designs.write
+ * where it is off and the workflow approval checklist decides.
+ */
+export function designApproverRefusal(
+  facts: PermissionFacts,
+  gate: { permission: ProjectPermission; act: string },
+): DesignRefusal | null {
+  return permissionRefusal(facts, gate.permission, gate.act);
 }
 
 export function decisionRefusals(input: {

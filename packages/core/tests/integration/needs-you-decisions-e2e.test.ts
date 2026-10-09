@@ -20,6 +20,7 @@ import {
   createTestIssue,
   createTestProject,
   createTestUser,
+  makeAgreeReady,
   rows,
 } from '../helpers/factories.js';
 
@@ -44,6 +45,12 @@ async function read() {
   return needsYouDecisionsSchema.parse(res.body);
 }
 
+/** A spec answering the ready checklist's problem, value, measure and persona: REQ-1's revision 2 is accepted on an agreed requirement, which judges it. */
+const READY_SPEC = {
+  goal: 'Problem: a referral is lost.\nValue: every referral reaches a clinician.\nMeasured by: lost referrals per month.',
+  personas: ['Referral manager'],
+};
+
 const byKey = (all: readonly NeedsYouDecision[], key: string) => all.find((d) => d.key === key);
 
 async function seedRequirement(
@@ -63,11 +70,16 @@ async function seedRequirement(
       await tx.execute(sql`
         INSERT INTO requirement_revisions
           (requirement_id, revision, base_revision, state, spec, reason, author_id, author_agency, proposed_at, decided_by, decided_at)
-        VALUES (${id}, ${r.n}, ${r.n > 1 ? r.n - 1 : null}, ${r.state}, '{}'::jsonb, 'written for the test', ${r.author}, 'human',
+        VALUES (${id}, ${r.n}, ${r.n > 1 ? r.n - 1 : null}, ${r.state}, ${JSON.stringify(READY_SPEC)}::jsonb, 'written for the test', ${r.author}, 'human',
                 ${r.state === 'draft' ? null : new Date().toISOString()},
                 ${r.state === 'current' ? r.author : null}, ${r.state === 'current' ? new Date().toISOString() : null})
       `);
     }
+    // one business criterion from its first revision on: what the ready checklist asks it to state
+    await tx.execute(sql`
+      INSERT INTO requirement_criteria (requirement_id, code, body, since_revision)
+      VALUES (${id}, 'BC-1', 'it holds', 1)
+    `);
     if (current !== null) {
       await tx.execute(
         sql`UPDATE requirements SET current_revision = ${current}, status = 'agreed' WHERE id = ${id}`,
@@ -149,6 +161,8 @@ beforeAll(async () => {
     { n: 1, state: 'current', author: authorId },
     { n: 2, state: 'proposed', author: authorId },
   ]);
+  // its proposed revision 2 links a workflow design, the last answer the accept's ready checklist reads
+  await makeAgreeReady(projectId, 1, ownerId);
   // the owner's own draft: their work to finish, not a decision
   await seedRequirement(2, [{ n: 1, state: 'draft', author: ownerId }]);
 }, 120_000);

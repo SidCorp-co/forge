@@ -10,7 +10,7 @@ import {
   workflowBuilds,
 } from '../db/schema-workflows.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
+import { type KernelActor, type MoveChecklist, movedRow, transition } from '../lifecycle/index.js';
 import type { DesignDecision } from './design.js';
 import type { WorkflowWrite } from './schema.js';
 import type { WorkflowWriter } from './service.js';
@@ -139,6 +139,8 @@ export async function moveDesign(
     approvedRevision?: number;
     /** Who the ledger names, where it is not the writer: Forge's own approval of a pin-only revision. */
     actor?: KernelActor;
+    /** The reader of the design's record, for an approve the workflow approval checklist judges. */
+    checklist?: MoveChecklist<'workflow_design'>;
   },
 ): Promise<void> {
   const moved = await transition(tx, WORKFLOW_DESIGN_MACHINE, {
@@ -150,6 +152,7 @@ export async function moveDesign(
     actor: how.actor ?? { type: 'user', id: how.writer.userId, agency: how.writer.agency },
     source: 'workflows',
     returning: ['id'],
+    ...(how.checklist ? { checklist: how.checklist } : {}),
   });
   movedRow(moved);
 }

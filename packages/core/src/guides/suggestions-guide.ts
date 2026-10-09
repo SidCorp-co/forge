@@ -28,8 +28,8 @@ effect is written in the accept's own transaction and points back at it. The doo
 |---|---|---|
 | \`revision_diff\` | a requirement | a new revision on that requirement (or, built on its open draft or proposed revision, that revision rewritten), authored by the producer and **proposed** by whoever accepts the suggestion (the accept is its propose); never a current one, so the requirement's own accept, which re-baselines it, still follows |
 | \`requirement_draft\` | an issue, or an approved journey design (a first requirement) | a new requirement at revision 1, a draft; on a journey it is linked to that design and the approved \`designs\` it names. A design not approved is \`SUGGESTION_DESIGN_NOT_APPROVED\`, one the project lacks \`SUGGESTION_DESIGN_UNKNOWN\`, and a second on a journey \`SUGGESTION_JOURNEY_SUGGESTED\` |
-| \`readiness\` | a requirement | the readiness result at its base revision, which an agree reads when the project gates on readiness |
-| \`breakdown\` | a requirement | every proposed issue, filed at **draft** with its complexity, priority and category, linked to the requirement, traced to its BCs, edged by \`blockedBy\`, linked as the build of the pinned design it builds and waiting on each provider version its \`contractWaits\` names, in one transaction; nothing dispatches until they are promoted, the build gate holds each until its design is approved, and a wait holds it until a version at or above it is approved |
+| \`readiness\` | a requirement | the readiness result at its base revision, shown as advice: the agree is judged by its ready checklist, never by it |
+| \`breakdown\` | a requirement | every proposed issue, filed at **draft** with its complexity, priority and category, linked to the requirement, traced to its BCs, edged by \`blockedBy\`, linked as the build of the pinned design it builds and waiting on each provider version its \`contractWaits\` names, in one transaction; each is then admitted to \`open\` where its issue-ready checklist is complete and stays at draft where not, the build gate holds each until its design is approved, and a wait holds it until a version at or above it is approved |
 | \`triage\` | an issue | the issue's priority, category and complexity; a free-text \`route\` is kept as a note comment on the issue |
 | \`duplicate\` | an issue or a requirement | on an issue, drops it naming the root, with a relates edge to it; on a requirement, drops it naming the requirement it repeats (\`REQUIREMENT_DUPLICATE_TARGET_INVALID\` for itself, an unknown or a dropped one; \`REQUIREMENT_HAS_LIVE_ISSUES\` while live issues link to it) |
 | \`feedback_triage\` | a feedback item | the route on the item (${guideRef('feedback-triage')}) |
@@ -64,6 +64,13 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
   criterion names the BC it traces to (\`tracesTo\`). The master owes it within
   ${BREAKDOWN_SLA_WORKING_DAYS} working days of the agree; the requirement's standing serves the task
   with its due time.
+- Accepting a \`breakdown\` is judged by the breakdown checklist: each issue's criteria trace a
+  current BC, every current BC is traced or listed in \`uncovered\` with a reason, and each issue
+  states its complexity; a gap is refused \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`,
+  naming it. Where the project document's \`approvals.breakdown\` is on, the accept takes
+  \`suggestions.approve\`; off (the default), \`suggestions.write\`. Its issues are filed at draft and
+  each is then admitted to \`open\` under the issue-ready checklist and the \`approvals.admit\` setting;
+  one with a gap stays at draft, and the accept's effect names each issue's \`admission\` and its gaps.
 - A \`breakdown\` is checked at write and at accept: a \`tracesTo\` naming a BC the base revision lacks, a
   \`blockedBy\` index outside the breakdown or a cycle among them is \`SUGGESTION_PAYLOAD_INVALID\`; a
   string \`blockedBy\` names an existing issue of this project by key or uuid, and one that resolves to

@@ -22,12 +22,14 @@ import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
+import { personGateOf } from '../project-config/index.js';
 import {
   acceptRefusals,
   type DeliveryProof,
   dropRefusals,
   duplicateTargetRefusal,
 } from './acceptance-rules.js';
+import { acceptanceAnswersOf, uncitedVerdictsIn } from './checklist-record.js';
 import { type RequirementActor, type Row, rowIn, signerRefusal } from './read.js';
 import type { RequirementRefusal } from './rules.js';
 import { deliveryAt, type LiveBuildHolds, type ProofIssue } from './standing.js';
@@ -123,7 +125,11 @@ export async function deliveryIn(
   return { ...read, proof };
 }
 
-/** A holder of requirements.approve accepts the delivered head: agreed → accepted, accepted_at stored. */
+/**
+ * The delivered head is accepted: agreed → accepted, accepted_at stored, judged by the acceptance
+ * checklist. Who may accept is the project's `approvals.accept`: a holder of requirements.approve
+ * where it is on, anyone who may write the requirement where it is off.
+ */
 export async function acceptDelivery(input: {
   projectId: string;
   ref: string;
@@ -133,18 +139,17 @@ export async function acceptDelivery(input: {
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
-  const signer = await signerRefusal(actor, projectId, 'accepting a delivery', row);
+  const gate = await personGateOf(projectId, 'accept');
+  const signer = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
   if (signer) return { ok: false, refusals: [signer] };
   const liveBuild = await liveBuildOfRequirement(projectId, row.id);
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     const current = await rowIn(tx, projectId, row.id);
-    const { proof } = await deliveryIn(tx, projectId, current, liveBuild);
     const refused = acceptRefusals({
       status: current.status as RequirementStatus,
       named: input.revision,
       head: current.currentRevision,
-      proof,
     });
     if (refused.length) return refused;
     const now = new Date();
@@ -158,6 +163,18 @@ export async function acceptDelivery(input: {
       actor: requirementKernelActor(actor),
       source: 'requirements',
       returning: ['id'],
+      // the acceptance checklist (Requirement lifecycle r15 acceptance_check), judged by the kernel
+      checklist: {
+        record: async ({ tx: moveTx }) => {
+          const { proof } = await deliveryIn(moveTx, projectId, current, liveBuild);
+          const uncited = await uncitedVerdictsIn(
+            moveTx,
+            row.id,
+            await activeIssuePrefix(projectId),
+          );
+          return acceptanceAnswersOf(proof, uncited);
+        },
+      },
     });
     movedRow(accepted);
     await emitEvent(tx, 'requirement.accepted', {

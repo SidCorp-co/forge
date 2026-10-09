@@ -329,3 +329,64 @@ export async function createReadyDraftIssue(
   `);
   return { id, ...(await completeIssueReadyRecord(projectId, createdBy, id, reqSeq)) };
 }
+
+/**
+ * Makes requirement `REQ-<seq>` answer what its own record owes the ready checklist (Requirement
+ * lifecycle r15 ready_check), for a suite that agrees it only as setup: every revision whose goal
+ * does not say its value gets a goal stating its problem, value and measure on labelled lines and a
+ * persona where it names none, and where it links no workflow design, one approved design
+ * (`fixtures/workflows/post-discharge.design.json`, flow `ready-<seq>`) is linked. Call it after the
+ * revisions it should cover are written and before they are proposed: a revision past draft is
+ * frozen (`requirement_revision_guard`). A suite about the checklist itself never calls it.
+ */
+export async function makeAgreeReady(
+  projectId: string,
+  seq: number,
+  userId: string,
+): Promise<void> {
+  const { readFileSync } = await import('node:fs');
+  const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+  const [req] = await rows<{ id: string; title: string }>(sql`
+    SELECT id, title FROM requirements WHERE project_id = ${projectId} AND req_seq = ${seq}
+  `);
+  if (!req) throw new Error(`makeAgreeReady: project ${projectId} has no REQ-${seq}`);
+  await db.execute(sql`
+    UPDATE requirement_revisions
+       SET spec = spec || jsonb_build_object(
+             'goal', 'Problem: ' || coalesce(nullif(spec->>'goal', ''), ${req.title})
+                     || E'\nValue: its reader is served.\nMeasured by: its reader confirms it.',
+             'personas', CASE WHEN jsonb_typeof(spec->'personas') = 'array'
+                                AND jsonb_array_length(spec->'personas') > 0
+                              THEN spec->'personas' ELSE '["Project member"]'::jsonb END)
+     WHERE requirement_id = ${req.id} AND state = 'draft' AND coalesce(spec->>'goal', '') NOT LIKE '%Value:%'
+  `);
+  const [linked] = await rows<{ n: number }>(sql`
+    SELECT count(*)::int AS n FROM requirement_workflows WHERE requirement_id = ${req.id}
+  `);
+  if ((linked?.n ?? 0) > 0) return;
+  const doc = JSON.parse(
+    readFileSync(
+      new URL('../fixtures/workflows/post-discharge.design.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  doc.project = projectId;
+  doc.flow = `ready-${seq}`;
+  await withKernelMarker(db, async (tx) => {
+    const [wf] = (await tx.execute(sql`
+      INSERT INTO project_workflows
+        (project_id, flow, kind, revision, document, design_status, approved_revision, written_by_user)
+      VALUES (${projectId}, ${doc.flow}, 'flow', 1, ${JSON.stringify(doc)}::jsonb, 'approved', 1, ${userId})
+      RETURNING id
+    `)) as unknown as { id: string }[];
+    await tx.execute(sql`
+      INSERT INTO project_workflow_designs
+        (workflow_id, revision, document, proposed_by_user, decision, decided_by_user, decided_kind, decided_at)
+      VALUES (${wf?.id}, 1, ${JSON.stringify(doc)}::jsonb, ${userId}, 'approve', ${userId}, 'person', now())
+    `);
+    await tx.execute(sql`
+      INSERT INTO requirement_workflows (requirement_id, workflow_id, linked_by)
+      VALUES (${req.id}, ${wf?.id}, ${userId})
+    `);
+  });
+}

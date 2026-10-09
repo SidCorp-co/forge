@@ -43,7 +43,7 @@ const DOC = {
   rollback: { strategy: "redeploy-previous" },
   plan: { approval: { required: true } },
   release: { approval: { required: true } },
-  requirements: { readinessGate: "warn" },
+  approvals: { agree: true, designs: true },
   feedback: { verifyWindowDays: 7 },
   sensitiveData: "redact",
   contentLanguage: "vi",

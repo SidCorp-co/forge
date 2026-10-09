@@ -9,7 +9,11 @@
  */
 
 import { SUGGESTION_MACHINE } from '@forge/contracts/suggestion-machine';
-import { SUGGESTION_PAYLOADS } from '@forge/contracts/suggestions';
+import {
+  SUGGESTION_PAYLOADS,
+  type SuggestionBreakdownEffect,
+  type SuggestionBreakdownIssue,
+} from '@forge/contracts/suggestions';
 import { and, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
@@ -17,6 +21,7 @@ import { type IssueStatus, issues } from '../db/schema.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import {
   activeIssuePrefix,
+  admitBorn,
   resolveIssueRouteRef,
   transitionIssueStatus,
   writeIssueRelations,
@@ -31,6 +36,8 @@ import {
   requireCan,
 } from '../permissions/index.js';
 import { lockRequirements } from '../requirements/index.js';
+import { acceptGateOf } from './accept-gate.js';
+import { breakdownChecklistRecord } from './breakdown-checklist-record.js';
 import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
 import { reviseSuggestion as reviseProposed } from './propose.js';
 import {
@@ -53,6 +60,42 @@ import {
 } from './write.js';
 
 export { createSuggestion } from './propose.js';
+
+/**
+ * Every accept is judged by the breakdown checklist the suggestion machine's edge names; a suggestion
+ * of another kind answers only that it is not one (`breakdown-checklist-record.ts`).
+ */
+const acceptChecklist = {
+  record: ({ tx, row }: { tx: Tx; row: { id: string } }) => breakdownChecklistRecord(tx, row.id),
+};
+
+/**
+ * A breakdown's issues, written at draft in the accept, each admitted by the move every draft takes
+ * (Requirement lifecycle r15 breakdown_check: "each through issue-lifecycle's ready check"): a
+ * complete one opens, one held stays at draft naming why.
+ */
+async function admitBreakdown(
+  projectId: string,
+  effect: SuggestionBreakdownEffect,
+  actor: SuggestionActor,
+): Promise<SuggestionBreakdownEffect> {
+  const issues: SuggestionBreakdownIssue[] = [];
+  for (const issue of effect.issues) {
+    const admission = await admitBorn(
+      { id: issue.issueId, projectId, reopenCount: 0 },
+      { type: 'user', id: actor.userId, agency: actor.agency },
+      'filed by an accepted breakdown: admitted by its issue-ready checklist',
+    );
+    issues.push({
+      ...issue,
+      admission: {
+        status: admission.status,
+        refusals: admission.refusals.map((r) => ({ code: r.code, path: r.path, detail: r.detail })),
+      },
+    });
+  }
+  return { ...effect, issues };
+}
 
 /**
  * A reviewer's edit of a feedback triage, accepted in the same request when the reviewer may route
@@ -171,6 +214,7 @@ async function acceptDuplicateOfIssue(
             actor: suggestionKernelActor(actor),
             source: 'suggestions',
             returning: ['id'],
+            checklist: acceptChecklist,
           });
           movedRow(decidedAccepted);
           await recordDecision(tx, row, actor, 'accepted', reason);
@@ -203,11 +247,12 @@ export async function acceptSuggestion(input: {
   const { projectId, actor } = input;
   const reason = input.reason?.trim() || null;
   const first = await rowOf(db, projectId, input.id);
+  const gate = await acceptGateOf(projectId, first.kind);
   const forbidden = await permissionRefusalFor(
     actorFor(actor.userId, actor.agency),
-    'suggestions.approve',
+    gate.permission,
     projectResource(projectId),
-    'accepting a suggestion',
+    gate.act,
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const target = targetOfRow(first);
@@ -240,6 +285,7 @@ export async function acceptSuggestion(input: {
       actor: suggestionKernelActor(actor),
       source: 'suggestions',
       returning: ['id'],
+      checklist: acceptChecklist,
     });
     movedRow(decidedAccepted);
     await recordDecision(tx, row, actor, 'accepted', reason);
@@ -248,6 +294,9 @@ export async function acceptSuggestion(input: {
   if (stale.reason) await markMovedStale(first.id, stale.reason, suggestionKernelActor(actor));
   if (refusals) return { ok: false, refusals };
   const effect: Effect | undefined = written.effect;
+  if (effect && 'issues' in effect && first.kind === 'breakdown') {
+    return answer(first.id, { effect: await admitBreakdown(projectId, effect, actor) });
+  }
   return answer(first.id, effect ? { effect } : {});
 }
 

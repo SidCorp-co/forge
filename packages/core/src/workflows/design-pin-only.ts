@@ -3,15 +3,19 @@
  * person decides what no person would read differently. The test is `design-repin.ts:pinOnlyChange`,
  * structural over the canonical design and never a text diff; the approval is `recordDecision`, so the
  * event, the design issue's mark and the requirement re-pin (BC-10) follow as for any approval.
- * Anything else changed leaves the revision waiting on a person.
+ * Anything else changed, or a workflow approval checklist it leaves short, leaves the revision
+ * waiting on its approver.
  */
 
+import { WORKFLOW_APPROVAL_CHECKLIST } from '@forge/contracts/checklist-registry';
+import { evaluateChecklist } from '@forge/contracts/checklists';
 import { say, sayEn } from '@forge/contracts/said';
 import { findTemplate, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
 import type { Tx } from '../db/client.js';
 import { RefusalError } from '../lib/refusal.js';
 import type { DesignRefusal } from './design.js';
 import { standingBaseRefusal } from './design-bases.js';
+import { workflowApprovalRecord } from './design-checklist-record.js';
 import { recordDecision } from './design-record.js';
 import { pinOnlyChange } from './design-repin.js';
 import { projectAgentOf } from './ports.js';
@@ -77,6 +81,13 @@ export async function settlePinOnly(
       const change = pinOnlyChange(approved, proposed, findTemplate(templates, proposed.template));
       if (!change) continue;
       if (standingBaseRefusal(proposal.revision, proposal.document, held)) continue;
+      // a pin-only revision is approved by the same checklist as any other (Requirement lifecycle
+      // r15 design_check); one it leaves short stays proposed, and its approve names the gap
+      const ready = evaluateChecklist(WORKFLOW_APPROVAL_CHECKLIST, {
+        given: {},
+        record: await workflowApprovalRecord(tx, row.id),
+      });
+      if (!ready.complete) continue;
       const reason = say('designs.reason.pinOnlyKernel', {
         r: row.approvedRevision,
         pins: change.pins.map((p) => `${p.workflow} r${p.from} → r${p.to}`).join(', '),

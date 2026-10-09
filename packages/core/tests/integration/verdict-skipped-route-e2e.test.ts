@@ -15,6 +15,7 @@ import {
   createTestIssue,
   createTestProject,
   createTestUser,
+  makeAgreeReady,
   truncateAll,
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
@@ -51,6 +52,7 @@ async function tracedClosedIssue(): Promise<{ issueId: string; req: string }> {
   });
   expect(created.status, JSON.stringify(created.body)).toBe(201);
   const req = String(created.body.key);
+  await makeAgreeReady(projectId, Number(req.slice(4)), ownerId);
   for (const [path, body] of [
     [`/requirements/${req}/revisions/1/propose`, {}],
     [`/requirements/${req}/revisions/1/accept`, {}],

@@ -17,5 +17,5 @@ export type {
   ReleaseVersionCarrier,
 } from "@forge/contracts/releases";
 
-export type ReleaseDecisionBody = { decision: "approve" } | { decision: "return"; reason: string };
+export type ReleaseDecisionBody = { decision: "approve" | "return"; reason: string };
 export type { ReleasePage, ReleasePageViewKind } from "@forge/contracts/release-page";

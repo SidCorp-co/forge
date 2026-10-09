@@ -1,6 +1,6 @@
 import { ISSUE_ADMIT_PERMISSION, type IssueStatus } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
-import type { ActorAgency } from '@forge/contracts/permissions';
+import type { ActorAgency, ProjectPermission } from '@forge/contracts/permissions';
 import {
   type ChangedTrace,
   changedSincePlan,
@@ -52,7 +52,7 @@ import { areasOf } from './placement.js';
 import { changedTracedOf } from './plan-drift.js';
 import { requestedByOf, requestSignoffRefusal, requestViewOf } from './request-signoff.js';
 import { criterionView, revisionView } from './revision-view.js';
-import { type LinkedDesign, liveAt, type ReadinessAtHead, signoffRefusal } from './rules.js';
+import { type LinkedDesign, liveAt, signoffRefusal } from './rules.js';
 import { releasesOf, type ShippedRelease, shippedReleasesOf } from './shipped-read.js';
 import { approvalRequiredIn, standingsOf } from './standing-read.js';
 
@@ -98,8 +98,10 @@ export async function signerRefusal(
   projectId: string,
   act: string,
   row?: Pick<Row, 'requestedByProjectId' | 'reqSeq'>,
+  /** What the act asks; a step a person gate holds names it from `project-config:personGateOf`. */
+  permission: ProjectPermission = 'requirements.approve',
 ) {
-  const refusal = signoffRefusal(await permissionFactsOf(actor.userId, projectId), act);
+  const refusal = signoffRefusal(await permissionFactsOf(actor.userId, projectId), act, permission);
   if (!refusal || !row?.requestedByProjectId) return refusal;
   const requestedBy = await requestedByOf(row);
   return requestSignoffRefusal({
@@ -217,6 +219,12 @@ export async function listRequirementsAs(
 }
 
 type ReadinessPayload = { checks?: { check: string; passed: boolean }[] } | null;
+
+/** The newest accepted readiness suggestion at a revision: advisory, shown and never gating. */
+export interface ReadinessAtHead {
+  suggestionId: string;
+  failed: string[];
+}
 
 // Workflow requirement-to-delivery step `ready`: readiness is a suggestion kind with no
 // table, so the readiness result at a revision is the newest accepted readiness suggestion on it

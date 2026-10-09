@@ -48,8 +48,11 @@ async function file(title: string): Promise<string> {
   return made.feedback.key as string;
 }
 
+// an issue serving no requirement is born at draft: its issue-ready checklist has a gap (ISS-453),
+// and the carrier is read with the status it stands at
 async function issue(title: string): Promise<Issue> {
   const made = ok(await say('owner', 'POST', at('/issues'), { title }), 201);
+  expect(made.admission?.status).toBe('draft');
   return { id: made.id, key: made.displayId };
 }
 
@@ -125,7 +128,7 @@ describe('an item delivered by several issues names every one of them', () => {
     expect(routed.phase).toBe('planned');
     expect(routed.route).toEqual({
       route: 'issue',
-      carriers: carriers.map((c) => ({ key: c.key, status: 'open' })),
+      carriers: carriers.map((c) => ({ key: c.key, status: 'draft' })),
       answer: null,
     });
   });
@@ -193,7 +196,7 @@ describe('an item whose every carrier is dropped goes back to triage', () => {
     ok(await triage(fb, { answers: TRIAGE_ANSWERS, route: 'issue', issue: next.key }));
     const again = await read(fb);
     expect(again.phase).toBe('planned');
-    expect(again.route.carriers).toEqual([{ key: next.key, status: 'open' }]);
+    expect(again.route.carriers).toEqual([{ key: next.key, status: 'draft' }]);
   });
 });
 
@@ -202,7 +205,7 @@ describe('one issue named alone routes the item to that one issue', () => {
     const fb = await file('The board loses its title');
     const only = await issue('Keep the title');
     ok(await triage(fb, { answers: TRIAGE_ANSWERS, route: 'issue', issue: only.key }));
-    expect((await read(fb)).route.carriers).toEqual([{ key: only.key, status: 'open' }]);
+    expect((await read(fb)).route.carriers).toEqual([{ key: only.key, status: 'draft' }]);
   });
 });
 

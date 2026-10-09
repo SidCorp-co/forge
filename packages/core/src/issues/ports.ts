@@ -9,6 +9,7 @@ import type { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import type { FastLaneRefusalCode } from '@forge/contracts/fast-lane';
 import type { MergeCheckReport } from '@forge/contracts/merge-check';
 import type { OutboxActor } from '@forge/contracts/outbox-events';
+import type { Approvals } from '@forge/contracts/person-gates';
 import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
 import type { JudgedBuild } from '@forge/contracts/verdict-identity';
@@ -31,6 +32,8 @@ export interface IssueProjectDocument {
   };
   delivery?: Parameters<typeof verdictsRequiredOf>[0];
   plan?: { approval: { required: boolean } } | undefined;
+  /** Which steps wait on a person (`@forge/contracts/person-gates`); the issue kernel reads `admit`. */
+  approvals?: Approvals | undefined;
   /** The language the project writes the prose it stores in Forge in; absent means `en`. */
   contentLanguage?: string | undefined;
   /** `mergeCheck: 'required'`: a mark asks for a passing merge check (`merge-check.ts`). */

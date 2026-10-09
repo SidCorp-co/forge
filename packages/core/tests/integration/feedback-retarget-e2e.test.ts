@@ -9,7 +9,13 @@ import {
   startQueue,
   testEnv,
 } from '../helpers/ecosystem-world.js';
-import { addProjectMember, createTestProject, createTestUser, rows } from '../helpers/factories.js';
+import {
+  addProjectMember,
+  createTestProject,
+  createTestUser,
+  makeAgreeReady,
+  rows,
+} from '../helpers/factories.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 type Who = 'owner' | 'member';
@@ -62,6 +68,7 @@ beforeAll(async () => {
   say = requester(app, { owner: await signUserToken(owner), member: await signUserToken(member) });
   keys.draft = (await requirement(projectId, 'Labels, never raw enum values')).key;
   const agreed = (await requirement(projectId, 'One declared schema per screen')).key;
+  await makeAgreeReady(projectId, Number(agreed.slice(4)), owner);
   ok(await say('owner', 'POST', at(`/requirements/${agreed}/revisions/1/propose`), {}));
   ok(
     await say('owner', 'POST', at(`/requirements/${agreed}/revisions/1/accept`), { reason: 'ok' }),

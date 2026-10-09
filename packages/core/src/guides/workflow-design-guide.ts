@@ -10,7 +10,7 @@ export const WORKFLOW_DESIGN_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Design a workflow first, build it once it is approved',
   summary:
-    'A flow that does not exist yet is drawn as a workflow-v2 design, proposed, and approved by a holder of workflow-designs.approve before any issue that builds it is dispatched.',
+    'A flow that does not exist yet is drawn as a workflow-v2 design, proposed, and approved under its approval checklist before any issue that builds it is dispatched.',
   version: 5,
   body: `## Design a workflow first, build it once it is approved
 
@@ -154,10 +154,17 @@ A storefront project has no repository: an observed node cites the provider's ar
 or node id. A repository project cites \`{ kind: "repo", file, symbol }\`. The other kind is refused
 \`WORKFLOW_OBSERVATION_CITATION_KIND_MISMATCH\`.
 
-### Who approves
-Whoever holds \`workflow-designs.approve\` on the project (project admin, or an org owner or admin),
-person or agent alike, a design onboarding drafted included; without it the call is refused
-\`PERMISSION_FORBIDDEN\` naming the permission. Unlinking an issue lifts its gate, so it takes the
+### Who approves, and what an approval is judged by
+Every approval, the pin-only one included, is judged by the workflow approval checklist, read from the
+newest revision: the business criteria its steps serve (traced on the requirements linking it; none is
+asked of a design no requirement links), who owns each step, its refusals, returns and failures drawn
+as conditions, tests or failure edges (asked only of a flow, never of a structure such as a system
+context), and its change from the last approved revision, computed. A gap is refused
+\`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, naming it; a pin-only approval with a gap leaves the
+revision proposed. Where the project document's \`approvals.designs\` is on, approving takes
+\`workflow-designs.approve\` (project admin, or an org owner or admin), person or agent alike, a design
+onboarding drafted included; off (the default), \`workflow-designs.write\` suffices and the complete
+checklist decides. Without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Unlinking an issue lifts its gate, so it takes the
 same permission. The project document's old \`workflows.designApprover\` is retired, and a write naming
 it is refused \`APPROVER_POLICY_RETIRED\`.`,
 };

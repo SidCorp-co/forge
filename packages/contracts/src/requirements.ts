@@ -17,6 +17,7 @@ import type {
 } from "./feedback.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
+import { CHECKLIST_REFUSAL_CODES } from "./checklists.js";
 import type { RefusalStatuses } from "./refusal.js";
 import type {
 	RequirementKind,
@@ -677,7 +678,6 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_DESIGN_UNAPPROVED",
 	"REQUIREMENT_NOT_AGREED",
 	"REQUIREMENT_ALREADY_AGREED",
-	"REQUIREMENT_NOT_READY",
 	"REQUIREMENT_DUPLICATE_UNDECIDED",
 	"REQUIREMENT_DUPLICATE_TARGET_INVALID",
 	"REQUIREMENT_ISSUE_LINKED_ELSEWHERE",
@@ -689,7 +689,6 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_NOT_DEFERRED",
 	"REQUIREMENT_HAS_LIVE_ISSUES",
 	"REQUIREMENT_NOT_DELIVERED",
-	"REQUIREMENT_CRITERIA_UNPROVEN",
 	"REQUIREMENT_ALREADY_ACCEPTED",
 	"REQUIREMENT_DROP_REASON_REQUIRED",
 	"REQUIREMENT_NOT_DROPPABLE",
@@ -703,7 +702,6 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_NO_DRAFT_ISSUES",
 	"REQUIREMENT_ISSUE_NOT_LINKED",
 	"REQUIREMENT_ISSUE_NOT_DRAFT",
-	"REQUIREMENT_OPEN_QUESTIONS",
 	"REQUIREMENT_OPEN_QUESTION_UNKNOWN",
 	"WORKFLOW_NODE_UNKNOWN",
 	"WORKFLOW_NODE_AMBIGUOUS",
@@ -717,6 +715,8 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_PICTURE_ALT_REQUIRED",
 	"REQUIREMENT_PICTURE_NOT_DRAWN",
 	"REQUIREMENT_REFUSED",
+	// the agree and the accept are judged by their checklists (`checklist-registry.ts`)
+	...CHECKLIST_REFUSAL_CODES,
 	...PERMISSION_REFUSAL_CODES,
 ] as const;
 export type RequirementRefusalCode = (typeof REQUIREMENT_REFUSAL_CODES)[number];
@@ -890,6 +890,19 @@ export interface RequirementRevision {
 	/** Its one picture, a rough sketch fitting its kind, shown with no accept; null while none is drawn. */
 	picture: RequirementPictureView | null;
 	criteria: RequirementCriterion[];
+	/** What it did to the criteria of the revision it was written against, computed, never typed; null where it has no base. */
+	criteriaChanges: RequirementCriteriaChanges | null;
+}
+
+/**
+ * A revision's criteria against its base (REQ-34 r2 BC-7, Requirement lifecycle r15 rev_check): the
+ * codes it added, reworded and retired, read from the criteria rows, never from its change summary.
+ */
+export interface RequirementCriteriaChanges {
+	against: number;
+	added: string[];
+	changed: string[];
+	removed: string[];
 }
 
 export interface RequirementPin {

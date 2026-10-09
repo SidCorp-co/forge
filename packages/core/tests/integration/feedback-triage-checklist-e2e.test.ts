@@ -65,7 +65,7 @@ async function refused(r: Promise<{ status: number; body: Doc }>): Promise<Doc[]
   return res.body.error.refusals as Doc[];
 }
 
-const agreedRequirement = () => agreedRequirementIn(token, projectId);
+const agreedRequirement = () => agreedRequirementIn(token, projectId, ownerId);
 
 async function fileBug(title: string, target: Doc = { screen: 'The board' }): Promise<string> {
   return (await ok(on('POST', '/feedback', { kind: 'bug', title, ...target }), 201)).feedback

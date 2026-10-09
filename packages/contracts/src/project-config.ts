@@ -29,6 +29,8 @@ const PURE_REFUSAL_CODES = [
 	"PERMISSION_PROFILE_UNDEFINED",
 	"TOOL_PATTERN_INVALID",
 	"APPROVER_POLICY_RETIRED",
+	/** `requirements.readinessGate` is written; the ready checklist replaced it (REQ-34 r2). */
+	"READINESS_GATE_RETIRED",
 ] as const;
 
 /** A project's own diagram templates are refused in the template resolver's vocabulary, plus one. */

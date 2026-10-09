@@ -21,6 +21,7 @@ import {
   createTestIssue,
   createTestProject,
   createTestUser,
+  makeAgreeReady,
   truncateAll,
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
@@ -69,6 +70,7 @@ async function agreedRequirement(linkWorkflow?: string): Promise<string> {
   if (linkWorkflow) {
     await ok(onProject('POST', `/requirements/${key}/workflows`, { workflowId: linkWorkflow }));
   }
+  await makeAgreeReady(projectId, Number(key.slice(4)), ownerId);
   await ok(onProject('POST', `/requirements/${key}/revisions/1/propose`, {}));
   await ok(onProject('POST', `/requirements/${key}/revisions/1/accept`, {}));
   await ok(onProject('POST', `/requirements/${key}/agree`, { revision: 1 }));
@@ -207,6 +209,7 @@ describe('a trace left on a reworded BC is refreshed to the current wording', ()
         ],
       }),
     );
+    await makeAgreeReady(projectId, Number(req.slice(4)), ownerId);
     await ok(onProject('POST', `/requirements/${req}/revisions/2/propose`, {}));
     await ok(onProject('POST', `/requirements/${req}/revisions/2/accept`, { reason: 'ok' }));
   }
@@ -357,6 +360,13 @@ describe('every verdict identity is checked by a rule or named as not counting',
   it('a design counts at the revision the baseline pins, not at a later approved one', async () => {
     const { id, doc } = await approvedDesign('reminders-flow');
     const req = await agreedRequirement(id);
+    // a linked design is approved only with a business criterion traced to a step (workflow approval checklist)
+    await ok(
+      onProject('PUT', `/requirements/${req}/criteria/BC-1/steps`, {
+        workflow: id,
+        steps: ['case'],
+      }),
+    );
     await ok(
       onProject('PUT', `/workflows/${id}`, {
         baseRevision: 1,

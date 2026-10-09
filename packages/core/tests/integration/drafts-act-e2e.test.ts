@@ -27,6 +27,7 @@ import {
   createTestIssue,
   createTestProject,
   createTestUser,
+  makeAgreeReady,
   rows,
 } from '../helpers/factories.js';
 
@@ -65,6 +66,7 @@ async function agreedRequirement(title: string, spec: Doc, criteria: Doc[]): Pro
     await as('POST', '/requirements', { title, reason: 'agreed', spec, criteria }),
     201,
   ).key as string;
+  await makeAgreeReady(projectId, Number(key.slice(4)), ownerId);
   ok(await as('POST', `/requirements/${key}/revisions/1/propose`, {}));
   ok(await as('POST', `/requirements/${key}/revisions/1/accept`, { reason: 'ok' }));
   ok(await as('POST', `/requirements/${key}/agree`, { revision: 1, reason: 'ok' }));
@@ -151,9 +153,10 @@ beforeAll(async () => {
   await bindTestRunner(projectId, await createTestDevice(ownerId));
   say = requester(app, { owner: await signUserToken(ownerId) });
 
+  // the target names who it is for, as an agreed requirement must (ISS-453's ready checklist)
   drafts.target = await agreedRequirement(
     'Call list export',
-    { scopeIn: ['Export the call list'] },
+    { scopeIn: ['Export the call list'], personas: ['Call centre lead'] },
     [{ body: 'The call list exports to a spreadsheet.' }],
   );
   drafts.dropReq = await staleRequirement('Fax the call list', 8);
@@ -313,7 +316,10 @@ describe('BC-12: the answer acts by itself and the item leaves Needs you', () =>
       'Export the call list',
       'CSV with a header row',
     ]);
-    expect((proposed?.spec as Doc | undefined)?.personas).toEqual(['Coordinator']);
+    expect((proposed?.spec as Doc | undefined)?.personas).toEqual([
+      'Call centre lead',
+      'Coordinator',
+    ]);
     expect(((proposed?.criteria as Doc[]) ?? []).map((c) => [c.code, c.body])).toEqual([
       ['BC-1', 'The call list exports to a spreadsheet.'],
       ['BC-2', 'The CSV opens in Excel.'],

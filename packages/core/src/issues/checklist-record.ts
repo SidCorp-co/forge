@@ -162,8 +162,12 @@ export function issueChecklistRecord(
     case 'issue_ready':
       return issueReadyRecord(exec, issueId);
     case 'feedback_triage':
+    case 'requirement_ready':
+    case 'requirement_acceptance':
+    case 'workflow_approval':
+    case 'breakdown':
       throw new Error(
-        `issue checklist: \`${checklist}\` gates the feedback machine, whose reader is the feedback module's`,
+        `issue checklist: \`${checklist}\` gates another machine, whose reader is its own module's`,
       );
     default: {
       const unhandled: never = checklist;

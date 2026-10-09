@@ -1,7 +1,7 @@
 // A requirement revision and its live criteria as the read model answers them (`read.ts`).
 
 import type { RequirementKind } from '@forge/contracts/requirement-pictures';
-import type { RequirementSpec } from '@forge/contracts/requirements';
+import type { RequirementCriteriaChanges, RequirementSpec } from '@forge/contracts/requirements';
 import type {
   CriterionForm,
   RevisionState,
@@ -31,6 +31,32 @@ function pictureOf(
 ) {
   const shown = id === null ? undefined : pictures.find((p) => p.id === id);
   return shown ? pictureView(shown, people) : null;
+}
+
+const byCode = (a: string, b: string) => Number(a.slice(3)) - Number(b.slice(3));
+
+/**
+ * The codes `revision` added, reworded and retired against `base` (REQ-34 r2 BC-7): a code live at
+ * the revision and not at its base was added; one live at both on another row was reworded; one live
+ * at the base and not at the revision was removed. Null where the revision has no base.
+ */
+export function criteriaChangesOf(
+  criteria: readonly CriterionRow[],
+  revision: number,
+  base: number | null,
+): RequirementCriteriaChanges | null {
+  if (base === null) return null;
+  const was = new Map(liveAt(criteria, base).map((c) => [c.code, c.id]));
+  const now = new Map(liveAt(criteria, revision).map((c) => [c.code, c.id]));
+  return {
+    against: base,
+    added: [...now.keys()].filter((code) => !was.has(code)).sort(byCode),
+    changed: [...now]
+      .filter(([code, id]) => was.has(code) && was.get(code) !== id)
+      .map(([code]) => code)
+      .sort(byCode),
+    removed: [...was.keys()].filter((code) => !now.has(code)).sort(byCode),
+  };
 }
 
 export function revisionView(
@@ -63,5 +89,6 @@ export function revisionView(
     kind: (r.kind as RequirementKind | null) ?? null,
     picture: pictureOf(r.pictureId, pictures, people),
     criteria: liveAt(criteria, r.revision).map(criterionView),
+    criteriaChanges: criteriaChangesOf(criteria, r.revision, r.baseRevision),
   };
 }

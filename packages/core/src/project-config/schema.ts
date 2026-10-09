@@ -6,6 +6,7 @@ import { SENSITIVE_DATA_LEVELS } from '@forge/contracts/data-policy';
 import { deliveryPolicySchema } from '@forge/contracts/delivery-policy';
 import { fastLaneSettingsSchema } from '@forge/contracts/fast-lane';
 import { FEEDBACK_VERIFY_WINDOW } from '@forge/contracts/feedback';
+import { approvalsSchema } from '@forge/contracts/person-gates';
 import { previewSettingsSchema } from '@forge/contracts/preview';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
@@ -231,14 +232,19 @@ export const projectDocumentSchema = z.strictObject({
       thirdParty: z.boolean().optional(),
     })
     .optional(),
-  // what a requirement's agree reads of its readiness result (decision on ISS-58,
-  // 2026-10-04): `warn` records it on the baseline, `block` refuses an agree that is not ready
-  // (`requirements/rules.ts:readinessRefusal`, REQUIREMENT_NOT_READY). Absent is `off`.
+  // `readinessGate` is retired (REQ-34 r2, ISS-453): the requirement-ready checklist the kernel
+  // judges on every agree replaced it. Still parsed so a stored document reads, refused on write
+  // (`rules.ts:checkRetiredReadinessGate`), never read; ISS-453 until: no stored project document
+  // carries it.
   requirements: z
     .strictObject({
       readinessGate: z.enum(REQUIREMENT_READINESS_GATES).optional(),
     })
     .optional(),
+  // which steps wait on a person (REQ-34 r2 BC-25, `@forge/contracts/person-gates`): a step set
+  // true waits on a holder of its approve permission; absent or false, its checklist decides and
+  // whoever may write the item moves it.
+  approvals: approvalsSchema.optional(),
   // how long a resolved feedback item waits for anyone to confirm the fix before Forge verifies it
   // itself (owner, 2026-10-07): whole days, `FEEDBACK_VERIFY_WINDOW.defaultDays` where absent. A
   // value outside the bounds is refused naming the field, never clamped.

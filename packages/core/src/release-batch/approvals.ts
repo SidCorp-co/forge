@@ -12,6 +12,7 @@ import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import { approvalRequired, environmentsOf, readReleasePath } from '../project-config/index.js';
+import { approvalChecklistRefusals } from './approval-checklist.js';
 import { refuseRelease } from './refuse.js';
 
 // The issues kernel still reads the approval fact here; it is project-config's (`release-path.ts`).
@@ -32,7 +33,7 @@ type ApprovalRequest = z.infer<typeof approvalRequestSchema>;
 
 const DECISIONS = ['approve', 'return'] as const;
 
-type Decision = { decision: 'approve' } | { decision: 'return'; reason: string };
+type Decision = { decision: 'approve'; reason?: string } | { decision: 'return'; reason: string };
 
 // each wrong decision body is refused by what is wrong with it: an unknown verb and a return with no reason are different mistakes, and a schema's "Invalid input" names neither
 export function parseDecision(raw: unknown): Decision {
@@ -46,7 +47,7 @@ export function parseDecision(raw: unknown): Decision {
   if (extra.length > 0) {
     throw refuseRelease(
       'RELEASE_APPROVAL_SHAPE',
-      `unknown ${agrees(extra.length, 'key', 'keys')} ${extra.join(', ')}; a decision is { decision: "approve" } or { decision: "return", reason }`,
+      `unknown ${agrees(extra.length, 'key', 'keys')} ${extra.join(', ')}; a decision is { decision: "approve", reason } or { decision: "return", reason }`,
     );
   }
   if (body.decision !== 'approve' && body.decision !== 'return') {
@@ -56,13 +57,14 @@ export function parseDecision(raw: unknown): Decision {
     );
   }
   if (body.decision === 'approve') {
-    if (body.reason !== undefined) {
-      throw refuseRelease(
-        'RELEASE_APPROVAL_SHAPE',
-        'an approval carries no reason; a reason is what a return owes the master',
-      );
+    // the reason is the release approval checklist's own question, which the decision judges
+    // (`approval-checklist.ts`); a reason that is not text is the body's shape, refused here
+    if (body.reason !== undefined && typeof body.reason !== 'string') {
+      throw refuseRelease('RELEASE_APPROVAL_SHAPE', "an approval's reason is text", '/reason');
     }
-    return { decision: 'approve' };
+    return body.reason === undefined
+      ? { decision: 'approve' }
+      : { decision: 'approve', reason: body.reason };
   }
   const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
   if (reason.length < 1 || reason.length > 1000) {
@@ -202,6 +204,8 @@ export async function decideApproval(input: {
     'approving or returning a release',
   );
   if (denied) throw new RefusalError([denied], denied.code);
+  if (decision.decision === 'approve')
+    await refuseIncompleteApproval(projectId, runId, approvalId, decision.reason);
   const row = await db.transaction(async (tx) => {
     const [decided] = await tx
       .update(releaseApprovals)
@@ -209,7 +213,7 @@ export async function decideApproval(input: {
         decision: decision.decision === 'approve' ? 'approved' : 'returned',
         decidedByUser: userId,
         decidedAt: sql`now()`,
-        reason: decision.decision === 'return' ? decision.reason : null,
+        reason: decision.reason?.trim() ?? null,
       })
       .where(
         and(
@@ -249,6 +253,28 @@ export async function decideApproval(input: {
   }
   const [view] = await approvalViews([row]);
   return view as ApprovalView;
+}
+
+/**
+ * An approval is judged by the release approval checklist (Requirement lifecycle r15
+ * release_check): the requirements the release carries, each carried criterion's latest verdict on
+ * the commit the request names, and the approver's reason. A gap refuses the approval, naming it.
+ */
+async function refuseIncompleteApproval(
+  projectId: string,
+  runId: string,
+  approvalId: string,
+  reason: string | undefined,
+): Promise<void> {
+  const [request] = await db
+    .select({ commit: releaseApprovals.evidenceCommit })
+    .from(releaseApprovals)
+    .where(and(eq(releaseApprovals.id, approvalId), eq(releaseApprovals.runId, runId)))
+    .limit(1);
+  // a request this run does not hold is answered by the decision's own not-found below
+  if (!request) return;
+  const refusals = await approvalChecklistRefusals(projectId, runId, request.commit, reason);
+  if (refusals.length > 0) throw new RefusalError(refusals, 'CHECKLIST_INCOMPLETE');
 }
 
 // an attempt on a run whose latest request is pending or returned is refused: the attempts of a release run are its production acts, and approval is what lets the master make them

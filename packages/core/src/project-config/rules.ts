@@ -403,6 +403,7 @@ export function checkProjectConfig(
   out.push(...checkWorkflowTemplates(doc, ctx));
   out.push(...checkContentLanguage(doc));
   out.push(...checkRetiredApprovers(doc));
+  out.push(...checkRetiredReadinessGate(doc));
   if (ctx.policy) out.push(...checkPolicy(ctx.policy));
   return out;
 }
@@ -449,6 +450,20 @@ function checkRetiredApprovers(
       },
     ];
   });
+}
+
+// The ready checklist replaced the readiness gate (REQ-34 r2): a write naming it is refused by
+// name, so nobody sets a gate that no longer decides anything.
+function checkRetiredReadinessGate(doc: Pick<ProjectDocument, 'requirements'>): ConfigRefusal[] {
+  if (doc.requirements?.readinessGate === undefined) return [];
+  return [
+    {
+      code: 'READINESS_GATE_RETIRED',
+      path: pointer('requirements', 'readinessGate'),
+      detail:
+        'requirements.readinessGate is retired: every agree is judged by the requirement-ready checklist, and whether a person must agree is approvals.agree. Remove the key.',
+    },
+  ];
 }
 
 // a tag that names no language is refused by name: a prompt told to write in it could only

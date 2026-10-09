@@ -25,6 +25,7 @@ import {
 import {
   addProjectMember,
   bindTestRunner,
+  completeIssueReadyRecord,
   createTestDevice,
   createTestProject,
   createTestUser,
@@ -230,12 +231,19 @@ describe('a returned design and an admitted issue are work the verdict counts', 
     const before = ok(await askVerdict()).work;
     const id = await proposedDesign('counted-flow');
     await returnDesign(id, 'count me');
-    const issue = ok(
+    // asked at open with no requirement it is born at draft (ISS-453), and opens once its
+    // issue-ready record is complete
+    const born = ok(
       await say('owner', 'POST', at('/issues'), {
         title: 'admitted for the master',
         status: 'open',
       }),
       201,
+    );
+    expect(born.status).toBe('draft');
+    await completeIssueReadyRecord(projectId, ownerId, born.id as string, 900);
+    const issue = ok(
+      await say('owner', 'POST', `/api/issues/${born.id}/transition`, { toStatus: 'open' }),
     );
     const answer = ok(await askVerdict());
     expect(answer.work.owed, JSON.stringify(answer.work)).toBeGreaterThan(before.owed);

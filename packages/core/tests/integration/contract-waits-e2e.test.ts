@@ -12,7 +12,11 @@ import {
   settleOutbox,
   writeInterfaces,
 } from '../helpers/ecosystem-world.js';
-import { bindTestRunner, createTestDevice } from '../helpers/factories.js';
+import {
+  bindTestRunner,
+  completeIssueReadyRecord,
+  createTestDevice,
+} from '../helpers/factories.js';
 
 let w: EcosystemWorld;
 let say: ReturnType<typeof sender>;
@@ -42,9 +46,23 @@ afterAll(async () => {
 const pluginIssues = () => `/api/projects/${w.project.plugin}/issues`;
 const waits = (issue: string) => `/api/issues/${issue}/contract-waits`;
 
+let reqSeq = 900;
+
+/**
+ * An issue at open, as admission takes it there (ISS-453): asked at open with no requirement it is
+ * born at draft naming its gaps, and opens once its issue-ready record is complete.
+ */
 async function openIssue(title: string): Promise<string> {
   const made = ok(await say('plugin', 'POST', pluginIssues(), { title, status: 'open' }), 201);
-  expect(made.status).toBe('open');
+  expect(made.status).toBe('draft');
+  expect(made.admission).toMatchObject({ status: 'draft' });
+  expect(made.admission.refusals.length).toBeGreaterThan(0);
+  reqSeq += 1;
+  await completeIssueReadyRecord(w.project.plugin, w.user.plugin, made.id as string, reqSeq);
+  const moved = ok(
+    await say('plugin', 'POST', `/api/issues/${made.id}/transition`, { toStatus: 'open' }),
+  );
+  expect(moved.status).toBe('open');
   return made.id as string;
 }
 

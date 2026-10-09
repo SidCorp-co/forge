@@ -18,7 +18,7 @@ import {
   openWorld,
   sender,
 } from '../helpers/ecosystem-world.js';
-import { seedIssueStatus } from '../helpers/factories.js';
+import { makeAgreeReady, seedIssueStatus } from '../helpers/factories.js';
 
 let w: EcosystemWorld;
 let say: ReturnType<typeof sender>;
@@ -89,6 +89,7 @@ describe('a breakdown waiting on a person', () => {
         workflowId: ids.workflow,
       }),
     );
+    await makeAgreeReady(w.project.plugin, Number(req.slice(4)), w.user.plugin);
     ok(await say('plugin', 'POST', at(`/requirements/${req}/revisions/1/propose`), {}));
     ok(
       await say('plugin', 'POST', at(`/requirements/${req}/revisions/1/accept`), { reason: 'ok' }),

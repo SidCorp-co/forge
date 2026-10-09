@@ -141,17 +141,16 @@ describe('requirement-to-delivery similar -> ready: embeddings down, readiness s
     });
   });
 
-  it('records the unchecked dedup on the baseline even where the readiness gate is off', async () => {
-    const { baselineReadiness } = await import('./rules.js');
+  it('records the unchecked dedup on the baseline, and nothing where it ran', async () => {
+    const { baselineDedup } = await import('./rules.js');
     const unchecked = { ran: false as const, why: 'dedup was not checked: x' };
-    expect(baselineReadiness('off', null, { ran: true })).toBeNull();
-    expect(baselineReadiness('off', null, unchecked)).toEqual({
+    expect(baselineDedup({ ran: true })).toBeNull();
+    expect(baselineDedup(unchecked)).toEqual({
       gate: 'off',
       suggestionId: null,
       ready: false,
       failed: [],
       dedup: unchecked,
     });
-    expect(baselineReadiness('warn', null, unchecked)?.dedup).toEqual(unchecked);
   });
 });

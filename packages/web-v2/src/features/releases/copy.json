@@ -270,6 +270,7 @@
     "releases.waitingOnAct": "Waiting on {who}: {act}",
     "releases.waitingOnYouAct": "Waiting on you: {act}",
     "releases.whyBack": "Why it goes back",
+    "releases.whyShip": "Why it may ship",
     "releases.whyBackPlaceholder": "What the master should answer before it asks again",
     "releases.whyNotCut": "Why it cannot be cut",
     "releases.withoutNote": "Without a note",

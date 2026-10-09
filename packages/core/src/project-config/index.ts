@@ -1,3 +1,4 @@
+export { personGateOf, readApprovals } from './approvals.js';
 export { encryptPlaintextBindingSecrets, setBindingInboundSecret } from './binding-store.js';
 export { readContentLanguage } from './content-language.js';
 export {

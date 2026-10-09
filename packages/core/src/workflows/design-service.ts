@@ -1,4 +1,3 @@
-import { approvalPermission } from '@forge/contracts/permissions';
 import { verbatim } from '@forge/contracts/said';
 import { findTemplate, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
 import { KERNEL_DECIDER_NAME, type PinOnlyChange } from '@forge/contracts/workflows';
@@ -6,8 +5,10 @@ import { db, type Tx } from '../db/client.js';
 import { activeIssuePrefix, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
+import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
+import { personGateOf } from '../project-config/index.js';
 import {
   type DesignDecision,
   type DesignRefusal,
@@ -70,7 +71,10 @@ export async function approverRefusalFor(
   actor: WorkflowWriter,
   projectId: string,
 ): Promise<DesignRefusal | null> {
-  return designApproverRefusal(await permissionFactsOf(actor.userId, projectId));
+  return designApproverRefusal(
+    await permissionFactsOf(actor.userId, projectId),
+    await personGateOf(projectId, 'designs'),
+  );
 }
 
 async function rowIn(projectId: string, id: string): Promise<StoredWorkflow> {
@@ -96,7 +100,8 @@ function pinOnlyOf(
 }
 
 async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
-  const approver = approvalPermission('workflow-designs');
+  // who decides it, as the project's approvals.designs stands: the approve permission, or the write one
+  const approver = (await personGateOf(row.projectId, 'designs')).permission;
   const [designs, builds, prefix, requirements, held, templates] = await Promise.all([
     designsOf(db, row.id),
     buildsOf(db, [row.id]),
@@ -287,7 +292,7 @@ export async function decideDesignAs(input: {
         parked: boolean;
         approved: DesignIssueOutcome | null;
       };
-  const outcome = await db.transaction(async (tx): Promise<Decided> => {
+  const decided = db.transaction(async (tx): Promise<Decided> => {
     await lockWorkflows(tx, projectId);
     const row = await readWorkflow(tx, id);
     if (!row) throw notFound(`project ${projectId} holds no workflow ${id}`);
@@ -318,6 +323,11 @@ export async function decideDesignAs(input: {
     // an approval can leave a dependent's pin-only proposal resting on a base that stands approved now
     if (decision === 'approve') await settlePinOnly(tx, projectId, templates);
     return { flow: row.flow, designIssueId: latest?.designIssueId ?? null, parked, approved };
+  });
+  // the approve's checklist refuses inside the kernel move; it rolls the decision back and is answered here
+  const outcome = await decided.catch((err: unknown): Decided => {
+    if (err instanceof RefusalError) return { refusals: err.refusals as DesignRefusal[] };
+    throw err;
   });
   if ('refusals' in outcome) return { ok: false, refusals: outcome.refusals };
   // a return hands the drawing back; an approval's mark was written inside the decision

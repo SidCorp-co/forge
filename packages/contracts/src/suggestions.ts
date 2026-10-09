@@ -155,7 +155,7 @@ export interface SuggestionRefusal {
 /** A requirement revision's spec, as ISS-57's revision write takes it. */
 /**
  * A business question the revision leaves open: who answers it, and whether the agree waits for it
- * (REQUIREMENT_OPEN_QUESTIONS). Written without `questionId`, core asks it as a question on the
+ * (a blocking one still open is a gap in its ready checklist). Written without `questionId`, core asks it as a question on the
  * requirement and stores the id; a later revision carries the id to keep the same question.
  */
 export const requirementOpenQuestionSchema = z.strictObject({
@@ -475,9 +475,18 @@ export interface SuggestionBreakdownIssue {
 		dueAt: string | null;
 		settledVersion: string | null;
 	}[];
+	/**
+	 * Where the issue stands once admitted by its issue-ready checklist (Requirement lifecycle r15
+	 * breakdown_check): `open`, or `draft` with each refusal that held it, in plain words. Absent on
+	 * an effect read back from before admission ran at accept.
+	 */
+	admission?: {
+		status: "open" | "draft";
+		refusals: { code: string; path: string; detail: string }[];
+	};
 }
 
-/** A breakdown accept: the draft issues it filed against the requirement at `revision`. */
+/** A breakdown accept: the issues it filed against the requirement at `revision`, each admitted or held at draft. */
 export interface SuggestionBreakdownEffect {
 	requirementId: string;
 	requirement: string;

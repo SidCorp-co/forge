@@ -1,7 +1,7 @@
 /**
  * What a requirement still leaves unclear (JU-6): the open questions its revision's spec names, each
  * asked as a question on the requirement, and the questions its issues and runs named as about it.
- * A blocking open question refuses the agree (REQUIREMENT_OPEN_QUESTIONS).
+ * A blocking open question still open is a gap of the ready checklist (`checklist-record.ts`).
  */
 
 import { randomUUID } from 'node:crypto';
@@ -17,11 +17,10 @@ import { peopleOf } from '../lib/people.js';
 import {
   answeredOnIssuesOf,
   insertAskedQuestion,
-  openAmong,
   questionsOnRequirement,
   type RequirementQuestionRow,
 } from '../questions/index.js';
-import { openQuestionsRefusalOf, type RequirementRefusal } from './rules.js';
+import type { RequirementRefusal } from './rules.js';
 
 /**
  * The spec as stored: each open question without an id is asked as a question on the requirement
@@ -61,18 +60,6 @@ export async function withAskedQuestions(
   }
   if (refusals.length) return { refusals };
   return { spec: { ...input.spec, openQuestions: asked } };
-}
-
-/** The blocking open questions `spec` names that are still open; the agree is refused while any stands. */
-export async function openQuestionsRefusal(
-  tx: Tx,
-  spec: RequirementSpec | null | undefined,
-  revision: number,
-): Promise<RequirementRefusal | null> {
-  const ids = (spec?.openQuestions ?? []).flatMap((q) =>
-    q.blocking && q.questionId ? [q.questionId] : [],
-  );
-  return openQuestionsRefusalOf(spec, await openAmong(ids, tx), revision);
 }
 
 function placeOf(row: RequirementQuestionRow): RequirementQuestionPlace {

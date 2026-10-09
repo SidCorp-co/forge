@@ -25,112 +25,29 @@ const { deliveryAt } = await import('./standing.js');
 const { consumerOf } = await import('../outbox/consumers.js');
 const { registerMasterWakeSubscribers } = await import('../ws/master-wake.js');
 
-type Proof = Parameters<typeof acceptRefusals>[0]['proof'];
-const delivered: Proof = { liveIssues: 2, unshipped: [], unproven: [] };
 const codes = (rs: { code: string }[]) => rs.map((r) => r.code);
 
-describe('accepting a delivered requirement', () => {
-  it('accepts an agreed requirement at its head when every issue shipped and every BC is proven', () => {
-    expect(acceptRefusals({ status: 'agreed', named: 3, head: 3, proof: delivered })).toEqual([]);
+describe('accepting a delivered requirement: the state the accept asks', () => {
+  it("lets an agreed requirement through at its head; its delivery is the checklist's", () => {
+    expect(acceptRefusals({ status: 'agreed', named: 3, head: 3 })).toEqual([]);
   });
 
   it('refuses a revision other than the head as stale, naming the head', () => {
-    const [r] = acceptRefusals({ status: 'agreed', named: 2, head: 3, proof: delivered });
+    const [r] = acceptRefusals({ status: 'agreed', named: 2, head: 3 });
     expect(r?.code).toBe('REQUIREMENT_REVISION_STALE');
     expect(r?.detail).toContain('the head is revision 3');
   });
 
-  it('refuses while a live linked issue is not closed, naming it', () => {
-    const [r] = acceptRefusals({
-      status: 'agreed',
-      named: 3,
-      head: 3,
-      proof: { liveIssues: 2, unshipped: ['ISS-9'], unproven: [] },
-    });
-    expect(r?.code).toBe('REQUIREMENT_NOT_DELIVERED');
-    expect(r?.detail).toContain('ISS-9');
-  });
-
-  it('refuses a requirement no live issue links to: nothing was delivered', () => {
-    const rs = acceptRefusals({
-      status: 'agreed',
-      named: 1,
-      head: 1,
-      proof: { liveIssues: 0, unshipped: [], unproven: [] },
-    });
-    expect(codes(rs)).toEqual(['REQUIREMENT_NOT_DELIVERED']);
-  });
-
-  it('refuses a shipped requirement with an unproven business criterion, naming each with its verdict', () => {
-    const [r] = acceptRefusals({
-      status: 'agreed',
-      named: 3,
-      head: 3,
-      proof: {
-        liveIssues: 1,
-        unshipped: [],
-        unproven: [
-          { code: 'BC-2', verdict: 'not_judged', why: null },
-          { code: 'BC-4', verdict: 'gap', why: null },
-        ],
-      },
-    });
-    expect(r?.code).toBe('REQUIREMENT_CRITERIA_UNPROVEN');
-    expect(r?.detail).toContain('BC-2 (not judged), BC-4 (gap)');
-  });
-
-  // ISS-489 r3: a pass nobody could check against the live build leaves its BC not judged; the
-  // refusal names that reason, so an outage is not read as a criterion nobody judged
-  it('names the reason a criterion is unproven where coverage gives one', () => {
-    const [r] = acceptRefusals({
-      status: 'agreed',
-      named: 3,
-      head: 3,
-      proof: {
-        liveIssues: 1,
-        unshipped: [],
-        unproven: [
-          {
-            code: 'BC-2',
-            verdict: 'not_judged',
-            why: 'no verdict counts yet: ISS-1 criterion 1: judged at commit ffffffffffff, and whether the live build holds it could not be checked: the live build could not be read: no probe',
-          },
-        ],
-      },
-    });
-    expect(r?.detail).toBe(
-      'every current business criterion is proven by a passing verdict before the accept; not proven: BC-2 (not judged: no verdict counts yet: ISS-1 criterion 1: judged at commit ffffffffffff, and whether the live build holds it could not be checked: the live build could not be read: no probe).',
-    );
-  });
-
-  it('names every cause at once', () => {
-    const rs = acceptRefusals({
-      status: 'agreed',
-      named: 1,
-      head: 2,
-      proof: {
-        liveIssues: 1,
-        unshipped: ['ISS-1'],
-        unproven: [{ code: 'BC-1', verdict: 'failing', why: null }],
-      },
-    });
-    expect(codes(rs)).toEqual([
-      'REQUIREMENT_REVISION_STALE',
-      'REQUIREMENT_NOT_DELIVERED',
-      'REQUIREMENT_CRITERIA_UNPROVEN',
-    ]);
-  });
-
   it('refuses a draft, deferred or already accepted requirement by name', () => {
-    expect(codes(acceptRefusals({ status: 'draft', named: 1, head: 1, proof: delivered }))).toEqual(
-      ['REQUIREMENT_NOT_DELIVERED'],
-    );
-    expect(
-      codes(acceptRefusals({ status: 'deferred', named: 1, head: 1, proof: delivered })),
-    ).toEqual(['REQUIREMENT_DEFERRED']);
-    expect(
-      codes(acceptRefusals({ status: 'accepted', named: 1, head: 1, proof: delivered })),
-    ).toEqual(['REQUIREMENT_ALREADY_ACCEPTED']);
+    expect(codes(acceptRefusals({ status: 'draft', named: 1, head: 1 }))).toEqual([
+      'REQUIREMENT_NOT_DELIVERED',
+    ]);
+    expect(codes(acceptRefusals({ status: 'deferred', named: 1, head: 1 }))).toEqual([
+      'REQUIREMENT_DEFERRED',
+    ]);
+    expect(codes(acceptRefusals({ status: 'accepted', named: 1, head: 1 }))).toEqual([
+      'REQUIREMENT_ALREADY_ACCEPTED',
+    ]);
   });
 });
 

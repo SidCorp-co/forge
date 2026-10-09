@@ -23,7 +23,13 @@ import {
   startQueue,
   testEnv,
 } from '../helpers/ecosystem-world.js';
-import { createTestProject, createTestUser, rows, seedIssueStatus } from '../helpers/factories.js';
+import {
+  createTestProject,
+  createTestUser,
+  makeAgreeReady,
+  rows,
+  seedIssueStatus,
+} from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
 
 const JUDGED = 'a'.repeat(40);
@@ -60,6 +66,7 @@ beforeAll(async () => {
     }),
     201,
   ).key as string;
+  await makeAgreeReady(projectId, Number(req.slice(4)), owner);
   ok(await say('POST', `/requirements/${req}/revisions/1/propose`, {}));
   ok(await say('POST', `/requirements/${req}/revisions/1/accept`, { reason: 'BA review' }));
   ok(await say('POST', `/requirements/${req}/agree`, { revision: 1, reason: 'owner signed r1' }));
@@ -93,8 +100,9 @@ beforeAll(async () => {
   if (!filed) throw new Error('the breakdown accept filed no traced criterion');
   requirementId = filed.requirement_id;
   await rows(sql`
-    INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, identity_kind, commit_sha, author_agency)
-    VALUES (${filed.criterion_id}, ${filed.issue_id}, 'pass', 'commit', ${JUDGED}, 'human')`);
+    INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, identity_kind, commit_sha, author_agency, evidence)
+    VALUES (${filed.criterion_id}, ${filed.issue_id}, 'pass', 'commit', ${JUDGED}, 'human',
+            ARRAY['a reload of the saved board shows every card'])`);
   await rows(sql`UPDATE issues SET merged_at = now() WHERE id = ${filed.issue_id}`);
   await seedIssueStatus(filed.issue_id, 'closed');
   await settleOutbox();
@@ -114,8 +122,15 @@ describe('a delivery whose pass nobody could check against the live build', () =
   it('is refused at the accept, naming the criterion not judged and why', async () => {
     const refused = await say('POST', `/requirements/${req}/accept`, { revision: 1 });
     expect(refused.status).toBe(422);
-    const refusals = (refused.json.error?.refusals ?? []) as { code: string; detail: string }[];
-    expect(refusals.map((r) => r.code)).toEqual(['REQUIREMENT_CRITERIA_UNPROVEN']);
+    const refusals = (refused.json.error?.refusals ?? []) as {
+      code: string;
+      path: string;
+      detail: string;
+    }[];
+    // ISS-453: the acceptance checklist's verdicts question names it, on its own path
+    expect(refusals.map((r) => [r.code, r.path])).toEqual([
+      ['CHECKLIST_INCOMPLETE', '/answers/verdicts'],
+    ]);
     expect(refusals[0]?.detail).toContain('BC-1 (not judged');
     expect(refusals[0]?.detail).toContain('could not be checked');
     expect(refusals[0]?.detail).toContain('the production probe timed out');

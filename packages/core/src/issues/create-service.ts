@@ -1,6 +1,7 @@
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
-import { ISSUE_ADMIT_PERMISSION, ISSUE_INITIAL_STATUSES } from '@forge/contracts/issue-machine';
+import { ISSUE_INITIAL_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssueCreateRefusalCode } from '@forge/contracts/issues';
+import { personGateAct, personGatePermission } from '@forge/contracts/person-gates';
 import type { WrittenLang } from '@forge/contracts/written-lang';
 import { eq } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
@@ -15,6 +16,7 @@ import { writtenLangFor } from '../lib/written-lang.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import type { Actor } from './activity.js';
+import { type Admission, admitBorn } from './admission.js';
 import {
   type AttachmentErrorEntry,
   type Base64AttachmentInput,
@@ -33,7 +35,7 @@ import {
   resolveLabelIdsForWrite,
 } from './label-service.js';
 import { scrubIssueText } from './patch-fields.js';
-import { chatDoorOfToken } from './ports.js';
+import { chatDoorOfToken, readProjectDocument } from './ports.js';
 import {
   type AppliedIssueRelation,
   type IssueRelationInput,
@@ -46,9 +48,10 @@ import { splitSessionContext, writeSplitSessionContext } from './work-state.js';
 const refuse = refuser<IssueCreateRefusalCode>('ISSUE_CREATE_REFUSED');
 
 /**
- * The only statuses an issue may be born at (`ISSUE_MACHINE.initial`): `open` for an actor holding
- * `issues.admit`, `draft` otherwise. Every other status change goes through the transition surface
- * so the state machine and activity log run.
+ * The only statuses an issue may be born at (`ISSUE_MACHINE.initial`). A birth asking `open` is
+ * written at `draft` and admitted by the kernel's draft → open move (`admission.ts`), so the
+ * issue-ready checklist judges it as it judges any draft. Every other status change goes through the
+ * transition surface so the state machine and activity log run.
  */
 const CREATE_ENTRY_STATUSES = ISSUE_INITIAL_STATUSES;
 
@@ -113,6 +116,8 @@ type CreateIssueResult =
       attachmentErrors: AttachmentErrorEntry[];
       /** What the body sanitizer removed from the description on the way in. */
       bodyWarnings: string[];
+      /** A birth that asked `open`: opened, or held at draft naming each gap; null for one filed at draft. */
+      admission: Admission | null;
     };
 
 /**
@@ -186,26 +191,35 @@ async function refuseChatDoorFiling(): Promise<void> {
   );
 }
 
-/** `open` needs `issues.admit`: named, it is refused without it; unnamed, the issue is born at `draft`. */
-async function birthStatus(
+/**
+ * Whether the birth asks to be admitted: `open` needs what the project's `approvals.admit` asks
+ * (`issues.admit` where it is on, `project.write` where it is off). Named, it is refused without it;
+ * unnamed, the issue is born at `draft` and waits on a holder.
+ */
+async function asksAdmission(
   projectId: string,
   userId: string,
   named: CreateEntryStatus | undefined,
-): Promise<CreateEntryStatus> {
-  if (named === 'draft') return 'draft';
+): Promise<boolean> {
+  if (named === 'draft') return false;
+  const approvals = (await readProjectDocument(projectId))?.document.approvals;
+  const gate = {
+    permission: personGatePermission(approvals, 'admit'),
+    act: personGateAct(approvals, 'admit'),
+  };
   const denied = await permissionRefusalFor(
     actorFor(userId),
-    ISSUE_ADMIT_PERMISSION,
+    gate.permission,
     projectResource(projectId),
-    'filing an issue at `open`',
+    gate.act,
   );
-  if (!denied) return 'open';
-  if (named === undefined) return 'draft';
+  if (!denied) return true;
+  if (named === undefined) return false;
   throw new RefusalError(
     [
       {
         ...denied,
-        detail: `${denied.detail} File it at \`draft\` instead; a holder of ${ISSUE_ADMIT_PERMISSION} promotes it.`,
+        detail: `${denied.detail} File it at \`draft\` instead; a holder of ${gate.permission} admits it.`,
       },
     ],
     denied.code,
@@ -332,11 +346,12 @@ export async function createIssue(
 ): Promise<CreateIssueResult> {
   await refuseChatDoorFiling();
   refuseBirthStatus(input.status);
-  const status = await birthStatus(
+  const admit = await asksAdmission(
     input.projectId,
     writer.createdById,
     input.status as CreateEntryStatus | undefined,
   );
+  const status: CreateEntryStatus = 'draft';
   const decodedAttachments: DecodedAttachment[] = input.attachments?.length
     ? decodeAndValidateAttachments([...input.attachments])
     : [];
@@ -354,9 +369,21 @@ export async function createIssue(
     if (deduped) return deduped;
   }
 
-  const { created, pendingRelations } = await db.transaction((tx) =>
+  const { created: born, pendingRelations } = await db.transaction((tx) =>
     writeBirth(tx, { input, writer, status, labelIds, prepared, detectorKey, level }),
   );
+  // admitted after the birth commits, its edges with it, by the move every draft takes
+  const admission = admit
+    ? await admitBorn(
+        born,
+        { type: 'user', id: writer.createdById, agency: writer.actor.agency },
+        'filed asking open: admitted by its issue-ready checklist',
+      )
+    : null;
+  const created =
+    admission?.status === 'open'
+      ? ((await db.select().from(issues).where(eq(issues.id, born.id)))[0] ?? born)
+      : born;
 
   const persisted = decodedAttachments.length
     ? await persistDecodedIssueAttachments(
@@ -375,5 +402,6 @@ export async function createIssue(
     attachments: persisted.persisted,
     attachmentErrors: persisted.errors,
     bodyWarnings: prepared?.warnings ?? [],
+    admission,
   };
 }

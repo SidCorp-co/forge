@@ -14,16 +14,14 @@ export interface DeliveryProof {
   unproven: readonly { code: string; verdict: string; why: string | null }[];
 }
 
-// workflow requirement-lifecycle edge delivered → accepted: a holder of requirements.approve names
-// the head (REQUIREMENT_REVISION_STALE); the phase reads delivered in the same transaction, every
-// live linked issue closed and at least one (REQUIREMENT_NOT_DELIVERED); every current BC proven
-// (REQUIREMENT_CRITERIA_UNPROVEN). The phase is the conjunction of the last two, so each is named
-// for its own cause
+// workflow requirement-lifecycle edge delivered → accepted: the requirement stands agreed and the
+// accept names its head (REQUIREMENT_REVISION_STALE). Whether it was delivered — every live issue
+// shipped, every current BC passing on the running build, each verdict cited — is the acceptance
+// checklist's (Requirement lifecycle r15 acceptance_check, `checklist-record.ts`), judged by the kernel
 export function acceptRefusals(input: {
   status: RequirementStatus;
   named: number;
   head: number | null;
-  proof: DeliveryProof;
 }): RequirementRefusal[] {
   const deferred = deferredRefusal(input.status, 'accepting its delivery', '/revision');
   if (deferred) return [deferred];
@@ -45,35 +43,16 @@ export function acceptRefusals(input: {
       },
     ];
   }
-  const out: RequirementRefusal[] = [];
   if (input.named !== input.head) {
-    out.push({
-      code: 'REQUIREMENT_REVISION_STALE',
-      path: '/revision',
-      detail: `the accept names revision ${input.named}, but the head is ${input.head === null ? 'none yet' : `revision ${input.head}`}; read the head and accept that delivery.`,
-    });
+    return [
+      {
+        code: 'REQUIREMENT_REVISION_STALE',
+        path: '/revision',
+        detail: `the accept names revision ${input.named}, but the head is ${input.head === null ? 'none yet' : `revision ${input.head}`}; read the head and accept that delivery.`,
+      },
+    ];
   }
-  const { proof } = input;
-  if (proof.liveIssues === 0 || proof.unshipped.length > 0) {
-    out.push({
-      code: 'REQUIREMENT_NOT_DELIVERED',
-      path: '',
-      detail:
-        proof.liveIssues === 0
-          ? 'no live issue links to the requirement, so nothing was delivered; break it down first.'
-          : `linked issues are not closed: ${proof.unshipped.join(', ')}; the delivery is accepted once every live linked issue shipped.`,
-    });
-  }
-  if (proof.unproven.length > 0) {
-    out.push({
-      code: 'REQUIREMENT_CRITERIA_UNPROVEN',
-      path: '',
-      detail: `every current business criterion is proven by a passing verdict before the accept; not proven: ${proof.unproven
-        .map((c) => `${c.code} (${c.verdict.replace('_', ' ')}${c.why ? `: ${c.why}` : ''})`)
-        .join(', ')}.`,
-    });
-  }
-  return out;
+  return [];
 }
 
 // workflow requirement-lifecycle edge → dropped: from any status the machine lets leave for it (not

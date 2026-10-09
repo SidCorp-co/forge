@@ -15,6 +15,7 @@ import {
   testEnv,
 } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
+import { seedProjectDocument } from '../helpers/release-world.js';
 
 let projectId: string;
 let ownerId: string;
@@ -88,13 +89,25 @@ describe('readNeedsYou with a proposed design revision', () => {
       expect(owner.items.filter((i) => i.area === area)).toHaveLength(read.you);
     }
 
-    const member = await readNeedsYou(projectId, {
-      userId: memberId,
-      agency: 'human',
-      isAdmin: false,
-      mayApprove: false,
-      mayWrite: true,
+    // with approvals.designs off (the default) the decision needs no person: whoever may write the
+    // design decides it by its checklist, so a member who may write is asked too (ISS-453)
+    const asMember = () =>
+      readNeedsYou(projectId, {
+        userId: memberId,
+        agency: 'human',
+        isAdmin: false,
+        mayApprove: false,
+        mayWrite: true,
+      });
+    expect((await asMember()).items.filter((i) => i.area === 'designs')).toHaveLength(1);
+
+    // with it on, only a holder of workflow-designs.approve decides, and the member is asked nothing
+    await seedProjectDocument(projectId, ownerId, {
+      environments: {
+        beta: { tier: 'staging', deploysFrom: 'main', deployment: { mode: 'external' } },
+      } as never,
+      extra: { approvals: { designs: true } },
     });
-    expect(member.items.filter((i) => i.area === 'designs')).toHaveLength(0);
+    expect((await asMember()).items.filter((i) => i.area === 'designs')).toHaveLength(0);
   });
 });

@@ -1,7 +1,8 @@
 /**
  * A requirement is precise from its input (JU-6, JU-5): a revision carries its open business
  * questions and its assumptions, each open question asked as a question on the requirement, and a
- * blocking one refuses the agree by name until it is answered. A business question raised on a build
+ * blocking one refuses the agree, as the ready checklist's open-question gap naming it (ISS-453),
+ * until it is answered. A business question raised on a build
  * issue names its requirement through `about`, stays on the issue, and its answer reaches the
  * requirement as a decision; the requirement's Decisions tab and the project's decision log both
  * roll up the decisions on its issues. A person links an existing issue to it, and the requirement
@@ -12,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { api, type Body, userToken } from '../helpers/api.js';
-import { createTestProject, createTestUser, rows } from '../helpers/factories.js';
+import { createTestProject, createTestUser, makeAgreeReady, rows } from '../helpers/factories.js';
 
 let owner = '';
 let ownerId = '';
@@ -58,8 +59,12 @@ async function current(req: string) {
   await ok(api(owner, 'POST', at(`/requirements/${req}/revisions/1/accept`), { reason: 'ok' }));
 }
 
+/** Every other ready-checklist answer filled, so the agree stops on nothing but what a test plants. */
+const readied = (req: string) => makeAgreeReady(projectId, Number(req.slice(4)), ownerId);
+
 async function agreed(): Promise<string> {
   const req = await draftWith({ goal: 'referrals' });
+  await readied(req);
   await current(req);
   await ok(api(owner, 'POST', at(`/requirements/${req}/agree`), { revision: 1, reason: 'ok' }));
   return req;
@@ -150,11 +155,18 @@ describe('a revision that leaves business questions open', () => {
       ]),
     );
 
+    await readied(req);
     await current(req);
-    const refusal = await refused(
-      api(owner, 'POST', at(`/requirements/${req}/agree`), { revision: 1, reason: 'ok' }),
-      'REQUIREMENT_OPEN_QUESTIONS',
-    );
+    const res = await api(owner, 'POST', at(`/requirements/${req}/agree`), {
+      revision: 1,
+      reason: 'ok',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    // the blocking question is the only gap, named on its question
+    expect(refusalsOf(res.body).map((r) => `${r.code} ${r.path}`)).toEqual([
+      'CHECKLIST_INCOMPLETE /answers/questions',
+    ]);
+    const refusal = refusalsOf(res.body)[0] as { detail: string };
     expect(refusal.detail).toContain('download the aggregate report');
     expect(refusal.detail).not.toContain('referrer feedback');
     expect((await read(req)).status).toBe('draft');

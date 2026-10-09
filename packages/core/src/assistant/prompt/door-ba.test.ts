@@ -6,9 +6,9 @@ import { BA_DOOR_LAYER } from './door-ba.js';
 // question left blocking refuses the agree, by the name the agree is refused with.
 describe('the BA door drafts what a revision leaves unsettled', () => {
   it('names open questions, assumptions and the refusal a blocking question earns', () => {
-    for (const word of ['spec.openQuestions', 'spec.assumptions', 'REQUIREMENT_OPEN_QUESTIONS']) {
+    for (const word of ['spec.openQuestions', 'spec.assumptions', 'CHECKLIST_INCOMPLETE']) {
       expect(BA_DOOR_LAYER.text).toContain(word);
     }
-    expect(REQUIREMENT_REFUSAL_CODES).toContain('REQUIREMENT_OPEN_QUESTIONS');
+    expect(REQUIREMENT_REFUSAL_CODES).toContain('CHECKLIST_INCOMPLETE');
   });
 });

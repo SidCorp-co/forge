@@ -10,7 +10,7 @@ import { expect } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { getStorage } from '../../src/integrations/index.js';
 import { addVerdict, replaceCriteria } from '../../src/issues/criteria/service.js';
-import { seedIssueStatus } from './factories.js';
+import { makeAgreeReady, seedIssueStatus } from './factories.js';
 import type { releaseWorld } from './release-world.js';
 
 export const BUILD = 'e7af41887a0e90ed541bb0dbfb34d4f9cb4f8510';
@@ -56,6 +56,7 @@ export function releasePageWorld(context: () => ReleasePageWorldContext) {
     });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const key = String(created.body.key);
+    await makeAgreeReady(CTX.projectId, Number(key.slice(4)), CTX.ownerId);
     for (const [path, body] of [
       [`/requirements/${key}/revisions/1/propose`, {}],
       [`/requirements/${key}/revisions/1/accept`, {}],

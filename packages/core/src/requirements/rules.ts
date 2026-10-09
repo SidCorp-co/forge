@@ -5,12 +5,11 @@
  * nothing written.
  */
 
+import type { ProjectPermission } from '@forge/contracts/permissions';
 import type {
   BaselineReadiness,
   RequirementDedupCheck,
-  RequirementReadinessGate,
   RequirementRefusalCode,
-  RequirementSpec,
 } from '@forge/contracts/requirements';
 import type { CriterionForm, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
 import { refuser } from '../lib/refusal.js';
@@ -26,8 +25,12 @@ export interface RequirementRefusal {
 
 // Accept, return, agree, defer, link and repin are approvals (ADR 0007): whoever holds
 // requirements.approve signs off, an agent or the revision's author included.
-export function signoffRefusal(facts: PermissionFacts, act: string): RequirementRefusal | null {
-  return permissionRefusal(facts, 'requirements.approve', act);
+export function signoffRefusal(
+  facts: PermissionFacts,
+  act: string,
+  permission: ProjectPermission = 'requirements.approve',
+): RequirementRefusal | null {
+  return permissionRefusal(facts, permission, act);
 }
 
 export function reasonRefusal(reason: string | null | undefined): RequirementRefusal | null {
@@ -173,41 +176,12 @@ export function agreeRefusals(input: {
   return out;
 }
 
-export interface ReadinessAtHead {
-  suggestionId: string;
-  failed: string[];
-}
-
-export function baselineReadiness(
-  gate: RequirementReadinessGate,
-  read: ReadinessAtHead | null,
-  dedup: RequirementDedupCheck,
-): BaselineReadiness | null {
-  if (gate === 'off' && dedup.ran) return null;
-  return {
-    gate,
-    suggestionId: read?.suggestionId ?? null,
-    ready: read !== null && read.failed.length === 0,
-    failed: read?.failed ?? [],
-    ...(dedup.ran ? {} : { dedup }),
-  };
-}
-
-// At `requirements.readinessGate: block` an agree needs an accepted readiness result at the
-// head with every check passing; one missing or failing is refused by name (REQUIREMENT_NOT_READY)
-export function readinessRefusal(
-  recorded: BaselineReadiness | null,
-  head: number | null,
-): RequirementRefusal | null {
-  if (recorded?.gate !== 'block' || recorded.ready) return null;
-  return {
-    code: 'REQUIREMENT_NOT_READY',
-    path: '/revision',
-    detail:
-      recorded.suggestionId === null
-        ? `this project's requirements.readinessGate is block, and revision ${head ?? '(none)'} has no accepted readiness result; accept a readiness suggestion on it first.`
-        : `this project's requirements.readinessGate is block, and the readiness result at revision ${head ?? '(none)'} (suggestion ${recorded.suggestionId}) failed: ${recorded.failed.join(', ')}.`,
-  };
+// What a baseline records beside its pins: only that the near-duplicate read did not run on the
+// head, so the agree says so rather than reading as if no near-duplicate exists. The readiness gate
+// it once also recorded is retired (REQ-34 r2): the ready checklist's answers are on the move.
+export function baselineDedup(dedup: RequirementDedupCheck): BaselineReadiness | null {
+  if (dedup.ran) return null;
+  return { gate: 'off', suggestionId: null, ready: false, failed: [], dedup };
 }
 
 /** Linking an issue reads an agreed requirement: a draft or dropped one has nothing to deliver. */
@@ -464,27 +438,4 @@ export function repinRefusals(input: {
     ];
   }
   return [];
-}
-
-// the agree waits for every blocking question its head names that is still open
-// (REQUIREMENT_OPEN_QUESTIONS, JU-6): a question no entry marks blocking, or one already answered,
-// holds nothing back
-export function openQuestionsRefusalOf(
-  spec: RequirementSpec | null | undefined,
-  open: ReadonlySet<string>,
-  revision: number,
-): RequirementRefusal | null {
-  const standing = (spec?.openQuestions ?? []).filter(
-    (q) => q.blocking && q.questionId !== undefined && open.has(q.questionId),
-  );
-  if (standing.length === 0) return null;
-  return {
-    code: 'REQUIREMENT_OPEN_QUESTIONS',
-    path: '/spec/openQuestions',
-    detail: `revision ${revision} leaves ${standing.length} blocking question${standing.length === 1 ? '' : 's'} open: ${standing
-      .map((q) => `"${q.question}" (answered by ${q.whoAnswers})`)
-      .join(
-        '; ',
-      )}. Answer each, or write a revision that no longer marks it blocking, before the agree.`,
-  };
 }

@@ -11,7 +11,8 @@ import { type Doc, ok, refusal } from '../helpers/ecosystem-world.js';
 import { openPictureWorld, PICTURES, pictureDoors } from '../helpers/requirement-picture-world.js';
 
 const w = openPictureWorld();
-const { as, read, requirement, revision, history, picture, kindOf, agreeR1 } = pictureDoors(w);
+const { as, read, requirement, revision, history, picture, kindOf, agreeR1, ready } =
+  pictureDoors(w);
 
 describe('an open revision follows the head picture until it is redrawn itself (criterion 14)', () => {
   const REDRAWN = { ...PICTURES.rule, alt: 'Redrawn on r1 while r2 is open.' };
@@ -33,6 +34,7 @@ describe('an open revision follows the head picture until it is redrawn itself (
   }
 
   async function acceptR2(key: string): Promise<void> {
+    await ready(key);
     ok(await as('owner', 'POST', `/requirements/${key}/revisions/2/propose`, {}));
     ok(await as('owner', 'POST', `/requirements/${key}/revisions/2/accept`, { reason: 'ok' }));
   }

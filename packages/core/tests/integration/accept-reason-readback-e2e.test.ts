@@ -18,12 +18,19 @@ import {
   startQueue,
   testEnv,
 } from '../helpers/ecosystem-world.js';
-import { createTestProject, createTestUser, rows, seedIssueStatus } from '../helpers/factories.js';
+import {
+  createTestProject,
+  createTestUser,
+  makeAgreeReady,
+  rows,
+  seedIssueStatus,
+} from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 let say: (who: 'owner', method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
+let ownerId = '';
 const at = (path: string) => `/api/projects/${projectId}${path}`;
 const as = (method: string, path: string, body?: unknown) => say('owner', method, at(path), body);
 
@@ -36,6 +43,7 @@ async function requirement(title: string): Promise<string> {
     }),
     201,
   ).key as string;
+  await makeAgreeReady(projectId, Number(key.slice(4)), ownerId);
   ok(await as('POST', `/requirements/${key}/revisions/1/propose`, {}));
   return key;
 }
@@ -58,6 +66,7 @@ beforeAll(async () => {
   await startQueue();
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   const owner = (await createTestUser({ verified: true })).id;
+  ownerId = owner;
   projectId = (await createTestProject(owner)).id;
   say = requester(app, { owner: await signUserToken(owner) });
 }, 120_000);
@@ -106,8 +115,9 @@ describe("a requirement's Activity reads each accept with the signer's reason", 
        WHERE i.project_id = ${projectId} AND c.requirement_criterion_id IS NOT NULL`);
     if (!filed) throw new Error('the breakdown accept filed no traced criterion');
     await rows(sql`
-      INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, identity_kind, commit_sha, author_agency)
-      VALUES (${filed.criterion_id}, ${filed.issue_id}, 'pass', 'commit', ${'a'.repeat(40)}, 'human')`);
+      INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, identity_kind, commit_sha, author_agency, evidence)
+      VALUES (${filed.criterion_id}, ${filed.issue_id}, 'pass', 'commit', ${'a'.repeat(40)}, 'human',
+            ARRAY['a reload of the saved board shows every card'])`);
     await rows(sql`UPDATE issues SET merged_at = now() WHERE id = ${filed.issue_id}`);
     await seedIssueStatus(filed.issue_id, 'closed');
     ok(

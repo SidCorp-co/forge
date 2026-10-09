@@ -10,7 +10,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
 import { api } from './api.js';
 import type { Doc } from './ecosystem-world.js';
-import { createTestIssue } from './factories.js';
+import { createTestIssue, makeAgreeReady } from './factories.js';
 import { plantLiveBuild } from './live-build.js';
 
 const LIVE = '9999999999999999999999999999999999999999';
@@ -22,8 +22,12 @@ async function okay(r: Promise<{ status: number; body: Doc }>) {
   return res.body;
 }
 
-/** An agreed requirement with two criteria; its key. */
-export async function agreedRequirement(token: string, projectId: string): Promise<string> {
+/** An agreed requirement with two criteria, written by `userId` as one ready to agree; its key. */
+export async function agreedRequirement(
+  token: string,
+  projectId: string,
+  userId: string,
+): Promise<string> {
   const on = (path: string, body: unknown) =>
     api(token, 'POST', `/api/projects/${projectId}${path}`, body);
   const key = String(
@@ -37,6 +41,7 @@ export async function agreedRequirement(token: string, projectId: string): Promi
       )
     ).key,
   );
+  await makeAgreeReady(projectId, Number(key.slice(4)), userId);
   await okay(on(`/requirements/${key}/revisions/1/propose`, {}));
   await okay(on(`/requirements/${key}/revisions/1/accept`, {}));
   await okay(on(`/requirements/${key}/agree`, { revision: 1 }));
@@ -59,7 +64,7 @@ export async function vouchedByPassingCriterion(input: {
 }): Promise<{ requirement: string; unplant: () => void }> {
   const { token, projectId, ownerId, feedbackId, seq, sha } = input;
   const unplant = plantLiveBuild(LIVE, { [sha]: input.shipped ?? true });
-  const requirement = await agreedRequirement(token, projectId);
+  const requirement = await agreedRequirement(token, projectId, ownerId);
   const { id: issueId } = await createTestIssue(projectId, ownerId, seq, {
     status: 'closed',
     createdAt: new Date(),

@@ -9,7 +9,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
-import { readProjectDocument } from '../project-config/index.js';
+import { personGateOf, readProjectDocument } from '../project-config/index.js';
 import { designApproverRefusal } from './design.js';
 import { standingBaseRefusal } from './design-bases.js';
 import { designWaitingOn } from './design-standing.js';
@@ -67,7 +67,7 @@ async function contextOf(projectId: string, viewer: HealthViewer): Promise<Proje
     projectId,
     slug: String(rowsOf<{ slug: string }>(slugRows)[0]?.slug ?? projectId),
     viewer,
-    canDecide: designApproverRefusal(facts) === null,
+    canDecide: designApproverRefusal(facts, await personGateOf(projectId, 'designs')) === null,
     threshold: rewriteThresholdOf(workflows?.rewriteThreshold),
     templates: resolveProjectTemplates(workflows?.templates ?? []).templates,
     feedback,

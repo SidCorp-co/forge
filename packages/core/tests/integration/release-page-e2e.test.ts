@@ -27,15 +27,21 @@ import { plantLiveBuild } from '../helpers/live-build.js';
 import { BUILD, CLIP_BYTES, MERGED, releasePageWorld } from '../helpers/release-page-world.js';
 import { declareProductionDocument, releaseWorld } from '../helpers/release-world.js';
 
-// the gateway model, faked at the provider seam behind the same `completeOnce` a chat turn uses
+// the gateway model, faked at the provider seam behind the same `completeOnce` a chat turn uses.
+// Only a highlight draft (its input lists what is `Claimable:`) is recorded and scripted: the other
+// assistants a requirement's creation wakes, its placement and its intake draft, get an empty answer
+// and are not counted, so `asked` and `answers` speak of highlights alone.
 const asked: ChatMessage[][] = [];
 let answers: string[] = [];
+const draftsHighlights = (messages: readonly ChatMessage[]) =>
+  messages.some((m) => typeof m.content === 'string' && /^Claimable: /m.test(m.content));
 register('anthropic', () => ({
   id: 'scripted',
   defaultModel: 'scripted-model',
   async *stream(req): AsyncIterable<ChatStreamEvent> {
-    asked.push(req.messages);
-    yield { type: 'chunk', text: answers.shift() ?? '' };
+    const highlights = draftsHighlights(req.messages);
+    if (highlights) asked.push(req.messages);
+    yield { type: 'chunk', text: highlights ? (answers.shift() ?? '') : '' };
     yield { type: 'usage', usage: { promptTokens: 90, completionTokens: 40 } };
     yield { type: 'done' };
   },
@@ -192,12 +198,28 @@ describe('the page reads off the release record', () => {
       at: null,
     });
     expect(before.header.environment).not.toBeNull();
-    const decided = await call(
-      'owner',
-      'POST',
-      `/release-batches/${w.runId}/approvals/${w.approvalId}/decision`,
-      { decision: 'approve' },
-    );
+    const path = `/release-batches/${w.runId}/approvals/${w.approvalId}/decision`;
+    // the release approval checklist (Requirement lifecycle r15 release_check) refuses an approval
+    // while a carried criterion's latest verdict on the build is not a pass, naming each
+    const held = await call('owner', 'POST', path, {
+      decision: 'approve',
+      reason: 'beta serves the release cleanly',
+    });
+    expect(held.status, JSON.stringify(held.body)).toBe(422);
+    const refusals = (
+      held.body.error as { refusals: { code: string; path: string; detail: string }[] }
+    ).refusals;
+    expect(refusals.map((r) => [r.code, r.path])).toEqual([
+      ['CHECKLIST_INCOMPLETE', '/answers/verdicts'],
+    ]);
+    expect(refusals[0]?.detail).toContain('criterion 2 (fail)');
+    expect((await page('member')).header.approval.state).toBe('pending');
+    await judge(w.b, 1, 'pass', BUILD);
+    await judge(w.b, 2, 'pass', BUILD, { reason: 'the filter holds after a reload' });
+    const decided = await call('owner', 'POST', path, {
+      decision: 'approve',
+      reason: 'beta serves the release cleanly',
+    });
     expect(decided.status, JSON.stringify(decided.body)).toBe(200);
     const after = await page('member');
     expect(after.header.approval).toMatchObject({ required: false, state: 'approved' });

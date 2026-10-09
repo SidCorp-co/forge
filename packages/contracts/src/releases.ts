@@ -3,6 +3,7 @@
 // peek and page draw them, so a state keeps one badge and nobody derives whom a release waits on in
 // the browser.
 
+import { CHECKLIST_REFUSAL_CODES } from "./checklists.js";
 import type { CriterionStanding, IssueStatusTone } from "./issue-vocabulary.js";
 import type {
 	ArtifactChange,
@@ -699,6 +700,7 @@ const RELEASE_APPROVAL_REFUSAL_CODES = [
 /** Every code a release door refuses with, in the one refusal envelope; `RELEASE_REFUSED` when several differ. */
 export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_REFUSED",
+	...CHECKLIST_REFUSAL_CODES,
 	...RELEASE_BLOCKER_CODES,
 	...RELEASE_APPROVAL_REFUSAL_CODES,
 	"RELEASE_ISSUES_UNNAMED",

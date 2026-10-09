@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { api, type Body, userToken } from '../helpers/api.js';
-import { createTestProject, createTestUser } from '../helpers/factories.js';
+import { createTestProject, createTestUser, makeAgreeReady } from '../helpers/factories.js';
 
 let token = '';
 let projectId = '';
@@ -63,6 +63,14 @@ beforeAll(async () => {
     )
   ).key as string;
   await ok(api(token, 'POST', at(`/requirements/${req}/workflows`), { workflowId }));
+  // the design approval checklist asks which business criterion each step serves (ISS-453)
+  await ok(
+    api(token, 'PUT', at(`/requirements/${req}/criteria/BC-1/steps`), {
+      workflow: 'checkout',
+      steps: ['call'],
+    }),
+  );
+  await makeAgreeReady(projectId, Number(req.slice(4)), owner);
   await ok(api(token, 'POST', at(`/requirements/${req}/revisions/1/propose`), {}));
   await ok(api(token, 'POST', at(`/requirements/${req}/revisions/1/accept`), { reason: 'ok' }));
 }, 60_000);

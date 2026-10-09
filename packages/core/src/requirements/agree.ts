@@ -1,11 +1,7 @@
+import { REQUIREMENT_READY_CHECKLIST } from '@forge/contracts/checklist-registry';
+import { checklistRefusals, evaluateChecklist } from '@forge/contracts/checklists';
 import { REQUIREMENT_MACHINE } from '@forge/contracts/requirement-machine';
-import {
-  type BaselineReadiness,
-  REQUIREMENT_READINESS_GATE_DEFAULT,
-  type RequirementReadinessGate,
-  type RequirementSpec,
-  requirementKey,
-} from '@forge/contracts/requirements';
+import { type BaselineReadiness, requirementKey } from '@forge/contracts/requirements';
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
@@ -17,9 +13,9 @@ import {
 } from '../db/schema-requirements.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
-import { readProjectDocument } from '../project-config/index.js';
+import { personGateOf } from '../project-config/index.js';
 import { linkedContracts, writePinsIn } from './baselines.js';
-import { openQuestionsRefusal } from './clarity.js';
+import { readyAnswersOf, readyFactsAt, requirementReadyRecord } from './checklist-record.js';
 import { requirementDependents } from './dependents.js';
 import { embedRequirementHeadLater } from './embeddings.js';
 import {
@@ -28,13 +24,13 @@ import {
   nearDuplicateRefusal,
   nearDuplicatesOf,
 } from './near-duplicate.js';
-import { linkedDesigns, type RequirementActor, readinessAt, rowIn, signerRefusal } from './read.js';
+import { linkedDesigns, type RequirementActor, rowIn, signerRefusal } from './read.js';
 import {
   agreeRefusals,
-  baselineReadiness,
+  baselineDedup,
   deferredRefusal,
   type LinkedDesign,
-  readinessRefusal,
+  type RequirementRefusal,
   staleBaseRefusal,
   stateRefusal,
 } from './rules.js';
@@ -48,9 +44,18 @@ import {
   revisionWhere,
 } from './write-tx.js';
 
-async function readinessGateOf(projectId: string): Promise<RequirementReadinessGate> {
-  const doc = await readProjectDocument(projectId);
-  return doc?.document.requirements?.readinessGate ?? REQUIREMENT_READINESS_GATE_DEFAULT;
+/** The requirement-ready checklist read for `revision`, the head-to-be of an agreed requirement. */
+async function readyRefusalsAt(
+  tx: Tx,
+  row: { id: string; reqSeq: number },
+  revision: number,
+): Promise<RequirementRefusal[]> {
+  const facts = await readyFactsAt(tx, row.id, requirementKey(row.reqSeq), revision);
+  const ready = evaluateChecklist(REQUIREMENT_READY_CHECKLIST, {
+    given: {},
+    record: readyAnswersOf(facts),
+  });
+  return ready.complete ? [] : checklistRefusals(ready);
 }
 
 /** Writes the agree's baseline of `revision` and its pins; answers the baseline's seq. */
@@ -107,9 +112,9 @@ export async function acceptRevision(input: {
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
-  const signer = await signerRefusal(actor, projectId, 'accepting a revision', row);
+  const gate = await personGateOf(projectId, 'revisions');
+  const signer = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
   if (signer) return { ok: false, refusals: [signer] };
-  const gate = await readinessGateOf(projectId);
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     const current = await rowIn(tx, projectId, row.id);
@@ -132,20 +137,14 @@ export async function acceptRevision(input: {
         rebaseline: true,
       });
       if (guards.length) return guards;
-      const unclear = await openQuestionsRefusal(
-        tx,
-        target.spec as RequirementSpec,
-        target.revision,
-      );
-      if (unclear) return [unclear];
-      // the accept that re-baselines passes every agree guard, the near-duplicate one included
+      // the accept that re-baselines reads the ready checklist on the new head, as the agree does
+      const notReady = await readyRefusalsAt(tx, current, target.revision);
+      if (notReady.length) return notReady;
       const { check, near } = await nearDuplicatesOf({
         ...current,
         currentRevision: target.revision,
       });
-      readiness = baselineReadiness(gate, await readinessAt(tx, row.id, target.revision), check);
-      const notReady = readinessRefusal(readiness, target.revision);
-      if (notReady) return [notReady];
+      readiness = baselineDedup(check);
       const duplicate = nearDuplicateRefusal(requirementKey(current.reqSeq), near);
       if (duplicate) return [duplicate];
     }
@@ -205,9 +204,9 @@ export async function agreeRequirement(input: {
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
-  const signer = await signerRefusal(actor, projectId, 'agreeing a requirement', row);
+  const gate = await personGateOf(projectId, 'agree');
+  const signer = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
   if (signer) return { ok: false, refusals: [signer] };
-  const gate = await readinessGateOf(projectId);
   let undecided: { near: NearDuplicate[]; currentRevision: number | null } | null = null;
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
@@ -232,20 +231,8 @@ export async function agreeRequirement(input: {
       rebaseline: false,
     });
     if (guards.length) return guards;
-    const unclear = head
-      ? await openQuestionsRefusal(tx, head.spec as RequirementSpec, head.revision)
-      : null;
-    if (unclear) return [unclear];
     const { check, near } = await nearDuplicatesOf(current);
-    const readiness = baselineReadiness(
-      gate,
-      current.currentRevision === null
-        ? null
-        : await readinessAt(tx, row.id, current.currentRevision),
-      check,
-    );
-    const notReady = readinessRefusal(readiness, current.currentRevision);
-    if (notReady) return [notReady];
+    const readiness = baselineDedup(check);
     const duplicate = nearDuplicateRefusal(requirementKey(current.reqSeq), near);
     if (duplicate) {
       undecided = { near, currentRevision: current.currentRevision };
@@ -269,6 +256,10 @@ export async function agreeRequirement(input: {
       actor: requirementKernelActor(actor),
       source: 'requirements',
       returning: ['id'],
+      // the ready checklist (Requirement lifecycle r15 ready_check), judged by the kernel
+      checklist: {
+        record: ({ tx: moveTx, row: moved }) => requirementReadyRecord(moveTx, moved.id),
+      },
     });
     movedRow(agreed);
     await announceAgreed(tx, row, input.revision, seq);

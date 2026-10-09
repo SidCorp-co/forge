@@ -40,3 +40,32 @@ describe("splitting an oversize draft", () => {
     expect(screen.queryByTestId("release-actions")).toBeNull();
   });
 });
+
+// Requirement lifecycle r15 release_check: an approval says why the release may ship, as a return
+// says why it goes back; the approve button opens the reason and sends it.
+describe("approving a release", () => {
+  const waiting = draft({
+    runId: "r1",
+    approval: { id: "a1" } as ReleaseDetail["approval"],
+    can: { cut: false, decide: true, split: false },
+    split: null,
+  });
+
+  it("asks why it may ship, and sends that reason with the approval", async () => {
+    const calls = fakeCore((c) => (c.method === "POST" ? { status: 200, body: {} } : undefined));
+    renderWithQuery(<ReleaseActions projectId="p1" r={waiting} />);
+    fireEvent.click(screen.getByTestId("release-approve"));
+    expect(screen.getByTestId("release-approve-submit")).toBeDisabled();
+    fireEvent.change(screen.getByTestId("release-approve-reason"), { target: { value: "beta serves it cleanly" } });
+    fireEvent.click(screen.getByTestId("release-approve-submit"));
+    await waitFor(() =>
+      expect(calls.filter((c) => c.method === "POST")).toEqual([
+        {
+          method: "POST",
+          path: "/projects/p1/release-batches/r1/approvals/a1/decision",
+          body: { decision: "approve", reason: "beta serves it cleanly" },
+        },
+      ]),
+    );
+  });
+});

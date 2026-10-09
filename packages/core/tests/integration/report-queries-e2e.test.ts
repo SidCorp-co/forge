@@ -33,6 +33,7 @@ describe('the report-queries door', () => {
       'burndown',
       'closed-by-requirement',
       'criteria-coverage',
+      'gated-moves',
       'issue-flow',
       'period-flow',
       'progress-by-requirement',
@@ -94,7 +95,7 @@ describe('the report-queries door', () => {
     const res = await run(w.token, 'velocity');
     expect(res.status).toBe(404);
     expect(detail(res)).toBe(
-      'report query "velocity" is not registered; registered: progress-by-requirement, roadmap-eta, release-readiness, criteria-coverage, workflow-status, issue-flow, burndown, period-flow, status-time, closed-by-requirement',
+      'report query "velocity" is not registered; registered: progress-by-requirement, roadmap-eta, release-readiness, criteria-coverage, workflow-status, issue-flow, burndown, period-flow, status-time, closed-by-requirement, gated-moves',
     );
   });
 

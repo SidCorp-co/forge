@@ -14,6 +14,7 @@ import {
   addProjectMember,
   createTestProject,
   createTestUser,
+  makeAgreeReady,
   seedIssueStatus,
   truncateAll,
 } from '../helpers/factories.js';
@@ -107,6 +108,7 @@ async function agreedRequirement(): Promise<{ id: string; bc: Record<string, str
   });
   expect(created.status, JSON.stringify(created.body)).toBe(201);
   const key = String(created.body.key);
+  await makeAgreeReady(projectId, Number(key.slice(4)), ownerId);
   for (const [path, body] of [
     [`/requirements/${key}/revisions/1/propose`, {}],
     [`/requirements/${key}/revisions/1/accept`, {}],

@@ -2,6 +2,7 @@ import type { Said } from '@forge/contracts/said';
 import type { Tx } from '../db/client.js';
 import { emitEvent } from '../outbox/index.js';
 import type { DesignDecision } from './design.js';
+import { workflowApprovalRecord } from './design-checklist-record.js';
 import { type DesignIssueOutcome, parkedAtDecision, recordApprovedDesign } from './design-issue.js';
 import { answerDesignQuestions } from './ports.js';
 import type { WorkflowWriter } from './service.js';
@@ -43,7 +44,15 @@ export async function recordDecision(
     writer: decider,
     reason,
     ...(input.kernel ? { actor: { type: 'sweeper' as const } } : {}),
-    ...(decision === 'approve' ? { approvedRevision: revision } : {}),
+    // an approve is judged by the workflow approval checklist (Requirement lifecycle r15 design_check)
+    ...(decision === 'approve'
+      ? {
+          approvedRevision: revision,
+          checklist: {
+            record: ({ tx: moveTx, row: moved }) => workflowApprovalRecord(moveTx, moved.id),
+          },
+        }
+      : {}),
   });
   const parked = await parkedAtDecision(tx, designIssueId);
   // the approved revision is its design issue's deliverable: its mark records it (ISS-262)

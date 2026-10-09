@@ -1,4 +1,5 @@
 import type { DesignRevisionState, DesignStatus } from "./design-status.js";
+import { CHECKLIST_REFUSAL_CODES } from "./checklists.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { RefusalStatuses } from "./refusal.js";
 import type { RequirementState } from "./requirements.js";
@@ -289,6 +290,8 @@ export const DESIGN_REFUSAL_CODES = [
 	"WORKFLOW_BUILD_ALREADY_LINKED",
 	"WORKFLOW_NODE_UNKNOWN",
 	"WORKFLOW_NODE_AMBIGUOUS",
+	// an approve is judged by the workflow approval checklist (`checklist-registry.ts`)
+	...CHECKLIST_REFUSAL_CODES,
 	...PERMISSION_REFUSAL_CODES,
 ] as const;
 export type DesignRefusalCode = (typeof DESIGN_REFUSAL_CODES)[number];

@@ -23,7 +23,7 @@ import {
   startQueue,
   testEnv,
 } from '../helpers/ecosystem-world.js';
-import { createTestProject, createTestUser, rows } from '../helpers/factories.js';
+import { createTestProject, createTestUser, makeAgreeReady, rows } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 let say: (who: 'owner', method: string, path: string, body?: unknown) => Promise<Reply>;
@@ -127,6 +127,7 @@ async function agreedTracing(workflowId: string, step: string): Promise<string> 
       steps: [step],
     }),
   );
+  await makeAgreeReady(projectId, Number(key.slice(4)), ownerId);
   ok(await as('POST', `/requirements/${key}/revisions/1/propose`, {}));
   ok(await as('POST', `/requirements/${key}/revisions/1/accept`, { reason: 'ok' }));
   ok(await as('POST', `/requirements/${key}/agree`, { revision: 1, reason: 'ok' }));

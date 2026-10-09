@@ -100,7 +100,7 @@ describe('a release approval decided reaches the run that asked', () => {
       'owner',
       'POST',
       `/release-batches/${runId}/approvals/${approvalId}/decision`,
-      { decision: 'approve' },
+      { decision: 'approve', reason: 'beta serves the release cleanly' },
     );
     expect(decided.status, JSON.stringify(decided.body)).toBe(200);
     await settleOutbox();
@@ -138,7 +138,7 @@ describe('a release approval decided reaches the run that asked', () => {
       'owner',
       'POST',
       `/release-batches/${runId}/approvals/${approvalId}/decision`,
-      { decision: 'approve' },
+      { decision: 'approve', reason: 'beta serves the release cleanly' },
     );
     expect(decided.status, JSON.stringify(decided.body)).toBe(200);
     await settleOutbox();

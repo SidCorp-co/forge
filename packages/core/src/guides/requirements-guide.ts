@@ -66,20 +66,24 @@ it lives in numbered revisions, and each revision carries business criteria unde
    draft is \`REQUIREMENT_REVISION_NOT_DRAFT\`. A draft nobody touched for 7 days that a person answers
    "drop" on Forge's merge-or-drop question is **withdrawn** (terminal, with the question as its reason);
    it no longer counts as the open revision, and editing or proposing it is \`REQUIREMENT_REVISION_WITHDRAWN\`.
-3. **propose** puts the draft in front of whoever approves it. Proposing also checks the base is still the head.
-4. A holder of \`requirements.approve\` **accepts** it (it becomes current, the previous current is superseded) or **returns** it
+3. **propose** puts the draft in front of whoever approves it. Proposing also checks the base is still the head. Every revision
+   read back carries \`criteriaChanges\`: the BC codes it added, reworded and removed against the revision
+   it was written against, computed from the criteria, never typed (null for a first revision).
+4. Its approver (see *Who may act*) **accepts** it (it becomes current, the previous current is superseded) or **returns** it
    with a reason (it goes back to draft, and each return is kept as its own record).
-5. A holder of \`requirements.approve\` **agrees** the head: the requirement becomes \`agreed\` and a **baseline** is written that
-   pins each linked design at its approved revision. Refused by name: \`REQUIREMENT_REVISION_NOT_CURRENT\`
-   (no current head, or the head is not current), \`REQUIREMENT_DESIGN_UNAPPROVED\` naming every linked
-   design with no approved revision, \`REQUIREMENT_ALREADY_AGREED\`, and \`REQUIREMENT_OPEN_QUESTIONS\`
-   naming each blocking open question the head still leaves unanswered. When the project document sets
-   \`requirements.readinessGate\` to \`block\`, the agree also needs an accepted readiness suggestion at
-   the head with every check passing (\`REQUIREMENT_NOT_READY\`); at \`warn\` the baseline records the
-   readiness result without refusing.
+5. Its approver **agrees** the head: the requirement becomes \`agreed\` and a **baseline** is written that
+   pins each linked design at its approved revision. The kernel judges the agree by the ready checklist,
+   read from the head: the problem, who it is for, the value and how it is measured, the business
+   criteria, no blocking open question, and a linked workflow design; its kind, out of scope and roadmap
+   lane take a recommended answer when unstated. The goal answers the problem, value, measure and lane on
+   lines starting \`Problem:\`, \`Value:\`, \`Measured by:\` and \`Roadmap:\`. Each blocking gap is
+   refused \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, naming it. Also refused by name:
+   \`REQUIREMENT_REVISION_NOT_CURRENT\` (no current head, or the head is not current),
+   \`REQUIREMENT_DESIGN_UNAPPROVED\` naming every linked design with no approved revision, and
+   \`REQUIREMENT_ALREADY_AGREED\`.
 6. **After the agree, a change is a new revision.** Accepting it re-baselines: the requirement stays
    (or goes back to) \`agreed\`, a new baseline is written, and the accept's \`reason\` is that
-   re-baseline's sign-off. The agree's design, open-question and readiness guards apply to it.
+   re-baseline's sign-off. The agree's design guard and ready checklist apply to it, read from the new head.
 7. **repin** writes a new baseline of the same text revision once a linked design has been approved
    past what the latest baseline pins, or a linked contract has a current version it does not pin. Only an agreed requirement is re-pinned
    (\`REQUIREMENT_NOT_AGREED\`), and a re-pin with nothing moved is \`REQUIREMENT_PINS_CURRENT\`.
@@ -132,17 +136,21 @@ was deferred from, saying why it comes back (\`REQUIREMENT_UNDEFER_REASON_REQUIR
 When the phase reads \`delivered\`, the project's holders of \`requirements.approve\` are notified, and
 **accept** \`{ revision, reason? }\` names the head whose delivery is accepted: the requirement becomes
 \`accepted\` and \`acceptedAt\` is stored. Refused by name: \`REQUIREMENT_REVISION_STALE\` (not the head),
-\`REQUIREMENT_NOT_DELIVERED\` (no live linked issue, or one not closed, naming each),
-\`REQUIREMENT_CRITERIA_UNPROVEN\` (a current BC without a passing verdict, naming each),
-\`REQUIREMENT_ALREADY_ACCEPTED\`. A correction after it comes in as feedback; a new revision accepted
+\`REQUIREMENT_NOT_DELIVERED\` (it is not agreed), \`REQUIREMENT_ALREADY_ACCEPTED\`. The kernel judges it by the acceptance
+checklist: every live issue shipped, every current BC passing on the running build, and each counted
+verdict citing its evidence; a gap is refused \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`,
+naming each issue or BC. A correction after it comes in as feedback; a new revision accepted
 re-agrees it. **drop** \`{ reason }\` ends a draft, agreed or deferred requirement that is not going to
 be built (\`REQUIREMENT_NOT_DROPPABLE\` once accepted, \`REQUIREMENT_DROP_REASON_REQUIRED\` without a
 reason), refused while any live issue links to it (\`REQUIREMENT_HAS_LIVE_ISSUES\`, naming each).
 
 ### Who may act
 Anyone on the project creates, revises, edits and proposes revisions, and links designs. Accept,
-return, agree, repin, defer, undefer, accept, drop, promote, linking an issue and \`adoptPlan\` take \`requirements.approve\`
-(promote takes \`issues.admit\` beside it) on the project (project admin, or an org owner or admin), person or agent alike, the revision's author
+return, agree, repin, defer, undefer, accept, drop, promote, linking an issue and \`adoptPlan\` take \`requirements.approve\`,
+except where the project document's person gates say no person is needed: with \`approvals.agree\`,
+\`approvals.revisions\` or \`approvals.accept\` off (the default), agreeing, accepting a revision, or
+accepting the delivery takes \`project.write\` and its complete checklist decides; on, it takes
+\`requirements.approve\`. Promote takes \`issues.admit\` beside it. Each is held on the project (project admin, or an org owner or admin), person or agent alike, the revision's author
 included; without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Whoever
 lacks it proposes and stops; the requirement's \`waitingOn\` names whose turn it is. A change an agent
 proposes without writing the revision itself is a \`revision_diff\` suggestion (${guideRef('suggestions')}),

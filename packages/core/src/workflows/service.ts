@@ -10,7 +10,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
-import { readProjectDocument, staleBase } from '../project-config/index.js';
+import { personGateOf, readProjectDocument, staleBase } from '../project-config/index.js';
 import { bindRefusalsIn } from './bind-check.js';
 import {
   designApproverRefusal,
@@ -335,7 +335,12 @@ export function workflowView(
 }
 
 async function mayDecideDesigns(userId: string, projectId: string): Promise<boolean> {
-  return designApproverRefusal(await permissionFactsOf(userId, projectId)) === null;
+  return (
+    designApproverRefusal(
+      await permissionFactsOf(userId, projectId),
+      await personGateOf(projectId, 'designs'),
+    ) === null
+  );
 }
 
 function listedView(

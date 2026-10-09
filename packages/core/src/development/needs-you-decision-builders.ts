@@ -414,6 +414,7 @@ export function releaseDecision(
           act: 'release.decide',
           path,
           body: { decision: 'approve' },
+          needsReason: true,
           effect: 'The release may go to production.',
           recommended: clean,
         }),

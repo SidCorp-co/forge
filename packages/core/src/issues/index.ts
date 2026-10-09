@@ -9,6 +9,7 @@ export {
 export type { ActorRef, ResolvedActor } from './actor-identity.js';
 export { actorKey } from './actor-identity.js';
 export { resolveActors, userLabel } from './actor-resolution.js';
+export { type Admission, admitBorn } from './admission.js';
 export {
   applyStatusTransition,
   transitionIssueStatus,
