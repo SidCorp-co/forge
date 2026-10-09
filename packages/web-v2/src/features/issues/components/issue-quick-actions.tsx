@@ -63,7 +63,7 @@ export function IssueQuickActions({
         agentStatus={agentStatus}
         disabled={pending}
         size="sm"
-        onTransition={(toStatus) => requestTransition(issueId, toStatus)}
+        onTransition={(toStatus) => requestTransition({ id: issueId, status }, toStatus)}
       />
       {runChip && <StatusChip status={runChip} size="sm" domain="session" />}
       <span aria-hidden className="h-4 w-px flex-none" style={{ background: "var(--border-default)" }} />

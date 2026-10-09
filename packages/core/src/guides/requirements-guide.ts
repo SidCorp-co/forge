@@ -106,9 +106,10 @@ it lives in numbered revisions, and each revision carries business criteria unde
   admit). **promote** \`{ issues? }\` moves them \`draft → open\`: the named ones (key or uuid), or every
   linked draft when none is named. A caller without \`issues.admit\` is refused \`PERMISSION_FORBIDDEN\`
   naming it before anything moves. Each moves through its own status move, so the move's own guards
-  hold (an archived issue). The answer is \`{ requirement, promoted, refused }\`: a draft whose move was refused is named
-  in \`refused\` with its own code while the rest still move, and when none moves the act is refused
-  with nothing written, each issue's code at \`/issues/<key>\`. Refused whole by name:
+  hold (an archived issue, a gap in the issue-ready checklist). The answer is \`{ requirement, promoted, refused }\`:
+  a draft whose move was refused is named in \`refused\` once per refusal, with that move's own code,
+  \`path\` (\`/answers/<question>\` for a checklist gap) and words, while the rest still move; when none
+  moves the act is refused with nothing written, each refusal at \`/issues/<key>\` followed by its own path. Refused whole by name:
   \`REQUIREMENT_NO_DRAFT_ISSUES\`, \`REQUIREMENT_ISSUE_NOT_LINKED\` or \`REQUIREMENT_ISSUE_NOT_DRAFT\` at
   the named issue's place in \`issues\`, \`REQUIREMENT_DEFERRED\`, and \`REQUIREMENT_NOT_AGREED\` for a
   draft or dropped requirement.

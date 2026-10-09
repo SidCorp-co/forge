@@ -14,7 +14,7 @@ type Reader = Pick<Tx, 'execute'>;
 
 const DELIVERABLE: readonly string[] = ['agreed', 'accepted'];
 
-interface Planned {
+export interface Planned {
   key: string | null;
   status: string | null;
   plannedRevision: number | null;
@@ -45,7 +45,10 @@ async function plannedOf(exec: Reader, issueId: string): Promise<Planned> {
 
 // Saving a plan is what stamps the revision it is written against
 // (`requirements/issue-links.ts:plannedRevisionFor`), so each gap names the act that clears it.
-function requirementAnswer(p: Planned): RecordAnswer {
+// Every sentence here is read by a person: the kernel refuses to judge with one that shows a record
+// field's key (`@forge/contracts/checklists:fieldKeyShownIn`), and `checklist-record.test.ts`
+// reads each one this reader can write.
+export function requirementAnswer(p: Planned): RecordAnswer {
   if (p.key === null) {
     return {
       gap: 'The issue is not linked to a requirement.',
@@ -74,6 +77,13 @@ function requirementAnswer(p: Planned): RecordAnswer {
 
 const criteriaCount = (n: number) => `${n} ${n === 1 ? 'criterion' : 'criteria'}`;
 
+/** One live criterion of the issue: its number, the BC it traces, and whether that BC stands at the planned revision. */
+export interface CriterionTrace {
+  n: number;
+  code: string | null;
+  traced: boolean | null;
+}
+
 async function criteriaAnswer(exec: Reader, issueId: string, p: Planned): Promise<RecordAnswer> {
   const rows = (await exec.execute(sql`
     SELECT c.n, rc.code,
@@ -86,7 +96,11 @@ async function criteriaAnswer(exec: Reader, issueId: string, p: Planned): Promis
       LEFT JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
      WHERE c.issue_id = ${issueId} AND c.retired_at IS NULL
      ORDER BY c.position
-  `)) as unknown as Array<{ n: number; code: string | null; traced: boolean | null }>;
+  `)) as unknown as CriterionTrace[];
+  return criteriaAnswerOf(rows, p);
+}
+
+export function criteriaAnswerOf(rows: readonly CriterionTrace[], p: Planned): RecordAnswer {
   if (rows.length === 0) {
     return {
       gap: 'The issue has no acceptance criteria.',

@@ -194,7 +194,7 @@ function useRowMenuItems(
       label: `${t("issues.field.status")}: ${L("issueStatus", g.to)}`,
       danger: g.kind === "discard",
       separatorBefore: g.startsGroup,
-      onSelect: () => actions.transition({ id: row.id, toStatus: g.to }),
+      onSelect: () => actions.transition({ id: row.id, from: row.status, toStatus: g.to }),
     });
   }
   for (const p of ISSUE_PRIORITIES) {

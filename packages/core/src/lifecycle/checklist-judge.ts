@@ -14,6 +14,7 @@ import {
   parseAnswers,
   type RecordAnswers,
 } from '@forge/contracts/checklists';
+import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import type { MachineEntity, MachineOf, StateOf } from '@forge/contracts/machines';
 import type { MachineEdge } from '@forge/contracts/state-machine';
 import { db } from '../db/client.js';
@@ -96,6 +97,18 @@ export async function judgeChecklist<E extends MachineEntity>(
   return { evaluation };
 }
 
+/**
+ * A status as a person reads it: an issue's by its badge label ("Needs info"); the requirement and
+ * feedback statuses are single plain words already.
+ */
+function statusWords(entity: MachineEntity, status: string): string {
+  const label =
+    entity === 'issue'
+      ? ISSUE_STATUS_LABELS[status as keyof typeof ISSUE_STATUS_LABELS]
+      : undefined;
+  return `"${label ?? status}"`;
+}
+
 /** Answers sent to a move whose edge asks no checklist, refused by name; none sent, no refusal. */
 export function answersToNoChecklist(
   entity: MachineEntity,
@@ -112,7 +125,7 @@ export function answersToNoChecklist(
     {
       code: 'CHECKLIST_ANSWER_INVALID',
       path: '/answers',
-      detail: `Moving this ${entity} from ${from} to ${to} asks no checklist questions, so it takes no answers. Send the move without answers.`,
+      detail: `Moving this ${entity} from ${statusWords(entity, from)} to ${statusWords(entity, to)} asks no checklist questions, so it takes no answers. Send the move without answers.`,
     },
   ];
 }

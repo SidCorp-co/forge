@@ -533,6 +533,7 @@
     "issues.toast.bulkFailed": "Bulk update failed",
     "issues.toast.bulkFailedN": "{n} failed",
     "issues.toast.bulkSkipped": "{n} skipped",
+    "issues.toast.bulkSkippedWhy": "{key} was not moved: {detail}",
     "issues.toast.bulkUpdated": "{n} updated",
     "issues.toast.commentFailed": "Couldn't post comment",
     "issues.toast.descriptionSaved": "Description saved",

@@ -275,12 +275,16 @@ pub fn no_base_branch(project_id: &str, config: Option<&Value>) -> String {
     let source = config.and_then(|c| c.pointer("/document/source"));
     match source.and_then(|s| s.get("type")).and_then(Value::as_str) {
         Some("storefront") => {
-            let provider = source
+            let named = source
                 .and_then(|s| s.pointer("/storefront/provider"))
-                .and_then(Value::as_str)
-                .unwrap_or("its provider");
+                .and_then(Value::as_str);
+            let provider = named.unwrap_or("its provider");
+            let binding = named.map_or_else(
+                || "a binding to its provider".to_string(),
+                |p| format!("{} {p} binding", runner_platform::english::indefinite_article(p)),
+            );
             format!(
-                "{lead}: the project's source is a storefront on {provider}, whose work lives on {provider} and in no branch, so it has no base branch to declare. Write this run's brief by hand; a git source cannot be declared beside a {provider} binding (GITLESS_BINDING_ON_GIT_SOURCE)"
+                "{lead}: the project's source is a storefront on {provider}, whose work lives on {provider} and in no branch, so it has no base branch to declare. Write this run's brief by hand; a git source cannot be declared beside {binding} (GITLESS_BINDING_ON_GIT_SOURCE)"
             )
         }
         Some("none") => format!(

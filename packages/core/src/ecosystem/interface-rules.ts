@@ -1,4 +1,5 @@
 import { jsonPointer as pointer } from '../lib/refusal.js';
+import { documentTypeWithArticle } from './channel-schema.js';
 import { missingElements } from './contract/upload-rules.js';
 import { pinRefusals, type VersionApprovals } from './pin-rules.js';
 import type { EcosystemRefusal } from './refusals.js';
@@ -189,7 +190,7 @@ function responseWindowRefusals(doc: InterfaceDocument, world: InterfaceWorld): 
         out.push({
           code: 'RESPONSE_WINDOW_EXCEEDS_ECOSYSTEM',
           path: pointer(['commitments', 'responseDays', kind]),
-          detail: `${world.project.slug} promises ${promised} day(s) for a ${kind}, and ecosystem ${eco.ecosystem.slug} allows at most ${allowed}; a member may promise sooner, never later.`,
+          detail: `${world.project.slug} promises ${promised} day(s) for ${documentTypeWithArticle(kind)}, and ecosystem ${eco.ecosystem.slug} allows at most ${allowed}; a member may promise sooner, never later.`,
         });
       }
     }

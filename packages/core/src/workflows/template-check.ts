@@ -10,6 +10,7 @@ import {
   findTemplate,
   type NodeRequirableField,
   type TemplateRef,
+  templateIdWithArticle,
   type WorkflowTemplate,
 } from '@forge/contracts/workflow-templates';
 import { jsonPointer as pointer } from '../lib/refusal.js';
@@ -95,7 +96,7 @@ function nodeRefusals(doc: WorkflowWriteV2, t: WorkflowTemplate): WorkflowRefusa
         {
           code: 'WORKFLOW_NODE_TYPE_NOT_IN_TEMPLATE',
           path: pointer(['steps', i, 'node', 'type']),
-          detail: `step "${s.id}" is a ${node.type}, which ${name(t)} does not declare; its node types are ${[...types.keys()].join(', ')}. A type it lacks is added by a project template that extends it.`,
+          detail: `step "${s.id}" is ${templateIdWithArticle(node.type)}, which ${name(t)} does not declare; its node types are ${[...types.keys()].join(', ')}. A type it lacks is added by a project template that extends it.`,
         },
       ];
     }
@@ -107,7 +108,7 @@ function nodeRefusals(doc: WorkflowWriteV2, t: WorkflowTemplate): WorkflowRefusa
             {
               code: 'WORKFLOW_NODE_VALUE_NOT_IN_VOCABULARY',
               path: pointer(['steps', i, 'node', 'mapsTo']),
-              detail: `${type.id} step "${s.id}" maps to "${node.mapsTo}", which ${name(t)} does not hold; a ${type.id} maps to one of ${type.vocabulary.join(', ')}.`,
+              detail: `${type.id} step "${s.id}" maps to "${node.mapsTo}", which ${name(t)} does not hold; ${templateIdWithArticle(type.id)} maps to one of ${type.vocabulary.join(', ')}.`,
             },
           ];
     return missing.length === 0
@@ -116,7 +117,7 @@ function nodeRefusals(doc: WorkflowWriteV2, t: WorkflowTemplate): WorkflowRefusa
           {
             code: 'WORKFLOW_NODE_FIELD_MISSING',
             path: pointer(['steps', i, 'node']),
-            detail: `${type.id} step "${s.id}" carries no ${missing.join(', ')}; ${name(t)} requires a ${type.id} to carry ${type.required.join(', ')}.`,
+            detail: `${type.id} step "${s.id}" carries no ${missing.join(', ')}; ${name(t)} requires ${templateIdWithArticle(type.id)} to carry ${type.required.join(', ')}.`,
           },
         ];
   });
@@ -178,7 +179,7 @@ function laneRefusals(doc: WorkflowWriteV2, t: WorkflowTemplate): WorkflowRefusa
       const fits = bands.filter((b) => b.types.includes(node.type)).map((b) => b.id);
       mismatch(
         path,
-        `${node.type} step "${s.id}" is in band "${band}", which admits ${admits.types.join(', ')}; a ${node.type} sits in ${fits.join(' or ')}.`,
+        `${node.type} step "${s.id}" is in band "${band}", which admits ${admits.types.join(', ')}; ${templateIdWithArticle(node.type)} sits in ${fits.join(' or ')}.`,
       );
     }
   });

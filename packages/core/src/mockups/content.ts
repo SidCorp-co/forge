@@ -5,6 +5,7 @@
  * source never takes a mockup with it.
  */
 
+import { withArticle } from '@forge/contracts/articles';
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import {
   MOCKUP_KIND_MIMES,
@@ -93,7 +94,11 @@ function bytesRefusal(kind: MockupKind, mime: string, bytes: Buffer): MockupRefu
   if (typed) return typed;
   if (kind === 'image' || kind === 'sketch') return null;
   if (mime !== 'image/svg+xml' && looksBinary(bytes)) {
-    return typeRefusal(kind, mime, `the bytes are binary, and a ${kind} mockup carries text`);
+    return typeRefusal(
+      kind,
+      mime,
+      `the bytes are binary, and ${withArticle(kind)} mockup carries text`,
+    );
   }
   if (kind === 'wireframe') {
     let doc: unknown;

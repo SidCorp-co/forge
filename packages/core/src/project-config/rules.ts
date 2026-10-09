@@ -1,3 +1,4 @@
+import { withArticle } from '@forge/contracts/articles';
 import { contentLanguageProblem } from '@forge/contracts/content-language';
 import { hostOf } from '@forge/contracts/git-repository';
 import { MCP_TOOL_NAMES } from '@forge/contracts/mcp-tools';
@@ -209,7 +210,7 @@ function checkStorefrontProvider(doc: ProjectDocument, ctx: ProjectConfigContext
     {
       code: 'BINDING_PROVIDER_MISMATCH',
       path: pointer('source', 'storefront', 'provider'),
-      detail: `source.storefront.provider is "${provider}", and binding ${binding} is a ${facts.provider} binding; name "${facts.provider}" or bind a ${provider} storefront.`,
+      detail: `source.storefront.provider is "${provider}", and binding ${binding} is ${withArticle(facts.provider)} binding; name "${facts.provider}" or bind ${withArticle(provider)} storefront.`,
     },
   ];
 }
@@ -225,7 +226,7 @@ function checkGitlessBindings(doc: ProjectDocument, ctx: ProjectConfigContext): 
     out.push({
       code: 'GITLESS_BINDING_ON_GIT_SOURCE',
       path: pointer('environments', name, 'deployment', 'binding'),
-      detail: `binding ${env.deployment.binding} is a ${facts.provider} binding, whose work lives on ${facts.provider} and in no repository, and this project's source.type is "git"; declare source {"type": "storefront", "storefront": {"provider": "${facts.provider}", ...}} with workspace.isolation "remote-draft".`,
+      detail: `binding ${env.deployment.binding} is ${withArticle(facts.provider)} binding, whose work lives on ${facts.provider} and in no repository, and this project's source.type is "git"; declare source {"type": "storefront", "storefront": {"provider": "${facts.provider}", ...}} with workspace.isolation "remote-draft".`,
     });
   }
   return out;

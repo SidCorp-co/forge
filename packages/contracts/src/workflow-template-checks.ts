@@ -2,6 +2,7 @@
 // the other templates — and the reads every consumer shares: a project's templates resolved, a
 // line's kind, a step's band.
 
+import { articleFor } from './articles.js';
 import {
   isTemplateExtension,
   type ProjectWorkflowTemplate,
@@ -18,6 +19,22 @@ const at = (base: string, ...rest: (string | number)[]) =>
   [base, ...rest.map((p) => String(p).replace(/~/g, '~0').replace(/\//g, '~1'))].join('/');
 
 const refKey = (r: TemplateRef) => `${r.id}@${r.version}`;
+
+/**
+ * The article before a template's own id: a node type, an edge kind, a template. A node type is
+ * written in capitals and said as words ("a SCREEN", "an ENTRY", "a USER_ACTION"), so the id is read
+ * as a word; a head of two letters or fewer is an initialism said by its letters ("a UI_STATE",
+ * "a ux-flow").
+ */
+export function templateIdArticle(id: string): 'a' | 'an' {
+  const head = id.split(/[\s_\-.]/)[0] ?? id;
+  return articleFor(head.length <= 2 ? id.toUpperCase() : id.toLowerCase());
+}
+
+/** A template's own id with its article: "an ENTRY", "a SCREEN", "an evidence". */
+export function templateIdWithArticle(id: string): string {
+  return `${templateIdArticle(id)} ${id}`;
+}
 
 function duplicates(ids: readonly string[]): string[] {
   return ids.filter((id, i) => ids.indexOf(id) !== i);
@@ -280,7 +297,7 @@ function templateLinkRefusals(
           out.push({
             code: 'WORKFLOW_TEMPLATE_INVALID',
             path: at(base, 'nodeTypes', i, 'links', j, 'types', k),
-            detail: `template ${t.id}@${t.version}: node type ${n.id} links to a ${ty} of ${l.template}, which declares no ${ty} (its types: ${[...declared].join(', ')}).`,
+            detail: `template ${t.id}@${t.version}: node type ${n.id} links to ${templateIdWithArticle(ty)} of ${l.template}, which declares no ${ty} (its types: ${[...declared].join(', ')}).`,
           });
       });
     });

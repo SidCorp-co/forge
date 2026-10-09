@@ -5,6 +5,7 @@
 // the project document and the policy, held as one draft each and saved together by the section's
 // one save bar, through the same document writes the raw editors send. What the release can do
 // right now is read underneath, from core's release readiness.
+import { withArticle } from "@forge/contracts/articles";
 import { useState } from "react";
 import { Button, IconButton, Input, Skeleton } from "@/design";
 import { useBindingDocuments, usePolicyDocument, useWritePolicy } from "@/features/project-config/hooks";
@@ -30,6 +31,9 @@ type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => (v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
+
+/** English names the provider with its article ("an epodsystem storefront"); a language with no article names it bare. */
+const storefrontSourceVars = (provider: string) => ({ provider, providerWithArticle: withArticle(provider) });
 
 /** A list of names typed as "dev, main"; blanks and repeats dropped. */
 function CommaList({ draft, path, label, effect, disabled }: { draft: DocumentDraft; path: string[]; label: string; effect: string; disabled: boolean }) {
@@ -69,7 +73,7 @@ function RepositoryGroup({ draft, off }: { draft: DocumentDraft; off: boolean })
 					<CommaList draft={draft} path={["source", "git", "branches"]} label={t("settings.project.delivery.branches")} effect={t("settings.project.delivery.branchesEffect")} disabled={off} />
 				</>
 			) : source.type === "storefront" ? (
-				<p className="fg-body-sm text-muted">{t("settings.project.delivery.storefrontSource", { provider: str(obj(source.storefront).provider) })}</p>
+				<p className="fg-body-sm text-muted">{t("settings.project.delivery.storefrontSource", storefrontSourceVars(str(obj(source.storefront).provider)))}</p>
 			) : (
 				<div className="flex flex-wrap items-center gap-3">
 					<p className="fg-body-sm flex-1 text-muted">{t("settings.project.delivery.noSource")}</p>

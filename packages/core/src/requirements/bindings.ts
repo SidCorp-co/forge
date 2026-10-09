@@ -4,6 +4,7 @@
  * names them with the design and an impact can list the screens a changed element reaches.
  */
 
+import { withArticle } from '@forge/contracts/articles';
 import { isElementIndexed } from '@forge/contracts/ecosystem';
 import type {
   RequirementBuildingIssue,
@@ -96,13 +97,17 @@ export function brokenByOf(
 export function bindingRefusals(
   bindings: readonly RequirementScreenBinding[],
 ): RequirementRefusal[] {
-  return bindings
-    .filter((b) => b.contractType !== null && !isElementIndexed(b.contractType))
-    .map((b) => ({
-      code: 'REQUIREMENT_BINDING_NOT_INDEXED' as const,
-      path: '/designs',
-      detail: `design \`${b.flow}\` r${b.designRevision} step \`${b.step}\` binds ${b.element} of ${b.contract}, a ${b.contractType} contract; only an element-indexed contract (openapi, mcp-tools, json-schema, graphql) can be bound, so a change to it could never name the screens it reaches. Bind the step through \`contracts\` instead, or publish the contract as an indexed type.`,
-    }));
+  return bindings.flatMap(({ contractType: type, ...b }) =>
+    type === null || isElementIndexed(type)
+      ? []
+      : [
+          {
+            code: 'REQUIREMENT_BINDING_NOT_INDEXED' as const,
+            path: '/designs',
+            detail: `design \`${b.flow}\` r${b.designRevision} step \`${b.step}\` binds ${b.element} of ${b.contract}, ${withArticle(type)} contract; only an element-indexed contract (openapi, mcp-tools, json-schema, graphql) can be bound, so a change to it could never name the screens it reaches. Bind the step through \`contracts\` instead, or publish the contract as an indexed type.`,
+          },
+        ],
+  );
 }
 
 /** The bindings inside `designs` at their pinned revisions, each with its contract's current type. */

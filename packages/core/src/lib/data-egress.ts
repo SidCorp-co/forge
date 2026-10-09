@@ -1,3 +1,4 @@
+import { withArticle } from '@forge/contracts/articles';
 import {
   type DataEgressRefusalCode,
   type EgressClass,
@@ -289,7 +290,9 @@ export async function egressForRequest<T>(
   what?: string,
 ): Promise<T> {
   if (!agency)
-    throw new Error(`data-egress: a ${surface} read reached its handler without an auth gate`);
+    throw new Error(
+      `data-egress: ${withArticle(surface)} read reached its handler without an auth gate`,
+    );
   const out = await egressAs({ agency }, projectId, surface, value, what);
   if (out.ok) return out.value;
   throw new RefusalError([out.refusal], out.refusal.code);

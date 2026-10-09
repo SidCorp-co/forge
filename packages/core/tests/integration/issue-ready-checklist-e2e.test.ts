@@ -312,7 +312,7 @@ describe('a wrong answer is refused by name at every door', () => {
         code: 'CHECKLIST_ANSWER_INVALID',
         path: '/answers',
         detail:
-          'Moving this issue from open to on_hold asks no checklist questions, so it takes no answers. Send the move without answers.',
+          'Moving this issue from "Open" to "On hold" asks no checklist questions, so it takes no answers. Send the move without answers.',
       }),
     ]);
   });

@@ -172,17 +172,20 @@ export async function promoteDraftIssues(input: {
           issueId: issue.id,
           displayId: issue.displayId,
           code: r.code,
+          path: r.path,
           detail: r.detail,
         });
       }
     }
   }
+  // none moved: the act is refused whole, each refusal under the draft it names and, below it, the
+  // place in that draft's move it points at (`/issues/ISS-2/answers/requirement`)
   if (promoted.length === 0) {
     return {
       ok: false,
       refusals: refused.map((r) => ({
         code: r.code,
-        path: `/issues/${r.displayId}`,
+        path: `/issues/${r.displayId}${r.path}`,
         detail: `${r.displayId}: ${r.detail}`,
       })),
     };

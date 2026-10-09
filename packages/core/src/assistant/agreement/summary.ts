@@ -8,6 +8,7 @@
 // clipped and no list is cut short. A field this file does not name is still shown, as `field:
 // value`, so a field added to a write later reaches the card without anyone remembering to.
 
+import { withArticle } from '@forge/contracts/articles';
 import type { ChatProposalKind, ChatProposalSummary } from '@forge/contracts/chat-proposals';
 import { describePicture, draftPictureSchema } from '@forge/contracts/requirement-pictures';
 
@@ -284,7 +285,8 @@ export function summaryOfToolCall(
         relates: [],
       };
     default:
-      if (name !== 'forge') throw new Error(`chat agreement: ${name} is not a ${kind} tool`);
+      if (name !== 'forge')
+        throw new Error(`chat agreement: ${name} is not ${withArticle(kind)} tool`);
       return cliSummary(kind, args);
   }
 }

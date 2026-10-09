@@ -2,6 +2,7 @@ import type { OutboxEventPayload as Payload } from '@forge/contracts/outbox-even
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications, projectMembers, projects, users } from '../db/schema.js';
+import { documentTypeWithArticle } from '../ecosystem/index.js';
 import { userLabel } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
@@ -10,6 +11,9 @@ import { emitNotification } from './emit.js';
 import { projectAdminUserIdsFor } from './project-admins.js';
 
 type Notice = Parameters<typeof emitNotification>[0];
+
+/** A phrase opening a sentence: "An RFI from …". */
+const capitalised = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
 async function humans(ids: readonly string[]): Promise<Set<string>> {
   if (ids.length === 0) return new Set();
@@ -108,7 +112,7 @@ async function published(p: Payload<'channel.documentPublished'>): Promise<void>
     projectId: side,
     type: 'channel_document_published',
     title: `${p.number} published: ${p.subject}`,
-    body: `A ${p.type} from ${slugs.get(p.projectId) ?? p.projectId} to ${to}.`,
+    body: `${capitalised(documentTypeWithArticle(p.type))} from ${slugs.get(p.projectId) ?? p.projectId} to ${to}.`,
     dedupeKey: `channel-published:${p.documentId}:${side}`,
   }));
 }
@@ -147,7 +151,7 @@ async function gateAsked(p: Payload<'channel.gateAsked'>): Promise<void> {
     projectId: p.projectId,
     type: 'channel_gate_pending',
     title: `${p.number} waits for your approval: ${p.subject}`,
-    body: `A ${p.type} this project wrote is held at the approve gate until an admin approves or returns it.`,
+    body: `${capitalised(documentTypeWithArticle(p.type))} this project wrote is held at the approve gate until an admin approves or returns it.`,
     resolutionKey: gateKey(p.documentId),
   });
 }

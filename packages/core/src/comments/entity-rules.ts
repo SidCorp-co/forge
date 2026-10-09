@@ -1,3 +1,4 @@
+import { withArticle } from '@forge/contracts/articles';
 import {
   COMMENT_SCOPES,
   type CommentRefusal,
@@ -210,6 +211,6 @@ export function nodeDecisionScopeRefusal(
   return {
     code: 'COMMENT_DECISION_NODE_SCOPE',
     path: '/decision/node',
-    detail: `decision.node names a step or edge of a workflow; this decision sits on a ${scope} (${targetKey}). Post it on the workflow, or drop the node`,
+    detail: `decision.node names a step or edge of a workflow; this decision sits on ${withArticle(scope)} (${targetKey}). Post it on the workflow, or drop the node`,
   };
 }

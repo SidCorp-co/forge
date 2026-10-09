@@ -101,7 +101,7 @@
     "settings.project.delivery.rollback.revert-and-redeploy": "Revert the change and put the result live",
     "settings.project.delivery.rollbackEffect": "What Forge does to production after a release that did not hold.",
     "settings.project.delivery.rollbackLabel": "When a release fails",
-    "settings.project.delivery.storefrontSource": "This project's work is made on a {provider} storefront, not in a repository.",
+    "settings.project.delivery.storefrontSource": "This project's work is made on {providerWithArticle} storefront, not in a repository.",
     "settings.project.delivery.tier.dev": "Development",
     "settings.project.delivery.tier.preview": "Preview",
     "settings.project.delivery.tier.production": "Production",

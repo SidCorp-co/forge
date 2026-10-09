@@ -1,6 +1,7 @@
 import { db, type Tx } from '../db/client.js';
 import { type ChannelOutcome, lockedSender, notIn, refuse, served, settle } from './channel-act.js';
 import type { Writer } from './channel-author.js';
+import { documentTypeWithArticle } from './channel-schema.js';
 import { type DocumentRow, insertEvent, readNumbered } from './channel-store.js';
 import { type ServedDocument, serve, serveAll } from './channel-world.js';
 
@@ -63,7 +64,7 @@ export async function supersede(args: {
             : by.ecosystemId !== row.ecosystemId ||
                 by.fromProjectId !== row.fromProjectId ||
                 by.type !== row.type
-              ? `${args.by} is not a ${row.type} this project sent in the same channel`
+              ? `${args.by} is not ${documentTypeWithArticle(row.type)} this project sent in the same channel`
               : (by.publishedAt?.getTime() ?? 0) < (row.publishedAt?.getTime() ?? 0)
                 ? `${args.by} was published before ${row.number}`
                 : null;

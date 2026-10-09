@@ -19,6 +19,7 @@
 // escalation) is not held and writes as before (`rest-hold.ts`); and a typed yes never counts as
 // agreement, so only the press on the card writes a held call.
 
+import { withArticle } from '@forge/contracts/articles';
 import { CHAT_ACT_TOOL } from '@forge/contracts/chat-acts';
 import type { ChatProposalKind } from '@forge/contracts/chat-proposals';
 import { IDEA_OFFER_TOOL } from '@forge/contracts/idea-offer';
@@ -293,5 +294,5 @@ export function refusedWriteText(
   verdict: Extract<ChatWriteVerdict, { verdict: 'refuse' }>,
   call: string,
 ): string {
-  return `${call} is refused from chat as a ${verdict.family}: ${verdict.why}. A chat's write waits for the person's press on a confirm card (REQ-30 BC-4), and no card carries this one, so nothing was written. Tell the person they do it themselves ${verdict.where}; do not try it another way.`;
+  return `${call} is refused from chat as ${withArticle(verdict.family)}: ${verdict.why}. A chat's write waits for the person's press on a confirm card (REQ-30 BC-4), and no card carries this one, so nothing was written. Tell the person they do it themselves ${verdict.where}; do not try it another way.`;
 }

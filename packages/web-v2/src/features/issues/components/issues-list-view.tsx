@@ -110,7 +110,7 @@ export function IssuesListView({
 
   const actions: RowActions = {
     patch: patch.mutate,
-    transition: ({ id, toStatus }) => requestTransition(id, toStatus),
+    transition: ({ id, from, toStatus }) => requestTransition({ id, status: from }, toStatus),
     isPending: patch.isPending || transitionPending,
     canWrite,
   };

@@ -2,6 +2,7 @@ pub mod clock;
 pub mod config;
 pub mod confine;
 pub mod cred_store;
+pub mod english;
 pub mod error;
 pub mod exe;
 pub mod git;

@@ -610,9 +610,14 @@ export interface PromotedDraftIssue {
 	displayId: string;
 }
 
-/** A draft the promote could not move, under its own move's refusal code. */
+/**
+ * One refusal of a draft the promote could not move: its own move's code, its words for a person,
+ * and where in that move it points (`/answers/<question>` for a checklist gap; empty for the move
+ * as a whole). A draft refused for several reasons is named once per refusal.
+ */
 export interface RefusedDraftIssue extends PromotedDraftIssue {
 	code: string;
+	path: string;
 	detail: string;
 }
 

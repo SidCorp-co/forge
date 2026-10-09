@@ -9,6 +9,8 @@
  * here instead, by name, where the drift is.
  */
 
+import { typeWithArticle } from "@forge/contracts/articles";
+
 export interface ReleaseRosterEntry {
   id: string;
   displayId: string;
@@ -48,7 +50,7 @@ function describe(got: unknown): string {
   if (got === undefined) return "no such key";
   if (got === null) return "null";
   if (Array.isArray(got)) return "an array";
-  return `a ${typeof got}`;
+  return typeWithArticle(got);
 }
 
 type Obj = Record<string, unknown>;

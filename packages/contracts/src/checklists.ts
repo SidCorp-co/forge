@@ -7,6 +7,7 @@
 // The registered checklists are `checklist-registry.ts:CHECKLISTS`.
 
 import { z } from "zod";
+import { typeWithArticle } from "./articles.js";
 import { fingerprint } from "./fingerprint.js";
 import type { Refusal, RefusalStatuses } from "./refusal.js";
 
@@ -149,13 +150,33 @@ const moverQuestions = (checklist: Checklist) =>
 const optionsOf = (options: readonly { value: string; label: string }[]) =>
 	options.map((o) => `"${o.value}" (${o.label})`).join(", ");
 
+/**
+ * What a value that is not an answer was sent as, in words a person reads: "an object", "a list",
+ * "a number", "text", "true or false". The article comes from `articles.ts:typeWithArticle`, never
+ * written by hand before a type's name, which reads "a object".
+ */
+export function sentAs(value: unknown): string {
+	switch (typeof value) {
+		case "string":
+			return "text";
+		case "boolean":
+			return "true or false";
+		case "bigint":
+			return "a number";
+		case "undefined":
+			return "nothing";
+		default:
+			return typeWithArticle(value);
+	}
+}
+
 /** What is wrong with one answer to `q`, in plain words naming what to send instead; null when it is an answer. */
 function answerFault(q: ChecklistQuestion, value: unknown): string | null {
 	const leaveOut = q.need.blocking
 		? ""
 		: ` Or leave the question out of the move to take the assumed answer: "${q.need.recommended}"`;
 	if (typeof value !== "string") {
-		const sent = value === null ? "null" : Array.isArray(value) ? "a list" : `a ${typeof value}`;
+		const sent = sentAs(value);
 		return q.answer.kind === "text"
 			? `The answer to "${q.prompt}" was sent as ${sent}. Send it as text.${leaveOut}`
 			: `The answer to "${q.prompt}" was sent as ${sent}. Send one of ${optionsOf(q.answer.options)}.${leaveOut}`;
@@ -310,6 +331,9 @@ function invalid(
 	};
 }
 
+/** The longest unknown question key a refusal repeats; a longer one is named by its length. */
+export const QUESTION_KEY_ECHOED = 64;
+
 export type ParsedAnswers =
 	| { readonly ok: true; readonly answers: Readonly<Record<string, string>> }
 	| { readonly ok: false; readonly refusals: ChecklistRefusal[] };
@@ -327,7 +351,7 @@ export function parseAnswers(checklist: Checklist, raw: unknown): ParsedAnswers 
 			? "It asks nothing in the move: send the move without answers."
 			: `The questions answered in the move are ${asked.join(", ")}.`;
 	if (typeof raw !== "object" || Array.isArray(raw)) {
-		const sent = Array.isArray(raw) ? "a list" : `a ${typeof raw}`;
+		const sent = sentAs(raw);
 		return {
 			ok: false,
 			refusals: [
@@ -345,21 +369,29 @@ export function parseAnswers(checklist: Checklist, raw: unknown): ParsedAnswers 
 	for (const [key, value] of Object.entries(raw)) {
 		const q = byId.get(key);
 		if (!q) {
+			// a key longer than any question id is not echoed whole: the refused move is recorded
 			refusals.push(
-				invalid(
-					checklist,
-					key,
-					`The ${checklist.title} checklist has no question "${key}". ${answeredInMove}`,
-				),
+				key.length > QUESTION_KEY_ECHOED
+					? invalid(
+							checklist,
+							null,
+							`The ${checklist.title} checklist has no question named by a key ${key.length} characters long. ${answeredInMove}`,
+						)
+					: invalid(
+							checklist,
+							key,
+							`The ${checklist.title} checklist has no question "${key}". ${answeredInMove}`,
+						),
 			);
 			continue;
 		}
+		// whether the record answers it is judged when the move is, so no fix for the record is guessed here
 		if (q.answeredBy.by === "record") {
 			refusals.push(
 				invalid(
 					checklist,
 					key,
-					`"${q.prompt}" is answered on the ${checklist.gates.machine} itself, by its ${q.answeredBy.label}, so the move cannot answer it. Leave it out of the move. ${q.fix}`,
+					`"${q.prompt}" is answered on the ${checklist.gates.machine} itself, by its ${q.answeredBy.label}, so the move cannot answer it. Leave it out of the move.`,
 					q.answeredBy.field,
 				),
 			);
@@ -385,6 +417,18 @@ export type RecordAnswer =
 	| { readonly gap: string; readonly fix: string };
 
 export type RecordAnswers = Readonly<Record<string, RecordAnswer>>;
+
+/**
+ * The record field key a sentence meant for a person shows, or a backtick of code formatting; null
+ * when it shows neither. A field's key is carried only by a refusal's `path` and `field`; its
+ * words are the question's `answeredBy.label`.
+ */
+export function fieldKeyShownIn(checklist: Checklist, text: string): string | null {
+	for (const q of checklist.questions) {
+		if (q.answeredBy.by === "record" && text.includes(q.answeredBy.field)) return q.answeredBy.field;
+	}
+	return text.includes("`") ? "`" : null;
+}
 
 export const CHECKLIST_PROVENANCES = ["given", "assumed"] as const;
 export type ChecklistProvenance = (typeof CHECKLIST_PROVENANCES)[number];
@@ -419,8 +463,8 @@ export interface ChecklistEvaluation {
 /**
  * Reads every question in order: a given answer stands; a record question takes what the record
  * holds; a gap on a non-blocking question takes its recommended answer, recorded as assumed; a gap
- * on a blocking one is named. A record question the reader did not answer is a defect of the
- * reader, not a gap, and throws.
+ * on a blocking one is named. A record question the reader did not answer, or a gap whose words show
+ * a record field's key, is a defect of the reader, not a gap, and throws.
  */
 export function evaluateChecklist(
 	checklist: Checklist,
@@ -446,6 +490,16 @@ export function evaluateChecklist(
 				throw new Error(
 					`checklist \`${checklist.id}\`: the record reader answered nothing for \`${q.id}\``,
 				);
+			}
+			if ("gap" in held) {
+				for (const text of [held.gap, held.fix]) {
+					const shown = fieldKeyShownIn(checklist, text);
+					if (shown) {
+						throw new Error(
+							`checklist \`${checklist.id}\`: the record reader's words for \`${q.id}\` show ${shown === "`" ? "code formatting" : `the field key ${shown}`}, which only a refusal's path and field carry: "${text}"`,
+						);
+					}
+				}
 			}
 			found = "value" in held ? { value: held.value, source: `record:${q.answeredBy.field}` } : held;
 		} else {

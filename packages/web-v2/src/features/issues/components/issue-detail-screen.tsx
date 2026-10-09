@@ -135,7 +135,7 @@ export function IssueDetailScreen({
   if (switching) return <IssueUnread query={issueQ} switching />;
 
   const onTransition = (toStatus: IssueStatus) =>
-    requestTransition(issue.id, toStatus, { onSuccess: refreshIssue });
+    requestTransition(issue, toStatus, { onSuccess: refreshIssue });
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
     patch.mutate({ id: issue.id, body }, { onSuccess: refreshIssue });
 

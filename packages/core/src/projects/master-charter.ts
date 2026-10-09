@@ -10,6 +10,8 @@
  * line is the silent substitution this whole record exists to stop.
  */
 
+import { typeWithArticle } from '@forge/contracts/articles';
+
 const MASTER_CHARTER_GOAL_MAX = 4000;
 const MASTER_CHARTER_RULES_MAX = 50;
 const MASTER_CHARTER_RULE_MAX = 2000;
@@ -56,7 +58,7 @@ export function parseMasterCharterWrite(raw: unknown): ParsedCharterWrite {
   if (typeof goal !== 'string') {
     return refuse(
       'goal',
-      `\`goal\` is the one sentence saying what this project's master is for, and it must be a string. This one is ${goal === undefined ? 'absent' : `a ${Array.isArray(goal) ? 'array' : typeof goal}`}. ${SHAPE}.`,
+      `\`goal\` is the one sentence saying what this project's master is for, and it must be a string. This one is ${goal === undefined ? 'absent' : typeWithArticle(goal)}. ${SHAPE}.`,
     );
   }
   if (goal.trim().length === 0) {
@@ -76,7 +78,7 @@ export function parseMasterCharterWrite(raw: unknown): ParsedCharterWrite {
   if (!Array.isArray(rules)) {
     return refuse(
       'rules',
-      `\`rules\` is an array of strings, one rule per entry, and may be empty. This one is ${rules === undefined ? 'absent' : `a ${typeof rules}`} — a single rule still travels as \`["<rule>"]\`, and a string here is not read as a list of one. ${SHAPE}.`,
+      `\`rules\` is an array of strings, one rule per entry, and may be empty. This one is ${rules === undefined ? 'absent' : typeWithArticle(rules)} — a single rule still travels as \`["<rule>"]\`, and a string here is not read as a list of one. ${SHAPE}.`,
     );
   }
   if (rules.length > MASTER_CHARTER_RULES_MAX) {
@@ -90,7 +92,7 @@ export function parseMasterCharterWrite(raw: unknown): ParsedCharterWrite {
     if (typeof rule !== 'string') {
       return refuse(
         `rules[${i}]`,
-        `\`rules[${i}]\` is a ${rule === null ? 'null' : Array.isArray(rule) ? 'array' : typeof rule}, and every rule is a string.`,
+        `\`rules[${i}]\` is ${typeWithArticle(rule)}, and every rule is a string.`,
       );
     }
     if (rule.trim().length === 0) {

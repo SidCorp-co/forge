@@ -1,6 +1,7 @@
 // The previews module's reads: its own rows, the record REST answers, and the run whose worktree
 // an issue's preview serves.
 
+import { withArticle } from '@forge/contracts/articles';
 import type {
   PreviewRecord,
   PreviewState,
@@ -71,7 +72,9 @@ export function subjectOf(row: PreviewRow): PreviewSubject {
     return { kind: 'issue', issueId: row.issueId };
   }
   if (row.subject === null || row.subject.kind !== row.subjectKind) {
-    throw new Error(`preview ${row.id} serves a ${row.subjectKind} and holds no such subject`);
+    throw new Error(
+      `preview ${row.id} serves ${withArticle(row.subjectKind)} and holds no such subject`,
+    );
   }
   return row.subject;
 }

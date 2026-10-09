@@ -8,6 +8,7 @@
 import {
   answersLink,
   findTemplate,
+  templateIdWithArticle,
   type WorkflowTemplate,
 } from '@forge/contracts/workflow-templates';
 import { jsonPointer as pointer } from '../lib/refusal.js';
@@ -43,7 +44,7 @@ export function refRefusals(
         out.push({
           code: 'WORKFLOW_REF_NOT_ALLOWED',
           path,
-          detail: `${type.id} step "${s.id}" links to ${ref.template}, and in template ${t.id}@${t.version} a ${type.id} links ${links.length ? `only to ${links.map((l) => `${l.template} (${l.types.join(', ')})`).join(', ')}` : 'to nothing'}.`,
+          detail: `${type.id} step "${s.id}" links to ${ref.template}, and in template ${t.id}@${t.version} ${templateIdWithArticle(type.id)} links ${links.length ? `only to ${links.map((l) => `${l.template} (${l.types.join(', ')})`).join(', ')}` : 'to nothing'}.`,
         });
         return;
       }
@@ -81,7 +82,7 @@ export function refRefusals(
         out.push({
           code: 'WORKFLOW_REF_TARGET_MISMATCH',
           path,
-          detail: `step "${s.id}" links to ${target}, a ${step.type ?? 'step with no type'}; a ${type.id} links to a ${link.types.join(' or ')} of ${ref.template}: ${link.tooltip}`,
+          detail: `step "${s.id}" links to ${target}, ${step.type ? templateIdWithArticle(step.type) : 'a step with no type'}; ${templateIdWithArticle(type.id)} links to ${templateIdWithArticle(link.types.join(' or '))} of ${ref.template}: ${link.tooltip}`,
         });
     });
     for (const link of links) {
@@ -89,7 +90,7 @@ export function refRefusals(
         out.push({
           code: 'WORKFLOW_REF_MISSING',
           path: pointer(['steps', i, 'node']),
-          detail: `${type.id} step "${s.id}" carries no ref to ${link.template}; in template ${t.id}@${t.version} a ${type.id} names the ${link.types.join(' or ')} it is (${link.tooltip}): \`refs: [{ template: "${link.template}", flow, step }]\`.`,
+          detail: `${type.id} step "${s.id}" carries no ref to ${link.template}; in template ${t.id}@${t.version} ${templateIdWithArticle(type.id)} names the ${link.types.join(' or ')} it is (${link.tooltip}): \`refs: [{ template: "${link.template}", flow, step }]\`.`,
         });
     }
   });
@@ -125,7 +126,7 @@ export function inboundRefRefusals(doc: WorkflowWriteV2, ctx: RefContext): Workf
           out.push({
             code: 'WORKFLOW_REF_TARGET_MISMATCH',
             path: pointer(['steps', doc.steps.indexOf(target)]),
-            detail: `${where} as a ${link?.types.join(' or ') ?? '?'} of ${ref.template}, and this write makes it a ${type ?? 'step with no type'} of ${doc.template.id}@${doc.template.version}; keep it, or change "${flow}" first.`,
+            detail: `${where} as ${templateIdWithArticle(link?.types.join(' or ') ?? '?')} of ${ref.template}, and this write makes it ${type ? templateIdWithArticle(type) : 'a step with no type'} of ${doc.template.id}@${doc.template.version}; keep it, or change "${flow}" first.`,
           });
       }
     }

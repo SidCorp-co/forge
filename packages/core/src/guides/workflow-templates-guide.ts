@@ -9,6 +9,7 @@ import {
   BUILTIN_WORKFLOW_TEMPLATES,
   TEMPLATE_RULE_MEANING,
   type TemplateNodeType,
+  templateIdArticle,
   type WorkflowTemplate,
 } from '@forge/contracts/workflow-templates';
 import type { CoreGuide } from './types.js';
@@ -143,7 +144,7 @@ ${t.purpose}
 ${TEMPLATE_SKETCHES[t.id] ?? ''}
 \`\`\`
 
-Layout ${code(t.layout.family)}, ${t.layout.direction}. ${lanes}${t.defaultNodeType ? ` A step with no ${code('node')} is a ${code(t.defaultNodeType)}.` : ''}
+Layout ${code(t.layout.family)}, ${t.layout.direction}. ${lanes}${t.defaultNodeType ? ` A step with no ${code('node')} is ${templateIdArticle(t.defaultNodeType)} ${code(t.defaultNodeType)}.` : ''}
 
 | Node type | Reads as | Required fields | Home band | Shape |
 |---|---|---|---|---|

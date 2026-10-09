@@ -5,6 +5,7 @@
 // Core's CHECKs, REST and the web import the kinds, the content schemas and the view from here.
 
 import { z } from "zod";
+import { withArticle } from "./articles.js";
 import { type KeptPreviewContent, keptPreviewContentSchema } from "./preview.js";
 import { ReportFrameSchema } from "./report-queries.js";
 import { ChartSpecSchema, checkBlockSpec, FlowSpecSchema } from "./visual-blocks.js";
@@ -153,11 +154,11 @@ function boardWords(board: unknown): string {
 			case "text":
 				return [`"${s.text}"`];
 			case "button":
-				return s.label ? [`a ${s.label} button`] : ["a button"];
+				return s.label ? [`${withArticle(s.label)} button`] : ["a button"];
 			case "input":
-				return [s.label ? `a ${s.label} input` : s.placeholder ? `an input for ${s.placeholder}` : "an input"];
+				return [s.label ? `${withArticle(s.label)} input` : s.placeholder ? `an input for ${s.placeholder}` : "an input"];
 			case "list":
-				return [`${s.label ? `a ${s.label} list` : "a list"} of ${s.items.length}`];
+				return [`${s.label ? `${withArticle(s.label)} list` : "a list"} of ${s.items.length}`];
 			case "frame":
 			case "image":
 				return s.label ? [`${s.type === "image" ? "an image of " : ""}${s.label}`] : [];
