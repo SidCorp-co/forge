@@ -53,8 +53,8 @@ export async function shippedPatchOf(issue: ConfirmedIssue): Promise<string | nu
     // a mark takes 7 to 64 hex, so either side may be the shorter
     if (!head || !(head.startsWith(merged) || merged.startsWith(head))) continue;
     const patch = field('patch-id');
-    // the amnesty marker (`PATCH_ID_ABSENT`) is no patch: that change is unknown, never a match
-    if (patch && /^[0-9a-f]{40}$/.test(patch)) return patch;
+    // the amnesty marker (`PATCH_ID_ABSENT`) comes back as is: it is no 40-hex id, so it matches no confirm
+    if (patch) return patch;
   }
   return null;
 }

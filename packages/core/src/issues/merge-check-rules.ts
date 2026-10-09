@@ -10,9 +10,9 @@ import type { CheckRun } from '@forge/contracts/check-runs';
 import {
   MERGE_CHECK_KINDS,
   MERGE_CHECK_RECORD,
-  PATCH_ID_ABSENT,
   type MergeCheckRefusalCode,
   type MergeCheckReport,
+  PATCH_ID_ABSENT,
   REQUIRED_MERGE_CHECKS,
   type RequiredMergeCheck,
   requiredMergeChecksOf,

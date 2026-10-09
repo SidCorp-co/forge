@@ -117,6 +117,9 @@ issueMergeRoutes.post(
       actor: { type: actor.type, id: actor.id, agency: actor.agency },
       box: c.get('patDeviceId') ?? c.get('deviceId') ?? null,
     });
-    return c.json({ id: scope.id, allowed: true, head: report.head, record, warnings: warningsOf(report) }, 201);
+    return c.json(
+      { id: scope.id, allowed: true, head: report.head, record, warnings: warningsOf(report) },
+      201,
+    );
   },
 );

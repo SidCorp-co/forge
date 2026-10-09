@@ -13231,10 +13231,12 @@
                   "head",
                   "mode",
                   "touched",
-                  "checks",
-                  "patchId"
+                  "checks"
                 ],
-                "type": "object"
+                "type": "object",
+                "x-forge-refinements": [
+                  "a fast-lane report names the patch id of what it checked (`git diff --binary <base> <head> | git patch-id --stable`): core holds it to the patch id the approved preview served"
+                ]
               }
             }
           },

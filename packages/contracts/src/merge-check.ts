@@ -49,42 +49,43 @@ export function requiredMergeChecksOf(
 	return lane === "fast" ? FAST_LANE_MERGE_CHECKS : REQUIRED_MERGE_CHECKS;
 }
 
-export const mergeCheckReportSchema = z.strictObject({
-	base: z.strictObject({
-		branch: z.string().trim().min(1).max(200),
-		sha: wholeShaSchema("base.sha"),
-	}),
-	head: wholeShaSchema("head"),
-	mode: z.enum(MERGE_CHECK_MODES),
-	touched: z
-		.array(
-			z.strictObject({
-				path: z.string().min(1).max(1000),
-				change: z.enum(ARTIFACT_CHANGES),
-			}),
-		)
-		.min(
-			1,
-			"touched names at least one file: a change that touches nothing has nothing to merge",
-		)
-		.max(LIMITS.touched),
-	/** Each one a check run (`./check-runs.ts`): recorded once, with its kind and duration. */
-	checks: checkRunsSchema(LIMITS.checks),
-	/** The lane the change takes; absent is the full lane, as every report written before the fast one. */
-	lane: z.enum(LANES).optional(),
-	/**
-	 * `git patch-id --stable` of `base..head` (`git diff --binary`). Required on the fast lane (core
-	 * holds it to the approved preview's); sent on the full lane too, where a reporter's confirm is
-	 * matched to it (REQ-41 BC-20). A full-lane report without one is a priced amnesty: it is recorded
-	 * with `PATCH_ID_ABSENT` and the response says so (scripts/README.md, merge-check row).
-	 */
-	patchId: z
-		.string()
-		.regex(
-			/^[0-9a-f]{40}$/,
-			"patchId is the 40-hex id `git patch-id --stable` prints",
-		)
-		.optional(),
+export const mergeCheckReportSchema = z
+	.strictObject({
+		base: z.strictObject({
+			branch: z.string().trim().min(1).max(200),
+			sha: wholeShaSchema("base.sha"),
+		}),
+		head: wholeShaSchema("head"),
+		mode: z.enum(MERGE_CHECK_MODES),
+		touched: z
+			.array(
+				z.strictObject({
+					path: z.string().min(1).max(1000),
+					change: z.enum(ARTIFACT_CHANGES),
+				}),
+			)
+			.min(
+				1,
+				"touched names at least one file: a change that touches nothing has nothing to merge",
+			)
+			.max(LIMITS.touched),
+		/** Each one a check run (`./check-runs.ts`): recorded once, with its kind and duration. */
+		checks: checkRunsSchema(LIMITS.checks),
+		/** The lane the change takes; absent is the full lane, as every report written before the fast one. */
+		lane: z.enum(LANES).optional(),
+		/**
+		 * `git patch-id --stable` of `base..head` (`git diff --binary`). Required on the fast lane (core
+		 * holds it to the approved preview's); sent on the full lane too, where a reporter's confirm is
+		 * matched to it (REQ-41 BC-20). A full-lane report without one is a priced amnesty: it is recorded
+		 * with `PATCH_ID_ABSENT` and the response says so (scripts/README.md, merge-check row).
+		 */
+		patchId: z
+			.string()
+			.regex(
+				/^[0-9a-f]{40}$/,
+				"patchId is the 40-hex id `git patch-id --stable` prints",
+			)
+			.optional(),
 	})
 	.refine((r) => r.lane !== "fast" || r.patchId !== undefined, {
 		path: ["patchId"],
