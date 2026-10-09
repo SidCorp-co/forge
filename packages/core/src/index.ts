@@ -460,6 +460,8 @@ if (isMain) {
     {
       fetch: app.fetch,
       port,
+      // a demo core signs a member in with no credential (auth/demo.ts), so it answers on loopback only
+      ...(env.FORGE_DEMO_MODE ? { hostname: '127.0.0.1' } : {}),
       createServer: ((options, listener) =>
         createServer(options, withPreviewHosts(listener))) as typeof createServer,
     },

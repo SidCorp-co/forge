@@ -40,6 +40,17 @@ const EnvSchema = z.object({
     .optional(),
   PORT: z.coerce.number().int().positive().default(8080),
   /**
+   * Set to 1, this core is a throwaway demo (the stack `pnpm preview:demo` starts, REQ-39): its one
+   * seeded demo member signs in at `GET /api/auth/demo` with no credential. Refused at boot under
+   * NODE_ENV production or staging, so a real deployment can never open that door.
+   */
+  FORGE_DEMO_MODE: z
+    .enum(['1', '0'], {
+      error: (i) => `FORGE_DEMO_MODE must be 1 or 0 (or unset); got ${JSON.stringify(i.input)}`,
+    })
+    .optional()
+    .transform((v) => v === '1'),
+  /**
    * What this Forge instance calls where it runs (`dev`, `beta`, `production`), and the project that
    * holds its own releases. What's new reads the release of that project whose commit this build is
    * (REQ-40 BC-10); unset, it refuses by name rather than guess an instance's own product.
@@ -170,8 +181,13 @@ export function previewDomainIssue(parsed: Env): string | null {
 }
 
 /** What the schema cannot say alone: the settings a deployed core refuses to boot without. */
-function deployedEnvIssues(parsed: Env): string[] {
+export function deployedEnvIssues(parsed: Env): string[] {
   if (!DEPLOYED_ENVS.has(parsed.NODE_ENV)) return [];
+  if (parsed.FORGE_DEMO_MODE) {
+    return [
+      `  - FORGE_DEMO_MODE: is 1 while NODE_ENV=${parsed.NODE_ENV}; demo mode signs a member in with no credential, so a deployed core refuses to boot with it. Unset it, or run the demo stack under NODE_ENV=development`,
+    ];
+  }
   if (parsed.PAT_PEPPER === undefined) {
     return [
       `  - PAT_PEPPER: required when NODE_ENV=${parsed.NODE_ENV}; set a random value of at least 32 characters (openssl rand -hex 32). It has no built-in default.`,

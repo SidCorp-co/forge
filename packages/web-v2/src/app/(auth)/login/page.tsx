@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { Banner } from '@/design';
 import { AuthShell } from '@/features/auth/components/auth-shell';
 import { SocialLogin } from '@/features/auth/components/social-login';
@@ -25,6 +26,10 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const sp = await searchParams;
+  // Forge previewing itself on demo data (`pnpm preview:demo`): the demo core signs its one seeded
+  // member in with no credential, and answers DEMO_MODE_OFF anywhere that is not a demo core. A
+  // sign-out lands here with session=ended and is shown the form, so it is not signed straight back in.
+  if (process.env.FORGE_DEMO_SIGNIN === '1' && sp.session !== 'ended') redirect('/api/auth/demo');
   const justRegistered = sp.registered === '1';
   const presetEmail = typeof sp.email === 'string' ? sp.email : '';
   const oauthErrorCode = typeof sp.oauth_error === 'string' ? sp.oauth_error : null;

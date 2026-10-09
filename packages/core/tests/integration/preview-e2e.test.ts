@@ -63,6 +63,8 @@ it('starts from the repository when unset, and is seen live by a member through 
       FORGE_ENVIRONMENT: 'dev',
       FORGE_ENVIRONMENT_URL: 'https://dev.shop.example.test',
       FORGE_SERVICE_API_URL: 'https://api.dev.shop.example.test',
+      // the box's own start budget, told to the command so a stack it starts can refuse by stage
+      FORGE_PREVIEW_START_SECONDS: '120',
     },
   });
   expect(JSON.stringify(starts)).not.toContain('live');

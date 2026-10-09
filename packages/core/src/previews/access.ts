@@ -75,7 +75,9 @@ export async function pushStart(tx: Tx, row: PreviewRow, plan: PreviewPlan): Pro
     seed: plan.seed,
     // a setting with no command is the repository's to fill: the box reports its facts first
     settings: plan.settings?.command === undefined ? null : plan.settings,
-    env: plan.env,
+    // the box's start budget, told to the command too: a stack that brings up a server of its own
+    // (`pnpm preview:demo`) refuses by stage name when it runs out, not only the box by silence
+    env: { ...plan.env, FORGE_PREVIEW_START_SECONDS: String(PREVIEW_LIMITS.readyTimeoutSeconds) },
     readyTimeoutSeconds: PREVIEW_LIMITS.readyTimeoutSeconds,
   });
 }
