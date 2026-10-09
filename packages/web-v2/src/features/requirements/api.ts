@@ -71,7 +71,7 @@ export const requirementsApi = {
         reason: "Written on the draft",
         spec: revision.spec,
         tldr: write.tldr,
-        criteria: write.criteria.map((body, i) => {
+        criteria: write.criteria.map((body) => {
           const held = revision.criteria.find((c) => c.body === body);
           return held ? { code: held.code, body } : { body };
         }),

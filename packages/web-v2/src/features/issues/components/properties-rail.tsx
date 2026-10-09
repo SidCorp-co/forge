@@ -8,7 +8,7 @@
 
 import { ISSUE_CATEGORY_LABELS } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 import { useBlockerEdit } from "../hooks";
 import { formatApiError } from "@/lib/api/error";
 import { Avatar, Button, enumLabel, FactsGroup, MonoTag, type SelectOption, Stat, StatusBadge } from "@/design";

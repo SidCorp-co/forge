@@ -8,7 +8,11 @@ import { requirementKey } from '@forge/contracts/requirements';
 import { and, count, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { requirementReturns } from '../db/schema-requirement-acts.js';
-import { type RevisionState, requirementCriteria, requirementRevisions } from '../db/schema-requirements.js';
+import {
+  type RevisionState,
+  requirementCriteria,
+  requirementRevisions,
+} from '../db/schema-requirements.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';

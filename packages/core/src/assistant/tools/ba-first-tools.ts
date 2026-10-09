@@ -124,5 +124,8 @@ export function buildBaFirstRequirementsToolset(ctx: McpContext, room: CaseRoom)
  */
 export function buildRequirementDraftToolset(ctx: McpContext, projectId: string): ChatToolset {
   const room: CaseRoom = { projectId, onboardingId: '' };
-  return buildToolset(ctx, [{ factory: readJourneys(room) }, { factory: suggestRequirement(room) }]);
+  return buildToolset(ctx, [
+    { factory: readJourneys(room) },
+    { factory: suggestRequirement(room) },
+  ]);
 }
