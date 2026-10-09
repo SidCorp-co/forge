@@ -166,6 +166,49 @@ describe('a room preview is asked, kept and abandoned through its room only (BC-
   });
 });
 
+describe('a merge the box reports late (BC-8)', () => {
+  it('settles on a merge the box reports after core stopped waiting, and refuses an abandon until then', async () => {
+    const key = await agreedScreen('Cart shows a late merge');
+    const room = await liveRoom(key);
+    await api(owner, 'POST', `/api/rooms/${room.id}/items`, { turnId: room.turns[0]?.id });
+    // the box was asked to merge and no waiter holds its answer: core restarted, or stopped waiting
+    const asked = new Date().toISOString();
+    await withKernelMarker(db, (tx) =>
+      tx.execute(sql`
+        UPDATE poc_rooms SET state = 'settling', settle = ${JSON.stringify({
+          into: 'dev',
+          askedBy: ownerId,
+          askedAt: asked,
+          alt: 'The cart',
+          snapshot: snapshotOf('cart'),
+          mergeAskedAt: asked,
+          mergeSha: null,
+          requirement: null,
+          revision: null,
+          issueId: null,
+          refusals: [],
+        })}::jsonb WHERE id = ${room.id}::uuid
+      `),
+    );
+
+    const abandon = await api(owner, 'POST', `/api/rooms/${room.id}/abandon`, { reason: 'x' });
+    expect(abandon.status, JSON.stringify(abandon.body)).toBe(409);
+    expect((abandon.body.error as Body).code).toBe('ROOM_MERGE_PENDING');
+
+    const reported = await world.box.report(room.preview.id, {
+      kind: 'snapshot',
+      base: 'a'.repeat(40),
+      patchId: 'd'.repeat(40),
+      files: ['web/src/cart.tsx'],
+      head: 'c'.repeat(40),
+      merged: { into: 'dev', sha: ROOM_MERGE },
+    });
+    expect(reported.status, JSON.stringify(reported.body)).toBe(200);
+    const done = await until(room.id, (r) => r.state === 'settled', 30_000);
+    expect(done.settle).toMatchObject({ into: 'dev', mergeSha: ROOM_MERGE, requirement: key });
+  });
+});
+
 describe('settled items, and a settle that merges straight into dev (BC-2, BC-6, BC-7, BC-8)', () => {
   it('settles an item only from a turn that showed, tied to its commit', async () => {
     const key = await agreedScreen('Cart shows coupons');
@@ -273,7 +316,12 @@ describe('settled items, and a settle that merges straight into dev (BC-2, BC-6,
     expect(done.settle?.issue?.displayId).toMatch(/^[A-Z]+-\d+$/);
     const [issue] = (await db.execute(sql`
       SELECT i.plan, i.description, i.title, i.requirement_id, r.req_seq FROM issues i LEFT JOIN requirements r ON r.id = i.requirement_id WHERE i.id = ${issueId}::uuid
-    `)) as unknown as { plan: string | null; description: string; title: string; req_seq: number }[];
+    `)) as unknown as {
+      plan: string | null;
+      description: string;
+      title: string;
+      req_seq: number;
+    }[];
     // what the merge left owed is the body; the plan is the plan step's to write
     expect(issue?.plan).toBeNull();
     expect(issue?.description).toContain(ROOM_MERGE);
@@ -294,47 +342,6 @@ describe('settled items, and a settle that merges straight into dev (BC-2, BC-6,
     expect((await read(room.id)).room.preview.state).toBe('abandoned');
     const late = await api(owner, 'POST', `/api/rooms/${room.id}/asks`, { text: 'more' });
     expect((late.body.error as Body).code).toBe('ROOM_CLOSED');
-  });
-
-  it('settles on a merge the box reports after core stopped waiting, and refuses an abandon until then', async () => {
-    const key = await agreedScreen('Cart shows a late merge');
-    const room = await liveRoom(key);
-    await api(owner, 'POST', `/api/rooms/${room.id}/items`, { turnId: room.turns[0]?.id });
-    // the box was asked to merge and no waiter holds its answer: core restarted, or stopped waiting
-    const asked = new Date().toISOString();
-    await withKernelMarker(db, (tx) =>
-      tx.execute(sql`
-        UPDATE poc_rooms SET state = 'settling', settle = ${JSON.stringify({
-          into: 'dev',
-          askedBy: ownerId,
-          askedAt: asked,
-          alt: 'The cart',
-          snapshot: snapshotOf('cart'),
-          mergeAskedAt: asked,
-          mergeSha: null,
-          requirement: null,
-          revision: null,
-          issueId: null,
-          refusals: [],
-        })}::jsonb WHERE id = ${room.id}::uuid
-      `),
-    );
-
-    const abandon = await api(owner, 'POST', `/api/rooms/${room.id}/abandon`, { reason: 'x' });
-    expect(abandon.status, JSON.stringify(abandon.body)).toBe(409);
-    expect((abandon.body.error as Body).code).toBe('ROOM_MERGE_PENDING');
-
-    const reported = await world.box.report(room.preview.id, {
-      kind: 'snapshot',
-      base: 'a'.repeat(40),
-      patchId: 'd'.repeat(40),
-      files: ['web/src/cart.tsx'],
-      head: 'c'.repeat(40),
-      merged: { into: 'dev', sha: ROOM_MERGE },
-    });
-    expect(reported.status, JSON.stringify(reported.body)).toBe(200);
-    const done = await until(room.id, (r) => r.state === 'settled', 30_000);
-    expect(done.settle).toMatchObject({ into: 'dev', mergeSha: ROOM_MERGE, requirement: key });
   });
 
   it('goes back to open, naming git, when the merge does not land, and writes nothing', async () => {

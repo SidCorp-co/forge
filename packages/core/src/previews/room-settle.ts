@@ -150,7 +150,10 @@ export async function settleRoom(
       await deliverToSketch(preview, null, actor, text);
     } catch (err) {
       // nothing was merged: the room goes back to open, naming why, rather than standing at settling
-      await backToOpen(room, `the trim before the merge did not reach the room's agent: ${(err as Error).message}`);
+      await backToOpen(
+        room,
+        `the trim before the merge did not reach the room's agent: ${(err as Error).message}`,
+      );
       throw err;
     }
   } else {
@@ -227,10 +230,13 @@ export async function runSettle(roomId: string): Promise<void> {
  * A snapshot report that names a merge outcome, for a room whose merge was asked and no waiter holds:
  * the box answered after core stopped waiting. False where the report is not that room's merge.
  */
-export async function settleFromLateReport(previewId: string, report: MergeReport): Promise<boolean> {
+export async function settleFromLateReport(
+  previewId: string,
+  report: MergeReport,
+): Promise<boolean> {
   if (!report.merged && !report.mergeRefused) return false;
   const [room] = await db.select().from(pocRooms).where(eq(pocRooms.previewId, previewId));
-  if (!room || room.state !== 'settling' || !room.settle?.mergeAskedAt) return false;
+  if (room?.state !== 'settling' || !room.settle?.mergeAskedAt) return false;
   await inRoomOrder(room.id, () => finishSettle(room.id, report));
   return true;
 }
@@ -292,24 +298,24 @@ async function finishSettle(roomId: string, taken: MergeReport): Promise<void> {
   }
   movedRow(
     await transition(db, ROOM_MACHINE, {
-    to: 'settled',
-    expect: 'settling',
-    where: eq(pocRooms.id, room.id),
-    set: {
-      settle: {
-        ...settle,
-        snapshot: null,
-        mergeSha: taken.merged.sha,
-        requirement: written.requirement,
-        revision: written.revision,
-        issueId: written.issue?.id ?? null,
-        refusals: written.refusals,
+      to: 'settled',
+      expect: 'settling',
+      where: eq(pocRooms.id, room.id),
+      set: {
+        settle: {
+          ...settle,
+          snapshot: null,
+          mergeSha: taken.merged.sha,
+          requirement: written.requirement,
+          revision: written.revision,
+          issueId: written.issue?.id ?? null,
+          refusals: written.refusals,
+        },
+        closedAt: new Date(),
       },
-      closedAt: new Date(),
-    },
-    actor: { type: 'system' },
-    source: SOURCE,
-  }),
+      actor: { type: 'system' },
+      source: SOURCE,
+    }),
   );
   await closeAbandoned(
     await rowOf(room.previewId),

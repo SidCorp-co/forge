@@ -45,7 +45,8 @@ const fenceOf = async (id: string) =>
       .where(eq(personalAccessTokens.id, id))
   )[0]?.projectIds;
 
-const refit = (id: string) => api(session, 'PATCH', `/api/pat/${id}`, { projectIds: [first, second] });
+const refit = (id: string) =>
+  api(session, 'PATCH', `/api/pat/${id}`, { projectIds: [first, second] });
 
 describe('editing a token project list (FB-48)', () => {
   it('replaces the list of a personal token its holder minted', async () => {

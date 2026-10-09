@@ -65,7 +65,9 @@ async function areaOfRequirement(key: string): Promise<string | null> {
 
 describe('the area list (REQ-29)', () => {
   it('refuses to drop an area a requirement holds, naming the requirement, and changes nothing', async () => {
-    const billing = areasOf(await setAreas(['Billing', 'Search'])).find((a) => a.name === 'Billing');
+    const billing = areasOf(await setAreas(['Billing', 'Search'])).find(
+      (a) => a.name === 'Billing',
+    );
     const key = await requirement();
     expect((await place(key, { areaId: billing?.id })).status).toBe(200);
 
@@ -94,7 +96,8 @@ describe('the area list (REQ-29)', () => {
     expect(await areaOfRequirement(key)).toBe(billing?.id);
     // the list names the area off its own row statement, under its new name
     const list = await api(token, 'GET', `/api/projects/${projectId}/requirements`);
-    const row = (list.body.requirements as { key: string; area: Area | null }[]).find((r) => r.key === key);
+    const listed = list.body.requirements as { key: string; area: Area | null }[];
+    const row = listed.find((r) => r.key === key);
     expect(row?.area).toEqual({ id: billing?.id, name: 'Billing' });
   });
 

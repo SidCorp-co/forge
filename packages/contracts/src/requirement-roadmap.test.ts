@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
 	failingOf,
-	type StageInput,
 	requirementStageOf,
 	roadmapHorizonOf,
+	type StageInput,
 } from "./requirement-roadmap.js";
 
 const input = (

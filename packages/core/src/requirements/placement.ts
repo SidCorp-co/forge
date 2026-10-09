@@ -19,11 +19,11 @@ import { completeOnce } from '../integrations/llm/index.js';
 import { logger } from '../lib/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { type RequirementActor, rowIn } from './read.js';
+import type { RequirementRefusal } from './rules.js';
+import { answer, inTx, lockRequirements, type RequirementOutcome } from './write-tx.js';
 
 /** The column's own cap (0486's check): a proposal over it is not stored. */
 const SHORT_NAME_MAX_CHARS = 80;
-import type { RequirementRefusal } from './rules.js';
-import { answer, inTx, lockRequirements, type RequirementOutcome } from './write-tx.js';
 
 /** The project's areas in the order a list draws them. */
 export async function areasOf(projectId: string): Promise<RequirementAreaRef[]> {
@@ -33,6 +33,10 @@ export async function areasOf(projectId: string): Promise<RequirementAreaRef[]> 
     .where(eq(requirementAreas.projectId, projectId))
     .orderBy(asc(requirementAreas.position), asc(requirementAreas.name));
 }
+
+type AreasOutcome =
+  | { ok: true; areas: RequirementAreaRef[] }
+  | { ok: false; refusals: RequirementRefusal[] };
 
 /**
  * Replaces the project's list with `names`. A name that stays keeps its row, matched without case,
@@ -44,7 +48,7 @@ export async function setAreas(input: {
   projectId: string;
   actor: RequirementActor;
   names: string[];
-}): Promise<{ ok: true; areas: RequirementAreaRef[] } | { ok: false; refusals: RequirementRefusal[] }> {
+}): Promise<AreasOutcome> {
   const { projectId, actor } = input;
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const names = input.names.map((n) => n.trim());
@@ -108,7 +112,9 @@ export async function setAreas(input: {
     }
     const heldNames = new Set(held.map((a) => a.name.toLowerCase()));
     for (const [key, { name, position }] of kept) {
-      if (!heldNames.has(key)) await tx.insert(requirementAreas).values({ projectId, name, position });
+      if (!heldNames.has(key)) {
+        await tx.insert(requirementAreas).values({ projectId, name, position });
+      }
     }
     if (gone.length > 0) {
       await tx.delete(requirementAreas).where(
