@@ -16,6 +16,7 @@ vi.mock('../db/client.js', () => ({
 }));
 vi.mock('./acceptance.js', () => ({
   deliveryIn: async () => ({ delivery: { phase: state.phase } }),
+  liveBuildOfRequirement: async () => null,
 }));
 vi.mock('../outbox/index.js', async () => {
   const consumers = await import('../outbox/consumers.js');
