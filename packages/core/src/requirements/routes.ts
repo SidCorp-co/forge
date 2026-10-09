@@ -9,20 +9,30 @@ import {
   PROMOTE_REQUIREMENT_DRAFTS_SHAPE,
   promoteRequirementDraftsRequestSchema,
   REPIN_REQUIREMENT_SHAPE,
+  REQUIREMENT_AREAS_SHAPE,
+  REQUIREMENT_PLACEMENT_SHAPE,
   repinRequirementRequestSchema,
+  requirementAreasRequestSchema,
+  requirementPlacementRequestSchema,
   UNDEFER_REQUIREMENT_SHAPE,
   undeferRequirementRequestSchema,
 } from '@forge/contracts/requirements';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import {
-  REQUIREMENT_AREAS_SHAPE,
-  REQUIREMENT_PLACEMENT_SHAPE,
-  requirementAreasRequestSchema,
-  requirementPlacementRequestSchema,
-} from '@forge/contracts/requirements';
+import { egressForRequest } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
+import { refused } from '../lib/refusal.js';
+import { assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { holdChatWrite } from '../middleware/chat-write-hold.js';
+import { strictBody } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { acceptDelivery, dropRequirement } from './acceptance.js';
+import { agreeRequirement } from './agree.js';
+import { requestContract } from './contract-request.js';
+import { readRequirementDecisionsAs } from './decisions-read.js';
+import { deferRequirement, undeferRequirement } from './deferral.js';
+import { designsNamed, draftLinked } from './draft-linked.js';
+import { requirementLinkRoutes } from './link-routes.js';
 import {
   acceptPlacement,
   areasOf,
@@ -31,19 +41,6 @@ import {
   setAreas,
   setPlacement,
 } from './placement.js';
-import type { RequirementRefusal } from './rules.js';
-import { egressForRequest } from '../lib/data-egress.js';
-import { refused } from '../lib/refusal.js';
-import { assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { holdChatWrite } from '../middleware/chat-write-hold.js';
-import { strictBody } from '../middleware/zod-validator.js';
-import { acceptDelivery, dropRequirement } from './acceptance.js';
-import { agreeRequirement } from './agree.js';
-import { requestContract } from './contract-request.js';
-import { readRequirementDecisionsAs } from './decisions-read.js';
-import { deferRequirement, undeferRequirement } from './deferral.js';
-import { designsNamed, draftLinked } from './draft-linked.js';
-import { requirementLinkRoutes } from './link-routes.js';
 import { requirementSummaryOf } from './projection.js';
 import { promoteDraftIssues } from './promote-drafts.js';
 import { listRequirementsAs, readRequirementAs } from './read.js';
@@ -60,6 +57,7 @@ import {
   revisionFields,
   viewQuery,
 } from './route-kit.js';
+import type { RequirementRefusal } from './rules.js';
 
 export const requirementRoutes = new Hono<RequirementEnv>();
 

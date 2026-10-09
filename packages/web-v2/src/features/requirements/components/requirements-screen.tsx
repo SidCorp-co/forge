@@ -7,15 +7,12 @@
 // nothing here derives whose turn it is.
 // The URL carries the view (`?group=…&q=…&peek=REQ-n`), so back from the full page restores it.
 
-import type { IssueProgress } from "@forge/contracts/forecast";
-import { ROADMAP_HORIZON_OF, ROADMAP_HORIZONS } from "@forge/contracts/project-status";
-import { REQUIREMENT_ATTENTION_GROUPS, REQUIREMENT_ATTENTION_LABELS, REQUIREMENT_STATE_TONES, REQUIREMENT_STATES } from "@forge/contracts/requirements";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { AcceptStep, ActorChip, AGENT_TINT, Button, EmptyState, Field, GroupedList, Input, ListSearch, type ListGroup, type ListRowView, PageTitle, rememberListOrigin, sortGroupsBy, StatusBadge, Textarea, TopBarActions, useGroupFold, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, visibleRows, WaitingOn } from "@/design";
+import { AcceptStep, AGENT_TINT, Button, EmptyState, Field, Input, ListSearch, PageTitle, rememberListOrigin, StatusBadge, Textarea, TopBarActions, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { RefusalLine } from "@/lib/api/refusal-line";
-import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage, } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
@@ -23,13 +20,11 @@ import { RejectStep } from "@/features/suggestions/components/reject-step";
 import { acceptConsequence, PendingBadge, summaryOf } from "@/features/suggestions/components/suggestion-list";
 import { requirementAffected, useProjectWaitingSuggestions, useSuggestionDecision } from "@/features/suggestions/hooks";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
-import { EtaCell } from "@/features/forecast/components/eta-cell";
-import { type Eta, type EtaClock, etaOfScope, etaSortValue } from "@/features/forecast/eta";
-import { ETA_COPY } from "@/lib/i18n/eta-copy";
-import { progressText } from "@/features/forecast/progress";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
-import { useEtaSort, useRequirementForecasts } from "@/features/forecast/hooks";
-import { useCreateRequirement, useRequirements } from "../hooks";
+import { useCreateRequirement, useRequirementAreas, useRequirements } from "../hooks";
+import { AreasEditor, PlacementBanner } from "./requirement-placement";
+import { listGroupsOf, RequirementsList, useAttentionLabel } from "./requirements-list";
+import { RequirementsMap } from "./requirements-map";
 import { useChatDock } from "@/features/chat-dock/dock";
 import { useWorkflows } from "@/features/workflows/hooks";
 import { REQUIREMENTS_LIST, requirementHref } from "@/lib/routes/requirements";
@@ -37,7 +32,6 @@ import type { RequirementSummary } from "../types";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
 import { ListFilterBar, useListNarrowing } from "@/features/chat-dock/list-filter-bar";
 import { RequirementPeek } from "./requirement-peek";
-import { revisionText } from "./standing-bits";
 
 export function CreateRequirementForm({ projectId, onDone }: { projectId: string; onDone: (key: string) => void }) {
   const t = useCopy();
@@ -85,78 +79,12 @@ export function CreateRequirementForm({ projectId, onDone }: { projectId: string
   );
 }
 
-/** The grouping modes in the interface language; the URL carries only their values. */
+/** The views in the interface language; the URL carries only their values. */
 const modesIn = (t: Copy) => [
-  { value: "attention" as const, label: t("requirements.mode.attention"), title: t("requirements.mode.attentionTitle") },
-  { value: "status" as const, label: t("requirements.mode.status"), title: t("requirements.mode.statusTitle") },
-  { value: "roadmap" as const, label: t("requirements.mode.roadmap"), title: t("requirements.mode.roadmapTitle") },
+  { value: "attention" as const, label: t("requirements.mode.list"), title: t("requirements.mode.listTitle") },
+  { value: "area" as const, label: t("requirements.mode.area"), title: t("requirements.mode.areaTitle") },
+  { value: "map" as const, label: t("requirements.mode.map"), title: t("requirements.mode.mapTitle") },
 ];
-type GroupMode = ReturnType<typeof modesIn>[number]["value"];
-
-type Label = ReturnType<typeof useLabel>;
-
-export function groupsOf(rows: RequirementSummary[], mode: GroupMode, label: Label, t: Copy): ListGroup<RequirementSummary>[] {
-  if (mode === "roadmap") {
-    const lane = (r: RequirementSummary) => ROADMAP_HORIZON_OF[r.standing.state];
-    return [
-      ...ROADMAP_HORIZONS.map((h) => ({ id: `roadmap:${h}`, label: t(`status.horizon.${h}`), hint: t(`roadmap.rule.${h}`), rows: rows.filter((r) => lane(r) === h) })),
-      { id: "roadmap:off", label: t("requirements.roadmap.off"), hint: t("requirements.roadmap.offHint"), collapsed: true, rows: rows.filter((r) => lane(r) === null) },
-    ];
-  }
-  if (mode === "status") {
-    return REQUIREMENT_STATES.map((s) => ({
-      id: `status:${s}`,
-      label: label("requirementState", s),
-      tone: REQUIREMENT_STATE_TONES[s],
-      collapsed: s === "accepted" || s === "dropped",
-      rows: rows.filter((r) => r.standing.state === s),
-    }));
-  }
-  return REQUIREMENT_ATTENTION_GROUPS.map((g) => {
-    const own = REQUIREMENT_ATTENTION_LABELS[g];
-    return {
-      id: g,
-      ...own,
-      label: label("requirementAttention", g),
-      hint: own.hint ? label("requirementAttentionHint", g) : own.hint,
-      rows: rows.filter((r) => r.standing.attentionGroup === g),
-    };
-  });
-}
-
-/** The secondary line: revision, coverage, and its issues' progress, core's one count of it (JU-2). */
-function factsLine(t: Copy, r: RequirementSummary, progress: IssueProgress | undefined): string[] {
-  const f = r.standing.facts;
-  const lane = ROADMAP_HORIZON_OF[r.standing.state];
-  const parts = [revisionText(t, r.currentRevision, r.standing)];
-  if (lane) parts.push(t("requirements.row.lane", { lane: t(`status.horizon.${lane}`) }));
-  if (f.issuesTotal === 0 && f.judged === 0) parts.push(f.criteria ? t("requirements.row.criteria", { n: f.criteria }) : t("requirements.row.noCriteria"));
-  else parts.push(t("requirements.row.passing", { a: f.passing, b: f.criteria }));
-  if (f.issuesTotal === 0) parts.push(t("requirements.row.notBrokenDown"));
-  else if (progress) parts.push(progressText(progress, t));
-  return parts;
-}
-
-type TimeFormat = ReturnType<typeof useTimeFormat>;
-
-const rowOf =
-  (slug: string, etaOf: (key: string) => Eta | null, progressOf: (key: string) => IssueProgress | undefined, clock: EtaClock, t: Copy, time: TimeFormat) =>
-  (r: RequirementSummary): ListRowView => ({
-    key: r.key,
-    href: requirementHref(slug, r.key),
-    title: r.title,
-    facts: factsLine(t, r, progressOf(r.key)),
-    eta: <EtaCell eta={etaOf(r.key)} clock={clock} />,
-    state: <StatusBadge family="requirement" value={r.standing.state} />,
-    waitingOn: <WaitingOn w={r.standing.waitingOn} />,
-    owner: r.standing.owner ? (
-      <ActorChip name={r.standing.owner.name ?? t("requirements.unknown")} kind={r.standing.owner.kind} size={20} />
-    ) : (
-      <span className="text-subtle">{t("requirements.noOwner")}</span>
-    ),
-    age: { text: time.relative(r.standing.touchedAt, clock.now), title: t("requirements.row.lastTouched", { at: time.dateTime(r.standing.touchedAt) }) },
-    dim: r.standing.attentionGroup === "done",
-  });
 
 function AssistantStrip({
   projectId,
@@ -171,7 +99,17 @@ function AssistantStrip({
   const q = useProjectWaitingSuggestions(projectId);
   const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
   const open = (q.data?.suggestions ?? []).filter((s) => s.target.type === "requirement" && byId.has(s.target.id));
+  const [shown, setShown] = useState(false);
   if (open.length === 0) return null;
+  if (!shown) {
+    return (
+      <button type="button" onClick={() => setShown(true)} className="flex w-full items-center gap-2.5 border-b border-line-subtle px-5 py-2.5 text-left text-13 text-muted max-md:px-3" data-testid="assistant-strip-collapsed">
+        <span className="size-1.5 rounded-full bg-accent" />
+        {t("requirements.assistant.count", { n: open.length })}
+        <span className="font-medium text-accent-text">{t("requirements.assistant.show")}</span>
+      </button>
+    );
+  }
   return (
     <section
       className="border-l-[3px] py-2 pl-[17px] pr-5 text-12-5"
@@ -246,8 +184,7 @@ function StripRow({ s, r, projectId, onPeek }: { s: Suggestion; r: RequirementSu
 
 export function RequirementsScreen({ projectId, slug }: { projectId: string; slug: string }) {
   const t = useCopy();
-  const label = useLabel();
-  const time = useTimeFormat();
+  const label = useAttentionLabel();
   const modes = useMemo(() => modesIn(t), [t]);
   const q = useRequirements(projectId);
   useProjectWaitingSuggestions(projectId);
@@ -255,37 +192,29 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
   const [params, setParams] = useUrlParams();
   const [mode, setMode] = useViewMode(modes);
   const text = params.get("q") ?? "";
+  const areaFilter = params.get("area") ?? "";
   const [creating, setCreating] = useState(false);
-  const fold = useGroupFold("web-v2:requirements-fold");
   const dock = useChatDock();
   const approvedDesigns = (useWorkflows(projectId).data?.workflows ?? []).filter((w) => w.design.status === "approved").length;
+  const areas = useRequirementAreas(projectId).data ?? [];
+  const clock = useEtaClock();
 
   const all = q.data?.requirements ?? [];
   // the search box reads q; whom a row waits on and its state are the list filter the chat sets too (REQ-41 BC-5)
   const filter = useListNarrowing("requirements");
   const rows = useMemo(() => {
-    const t = text.trim().toLowerCase();
+    const needle = text.trim().toLowerCase();
     return all.filter(
       (r) =>
-        (!t || `${r.key} ${r.title}`.toLowerCase().includes(t)) &&
+        (!needle || `${r.key} ${r.title} ${r.shortName ?? ""}`.toLowerCase().includes(needle)) &&
+        (!areaFilter || (areaFilter === "none" ? !r.area : r.area?.id === areaFilter)) &&
         matchesListFilter(filter, { waiting: waitingFilterOf(r.standing), text: "", state: r.standing.state }),
     );
-  }, [all, text, filter]);
-  const forecastQ = useRequirementForecasts(projectId);
-  const forecasts = useMemo(() => new Map((forecastQ.data?.requirements ?? []).map((s) => [s.key, s])), [forecastQ.data]);
-  const clock = useEtaClock();
-  const [etaSorted, toggleEtaSort] = useEtaSort();
-  const etaOf = useCallback((k: string) => etaOfScope(forecasts.get(k), clock), [forecasts, clock]);
-  const groups = useMemo(() => {
-    const plain = groupsOf(rows, mode, label, t);
-    // a lane reads soonest forecast first, as the status report's roadmap does
-    return etaSorted || mode === "roadmap" ? sortGroupsBy(plain, (r) => etaSortValue(etaOf(r.key))) : plain;
-  }, [rows, mode, etaSorted, etaOf, label, t]);
-  const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.key), [groups, fold]);
+  }, [all, text, areaFilter, filter]);
+  const groups = useMemo(() => listGroupsOf(rows, mode === "area" ? "area" : "attention", areas, label, t("requirements.noArea")), [rows, mode, areas, label, t]);
+  const visible = useMemo(() => (mode === "map" ? rows : groups.filter((g) => g.id !== "done").flatMap((g) => g.rows)).map((r) => r.key), [rows, groups, mode]);
   const allKeys = useMemo(() => all.map((r) => r.key), [all]);
   const peek = usePeek(visible, allKeys);
-  const progressOf = useCallback((k: string) => forecasts.get(k)?.progress, [forecasts]);
-  const row = useMemo(() => rowOf(slug, etaOf, progressOf, clock, t, time), [slug, etaOf, progressOf, clock, t, time]);
 
   const openFull = useCallback(
     (key: string) => {
@@ -324,10 +253,21 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
                 <ViewModeSwitcher modes={modes} value={mode} onChange={setMode} placement="toolbar" />
-                <ListSearch noun={t("requirements.searchNoun")} value={text} onChange={(q) => setParams({ q: q || null })} />
+                <ListSearch noun={t("requirements.searchNoun")} value={text} onChange={(v) => setParams({ q: v || null })} />
+                <select aria-label={t("requirements.filter.area")} value={areaFilter} onChange={(e) => setParams({ area: e.target.value || null })} className="h-8 rounded-md border border-line bg-surface px-2 text-13 text-muted">
+                  <option value="">{t("requirements.filter.anyArea")}</option>
+                  {areas.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                  <option value="none">{t("requirements.noArea")}</option>
+                </select>
                 <ListFilterBar list="requirements" />
+                <AreasEditor projectId={projectId} areas={areas} />
               </div>
               <AssistantStrip projectId={projectId} rows={all} onPeek={(k) => peek.set(k)} />
+              <PlacementBanner projectId={projectId} rows={all} hasAreas={areas.length > 0} />
               {all.length === 0 ? (
                 <div className="px-5 py-10">
                   <EmptyState
@@ -340,17 +280,10 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
                     }
                   />
                 </div>
+              ) : mode === "map" ? (
+                <RequirementsMap rows={rows} areas={areas} slug={slug} onPeek={(k) => peek.set(k === peek.open ? null : k)} />
               ) : (
-                <GroupedList
-                  ariaLabel={t("requirements.title")}
-                  groups={groups}
-                  fold={fold}
-                  row={row}
-                  eta={{ label: ETA_COPY[clock.lang].header, sortLabel: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort }}
-                  selected={peek.open}
-                  onPeek={(k) => peek.set(k === peek.open ? null : k)}
-                  empty={t("requirements.noMatch")}
-                />
+                <RequirementsList groups={groups} slug={slug} now={clock.now} selected={peek.open} onPeek={(k) => peek.set(k === peek.open ? null : k)} />
               )}
             </div>
             {peek.open ? (

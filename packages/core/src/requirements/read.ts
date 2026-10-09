@@ -1,4 +1,3 @@
-import { areasOf } from './placement.js';
 import { ISSUE_ADMIT_PERMISSION, type IssueStatus } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
 import type { ActorAgency } from '@forge/contracts/permissions';
@@ -49,6 +48,7 @@ import { requirementDependents } from './dependents.js';
 import { historyOf } from './history-read.js';
 import { dedupCheckOf } from './near-duplicate.js';
 import { pictureRowsOf } from './picture-read.js';
+import { areasOf } from './placement.js';
 import { changedTracedOf } from './plan-drift.js';
 import { requestedByOf, requestSignoffRefusal, requestViewOf } from './request-signoff.js';
 import { criterionView, revisionView } from './revision-view.js';

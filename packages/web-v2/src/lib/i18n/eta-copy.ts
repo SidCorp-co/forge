@@ -31,6 +31,8 @@ interface EtaCopy {
   latestInline: (when: string) => string;
   /** The expected day has passed: "late, was {when}". */
   late: (when: string) => string;
+  /** Shipped work: its release, no date. */
+  shippedLine: (version: string | null) => string;
   /** The release that delivered it. */
   inVersion: (version: string) => string;
   /** A paused row: whom it waits on. */
@@ -70,6 +72,7 @@ function copyOf(lang: EtaLang): EtaCopy {
     date: (day, month) => t("eta.date", { d: day, dd: String(day).padStart(2, "0"), month: MONTHS[month - 1] ? t(MONTHS[month - 1] as ProductCopyKey) : String(month) }),
     latest: (when) => t("eta.latest", { when }),
     latestInline: (when) => t("eta.latestInline", { when }),
+    shippedLine: (version) => (version ? t("eta.shippedLine", { version }) : t("eta.shippedBare")),
     late: (when) => t("eta.late", { when }),
     inVersion: (version) => t("eta.inVersion", { version }),
     waitsOn: (who) => t("eta.waitsOn", { who }),

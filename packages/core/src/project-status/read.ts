@@ -6,7 +6,6 @@
  * not already decide: lateness is the forecast's, whom a row waits on is its own read model's.
  */
 
-import { roadmapHorizonOf, type StageInput } from '@forge/contracts/requirement-roadmap';
 import type {
   DeliveryForecast,
   ForecastLate,
@@ -35,6 +34,7 @@ import {
   type StatusWaits,
 } from '@forge/contracts/project-status';
 import type { ReleaseListResponse, ReleaseState, ReleaseSummary } from '@forge/contracts/releases';
+import { roadmapHorizonOf, type StageInput } from '@forge/contracts/requirement-roadmap';
 import {
   REQUIREMENT_STATES,
   type RequirementState,

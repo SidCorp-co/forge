@@ -22,6 +22,7 @@ import { useRequirementForecast } from "@/features/forecast/hooks";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { LinkIssueControl } from "./link-issue";
 import { PromoteDraftRow } from "./promote-drafts";
+import { PlacementFacts } from "./requirement-placement";
 import { agreedTitle } from "./standing-bits";
 
 /** "On ISS-4", "On design checkout": where a feedback item reached the requirement from; one about it, or carried by its route, says nothing. */
@@ -162,6 +163,7 @@ export function RequirementFacts({
         <Fact label={t("requirements.facts.owner")}>
           {s.owner ? <ActorChip name={s.owner.name ?? t("requirements.unknown")} kind={s.owner.kind} /> : <span className="text-subtle">{t("requirements.noOwner")}</span>}
         </Fact>
+        <PlacementFacts projectId={projectId} d={d} />
         <RequirementShipped releases={d.releases} slug={slug} />
         <Fact label={t("requirements.facts.current")}>
           <span>{d.currentRevision !== null ? `r${d.currentRevision}` : t("requirements.facts.noneAccepted")}</span>

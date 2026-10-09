@@ -86,13 +86,20 @@ export function failingOf(s: Pick<StageInput, "facts">): number {
 	return Math.max(0, s.facts.judged - s.facts.passing);
 }
 
-const WHO: Record<string, string> = { You: "You", "Independent judge": "Judge" };
+const WHO: Record<string, string> = {
+	You: "You",
+	"Independent judge": "Judge",
+};
 const codes = (act: string) => (act.match(/BC-\d+/g) ?? []).length;
 const issues = (act: string) => act.match(/ISS-\d+/g) ?? [];
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many: string) =>
+	`${n} ${n === 1 ? one : many}`;
 
 /** Whom the requirement waits on and what, as one short phrase with no criterion codes, only counts. */
-export function waitsLineOf(s: Pick<StageInput, "waitingOn">): { kind: "you" | "agent"; text: string } {
+export function waitsLineOf(s: Pick<StageInput, "waitingOn">): {
+	kind: "you" | "agent";
+	text: string;
+} {
 	const { who: rawWho, act } = s.waitingOn;
 	const who = WHO[rawWho] ?? rawWho;
 	let what: string;
@@ -100,22 +107,34 @@ export function waitsLineOf(s: Pick<StageInput, "waitingOn">): { kind: "you" | "
 	const n = codes(act);
 	if (rawWho === "Issues") {
 		const m = act.match(/^(\w+) (\d+) of (\d+)/);
-		return { kind: "agent", text: m ? `${m[2]} of ${m[3]} issues ${String(m[1]).toLowerCase()}` : act };
+		return {
+			kind: "agent",
+			text: m ? `${m[2]} of ${m[3]} issues ${String(m[1]).toLowerCase()}` : act,
+		};
 	}
-	if (act.startsWith("make a decision")) what = `decide on ${iss[0] ?? "a question"}`;
-	else if (act.startsWith("check")) what = `check ${plural(n, "criterion", "criteria")}`;
-	else if (act.startsWith("judge")) what = `judge ${plural(n, "criterion", "criteria")}`;
-	else if (act.startsWith("tie")) what = `re-tie ${plural(iss.length, "issue", "issues")}`;
+	if (act.startsWith("make a decision"))
+		what = `decide on ${iss[0] ?? "a question"}`;
+	else if (act.startsWith("check"))
+		what = `check ${plural(n, "criterion", "criteria")}`;
+	else if (act.startsWith("judge"))
+		what = `judge ${plural(n, "criterion", "criteria")}`;
+	else if (act.startsWith("tie"))
+		what = `re-tie ${plural(iss.length, "issue", "issues")}`;
 	else if (act.startsWith("fix")) what = `fix ${n} failing`;
-	else if (act.startsWith("trace")) what = `trace ${plural(n, "criterion", "criteria")}`;
+	else if (act.startsWith("trace"))
+		what = `trace ${plural(n, "criterion", "criteria")}`;
 	else if (act.startsWith("take")) what = `start ${iss.join(", ")}`;
 	else if (act.startsWith("propose or drop")) what = "propose or drop";
 	else if (act.startsWith("propose")) what = "write r1";
 	else if (act.startsWith("revise")) what = "revise r1";
 	else what = act;
-	return { kind: rawWho === "You" ? "you" : "agent", text: what ? `${who} · ${what}` : who };
+	return {
+		kind: rawWho === "You" ? "you" : "agent",
+		text: what ? `${who} · ${what}` : who,
+	};
 }
 
 /** A short name is at most six words (BC-3). */
 export const SHORT_NAME_MAX_WORDS = 6;
-export const shortNameWords = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
+export const shortNameWords = (s: string) =>
+	s.trim().split(/\s+/).filter(Boolean).length;

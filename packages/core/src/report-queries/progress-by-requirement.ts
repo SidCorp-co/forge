@@ -6,13 +6,13 @@
 // (ISS-433). This file only lays them out as a frame.
 
 import type { ScopeForecast } from '@forge/contracts/forecast';
-import { ROADMAP_HORIZONS, roadmapHorizonOf } from '@forge/contracts/requirement-roadmap';
 import {
   defineReportQuery,
   type ReportCell,
   type ReportField,
   type ReportFrame,
 } from '@forge/contracts/report-queries';
+import { ROADMAP_HORIZONS, roadmapHorizonOf } from '@forge/contracts/requirement-roadmap';
 import { REQUIREMENT_STATES, type RequirementSummary } from '@forge/contracts/requirements';
 import { z } from 'zod';
 import { readRequirementForecasts } from '../forecast/index.js';

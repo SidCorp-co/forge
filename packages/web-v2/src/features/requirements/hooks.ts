@@ -136,3 +136,54 @@ export function useWriteRequirementPicture(projectId: string, req: string) {
     ...shown,
   });
 }
+
+export function useRequirementAreas(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["requirement-areas", projectId ?? ""],
+    queryFn: () => requirementsApi.areas(projectId as string).then((r) => r.areas),
+    enabled: Boolean(projectId),
+    staleTime: 60_000,
+  });
+}
+
+/** Replaces the project's areas; the list and every requirement's area are read again. */
+export function useSetAreas(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (names: string[]) => requirementsApi.setAreas(projectId, names),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["requirement-areas", projectId] });
+      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+    },
+  });
+}
+
+/** One requirement's area and short name: set by a person, or the assistant's proposal accepted. */
+export function usePlacement(projectId: string, req: string) {
+  const qc = useQueryClient();
+  const done = () => {
+    qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+    qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
+  };
+  const set = useMutation({
+    mutationFn: (body: { areaId?: string | null; shortName?: string | null }) => requirementsApi.setPlacement(projectId, req, body),
+    onSettled: done,
+  });
+  const accept = useMutation({ mutationFn: () => requirementsApi.acceptPlacement(projectId, req), onSettled: done });
+  return { set, accept };
+}
+
+/** Accepts every waiting proposal at once, one requirement at a time. */
+export function useAcceptAllPlacements(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (keys: string[]) => {
+      for (const k of keys) await requirementsApi.acceptPlacement(projectId, k);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["requirements", projectId] }),
+  });
+}
+
+export function useProposePlacements(projectId: string) {
+  return useMutation({ mutationFn: () => requirementsApi.proposePlacements(projectId) });
+}

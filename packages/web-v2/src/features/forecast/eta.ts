@@ -25,6 +25,8 @@ export type Eta =
   | { kind: "done"; at: string | null; tail: EtaTail | null; detail: string; version?: string | null }
   /** Landed and not yet in people's hands: no tick and no date in the cell, only who releases it (JU-7). */
   | { kind: "landed"; at: string | null; tail: EtaTail | null; detail: string }
+  /** Work in people's hands: said as shipped, never as a date to wait for (REQ-29 BC-9). */
+  | { kind: "shipped"; version: string | null; detail: string }
   | { kind: "none"; detail: string };
 
 /** The release a person still owes after the landing, the viewer's own as "then you cut it". */
@@ -83,7 +85,7 @@ export function etaOfDelivery(d: DeliveryForecast, c: EtaClock): Eta {
   const said = deliveryText(d, c, { within: false }).detail;
   if (d.shipped) {
     const when = d.shipped.at ? formatDateTime(d.shipped.at, c.lang, c.timeZone) : "";
-    return { kind: "done", at: d.shipped.at, tail: null, detail: copy.shipped(d.shipped.version, when), version: d.shipped.version };
+    return { kind: "shipped", version: d.shipped.version, detail: copy.shipped(d.shipped.version, when) };
   }
   const tail = tailOf(d.release);
   // the dates are the one reading the progress report takes too (`deliveryDatesOf`), so the two never disagree
@@ -133,6 +135,8 @@ export function etaLines(e: Eta, c: EtaClock): { line: string; sub: string | nul
       return { line: e.at ? doneDayText(e.at, c) : "", sub: sub ?? (e.version ? copy.inVersion(e.version) : null) };
     case "landed":
       return { line: copy.awaitingRelease, sub };
+    case "shipped":
+      return { line: copy.shippedLine(e.version), sub: null };
     case "none":
       return { line: "—", sub: null };
   }

@@ -842,7 +842,10 @@ export interface RequirementSummary {
 	/** At most six words; null until a person sets or accepts one, the title reads in its place. */
 	shortName: string | null;
 	/** What the assistant proposed, waiting for a person; null when nothing waits. */
-	placementProposal: { area: RequirementAreaRef | null; shortName: string | null } | null;
+	placementProposal: {
+		area: RequirementAreaRef | null;
+		shortName: string | null;
+	} | null;
 }
 
 export interface RequirementAreaRef {
@@ -1030,11 +1033,13 @@ export interface RequirementBuildingIssue {
 export const requirementAreasRequestSchema = z.strictObject({
 	names: z.array(z.string().trim().min(1).max(60)).max(30),
 });
-export const REQUIREMENT_AREAS_SHAPE = "{ names: string[] } the project's areas, in the order a list draws them";
+export const REQUIREMENT_AREAS_SHAPE =
+	"{ names: string[] } the project's areas, in the order a list draws them";
 
 /** `PUT …/requirements/:req/placement`: set the area and short name; a field left out stays, null clears it. */
 export const requirementPlacementRequestSchema = z.strictObject({
 	areaId: z.uuid().nullable().optional(),
 	shortName: z.string().trim().min(1).max(80).nullable().optional(),
 });
-export const REQUIREMENT_PLACEMENT_SHAPE = "{ areaId?: uuid | null, shortName?: string (at most 6 words) | null }";
+export const REQUIREMENT_PLACEMENT_SHAPE =
+	"{ areaId?: uuid | null, shortName?: string (at most 6 words) | null }";

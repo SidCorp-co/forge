@@ -4,8 +4,13 @@
 // already draw, so a status report and the screens it summarises cannot disagree. Every section
 // carries `asOf`, the moment its own read answered, and a forecast carries its own label.
 
-import type { DeliveryForecast, ForecastLate, ForecastMove, IssueProgress, ScopeForecast } from "./forecast.js";
-import type { WrittenLang } from "./written-lang.js";
+import type {
+	DeliveryForecast,
+	ForecastLate,
+	ForecastMove,
+	IssueProgress,
+	ScopeForecast,
+} from "./forecast.js";
 import type { IssueStatus } from "./issue-machine.js";
 import type { NeedsYouAreaKey, NeedsYouEntity } from "./needs-you.js";
 import type {
@@ -16,6 +21,7 @@ import type {
 import type { RequirementState } from "./requirements.js";
 import type { Said } from "./said.js";
 import type { WaitingKind, WaitingOn } from "./standing.js";
+import type { WrittenLang } from "./written-lang.js";
 
 export const PROJECT_STATUS_DAYS_DEFAULT = 7;
 export const PROJECT_STATUS_DAYS_MAX = 90;
@@ -56,7 +62,13 @@ export interface StatusShipped extends Stamped {
 	 * Requirements whose last issue shipped inside the window while a live criterion is still unproven:
 	 * shipped, not delivered in full. Absent on a report stored before the proof rule.
 	 */
-	requirementsAwaitingProof?: { key: string; title: string; at: string; proven: number; total: number }[];
+	requirementsAwaitingProof?: {
+		key: string;
+		title: string;
+		at: string;
+		proven: number;
+		total: number;
+	}[];
 }
 
 /** Delivered in full: at least one live criterion, and every one proven. The status read and a release's `completes` read the same rule. */
@@ -170,7 +182,10 @@ export interface StatusLate extends Stamped {
 	items: StatusLateItem[];
 }
 
-export { ROADMAP_HORIZONS, type RoadmapHorizon } from "./requirement-roadmap.js";
+export {
+	ROADMAP_HORIZONS,
+	type RoadmapHorizon,
+} from "./requirement-roadmap.js";
 
 export interface RoadmapItem {
 	key: string;

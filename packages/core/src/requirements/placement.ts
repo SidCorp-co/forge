@@ -5,11 +5,8 @@
  * agreed to.
  */
 
-import {
-  type RequirementAreaRef,
-  requirementKey,
-} from '@forge/contracts/requirements';
 import { SHORT_NAME_MAX_WORDS, shortNameWords } from '@forge/contracts/requirement-roadmap';
+import { type RequirementAreaRef, requirementKey } from '@forge/contracts/requirements';
 import { and, asc, eq, isNull, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -18,7 +15,7 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
-import { completeOnce } from '../integrations/llm/chat.js';
+import { completeOnce } from '../integrations/llm/index.js';
 import { logger } from '../lib/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { type RequirementActor, rowIn } from './read.js';
@@ -193,7 +190,12 @@ export async function proposePlacement(projectId: string, requirementId: string)
   const crit = await db
     .select({ body: requirementCriteria.body })
     .from(requirementCriteria)
-    .where(and(eq(requirementCriteria.requirementId, requirementId), isNull(requirementCriteria.retiredRevision)))
+    .where(
+      and(
+        eq(requirementCriteria.requirementId, requirementId),
+        isNull(requirementCriteria.retiredRevision),
+      ),
+    )
     .limit(6);
   const goal = (rev?.spec as { goal?: string } | null)?.goal ?? '';
   const answerOnce = await completeOnce(
