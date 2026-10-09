@@ -30,6 +30,7 @@ import {
   createTestUser,
 } from '../helpers/factories.js';
 import { passingReport } from '../helpers/merge-check-report.js';
+import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 type Who = 'owner' | 'ann' | 'bo' | 'stranger';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
@@ -210,16 +211,40 @@ describe('the assistant reads the recording and proposes a cause and a fix (BC-1
       cause: 'Save posts the order without its currency, and the orders API answers 500.',
       fix: 'Send the selected currency with the order, and show the API error on the form.',
     };
-    const asOwner = await recordingTool('owner', { feedback: 'FB-52', diagnosis });
+    const answers = {
+      criterion: 'none',
+      severity: 'high',
+      reproduced: `Recording ${recording?.id}: Save answers 500 and the order is lost.`,
+    };
+    const asOwner = await recordingTool('owner', { feedback: 'FB-52', diagnosis, answers });
     expect(asOwner.proposal).toEqual({
       diagnosis,
+      answers,
       recommended: BUILD_THE_FIX,
       pressable: true,
       why: null,
     });
-    const asMember = await recordingTool('bo', { feedback: 'FB-52', diagnosis });
+    const asMember = await recordingTool('bo', { feedback: 'FB-52', diagnosis, answers });
     expect(asMember.proposal?.pressable).toBe(false);
     expect(asMember.proposal?.why).toContain('feedback.approve');
+  });
+
+  // REQ-34 BC-2: the agent's door is a triage like the others, so it proposes none it cannot answer
+  it('refuses a diagnosis with no triage answers, naming each question the press would be refused on', async () => {
+    const [recording] = (await recordingTool('owner', { feedback: 'FB-52' })).recordings;
+    const diagnosis = { recording: recording?.id, cause: 'Save drops the currency.', fix: 'Send it.' };
+    const refused = await recordingTool('owner', { feedback: 'FB-52', diagnosis }).then(
+      () => null,
+      (err: { refusals: Doc[] }) => err.refusals,
+    );
+    expect(refused?.[0]).toMatchObject({ code: 'CHECKLIST_INCOMPLETE', path: '/answers' });
+    for (const question of [
+      'Which business criterion does it violate, or none?',
+      'How severe is it?',
+      'Was it reproduced, and with what evidence?',
+    ]) {
+      expect(refused?.[0]?.detail).toContain(question);
+    }
   });
 
   it("refuses a diagnosis read from another item's recording", async () => {
@@ -243,6 +268,7 @@ describe('the assistant reads the recording and proposes a cause and a fix (BC-1
       fix: 'Send the selected currency with the order.',
     };
     const off = await say('owner', 'POST', at('/feedback/FB-52/triage'), {
+      answers: TRIAGE_ANSWERS,
       route: 'answer',
       answer: 'Known.',
       diagnosis,
@@ -251,7 +277,7 @@ describe('the assistant reads the recording and proposes a cause and a fix (BC-1
     expect(JSON.stringify(off.json)).toContain('FEEDBACK_DIAGNOSIS_INVALID');
 
     const routed = ok(
-      await say('owner', 'POST', at('/feedback/FB-52/triage'), { route: 'issue', diagnosis }),
+      await say('owner', 'POST', at('/feedback/FB-52/triage'), { answers: TRIAGE_ANSWERS, route: 'issue', diagnosis }),
     ).feedback;
     expect(routed.route).toMatchObject({ route: 'issue' });
     expect((routed.route.carriers as Doc[])[0]?.key).toMatch(/^[A-Z]+-\d+$/);

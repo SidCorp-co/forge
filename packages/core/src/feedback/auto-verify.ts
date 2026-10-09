@@ -1,9 +1,11 @@
 /**
- * Forge verifies a resolved item nobody confirmed (owner, 2026-10-07: "anyone may confirm, log it,
- * and if nobody does after a while it confirms itself"). A sweep reads which triaged items read
- * resolved: the first sight dates it (`resolved_seen_at`), and once the project's verify window
- * (`feedback.verifyWindowDays`) has run from that date the item is verified by the system, recorded
- * as such, and its reporter told once. An item that stops reading resolved loses its date, so a
+ * Loop close for a resolved item nobody confirmed (Feedback lifecycle r14 loop-check; Feedback triage
+ * r16 auto-verify). A sweep reads which triaged items read resolved: the first sight dates it
+ * (`resolved_seen_at`). Once the project's verify window (`feedback.verifyWindowDays`) has run from
+ * that date, the record answers "is the problem gone?" (`loop-close.ts:goneByRecord`): where the
+ * violated criterion passes on the running build and nothing was filed against it since, the item is
+ * verified by the system with those sources as its reason, and its reporter told once; otherwise it
+ * stays resolved for a person to answer. An item that stops reading resolved loses its date, so a
  * reopen or a re-route starts the count again; a reporter who says "not fixed" reopens it as before.
  *
  * A word said ahead comes first (REQ-41 BC-20): where the reporter, or a member for them, confirmed
@@ -15,7 +17,6 @@
 import { feedbackKey } from '@forge/contracts/feedback';
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { type FixConfirmation, loopCloseFromConfirm } from '@forge/contracts/reproduce';
-import { say, sayEn } from '@forge/contracts/said';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
@@ -26,6 +27,7 @@ import { emitEvent } from '../outbox/index.js';
 import { fixConfirmationsOf } from '../previews/index.js';
 import { agencyOf, issueOfPreview, shippedPatchOf } from './confirm-reads.js';
 import { linkedOf, phaseIn } from './list-read.js';
+import { goneByRecord, loopCloseFactsOf } from './loop-close.js';
 import { type FeedbackActor, type Row, rowIn } from './read.js';
 import { tellReporters } from './reporter-language.js';
 import { autoVerifiedNotice } from './reporter-notices.js';
@@ -43,6 +45,8 @@ export interface AutoVerifySweepResult {
   confirmed: number;
   /** Reopened by a Not fixed said in the preview of the change that shipped. */
   reopened: number;
+  /** Past their window, left resolved for a person: the record could not say the problem is gone. */
+  held: number;
 }
 
 /** The latest confirm, when the change that shipped is the one it was said of; null asks as today. */
@@ -127,7 +131,12 @@ async function closeByConfirm(
   return moved;
 }
 
-async function verifyIn(rowId: string, projectId: string, days: number): Promise<boolean> {
+async function verifyIn(
+  rowId: string,
+  projectId: string,
+  days: number,
+  reason: string,
+): Promise<boolean> {
   let verified = false;
   const refusals = await inTx(async (tx) => {
     await lockFeedback(tx, projectId);
@@ -135,7 +144,6 @@ async function verifyIn(rowId: string, projectId: string, days: number): Promise
     if (row.status !== 'triaged') return null;
     const linked = await linkedOf(projectId, [row]);
     if (phaseIn(row, linked) !== 'resolved') return null;
-    const reason = sayEn(say('feedback.notice.autoVerified', { n: days }));
     movedRow(
       await transition(tx, FEEDBACK_MACHINE, {
         to: 'verified',
@@ -176,6 +184,7 @@ export async function sweepResolvedFeedback(
     verified: 0,
     confirmed: 0,
     reopened: 0,
+    held: 0,
   };
   const open = await db.select().from(feedback).where(eq(feedback.status, 'triaged'));
   const byProject = new Map<string, Row[]>();
@@ -219,7 +228,14 @@ export async function sweepResolvedFeedback(
       }
       if (autoVerifyAt(row.resolvedSeenAt, days).getTime() > now.getTime()) continue;
       try {
-        if (await verifyIn(row.id, projectId, days)) result.verified += 1;
+        const record = goneByRecord(
+          await loopCloseFactsOf({ ...row, resolvedSeenAt: row.resolvedSeenAt }),
+        );
+        if (!record.gone) {
+          result.held += 1;
+          continue;
+        }
+        if (await verifyIn(row.id, projectId, days, record.reason)) result.verified += 1;
       } catch (err) {
         logger.error(
           { err, feedback: row.id },

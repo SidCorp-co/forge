@@ -31,7 +31,7 @@ afterEach(() => vi.unstubAllGlobals());
 const P = "22222222-2222-4222-8222-222222222222";
 const ANN = "66666666-6666-4666-8666-666666666666";
 const LIST = RECORDING_ROUTES.ofFeedback.replace(":id", P).replace(":fb", "FB-52").replace(/^\/api/, "");
-const NONE = { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, accept: false, snooze: false, message: false, tellShipped: false, note: false, attach: false };
+const NONE = { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false };
 
 const file = (id: string, name: string, mime: string) => ({
   id,

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { declinedNotice, duplicateNotice, messageNotice } from './reporter-notices.js';
 import { feedbackStandingOf } from './standing.js';
 import {
-  acceptRefusal,
   duplicateRefusal,
   messageRefusal,
   noteActRefusal,
@@ -18,16 +17,6 @@ const viewer = {
   canWrite: true,
   canAdmin: false,
 };
-
-describe('accept', () => {
-  it('takes new and reopened, and refuses every other phase by name', () => {
-    expect(acceptRefusal('new')).toBeNull();
-    expect(acceptRefusal('reopened')).toBeNull();
-    for (const phase of ['triaged', 'planned', 'resolved', 'verified', 'declined'] as const) {
-      expect(acceptRefusal(phase)?.code).toBe('FEEDBACK_STATUS_INVALID');
-    }
-  });
-});
 
 describe('snooze', () => {
   it('takes a future date inside the limit with a reason', () => {

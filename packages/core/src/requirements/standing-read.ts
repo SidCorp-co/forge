@@ -6,7 +6,11 @@
 import { type IssueStatus, PARK_STATUSES } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
 import { releaseApprovalRequired } from '@forge/contracts/releases';
-import type { RequirementStanding, RequirementState } from '@forge/contracts/requirements';
+import type {
+  BcVerdict,
+  RequirementStanding,
+  RequirementState,
+} from '@forge/contracts/requirements';
 import { changedSincePlan } from '@forge/contracts/requirements';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
@@ -408,4 +412,30 @@ export async function deliveredAmong(
       .filter((r) => r.status === 'accepted' || standings.get(r.id)?.state === 'delivered')
       .map((r) => r.id),
   );
+}
+
+/**
+ * One business criterion's coverage as its requirement's standing reads it now: the verdict of the
+ * newest judgement on the issue criteria tracing it, checked against what the running build holds,
+ * and why where none counts. Null where the requirement or the criterion is not current.
+ */
+export async function criterionVerdictOf(
+  projectId: string,
+  requirementId: string,
+  code: string,
+): Promise<{ verdict: BcVerdict; why: string | null } | null> {
+  const rows = await db
+    .select({
+      id: requirements.id,
+      projectId: requirements.projectId,
+      status: requirements.status,
+      currentRevision: requirements.currentRevision,
+      ownerId: requirements.ownerId,
+      updatedAt: requirements.updatedAt,
+    })
+    .from(requirements)
+    .where(and(eq(requirements.projectId, projectId), eq(requirements.id, requirementId)));
+  const standing = (await standingsOf(projectId, rows, null)).get(requirementId);
+  const found = standing?.coverage.find((c) => c.code === code);
+  return found ? { verdict: found.verdict, why: found.why } : null;
 }

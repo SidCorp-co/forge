@@ -15,6 +15,7 @@ import { type FeedbackPick, FeedbackPicker } from "./feedback-picker";
 import { RetargetForm } from "./feedback-retarget";
 import { TellShippedBar } from "./feedback-tell";
 import { DropItem, TriageVerbs } from "./feedback-verbs";
+import { answersOf, type TriageAnswerDraft, TriageAnswerFields } from "./triage-answers";
 import type { FeedbackDedup, FeedbackTriage, FeedbackView } from "../types";
 
 type Choice = "link_issue" | "file_issue" | "revision" | "new_requirement" | "answer" | "duplicate" | "decline";
@@ -36,6 +37,7 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const [text, setText] = useState("");
   const [linked, setLinked] = useState<IssuePick[]>([]);
   const [original, setOriginal] = useState<FeedbackPick | null>(null);
+  const [draft, setDraft] = useState<TriageAnswerDraft>({ severity: f.severity });
   const ready =
     choice === "duplicate" ? original !== null : choice === "link_issue" ? linked.length > 0 : OPTIONAL.includes(choice) || text.trim() !== "";
   const submit = () => {
@@ -54,12 +56,13 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
                 : choice === "decline"
                   ? { route: "decline", note: value }
                   : { route: "duplicate", duplicateOf: (original as FeedbackPick).key };
-    act.mutate({ kind: "triage", triage });
+    // a decline is an act, not a route: it carries its reason and no checklist answers
+    act.mutate({ kind: "triage", triage: choice === "decline" ? triage : { ...triage, answers: answersOf(draft) } });
   };
   const placeholder = (c: Exclude<Choice, "duplicate" | "link_issue">) => t(`feedback.placeholder.${c}`);
   return (
     <section className="grid gap-3" data-testid="feedback-triage">
-      <h3 className="text-12 font-semibold text-muted">{f.can.accept ? t("feedback.triage.orRoute") : t("feedback.triage.yours")}</h3>
+      <h3 className="text-12 font-semibold text-muted">{f.can.snooze ? t("feedback.triage.orRoute") : t("feedback.triage.yours")}</h3>
       <RadioGroup name={`triage-${f.key}`} value={choice} onChange={(v) => setChoice(v as Choice)} className="grid gap-2 sm:grid-cols-2">
         {CHOICES.map((c) => (
           <Radio
@@ -83,6 +86,7 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
       ) : (
         <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder(choice)} />
       )}
+      {choice === "decline" ? null : <TriageAnswerFields value={draft} onChange={setDraft} error={act.error} />}
       <RefusalLine error={act.error} />
       <div>
         <Button

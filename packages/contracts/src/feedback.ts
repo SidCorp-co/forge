@@ -22,6 +22,15 @@ import type {
 	StandingGroupLabels,
 	WaitingKind,
 } from "./standing.js";
+import {
+	FEEDBACK_KINDS,
+	FEEDBACK_ROUTES,
+	FEEDBACK_SEVERITIES,
+	type FeedbackKind,
+	type FeedbackRoute,
+	type FeedbackSeverity,
+} from "./feedback-terms.js";
+import { triageAnswersInput } from "./feedback-triage.js";
 import { type NodeRef, nodeRefSchema } from "./workflow-health.js";
 import {
 	WRITTEN_LANG_SHAPE,
@@ -29,23 +38,17 @@ import {
 	writtenLangSchema,
 } from "./written-lang.js";
 
-/** What the reporter says it is; `contract_change` is filed by core for a breaking version (E3). */
-export const FEEDBACK_KINDS = [
-	"bug",
-	"change_request",
-	"question",
-	"idea",
-	"contract_change",
-] as const;
-export type FeedbackKind = (typeof FEEDBACK_KINDS)[number];
-
-export const FEEDBACK_SEVERITIES = [
-	"low",
-	"medium",
-	"high",
-	"critical",
-] as const;
-export type FeedbackSeverity = (typeof FEEDBACK_SEVERITIES)[number];
+export {
+	FEEDBACK_KIND_LABELS,
+	FEEDBACK_KINDS,
+	FEEDBACK_ROUTE_LABELS,
+	FEEDBACK_ROUTES,
+	FEEDBACK_SEVERITIES,
+	FEEDBACK_SEVERITY_LABELS,
+	type FeedbackKind,
+	type FeedbackRoute,
+	type FeedbackSeverity,
+} from "./feedback-terms.js";
 
 /** The stored statuses: each is a person's decision. `planned` and `resolved` are read, never stored (Q1). */
 export const FEEDBACK_STATUSES = [
@@ -91,16 +94,6 @@ export const FEEDBACK_TARGET_TYPES = [
 ] as const;
 export type FeedbackTargetType = (typeof FEEDBACK_TARGET_TYPES)[number];
 
-/** Where triage sends an item; each names the one `routed_*` column (or `answer`, `duplicate_of`) it sets. */
-export const FEEDBACK_ROUTES = [
-	"issue",
-	"revision",
-	"new_requirement",
-	"answer",
-	"duplicate",
-] as const;
-export type FeedbackRoute = (typeof FEEDBACK_ROUTES)[number];
-
 /** What triage may decide (requirement-to-delivery step `triage`): a stored route, or decline, which
  *  is its own act and status and never a route column value. */
 export const FEEDBACK_TRIAGE_ROUTES = [...FEEDBACK_ROUTES, "decline"] as const;
@@ -130,14 +123,6 @@ export const FEEDBACK_ATTENTION_GROUPS = [
 ] as const satisfies readonly StandingGroup[];
 export type FeedbackAttentionGroup = (typeof FEEDBACK_ATTENTION_GROUPS)[number];
 
-export const FEEDBACK_KIND_LABELS: Record<FeedbackKind, string> = {
-	bug: "Bug",
-	change_request: "Change request",
-	question: "Question",
-	idea: "Idea",
-	contract_change: "Contract change",
-};
-
 export const FEEDBACK_PHASE_LABELS: Record<FeedbackPhase, string> = {
 	new: "New",
 	triaged: "Triaged",
@@ -146,21 +131,6 @@ export const FEEDBACK_PHASE_LABELS: Record<FeedbackPhase, string> = {
 	reopened: "Reopened",
 	verified: "Verified",
 	declined: "Declined",
-};
-
-export const FEEDBACK_SEVERITY_LABELS: Record<FeedbackSeverity, string> = {
-	low: "Low",
-	medium: "Medium",
-	high: "High",
-	critical: "Critical",
-};
-
-export const FEEDBACK_ROUTE_LABELS: Record<FeedbackRoute, string> = {
-	issue: "Issue",
-	revision: "Revision",
-	new_requirement: "New requirement",
-	answer: "Answer",
-	duplicate: "Duplicate",
 };
 
 export const FEEDBACK_DECISION_LABELS: Record<FeedbackDecision, string> = {
@@ -318,6 +288,11 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_ATTACHMENT_INVALID",
 	/** A diagnosis rides only the issue route, and names a recording of this item (REQ-41 BC-19). */
 	"FEEDBACK_DIAGNOSIS_INVALID",
+	/** A violated criterion that is not "none", not a REQ-n BC-m standing now, or not of the item's requirement. */
+	"FEEDBACK_CRITERION_INVALID",
+	// the triage checklist (Feedback lifecycle r14 triage-check), refused on its question's path
+	"CHECKLIST_INCOMPLETE",
+	"CHECKLIST_ANSWER_INVALID",
 	...PERMISSION_REFUSAL_CODES,
 	"FEEDBACK_SEARCH_WITHHELD",
 	"FEEDBACK_SOURCE_ALREADY_PROMOTED",
@@ -420,16 +395,24 @@ export const recordingDiagnosisSchema = z.strictObject({
 });
 export type RecordingDiagnosis = z.infer<typeof recordingDiagnosisSchema>;
 
+/**
+ * A triage: the route it takes (absent in the short form, which takes the issue route), what carries
+ * it, the kind corrected where the reporter's was wrong, and the triager's answers to the triage
+ * checklist (`checklist-registry.ts:FEEDBACK_TRIAGE_CHECKLIST`). A decline is the act that takes no
+ * answers, only its reason.
+ */
 export const feedbackTriageSchema = z.strictObject({
-	route: z.enum(FEEDBACK_TRIAGE_ROUTES),
+	route: z.enum(FEEDBACK_TRIAGE_ROUTES).optional(),
 	...carrierFields,
 	kind: z.enum(FEEDBACK_KINDS).optional(),
-	severity: z.enum(FEEDBACK_SEVERITIES).optional(),
+	// handed to the checklist as sent, which refuses a wrong one by name on its question's path at
+	// every door; the contract publishes the shape the checklist derives
+	answers: z.unknown().meta(triageAnswersInput()).optional(),
 	/** Route issue only (FEEDBACK_DIAGNOSIS_INVALID otherwise). */
 	diagnosis: recordingDiagnosisSchema.optional(),
 });
 export type FeedbackTriage = z.infer<typeof feedbackTriageSchema>;
-export const FEEDBACK_TRIAGE_SHAPE = `{ route: ${FEEDBACK_TRIAGE_ROUTES.join(" | ")}, issue?: ISS-n | [ISS-n, …] | createIssue?: { title?, description?, complexity?, category?, priority? } | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? (decline: the reason), diagnosis?: { recording, cause, fix } (issue only) }`;
+export const FEEDBACK_TRIAGE_SHAPE = `{ route?: ${FEEDBACK_TRIAGE_ROUTES.join(" | ")}, answers?: { criterion: REQ-n BC-m | none, severity: ${FEEDBACK_SEVERITIES.join(" | ")}, reproduced }, issue?: ISS-n | [ISS-n, …] | createIssue?: { title?, description?, complexity?, category?, priority? } | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, note? (decline: the reason, and no answers), diagnosis?: { recording, cause, fix } (issue only) }`;
 
 /** Stamped by core on a `feedback_triage` suggestion: the nearest item, or why dedup did not run. */
 export const feedbackDedupSchema = z.strictObject({
@@ -479,12 +462,6 @@ export const feedbackVerifyRequestSchema = z.strictObject({
 	note: z.string().max(FEEDBACK_LIMITS.reason).optional(),
 });
 export const FEEDBACK_VERIFY_SHAPE = "{ note? }";
-
-/** `POST …/feedback/:fb/accept`: new or reopened to triaged without a route, optionally about a requirement. */
-export const feedbackAcceptRequestSchema = z.strictObject({
-	requirement: ref.optional(),
-});
-export const FEEDBACK_ACCEPT_SHAPE = "{ requirement?: REQ-n }";
 
 /** `POST …/feedback/:fb/snooze`: parked out of New until `until`, with the reason a triager reads on return. */
 export const feedbackSnoozeRequestSchema = z.strictObject({
@@ -793,8 +770,6 @@ export interface FeedbackView extends FeedbackSummary {
 		redact: boolean;
 		/** Correct what the item is about, at any phase; never on an item core filed about a contract version. */
 		retarget: boolean;
-		/** Accept it unrouted, or park it: while it reads new or reopened. */
-		accept: boolean;
 		snooze: boolean;
 		/** Send a message to its reporters. */
 		message: boolean;

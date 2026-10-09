@@ -19,7 +19,6 @@ function actionRequest(projectId: string, key: string, a: FeedbackAction): [stri
   if (a.kind === "redact") return [`${one(projectId, key)}/reporter-data`, { method: "DELETE" }];
   if (a.kind === "triage") return [`${one(projectId, key)}/triage`, post(a.triage)];
   if (a.kind === "retarget") return [`${one(projectId, key)}/retarget`, post(a.request)];
-  if (a.kind === "accept") return [`${one(projectId, key)}/accept`, post(a.requirement ? { requirement: a.requirement } : {})];
   if (a.kind === "snooze") return [`${one(projectId, key)}/snooze`, post({ until: a.until, reason: a.reason })];
   if (a.kind === "verify-ask") return [`${one(projectId, key)}/verify-ask`, post({})];
   if (a.kind === "verify") return [`${one(projectId, key)}/verify`, post(a.note ? { note: a.note } : {})];

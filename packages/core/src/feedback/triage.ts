@@ -1,25 +1,39 @@
 /**
- * Triage (workflow requirement-to-delivery steps `triage` and `route`; feedback-triage r4 `decide`).
- * A person picks the route; triage checks it against the target, moves the item to triaged or
- * declined and writes what carries the route, all in one transaction. An
- * agent's `feedback_triage` suggestion reaches `triageIn` from its accept, held to feedback.approve like a person's triage.
+ * Triage (Feedback triage r16 `check` and `decide`; Feedback lifecycle r14 `triage-check`). The
+ * triager answers the triage checklist and picks the route, or the short form gives it; triage checks
+ * the answers and the route against the target, moves the item to triaged (or declined, the decline
+ * act) and writes what carries the route, all in one transaction. The kernel judges the checklist on
+ * the edge into triaged, alike at every door; an agent's `feedback_triage` suggestion reaches
+ * `triageIn` from its accept, held to feedback.approve like a person's triage.
  */
 
+import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import {
+  type FeedbackSeverity,
   type FeedbackTriage,
   type FeedbackTriageEffect,
+  type FeedbackTriageRoute,
+  FEEDBACK_SEVERITIES,
   feedbackKey,
 } from '@forge/contracts/feedback';
-import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
-import { eq } from 'drizzle-orm';
+import { namedCriterionOf, triageAnswersOf, triageRouteOf } from '@forge/contracts/feedback-triage';
+import { requirementKey } from '@forge/contracts/requirements';
+import { eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { isRefusal, type Refusal } from '../lib/refusal.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { readRecording } from '../previews/index.js';
+import { feedbackTriageRecord } from './checklist-record.js';
 import { phaseOfRow } from './list-read.js';
-import { type FeedbackActor, type Row, rowIn, targetRequirementOf } from './read.js';
+import {
+  type FeedbackActor,
+  type Row,
+  rowIn,
+  type TargetRequirement,
+  targetRequirementOf,
+} from './read.js';
 import { tellReporters } from './reporter-language.js';
 import { duplicateNotice } from './reporter-notices.js';
 import { reportersOf, withBell } from './reporters.js';
@@ -45,6 +59,14 @@ import {
   NOT_SNOOZED,
   roleFacts,
 } from './service.js';
+import {
+  answersShapeRefusal,
+  criterionFitRefusal,
+  criterionTextRefusal,
+  type FoundCriterion,
+  judgeRetriage,
+  shortFormRouteRefusal,
+} from './triage-checklist.js';
 
 /** What a triage or a route write did, which its caller announces once the transaction committed. */
 interface TriageWritten {
@@ -58,10 +80,7 @@ async function declineTriageIn(
   actor: FeedbackActor,
   note: string | undefined,
 ): Promise<TriageWritten> {
-  await tx
-    .update(feedback)
-    .set({ kind: row.kind, severity: row.severity })
-    .where(eq(feedback.id, row.id));
+  await tx.update(feedback).set({ kind: row.kind }).where(eq(feedback.id, row.id));
   const refused = await declineIn(tx, row, actor, note);
   if (refused) return { refusals: [refused] };
   return {
@@ -77,16 +96,17 @@ async function declineTriageIn(
  */
 async function diagnosisRefusal(
   t: FeedbackTriage,
+  route: FeedbackTriageRoute,
   row: Row,
   actor: FeedbackActor,
 ): Promise<Refusal | null> {
   const d = t.diagnosis;
   if (!d) return null;
-  if (t.route !== 'issue') {
+  if (route !== 'issue') {
     return refusal(
       'FEEDBACK_DIAGNOSIS_INVALID',
       '/diagnosis',
-      `a diagnosis is the cause and fix of a reproduced bug, carried by the issue that builds the fix: send it with route issue, not ${t.route}`,
+      `a diagnosis is the cause and fix of a reproduced bug, carried by the issue that builds the fix: send it with route issue, not ${route}`,
     );
   }
   const key = feedbackKey(row.fbSeq);
@@ -123,9 +143,99 @@ async function diagnosisRefusal(
 const diagnosisNote = (t: FeedbackTriage): string | null =>
   t.diagnosis ? `Cause: ${t.diagnosis.cause} Fix: ${t.diagnosis.fix}` : null;
 
+type Criterion = Extract<FoundCriterion, { found: true }> & { requirementStatus: string };
+
+/** A `REQ-n BC-m` of this project, as it stands at its requirement's current revision. */
+async function criterionIn(
+  tx: Tx,
+  projectId: string,
+  named: { requirement: string; code: string },
+): Promise<Criterion | { found: false }> {
+  const seq = Number(named.requirement.slice('REQ-'.length));
+  const rows = (await tx.execute(sql`
+    SELECT c.id, r.id AS requirement_id, r.req_seq, r.status
+      FROM requirement_criteria c
+      JOIN requirements r ON r.id = c.requirement_id
+     WHERE r.project_id = ${projectId} AND r.req_seq = ${seq} AND c.code = ${named.code}
+       AND r.current_revision IS NOT NULL
+       AND c.since_revision <= r.current_revision
+       AND (c.retired_revision IS NULL OR c.retired_revision > r.current_revision)
+     LIMIT 1
+  `)) as unknown as Array<{ id: string; requirement_id: string; req_seq: number; status: string }>;
+  const row = rows[0];
+  if (!row) return { found: false };
+  return {
+    found: true,
+    id: row.id,
+    requirementId: row.requirement_id,
+    requirementKey: requirementKey(Number(row.req_seq)),
+    requirementStatus: row.status,
+  };
+}
+
+/** The severity the answers give, where it is one; anything else is the checklist's to refuse. */
+function severityAnswerOf(answers: unknown): FeedbackSeverity | null {
+  const given =
+    typeof answers === 'object' && answers !== null
+      ? (answers as Record<string, unknown>).severity
+      : undefined;
+  return (FEEDBACK_SEVERITIES as readonly unknown[]).includes(given)
+    ? (given as FeedbackSeverity)
+    : null;
+}
+
+/** The checks a triage meets before anything is written: the answers' shape, the route and its carriers. */
+async function earlyRefusal(
+  t: FeedbackTriage,
+  route: FeedbackTriageRoute | undefined,
+  row: Row,
+  actor: FeedbackActor,
+): Promise<Refusal | null> {
+  return (
+    triagePhaseRefusal(await phaseOfRow(row.projectId, row), route) ??
+    answersShapeRefusal(t.route, t.answers) ??
+    criterionTextRefusal(t.answers) ??
+    shortFormRouteRefusal(row.kind, t.answers, t.route) ??
+    (route ? routeShapeRefusal(t, route) : null) ??
+    (route ? await diagnosisRefusal(t, route, row, actor) : null)
+  );
+}
+
 /**
- * Triage inside the caller's transaction: the route is checked against the target, the item moves to
- * triaged (or declined, the decline act), and what carries the route is written in the same act.
+ * The criterion the answers name, checked against the item: the requirement it is about is its
+ * target's, else the criterion's, which the issue route then files the issue against.
+ */
+async function criterionAndTarget(
+  tx: Tx,
+  row: Row,
+  answers: unknown,
+): Promise<
+  { refusal: Refusal } | { criterion: Criterion | null; target: TargetRequirement | null }
+> {
+  const own = await targetRequirementOf(tx, row);
+  const named = namedCriterionOf(answers);
+  if (!named) return { criterion: null, target: own };
+  const found = await criterionIn(tx, row.projectId, named);
+  const misfit = criterionFitRefusal(named, found, {
+    key: feedbackKey(row.fbSeq),
+    requirement: own,
+  });
+  if (misfit) return { refusal: misfit };
+  const criterion = found as Criterion;
+  return {
+    criterion,
+    target: own ?? {
+      id: criterion.requirementId,
+      key: criterion.requirementKey,
+      status: criterion.requirementStatus,
+    },
+  };
+}
+
+/**
+ * Triage inside the caller's transaction: the answers and the route are checked against the target,
+ * the item moves to triaged through its checklist (or declined, the decline act), and what carries
+ * the route is written in the same act.
  */
 export async function triageIn(
   tx: Tx,
@@ -143,30 +253,36 @@ export async function triageIn(
   const forbidden = decideActRefusal(await roleFacts(actor, projectId), 'picking a feedback route');
   if (forbidden) return { refusals: [forbidden] };
   await lockFeedback(tx, projectId);
-  const early =
-    triagePhaseRefusal(await phaseOfRow(projectId, input.row), t.route) ??
-    routeShapeRefusal(t) ??
-    (await diagnosisRefusal(t, input.row, actor));
+  const kind = t.kind ?? input.row.kind;
+  const route: FeedbackTriageRoute | undefined =
+    t.route === 'decline' ? 'decline' : triageRouteOf({ kind, route: t.route, answers: t.answers });
+  const early = await earlyRefusal(t, route, { ...input.row, kind }, actor);
   if (early) return { refusals: [early] };
+  if (route === 'decline') return declineTriageIn(tx, { ...input.row, kind }, actor, t.note);
+  const read = await criterionAndTarget(tx, { ...input.row, kind }, t.answers);
+  if ('refusal' in read) return { refusals: [read.refusal] };
+  const { criterion, target } = read;
   const row: Row = {
     ...input.row,
-    kind: t.kind ?? input.row.kind,
-    severity: t.severity ?? input.row.severity,
+    kind,
+    severity: severityAnswerOf(t.answers) ?? input.row.severity,
+    violatedCriterionId: criterion?.id ?? null,
   };
-  const target = await targetRequirementOf(tx, row);
-  const rule = routeRuleRefusal(t.route, {
-    kind: row.kind,
-    targetRequirement: target,
-    suggestion: null,
-    routedRequirement: null,
-  });
+  const rule = route
+    ? routeRuleRefusal(route, {
+        kind: row.kind,
+        targetRequirement: target,
+        suggestion: null,
+        routedRequirement: null,
+      })
+    : null;
   if (rule) return { refusals: [rule] };
-  if (t.route === 'decline') return declineTriageIn(tx, row, actor, t.note);
   await tx
     .update(feedback)
     .set({
       kind: row.kind,
       severity: row.severity,
+      violatedCriterionId: row.violatedCriterionId,
       route: null,
       ...NO_ROUTE,
       ...NOT_SNOOZED,
@@ -175,6 +291,7 @@ export async function triageIn(
     })
     .where(eq(feedback.id, row.id));
   await tx.delete(feedbackRouteIssues).where(eq(feedbackRouteIssues.feedbackId, row.id));
+  const answers = triageAnswersOf({ kind, route, answers: t.answers });
   if (row.status !== 'triaged') {
     const moved = await transition(tx, FEEDBACK_MACHINE, {
       to: 'triaged',
@@ -182,16 +299,23 @@ export async function triageIn(
       where: eq(feedback.id, row.id),
       actor: feedbackKernelActor(actor),
       source: 'feedback-triage',
+      checklist: { answers, record: ({ tx: lockTx }) => feedbackTriageRecord(lockTx, row.id) },
       returning: ['id'],
     });
     movedRow(moved);
+  } else {
+    const judged = judgeRetriage(answers, await feedbackTriageRecord(tx, row.id));
+    if ('refusals' in judged) return { refusals: judged.refusals };
   }
+  // the checklist asks the route, so a triage that reaches here has one
+  if (route === undefined) throw new Error(`feedback triage: ${row.id} passed its checklist with no route`);
   // an issue route naming no existing issue files a draft in the same act (feedback-triage r4 `issue`)
+  const routed = { ...t, route };
   const write =
-    t.route === 'issue' && carriersNamed(t).length === 0 ? { ...t, createIssue: {} } : t;
+    route === 'issue' && carriersNamed(routed).length === 0 ? { ...routed, createIssue: {} } : routed;
   const written = await writeRouteIn(tx, {
     row,
-    route: t.route,
+    route,
     write,
     target,
     actor,
@@ -200,16 +324,16 @@ export async function triageIn(
   });
   if ('refusals' in written) return { refusals: written.refusals };
   const carriers = written.carriers;
-  if (t.route === 'duplicate') await tellDuplicateReporters(tx, row, carriers[0] ?? '');
+  if (route === 'duplicate') await tellDuplicateReporters(tx, row, carriers[0] ?? '');
   await decide(tx, row, actor, {
     decision: 'triaged',
-    route: t.route,
+    route,
     carrier: carriers.length ? carriers.join(', ') : null,
     reason: t.note ?? diagnosisNote(t),
     fromSuggestionId,
   });
-  await closeClarification(tx, row.id, `routed as ${t.route}`);
-  return { refusals: null, effect: { feedback: feedbackKey(row.fbSeq), route: t.route, carriers } };
+  await closeClarification(tx, row.id, `routed as ${route}`);
+  return { refusals: null, effect: { feedback: feedbackKey(row.fbSeq), route, carriers } };
 }
 
 /** An item merged into its original tells its own reporter, once, which item carries their report. */

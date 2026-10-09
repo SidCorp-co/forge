@@ -161,6 +161,10 @@ export function issueChecklistRecord(
   switch (checklist) {
     case 'issue_ready':
       return issueReadyRecord(exec, issueId);
+    case 'feedback_triage':
+      throw new Error(
+        `issue checklist: \`${checklist}\` gates the feedback machine, whose reader is the feedback module's`,
+      );
     default: {
       const unhandled: never = checklist;
       throw new Error(`issue checklist: no record reader for checklist \`${unhandled as string}\``);

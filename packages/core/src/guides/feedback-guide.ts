@@ -13,8 +13,8 @@ export const FEEDBACK_TRIAGE_GUIDE: CoreGuide = {
 A feedback item (FB-n) is what a reporter says is wrong or wanted in the product. The door is
 \`/api/projects/:id/feedback\`: \`POST\` files one (\`create\` below) and \`GET\` lists them,
 \`GET …/feedback/:fb\` reads one, \`GET …/feedback/endpoints\` lists the routes and tools the project
-serves, and each act below is \`POST …/feedback/:fb/<act>\` (\`triage\`,
-\`accept\`, \`snooze\`, \`messages\`, \`retarget\`, \`verify\`, \`verify-ask\`, \`reopen\`, \`clarification\`). It is not an agent report,
+serves, \`GET …/feedback/:fb/checklist\` reads the triage checklist (the form, the \`answers\` input and
+where the item stands), and each act below is \`POST …/feedback/:fb/<act>\` (\`triage\`, \`snooze\`, \`messages\`, \`retarget\`, \`verify\`, \`verify-ask\`, \`reopen\`, \`clarification\`). It is not an agent report,
 an agent's report about its own run: \`POST …/feedback/promote\` turns one of this project's reports
 into FB-n when it is product feedback after all.
 
@@ -67,12 +67,26 @@ Two more phases are **read, never written**, from the work the item was routed t
   \`resolved\` once every other is closed, \`planned\` while any is open (waiting on each still open), and
   \`triaged\` only when every one was dropped.
 
-Nothing reads an item as \`verified\`: a person verifies it, or Forge does after the verify window (below).
+Nothing reads an item as \`verified\`: a person verifies it, or Forge does after the verify window where the
+record says the problem is gone (below).
 
-### Triage: a holder of feedback.approve picks the route and writes it in the same act
+### Triage: a holder of feedback.approve answers the triage checklist and writes the route in the same act
+- An item reaches \`triaged\` only through the triage checklist (Feedback lifecycle r14 \`triage-check\`),
+  the same at every door: the API, the web, a suggestion's accept and the assistant's diagnosis. Its
+  questions are the kind and the requirement (the item's own: correct the kind with \`kind\`, the
+  requirement by retargeting or by naming a criterion), and, in \`answers\`, \`criterion\` (the
+  \`REQ-n BC-m\` it violates, or \`none\`), \`severity\` and \`reproduced\` (how, and what shows it, or why
+  it could not be), with the route as the triage's own \`route\`. Each missing answer is refused
+  \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, naming the question; a wrong one
+  \`CHECKLIST_ANSWER_INVALID\`; a criterion that does not stand now, or is of another requirement than
+  the item's, \`FEEDBACK_CRITERION_INVALID\`. The refused move is recorded, and a passed one keeps every
+  answer with its source.
+- **Short form:** a bug naming the criterion it violates needs only \`criterion\`, \`severity\` and
+  \`reproduced\`: the route is \`issue\` (or \`duplicate\`; any other is \`FEEDBACK_ROUTE_TARGET_MISMATCH\`),
+  and the draft it files delivers the criterion's requirement.
 - A person picks one of \`issue\`, \`revision\`, \`new_requirement\`, \`answer\`, \`duplicate\` or \`decline\`
-  (workflow feedback-triage \`decide\`). No rule keyed on kind picks the route, except that a contract
-  change takes the issue route (\`FEEDBACK_ROUTE_TARGET_MISMATCH\` otherwise). A revision for an item about
+  (Feedback triage r16 \`decide\`). A contract change takes the issue route
+  (\`FEEDBACK_ROUTE_TARGET_MISMATCH\` otherwise). A revision for an item about
   no agreed requirement, a suggestion that is not a revision_diff of that requirement, or a
   new-requirement route carried by a requirement that is not a draft is also \`FEEDBACK_ROUTE_TARGET_MISMATCH\`.
 - The route is written in the triage act, with what carries it: \`issue\` (\`issue\` to link one existing
@@ -87,26 +101,25 @@ Nothing reads an item as \`verified\`: a person verifies it, or Forge does after
 - **duplicate** names its root in the triage (\`duplicateOf\`): a root that is not itself a duplicate, and
   an item others point at stays a root (\`FEEDBACK_DUPLICATE_CHAIN\` names the root to use instead); an
   item is never its own duplicate (\`FEEDBACK_DUPLICATE_SELF\`).
-- **decline** is a triage route whose reason, in \`note\`, the reporter reads
-  (\`FEEDBACK_DECLINE_REASON_REQUIRED\`); it moves the item to \`declined\`. 180 days after the
+- **decline** is an act, not a route: its reason, in \`note\`, the reporter reads
+  (\`FEEDBACK_DECLINE_REASON_REQUIRED\`), it carries no \`answers\` (\`CHECKLIST_ANSWER_INVALID\`), and it
+  moves the item to \`declined\`. 180 days after the
   decline the nightly retention pass removes its attachments and embedding; the row stays.
 - **Triage is an approval.** Triage takes \`feedback.approve\` on the project
   (project admin, or an org owner or admin), person or agent alike; without it the call is refused
   \`PERMISSION_FORBIDDEN\` naming the permission. Without it, send \`POST /api/projects/:id/suggestions\`
-  \`{ kind: 'feedback_triage', feedback, payload }\`, which writes a \`feedback_triage\` suggestion stamped by core with the nearest
+  \`{ kind: 'feedback_triage', feedback, payload }\`, the payload a triage with its \`answers\`, which writes a \`feedback_triage\` suggestion stamped by core with the nearest
   item (\`dedup\`, or why dedup did not run); a holder accepts it (\`POST /api/projects/:id/suggestions/:sid/accept\`), and the
   accept is the triage (${guideRef('suggestions')}).
 - Triage is picked while the item is \`new\`, \`reopened\`, or \`triaged\` with nothing carrying it; any
   other phase is \`FEEDBACK_STATUS_INVALID\`.
 
-### The four verbs of a new item
+### The verbs of a new item
 Each is a state transition by a holder of \`feedback.approve\`, refused by name where it does not apply.
-- \`accept\` \`{ requirement? }\` moves a new or reopened item to \`triaged\` with no route written, optionally
-  re-aimed at a requirement first; it then waits on a person to route it. Any other phase is
-  \`FEEDBACK_STATUS_INVALID\`.
+No verb moves an item to \`triaged\` around the checklist.
 - \`triage\` with route \`decline\` and a \`note\` declines it; every reporter merged into the item with a bell gets one
   notice naming the reason (\`FEEDBACK_DECLINE_REASON_REQUIRED\` without one).
-- \`triage\` with route \`duplicate\` and \`duplicateOf\` merges it into an original: its reporter and evidence read on the
+- \`triage\` with route \`duplicate\`, \`duplicateOf\` and its \`answers\` merges it into an original: its reporter and evidence read on the
   original, its own record stays, and its reporter gets one notice naming the original. Itself is
   \`FEEDBACK_DUPLICATE_SELF\`, a declined original \`FEEDBACK_DUPLICATE_OF_DECLINED\`, a chain \`FEEDBACK_DUPLICATE_CHAIN\`.
 - \`snooze\` \`{ until, reason }\` parks a new or reopened item out of New until a date still to come
@@ -130,10 +143,13 @@ route, declining included, closes the open question.
 - \`verify\` follows \`resolved\` and nothing else (\`FEEDBACK_NOT_RESOLVED\`): an item is never verified
   before its fix shipped. The reporter or anyone on the project (\`project.read\`) verifies, and the
   decision records who and when (\`PERMISSION_FORBIDDEN\` to someone with no role on the project).
-- Nobody verifying is not left standing: every 15 minutes core dates the first sight of \`resolved\`,
-  and once the project's \`feedback.verifyWindowDays\` (default 7, 1 to 90) have run with no reply it
-  verifies the item as the system ("Verified automatically after N days with no reply") and tells each
-  reporter with a bell once. A reopen or a re-route clears the date.
+- Nobody verifying is answered from the record (Feedback lifecycle r14 \`loop-check\`): every 15 minutes
+  core dates the first sight of \`resolved\`, and once the project's \`feedback.verifyWindowDays\`
+  (default 7, 1 to 90) have run with no reply it verifies the item as the system only where the
+  criterion its triage named violated passes on the running build and nothing was filed against it
+  since ("Verified from the record: REQ-n BC-m passes on the running build, …"), and tells each reporter
+  with a bell once. Otherwise the item stays resolved for a person to answer: it is never assumed gone.
+  A reopen or a re-route clears the date.
 - \`verify-ask\` sends a resolved item to its reporter's bell, where it stays until the item is
   verified or reopened. It takes \`feedback.approve\`, follows \`resolved\` (\`FEEDBACK_NOT_RESOLVED\`),
   and is refused to the reporter themselves (\`FEEDBACK_VERIFY_ASK_SELF\`): they verify instead.

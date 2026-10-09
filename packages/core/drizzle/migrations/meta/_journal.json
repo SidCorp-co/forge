@@ -3130,6 +3130,13 @@
       "when": 1825027200000,
       "tag": "0487_an_issue_records_its_design_before_build",
       "breakpoints": true
+    },
+    {
+      "idx": 488,
+      "version": "7",
+      "when": 1825113600000,
+      "tag": "0488_a_triaged_item_names_the_criterion_it_violates",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 /**
- * Triage in four verbs and messages to reporters (feedback-triage `decide`, feedback-lifecycle
- * `new`): accept, decline, duplicate and snooze are each a transition refused by name where it does
- * not apply; a decline and a merge each tell their reporters once; a message goes to the audience its
+ * Triage verbs and messages to reporters (Feedback triage r16 `decide`, Feedback lifecycle r14
+ * `new`): decline, duplicate and snooze are each a transition refused by name where it does not apply,
+ * and no verb reaches triaged around the triage checklist; a decline and a merge each tell their reporters once; a message goes to the audience its
  * preview named, with the text the preview showed; an internal note is kept for members and never
  * becomes a notice.
  *
@@ -24,6 +24,7 @@ import {
   testEnv,
 } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
+import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 type Who = 'owner' | 'ann' | 'bo';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
@@ -92,44 +93,12 @@ afterAll(async () => {
   await closeWorld();
 });
 
-describe('accept: a new item is triaged with no route, and a reporter cannot accept', () => {
-  it('moves new to triaged, writes no route, and waits on a person to route it', async () => {
+describe('no verb reaches triaged around the triage checklist (Feedback lifecycle r14 triage-check)', () => {
+  it('serves no accept, which moved an item to triaged with no route and no answers', async () => {
     const fb = await file('ann', 'The board loses my filter');
-    const out = ok(await say('owner', 'POST', item(fb, 'accept'), {})).feedback;
-    expect(out).toMatchObject({ status: 'triaged', route: null });
-    expect(out.waitingOn).toMatchObject({ act: 'route it to work' });
-    expect((out.decisions as Doc[]).at(-1)).toMatchObject({ decision: 'accepted', route: null });
-  });
-
-  it('refuses a second accept, and a decision by a member without feedback.approve', async () => {
-    const fb = await file('ann', 'Accept only once');
-    ok(await say('owner', 'POST', item(fb, 'accept'), {}));
-    expect(refusal(await say('owner', 'POST', item(fb, 'accept'), {}))).toMatchObject({
-      code: 'FEEDBACK_STATUS_INVALID',
-    });
-    const other = await file('ann', 'A member cannot accept');
-    const r = refusal(await say('bo', 'POST', item(other, 'accept'), {}));
-    expect(r.code).toBe('PERMISSION_FORBIDDEN');
-    expect((await read(other)).status).toBe('new');
-  });
-
-  it('links the requirement it names, and refuses one that is not there without accepting', async () => {
-    const req = ok(
-      await say('owner', 'POST', at('/requirements'), {
-        title: 'The board keeps its filter',
-        reason: 'a filter is the reader’s own',
-        criteria: [{ body: 'A reload keeps the filter.' }],
-      }),
-      201,
-    ).key as string;
-    const fb = await file('ann', 'Filter gone after reload');
-    const unknown = refusal(
-      await say('owner', 'POST', item(fb, 'accept'), { requirement: 'REQ-999' }),
-    );
-    expect(unknown.code).toBe('FEEDBACK_TARGET_UNKNOWN');
-    expect((await read(fb)).status, 'a refused accept must leave the item new').toBe('new');
-    const out = ok(await say('owner', 'POST', item(fb, 'accept'), { requirement: req })).feedback;
-    expect(out).toMatchObject({ status: 'triaged', target: { type: 'requirement', key: req } });
+    const r = await say('owner', 'POST', item(fb, 'accept'), {});
+    expect(r.status, JSON.stringify(r.json)).toBe(404);
+    expect((await read(fb)).status).toBe('new');
   });
 });
 
@@ -169,7 +138,7 @@ describe('duplicate: the reporters and evidence read on the original, each told 
     const fb = await file('ann', 'Duplicate of itself');
     expect(
       refusal(
-        await say('owner', 'POST', item(fb, 'triage'), { route: 'duplicate', duplicateOf: fb }),
+        await say('owner', 'POST', item(fb, 'triage'), { answers: TRIAGE_ANSWERS, route: 'duplicate', duplicateOf: fb }),
       ),
     ).toMatchObject({ code: 'FEEDBACK_DUPLICATE_SELF' });
     const gone = await file('bo', 'Declined original');
@@ -177,7 +146,7 @@ describe('duplicate: the reporters and evidence read on the original, each told 
       await say('owner', 'POST', item(gone, 'triage'), { route: 'decline', note: 'Out of scope.' }),
     );
     const r = refusal(
-      await say('owner', 'POST', item(fb, 'triage'), { route: 'duplicate', duplicateOf: gone }),
+      await say('owner', 'POST', item(fb, 'triage'), { answers: TRIAGE_ANSWERS, route: 'duplicate', duplicateOf: gone }),
     );
     expect(r).toMatchObject({ code: 'FEEDBACK_DUPLICATE_OF_DECLINED', path: '/duplicateOf' });
     expect((await read(fb)).status, 'a refused duplicate must leave the item new').toBe('new');
@@ -195,6 +164,7 @@ describe('duplicate: the reporters and evidence read on the original, each told 
     const before = (await bell('bo')).length;
     const out = ok(
       await say('owner', 'POST', item(dup, 'triage'), {
+        answers: TRIAGE_ANSWERS,
         route: 'duplicate',
         duplicateOf: original,
       }),
@@ -285,8 +255,14 @@ describe('snooze: parked out of New until a date, returned by the clock', () => 
         .code,
     ).toBe('FEEDBACK_SNOOZE_REASON_REQUIRED');
     expect((await read(fb)).snoozed, 'a refused snooze must park nothing').toBeNull();
-    const triaged = await file('ann', 'Already accepted');
-    ok(await say('owner', 'POST', item(triaged, 'accept'), {}));
+    const triaged = await file('ann', 'Already routed');
+    ok(
+      await say('owner', 'POST', item(triaged, 'triage'), {
+        answers: TRIAGE_ANSWERS,
+        route: 'answer',
+        answer: 'It is by design.',
+      }),
+    );
     expect(
       refusal(
         await say('owner', 'POST', item(triaged, 'snooze'), { until: later(3), reason: 'later' }),
@@ -338,6 +314,7 @@ describe('messages: an audience, an exact preview, and notes that never reach a 
     dup = await file('bo', 'Accented names are not found');
     ok(
       await say('owner', 'POST', item(dup, 'triage'), {
+        answers: TRIAGE_ANSWERS,
         route: 'duplicate',
         duplicateOf: original,
       }),

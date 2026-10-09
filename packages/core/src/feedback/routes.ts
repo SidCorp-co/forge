@@ -1,7 +1,6 @@
 import {
   CREATE_FEEDBACK_SHAPE,
   createFeedbackRequestSchema,
-  FEEDBACK_ACCEPT_SHAPE,
   FEEDBACK_ATTACHMENT_SHAPE,
   FEEDBACK_CLARIFICATION_SHAPE,
   FEEDBACK_EMPTY_SHAPE,
@@ -15,7 +14,6 @@ import {
   type FeedbackEndpointsResponse,
   type FeedbackMessagePreviewResponse,
   type FeedbackResponse,
-  feedbackAcceptRequestSchema,
   feedbackAttachmentRequestSchema,
   feedbackClarificationRequestSchema,
   feedbackEmptyRequestSchema,
@@ -55,7 +53,7 @@ import {
 } from './service.js';
 import { tellShippedNow } from './tell-shipped.js';
 import { triageFeedback } from './triage.js';
-import { acceptFeedback, snoozeFeedback } from './verbs.js';
+import { snoozeFeedback } from './verbs.js';
 
 export const feedbackRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -181,24 +179,6 @@ feedbackRoutes.post(
         actor: actorOf(c),
         triage: c.req.valid('json'),
         channel: 'web',
-      }),
-    );
-  },
-);
-
-feedbackRoutes.post(
-  '/:id/feedback/:fb/accept',
-  itemParam,
-  strictBody(feedbackAcceptRequestSchema, FEEDBACK_ACCEPT_SHAPE),
-  async (c) => {
-    const { id, fb } = c.req.valid('param');
-    return answer(
-      c,
-      await acceptFeedback({
-        projectId: id,
-        ref: fb,
-        actor: actorOf(c),
-        requirement: c.req.valid('json').requirement,
       }),
     );
   },

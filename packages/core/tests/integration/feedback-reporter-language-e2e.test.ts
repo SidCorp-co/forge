@@ -20,10 +20,15 @@ import {
 } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
+import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
+import { vouchedByPassingCriterion } from '../helpers/loop-close.js';
 
 type Who = 'owner' | 'ann' | 'bo';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
+let ownerToken = '';
+/** What puts back what a test planted, run once the file is done. */
+const onTeardown: (() => void)[] = [];
 const people = {} as Record<Who, string>;
 const at = (path: string) => `/api/projects/${projectId}${path}`;
 const item = (fb: string, act = '') => at(`/feedback/${fb}${act ? `/${act}` : ''}`);
@@ -55,7 +60,7 @@ async function bell(
 
 async function answered(who: Who, title: string): Promise<string> {
   const fb = await file(who, title, 'question');
-  ok(await say('owner', 'POST', item(fb, 'triage'), { route: 'answer', answer: 'Theo thiết kế.' }));
+  ok(await say('owner', 'POST', item(fb, 'triage'), { answers: TRIAGE_ANSWERS, route: 'answer', answer: 'Theo thiết kế.' }));
   return fb;
 }
 
@@ -70,6 +75,7 @@ beforeAll(async () => {
     tokens[who] = await signUserToken(people[who]);
   }
   projectId = (await createTestProject(people.owner)).id;
+  ownerToken = tokens.owner;
   await addProjectMember(projectId, people.ann, 'member');
   await addProjectMember(projectId, people.bo, 'member');
   await seedProjectDocument(projectId, people.owner, {
@@ -83,6 +89,7 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
+  for (const undo of onTeardown) undo();
   await closeWorld();
 });
 
@@ -110,7 +117,7 @@ describe('a reporter reads each notice about their item in their language', () =
     const original = await file('owner', 'Xuất file chậm');
     const fb = await file('bo', 'Xuất file rất chậm');
     ok(
-      await say('owner', 'POST', item(fb, 'triage'), { route: 'duplicate', duplicateOf: original }),
+      await say('owner', 'POST', item(fb, 'triage'), { answers: TRIAGE_ANSWERS, route: 'duplicate', duplicateOf: original }),
     );
     const [n] = await bell('bo', fb);
     expect(n?.title).toBe(`${fb}: Xuất file rất chậm đã được báo trước đó trong ${original}`);
@@ -122,7 +129,7 @@ describe('a reporter reads each notice about their item in their language', () =
   it('message: each reporter of a merged item gets it in their own language, the words as written', async () => {
     const fb = await file('bo', 'Thẻ bị trùng');
     const dup = await file('ann', 'Cards repeat');
-    ok(await say('owner', 'POST', item(dup, 'triage'), { route: 'duplicate', duplicateOf: fb }));
+    ok(await say('owner', 'POST', item(dup, 'triage'), { answers: TRIAGE_ANSWERS, route: 'duplicate', duplicateOf: fb }));
     ok(
       await say('owner', 'POST', item(fb, 'messages'), {
         audience: 'all_reporters',
@@ -140,8 +147,20 @@ describe('a reporter reads each notice about their item in their language', () =
     ]);
   });
 
-  it('auto-verified: told Forge verified it after the window', async () => {
+  it('auto-verified: told Forge verified it from the record after the window', async () => {
     const fb = await answered('bo', 'Vì sao bảng chỉ đọc?');
+    const [row] = (await db.execute(sql`
+      SELECT id FROM feedback WHERE project_id = ${projectId} AND fb_seq = ${seq(fb)}
+    `)) as unknown as { id: string }[];
+    const { unplant } = await vouchedByPassingCriterion({
+      token: ownerToken,
+      projectId,
+      ownerId: people.owner,
+      feedbackId: row?.id as string,
+      seq: 900,
+      sha: '5555555555555555555555555555555555555555',
+    });
+    onTeardown.push(unplant);
     await db.execute(sql`
       UPDATE feedback SET resolved_seen_at = now() - interval '60 days'
        WHERE project_id = ${projectId} AND fb_seq = ${seq(fb)}

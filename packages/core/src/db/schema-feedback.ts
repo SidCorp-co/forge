@@ -27,7 +27,7 @@ import { contractVersions } from './schema-ecosystem.js';
 import { issues } from './schema-issues.js';
 import { pipelineRuns } from './schema-pipeline.js';
 import { projects } from './schema-projects.js';
-import { requirements } from './schema-requirements.js';
+import { requirementCriteria, requirements } from './schema-requirements.js';
 import { suggestions } from './schema-suggestions.js';
 import { projectWorkflows } from './schema-workflows.js';
 
@@ -64,6 +64,14 @@ export const feedback = pgTable(
       onDelete: 'no action',
     }),
     issueId: uuid('issue_id').references((): AnyPgColumn => issues.id, { onDelete: 'no action' }),
+    /**
+     * The business criterion its triage named it violates (Feedback lifecycle r14 triage-check), null
+     * where the triage answered none or none has run. Loop close reads that criterion's verdict.
+     */
+    violatedCriterionId: uuid('violated_criterion_id').references(
+      (): AnyPgColumn => requirementCriteria.id,
+      { onDelete: 'set null' },
+    ),
     releaseRunId: uuid('release_run_id').references((): AnyPgColumn => pipelineRuns.id, {
       onDelete: 'no action',
     }),
@@ -208,6 +216,9 @@ export const feedback = pgTable(
     duplicateIdx: index('feedback_duplicate_of_idx')
       .on(t.duplicateOf)
       .where(sql`duplicate_of IS NOT NULL`),
+    violatedCriterionIdx: index('feedback_violated_criterion_idx')
+      .on(t.violatedCriterionId)
+      .where(sql`violated_criterion_id IS NOT NULL`),
   }),
 );
 

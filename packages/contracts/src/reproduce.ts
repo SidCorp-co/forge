@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import { recordingDiagnosisSchema } from "./feedback.js";
+import { triageAnswersSchema } from "./feedback-triage.js";
 import { PREVIEW_RESERVED_PATH, previewBuildSchema } from "./preview.js";
 import { REASON_PARAGRAPH_MAX } from "./reason-text.js";
 import type { RefusalStatuses } from "./refusal.js";
@@ -433,6 +434,8 @@ export const recordingToolResultSchema = z.strictObject({
 	proposal: z
 		.strictObject({
 			diagnosis: recordingDiagnosisSchema,
+			/** The triage checklist's answers the assistant drafted, which the press sends with the issue route. */
+			answers: triageAnswersSchema,
 			recommended: z.literal(BUILD_THE_FIX),
 			/** Whether the asker may press it now; `why` says what stops them where they may not. */
 			pressable: z.boolean(),

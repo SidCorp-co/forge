@@ -67,9 +67,19 @@ export async function writeEffect(
 ): Promise<EffectWritten> {
   const target = targetOfRow(row);
   if (row.kind === 'feedback_triage' && target.type === 'feedback') {
-    const { dedup: _dedup, ...triage } = SUGGESTION_PAYLOADS.feedback_triage.schema.parse(
-      row.payload,
-    );
+    // a payload proposed before the triage checklist asked its answers no longer parses: it is
+    // refused by name at its accept, never thrown, so the approver reads why and rejects it
+    const parsed = SUGGESTION_PAYLOADS.feedback_triage.schema.safeParse(row.payload);
+    if (!parsed.success) {
+      return {
+        refusals: parsed.error.issues.map((i) => ({
+          code: 'SUGGESTION_PAYLOAD_INVALID',
+          path: `/payload/${i.path.join('/')}`,
+          detail: `This triage proposal no longer fits a triage (${i.message}). Reject it, and propose the triage again with its checklist answers.`,
+        })),
+      };
+    }
+    const { dedup: _dedup, ...triage } = parsed.data;
     const written = await triageIn(tx, {
       projectId,
       row: await feedbackRowIn(tx, projectId, target.id, true),

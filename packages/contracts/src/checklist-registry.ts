@@ -3,6 +3,14 @@
 // registry does not hold, or one whose `gates` is another edge.
 
 import { type Checklist, defineChecklist } from "./checklists.js";
+import {
+	FEEDBACK_KIND_LABELS,
+	FEEDBACK_KINDS,
+	FEEDBACK_ROUTE_LABELS,
+	FEEDBACK_ROUTES,
+	FEEDBACK_SEVERITIES,
+	FEEDBACK_SEVERITY_LABELS,
+} from "./feedback-terms.js";
 
 /** Issue lifecycle r12, step ready-check: what an issue answers before it opens. */
 export const ISSUE_READY_CHECKLIST = defineChecklist({
@@ -54,8 +62,80 @@ export const ISSUE_READY_CHECKLIST = defineChecklist({
 	],
 });
 
+const options = <V extends string>(values: readonly V[], labels: Record<V, string>) =>
+	values.map((value) => ({ value, label: labels[value] }));
+
+/** The answer a triage gives to "Which business criterion does it violate, or none?" when it names none. */
+export const NO_CRITERION = "none";
+
+/**
+ * Feedback lifecycle r14, step triage-check (Feedback triage r16, step check): what a feedback item
+ * answers before it is triaged. Kind and requirement are the item's own; a triage corrects the kind
+ * with `kind`, and the requirement by retargeting the item or naming a criterion. Short form (BC-6):
+ * a bug naming a criterion needs only that criterion, the reproduction and the severity, since the
+ * requirement is the criterion's and the route is an issue (`feedback-triage.ts:triageAnswersOf`).
+ */
+export const FEEDBACK_TRIAGE_CHECKLIST = defineChecklist({
+	id: "feedback_triage",
+	title: "Feedback triage",
+	gates: { machine: "feedback", from: ["new", "reopened"], to: "triaged" },
+	design: { flow: "feedback-lifecycle", revision: 14, step: "triage-check" },
+	shapes: ["641ec09f"],
+	questions: [
+		{
+			id: "kind",
+			prompt: "Is it a bug, a change request, a question, an idea or a contract change?",
+			fix: "Correct what it is with the triage.",
+			answer: { kind: "choice", options: options(FEEDBACK_KINDS, FEEDBACK_KIND_LABELS) },
+			answeredBy: { by: "record", field: "kind", label: "reported type" },
+			need: { blocking: true },
+		},
+		{
+			id: "requirement",
+			prompt: "Which requirement is it about, or none?",
+			fix: "Retarget the item to the requirement it is about, or name the criterion it violates.",
+			answer: { kind: "text", maxLength: 200 },
+			answeredBy: { by: "record", field: "requirementId", label: "target or violated criterion" },
+			need: { blocking: true },
+		},
+		{
+			id: "criterion",
+			prompt: "Which business criterion does it violate, or none?",
+			fix: `Name it as REQ-n BC-m, or answer "${NO_CRITERION}".`,
+			answer: { kind: "text", maxLength: 200 },
+			answeredBy: { by: "mover" },
+			need: { blocking: true },
+		},
+		{
+			id: "severity",
+			prompt: "How severe is it?",
+			fix: "Pick low, medium, high or critical.",
+			answer: { kind: "choice", options: options(FEEDBACK_SEVERITIES, FEEDBACK_SEVERITY_LABELS) },
+			answeredBy: { by: "mover" },
+			need: { blocking: true },
+		},
+		{
+			id: "reproduced",
+			prompt: "Was it reproduced, and with what evidence?",
+			fix: "Say how it was reproduced and what shows it, or why it could not be.",
+			answer: { kind: "text", maxLength: 2000 },
+			answeredBy: { by: "mover" },
+			need: { blocking: true },
+		},
+		{
+			id: "route",
+			prompt: "Which route does it take?",
+			fix: "Pick issue, revision, new requirement, answer or duplicate.",
+			answer: { kind: "choice", options: options(FEEDBACK_ROUTES, FEEDBACK_ROUTE_LABELS) },
+			answeredBy: { by: "mover" },
+			need: { blocking: true },
+		},
+	],
+});
+
 export const CHECKLISTS = {
 	issue_ready: ISSUE_READY_CHECKLIST,
+	feedback_triage: FEEDBACK_TRIAGE_CHECKLIST,
 } as const satisfies Readonly<Record<string, Checklist>>;
 
 export type ChecklistId = keyof typeof CHECKLISTS;

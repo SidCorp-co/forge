@@ -1,8 +1,9 @@
 /**
- * Anyone confirms a fix, and Forge confirms it for them when nobody does (owner, 2026-10-07): any
- * member may verify a resolved item and the decision names them; a sweep dates the first time an item
- * reads resolved, verifies it by the system once the project's window has run, tells its reporter
- * once, and leaves an item still inside its window alone; the BA's Needs you holds no verify row.
+ * Anyone confirms a fix (owner, 2026-10-07): any member may verify a resolved item and the decision
+ * names them; a sweep dates the first time an item reads resolved, and once the project's window has
+ * run it is verified only where the record says the problem is gone (Feedback lifecycle r14
+ * loop-check; `feedback-triage-checklist-e2e.test.ts` proves that case), never assumed gone; an item
+ * still inside its window is left alone; the BA's Needs you holds no verify row.
  */
 
 import { sql } from 'drizzle-orm';
@@ -21,6 +22,7 @@ import {
 } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
 import { ago, feedback, issue, world } from '../helpers/forecast-world.js';
+import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 type Who = 'owner' | 'ann' | 'bo';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
@@ -41,7 +43,7 @@ async function resolved(who: Who, title: string): Promise<string> {
     201,
   ).feedback.key as string;
   ok(
-    await say('owner', 'POST', item(fb, 'triage'), { route: 'answer', answer: 'It is by design.' }),
+    await say('owner', 'POST', item(fb, 'triage'), { answers: TRIAGE_ANSWERS, route: 'answer', answer: 'It is by design.' }),
   );
   return fb;
 }
@@ -115,8 +117,8 @@ describe('any member confirms a fix, and the record says who and when', () => {
   });
 });
 
-describe('Forge verifies an item nobody confirmed, once its window has run', () => {
-  it('dates the first sighting, then verifies by the system past the window, and tells the reporter once', async () => {
+describe('Forge answers for an item nobody confirmed only from the record, once its window has run', () => {
+  it('dates the first sighting, and past the window leaves an item no criterion vouches for to a person', async () => {
     const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
     const fb = await resolved('ann', 'Is the export meant to skip blanks?');
     const first = await sweepResolvedFeedback();
@@ -127,25 +129,14 @@ describe('Forge verifies an item nobody confirmed, once its window has run', () 
 
     await seen(fb, 8);
     const before = (await bell('ann')).length;
-    expect((await sweepResolvedFeedback()).verified).toBe(1);
+    const past = await sweepResolvedFeedback();
+    expect(past).toMatchObject({ verified: 0 });
+    expect(past.held).toBeGreaterThanOrEqual(1);
     const out = await read(fb);
-    expect(out.status).toBe('verified');
-    expect(out.verified).toMatchObject({
-      how: 'automatic',
-      by: null,
-      reason: 'Verified automatically after 7 days with no reply',
-    });
-    expect((out.decisions as Doc[]).at(-1)).toMatchObject({
-      decision: 'verified',
-      decidedBy: null,
-      decidedAgency: 'system',
-    });
-    const notices = (await bell('ann')).slice(before);
-    expect(notices).toHaveLength(1);
-    expect(notices[0]?.body).toContain('Verified automatically after 7 days with no reply');
-    expect((await sweepResolvedFeedback()).verified, 'a verified item is not verified twice').toBe(
-      0,
-    );
+    expect(out.status, 'its triage named no criterion, so nothing says the problem is gone').toBe('triaged');
+    expect(out.phase).toBe('resolved');
+    expect(out.can).toMatchObject({ verify: true });
+    expect((await bell('ann')).slice(before)).toEqual([]);
   });
 
   it('leaves an item still inside its window, however recently it was last swept', async () => {

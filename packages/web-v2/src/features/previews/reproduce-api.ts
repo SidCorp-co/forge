@@ -4,6 +4,7 @@
 // recommended answer, which is the item's own issue route.
 
 import type { RecordingDiagnosis } from "@forge/contracts/feedback";
+import type { TriageAnswers } from "@forge/contracts/feedback-triage";
 import { PREVIEW_ROUTES, type PreviewRecord, previewEnvelopeSchema } from "@forge/contracts/preview";
 import {
   type ConfirmFixResponse,
@@ -47,9 +48,9 @@ export const reproduceApi = {
     read("POST confirm", confirmFixResponseSchema, await send(PREVIEW_ROUTES.confirm, { id: previewId }, "POST", verdict === "fixed" ? { verdict } : { verdict, note })),
 
   /** The recommended answer to a diagnosis: the item's issue route, carrying the cause and the fix, as the person who presses it. */
-  buildTheFix: (projectId: string, feedback: string, diagnosis: RecordingDiagnosis): Promise<Triaged> =>
+  buildTheFix: (projectId: string, feedback: string, diagnosis: RecordingDiagnosis, answers: TriageAnswers): Promise<Triaged> =>
     apiClient<Triaged>(`/projects/${encodeURIComponent(projectId)}/feedback/${encodeURIComponent(feedback)}/triage`, {
       method: "POST",
-      body: JSON.stringify({ route: "issue", diagnosis }),
+      body: JSON.stringify({ route: "issue", diagnosis, answers }),
     }),
 };

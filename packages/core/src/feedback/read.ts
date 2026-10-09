@@ -122,7 +122,6 @@ function canOf(i: {
     askVerify: approver && i.userId !== row.reportedBy && phase === 'resolved',
     redact: holds(facts, 'feedback.redact') && row.redactedAt === null,
     retarget: approver && row.contractVersion === null,
-    accept: approver && untriaged,
     snooze: approver && untriaged,
     message: approver,
     note: i.canSeeNotes,

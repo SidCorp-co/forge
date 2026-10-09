@@ -53,6 +53,7 @@ import {
   membershipRoutes,
 } from './ecosystem/routes.js';
 import { issueLaneRoutes } from './fast-lane/routes.js';
+import { feedbackChecklistRoutes } from './feedback/checklist-routes.js';
 import { feedbackRoutes } from './feedback/routes.js';
 import { forecastRoutes } from './forecast/index.js';
 import { guideRoutes } from './guides/routes.js';
@@ -220,6 +221,7 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api/projects', projectPreviewRoutes);
   app.route('/api/projects', projectRoomRoutes);
   app.route('/api/projects', feedbackRoutes);
+  app.route('/api/projects', feedbackChecklistRoutes);
   app.route('/api/projects', mockupRoutes);
   app.route('/api/projects', baDoorRoutes);
   app.route('/api/projects', onboardingRoutes);

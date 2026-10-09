@@ -20,6 +20,7 @@ import {
 } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, rows, seedIssueStatus } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
+import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 let say: (who: 'owner', method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
@@ -161,7 +162,7 @@ describe("a feedback item's History reads the person's reason on a triage a sugg
         kind: 'feedback_triage',
         feedback: fb,
         baseRevision: null,
-        payload: { route: 'issue', issue: carrier, note: 'the same crash as the save bug' },
+        payload: { answers: TRIAGE_ANSWERS, route: 'issue', issue: carrier, note: 'the same crash as the save bug' },
       }),
       201,
     ).suggestion.id as string;
@@ -183,7 +184,7 @@ describe("a feedback item's History reads the person's reason on a triage a sugg
       await as('POST', '/feedback', { kind: 'bug', title: 'Columns vanish', screen: 'The board' }),
       201,
     ).feedback.key as string;
-    ok(await as('POST', `/feedback/${direct}/triage`, { route: 'issue', issue: carrier }));
+    ok(await as('POST', `/feedback/${direct}/triage`, { answers: TRIAGE_ANSWERS, route: 'issue', issue: carrier }));
     const [decision] = ok(await as('GET', `/feedback/${direct}`)).feedback.decisions as Doc[];
     expect(decision).toMatchObject({ fromSuggestionId: null, acceptReason: null });
   });

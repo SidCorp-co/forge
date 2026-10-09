@@ -1,6 +1,7 @@
 /**
  * The guards of feedback as pure functions over what the service read: workflows
- * `feedback-lifecycle`, `feedback-triage` r4 and requirement-to-delivery (`triage`, `route`). The phase a reader sees is the read model's (`standing.ts:phaseOf`).
+ * `feedback-lifecycle` r14, `feedback-triage` r16 and requirement-to-delivery (`triage`, `route`); the
+ * triage checklist's own rules are `triage-checklist.ts`. The phase a reader sees is the read model's (`standing.ts:phaseOf`).
  */
 
 import type {
@@ -155,8 +156,7 @@ export function declineRefusal(
   return null;
 }
 
-// verify follows resolved and nothing else: feedback is never verified automatically, and
-// never before its fix shipped (FEEDBACK_NOT_RESOLVED)
+// verify follows resolved and nothing else: never before its fix shipped (FEEDBACK_NOT_RESOLVED)
 export function verifyRefusal(phase: FeedbackPhase): FeedbackRefusal | null {
   if (phase === 'resolved') return null;
   return refusal(
@@ -372,13 +372,17 @@ function carrierFitRefusal(
   return null;
 }
 
-// step triage (feedback-triage r4 `decide`): the route is written in the triage act, so the triage
-// names what carries it; an issue route naming neither carrier files a draft, a decline carries its reason
-export function routeShapeRefusal(t: FeedbackTriage): FeedbackRefusal | null {
+// step triage (feedback-triage r16 `decide`): the route is written in the triage act, so the triage
+// names what carries it; an issue route naming neither carrier files a draft, a decline carries its
+// reason. `route` is the one the act takes: the one it sent, or the issue route of the short form
+export function routeShapeRefusal(
+  t: FeedbackTriage,
+  route: FeedbackTriageRoute,
+): FeedbackRefusal | null {
   const named = carriersNamed(t);
-  const fit = carrierFitRefusal(t.route, named);
+  const fit = carrierFitRefusal(route, named);
   if (fit) return fit;
-  if (t.route === 'decline') {
+  if (route === 'decline') {
     return t.note?.trim()
       ? null
       : refusal(
@@ -387,19 +391,19 @@ export function routeShapeRefusal(t: FeedbackTriage): FeedbackRefusal | null {
           'a declined item says why in `note`; the reporter reads the reason.',
         );
   }
-  if (named.length === 1 || t.route === 'issue') return null;
-  if (t.route === 'answer') {
+  if (named.length === 1 || route === 'issue') return null;
+  if (route === 'answer') {
     return refusal(
       'FEEDBACK_ANSWER_MISSING',
       '/answer',
       'route answer carries the answer the reporter reads.',
     );
   }
-  const own = CARRIERS[t.route] as readonly string[];
+  const own = CARRIERS[route] as readonly string[];
   return refusal(
     'FEEDBACK_ROUTE_INCOMPLETE',
     `/${own[0]}`,
-    `route ${t.route} is written in the triage act; name what carries it with ${own.map((k) => `\`${k}\``).join(' or ')}.`,
+    `route ${route} is written in the triage act; name what carries it with ${own.map((k) => `\`${k}\``).join(' or ')}.`,
   );
 }
 
@@ -411,8 +415,9 @@ export interface RouteFacts {
   routedRequirement: { key: string; status: string } | null;
 }
 
-// step triage: a person picks the route and no rule keyed on kind picks it, except that a contract
-// change takes the issue route (FEEDBACK_ROUTE_TARGET_MISMATCH); the route must also fit the target
+// Feedback triage r16 `decide`: the route must fit the answers and the target. A contract change
+// takes the issue route (FEEDBACK_ROUTE_TARGET_MISMATCH), and a bug against a named criterion the
+// issue route of the short form (`triage-checklist.ts:shortFormRouteRefusal`)
 export function routeRuleRefusal(
   route: FeedbackTriageRoute,
   f: RouteFacts,

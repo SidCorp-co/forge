@@ -4,16 +4,6 @@ import type { FeedbackPhase, FeedbackStatus } from '@forge/contracts/feedback';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 import { type FeedbackRefusal, refusal } from './rules.js';
 
-/** Accepting moves a new or reopened item to triaged and writes no route. */
-export function acceptRefusal(phase: FeedbackPhase): FeedbackRefusal | null {
-  if (phase === 'new' || phase === 'reopened') return null;
-  return refusal(
-    'FEEDBACK_STATUS_INVALID',
-    '/status',
-    `the item reads ${phase}; only a new or reopened item is accepted. Route it, or ask for what it still lacks.`,
-  );
-}
-
 /** A snooze is a reason and a future date within the limit, on an item still waiting in New. */
 export function snoozeRefusal(
   phase: FeedbackPhase,

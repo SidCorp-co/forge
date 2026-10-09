@@ -27,6 +27,7 @@ import {
   rows,
 } from '../helpers/factories.js';
 import { DRAWN } from '../helpers/requirement-picture-world.js';
+import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 type Who =
   | 'person'
@@ -195,6 +196,7 @@ describe('a chat door cannot file an issue, by any route that reaches the insert
     const before = await issueCount();
     const r = refusalOf(
       await say('approvingChat', 'POST', at(`/feedback/${fb}/triage`), {
+        answers: TRIAGE_ANSWERS,
         route: 'issue',
         createIssue: { complexity: 's' },
       }),

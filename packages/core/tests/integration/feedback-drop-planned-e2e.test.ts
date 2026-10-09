@@ -24,6 +24,7 @@ import {
   rows,
   seedIssueStatus,
 } from '../helpers/factories.js';
+import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 type Who = 'owner' | 'member';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
@@ -47,7 +48,7 @@ async function planned(title: string): Promise<{ fb: string; issue: string; issu
   const fb = made.feedback.key as string;
   const made2 = ok(await say('owner', 'POST', at('/issues'), { title: `Fix: ${title}` }), 201);
   const issue = made2.displayId as string;
-  ok(await say('owner', 'POST', item(fb, 'triage'), { route: 'issue', issue }));
+  ok(await say('owner', 'POST', item(fb, 'triage'), { answers: TRIAGE_ANSWERS, route: 'issue', issue }));
   return { fb, issue, issueId: made2.id as string };
 }
 
@@ -82,7 +83,7 @@ describe('a planned item can be dropped with a reason', () => {
   it('refuses every route but decline for a planned item, naming why', async () => {
     const { fb } = await planned('Only decline is open');
     const again = refusal(
-      await say('owner', 'POST', item(fb, 'triage'), { route: 'issue', createIssue: {} }),
+      await say('owner', 'POST', item(fb, 'triage'), { answers: TRIAGE_ANSWERS, route: 'issue', createIssue: {} }),
     );
     expect(again.code).toBe('FEEDBACK_STATUS_INVALID');
     expect(again.detail).toContain('use the decline route with a reason');

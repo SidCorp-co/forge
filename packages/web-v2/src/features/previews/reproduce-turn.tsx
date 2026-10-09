@@ -101,7 +101,8 @@ function ReproduceRead({ read, slug }: { read: RecordingToolResult; slug?: strin
 function Diagnosis({ read, proposal, slug }: { read: RecordingToolResult; proposal: NonNullable<RecordingToolResult["proposal"]>; slug?: string | undefined }) {
   const t = useCopy();
   const fb = read.feedback.key;
-  const press = useMutation({ mutationFn: () => reproduceApi.buildTheFix(read.projectId, fb, proposal.diagnosis) });
+  const press = useMutation({ mutationFn: () => reproduceApi.buildTheFix(read.projectId, fb, proposal.diagnosis, proposal.answers) });
+  const answered = (["criterion", "severity", "reproduced"] as const).filter((q) => proposal.answers[q]);
   const carrier = press.data?.feedback.route?.carriers[0]?.key ?? null;
   return (
     <div className="grid gap-1.5" data-testid="turn-diagnosis">
@@ -113,6 +114,12 @@ function Diagnosis({ read, proposal, slug }: { read: RecordingToolResult; propos
         <span className="fg-label">{t("previews.diagnosis.fix")}. </span>
         {proposal.diagnosis.fix}
       </p>
+      {answered.map((q) => (
+        <p key={q} className="fg-body-sm" data-testid={`turn-diagnosis-${q}`}>
+          <span className="fg-label">{t(`previews.diagnosis.${q}`)}. </span>
+          {proposal.answers[q]}
+        </p>
+      ))}
       {press.isSuccess ? (
         <p role="status" className="fg-body-sm text-fg" data-testid="turn-diagnosis-done">
           {t("previews.diagnosis.done", { fb, issue: carrier ?? "" })}

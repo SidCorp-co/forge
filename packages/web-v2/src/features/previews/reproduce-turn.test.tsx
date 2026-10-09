@@ -112,21 +112,25 @@ describe("the recording a turn read, under its reply", () => {
         ? { body: { feedback: { key: "FB-52", route: { route: "issue", carriers: [{ key: "ISS-7", status: "draft" }], answer: null } } } }
         : undefined,
     );
-    renderWithQuery(<TurnReproduce blocks={blocks(read({ diagnosis, recommended: BUILD_THE_FIX, pressable: true, why: null }))} slug="shop" />);
+    const answers = { criterion: "REQ-4 BC-2", severity: "high", reproduced: "Recording rec-1: Save posts the order with no currency." };
+    renderWithQuery(<TurnReproduce blocks={blocks(read({ diagnosis, answers, recommended: BUILD_THE_FIX, pressable: true, why: null }))} slug="shop" />);
     const card = screen.getByTestId("turn-diagnosis");
     expect(card).toHaveTextContent("Cause. Save posts the order without its currency.");
     expect(card).toHaveTextContent("Fix. Send the selected currency with the order.");
+    expect(card).toHaveTextContent("Criterion. REQ-4 BC-2");
+    expect(card).toHaveTextContent("Severity. high");
     expect(card).toHaveTextContent("Recommended");
     fireEvent.click(screen.getByRole("button", { name: "Build the fix, ask the reporter to confirm" }));
     expect(await screen.findByTestId("turn-diagnosis-done")).toHaveTextContent("Routed FB-52 to ISS-7. Its run builds the fix");
-    expect(calls[0]?.body).toEqual({ route: "issue", diagnosis });
+    // the press is a triage like any other door's: the route with the checklist's answers (REQ-34 BC-2)
+    expect(calls[0]?.body).toEqual({ route: "issue", diagnosis, answers });
   });
 
   it("does not let a person press what they may not do, and says why", () => {
     fakeCore(() => undefined);
     renderWithQuery(
       <TurnReproduce
-        blocks={blocks(read({ diagnosis, recommended: BUILD_THE_FIX, pressable: false, why: "FB-52 reads triaged: a route is picked by a holder of feedback.approve" }))}
+        blocks={blocks(read({ diagnosis, answers: {}, recommended: BUILD_THE_FIX, pressable: false, why: "FB-52 reads triaged: a route is picked by a holder of feedback.approve" }))}
         slug="shop"
       />,
     );

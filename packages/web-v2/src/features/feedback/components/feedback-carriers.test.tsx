@@ -10,7 +10,7 @@ import type { FeedbackView } from "../types";
 import { FeedbackActions, issueKeysOf } from "./feedback-actions";
 import { FeedbackFacts } from "./feedback-facts";
 
-const NONE = { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, accept: false, snooze: false, message: false, tellShipped: false, note: false, attach: false };
+const NONE = { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false };
 
 const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
   ({
@@ -129,7 +129,7 @@ describe("linking issues in the triage", () => {
     expect(calls.find((c) => c.method === "POST")).toEqual({
       method: "POST",
       path: "/projects/p1/feedback/FB-1/triage",
-      body: { route: "issue", issue: ["ISS-4", "ISS-7"] },
+      body: { route: "issue", issue: ["ISS-4", "ISS-7"], answers: { severity: "medium" } },
     });
   });
 });

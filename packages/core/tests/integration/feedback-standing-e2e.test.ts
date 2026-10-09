@@ -17,6 +17,7 @@ import {
   createTestUser,
   seedIssueStatus,
 } from '../helpers/factories.js';
+import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 type Who = 'owner' | 'member' | 'viewer' | 'box';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
@@ -184,6 +185,7 @@ describe('with a live master, every untriaged item is owed to it, most severe fi
 describe('a high item is triaged onto an issue', () => {
   it('refuses a triage from a member who lacks feedback.approve', async () => {
     const res = await say('member', 'POST', at(`/${ids.high}/triage`), {
+      answers: TRIAGE_ANSWERS,
       route: 'issue',
       createIssue: { complexity: 's' },
     });
@@ -193,6 +195,7 @@ describe('a high item is triaged onto an issue', () => {
   it('files the carrier issue with the bands the triage names', async () => {
     ok(
       await say('owner', 'POST', at(`/${ids.high}/triage`), {
+        answers: TRIAGE_ANSWERS,
         route: 'issue',
         createIssue: { complexity: 's', category: 'bug', priority: 'high' },
       }),

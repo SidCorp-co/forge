@@ -11,7 +11,7 @@ import { FeedbackPeek } from "@/features/feedback/components/feedback-peek";
 import { MessagePreview } from "@/features/feedback/components/feedback-messages";
 import { RetargetEditor } from "@/features/feedback/components/feedback-retarget";
 import { FeedbackScreen } from "@/features/feedback/components/feedback-screen";
-import { AcceptForm, DeclineForm, DuplicateForm, SnoozeForm } from "@/features/feedback/components/feedback-verbs";
+import { DeclineForm, DuplicateForm, SnoozeForm } from "@/features/feedback/components/feedback-verbs";
 import type { FeedbackSummary, FeedbackView } from "@/features/feedback/types";
 import { useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { Seeded as SeededQueries } from "./vi-chrome-requirements";
@@ -27,7 +27,7 @@ const AT = "2026-10-05T08:00:00.000Z";
 const LAN = say("standing.who.named", { name: "Lan" });
 /** A reason core sends as English beside what it said. */
 const noted = (s: Said) => ({ reason: sentence(s), says: { reason: s } });
-const CAN = { triage: true, verify: true, reopen: true, askVerify: true, redact: true, retarget: true, accept: true, snooze: true, message: true, tellShipped: false, note: true, attach: true };
+const CAN = { triage: true, verify: true, reopen: true, askVerify: true, redact: true, retarget: true, snooze: true, message: true, tellShipped: false, note: true, attach: true };
 
 const summary = (n: number, over: Partial<FeedbackSummary> = {}): FeedbackSummary =>
   ({
@@ -187,7 +187,6 @@ export const feedbackFilingForm = () => (
 
 export const feedbackForms = () => (
   <Seeded>
-    <AcceptForm projectId={P} f={ITEM} done={() => {}} />
     <DeclineForm projectId={P} f={ITEM} done={() => {}} />
     <DuplicateForm projectId={P} f={ITEM} done={() => {}} />
     <SnoozeForm projectId={P} f={ITEM} done={() => {}} />

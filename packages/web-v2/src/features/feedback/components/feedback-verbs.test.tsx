@@ -1,6 +1,7 @@
-// Triage in four verbs and messages to reporters: each verb opens one form that sends exactly what core
-// takes; a message previews the exact notice before it is sent; an internal note is marked and says it
-// is never sent; the fix's confirmation names who and when, or that Forge confirmed it.
+// Triage verbs and messages to reporters: each verb opens one form that sends exactly what core takes,
+// a route with the triage checklist's answers; a message previews the exact notice before it is sent;
+// an internal note is marked and says it is never sent; the fix's confirmation names who and when, or
+// that Forge confirmed it.
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,7 +15,7 @@ import { TriageVerbs, snoozeUntil } from "./feedback-verbs";
 
 afterEach(() => vi.unstubAllGlobals());
 
-const CAN = { triage: true, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, accept: true, snooze: true, message: true, tellShipped: false, note: true, attach: false };
+const CAN = { triage: true, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: true, message: true, tellShipped: false, note: true, attach: false };
 const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
   ({
     id: "f1",
@@ -59,31 +60,61 @@ const core = (reply: (c: { method: string; path: string; body?: unknown }) => { 
   fakeCore((c) => reply(c) ?? (c.path === "/projects/p1/feedback" ? { body: LISTS } : c.path === "/projects/p1/requirements" ? { body: { requirements: [{ key: "REQ-3", title: "The board keeps its filter" }] } } : { body: { feedback: view() } }));
 const posts = <T extends { method: string }>(calls: T[]) => calls.filter((c) => c.method === "POST");
 
-describe("the four verbs", () => {
-  it("offers Accept, Decline, Duplicate and Snooze on a new item, and none where core says it may not", () => {
+const CRITERION = "Which business criterion does it violate, or none?";
+const REPRODUCED = "Was it reproduced, and with what evidence?";
+
+describe("the triage verbs", () => {
+  it("offers Decline, Duplicate and Snooze on a new item, never Accept, and none where core says it may not", () => {
     core();
     const { unmount } = renderWithQuery(<TriageVerbs projectId="p1" f={view()} />);
-    for (const name of ["Accept", "Decline", "Duplicate of…", "Snooze…"]) expect(screen.getByRole("button", { name })).toBeTruthy();
+    for (const name of ["Decline", "Duplicate of…", "Snooze…"]) expect(screen.getByRole("button", { name })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
     unmount();
-    renderWithQuery(<TriageVerbs projectId="p1" f={view({ can: { ...CAN, accept: false } })} />);
+    renderWithQuery(<TriageVerbs projectId="p1" f={view({ can: { ...CAN, snooze: false } })} />);
     expect(screen.queryByTestId("feedback-verbs")).toBeNull();
   });
 
-  it("accepts as it stands, or linked to the requirement picked by title", async () => {
+  // REQ-34 BC-2: the web door sends the triage checklist's answers with the route, as every door does
+  it("routes with the checklist's answers, its severity starting at the item's", async () => {
     const calls = core();
-    renderWithQuery(<TriageVerbs projectId="p1" f={view()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
-    fireEvent.click(within(screen.getByTestId("verb-accept")).getByRole("button", { name: "Accept" }));
-    await waitFor(() => expect(posts(calls)).toEqual([{ method: "POST", path: "/projects/p1/feedback/FB-4/accept", body: {} }]));
+    renderWithQuery(<FeedbackActions projectId="p1" f={view()} />);
+    const triage = screen.getByTestId("feedback-triage");
+    fireEvent.change(within(triage).getByRole("textbox", { name: CRITERION }), { target: { value: " REQ-3 BC-2 " } });
+    fireEvent.change(within(triage).getByRole("textbox", { name: REPRODUCED }), { target: { value: "On dev.220 the filter resets on reload." } });
+    fireEvent.click(within(triage).getByRole("button", { name: "Route it" }));
+    await waitFor(() =>
+      expect(posts(calls)).toEqual([
+        {
+          method: "POST",
+          path: "/projects/p1/feedback/FB-4/triage",
+          body: { route: "issue", createIssue: {}, answers: { severity: "medium", criterion: "REQ-3 BC-2", reproduced: "On dev.220 the filter resets on reload." } },
+        },
+      ]),
+    );
   });
 
-  it("names an unmatched requirement and sends nothing", async () => {
+  it("shows each refusal core names on the question it names", async () => {
+    const detail = "Was it reproduced, and with what evidence? It has no answer yet. Say how it was reproduced and what shows it, or why it could not be.";
+    core((c) =>
+      c.method === "POST"
+        ? { status: 422, body: { status: 422, code: "CHECKLIST_INCOMPLETE", detail, error: { code: "CHECKLIST_INCOMPLETE", message: detail, refusals: [{ code: "CHECKLIST_INCOMPLETE", path: "/answers/reproduced", detail }] } } }
+        : undefined,
+    );
+    renderWithQuery(<FeedbackActions projectId="p1" f={view()} />);
+    const triage = screen.getByTestId("feedback-triage");
+    fireEvent.click(within(triage).getByRole("button", { name: "Route it" }));
+    const field = within(triage).getByRole("textbox", { name: REPRODUCED });
+    await waitFor(() => expect(field.getAttribute("aria-describedby")).toBeTruthy());
+    expect(document.getElementById(field.getAttribute("aria-describedby") as string)?.textContent).toContain(detail);
+  });
+
+  it("sends a duplicate with its answers, and a decline with none", async () => {
     const calls = core();
     renderWithQuery(<TriageVerbs projectId="p1" f={view()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Requirement" }), { target: { value: "Nothing like it" } });
-    await screen.findByTestId("verb-unmatched");
-    expect(within(screen.getByTestId("verb-accept")).getByRole("button", { name: "Accept" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Duplicate of…" }));
+    expect(within(screen.getByTestId("verb-duplicate")).getByTestId("triage-answers")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+    expect(within(screen.getByTestId("verb-decline")).queryByTestId("triage-answers")).toBeNull();
     expect(posts(calls)).toEqual([]);
   });
 
@@ -103,7 +134,7 @@ describe("the four verbs", () => {
   // QA of dev.219: FB-110 read planned (an issue carries it) and had no control to drop it.
   it("offers Drop on a planned item, and drops it with its reason through the decline route", async () => {
     const calls = core();
-    renderWithQuery(<FeedbackActions projectId="p1" f={view({ phase: "planned", status: "triaged", can: { ...CAN, triage: false, accept: false, drop: true } })} />);
+    renderWithQuery(<FeedbackActions projectId="p1" f={view({ phase: "planned", status: "triaged", can: { ...CAN, triage: false, drop: true } })} />);
     expect(screen.queryByTestId("feedback-triage")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Drop it" }));
     const go = within(screen.getByTestId("verb-drop")).getByRole("button", { name: "Decline" });
@@ -117,7 +148,7 @@ describe("the four verbs", () => {
 
   it("offers no Drop where core says the item cannot be dropped", () => {
     core();
-    renderWithQuery(<FeedbackActions projectId="p1" f={view({ phase: "resolved", status: "triaged", can: { ...CAN, triage: false, accept: false, drop: false } })} />);
+    renderWithQuery(<FeedbackActions projectId="p1" f={view({ phase: "resolved", status: "triaged", can: { ...CAN, triage: false, drop: false } })} />);
     expect(screen.queryByTestId("feedback-drop")).toBeNull();
   });
 

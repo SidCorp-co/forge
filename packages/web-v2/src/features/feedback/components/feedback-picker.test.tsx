@@ -12,7 +12,7 @@ import { TriageVerbs } from "./feedback-verbs";
 
 afterEach(() => vi.unstubAllGlobals());
 
-const CAN = { triage: true, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, accept: false, snooze: false, message: false, tellShipped: false, note: false, attach: false };
+const CAN = { triage: true, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false };
 const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
   ({
     id: "f4",
@@ -88,14 +88,14 @@ describe("the duplicate-of picker", () => {
     fireEvent.click(screen.getByRole("button", { name: "Route it" }));
     await waitFor(() =>
       expect(calls.filter((c) => c.method === "POST")).toEqual([
-        { method: "POST", path: "/projects/p1/feedback/FB-4/triage", body: { route: "duplicate", duplicateOf: "FB-12" } },
+        { method: "POST", path: "/projects/p1/feedback/FB-4/triage", body: { route: "duplicate", duplicateOf: "FB-12", answers: { severity: "medium" } } },
       ]),
     );
   });
 
   it("marks the Duplicate of verb with the key picked, with Mark duplicate off until one is", async () => {
     const calls = core();
-    renderWithQuery(<TriageVerbs projectId="p1" f={view({ can: { ...CAN, accept: true } })} />);
+    renderWithQuery(<TriageVerbs projectId="p1" f={view({ can: { ...CAN, snooze: true } })} />);
     fireEvent.click(screen.getByRole("button", { name: "Duplicate of…" }));
     const go = within(screen.getByTestId("verb-duplicate")).getByRole("button", { name: "Mark duplicate" });
     expect(go).toBeDisabled();
@@ -104,7 +104,7 @@ describe("the duplicate-of picker", () => {
     fireEvent.click(go);
     await waitFor(() =>
       expect(calls.filter((c) => c.method === "POST")).toEqual([
-        { method: "POST", path: "/projects/p1/feedback/FB-4/triage", body: { route: "duplicate", duplicateOf: "FB-1" } },
+        { method: "POST", path: "/projects/p1/feedback/FB-4/triage", body: { route: "duplicate", duplicateOf: "FB-1", answers: { severity: "medium" } } },
       ]),
     );
   });
