@@ -10,7 +10,28 @@ export const ADMITTED_RUNNER = sql`
   AND NOT EXISTS (SELECT 1 FROM devices d WHERE d.id = r.device_id AND d.disabled_at IS NOT NULL)
 `;
 
-type RunnerAdmissionReason = 'runner_withdrawn' | 'device_disabled' | 'runner_unbound';
+/**
+ * A box's live credential reaches a project when it is bound to it, lists it, or carries no fence
+ * (FB-78). An onboarding job drawn on a box whose token answers 404 for its project draws every
+ * design, fails every write and is retried as "reported nothing", so only a box that reaches the
+ * project is offered one. Needs `r` (the runner row) in scope.
+ */
+export const BOX_TOKEN_REACHES_PROJECT = sql`EXISTS (
+  SELECT 1 FROM personal_access_tokens t
+  WHERE t.device_id = r.device_id AND t.revoked_at IS NULL
+    AND (t.expires_at IS NULL OR t.expires_at > now())
+    AND (
+      t.bound_project_id = r.project_id
+      OR r.project_id = ANY(t.project_ids)
+      OR (t.bound_project_id IS NULL AND COALESCE(cardinality(t.project_ids), 0) = 0)
+    )
+)`;
+
+type RunnerAdmissionReason =
+  | 'runner_withdrawn'
+  | 'device_disabled'
+  | 'runner_unbound'
+  | 'token_cannot_reach';
 
 type RunnerAdmission = { admitted: true } | { admitted: false; reason: RunnerAdmissionReason };
 
@@ -22,6 +43,7 @@ const WHAT_WAS_WRONG: Record<RunnerAdmissionReason, string> = {
   runner_unbound: 'this device has no runner on the project',
   device_disabled: 'this device is disabled',
   runner_withdrawn: "this device's runner on the project is disabled or draining",
+  token_cannot_reach: "this device's credential does not reach the project, so an onboarding job there could not write a design",
 };
 
 /** Refused before anything is written, so the box is told why rather than shown fewer rows. */
@@ -72,11 +94,21 @@ export async function runnerAdmission(args: {
   deviceId: string;
 }): Promise<RunnerAdmission> {
   const rows = (await db.execute(sql`
-    SELECT j.project_id FROM jobs j WHERE j.id = ${args.jobId} LIMIT 1
-  `)) as unknown as Array<{ project_id: string | null }>;
+    SELECT j.project_id, j.type,
+           EXISTS (
+             SELECT 1 FROM runners r
+             WHERE r.project_id = j.project_id AND r.device_id = ${args.deviceId}
+               AND ${BOX_TOKEN_REACHES_PROJECT}
+           ) AS reaches
+    FROM jobs j WHERE j.id = ${args.jobId} LIMIT 1
+  `)) as unknown as Array<{ project_id: string | null; type: string; reaches: boolean }>;
 
   const job = rows[0];
   if (!job) return { admitted: true };
   if (job.project_id == null) return { admitted: false, reason: 'runner_unbound' };
-  return projectAdmission({ projectId: job.project_id, deviceId: args.deviceId });
+  const admission = await projectAdmission({ projectId: job.project_id, deviceId: args.deviceId });
+  if (admission.admitted && job.type === 'onboarding' && !job.reaches) {
+    return { admitted: false, reason: 'token_cannot_reach' };
+  }
+  return admission;
 }
