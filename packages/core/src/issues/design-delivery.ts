@@ -104,13 +104,17 @@ export function designHoldPhrase(holds: readonly DesignHold[]): string {
  * The issue row aliased `i` is design-only: its merge mark names design artifacts and nothing else
  * (no commit, no read paths), so its deliverable is approved design revisions and no release
  * carries it (REQ-45 BC-4). A release roster skips it; the `design_delivered` edge closes it.
+ *
+ * Always true or false, never NULL: a mark that asserts a merge and names nothing (no commit, no
+ * paths, no artifacts — every mark on a project with no source host) reads NULL off the artifact
+ * tests, and a roster filtering on `NOT` of that NULL would leave every such issue out.
  */
 export function designOnlyMarkSql(i: SQL): SQL {
-  return sql`(${i}.merged_at IS NOT NULL
+  return sql`coalesce((${i}.merged_at IS NOT NULL
     AND ${i}.merged_commit_sha IS NULL
     AND ${i}.merged_paths IS NULL
     AND jsonb_typeof(${i}.merged_artifacts) = 'array'
     AND jsonb_array_length(${i}.merged_artifacts) > 0
     AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(${i}.merged_artifacts) da
-                     WHERE da->>'surface' IS DISTINCT FROM 'design'))`;
+                     WHERE da->>'surface' IS DISTINCT FROM 'design')), false)`;
 }
