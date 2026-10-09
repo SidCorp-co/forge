@@ -3,7 +3,11 @@
 // Drawing or replacing a requirement's picture on its page (REQ-35 BC-10, BC-12; Requirement
 // lifecycle r14 edge `picture.drawn or replaced`): one editor per kind, each with the text
 // alternative a screen reader reads, written by the person. Core judges what is sent; each refusal it
-// names shows in its own words on the field its path names, and one naming no field shows below.
+// names shows in its own words, without its code, on the field its path names, and one naming no field
+// shows below. A
+// refusal of the kind (`/kind`) is the kind field's, which the region above draws. A wireframe is
+// read from the board only once the board has reported its scene, and an empty board is refused
+// here, so a drawn wireframe is never replaced by a board that had not loaded.
 
 import type { ExampleTableContent, PictureKind, RequirementPictureView, WritePictureRequest } from "@forge/contracts/requirement-pictures";
 import { parseWireframe, type WireframeDoc } from "@forge/contracts/wireframe";
@@ -12,10 +16,9 @@ import { type ReactNode, useRef, useState } from "react";
 import { Button, Field, IconButton, Input, NativeSelect, Textarea } from "@/design";
 import { type SceneElement, sceneToWireframe } from "@/features/board/scene-to-wireframe";
 import { namedRefusals } from "@/lib/api/refusals";
-import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { useWriteRequirementPicture } from "../hooks";
+import type { useWriteRequirementPicture } from "../hooks";
 import {
   type ChartDraft,
   chartDraftOf,
@@ -27,6 +30,7 @@ import {
   type PictureField,
   tableRowsOf,
 } from "../picture-model";
+import { plainRefusal } from "./requirement-kind-field";
 
 const BoardEditor = dynamic(() => import("@/features/board/board-editor"), { ssr: false });
 
@@ -53,29 +57,33 @@ function boardOf(p: RequirementPictureView | null): WireframeDoc | null {
   return read.ok ? read.doc : null;
 }
 
+/** The elements a board can hold that a wireframe does not keep, each with its name in the copy. */
+const ELEMENT_NAMED = ["ellipse", "diamond", "line", "image", "frame", "magicframe", "embeddable", "iframe"] as const;
+
+function unsupportedText(type: string, t: Copy): string {
+  const named = ELEMENT_NAMED.find((e) => e === type);
+  const what = named ? t(`requirements.picture.edit.element.${named}`) : t("requirements.picture.edit.element.other", { type });
+  return t("requirements.picture.edit.unsupported", { what });
+}
+
 const BLANK_CHART: ChartDraft = { variant: "bar", xLabel: "", valueLabel: "", rows: [{ label: "", value: "" }] };
 
 export function PictureEditor({
-  projectId,
-  reqKey,
   revision,
   kind,
   picture,
-  linked,
+  save,
   onDone,
 }: {
-  projectId: string;
-  reqKey: string;
   revision: number;
   kind: PictureKind;
   /** The picture it replaces, which the editor opens on; null draws a first one. */
   picture: RequirementPictureView | null;
-  /** A process requirement that links a workflow, whose picture that workflow is. */
-  linked: boolean;
+  /** The picture write, held by the region so a refusal of the kind shows on the kind field. */
+  save: ReturnType<typeof useWriteRequirementPicture>;
   onDone: () => void;
 }) {
   const t = useCopy();
-  const save = useWriteRequirementPicture(projectId, reqKey);
   const own = picture?.kind === kind ? picture : null;
   const [alt, setAlt] = useState(own?.alt ?? "");
   const [title, setTitle] = useState(titleOf(own));
@@ -84,6 +92,7 @@ export function PictureEditor({
   const storedChart = own?.kind === "chart" ? chartDraftOf(own.content as Content<"chart">) : null;
   const [chart, setChart] = useState<ChartDraft>(storedChart ?? BLANK_CHART);
   const scene = useRef<readonly SceneElement[] | null>(null);
+  const [boardShown, setBoardShown] = useState(false);
   const [startBoard] = useState(() => boardOf(own));
   const [local, setLocal] = useState<{ field: PictureField; text: string } | null>(null);
 
@@ -92,7 +101,7 @@ export function PictureEditor({
     local?.field === field ? local.text : refusals.find((r) => fieldOfPath(r.path, kind) === field)?.detail;
   const unplaced = refusals.filter((r) => {
     const f = fieldOfPath(r.path, kind);
-    return f === null || f === "kind" || f === "content" || (f.startsWith("row:") && kind !== "example_table");
+    return f === null || f === "content" || (f.startsWith("row:") && kind !== "example_table");
   });
   const named = title.trim() || undefined;
 
@@ -111,10 +120,13 @@ export function PictureEditor({
         ? { ok: false, field: "content", text: t("requirements.picture.edit.noFigures") }
         : { ok: false, field: f.field, text: t("requirements.picture.edit.nameAxis") };
     }
-    const read = sceneToWireframe(scene.current ?? [], named);
-    if (read.ok) return { ok: true, body: { kind, alt, content: { board: read.doc } } };
-    return { ok: false, field: "board", text: "unsupported" in read ? t("requirements.picture.edit.unsupported", { type: read.unsupported }) : read.invalid };
+    if (!scene.current) return { ok: false, field: "board", text: t("requirements.picture.edit.boardLoading") };
+    const read = sceneToWireframe(scene.current, named);
+    if (!read.ok) return { ok: false, field: "board", text: "unsupported" in read ? unsupportedText(read.unsupported, t) : read.invalid };
+    if (read.doc.shapes.length === 0) return { ok: false, field: "board", text: t("requirements.picture.edit.emptyBoard") };
+    return { ok: true, body: { kind, alt, content: { board: read.doc } } };
   };
+  const waiting = kind === "wireframe" && !boardShown;
 
   const submit = () => {
     const built = build();
@@ -128,7 +140,6 @@ export function PictureEditor({
 
   return (
     <div className="mt-4 grid max-w-[880px] gap-4 border-t border-line-subtle pt-4" data-testid="picture-editor" data-picture={kind}>
-      {linked ? <p className="text-13 text-muted">{t("requirements.picture.edit.linked")}</p> : null}
       <Field label={t("requirements.picture.edit.title")}>
         <Input value={title} onChange={(e) => setTitle(e.target.value)} />
       </Field>
@@ -136,9 +147,15 @@ export function PictureEditor({
       {kind === "example_table" ? <TableFields rows={rows} onRows={setRows} at={at} t={t} /> : null}
       {kind === "chart" ? <ChartFields chart={chart} onChart={setChart} at={at} other={own?.kind === "chart" && !storedChart} t={t} /> : null}
       {kind === "wireframe" ? (
-        <Field label={t("requirements.picture.edit.board")} hint={t("requirements.picture.edit.boardHint")} error={at("board")}>
+        <Field label={t("requirements.picture.edit.board")} hint={t(waiting ? "requirements.picture.edit.boardLoading" : "requirements.picture.edit.boardHint")} error={at("board")}>
           <div className="h-[420px] border border-line-subtle max-md:h-[360px]" data-testid="picture-board-editor">
-            <BoardEditor doc={startBoard} onScene={(els) => (scene.current = els)} />
+            <BoardEditor
+              doc={startBoard}
+              onScene={(els) => {
+                scene.current = els;
+                setBoardShown(true);
+              }}
+            />
           </div>
         </Field>
       ) : null}
@@ -146,9 +163,18 @@ export function PictureEditor({
         <Textarea rows={2} value={alt} onChange={(e) => setAlt(e.target.value)} />
       </Field>
       {local?.field === "content" ? <p role="alert" className="fg-caption text-[color:var(--red-600)]">{local.text}</p> : null}
-      {unplaced.length ? <RefusalLine error={save.error} /> : null}
+      {unplaced.map((r) => (
+        <p key={`${r.code}:${r.path}`} role="alert" className="fg-caption text-[color:var(--red-600)]" data-testid="refusal">
+          {r.detail}
+        </p>
+      ))}
+      {save.error && refusals.length === 0 ? (
+        <p role="alert" className="fg-caption text-[color:var(--red-600)]" data-testid="refusal">
+          {plainRefusal(save.error)}
+        </p>
+      ) : null}
       <div className="flex flex-wrap gap-2">
-        <Button type="button" size="sm" variant="primary" loading={save.isPending} onClick={submit}>
+        <Button type="button" size="sm" variant="primary" loading={save.isPending} disabled={waiting} onClick={submit}>
           {t("requirements.picture.edit.save")}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>

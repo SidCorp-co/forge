@@ -7,28 +7,29 @@
 // flow where it links none; a rule its example table (BC-4); a screen its wireframe, drawn inline;
 // a report its sample chart. Each is labelled a rough sketch (BC-11) and named for a screen reader
 // by its text alternative (BC-12). No picture is an empty slot that nothing waits on (BC-14). A
-// person holding project.write sets the kind and draws or replaces the picture here (BC-10).
+// person holding project.write sets the kind (`requirement-kind-field.tsx`) and draws or replaces the
+// picture here (BC-10); a linked process's picture is its workflow, so nothing is drawn for it. A
+// keyboard user skips past the picture in one step, and the read-only board holds nothing to reach.
 
-import { type ExampleTableContent, PICTURE_KIND_OF, type RequirementKind, type RequirementPictureView } from "@forge/contracts/requirement-pictures";
+import { type ExampleTableContent, PICTURE_KIND_OF, type RequirementPictureView } from "@forge/contracts/requirement-pictures";
 import { parseWireframe } from "@forge/contracts/wireframe";
 import dynamic from "next/dynamic";
-import { type ReactNode, useId, useMemo, useState } from "react";
-import { Button, NativeSelect } from "@/design";
+import { type ReactNode, useId, useMemo, useRef, useState } from "react";
+import { Button } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
 import { BLOCK_RENDERERS } from "@/features/visual-blocks";
-import { RefusalLine } from "@/lib/api/refusal-line";
+import { namedRefusals } from "@/lib/api/refusals";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import { useWriteRequirementKind } from "../hooks";
+import { useWriteRequirementPicture } from "../hooks";
 import { blockOf, shownRevisionOf, tracedWorkflows } from "../picture-model";
 import type { RequirementDetail } from "../types";
 import { Figure } from "./picture-figure";
+import { KindField } from "./requirement-kind-field";
 import { PictureEditor } from "./requirement-picture-editor";
 import { WorkflowPicture } from "./requirement-workflow-picture";
 
 const BoardCanvas = dynamic(() => import("@/features/board/board-canvas"), { ssr: false });
-
-const KINDS = ["process", "rule", "screen", "report"] as const satisfies readonly RequirementKind[];
 
 function DrawnBy({ p }: { p: RequirementPictureView }) {
   const t = useCopy();
@@ -63,8 +64,8 @@ function StoredPicture({ p }: { p: RequirementPictureView }) {
     const read = parseWireframe((p.content as { board: unknown }).board);
     return (
       <Figure alt={p.alt} kind={p.kind} by={by}>
-        <div aria-hidden className="h-[380px] border border-line-subtle max-md:h-[300px]" data-testid="picture-board">
-          {read.ok ? <BoardCanvas doc={read.doc} /> : <p className="p-4 text-13 text-muted">{read.message}</p>}
+        <div aria-hidden inert className="h-[380px] border border-line-subtle max-md:h-[300px]" data-testid="picture-board">
+          {read.ok ? <BoardCanvas doc={read.doc} fit /> : <p className="p-4 text-13 text-muted">{read.message}</p>}
         </div>
       </Figure>
     );
@@ -81,28 +82,6 @@ function StoredPicture({ p }: { p: RequirementPictureView }) {
   );
 }
 
-function KindSelect({ projectId, reqKey, revision, kind }: { projectId: string; reqKey: string; revision: number; kind: RequirementKind | null }) {
-  const t = useCopy();
-  const write = useWriteRequirementKind(projectId, reqKey);
-  return (
-    <div className="grid gap-1">
-      <div className="w-[200px]">
-        <NativeSelect
-          aria-label={t("requirements.picture.edit.kind")}
-          value={kind ?? ""}
-          disabled={write.isPending}
-          onChange={(e) => {
-            const next = KINDS.find((k) => k === e.target.value) ?? null;
-            write.mutate({ revision, kind: next });
-          }}
-          options={[{ value: "", label: t("requirements.picture.edit.kindNone") }, ...KINDS.map((k) => ({ value: k, label: t(`requirements.picture.kind.${k}`) }))]}
-        />
-      </div>
-      <RefusalLine error={write.error} testid="kind-refusal" />
-    </div>
-  );
-}
-
 export function RequirementPicture({ d, projectId, slug, inset }: { d: RequirementDetail; projectId: string; slug: string; inset: string }) {
   const t = useCopy();
   const headingId = useId();
@@ -115,6 +94,13 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
   const picture = rev?.picture ?? null;
   const wanted = kind ? PICTURE_KIND_OF[kind] : null;
   const linked = kind === "process" && traced.length > 0;
+  const save = useWriteRequirementPicture(projectId, d.key);
+  const kindRefused = namedRefusals(save.error).find((r) => r.path === "/kind")?.detail;
+  const end = useRef<HTMLSpanElement>(null);
+  const close = () => {
+    setEditing(false);
+    save.reset();
+  };
 
   let body: ReactNode;
   if (linked) body = <WorkflowPicture projectId={projectId} slug={slug} traced={traced} />;
@@ -129,31 +115,33 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
 
   return (
     <section aria-labelledby={headingId} className={`border-b border-line-subtle py-4 ${inset}`} data-testid="requirement-picture" data-kind={kind ?? "none"}>
-      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+      <div className="mb-3 flex flex-wrap items-end gap-x-3 gap-y-2">
         <h2 id={headingId} className="m-0 text-13 font-semibold text-fg">
           {t("requirements.picture.heading")}
         </h2>
         {kind && !writer ? <span className="text-13 text-muted">{t(`requirements.picture.kind.${kind}`)}</span> : null}
-        {writer && rev ? <KindSelect projectId={projectId} reqKey={d.key} revision={rev.revision} kind={kind} /> : null}
-        {writer && rev && wanted && !editing ? (
+        {writer && rev ? (
+          <KindField projectId={projectId} reqKey={d.key} revision={rev.revision} kind={kind} picture={picture} held={editing} refused={kindRefused} />
+        ) : null}
+        {writer && rev && wanted && !linked && !editing ? (
           <Button type="button" size="sm" variant="secondary" onClick={() => setEditing(true)}>
             {t(picture ? "requirements.picture.edit.replace" : "requirements.picture.edit.draw", { picture: t(`requirements.picture.of.${wanted}`) })}
           </Button>
         ) : null}
       </div>
+      <a
+        href={`#${headingId}-end`}
+        className="sr-only focus:not-sr-only focus:mb-2 focus:inline-block focus:text-13 focus:font-semibold focus:text-link"
+        onClick={(e) => {
+          e.preventDefault();
+          end.current?.focus();
+        }}
+      >
+        {t("requirements.picture.skip")}
+      </a>
       {body}
-      {editing && rev && wanted ? (
-        <PictureEditor
-          key={`${rev.revision}:${wanted}`}
-          projectId={projectId}
-          reqKey={d.key}
-          revision={rev.revision}
-          kind={wanted}
-          picture={picture}
-          linked={linked}
-          onDone={() => setEditing(false)}
-        />
-      ) : null}
+      <span ref={end} id={`${headingId}-end`} tabIndex={-1} className="outline-none" data-testid="picture-end" />
+      {editing && rev && wanted && !linked ? <PictureEditor key={`${rev.revision}:${wanted}`} revision={rev.revision} kind={wanted} picture={picture} save={save} onDone={close} /> : null}
     </section>
   );
 }

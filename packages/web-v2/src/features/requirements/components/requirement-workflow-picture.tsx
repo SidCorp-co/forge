@@ -2,7 +2,9 @@
 
 // A process requirement's picture where it links a workflow (REQ-35 BC-3; Requirement lifecycle r14
 // step `picture`): that workflow on the canvas, the steps and links its live criteria trace lit and
-// the rest dimmed, opened on the lit steps, with the way to the workflow's own page.
+// the rest dimmed, opened on the lit steps, with the way to the workflow's own page. A traced step the
+// workflow's current design no longer has lights nothing and is named, so a trace left behind by a
+// design change never reads as a lit picture with nothing lit.
 
 import Link from "next/link";
 import { type ReactNode, useMemo, useState } from "react";
@@ -12,7 +14,7 @@ import { WorkflowCanvas } from "@/features/workflows/canvas/workflow-canvas";
 import { useWorkflowTemplates, useWorkflows } from "@/features/workflows/hooks";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { workflowHref } from "@/lib/routes/workflows";
-import type { TracedWorkflow } from "../picture-model";
+import { presentTrace, type TracedWorkflow } from "../picture-model";
 import { Figure } from "./picture-figure";
 
 /** A process requirement's linked workflow on the canvas, the steps and links its criteria trace lit and the rest dimmed. */
@@ -23,13 +25,25 @@ export function WorkflowPicture({ projectId, slug, traced }: { projectId: string
   const list = useWorkflows(projectId);
   const templates = useWorkflowTemplates(projectId);
   const record = list.data?.workflows.find((r) => r.document.id === w.workflowId) ?? null;
-  const lit = w.steps.size + w.edges.size > 0;
-  const highlight = useMemo(() => (lit ? { steps: w.steps, edges: w.edges } : null), [w, lit]);
-  const names = record ? record.document.steps.filter((s) => w.steps.has(s.id)).map((s) => s.node?.label ?? s.title ?? s.id) : [];
-  const alt = lit ? t("requirements.picture.workflow.alt", { title: w.title, steps: names.join(", ") }) : t("requirements.picture.workflow.altNone", { title: w.title });
+  const traces = w.steps.size + w.edges.size > 0;
+  const shown = useMemo(() => (record ? presentTrace(w, record.document.steps.map((s) => s.id)) : { steps: w.steps, edges: w.edges, gone: [] }), [w, record]);
+  const lit = shown.steps.size + shown.edges.size > 0;
+  const highlight = useMemo(() => (lit ? { steps: shown.steps, edges: shown.edges } : null), [shown, lit]);
+  const names = record ? record.document.steps.filter((s) => shown.steps.has(s.id)).map((s) => s.node?.label ?? s.title ?? s.id) : [];
+  const gone = shown.gone.join(", ");
+  let alt = t("requirements.picture.workflow.altNone", { title: w.title });
+  let legend = t("requirements.picture.workflow.untraced");
+  if (lit) {
+    alt = t("requirements.picture.workflow.alt", { title: w.title, steps: names.join(", ") });
+    legend = t("requirements.picture.workflow.legend");
+  } else if (traces) {
+    alt = t("requirements.picture.workflow.altGone", { title: w.title, steps: gone });
+    legend = t("requirements.picture.workflow.allGone");
+  }
   const head = (
     <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
-      <span>{lit ? t("requirements.picture.workflow.legend") : t("requirements.picture.workflow.untraced")}</span>
+      <span>{legend}</span>
+      {lit && shown.gone.length > 0 ? <span>{t("requirements.picture.workflow.someGone", { steps: gone })}</span> : null}
       <Link href={workflowHref(slug, w.flow)} className="font-semibold text-link hover:underline">
         {t("requirements.picture.workflow.open")}
       </Link>

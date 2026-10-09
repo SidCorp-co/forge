@@ -114,8 +114,12 @@ export function toScene(doc: WireframeDoc) {
   ];
 }
 
-/** The read-only board: the chat dock's own (the store's document), or a given one, as a mockup page shows a stored board. */
-export default function BoardCanvas({ doc: given }: { doc?: WireframeDoc } = {}) {
+/**
+ * The read-only board: the chat dock's own (the store's document), or a given one, as a mockup page
+ * shows a stored board. `fit` zooms a given board out until all of it shows, once its scene has
+ * loaded, for a page that shows it as a picture nobody pans (zoom is capped at 100%).
+ */
+export default function BoardCanvas({ doc: given, fit = false }: { doc?: WireframeDoc; fit?: boolean } = {}) {
   const board = useBoard();
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const shown = useRef<unknown>(null);
@@ -130,6 +134,16 @@ export default function BoardCanvas({ doc: given }: { doc?: WireframeDoc } = {})
     api.updateScene({ elements: toScene(doc), captureUpdate: CaptureUpdateAction.IMMEDIATELY });
     api.scrollToContent(undefined, { fitToContent: true });
   }, [api, version, doc, given]);
+
+  useEffect(() => {
+    if (!api || !given || !fit) return;
+    const stop = api.onChange((elements) => {
+      if (elements.length === 0) return;
+      stop();
+      api.scrollToContent(undefined, { fitToContent: true });
+    });
+    return stop;
+  }, [api, given, fit]);
 
   useEffect(() => {
     if (!api || given) return;

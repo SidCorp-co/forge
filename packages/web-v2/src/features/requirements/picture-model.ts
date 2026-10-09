@@ -41,6 +41,26 @@ export function tracedWorkflows(d: RequirementDetail): TracedWorkflow[] {
   return [...all.filter(lit), ...all.filter((w) => !lit(w))];
 }
 
+/** A workflow's traces read against its current design: what still lights, and the traced steps that left it. */
+export interface PresentTrace {
+  steps: Set<string>;
+  edges: Set<string>;
+  /** Traced steps the design no longer has, in the order the traces name them. */
+  gone: string[];
+}
+
+/**
+ * The part of a workflow's traces its current design still holds. Core keeps a trace as it was
+ * written (`criterion-traces.ts:tracesOf`), so a step since removed from the workflow is still
+ * named: it lights nothing, and a line lights only while both its ends are steps of the design.
+ */
+export function presentTrace(w: Pick<TracedWorkflow, "steps" | "edges">, designSteps: readonly string[]): PresentTrace {
+  const design = new Set(designSteps);
+  const steps = new Set([...w.steps].filter((s) => design.has(s)));
+  const edges = new Set([...w.edges].filter((e) => e.split(">").every((end) => design.has(end))));
+  return { steps, edges, gone: [...w.steps].filter((s) => !design.has(s)) };
+}
+
 /**
  * A stored picture as the visual-block renderers draw it. It was drawn by hand, so it carries no
  * run's source; the renderers read only its spec and its frame.

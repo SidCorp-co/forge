@@ -1,0 +1,10 @@
+/* The wireframe board editor (board-editor.tsx) offers only the tools whose shapes wireframe-v1
+   keeps. Excalidraw's own stylesheet is unlayered, so these rules are too, and !important holds them
+   over its display rules whatever order the two sheets load in. */
+.wf-board-editor .ToolIcon:has(> input[data-testid="toolbar-ellipse"]),
+.wf-board-editor .ToolIcon:has(> input[data-testid="toolbar-diamond"]),
+.wf-board-editor .ToolIcon:has(> input[data-testid="toolbar-line"]),
+.wf-board-editor .ToolIcon:has(> input[data-testid="toolbar-image"]),
+.wf-board-editor .App-toolbar__extra-tools-trigger {
+  display: none !important;
+}

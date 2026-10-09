@@ -1,7 +1,7 @@
 // ISS-460 (REQ-35): what the picture's editor turns typed lines into, and where a refusal's path lands.
 
 import { describe, expect, it } from "vitest";
-import { chartDraftOf, chartFromDraft, fieldOfPath, flowFromLines, flowToLines } from "./picture-model";
+import { chartDraftOf, chartFromDraft, fieldOfPath, flowFromLines, flowToLines, presentTrace } from "./picture-model";
 
 describe("a flow typed as lines", () => {
   it("takes one step per line and links between them, naming a step in any case, each step an id of its own", () => {
@@ -62,5 +62,21 @@ describe("where a refusal lands in the editor", () => {
     expect(fieldOfPath("/content/board", "wireframe")).toBe("board");
     expect(fieldOfPath("/content/frame/rows/0", "chart")).toBe("content");
     expect(fieldOfPath("/revision", "chart")).toBeNull();
+  });
+});
+
+describe("a workflow's traces read against its current design", () => {
+  const design = ["cart", "pay", "done"];
+
+  it("lights what the design still holds and names the traced steps that left it", () => {
+    const read = presentTrace({ steps: new Set(["pay", "shipping"]), edges: new Set(["cart>pay", "pay>shipping"]) }, design);
+    expect([...read.steps]).toEqual(["pay"]);
+    expect([...read.edges]).toEqual(["cart>pay"]);
+    expect(read.gone).toEqual(["shipping"]);
+  });
+
+  it("lights nothing where every traced step has left, and keeps a whole trace whole", () => {
+    expect(presentTrace({ steps: new Set(["shipping"]), edges: new Set(["shipping>done"]) }, design)).toEqual({ steps: new Set(), edges: new Set(), gone: ["shipping"] });
+    expect(presentTrace({ steps: new Set(["cart"]), edges: new Set(["cart>pay"]) }, design)).toEqual({ steps: new Set(["cart"]), edges: new Set(["cart>pay"]), gone: [] });
   });
 });

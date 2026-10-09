@@ -22,7 +22,11 @@ const KIND_NAMED: Record<PictureKind, string> = {
   chart: 'a sample chart',
 };
 
-/** The picture a revision takes is the one its kind names; a revision with no kind takes none yet. */
+/**
+ * The picture a revision takes is the one its kind names; a revision with no kind takes none yet.
+ * The detail is read by a person on the requirement page's kind field (ISS-460), so it names the
+ * pictures in words and no route or wire value: the code and `/kind` already say which field it is.
+ */
 export function kindMismatchRefusal(
   key: string,
   revision: number,
@@ -33,7 +37,7 @@ export function kindMismatchRefusal(
     return {
       code: 'REQUIREMENT_PICTURE_KIND_MISMATCH',
       path: '/kind',
-      detail: `${key} r${revision} names no kind, so no picture fits it yet; set its kind first (PUT …/revisions/${revision}/kind: process takes a flow, rule an example table, screen a wireframe, report a sample chart).`,
+      detail: `${key} r${revision} does not say what kind of requirement it is yet, so no picture fits it; set its kind first: a process takes a flow, a rule an example table, a screen a wireframe and a report a sample chart.`,
     };
   }
   const wanted = PICTURE_KIND_OF[kind];
@@ -41,7 +45,7 @@ export function kindMismatchRefusal(
   return {
     code: 'REQUIREMENT_PICTURE_KIND_MISMATCH',
     path: '/kind',
-    detail: `${key} r${revision} is a ${kind} requirement, whose picture is ${KIND_NAMED[wanted]} (kind ${wanted}), not ${KIND_NAMED[picture]}; draw ${KIND_NAMED[wanted]}, or correct the revision's kind first.`,
+    detail: `${key} r${revision} is a ${kind} requirement, whose picture is ${KIND_NAMED[wanted]}, not ${KIND_NAMED[picture]}; draw ${KIND_NAMED[wanted]}, or correct its kind first.`,
   };
 }
 

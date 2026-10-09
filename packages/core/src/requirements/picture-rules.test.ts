@@ -19,17 +19,37 @@ describe('a picture fits its revision kind (REQUIREMENT_PICTURE_KIND_MISMATCH)',
     expect(kindMismatchRefusal('REQ-1', 1, kind, picture)).toBeNull();
   });
 
-  it('refuses a picture of another kind, naming the one the kind takes', () => {
+  it('refuses a picture of another kind, naming the one the kind takes in plain words', () => {
     const r = kindMismatchRefusal('REQ-1', 2, 'rule', 'flow');
     expect(r?.code).toBe('REQUIREMENT_PICTURE_KIND_MISMATCH');
-    expect(r?.detail).toContain('an example table (kind example_table)');
+    expect(r?.path).toBe('/kind');
+    expect(r?.detail).toBe(
+      'REQ-1 r2 is a rule requirement, whose picture is an example table, not a flow; draw an example table, or correct its kind first.',
+    );
   });
 
-  it('refuses any picture on a revision that names no kind, saying to set it first', () => {
+  it('refuses any picture on a revision that names no kind, saying in words to set it first', () => {
     const r = kindMismatchRefusal('REQ-1', 1, null, 'wireframe');
     expect(r?.code).toBe('REQUIREMENT_PICTURE_KIND_MISMATCH');
-    expect(r?.detail).toContain('names no kind');
+    expect(r?.detail).toBe(
+      'REQ-1 r1 does not say what kind of requirement it is yet, so no picture fits it; set its kind first: a process takes a flow, a rule an example table, a screen a wireframe and a report a sample chart.',
+    );
   });
+
+  // ISS-460: the detail is shown on the requirement page's kind field, where a person reads it
+  it.each([
+    [null, 'flow'],
+    ['rule', 'flow'],
+    ['process', 'chart'],
+    ['screen', 'example_table'],
+    ['report', 'wireframe'],
+  ] as const)(
+    'says a revision of kind %s refusing the %s picture with no route and no wire value',
+    (kind, picture) => {
+      const detail = kindMismatchRefusal('REQ-1', 1, kind, picture)?.detail ?? '';
+      expect(detail).not.toMatch(/PUT|\/revisions\/|\(kind |example_table|…/);
+    },
+  );
 });
 
 describe("a rule's example table (REQUIREMENT_PICTURE_ROW_INCOMPLETE)", () => {
