@@ -62,7 +62,8 @@ column — it reaches the audit trail as the caller's claim.
 
 A merged commit on the row is work evidence: `collectWorkEvidence`
 (`packages/core/src/issues/work-evidence.ts`) reads `merged_commit_sha` where `merged_at` is
-set, so an issue the mark accepted is not refused `NO_WORK_EVIDENCE` on its next move.
+set, so a later mark on an issue the mark accepted is not refused `NO_WORK_EVIDENCE`. The mark is
+the only door that refuses on work evidence: `awaiting_release` asks for the recorded merge alone.
 
 Where the row already holds a stamp, the gated UPDATE moves nothing and the answer
 describes what the row HOLDS, not which branch this call took. So the "your commit is not

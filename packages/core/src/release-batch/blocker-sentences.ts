@@ -244,13 +244,13 @@ function heldIssuesSentence(remedy: string, held: HeldIssueRef[]): string {
 }
 
 const NEAR_GATE_ACT =
-  'An issue moves there once its own record earns it: the verification naming where the ' +
-  'change now runs, at which commit and on what evidence, plus the release note where one ' +
-  "is owed. With those written, the issue's own status control makes the move.";
+  'An issue moves there once its merge is recorded, with the release note where one is owed; ' +
+  'no verdict is asked, since verdicts are judged on the release that carries the work. With ' +
+  "those written, the issue's own status control makes the move.";
 
 function nearGateSentence(nearGate: number): string {
   if (nearGate === 0) {
-    return `Nothing is waiting at the release gate, and nothing stands one move short of it: no issue on this project is \`in_progress\` at its test step. An issue reaches the gate at \`awaiting_release\`, once every criterion holds a passing verdict. ${NEAR_GATE_ACT}`;
+    return `Nothing is waiting at the release gate, and nothing stands one move short of it: no issue on this project is \`in_progress\` at its test step. An issue reaches the gate at \`awaiting_release\`. ${NEAR_GATE_ACT}`;
   }
   const issues = counted(nearGate, 'issue');
   return `Nothing is waiting at the release gate, so there is no release to cut. ${issues} on this project ${agrees(nearGate, 'stands', 'stand')} one move short of it, \`in_progress\` at ${agrees(nearGate, 'its', 'their')} test step: a release carries an issue only once its status is \`awaiting_release\`. ${NEAR_GATE_ACT}`;

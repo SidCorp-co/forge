@@ -49,7 +49,7 @@ function bodyForStatus(to: IssueStatus, reason: string | null): string {
   if (reason && reason.trim().length > 0) return reason.trim();
   switch (to) {
     case 'awaiting_release':
-      return 'Every criterion passed — ready for your release review.';
+      return 'Merged — waiting for the release.';
     case 'reopen':
       return 'Reopened — needs another look.';
     case 'needs_info':
