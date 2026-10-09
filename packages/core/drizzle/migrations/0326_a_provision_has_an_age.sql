@@ -1,0 +1,13 @@
+-- ISS-1359 — a provision has an age, so one that stopped advancing can be read as stalled.
+--
+-- `runners.provision_status` was advanced only by a box's report and nothing recorded WHEN. The one
+-- timestamp on the row, `updated_at`, is bumped by every heartbeat, so a row wedged at `cloning` for
+-- weeks read as touched a second ago. This column is written by the three writers of
+-- `provision_status` (a bind, the box's report, a terminal failure report) and by nothing else.
+--
+-- No backfill, deliberately. Nothing on an existing row says when its status was last written:
+-- `provision_requested_at` dates the request, and a row that queued for hours and began cloning a
+-- minute ago would read stalled from it. Every row is dated by this migration, so a row already
+-- wedged reads stalled one window after it is applied, and none reads stalled before it has been.
+-- Rollback: revert the code and keep this migration — it is additive and old code ignores it.
+ALTER TABLE "runners" ADD COLUMN "provision_status_at" timestamp with time zone DEFAULT now() NOT NULL;

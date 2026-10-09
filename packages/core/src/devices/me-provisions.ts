@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
@@ -7,6 +7,7 @@ import { isHttpsGitUrl, projectsWithGitHubAppCredential } from '../git/github-ap
 import { deviceGitCredentialRoutes } from '../git/github-credential-routes.js';
 import { logger } from '../logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { provisionStalled, workspaceServesProject } from '../runners/liveness-sql.js';
 import { recordProvisionReports } from './provision-reports.js';
 import {
   buildProvisionRow,
@@ -24,7 +25,8 @@ deviceProvisionRoutes.route('/', deviceGitCredentialRoutes);
 const unauth = () =>
   new HTTPException(401, { message: 'device revoked', cause: { code: 'UNAUTHENTICATED' } });
 
-function queuedRows(deviceId: string) {
+/** Queued rows and stalled ones (ISS-1359), never while the device's master runs in the checkout. */
+function offerableRows(deviceId: string) {
   return db
     .select({
       runnerId: runners.id,
@@ -46,7 +48,8 @@ function queuedRows(deviceId: string) {
       and(
         eq(runners.deviceId, deviceId),
         eq(runners.type, 'claude-code'),
-        eq(runners.provisionStatus, 'queued'),
+        or(eq(runners.provisionStatus, 'queued'), provisionStalled('runners')),
+        sql`NOT ${workspaceServesProject('runners')}`,
       ),
     );
 }
@@ -55,7 +58,7 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
   const device = c.get('device');
   if (device.status === 'revoked') throw unauth();
 
-  const rows = await queuedRows(device.id);
+  const rows = await offerableRows(device.id);
   const appProjects = await projectsWithGitHubAppCredential(rows.map((r) => r.projectId));
   // The identity the box acts as, resolved once: a box paired as an agent hands
   // its checkouts that agent's reach and not the approving person's.

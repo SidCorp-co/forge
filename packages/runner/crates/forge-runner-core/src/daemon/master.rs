@@ -105,10 +105,63 @@ is re-sent to every master this box starts, so it survives this session.\n\n",
 #[derive(Default)]
 pub struct Masters(Arc<Mutex<Registry>>);
 
+/// Why a provision may not begin.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Refused {
+    /// This box serves the project's master live.
+    Live { session: String, pane: String },
+    /// A master is being placed for the project this moment.
+    Placing,
+    /// Another provision of the project's workspace is running on this box.
+    Provisioning,
+}
+
+/// Held by a provision for as long as it may write into the workspace.
+pub struct ProvisionLease {
+    registry: Arc<Mutex<Registry>>,
+    project_id: String,
+}
+
+impl std::fmt::Debug for ProvisionLease {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ProvisionLease({})", self.project_id)
+    }
+}
+
+impl Drop for ProvisionLease {
+    fn drop(&mut self) {
+        if let Ok(mut reg) = self.registry.lock() {
+            reg.provisioning.remove(&self.project_id);
+        }
+    }
+}
+
+/// Held by a master placement from before it registers until it ends, so a provision cannot begin
+/// between the two.
+struct PlacingClaim {
+    registry: Arc<Mutex<Registry>>,
+    project_id: String,
+}
+
+impl Drop for PlacingClaim {
+    fn drop(&mut self) {
+        if let Ok(mut reg) = self.registry.lock() {
+            reg.placing.remove(&self.project_id);
+        }
+    }
+}
+
 /// The live masters, and what this box has seen the dead ones do.
 #[derive(Default)]
 struct Registry {
     live: HashMap<String, MasterState>,
+    /// The projects a master is being placed for right now, from before it registers until its
+    /// placement ends. A provision refuses a project in here exactly as it refuses one in `live`
+    /// (ISS-1359).
+    placing: std::collections::HashSet<String>,
+    /// The projects whose workspace this box is provisioning right now. No master is placed for
+    /// one, so a provision's writes never land under a master that started meanwhile.
+    provisioning: std::collections::HashSet<String>,
     /// What the last sweep read as this box's projects.
     served: Served,
     /// Why each project's master pane was not placed on the last sweep.
@@ -209,6 +262,9 @@ pub(crate) enum Unplaced {
     NoRepoPath,
     /// This box has no terminal multiplexer, so it can host no master at all.
     NoTerminal,
+    /// This box is provisioning the project's workspace, so it places no master until that
+    /// ends (ISS-1359).
+    Provisioning,
     /// Core refused the registration this pane's identity comes from.
     RegisterFailed {
         detail: String,
@@ -323,6 +379,10 @@ impl std::fmt::Display for Unplaced {
             Self::NoTerminal => write!(
                 f,
                 "this box has no tmux, so it can host no master pane for any project"
+            ),
+            Self::Provisioning => write!(
+                f,
+                "this box is provisioning its workspace, so it places no master for it until that ends; the next sweep does"
             ),
             Self::RegisterFailed { detail } => write!(
                 f,
@@ -753,6 +813,44 @@ impl Masters {
 
     pub fn live_for_project(&self, project_id: &str) -> Option<(String, String)> {
         self.get(project_id)
+    }
+
+    /// The lease a provision of `project_id`'s workspace holds while it writes, or why it may not:
+    /// this box serves the project's master, or is placing it. Taken and checked under one lock, so
+    /// a master cannot be placed between the check and the writes, and none is placed until the
+    /// lease drops (ISS-1359).
+    pub fn begin_provisioning(&self, project_id: &str) -> Result<ProvisionLease, Refused> {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        if let Some(m) = reg.live.get(project_id) {
+            return Err(Refused::Live {
+                session: m.session_id.clone(),
+                pane: m.name.clone(),
+            });
+        }
+        if reg.placing.contains(project_id) {
+            return Err(Refused::Placing);
+        }
+        if !reg.provisioning.insert(project_id.to_string()) {
+            return Err(Refused::Provisioning);
+        }
+        Ok(ProvisionLease {
+            registry: self.0.clone(),
+            project_id: project_id.to_string(),
+        })
+    }
+
+    /// The claim a master placement holds, or `None` while the project's workspace is being
+    /// provisioned.
+    fn begin_placing(&self, project_id: &str) -> Option<PlacingClaim> {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        if reg.provisioning.contains(project_id) {
+            return None;
+        }
+        reg.placing.insert(project_id.to_string());
+        Some(PlacingClaim {
+            registry: self.0.clone(),
+            project_id: project_id.to_string(),
+        })
     }
 
     fn get(&self, project_id: &str) -> Option<(String, String)> {
@@ -3336,6 +3434,11 @@ async fn ensure_master(
         return PaneState::Absent;
     }
 
+    let Some(_placing) = masters.begin_placing(project_id) else {
+        say_unplaced(masters, project_id, &resolved.slug, Unplaced::Provisioning);
+        return PaneState::Absent;
+    };
+
     let session = match master_api::register(client, project_id, &name).await {
         Ok(s) => s,
         Err(e) => {
@@ -3378,7 +3481,7 @@ async fn ensure_master(
                 "[master] {}: adopting the resident session {name}",
                 resolved.slug
             );
-            remember(masters, project_id, &session);
+            remember_placed(masters, project_id, &session, &_placing);
         }
         let pane_now = terminal::incarnation(&name).await;
         let verdict = verdict_over_unwithdrawn(
@@ -3730,7 +3833,7 @@ async fn ensure_master(
         },
         resolved.repo_path.display()
     );
-    remember(masters, project_id, &session);
+    remember_placed(masters, project_id, &session, &_placing);
     masters.clear_unplaced(project_id, &resolved.slug);
     if started {
         masters.note_placed(project_id, transcript.clone().zip(output_from));
@@ -4267,6 +4370,18 @@ fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::Mast
             mcp_stale_reported: false,
         },
     );
+}
+
+/// `remember` for a placement, which must still hold its claim: a provision cannot begin between a
+/// master's registration and its being served (ISS-1359). `_placing` is the witness, so a claim
+/// dropped earlier is a compile error here and not a test that has to guess.
+fn remember_placed(
+    masters: &Arc<Masters>,
+    project_id: &str,
+    session: &master_api::MasterSession,
+    _placing: &PlacingClaim,
+) {
+    remember(masters, project_id, session);
 }
 
 fn nudge() -> String {
@@ -5029,6 +5144,34 @@ mod tests {
         assert!(
             production.contains("fn nudge("),
             "the cluster is replaced, not merely removed — a master still has to be told there is work"
+        );
+    }
+
+    /// ISS-1359. A placement that never took its claim would let a provision begin between the
+    /// check and the pane, which is the window the lease exists to close. How long the claim is held
+    /// is not tested here: `remember` takes it as an argument, so the compiler holds it to that.
+    #[test]
+    fn a_placement_takes_its_claim_before_it_registers() {
+        let body = THIS_SOURCE
+            .split("\nasync fn ensure_master(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .unwrap_or_default();
+        let claim = body
+            .find("let Some(_placing) = masters.begin_placing(project_id) else {")
+            .expect(
+                "ensure_master takes no placement claim, bound to a name that lives to its end",
+            );
+        let register = body
+            .find("master_api::register(client, project_id, &name)")
+            .expect("ensure_master registers");
+        assert!(
+            claim < register,
+            "the claim comes after the registration, so a provision can begin in between"
+        );
+        assert!(
+            body[claim..register].contains("Unplaced::Provisioning"),
+            "a placement that stands aside for a provision says why"
         );
     }
 
@@ -8718,6 +8861,26 @@ mod give_back_tests {
 
 #[cfg(test)]
 impl Masters {
+    /// Whether a placement for this project would stand aside for a provision.
+    pub fn placement_would_wait(&self, project_id: &str) -> bool {
+        self.begin_placing(project_id).is_none()
+    }
+
+    /// Whether a provision holds this project's workspace now, read without taking anything.
+    pub fn is_provisioning(&self, project_id: &str) -> bool {
+        self.0
+            .lock()
+            .expect("masters poisoned")
+            .provisioning
+            .contains(project_id)
+    }
+
+    /// A placement claim held by the caller, as a placement in flight holds one.
+    pub(crate) fn hold_placing_for_test(&self, project_id: &str) -> impl Drop {
+        self.begin_placing(project_id)
+            .expect("no provision holds this project")
+    }
+
     pub fn remember_for_test(&self, project_id: &str, session_id: &str, name: &str) {
         self.remember(
             project_id,

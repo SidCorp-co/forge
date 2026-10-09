@@ -89,7 +89,7 @@ async fn the_sweep_reports_a_refusal_once_escalates_once_and_says_when_it_clears
     let cfg = Config::default();
 
     for _ in 0..7 {
-        run_pending(&client, &cfg).await;
+        run_pending(&client, &cfg, None).await;
     }
 
     let refusing = journal.read();
@@ -134,7 +134,7 @@ async fn the_sweep_reports_a_refusal_once_escalates_once_and_says_when_it_clears
     // Then core comes back, and the sweep says so rather than going quiet
     // about an incident it spent an hour reporting.
     *answer.lock().unwrap() = ("200 OK".to_string(), "[]".to_string());
-    run_pending(&client, &cfg).await;
+    run_pending(&client, &cfg, None).await;
 
     let whole = journal.read();
     let after: Vec<&str> = whole
@@ -162,7 +162,7 @@ async fn the_sweep_reports_a_refusal_once_escalates_once_and_says_when_it_clears
 
     // And a quiet sweep stays quiet: nothing is added for a success with
     // nothing standing.
-    run_pending(&client, &cfg).await;
+    run_pending(&client, &cfg, None).await;
     assert_eq!(
         journal
             .read()

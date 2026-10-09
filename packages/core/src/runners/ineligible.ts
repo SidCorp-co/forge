@@ -11,7 +11,8 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { RunnerStatus } from '../db/schema.js';
 import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from './device-cap.js';
-import { livenessSeconds } from './liveness-sql.js';
+import { livenessSeconds, workspaceServesProject } from './liveness-sql.js';
+import { provisionStalledSeconds } from './provision-stall.js';
 
 export type RunnerHoldReason =
   | 'device-disabled'
@@ -23,6 +24,7 @@ export type RunnerHoldReason =
   | 'rate-limited'
   | 'quarantined'
   | 'provisioning'
+  | 'provision-stalled'
   | 'below-floor';
 
 /** The columns the dispatch filter reads, plus the one name a screen shows. */
@@ -35,6 +37,9 @@ export interface RunnerLivenessRow {
   rateLimitedUntil: Date | null;
   quarantinedUntil: Date | null;
   provisionStatus: string | null;
+  provisionStatusAt: Date;
+  /** The device holds a live resident master for this project. */
+  workspaceInUse: boolean;
   deviceDisabledAt: Date | null;
   deviceAgentVersion: string | null;
 }
@@ -46,6 +51,8 @@ export interface RunnerHold {
   detail?: string;
   /** Seconds since its last heartbeat; null where it has never reported. */
   lastSeenSeconds: number | null;
+  /** Set only on `provision-stalled`. */
+  stalledSeconds?: number;
   /** Inside the dispatch window. On EVERY hold: a box can be retired and silent
    *  at once, and a clause calling that one reporting is the same omission. */
   reporting: boolean;
@@ -67,6 +74,7 @@ export const RUNNER_HOLD_PRECEDENCE: readonly RunnerHoldReason[] = [
   'rate-limited',
   'quarantined',
   'provisioning',
+  'provision-stalled',
   'below-floor',
 ];
 
@@ -78,7 +86,7 @@ function reasonFor(
   row: RunnerLivenessRow,
   now: Date,
   fresh: boolean,
-): { reason: RunnerHoldReason; detail?: string } | null {
+): { reason: RunnerHoldReason; detail?: string; stalledSeconds?: number } | null {
   if (row.deviceDisabledAt !== null) return { reason: 'device-disabled' };
   if (row.status === 'draining' || row.status === 'disabled') {
     return { reason: 'retired', detail: row.status };
@@ -96,7 +104,12 @@ function reasonFor(
     return { reason: 'quarantined', detail: row.quarantinedUntil.toISOString() };
   }
   if (row.provisionStatus !== null && row.provisionStatus !== 'ready') {
-    return { reason: 'provisioning', detail: row.provisionStatus };
+    const stalled = provisionStalledSeconds(row.provisionStatus, row.provisionStatusAt, now);
+    if (stalled === null) return { reason: 'provisioning', detail: row.provisionStatus };
+    // Mirrors `runnerWorkspaceReady`: a box serving the project from a stalled workspace is not held.
+    if (!row.workspaceInUse) {
+      return { reason: 'provision-stalled', detail: row.provisionStatus, stalledSeconds: stalled };
+    }
   }
   if (!atLeastVersion(row.deviceAgentVersion, AGENT_NAMING_MIN_RUNNER)) {
     return { reason: 'below-floor', detail: row.deviceAgentVersion ?? 'unreported' };
@@ -120,6 +133,7 @@ export function classifyRunnerHold(
     deviceName: row.deviceName,
     reason: found.reason,
     ...(found.detail === undefined ? {} : { detail: found.detail }),
+    ...(found.stalledSeconds === undefined ? {} : { stalledSeconds: found.stalledSeconds }),
     lastSeenSeconds,
     reporting: fresh,
   };
@@ -133,6 +147,8 @@ interface RunnerLivenessSqlRow extends Record<string, unknown> {
   rate_limited_until: string | null;
   quarantined_until: string | null;
   provision_status: string | null;
+  provision_status_at: string;
+  workspace_in_use: boolean;
   device_disabled_at: string | null;
   device_agent_version: string | null;
 }
@@ -143,7 +159,8 @@ export async function readRunnerLiveness(projectId: string): Promise<RunnerLiven
   const rows = await db.execute<RunnerLivenessSqlRow>(sql`
     SELECT d.name AS device_name,
            r.status, r.last_seen_at, r.limit_reason, r.rate_limited_until,
-           r.quarantined_until, r.provision_status,
+           r.quarantined_until, r.provision_status, r.provision_status_at,
+           ${workspaceServesProject('r')} AS workspace_in_use,
            d.disabled_at AS device_disabled_at, d.agent_version AS device_agent_version
       FROM runners r
       JOIN devices d ON d.id = r.device_id
@@ -158,6 +175,8 @@ export async function readRunnerLiveness(projectId: string): Promise<RunnerLiven
     rateLimitedUntil: asDate(r.rate_limited_until),
     quarantinedUntil: asDate(r.quarantined_until),
     provisionStatus: r.provision_status,
+    provisionStatusAt: new Date(r.provision_status_at),
+    workspaceInUse: r.workspace_in_use,
     deviceDisabledAt: asDate(r.device_disabled_at),
     deviceAgentVersion: r.device_agent_version,
   }));

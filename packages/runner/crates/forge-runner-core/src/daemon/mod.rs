@@ -1001,14 +1001,14 @@ pub async fn run(
     // the `provision.request` WS event below makes a fresh bind prompt. Server
     // only returns `queued` rows, so this is a no-op once everything is ready.
     {
-        let (client, cfg) = (client.clone(), cfg.clone());
+        let (client, cfg, masters) = (client.clone(), cfg.clone(), masters.clone());
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(std::time::Duration::from_secs(90));
             loop {
                 tokio::select! {
                     _ = tick.tick() => {
-                        crate::workspace::provision::run_pending(&client, &cfg).await;
+                        crate::workspace::provision::run_pending(&client, &cfg, Some(&masters)).await;
                     }
                     _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
                 }
@@ -1378,9 +1378,9 @@ pub async fn run(
                     "provision.request" => {
                         // Wake → run the pending-provision sweep (server returns
                         // only `queued` rows, so this provisions the requested one).
-                        let (client, cfg) = (client.clone(), cfg.clone());
+                        let (client, cfg, masters) = (client.clone(), cfg.clone(), masters.clone());
                         tokio::spawn(async move {
-                            if let Err(e) = crate::workspace::provision::handle_request(&client, &cfg).await {
+                            if let Err(e) = crate::workspace::provision::handle_request(&client, &cfg, Some(&masters)).await {
                                 tracing::warn!("[provision] {e}");
                             }
                         });

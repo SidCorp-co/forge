@@ -38,6 +38,16 @@ describe('recordProvisionReports', () => {
     expect(patch.provisionDetail).toContain('the credential could not be minted');
     // Terminal if any of them is: the row cannot succeed on the next tick either.
     expect(patch.provisionStatus).toBe('failed');
+    // A status written is a status dated: the age a stall is read from (ISS-1359).
+    expect(patch.provisionStatusAt).toBeInstanceOf(Date);
+  });
+
+  it('leaves the provision\u2019s age alone where a report writes a detail and no status', async () => {
+    await recordProvisionReports([report({ terminal: false })]);
+
+    const [patch] = set.mock.calls[0] as [Record<string, unknown>];
+    expect(patch.provisionStatus).toBeUndefined();
+    expect(patch).not.toHaveProperty('provisionStatusAt');
   });
 
   it('writes each row to its own row', async () => {

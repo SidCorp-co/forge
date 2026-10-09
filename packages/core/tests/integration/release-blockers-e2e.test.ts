@@ -501,6 +501,21 @@ describe('a reason names the state it was read from and the act that clears it',
   });
 });
 
+it('ISS-1359: a stalled provision is named while nothing serves the project, and let through once a master does', async () => {
+  const w = await seed();
+  await seedRunner(w);
+  await seedIssue(w);
+  const [row] = await harness.db.execute<{ device_id: string }>(
+    sql`UPDATE runners SET provision_status = 'cloning', provision_status_at = now() - interval '9 days' WHERE project_id = ${w.projectId} RETURNING device_id`,
+  );
+  const held = (await readiness(w)).body.blockers.find((b) => b.code === 'NO_RUNNER_ONLINE');
+  expect(held?.message).toContain('`cloning` for 9 days');
+  const { ensureMasterSession } = await import('../../src/devices/master-session.js');
+  const deviceId = row?.device_id as string;
+  await ensureMasterSession({ deviceId, projectId: w.projectId, name: 'forge-master' });
+  expect((await readiness(w)).body.blockers).toEqual([]);
+});
+
 describe('the reason the unattended sweep will not carry an issue', () => {
   it('blocks where every waiting issue owes a judging run', async () => {
     const w = await seed();

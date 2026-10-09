@@ -37,6 +37,7 @@ const EVERY_READING: RunnerHoldReason[] = [
   'rate-limited',
   'quarantined',
   'provisioning',
+  'provision-stalled',
   'below-floor',
 ];
 
@@ -91,9 +92,21 @@ describe('NO_RUNNER_ONLINE', () => {
     ['rate-limited' as const, 'wait it out'],
     ['quarantined' as const, 'clear the quarantine'],
     ['provisioning' as const, 're-run'],
+    ['provision-stalled' as const, 'Re-provision'],
     ['below-floor' as const, 'Upgrade `forge-runner`'],
   ])('%s names what to do about it', (reason, act) => {
     expect(runnerHoldClause(hold({ reason }))).toContain(act);
+  });
+
+  it('says how long a stalled provision has stood, in the unit it is read in', () => {
+    const clause = (stalledSeconds: number) =>
+      runnerHoldClause(hold({ reason: 'provision-stalled', detail: 'cloning', stalledSeconds }));
+
+    expect(clause(47 * 60)).toContain('`cloning` for 47 minutes');
+    expect(clause(60)).toContain('for 1 minute with');
+    expect(clause(5 * 3600)).toContain('for 5 hours');
+    expect(clause(9 * 86400)).toContain('for 9 days');
+    expect(clause(47 * 60)).not.toContain('has not finished provisioning');
   });
 
   it('falls back to a sentence about the Runners tab where no reading was taken', () => {

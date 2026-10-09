@@ -537,13 +537,16 @@ deviceAuthRoutes.post(
     const { runnerId } = c.req.valid('param');
     const { status, detail } = c.req.valid('json');
 
+    const now = new Date();
     const [runner] = await db
       .update(runners)
       .set({
         provisionStatus: status,
         provisionDetail: detail ?? null,
-        updatedAt: new Date(),
-        ...(status === 'ready' ? { provisionedAt: new Date() } : {}),
+        // The age a stall is read from: only a write of the status moves it (ISS-1359).
+        provisionStatusAt: now,
+        updatedAt: now,
+        ...(status === 'ready' ? { provisionedAt: now } : {}),
       })
       .where(and(eq(runners.id, runnerId), eq(runners.deviceId, device.id)))
       .returning({
