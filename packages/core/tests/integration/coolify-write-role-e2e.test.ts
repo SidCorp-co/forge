@@ -44,6 +44,9 @@ beforeEach(async () => {
 
 const ACTIONS = ['deploy', 'cancel', 'rollback'] as const;
 
+// What an empty body earns once the role check has passed: deploy takes none, the others name a missing field.
+const PAST_THE_ROLE_CHECK = { deploy: 200, cancel: 400, rollback: 400 } as const;
+
 describe.each(ACTIONS)('Coolify %s', (action) => {
   it('is refused to a viewer at the REST route, by name', async () => {
     const res = await callRest(
@@ -77,8 +80,8 @@ describe.each(ACTIONS)('Coolify %s', (action) => {
       );
       expect(
         res.status,
-        'the role check passed, so any answer is about the missing binding',
-      ).not.toBe(403);
+        'the role check passed, so the answer is the body check, not a refusal',
+      ).toBe(PAST_THE_ROLE_CHECK[action]);
     },
   );
 });
