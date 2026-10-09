@@ -514,6 +514,7 @@
         "activityLog",
         "criterionVerdicts",
         "issueAttachments",
+        "issueCheckRuns",
         "issueContractWaits",
         "issuePatterns",
         "issueCriteria",

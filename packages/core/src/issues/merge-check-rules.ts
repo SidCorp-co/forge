@@ -4,12 +4,14 @@
  * the commit it marks. `merge-check.ts` reads and writes around them.
  */
 
+import type { CheckRun } from '@forge/contracts/check-runs';
 import {
+  MERGE_CHECK_KINDS,
   MERGE_CHECK_RECORD,
   type MergeCheckRefusalCode,
   type MergeCheckReport,
-  type MergeCheckRun,
   REQUIRED_MERGE_CHECKS,
+  type RequiredMergeCheck,
 } from '@forge/contracts/merge-check';
 
 /** Not run by the check yet: the issues that build each name it in every record. */
@@ -21,17 +23,19 @@ export interface CheckRefusal {
   detail: string;
 }
 
-const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
-
-function described(run: MergeCheckRun): string {
+function described(run: CheckRun): string {
   const files = run.files.length
     ? `: ${run.files.slice(0, 5).join(', ')}${run.files.length > 5 ? `, +${run.files.length - 5} more` : ''}`
     : '';
   return `\`${run.name}\` (${run.scope || 'workspace'})${files}`;
 }
 
+const isRequired = (name: string): name is RequiredMergeCheck =>
+  (REQUIRED_MERGE_CHECKS as readonly string[]).includes(name);
+
 /**
- * Why a report cannot let a merge through, or null: a required check it never ran, a base it is
+ * Why a report cannot let a merge through, or null: a required check it never ran, a required check
+ * filed under another kind (its time would be counted where it does not belong), a base it is
  * behind, then any check that ended red. The first fault answers, each naming its check.
  */
 export function checkRefusal(report: MergeCheckReport): CheckRefusal | null {
@@ -41,6 +45,18 @@ export function checkRefusal(report: MergeCheckReport): CheckRefusal | null {
       code: 'MERGE_CHECK_INCOMPLETE',
       path: '/checks',
       detail: `the report runs no ${missing.map((n) => `\`${n}\``).join(', ')} check, and every merge needs ${REQUIRED_MERGE_CHECKS.map((n) => `\`${n}\``).join(', ')}; a selection that held nothing to run reports its check with result \`none\`. Nothing was recorded`,
+    };
+  }
+  const misfiled = report.checks.flatMap((c) =>
+    isRequired(c.name) && MERGE_CHECK_KINDS[c.name] !== c.kind
+      ? [`\`${c.name}\` is a ${MERGE_CHECK_KINDS[c.name]} check, not ${c.kind}`]
+      : [],
+  );
+  if (misfiled.length) {
+    return {
+      code: 'MERGE_CHECK_KIND_MISMATCH',
+      path: '/checks',
+      detail: `${misfiled.join('; ')}: each check the merge needs is recorded under its own kind, so its time is counted there. Nothing was recorded`,
     };
   }
   const behind = report.checks.find((c) => c.name === 'rebased-on-base' && c.result === 'fail');
@@ -62,29 +78,32 @@ export function checkRefusal(report: MergeCheckReport): CheckRefusal | null {
   return null;
 }
 
-/** A field key per run, unique within the record: `typecheck`, then `typecheck-2`, … */
-function runKeys(checks: readonly MergeCheckRun[]): string[] {
-  const seen = new Map<string, number>();
-  return checks.map((c) => {
-    const base =
-      c.name
-        .toLowerCase()
-        .replace(/[^a-z0-9-]+/g, '-')
-        .replace(/^[^a-z]+/, '') || 'check';
-    const n = (seen.get(base) ?? 0) + 1;
-    seen.set(base, n);
-    return n === 1 ? base : `${base}-${n}`;
-  });
+/** At most this many characters in one record field. */
+const FIELD_MAX = 400;
+
+/** The checks a record names, by name and scope, cut to fit one field. */
+function namedChecks(checks: readonly CheckRun[]): string {
+  const head = `${checks.length} recorded with their kinds and durations (GET /api/issues/:id/checks): `;
+  let out = head;
+  for (const [i, c] of checks.entries()) {
+    const part = `${i ? ', ' : ''}${c.name} (${c.scope || 'workspace'})`;
+    const rest = checks.length - i;
+    if (out.length + part.length > FIELD_MAX - 12) return `${out}, +${rest} more`;
+    out += part;
+  }
+  return out;
 }
 
-/** The fields a passing check is recorded as on its issue: what ran, where, on which files, how long. */
+/**
+ * The fields a passing check is recorded as on its issue: what passed, where, and which checks it
+ * ran. Each check's duration is its own row (`check-runs.ts`), never repeated here: one check is
+ * one record (ISS-474).
+ */
 export function recordFields(report: MergeCheckReport): { key: string; value: string }[] {
-  const total = report.checks.reduce((sum, c) => sum + c.durationMs, 0);
-  const keys = runKeys(report.checks);
   return [
     {
       key: 'lead',
-      value: `Merge check passed at ${report.head.slice(0, 12)} on ${report.base.branch} ${report.base.sha.slice(0, 12)}: ${report.checks.length} checks in ${seconds(total)}`,
+      value: `Merge check passed at ${report.head.slice(0, 12)} on ${report.base.branch} ${report.base.sha.slice(0, 12)}: ${report.checks.length} checks`,
     },
     { key: 'check', value: MERGE_CHECK_RECORD },
     { key: 'result', value: 'pass' },
@@ -92,12 +111,8 @@ export function recordFields(report: MergeCheckReport): { key: string; value: st
     { key: 'base', value: `${report.base.branch}@${report.base.sha}` },
     { key: 'head', value: report.head },
     { key: 'touched', value: `${report.touched.length} file(s)` },
-    ...report.checks.map((c, i) => ({
-      key: keys[i] ?? `check-${i + 1}`,
-      value: `${c.result} in ${seconds(c.durationMs)} · ${described(c)}${c.command ? ` · ${c.command}` : ''}${c.note ? ` · ${c.note}` : ''}`,
-    })),
+    { key: 'checks', value: namedChecks(report.checks) },
     { key: 'not-checked', value: NOT_YET_CHECKED },
-    { key: 'duration', value: seconds(total) },
   ];
 }
 

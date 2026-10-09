@@ -4,8 +4,9 @@
  * the typecheck, the direct tests of the touched files, their direct integration tests and the
  * conformance gate, on the change rebased onto the latest base — and sends its report here. Core
  * refuses a report a merge may not rely on, asks the issue's approved new patterns for their catalog
- * pages in the change, and records a passing check on the issue with every check's command, files and
- * duration. The merge mark then asks for that record (`uncheckedMergeRefusal`).
+ * pages in the change, and records a passing check on the issue: each of its checks once, with its
+ * kind and duration, as a check run of the run that sent it (`check-runs.ts`, ISS-474), and the
+ * verification record naming them. The merge mark then asks for that record (`uncheckedMergeRefusal`).
  *
  * The report is the box's word, as a mark without an observed commit is: core cannot rerun the
  * checks, so the record says what the box ran and when, and is written by core only after core's own
@@ -14,8 +15,9 @@
 
 import type { MergeCheckRefusalCode, MergeCheckReport } from '@forge/contracts/merge-check';
 import { db } from '../db/client.js';
-import { refuser } from '../lib/refusal.js';
+import { RefusalError, refuser } from '../lib/refusal.js';
 import type { Actor } from './activity.js';
+import { checkRunSessionOf, writeCheckRuns } from './check-runs.js';
 import { issueDisplayIds } from './display-ids.js';
 import {
   type CheckOwedBy,
@@ -31,11 +33,16 @@ import { listRecordEvents, type RecordEvent, writeCoreRecord } from './record-ev
 
 const refuse = refuser<MergeCheckRefusalCode>('MERGE_CHECK_REFUSED');
 
-/** Record a passing merge check on the issue, or refuse the report by the name of what failed. */
+/**
+ * Record a passing merge check on the issue — its checks as check runs and its verification record,
+ * in one transaction — or refuse the report by the name of what failed, writing nothing.
+ */
 export async function recordMergeCheck(args: {
   issue: { id: string; projectId: string };
   report: MergeCheckReport;
   actor: Actor;
+  /** The device a box credential belongs to; null for a person's. */
+  box: string | null;
 }): Promise<RecordEvent> {
   const { issue, report } = args;
   const fault = checkRefusal(report);
@@ -46,11 +53,24 @@ export async function recordMergeCheck(args: {
     paths: { commit: report.head, changes: report.touched },
   });
   if (entry) throw refuse(entry.code, entry.detail, entry.path);
-  return writeCoreRecord(db, {
-    issueId: issue.id,
-    actor: args.actor,
-    kind: 'verification',
-    fields: recordFields(report),
+  const session = await checkRunSessionOf({ issue, box: args.box });
+  if (!session.ok) throw new RefusalError(session.refusals, 'MERGE_CHECK_REFUSED');
+  return db.transaction(async (tx) => {
+    const written = await writeCheckRuns(tx, {
+      issueId: issue.id,
+      head: report.head,
+      checks: report.checks,
+      via: 'merge-check',
+      runSessionId: session.session,
+      actor: args.actor,
+    });
+    if (!written.ok) throw new RefusalError(written.refusals, 'MERGE_CHECK_REFUSED');
+    return writeCoreRecord(tx, {
+      issueId: issue.id,
+      actor: args.actor,
+      kind: 'verification',
+      fields: recordFields(report),
+    });
   });
 }
 

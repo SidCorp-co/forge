@@ -132,14 +132,23 @@ condition holds, so carry on. A wait on a mark is never also \`about\` a require
 - Before you change behaviour, know what you are replacing, and remove it in the same change.
 - Run the project's own gate before you push: its typecheck and the direct tests of what you
   touched, never a whole suite — the project's knowledge names the command.
+- Record each check you ran with how long it took, so the issue shows where its time went:
+  \`POST /api/issues/:id/checks\` \`{ head, checks: [{ id, kind, name, scope, command, files, result,
+  durationMs, startedAt }] }\`, \`kind\` one of \`tests\`, \`typecheck\`, \`probes\`, \`review\`,
+  \`conformance\`, \`base\`. Where the project's check script writes that report, send it whole; a
+  check you timed by hand is sent the same way. Core puts each on the run holding the issue on your
+  box (\`run\` names another), keeps it once by its \`id\` — a resend adds nothing — and refuses
+  an id already recorded as another check (\`CHECK_RUN_CONFLICT\`). A merge check's report records
+  its own checks this way, so they are not sent twice. \`GET /api/issues/:id/checks\` reads them back.
 - Where a merge check is owed — the project document declares \`validation.mergeCheck: required\`,
   or the issue introduces an approved new pattern — run the project's merge check on the change
   rebased onto the latest base, and record what it wrote before you land:
   \`POST /api/issues/:id/merge-check\` with its report
   \`{ base: { branch, sha }, head, mode, touched, checks }\`. A report missing a check every merge
-  needs is refused \`MERGE_CHECK_INCOMPLETE\`, one behind its base \`MERGE_BEHIND_BASE\`, one with a
-  red check \`MERGE_CHECK_RED\`, and an approved new pattern whose catalog page the touched files
-  lack \`PATTERN_ENTRY_MISSING\`. Land the commit you checked: a rebase after it is a new check.
+  needs is refused \`MERGE_CHECK_INCOMPLETE\`, one filing a check under another kind
+  \`MERGE_CHECK_KIND_MISMATCH\`, one behind its base \`MERGE_BEHIND_BASE\`, one with a red check
+  \`MERGE_CHECK_RED\`, and an approved new pattern whose catalog page the touched files lack
+  \`PATTERN_ENTRY_MISSING\`. Land the commit you checked: a rebase after it is a new check.
 
 ### 5. Prove it, one criterion at a time
 Read \`qa\` from the policy. **\`self\`** — this run judges. **\`independent\`** — another run judges, so

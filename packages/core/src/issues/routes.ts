@@ -229,6 +229,7 @@ issueRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
 
 export { issueActivityRoutes, projectActivityRoutes } from './activity-routes.js';
 export { attachmentRoutes, issueAttachmentRoutes } from './attachment-routes.js';
+export { issueCheckRunRoutes } from './check-run-routes.js';
 export { issueCriteriaRoutes } from './criteria/routes.js';
 export { issueDependencyRoutes } from './dependency-routes.js';
 export { issueExtrasRoutes } from './extras-routes.js';

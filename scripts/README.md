@@ -911,14 +911,24 @@ size at a merge does not.
 
 | Command | When | What it runs | Exit |
 |---|---|---|---|
-| `pnpm test:changed [--integration]` | before a push | `tc-changed`'s typecheck (and `cargo check` when the runner is touched), the direct tests of what changed against the merge-base with the target, committed or not | 0 · 1 a check red · 2 could not run |
+| `pnpm test:changed [--integration] [--report <path>]` | before a push | `tc-changed`'s typecheck (and `cargo check` when the runner is touched), the direct tests of what changed against the merge-base with the target, committed or not, each timed; writes the checks' report | 0 · 1 a check red · 2 could not run |
 | `GITHUB_BASE_REF=dev pnpm merge-check` | before landing on dev, and in `ci.yml`'s `merge-check` job | fetches the base, refuses `MERGE_BEHIND_BASE` unless HEAD holds its tip and a dirty checkout by name; then the typecheck, the direct tests, the direct core integration tests and `pnpm verify`, each timed; writes the report | 0 · 1 red or behind · 2 could not run |
 | `pnpm merge-check --since <sha>` | a push run on dev | the same over a landing already on the base, `<sha>..HEAD`, recorded as `landed` | as above |
 
-**The record.** The report (`--report <path>`, the OS temp directory by default) is the body of
-`POST /api/issues/:id/merge-check`, which refuses `MERGE_CHECK_INCOMPLETE`, `MERGE_BEHIND_BASE`,
-`MERGE_CHECK_RED` and `PATTERN_ENTRY_MISSING` by name and records a passing check on the issue as
-core's `verification` record, one field per check with its command, files and duration. The
+**Every check is timed once** (REQ-36 BC-14, ISS-474). `lib/direct-test-run.mjs` makes each check a
+check run as `packages/contracts/src/check-runs.ts` declares it: an id of its own, its kind
+(`tests`, `typecheck`, `conformance` for `pnpm verify`, `base` for `rebased-on-base`), when it
+started and how long it took. `test:changed`'s report (`{ head, checks }`, `--report <path>`, the OS
+temp directory by default; a check run on a dirty checkout says so in its note) is the body of
+`POST /api/issues/:id/checks`, which records each on the run session holding the issue on the box
+that sent it; a resend adds nothing. Probes and the review are kinds no script here runs yet, and a
+check run by hand outside these scripts is timed only if its run sends it.
+
+**The record.** The merge check's report (`--report <path>`, the OS temp directory by default) is the
+body of `POST /api/issues/:id/merge-check`, which refuses `MERGE_CHECK_INCOMPLETE`,
+`MERGE_CHECK_KIND_MISMATCH`, `MERGE_BEHIND_BASE`, `MERGE_CHECK_RED` and `PATTERN_ENTRY_MISSING` by
+name. A passing check records its checks as check runs, each with its kind and duration, and
+core's `verification` record naming them — never a second copy of a duration. The
 checks every merge needs are `REQUIRED_MERGE_CHECKS` in `packages/contracts/src/merge-check.ts`,
 and `lib/merge-check.test.mjs` holds `lib/merge-check.mjs`'s copy to it. Kept probes (ISS-469) and
 the review (ISS-473) join that list when their issues land; until then each report names them as

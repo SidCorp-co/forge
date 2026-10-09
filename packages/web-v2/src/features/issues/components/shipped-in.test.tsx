@@ -3,7 +3,7 @@
 // release that shipped it (dev.72) was only in comment prose. The rail now names that release as a
 // link, and the Runs tab counts and lists the issue's runs whether or not they recorded steps.
 
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { IssueAgentSession, IssueDetail } from "../types";
@@ -63,9 +63,17 @@ describe("the Runs tab", () => {
   });
 
   it("lists a run that recorded no steps, linked to the run", () => {
-    render(<RunsTab slug="forge" sessions={[RUN]} standingQ={settled} stepOutcomes={[]} expandedStep={null} onToggleStep={() => {}} />);
+    fakeCore(() => ({ body: { issueId: "i1", totalMs: 0, kinds: [], checks: [] } }));
+    renderWithQuery(<RunsTab issueId="i1" slug="forge" sessions={[RUN]} standingQ={settled} stepOutcomes={[]} expandedStep={null} onToggleStep={() => {}} />);
     const row = screen.getByTestId("issue-run");
     expect(row).toHaveTextContent("nv3 lane");
     expect(within(row).getByRole("link").getAttribute("href")).toBe("/projects/forge/agents/runs/run-7");
+  });
+
+  it("shows the time the issue's runs spent on checks (REQ-36 BC-14)", async () => {
+    const core = fakeCore(() => ({ body: { issueId: "i1", totalMs: 0, kinds: [], checks: [] } }));
+    renderWithQuery(<RunsTab issueId="i1" slug="forge" sessions={[]} standingQ={settled} stepOutcomes={[]} expandedStep={null} onToggleStep={() => {}} />);
+    expect(await screen.findByTestId("issue-checks")).toHaveTextContent("Checks");
+    expect(core.map((c) => c.path)).toContain("/issues/i1/checks");
   });
 });

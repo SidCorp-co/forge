@@ -69,6 +69,7 @@ import {
   bodyRoutes,
   issueActivityRoutes,
   issueAttachmentRoutes,
+  issueCheckRunRoutes,
   issueCriteriaRoutes,
   issueDependencyRoutes,
   issueExtrasRoutes,
@@ -268,6 +269,7 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', issueAttachmentRoutes);
   app.route('/api/issues', issueExtrasRoutes);
   app.route('/api/issues', issueMergeRoutes);
+  app.route('/api/issues', issueCheckRunRoutes);
   app.route('/api/issues', issueMergePullRequestRoutes);
   app.route('/api/uploads', uploadRoutes);
   app.route('/api/issues', issueRoutes);

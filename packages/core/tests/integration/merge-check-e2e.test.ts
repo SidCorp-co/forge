@@ -1,8 +1,9 @@
 /**
  * The merge check's record (Issue to release r20 `rule-merge`; REQ-36 BC-9, BC-15; ISS-472): a
  * project's check sends its report to `POST /api/issues/:id/merge-check`, which refuses one a merge
- * may not rely on by the name of what failed and records a passing one on the issue with each check's
- * command, files and duration. A mark where a check is owed — the project declares
+ * may not rely on by the name of what failed and records a passing one on the issue: each check once,
+ * as a check run with its kind and duration (ISS-474), and the verification record naming them without
+ * a second copy of any duration. A mark where a check is owed — the project declares
  * `validation.mergeCheck: required` — is refused MERGE_CHECK_MISSING until a passing check stands at
  * the commit it marks; a project that declares none marks as before.
  *
@@ -15,7 +16,12 @@
  * @direct-test-of packages/core/src/issues/record-events/store.ts
  */
 
-import { REQUIRED_MERGE_CHECKS } from '@forge/contracts/merge-check';
+import { randomUUID } from 'node:crypto';
+import {
+  MERGE_CHECK_KINDS,
+  REQUIRED_MERGE_CHECKS,
+  type RequiredMergeCheck,
+} from '@forge/contracts/merge-check';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { api, userToken } from '../helpers/api.js';
@@ -94,7 +100,10 @@ const call = async (method: 'GET' | 'POST', path: string, body?: unknown) => {
 const codes = (res: { body: Doc }): string[] =>
   (res.body.error?.refusals ?? []).map((r: Doc) => r.code);
 
-const run = (name: string, over: Doc = {}) => ({
+const run = (name: RequiredMergeCheck, over: Doc = {}) => ({
+  id: randomUUID(),
+  kind: MERGE_CHECK_KINDS[name],
+  startedAt: '2026-10-09T06:00:00.000Z',
   name,
   scope: 'workspace',
   command: `run ${name}`,
@@ -151,6 +160,31 @@ describe('a report the merge check refuses, recording nothing', () => {
     expect([res.status, codes(res)]).toEqual([422, ['MERGE_CHECK_INCOMPLETE']]);
   });
 
+  it('refuses one filing a required check under another kind, recording nothing', async () => {
+    const issue = await issueIn(declared);
+    const checks = REQUIRED_MERGE_CHECKS.map((n) =>
+      run(n, n === 'typecheck' ? { kind: 'tests' } : {}),
+    );
+    const res = await check(issue, report({ checks }));
+    expect([res.status, codes(res)]).toEqual([422, ['MERGE_CHECK_KIND_MISMATCH']]);
+    expect((await call('GET', `/api/issues/${issue}/checks`)).body.checks).toEqual([]);
+  });
+
+  it('refuses one reusing a recorded check id for another check, writing neither record', async () => {
+    const issue = await issueIn(declared);
+    const first = report();
+    expect((await check(issue, first)).status).toBe(201);
+    const other = await issueIn(declared);
+    const reused = REQUIRED_MERGE_CHECKS.map((n, i) =>
+      run(n, i === 0 ? { id: first.checks[0]?.id, durationMs: 9 } : {}),
+    );
+    const res = await check(other, report({ checks: reused }));
+    expect([res.status, codes(res)]).toEqual([409, ['CHECK_RUN_CONFLICT']]);
+    expect(res.body.error.refusals[0].path).toBe('/checks/0/id');
+    expect(await verifications(other)).toEqual([]);
+    expect((await call('GET', `/api/issues/${other}/checks`)).body.checks).toEqual([]);
+  });
+
   it('refuses one behind its base, by name', async () => {
     const issue = await issueIn(declared);
     const checks = REQUIRED_MERGE_CHECKS.map((n) =>
@@ -173,9 +207,10 @@ describe('a report the merge check refuses, recording nothing', () => {
 });
 
 describe('a passing check is recorded on its issue', () => {
-  it("as core's verification record, with each check's command, files and duration", async () => {
+  it("each check once with its kind and duration, and core's verification record naming them", async () => {
     const issue = await issueIn(declared);
-    const res = await check(issue, report());
+    const sent = report();
+    const res = await check(issue, sent);
     expect([res.status, res.body.allowed, res.body.head]).toEqual([201, true, HEAD]);
     const [record, ...rest] = await verifications(issue);
     expect(rest).toEqual([]);
@@ -183,10 +218,19 @@ describe('a passing check is recorded on its issue', () => {
     const fields = (record?.fields ?? []) as Doc[];
     const field = (key: string) => fields.find((f) => f.key === key)?.value;
     expect([field('check'), field('result'), field('head')]).toEqual(['merge', 'pass', HEAD]);
-    expect(field('direct-tests')).toBe(
-      'pass in 1.2s · `direct-tests` (workspace): packages/core/src/issues/x.test.ts · run direct-tests',
+    expect(field('checks')).toContain('direct-tests (workspace)');
+    expect(fields.some((f) => /\d+\.\ds\b/.test(String(f.value)))).toBe(false);
+
+    const read = (await call('GET', `/api/issues/${issue}/checks`)).body;
+    expect(read.checks.map((c: Doc) => c.id).sort()).toEqual(sent.checks.map((c) => c.id).sort());
+    expect(read.checks.every((c: Doc) => c.via === 'merge-check' && c.durationMs === 1200)).toBe(
+      true,
     );
-    expect(field('duration')).toBe('6.0s');
+    expect(read.kinds.find((k: Doc) => k.kind === 'tests')).toMatchObject({
+      checks: 2,
+      totalMs: 2400,
+    });
+    expect(read.totalMs).toBe(6000);
   });
 });
 

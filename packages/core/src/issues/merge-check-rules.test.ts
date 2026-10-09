@@ -1,4 +1,10 @@
-import { type MergeCheckReport, REQUIRED_MERGE_CHECKS } from '@forge/contracts/merge-check';
+import { randomUUID } from 'node:crypto';
+import {
+  MERGE_CHECK_KINDS,
+  type MergeCheckReport,
+  REQUIRED_MERGE_CHECKS,
+  type RequiredMergeCheck,
+} from '@forge/contracts/merge-check';
 import { describe, expect, it } from 'vitest';
 import {
   checkRefusal,
@@ -11,8 +17,11 @@ import {
 const HEAD = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
 
-const run = (name: string, over: Partial<MergeCheckReport['checks'][number]> = {}) => ({
+const run = (name: RequiredMergeCheck, over: Partial<MergeCheckReport['checks'][number]> = {}) => ({
+  id: randomUUID(),
+  kind: MERGE_CHECK_KINDS[name],
   name,
+  startedAt: '2026-10-09T06:00:00.000Z',
   scope: 'workspace',
   command: `run ${name}`,
   files: [],
@@ -46,6 +55,15 @@ describe('which report a merge may rely on', () => {
     expect(out?.detail).toContain('`verify`');
   });
 
+  it('refuses a required check filed under another kind, naming the check and its kind', () => {
+    const checks = REQUIRED_MERGE_CHECKS.map((n) =>
+      run(n, n === 'verify' ? { kind: 'tests' } : {}),
+    );
+    const out = checkRefusal(report(checks));
+    expect(out?.code).toBe('MERGE_CHECK_KIND_MISMATCH');
+    expect(out?.detail).toContain('`verify` is a conformance check, not tests');
+  });
+
   it('refuses a change behind its base by name, ahead of a red check', () => {
     const checks = REQUIRED_MERGE_CHECKS.map((n) =>
       run(n, n === 'rebased-on-base' || n === 'typecheck' ? { result: 'fail' } : {}),
@@ -71,7 +89,7 @@ describe('which report a merge may rely on', () => {
 });
 
 describe('the record a passing check is kept as', () => {
-  it("holds each check's result, duration, scope, files and command, under keys of its own", () => {
+  it('names each check it ran and carries no second copy of any duration', () => {
     const checks = [
       ...REQUIRED_MERGE_CHECKS.map((n) => run(n)),
       run('direct-tests', { scope: 'runner/runner-core', files: ['a.rs'], durationMs: 2500 }),
@@ -81,11 +99,22 @@ describe('the record a passing check is kept as', () => {
     expect(new Set(keys).size).toBe(keys.length);
     expect(fields.find((f) => f.key === 'check')?.value).toBe('merge');
     expect(fields.find((f) => f.key === 'head')?.value).toBe(HEAD);
-    expect(fields.find((f) => f.key === 'direct-tests-2')?.value).toBe(
-      'pass in 2.5s · `direct-tests` (runner/runner-core): a.rs · run direct-tests',
-    );
+    const named = fields.find((f) => f.key === 'checks')?.value ?? '';
+    expect(named).toContain('6 recorded with their kinds and durations');
+    expect(named).toContain('direct-tests (runner/runner-core)');
     expect(fields.find((f) => f.key === 'not-checked')?.value).toContain('ISS-469');
-    expect(fields.find((f) => f.key === 'duration')?.value).toBe('10.0s');
+    // One check is one record (ISS-474): its duration lives in its check run, never here as well.
+    for (const f of fields) expect(f.value).not.toMatch(/\d+\.\ds\b|durationMs|\b1500\b|\b2500\b/);
+  });
+
+  it('cuts a long list of checks to fit one field, saying how many more there are', () => {
+    const checks = [
+      ...REQUIRED_MERGE_CHECKS.map((n) => run(n)),
+      ...Array.from({ length: 40 }, (_, i) => run('direct-tests', { scope: `collection-${i}` })),
+    ];
+    const named = recordFields(report(checks)).find((f) => f.key === 'checks')?.value ?? '';
+    expect(named.length).toBeLessThanOrEqual(400);
+    expect(named).toMatch(/, \+\d+ more$/);
   });
 });
 

@@ -60,6 +60,10 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
         'ARTIFACT_CARRIER_DESIGN',
       ],
     ],
+    [
+      'a run records each check it made with its kind and duration, once',
+      ['POST /api/issues/:id/checks', 'durationMs', '`probes`', '`review`', 'CHECK_RUN_CONFLICT'],
+    ],
   ] as const)('%s', (_act, words) => {
     for (const word of words) expect(flow, `issue-flow no longer names ${word}`).toContain(word);
   });

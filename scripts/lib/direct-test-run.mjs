@@ -1,8 +1,11 @@
 // Running what `direct-tests.mjs` selected: the typecheck and the direct tests of a change, each
 // timed and reported as one check, so the pre-push run and the merge check say the same things the
-// same way (REQ-36 BC-7, BC-14).
+// same way (REQ-36 BC-7, BC-14). Each check is a check run as the tracker records it
+// (`packages/contracts/src/check-runs.ts`): an id of its own, so a resend is the same check, its
+// kind, when it started and how long it took (ISS-474).
 
 import { spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import {
   fileModulesOf,
@@ -15,18 +18,34 @@ import {
 } from './direct-tests.mjs';
 import { gitOut } from './gate.mjs';
 
-/** One check a run made: what it was, where, the command, the files it ran, and how it ended. */
-function check(name, scope, command, files, result, durationMs, note) {
-  return { name, scope, command, files, result, durationMs, ...(note ? { note } : {}) };
+/**
+ * One check a run made: what it was and of which kind, where, the command, the files it ran, how it
+ * ended, when it started (epoch ms) and how long it took.
+ */
+export function check({ name, kind, scope, command, files, result, startedAt, durationMs, note }) {
+  return {
+    id: randomUUID(),
+    kind,
+    name,
+    scope,
+    command,
+    files,
+    result,
+    durationMs,
+    startedAt: new Date(startedAt).toISOString(),
+    ...(note ? { note } : {}),
+  };
 }
 
-function run(argv, cwd, { capture = false } = {}) {
+/** Run one command and time it: when it started (epoch ms) and how long it took. */
+export function run(argv, cwd, { capture = false, env } = {}) {
   const started = Date.now();
   const r = spawnSync(argv[0], argv.slice(1), {
     cwd,
     encoding: 'utf8',
     stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
     maxBuffer: 256 * 1024 * 1024,
+    ...(env ? { env } : {}),
   });
   return {
     ok: r.status === 0,
@@ -34,6 +53,7 @@ function run(argv, cwd, { capture = false } = {}) {
     error: r.error?.message ?? null,
     stdout: r.stdout ?? '',
     stderr: r.stderr ?? '',
+    startedAt: started,
     durationMs: Date.now() - started,
   };
 }
@@ -73,12 +93,32 @@ export function runTypecheck(root, { baseRef, touched }) {
   const checks = [];
   const tc = ['node', 'scripts/tc-changed.mjs', '--base', baseRef];
   const r = run(tc, root);
-  checks.push(check('typecheck', 'typescript', show(tc), [], r.ok ? 'pass' : 'fail', r.durationMs));
+  checks.push(
+    check({
+      name: 'typecheck',
+      kind: 'typecheck',
+      scope: 'typescript',
+      command: show(tc),
+      files: [],
+      result: r.ok ? 'pass' : 'fail',
+      startedAt: r.startedAt,
+      durationMs: r.durationMs,
+    }),
+  );
   if (touched.some((p) => p.startsWith('packages/runner/'))) {
     const cargo = ['cargo', 'check', '--workspace', '--all-targets', '--locked'];
     const c = run(cargo, join(root, 'packages/runner'));
     checks.push(
-      check('typecheck', 'runner', show(cargo), [], c.ok ? 'pass' : 'fail', c.durationMs),
+      check({
+        name: 'typecheck',
+        kind: 'typecheck',
+        scope: 'runner',
+        command: show(cargo),
+        files: [],
+        result: c.ok ? 'pass' : 'fail',
+        startedAt: c.startedAt,
+        durationMs: c.durationMs,
+      }),
     );
   }
   return checks;
@@ -95,14 +135,16 @@ function runVitest(root, collections, name) {
         .join('\n')}`,
     );
     const r = run(argv, join(root, collection.cwd));
-    return check(
+    return check({
       name,
-      collection.name,
-      `(cd ${collection.cwd} && pnpm exec vitest run --config ${collection.config} <${files.length} files>)`,
-      files.map((f) => f.test),
-      r.ok ? 'pass' : 'fail',
-      r.durationMs,
-    );
+      kind: 'tests',
+      scope: collection.name,
+      command: `(cd ${collection.cwd} && pnpm exec vitest run --config ${collection.config} <${files.length} files>)`,
+      files: files.map((f) => f.test),
+      result: r.ok ? 'pass' : 'fail',
+      startedAt: r.startedAt,
+      durationMs: r.durationMs,
+    });
   });
 }
 
@@ -110,13 +152,21 @@ function runVitest(root, collections, name) {
 function runCrate(root, known, entry) {
   const cwd = join(root, 'packages/runner');
   const checks = [];
+  const crateCheck = (fields) =>
+    check({ name: 'direct-tests', kind: 'tests', scope: `runner/${entry.crate}`, ...fields });
   if (entry.modules.length) {
     const list = ['cargo', 'test', '-p', entry.crate, '--locked', '--', '--list'];
     const listed = run(list, cwd, { capture: true });
     if (!listed.ok) {
       process.stderr.write(listed.stderr);
       checks.push(
-        check('direct-tests', `runner/${entry.crate}`, show(list), [], 'fail', listed.durationMs),
+        crateCheck({
+          command: show(list),
+          files: [],
+          result: 'fail',
+          startedAt: listed.startedAt,
+          durationMs: listed.durationMs,
+        }),
       );
       return checks;
     }
@@ -128,15 +178,14 @@ function runCrate(root, known, entry) {
     const files = entry.modules.map((m) => m.path);
     if (owned.length === 0) {
       checks.push(
-        check(
-          'direct-tests',
-          `runner/${entry.crate}`,
-          show(list),
+        crateCheck({
+          command: show(list),
           files,
-          'none',
-          listed.durationMs,
-          'the touched modules hold no test of their own',
-        ),
+          result: 'none',
+          startedAt: listed.startedAt,
+          durationMs: listed.durationMs,
+          note: 'the touched modules hold no test of their own',
+        }),
       );
     } else {
       console.log(
@@ -145,14 +194,13 @@ function runCrate(root, known, entry) {
       const argv = ['cargo', 'test', '-p', entry.crate, '--locked', '--', '--exact', ...owned];
       const r = run(argv, cwd);
       checks.push(
-        check(
-          'direct-tests',
-          `runner/${entry.crate}`,
-          `cargo test -p ${entry.crate} --locked -- --exact <${owned.length} tests>`,
+        crateCheck({
+          command: `cargo test -p ${entry.crate} --locked -- --exact <${owned.length} tests>`,
           files,
-          r.ok ? 'pass' : 'fail',
-          r.durationMs + listed.durationMs,
-        ),
+          result: r.ok ? 'pass' : 'fail',
+          startedAt: listed.startedAt,
+          durationMs: r.durationMs + listed.durationMs,
+        }),
       );
     }
   }
@@ -160,18 +208,31 @@ function runCrate(root, known, entry) {
     const argv = ['cargo', 'test', '-p', entry.crate, '--locked', '--test', t.target];
     const r = run(argv, cwd);
     checks.push(
-      check(
-        'direct-tests',
-        `runner/${entry.crate}`,
-        show(argv),
-        [t.path],
-        r.ok ? 'pass' : 'fail',
-        r.durationMs,
-      ),
+      crateCheck({
+        command: show(argv),
+        files: [t.path],
+        result: r.ok ? 'pass' : 'fail',
+        startedAt: r.startedAt,
+        durationMs: r.durationMs,
+      }),
     );
   }
   return checks;
 }
+
+/** A check whose selection held nothing to run: it says so, at no time. */
+const nothingToRun = (name, scope, note) =>
+  check({
+    name,
+    kind: 'tests',
+    scope,
+    command: '',
+    files: [],
+    result: 'none',
+    startedAt: Date.now(),
+    durationMs: 0,
+    note,
+  });
 
 /**
  * Select and run the direct tests of `touched` (every package) and, when `integration` is set, the
@@ -190,15 +251,7 @@ export function runDirectTests(root, { touched, integration }) {
   for (const entry of crates) checks.push(...runCrate(root, known, entry));
   if (!checks.length) {
     checks.push(
-      check(
-        'direct-tests',
-        'workspace',
-        '',
-        [],
-        'none',
-        0,
-        'no test file is direct for any touched file',
-      ),
+      nothingToRun('direct-tests', 'workspace', 'no test file is direct for any touched file'),
     );
   }
   if (integration) {
@@ -207,13 +260,9 @@ export function runDirectTests(root, { touched, integration }) {
       ...(ran.length
         ? ran
         : [
-            check(
+            nothingToRun(
               'integration-tests',
               '@forge/core integration',
-              '',
-              [],
-              'none',
-              0,
               'no integration test is direct for any touched file',
             ),
           ]),

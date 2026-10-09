@@ -114,6 +114,7 @@ issueMergeRoutes.post(
       issue: { id: scope.id, projectId: scope.projectId },
       report,
       actor: { type: actor.type, id: actor.id, agency: actor.agency },
+      box: c.get('patDeviceId') ?? c.get('deviceId') ?? null,
     });
     return c.json({ id: scope.id, allowed: true, head: report.head, record }, 201);
   },

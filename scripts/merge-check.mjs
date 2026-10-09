@@ -3,7 +3,8 @@
 // BC-15, BC-17; ISS-472). On the change as it would land — HEAD containing the latest base — it runs
 // only: the typecheck, the direct tests of the touched files in every package, the direct core
 // integration tests, and `pnpm verify`. No import-graph widening, no whole-suite fallback. It writes
-// the report the tracker records on the issue, which the merge mark then asks for.
+// the report the tracker records on the issue — each check with its kind and duration, recorded once
+// (ISS-474) — which the merge mark then asks for.
 //
 //   pnpm merge-check                     against the latest origin/<base>, fetched first
 //   pnpm merge-check --since <sha>       a landing already on its base: the change since <sha>
@@ -17,7 +18,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mergeTarget } from './lib/base-branch.mjs';
 import {
+  check,
   describeChecks,
+  run,
   runDirectTests,
   runTypecheck,
   touchedBetween,
@@ -74,14 +77,18 @@ if (since) {
   ) {
     die(`--since ${since} is not an ancestor of HEAD, so the change since it is not one landing`);
   }
-  checks.push({
-    name: 'rebased-on-base',
-    scope: branch,
-    command: `landed: ${baseSha.slice(0, 12)}..${head.slice(0, 12)} is already on ${branch}`,
-    files: [],
-    result: 'pass',
-    durationMs: 0,
-  });
+  checks.push(
+    check({
+      name: 'rebased-on-base',
+      kind: 'base',
+      scope: branch,
+      command: `landed: ${baseSha.slice(0, 12)}..${head.slice(0, 12)} is already on ${branch}`,
+      files: [],
+      result: 'pass',
+      startedAt: Date.now(),
+      durationMs: 0,
+    }),
+  );
 } else {
   const started = Date.now();
   const fetched = spawnSync('git', ['fetch', '--quiet', 'origin', branch], {
@@ -93,14 +100,18 @@ if (since) {
   const tipInHead =
     spawnSync('git', ['merge-base', '--is-ancestor', baseSha, head], { cwd: ROOT }).status === 0;
   const behind = behindRefusal({ branch, tip: baseSha, head, tipInHead });
-  checks.push({
-    name: 'rebased-on-base',
-    scope: branch,
-    command: `git merge-base --is-ancestor origin/${branch} HEAD`,
-    files: [],
-    result: behind ? 'fail' : 'pass',
-    durationMs: Date.now() - started,
-  });
+  checks.push(
+    check({
+      name: 'rebased-on-base',
+      kind: 'base',
+      scope: branch,
+      command: `git merge-base --is-ancestor origin/${branch} HEAD`,
+      files: [],
+      result: behind ? 'fail' : 'pass',
+      startedAt: started,
+      durationMs: Date.now() - started,
+    }),
+  );
   if (behind) {
     console.error(`merge-check: ${behind}`);
     process.exit(1);
@@ -119,20 +130,19 @@ checks.push(...runTypecheck(ROOT, { baseRef: baseSha, touched: touched.map((t) =
 const direct = runDirectTests(ROOT, { touched, integration: true });
 checks.push(...direct.checks);
 
-const verifyStarted = Date.now();
-const verify = spawnSync('pnpm', ['verify'], {
-  cwd: ROOT,
-  stdio: 'inherit',
-  env: { ...process.env, GITHUB_BASE_REF: branch },
-});
-checks.push({
-  name: 'verify',
-  scope: 'workspace',
-  command: `GITHUB_BASE_REF=${branch} pnpm verify`,
-  files: [],
-  result: verify.status === 0 ? 'pass' : 'fail',
-  durationMs: Date.now() - verifyStarted,
-});
+const verify = run(['pnpm', 'verify'], ROOT, { env: { ...process.env, GITHUB_BASE_REF: branch } });
+checks.push(
+  check({
+    name: 'verify',
+    kind: 'conformance',
+    scope: 'workspace',
+    command: `GITHUB_BASE_REF=${branch} pnpm verify`,
+    files: [],
+    result: verify.ok ? 'pass' : 'fail',
+    startedAt: verify.startedAt,
+    durationMs: verify.durationMs,
+  }),
+);
 
 const missing = missingCheck(checks);
 if (missing)

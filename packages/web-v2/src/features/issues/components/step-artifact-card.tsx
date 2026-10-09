@@ -22,7 +22,8 @@ const STATE_DOT: Record<StepState, string> = {
 
 const SKIP_KEYS = new Set(["step", "schema_version", "schemaVersion"]);
 
-function fmtDuration(seconds: number, t: Copy): string {
+/** An elapsed time in whole seconds, in the reader's words: `42s`, `3m 07s`, `1h 05m`. */
+export function fmtDuration(seconds: number, t: Copy): string {
   const s = Math.max(0, Math.round(seconds));
   const m = Math.floor(s / 60);
   const h = Math.floor(m / 60);

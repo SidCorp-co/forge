@@ -3,13 +3,20 @@
 // this checkout changed against the branch it lands on, committed or not, in every package, and a
 // line for each thing it ran. The selection is `scripts/lib/direct-tests.mjs`'s; nothing widens it.
 //
-//   pnpm test:changed                 typecheck and direct unit tests
-//   pnpm test:changed --integration   the direct core integration tests too (a throwaway Postgres)
+//   pnpm test:changed                    typecheck and direct unit tests
+//   pnpm test:changed --integration      the direct core integration tests too (a throwaway Postgres)
+//   pnpm test:changed --report <path>    where the checks' report goes (default: the OS temp directory)
+//
+// Every check it runs is timed and written to a report, each with its kind and duration, which
+// `POST /api/issues/:id/checks` records on the issue (REQ-36 BC-14, ISS-474).
 //
 // The merge gate is `pnpm merge-check`, which runs this on the change rebased onto the latest base
 // with the integration tests and `pnpm verify`, and writes the record the merge needs.
 
 import { spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { baseRef } from './lib/base-branch.mjs';
 import {
   describeChecks,
@@ -21,9 +28,20 @@ import { dieAs, ROOT } from './lib/gate.mjs';
 
 const die = dieAs('test-changed');
 
+/** A check run on a checkout holding changes HEAD does not: its note says so, since `head` alone would not. */
+function withUncommitted(check, head) {
+  const said = `ran on ${head.slice(0, 12)} with uncommitted changes`;
+  return { ...check, note: check.note ? `${check.note}; ${said}` : said };
+}
+
 const args = process.argv.slice(2);
-const unknown = args.find((a) => a !== '--integration');
-if (unknown) die(`unknown argument ${unknown}; takes --integration`);
+const reportAt = args.indexOf('--report');
+const reportPath = reportAt === -1 ? null : args[reportAt + 1];
+if (reportAt !== -1 && (!reportPath || reportPath.startsWith('--'))) die('--report needs a path');
+const unknown = args.find(
+  (a, i) => a !== '--integration' && a !== '--report' && !(reportAt !== -1 && i === reportAt + 1),
+);
+if (unknown) die(`unknown argument ${unknown}; takes --integration, --report <path>`);
 const integration = args.includes('--integration');
 
 const target = baseRef(ROOT);
@@ -41,9 +59,19 @@ if (touched.length === 0) {
   process.exit(0);
 }
 
-const checks = runTypecheck(ROOT, { baseRef: target.ref, touched: touched.map((t) => t.path) });
+const ran = runTypecheck(ROOT, { baseRef: target.ref, touched: touched.map((t) => t.path) });
 const direct = runDirectTests(ROOT, { touched, integration });
-checks.push(...direct.checks);
+ran.push(...direct.checks);
+
+const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
+const dirty =
+  spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  }).stdout.trim() !== '';
+const checks = dirty ? ran.map((c) => withUncommitted(c, head)) : ran;
+const path = reportPath ?? join(tmpdir(), `forge-checks-${head.slice(0, 12)}-${Date.now()}.json`);
+writeFileSync(path, `${JSON.stringify({ head, checks }, null, 2)}\n`);
 
 console.log('\ntest-changed: what ran');
 for (const line of describeChecks(checks)) console.log(line);
@@ -57,4 +85,8 @@ if (direct.untested.length) {
     `\n  no direct test reaches ${direct.untested.length} touched code file(s):\n${direct.untested.map((p) => `    ${p}`).join('\n')}\n  A test that guards one by path, not by import, declares it with \`@direct-test-of <path>\`.`,
   );
 }
+console.log(
+  `\ntest-changed: ${checks.length} check(s) timed. Record them on the issue, with the report as the body:\n` +
+    `  POST /api/issues/<issue id>/checks   < ${path}`,
+);
 process.exit(checks.some((c) => c.result === 'fail') ? 1 : 0);

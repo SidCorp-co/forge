@@ -25,6 +25,7 @@ import { IssueDescription } from "../issue-description";
 import { ReleaseNoteCard } from "../release-note-card";
 import { SessionGroupTimeline } from "../session-group-timeline";
 import { StepArtifactCard } from "../step-artifact-card";
+import { CheckTimes } from "./check-times";
 
 export const ISSUE_TABS = ["overview", "criteria", "runs", "mockups", "decisions", "memory", "activity"] as const;
 
@@ -153,6 +154,7 @@ function RunList({ slug, sessions }: { slug: string; sessions: IssueAgentSession
 }
 
 export function RunsTab({
+  issueId,
   slug,
   sessions,
   standingQ,
@@ -160,6 +162,7 @@ export function RunsTab({
   expandedStep,
   onToggleStep,
 }: {
+  issueId: string;
   slug: string;
   sessions: IssueAgentSession[];
   standingQ: ReturnType<typeof useIssueStandingOf>;
@@ -173,6 +176,7 @@ export function RunsTab({
       {/* Session-group continuity (ISS-376) — resumed/fresh per step. Self-hides when no session carries group metadata. */}
       <SessionGroupTimeline sessions={sessions} />
       {sessions.length > 0 ? <RunList slug={slug} sessions={sessions} /> : null}
+      <CheckTimes issueId={issueId} slug={slug} sessions={sessions} />
       {standingQ.isLoading ? (
         <EmptyPanelLine title={t("issues.steps.title")} status={t("issues.steps.loading")} />
       ) : standingQ.isError ? (

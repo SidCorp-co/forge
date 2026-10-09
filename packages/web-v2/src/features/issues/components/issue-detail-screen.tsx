@@ -345,6 +345,7 @@ function IssueTabBody({
       ) : null}
       {tab === "runs" ? (
         <RunsTab
+          issueId={issue.id}
           slug={slug}
           sessions={issue.agentSessions ?? []}
           standingQ={standingQ}

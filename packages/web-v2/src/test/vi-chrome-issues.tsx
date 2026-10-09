@@ -250,6 +250,7 @@ const detailQueries = (): [QueryKey, unknown][] => [
   [["comments", "i1"], { items: COMMENTS, totalCount: 3 }],
   [["activities", "i1"], { items: ACTIVITY }],
   [["issue", "i1", "attachments"], []],
+  [["issue", "i1", "checks"], { issueId: "i1", totalMs: 0, kinds: [], checks: [] }],
   [["issue", "i1", "cost"], { estimatedCost: 1.25, inputTokens: 1200, outputTokens: 3400, cacheReadTokens: 0, cacheCreationTokens: 0 }],
   [["issue", "i1", "dependencies"], { incoming: [], outgoing: [] }],
   [["issue", "i1", "criteria"], { criteria: [{ id: "k1", n: 1, statement: "Tieu chi", position: 1, requirementCriterionId: null, latest: { verdict: "short", reason: "gan du", identityKind: null, authorAgency: "agent", createdAt: AT } }, { id: "k2", n: 2, statement: "Tieu chi hai", position: 2, requirementCriterionId: null, latest: null }] }],
@@ -320,8 +321,8 @@ export const SCREENS = [
           <OverviewTab issue={ISSUE} attachmentsQ={{ data: [], isLoading: false, isError: false } as never} canWrite />
           <CriteriaTab issue={ISSUE} projectId={P} hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-1" />
           <CriteriaTab issue={{ ...ISSUE, id: "i2" }} projectId={P} hasCriteriaRows={false} checklist={[{ key: "a", text: "Tieu chi", checked: true }]} canWrite={false} requirementKey={null} />
-          <RunsTab slug="hop" sessions={[]} standingQ={{ isLoading: false, isError: false, data: DETAIL } as never} stepOutcomes={DETAIL.stepOutcomes} expandedStep="build" onToggleStep={noop} />
-          <RunsTab slug="hop" sessions={RUNS} standingQ={{ isLoading: false, isError: false, data: DETAIL } as never} stepOutcomes={[]} expandedStep={null} onToggleStep={noop} />
+          <RunsTab issueId="i1" slug="hop" sessions={[]} standingQ={{ isLoading: false, isError: false, data: DETAIL } as never} stepOutcomes={DETAIL.stepOutcomes} expandedStep="build" onToggleStep={noop} />
+          <RunsTab issueId="i1" slug="hop" sessions={RUNS} standingQ={{ isLoading: false, isError: false, data: DETAIL } as never} stepOutcomes={[]} expandedStep={null} onToggleStep={noop} />
           <CommentThread issueId="i1" comments={COMMENTS} members={undefined} />
           <ActivityFeed items={ACTIVITY as never} />
         </>,
