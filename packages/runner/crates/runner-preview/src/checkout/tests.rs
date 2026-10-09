@@ -104,7 +104,8 @@ async fn a_reproduce_fetches_the_commit_the_box_lacks_and_checks_it_out_detached
     };
     let at = cut(&c).await.expect("the build is checked out");
     assert_eq!(sh(&at, "git rev-parse HEAD").await, later);
-    assert_eq!(sh(&at, "cat a.txt").await, "one\ntwo");
+    // git for Windows checks text out with CRLF (core.autocrlf)
+    assert_eq!(sh(&at, "cat a.txt").await.replace("\r\n", "\n"), "one\ntwo");
     assert!(
         c.removed_on(Some("idle")),
         "a reproduce's checkout is the box's to remove"
