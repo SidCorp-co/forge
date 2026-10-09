@@ -81,6 +81,12 @@ pub const MANIFEST: &str = ".installed-by-forge-runner";
 /// The manifest's shape, refused by name when it is any other.
 const MANIFEST_VERSION: u32 = 1;
 
+/// Held for the whole of an install, so two installs into one checkout — a
+/// `bind` in one process and the daemon's start sweep or a pane placement in
+/// another — take turns instead of each removing, creating and replacing what
+/// the other is in the middle of. It is the runner's own and holds nothing.
+pub const INSTALL_LOCK: &str = ".installed-by-forge-runner.lock";
+
 pub const RECORD: &str = "master-skill.json";
 const LOCK: &str = "master-skill.json.lock";
 
@@ -191,11 +197,37 @@ fn install_tree(repo: &Path, files: &[Shipped]) -> Outcome {
             return failed(refused.to_string())
         }
     }
-    match sync(&dir_in(repo), files) {
+    let dir = dir_in(repo);
+    let _turn = match take_turn(&dir) {
+        Ok(lock) => lock,
+        Err(detail) => return failed(detail),
+    };
+    match sync(&dir, files) {
         Ok(true) => Outcome::Written,
         Ok(false) => Outcome::Current,
         Err(detail) => failed(detail),
     }
+}
+
+/// Wait for every other install into `dir` to finish, then hold the right to
+/// be the only one until the returned file is dropped. Two installs that
+/// overlap each read the same manifest, so each goes to remove the same
+/// dropped file and the same emptied directory: the second finds them gone and
+/// fails an install whose tree is right, and a directory removed between its
+/// creation and the write into it fails the write. The lock is the OS's, so
+/// it is released when the process dies and no stale one is ever left behind.
+fn take_turn(dir: &Path) -> Result<std::fs::File, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let path = dir.join(INSTALL_LOCK);
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    lock.lock()
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(lock)
 }
 
 fn failed(detail: String) -> Outcome {
@@ -1003,6 +1035,13 @@ mod tests {
             "the install names what it wrote"
         );
         assert_eq!(
+            after
+                .remove(&PathBuf::from(DIR_RELATIVE).join(INSTALL_LOCK))
+                .as_deref(),
+            Some(&[][..]),
+            "the lock an install takes its turn by holds nothing"
+        );
+        assert_eq!(
             after, before,
             "the install changed a file outside the skill's tree"
         );
@@ -1245,6 +1284,46 @@ mod tests {
                 assert!(got.installed(), "{got:?}");
             }
             assert_eq!(skill(&repo).as_deref(), Some(ASSET));
+        }
+    }
+
+    /// Installs racing over a tree that holds files this build dropped: each
+    /// reads the same manifest, so each goes to remove the same file and the
+    /// same empty directory, and the one that arrives second finds them gone.
+    /// Gone is what it wanted, so both end installed with the shipped tree.
+    #[test]
+    fn installs_racing_over_a_dropped_file_all_end_installed_with_the_shipped_tree() {
+        let s = Scratch::new("mskill-race-stale");
+        let old = [
+            shipped("SKILL.md", "entry"),
+            shipped("references/kept.md", "k"),
+            shipped("references/gone/deep/a.md", "a"),
+            shipped("references/gone/b.md", "b"),
+        ];
+        let new = [
+            shipped("SKILL.md", "entry"),
+            shipped("references/kept.md", "k"),
+        ];
+        for round in 0..40 {
+            let repo = checkout(s.path(), &format!("r{round}"), true);
+            assert_eq!(install_tree(&repo, &old), Outcome::Written);
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(4));
+            let installs: Vec<_> = (0..4)
+                .map(|_| {
+                    let (repo, barrier) = (repo.clone(), barrier.clone());
+                    std::thread::spawn(move || {
+                        barrier.wait();
+                        install_tree(&repo, &new)
+                    })
+                })
+                .collect();
+            for got in installs {
+                let got = got.join().unwrap();
+                assert!(got.installed(), "round {round}: {got:?}");
+            }
+            assert!(!at(&repo, "references/gone").exists(), "round {round}");
+            assert_eq!(manifest_of(&repo), ["SKILL.md", "references/kept.md"]);
+            assert_eq!(install_tree(&repo, &new), Outcome::Current);
         }
     }
 

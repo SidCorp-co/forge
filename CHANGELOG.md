@@ -3153,6 +3153,8 @@
 
 ### Fixed
 
+- **Two installs of the master skill into one checkout no longer fail one of them.** A bind and the daemon's start sweep reaching one checkout together now take turns, and both end with the shipped tree.
+
 - **A provision that stopped advancing is now read as stalled, with its age.** It no longer holds release or dispatch on a box running the project's master, and binding over a running master is refused by name.
 
 - **One hung `git clone` no longer stops a box provisioning its other projects.** Each git step is killed after ten minutes and reported `failed` by name, and the box refuses to provision a workspace its own live master holds.
