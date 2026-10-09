@@ -13,7 +13,7 @@ import { SCREENS } from "./vi-chrome-dashboard";
 // never has one: a feature's own word, core's sentence and a contract enum's label. On a vi page each
 // reads its English, with no throw, no raw key and no blank.
 
-const EN_ONLY = vi.hoisted(() => ["dash.fbUntriaged", "standing.who.you", "label.requirementState.in_delivery"]);
+const EN_ONLY = vi.hoisted(() => ["dash.fbUntriaged", "standing.who.holderOf", "label.requirementState.in_delivery"]);
 
 vi.mock("@/lib/i18n/copy-files", async (load) => {
   const { COPY_FILES } = await load<typeof import("@/lib/i18n/copy-files")>();
@@ -30,7 +30,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: 
 describe("a copy key written in English only", () => {
   it("reads its English in vi through every reader", () => {
     expect(productCopy("vi")("dash.fbUntriaged")).toBe("untriaged");
-    expect(said(say("standing.who.you"), "vi")).toBe("You");
+    expect(said(say("standing.who.holderOf", { perm: "releases.approve" }), "vi")).toBe("A holder of releases.approve");
     expect(labelCopy("vi")("requirementState", "in_delivery")).toBe("In delivery");
   });
 
@@ -40,7 +40,7 @@ describe("a copy key written in English only", () => {
     const { baseElement } = renderWithQuery(<InterfaceLanguageScope language="vi">{dashboard.render()}</InterfaceLanguageScope>);
     const text = baseElement.textContent ?? "";
     expect(text).toContain("untriaged");
-    expect(text).toContain("You");
+    expect(text).toContain("A holder of releases.approve");
     expect(text).toContain("In delivery");
     expect(unreadIn(baseElement)).toBeNull();
   });
