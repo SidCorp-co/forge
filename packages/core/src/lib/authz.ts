@@ -1,6 +1,7 @@
-import { and, eq, inArray, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
+import { and, eq, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { fencedProjectIds } from '../credentials/pat-scope.js';
+import { fenceReaches, fenceWhere } from '../credentials/token-fence.js';
 import { db, type Tx } from '../db/client.js';
 import { memoizedRead } from '../db/read-memo.js';
 import {
@@ -114,8 +115,7 @@ export async function effectiveProjectRole(
   userId: string | null | undefined,
   projectId: string,
 ): Promise<ProjectAccess | null> {
-  const fence = fencedProjectIds();
-  if (fence && !fence.includes(projectId)) return null;
+  if (!fenceReaches(fencedProjectIds(), projectId)) return null;
   return memoizedRead(`projectAccess:${userId ?? ''}:${projectId}`, () =>
     readProjectRole(userId, projectId),
   );
@@ -182,7 +182,8 @@ export function visibleProjectsWhere(
     sql`(${projectMembers.userId} IS NOT NULL OR ${organizationMembers.role} IN ('owner', 'admin'))`,
   ];
   const fence = passedFence === undefined ? fencedProjectIds() : passedFence;
-  if (fence) conditions.push(fence.length > 0 ? inArray(projectId, [...fence]) : sql`false`);
+  const fenced = fenceWhere(projectId, fence);
+  if (fenced) conditions.push(fenced);
   return conditions;
 }
 

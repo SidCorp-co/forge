@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import type { PatPermission, PatRoute } from '../credentials/pat-permissions.js';
+import { type TokenFence, tokenFence } from '../credentials/token-fence.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
 import { loadVisibleProjectIds, type ProjectReader } from './authz.js';
 import { type Refusal, type RefusalEnvelope, refusalEnvelope } from './refusal.js';
@@ -115,10 +116,9 @@ export function principalUserId(principal: McpPrincipal): string {
 }
 
 /** The projects a token is fenced to, or null where the principal is not a fenced token. */
-export function patEffectiveProjectIds(principal: McpPrincipal): readonly string[] | null {
+export function patEffectiveProjectIds(principal: McpPrincipal): TokenFence {
   if (principal.kind !== 'pat') return null;
-  if (principal.boundProjectId) return [principal.boundProjectId];
-  return principal.projectIds;
+  return tokenFence(principal);
 }
 
 /** The reader a tool call is: the principal's user, fenced by its token (a chat turn's: its project). */

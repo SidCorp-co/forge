@@ -4,6 +4,7 @@ import { type Device, devices } from '../db/schema.js';
 import { verifyPat } from './pat.js';
 import { isPatLike, type TurnTokenOrigin, turnTokenOrigin } from './pat-format.js';
 import type { PatScope } from './pat-scope.js';
+import { tokenFence } from './token-fence.js';
 
 /**
  * What a token bound to a paired box is: the box's own credential, or one core handed a chat — a
@@ -26,7 +27,9 @@ export async function readBoxToken(plaintext: unknown): Promise<BoxToken | null>
 
   const [device] = await db.select().from(devices).where(eq(devices.id, row.deviceId)).limit(1);
   if (!device || device.status === 'revoked') return null;
-  const projectIds = row.boundProjectId ? [row.boundProjectId] : (row.projectIds ?? []);
+  // the box door reads an unfenced box token as reaching nothing; no mint path writes one
+  // today (`devices/credential.ts:issueDeviceCredential`), so this narrows only an older row
+  const projectIds = tokenFence(row) ?? [];
   return {
     kind: 'box',
     device,

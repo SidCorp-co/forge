@@ -417,6 +417,7 @@ export const SAID = {
 	"runs.gate.patternReview": { en: "PATTERN_REVIEW_PENDING: the issue names a new pattern that waits on one reviewer holding patterns.approve: the decision releases it" },
 	"runs.gate.runnerStale": { en: "no box serving this project has beaten recently: dispatch takes it once one does" },
 	"runs.gate.runnerTooOld": { en: "no box serving this project runs a build that can take it: dispatch takes it once one is updated" },
+	"runs.gate.tokenCannotReach": { en: "no box's credential reaches this project: dispatch takes it once one does" },
 	"runs.rule.heldRetry": { en: "held {reason}: the release sweep retries it once jobs.retry_after_at has passed", vars: { reason: "code" } },
 	"runs.rule.heldClears": { en: "held {reason}: it re-queues when its condition clears, which has no deadline", vars: { reason: "code" } },
 	"runs.rule.retryCooldown": { en: "jobs.retry_after_at is in the future: dispatch skips the job until then" },

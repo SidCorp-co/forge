@@ -240,6 +240,7 @@ const DISPATCH_GATES: Record<string, Said> = {
   pattern_review_pending: say('runs.gate.patternReview'),
   runner_stale: say('runs.gate.runnerStale'),
   runner_too_old: say('runs.gate.runnerTooOld'),
+  token_cannot_reach: say('runs.gate.tokenCannotReach'),
 };
 
 function gateWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {

@@ -1,4 +1,5 @@
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
+import { deviceReach, fenceReaches, fenceWhere, type TokenFence } from '../credentials/token-fence.js';
 import { db } from '../db/client.js';
 import type { RefusalError } from '../lib/refusal.js';
 import { refuseDevice } from './refusals.js';
@@ -11,21 +12,20 @@ export const ADMITTED_RUNNER = sql`
 `;
 
 /**
- * A box's live credential reaches a project when it is bound to it, lists it, or carries no fence
- * (FB-78). An onboarding job drawn on a box whose token answers 404 for its project draws every
- * design, fails every write and is retried as "reported nothing", so only a box that reaches the
- * project is offered one. Needs `r` (the runner row) in scope.
+ * What this box's live credentials reach, read as the REST door reads a token (`credentials:tokenFence`):
+ * an empty list reaches nothing, no list reaches everything (FB-78). An onboarding job drawn on a box
+ * whose token answers 404 for its project fails every write and is retried as "reported nothing",
+ * so only a box that reaches the project is offered one.
  */
-export const BOX_TOKEN_REACHES_PROJECT = sql`EXISTS (
-  SELECT 1 FROM personal_access_tokens t
-  WHERE t.device_id = r.device_id AND t.revoked_at IS NULL
-    AND (t.expires_at IS NULL OR t.expires_at > now())
-    AND (
-      t.bound_project_id = r.project_id
-      OR r.project_id = ANY(t.project_ids)
-      OR (t.bound_project_id IS NULL AND COALESCE(cardinality(t.project_ids), 0) = 0)
-    )
-)`;
+async function boxReach(deviceId: string): Promise<TokenFence> {
+  return (await deviceReach([deviceId]))(deviceId);
+}
+
+/** The pool's condition that an onboarding job `j` is on a project this box's credentials reach. */
+export async function onboardingReachSql(deviceId: string): Promise<SQL> {
+  const reached = fenceWhere(sql`j.project_id`, await boxReach(deviceId));
+  return sql`(j.type <> 'onboarding' OR ${reached ?? sql`true`})`;
+}
 
 type RunnerAdmissionReason =
   | 'runner_withdrawn'
@@ -95,20 +95,18 @@ export async function runnerAdmission(args: {
   deviceId: string;
 }): Promise<RunnerAdmission> {
   const rows = (await db.execute(sql`
-    SELECT j.project_id, j.type,
-           EXISTS (
-             SELECT 1 FROM runners r
-             WHERE r.project_id = j.project_id AND r.device_id = ${args.deviceId}
-               AND ${BOX_TOKEN_REACHES_PROJECT}
-           ) AS reaches
-    FROM jobs j WHERE j.id = ${args.jobId} LIMIT 1
-  `)) as unknown as Array<{ project_id: string | null; type: string; reaches: boolean }>;
+    SELECT j.project_id, j.type FROM jobs j WHERE j.id = ${args.jobId} LIMIT 1
+  `)) as unknown as Array<{ project_id: string | null; type: string }>;
 
   const job = rows[0];
   if (!job) return { admitted: true };
   if (job.project_id == null) return { admitted: false, reason: 'runner_unbound' };
   const admission = await projectAdmission({ projectId: job.project_id, deviceId: args.deviceId });
-  if (admission.admitted && job.type === 'onboarding' && !job.reaches) {
+  if (
+    admission.admitted &&
+    job.type === 'onboarding' &&
+    !fenceReaches(await boxReach(args.deviceId), job.project_id)
+  ) {
     return { admitted: false, reason: 'token_cannot_reach' };
   }
   return admission;

@@ -1,4 +1,5 @@
 import { type SQL, sql } from 'drizzle-orm';
+import { deviceReach, fenceReaches } from '../credentials/token-fence.js';
 import { db } from '../db/client.js';
 import { contractWaitUnsettledSql } from '../db/schema-contract-waits.js';
 import { patternReviewPendingSql } from '../db/schema-issue-patterns.js';
@@ -23,7 +24,8 @@ type GateSkipReason =
   | 'release_label_missing'
   | 'contract_wait_unsettled'
   | 'pattern_review_pending'
-  | 'checkout_unbound';
+  | 'checkout_unbound'
+  | 'token_cannot_reach';
 
 interface BarrierFragments {
   /** Shared CTE chunk: `fresh_capable_runners`.
@@ -92,7 +94,17 @@ export function buildBarrierFragments(args: {
  * order, so a job's reason is the most specific one. Expects `j`, `r` and
  * `fresh_capable_runners` in scope.
  */
-function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
+function buildGateReasonCase(
+  predicates: BarrierFragments['predicates'],
+  reachingRunnerIds: readonly string[],
+): SQL {
+  const reaches =
+    reachingRunnerIds.length === 0
+      ? sql`false`
+      : sql`id IN (${sql.join(
+          reachingRunnerIds.map((id) => sql`${id}`),
+          sql`, `,
+        )})`;
   return sql`
       CASE
         WHEN j.status <> 'queued' THEN 'not_queued'
@@ -119,6 +131,14 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
           SELECT 1 FROM fresh_capable_runners
           WHERE project_id = j.project_id AND claim_capable AND has_checkout
         ) THEN 'checkout_unbound'
+        -- the pool offers an onboarding job only to a box whose credentials reach its project (FB-78),
+        -- so where none does it stays queued until a person fences a box's credential to it.
+        WHEN j.type = 'onboarding'
+          AND NOT EXISTS (
+            SELECT 1 FROM fresh_capable_runners
+            WHERE project_id = j.project_id AND claim_capable AND has_checkout AND ${reaches}
+          )
+          THEN 'token_cannot_reach'
         -- ISS-1128 — a question about the JOB: may anything that could claim
         -- take it. Since the label became a preference, and since ISS-1275 made
         -- no preference admit the pool, that leaves one shape: the production
@@ -162,6 +182,21 @@ export async function freshRunnerAvailability(projectId: string): Promise<Runner
   return { total: Number(rows[0]?.total ?? 0) };
 }
 
+/** The runners of these projects whose box's live credentials reach that project (`credentials:deviceReach`). */
+async function runnersWhoseBoxReaches(projectIds: readonly string[]): Promise<string[]> {
+  const rows = await db.execute<{ id: string; project_id: string; device_id: string }>(sql`
+    SELECT r.id, r.project_id, r.device_id FROM runners r
+    WHERE r.project_id IN (${sql.join(
+      projectIds.map((id) => sql`${id}`),
+      sql`, `,
+    )})
+  `);
+  const reachOf = await deviceReach(rows.map((r) => r.device_id));
+  return rows
+    .filter((r) => fenceReaches(reachOf(r.device_id), r.project_id))
+    .map((r) => r.id);
+}
+
 export async function gateReasonsForQueuedJobsIn(
   projectIds: readonly string[],
 ): Promise<Map<string, GateSkipReason>> {
@@ -174,9 +209,10 @@ export async function gateReasonsForQueuedJobsIn(
     livenessSeconds: Math.floor(dispatchLivenessMs() / 1000),
   });
 
+  const reaching = await runnersWhoseBoxReaches(ids);
   const rows = await db.execute<{ id: string; reason: string | null }>(sql`
     WITH ${ctes}
-    SELECT j.id, ${buildGateReasonCase(predicates)} AS reason
+    SELECT j.id, ${buildGateReasonCase(predicates, reaching)} AS reason
     FROM jobs j
     LEFT JOIN issues i ON i.id = j.issue_id
     JOIN pipeline_runs r ON r.id = j.pipeline_run_id

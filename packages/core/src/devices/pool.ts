@@ -9,7 +9,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { runnerMayTakeJob } from '../runners/index.js';
-import { ADMITTED_RUNNER, BOX_TOKEN_REACHES_PROJECT } from './pool-admission.js';
+import { ADMITTED_RUNNER, onboardingReachSql } from './pool-admission.js';
 
 export type PoolRelation = {
   kind: string;
@@ -83,7 +83,7 @@ export async function readPool(args: {
     WHERE j.status = 'queued'
       AND ${ADMITTED_RUNNER}
       AND ${runnerMayTakeJob()}
-      AND (j.type <> 'onboarding' OR ${BOX_TOKEN_REACHES_PROJECT})
+      AND ${await onboardingReachSql(args.deviceId)}
       AND pr.status = 'running'
       AND j.held_by IS NULL
       AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())
