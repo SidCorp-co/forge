@@ -14,6 +14,8 @@
  *                                                                               CONTRACT_WAIT_UNSETTLED
  *   approved           plan and criteria written; the actor holds `plans.approve`  PLAN_REQUIRED
  *                      where the project document sets `plan.approval.required`
+ *                      the design passes the design check (`design-record.ts`)  DESIGN_RECORD_MISSING,
+ *                                                                               DESIGN_RECORD_INCOMPLETE
  *   awaiting_release   the run holding it makes the move, or a holder of          NOT_THE_HOLDER
  *                      `releases.approve` or `project.admin` does
  *                      the merge is recorded (a landing moves no status)          MERGE_NOT_RECORDED
@@ -59,9 +61,11 @@ import {
 } from '../permissions/index.js';
 import { refuseHeldTake } from './blocked-by.js';
 import { designHeldSql, designHoldsOf, designOnlyMarkSql } from './design-delivery.js';
+import { designCheckOf } from './design-record.js';
 import { mergeNotRecorded } from './merged-at.js';
 import { type MoveEntryFacts, moveEntryRefusal, readMoveEntryFacts } from './pattern-entry.js';
-import { patternReleaseRefusal } from './patterns.js';
+import type { CatalogReading } from './pattern-rules.js';
+import { catalogOf, patternReleaseRefusal } from './patterns.js';
 import { readProjectDocument } from './ports.js';
 import { isBlankPlan } from './transition-evidence.js';
 import { edgeFault, quote } from './transition-faults.js';
@@ -110,6 +114,8 @@ interface IssueMoveFacts {
   holdOverride: HoldOverride | null;
   /** The move to awaiting_release: the issue's approved new patterns and the change its mark names. */
   patternEntry: MoveEntryFacts | null;
+  /** The move to approved: the pattern catalog the project reads, which the design check asks. */
+  catalog: CatalogReading | null;
 }
 
 const HOLD_OVERRIDES = ['releases.approve', 'project.admin'] as const;
@@ -160,6 +166,7 @@ export async function readIssueMoveFacts(args: {
     planApprovalRequired: document?.plan?.approval.required === true,
     permissions: await permissionFactsOf(args.actorUserId, issue.projectId),
     patternEntry: args.to === 'awaiting_release' ? await readMoveEntryFacts(issue) : null,
+    catalog: args.to === 'approved' ? await catalogOf(issue.projectId) : null,
   };
 }
 
@@ -289,6 +296,21 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
     }
   }
   return null;
+}
+
+/**
+ * approved, after the design step (Issue lifecycle r15): what the checkpoint approves is a design
+ * that passed the design check, and a claim from approved resumes at build. A recovery edge back to
+ * approved does not name this guard: a run ending hands the issue back whatever it recorded.
+ */
+async function designGuard(ctx: GuardContext): Promise<GuardFault | null> {
+  const check = await designCheckOf(ctx.executor, ctx.issue, ctx.facts.catalog ?? undefined);
+  if (check.passed) return null;
+  return {
+    code: check.code,
+    detail: check.detail,
+    details: { from: ctx.from, to: ctx.to, missing: check.missing },
+  };
 }
 
 /**
@@ -426,6 +448,7 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
       return refusalOf((await heldTakeGuard(ctx)) ?? (await holderGuard(ctx)));
     },
     plan_checkpoint: async (input) => refusalOf(await planGuard(ctxOf(input))),
+    design: async (input) => refusalOf(await designGuard(ctxOf(input))),
     run_holder: async (input) => refusalOf(await runHolderGuard(ctxOf(input))),
     merged: async (input) => {
       const missing = await mergeNotRecorded(input.tx, { issueId: input.row.id, to: input.to });

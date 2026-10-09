@@ -1,6 +1,7 @@
 // Recording one verdict on a live criterion: the identity it was judged against, resolved and
 // refused by name, the row, and its kernel record.
 
+import type { CriterionJudge } from '@forge/contracts/issue-design';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
@@ -15,6 +16,7 @@ import { contractLookup } from '../../messaging/verdict-contract.js';
 import { designLookup } from '../../messaging/verdict-design.js';
 import { emitEvent } from '../../outbox/index.js';
 import type { Actor } from '../activity.js';
+import { judgeOfCriterion } from '../design-record.js';
 import { readProjectDocument } from '../ports.js';
 import type { RecordEventField } from '../record-events/store.js';
 import { writeKernelRecord } from '../record-events/store.js';
@@ -76,6 +78,8 @@ function verdictRecordFields(args: {
 }
 
 const VERDICT_PATHS: Partial<Record<VerdictRefusal['code'], string>> = {
+  VERDICT_JUDGED_BY_REVIEW: '/judge',
+  VERDICT_JUDGED_BY_QA: '/judge',
   VERDICT_VALUE_UNKNOWN: '/verdict',
   VERDICT_SKIP_REASON_REQUIRED: '/reason',
   VERDICT_CRITERION_UNKNOWN: '/criterion',
@@ -204,6 +208,25 @@ async function identityColumns(
   }
 }
 
+/**
+ * A verdict recorded by the judge the criterion's class does not route to (REQ-36 BC-13): a code
+ * property is the review's, judged against the diff; an observable criterion is QA's, judged on the
+ * running build.
+ */
+function misrouted(criterion: number, routed: CriterionJudge): VerdictRefusal {
+  return routed === 'review'
+    ? {
+        code: 'VERDICT_JUDGED_BY_REVIEW',
+        criterion,
+        detail: `criterion ${criterion} is a code property in the issue's design, so the review judges it against the diff, not QA on the running build. Record it as the review's (\`judge: "review"\`), or reclass it in the design (PUT /api/issues/:id/design)`,
+      }
+    : {
+        code: 'VERDICT_JUDGED_BY_QA',
+        criterion,
+        detail: `criterion ${criterion} is observable on the running build in the issue's design, so QA judges it there, not the review. Record it as QA's (omit \`judge\`), or reclass it in the design (PUT /api/issues/:id/design)`,
+      };
+}
+
 /** Insert one verdict, refused by name where the draft, its criterion or its design is wrong. */
 export async function recordVerdict(
   tx: Tx,
@@ -244,6 +267,9 @@ export async function recordVerdict(
       }.`,
     });
   }
+  const judge = draft.judge ?? 'qa';
+  const routed = await judgeOfCriterion(tx, criterion.id);
+  if (routed !== null && routed !== judge) throw verdictRefused(misrouted(draft.criterion, routed));
   const identity = await identityColumns(
     tx,
     issue.projectId,
@@ -263,6 +289,7 @@ export async function recordVerdict(
       authorDeviceId: author.deviceId,
       authorAgency: author.agency,
       commentId: args.commentId ?? null,
+      judge,
     })
     .returning({ id: criterionVerdicts.id });
   if (!row) throw new Error('criterion_verdicts insert returned no row');
@@ -270,7 +297,10 @@ export async function recordVerdict(
     issueId: issue.id,
     actor: verdictActor(author),
     kind: 'verdict',
-    fields: verdictRecordFields({ id: row.id, draft, identity }),
+    fields: [
+      ...verdictRecordFields({ id: row.id, draft, identity }),
+      { key: 'judge', value: judge },
+    ],
     commentId: args.commentId ?? null,
   });
   // a verdict against a commit changes what a release page carrying the issue may claim (REQ-40 BC-13)

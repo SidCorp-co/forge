@@ -49,6 +49,8 @@ export const ISSUE_TRANSITION_REFUSAL_CODES = [
 	"PATTERN_RETURNED",
 	"PATTERN_ENTRY_MISSING",
 	"PLAN_REQUIRED",
+	"DESIGN_RECORD_MISSING",
+	"DESIGN_RECORD_INCOMPLETE",
 	"PERMISSION_FORBIDDEN",
 	"MERGE_NOT_RECORDED",
 	"CLOSE_REQUIRES_SHIPPED",
@@ -169,6 +171,7 @@ export const ISSUE_GUARDS = [
 	"admit",
 	"holder",
 	"plan_checkpoint",
+	"design",
 	"merged",
 	"released",
 	"left_status",
@@ -221,7 +224,7 @@ const recovery = (to: IssueStatus, guards: readonly IssueGuard[]): IssueEdge => 
 
 export const ISSUE_MACHINE = defineMachine({
 	entity: "issue",
-	shapes: ["853ac6ba", "23991d04", "5a3cd8b3", "07fda5db"],
+	shapes: ["853ac6ba", "23991d04", "5a3cd8b3", "07fda5db", "89cf83a7"],
 	design: { flow: "issue-lifecycle", revision: 12 },
 	states: ISSUE_STATUSES,
 	initial: ISSUE_INITIAL_STATUSES,
@@ -237,7 +240,7 @@ export const ISSUE_MACHINE = defineMachine({
 		{ from: "reopen", to: "in_progress", act: "run.claimed", permission: MOVE, guards: ["holder"] },
 		...sideExits("reopen"),
 
-		{ from: "in_progress", to: "approved", act: "plan.recorded", permission: MOVE, guards: ["plan_checkpoint"] },
+		{ from: "in_progress", to: "approved", act: "plan.recorded", permission: MOVE, guards: ["plan_checkpoint", "design"] },
 		{ from: "in_progress", to: "awaiting_release", act: "merged", permission: MOVE, guards: ["run_holder", "merged"] },
 		...sideExits("in_progress"),
 

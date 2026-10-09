@@ -3123,6 +3123,13 @@
       "when": 1824940800000,
       "tag": "0486_a_requirement_carries_an_area_and_a_short_name",
       "breakpoints": true
+    },
+    {
+      "idx": 487,
+      "version": "7",
+      "when": 1825027200000,
+      "tag": "0487_an_issue_records_its_design_before_build",
+      "breakpoints": true
     }
   ]
 }

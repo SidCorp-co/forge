@@ -1,4 +1,5 @@
 import type { RefusalStatuses } from "./refusal.js";
+import { DESIGN_CHECK_CODES, VERDICT_JUDGE_REFUSAL_CODES } from "./issue-design.js";
 import { STOREFRONT_DRAFT_REFUSAL_CODES } from "./verdict-identity.js";
 
 export type { ReleaseNotes, ReleaseNotesSection } from "./release-notes.js";
@@ -30,6 +31,7 @@ export const VERDICT_REFUSAL_CODES = [
 	"VERDICT_DESIGN_UNKNOWN",
 	"VERDICT_DESIGN_UNAPPROVED",
 	"VERDICT_CONTRACT_UNKNOWN",
+	...VERDICT_JUDGE_REFUSAL_CODES,
 	...STOREFRONT_DRAFT_REFUSAL_CODES,
 ] as const;
 export type VerdictRefusalCode = (typeof VERDICT_REFUSAL_CODES)[number];
@@ -167,6 +169,7 @@ export const ISSUE_UPDATE_REFUSAL_CODES = [
 	"STATUS_MOVES_BY_TRANSITION",
 	"PATTERN_REVIEW_PENDING",
 	"PATTERN_RETURNED",
+	...DESIGN_CHECK_CODES,
 ] as const;
 export type IssueUpdateRefusalCode =
 	(typeof ISSUE_UPDATE_REFUSAL_CODES)[number];

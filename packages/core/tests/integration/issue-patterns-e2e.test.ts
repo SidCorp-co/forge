@@ -23,6 +23,7 @@ import {
   bindTestRunner,
   createTestDevice,
   createTestIssue,
+  createTestModule,
   createTestProject,
   createTestUser,
   rows,
@@ -68,6 +69,7 @@ beforeAll(async () => {
   reviewerId = reviewer.id;
   forge = await projectBuiltFrom(reviewer.id, THIS_REPOSITORY);
   other = await projectBuiltFrom(reviewer.id, 'github.com/acme/shop');
+  await createTestModule(forge, 'issues');
   for (const p of [forge, other]) {
     await addProjectMember(p, reviewer.id, 'admin');
     await addProjectMember(p, author.id, 'member');
@@ -91,7 +93,7 @@ async function issueAt(projectId: string, status: string): Promise<string> {
 
 async function call(
   who: keyof typeof tokens,
-  method: 'GET' | 'POST' | 'PATCH',
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT',
   path: string,
   body?: unknown,
 ): Promise<{ status: number; body: Doc }> {
@@ -473,6 +475,13 @@ describe('a returned pattern holds the work until the issue answers it', () => {
     ok(await call('author', 'POST', patterns(issue), { pattern: 'api-route' }), 201);
     const read = ok(await call('author', 'GET', patterns(issue)));
     expect(read.returned).toBeNull();
+    ok(
+      await call('author', 'PUT', `/api/issues/${issue}/design`, {
+        criteria: [{ criterion: 1, class: 'observable', pattern: 'api-route', proof: 'call it' }],
+        modules: ['issues'],
+        contracts: [],
+      }),
+    );
     ok(await call('author', 'PATCH', `/api/issues/${issue}`, { workState: { step: 'build' } }));
     const moved = await toAwaitingRelease(issue);
     expect([moved.status, refused(moved)]).toEqual([200, []]);

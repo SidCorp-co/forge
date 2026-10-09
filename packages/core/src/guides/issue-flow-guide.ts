@@ -105,6 +105,20 @@ approved one's catalog page lands in this change, whichever comes first: the mer
 change, the merge mark reads the commit it marks, and an approval on an issue already marked and the
 move to \`awaiting_release\` read the change the merge mark names. Each refuses \`PATTERN_ENTRY_MISSING\` where the page is not in it.
 
+Then record the design, before any code: \`PUT /api/issues/:id/design\`
+\`{ criteria: [{ criterion, class, pattern, proof }], modules, contracts }\`, one line per criterion.
+\`class\` is \`observable\` (QA judges it on the running build) or \`code_property\` (the review judges it
+against the diff); \`pattern\` is a catalog slug or a new pattern approved on the issue, and \`null\`
+only where \`catalog.declared\` is false; \`proof\` is the probe or the review line that will prove it;
+\`modules\` are the project's module names the change touches, \`contracts\` the
+\`<project>/<contract>\` it touches (\`[]\` for none). A write is refused by name for each wrong part.
+\`GET /api/issues/:id/design\` reads it with \`check\`, the answer a move into build meets. Moving the
+work step into build, test or release, and moving to \`approved\`, is refused
+\`DESIGN_RECORD_MISSING\` or \`DESIGN_RECORD_INCOMPLETE\` naming each gap until the check passes; a
+claim from \`approved\` or \`reopen\` resumes at build only where it passes, else at design. A verdict
+on a code-property criterion is the review's (\`judge: 'review'\`); one recorded as QA's is refused
+\`VERDICT_JUDGED_BY_REVIEW\`.
+
 A question only a person can answer parks the issue:
 \`POST /api/issues/:id/transition\` \`{ toStatus: 'needs_info', reason, waitingKind, needs }\`, with
 \`needs\` written as the ask.

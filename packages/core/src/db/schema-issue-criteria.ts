@@ -4,6 +4,7 @@
 // `criterion_verdicts` is insert-only: the latest row per criterion is what the
 // `awaiting_release` gate reads (`issues/criteria/store.ts:listCriteria`).
 
+import { CRITERION_JUDGES } from '@forge/contracts/issue-design';
 import {
   VERDICT_CORROBORATIONS,
   VERDICT_IDENTITY_KINDS,
@@ -100,9 +101,15 @@ export const criterionVerdicts = pgTable(
     /** The comment whose `forge-record: verdict` fence this row was read from (dual path). */
     commentId: uuid('comment_id').references(() => comments.id, { onDelete: 'set null' }),
     backfilled: boolean('backfilled').notNull().default(false),
+    /** QA's judgement of the running build, or the review's (0487); null on older rows. */
+    judge: text('judge', { enum: CRITERION_JUDGES }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    judgeChk: check(
+      'criterion_verdicts_judge_chk',
+      sql`${t.judge} IS NULL OR ${t.judge} IN ('qa', 'review')`,
+    ),
     verdictChk: check(
       'criterion_verdicts_verdict_chk',
       sql`${t.verdict} IN ('pass', 'short', 'fail', 'skipped')`,
