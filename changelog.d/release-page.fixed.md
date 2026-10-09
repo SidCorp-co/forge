@@ -1,0 +1,1 @@
+**Every release now has a readable page.** It opens on drafted highlights with QA clips, lists requirements proven on its own build, fixes, admin actions and known issues, adds technical notes for developers, and shares by Forge link.

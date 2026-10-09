@@ -1,12 +1,12 @@
 // What `shares` needs to freeze a subject, handed in by the process entry at boot: each subject kind
-// (a message's blocks, a template's output, a stored status report) is frozen by the module that
-// owns it, and `shares` never imports that module. A kind with no source registered is refused by
+// (a message's blocks, a template's output, a stored status report, a release page) is frozen by the
+// module that owns it, and `shares` never imports that module. A kind with no source registered is refused by
 // name, never guessed at.
 
 import type { ActorAgency } from '@forge/contracts/permissions';
-import type { ReportDocument } from '@forge/contracts/report-templates';
 import {
   SHARE_SUBJECT_KINDS,
+  type ShareFrozen,
   type ShareRefusalCode,
   type ShareSubjectKind,
 } from '@forge/contracts/shares';
@@ -16,9 +16,11 @@ import { refuser } from '../lib/refusal.js';
 export const refuse = refuser<ShareRefusalCode>('SHARE_REFUSED');
 
 /**
- * Freezes one subject into a report document, read now as the person creating the share: every run
- * the document holds is one that person can read at this moment, or the source refuses by name
- * (`SHARE_SUBJECT_NOT_FOUND`, or a permission refusal naming what they lack).
+ * Freezes one subject, read now as the person creating the share: a report document every run of
+ * which that person can read at this moment, or a release page's user view; else the source refuses
+ * by name (`SHARE_SUBJECT_NOT_FOUND`, or a permission refusal naming what they lack). `opened`, where
+ * a source has one, hands out what the frozen subject may not keep: a release page's media links,
+ * minted for that one opening.
  */
 export interface ShareSubjectSource {
   kind: ShareSubjectKind;
@@ -28,7 +30,11 @@ export interface ShareSubjectSource {
     userId: string;
     agency: ActorAgency;
     access: ProjectAccess;
-  }): Promise<ReportDocument>;
+  }): Promise<ShareFrozen>;
+  opened?(
+    frozen: ShareFrozen,
+    ctx: { projectId: string; openerId: string | null },
+  ): Promise<ShareFrozen>;
 }
 
 const sources = new Map<ShareSubjectKind, ShareSubjectSource>();

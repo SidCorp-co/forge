@@ -47,6 +47,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"feedback.reporterTold",
 	"release.shipped",
 	"release.approvalDecided",
+	"verdict.recorded",
 	"credential.tokenChanged",
 	"runner.changed",
 	"job.changed",
@@ -483,6 +484,16 @@ export interface OutboxEventPayloads {
 		reason: string | null;
 		decidedBy: string;
 		decidedAt: string;
+	};
+	/**
+	 * A verdict was recorded on an issue criterion against a commit: what a release page claims
+	 * changes for every release carrying the issue whose build is that commit (REQ-40 BC-13).
+	 */
+	"verdict.recorded": {
+		projectId: string;
+		issueId: string;
+		verdictId: string;
+		commitSha: string;
 	};
 	/**
 	 * The requirement read delivered at `revision`, after a linked issue's move or on a later sweep; its

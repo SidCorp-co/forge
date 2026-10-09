@@ -939,6 +939,12 @@
         "requirement-to-delivery#release-gate"
       ]
     },
+    "release-page": {
+      "kind": "domain",
+      "context": "release",
+      "owns": ["releaseHighlights"],
+      "serves": ["issue-delivery#act-release", "issue-delivery#out-release"]
+    },
     "report-queries": {
       "kind": "read-model",
       "context": "operations",

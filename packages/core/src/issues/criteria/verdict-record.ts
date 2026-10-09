@@ -13,6 +13,7 @@ import { projectWorkflowDesigns } from '../../db/schema-workflows.js';
 import { RefusalError } from '../../lib/refusal.js';
 import { contractLookup } from '../../messaging/verdict-contract.js';
 import { designLookup } from '../../messaging/verdict-design.js';
+import { emitEvent } from '../../outbox/index.js';
 import type { Actor } from '../activity.js';
 import { readProjectDocument } from '../ports.js';
 import type { RecordEventField } from '../record-events/store.js';
@@ -272,5 +273,14 @@ export async function recordVerdict(
     fields: verdictRecordFields({ id: row.id, draft, identity }),
     commentId: args.commentId ?? null,
   });
+  // a verdict against a commit changes what a release page carrying the issue may claim (REQ-40 BC-13)
+  if (identity.identityKind === 'commit' && identity.commitSha) {
+    await emitEvent(tx, 'verdict.recorded', {
+      projectId: issue.projectId,
+      issueId: issue.id,
+      verdictId: row.id,
+      commitSha: identity.commitSha,
+    });
+  }
   return row;
 }
