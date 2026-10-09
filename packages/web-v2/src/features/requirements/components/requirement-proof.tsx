@@ -7,7 +7,7 @@ import { Written } from "@/lib/i18n/written";
 import type { CoverageIssue, HistorySource, RequirementHistoryEntry } from "@forge/contracts/requirements";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
-import { ActorChip, AGENT_TINT, LEGEND, SegmentedControl, StatusBadge, WhoMark } from "@/design";
+import { ActorChip, AGENT_TINT, LEGEND, SegmentedControl, StatusBadge, VerdictEvidence, WhoMark } from "@/design";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
@@ -194,12 +194,17 @@ export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: str
                         <li key={`${i.issueId}-${l.criterion}`} className="text-muted" data-testid="criterion-evidence-row">
                           <span className="font-medium text-fg">{t(l.verdict ? VERDICT_WORD[l.verdict] : "requirements.criteria.notJudged")}</span>
                           {l.verdictAt ? <span title={time.dateTime(l.verdictAt)}> · {time.relative(l.verdictAt)}</span> : null}
-                          {l.identity ? <span className="font-mono text-12"> · {l.identity}</span> : null} · {i.title}
+                          {l.identity ? <span className="font-mono text-12"> · {l.identity}</span> : null}
                           {l.stale ? t("requirements.criteria.tracesEarlier") : ""}
                           {l.notCounted ? t("requirements.criteria.notCounted", { reason: l.notCounted }) : ""}{" "}
                           <Link href={issueHref(slug, i.displayId)} className="whitespace-nowrap font-mono text-12 text-subtle hover:underline" data-testid="criterion-issue-key">
                             {i.displayId}
                           </Link>
+                          <VerdictEvidence
+                            className="mt-0.5 grid gap-1 pl-3"
+                            note={l.note}
+                            files={l.files.map((f) => ({ name: f.name, mime: f.mime, url: `/api/attachments/${f.attachmentId}/download` }))}
+                          />
                         </li>
                       )),
                     )}

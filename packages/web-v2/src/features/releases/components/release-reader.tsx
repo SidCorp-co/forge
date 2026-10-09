@@ -82,6 +82,11 @@ function Requirements({ page, slug }: { page: ReleasePage; slug?: string | undef
                     <li key={p.code}>
                       <span className="mr-2 font-mono text-12 text-subtle">{p.code}</span>
                       {p.statement}
+                      {p.short ? (
+                        <span className="ml-2 text-12 text-muted" data-testid="page-proven-short">
+                          {t("releases.page.requirements.short")}
+                        </span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -157,7 +162,9 @@ function ActionRequired({ page }: { page: ReleasePage }) {
     <section aria-label={t("releases.page.actions.title")} data-testid="page-actions">
       <ViewHeading>{t("releases.page.actions.title")}</ViewHeading>
       {page.actionRequired.length === 0 ? (
-        <p className="text-13 text-muted">{t("releases.page.actions.none")}</p>
+        <p className="text-13 text-muted" data-testid="page-actions-none" data-read={page.shipped.state}>
+          {page.shipped.state === "unread" ? t("releases.page.actions.unread", { why: page.shipped.why }) : t("releases.page.actions.none")}
+        </p>
       ) : (
         <ul className="divide-y divide-line-subtle border-y border-line-subtle">
           {page.actionRequired.map((a) => (
@@ -187,8 +194,8 @@ function KnownIssues({ page }: { page: ReleasePage }) {
                 <span className="min-w-0 flex-1 text-13-5">{k.statement}</span>
                 <span className="text-12 font-semibold">{t(`releases.page.known.${k.standing}`)}</span>
               </span>
-              {k.reason ? <span className="text-12-5 text-muted">{k.reason}</span> : null}
-              {k.elsewhere ? (
+              {page.view === "developer" && k.reason ? <span className="text-12-5 text-muted">{k.reason}</span> : null}
+              {page.view === "developer" && k.elsewhere ? (
                 <span className="text-12-5 text-muted">
                   {t("releases.page.known.elsewhere", { verdict: k.elsewhere.verdict, build: k.elsewhere.commitSha ? shortSha(k.elsewhere.commitSha) : "-" })}
                 </span>
@@ -264,6 +271,7 @@ function Technical({ page, slug }: { page: ReleasePage; slug?: string | undefine
       <List title={t("releases.page.technical.migrations")} items={tech.migrations} testId="page-technical-migrations" />
       <List title={t("releases.page.technical.contracts")} items={tech.contracts} testId="page-technical-contracts" />
       <List title={t("releases.page.technical.dependencies")} items={tech.dependencies} testId="page-technical-dependencies" />
+      <List title={t("releases.page.technical.settings")} items={tech.settings} testId="page-technical-settings" />
       <div data-testid="release-technical">
         <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-13" testId="release-technical-toggle">
           {t("releases.page.technical.changes")}

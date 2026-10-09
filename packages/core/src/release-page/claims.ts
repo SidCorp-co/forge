@@ -4,6 +4,7 @@
 // highlight (BC-3); every other one is a known issue as its verdict on the build reads (BC-8). Pure:
 // the loaders in facts.ts hand it rows.
 
+import { criterionCountsAsPass } from '@forge/contracts/issue-vocabulary';
 import {
   RELEASE_CLIP_MAX_BYTES,
   type ReleaseClaim,
@@ -44,6 +45,8 @@ export interface IssueFile {
 export interface ClaimReading {
   criterion: CarriedCriterion;
   claim: ReleaseClaim;
+  /** Whether the newest verdict on the build counts as a pass (`criterionCountsAsPass`: a pass, or a short): what "proven" means everywhere. */
+  proven: boolean;
   /** The verdict on the build the claim reads: the pass it claims, or the short, fail or skip it is held by. */
   onBuild: CarriedVerdict | null;
 }
@@ -65,11 +68,15 @@ export function readClaims(
   criteria: readonly CarriedCriterion[],
   build: string | null,
 ): ClaimReading[] {
-  return criteria.map((criterion) => ({
-    criterion,
-    claim: releaseClaimOf(criterion.verdicts, build),
-    onBuild: newestOnBuild(criterion.verdicts, build),
-  }));
+  return criteria.map((criterion) => {
+    const onBuild = newestOnBuild(criterion.verdicts, build);
+    return {
+      criterion,
+      claim: releaseClaimOf(criterion.verdicts, build),
+      proven: onBuild !== null && criterionCountsAsPass(onBuild.verdict),
+      onBuild,
+    };
+  });
 }
 
 /** Every carried criterion the page does not claim, with its standing on the build and where it was judged instead. */
@@ -118,15 +125,23 @@ export function requirementsOf(
   requirements: readonly CarriedRequirement[],
   claims: readonly ClaimReading[],
 ): ReleasePageRequirement[] {
-  const claimable = claimableByRequirement(claims);
+  // proven is `criterionCountsAsPass`, the one rule the gate and the release record count by; a
+  // criterion that is only short of its wording is listed as proven and marked so
+  const proven = new Map<string, Map<string, boolean>>();
+  for (const { criterion, proven: counts, claim } of claims) {
+    if (!counts || !criterion.requirementKey || !criterion.bc) continue;
+    const codes = proven.get(criterion.requirementKey) ?? new Map<string, boolean>();
+    codes.set(criterion.bc, (codes.get(criterion.bc) ?? true) && !claim.claimed);
+    proven.set(criterion.requirementKey, codes);
+  }
   return requirements.map((r) => ({
     key: r.key,
     title: r.title,
     completes: r.completes,
-    proven: [...(claimable.get(r.key) ?? [])]
-      .sort(byCode)
-      .map((code) => ({ code, statement: r.criteria.get(code) ?? '' })),
-    unproven: claims.filter((c) => !c.claim.claimed && c.criterion.requirementKey === r.key).length,
+    proven: [...(proven.get(r.key) ?? new Map<string, boolean>())]
+      .sort(([a], [b]) => byCode(a, b))
+      .map(([code, short]) => ({ code, statement: r.criteria.get(code) ?? '', short })),
+    unproven: claims.filter((c) => !c.proven && c.criterion.requirementKey === r.key).length,
   }));
 }
 

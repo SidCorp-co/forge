@@ -21,20 +21,12 @@ import {
   writePullRequestComment,
 } from './agent-ops.js';
 import { buildRepoClient, GitHubReadError, type GitHubRepoClient } from './client.js';
+import { type CompareFile, readCompareFiles } from './compare-pages.js';
 import { readCompareCommits, readLiveDivergence } from './live-divergence.js';
 import { MERGE_METHODS, mergeGitHubPullRequest } from './merge.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
 const COMPARE_STATES: readonly HostCompare[] = ['ahead', 'behind', 'identical', 'diverged'];
-
-/** GitHub names at most this many files in one compare, and says nothing of the rest. */
-const COMPARE_FILE_CEILING = 300;
-
-interface CompareFile {
-  filename?: string;
-  previous_filename?: string;
-  status?: string;
-}
 
 /** What each file of a compare became; `filesOf` has already refused an entry with no name. */
 function changesOf(files: CompareFile[]): HostFileChange[] {
@@ -54,11 +46,7 @@ function changesOf(files: CompareFile[]): HostFileChange[] {
 
 /** Each file a compare names, a rename by both its names: the old path no longer holds it either.
  *  A reason where the list cannot be taken whole, since a missing list is not an empty one. */
-function filesOf(files: CompareFile[] | undefined): string[] | string {
-  if (!Array.isArray(files)) return 'the compare answered no file list';
-  if (files.length >= COMPARE_FILE_CEILING) {
-    return `${COMPARE_FILE_CEILING} or more files differ, and the repository names no more than that in one compare`;
-  }
+function filesOf(files: CompareFile[]): string[] | string {
   const named = (p: unknown) => typeof p === 'string' && p !== '';
   const unnamed = files.some(
     (f) =>
@@ -141,14 +129,16 @@ function githubSourceHostOf(
     return status;
   };
   const compareFiles = async (base: string, head: string): Promise<HostFileCompare> => {
-    const read = await client.get<{ status?: string; files?: CompareFile[] }>(
+    const read = await readCompareFiles(
+      <T>(path: string) => client.get<T>(path),
       `${repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`,
     );
+    if ('why' in read) return { why: read.why };
     const status = COMPARE_STATES.find((s) => s === read.status);
     if (!status) return { why: `${client.fullName} answered no compare status` };
     const files = filesOf(read.files);
     if (typeof files === 'string') return { why: files };
-    return { status, files, changes: changesOf(read.files ?? []) };
+    return { status, files, changes: changesOf(read.files) };
   };
   const commitFiles = async (sha: string): Promise<HostCommitFiles> => {
     const commit = await client.get<{ parents?: Array<{ sha?: string }> }>(

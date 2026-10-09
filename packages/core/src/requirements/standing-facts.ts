@@ -4,8 +4,10 @@
  * beside the revision or version each is approved at now.
  */
 
-import { sql } from 'drizzle-orm';
+import type { CoverageFile } from '@forge/contracts/requirements';
+import { inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { issueAttachments } from '../db/schema.js';
 import { reopenedAtOf } from '../issues/index.js';
 import { requirementDependents } from './dependents.js';
 import type { LiveBuildHolds, StandingIssueCriterion } from './standing.js';
@@ -17,6 +19,8 @@ type CriterionVerdictRow = {
   requirement_criterion_id: string;
   verdict: StandingIssueCriterion['verdict'];
   verdict_at: Date | string | null;
+  reason: string | null;
+  evidence: string[] | null;
   identity_kind: string | null;
   commit_sha: string | null;
   runtime_ref: string | null;
@@ -71,6 +75,26 @@ function identityOf(r: CriterionVerdictRow): CoverageIdentity | null {
   }
 }
 
+/** The files kept on the issues, by issue and name: what a verdict's evidence cites by name. */
+async function filesOf(issueIds: readonly string[]): Promise<Map<string, CoverageFile>> {
+  const out = new Map<string, CoverageFile>();
+  if (issueIds.length === 0) return out;
+  const rows = await db
+    .select({
+      id: issueAttachments.id,
+      issueId: issueAttachments.issueId,
+      name: issueAttachments.name,
+      mime: issueAttachments.mime,
+    })
+    .from(issueAttachments)
+    .where(inArray(issueAttachments.issueId, [...new Set(issueIds)]));
+  for (const r of rows) {
+    const key = `${r.issueId}\u0000${r.name}`;
+    if (!out.has(key)) out.set(key, { attachmentId: r.id, name: r.name, mime: r.mime });
+  }
+  return out;
+}
+
 /**
  * Each live traced criterion of `issueIds` with its latest verdict and what that verdict names: a
  * design or contract identity beside the revision or version the traced requirement's latest
@@ -82,7 +106,8 @@ export async function issueCriteriaOf(
 ): Promise<StandingIssueCriterion[]> {
   if (issueIds.length === 0) return [];
   const rows = (await ex.execute(sql`
-    SELECT c.issue_id, c.n, c.requirement_criterion_id, v.verdict, v.verdict_at, v.identity_kind,
+    SELECT c.issue_id, c.n, c.requirement_criterion_id, v.verdict, v.verdict_at, v.reason, v.evidence,
+           v.identity_kind,
            v.commit_sha, v.runtime_ref, w.flow AS design_flow, v.design_workflow_id,
            v.design_revision, dp.design_revision AS design_pinned, v.contract_ref,
            v.contract_version, cp.contract_version AS contract_pinned, v.storefront_workflow_id,
@@ -90,7 +115,8 @@ export async function issueCriteriaOf(
       FROM issue_criteria c
       JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
       LEFT JOIN LATERAL (
-        SELECT cv.verdict, cv.created_at AS verdict_at, cv.identity_kind, cv.commit_sha,
+        SELECT cv.verdict, cv.created_at AS verdict_at, cv.reason, cv.evidence, cv.identity_kind,
+               cv.commit_sha,
                cv.runtime_ref, cv.design_workflow_id, cv.design_revision, cv.contract_ref,
                cv.contract_version, cv.storefront_workflow_id, cv.storefront_draft_version,
                cv.storefront_environment
@@ -128,6 +154,9 @@ export async function issueCriteriaOf(
   // A verdict recorded at or before the issue's latest reopen is evidence about a build the
   // reopen rejected (`issues/release-evidence.ts:reopenedAtOf`), so coverage reads it as not judged
   const reopened = await reopenedAtOf(ex, issueIds);
+  const files = await filesOf(
+    rows.flatMap((r) => ((r.evidence ?? []).length > 0 ? [r.issue_id] : [])),
+  );
   return [...rows].map((r) => {
     const at = reopened.get(r.issue_id);
     const voided = at && r.verdict_at && new Date(r.verdict_at).getTime() <= at.getTime();
@@ -137,6 +166,10 @@ export async function issueCriteriaOf(
       requirementCriterionId: r.requirement_criterion_id,
       verdict: voided ? null : r.verdict,
       verdictAt: voided || !r.verdict_at ? null : new Date(r.verdict_at),
+      note: voided || !r.reason?.trim() ? null : r.reason,
+      files: voided
+        ? []
+        : (r.evidence ?? []).flatMap((name) => files.get(`${r.issue_id}\u0000${name}`) ?? []),
       identity: voided || r.verdict === null ? null : identityOf(r),
     };
   });

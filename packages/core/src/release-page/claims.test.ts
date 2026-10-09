@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type CarriedCriterion,
   type CarriedVerdict,
+  claimableByRequirement,
   type IssueFile,
   knownIssuesOf,
   mediaOf,
@@ -79,7 +80,7 @@ describe('the truth rule over the carried criteria', () => {
     expect(readClaims([pass], null).every((c) => !c.claim.claimed)).toBe(true);
   });
 
-  it('proves a requirement criterion live only by a claimed pass, and counts the rest as unproven', () => {
+  it('proves a requirement criterion by a pass or a short, marks the short, and counts the rest as unproven', () => {
     const reqs = requirementsOf(
       [
         {
@@ -99,8 +100,11 @@ describe('the truth rule over the carried criteria', () => {
         key: 'REQ-1',
         title: 'Reminders',
         completes: false,
-        proven: [{ code: 'BC-1', statement: 'A nurse sees the reminder' }],
-        unproven: 3,
+        proven: [
+          { code: 'BC-1', statement: 'A nurse sees the reminder', short: false },
+          { code: 'BC-2', statement: 'A doctor sees the report', short: true },
+        ],
+        unproven: 2,
       },
     ]);
   });
@@ -149,5 +153,41 @@ describe('the media a highlight may show', () => {
       verdict('pass', MERGED, '2026-10-09T10:00:00.000Z', { evidence: ['clip.webm'] }),
     ]);
     expect(mediaOf(readClaims([elsewhere], BUILD), files, BUILD)).toEqual([]);
+  });
+});
+
+describe('proven is one rule: criterionCountsAsPass (BC-5)', () => {
+  // QA 0.4.0-dev.218: the header read 9 of 26 (a short counts as a pass, as the gate and the release
+  // record count) while the list showed 6; both now read the one rule, and a short is marked
+  const rows = [
+    criterion(1, 'BC-1', [verdict('pass', BUILD, '2026-10-09T10:00:00.000Z')]),
+    criterion(2, 'BC-2', [verdict('short', BUILD, '2026-10-09T10:00:00.000Z')]),
+    criterion(3, 'BC-3', [verdict('fail', BUILD, '2026-10-09T10:00:00.000Z')]),
+    criterion(4, 'BC-4', []),
+  ];
+  const claims = readClaims(rows, BUILD);
+  const req = {
+    key: 'REQ-1',
+    title: 'r',
+    completes: false,
+    criteria: new Map(rows.map((r) => [r.bc as string, r.statement])),
+  };
+
+  it('lists a pass and a short as proven, the short marked, and counts the rest unproven', () => {
+    const [listed] = requirementsOf([req], claims);
+    expect(listed?.proven.map((p) => [p.code, p.short])).toEqual([
+      ['BC-1', false],
+      ['BC-2', true],
+    ]);
+    expect(listed?.unproven).toBe(2);
+  });
+
+  it('keeps highlights and media pass-only: a short is not claimed', () => {
+    expect([...(claimableByRequirement(claims).get('REQ-1') ?? [])]).toEqual(['BC-1']);
+  });
+
+  it('proves nothing on a release nobody cut', () => {
+    const none = readClaims(rows, null);
+    expect(requirementsOf([req], none)[0]?.proven).toEqual([]);
   });
 });

@@ -72,6 +72,7 @@ export { AcceptStep } from "./patterns/accept-step";
 export { Markdown } from "./patterns/markdown";
 export { BodyView } from "./patterns/body-view";
 export { PreviewPane } from "./patterns/preview-pane";
+export { VerdictEvidence, type VerdictEvidenceFile } from "./patterns/verdict-evidence";
 export { HtmlArtifact } from "./patterns/html-artifact";
 export { ForgeMascot } from "./patterns/forge-mascot";
 export { ProjectLoader } from "./patterns/mascot-loaders";

@@ -13,6 +13,7 @@ import type {
   ReleasePageChange,
   ReleasePageHeader,
   ReleasePageUnnoted,
+  ReleaseShipped,
   ReleaseTechnicalNotes,
 } from '@forge/contracts/release-page';
 import type { ReleaseDetail, ReleaseNoteSection } from '@forge/contracts/releases';
@@ -149,10 +150,33 @@ const SENTENCES: Record<ReleaseActionKind, Record<ArtifactChange, (ref: string) 
   },
 };
 
-/** What an admin must do once the release lands, each item naming the artifact that owes it (BC-7). */
-export function actionsOf(changes: ReleaseDetail['changes']): ReleaseActionItem[] {
+/** What the range ships as artifacts: the migrations it adds and the settings a deployment now refuses to start without. */
+function derivedArtifacts(shipped: ReleaseShipped): ShippedArtifact[] {
+  if (shipped.state !== 'read') return [];
+  return [
+    ...shipped.migrations.map((ref) => ({
+      ref,
+      change: 'added' as const,
+      issues: [],
+      surface: 'data',
+    })),
+    ...shipped.settings
+      .filter((s) => s.required)
+      .map((s) => ({ ref: s.name, change: 'added' as const, issues: [], surface: 'config' })),
+  ];
+}
+
+/**
+ * What an admin must do once the release lands, each item naming the artifact that owes it (BC-7):
+ * what the release's commit range ships (`shipped`), then what its issues' landings name, an item
+ * both say once.
+ */
+export function actionsOf(
+  changes: ReleaseDetail['changes'],
+  shipped: ReleaseShipped,
+): ReleaseActionItem[] {
   const out = new Map<string, ReleaseActionItem>();
-  for (const a of shippedArtifacts(changes)) {
+  for (const a of [...derivedArtifacts(shipped), ...shippedArtifacts(changes)]) {
     const permission = permissionOf(a);
     const kind: ReleaseActionKind | null = permission
       ? 'permission'
@@ -177,21 +201,32 @@ export function actionsOf(changes: ReleaseDetail['changes']): ReleaseActionItem[
 const uniq = (refs: readonly string[]) => [...new Set(refs)].sort();
 
 /** The developer view's addition: each issue's technical note, and the migrations, contracts and dependencies the release ships (BC-9). */
-export function technicalOf(detail: ReleaseDetail): ReleaseTechnicalNotes {
+export function technicalOf(detail: ReleaseDetail, shipped: ReleaseShipped): ReleaseTechnicalNotes {
   const entries = [
     ...detail.notes.sections.flatMap((s: ReleaseNoteSection) => s.entries),
     ...detail.notes.designs,
   ];
-  const shipped = shippedArtifacts(detail.changes);
+  const landed = shippedArtifacts(detail.changes);
+  const derived = shipped.state === 'read' ? shipped : null;
   return {
     notes: entries.flatMap((e) =>
       e.technical?.trim() ? [{ issueKey: e.key, title: e.title, technical: e.technical }] : [],
     ),
-    migrations: uniq(shipped.filter(isMigration).map((a) => a.ref)),
-    contracts: uniq(
-      shipped.filter((a) => a.surface === 'api' || CONTRACT.test(a.ref)).map((a) => a.ref),
+    migrations: uniq([
+      ...(derived?.migrations ?? []),
+      ...landed.filter(isMigration).map((a) => a.ref),
+    ]),
+    contracts: uniq([
+      ...(derived?.contracts ?? []),
+      ...landed.filter((a) => a.surface === 'api' || CONTRACT.test(a.ref)).map((a) => a.ref),
+    ]),
+    dependencies: uniq([
+      ...(derived?.dependencies ?? []),
+      ...landed.filter((a) => DEPENDENCY.test(a.ref)).map((a) => a.ref),
+    ]),
+    settings: uniq(
+      (derived?.settings ?? []).map((s) => `${s.name} (${s.required ? 'required' : 'optional'})`),
     ),
-    dependencies: uniq(shipped.filter((a) => DEPENDENCY.test(a.ref)).map((a) => a.ref)),
     changes: detail.changes,
   };
 }

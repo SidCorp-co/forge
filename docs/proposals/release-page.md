@@ -51,11 +51,11 @@ hairlines, no cards. English copy.
 |---|---|---|---|---|
 | Header: version, date, where it runs, commit, approved by | both | 1, 12 | `ReleaseDetail` (version, releasedAt, production, finish commit, verified, approvals) | approval reads "not asked" where the setting asks nobody |
 | Highlights, 1–3, each with a clip or picture | both | 2, 3 | stored highlights (below) | judged by `judgeHighlights` before they show |
-| Requirements completed or advanced, with criteria proven live | both | 5 | `requirementsCompleted` + verdicts | a criterion is listed as proven only under the truth rule |
+| Requirements completed or advanced, with criteria proven live | both | 5 | `requirementsCompleted` + verdicts | a criterion is listed as proven only under the truth rule; "proven" is `criterionCountsAsPass` (a pass, or a short) in the header, this list and the release record alike; a short is listed with a "short of its wording" mark. Highlights stay pass-only |
 | Improvements, Fixes | both | 6 | `customerNotes` over each issue's `releaseNotes.userFacing`; section read as new, improved or fixed | an issue with no note is named, not invented |
-| Action required: settings, migrations, permissions | both | 7 | the release's landing artifacts (`ReleaseChanges`): migration files, permission keys, project-config paths | each item names the artifact that owes it |
-| Known issues | both | 8 | every carried criterion the truth rule does not claim | fail, short, skipped, or not judged on this build, with where it was judged instead |
-| Technical notes: changes, migrations, API contracts, dependencies | developer | 9 | `releaseNotes.technical`, `ReleaseChanges`, contract and manifest artifacts | none |
+| Action required: settings, migrations, permissions | both | 7 | the release's commit range (`release-batch/shipped-range.ts`: journal entries, new required settings of the deployment files) and the release's landing artifacts (`ReleaseChanges`): migration files, permission keys, project-config paths | each item names the artifact that owes it; a range that could not be read says so, never "Nothing is required" |
+| Known issues | both | 8 | every carried criterion the truth rule does not claim | fail, short, skipped, or not judged on this build; the user view says the criterion's own wording and its state, the developer view adds the verdict's reason and where it was judged instead |
+| Technical notes: changes, migrations, API contracts, dependencies | developer | 9 | `releaseNotes.technical`, `ReleaseChanges`, and the commit range: journal entries, generated API contract operations, `package.json` dependency moves, new deployment settings | none |
 
 **Truth rule (BC-13).** The build a page describes is the commit the release was cut at and
 deploys. A criterion is claimed only when the newest verdict whose identity is that commit is a
@@ -120,7 +120,9 @@ beside it.
 - **Export** is built in the browser from the page's user view, as the release notes copy is today:
   Markdown (sections, media as links) and an email (a subject, a plain-text body and an HTML body
   from the same sections) downloaded as a `.eml` a person sends from their own mail. Forge sends no
-  mail. The page reads at `releasePagePath`.
+  mail. The page reads at `releasePagePath`. A known issue in a share or an export reads as the
+  criterion's own wording and its state (Failing, Falls short, Not yet judged), never the verdict's
+  reason, which is the developer view's.
 
 ## Approval (BC-12)
 

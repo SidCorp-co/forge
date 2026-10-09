@@ -20,7 +20,7 @@ import type { ProjectAccess } from '../lib/authz.js';
 import { isRefusal, refuser } from '../lib/refusal.js';
 import { holds } from '../permissions/index.js';
 import { createDownloadTicket } from '../uploads/index.js';
-import { readReleasePage } from './read.js';
+import { readReleasePage, userKnownIssues } from './read.js';
 import { refreshInBackground } from './refresh.js';
 
 const refuseShare = refuser<ShareRefusalCode>('SHARE_REFUSED');
@@ -117,6 +117,8 @@ async function opened(
   return {
     ...page,
     highlights: await ticketedHighlights(page.highlights, ctx.projectId, ctx.openerId),
+    // a share frozen before the user view stopped carrying QA's reasons still opens without them
+    knownIssues: userKnownIssues(page.knownIssues, 'user'),
   };
 }
 

@@ -47,15 +47,15 @@ const standing = {
       code: "BC-1",
       body: "Tieu chi mot",
       verdict: "passing",
-      issues: [{ issueId: "i1", displayId: "ISS-1", title: "Viec mot", status: "closed", tone: "done", criterion: 1, verdict: "pass", verdictAt: at, stale: false }],
+      issues: [{ issueId: "i1", displayId: "ISS-1", title: "Viec mot", status: "closed", tone: "done", note: null, files: [], criterion: 1, verdict: "pass", verdictAt: at, stale: false }],
     },
     {
       code: "BC-2",
       body: "Tieu chi hai",
       verdict: "failing",
       issues: [
-        { issueId: "i2", displayId: "ISS-2", title: "Viec hai", status: "in_progress", tone: "run", criterion: 1, verdict: "fail", verdictAt: at, stale: true },
-        { issueId: "i2", displayId: "ISS-2", title: "Viec hai", status: "in_progress", tone: "run", criterion: 2, verdict: null, verdictAt: null, stale: false },
+        { issueId: "i2", displayId: "ISS-2", title: "Viec hai", status: "in_progress", tone: "run", note: null, files: [], criterion: 1, verdict: "fail", verdictAt: at, stale: true },
+        { issueId: "i2", displayId: "ISS-2", title: "Viec hai", status: "in_progress", tone: "run", note: null, files: [], criterion: 2, verdict: null, verdictAt: null, stale: false },
       ],
     },
     { code: "BC-3", body: "Tieu chi ba", verdict: "gap", issues: [], uncoveredReason: "Ly do" },

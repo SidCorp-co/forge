@@ -356,8 +356,8 @@ export interface ReleasePageRequirement {
 	key: string;
 	title: string;
 	completes: boolean;
-	/** Criteria claimed under the truth rule: a pass on `header.build`. */
-	proven: { code: string; statement: string }[];
+	/** Criteria proven on `header.build` by `criterionCountsAsPass`; `short` marks one met but short of its wording. */
+	proven: { code: string; statement: string; short: boolean }[];
 	/** How many of its carried criteria are known issues instead. */
 	unproven: number;
 }
@@ -396,12 +396,36 @@ export interface ReleaseKnownIssue {
 	elsewhere: { verdict: CriterionStanding; commitSha: string | null } | null;
 }
 
+/**
+ * What the release's own commit range ships, read from the repository rather than from what an
+ * issue filled in (BC-7, BC-9): `base` is the commit the previous shipped release served and `head`
+ * the commit this one deploys. A range that could not be read says why, so a page never reads "None"
+ * for what nobody looked at.
+ */
+export type ReleaseShipped =
+	| {
+			state: "read";
+			base: string;
+			head: string;
+			/** Migration files the range adds to the journal, as `<dir>/<tag>.sql`. */
+			migrations: string[];
+			/** Operations of the generated API contract the range adds, changes or removes: `added GET /api/x`. */
+			contracts: string[];
+			/** Package dependency moves: `packages/core: hono 4.1.0 -> 4.2.0`. */
+			dependencies: string[];
+			/** Environment settings a deployment file of the range names that its base did not. */
+			settings: { name: string; required: boolean }[];
+	  }
+	| { state: "unread"; why: string };
+
 /** The developer view's addition (BC-9). */
 export interface ReleaseTechnicalNotes {
 	notes: { issueKey: string; title: string; technical: string }[];
 	migrations: string[];
 	contracts: string[];
 	dependencies: string[];
+	/** New environment settings, each saying whether the deployment refuses to start without it. */
+	settings: string[];
 	changes: ReleaseChanges;
 }
 
@@ -425,6 +449,8 @@ export interface ReleasePage {
 	fixes: ReleasePageChange[];
 	withoutNotes: ReleasePageUnnoted[];
 	actionRequired: ReleaseActionItem[];
+	/** What the commit range was read as: where it is unread, "nothing required" is not claimed. */
+	shipped: ReleaseShipped;
 	knownIssues: ReleaseKnownIssue[];
 	/** Null on the user view. */
 	technical: ReleaseTechnicalNotes | null;
@@ -480,7 +506,11 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 			title: z.string().min(1),
 			completes: z.boolean(),
 			proven: z.array(
-				z.strictObject({ code: z.string().min(1), statement: z.string() }),
+				z.strictObject({
+					code: z.string().min(1),
+					statement: z.string(),
+					short: z.boolean().default(false),
+				}),
 			),
 			unproven: z.number().int().min(0),
 		}),
@@ -502,6 +532,26 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 			issues: z.array(z.string().min(1)),
 		}),
 	),
+	/** A share frozen before the range was read says so: it never claims nothing was required. */
+	shipped: z
+		.discriminatedUnion("state", [
+			z.strictObject({
+				state: z.literal("read"),
+				base: z.string().min(1),
+				head: z.string().min(1),
+				migrations: z.array(z.string()),
+				contracts: z.array(z.string()),
+				dependencies: z.array(z.string()),
+				settings: z.array(
+					z.strictObject({ name: z.string(), required: z.boolean() }),
+				),
+			}),
+			z.strictObject({ state: z.literal("unread"), why: z.string().min(1) }),
+		])
+		.default({
+			state: "unread",
+			why: "this page was shared before it read the commit range, so what it requires of an admin is not recorded here",
+		}),
 	knownIssues: z.array(
 		z.strictObject({
 			issueKey: z.string().min(1),

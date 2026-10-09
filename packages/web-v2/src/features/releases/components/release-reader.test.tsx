@@ -54,6 +54,9 @@ describe("the sections the release page reads (BC-5..8)", () => {
     const r = screen.getByTestId("page-requirement");
     expect(r).toHaveTextContent("REQ-40");
     expect(within(r).getByTestId("page-proven")).toHaveTextContent("BC-1Each release has a page.");
+    // a criterion met but short of its wording is proven and says so, beside it
+    expect(within(r).getAllByTestId("page-proven-short")).toHaveLength(1);
+    expect(within(r).getByTestId("page-proven")).toHaveTextContent("BC-2Each release opens on highlights.short of its wording");
     expect(within(r).getByTestId("page-unproven")).toHaveTextContent("1 not yet proven on this build");
     expect(within(r).getByRole("link", { name: "REQ-40" })).toHaveAttribute("href", "/projects/forge/requirements/REQ-40");
   });
@@ -88,9 +91,28 @@ describe("the sections the release page reads (BC-5..8)", () => {
     const rows = screen.getAllByTestId("page-known-issue");
     expect(rows.map((r) => r.getAttribute("data-standing"))).toEqual(["short", "not_judged"]);
     expect(rows[0]).toHaveTextContent("Falls short");
+    expect(rows[1]).toHaveTextContent("Not yet judged");
+  });
+
+  // BC-11: the user view says the criterion's words and its state; QA's reason and the other build
+  // it was judged on are the developer view's, even where the page carries them
+  it("shows QA's reason and the other build in the developer view only", () => {
+    const page = releasePage();
+    const carried = page.knownIssues.map((k) => ({ ...k, reason: k.reason ?? "judged on another commit", elsewhere: k.elsewhere ?? { verdict: "pass" as const, commitSha: "b".repeat(40) } }));
+    const user = renderWithQuery(<ReleaseReader page={{ ...page, view: "user", knownIssues: carried }} authed={false} />);
+    expect(screen.getByTestId("page-known-issues")).not.toHaveTextContent("the list is empty on mobile");
+    expect(screen.getByTestId("page-known-issues")).not.toHaveTextContent("bbbbbbb");
+    user.unmount();
+    renderWithQuery(<ReleaseReader page={{ ...page, view: "developer", knownIssues: carried }} authed={false} />);
+    const rows = screen.getAllByTestId("page-known-issue");
     expect(rows[0]).toHaveTextContent("the list is empty on mobile");
-    expect(rows[1]).toHaveTextContent("Not judged on this build");
     expect(rows[1]).toHaveTextContent("Judged pass on build bbbbbbb instead");
+  });
+
+  it("says a range it could not read, never that nothing is required", () => {
+    renderWithQuery(<ReleaseReader page={releasePage({ actionRequired: [], shipped: { state: "unread", why: "the repository was unreachable" } })} authed={false} />);
+    expect(screen.getByTestId("page-actions-none")).toHaveTextContent("could not be read: the repository was unreachable.");
+    expect(screen.getByTestId("page-actions")).not.toHaveTextContent("Nothing is required of you.");
   });
 
   it("says no known issues where there are none, never leaving the section silent", () => {
@@ -175,6 +197,7 @@ describe("the developer view (BC-9)", () => {
     expect(within(tech).getByTestId("page-technical-migrations")).toHaveTextContent("0478_release_highlights.sql");
     expect(within(tech).getByTestId("page-technical-contracts")).toHaveTextContent("release-page.ts");
     expect(within(tech).getByTestId("page-technical-dependencies")).toHaveTextContent("no new dependency");
+    expect(within(tech).getByTestId("page-technical-settings")).toHaveTextContent("PREVIEW_DOMAIN (optional)");
   });
 
   it("draws nothing technical for the user view", () => {
