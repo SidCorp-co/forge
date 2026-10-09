@@ -17,6 +17,7 @@ import {
   type PreviewActor,
   pushBox,
   refuse,
+  refuseRoomPreview,
   rowOf,
   SOURCE,
   siteOrRefuse,
@@ -172,6 +173,7 @@ async function tellRun(
 export async function sendPreviewMessage(previewId: string, actor: PreviewActor, text: string) {
   const row = await rowOf(previewId);
   await accessFor(row.projectId, actor, 'project.write', 'send the run a change');
+  refuseRoomPreview(row, 'ask');
   throwRefusal(stateRefusal(row.id, row.state, OPEN_STATES, 'take a change'));
   const url = `${previewOrigin(siteOrRefuse(), row.slug)}/`;
   if (row.subjectKind === 'idea') return sendIdeaMessage(row, actor, text, url);

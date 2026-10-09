@@ -11,8 +11,9 @@ import {
   type KeptPreviewContent,
   PREVIEW_IDEA_LIMITS,
   PREVIEW_SNAPSHOT_LIMITS,
+  type PreviewReport,
 } from '@forge/contracts/preview';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type PocRoomRow,
@@ -21,7 +22,7 @@ import {
   type RoomSettleRecord,
 } from '../db/schema-poc-rooms.js';
 import { logger } from '../lib/logger.js';
-import { RefusalError } from '../lib/refusal.js';
+import { isRefusal, RefusalError } from '../lib/refusal.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { type PreviewActor, refuse, rowOf, userActor } from './access.js';
@@ -116,7 +117,9 @@ export async function settleRoom(
     askedBy: actor.userId,
     askedAt: new Date().toISOString(),
     alt: request.alt,
-    snapshot: request.snapshot,
+    // scrubbed as it is kept: an abandon before the picture is drawn keeps no raw page
+    snapshot: scrubEvents(request.snapshot) as RoomSettleRecord['snapshot'],
+    mergeAskedAt: null,
     mergeSha: null,
     requirement: null,
     revision: null,
@@ -142,8 +145,14 @@ export async function settleRoom(
       items.map((i) => i.text),
       unsettled,
     );
-    await insertTurn(room.id, 'trim', null, text);
-    await deliverToSketch(preview, null, actor, text);
+    try {
+      await insertTurn(room.id, 'trim', null, text);
+      await deliverToSketch(preview, null, actor, text);
+    } catch (err) {
+      // nothing was merged: the room goes back to open, naming why, rather than standing at settling
+      await backToOpen(room, `the trim before the merge did not reach the room's agent: ${(err as Error).message}`);
+      throw err;
+    }
   } else {
     void inRoomOrder(room.id, () => runSettle(room.id));
   }
@@ -161,16 +170,18 @@ async function backToOpen(room: PocRoomRow, detail: string): Promise<void> {
   });
 }
 
+type MergeReport = Extract<PreviewReport, { kind: 'snapshot' }>;
+
 /**
- * The merge and what follows it, once the agent's trim showed (or at once). Runs in the room's order,
- * so the snapshot it waits on is its own. A merge that does not land puts the room back to open,
- * naming git's words; what the requirement or issue write refuses after the merge is kept on the
- * settle by its code.
+ * The merge, once the agent's trim showed (or at once). Runs in the room's order, so the snapshot it
+ * waits on is its own. The ask is recorded on the settle before it is sent: from then on only the
+ * box's report decides the room. A report that comes after core stopped waiting still settles it
+ * (`settleFromLateReport`), so a merge that landed late is never told as one that did not.
  */
 export async function runSettle(roomId: string): Promise<void> {
   const room = await roomRow(roomId);
   const settle = room.settle;
-  if (room.state !== 'settling' || !settle) return;
+  if (room.state !== 'settling' || !settle || settle.mergeAskedAt) return;
   const preview = await rowOf(room.previewId);
   const items = await db
     .select()
@@ -185,13 +196,60 @@ export async function runSettle(roomId: string): Promise<void> {
     '',
     'Merged straight from the room; verify, review and code standards follow as their own issue (REQ-44 BC-8).',
   ].join('\n');
-  let taken: Awaited<ReturnType<typeof askSnapshot>>;
+  const asked = { ...settle, mergeAskedAt: new Date().toISOString() };
+  await db
+    .update(pocRooms)
+    .set({ settle: asked })
+    .where(and(eq(pocRooms.id, room.id), eq(pocRooms.state, 'settling')));
+  let taken: MergeReport;
   try {
     taken = await askSnapshot(preview, true, { into: settle.into, message });
   } catch (err) {
-    await backToOpen(room, `the box did not merge the branch: ${(err as Error).message}`);
+    if (isRefusal(err, 'PREVIEW_SNAPSHOT_UNAVAILABLE')) {
+      // the ask went out and no answer came in time: the merge may still land, so the room waits on
+      // the box's report instead of saying nothing merged
+      await db
+        .update(pocRooms)
+        .set({
+          detail: `the box was asked to merge into ${settle.into} at ${asked.mergeAskedAt} and has not reported; the room settles or reopens on its report`,
+        })
+        .where(and(eq(pocRooms.id, room.id), eq(pocRooms.state, 'settling')));
+      logger.warn({ roomId }, 'poc-rooms: the merge report is late; the room waits on it');
+      return;
+    }
+    await backToOpen(room, `the box was not asked to merge the branch: ${(err as Error).message}`);
     return;
   }
+  await finishSettle(room.id, taken);
+}
+
+/**
+ * A snapshot report that names a merge outcome, for a room whose merge was asked and no waiter holds:
+ * the box answered after core stopped waiting. False where the report is not that room's merge.
+ */
+export async function settleFromLateReport(previewId: string, report: MergeReport): Promise<boolean> {
+  if (!report.merged && !report.mergeRefused) return false;
+  const [room] = await db.select().from(pocRooms).where(eq(pocRooms.previewId, previewId));
+  if (!room || room.state !== 'settling' || !room.settle?.mergeAskedAt) return false;
+  await inRoomOrder(room.id, () => finishSettle(room.id, report));
+  return true;
+}
+
+/**
+ * What follows the box's merge report. A merge that did not land puts the room back to open, naming
+ * git's words; what the requirement or issue write refuses after the merge is kept on the settle by
+ * its code.
+ */
+async function finishSettle(roomId: string, taken: MergeReport): Promise<void> {
+  const room = await roomRow(roomId);
+  const settle = room.settle;
+  if (room.state !== 'settling' || !settle) return;
+  const preview = await rowOf(room.previewId);
+  const items = await db
+    .select()
+    .from(pocRoomItems)
+    .where(eq(pocRoomItems.roomId, room.id))
+    .orderBy(asc(pocRoomItems.settledAt));
   if (!taken.merged || !taken.head) {
     await backToOpen(
       room,
@@ -232,7 +290,8 @@ export async function runSettle(roomId: string): Promise<void> {
       refusals: [{ code: 'ROOM_SETTLE_WRITE_FAILED', detail: (err as Error).message }],
     };
   }
-  await transition(db, ROOM_MACHINE, {
+  movedRow(
+    await transition(db, ROOM_MACHINE, {
     to: 'settled',
     expect: 'settling',
     where: eq(pocRooms.id, room.id),
@@ -250,7 +309,8 @@ export async function runSettle(roomId: string): Promise<void> {
     },
     actor: { type: 'system' },
     source: SOURCE,
-  });
+  }),
+  );
   await closeAbandoned(
     await rowOf(room.previewId),
     { userId: settle.askedBy, agency: 'human' },

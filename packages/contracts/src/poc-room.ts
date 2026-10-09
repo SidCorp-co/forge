@@ -205,6 +205,8 @@ export const ROOM_REFUSAL_CODES = [
 	"ROOM_PRODUCTION_BRANCH",
 	/** The requirement is not a screen, which is what a room's picture draws. */
 	"ROOM_NOT_A_SCREEN",
+	/** The box was asked to merge the room and has not reported: the room settles or reopens on its report. */
+	"ROOM_MERGE_PENDING",
 ] as const;
 export type RoomRefusalCode = (typeof ROOM_REFUSAL_CODES)[number];
 
@@ -215,6 +217,7 @@ export const ROOM_REFUSAL_STATUSES = {
 	ROOM_TURN_NOT_SHOWN: 409,
 	ROOM_NOTHING_SETTLED: 409,
 	ROOM_ASLEEP: 409,
+	ROOM_MERGE_PENDING: 409,
 } as const satisfies RefusalStatuses<RoomRefusalCode>;
 
 /** Branches a POC never merges into whatever the project declares (REQ-44 scope out). */

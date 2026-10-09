@@ -403,6 +403,7 @@ describe("the preview refusals", () => {
 			PREVIEW_KEEP_NOT_IDEA: 409,
 			PREVIEW_KEEP_SNAPSHOT_INVALID: 400,
 			PREVIEW_CONFIRM_REASON_REQUIRED: 400,
+			PREVIEW_IS_A_ROOM: 409,
 		});
 	});
 });

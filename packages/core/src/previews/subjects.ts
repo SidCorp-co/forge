@@ -380,10 +380,7 @@ export async function sendIdeaMessage(
   await mergeSessionMetadata(session.id, {
     sketch: { ...sketch, asked: [...(sketch.asked ?? []), text] },
   });
-  const body =
-    row.subject?.kind === 'idea' && row.subject.room !== undefined
-      ? text
-      : `A person viewing this idea's live preview (${url}) asks for a change:\n\n${text}\n\nMake it in this working directory; the preview shows it by hot reload. Never push, merge or file anything.`;
+  const body = `A person viewing this idea's live preview (${url}) asks for a change:\n\n${text}\n\nMake it in this working directory; the preview shows it by hot reload. Never push, merge or file anything.`;
   return deliverToSketch(row, session, actor, body);
 }
 

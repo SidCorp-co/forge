@@ -8,6 +8,7 @@ vi.hoisted(() => {
 
 import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
+import { withKernelMarker } from '../../src/db/kernel-marker.js';
 import { api, type Body } from '../helpers/api.js';
 import { settleOutbox } from '../helpers/ecosystem-world.js';
 import { createTestFeedback } from '../helpers/factories.js';
@@ -119,6 +120,30 @@ describe('a room is opened, joined and built in with no gate (BC-1, BC-3, BC-4, 
     });
     expect([403, 404]).toContain(strangerOpen.status);
     expect((await api(null, 'GET', `/api/rooms/${room.id}`)).status).toBe(401);
+  });
+});
+
+describe('a room preview is asked, kept and abandoned through its room only (BC-3)', () => {
+  it('refuses the preview doors by name, so no edit reaches the agent without a turn', async () => {
+    const key = await agreedScreen('Cart shows a coupon');
+    const room = await liveRoom(key);
+    const sent = turnFrames().length;
+    for (const [path, body] of [
+      ['messages', { text: 'make it red' }],
+      ['keep', { alt: 'the cart', snapshot: snapshotOf('the cart') }],
+      ['abandon', {}],
+    ] as const) {
+      const refused = await api(owner, 'POST', `/api/previews/${room.preview.id}/${path}`, body);
+      expect(refused.status, `${path} ${JSON.stringify(refused.body)}`).toBe(409);
+      expect((refused.body.error as Body).code).toBe('PREVIEW_IS_A_ROOM');
+      expect(String((refused.body.error as Body).message)).toContain(`/api/rooms/${room.id}`);
+    }
+    await settleOutbox();
+    expect(turnFrames().length).toBe(sent);
+    const after = (await read(room.id)).room;
+    expect(after.state).toBe('open');
+    expect(after.turns).toHaveLength(1);
+    expect(after.preview.state).toBe('live');
   });
 });
 
@@ -248,6 +273,47 @@ describe('settled items, and a settle that merges straight into dev (BC-2, BC-6,
     expect((await read(room.id)).room.preview.state).toBe('abandoned');
     const late = await api(owner, 'POST', `/api/rooms/${room.id}/asks`, { text: 'more' });
     expect((late.body.error as Body).code).toBe('ROOM_CLOSED');
+  });
+
+  it('settles on a merge the box reports after core stopped waiting, and refuses an abandon until then', async () => {
+    const key = await agreedScreen('Cart shows a late merge');
+    const room = await liveRoom(key);
+    await api(owner, 'POST', `/api/rooms/${room.id}/items`, { turnId: room.turns[0]?.id });
+    // the box was asked to merge and no waiter holds its answer: core restarted, or stopped waiting
+    const asked = new Date().toISOString();
+    await withKernelMarker(db, (tx) =>
+      tx.execute(sql`
+        UPDATE poc_rooms SET state = 'settling', settle = ${JSON.stringify({
+          into: 'dev',
+          askedBy: ownerId,
+          askedAt: asked,
+          alt: 'The cart',
+          snapshot: snapshotOf('cart'),
+          mergeAskedAt: asked,
+          mergeSha: null,
+          requirement: null,
+          revision: null,
+          issueId: null,
+          refusals: [],
+        })}::jsonb WHERE id = ${room.id}::uuid
+      `),
+    );
+
+    const abandon = await api(owner, 'POST', `/api/rooms/${room.id}/abandon`, { reason: 'x' });
+    expect(abandon.status, JSON.stringify(abandon.body)).toBe(409);
+    expect((abandon.body.error as Body).code).toBe('ROOM_MERGE_PENDING');
+
+    const reported = await world.box.report(room.preview.id, {
+      kind: 'snapshot',
+      base: 'a'.repeat(40),
+      patchId: 'd'.repeat(40),
+      files: ['web/src/cart.tsx'],
+      head: 'c'.repeat(40),
+      merged: { into: 'dev', sha: ROOM_MERGE },
+    });
+    expect(reported.status, JSON.stringify(reported.body)).toBe(200);
+    const done = await until(room.id, (r) => r.state === 'settled', 30_000);
+    expect(done.settle).toMatchObject({ into: 'dev', mergeSha: ROOM_MERGE, requirement: key });
   });
 
   it('goes back to open, naming git, when the merge does not land, and writes nothing', async () => {

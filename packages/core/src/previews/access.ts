@@ -86,6 +86,19 @@ export async function pushStart(tx: Tx, row: PreviewRow, plan: PreviewPlan): Pro
 export const isRoomPreview = (row: Pick<PreviewRow, 'subject'>): boolean =>
   row.subject?.kind === 'idea' && row.subject.room !== undefined;
 
+/**
+ * A POC room's preview takes its asks, its settle and its abandon through the room, which records
+ * each turn and settles only what a person kept: a preview door would reach the room's agent with no
+ * turn, so its edit would merge into the base branch unlisted (REQ-44 BC-3).
+ */
+export function refuseRoomPreview(row: Pick<PreviewRow, 'id' | 'subject'>, act: string): void {
+  if (row.subject?.kind !== 'idea' || row.subject.room === undefined) return;
+  throw refuse(
+    'PREVIEW_IS_A_ROOM',
+    `preview ${row.id} is POC room ${row.subject.room}'s: ${act} it through /api/rooms/${row.subject.room}`,
+  );
+}
+
 export async function planOf(
   projectId: string,
   subject: PreviewRow['subjectKind'] = 'issue',

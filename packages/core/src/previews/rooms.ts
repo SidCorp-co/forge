@@ -32,6 +32,7 @@ import { movedRow, transition } from '../lifecycle/index.js';
 import { requireHeld } from '../permissions/index.js';
 import { type PreviewActor, rowOf, siteOrRefuse, userActor, view } from './access.js';
 import { previewOrigin } from './domain.js';
+import { OPEN_STATES } from './rules.js';
 import { closeAbandoned, reopenForViewer } from './service.js';
 import { deliverToSketch, openIdeaPreview } from './subjects.js';
 
@@ -269,20 +270,36 @@ export async function abandonRoom(
   if (room.state === 'settled' || room.state === 'abandoned') {
     throw refuseRoom('ROOM_CLOSED', `POC room ${room.id} is ${room.state} already`);
   }
-  const why = (reason ?? 'abandoned by a person').slice(0, PREVIEW_LIMITS.detail);
+  const preview = await rowOf(room.previewId);
+  const asked = room.state === 'settling' ? (room.settle?.mergeAskedAt ?? null) : null;
+  // once the box is asked to merge, only its report decides the room: an abandon then would delete
+  // the branch under a merge that may still land. A preview no longer open can report nothing.
+  if (asked !== null && OPEN_STATES.includes(preview.state)) {
+    throw refuseRoom(
+      'ROOM_MERGE_PENDING',
+      `POC room ${room.id} asked its box to merge into ${room.settle?.into} at ${asked}: it settles or reopens on the box's report`,
+    );
+  }
+  const unreported =
+    asked === null ? '' : `; the merge into ${room.settle?.into} asked at ${asked} was never reported`;
+  const why = `${reason ?? 'abandoned by a person'}${unreported}`.slice(0, PREVIEW_LIMITS.detail);
   movedRow(
     await transition(db, ROOM_MACHINE, {
       to: 'abandoned',
       expect: room.state,
       where: eq(pocRooms.id, room.id),
-      set: { detail: why, closedAt: new Date() },
+      set: {
+        detail: why,
+        closedAt: new Date(),
+        ...(room.settle ? { settle: { ...room.settle, snapshot: null } } : {}),
+      },
       reason: why,
       actor: userActor(actor),
       source: SOURCE,
     }),
   );
   await closeAbandoned(
-    await rowOf(room.previewId),
+    preview,
     actor,
     `the POC room was abandoned: ${why}`,
     true,

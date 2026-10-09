@@ -29,6 +29,7 @@ import {
   pushBox,
   pushStart,
   refuse,
+  refuseRoomPreview,
   rowOf,
   SOURCE,
   siteOrRefuse,
@@ -50,6 +51,7 @@ import {
   previewView,
 } from './read.js';
 import { sweepRecordings } from './recordings.js';
+import { settleFromLateReport } from './room-settle.js';
 import { OPEN_STATES, type PreviewPlan, stateRefusal, sweepMove } from './rules.js';
 import { briefSketchOnLive } from './subjects.js';
 import { signTicket } from './ticket.js';
@@ -262,10 +264,10 @@ export async function reportPreview(
       throwRefusal(stateRefusal(row.id, row.state, ['starting', 'live'], 'fail'));
       return view(await fail(row, ['starting', 'live'], report.reason, report.detail, box));
     case 'snapshot': {
-      if (!settleSnapshot(row.id, report)) {
+      if (!settleSnapshot(row.id, report) && !(await settleFromLateReport(row.id, report))) {
         throw refuse(
           'PREVIEW_NOT_LIVE',
-          `no approval of preview ${row.id} waits on a snapshot: one is read only when a person approves`,
+          `no approval, keep or room settle of preview ${row.id} waits on a snapshot: one is read only when a person asks for it`,
         );
       }
       return view(row);
@@ -303,6 +305,7 @@ async function onFacts(
 export async function abandonPreview(previewId: string, actor: PreviewActor, why?: string) {
   const row = await rowOf(previewId);
   await accessFor(row.projectId, actor, 'project.write', 'abandon the preview');
+  refuseRoomPreview(row, 'abandon');
   throwRefusal(stateRefusal(row.id, row.state, OPEN_STATES, 'be abandoned'));
   return closeAbandoned(row, actor, why);
 }

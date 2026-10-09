@@ -28,6 +28,8 @@ export interface RoomSettleRecord {
   alt: string;
   /** The page as the person saw it at settle (rrweb Meta + FullSnapshot), until the picture is drawn. */
   snapshot: PageSnapshot | null;
+  /** When the box was asked to merge; absent or null until then. Its report settles or reopens the room. */
+  mergeAskedAt?: string | null;
   mergeSha: string | null;
   requirement: string | null;
   revision: number | null;

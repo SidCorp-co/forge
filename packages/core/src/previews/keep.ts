@@ -10,7 +10,14 @@ import {
   type KeptPreviewContent,
   PREVIEW_SNAPSHOT_LIMITS,
 } from '@forge/contracts/preview';
-import { accessFor, type PreviewActor, refuse, rowOf, throwRefusal } from './access.js';
+import {
+  accessFor,
+  type PreviewActor,
+  refuse,
+  refuseRoomPreview,
+  rowOf,
+  throwRefusal,
+} from './access.js';
 import { askSnapshot } from './approve.js';
 import { keptPreviewWriter } from './keep-port.js';
 import { scrubEvents } from './recordings.js';
@@ -30,6 +37,7 @@ export async function keepIdea(
 ): Promise<KeepPreviewResponse> {
   const row = await rowOf(previewId);
   await accessFor(row.projectId, actor, 'project.write', 'keep the idea as a picture');
+  refuseRoomPreview(row, 'settle');
   if (row.subjectKind !== 'idea' || row.subject?.kind !== 'idea') {
     throw refuse(
       'PREVIEW_KEEP_NOT_IDEA',

@@ -777,6 +777,8 @@ export const PREVIEW_REFUSAL_CODES = [
 	"PREVIEW_KEEP_NOT_IDEA",
 	/** What the page sent was not one page's snapshot: the refusal names what was wrong with it. */
 	"PREVIEW_KEEP_SNAPSHOT_INVALID",
+	/** The preview is a POC room's (REQ-44): it is asked, settled and abandoned through the room. */
+	"PREVIEW_IS_A_ROOM",
 ] as const;
 export type PreviewRefusalCode = (typeof PREVIEW_REFUSAL_CODES)[number];
 
@@ -797,6 +799,7 @@ export const PREVIEW_REFUSAL_STATUSES = {
 	PREVIEW_CONFIRM_REASON_REQUIRED: 400,
 	PREVIEW_KEEP_NOT_IDEA: 409,
 	PREVIEW_KEEP_SNAPSHOT_INVALID: 400,
+	PREVIEW_IS_A_ROOM: 409,
 } as const satisfies RefusalStatuses<PreviewRefusalCode>;
 
 /** The REST surface the build lanes implement and call. `:id` is a preview, `:issueId` an issue. */
