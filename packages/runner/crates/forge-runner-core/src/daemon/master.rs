@@ -3481,7 +3481,7 @@ async fn ensure_master(
                 "[master] {}: adopting the resident session {name}",
                 resolved.slug
             );
-            remember(masters, project_id, &session);
+            remember_placed(masters, project_id, &session, &_placing);
         }
         let pane_now = terminal::incarnation(&name).await;
         let verdict = verdict_over_unwithdrawn(
@@ -3833,7 +3833,7 @@ async fn ensure_master(
         },
         resolved.repo_path.display()
     );
-    remember(masters, project_id, &session);
+    remember_placed(masters, project_id, &session, &_placing);
     masters.clear_unplaced(project_id, &resolved.slug);
     if started {
         masters.note_placed(project_id, transcript.clone().zip(output_from));
@@ -4370,6 +4370,18 @@ fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::Mast
             mcp_stale_reported: false,
         },
     );
+}
+
+/// `remember` for a placement, which must still hold its claim: a provision cannot begin between a
+/// master's registration and its being served (ISS-1359). `_placing` is the witness, so a claim
+/// dropped earlier is a compile error here and not a test that has to guess.
+fn remember_placed(
+    masters: &Arc<Masters>,
+    project_id: &str,
+    session: &master_api::MasterSession,
+    _placing: &PlacingClaim,
+) {
+    remember(masters, project_id, session);
 }
 
 fn nudge() -> String {
@@ -5136,9 +5148,10 @@ mod tests {
     }
 
     /// ISS-1359. A placement that never took its claim would let a provision begin between the
-    /// check and the pane, which is the window the lease exists to close.
+    /// check and the pane, which is the window the lease exists to close. How long the claim is held
+    /// is not tested here: `remember` takes it as an argument, so the compiler holds it to that.
     #[test]
-    fn a_placement_takes_its_claim_before_it_registers_and_holds_it_to_the_end() {
+    fn a_placement_takes_its_claim_before_it_registers() {
         let body = THIS_SOURCE
             .split("\nasync fn ensure_master(")
             .nth(1)
@@ -5159,10 +5172,6 @@ mod tests {
         assert!(
             body[claim..register].contains("Unplaced::Provisioning"),
             "a placement that stands aside for a provision says why"
-        );
-        assert!(
-            !body.contains("drop(_placing") && !body.contains("let _ = masters.begin_placing"),
-            "the claim is dropped before the placement ends, so a provision can begin under the pane"
         );
     }
 
