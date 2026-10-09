@@ -5,9 +5,14 @@
  */
 
 import { requirementKey } from '@forge/contracts/requirements';
+import { and, count, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { requirementReturns } from '../db/schema-requirement-acts.js';
-import { type RevisionState, requirementRevisions } from '../db/schema-requirements.js';
+import {
+  type RevisionState,
+  requirementCriteria,
+  requirementRevisions,
+} from '../db/schema-requirements.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
@@ -110,6 +115,28 @@ export async function proposeRevision(input: {
       stateRefusal(target.revision, target.state as RevisionState, 'draft') ??
       staleBaseRefusal(target.baseRevision, current.currentRevision);
     if (refusal) return [refusal];
+    const [held] = await tx
+      .select({ n: count() })
+      .from(requirementCriteria)
+      .where(
+        and(
+          eq(requirementCriteria.requirementId, row.id),
+          lte(requirementCriteria.sinceRevision, target.revision),
+          or(
+            isNull(requirementCriteria.retiredRevision),
+            gt(requirementCriteria.retiredRevision, target.revision),
+          ),
+        ),
+      );
+    if (!held || held.n === 0) {
+      return [
+        {
+          code: 'REQUIREMENT_REVISION_EMPTY',
+          path: '/criteria',
+          detail: `revision ${target.revision} has no criteria; write at least one (PUT …/revisions/${target.revision} with criteria: [{ body }]) before proposing it.`,
+        },
+      ];
+    }
     await tx
       .update(requirementRevisions)
       .set({ state: 'proposed', proposedAt: new Date(), proposedBy: actor.userId })

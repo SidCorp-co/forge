@@ -179,6 +179,7 @@
     "feedback.proposal.consequence": "Accepting routes the item: {route}.",
     "feedback.proposal.head": "Suggested triage · {who}",
     "feedback.proposal.nearest": "Nearest item: {key}",
+    "feedback.proposal.willFile": "Accepting files this",
     "feedback.proposal.noDedup": "Triage without dedup",
     "feedback.proposal.noSimilar": "No similar item found",
     "feedback.proposal.reject": "Reject",
@@ -242,6 +243,7 @@
     "feedback.verify.byDate": " If nobody does by {at}, Forge verifies it after {n} days with no reply.",
     "feedback.verify.byWindow": " If nobody does within the project’s verify window, Forge verifies it.",
     "feedback.verify.copy": "Anyone on the project, or the reporter, may confirm the fix, and the record keeps who and when.",
+    "feedback.verify.evidence": "What you did and saw, on which version",
     "feedback.verify.mark": "Mark verified",
     "feedback.verify.reopen": "Reopen",
     "feedback.verify.reopenPlaceholder": "What the fix does not answer"

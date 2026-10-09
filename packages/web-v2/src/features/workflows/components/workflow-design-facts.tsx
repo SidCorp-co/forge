@@ -16,12 +16,13 @@ import { revisionReason } from "../decision-words";
 import { markersByKind, sourceHref, targetWords } from "../health";
 import type { WorkflowBody, WorkflowDesign, WorkflowRecord } from "../types";
 import { HealthMark } from "./health-parts";
+import { SettleMarker } from "./settle-marker";
 
 /**
  * The rail's Health group (REQ-17 BC-17): a count per marker kind, then the markers grouped by kind,
  * each opening its source record. Counts show whether or not the canvas overlay is on.
  */
-function HealthGroup({ health, slug }: { health: WorkflowHealth; slug: string }) {
+function HealthGroup({ health, slug, projectId, canDecide }: { health: WorkflowHealth; slug: string; projectId: string | undefined; canDecide: boolean }) {
   const t = useCopy();
   const label = useLabel();
   const time = useTimeFormat();
@@ -86,6 +87,7 @@ function HealthGroup({ health, slug }: { health: WorkflowHealth; slug: string })
                         <span className="min-w-0 truncate text-subtle">{targetWords(m.target, t)}</span>
                       </span>
                       <span className="text-muted">{said(m.says.reason, language)}</span>
+                      {canDecide && projectId ? <SettleMarker projectId={projectId} flow={health.flow} marker={m} nodes={health.nodes} /> : null}
                     </li>
                   );
                 })}
@@ -285,7 +287,7 @@ function PlainStatus({ d, health }: { d: WorkflowDesign; health: WorkflowHealth 
 }
 
 /** The kernel's own terms for the same facts (markers, reconciliation state, build gate), collapsed. */
-function TechnicalDetail({ d, slug, health }: { d: WorkflowDesign; slug: string; health: WorkflowHealth | undefined }) {
+function TechnicalDetail({ d, slug, health, projectId }: { d: WorkflowDesign; slug: string; health: WorkflowHealth | undefined; projectId: string | undefined }) {
   const t = useCopy();
   const [open, setOpen] = useState(false);
   return (
@@ -295,7 +297,7 @@ function TechnicalDetail({ d, slug, health }: { d: WorkflowDesign; slug: string;
       </DisclosureToggle>
       {open ? (
         <div>
-          {health ? <HealthGroup health={health} slug={slug} /> : null}
+          {health ? <HealthGroup health={health} slug={slug} projectId={projectId} canDecide={d.canDecide} /> : null}
           {health ? <ReconciliationGroup health={health} slug={slug} /> : null}
           <BuildGate d={d} slug={slug} />
         </div>
@@ -312,9 +314,10 @@ interface DesignFactsProps {
   template: WorkflowTemplate | null;
   slug: string;
   health: WorkflowHealth | undefined;
+  projectId?: string | undefined;
 }
 
-export function WorkflowDesignFacts({ d, record, shown, shownRevision, template, slug, health }: DesignFactsProps) {
+export function WorkflowDesignFacts({ d, record, shown, shownRevision, template, slug, health, projectId }: DesignFactsProps) {
   const t = useCopy();
   const time = useTimeFormat();
   const language = useInterfaceLanguage();
@@ -381,7 +384,7 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
           <span title={time.dateTime(record.document.updatedAt)}>{time.relative(record.document.updatedAt)}</span>
         </Fact>
       </FactsGroup>
-      <TechnicalDetail d={d} slug={slug} health={health} />
+      <TechnicalDetail d={d} slug={slug} health={health} projectId={projectId} />
     </div>
   );
 }

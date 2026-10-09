@@ -18,6 +18,7 @@ import {
   initials,
   memberLabel,
 } from "../derive";
+import { useIssueQuestions } from "@/features/questions/hooks";
 import { useCreateComment, useRecordDecision } from "../detail-hooks";
 import type { CommentNode, ProjectMember } from "../types";
 import { AttachmentList } from "@/features/attachments/components/attachment-list";
@@ -126,13 +127,21 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
   const [reason, setReason] = useState("");
   const record = useRecordDecision(issueId);
   const t = useCopy();
+  const open = (useIssueQuestions(issueId).data?.questions ?? []).find(
+    (q) => q.status === "open" && q.answerShape === "free_text" && q.currentStep,
+  );
+  const [settle, setSettle] = useState(true);
   useHoldPageWhile(record.isPending);
   const ready = decision.trim().length > 0 && reason.trim().length > 0;
   const refused = record.error ? (refusalsOf(record.error)[0]?.detail ?? formatApiError(record.error)) : null;
   const submit = () => {
     if (!ready) return;
     record.mutate(
-      { decision: decision.trim(), reason: reason.trim() },
+      {
+        decision: decision.trim(),
+        reason: reason.trim(),
+        ...(open && settle && open.currentStep ? { settles: { questionId: open.id, round: open.currentStep.round } } : {}),
+      },
       {
         onSuccess: () => {
           setDecision("");
@@ -150,6 +159,12 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
       <Field label={t("common.decisions.reason")} hint={t("issues.thread.reasonHint")}>
         <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={4000} disabled={record.isPending} />
       </Field>
+      {open ? (
+        <label className="flex items-center gap-2 text-13">
+          <input type="checkbox" checked={settle} onChange={(e) => setSettle(e.target.checked)} disabled={record.isPending} />
+          {t("issues.thread.settlesQuestion")}
+        </label>
+      ) : null}
       {refused ? (
         <p role="alert" className="fg-caption text-red">
           {refused}

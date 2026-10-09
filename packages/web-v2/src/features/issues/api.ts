@@ -129,6 +129,19 @@ export const issuesApi = {
       `/issues/${id}/dependencies${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`,
     ),
 
+  /** `POST /api/issues/:id/dependencies` — this issue waits for `blockerKey` (an ISS key of the same project). */
+  addBlocker: async (id: string, projectId: string, blockerKey: string) => {
+    const blocker = await apiClient<{ id: string }>(`/issues/${encodeURIComponent(blockerKey)}?projectId=${encodeURIComponent(projectId)}`);
+    return apiClient<unknown>(`/issues/${id}/dependencies`, {
+      method: "POST",
+      body: JSON.stringify({ dependsOnId: blocker.id, kind: "blocks" }),
+    });
+  },
+
+  /** `DELETE /api/issues/:id/dependencies/:edgeId` — retract one edge. */
+  removeEdge: (id: string, edgeId: string) =>
+    apiClient<unknown>(`/issues/${id}/dependencies/${edgeId}`, { method: "DELETE" }),
+
   /** `GET /api/projects/:projectId/members` — creator filter option source. */
   members: (projectId: string) => apiClient<ProjectMember[]>(`/projects/${projectId}/members`),
 

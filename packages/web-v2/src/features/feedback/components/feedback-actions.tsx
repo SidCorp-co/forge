@@ -106,6 +106,7 @@ function VerifyBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const act = useFeedbackAction(projectId, f.key);
   const [reopening, setReopening] = useState(false);
   const [reason, setReason] = useState("");
+  const [evidence, setEvidence] = useState("");
   return (
     <section className="grid gap-2" data-testid="feedback-verify">
       <h3 className="text-12 font-semibold text-muted">{t("feedback.act.confirmFix")}</h3>
@@ -114,6 +115,9 @@ function VerifyBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
         {f.autoVerify ? t("feedback.verify.byDate", { at: time.dateTime(f.autoVerify.at), n: f.autoVerify.windowDays }) : t("feedback.verify.byWindow")}
       </p>
       {f.can.askVerify ? <p className="text-12 text-muted">{t("feedback.verify.asking")}</p> : null}
+      {!reopening && f.can.verify ? (
+        <Input value={evidence} onChange={(e) => setEvidence(e.target.value)} maxLength={500} aria-label={t("feedback.verify.evidence")} placeholder={t("feedback.verify.evidence")} />
+      ) : null}
       {reopening ? (
         <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder={t("feedback.verify.reopenPlaceholder")} />
       ) : null}
@@ -126,7 +130,7 @@ function VerifyBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
         ) : (
           <>
             {f.can.verify ? (
-              <Button type="button" size="sm" variant="primary" loading={act.isPending} onClick={() => act.mutate({ kind: "verify" })}>
+              <Button type="button" size="sm" variant="primary" loading={act.isPending} onClick={() => act.mutate({ kind: "verify", ...(evidence.trim() ? { note: evidence.trim() } : {}) })}>
                 {t("feedback.verify.mark")}
               </Button>
             ) : null}
@@ -187,6 +191,23 @@ export function FeedbackActions({ projectId, f }: { projectId: string; f: Feedba
   );
 }
 
+/** What accepting will file: the title and the description the assistant wrote, read before the click (FB-79). */
+function FiledPreview({ payload }: { payload: unknown }) {
+  const t = useCopy();
+  const p = (payload ?? {}) as { createIssue?: unknown; title?: string; description?: string };
+  const made = typeof p.createIssue === "object" && p.createIssue ? (p.createIssue as { title?: string; description?: string }) : null;
+  const title = made?.title ?? p.title;
+  const description = made?.description ?? p.description;
+  if (!title && !description) return null;
+  return (
+    <div className="grid gap-0.5 border-t border-line-subtle pt-1.5" data-testid="triage-filed-preview">
+      <span className="text-12 text-muted">{t("feedback.proposal.willFile")}</span>
+      {title ? <span className="text-13 font-semibold">{title}</span> : null}
+      {description ? <span className="line-clamp-6 whitespace-pre-line text-13">{description}</span> : null}
+    </div>
+  );
+}
+
 function routeLine(s: SuggestionView, t: Copy, language: string): string {
   const p = (s.payload ?? {}) as Partial<FeedbackTriage>;
   const carrier = (Array.isArray(p.issue) ? p.issue.join(", ") : p.issue) ?? p.duplicateOf ?? p.requirement ?? p.title ?? (p.createIssue ? t("feedback.proposal.aDraftIssue") : "");
@@ -215,6 +236,7 @@ export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView
               {t("feedback.proposal.head", { who: s.producerKind === "person" ? t("feedback.proposal.aPerson") : t("feedback.proposal.anAgent") })}
             </span>
             <span className="text-13">{routeLine(s, t, language)}</span>
+            <FiledPreview payload={s.payload} />
             {note ? <span className="text-12 text-muted">{note}</span> : null}
             {dedup ? (
               <span className="text-12 text-muted">

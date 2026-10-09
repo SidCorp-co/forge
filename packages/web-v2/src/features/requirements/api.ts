@@ -7,6 +7,7 @@ import type {
   RequirementAction,
   RequirementDetail,
   RequirementList,
+  RequirementSpec,
 } from "./types";
 
 const base = (projectId: string) => `/projects/${projectId}/requirements`;
@@ -57,6 +58,25 @@ export const requirementsApi = {
   /** Draws or replaces a revision's one picture, shown at once with no accept (REQ-35). */
   writePicture: (projectId: string, req: string, revision: number, body: WritePictureRequest) =>
     apiClient<RequirementDetail>(`${one(projectId, req)}/revisions/${revision}/picture`, put(body)),
+  /** Rewrites a draft revision whole: its summary and one criterion per line; the spec it holds is kept. */
+  writeDraft: (
+    projectId: string,
+    req: string,
+    revision: { revision: number; spec: RequirementSpec; tldr: string | null; criteria: { code: string; body: string; form: string }[] },
+    write: { tldr: string; criteria: string[] },
+  ) =>
+    apiClient<RequirementDetail>(
+      `${one(projectId, req)}/revisions/${revision.revision}`,
+      put({
+        reason: "Written on the draft",
+        spec: revision.spec,
+        tldr: write.tldr,
+        criteria: write.criteria.map((body) => {
+          const held = revision.criteria.find((c) => c.body === body);
+          return held ? { code: held.code, body } : { body };
+        }),
+      }),
+    ),
   /** Opens (or hands back) the viewer's BA assistant room about one requirement (ISS-58). */
   openAssistant: (projectId: string, req: string) =>
     apiClient<{ conversation: { id: string }; reused: boolean }>(`${one(projectId, req)}/assistant`, post({})),
