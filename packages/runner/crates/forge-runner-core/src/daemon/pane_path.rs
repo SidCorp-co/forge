@@ -456,9 +456,19 @@ mod tests {
         crate::auth::cred_store::ScopedVar,
     ) {
         use crate::auth::cred_store::ScopedVar;
+        let system = p.root.join("system-bin");
+        std::fs::create_dir_all(&system).unwrap();
+        // `PATH` is the whole process's, and every other test spawns `git` by name while this one
+        // holds it. A `system-bin` with no `git` in it fails each of those spawns with NotFound
+        // for as long as the guard lives, in tests that never take `ENV_TEST_LOCK` (the daemon::
+        // recovery git fixtures failed in 16 of 30 runs beside these two). The `forge` these tests
+        // look for is the only thing meant to be absent, so `git` stays reachable.
+        if let Some(git) = crate::exe::on_path("git") {
+            std::os::unix::fs::symlink(git, system.join("git")).unwrap();
+        }
         (
             ScopedVar::set("HOME", p.home()),
-            ScopedVar::set("PATH", p.root.join("system-bin")),
+            ScopedVar::set("PATH", system),
         )
     }
 

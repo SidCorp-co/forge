@@ -283,7 +283,7 @@ describe("the board accounts for every status", () => {
 
   it("states each left-out state by name with the count the same rule gives it", () => {
     const work = Object.fromEntries(WORK_STATES.map((s) => [s, byRule(s)]));
-    const stated = boardLeftOut(work);
+    const stated = boardLeftOut(work, "read");
     expect(stated.map((l) => l.state)).toEqual([...BOARD_LEFT_OUT_STATES]);
     for (const l of stated) {
       expect([l.state, l.label, l.count]).toEqual([l.state, WORK_STATE_LABELS[l.state], byRule(l.state)]);
@@ -293,18 +293,27 @@ describe("the board accounts for every status", () => {
   it("accounts for every row: drawn in a column or in a state the board names as left out", () => {
     const groups = groupIssuesByLabel(returned);
     const drawn = groups.reduce((n, g) => n + g.issues.length, 0);
-    const named = boardLeftOut(Object.fromEntries(WORK_STATES.map((s) => [s, byRule(s)])));
+    const named = boardLeftOut(Object.fromEntries(WORK_STATES.map((s) => [s, byRule(s)])), "read");
     const stated = named.reduce((n, l) => n + (l.count ?? 0), 0);
     expect(drawn + stated).toBe(everyRow.length);
   });
 
   it("names the left-out states without inventing a count while the project's counts are unread", () => {
-    expect(boardLeftOut(undefined).map((l) => [l.label, l.count])).toEqual([
+    expect(boardLeftOut(undefined, "pending").map((l) => [l.label, l.count])).toEqual([
       ["Draft", undefined],
       ["Finished", undefined],
     ]);
   });
+
+  it("states no count from rows it still holds after the project's counts failed to refresh", () => {
+    expect(boardLeftOut(WORK_HELD, "failed").map((l) => [l.label, l.count, l.read])).toEqual([
+      ["Draft", undefined, "failed"],
+      ["Finished", undefined, "failed"],
+    ]);
+  });
 });
+
+const WORK_HELD = Object.fromEntries(WORK_STATES.map((s) => [s, 3]));
 
 describe("a column is coloured by the statuses it holds", () => {
   /** The kernel statuses a label buckets, among the ones the board's query can return. */

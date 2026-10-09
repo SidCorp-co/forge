@@ -12,7 +12,7 @@ import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import type { ProjectListItem } from "@/features/projects/types";
 import { cn } from "@/lib/utils/cn";
-import { OPEN_WORK_COUNTS, PROJECT_ITEMS, SECONDARY_DESTINATIONS, WORKSPACE_ITEMS } from "../nav-model";
+import { PROJECT_ITEMS, SECONDARY_DESTINATIONS, WORKSPACE_ITEMS } from "../nav-model";
 
 // Workspace destinations for the mobile drawer: the rail rows plus the two
 // most-wanted secondary destinations (Attention, Settings), so the workspace
@@ -79,8 +79,8 @@ export interface MobileNavDrawerProps {
   activeKey: string;
   /** A count only where the attention list and the devices were both read; else the read that is pending or failed. */
   attention: BadgeFigure;
-  /** Open-issue count for the rail project (badges the Issues row). */
-  openIssuesBadge: number | undefined;
+  /** Badges the Issues row with the rail project's open work, or with the read of it that is pending or failed. */
+  openWork: BadgeFigure;
   /** Projects scoped to the active org (ISS-480). */
   scopedProjects: ProjectListItem[];
   /** Shared key-router from the layout (workspace + proj-* keys). */
@@ -103,7 +103,7 @@ export function MobileNavDrawer({
   railProjectName,
   activeKey,
   attention,
-  openIssuesBadge,
+  openWork,
   scopedProjects,
   onNavigate,
   onOpenProject,
@@ -141,8 +141,9 @@ export function MobileNavDrawer({
           }}
           leading={<Icon name={it.icon} size={18} />}
           label={it.label}
-          badge={it.key === "proj-issues" ? openIssuesBadge : undefined}
-          badgeCounts={it.key === "proj-issues" ? OPEN_WORK_COUNTS : undefined}
+          badge={it.key === "proj-issues" ? openWork.badge : undefined}
+          badgeRead={it.key === "proj-issues" ? openWork.badgeRead : undefined}
+          badgeCounts={it.key === "proj-issues" ? openWork.badgeCounts : undefined}
         />
       ))}
     </>

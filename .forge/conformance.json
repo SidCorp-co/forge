@@ -13,8 +13,8 @@
   "axes": {
     "form": {
       "level": 2,
-      "gate": "check-size-budget + check-lint-budget + biome + check-provider-literals + check-integration-declarations",
-      "owns": "file & function length; whitespace, import order, recommended rules; where an integration provider's name may be written, and whether every provider's declaration carries the fields the generic paths read",
+      "gate": "check-size-budget + check-lint-budget + biome + check-provider-literals + check-integration-declarations + check-skill-frontmatter",
+      "owns": "file & function length; whitespace, import order, recommended rules; where an integration provider's name may be written, and whether every provider's declaration carries the fields the generic paths read; whether each skill the runner ships has a name and description an installer enforcing the Agent Skills spec will offer",
       "baseline": {
         "path": ".forge/size-baseline.json",
         "keyBy": "path",
@@ -259,6 +259,10 @@
           "why": "Resolves the GitHub App installation credential a runner presents. Both literals filter `integration_bindings.provider` to find that App's binding, and the registry cannot answer 'which provider is the GitHub App' without naming it. The module is github's by name and purpose; it holds no branch that would have to grow a case when a provider is added."
         }
       ]
+    },
+    "skill-frontmatter": {
+      "$comment": "ISS-1331 \u2014 a skill's `name` and `description` are what a model sees before it opens the file, and an installer that enforces the Agent Skills spec rejects the skill whole rather than truncating: an empty or over-long description, a name outside [a-z0-9-], a placeholder like <word> read as markup. Nothing went red when one of those shipped. `roots` are directories holding one directory per shipped skill, each with a SKILL.md; the asset in the tree is read and never the copy a daemon writes into a checkout, which is derived and can be stale. A root holding no skill is exit 2, never a pass.",
+      "roots": ["packages/runner/crates/forge-runner-core/assets/skills"]
     },
     "integration-declarations": {
       "$comment": "ISS-1071 \u2014 the registry is only a single door while every declaration behind it answers the questions the generic paths ask. A missing field does not fail to compile once a declaration reaches the registry through a widened type, and the reader then sees a provider that is inert rather than one that did not answer; five of seven adapters reached the old registry through `as any`. This walks the LIVE registry rather than the source, so the thing measured is what the process would hold at boot. `entrypoint` is imported under tsx with a synthetic env; its absence is exit 2, never a pass over an empty registry.",

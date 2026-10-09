@@ -1,14 +1,17 @@
 // A `N live` mono pill with an accent pulse dot when there are active runs.
 // (Kit `LiveDot` reflects WS-connection state, not run count — so this small
 // feature component is the right home for the per-project live-run indicator.)
+import type { QueryRead } from '@/design/patterns/badge-read';
 import { cn } from '@/lib/utils/cn';
+import { ReadFigure } from './read-figure';
 
 export interface LiveCountProps {
-  n: number;
+  n: number | null;
+  read: QueryRead;
 }
 
-export function LiveCount({ n }: LiveCountProps) {
-  const live = n > 0;
+export function LiveCount({ n, read }: LiveCountProps) {
+  const live = n !== null && n > 0;
   return (
     <span
       title="Pipeline runs currently running or paused"
@@ -20,7 +23,7 @@ export function LiveCount({ n }: LiveCountProps) {
       {live && (
         <span className="forge-pulse inline-block size-[7px] rounded-pill bg-accent" aria-hidden />
       )}
-      {n} live runs
+      <ReadFigure value={n} read={read} counts="live runs" /> live runs
     </span>
   );
 }

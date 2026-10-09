@@ -3,15 +3,9 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDevices } from "@/features/runners/hooks";
-import { badgeFigure } from "@/design/patterns/badge-read";
+import { badgeFigure, queryRead } from "@/design/patterns/badge-read";
 import { attentionApi } from "./api";
-import type { AttentionItem, AttentionRead, AttentionView } from "./types";
-
-/** What a query has answered: an error is `failed` even where an earlier answer is held, no data yet is `pending`. */
-export function queryRead(q: { isError: boolean; data: unknown }): AttentionRead {
-  if (q.isError) return "failed";
-  return q.data === undefined ? "pending" : "read";
-}
+import type { AttentionItem, AttentionView } from "./types";
 
 /**
  * Cross-project attention/inbox view: the `/me/attention` buckets merged with

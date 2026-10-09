@@ -12,7 +12,7 @@
 // not something jsdom can answer — the deployed walk is this project's
 // instrument for that, and the browser measurement is attached to the issue.
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { NavRailCompact, type RailItem } from "./nav-rail-compact";
 
@@ -34,17 +34,17 @@ const PROJECT: RailItem[] = [
 	{ key: "proj-automation", label: "Automation", icon: "calendar" },
 ];
 
-const ACTIVE = { name: "Forge", initials: "FO", tint: "#eee", ink: "#333", liveRuns: 0 };
+const ACTIVE = { name: "Forge", initials: "FO", tint: "#eee", ink: "#333", liveRuns: 0, liveRunsRead: "read" as const };
 
-function renderRail() {
+function renderRail(over: { activeProject?: typeof ACTIVE | { name: string; initials: string; tint: string; ink: string; liveRuns: number | null; liveRunsRead: "pending" | "failed" | "read" }; switcherProjects?: Parameters<typeof NavRailCompact>[0]["switcherProjects"] } = {}) {
 	return render(
 		<NavRailCompact
 			workspaceItems={WORKSPACE}
 			projectItems={PROJECT}
 			activeKey="proj-issues"
 			activeSlug="forge-dev"
-			activeProject={ACTIVE}
-			switcherProjects={[]}
+			activeProject={over.activeProject ?? ACTIVE}
+			switcherProjects={over.switcherProjects ?? []}
 			onNavigate={() => {}}
 			onSelectProject={() => {}}
 			onTogglePin={() => {}}
@@ -172,5 +172,39 @@ describe("a nav label and its button", () => {
 
 		const bar = screen.getByRole("button", { name: "Issues" }).querySelector("span[aria-hidden]");
 		expect(bar?.className).toContain("left-[-6px]");
+	});
+});
+
+// ISS-1156 — the live-run label under the project mark is stated only from a health read that came
+// in. A pending or failed read is drawn as its own mark with a name, never as the absence of a count.
+describe("the live runs under the project mark", () => {
+	const unread = (liveRunsRead: "pending" | "failed") => ({ ...ACTIVE, liveRuns: null, liveRunsRead });
+
+	it("says the read failed, by name, instead of drawing nothing", () => {
+		renderRail({ activeProject: unread("failed") });
+		expect(screen.getByLabelText("how many live runs could not be read").textContent).toBe("!");
+	});
+
+	it("says the read is on its way", () => {
+		renderRail({ activeProject: unread("pending") });
+		expect(screen.getByLabelText("reading how many live runs").textContent).toBe("…");
+	});
+
+	it("states the count where the read came in, and draws nothing for a read zero", () => {
+		renderRail({ activeProject: { ...ACTIVE, liveRuns: 3 } });
+		expect(screen.getByText("3 live")).toBeTruthy();
+		cleanup();
+		renderRail();
+		expect(screen.queryByText(/live/)).toBeNull();
+		expect(screen.queryByLabelText(/read/)).toBeNull();
+	});
+
+	it("names the failed read on the switcher row of a project, not as a project with no live run", () => {
+		const row = (liveRunsRead: "pending" | "failed" | "read", liveRuns: number | null) => ({
+			id: "p1", slug: "forge-dev", name: "Forge", initials: "FO", tint: "#eee", ink: "#333", pinned: false, liveRuns, liveRunsRead,
+		});
+		renderRail({ switcherProjects: [row("failed", null)] });
+		fireEvent.click(screen.getByRole("button", { name: /Switch project/ }));
+		expect(within(screen.getByRole("dialog")).getByLabelText("how many live runs could not be read").textContent).toBe("!");
 	});
 });

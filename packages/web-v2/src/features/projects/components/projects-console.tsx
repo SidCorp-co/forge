@@ -50,7 +50,7 @@ function SectionLabel({
 }
 
 export function ProjectsConsole() {
-  const { items, totals, isLoading, isError, error, refetch, toggle } = useProjectsConsole();
+  const { items, totals, isLoading, isError, error, healthRead, refetch, toggle } = useProjectsConsole();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -75,16 +75,19 @@ export function ProjectsConsole() {
 
   const attentionCount = useMemo(() => items.filter(isAttention).length, [items]);
 
+  // Where health is not read no project is known to need attention, so the filter cannot hold: it
+  // would empty the list and the banner above it offers no way out.
+  const attentionFilter = attentionOnly && healthRead === 'read';
   const visible = useMemo(
-    () => sortProjects(filterProjects(items, query, attentionOnly, activeOrgId), sort),
-    [items, query, attentionOnly, sort, activeOrgId],
+    () => sortProjects(filterProjects(items, query, attentionFilter, activeOrgId), sort),
+    [items, query, attentionFilter, sort, activeOrgId],
   );
 
   // When searching/filtering/sorting, collapse the pinned section into one flat
   // result list (so a pinned match isn't hidden from the "rest"). Org scope is
   // NOT a "search" — it's the ambient workspace scope, so it doesn't collapse
   // the pinned section.
-  const searching = query.trim() !== '' || attentionOnly || sort !== 'recent';
+  const searching = query.trim() !== '' || attentionFilter || sort !== 'recent';
   const pinned = useMemo(() => visible.filter((p) => p.pinned), [visible]);
   const rest = useMemo(
     () => (searching ? visible : visible.filter((p) => !p.pinned)),
@@ -154,6 +157,8 @@ export function ProjectsConsole() {
           />
           <AttentionBanner
             count={attentionCount}
+            read={healthRead}
+            onRetry={() => refetch()}
             attentionOnly={attentionOnly}
             onToggle={() => setAttentionOnly((a) => !a)}
           />

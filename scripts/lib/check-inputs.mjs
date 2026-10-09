@@ -77,6 +77,9 @@ const DECLARED = {
     roots: [CODE, CONFORMANCE, 'tsconfig.json', ...PNPM, ...WORKSPACE],
     built: BUILT,
   },
+  'skill-frontmatter': {
+    roots: [CODE, CONFORMANCE, 'packages/runner/crates/forge-runner-core/assets/skills'],
+  },
   'merged-at-writers': { roots: [CODE, ...WORKSPACE] },
   'lazy-module-init': { roots: [CODE, ...WORKSPACE] },
   'scripts lint': { roots: [...PNPM, 'scripts'], listed: ['packages'], blind: ['biome'] },

@@ -9,6 +9,7 @@ import { formatRelativeTime, formatSpend } from '../derive';
 import { projectGlyph, projectInitials } from '../glyph';
 import type { ProjectConsoleItem } from '../types';
 import { LiveCount } from './live-count';
+import { ReadFigure } from './read-figure';
 import { MemberStack } from './member-stack';
 import { OPEN_WORK_DEFINITION, OPEN_WORK_LABEL } from '@forge/contracts/work-state';
 
@@ -65,7 +66,11 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
             <span className="truncate font-mono text-11-5">{project.repoPath ?? '—'}</span>
           </div>
         </div>
-        <HealthDot health={project.health} withLabel={false} />
+        {project.health ? (
+          <HealthDot health={project.health} withLabel={false} />
+        ) : (
+          <ReadFigure value={null} read={project.healthRead} subject="the project's health" />
+        )}
       </div>
 
       <p className="m-0 line-clamp-1 min-h-[19px] text-13 leading-snug text-muted">
@@ -73,21 +78,29 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
       </p>
 
       <div className="flex items-center gap-3.5 border-t border-line-subtle pt-3">
-        <LiveCount n={project.liveRuns} />
+        <LiveCount n={project.liveRuns} read={project.healthRead} />
         <Stat icon="inbox" title={`${OPEN_WORK_LABEL}: ${OPEN_WORK_DEFINITION}`}>
-          {project.openIssues}
+          <ReadFigure value={project.openIssues} read={project.healthRead} counts={`in ${OPEN_WORK_LABEL.toLowerCase()}`} />
         </Stat>
         <Stat icon="server" title="Online runners">
-          {project.runnerCount}
+          <ReadFigure value={project.runnerCount} read={project.healthRead} counts="runners" />
         </Stat>
         <Stat icon="dollar" title="Trailing 24h spend">
-          {formatSpend(project.spend24hUsd)}
+          <ReadFigure value={project.spend24hUsd} read={project.healthRead} counts="dollars spent in 24h">
+            {formatSpend}
+          </ReadFigure>
         </Stat>
         <span className="ml-auto flex items-center gap-2.5">
-          <MemberStack members={project.members} total={project.memberCount} />
-          <span className="font-mono text-11 text-subtle">
-            {formatRelativeTime(project.lastActivityAt, now)}
-          </span>
+          {project.memberCount === null ? (
+            <ReadFigure value={null} read={project.healthRead} subject="the team and last activity" />
+          ) : (
+            <>
+              <MemberStack members={project.members} total={project.memberCount} />
+              <span className="font-mono text-11 text-subtle">
+                {formatRelativeTime(project.lastActivityAt, now)}
+              </span>
+            </>
+          )}
         </span>
       </div>
     </Link>

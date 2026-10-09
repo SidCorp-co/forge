@@ -113,6 +113,12 @@ jobs:
       # an inline status array a named constant already holds. Reads TypeScript source text
       # and needs no node_modules, so it lives in this install-free job.
       - run: node scripts/check-status-tuples.mjs --all
+      # Skill frontmatter (ISS-1331): the `name` and `description` of each skill the runner ships
+      # are all a model sees before it opens the file, and an installer that enforces the Agent
+      # Skills spec drops a skill whose description is empty, past 1024 characters, or carries an
+      # angle-bracket placeholder, with nothing the build sees. Reads the asset in the tree, not
+      # the copy a daemon writes into a checkout. Node and nothing else.
+      - run: node scripts/check-skill-frontmatter.mjs --all
       # Migration order across the SET of open branches (ISS-1130). The journal test in
       # packages/core reads one journal — its own — so every branch passes alone while the set is
       # measured by nothing, and drizzle skips an entry below the high-water mark it reads once,

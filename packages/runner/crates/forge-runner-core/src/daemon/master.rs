@@ -5748,6 +5748,116 @@ mod tests {
         );
     }
 
+    /// ISS-1392. A box held debris no report named, because the skill every master
+    /// reads said nothing about what a fold removes. The obligation, the sweep and
+    /// the never-remove list sit in the file a session loads in full; the kinds of
+    /// debris sit in a reference it opens when it needs them.
+    #[test]
+    fn the_skill_says_a_fold_removes_what_its_run_made_and_never_what_is_held() {
+        let skill = crate::test_scratch::lf(MASTER_SKILL);
+        let section = skill
+            .split("## A fold leaves the box as it found it")
+            .nth(1)
+            .and_then(|s| s.split("\n## ").next())
+            .expect("the skill carries the section on what a fold removes");
+        // The skill is hard-wrapped, so a phrase is read across its line breaks.
+        let section = section.split_whitespace().collect::<Vec<_>>().join(" ");
+        for (said, why) in [
+            (
+                "At each fold",
+                "the removal happens at the fold, run by run",
+            ),
+            ("worktree", "a run's worktree is among what it made"),
+            (
+                "containers, volumes and networks",
+                "its test databases' runtime debris",
+            ),
+            ("local branch once merged", "its branch once merged"),
+            ("scratch directory", "the scratch directory it was given"),
+            ("Every pass", "the sweep is each pass's, not only a fold's"),
+            ("older than six hours", "the sweep's age bound"),
+            (
+                "no live run holds",
+                "the sweep spares what a live run holds",
+            ),
+            (
+                "is dirty or unpushed",
+                "a worktree holding unpushed work is never removed",
+            ),
+            (
+                "a running container",
+                "a running container is never removed",
+            ),
+            (
+                "a named data volume",
+                "a named data volume is never removed",
+            ),
+            (
+                "a long-lived local stack",
+                "a long-lived local stack is never removed",
+            ),
+            (
+                "another project or a session holds",
+                "what another holds is never removed",
+            ),
+            (
+                "the pass says so",
+                "what is left because it cannot be told apart is said",
+            ),
+        ] {
+            assert!(
+                section.contains(said),
+                "the section no longer says `{said}`: {why}"
+            );
+        }
+    }
+
+    /// Every file the skill sends a model to is one the binary ships: a pointer to
+    /// a file the install never writes sends a master to a path that is not there.
+    #[test]
+    fn every_reference_the_skill_names_is_a_file_the_binary_ships() {
+        use crate::daemon::master_skill::FILES;
+        let skill = crate::test_scratch::lf(MASTER_SKILL);
+        let mut named = 0;
+        for word in skill.split(|c: char| c.is_whitespace() || c == '`' || c == '(' || c == ')') {
+            let word = word.trim_matches(|c: char| ",.;:".contains(c));
+            if word.starts_with("references/") && word.ends_with(".md") {
+                named += 1;
+                assert!(
+                    FILES.iter().any(|f| f.path == word),
+                    "SKILL.md sends the model to `{word}`, which the binary does not ship"
+                );
+            }
+        }
+        assert!(
+            named > 0,
+            "the skill names no reference, so this guards nothing"
+        );
+    }
+
+    /// The reference lists each kind of debris the skill's sweep has to find.
+    #[test]
+    fn the_reference_names_every_kind_of_debris_a_fold_removes() {
+        use crate::daemon::master_skill::FILES;
+        let reference = FILES
+            .iter()
+            .find(|f| f.path == "references/what-a-run-leaves.md")
+            .expect("the skill's reference ships");
+        let text = String::from_utf8_lossy(reference.bytes);
+        for kind in [
+            "Worktree",
+            "Local branch",
+            "Containers, volumes, networks",
+            "Scratch directory",
+            "database left stopped",
+        ] {
+            assert!(
+                text.contains(kind),
+                "the reference no longer lists `{kind}`"
+            );
+        }
+    }
+
     /// ISS-1274. Three merged rows rested at `developed` for four hours on one
     /// box while its master dispatched other work: nothing refused, so nothing
     /// said so. The rule sits beside the pass-over rule it completes.
@@ -5967,7 +6077,7 @@ mod tests {
             format!("{STANDING_BRIEF}{}", reach.brief()),
             "the standing brief may say only what the skill cannot: which project, which box, \
              which branch, and which MCP servers this box's two config files put within this \
-             pane's reach. Every rule about how a run works belongs in forge-master-skill.md, and \
+             pane's reach. Every rule about how a run works belongs in the master skill (assets/skills/forge-master/SKILL.md), and \
              a copy here is the pair ISS-1080 broke"
         );
     }
@@ -6014,7 +6124,7 @@ mod tests {
         ] {
             assert!(
                 !brief.contains(owned),
-                "`{owned}` names how a run works, which forge-master-skill.md owns: {brief}"
+                "`{owned}` names how a run works, which the master skill owns: {brief}"
             );
         }
     }
