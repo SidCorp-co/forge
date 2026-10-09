@@ -266,6 +266,33 @@ describe('the work it holds and the merge it asks of', () => {
     expect(await db.transaction((tx) => patternReleaseRefusal(tx, ids.reuse, catalog))).toBeNull();
   });
 
+  it('refuses the move to awaiting_release itself while a review waits, then while the entry is missing', async () => {
+    const issue = await issueAt(forge, 'in_progress');
+    await db.execute(
+      sql`UPDATE issues SET merged_at = now(), merged_commit_sha = ${'a'.repeat(40)} WHERE id = ${issue}`,
+    );
+    const made = ok(
+      await call('author', 'POST', patterns(issue), {
+        pattern: 'queue-door',
+        summary: 'a queue consumer as a door',
+      }),
+      201,
+    );
+    const move = () =>
+      call('reviewer', 'POST', `/api/issues/${issue}/transition`, { toStatus: 'awaiting_release' });
+    const pending = await move();
+    expect([pending.status, refused(pending)]).toEqual([422, ['PATTERN_REVIEW_PENDING']]);
+    ok(
+      await call('reviewer', 'POST', `${patterns(issue)}/${made.pattern.id}/decision`, {
+        decision: 'approved',
+        reason: 'nothing catalogued consumes a queue',
+      }),
+    );
+    const missing = await move();
+    expect([missing.status, refused(missing)]).toEqual([422, ['PATTERN_ENTRY_MISSING']]);
+    expect(missing.body.error.refusals[0].detail).toContain('docs/patterns/queue-door.md');
+  });
+
   it('a retracted pending pattern stops holding its issue, and is retracted once', async () => {
     const issue = await issueAt(forge, 'open');
     const made = ok(
