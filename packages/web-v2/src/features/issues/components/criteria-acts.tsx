@@ -2,12 +2,12 @@
 
 // The acts a person takes on an issue's criteria from its Criteria tab: record a verdict on one
 // criterion (pass, pass short of its wording, fail, or could not judge with a reason, judged against
-// a whole commit core names by default, with a note and a screenshot new or already attached), and
+// a whole commit core names by default, with a note and a screenshot or a short clip new, or a file already attached), and
 // tie the issue to business criteria of the requirement it delivers. Both are taken on a closed issue
 // too: judging shipped work is the point. Judging again records a newer verdict, which is the one
 // counted. Core refuses by name.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { safeAttachmentName } from "@forge/contracts/attachments";
 import type { JudgedBuild } from "@forge/contracts/verdict-identity";
 import { Button, Checkbox, ConfirmDialog, Field, Input, NativeSelect, SegmentedControl, Textarea } from "@/design";
@@ -15,8 +15,12 @@ import { formatApiError } from "@/lib/api/error";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
+import { formatSize } from "@/features/attachments/components/staged-files";
 import {
   type CriterionRow,
+  EVIDENCE_FILE_ACCEPT,
+  type EvidenceFileRefusal,
+  evidenceFileRefusal,
   freeAttachmentName,
   isWholeSha,
   type PersonVerdict,
@@ -29,6 +33,12 @@ import { useAttachments } from "../detail-hooks";
 import { useRequirementCriteria } from "../requirement-link";
 
 const VERDICTS: readonly PersonVerdict[] = ["pass", "short", "fail", "skipped"];
+
+function refusalText(t: Copy, r: EvidenceFileRefusal): string {
+  if (r.kind === "clipTooLarge") return t("issues.verdictAct.clipTooLarge", { name: r.name, cap: r.cap });
+  if (r.kind === "empty") return t("issues.verdictAct.fileEmpty", { name: r.name });
+  return t("issues.verdictAct.fileType", { name: r.name });
+}
 
 /** What the commit field says about the build core named, before anything is typed over it. */
 function namedBuildHint(t: Copy, build: JudgedBuild): string {
@@ -51,6 +61,15 @@ export function RecordVerdict({ issueId, row }: { issueId: string; row: Criterio
   const [cited, setCited] = useState("");
   const [screenshot, setScreenshot] = useState<File | null>(null);
   const [picker, setPicker] = useState(0);
+  const [refused, setRefused] = useState<EvidenceFileRefusal | null>(null);
+  const isClip = !!screenshot && screenshot.type.startsWith("video/");
+  const [clipUrl, setClipUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isClip || !screenshot || typeof URL.createObjectURL !== "function") return setClipUrl(null);
+    const url = URL.createObjectURL(screenshot);
+    setClipUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [isClip, screenshot]);
   const named = build.data?.sha ?? "";
   const sha = typed ?? named;
   const skipped = verdict === "skipped";
@@ -64,6 +83,7 @@ export function RecordVerdict({ issueId, row }: { issueId: string; row: Criterio
     setNote("");
     setCited("");
     setScreenshot(null);
+    setRefused(null);
     record.reset();
   };
   const shaHint = typed !== null && sha.trim() !== named
@@ -138,14 +158,29 @@ export function RecordVerdict({ issueId, row }: { issueId: string; row: Criterio
               <input
                 key={picker}
                 type="file"
-                accept="image/*"
+                accept={EVIDENCE_FILE_ACCEPT}
                 className="text-12"
                 onChange={(e) => {
-                  setScreenshot(e.target.files?.[0] ?? null);
+                  const file = e.target.files?.[0] ?? null;
+                  const why = file ? evidenceFileRefusal(file) : null;
+                  setRefused(why);
+                  if (why) setPicker((k) => k + 1);
+                  setScreenshot(why ? null : file);
                   setCited("");
                 }}
                 data-testid="verdict-screenshot"
               />
+              {refused ? (
+                <p role="alert" className="mt-1 text-12-5 text-danger" data-testid="verdict-evidence-refusal">
+                  {refusalText(t, refused)}
+                </p>
+              ) : null}
+              {isClip && screenshot ? (
+                <div className="mt-2 grid gap-1" data-testid="verdict-clip-chosen">
+                  <span className="text-12-5 text-muted">{t("issues.verdictAct.clipChosen", { name: screenshot.name, size: formatSize(screenshot.size) })}</span>
+                  {clipUrl ? <video src={clipUrl} controls muted preload="metadata" className="max-h-48 w-full border-y border-line-subtle" /> : null}
+                </div>
+              ) : null}
             </Field>
             <RefusalLine error={record.error} testid="verdict-refusal" />
           </div>

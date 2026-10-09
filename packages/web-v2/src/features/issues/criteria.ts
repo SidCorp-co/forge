@@ -2,7 +2,8 @@
 // verdict, folded to the criterion standing whose badge reads the same on every screen, and beside
 // them the retired rows with every verdict each earned (ISS-489).
 
-import { safeAttachmentName } from "@forge/contracts/attachments";
+import { formatAttachmentCap, safeAttachmentName } from "@forge/contracts/attachments";
+import { RELEASE_CLIP_MAX_BYTES, RELEASE_CLIP_MIMES, RELEASE_PICTURE_MIMES, releaseMediaKindOf } from "@forge/contracts/release-page";
 import type { JudgedBuild, StorefrontDraftVerdictView } from "@forge/contracts/verdict-identity";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
@@ -89,6 +90,28 @@ export interface VerdictDraft {
   sha: string;
   note: string;
   evidence: VerdictEvidence;
+}
+
+/** What the Judge form takes as a file: pictures, and the short clips a release page plays (REQ-40 BC-4). */
+export const EVIDENCE_FILE_ACCEPT = [...RELEASE_PICTURE_MIMES, ...RELEASE_CLIP_MIMES].join(",");
+
+export type EvidenceFileRefusal = { kind: "empty"; name: string } | { kind: "clipTooLarge"; name: string; cap: string } | { kind: "type"; name: string };
+
+const CLIP_EXTENSION_MIME: Record<string, string> = { webm: "video/webm", mp4: "video/mp4" };
+
+/**
+ * Why a file may not be kept as a verdict's evidence, or null. A clip over `RELEASE_CLIP_MAX_BYTES` is
+ * refused here, before any upload, so QA re-records it tighter: the ceiling is never raised and a
+ * clip is never trimmed. A browser that names no type is read by the extension.
+ */
+export function evidenceFileRefusal(file: File): EvidenceFileRefusal | null {
+  const name = file.name;
+  if (file.size <= 0) return { kind: "empty", name };
+  const mime = file.type || CLIP_EXTENSION_MIME[name.split(".").pop()?.toLowerCase() ?? ""] || "";
+  const kind = releaseMediaKindOf(mime) ?? (mime.startsWith("image/") ? "picture" : null);
+  if (!kind) return { kind: "type", name };
+  if (kind === "clip" && file.size > RELEASE_CLIP_MAX_BYTES) return { kind: "clipTooLarge", name, cap: formatAttachmentCap(RELEASE_CLIP_MAX_BYTES) };
+  return null;
 }
 
 /** The name an upload is stored under: its own, or the first `-n` free beside the issue's files. */

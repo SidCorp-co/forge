@@ -1,0 +1,1 @@
+**The Judge form takes a short screen clip as a verdict's evidence.** A webm or mp4 up to 10 MB sits beside screenshots and plays before it is recorded; a larger clip or another file type is refused by name.
