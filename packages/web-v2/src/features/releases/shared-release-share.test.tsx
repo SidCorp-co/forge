@@ -4,7 +4,8 @@ import { screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { releasePage } from "@/test/release-page";
 import { fakeCore, renderWithQuery } from "@/test/render";
-import { SharedAnswer } from "./components/shared-answer";
+import { SharedAnswer } from "@/features/shares";
+import { SharedReleaseView } from "./components/shared-release";
 
 // A release page shared by link (REQ-40 BC-11): the frozen user view opens at /s/<token>, read-only,
 // drawn by the reader the app uses, its clip playing from the download link minted for this opening.
@@ -30,7 +31,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("a shared release page", () => {
   it("opens through the open door and draws the release page, read-only", async () => {
     const calls = fakeCore((c) => (c.path === "/shares/open" ? { body: opened() } : undefined));
-    const { container } = renderWithQuery(<SharedAnswer token={TOKEN} signedIn={false} />);
+    const { container } = renderWithQuery(<SharedAnswer token={TOKEN} signedIn={false} release={(r) => <SharedReleaseView snapshot={r} />} />);
     expect(await screen.findByTestId("shared-release")).toBeTruthy();
     expect(calls).toEqual([{ method: "POST", path: "/shares/open", body: { token: TOKEN } }]);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Release 0.4.0");
@@ -44,7 +45,7 @@ describe("a shared release page", () => {
 
   it("plays the clip from the opening's own download link, fetching nothing with a session", async () => {
     const real = fakeCore((c) => (c.path === "/shares/open" ? { body: opened() } : undefined));
-    renderWithQuery(<SharedAnswer token={TOKEN} signedIn={false} />);
+    renderWithQuery(<SharedAnswer token={TOKEN} signedIn={false} release={(r) => <SharedReleaseView snapshot={r} />} />);
     const clip = await screen.findByTestId("release-media-clip");
     expect(clip).toHaveAttribute("src", "/api/uploads/download/ticket-xyz");
     expect(real.map((c) => c.path)).toEqual(["/shares/open"]);
@@ -54,7 +55,7 @@ describe("a shared release page", () => {
     fakeCore(() => ({
       body: { audience: "link", expiresAt: "2026-10-15T09:00:00.000Z", document: { templateId: "chat-answer", version: 1, params: {}, runs: [], blocks: [], narrative: { summary: "", risks: "", recommendations: "" }, title: "Q?", reply: "A." } },
     }));
-    renderWithQuery(<SharedAnswer token={TOKEN} signedIn={false} />);
+    renderWithQuery(<SharedAnswer token={TOKEN} signedIn={false} release={(r) => <SharedReleaseView snapshot={r} />} />);
     expect(await screen.findByTestId("shared-reply")).toHaveTextContent("A.");
     expect(screen.queryByTestId("shared-release")).toBeNull();
   });
