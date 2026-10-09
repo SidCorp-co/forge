@@ -10,6 +10,7 @@ import {
   sender,
   writeInterfaces,
 } from '../helpers/ecosystem-world.js';
+import { bindTestRunner, createTestDevice } from '../helpers/factories.js';
 
 let w: EcosystemWorld;
 let say: ReturnType<typeof sender>;
@@ -18,6 +19,8 @@ beforeAll(async () => {
   w = await openWorld();
   await formEcosystem(w);
   await writeInterfaces(w);
+  // a runner is online, so the master these waits name can act (FB-77)
+  await bindTestRunner(w.project.plugin, await createTestDevice(w.user.plugin));
   say = sender(w);
 }, 120_000);
 

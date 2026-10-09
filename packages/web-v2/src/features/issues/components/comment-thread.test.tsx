@@ -27,6 +27,10 @@ const decided = {
   attachments: [],
 } as unknown as CommentNode;
 
+/** The decision box reads the issue's open questions (FB-80): this issue has none to settle. */
+const noOpenQuestion = (c: { method: string; path: string }) =>
+  c.method === "GET" && c.path.startsWith("/questions?") ? { body: { questions: [] } } : undefined;
+
 async function openDecisionMode() {
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "Decision" }));
@@ -36,7 +40,7 @@ async function openDecisionMode() {
 
 describe("recording a decision on an issue", () => {
   it("cannot be sent until both what is decided and why are written", async () => {
-    const calls = fakeCore(() => undefined);
+    const calls = fakeCore(noOpenQuestion);
     renderWithQuery(<CommentThread issueId="i1" comments={[]} members={[]} />);
     const { user, box } = await openDecisionMode();
     const send = within(box).getByRole("button", { name: "Record decision" });
@@ -45,11 +49,11 @@ describe("recording a decision on an issue", () => {
     expect(send).toBeDisabled();
     await user.type(within(box).getByRole("textbox", { name: "Reason" }), "   ");
     expect(send).toBeDisabled();
-    expect(calls).toEqual([]);
+    expect(calls.filter((c) => c.method !== "GET")).toEqual([]);
   });
 
   it("sends the fields with intent decision, not a body of its own", async () => {
-    const calls = fakeCore(() => ({ status: 201, body: decided }));
+    const calls = fakeCore((c) => noOpenQuestion(c) ?? { status: 201, body: decided });
     renderWithQuery(<CommentThread issueId="i1" comments={[]} members={[]} />);
     const { user, box } = await openDecisionMode();
     await user.type(within(box).getByRole("textbox", { name: "Decision" }), "  ship behind the flag ");
@@ -66,10 +70,10 @@ describe("recording a decision on an issue", () => {
   });
 
   it("names a refusal by its detail and keeps what was written", async () => {
-    fakeCore(() => ({
+    fakeCore((c) => noOpenQuestion(c) ?? {
       status: 403,
       body: { error: { code: "COMMENT_REFUSED", message: "refused", refusals: [{ code: "DECISION_NOT_ALLOWED", path: "", detail: "only a person may record a decision" }] } },
-    }));
+    });
     renderWithQuery(<CommentThread issueId="i1" comments={[]} members={[]} />);
     const { user, box } = await openDecisionMode();
     await user.type(within(box).getByRole("textbox", { name: "Decision" }), "ship it");
@@ -87,19 +91,20 @@ describe("a decision still being recorded", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   async function sendHeld() {
-    fakeCore(() => HANG);
+    fakeCore((c) => noOpenQuestion(c) ?? HANG);
     renderWithQuery(<CommentThread issueId="i1" comments={[]} members={[]} />);
     const { user, box } = await openDecisionMode();
     await user.type(within(box).getByRole("textbox", { name: "Decision" }), "ship it");
     await user.type(within(box).getByRole("textbox", { name: "Reason" }), "because");
     await user.click(within(box).getByRole("button", { name: "Record decision" }));
-    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    await waitFor(() => expect(sent()).toBeDefined());
   }
+
+  const sent = () => vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === "POST")?.[1];
 
   it("is sent as a request that outlives the page", async () => {
     await sendHeld();
-    const init = vi.mocked(fetch).mock.calls[0]?.[1];
-    expect(init?.keepalive).toBe(true);
+    expect(sent()?.keepalive).toBe(true);
   });
 
   it("asks before the page is left while it is in flight", async () => {

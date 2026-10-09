@@ -66,7 +66,7 @@ describe('previewPlan: which setting and environment a preview starts with (BC-1
     });
     expect(planned).toEqual({
       ok: true,
-      plan: { settings: null, env: { FORGE_PREVIEW: '1' }, seed: null },
+      plan: { settings: null, env: { FORGE_PREVIEW: '1' }, seed: null, data: 'environment' },
     });
   });
 });

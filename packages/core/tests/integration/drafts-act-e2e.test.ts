@@ -21,7 +21,14 @@ import {
   startQueue,
   testEnv,
 } from '../helpers/ecosystem-world.js';
-import { createTestIssue, createTestProject, createTestUser, rows } from '../helpers/factories.js';
+import {
+  bindTestRunner,
+  createTestDevice,
+  createTestIssue,
+  createTestProject,
+  createTestUser,
+  rows,
+} from '../helpers/factories.js';
 
 const DAY = 86_400_000;
 let say: (who: 'owner', method: string, path: string, body?: unknown) => Promise<Reply>;
@@ -140,6 +147,8 @@ beforeAll(async () => {
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
+  // a runner is online, so the master these waits name can act (FB-77)
+  await bindTestRunner(projectId, await createTestDevice(ownerId));
   say = requester(app, { owner: await signUserToken(ownerId) });
 
   drafts.target = await agreedRequirement(

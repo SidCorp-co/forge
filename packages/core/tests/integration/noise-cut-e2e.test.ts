@@ -24,6 +24,7 @@ import {
   testEnv,
 } from '../helpers/ecosystem-world.js';
 import {
+  bindTestRunner,
   createTestDevice,
   createTestIssue,
   createTestProject,
@@ -118,6 +119,8 @@ beforeAll(async () => {
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
+  // a runner is online, so the master these waits name can act (FB-77)
+  await bindTestRunner(projectId, await createTestDevice(ownerId));
   say = requester(app, { owner: await signUserToken(ownerId) });
 }, 120_000);
 

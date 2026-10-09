@@ -23,7 +23,7 @@ const refusedFor = (run: () => void): string => {
 describe("core's session keys", () => {
   it('are the room and escalation markers and the schedule source', () => {
     expect([...CORE_OWNED_SESSION_KEYS].sort()).toEqual(
-      ['conversationAgent', 'escalation', 'scheduleRunId', 'source'].sort(),
+      ['conversationAgent', 'escalation', 'pocRoom', 'scheduleRunId', 'source'].sort(),
     );
   });
 
