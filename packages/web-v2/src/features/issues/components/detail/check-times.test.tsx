@@ -96,6 +96,21 @@ describe("the checks an issue's runs made", () => {
     expect(rows[1]).toHaveTextContent("Not in a run");
   });
 
+  it("shows the commit each check ran on, and a check's note where it has one", async () => {
+    const head = "4c1f0e9b".padEnd(40, "0");
+    show(
+      viewOf([
+        check({ id: "c1", head, note: "ran with uncommitted changes in packages/core" }),
+        check({ id: "c2", kind: "base", name: "rebased-on-base", scope: "dev", head }),
+      ]),
+    );
+    const rows = await screen.findAllByTestId("check-run");
+    expect(rows[0]).toHaveTextContent("ran with uncommitted changes in packages/core");
+    expect(within(rows[0] as HTMLElement).getByTitle(`Ran on commit ${head}`)).toHaveTextContent("4c1f0e9");
+    expect(rows[1]).toHaveTextContent("Up to date with base");
+    expect(rows[1]).not.toHaveTextContent("uncommitted");
+  });
+
   it("says no check is recorded yet, still listing the kinds", async () => {
     show(viewOf([]));
     expect(await screen.findByText("Checks appear here once a run records the checks it timed.")).toBeInTheDocument();

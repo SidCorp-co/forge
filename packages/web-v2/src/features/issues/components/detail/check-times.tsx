@@ -18,7 +18,7 @@ const kindLabel = (kind: string, t: Copy) => t(`issues.checks.kind.${kind}` as P
 function KindRow({ kind, t }: { kind: CheckKindTime; t: Copy }) {
   return (
     <li className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 py-2 text-13" data-testid="check-kind" data-kind={kind.kind}>
-      <span className="w-28 flex-none fg-label">{kindLabel(kind.kind, t)}</span>
+      <span className="w-40 flex-none fg-label">{kindLabel(kind.kind, t)}</span>
       {kind.checks === 0 ? (
         <span className="text-subtle">{t("issues.checks.noneOfKind")}</span>
       ) : (
@@ -26,7 +26,7 @@ function KindRow({ kind, t }: { kind: CheckKindTime; t: Copy }) {
           <span className="tabular-nums">{took(kind.totalMs, t)}</span>
           <span className="text-12 text-muted">{kind.checks === 1 ? t("issues.checks.count.one") : t("issues.checks.count.many", { n: kind.checks })}</span>
           {kind.slowest ? (
-            <span className="min-w-0 truncate text-12 text-muted">
+            <span className="min-w-0 break-words text-12 text-muted">
               {t("issues.checks.slowest", {
                 name: kind.slowest.scope ? `${kind.slowest.name} (${kind.slowest.scope})` : kind.slowest.name,
                 took: took(kind.slowest.durationMs, t),
@@ -41,13 +41,44 @@ function KindRow({ kind, t }: { kind: CheckKindTime; t: Copy }) {
 
 /** The run that made a check, linked where it is read, or the words for a check made by no run. */
 function RunOf({ check, sessions, slug, t }: { check: IssueCheckRunView; sessions: IssueAgentSession[]; slug: string; t: Copy }) {
-  if (!check.runSessionId) return <span className="text-12 text-subtle">{t("issues.checks.noRun")}</span>;
+  if (!check.runSessionId) return <span className="text-subtle">{t("issues.checks.noRun")}</span>;
   const session = sessions.find((s) => s.id === check.runSessionId);
   const href = session?.pipelineRunId ? runHref(slug, session.pipelineRunId) : `${agentsListHref(slug)}/${encodeURIComponent(check.runSessionId)}`;
   return (
-    <Link href={href} className="min-w-0 truncate text-12 text-link hover:underline">
+    <Link href={href} className="min-w-0 break-words text-link hover:underline">
       {session?.title ?? t("issues.checks.run", { id: check.runSessionId.slice(0, 8) })}
     </Link>
+  );
+}
+
+/**
+ * One check, on as many lines as its words need: its name and scope with its result and duration,
+ * then its kind, run, time and commit, then its note. The name wraps and is never cut short — on
+ * one line beside six columns it shrank to 1-3 characters at phone width, Failed row included.
+ */
+function CheckRow({ check: c, sessions, slug, t }: { check: IssueCheckRunView; sessions: IssueAgentSession[]; slug: string; t: Copy }) {
+  const time = useTimeFormat();
+  return (
+    <li className="py-2 text-13" data-testid="check-run">
+      <div className="flex items-baseline gap-x-3">
+        <span className="min-w-0 flex-1 break-words" title={c.command || undefined}>
+          {c.scope ? `${c.name} (${c.scope})` : c.name}
+        </span>
+        <span className={c.result === "fail" ? "flex-none text-12 text-danger" : "flex-none text-12 text-muted"}>{t(`issues.checks.result.${c.result}` as ProductCopyKey)}</span>
+        <span className="flex-none tabular-nums">{took(c.durationMs, t)}</span>
+      </div>
+      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-12 text-muted">
+        <span>{kindLabel(c.kind, t)}</span>
+        <RunOf check={c} sessions={sessions} slug={slug} t={t} />
+        <span className="text-subtle" title={time.dateTime(c.startedAt)}>
+          {time.relative(c.startedAt)}
+        </span>
+        <span className="font-mono text-subtle" title={t("issues.checks.head", { sha: c.head })}>
+          {c.head.slice(0, 7)}
+        </span>
+      </div>
+      {c.note ? <p className="mt-0.5 break-words text-12 text-subtle">{c.note}</p> : null}
+    </li>
   );
 }
 
@@ -57,7 +88,6 @@ function RunOf({ check, sessions, slug, t }: { check: IssueCheckRunView; session
  */
 export function CheckTimes({ issueId, slug, sessions }: { issueId: string; slug: string; sessions: IssueAgentSession[] }) {
   const t = useCopy();
-  const time = useTimeFormat();
   const q = useIssueChecks(issueId);
   if (q.isLoading) return <EmptyPanelLine title={t("issues.checks.title")} status={t("issues.steps.loading")} />;
   if (q.isError) return <EmptyPanelLine title={t("issues.checks.title")} status={t("common.couldNotLoad")} detail={formatApiError(q.error)} />;
@@ -78,18 +108,7 @@ export function CheckTimes({ issueId, slug, sessions }: { issueId: string; slug:
       ) : (
         <ul className="mt-3 divide-y divide-line-subtle" aria-label={t("issues.checks.each")}>
           {view.checks.map((c) => (
-            <li key={c.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-13" data-testid="check-run">
-              <span className="w-24 flex-none text-12 text-muted">{kindLabel(c.kind, t)}</span>
-              <span className="min-w-0 flex-1 truncate" title={c.command || undefined}>
-                {c.scope ? `${c.name} (${c.scope})` : c.name}
-              </span>
-              <span className={c.result === "fail" ? "text-12 text-danger" : "text-12 text-muted"}>{t(`issues.checks.result.${c.result}` as ProductCopyKey)}</span>
-              <span className="tabular-nums">{took(c.durationMs, t)}</span>
-              <RunOf check={c} sessions={sessions} slug={slug} t={t} />
-              <span className="text-12 text-subtle" title={time.dateTime(c.startedAt)}>
-                {time.relative(c.startedAt)}
-              </span>
-            </li>
+            <CheckRow key={c.id} check={c} sessions={sessions} slug={slug} t={t} />
           ))}
         </ul>
       )}

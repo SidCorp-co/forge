@@ -21,6 +21,7 @@ import { asc, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issueCheckRuns } from '../db/schema-issue-check-runs.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { emitEvent } from '../outbox/index.js';
 import type { Actor } from './activity.js';
 import {
   type CheckRunRefusal,
@@ -58,11 +59,17 @@ function storedOf(row: typeof issueCheckRuns.$inferSelect): StoredCheckRun {
  * Write the checks one call sent, in the caller's transaction, under the issue's check lock: each new
  * one once, a resend of a recorded one as nothing, and a refusal — with nothing written — where a
  * sent id is recorded as another check.
+ *
+ * A write that added a check tells the issue's readers in the same transaction: `issue.updated`
+ * naming `checks`, the frame an open issue page already refetches `['issue', id]` on. `checks`
+ * is a record kept beside the issue row, not a column of it, so `before` and `after` carry
+ * nothing and the activity feed writes no line for it — the Checks section is where it is read.
  */
 export async function writeCheckRuns(
   tx: Tx,
   args: {
     issueId: string;
+    projectId: string;
     head: string;
     checks: readonly CheckRun[];
     via: CheckRunVia;
@@ -106,6 +113,14 @@ export async function writeCheckRuns(
         recordedAgency: args.actor.agency,
       })),
     );
+    await emitEvent(tx, 'issue.updated', {
+      issueId: args.issueId,
+      projectId: args.projectId,
+      actor: args.actor,
+      fields: ['checks'],
+      before: {},
+      after: {},
+    });
   }
   return { ok: true, recorded: sorted.fresh.length, alreadyRecorded: sorted.again };
 }
@@ -147,6 +162,7 @@ export async function recordChecks(args: {
   const written = await db.transaction((tx) =>
     writeCheckRuns(tx, {
       issueId: args.issue.id,
+      projectId: args.issue.projectId,
       head: args.head,
       checks: args.checks,
       via: 'report',

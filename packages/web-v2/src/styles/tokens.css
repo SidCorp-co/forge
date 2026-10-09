@@ -1,11 +1,10 @@
 /* ============================================================
    FORGE DESIGN SYSTEM — Colors & Type  (source of truth)
-   Mirrors packages/web-redesign-plan/design-system/colors_and_type.css.
    A calm, bright control plane for running Claude Code at scale.
    Warm flame-orange action accent · cool cobalt structure ·
    warm paper-white surfaces · clean grotesk + true monospace.
 
-   2-LAYER TOKENS (see docs/proposals/web-v2-redesign.md):
+   2-LAYER TOKENS:
      Layer 1 — raw palette (--flame-*, --paper-*, --ink-*, --stage-*).
                Theme-independent. Components NEVER reference these directly.
      Layer 2 — semantic (--bg-*, --fg-*, --border-*, --accent, ...).
@@ -81,6 +80,9 @@
   --fg-subtle:     var(--ink-550);
   --fg-disabled:   var(--ink-400);
   --fg-on-accent:  #FFFFFF;
+  /* Text that says something failed or was refused: the red Banner's danger tone and a danger Menu
+     item already draw (design/primitives/banner.tsx, design/patterns/menu.tsx). */
+  --fg-danger:     var(--red-600);
 
   /* Scrims: --ink-900 is rgb(24 27 34), so a dialog's backdrop is the page's own
      darkest ink at an alpha, not a fourth grey. --scrim-media is deeper because a
@@ -238,6 +240,7 @@
   --ai-fg: #C4B2F2;
   --ai-bg: #2A2340;
   --ai-bar: #9F86E0;
+  --fg-danger: var(--hue-red-300);
 }
 
 /* ============================================================
@@ -266,3 +269,8 @@
    moved 2h ago. This rule sits after `.fg-caption`, same specificity, so source
    order decides and the mark survives. */
 .fg-caption-stale { font-weight: 600; color: var(--amber-600); }
+
+/* Failed or refused text, unlayered and after the type styles for the same reason as the stale
+   mark above: 11 of its uses sit on an `fg-caption` or `fg-body-sm` line, whose colour would
+   otherwise win. It was a class with no rule until ISS-474, so every use rendered as plain text. */
+.text-danger { color: var(--fg-danger); }

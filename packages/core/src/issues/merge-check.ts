@@ -58,6 +58,7 @@ export async function recordMergeCheck(args: {
   return db.transaction(async (tx) => {
     const written = await writeCheckRuns(tx, {
       issueId: issue.id,
+      projectId: issue.projectId,
       head: report.head,
       checks: report.checks,
       via: 'merge-check',

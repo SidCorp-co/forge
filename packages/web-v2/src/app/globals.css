@@ -76,6 +76,9 @@
   --color-subtle: var(--fg-subtle);
   --color-disabled: var(--fg-disabled);
   --color-on-accent: var(--fg-on-accent);
+  /* `border-danger`, `hover:text-danger` and the rest; a plain `text-danger` is also an unlayered
+     rule in tokens.css, so it holds on an `fg-*` type style too */
+  --color-danger: var(--fg-danger);
 
   /* borders (utilities: border-line / border-line-subtle / border-line-strong) */
   --color-line-subtle: var(--border-subtle);

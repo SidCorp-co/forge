@@ -161,6 +161,31 @@ describe('a run records the checks it timed', () => {
   });
 });
 
+/** The `issue.updated` events naming `checks` the outbox holds for one issue. */
+const checksEvents = async (issueId: string) =>
+  rows<{ fields: string[] }>(sql`
+    SELECT payload->'fields' AS fields FROM pipeline_outbox
+    WHERE issue_id = ${issueId} AND type = 'issue.updated' AND payload->'fields' ? 'checks'
+  `);
+
+describe('an open issue page hears that checks were recorded', () => {
+  it('a call that adds a check emits issue.updated naming checks, once per call', async () => {
+    const target = await issue();
+    const sent = check();
+    await post(personToken, target.id, { head: HEAD, checks: [sent, check()] });
+    expect(await checksEvents(target.id)).toEqual([{ fields: ['checks'] }]);
+    const resent = await post(personToken, target.id, { head: HEAD, checks: [sent] });
+    expect(resent.body.recorded).toBe(0);
+    expect(await checksEvents(target.id)).toHaveLength(1);
+  });
+
+  it('a refused call emits nothing', async () => {
+    const target = await issue();
+    await post(personToken, target.id, { head: HEAD, checks: [check({ kind: 'lint' })] });
+    expect(await checksEvents(target.id)).toEqual([]);
+  });
+});
+
 describe('a check the record refuses, writing nothing', () => {
   it('refuses one with no duration, naming it', async () => {
     const target = await issue();

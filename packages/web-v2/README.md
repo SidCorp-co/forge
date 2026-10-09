@@ -12,7 +12,7 @@ The Forge cloud UI — canonical at root `/` since ISS-397 (2026-06-07; legacy
 
 ## Tokens — 2 layers (light-only now, dark drop-in)
 
-`src/styles/tokens.css` is the source of truth (mirrors the design-system kit).
+`src/styles/tokens.css` is the source of truth.
 
 1. **Raw palette** — `--flame-*`, `--paper-*`, `--ink-*`, `--stage-*`. Theme-independent.
    Components never reference these directly, never hardcode hex.
@@ -21,8 +21,9 @@ The Forge cloud UI — canonical at root `/` since ISS-397 (2026-06-07; legacy
    utilities resolve through the semantic var.
 
 Adding dark later = one `[data-theme="dark"] { … }` override of the semantic block
-(the selector already exists, commented, in `tokens.css`) + flip `forcedTheme` in
-`providers/theme-provider.tsx`. Raw scale + every component stay untouched.
+(`tokens.css` already declares one for the workflow canvas hues, the AI marks and
+`--fg-danger`) + flip `forcedTheme` in `providers/theme-provider.tsx`. Raw scale +
+every component stay untouched.
 
 > Exception: data-driven color (status / health / stage dots) lives in
 > `src/design/status.ts` + `stages.ts` and references the raw palette on purpose —
@@ -62,3 +63,18 @@ pnpm --filter web-v2 dev      # http://localhost:3100  → Overview dashboard
 ```
 
 `/` renders the Overview dashboard.
+
+## Screen witness
+
+jsdom lays nothing out, so the vitest suite cannot see a defect only a window width shows.
+`witness/run.mjs` mounts a real component with the app's compiled CSS in headless Chrome at
+each width its entry names and fails on every probe the entry reports:
+
+```bash
+pnpm --filter web-v2 witness witness/check-times.witness.tsx --out <dir>   # screenshots land in <dir>
+```
+
+An entry (`witness/*.witness.tsx`) stubs core's reads, mounts the component and sets
+`window.__witness` — its cases, when it is ready, and its probe. Chrome is `WITNESS_CHROME`,
+else `google-chrome`. No CI job runs it: a screen change that can break at a width runs it and
+attaches what it printed.

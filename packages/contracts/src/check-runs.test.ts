@@ -8,6 +8,9 @@ import { mergeCheckReportSchema } from "./merge-check.js";
 
 const HEAD = "a".repeat(40);
 
+/** The kinds REQ-36 BC-14 names, written out: the list under test is never its own expectation. */
+const KINDS = ["tests", "typecheck", "probes", "review", "conformance", "base"];
+
 const check = (over: Record<string, unknown> = {}) => ({
 	id: "6f1d3c1e-8a0b-4c55-9d43-2f3a1b0c9e11",
 	kind: "tests",
@@ -28,9 +31,17 @@ const issuesOf = (body: unknown) => {
 		: parsed.error.issues.map((i) => `${i.path.join("/")}: ${i.message}`);
 };
 
+describe("the kinds of check", () => {
+	it("are the six kinds, in the order the issue page lists them", () => {
+		expect([...CHECK_KINDS]).toEqual(KINDS);
+	});
+});
+
 describe("a check sent to be recorded", () => {
-	it("takes a timed check with its kind", () => {
-		expect(issuesOf({ head: HEAD, checks: [check()] })).toEqual([]);
+	it("takes a timed check of each kind", () => {
+		for (const kind of KINDS) {
+			expect(issuesOf({ head: HEAD, checks: [check({ kind })] })).toEqual([]);
+		}
 	});
 
 	it("refuses one with no duration, naming the field", () => {
@@ -50,7 +61,7 @@ describe("a check sent to be recorded", () => {
 		const { kind: _, ...unkinded } = check();
 		for (const sent of [unkinded, check({ kind: "lint" })]) {
 			expect(issuesOf({ head: HEAD, checks: [sent] })).toEqual([
-				`checks/0/kind: kind is one of ${CHECK_KINDS.join(", ")}`,
+				`checks/0/kind: kind is one of ${KINDS.join(", ")}`,
 			]);
 		}
 	});
@@ -90,7 +101,7 @@ describe("a check sent to be recorded", () => {
 describe("the time spent on each kind", () => {
 	it("lists every kind in order, a kind nothing recorded at zero with no slowest", () => {
 		const kinds = checkTimeByKind([]);
-		expect(kinds.map((k) => k.kind)).toEqual([...CHECK_KINDS]);
+		expect(kinds.map((k) => k.kind)).toEqual(KINDS);
 		expect(kinds.every((k) => k.checks === 0 && k.totalMs === 0 && k.slowest === null)).toBe(
 			true,
 		);

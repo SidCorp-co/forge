@@ -231,6 +231,13 @@ describe('a passing check is recorded on its issue', () => {
       totalMs: 2400,
     });
     expect(read.totalMs).toBe(6000);
+
+    // an open Runs tab refetches its Checks section on the issue's own event
+    const events = await rows<{ fields: string[] }>(sql`
+      SELECT payload->'fields' AS fields FROM pipeline_outbox
+      WHERE issue_id = ${issue} AND type = 'issue.updated' AND payload->'fields' ? 'checks'
+    `);
+    expect(events).toEqual([{ fields: ['checks'] }]);
   });
 });
 
