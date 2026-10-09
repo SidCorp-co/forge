@@ -14,7 +14,11 @@ import {
 // assembled: 105 statements a project, so eight projects held the pool for ~1300 round trips while
 // the page's own reads queued behind them. A read request now asks each of those once.
 
-const PER_PROJECT_BOUND = 60;
+// Amnesty (ISS-495, REQ-41 BC-10, BC-12): the requirement standing every Needs-you read takes now
+// reads its stale design follows and its open merge-or-drop question beside its rows, one statement
+// each per project, which took the measured read from at most 60 to 61 a project. Ends when those
+// two reads join the standing's first wave or the request memo, and the bound returns to 60.
+const PER_PROJECT_BOUND = 61;
 
 const queriesOf = (headers: Headers): number => {
   const raw = headers.get('server-timing') ?? '';

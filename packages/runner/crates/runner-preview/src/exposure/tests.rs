@@ -42,6 +42,7 @@ fn lsof_rows_read_as_addresses_with_the_wildcard_named_by_its_family() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn an_ipv6_listener_is_named_in_brackets() {
     let Ok(held) = std::net::TcpListener::bind(("::", 0)) else {
