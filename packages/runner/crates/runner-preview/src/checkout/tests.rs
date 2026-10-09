@@ -167,3 +167,26 @@ async fn the_demo_seed_runs_in_the_checkout_with_its_environment_and_a_failing_o
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[tokio::test]
+async fn a_sketch_checkout_outlives_every_close_but_an_abandon_and_is_taken_as_it_stands() {
+    let (root, repo, _later) = world().await;
+    let c = sketch(&repo, "sketch-req-7-abcdef", "sketch/req-7-abcdef");
+    let at = cut(&c).await.expect("the sketch is cut");
+    // an edit turn's work in the worktree: a restart of the same preview takes it, never recuts it
+    sh(&at, "echo edited > edit.txt").await;
+    assert_eq!(cut(&c).await.expect("taken as it stands"), at);
+    assert_eq!(sh(&at, "cat edit.txt").await, "edited");
+    // the end of a run's turn is no reason the box ever hears; only these close reasons exist
+    for why in [
+        None,
+        Some("idle"),
+        Some("approved"),
+        Some("kept"),
+        Some("failed"),
+    ] {
+        assert!(!c.removed_on(why), "a sketch is not removed on {why:?}");
+    }
+    assert!(c.removed_on(Some("abandoned")));
+    let _ = std::fs::remove_dir_all(&root);
+}

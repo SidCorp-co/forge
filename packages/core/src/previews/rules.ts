@@ -14,6 +14,7 @@ import {
   previewEnvironmentProblem,
   reproduceDataOf,
 } from '@forge/contracts/preview';
+import { TERMINAL_AGENT_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import type { Refusal } from '../lib/refusal.js';
 import type { ProjectDocument } from '../project-config/index.js';
 
@@ -207,4 +208,32 @@ export function sweepMove(f: SweepFacts, now: number): SweepMove {
     };
   }
   return null;
+}
+
+/** What the sweep reads of the run a preview names: its session's status and its box's ledger marks. */
+export interface RunFacts {
+  sessionStatus: string;
+  /** The box reports the run's checkout released. */
+  checkoutReleased: boolean;
+  /** The box records the run's session as closed by core. */
+  sessionClosedOnBox: boolean;
+}
+
+/**
+ * Why an open preview's run has ended, or null while it has not. An issue's preview serves the run's
+ * own worktree, so it ends with the run: the session reached a terminal status, or the box reports
+ * it closed or its checkout released. A preview of any other subject holds a checkout of its own: an
+ * idea's sketch run is a chat session whose turn completes once it has built the change, and the
+ * preview has to outlive that turn and take the next (REQ-41 BC-14, BC-15). Only the box reporting
+ * the checkout released ends it here; keep, abandon and idle close are the person's and the sweep's.
+ */
+export function runEndedWhy(subjectKind: PreviewSubjectKind, run: RunFacts): string | null {
+  const releasedOnBox = run.checkoutReleased || (subjectKind === 'issue' && run.sessionClosedOnBox);
+  if (releasedOnBox) {
+    return 'the run holding the worktree ended: its box reports the checkout released';
+  }
+  if (subjectKind !== 'issue') return null;
+  return (TERMINAL_AGENT_SESSION_STATUSES as readonly string[]).includes(run.sessionStatus)
+    ? `the run holding the worktree ended: its session is ${run.sessionStatus}`
+    : null;
 }
