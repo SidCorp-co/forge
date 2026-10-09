@@ -970,6 +970,7 @@
         "issue-delivery#case-release",
         "issue-delivery#task-release",
         "issue-delivery#act-release",
+        "issue-delivery#rule-replay",
         "requirement-to-delivery#release-requested",
         "requirement-to-delivery#release-gate"
       ]

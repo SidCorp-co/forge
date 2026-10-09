@@ -334,7 +334,9 @@ describe('HOP 0.3.0: every landing kind the storefront attests', () => {
     const onVerified = vi.fn();
     await verifyBeforeClose('41d111dd', run, { onVerified });
     expect(onVerified).toHaveBeenCalledWith('provider');
-    expect(state.stamped).toEqual([{ merge: { verification: 'provider' }, touch: false }]);
+    expect(state.stamped).toEqual([
+      { merge: { verification: 'provider', servedCommit: null }, touch: false },
+    ]);
 
     const outcome = await verifyByProviderRecord({
       projectId: 'hop',

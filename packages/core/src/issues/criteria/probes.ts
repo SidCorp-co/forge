@@ -8,7 +8,24 @@ import { desc, eq, inArray } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import { criterionProbes } from '../../db/schema-issue-criteria.js';
 import { RefusalError } from '../../lib/refusal.js';
-import { probeRuleFault, probeSecretRefusals, restsOnKept } from './probe-rules.js';
+import { type IssueProjectDocument, readProjectDocument } from '../ports.js';
+import {
+  probeRuleFault,
+  probeSecretRefusals,
+  probeServiceRefusal,
+  restsOnKept,
+} from './probe-rules.js';
+
+type DeclaredEnvironment = IssueProjectDocument['environments'][string] & {
+  services?: Record<string, string> | undefined;
+};
+
+/** Every service an environment of the project document declares, once each. */
+async function declaredServices(projectId: string): Promise<string[]> {
+  const document = (await readProjectDocument(projectId))?.document ?? null;
+  const environments = Object.values(document?.environments ?? {}) as DeclaredEnvironment[];
+  return [...new Set(environments.flatMap((e) => Object.keys(e.services ?? {})))];
+}
 
 async function keptProbeIdOf(tx: Tx, criterionId: string): Promise<string | null> {
   const [row] = await tx
@@ -22,13 +39,15 @@ async function keptProbeIdOf(tx: Tx, criterionId: string): Promise<string | null
 
 /**
  * The probe a verdict rests on, kept first where the verdict sends one; null where it rests on none.
- * Refuses, before anything is written, a probe holding a credential, a probe on a code property, and
- * a pass or short on an observable criterion that neither sends a probe nor finds one kept.
+ * Refuses, before anything is written, a probe holding a credential, a probe on a code property, a
+ * request naming a service the project document does not declare, and a pass or short on an
+ * observable criterion that neither sends a probe nor finds one kept.
  */
 export async function probeOfVerdict(
   tx: Tx,
   args: {
     issueId: string;
+    projectId: string;
     criterion: { id: string; n: number; class: CriterionClass | null };
     verdict: string;
     probe: CriterionProbe | null;
@@ -43,7 +62,15 @@ export async function probeOfVerdict(
     sent: probe !== null,
     kept: kept !== null,
   });
-  const refusals = [...(fault ? [fault] : []), ...(probe ? probeSecretRefusals(probe) : [])];
+  const service =
+    probe?.kind === 'request' && probe.request.service !== undefined
+      ? probeServiceRefusal(probe, await declaredServices(args.projectId))
+      : null;
+  const refusals = [
+    ...(fault ? [fault] : []),
+    ...(probe ? probeSecretRefusals(probe) : []),
+    ...(service ? [service] : []),
+  ];
   if (refusals.length > 0) throw new RefusalError(refusals, 'VERDICT_REFUSED');
   if (!probe) {
     return kept && criterion.class !== 'code_property' && restsOnKept(verdict) ? kept : null;

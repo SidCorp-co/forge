@@ -122,6 +122,8 @@ describe('act-release: a production with no source probe', () => {
     const onVerified = vi.fn();
     await verifyBeforeClose('run-1', run, { commit: SHIPPED, onVerified });
     expect(onVerified).toHaveBeenCalledWith('deployment');
-    expect(reads.stamped).toEqual([{ merge: { verification: 'deployment' }, touch: false }]);
+    expect(reads.stamped).toEqual([
+      { merge: { verification: 'deployment', servedCommit: SHIPPED }, touch: false },
+    ]);
   });
 });

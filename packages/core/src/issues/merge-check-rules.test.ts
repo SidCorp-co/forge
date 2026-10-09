@@ -149,7 +149,7 @@ describe('the record a passing check is kept as', () => {
     const named = fields.find((f) => f.key === 'checks')?.value ?? '';
     expect(named).toContain('6 recorded with their kinds and durations');
     expect(named).toContain('direct-tests (runner/runner-core)');
-    expect(fields.find((f) => f.key === 'not-checked')?.value).toContain('ISS-470');
+    expect(fields.find((f) => f.key === 'not-checked')?.value).toContain('REQ-36 BC-9');
     // One check is one record (ISS-474): its duration lives in its check run, never here as well.
     for (const f of fields) expect(f.value).not.toMatch(/\d+\.\ds\b|durationMs|\b1500\b|\b2500\b/);
   });

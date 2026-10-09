@@ -964,9 +964,9 @@ name. A passing check records its checks as check runs, each with its kind and d
 core's `verification` record naming them — never a second copy of a duration. The
 checks every merge needs are `REQUIRED_MERGE_CHECKS` in `packages/contracts/src/merge-check.ts`,
 and `lib/merge-check.test.mjs` holds `lib/merge-check.mjs`'s copy to it, as it holds `FAST_LANE_CHECKS`
-to `FAST_LANE_MERGE_CHECKS` in `packages/contracts/src/fast-lane.ts`. Replaying kept probes (ISS-470)
-and the review (ISS-473) join that list when their issues land; until then each report names them as
-not run. A mark the project's `validation.mergeCheck: required` or an approved new pattern owes a
+to `FAST_LANE_MERGE_CHECKS` in `packages/contracts/src/fast-lane.ts`. Kept probes are replayed on each
+verified deploy (ISS-470), not at merge: replaying them here is REQ-36 BC-9's, and the review is
+ISS-473's. Each joins that list when it lands; until then each report names it as not run. A mark the project's `validation.mergeCheck: required` or an approved new pattern owes a
 check is refused `MERGE_CHECK_MISSING` until a passing one stands at the commit marked.
 
 **Where CI runs it.** A push to `dev` and a pull request into `dev` set the `changes` job's `scoped`

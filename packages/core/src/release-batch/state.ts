@@ -1,3 +1,4 @@
+import type { ProbeReplayRecord } from '@forge/contracts/criterion-probes';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
@@ -7,6 +8,7 @@ import { closeVerification, type ReleaseChannel, resolveReleaseChannels } from '
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
 import { type ReleaseMethod, readMethod } from './method.js';
 import { RECORDED_VERIFICATIONS, type RecordedVerification } from './plan.js';
+import { readProbeReplay } from './probe-replay.js';
 import { loadReleaseRoster, type ReleaseRoster } from './queries.js';
 import { type LiveState, readLiveState, type VerifyConfig } from './verify.js';
 import { attemptsOf } from './versions.js';
@@ -32,6 +34,8 @@ interface ReleaseRunState {
   methodUnloaded: boolean;
   /** The last finish attempt, `null` before the first `finish` call. */
   finish: ReleaseFinishRecord | null;
+  /** The kept probes the verified deploy replayed and what each did; `null` before the replay. */
+  probeReplay: ProbeReplayRecord | null;
 }
 
 /** The probes the close reads, or none: a refused declaration has nothing to read either. */
@@ -107,5 +111,6 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     method,
     methodUnloaded: method !== null && !method.loaded,
     finish: readFinishRecord(meta),
+    probeReplay: readProbeReplay(meta),
   };
 }

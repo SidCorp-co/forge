@@ -1,8 +1,8 @@
 // One declaration of a kept probe (REQ-36 BC-6, BC-12; ISS-469): the stored, replayable exercise of
 // the running build a verdict on an observable criterion rests on, and the result it expects. Core's
-// table CHECKs, the verdict door and its refusals read the shape from here, and a deploy that
-// replays kept probes (ISS-470) reads the same one, so a probe needs no person to run it again.
-// Storing a probe never runs it.
+// table CHECKs, the verdict door and its refusals read the shape from here, and the release run that
+// replays kept probes on each verified deploy (ISS-470) reads the same one, so a probe needs no
+// person to run it again. Storing a probe never runs it.
 
 import { z } from "zod";
 
@@ -45,6 +45,8 @@ export const PROBE_LIMITS = {
 // a path on the build's own origin, so the same probe replays against whichever deployment serves it
 const ORIGIN_PATH = /^\/(?!\/)\S*$/u;
 const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,100}$/u;
+// a service the project document declares on an environment (`environments.<name>.services`)
+const SERVICE_NAME = /^[a-z][a-z0-9-]{0,62}$/u;
 // a path inside the repository the build was made from: relative, and never climbing out of it
 const IN_TREE_DIR = /^(?!.*(?:^|\/)\.\.(?:\/|$))[\w.@-]+(?:\/[\w.@-]+)*$/u;
 
@@ -76,6 +78,11 @@ const requestProbeSchema = z.strictObject({
 			.optional(),
 		body: z.string().max(PROBE_LIMITS.body).optional(),
 		as: z.enum(PROBE_CALLERS),
+		/** The declared service whose origin the path is on; absent, the environment's own `url`. */
+		service: z
+			.string()
+			.regex(SERVICE_NAME, "a service the project document declares (a lowercase slug)")
+			.optional(),
 	}),
 	expect: z.strictObject({
 		status: z.number().int().min(100).max(599),
@@ -110,7 +117,7 @@ export const criterionProbeSchema = z.discriminatedUnion("kind", [
 ]);
 export type CriterionProbe = z.infer<typeof criterionProbeSchema>;
 
-export const PROBE_SHAPE = `{ kind: "request", request: { method, path: "/…" on the running build's origin, headers?, body?: text, as: "anonymous" | "replayer" }, expect: { status, bodyIncludes?: [text] } } or { kind: "command", command: { argv: [program, …args], cwd?: an in-tree directory }, expect: { exitCode, stdoutIncludes?: [text] } }; a command reads the build's origin from ${PROBE_ORIGIN_ENV}, and a probe carries no credential`;
+export const PROBE_SHAPE = `{ kind: "request", request: { method, path: "/…" on the running build's origin, headers?, body?: text, as: "anonymous" | "replayer", service?: a service the environment declares }, expect: { status, bodyIncludes?: [text] } } or { kind: "command", command: { argv: [program, …args], cwd?: an in-tree directory }, expect: { exitCode, stdoutIncludes?: [text] } }; a command reads the build's origin from ${PROBE_ORIGIN_ENV}, and a probe carries no credential`;
 
 /** A probe as the criteria read answers it: what it runs, what it expects, and when it was kept. */
 export type CriterionProbeView = CriterionProbe & {
@@ -129,3 +136,41 @@ export const PROBE_REFUSAL_CODES = [
 	"VERDICT_PROBE_CODE_PROPERTY",
 ] as const;
 export type ProbeRefusalCode = (typeof PROBE_REFUSAL_CODES)[number];
+
+/** What one kept probe did on a verified deploy's replay (REQ-36 BC-12; ISS-470). */
+export const PROBE_REPLAY_OUTCOMES = [
+	/** It ran against the served build and answered what it expects. */
+	"held",
+	/** It ran and answered something else: a fail verdict on the served identity. */
+	"failed",
+	/** It could not be run against the served build, so it counts as no pass. */
+	"could_not_run",
+	/** A command probe: it runs only on a runner in a checkout of the served commit, never in core. */
+	"not_replayed",
+] as const;
+export type ProbeReplayOutcome = (typeof PROBE_REPLAY_OUTCOMES)[number];
+
+export interface ProbeReplayResult {
+	issueId: string;
+	criterion: number;
+	probeId: string;
+	outcome: ProbeReplayOutcome;
+	/** What it answered against what it expects, or why it did not run. Never a credential. */
+	detail: string;
+	/** The verdict the replay wrote, or null where it wrote none. */
+	verdictId: string | null;
+}
+
+/** One release run's replay of the kept probes, kept on the run and read back with its state. */
+export interface ProbeReplayRecord {
+	/** The commit the verified deploy serves, which each verdict names; null where none is named. */
+	served: string | null;
+	replayedAt: string;
+	/** Why nothing was replayed, or null where the replay ran. */
+	skipped: string | null;
+	results: ProbeReplayResult[];
+	/** The issues it sent to reopen. */
+	reopened: string[];
+	/** The claimed issues it kept from closing: a probe of theirs could not run. */
+	held: string[];
+}

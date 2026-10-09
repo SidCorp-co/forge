@@ -91,9 +91,9 @@ describe('what a merge needs', () => {
     ).toEqual([{ name: 'typecheck', result: 'fail' }]);
   });
 
-  it('says probes and review are not run here, each with the issue that builds it', () => {
+  it('says probes and review are not run here, each with what owns it', () => {
     expect(NOT_RUN_HERE.map((n) => [n.name, n.owner])).toEqual([
-      ['probes', 'ISS-470'],
+      ['probes', 'REQ-36 BC-9'],
       ['review', 'ISS-473'],
     ]);
   });

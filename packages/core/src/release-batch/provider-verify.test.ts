@@ -234,7 +234,9 @@ describe('a release on a storefront is proved by what the provider publishes', (
       },
     ]);
     expect(onVerified).toHaveBeenCalledWith('provider');
-    expect(reads.stamped).toEqual([{ merge: { verification: 'provider' }, touch: false }]);
+    expect(reads.stamped).toEqual([
+      { merge: { verification: 'provider', servedCommit: null }, touch: false },
+    ]);
   });
 
   it('refuses a landing whose workflow went live before it was judged, naming issue, workflow and both identities', async () => {

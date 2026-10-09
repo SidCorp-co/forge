@@ -48,6 +48,12 @@ export {
 } from './contract-waits.js';
 export { createIssue, insertIssueRow } from './create-service.js';
 export { runCriteriaBackfillOnce } from './criteria/backfill.js';
+export {
+  type ReplayTarget,
+  type ReplayVerdict,
+  recordReplayVerdicts,
+  replayTargetsOf,
+} from './criteria/probe-replay.js';
 export { type CriterionWithVerdict, listCriteriaOf, putCriteria } from './criteria/store.js';
 export {
   type IssueCriteriaReport,

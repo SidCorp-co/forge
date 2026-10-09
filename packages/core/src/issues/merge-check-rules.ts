@@ -18,8 +18,9 @@ import {
   requiredMergeChecksOf,
 } from '@forge/contracts/merge-check';
 
-/** Not run by the check yet: the issues that build each name it in every record. */
-export const NOT_YET_CHECKED = 'kept probes, replayed by ISS-470; the review (ISS-473)';
+/** Not run by the check yet: what owns each names it in every record. */
+export const NOT_YET_CHECKED =
+  'kept probes, replayed on deploy (ISS-470) and not yet at merge (REQ-36 BC-9); the review (ISS-473)';
 
 export interface CheckRefusal {
   code: MergeCheckRefusalCode;

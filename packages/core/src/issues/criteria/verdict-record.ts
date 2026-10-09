@@ -291,6 +291,7 @@ export async function recordVerdict(
   );
   const probeId = await probeOfVerdict(tx, {
     issueId: issue.id,
+    projectId: issue.projectId,
     criterion: { id: criterion.id, n: draft.criterion, class: route?.class ?? null },
     verdict: draft.verdict,
     probe: draft.probe ?? null,

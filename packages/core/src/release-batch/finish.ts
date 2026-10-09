@@ -1,6 +1,7 @@
 // The two ends of a release run, the only writers that end the release step: finish closes every
-// claimed issue once the probes agree and completes the run; abort cancels it and closes no issue.
-// Both hand the claims to `releasing-recovery.ts`.
+// claimed issue once the probes agree and the kept probes replayed on the served build hold
+// (`probe-replay.ts`), and completes the run; abort cancels it and closes no issue. Both hand the
+// claims to `releasing-recovery.ts`.
 
 import type { ReleaseVersionCarrier } from '@forge/contracts/releases';
 import { eq } from 'drizzle-orm';
@@ -34,6 +35,7 @@ import {
 import { refuseLostReleaseClaim } from './claim-conflicts.js';
 import { verifyByDeploymentRecord } from './deployment-verify.js';
 import { abortBlockedHold, abortBlockedIssues, writeReleaseHolds } from './hold.js';
+import { replayKeptProbes } from './probe-replay.js';
 import { rosterOfRun, verifyByProviderRecord } from './provider-verify.js';
 import {
   FENCE_LOST,
@@ -46,7 +48,7 @@ import {
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
 } from './releasing-recovery.js';
-import { verifyDeployed } from './verify.js';
+import { claimedCommit, verifyDeployed } from './verify.js';
 import { lockRunVersions } from './version-store.js';
 
 interface FinishReleaseBatchResult {
@@ -128,23 +130,42 @@ interface ClaimedRow {
   projectId: string;
 }
 
-/** The run carries how its close was proved, which may differ from how it opened. */
-async function stampRunVerification(runId: string, kind: ReleaseVerification): Promise<void> {
-  await writeRunMetadata(runId, { merge: { verification: kind }, touch: false });
+/** The run carries how its close was proved, which may differ from how it opened, and the commit
+ *  the verified deploy serves, which a resumed finish replays the kept probes against. */
+async function stampRunVerification(
+  runId: string,
+  kind: ReleaseVerification,
+  servedCommit: string | null,
+): Promise<void> {
+  await writeRunMetadata(runId, { merge: { verification: kind, servedCommit }, touch: false });
+}
+
+/** The whole commit a verified deploy serves: the one the finish named, else the one it read. */
+function servedCommitOf(named: string | undefined, read: string | null): string | null {
+  const claimed = named === undefined ? null : claimedCommit(named);
+  return claimed ?? (read !== null && /^[0-9a-f]{40,64}$/.test(read) ? read : null);
+}
+
+function stampedServedCommit(run: ReleaseRunRow): string | null {
+  const value = (run.metadata as { servedCommit?: unknown } | null)?.servedCommit;
+  return typeof value === 'string' ? value : null;
 }
 
 /**
  * The deploy is checked before any issue closes: against the commit by the probes where production
  * declares a source probe; against each claimed issue's landed draft by what the provider publishes
  * where the work lives on a storefront; else against the commit its deployment record names. None
- * showing it is `RELEASE_NOT_VERIFIED`, and nothing closes.
+ * showing it is `RELEASE_NOT_VERIFIED`, and nothing closes. Answers the commit the deploy serves,
+ * or null where the verification names none (a storefront's provider record).
  */
 export async function verifyBeforeClose(
   runId: string,
   run: ReleaseRunRow,
   options: FinishReleaseBatchOptions,
-): Promise<void> {
+): Promise<string | null> {
   const verification = await assertFinishable(runId, run);
+  // a resumed finish reads what its first attempt stamped, else the commit the finish names
+  let served = stampedServedCommit(run) ?? servedCommitOf(options.commit, null);
   if (!options.alreadyVerified) {
     if (verification.kind === 'probed') {
       const meta = (run.metadata ?? {}) as Record<string, unknown>;
@@ -155,6 +176,7 @@ export async function verifyBeforeClose(
         checkpoint: options.whileVerifying,
       });
       if (!outcome.ok) throw notVerifiedRefusal(outcome.reason, outcome.live);
+      served = servedCommitOf(options.commit, outcome.identity);
       if (!outcome.moved) {
         logger.warn(
           { runId, identity: outcome.identity },
@@ -168,13 +190,16 @@ export async function verifyBeforeClose(
         channel: verification.channel,
       });
       if (!outcome.ok) throw providerNotVerifiedRefusal(outcome.reason, outcome.mismatches);
+      served = null;
     } else {
       const outcome = await verifyByDeploymentRecord(run.projectId, options.commit ?? null);
       if (!outcome.ok) throw notVerifiedRefusal(outcome.reason, outcome.live);
+      served = servedCommitOf(options.commit, outcome.identity);
     }
   }
   await options.onVerified?.(verification.kind);
-  await stampRunVerification(runId, verification.kind);
+  await stampRunVerification(runId, verification.kind, served);
+  return served;
 }
 
 /** Each claimed issue closed under the fence; one that will not close is named with its reason. */
@@ -242,10 +267,27 @@ export async function finishReleaseBatch(
     return done;
   }
 
-  if (run) await verifyBeforeClose(runId, run, options);
-
   const { fence } = options;
-  const { closed, failed } = await closeRoster(claimed, runId, actor, fence);
+  const keepOpen = new Map<string, string>();
+  if (run) {
+    const served = await verifyBeforeClose(runId, run, options);
+    const replay = await replayKeptProbes({
+      runId,
+      projectId: run.projectId,
+      served,
+      version: run.releaseVersion,
+      actor,
+      fence,
+    });
+    for (const [id, why] of replay.keepOpen) keepOpen.set(id, why);
+  }
+
+  const closing = claimed.filter((c) => !keepOpen.has(c.id));
+  const { closed, failed } = await closeRoster(closing, runId, actor, fence);
+  for (const c of claimed) {
+    const why = keepOpen.get(c.id);
+    if (why !== undefined) failed.push({ id: c.id, reason: why });
+  }
 
   await options.onRosterClosed?.({ closed, failed });
   await recoverStrandedReleasing(runId, {

@@ -54,12 +54,12 @@ export function patchIdOf(printed) {
   };
 }
 
-/** Named in every report as not run here, with the issue that builds each. */
+/** Named in every report as not run here, with what owns each. */
 export const NOT_RUN_HERE = [
   {
     name: 'probes',
-    owner: 'ISS-470',
-    why: 'kept probes are replayed against a running build, and no replayer exists yet',
+    owner: 'REQ-36 BC-9',
+    why: 'kept probes are replayed on each verified deploy (ISS-470); nothing replays them at merge yet',
   },
   {
     name: 'review',

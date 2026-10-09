@@ -14313,6 +14313,10 @@
                                 "maxLength": 2000,
                                 "pattern": "^\\/(?!\\/)\\S*$",
                                 "type": "string"
+                              },
+                              "service": {
+                                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                                "type": "string"
                               }
                             },
                             "required": [

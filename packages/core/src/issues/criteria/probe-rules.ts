@@ -9,6 +9,7 @@
  *   a probe carries no credential, and no header that holds one   VERDICT_PROBE_SECRET
  *   a code property keeps no probe of the running build           VERDICT_PROBE_CODE_PROPERTY
  *   a pass or short on an observable criterion rests on a probe   VERDICT_PROBE_REQUIRED
+ *   a request names only a service the project document declares  VERDICT_PROBE_SHAPE
  *
  * A criterion no design classes owes no probe: the verdict's record says so (`probeNote`), so the
  * exemption is read on every verdict it covers rather than assumed.
@@ -64,6 +65,25 @@ export function probeSecretRefusals(probe: CriterionProbe): ProbeRefusal[] {
     out.push({ code: 'VERDICT_PROBE_SECRET', path, detail: SECRET_VALUE });
   }
   return out;
+}
+
+/**
+ * The refusal for a request naming a service no environment of the project document declares, or
+ * null: a deploy's replay joins the path to that service's origin (ISS-470), so an unknown one could
+ * never be replayed.
+ */
+export function probeServiceRefusal(
+  probe: CriterionProbe,
+  declared: readonly string[],
+): ProbeRefusal | null {
+  const service = probe.kind === 'request' ? probe.request.service : undefined;
+  if (service === undefined || declared.includes(service)) return null;
+  const known = declared.length > 0 ? `it declares ${declared.join(', ')}` : 'it declares none';
+  return {
+    code: 'VERDICT_PROBE_SHAPE',
+    path: jsonPointer(['probe', 'request', 'service']),
+    detail: `service \`${service}\` is not one the project document declares on an environment (${known}); name one of those, or leave \`service\` out to use the environment's own \`url\``,
+  };
 }
 
 export interface ProbeFacts {
