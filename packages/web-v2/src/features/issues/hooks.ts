@@ -462,3 +462,15 @@ export function useBulkUpdateIssues() {
     },
   });
 }
+
+/** Add or retract a `blocks` edge on one issue; the edges and the issue's standing are re-read after. */
+export function useBlockerEdit(issueId: string, projectId: string) {
+  const qc = useQueryClient();
+  const done = () => {
+    qc.invalidateQueries({ queryKey: ["issue"] });
+    qc.invalidateQueries({ queryKey: ["issues"] });
+  };
+  const add = useMutation({ mutationFn: (key: string) => issuesApi.addBlocker(issueId, projectId, key), onSuccess: done });
+  const remove = useMutation({ mutationFn: (edgeId: string) => issuesApi.removeEdge(issueId, edgeId), onSuccess: done });
+  return { add, remove };
+}

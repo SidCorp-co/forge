@@ -8,7 +8,9 @@
 
 import { ISSUE_CATEGORY_LABELS } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
+import { useBlockerEdit } from "../hooks";
+import { formatApiError } from "@/lib/api/error";
 import { Avatar, Button, enumLabel, FactsGroup, MonoTag, type SelectOption, Stat, StatusBadge } from "@/design";
 import { useComplexityOptions, usePriorityOptions } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
@@ -237,14 +239,54 @@ interface PropertiesRailProps {
   developer?: boolean;
 }
 
+interface BlockerEdit {
+  add: (key: string) => void;
+  remove: (edgeId: string) => void;
+  busy: boolean;
+  error: string | null;
+}
+
+/** One line to name the issue this one waits for; the refusal reads beneath it. */
+function AddBlocker({ edit }: { edit: BlockerEdit }) {
+  const t = useCopy();
+  const [key, setKey] = useState("");
+  const k = key.trim().toUpperCase();
+  return (
+    <form
+      className="pt-1.5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (k) {
+          edit.add(k);
+          setKey("");
+        }
+      }}
+    >
+      <div className="flex items-center gap-2 border-t border-line-subtle pt-1.5">
+        <input
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          placeholder={t("issues.rail.waitOnPlaceholder")}
+          aria-label={t("issues.rail.waitOn")}
+          className="h-7 min-w-0 flex-1 bg-transparent text-13 outline-none"
+        />
+        <button type="submit" disabled={edit.busy || !k} className="text-13 text-accent-text disabled:opacity-50">
+          {t("issues.rail.waitOn")}
+        </button>
+      </div>
+      {edit.error ? <p className="pt-1 text-12 text-danger">{edit.error}</p> : null}
+    </form>
+  );
+}
+
 /** Edges shown before "N more": the rail is a glance, and the issue's own page lists the rest. */
 const EDGES_SHOWN = 2;
 
 /** One kind of relation as rows of key and title; more than two show the first two and a count that opens the rest. */
-function EdgeRows({ edges, self, slug, label, testId }: { edges: IssueDependencyEdge[]; self: string; slug: string; label: string; testId: string }) {
+function EdgeRows({ edges, self, slug, label, testId, edit }: { edges: IssueDependencyEdge[]; self: string; slug: string; label: string; testId: string; edit?: BlockerEdit }) {
   const t = useCopy();
   const [all, setAll] = useState(false);
-  if (edges.length === 0) return null;
+  if (edges.length === 0 && !edit) return null;
   const shown = all ? edges : edges.slice(0, EDGES_SHOWN);
   return (
     <section className="pt-4" data-testid={testId}>
@@ -263,10 +305,16 @@ function EdgeRows({ edges, self, slug, label, testId }: { edges: IssueDependency
               ) : (
                 <MonoTag>{other.slice(0, 8)}</MonoTag>
               )}
+              {edit ? (
+                <button type="button" disabled={edit.busy} onClick={() => edit.remove(e.id)} className="ml-2 text-12 text-muted hover:text-fg">
+                  {t("issues.rail.retract")}
+                </button>
+              ) : null}
             </li>
           );
         })}
       </ul>
+      {edit ? <AddBlocker edit={edit} /> : null}
       {edges.length > EDGES_SHOWN && !all ? (
         <button type="button" onClick={() => setAll(true)} className="py-1.5 text-13 text-muted hover:text-fg">
           {t("issues.rail.more", { n: edges.length - EDGES_SHOWN })}
@@ -291,6 +339,15 @@ export function PropertiesRail({
   developer = false,
 }: PropertiesRailProps) {
   const language = useInterfaceLanguage();
+  const blockers = useBlockerEdit(issue.id, issue.projectId);
+  const edit: BlockerEdit | undefined = readOnly
+    ? undefined
+    : {
+        add: (key) => blockers.add.mutate(key),
+        remove: (id) => blockers.remove.mutate(id),
+        busy: blockers.add.isPending || blockers.remove.isPending,
+        error: blockers.add.error ? formatApiError(blockers.add.error) : blockers.remove.error ? formatApiError(blockers.remove.error) : null,
+      };
   const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
   const plainLabels = (issue.labels ?? []).filter((l) => l.kind !== "module");
   const primaryModule = modules.find((m) => m.isPrimary);
@@ -477,7 +534,7 @@ export function PropertiesRail({
           ) : null}
         </div>
       </FactsGroup>
-      <EdgeRows edges={blockedBy} self={issue.id} slug={slug} label={t("issues.rail.waitsFor")} testId="rail-waits-for" />
+      <EdgeRows edges={blockedBy} self={issue.id} slug={slug} label={t("issues.rail.waitsFor")} testId="rail-waits-for" edit={edit} />
       <EdgeRows edges={blocks} self={issue.id} slug={slug} label={t("issues.rail.holdsUp")} testId="rail-holds-up" />
       {developer ? (
         <>
