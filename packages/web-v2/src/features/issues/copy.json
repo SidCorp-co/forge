@@ -407,6 +407,7 @@
     "issues.rail.tokens": "Tokens",
     "issues.rail.tokensExact": "{n} tokens",
     "issues.rail.waitsFor": "Waits for",
+    "issues.thread.settlesQuestion": "This answers the open question",
     "issues.rail.retract": "Retract",
     "issues.rail.waitOn": "Wait for",
     "issues.rail.waitOnPlaceholder": "ISS-12",

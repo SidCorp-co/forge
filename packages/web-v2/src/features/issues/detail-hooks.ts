@@ -1,6 +1,7 @@
 "use client";
 
 
+import { questionsApi } from "@/features/questions/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -60,7 +61,18 @@ export function useAttachments(id: string | undefined, projectId?: string) {
 export function useRecordDecision(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (decision: { decision: string; reason: string }) => issueDetailApi.recordDecision(id, decision),
+    mutationFn: async (decision: { decision: string; reason: string; settles?: { questionId: string; round: number } }) => {
+      const { settles, ...fields } = decision;
+      const recorded = await issueDetailApi.recordDecision(id, fields);
+      // the same act settles the open question it answers (FB-80)
+      if (settles) {
+        await questionsApi.answer({ questionId: settles.questionId, round: settles.round, text: `${fields.decision}\n\n${fields.reason}` });
+        qc.invalidateQueries({ queryKey: ["questions"] });
+        qc.invalidateQueries({ queryKey: ["issue"] });
+        qc.invalidateQueries({ queryKey: ["attention"] });
+      }
+      return recorded;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["comments", id] });
       qc.invalidateQueries({ queryKey: ["activities", id] });
