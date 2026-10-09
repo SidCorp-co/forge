@@ -589,3 +589,189 @@ export const PREVIEW_ROUTES = {
 	/** Runner only: the second WebSocket that carries preview bytes (`./preview-tunnel.ts`). */
 	tunnel: "/ws/preview-tunnel",
 } as const;
+
+// ---- REQ-41 (docs/proposals/chat-first.md, "Idea preview" and "Reproduce"): a preview of something
+// other than an issue's run. The shapes land here; the preview-subjects lane adds `subject` to
+// `previewRecordSchema` (and makes `issueId` and `sessionId` nullable) with migration 0479 and the
+// routes that serve it, and merges the codes and routes below into PREVIEW_REFUSAL_CODES and
+// PREVIEW_ROUTES in that change, so nothing is named here that no route answers yet.
+
+const REQUIREMENT_KEY = z.string().regex(/^REQ-\d{1,9}$/, "a requirement key such as REQ-30");
+const FEEDBACK_KEY = z.string().regex(/^FB-\d{1,9}$/, "a feedback key such as FB-12");
+
+/** A build a preview serves: the commit, and the release version where that commit is one. */
+export const previewBuildSchema = z.strictObject({
+	sha: wholeShaSchema("build.sha"),
+	release: z.string().max(64).nullable(),
+});
+export type PreviewBuild = z.infer<typeof previewBuildSchema>;
+
+/**
+ * What a preview serves. `issue`: the worktree of an issue's run (REQ-39). `idea`: a throwaway
+ * branch a sketch run edits from chat, about one requirement or feedback item, merged nowhere
+ * (BC-14, BC-15). `reproduce`: a past build checked out with no run at all, for a feedback item
+ * (BC-17), recorded while it is used (BC-18).
+ */
+export const PREVIEW_SUBJECT_KINDS = ["issue", "idea", "reproduce"] as const;
+export type PreviewSubjectKind = (typeof PREVIEW_SUBJECT_KINDS)[number];
+
+/** The branch a sketch run edits: `sketch/` and the item it is about, never pushed. */
+export const SKETCH_BRANCH = /^sketch\/(req|fb)-\d{1,9}-[a-z2-7]{6}$/;
+
+export const previewSubjectSchema = z.discriminatedUnion("kind", [
+	z.strictObject({ kind: z.literal("issue"), issueId: z.uuid() }),
+	z.strictObject({
+		kind: z.literal("idea"),
+		about: z.discriminatedUnion("kind", [
+			z.strictObject({ kind: z.literal("requirement"), key: REQUIREMENT_KEY }),
+			z.strictObject({ kind: z.literal("feedback"), key: FEEDBACK_KEY }),
+		]),
+		branch: z.string().regex(SKETCH_BRANCH, "a sketch branch such as sketch/fb-51-abcdef"),
+	}),
+	z.strictObject({
+		kind: z.literal("reproduce"),
+		feedback: FEEDBACK_KEY,
+		build: previewBuildSchema,
+		/** Whether the relay injects the recorder (`./reproduce.ts`). */
+		record: z.boolean(),
+	}),
+]);
+export type PreviewSubject = z.infer<typeof previewSubjectSchema>;
+
+export const PREVIEW_IDEA_LIMITS = {
+	/** What the person asked for, as the sketch run is briefed with it. */
+	brief: 4000,
+	/** The screenshots a kept preview holds as the requirement's picture. */
+	shots: 6,
+	/** A kept patch, in bytes: a sketch is a sketch. */
+	patchBytes: 512 * 1024,
+} as const;
+
+/**
+ * `POST /api/projects/:id/previews`: open a preview that no issue's run holds. An idea is built by a
+ * sketch run from `brief` (optionally starting from a kept preview's patch); a reproduce serves the
+ * build named, or, with none named, the build the reporter was using when they filed the item
+ * (PREVIEW_BUILD_UNKNOWN where Forge cannot tell which, naming what to give).
+ */
+export const openPreviewRequestSchema = z.discriminatedUnion("kind", [
+	z.strictObject({
+		kind: z.literal("idea"),
+		about: z.union([REQUIREMENT_KEY, FEEDBACK_KEY]),
+		brief: z.string().trim().min(1).max(PREVIEW_IDEA_LIMITS.brief),
+		/** A kept preview whose patch the sketch starts from, to edit an idea already kept. */
+		from: z.uuid().optional(),
+	}),
+	z.strictObject({
+		kind: z.literal("reproduce"),
+		feedback: FEEDBACK_KEY,
+		build: z
+			.union([
+				z.strictObject({ release: z.string().trim().min(1).max(64) }),
+				z.strictObject({ sha: wholeShaSchema("build.sha") }),
+			])
+			.optional(),
+		record: z.boolean().default(true),
+	}),
+]);
+export type OpenPreviewRequest = z.infer<typeof openPreviewRequestSchema>;
+
+/**
+ * `POST /api/previews/:id/keep`: an idea preview kept as its requirement's picture (BC-16). About a
+ * requirement, it becomes that requirement's head revision's picture; about a feedback item, it
+ * goes to the item's new requirement draft (triage route `new_requirement`), whose criteria the
+ * assistant drafts from the preview's conversation and change.
+ */
+export const keepPreviewRequestSchema = z.strictObject({
+	/** What the picture shows, in a sentence a screen reader reads (`RequirementPictureView.alt`). */
+	alt: z.string().trim().min(1).max(300),
+});
+
+/** A kept preview as a requirement picture holds it: what was served, and what it looked like. */
+export const keptPreviewContentSchema = z.strictObject({
+	previewId: z.uuid(),
+	base: wholeShaSchema("base"),
+	patchId: z.string().regex(/^[0-9a-f]{40}$/),
+	files: z.array(z.string().max(1000)).max(2000),
+	/** Screenshots taken at keep, each an upload of the requirement with its own text alternative. */
+	shots: z
+		.array(z.strictObject({ upload: z.uuid(), alt: z.string().trim().min(1).max(300) }))
+		.min(1)
+		.max(PREVIEW_IDEA_LIMITS.shots),
+	/** The briefs and chat edits the sketch was built from, oldest first. */
+	asked: z.array(z.string().max(PREVIEW_IDEA_LIMITS.brief)).min(1).max(50),
+});
+export type KeptPreviewContent = z.infer<typeof keptPreviewContentSchema>;
+
+/**
+ * How a reproduce preview gets its data (BC-22): the project's demo data where the preview setting
+ * names it, else the environment its dev server already uses; a production-tier environment is
+ * refused either way (PREVIEW_PRODUCTION_ENVIRONMENT, REQ-39 BC-13). `seed` runs in the checkout
+ * before the dev server starts. Merged into `previewSettingsSchema` as `demo` by the reproduce lane.
+ */
+export const previewDemoSettingsSchema = z
+	.strictObject({
+		environment: z
+			.string()
+			.regex(/^[a-z0-9][a-z0-9-]*$/)
+			.max(60)
+			.optional(),
+		seed: z.string().trim().min(1).max(PREVIEW_LIMITS.command).optional(),
+	})
+	.refine((d) => d.environment !== undefined || d.seed !== undefined, {
+		message: "preview.demo names a demo environment, a seed command, or both",
+	});
+export type PreviewDemoSettings = z.infer<typeof previewDemoSettingsSchema>;
+
+/** Where a reproduce preview's data comes from, before the production check core makes on the tier. */
+export function reproduceDataOf(
+	settings: { environment?: string; demo?: PreviewDemoSettings },
+): { kind: "demo"; environment: string | null; seed: string | null } | { kind: "environment"; environment: string | null } {
+	if (settings.demo) {
+		return {
+			kind: "demo",
+			environment: settings.demo.environment ?? settings.environment ?? null,
+			seed: settings.demo.seed ?? null,
+		};
+	}
+	return { kind: "environment", environment: settings.environment ?? null };
+}
+
+export const PREVIEW_SUBJECT_REFUSAL_CODES = [
+	/** The requirement or feedback item an idea or a reproduce names is not this project's. */
+	"PREVIEW_ITEM_UNKNOWN",
+	/** No build was named and Forge cannot tell which the reporter used: name a release or a sha. */
+	"PREVIEW_BUILD_UNKNOWN",
+	/** Only an idea preview is kept as a picture; an issue's preview is approved, a reproduce is not kept. */
+	"PREVIEW_KEEP_NOT_IDEA",
+	/** A confirm is made on the preview of an issue a feedback item routes to, and this is not one. */
+	"PREVIEW_CONFIRM_NOT_FIX",
+	/** "Not fixed" says what is still wrong. */
+	"PREVIEW_CONFIRM_REASON_REQUIRED",
+] as const;
+export type PreviewSubjectRefusalCode = (typeof PREVIEW_SUBJECT_REFUSAL_CODES)[number];
+
+export const PREVIEW_SUBJECT_REFUSAL_STATUSES = {
+	PREVIEW_ITEM_UNKNOWN: 404,
+	PREVIEW_KEEP_NOT_IDEA: 409,
+	PREVIEW_CONFIRM_NOT_FIX: 409,
+	PREVIEW_CONFIRM_REASON_REQUIRED: 400,
+} as const satisfies RefusalStatuses<PreviewSubjectRefusalCode>;
+
+/** `POST /api/previews/:id/confirm`: whoever reported it, or anyone on the project for them, says whether the fix preview fixes it (BC-20). */
+export const confirmFixRequestSchema = z
+	.strictObject({
+		verdict: z.enum(["fixed", "not_fixed"]),
+		note: z.string().trim().max(2000).optional(),
+	})
+	.refine((c) => c.verdict === "fixed" || (c.note !== undefined && c.note !== ""), {
+		message: "PREVIEW_CONFIRM_REASON_REQUIRED: not fixed says what is still wrong",
+		path: ["note"],
+	});
+export type ConfirmFixRequest = z.infer<typeof confirmFixRequestSchema>;
+
+export const PREVIEW_SUBJECT_ROUTES = {
+	/** POST: open an idea or a reproduce preview. */
+	open: "/api/projects/:id/previews",
+	keep: "/api/previews/:id/keep",
+	confirm: "/api/previews/:id/confirm",
+} as const;

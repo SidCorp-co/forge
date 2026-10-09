@@ -10,8 +10,9 @@ import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { StatusCard } from "@/features/integrations/types";
 import { IntegrationsTab } from "@/features/project-settings/components/integrations-tab";
-import { OverviewPane } from "@/features/releases/components/release-panes";
+import { ReleasePage } from "@/features/releases/components/release-page";
 import type { ReleaseDetail } from "@/features/releases/types";
+import { releasePage } from "@/test/release-page";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { TOURS } from "@/features/tours/registry";
 import { cardDetail, say } from "@/test/said";
@@ -34,18 +35,30 @@ const CHANGES: ReleaseChanges = {
   shipsNothing: false,
 } as unknown as ReleaseChanges;
 
-/** A release read as the page draws it, with Technical detail closed: the anchors are the ones a reader sees first. */
+/** A shipped release as core serves it; the page draws its reader from `releasePage`. */
 const RELEASE = {
   key: "0.1.0",
   version: "0.1.0",
-  state: "draft",
+  state: "shipped",
+  runId: "run-1",
+  approval: null,
   verified: { level: "none", proven: 0, total: 0, check: null, provider: null },
   issues: [],
   gates: [],
+  cuts: [],
+  attempts: [],
+  approvals: [],
+  criteria: { total: 0 },
+  issueCriteria: [],
   requirementsCompleted: [],
   feedbackAnswered: [],
-  notes: { designs: [], sections: [{ section: "Added", entries: [{ key: "ISS-1", title: "A board keeps its cards", userFacing: "Saved boards keep every card.", technical: null }] }], withoutNotes: [], language: "en", attention: [] },
+  notes: { designs: [], sections: [], withoutNotes: [], language: "en", attention: [] },
   changes: CHANGES,
+  production: null,
+  continuedAs: null,
+  can: { cut: false, decide: false, split: false },
+  attentionGroup: "done",
+  waitingOn: { kind: "none", who: "", act: "", rule: "r", ref: null, dueAt: null },
 } as unknown as ReleaseDetail;
 
 const REPOSITORY: StatusCard = {
@@ -60,6 +73,9 @@ const REPOSITORY: StatusCard = {
 
 function serveCore() {
   fakeCore((call) => {
+    if (call.path === "/projects/p1/releases/0.1.0") return { body: { release: RELEASE } };
+    if (call.path === "/projects/p1/releases") return { body: { releases: [] } };
+    if (call.path.startsWith("/projects/p1/releases/0.1.0/page")) return { body: releasePage() };
     if (call.path === "/projects/p1/integrations/status") return { body: { cards: [REPOSITORY] } };
     if (call.path === "/projects/p1/integrations") return { body: { items: [] } };
     if (call.path === "/projects/p1/integrations/mcp-preview") return { body: { servers: [] } };
@@ -73,12 +89,12 @@ function serveCore() {
 const PAGES: Record<TourId, { route: string; draw: () => ReactElement; renders: (ui: ReactElement) => unknown; ready: () => Promise<unknown> }> = {
   "release-what-changes": {
     route: "/projects/:slug/releases/:version",
-    draw: () => <OverviewPane r={RELEASE} slug="forge" all={[]} />,
+    draw: () => <ReleasePage projectId="p1" slug="forge" version="0.1.0" />,
     renders: (ui) => {
       serveCore();
       return renderWithQuery(ui);
     },
-    ready: () => screen.findByTestId("release-users-get"),
+    ready: () => screen.findByTestId("release-reader"),
   },
   integrations: {
     route: "/projects/:slug/settings?tab=connections",

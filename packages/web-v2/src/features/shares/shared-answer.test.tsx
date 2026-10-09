@@ -154,11 +154,11 @@ describe("a shared answer", () => {
     const calls = fakeCore((call) =>
       call.path === "/shares/open" ? { body: snapshot() } : undefined,
     );
-    const { client, rerender } = renderWithQuery(<SharedAnswer token={TOKEN} signedIn={null} />);
+    const { client, rerender } = renderWithQuery(<SharedAnswer release={() => null} token={TOKEN} signedIn={null} />);
     expect(calls).toHaveLength(0);
     rerender(
       <QueryClientProvider client={client}>
-        <SharedAnswer token={TOKEN} signedIn={false} />
+        <SharedAnswer release={() => null} token={TOKEN} signedIn={false} />
       </QueryClientProvider>,
     );
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(/^Progress$/);
@@ -169,7 +169,7 @@ describe("a shared answer", () => {
     const calls = fakeCore((call) =>
       call.path === "/shares/open/member" ? { body: snapshot("members") } : undefined,
     );
-    renderWithQuery(<SharedAnswer token={TOKEN} signedIn />);
+    renderWithQuery(<SharedAnswer release={() => null} token={TOKEN} signedIn />);
     expect(await screen.findByText("Shared with the project's members", { exact: false })).toBeInTheDocument();
     expect(calls.map((c) => c.path)).toEqual(["/shares/open/member"]);
   });
@@ -179,7 +179,7 @@ describe("a shared answer", () => {
       status: 404,
       body: { code: "SHARE_NOT_AVAILABLE", message: "not available", error: { code: "SHARE_NOT_AVAILABLE", message: "not available", refusals: [] } },
     }));
-    renderWithQuery(<SharedAnswer token={TOKEN} signedIn={false} />);
+    renderWithQuery(<SharedAnswer release={() => null} token={TOKEN} signedIn={false} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("This link is not available.");
   });
 });

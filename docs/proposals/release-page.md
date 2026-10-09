@@ -36,7 +36,7 @@ by view (BC-9) because its readers are a customer and a developer of the same pr
 | Drafting with a figure check | `packages/core/src/reports/narrative.ts:writeTemplateNarrative` over `packages/core/src/integrations/llm/chat.ts:completeOnce`, judged by `packages/core/src/reports/templates.ts:judgeNarrative` | highlight drafting (BC-2) |
 | What's new and its seen mark | `packages/core/src/whats-new/read.ts:readWhatsNew`; `packages/contracts/src/product-state.ts:whatsNewSeenValueSchema` in `user_product_state` | BC-10 |
 | Share port | `packages/core/src/shares/ports.ts:provideShareSubjectSources`, example `packages/core/src/status-reports/share-source.ts:statusReportShareSource` | BC-11 share |
-| Markdown export | `packages/contracts/src/status-reports.ts:reportDocumentMarkdown`; release notes copy in `packages/web-v2/src/features/releases/components/release-customer-notes.tsx:CustomerNotes` | BC-11 export |
+| Markdown export | `packages/contracts/src/status-reports.ts:reportDocumentMarkdown`; `packages/contracts/src/release-page-export.ts:releasePageMarkdown`, `releasePageEmail`, `releasePageEml` | BC-11 export |
 | Approval setting | `packages/contracts/src/releases.ts:releaseApprovalRequired`, `release_approvals.decided_by_user` | BC-1 "who approved", BC-12 |
 
 ## The page

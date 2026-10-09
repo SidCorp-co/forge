@@ -31,10 +31,7 @@ import type {
   ReleaseSummary,
 } from "../types";
 import { DisclosureToggle, GateLine } from "./release-bits";
-import { TourHint } from "@/features/tours/components/tour-hint";
-import { changesSentence, WhatChanges } from "./release-changes";
-import { CustomerNotes } from "./release-customer-notes";
-import { WhatUsersGet } from "./release-users-get";
+import { ApprovedDesigns, DemoNotesWarning, NotesAttention } from "./release-note-reads";
 import { ReleaseTrain } from "./release-train";
 
 export const RELEASE_TABS = ["overview", "issues", "criteria", "checks", "notes"] as const;
@@ -140,36 +137,13 @@ export function FeedbackAnswered({ r, slug }: { r: ReleaseDetail; slug: string }
   );
 }
 
-/** How the release is built, for the engineers: collapsed, so a reader of the release reads what users get first. */
-function TechnicalDetail({ r, slug }: { r: ReleaseDetail; slug: string }) {
-  const t = useCopy();
-  const label = useLabel();
-  const [open, setOpen] = useState(false);
-  return (
-    <section aria-label={t("releases.technicalDetail")} data-testid="release-technical" data-tour="rel-technical">
-      <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-13" testId="release-technical-toggle">
-        {t("releases.technicalDetail")}
-      </DisclosureToggle>
-      <span className="ml-2 text-12-5 text-muted">{changesSentence(r.changes, t, label)}</span>
-      {open ? (
-        <div className="mt-3">
-          <WhatChanges changes={r.changes} slug={slug} />
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
 export function OverviewPane({ r, slug, all }: { r: ReleaseDetail; slug: string; all: ReleaseSummary[] }) {
   const t = useCopy();
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-8" data-testid="view-overview">
-      <div>
-        <TourHint tourId="release-what-changes" />
-        <WhatUsersGet r={r} slug={slug} />
-      </div>
+      <NotesAttention r={r} slug={slug} />
+      <ApprovedDesigns r={r} slug={slug} />
       <FeedbackAnswered r={r} slug={slug} />
-      <TechnicalDetail r={r} slug={slug} />
       {r.gates.length > 0 ? (
         <section aria-label={t("releases.whyNotCut")}>
           <ViewHeading hint={r.state === "draft" ? t("releases.inTheWayHint") : undefined}>
@@ -359,7 +333,7 @@ export function NotesPane({ r, slug }: { r: ReleaseDetail; slug: string }) {
   if (sections.length === 0 && withoutNotes.length === 0) return <p className="text-13 text-subtle">{t("releases.notesEmpty")}</p>;
   return (
     <div className="grid gap-6" data-testid="view-notes">
-      <CustomerNotes r={r} />
+      <DemoNotesWarning r={r} />
       {sections.map((s) => (
         <section key={s.section}>
           <ViewHeading>{s.section}</ViewHeading>

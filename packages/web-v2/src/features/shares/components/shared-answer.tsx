@@ -1,8 +1,9 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { builtinReportTemplate } from "@forge/contracts/report-template-builtins";
 import type { ReportDocument, TemplateNarrativeSlot } from "@forge/contracts/report-templates";
-import type { ShareSnapshot } from "@forge/contracts/shares";
+import { isReleaseShare, type ShareReleaseSnapshot, type ShareSnapshot } from "@forge/contracts/shares";
 import type { BlockSource } from "@forge/contracts/visual-blocks";
 import { useQuery } from "@tanstack/react-query";
 import { Markdown, Skeleton } from "@/design";
@@ -107,8 +108,20 @@ export function SharedAnswerView({ snapshot }: { snapshot: ShareSnapshot }) {
   );
 }
 
-/** The page body of `/s/<token>`: waits for the session to be known, then opens the share once. */
-export function SharedAnswer({ token, signedIn }: { token: string; signedIn: boolean | null }) {
+/**
+ * The page body of `/s/<token>`: waits for the session to be known, then opens the share once. A
+ * frozen release page is drawn by `release`, which the route hands in: the release reader lives in a
+ * feature above this one, so this one cannot name it.
+ */
+export function SharedAnswer({
+  token,
+  signedIn,
+  release,
+}: {
+  token: string;
+  signedIn: boolean | null;
+  release: (snapshot: ShareReleaseSnapshot) => ReactNode;
+}) {
   const opened = useQuery({
     queryKey: ["share", token, signedIn],
     queryFn: () => openShare(token, signedIn === true),
@@ -126,5 +139,5 @@ export function SharedAnswer({ token, signedIn }: { token: string; signedIn: boo
     );
   }
   if (!opened.data) return <Skeleton className="h-40 w-full" />;
-  return <SharedAnswerView snapshot={opened.data} />;
+  return isReleaseShare(opened.data) ? release(opened.data) : <SharedAnswerView snapshot={opened.data} />;
 }

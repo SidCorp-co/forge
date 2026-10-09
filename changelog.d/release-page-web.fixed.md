@@ -1,0 +1,1 @@
+**A release is a page you can read.** It opens on highlights with clips, then what it proves, improvements, fixes, actions and known issues; a Developer switch adds technical notes. Share it by link, or export Markdown or email.

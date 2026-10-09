@@ -59,12 +59,12 @@ describe("a ?tour= deep link", () => {
     expect(await screen.findByText("What users get", { selector: ".driver-popover-title" })).toBeInTheDocument();
     expect(replace).toHaveBeenCalledWith("/projects/forge/releases/0.4.0-dev.87?tab=overview", { scroll: false });
     press(".driver-popover-next-btn");
-    await screen.findByText("Technical detail", { selector: ".driver-popover-title" });
+    await screen.findByText("Developer view", { selector: ".driver-popover-title" });
     press(".driver-popover-next-btn");
     await waitFor(() => expect(events().map((e) => e.kind)).toEqual(["started", "completed"]));
     const put = calls.find((c) => c.method === "PUT");
     expect(put?.path).toBe("/me/product-state/tour:release-what-changes");
-    expect(put?.body).toMatchObject({ value: { revision: 2, outcome: "completed" } });
+    expect(put?.body).toMatchObject({ value: { revision: 3, outcome: "completed" } });
   });
 
   it("skips a step whose anchor is missing, records it, and stores a dismissal at the step it was closed on", async () => {
@@ -73,11 +73,11 @@ describe("a ?tour= deep link", () => {
     press(".driver-popover-close-btn");
     await waitFor(() =>
       expect(events()).toEqual([
-        { tourId: "release-what-changes", revision: 2, kind: "step_skipped", step: 2 },
-        { tourId: "release-what-changes", revision: 2, kind: "started" },
-        { tourId: "release-what-changes", revision: 2, kind: "dismissed", step: 1 },
+        { tourId: "release-what-changes", revision: 3, kind: "step_skipped", step: 2 },
+        { tourId: "release-what-changes", revision: 3, kind: "started" },
+        { tourId: "release-what-changes", revision: 3, kind: "dismissed", step: 1 },
       ]),
     );
-    expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({ value: { revision: 2, outcome: "dismissed", step: 1 } });
+    expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({ value: { revision: 3, outcome: "dismissed", step: 1 } });
   });
 });
