@@ -63,7 +63,13 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
               </>
             )}
             <Icon name="github" size={12} />
-            <span className="truncate font-mono text-11-5">{project.repoPath ?? '—'}</span>
+            <span className="truncate font-mono text-11-5">
+              {project.healthRead === 'read' ? (
+                (project.repoPath ?? '—')
+              ) : (
+                <ReadFigure value={null} read={project.healthRead} subject="the repository" />
+              )}
+            </span>
           </div>
         </div>
         {project.health ? (
@@ -74,7 +80,11 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
       </div>
 
       <p className="m-0 line-clamp-1 min-h-[19px] text-13 leading-snug text-muted">
-        {project.description ?? ' '}
+        {project.healthRead === 'read' ? (
+          (project.description ?? '\u00a0')
+        ) : (
+          <ReadFigure value={null} read={project.healthRead} subject="the description" />
+        )}
       </p>
 
       <div className="flex items-center gap-3.5 border-t border-line-subtle pt-3">

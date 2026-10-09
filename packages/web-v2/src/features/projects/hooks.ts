@@ -5,7 +5,7 @@ import { useMemo } from 'react';
 import { useActiveOrg } from '@/features/orgs/active-org';
 import { queryRead, type QueryRead } from '@/design/patterns/badge-read';
 import { projectApi } from './api';
-import { mergeProjects, workspaceTotals } from './derive';
+import { mergeProjects } from './derive';
 import { usePinnedProjects } from './pins';
 import type {
   CreatedProject,
@@ -13,7 +13,6 @@ import type {
   OnboardResult,
   ProjectConsoleItem,
   ProjectListItem,
-  WorkspaceTotals,
 } from './types';
 
 /** Project console list. Keyed `['projects']` — see the WS contract above. */
@@ -71,7 +70,6 @@ export function useProjectHealth() {
 
 export interface ProjectsConsole {
   items: ProjectConsoleItem[];
-  totals: WorkspaceTotals;
   isLoading: boolean;
   isError: boolean;
   error: unknown;
@@ -84,8 +82,7 @@ export interface ProjectsConsole {
 
 /**
  * Compose the projects console: the `['projects']` list + `['projects','health']`
- * rollup + client-only pins → fully-hydrated `ProjectConsoleItem[]` + workspace
- * totals. Query keys are unchanged, so the WS event-router invalidations drive
+ * rollup + client-only pins → fully-hydrated `ProjectConsoleItem[]`. Query keys are unchanged, so the WS event-router invalidations drive
  * live updates with no extra wiring.
  */
 export function useProjectsConsole(): ProjectsConsole {
@@ -98,11 +95,9 @@ export function useProjectsConsole(): ProjectsConsole {
     () => mergeProjects(projects.data ?? [], health.data, pinnedIds, healthRead),
     [projects.data, health.data, pinnedIds, healthRead],
   );
-  const totals = useMemo(() => workspaceTotals(items, healthRead), [items, healthRead]);
 
   return {
     items,
-    totals,
     isLoading: projects.isLoading,
     isError: projects.isError,
     error: projects.error,

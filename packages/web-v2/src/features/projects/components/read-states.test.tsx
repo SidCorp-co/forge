@@ -15,17 +15,16 @@ import { ProjectList } from "./project-list";
 import { ProjectsConsole } from "./projects-console";
 import { StatsBand } from "./stats-band";
 
-const consoleState: { read: QueryRead; items: ProjectConsoleItem[] } = { read: "read", items: [] };
+const consoleState: { read: QueryRead; items: ProjectConsoleItem[]; activeOrgId: string | null } = { read: "read", items: [], activeOrgId: null };
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: () => {}, replace: () => {} }),
   useSearchParams: () => new URLSearchParams(),
 }));
-vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrg: null, activeOrgId: null }) }));
+vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrg: null, activeOrgId: consoleState.activeOrgId }) }));
 vi.mock("./new-project-dialog", () => ({ NewProjectDialog: () => null }));
 vi.mock("../hooks", () => ({
   useProjectsConsole: () => ({
     items: consoleState.items,
-    totals: { projects: consoleState.items.length, healthRead: consoleState.read, liveRuns: null, openIssues: null, runners: null, spend24hUsd: null },
     isLoading: false,
     isError: false,
     error: null,
@@ -36,7 +35,10 @@ vi.mock("../hooks", () => ({
   }),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  consoleState.activeOrgId = null;
+});
 
 const unread = (read: QueryRead): ProjectConsoleItem => ({
   id: "p1", slug: "sable", name: "Sable", orgId: "o1", orgName: "Org", orgIsPersonal: true, role: "admin",
@@ -81,6 +83,22 @@ describe.each([
     expect(document.body.textContent).not.toMatch(/0 live runs|\$0\.00/);
   });
 
+  it("is named on a project card where the repository and the description were, never as the dash of no value", () => {
+    render(<ProjectCard project={unread(state)} now={0} onTogglePin={() => {}} />);
+    const names = marks(name).map((m) => m.getAttribute("aria-label"));
+    expect(names).toContain(state === "failed" ? "the repository could not be read" : "reading the repository");
+    expect(names).toContain(state === "failed" ? "the description could not be read" : "reading the description");
+    expect(document.body.textContent).not.toContain("—");
+  });
+
+  it("is named in the projects list for the description, never as the dash of no value", () => {
+    render(<ProjectList items={[unread(state)]} now={0} onTogglePin={() => {}} />);
+    expect(marks(name).map((m) => m.getAttribute("aria-label"))).toContain(
+      state === "failed" ? "the description could not be read" : "reading the description",
+    );
+    expect(document.body.textContent).not.toContain("—");
+  });
+
   it("is named in the projects list, row by row", () => {
     render(<ProjectList items={[unread(state)]} now={0} onTogglePin={() => {}} />);
     expect(marks(name).length).toBeGreaterThanOrEqual(5);
@@ -115,6 +133,15 @@ describe("a health read that came in", () => {
     expect(screen.getByText("0 live runs")).toBeTruthy();
   });
 
+  it("draws the dash of no value only for a project read to have no repository and no description", () => {
+    render(<ProjectCard project={{ ...read, repoPath: null, description: null }} now={Date.parse("2026-10-02T01:00:00Z")} onTogglePin={() => {}} />);
+    expect(document.body.textContent).toContain("—");
+    expect(marks(/repository|description/)).toHaveLength(0);
+    cleanup();
+    render(<ProjectList items={[{ ...read, description: null }]} now={0} onTogglePin={() => {}} />);
+    expect(document.body.textContent).toContain("—");
+  });
+
   it("shows the banner for projects that need attention and none for a read zero", () => {
     render(<AttentionBanner count={2} read="read" attentionOnly={false} onToggle={() => {}} onRetry={() => {}} />);
     expect(screen.getByText(/need attention/)).toBeTruthy();
@@ -139,5 +166,107 @@ describe("the attention filter, where the health read then fails", () => {
     expect(screen.getByText("Sable")).toBeTruthy();
     expect(screen.queryByText(/No projects match your filters/)).toBeNull();
     expect(marks(FAILED).length).toBeGreaterThan(0);
+  });
+});
+
+describe("the console's search, filter and sort, where the health read did not come in", () => {
+  const named = (name: string, repoPath: string | null): ProjectConsoleItem => ({ ...unread("failed"), id: name, slug: name, name, repoPath });
+  const search = (value: string) =>
+    fireEvent.change(screen.getByLabelText("Search projects"), { target: { value } });
+
+  it("answers a search that matches no name as one it cannot answer, beside the banner, never as no match", () => {
+    consoleState.read = "failed";
+    consoleState.items = [named("Calm", null), unread("failed")];
+    render(<ProjectsConsole />);
+    search("org/sable");
+    expect(screen.queryByText(/No projects match your filters/)).toBeNull();
+    expect(screen.getByText(/Cannot say which projects match "org\/sable"/)).toBeTruthy();
+    expect(screen.getByText(/search matches names and organizations only/)).toBeTruthy();
+  });
+
+  it("still lists a project whose name matches, and says the repository and description were not searched", () => {
+    consoleState.read = "pending";
+    consoleState.items = [unread("pending")];
+    render(<ProjectsConsole />);
+    search("sable");
+    expect(screen.getByText("Sable")).toBeTruthy();
+    expect(screen.getByText(/matches names and organizations only until the repository and description are read/)).toBeTruthy();
+  });
+
+  it("says the attention filter is paused while it cannot apply, and says nothing once the read is in", () => {
+    const needsYou: ProjectConsoleItem = { ...read, health: "attention" };
+    consoleState.read = "read";
+    consoleState.items = [needsYou];
+    const { rerender } = render(<ProjectsConsole />);
+    fireEvent.click(screen.getByRole("button", { name: "Show only these" }));
+    expect(screen.queryByText(/needs-attention filter is paused/)).toBeNull();
+    consoleState.read = "failed";
+    consoleState.items = [unread("failed")];
+    rerender(<ProjectsConsole />);
+    expect(screen.getByText(/needs-attention filter is paused and every project is listed/)).toBeTruthy();
+    consoleState.read = "read";
+    consoleState.items = [needsYou];
+    rerender(<ProjectsConsole />);
+    expect(screen.queryByText(/needs-attention filter is paused/)).toBeNull();
+  });
+
+  it("says the default order is not by recent activity while unread, and not at all once read", () => {
+    consoleState.read = "failed";
+    consoleState.items = [unread("failed")];
+    const { rerender } = render(<ProjectsConsole />);
+    expect(screen.getByText(/not sorted by recent activity/)).toBeTruthy();
+    consoleState.read = "read";
+    consoleState.items = [read];
+    rerender(<ProjectsConsole />);
+    expect(screen.queryByText(/not sorted by/)).toBeNull();
+  });
+});
+
+describe("the workspace band and the attention banner, with two organizations", () => {
+  const inOrg = (id: string, orgId: string, over: Partial<ProjectConsoleItem>): ProjectConsoleItem => ({
+    ...read, id, slug: id, name: id, orgId, ...over,
+  });
+
+  it("count what the active organization's console lists, the same projects the cards show", () => {
+    consoleState.read = "read";
+    consoleState.activeOrgId = "o1";
+    consoleState.items = [
+      inOrg("alpha", "o1", { openIssues: 29, liveRuns: 2, runnerCount: 1, spend24hUsd: 1.5, health: "attention" }),
+      inOrg("beta", "o2", { openIssues: 5, liveRuns: 1, runnerCount: 3, spend24hUsd: 2, health: "attention" }),
+      inOrg("gamma", "o2", { openIssues: 7, liveRuns: 1, runnerCount: 1, spend24hUsd: 1, health: "attention" }),
+    ];
+    render(<ProjectsConsole />);
+    const band = screen.getByText("Workspace").parentElement as HTMLElement;
+    expect(band.textContent).toContain("1 projects");
+    expect(band.textContent).toContain("29 open work");
+    expect(band.textContent).toContain("2 live runs");
+    expect(band.textContent).toContain("1 runners");
+    expect(band.textContent).toContain("$1.50 / 24h");
+    expect(screen.getByText("alpha")).toBeTruthy();
+    expect(screen.queryByText("beta")).toBeNull();
+    expect(screen.getByText(/1 project\b/)).toBeTruthy();
+  });
+
+  it("leave an organization with no project saying so, not the page of a workspace with none", () => {
+    consoleState.read = "read";
+    consoleState.activeOrgId = "o9";
+    consoleState.items = [inOrg("alpha", "o1", { openIssues: 29 })];
+    render(<ProjectsConsole />);
+    expect(screen.queryByText("No projects yet")).toBeNull();
+    expect(screen.getByText(/No projects in this organization yet/)).toBeTruthy();
+    expect(screen.getByText("0 projects")).toBeTruthy();
+  });
+
+  it("count every project where no organization is active", () => {
+    consoleState.read = "read";
+    consoleState.activeOrgId = null;
+    consoleState.items = [
+      inOrg("alpha", "o1", { openIssues: 29 }),
+      inOrg("beta", "o2", { openIssues: 5 }),
+    ];
+    render(<ProjectsConsole />);
+    const band = screen.getByText("Workspace").parentElement as HTMLElement;
+    expect(band.textContent).toContain("2 projects");
+    expect(band.textContent).toContain("34 open work");
   });
 });

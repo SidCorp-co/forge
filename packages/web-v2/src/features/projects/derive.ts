@@ -16,9 +16,9 @@ import type {
 /** Health states that count as "needs attention" (banner + filter + sort). */
 const ATTENTION_HEALTH: ReadonlySet<HealthKey> = new Set<HealthKey>(['attention', 'down']);
 
-/** A project whose health was not read is not one the console can say needs attention. */
-export function isAttention(item: Pick<ProjectConsoleItem, 'health'>): boolean {
-  return item.health !== null && ATTENTION_HEALTH.has(item.health);
+/** A project whose health was not read is not one the console can say needs attention, whatever health it still holds. */
+export function isAttention(item: Pick<ProjectConsoleItem, 'health' | 'healthRead'>): boolean {
+  return item.healthRead === 'read' && item.health !== null && ATTENTION_HEALTH.has(item.health);
 }
 
 export function deriveHealth(
@@ -99,7 +99,7 @@ const HEALTH_RANK: Record<HealthKey | 'unread', number> = { down: 0, attention: 
 
 /** Most-recent-activity first; nulls (never active) sink to the bottom. */
 function recencyKey(item: ProjectConsoleItem): number {
-  return item.lastActivityAt ? Date.parse(item.lastActivityAt) : 0;
+  return item.healthRead === 'read' && item.lastActivityAt ? Date.parse(item.lastActivityAt) : 0;
 }
 
 /** Return a new array sorted by the chosen key (non-mutating). */
@@ -111,14 +111,15 @@ export function sortProjects(
   out.sort((a, b) => {
     if (sort === 'name') return a.name.localeCompare(b.name);
     if (sort === 'health') {
-      return (HEALTH_RANK[a.health ?? 'unread'] - HEALTH_RANK[b.health ?? 'unread']) || (recencyKey(b) - recencyKey(a));
+      const rank = (p: ProjectConsoleItem) => HEALTH_RANK[p.healthRead === 'read' ? (p.health ?? 'unread') : 'unread'];
+      return (rank(a) - rank(b)) || (recencyKey(b) - recencyKey(a));
     }
     return recencyKey(b) - recencyKey(a); // 'recent'
   });
   return out;
 }
 
-/** Free-text (name/repo/description) + needs-attention filter. */
+/** Free-text (name/organization, and repo/description where the rollup is read) + needs-attention filter. */
 export function filterProjects(
   items: ProjectConsoleItem[],
   query: string,
@@ -127,14 +128,64 @@ export function filterProjects(
 ): ProjectConsoleItem[] {
   const q = query.trim().toLowerCase();
   return items.filter((p) => {
+    // The repository and description come from the health rollup: unread, they are not searched.
+    const rollupRead = p.healthRead === 'read';
     const matches =
       !q ||
       p.name.toLowerCase().includes(q) ||
       p.orgName.toLowerCase().includes(q) ||
-      (p.repoPath?.toLowerCase().includes(q) ?? false) ||
-      (p.description?.toLowerCase().includes(q) ?? false);
+      (rollupRead && (p.repoPath?.toLowerCase().includes(q) ?? false)) ||
+      (rollupRead && (p.description?.toLowerCase().includes(q) ?? false));
     return matches && (!attentionOnly || isAttention(p)) && (!orgId || p.orgId === orgId);
   });
+}
+
+/**
+ * What the console cannot answer while the health rollup is not read, one sentence each: a search
+ * reaches the repository and description only through it, the needs-attention filter and the two
+ * rollup sorts are made from it. Each is said, so an answer drawn without it is never read as the
+ * answer. Empty where the rollup is read.
+ */
+export function unreadStatements(a: {
+  query: string;
+  attentionOnly: boolean;
+  sort: ProjectSort;
+  read: QueryRead;
+}): string[] {
+  if (a.read === 'read') return [];
+  const failed = a.read === 'failed';
+  const out: string[] = [];
+  if (a.query.trim() !== '') {
+    out.push(
+      failed
+        ? 'The search matches names and organizations only: the repository and description could not be read.'
+        : 'The search matches names and organizations only until the repository and description are read.',
+    );
+  }
+  if (a.attentionOnly) {
+    out.push(
+      failed
+        ? 'The needs-attention filter is paused and every project is listed, because which projects need attention could not be read. It applies again once it is read.'
+        : 'The needs-attention filter is paused and every project is listed until which projects need attention is read. It applies again then.',
+    );
+  }
+  if (a.sort === 'recent' || a.sort === 'health') {
+    const by = a.sort === 'recent' ? 'recent activity' : 'health';
+    out.push(
+      failed
+        ? `Projects are not sorted by ${by}, which could not be read: they are in the order the server sent them.`
+        : `Projects are not sorted by ${by} until it is read: they are in the order the server sent them.`,
+    );
+  }
+  return out;
+}
+
+/** The answer to a search that matched no name while the repository and description are unread: not "no match". */
+export function blindSearchEmpty(query: string, read: QueryRead): string {
+  const q = query.trim();
+  return read === 'failed'
+    ? `Cannot say which projects match "${q}": the repository and description could not be read, and no name or organization matches.`
+    : `Cannot say yet which projects match "${q}": the repository and description are still being read, and no name or organization matches.`;
 }
 
 /** `$13.38` — trailing-24h spend, two decimals. */
