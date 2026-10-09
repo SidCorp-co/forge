@@ -896,24 +896,60 @@ runs, and the `whole-suite` job concludes success only when every one of them su
 job is red there, which is the opposite of `ci-passed`, because a whole suite that skipped a job did
 not run the whole suite. No push or pull request reaches it (BC-17).
 
+**A `whole-suite` check concluded `skipped` is no record.** Every run that is not a whole-suite run
+(a push, a pull request, a dispatch without `suite=whole`) skips the job, and GitHub still records a
+completed check run, concluded `skipped`, on the commit. The gate and the bisect both read past it:
+it neither passes a cut nor refuses one, and it never stands in for a test result. On `main`, where
+every push leaves one, reading it as red refused every cut and blamed the first landing after the
+last green run (ISS-471's independent judge, comment 9da9b859).
+
 | Act | Where it runs | What it reads | What it answers |
 |---|---|---|---|
-| `gate --commit <sha> --branch <b> --dispatch` | `cut-release.sh` step 1b, on the box cutting | the `whole-suite` check on the commit; the CI runs in flight on it | 0 green · 1 `RELEASE_SUITE_NOT_GREEN`, starting the whole suite on the branch when nothing has and nothing is running · 2 could not read |
+| `gate --commit <sha> --branch <b> [--dispatch [--wait <min> --poll <s>]]` | `cut-release.sh` step 1b, on the box cutting | the `whole-suite` check on the commit; the CI runs in flight on it; a red run's jobs | 0 green · 1 `RELEASE_SUITE_NOT_GREEN` · 2 could not read |
 | `bisect --commit <sha> --run <id>` | `suite-bisect`, on a red whole-suite run | the run's failing jobs; the first-parent landings since the last green whole-suite run, and the check runs recorded on each | the merge that broke it and the issue it names, or the range and every merge in it |
 | `fanout --ran-on <branch>` | `nightly-fanout`, on a schedule | `on.push.branches` of `ci.yml` | a whole-suite dispatch onto every other gated branch |
 
+**A cut ends green or red, not "come back later".** `cut-release.sh` runs the gate with
+`--dispatch --wait`: with no whole-suite run on the commit it starts one on the branch head (which
+is the commit), and waits for it (`CUT_SUITE_WAIT_MINUTES`, 40 by default, read every
+`CUT_SUITE_POLL_SECONDS`, 30). A run already in flight is waited on, never doubled. A red run where
+no job failed on its own steps (`cancelled`, `skipped`, a runner that never started) is rerun once,
+because a rerun settles it and a fix does not; a red run where a job concluded `failure` or
+`timed_out` refuses at once, naming the jobs. A cut that comes back later would find a newer head
+with no run, every time, on a branch that lands several commits an hour, so it never would.
+
+- **The branch moves while the suite runs.** The release commit stays on the commit the suite
+  passed and is merged onto the branch's head, head first, so the first-parent history stays the
+  branch's landings. A conflict refuses by name and pushes nothing. The cut says how many landings
+  rode along: a deploy that builds the branch head carries them, untested by this cut's suite; the
+  next cut's suite tests them before the release that claims them.
+- **`--at <sha>`** cuts on an earlier commit of the branch, so a cut stopped while waiting (a tool
+  time limit, a lost session) goes on waiting on the run it started instead of starting one on a
+  newer head. A dispatch runs on the head, so `--at` on a commit with no run is refused.
+- **`--no-push` is a rehearsal**: it reads, refuses as a cut would, and starts and reruns nothing.
+- **A refused cut after a batch has claimed its roster.** With the wait, only a red on a test (or
+  an unreadable GitHub, or a run the wait outlasted) refuses. A release run that aborts on it with
+  `pushed: false`, `carried: []` and a person's blocker holds the roster, which stops an `on-land`
+  project re-cutting it every sweep tick; the first release that ships a later commit closes the held
+  rows against itself (`packages/core/src/release-batch/shipped-earlier.ts:closeShippedEarlier`), so no person has to
+  act once the fix ships.
+
 **The bisect reads, it reruns nothing.** A landing reads good on a green whole-suite run, or where
-every failing job recorded success on it; bad on a red whole-suite run or a failing job's recorded
-failure. A check of another name is not read, since a merge check runs a selection and may not have
-run the test now failing. The broken merge lies after the last good landing and at or before the
-first bad one after it; where no record separates the landings between, the range is named whole.
-On dev, where pushes run no CI (ISS-118), the records are the whole-suite runs each cut starts, so
-the range is the landings between two cuts.
+every failing job recorded success on it; bad where a failing job recorded failure. A red
+whole-suite run is not read as bad by itself: it may be red for a job that is not failing now, or
+for a cancelled leg, so its jobs' own checks on the commit are read as on any other run. A check of
+another name is not read, since a merge check runs a selection and may not have run the test now
+failing. The broken merge lies after the last good landing and at or before the first bad one after
+it; where no record separates the landings between, the range is named whole. On dev, where pushes
+run no CI (ISS-118), the records are the whole-suite runs each cut starts, so the range is the
+landings between two cuts.
 
 **GitHub runs a schedule on the default branch only.** The nightly run is `main`'s, and dev's comes
 from `main`'s `nightly-fanout` — so it starts once this `ci.yml` is on `main`. A dispatch made with
 `GITHUB_TOKEN` is the one event that token may start a run with, which is why the fan-out needs no
-other credential.
+other credential. Once this `ci.yml` is on `main`, `main`'s cuts are gated the same way: a pushed
+commit there carries a skipped `whole-suite` check, which is no record, so its first cut starts the
+whole suite and waits for it.
 
 ## check-source-language.mjs — English-only source policy
 
@@ -1084,7 +1120,7 @@ printing `0 violations`.
 | R9 | every **declared** severity biome exits 0 on (`warn`, `info`, `on`) is counted by a baselined checker — it reads the configs, so a rule left non-blocking by preset default is out of its reach | `packages/core`'s 280 `warn` diagnostics, invisible to R1–R7 because all seven judge a *declared* axis |
 | R10 | every declared axis declares a numeric level of at least 2 | R1–R9 all skip an axis that is not level 2, and `hardened` needs only 4 of 5 — so an axis could declare 1, omit the key, or quote the digit, and pass the audit |
 | R11 | one branch set across the merge gate, and the merge target is in it | `ci.yml` triggered on `[main]` alone, so a pull request into any other base would have run no CI at all and reported no failure (ISS-1304) |
-| R12 | every `ci.yml` job but `ci-passed` is in exactly one of its `needs`, `$postMerge.jobs` and `$wholeSuite.jobs`, and every declared job exists | nothing yet — written with ISS-1370, which took four jobs out of `needs`: without it the next job left out would block nothing and be declared nowhere. ISS-471 added the third list |
+| R12 | every `ci.yml` job but `ci-passed` is in exactly one of its `needs`, `$postMerge.jobs` and `$wholeSuite.jobs`, and every declared job exists; `$wholeSuite`, which blocks the release cut, names an axis and a level 1-3 | nothing yet — written with ISS-1370, which took four jobs out of `needs`: without it the next job left out would block nothing and be declared nowhere. ISS-471 added the third list, and its axis and level once the independent judge found it had neither |
 
 Profiles bound **shape**, never tool choice — `baseline` (one axis measures) · `standard` (two axes
 block, both meta-checks) · `hardened` (every declared axis blocks, every needs-job asserted). "Two

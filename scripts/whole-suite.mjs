@@ -3,9 +3,9 @@
 /**
  * The whole suite's three acts, each over what GitHub recorded (REQ-36 BC-10, BC-11):
  *
- *   gate    --commit <sha> --branch <b> [--dispatch]   may a release be cut on this commit?
- *   bisect  --commit <sha> [--run <id>]                which merge turned this whole-suite run red?
- *   fanout  --ran-on <branch>                          start the whole suite on every other gated branch
+ *   gate    --commit <sha> --branch <b> [--dispatch [--wait <min> --poll <s>]]   may a release be cut on this commit?
+ *   bisect  --commit <sha> [--run <id>]          which merge turned this whole-suite run red?
+ *   fanout  --ran-on <branch>                    start the whole suite on every other gated branch
  *
  * The repository is `GITHUB_REPOSITORY`, else the one `origin` names. GitHub is reached through
  * `gh api`, under whatever credential `gh` holds (`GH_TOKEN` in CI). Exit 0 is the answer, 1 a
@@ -34,7 +34,7 @@ import {
 } from './lib/whole-suite.mjs';
 
 const USAGE =
-  'usage: whole-suite.mjs gate --commit <sha> --branch <b> [--dispatch] | bisect --commit <sha> [--run <id>] | fanout --ran-on <branch>';
+  'usage: whole-suite.mjs gate --commit <sha> --branch <b> [--dispatch [--wait <minutes> --poll <seconds>]] | bisect --commit <sha> [--run <id>] | fanout --ran-on <branch>';
 
 class CannotRead extends Error {}
 
@@ -92,6 +92,13 @@ function ghReader(repo) {
   };
   const cache = new Map();
   return {
+    /** Forget what was read, so a gate waiting on a run reads it again. */
+    fresh() {
+      cache.clear();
+    },
+    rerun(runId) {
+      api(['-X', 'POST', `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`]);
+    },
     checkRuns(sha) {
       if (!cache.has(sha)) {
         cache.set(
@@ -122,30 +129,112 @@ function ghReader(repo) {
   };
 }
 
-function gate({ commit, branch, dispatch }) {
+/** How long a run just asked for may take to show on the commit before the ask counts as lost. */
+const SHOW_UP_MS = 3 * 60_000;
+
+function count(value, flag, unit) {
+  if (value === undefined) return 0;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) cannot(`--${flag} takes a number of ${unit}, not \`${value}\``);
+  return n;
+}
+
+function sleep(ms) {
+  if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * May a release be cut on this commit? Without `--dispatch` it reads and answers, and starts
+ * nothing: that is a rehearsal. With `--dispatch` it acts so the cut can finish: it starts the
+ * whole suite where the commit has none (only on the branch's head, since a dispatch runs there),
+ * and reruns, once, a red run no job of which failed on its own steps. With `--wait <minutes>` it
+ * then waits on that run, reading again every `--poll <seconds>`, and answers green or red rather
+ * than "not yet": a cut that has to come back later finds a newer head with no run, every time,
+ * on a branch that lands several commits an hour.
+ */
+function gate({ commit, branch, dispatch, wait, poll }) {
   if (!commit || !branch) cannot(`gate needs --commit and --branch\n${USAGE}`);
+  const waitMs = count(wait, 'wait', 'minutes') * 60_000;
+  const pollMs = count(poll, 'poll', 'seconds') * 1000;
   const sha = git(['rev-parse', '--verify', `${commit}^{commit}`]);
+  const at = sha.slice(0, 9);
   const reader = ghReader(repository());
-  const verdict = gateVerdict(suiteState(reader, sha));
-  if (verdict.ok) {
-    console.log(verdict.sentence);
-    return 0;
-  }
-  const lines = [verdict.sentence];
-  if (verdict.dispatch && dispatch) {
-    try {
-      reader.dispatch(branch);
-      lines.push(
-        `Started the whole suite on ${branch} (its head is ${sha.slice(0, 9)}); it takes about 15 minutes. Cut again once it is green.`,
-      );
-    } catch (e) {
-      lines.push(`Could not start it (${e.message}). Start it with: ${dispatchCommand(branch)}`);
+  const deadline = Date.now() + waitMs;
+  const did = [];
+  let asked = null;
+  let reran = null;
+  const refuse = (...lines) => {
+    console.error([...lines, ...did].join('\n'));
+    return 1;
+  };
+  for (;;) {
+    reader.fresh();
+    const status = suiteState(reader, sha);
+    const verdict = gateVerdict(status);
+    if (verdict.ok) {
+      for (const line of did) console.log(line);
+      console.log(verdict.sentence);
+      return 0;
     }
-  } else if (verdict.dispatch) {
-    lines.push(`Start it with: ${dispatchCommand(branch)}, then cut again once it is green.`);
+    if (!dispatch) {
+      const how = verdict.dispatch ? ` Start it with: ${dispatchCommand(branch)}.` : '';
+      return refuse(verdict.sentence, `A rehearsal starts nothing.${how}`);
+    }
+    if (verdict.dispatch && asked === null) {
+      const head = git(['rev-parse', '--verify', `refs/remotes/origin/${branch}^{commit}`]);
+      if (head !== sha) {
+        return refuse(
+          verdict.sentence,
+          `${at} is no longer the head of ${branch} (${head.slice(0, 9)}), and a dispatch runs on the head, so nothing can start a whole-suite run on ${at}. Cut on the head.`,
+        );
+      }
+      try {
+        reader.dispatch(branch);
+      } catch (e) {
+        return refuse(
+          verdict.sentence,
+          `Could not start it (${e.message}). Start it with: ${dispatchCommand(branch)}`,
+        );
+      }
+      asked = Date.now();
+      did.push(
+        `Started the whole suite on ${branch} (its head is ${at}); it takes about 15 minutes.`,
+      );
+    } else if (verdict.rerun && reran === null) {
+      try {
+        reader.rerun(verdict.rerun);
+      } catch (e) {
+        return refuse(verdict.sentence, `Could not rerun it (${e.message}).`);
+      }
+      reran = { at: Date.now(), checkId: status.checkId };
+      did.push(`Reran the jobs of run ${verdict.rerun} that did not succeed.`);
+    } else if (verdict.rerun && status.checkId !== reran.checkId) {
+      return refuse(verdict.sentence, 'The rerun this cut asked for was red the same way again.');
+    }
+    // Waiting is owed only on a run that is running, or on one this cut just asked for.
+    const owed =
+      verdict.wait ||
+      (verdict.dispatch && asked !== null) ||
+      (verdict.rerun && reran?.checkId === status.checkId);
+    if (!owed) return refuse(verdict.sentence);
+    if (waitMs === 0) return refuse(verdict.sentence, 'Cut again once it has finished.');
+    if (verdict.dispatch && Date.now() - asked >= SHOW_UP_MS) {
+      return refuse(
+        verdict.sentence,
+        `The run started on ${branch} has not shown on ${at}: ${branch} moved before it started, so it ran on another commit. Cut on the head.`,
+      );
+    }
+    if (verdict.rerun && Date.now() - reran.at >= SHOW_UP_MS) {
+      return refuse(verdict.sentence, 'The rerun this cut asked for has not started.');
+    }
+    if (Date.now() >= deadline) {
+      return refuse(
+        verdict.sentence,
+        `Not finished after ${waitMs / 60_000} minutes. Cut again with --at ${sha} to go on waiting on this commit's run rather than start one on a newer head.`,
+      );
+    }
+    sleep(pollMs);
   }
-  console.error(lines.join('\n'));
-  return 1;
 }
 
 /** One landing on the branch: a first-parent commit, its subject, and the issue it names. */

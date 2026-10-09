@@ -682,8 +682,10 @@ jobs:
   # its check run on the commit is what `scripts/cut-release.sh` reads before a release is cut
   # (RELEASE_SUITE_NOT_GREEN). Unlike `ci-passed`, a SKIPPED job is red here — a whole suite that
   # skipped a job did not run the whole suite. No push or pull request reaches it (BC-17): a merge
-  # is checked by its own scoped gate, never by this one. `.forge/conformance.json` `$wholeSuite`
-  # declares these three jobs for conformance-audit R12.
+  # is checked by its own scoped gate, never by this one. On those runs GitHub still records this
+  # job's check run, concluded `skipped`; the cut and the bisect read that as no record
+  # (`scripts/lib/whole-suite.mjs:ranNothing`), never as red. `.forge/conformance.json`
+  # `$wholeSuite` declares these three jobs for conformance-audit R12.
   whole-suite:
     if: always() && (github.event_name == 'schedule' || inputs.suite == 'whole')
     needs:

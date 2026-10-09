@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bisect,
   evidenceOf,
+  failedOnATest,
   failingJobs,
   fanoutTargets,
   gateVerdict,
@@ -100,6 +101,44 @@ describe('where the whole suite stands on a commit', () => {
   });
 });
 
+describe('a whole-suite check concluded skipped is no record', () => {
+  // Every run that is not a whole-suite run (a push, a pull request, a dispatch without
+  // suite: whole) skips the whole-suite job, and GitHub records that as a completed check run
+  // concluded `skipped` on the commit (main ebbf3c813, runs 37860396822 and 37854612040).
+  const skipped = (id = 5) => check('whole-suite', 'completed', 'skipped', id, 950);
+
+  it('the gate reads a commit carrying only a skipped one as having no run, so the cut starts one', () => {
+    const s = suiteState(reader({ checkRuns: { a: [skipped()] } }), 'a');
+    expect(s.state).toBe('none');
+    expect(gateVerdict(s).dispatch).toBe(true);
+  });
+
+  it('a newer skipped one neither hides an older green nor an older red', () => {
+    const green = check('whole-suite', 'completed', 'success', 1);
+    expect(stateOf({ checkRuns: { a: [skipped(9), green] } })).toBe('green');
+    const red = check('whole-suite', 'completed', 'failure', 1, 77);
+    const jobs = { 77: [{ name: 'core', conclusion: 'failure' }] };
+    expect(stateOf({ checkRuns: { a: [skipped(9), red] }, jobs })).toBe('red');
+  });
+
+  it('a run in flight beside a skipped one still reads running, and starts nothing', () => {
+    const queued = { id: 3, event: 'workflow_dispatch', status: 'queued', html_url: 'u' };
+    expect(stateOf({ checkRuns: { a: [skipped()] }, runs: { a: [queued] } })).toBe('running');
+  });
+
+  it('the bisect reads past it to the failing jobs own checks', () => {
+    expect(evidenceOf([skipped()], ['core'])).toBe(null);
+    expect(evidenceOf([skipped(), check('core', 'completed', 'success', 2)], ['core'])).toBe(
+      'good',
+    );
+    expect(evidenceOf([skipped(), check('core', 'completed', 'failure', 2)], ['core'])).toBe('bad');
+  });
+
+  it('it is never the last green', () => {
+    expect(lastGreen(reader({ checkRuns: { b: [skipped()] } }), ['b'])).toBe(null);
+  });
+});
+
 describe('a cut on a commit (RELEASE_SUITE_NOT_GREEN)', () => {
   const sha = 'abcdef0123456789';
 
@@ -110,6 +149,31 @@ describe('a cut on a commit (RELEASE_SUITE_NOT_GREEN)', () => {
       expect(v.ok).toBe(false);
       expect(v.sentence.startsWith('RELEASE_SUITE_NOT_GREEN: ')).toBe(true);
     }
+  });
+
+  it('a red run no job of which failed on its own steps says rerun, never "land the fix"', () => {
+    const red = { state: 'red', sha, url: 'u', runId: 9, checkId: 1 };
+    const cancelled = gateVerdict({ ...red, failing: ['x (cancelled)'], onATest: false });
+    expect(cancelled.rerun).toBe(9);
+    expect(cancelled.sentence).toContain('A rerun settles it, not a fix: gh run rerun 9 --failed');
+    expect(cancelled.sentence).not.toContain('Land the fix');
+    const failed = gateVerdict({ ...red, failing: ['core (failure)'], onATest: true });
+    expect(failed.rerun).toBeUndefined();
+    expect(failed.sentence).toContain('Land the fix');
+  });
+
+  it('a failure or a timeout is a failure on its own steps; cancelled, skipped and the reporters are not', () => {
+    expect(failedOnATest([{ name: 'core', conclusion: 'failure' }])).toBe(true);
+    expect(failedOnATest([{ name: 'web', conclusion: 'timed_out' }])).toBe(true);
+    const none = ['cancelled', 'skipped', 'startup_failure', 'success'];
+    expect(failedOnATest(none.map((conclusion) => ({ name: 'core', conclusion })))).toBe(false);
+    expect(failedOnATest([{ name: 'whole-suite', conclusion: 'failure' }])).toBe(false);
+  });
+
+  it('a rerun of a red run in flight reads running, so the cut waits on it', () => {
+    const red = check('whole-suite', 'completed', 'failure', 2, 77);
+    const rerun = { id: 77, event: 'workflow_dispatch', status: 'in_progress', html_url: 'u' };
+    expect(stateOf({ checkRuns: { a: [red] }, runs: { a: [rerun] } })).toBe('running');
   });
 
   it('only a commit with no run and none in flight starts one', () => {
@@ -148,10 +212,17 @@ describe('bisecting a red run by what CI recorded', () => {
     });
   });
 
-  it('a green whole-suite run is good, a red one bad, and only the failing jobs are read otherwise', () => {
+  it('a green whole-suite run is good; a red one is read by its jobs, and only the failing jobs are read otherwise', () => {
     const both = ['core', 'web'];
+    const red = check('whole-suite', 'completed', 'failure', 5);
     expect(evidenceOf([check('whole-suite', 'completed', 'success')], ['core'])).toBe('good');
-    expect(evidenceOf([check('whole-suite', 'completed', 'failure')], ['core'])).toBe('bad');
+    expect(evidenceOf([red, check('core', 'completed', 'failure', 6)], ['core'])).toBe('bad');
+    // Red there for a cancelled macOS leg: core passed on it, so it is good for core's red now.
+    const cancelled = check('runner-platforms (macos-latest)', 'completed', 'cancelled', 7);
+    expect(evidenceOf([red, cancelled, check('core', 'completed', 'success', 6)], ['core'])).toBe(
+      'good',
+    );
+    expect(evidenceOf([red], ['core'])).toBe(null);
     expect(evidenceOf([check('core', 'completed', 'failure')], both)).toBe('bad');
     expect(evidenceOf([check('core', 'completed', 'success')], both)).toBe(null);
     const passed = [check('core', 'completed', 'success'), check('web', 'completed', 'success', 2)];

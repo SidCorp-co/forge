@@ -152,6 +152,25 @@ function workflowJobs(text) {
   return jobs;
 }
 
+/**
+ * The whole suite blocks something — the release cut — so, like an axis, it declares which axis
+ * owns it and at what level. `$postMerge` blocks nothing and names no axis: its jobs belong to
+ * several or none.
+ */
+function wholeSuiteOwnerFaults(declared, declaredAxes) {
+  if (!declared) return [];
+  const faults = [];
+  if (!(declared.axis in declaredAxes)) {
+    faults.push(
+      `$wholeSuite.axis: ${JSON.stringify(declared.axis ?? null)} is none of the axes (${Object.keys(declaredAxes).join(', ')})`,
+    );
+  }
+  if (!Number.isInteger(declared.level) || declared.level < 1 || declared.level > 3) {
+    faults.push(`$wholeSuite.level: ${JSON.stringify(declared.level ?? null)} is not a level 1-3`);
+  }
+  return faults;
+}
+
 // R12: every ci.yml job gates the merge, runs after it, or judges the whole suite — exactly one.
 const postMerge = manifest.$postMerge?.jobs ?? [];
 const wholeSuite = manifest.$wholeSuite?.jobs ?? [];
@@ -179,6 +198,7 @@ const partitionFaults =
         ]
           .filter(([, j]) => !ciJobs.includes(j))
           .map(([name, j]) => `${j}: in ${name} and no such job in ci.yml`),
+        ...wholeSuiteOwnerFaults(manifest.$wholeSuite, axes),
       ];
 
 const NON_BLOCKING = new Set(['warn', 'info', 'on']);
@@ -398,7 +418,7 @@ const RULES = [
         : partitionFaults.length > 0
           ? partitionFaults.join(' · ')
           : `${gateNeeds.length} gate the merge, ${postMerge.length} run after it${postMerge.length ? ` (${postMerge.join(', ')}, ${manifest.$postMerge.issue ?? 'no issue named'})` : ''}, ${wholeSuite.length} judge the whole suite${wholeSuite.length ? ` (${wholeSuite.join(', ')}, ${manifest.$wholeSuite.issue ?? 'no issue named'})` : ''}`,
-    why: 'a job left out of ci-passed.needs blocks nothing and says so nowhere: its red shows on a run nobody is required to read. ISS-1370 moved four jobs after the merge on purpose, and .forge/conformance.json $postMerge is where that is priced; ISS-471 added three that run only in a whole-suite run, declared in $wholeSuite; a job in none of the lists was placed by nobody, and one in two is a declaration that no longer describes the gate',
+    why: 'a job left out of ci-passed.needs blocks nothing and says so nowhere: its red shows on a run nobody is required to read. ISS-1370 moved four jobs after the merge on purpose, and .forge/conformance.json $postMerge is where that is priced; ISS-471 added three that run only in a whole-suite run, declared in $wholeSuite, which blocks the release cut and so names its axis and level as an axis does; a job in none of the lists was placed by nobody, and one in two is a declaration that no longer describes the gate',
   },
 ];
 

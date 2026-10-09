@@ -32,8 +32,9 @@ and on each release cut's commit.
 
 **A release is cut only on a commit whose whole suite is green.** `scripts/cut-release.sh` reads the
 `whole-suite` check on its commit and refuses `RELEASE_SUITE_NOT_GREEN` otherwise; with none there
-and none running it starts one (`-f suite=whole`, about fifteen minutes) and the cut is taken again
-once it is green. A red one names the merge that broke it in its `suite-bisect` job (ISS-471).
+it starts one (`-f suite=whole`, about fifteen minutes) and waits for it, so a cut ends green or red.
+A `whole-suite` check concluded `skipped`, which every other run leaves, is no record. A red one
+names the merge that broke it in its `suite-bisect` job (ISS-471).
 
 **The gate is CI, not your laptop.** `verify` declares the test suites and the build rather than
 running them; CI runs them, and `main` takes no merge whose **`ci-passed`** is red — the one

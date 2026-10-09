@@ -51,11 +51,18 @@ is an inference, not the check.
 
 ISS-471 (REQ-36 BC-11) names the merge a red whole-suite run bisects to, in the `suite-bisect` job's
 summary on GitHub (`scripts/whole-suite.mjs`). Issue to release r20 `rule-suite` then sends that
-merge's issue back to reopen with the failing jobs as its reason, and nothing does: the
-`whole-suite` check run reaches core's projection with every other `check_run` delivery, and nothing
-reads it there. Answer 2 above, keyed by a commit instead of a pull request, is the read that move
-would stand on. The other route, a Forge credential in CI, puts a token where every step of every
-job can read it.
+merge's issue back to reopen with the failing jobs as its reason, and nothing does. Core does not
+even hold the record: the projection folds a `check_run` delivery onto a pull request only
+(`packages/core/src/integrations/source-host/projection.ts:rowsForCheckRun` matches its pull
+request numbers or a pull request's head sha), and a whole-suite run is on a branch head or a
+dispatch commit that no pull request names, so its check run is dropped. Answer 2 above, keyed by a
+commit instead of a pull request and fed by a projection that keeps check runs per commit, is the
+read that move would stand on; `packages/core/src/integrations/github/merge-read.ts:readHeadChecks`
+already reads one commit's check runs live, for the merge door alone. The other route, a Forge
+credential in CI, puts a token where every step of every job can read it. Until the bisect read a
+skipped `whole-suite` check as no record (ISS-471 round 2) it named the wrong merge on `main`, so a
+reopen built before then would have reopened the wrong issue; it stays unbuilt here until it has
+this read to stand on.
 
 ## Honest costs
 

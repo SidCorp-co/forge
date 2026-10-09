@@ -14,9 +14,13 @@
 # `runner-vX.Y.Z` by its own workflow; bumping the two together walks it backwards.
 #
 # Refused RELEASE_SUITE_NOT_GREEN unless the commit it cuts from has a green whole-suite run (step
-# 1b); `gh` must be able to read the repository's check runs for that.
+# 1b); `gh` must be able to read the repository's check runs for that. With none there it starts one
+# and waits for it (up to CUT_SUITE_WAIT_MINUTES, 40 by default), so a cut ends green or red rather
+# than "come back later". --at <sha> cuts on an earlier commit of the branch whose run is already
+# started, so a cut stopped while waiting goes on waiting on that run instead of starting one on a
+# newer head. --no-push is a rehearsal: it reads the suite, starts nothing and pushes nothing.
 #
-# Usage: scripts/cut-release.sh X.Y.Z[-rc.N|-dev.N] --headline "plain-language summary" [--no-push]
+# Usage: scripts/cut-release.sh X.Y.Z[-rc.N|-dev.N] --headline "plain-language summary" [--at <sha>] [--no-push]
 set -euo pipefail
 
 # The file list lives here and nowhere else. A new cloud package is one line.
@@ -33,12 +37,13 @@ FRAGMENTS=changelog.d
 
 die() { printf '\ncut-release: %s\n' "$*" >&2; exit 1; }
 
-NEW=''; HEADLINE=''; PUSH=1
+NEW=''; HEADLINE=''; PUSH=1; AT=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --headline) [ $# -ge 2 ] || die "--headline needs a value"; HEADLINE="$2"; shift 2;;
+    --at)       [ $# -ge 2 ] || die "--at needs a commit"; AT="$2"; shift 2;;
     --no-push)  PUSH=0; shift;;
-    -h|--help)  sed -n '1,19p' "$0"; exit 0;;
+    -h|--help)  sed -n '1,24p' "$0"; exit 0;;
     -*)         die "unknown flag $1";;
     *)          [ -z "$NEW" ] || die "version given twice ($NEW, then $1)"; NEW="$1"; shift;;
   esac
@@ -68,7 +73,15 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD)
 $(git status --short | head -10)"
 git fetch -q origin "$RELEASE_BRANCH"
 LOCAL=$(git rev-parse "$RELEASE_BRANCH"); REMOTE=$(git rev-parse "origin/$RELEASE_BRANCH")
-[ "$LOCAL" = "$REMOTE" ] || die "$RELEASE_BRANCH ($(git rev-parse --short "$RELEASE_BRANCH")) is not in sync with origin/$RELEASE_BRANCH ($(git rev-parse --short "origin/$RELEASE_BRANCH"))"
+# The commit this cut ships: the branch's head, or with --at an earlier commit of it, which the
+# checkout is moved to so every step below reads what that commit holds.
+CUT="$REMOTE"
+if [ -n "$AT" ]; then
+  CUT=$(git rev-parse -q --verify "$AT^{commit}") || die "--at $AT names no commit"
+  git merge-base --is-ancestor "$CUT" "$REMOTE" || die "--at $AT is not on origin/$RELEASE_BRANCH"
+fi
+[ "$LOCAL" = "$REMOTE" ] || [ "$LOCAL" = "$CUT" ] || die "$RELEASE_BRANCH ($(git rev-parse --short "$RELEASE_BRANCH")) is not in sync with origin/$RELEASE_BRANCH ($(git rev-parse --short "origin/$RELEASE_BRANCH"))"
+[ "$LOCAL" = "$CUT" ] || git checkout -q -B "$RELEASE_BRANCH" "$CUT"
 git rev-parse -q --verify "refs/tags/$TAG" >/dev/null && die "tag $TAG already exists locally"
 [ -z "$(git ls-remote --tags origin "refs/tags/$TAG")" ] || die "tag $TAG already exists on origin"
 for f in "${VERSION_JSON_FILES[@]}"; do [ -f "$f" ] || die "version file missing: $f"; done
@@ -89,10 +102,16 @@ grep -q '^## \[Unreleased\]' "$RECORD" && die "$RECORD still carries \`## [Unrel
 # ---- step 1b: the whole suite is green on the commit this cut ships -------
 # REQ-36 BC-10: a release is cut only on a commit whose whole-suite run is green, read from the
 # `whole-suite` check run CI left on it (scripts/whole-suite.mjs). With none there and none in
-# flight, it starts one on this branch's head, which is this commit, and refuses; the cut is taken
-# again once that run is green. It runs after every other refusal above so a cut refused for
-# something else starts nothing. A read that fails refuses too: a gate that cannot read never passes.
-SUITE=$(node scripts/whole-suite.mjs gate --commit "$LOCAL" --branch "$RELEASE_BRANCH" --dispatch 2>&1) || die "$SUITE"
+# flight, it starts one on this branch's head, which is this commit, and waits for its answer; a red
+# run with no job failed on its own steps is rerun once. It runs after every other refusal above so
+# a cut refused for something else starts nothing. A read that fails refuses too: a gate that
+# cannot read never passes. A rehearsal (--no-push) reads only.
+if [ "$PUSH" -eq 1 ]; then
+  ACT=(--dispatch --wait "${CUT_SUITE_WAIT_MINUTES:-40}" --poll "${CUT_SUITE_POLL_SECONDS:-30}")
+else
+  ACT=()
+fi
+SUITE=$(node scripts/whole-suite.mjs gate --commit "$CUT" --branch "$RELEASE_BRANCH" ${ACT[@]+"${ACT[@]}"} 2>&1) || die "$SUITE"
 printf '%s\n' "$SUITE"
 
 # ---- step 2: atomic version bump ------------------------------------------
@@ -118,10 +137,32 @@ node scripts/lib/assemble-release.mjs "$RECORD" "$FRAGMENTS" "$NEW" "$DATE" "$HE
 # ---- step 4: commit and tag -----------------------------------------------
 git add -- "${VERSION_JSON_FILES[@]}" "$RECORD" "${FRAGMENT_FILES[@]}"
 git commit -q -m "Release $TAG" -m "$HEADLINE"
+RELEASE=$(git rev-parse HEAD)
 if [ "$RELEASE_BRANCH" = main ]; then
   git tag "$TAG"
-  [ "$(git rev-parse "$TAG^{commit}")" = "$(git rev-parse HEAD)" ] || die "tag $TAG does not point at HEAD"
+  [ "$(git rev-parse "$TAG^{commit}")" = "$RELEASE" ] || die "tag $TAG does not point at the release commit"
 fi
+
+# ---- step 4b: land on the branch as it now stands --------------------------
+# The branch went on landing while the whole suite ran. The release commit stays on the commit the
+# suite passed, and is merged onto the branch's head — the head first, so the branch's first-parent
+# history stays its landings, which the bisect walks. A conflict is refused by name and nothing is
+# pushed.
+RODE=0
+git fetch -q origin "$RELEASE_BRANCH"
+TIP=$(git rev-parse "origin/$RELEASE_BRANCH")
+if [ "$TIP" != "$CUT" ]; then
+  git merge-base --is-ancestor "$CUT" "$TIP" || die "origin/$RELEASE_BRANCH no longer holds $(git rev-parse --short "$CUT"), the commit this cut was taken on. The release commit $(git rev-parse --short "$RELEASE") is local only; nothing was pushed."
+  RODE=$(git rev-list --first-parent --count "$CUT..$TIP")
+  git checkout -q -B "$RELEASE_BRANCH" "$TIP"
+  if ! git merge -q --no-ff -m "Merge release $TAG into $RELEASE_BRANCH" "$RELEASE" >/dev/null 2>&1; then
+    CONFLICTS=$(git diff --name-only --diff-filter=U | tr '\n' ' ')
+    git merge --abort
+    die "release commit $(git rev-parse --short "$RELEASE") does not merge onto origin/$RELEASE_BRANCH ($(git rev-parse --short "$TIP")): $CONFLICTS
+Nothing was pushed. $RELEASE_BRANCH is at origin/$RELEASE_BRANCH; the release commit is $RELEASE."
+  fi
+fi
+LANDED=$(git rev-parse HEAD)
 
 # ---- step 5: push ---------------------------------------------------------
 if [ "$PUSH" -eq 1 ]; then
@@ -131,10 +172,17 @@ if [ "$PUSH" -eq 1 ]; then
 else
   PUSHED="NOT pushed — run: git push origin $RELEASE_BRANCH$([ "$RELEASE_BRANCH" = dev ] || printf ' && git push origin %s' "$TAG")"
 fi
+RIDES=''
+if [ "$RODE" -gt 0 ]; then
+  RIDES="
+  $RELEASE_BRANCH landed $RODE commit(s) past $(git rev-parse --short "$CUT") while its whole suite ran, so the
+  release commit is merged onto it as $(git rev-parse --short "$LANDED"). A deploy that builds the branch head
+  carries those landings, which this cut's suite did not run; the next cut's suite does."
+fi
 if [ "$RELEASE_BRANCH" = dev ]; then
   DEPLOYS="Not tagged yet. Deploy this commit through the Forge release that cut $NEW;
-  once https://forge-dev-api.sidcorp.co/api/version serves $(git rev-parse HEAD):
-    git tag $TAG $(git rev-parse HEAD) && git push origin $TAG"
+  once https://forge-dev-api.sidcorp.co/api/version serves $LANDED:
+    git tag $TAG $RELEASE && git push origin $TAG"
 else
   DEPLOYS="No workflow builds from this tag. core and web reach forge-beta through their
   own Coolify deploy, which this script does not trigger."
@@ -143,10 +191,10 @@ fi
 # ---- step 6: say what happened --------------------------------------------
 cat <<EOF
 
-  cut $TAG  ($(git rev-parse --short HEAD))
+  cut $TAG  ($(git rev-parse --short "$RELEASE"))
   $BULLETS fragment(s) written into [$NEW] - $DATE and deleted
   $(printf '%s' "${#VERSION_JSON_FILES[@]}") version file(s) at $NEW
-  $PUSHED
+  $PUSHED$RIDES
 
   $DEPLOYS
 EOF
