@@ -1,1 +1,0 @@
-**A release page reads what it ships.** Action required and Technical notes come from the release's commit range, header counts match the proven list, criteria show the verdict's note and clip, and shares and exports keep QA's reasons out.

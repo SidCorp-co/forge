@@ -207,7 +207,7 @@ describe('each decision shows its question, a recommended answer and a button (R
   it('a question asked with no recommendation says why there is none', async () => {
     const d = byKey((await read()).decisions, 'ISS-3');
     expect(d?.recommended).toBeNull();
-    expect(d?.noRecommendation).toBe('The run that asked gave no recommended answer.');
+    expect(d?.noRecommendation).toContain('The run that asked gave no recommended answer');
   });
 
   it('a proposed revision: accept recommended by rule, return asks a reason', async () => {

@@ -59,6 +59,7 @@ const standing = (over: Partial<IssueStandingRow["standing"]> = {}): IssueStandi
     requirement: { key: "REQ-1", title: "Dang nhap", criteria: ["BC-1"], staleCriteria: [], plannedRevision: 1, currentRevision: 2, changedSincePlan: true },
     module: { id: "m1", path: "kho/don", name: "Don" },
     feedback: ["FB-3"],
+    feedbackDropped: [],
     blockedBy: [],
     blocks: [{ key: "ISS-9", title: "Muc chin", status: "open", group: "queued", landed: false, designHold: null }],
     lease: { holder: "box-1", verdict: "live" },

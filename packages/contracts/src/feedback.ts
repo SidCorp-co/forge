@@ -3,20 +3,19 @@
 // request schemas and the response shapes from here.
 
 import { z } from "zod";
-import { WRITTEN_LANG_SHAPE, type WrittenLang, writtenLangSchema } from "./written-lang.js";
 import type {
 	AgentReportKind,
 	AgentReportSeverity,
 	AgentReportTarget,
 } from "./agent-reports.js";
-import { type Said, saidSchema } from "./said.js";
-import { REASON_LINE_MAX } from "./reason-text.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import {
 	REGISTRY_ISSUE_COMPLEXITIES,
 	REGISTRY_ISSUE_PRIORITIES,
 } from "./pipeline-registry.js";
+import { REASON_LINE_MAX } from "./reason-text.js";
+import { type Said, saidSchema } from "./said.js";
 import type {
 	Standing,
 	StandingGroup,
@@ -24,6 +23,11 @@ import type {
 	WaitingKind,
 } from "./standing.js";
 import { type NodeRef, nodeRefSchema } from "./workflow-health.js";
+import {
+	WRITTEN_LANG_SHAPE,
+	type WrittenLang,
+	writtenLangSchema,
+} from "./written-lang.js";
 
 /** What the reporter says it is; `contract_change` is filed by core for a breaking version (E3). */
 export const FEEDBACK_KINDS = [
@@ -338,7 +342,10 @@ const ref = z.string().trim().min(1).max(200);
 const reason = z.string().max(FEEDBACK_LIMITS.reason);
 
 /** The contract types whose elements are routes or tools a project serves, and so an `endpoint` target. */
-export const FEEDBACK_ENDPOINT_CONTRACT_TYPES = ["openapi", "mcp-tools"] as const;
+export const FEEDBACK_ENDPOINT_CONTRACT_TYPES = [
+	"openapi",
+	"mcp-tools",
+] as const;
 export type FeedbackEndpointContractType =
 	(typeof FEEDBACK_ENDPOINT_CONTRACT_TYPES)[number];
 
@@ -371,7 +378,9 @@ export const CREATE_FEEDBACK_SHAPE = `{ kind: ${FEEDBACK_KINDS.join(" | ")}, tit
 
 const carrierFields = {
 	/** One issue that carries the route, or every one of them as a list (ISS-265). */
-	issue: z.union([ref, z.array(ref).min(1).max(FEEDBACK_LIMITS.carriers)]).optional(),
+	issue: z
+		.union([ref, z.array(ref).min(1).max(FEEDBACK_LIMITS.carriers)])
+		.optional(),
 	createIssue: z
 		.strictObject({
 			title: z.string().trim().min(1).max(FEEDBACK_LIMITS.title).optional(),
@@ -773,6 +782,8 @@ export interface FeedbackView extends FeedbackSummary {
 	/** What the viewer may do now; a refusal still names why when they try anyway. */
 	can: {
 		triage: boolean;
+		/** Drop it with a reason: an item that reads planned, which a route can no longer be picked for. */
+		drop: boolean;
 		verify: boolean;
 		reopen: boolean;
 		askVerify: boolean;

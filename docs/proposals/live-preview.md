@@ -271,7 +271,9 @@ The failure reasons (`PREVIEW_FAILURE_REASONS`) are the three BC-10 names first 
 - **Tunnel affinity across core replicas.** Core is one process today.
 - **Safari and CHIPS.** Whether Safari keeps a `Partitioned` cookie in the iframe is unverified, and
   the first probe checks it. If it does not, the tab opens alone and the iframe says why.
-- **Forge previewing itself.** Its web dev server talks to dev core through
-  `E2E_CORE_PROXY_URL`. Signing in inside the preview needs core to set `forge_auth` without
-  `Domain` when the request host is not under `AUTH_COOKIE_DOMAIN`. That is a change to
-  `credentials/cookie.ts:writeSessionCookie`, on the full lane.
+- **Forge previewing itself** runs on demo data, never on the instance it is served from:
+  `pnpm preview:demo` (`scripts/preview-demo.mjs`) starts a throwaway Postgres, a seeded demo core
+  (`FORGE_DEMO_MODE`, which a deployed `NODE_ENV` refuses at boot) and the web, whose login page
+  takes the seeded member in through `GET /api/auth/demo`. Cookies are written host-only because
+  the request host is not under `AUTH_COOKIE_DOMAIN`
+  (`credentials/cookie.ts:sessionCookieDomain`).

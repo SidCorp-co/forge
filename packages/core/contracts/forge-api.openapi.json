@@ -2428,6 +2428,24 @@
         ]
       }
     },
+    "/api/auth/demo": {
+      "get": {
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-input": "none",
+        "x-forge-validated": []
+      }
+    },
     "/api/auth/local": {
       "post": {
         "requestBody": {
@@ -4592,49 +4610,85 @@
                         "type": "object"
                       },
                       "highlight": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "key": {
-                            "maxLength": 200,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "section": {
-                            "enum": [
-                              "waiting",
-                              "question",
-                              "criteria",
-                              "plan",
-                              "preview",
-                              "picture",
-                              "delivery",
-                              "history",
-                              "evidence",
-                              "triage",
-                              "route",
-                              "verify"
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "of": {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "section": {
+                                "enum": [
+                                  "waiting",
+                                  "question",
+                                  "criteria",
+                                  "plan",
+                                  "preview",
+                                  "picture",
+                                  "delivery",
+                                  "history",
+                                  "evidence",
+                                  "triage",
+                                  "route",
+                                  "verify"
+                                ],
+                                "type": "string"
+                              },
+                              "target": {
+                                "const": "section",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "target",
+                              "section"
                             ],
-                            "type": "string"
+                            "type": "object"
                           },
-                          "step": {
-                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$",
-                            "type": "string"
-                          },
-                          "target": {
-                            "enum": [
-                              "section",
-                              "step",
-                              "row"
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "of": {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "step": {
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$",
+                                "type": "string"
+                              },
+                              "target": {
+                                "const": "step",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "target",
+                              "step"
                             ],
-                            "type": "string"
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "key": {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "target": {
+                                "const": "row",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "target",
+                              "key"
+                            ],
+                            "type": "object"
                           }
-                        },
-                        "required": [
-                          "target"
-                        ],
-                        "type": "object",
-                        "x-forge-refinements": [
-                          "a refinement with no fixed message, whose rule this contract cannot state"
                         ]
                       },
                       "item": {

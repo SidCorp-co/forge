@@ -45,3 +45,30 @@ describe('a held claim is cut, never marked (REQ-41 BC-3)', () => {
     expect(cutClauses('It is 87% done.', ['87% done'])).toBe('');
   });
 });
+
+describe('a clause joining two statements is cut by the one holding the claim (REQ-41 BC-3)', () => {
+  it('drops a trailing part with its joint and keeps the closing stop', () => {
+    const text = 'REQ-31 is in delivery, and ISS-9998 does not exist on the tracker.';
+    expect(cutClauses(text, ['ISS-9998'])).toBe('REQ-31 is in delivery.');
+  });
+
+  it('drops a leading part with its joint and raises what is left', () => {
+    const text = 'ISS-9998 does not exist on the tracker, but REQ-31 is in delivery.';
+    expect(cutClauses(text, ['ISS-9998'])).toBe('REQ-31 is in delivery.');
+  });
+
+  it('drops a middle part with the joint before it', () => {
+    const text = 'REQ-31 is in delivery, and ISS-9998 does not exist, and REQ-34 waits on you.';
+    expect(cutClauses(text, ['ISS-9998'])).toBe('REQ-31 is in delivery, and REQ-34 waits on you.');
+  });
+
+  it('cuts the whole clause where a side is too short to stand as a statement', () => {
+    expect(cutClauses('ISS-1, and ISS-9998 are open.', ['ISS-9998'])).toBe('');
+  });
+
+  it('carries a label through to its claim, so the claim is never left behind its label', () => {
+    expect(
+      cutClauses('- REQ-31: in delivery\n- ISS-9998: not found on the tracker', ['ISS-9998']),
+    ).toBe('- REQ-31: in delivery');
+  });
+});

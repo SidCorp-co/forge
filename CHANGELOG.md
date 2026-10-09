@@ -9,6 +9,21 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.220] - 2026-10-09
+
+Chat tells you what needs you, moves the Product pages, and previews ideas live
+
+### Fixed
+
+- **A stale draft revision answered "drop" is withdrawn.** Withdrawn is a terminal revision state reachable only from draft, with its reason; the requirement leaves Needs you and reads as before, and proposing a withdrawn revision is refused by name.
+- **An idea the assistant offers now shows its Preview button.** The thread read only one of the two shapes a tool result is stored in, so the offer drew nothing; every turn block now reads results through one shared reader.
+- **An idea can be built as a live preview from chat and kept as the requirement's picture.** Keep stores the sketch branch head and the page's rrweb snapshot, drawn still with Reopen live, and suggests criteria to accept.
+- **A run that spent its sessions waits on its master, rows parked before included.** On boot, issues the rescue cap parked for a person move to on-hold through the issue machine, its own question voided; a person's questions stay.
+- **A fix landed on the full merge-check lane now closes its feedback item.** Every merge-check report carries the change's patch id, so a reporter's confirm matches on either lane; a report without one is refused by name.
+- **Preview links and settings follow the requirement.** Every host under the preview domain answers a page in words, never JSON. The start command may stay empty with other fields set. A production environment is refused on save, not offered.
+- **A release page reads what it ships.** Action required and Technical notes come from the release's commit range, header counts match the proven list, criteria show the verdict's note and clip, and shares and exports keep QA's reasons out.
+- **The runner's suite no longer fails at random on a scratch directory.** Test checkouts are named by a fresh id rather than the clock, and back-dated ones stop git's background maintenance from making them new again.
+
 ## [0.4.0-dev.219] - 2026-10-09
 
 Stale drafts answer merge-or-drop themselves; feedback and ideas open as live previews

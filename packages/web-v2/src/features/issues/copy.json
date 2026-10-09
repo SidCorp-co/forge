@@ -165,6 +165,7 @@
     "issues.empty.thatCreator": "that creator",
     "issues.empty.thisModule": "this module",
     "issues.facts.critical": "Critical priority",
+    "issues.facts.dropped": "dropped",
     "issues.facts.feedback": "Feedback",
     "issues.facts.from": "From {key}",
     "issues.facts.fromLabel": "From",

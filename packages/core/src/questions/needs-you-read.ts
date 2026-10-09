@@ -3,6 +3,7 @@
 // Agents screen can take it, so Needs you reads it from here (a question on an issue is that
 // issue's standing, `holdsOpenHumanQuestion`, and a BA clarification waits on its item).
 
+import type { QuestionSuggestion } from '@forge/contracts/question-suggestion';
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentQuestions, type QuestionStep } from '../db/schema-questions.js';
@@ -51,6 +52,8 @@ export interface OpenPersonQuestion {
   feedbackId: string | null;
   /** The round being asked, as written; null only on a row with no steps, which the read refuses. */
   current: QuestionStep;
+  /** The assistant's record for a round, or null; the round it was drafted for decides whether it stands. */
+  suggestion: QuestionSuggestion | null;
   /** When the current round was asked, else when the question was written. */
   at: string;
 }
@@ -68,6 +71,7 @@ export async function readOpenPersonQuestions(projectId: string): Promise<OpenPe
       requirementId: agentQuestions.requirementId,
       feedbackId: agentQuestions.feedbackId,
       createdAt: agentQuestions.createdAt,
+      suggestion: agentQuestions.suggestion,
       current: sql<QuestionStep | null>`${agentQuestions.steps} -> -1`,
     })
     .from(agentQuestions)
@@ -88,6 +92,7 @@ export async function readOpenPersonQuestions(projectId: string): Promise<OpenPe
       requirementId: r.requirementId,
       feedbackId: r.feedbackId,
       current: r.current,
+      suggestion: r.suggestion,
       at: r.current.askedAt ?? r.createdAt.toISOString(),
     };
   });

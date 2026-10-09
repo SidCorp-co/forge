@@ -93,7 +93,7 @@ export interface IssueStandingInput {
   criteria: IssueCriteriaTally;
   requirement: IssueRequirementRef | null;
   module: IssueModuleRef | null;
-  feedback: readonly string[];
+  feedback: readonly { key: string; dropped: boolean }[];
   branch: string | null;
   headSha: string | null;
   owner: IssueStanding['owner'];
@@ -486,7 +486,8 @@ export function deriveIssueStanding(
     criteria: input.criteria,
     requirement: input.requirement,
     module: input.module,
-    feedback: [...input.feedback],
+    feedback: input.feedback.map((f) => f.key),
+    feedbackDropped: input.feedback.filter((f) => f.dropped).map((f) => f.key),
     blockedBy: input.blockedBy.filter((b) => b.holds).map(ref),
     blocks: !input.holdsDependents
       ? []

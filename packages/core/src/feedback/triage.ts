@@ -144,7 +144,7 @@ export async function triageIn(
   if (forbidden) return { refusals: [forbidden] };
   await lockFeedback(tx, projectId);
   const early =
-    triagePhaseRefusal(await phaseOfRow(projectId, input.row)) ??
+    triagePhaseRefusal(await phaseOfRow(projectId, input.row), t.route) ??
     routeShapeRefusal(t) ??
     (await diagnosisRefusal(t, input.row, actor));
   if (early) return { refusals: [early] };

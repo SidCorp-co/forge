@@ -244,19 +244,26 @@ pub async fn ready(server: &mut Server, timeout: Duration) -> Result<(), Failure
     }
 }
 
-/// Stop the server and everything it started: its group is asked to end, then killed.
+/// Stop the server and everything it started: its group is asked to end, and every process in it,
+/// not only the leader, has the grace to wind down before the group is killed. A command that
+/// starts a stack of its own (a database container, a second server) removes it on that signal;
+/// killing the group the moment the leader exits would cut that off half done.
 pub async fn stop(mut child: Child) {
     #[cfg(unix)]
     if let Some(pid) = child.id() {
         use nix::sys::signal::{killpg, Signal};
         use nix::unistd::Pid;
         let group = Pid::from_raw(pid as i32);
+        let began = tokio::time::Instant::now();
         let _ = killpg(group, Signal::SIGTERM);
-        if tokio::time::timeout(STOP_GRACE, child.wait()).await.is_ok() {
-            let _ = killpg(group, Signal::SIGKILL);
-            return;
+        let leader_gone = tokio::time::timeout(STOP_GRACE, child.wait()).await.is_ok();
+        while killpg(group, None).is_ok() && began.elapsed() < STOP_GRACE {
+            tokio::time::sleep(Duration::from_millis(50)).await;
         }
         let _ = killpg(group, Signal::SIGKILL);
+        if leader_gone {
+            return;
+        }
     }
     let _ = child.kill().await;
 }

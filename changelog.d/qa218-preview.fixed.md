@@ -1,1 +1,0 @@
-**Preview links and settings follow the requirement.** Every host under the preview domain answers a page in words, never JSON. The start command may stay empty with other fields set. A production environment is refused on save, not offered.

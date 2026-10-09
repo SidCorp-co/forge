@@ -136,3 +136,64 @@ describe("answering a question on an issue", () => {
     expect(screen.getAllByTestId("waits-on-mark")).toHaveLength(1);
   });
 });
+
+describe("the assistant's suggested answer on an issue's question (REQ-41 BC-2)", () => {
+  const suggestion = {
+    round: 1,
+    by: "assistant" as const,
+    at: "2026-10-09T00:00:00Z",
+    from: ["ISS-1", "REQ-1"],
+    model: "m",
+    attempts: 1,
+    outcome: "suggested" as const,
+    text: "intake first",
+    why: "REQ-1 puts intake before billing.",
+  };
+
+  it("shows a free-text suggestion with its why and sends it in one click", async () => {
+    const calls = fakeCore((call) =>
+      call.method === "GET" ? { body: { questions: [{ ...asked, suggestion }] } } : { body: { ...answered } },
+    );
+    renderWithQuery(<DecisionPanel issueId="i1" />);
+    const line = await screen.findByTestId("question-offered-answer");
+    expect(line).toHaveTextContent("Suggested by the assistant: intake first REQ-1 puts intake before billing. (read ISS-1, REQ-1)");
+    await userEvent.setup().click(screen.getByRole("button", { name: "Send the suggested answer" }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({ method: "POST", path: "/questions/q1/answer", body: { text: "intake first", round: 1 } }),
+    );
+  });
+
+  it("shows the asker's own recommendation instead, and nothing for another round's suggestion", async () => {
+    const free = asked.steps?.[0] as QuestionStep;
+    fakeCore(() => ({
+      body: {
+        questions: [
+          { ...asked, suggestion, steps: [{ ...free, recommended: "billing first" } as QuestionStep] },
+          { ...asked, id: "q3", suggestion: { ...suggestion, round: 2 } },
+        ],
+      },
+    }));
+    renderWithQuery(<DecisionPanel issueId="i1" />);
+    const lines = await screen.findAllByTestId("question-offered-answer");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toHaveAttribute("data-by", "asker");
+    expect(lines[0]).toHaveTextContent("billing first");
+    expect(lines[0]).not.toHaveTextContent("intake first");
+  });
+
+  it("marks the offered option the assistant picked on a choice round", async () => {
+    const option = (id: string, label: string) => ({ id, label, authority: "writer", bindsTo: "session", executedBy: "agent" });
+    const choice = {
+      ...asked,
+      answerShape: "choice",
+      recommendedOptionId: "gone",
+      options: [option("keep", "Keep"), option("move", "Move")],
+      steps: [{ round: 1, prompt: "Keep or move?", askedAt: "2026-10-06T00:00:00Z", answerShape: "choice", options: [], recommendedOptionId: "gone" }],
+      suggestion: { ...suggestion, text: "Move", optionId: "move" },
+    };
+    fakeCore(() => ({ body: { questions: [choice] } }));
+    renderWithQuery(<DecisionPanel issueId="i1" />);
+    expect(await screen.findByText("Suggested by the assistant")).toBeTruthy();
+    expect(screen.queryByText("Recommended")).toBeNull();
+  });
+});

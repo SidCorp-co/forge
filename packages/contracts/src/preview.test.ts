@@ -486,3 +486,45 @@ describe("the preview record", () => {
 		).toHaveLength(1);
 	});
 });
+
+describe("Forge previewing itself on demo data (REQ-39, REQ-41 BC-22)", () => {
+	// the value the forge project's preview setting takes; scripts/preview-demo.mjs is its command
+	const forgeSetting = {
+		command: "exec node scripts/preview-demo.mjs --port {port}",
+		idleMinutes: 30,
+		demo: { environment: "demo" },
+	};
+
+	it("is a startable setting: one placeholder, no fixed port, demo data named", () => {
+		expect(issuesOf(previewSettingsSchema, forgeSetting)).toEqual([]);
+		expect(
+			issuesOf(previewSettingsSchema, { ...forgeSetting, port: 3100 }),
+		).toEqual([expect.stringContaining("preview.port is set")]);
+		expect(
+			issuesOf(previewSettingsSchema, {
+				command: "pnpm dev",
+			}),
+		).toEqual([expect.stringContaining("preview.port is required")]);
+	});
+
+	it("names a demo environment that is not production, and refuses it as production", () => {
+		const path = "/preview/demo/environment";
+		expect(
+			previewEnvironmentProblem("demo", { demo: { tier: "preview" } }, path),
+		).toBeNull();
+		expect(
+			previewEnvironmentProblem("demo", { demo: { tier: "production" } }, path),
+		).toMatchObject({ code: "PREVIEW_PRODUCTION_ENVIRONMENT" });
+	});
+
+	it("is what the repository's own dev script cannot be read as", () => {
+		const detected = detectPreviewSettings({
+			cwd: "",
+			packageJson: JSON.stringify({
+				scripts: { dev: "turbo run dev" },
+			}),
+			lockfiles: ["pnpm-lock.yaml"],
+		});
+		expect(detected).toMatchObject({ ok: false });
+	});
+});

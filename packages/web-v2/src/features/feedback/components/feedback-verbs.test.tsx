@@ -9,11 +9,12 @@ import { RULE, say, sentence, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
 import { FeedbackFacts } from "./feedback-facts";
 import { Messages } from "./feedback-messages";
+import { FeedbackActions } from "./feedback-actions";
 import { TriageVerbs, snoozeUntil } from "./feedback-verbs";
 
 afterEach(() => vi.unstubAllGlobals());
 
-const CAN = { triage: true, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, accept: true, snooze: true, message: true, tellShipped: false, note: true, attach: false };
+const CAN = { triage: true, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, accept: true, snooze: true, message: true, tellShipped: false, note: true, attach: false };
 const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
   ({
     id: "f1",
@@ -97,6 +98,27 @@ describe("the four verbs", () => {
     await waitFor(() =>
       expect(posts(calls)).toEqual([{ method: "POST", path: "/projects/p1/feedback/FB-4/triage", body: { route: "decline", note: "Brand guide says no." } }]),
     );
+  });
+
+  // QA of dev.219: FB-110 read planned (an issue carries it) and had no control to drop it.
+  it("offers Drop on a planned item, and drops it with its reason through the decline route", async () => {
+    const calls = core();
+    renderWithQuery(<FeedbackActions projectId="p1" f={view({ phase: "planned", status: "triaged", can: { ...CAN, triage: false, accept: false, drop: true } })} />);
+    expect(screen.queryByTestId("feedback-triage")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Drop it" }));
+    const go = within(screen.getByTestId("verb-drop")).getByRole("button", { name: "Decline" });
+    expect(go).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "Reason" }), { target: { value: "The probe is finished." } });
+    fireEvent.click(go);
+    await waitFor(() =>
+      expect(posts(calls)).toEqual([{ method: "POST", path: "/projects/p1/feedback/FB-4/triage", body: { route: "decline", note: "The probe is finished." } }]),
+    );
+  });
+
+  it("offers no Drop where core says the item cannot be dropped", () => {
+    core();
+    renderWithQuery(<FeedbackActions projectId="p1" f={view({ phase: "resolved", status: "triaged", can: { ...CAN, triage: false, accept: false, drop: false } })} />);
+    expect(screen.queryByTestId("feedback-drop")).toBeNull();
   });
 
   it("snoozes to the day picked with its reason, as an instant core is sent", async () => {

@@ -72,8 +72,15 @@ Today an Assistant-mode reply that no rewrite fixes is replaced whole by
 `conversations/fallback-replies.ts:heldFallbackReply`, and its staged blocks are dropped.
 
 - **Cut, do not mark.** Each refused claim's clause is cut from the draft. The clause span is
-  `messaging/reply-marks.ts`'s own clause rule, exported. What is left is screened again, and it
-  ships only if it passes.
+  `messaging/reply-marks.ts:cutClauses`. Where a clause joins two statements of a few words each
+  (", and ", ", but "), only the one holding the claim goes, so "REQ-31 is in delivery, and ISS-9998
+  does not exist" still shows REQ-31; a label ("ISS-9998: not found") is cut through its claim. What
+  is left is screened again, and it ships only if it passes.
+- **Every refusal quotes its claim.** A refusal with no quote cannot be cut, and holds the whole
+  reply (`checkedPart` returns null). The issue-creation claim now quotes its words, and "opened
+  ISS-493" is no creation claim where this turn's own `ui_open` opened that issue
+  (`issue-tokens.ts:issueCreatedClaim`). A share link is the one refusal left unquoted, so a secret
+  is never echoed.
 - **Blocks are kept.** Blocks staged by `forge_show` and `forge_report` are drawn from this turn's
   reads, so they are released with a partial reply.
 - **The notice.** `reply-check.ts:heldPartNotice` names what was left out.
@@ -98,13 +105,23 @@ Today an Assistant-mode reply that no rewrite fixes is replaced whole by
 - **Open by key (BC-6).** `ui.open` takes `{key}` read by its shape (REQ-n, FB-n, an issue key), or
   `{kind, key}` for a workflow flow or a release version. A key its kind does not take is refused,
   naming the shape it takes.
-- **Highlight (BC-6).** `ui.highlight` marks a section of the open record (`UI_HIGHLIGHT_SECTIONS`),
-  a step of the open workflow, or a row the list shows. Its params are one object, `target` and the
-  one field it names, because a tool's params cannot be a union at the top. `highlightRefusal`
-  refuses it `UI_ACTION_NOT_ON_PAGE` from the snapshot core already holds, as the turn's earlier
-  actions leave it, before the browser is asked. The page finds each section by the anchor
-  `ui-actions/highlight-anchors.ts:HIGHLIGHT_ANCHORS` names, switches to the tab that shows it, and marks it with the
-  existing `.forge-highlight` style through `design/hooks/use-highlight.ts`.
+- **Highlight (BC-6).** `ui.highlight` takes ONE `target` object naming the record by its key and
+  what to mark in it: `{key: "ISS-493", section: "plan"}` marks a section of the open record
+  (`UI_HIGHLIGHT_SECTIONS`), `{key: "chat-turn", step: "check"}` a step of the open workflow, and
+  `{key}` alone a row the list shows (`uiHighlightParamsSchema`). It was a flat object of optional
+  fields, and the model filled every one (`{key: "x", step: "x", target: "section", section: "plan"}`,
+  refused three times a turn, QA of dev.219); now each field means one thing and none is a slot to
+  fill. A section its key's kind has no page for, a section on a workflow and a step on anything but a
+  workflow are refused naming what the kind has. `highlightRefusal` refuses `UI_ACTION_NOT_ON_PAGE`
+  from the snapshot core already holds, as the turn's earlier actions leave it, before the browser is
+  asked, including a key that is not the record open beside the chat. The page finds each section by
+  the anchor `ui-actions/highlight-anchors.ts:HIGHLIGHT_ANCHORS` names, switches to the tab that shows
+  it, and marks it with the existing `.forge-highlight` style through `design/hooks/use-highlight.ts`.
+- **Filters set only what is named (BC-4).** A filter action's `set` is a list of `{field, value}`, one
+  per filter the person asked for (`ui-list-filters.ts:listFilterParamsOf`); it was an object of every
+  optional field, and the model filled them all (a stray text "/", all seven states: 1 row shown, not
+  21). Absent means untouched. A search with no word in it and a choice list naming every choice are
+  refused by name.
 - **Marks (BC-7).** `chat-dock/assistant-filters.ts` marks a chip orange while the URL still holds
   the value the assistant set, and forgets the mark the first time it holds anything else. Every
   list's toolbar draws its filter through it.

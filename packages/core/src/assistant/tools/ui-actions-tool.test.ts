@@ -127,21 +127,19 @@ describe('a highlight is judged against the page beside the chat', () => {
 
   it('forwards a row the list shows, and refuses one it does not, naming the code', async () => {
     const tools = page(list);
-    expect((await run(tools, 'ui_highlight', { target: 'row', key: 'REQ-34' })).isError).toBe(
-      false,
-    );
-    const off = await run(tools, 'ui_highlight', { target: 'row', key: 'REQ-9' });
+    expect((await run(tools, 'ui_highlight', { target: { key: 'REQ-34' } })).isError).toBe(false);
+    const off = await run(tools, 'ui_highlight', { target: { key: 'REQ-9' } });
     expect(off.isError).toBe(true);
     expect(off.text).toContain('UI_ACTION_NOT_ON_PAGE: ui.highlight names row REQ-9');
   });
 
   it('refuses a section with no record open, and a section the open kind lacks', async () => {
-    const none = await run(page(list), 'ui_highlight', { target: 'section', section: 'criteria' });
+    const none = await run(page(list), 'ui_highlight', { target: { section: 'criteria' } });
     expect(none.text).toContain('no record is open; open one with ui.open first');
     const fb = await run(
       page({ v: 1, route: 'feedback', path: '/x', item: { kind: 'feedback', key: 'FB-52' } }),
       'ui_highlight',
-      { target: 'section', section: 'criteria' },
+      { target: { section: 'criteria' } },
     );
     expect(fb.text).toContain('a feedback page does not have (it has waiting, question, evidence');
   });
@@ -149,28 +147,48 @@ describe('a highlight is judged against the page beside the chat', () => {
   it('judges a highlight after an open in the same turn on the record it opened', async () => {
     const tools = page(list);
     expect((await run(tools, 'ui_open', { key: 'REQ-34' })).isError).toBe(false);
-    expect(
-      (await run(tools, 'ui_highlight', { target: 'section', section: 'criteria' })).isError,
-    ).toBe(false);
-    const step = await run(tools, 'ui_highlight', { target: 'step', step: 'check' });
+    expect((await run(tools, 'ui_highlight', { target: { section: 'criteria' } })).isError).toBe(
+      false,
+    );
+    const step = await run(tools, 'ui_highlight', { target: { step: 'check' } });
     expect(step.text).toContain('no workflow is open');
     expect((await run(tools, 'ui_open', { kind: 'workflow', key: 'chat-turn' })).isError).toBe(
       false,
     );
-    expect((await run(tools, 'ui_highlight', { target: 'step', step: 'check' })).isError).toBe(
-      false,
+    expect((await run(tools, 'ui_highlight', { target: { step: 'check' } })).isError).toBe(false);
+  });
+
+  it('takes the QA ask "open ISS-493 and highlight its plan": the key and the section in one target', async () => {
+    const tools = page(list);
+    expect((await run(tools, 'ui_open', { key: 'ISS-493', kind: 'issue' })).isError).toBe(false);
+    const ok = await run(tools, 'ui_highlight', { target: { key: 'ISS-493', section: 'plan' } });
+    expect(ok.isError, ok.text).toBe(false);
+    expect(ok.text).toContain('"section":"plan"');
+    const other = await run(tools, 'ui_highlight', { target: { key: 'ISS-495', section: 'plan' } });
+    expect(other.isError).toBe(true);
+    expect(other.text).toContain(
+      'names ISS-495, but the page beside the chat shows ISS-493; open ISS-495 with ui.open first',
+    );
+    const wrong = await run(tools, 'ui_highlight', {
+      target: { key: 'ISS-493', section: 'picture' },
+    });
+    expect(wrong.text).toContain(
+      'ISS-493 is an issue, whose page has waiting, question, criteria, plan, preview, not \\"picture\\"',
     );
   });
 
   it('leaves a row on a list this turn opened to the browser, which has not reported it yet', async () => {
     const tools = page(list);
-    await run(tools, 'ui_feedback_filter', { mode: 'replace', set: { waitingOn: 'agent' } });
-    expect((await run(tools, 'ui_highlight', { target: 'row', key: 'FB-52' })).isError).toBe(false);
+    await run(tools, 'ui_feedback_filter', {
+      mode: 'replace',
+      set: [{ field: 'waitingOn', value: 'agent' }],
+    });
+    expect((await run(tools, 'ui_highlight', { target: { key: 'FB-52' } })).isError).toBe(false);
   });
 
   it('leaves every highlight to the browser where no page was sent', async () => {
-    expect(
-      (await run(page(null), 'ui_highlight', { target: 'section', section: 'plan' })).isError,
-    ).toBe(false);
+    expect((await run(page(null), 'ui_highlight', { target: { section: 'plan' } })).isError).toBe(
+      false,
+    );
   });
 });

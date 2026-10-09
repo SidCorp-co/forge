@@ -13,6 +13,7 @@ import {
 import { baDoorRoutes, conversationRoutes, speakerLinkProjectRoutes } from './assistant/routes.js';
 import {
   authRoutes,
+  demoRoutes,
   loginRoutes,
   logoutRoutes,
   meRoutes,
@@ -190,6 +191,7 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
 function mountAccountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/auth', authRoutes);
   app.route('/api/auth', loginRoutes);
+  app.route('/api/auth', demoRoutes);
   app.route('/api/auth', refreshRoutes);
   app.route('/api/auth', verifyRoutes);
   app.route('/api/auth', meRoutes);

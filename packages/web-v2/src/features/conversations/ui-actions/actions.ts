@@ -291,6 +291,8 @@ function applyHighlight(h: UiHighlight, env: UiActionEnv): UiActionOutcome {
   const no = (why: string) => refuse("UI_ACTION_NOT_ON_PAGE", `UI_ACTION_NOT_ON_PAGE: ui.highlight ${why}. Nothing was highlighted.`);
   if (h.target === "step" && item?.kind !== "workflow") return no(`names step "${what}" and no workflow is open beside the chat`);
   if (h.target === "section" && !item) return no(`names section "${what}" and no record is open beside the chat`);
+  if (h.target !== "row" && h.of !== undefined && item && item.kind !== "workflow" && item.key !== h.of)
+    return no(`names ${h.of}, but the page beside the chat shows ${item.key}; open ${h.of} first`);
   const selectors = selectorsOf(h, item?.kind ?? null);
   if (selectors.length === 0) return no(`names section "${what}", which ${item?.kind === "issue" ? "an" : "a"} ${item?.kind} page does not draw`);
   const onPage = env.find(selectors);

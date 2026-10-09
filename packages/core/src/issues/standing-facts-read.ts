@@ -131,14 +131,24 @@ export async function modulesOf(projectId: string, ids: readonly string[]) {
   return out;
 }
 
-export async function feedbackOf(ids: readonly string[]): Promise<Map<string, string[]>> {
-  const out = new Map<string, string[]>();
+/** One feedback item an issue carries: its key, and whether it was dropped (declined) since. */
+export interface CarriedFeedback {
+  readonly key: string;
+  readonly dropped: boolean;
+}
+
+export async function feedbackOf(ids: readonly string[]): Promise<Map<string, CarriedFeedback[]>> {
+  const out = new Map<string, CarriedFeedback[]>();
   if (ids.length === 0) return out;
-  const rows = rowsOf<{ issue_id: string; fb_seq: number }>(
+  const rows = rowsOf<{ issue_id: string; fb_seq: number; status: string }>(
     await db.execute(sql`
-      SELECT c.issue_id, f.fb_seq FROM feedback_route_issues c JOIN feedback f ON f.id = c.feedback_id
+      SELECT c.issue_id, f.fb_seq, f.status FROM feedback_route_issues c JOIN feedback f ON f.id = c.feedback_id
        WHERE c.issue_id IN (${idList(ids)}) ORDER BY f.fb_seq`),
   );
-  for (const r of rows) out.set(r.issue_id, [...(out.get(r.issue_id) ?? []), `FB-${r.fb_seq}`]);
+  for (const r of rows)
+    out.set(r.issue_id, [
+      ...(out.get(r.issue_id) ?? []),
+      { key: `FB-${r.fb_seq}`, dropped: r.status === 'declined' },
+    ]);
   return out;
 }

@@ -1,6 +1,6 @@
 {
   "name": "forge",
-  "version": "0.4.0-dev.219",
+  "version": "0.4.0-dev.220",
   "private": true,
   "description": "Open-source control plane for Claude Code. Monorepo root.",
   "license": "Apache-2.0",
@@ -18,7 +18,8 @@
     "check:memory": "node scripts/check-memory-anchors.mjs",
     "clean": "turbo run clean && rm -rf node_modules",
     "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true",
-    "images": "node scripts/build-images.mjs"
+    "images": "node scripts/build-images.mjs",
+    "preview:demo": "node scripts/preview-demo.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",

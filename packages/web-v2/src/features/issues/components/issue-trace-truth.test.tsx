@@ -52,6 +52,20 @@ describe("the issue rail's requirement traces", () => {
   });
 });
 
+describe("feedback an issue carries that was dropped", () => {
+  const carried = (dropped: string[]) =>
+    ({ ...row, standing: { ...row.standing, feedback: ["FB-109", "FB-110"], feedbackDropped: dropped } }) as unknown as IssueStandingRow;
+
+  it("keeps the link and says the item was dropped, and says nothing of one still carried", () => {
+    renderWithQuery(<IssueStandingFacts row={carried(["FB-110"])} slug="forge" />);
+    const links = screen.getAllByRole("link", { name: /FB-1/ });
+    expect(links.map((l) => l.textContent)).toEqual(["FB-109", "FB-110"]);
+    expect(links[1]).toHaveAttribute("href", "/projects/forge/feedback/FB-110");
+    expect(links[1]?.parentElement).toHaveTextContent("FB-110dropped");
+    expect(links[0]?.parentElement).not.toHaveTextContent("dropped");
+  });
+});
+
 describe("a Short verdict on the Criteria tab", () => {
   it("reads Short, met short of its wording, not Pass", async () => {
     fakeCore((c) =>
