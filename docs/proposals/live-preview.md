@@ -153,7 +153,8 @@ The failure reasons (`PREVIEW_FAILURE_REASONS`) are the three BC-10 names first 
   `auth/oauth/state.ts`, with its own `typ`, and it is single-use by `jti`.
 - **The viewer cookie.** `forge_preview` is a JWT for the viewer and the preview that lives eight
   hours. It is host-only, `Secure; HttpOnly; SameSite=None; Partitioned`. `Partitioned` (CHIPS) keeps
-  it inside Forge's iframe where third-party cookies are blocked.
+  it inside Forge's iframe where third-party cookies are blocked (not in Safari: see below). A
+  development domain on plain http keeps `SameSite=Lax` unless it is under `localhost`.
 - **Each request** re-checks the membership, cached for 60 s, and the preview's state.
 - **No Forge session reaches project code.**
   - `PREVIEW_DOMAIN` must be a different site from Forge's. Core refuses to serve previews with
@@ -269,11 +270,17 @@ The failure reasons (`PREVIEW_FAILURE_REASONS`) are the three BC-10 names first 
 ## Not decided here
 
 - **Tunnel affinity across core replicas.** Core is one process today.
-- **Safari and CHIPS.** Whether Safari keeps a `Partitioned` cookie in the iframe is unverified, and
-  the first probe checks it. If it does not, the tab opens alone and the iframe says why.
+- **Safari and CHIPS.** Safari keeps no third-party cookie, `Partitioned` included, so the iframe
+  cannot hold `forge_preview`. The page the preview host answers without that cookie
+  (`previews/gate.ts`) shows "Allow this preview" in a frame: `document.requestStorageAccess()`, then
+  a fresh ticket from the parent over `postMessage` (`PREVIEW_FRAME_MESSAGES`), then entry again. It
+  tries once; a frame that still cannot hold the cookie says so and Forge offers Open in tab.
+  `web-v2 PreviewFrame` answers the ticket ask, and its sandbox carries
+  `allow-storage-access-by-user-activation`.
 - **Forge previewing itself** runs on demo data, never on the instance it is served from:
   `pnpm preview:demo` (`scripts/preview-demo.mjs`) starts a throwaway Postgres, a seeded demo core
-  (`FORGE_DEMO_MODE`, which a deployed `NODE_ENV` refuses at boot) and the web, whose login page
-  takes the seeded member in through `GET /api/auth/demo`. Cookies are written host-only because
-  the request host is not under `AUTH_COOKIE_DOMAIN`
-  (`credentials/cookie.ts:sessionCookieDomain`).
+  (`FORGE_DEMO_MODE`, which a deployed `NODE_ENV` refuses at boot) and the web, which signs the
+  seeded member in on the server: `web-v2 src/middleware.ts` sends every `/api` request on to the
+  demo core with that member's credential (`lib/demo-signin.ts`, taken from the core's own
+  `GET /api/auth/demo`), so the browser holds no cookie and a frame on another site is signed in as
+  a tab is.

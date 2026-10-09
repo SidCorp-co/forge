@@ -28,6 +28,15 @@ export function previewOrigin(site: PreviewSite, label: string): string {
   return `${site.scheme}//${label}.${site.host}${site.port === null ? '' : `:${site.port}`}`;
 }
 
+/**
+ * Whether the viewer cookie can be `SameSite=None; Secure`, the only kind a frame on another site
+ * is sent: https, and a development host under `localhost`, which browsers treat as a secure origin.
+ * Any other plain-http domain keeps Lax, which a frame never sends; the gate (./gate.ts) says so.
+ */
+export function framableCookie(site: PreviewSite): boolean {
+  return site.scheme === 'https:' || site.host === 'localhost' || site.host.endsWith('.localhost');
+}
+
 /** The preview label a request's `Host` names, or null where it is not a preview host. */
 export function labelOfHost(host: string | undefined, site: PreviewSite | null): string | null {
   if (!host || site === null) return null;

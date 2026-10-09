@@ -1,9 +1,12 @@
 // The pages a preview host answers in Forge's own words, never the dev server's: the link closed,
 // starting, refused, or unknown. Plain HTML with no script, so a preview host serves nothing of
-// Forge's that could act.
+// Forge's that could act: the one exception is the gate (./gate.ts), whose single script is named by
+// hash in its own CSP.
 
 import type { ServerResponse } from 'node:http';
 import type { PreviewFailureReason, PreviewState } from '@forge/contracts/preview';
+import { env } from '../lib/env.js';
+import { gateCsp, gateScript } from './gate.js';
 
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -13,17 +16,26 @@ export interface Page {
   body: string;
   /** Seconds after which the browser asks again; the starting page waits for the dev server. */
   refresh?: number;
+  /** The gate: what a frame on another site shows in place of `body`, and the one script that runs it. */
+  gate?: { framedTitle: string; framedBody: string; button: string; script: string; csp: string };
 }
 
 export function sendPage(res: ServerResponse, page: Page): void {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(page.title)}</title><style>body{font:15px/1.5 system-ui,sans-serif;margin:0;padding:48px 24px;color:#1f2328;background:#fff}main{max-width:560px;margin:0 auto}h1{font-size:20px;margin:0 0 8px}p{margin:0 0 8px;color:#57606a}@media (prefers-color-scheme:dark){body{color:#e6edf3;background:#0d1117}p{color:#9198a1}}</style></head><body><main><h1>${escapeHtml(page.title)}</h1>${page.body
-    .split('\n')
-    .map((line) => `<p>${escapeHtml(line)}</p>`)
-    .join('')}</main></body></html>`;
+  const lines = (text: string) =>
+    text
+      .split('\n')
+      .map((line) => `<p>${escapeHtml(line)}</p>`)
+      .join('');
+  const gate = page.gate;
+  const content = gate
+    ? `<div id="top"><h1>${escapeHtml(page.title)}</h1>${lines(page.body)}</div><div id="framed" hidden><h1>${escapeHtml(gate.framedTitle)}</h1>${lines(gate.framedBody)}<p><button id="allow" type="button">${escapeHtml(gate.button)}</button></p><p id="msg" role="status"></p></div><script>${gate.script}</script>`
+    : `<h1>${escapeHtml(page.title)}</h1>${lines(page.body)}`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(page.title)}</title><style>body{font:15px/1.5 system-ui,sans-serif;margin:0;padding:48px 24px;color:#1f2328;background:#fff}main{max-width:560px;margin:0 auto}h1{font-size:20px;margin:0 0 8px}p{margin:0 0 8px;color:#57606a}button{font:inherit;padding:8px 16px;border-radius:6px;border:1px solid #1f2328;background:#1f2328;color:#fff;cursor:pointer}button:disabled{opacity:.6;cursor:default}[hidden]{display:none}@media (prefers-color-scheme:dark){body{color:#e6edf3;background:#0d1117}p{color:#9198a1}button{background:#e6edf3;color:#0d1117;border-color:#e6edf3}}</style></head><body><main>${content}</main></body></html>`;
   res.writeHead(page.status, {
     'content-type': 'text/html; charset=utf-8',
     'cache-control': 'no-store',
     'x-robots-tag': 'noindex, nofollow',
+    ...(gate ? { 'content-security-policy': gate.csp } : {}),
     ...(page.refresh === undefined ? {} : { refresh: String(page.refresh) }),
   });
   res.end(html);
@@ -81,11 +93,28 @@ export const enterRefusedPage = (): Page => ({
   body: 'A preview link from Forge lets one browser in once, within a minute. Open the preview again from its issue.',
 });
 
-export const signInPage = (): Page => ({
-  status: 403,
-  title: 'Open this preview from Forge',
-  body: 'Only signed-in members of the project can view its preview. Open it from the issue in Forge.',
-});
+/**
+ * A request with no viewer cookie (BC-4). Alone in a tab it says where to open the preview from;
+ * framed by Forge it is the gate (./gate.ts): where the browser keeps no cookie for a frame on
+ * another site, "Allow this preview" asks the Storage Access API and enters again.
+ */
+export const signInPage = (): Page => {
+  const appOrigin = new URL(env.APP_BASE_URL).origin;
+  const script = gateScript(appOrigin);
+  return {
+    status: 403,
+    title: 'Open this preview from Forge',
+    body: 'Only signed-in members of the project can view its preview. Open it from the issue in Forge.',
+    gate: {
+      framedTitle: 'Allow this preview to keep you signed in',
+      framedBody:
+        'Your browser keeps no cookie for a page framed on another site, so this preview cannot tell it is you.\nAllow it once, and it opens.',
+      button: 'Allow this preview',
+      script,
+      csp: gateCsp(script, appOrigin),
+    },
+  };
+};
 
 export const notMemberPage = (): Page => ({
   status: 403,

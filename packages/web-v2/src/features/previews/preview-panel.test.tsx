@@ -3,7 +3,7 @@
 // change. Core is stood in for over `fetch` with the contracts' own routes, and each record is parsed
 // by `previewRecordSchema`.
 
-import { PREVIEW_FAILURE_REASONS, PREVIEW_ROUTES } from "@forge/contracts/preview";
+import { PREVIEW_FAILURE_REASONS, PREVIEW_FRAME_MESSAGES, PREVIEW_ROUTES } from "@forge/contracts/preview";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
@@ -78,10 +78,61 @@ describe("BC-3: the frame", () => {
     const frame = (await screen.findByTitle("Preview of ISS-491")) as HTMLIFrameElement;
     expect(frame.getAttribute("src")).toBe(`${HOST}__forge_preview/enter?ticket=tk-1`);
     const sandbox = frame.getAttribute("sandbox") ?? "";
-    expect(sandbox.split(" ")).toEqual(["allow-scripts", "allow-same-origin", "allow-forms", "allow-popups", "allow-modals"]);
+    // `allow-storage-access-by-user-activation`: without it the frame's requestStorageAccess() is refused
+    expect(sandbox.split(" ")).toEqual(["allow-scripts", "allow-same-origin", "allow-forms", "allow-popups", "allow-modals", "allow-storage-access-by-user-activation"]);
     expect(sandbox).not.toContain("allow-top-navigation");
     expect(frame.getAttribute("referrerpolicy")).toBe("no-referrer");
     expect(calls.filter((c) => c.path.endsWith("/ticket"))).toHaveLength(1);
+  });
+
+  describe("a frame the browser keeps no cookie for", () => {
+    const ORIGIN = new URL(HOST).origin;
+    const send = (frame: HTMLIFrameElement, data: unknown, over: { origin?: string; source?: unknown } = {}) =>
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent("message", { data, origin: over.origin ?? ORIGIN, source: (over.source ?? frame.contentWindow) as MessageEventSource }),
+        );
+      });
+
+    it("answers the frame's ask for a ticket with a fresh one, to the frame's own origin", async () => {
+      let n = 0;
+      const calls = core({
+        [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf() } }),
+        [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: ticketBody(`tk-${++n}`) }),
+      });
+      mount();
+      const frame = (await screen.findByTitle("Preview of ISS-491")) as HTMLIFrameElement;
+      const posted = vi.spyOn(frame.contentWindow as Window, "postMessage").mockImplementation(() => {});
+      send(frame, { type: PREVIEW_FRAME_MESSAGES.ticketRequest });
+      await waitFor(() => expect(posted).toHaveBeenCalledTimes(1));
+      expect(posted).toHaveBeenCalledWith({ type: PREVIEW_FRAME_MESSAGES.ticket, url: `${HOST}__forge_preview/enter?ticket=tk-2` }, ORIGIN);
+      expect(calls.filter((c) => c.path.endsWith("/ticket"))).toHaveLength(2);
+    });
+
+    it("hears nobody else: another origin, another window, or another message mints nothing", async () => {
+      const calls = core({
+        [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf() } }),
+        [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: ticketBody("tk-1") }),
+      });
+      mount();
+      const frame = (await screen.findByTitle("Preview of ISS-491")) as HTMLIFrameElement;
+      send(frame, { type: PREVIEW_FRAME_MESSAGES.ticketRequest }, { origin: "https://evil.example.test" });
+      send(frame, { type: PREVIEW_FRAME_MESSAGES.ticketRequest }, { source: window });
+      send(frame, { type: "forge-preview:something-else" });
+      send(frame, null);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(calls.filter((c) => c.path.endsWith("/ticket"))).toHaveLength(1);
+      expect(screen.queryByTestId("preview-frame-cookie-refused")).toBeNull();
+    });
+
+    it("says so and puts Open in tab first when the frame cannot get its cookie", async () => {
+      live();
+      mount();
+      const frame = (await screen.findByTitle("Preview of ISS-491")) as HTMLIFrameElement;
+      send(frame, { type: PREVIEW_FRAME_MESSAGES.storageRefused });
+      expect(await screen.findByTestId("preview-frame-cookie-refused")).toHaveTextContent("Open it in its own tab");
+      expect(screen.getByRole("button", { name: "Open in tab" })).toBeTruthy();
+    });
   });
 
   it("opens in a tab of its own with a fresh ticket, the window opened before the ticket is asked for", async () => {

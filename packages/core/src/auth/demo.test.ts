@@ -10,6 +10,7 @@ vi.mock('./read.js', () => ({ userByEmail: mocks.userByEmail }));
 
 import { errorHandler } from '../middleware/error.js';
 import { demoRoutes } from './demo.js';
+import { DEMO_MEMBER_EMAIL, demoMemberId } from './demo-member.js';
 
 const app = new Hono();
 app.route('/api/auth', demoRoutes);
@@ -27,5 +28,21 @@ describe('GET /api/auth/demo outside a demo core', () => {
     expect(await res.text()).toContain('DEMO_MODE_OFF');
     expect(res.headers.getSetCookie()).toEqual([]);
     expect(mocks.userByEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe('demoMemberId', () => {
+  it('is null outside a demo core and never looks a member up, so no socket is taken for anyone', async () => {
+    expect(await demoMemberId()).toBeNull();
+    expect(mocks.userByEmail).not.toHaveBeenCalled();
+  });
+
+  it('is the seeded demo member in a demo core, and null while the seed never ran', async () => {
+    mocks.env.FORGE_DEMO_MODE = true;
+    mocks.userByEmail.mockResolvedValueOnce({ id: 'u-demo' });
+    expect(await demoMemberId()).toBe('u-demo');
+    expect(mocks.userByEmail).toHaveBeenCalledWith(DEMO_MEMBER_EMAIL);
+    mocks.userByEmail.mockResolvedValueOnce(undefined);
+    expect(await demoMemberId()).toBeNull();
   });
 });

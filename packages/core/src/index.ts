@@ -19,7 +19,7 @@ import {
   registerRoomChat,
   registerWebConversationAdapter,
 } from './assistant/index.js';
-import { agentAccountsAmong } from './auth/index.js';
+import { agentAccountsAmong, demoMemberId } from './auth/index.js';
 import { runOnceBackfills, startDeferredBackfills } from './boot-backfills.js';
 import { commentsSince, recentCommentBodies } from './comments/index.js';
 import { logUnprovenPatPeppers } from './credentials/pat.js';
@@ -470,7 +470,7 @@ if (isMain) {
     },
   );
 
-  attachWs(server as unknown as HttpServer);
+  attachWs(server as unknown as HttpServer, { credentialless: demoMemberId });
   startDeferredBackfills();
 
   void startRocketChatManager().catch((err) =>

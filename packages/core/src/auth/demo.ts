@@ -3,11 +3,9 @@ import { setAuthCookie, setRefreshCookie } from '../credentials/cookie.js';
 import { signUserToken } from '../credentials/jwt.js';
 import { env } from '../lib/env.js';
 import { refuser } from '../lib/refusal.js';
+import { DEMO_MEMBER_EMAIL } from './demo-member.js';
 import { userByEmail } from './read.js';
 import { openRefreshToken } from './service.js';
-
-/** The one member a demo core signs in: seeded by tests/helpers/demo-world.ts, never a real address. */
-export const DEMO_MEMBER_EMAIL = 'demo.member@demo.forge.local';
 
 const refuse = refuser<'DEMO_MODE_OFF' | 'DEMO_MEMBER_MISSING'>('DEMO_MODE_OFF');
 
@@ -17,7 +15,8 @@ export const demoRoutes = new Hono();
  * Signs the demo member in with no credential and sends the browser to the app (REQ-39: Forge
  * previewing itself on demo data). It exists only while the process is a demo core
  * (FORGE_DEMO_MODE=1, which a deployed NODE_ENV refuses at boot); anywhere else it answers
- * DEMO_MODE_OFF and sets nothing.
+ * DEMO_MODE_OFF and sets nothing. The demo web calls it from its server, never the browser, and
+ * keeps the credential it sets (web-v2 lib/demo-signin.ts).
  */
 demoRoutes.get('/demo', async (c) => {
   if (!env.FORGE_DEMO_MODE) {

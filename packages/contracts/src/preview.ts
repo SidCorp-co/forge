@@ -185,6 +185,22 @@ export const PREVIEW_ENTER_PATH = `${PREVIEW_RESERVED_PATH}enter`;
  */
 export const PREVIEW_COOKIE = "forge_preview";
 
+/**
+ * What a framed preview host and Forge, its parent, say to each other (`postMessage`, each side
+ * checking the other's origin and window). A browser that keeps no cookie for a frame on another site
+ * (Safari blocks every third-party cookie) shows "Allow this preview" in the frame; once the browser
+ * grants storage access the frame asks its parent for a fresh one-minute ticket and enters again. A
+ * refusal, or a frame that still cannot keep its cookie, is told to the parent, which offers Open in tab.
+ */
+export const PREVIEW_FRAME_MESSAGES = {
+	/** Frame to Forge: `{ type }`, asking for a new ticket URL. */
+	ticketRequest: "forge-preview:ticket-request",
+	/** Forge to frame: `{ type, url }`, the address that spends the new ticket. */
+	ticket: "forge-preview:ticket",
+	/** Frame to Forge: `{ type }`, the frame cannot hold a cookie and says so. */
+	storageRefused: "forge-preview:storage-refused",
+} as const;
+
 /** Whether a `Host` is under the preview domain, well-formed label or not: Forge answers it in words, never the API. */
 export function isPreviewHost(host: string, previewDomain: string): boolean {
 	const name = host.toLowerCase().replace(/:\d+$/, "");

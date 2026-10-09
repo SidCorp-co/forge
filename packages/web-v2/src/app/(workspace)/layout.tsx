@@ -10,6 +10,8 @@ import {
 } from "@/design";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useAuth } from "@/providers/auth-provider";
+import { SignInStopped } from "@/features/auth/components/sign-in-stopped";
+import { useLoginRedirect } from "@/features/auth/use-login-redirect";
 import { useToast } from "@/providers/toast-provider";
 import { inActiveOrg } from "@/features/projects/derive";
 import { useProjects } from "@/features/projects/hooks";
@@ -121,9 +123,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { total: attentionCount } = useAttention();
   const { data: openCount } = useOpenCount();
 
-  useEffect(() => {
-    if (!isLoading && !user) router.replace("/login");
-  }, [isLoading, user, router]);
+  const { stopped: signInStopped } = useLoginRedirect(!isLoading && !user, !!user);
 
   const { selectedProject, activeOrgId, scopedProjects, pinnedIds, railSlug, railProject, railRef } =
     useShellProject(pathname);
@@ -197,6 +197,9 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   };
   const bellCount = openCount?.count ?? 0;
   const userInitials = user?.email ? user.email.slice(0, 2).toUpperCase() : undefined;
+
+  // the previous navigation already bounced to /login and came back: stop and say why, never again
+  if (signInStopped) return <SignInStopped />;
 
   return (
     <CurrentProjectProvider project={railProject} projectRef={railRef}>
