@@ -10,7 +10,7 @@ import {
   workflowBuilds,
 } from '../db/schema-workflows.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import { movedRow, transition } from '../lifecycle/index.js';
+import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
 import type { DesignDecision } from './design.js';
 import type { WorkflowWrite } from './schema.js';
 import type { WorkflowWriter } from './service.js';
@@ -133,7 +133,13 @@ export async function moveDesign(
   id: string,
   from: DesignStatus | null,
   to: DesignStatus,
-  how: { writer: WorkflowWriter; reason?: string | null; approvedRevision?: number },
+  how: {
+    writer: WorkflowWriter;
+    reason?: string | null;
+    approvedRevision?: number;
+    /** Who the ledger names, where it is not the writer: Forge's own approval of a pin-only revision. */
+    actor?: KernelActor;
+  },
 ): Promise<void> {
   const moved = await transition(tx, WORKFLOW_DESIGN_MACHINE, {
     to,
@@ -141,7 +147,7 @@ export async function moveDesign(
     set: { approvedRevision: how.approvedRevision, updatedAt: sql`now()` },
     where: eq(projectWorkflows.id, id),
     reason: how.reason ?? null,
-    actor: { type: 'user', id: how.writer.userId, agency: how.writer.agency },
+    actor: how.actor ?? { type: 'user', id: how.writer.userId, agency: how.writer.agency },
     source: 'workflows',
     returning: ['id'],
   });

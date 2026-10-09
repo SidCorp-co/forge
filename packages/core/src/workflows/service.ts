@@ -19,6 +19,7 @@ import {
   designStatusAfterWrite,
 } from './design.js';
 import { baseRefusals, standingBaseRefusal } from './design-bases.js';
+import { refuseUncomparable, settlePinOnly } from './design-pin-only.js';
 import { designListReadingOf } from './design-standing.js';
 import { reaskSupersededDesignQuestions } from './ports.js';
 import {
@@ -289,6 +290,16 @@ export async function updateWorkflow(input: {
         by: writer.userId,
         actor: { type: 'user', id: writer.userId, agency: writer.agency },
       });
+    }
+    if (drawing) {
+      const settled = await settlePinOnly(tx, projectId, facts.templates);
+      refuseUncomparable(settled, id);
+      if (settled.approved.some((a) => a.workflowId === id)) {
+        const approved = await readWorkflow(tx, id);
+        if (approved) {
+          return { ok: true, row: approved, document: doc, created: false };
+        }
+      }
     }
     return {
       ok: true,

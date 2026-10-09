@@ -970,4 +970,5 @@ export const SAID = {
 	"pulse.gap.ownerlessMany": { en: "{n} commits waiting on {base} belong to no issue, so a closed issue whose work they are reads as nothing waiting", vars: { n: "count", base: "name" } },
 	"pulse.gap.all": { en: "{parts}", vars: { parts: "saidList" } },
 	"designs.reason.repinOnly": { en: "Pin-only re-pin, approved together in act {act} (\"{actWords}\" on {flow}): {pins}. Nothing else changed: with the pins set aside the design's canonical fingerprint is {fp}, as approved r{r} has it.", vars: { act: "code", actWords: "said", flow: "name", pins: "text", fp: "code", r: "count" } },
+	"designs.reason.pinOnlyKernel": { en: "Approved by Forge itself, not by a person: the only change from approved r{r} is the revisions this design pins ({pins}). With the pins set aside its canonical fingerprint is {fp}, as approved r{r} has it.", vars: { r: "count", pins: "text", fp: "code" } },
 } as const satisfies Record<string, SaidEntry>;
