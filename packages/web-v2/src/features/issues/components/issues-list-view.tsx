@@ -12,6 +12,9 @@ import type { Copy } from "@/lib/i18n/product-copy";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useMemo } from "react";
+import { listFilterFromSearch } from "@forge/contracts/ui-list-filters";
+import { useReportShown } from "@/design/hooks/use-page-shown";
+import { writeUrlParams } from "@/design/hooks/use-url-params";
 import { type IssueBuckets, ISSUES_PAGE_SIZE } from "../api";
 import { filterCount } from "../derive";
 import { useIssues, usePatchIssue } from "../hooks";
@@ -96,6 +99,9 @@ export function IssuesListView({
   } = useGuardedTransition();
 
   const rows = useMemo(() => issuesQ.data?.items ?? [], [issuesQ.data]);
+  useReportShown(rows.map((r) => r.displayId));
+  // whom an issue waits on is the standing read's, which the grouped views draw; the paged search has none
+  const waiting = listFilterFromSearch("issues", view.search).waitingOn;
   const now = issuesQ.dataUpdatedAt || Date.now();
   const total = issuesQ.data?.totalCount ?? 0;
   const buckets = issuesQ.data?.extra?.buckets;
@@ -143,6 +149,15 @@ export function IssuesListView({
         onClear={view.isFiltered || groupBy !== "none" ? view.clearAll : undefined}
         trailing={<PinViewButton pathname={view.pathname} search={view.search} defaultLabel={defaultPinLabel} />}
       />
+
+      {waiting ? (
+        <p className="flex flex-wrap items-center gap-2 border-y border-line-subtle bg-app px-4 py-1.5 text-12-5 text-muted sm:px-6" data-testid="issues-table-no-waiting">
+          {t("conversations.list.tableNoWaiting")}
+          <button type="button" className="font-semibold text-link hover:underline" onClick={() => writeUrlParams({ group: null })}>
+            {t("conversations.list.showGrouped")}
+          </button>
+        </p>
+      ) : null}
 
       {bulkEnabled && (
         <div className="px-4 sm:px-6">

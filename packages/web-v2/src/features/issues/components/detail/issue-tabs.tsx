@@ -51,7 +51,7 @@ export function OverviewTab({
         attachmentsError={attachmentsQ.isError ? attachmentsQ.error : null}
         canWrite={canWrite}
       />
-      <section aria-label={t("issues.plan.title")}>
+      <section aria-label={t("issues.plan.title")} data-highlight="plan">
         <ViewHeading>{t("issues.plan.title")}</ViewHeading>
         {issue.plan ? (
           <Markdown>{issue.plan}</Markdown>

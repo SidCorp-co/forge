@@ -48,7 +48,7 @@ function StepRows({ steps, numbered, diff, revision }: { steps: WorkflowStep[]; 
       {steps.map((s) => {
         const mark = diff?.steps.get(s.id);
         return (
-          <li key={s.id} className="grid grid-cols-[36px_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-baseline gap-x-3 border-b border-line-subtle px-3 py-2.5 text-13 max-md:grid-cols-[28px_minmax(0,1fr)]" data-testid="design-step-row" data-mark={mark}>
+          <li key={s.id} className="grid grid-cols-[36px_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-baseline gap-x-3 border-b border-line-subtle px-3 py-2.5 text-13 max-md:grid-cols-[28px_minmax(0,1fr)]" data-testid="design-step-row" data-step={s.id} data-mark={mark}>
             <span className="font-mono text-12 text-subtle">{numbered.get(s.id) ?? ""}</span>
             <span className="min-w-0">
               <span className="font-medium" title={s.node?.purpose ?? s.does}>

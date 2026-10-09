@@ -3,6 +3,8 @@ import { say } from "./said.js";
 import { type WaitingKind, waitingOn } from "./standing.js";
 import {
 	describeListFilter,
+	listFilterFromSearch,
+	matchesListFilter,
 	UI_FILTER_PARAMS,
 	UI_LIST_FILTERS,
 	UI_LISTS,
@@ -138,5 +140,82 @@ describe("since and the words Sees reads", () => {
 				text: "chat",
 			}),
 		).toEqual(["waiting on you", "state draft/agreed", '"chat"']);
+	});
+});
+
+describe("a list reads its filter from the URL the chat's action writes (BC-4, BC-7)", () => {
+	it("reads each field from its one param, a multi-valued one split at commas", () => {
+		expect(
+			listFilterFromSearch(
+				"feedback",
+				"?waiting=you&phase=new,triaged&kind=bug&severity=high&since=7d&q=export&peek=FB-2",
+			),
+		).toEqual({
+			waitingOn: "you",
+			phase: ["new", "triaged"],
+			kind: ["bug"],
+			severity: "high",
+			since: "7d",
+			text: "export",
+		});
+	});
+
+	it("leaves out a value its field does not take, and a field the list does not have", () => {
+		expect(
+			listFilterFromSearch(
+				"requirements",
+				"waiting=nobody&state=agreed,bogus&phase=new",
+			),
+		).toEqual({ state: ["agreed"] });
+	});
+
+	it("leaves the signed-in person's fields to the list that knows the id", () => {
+		expect(
+			listFilterFromSearch("issues", "createdBy=u-1&waiting=agent"),
+		).toEqual({
+			waitingOn: "agent",
+		});
+	});
+});
+
+describe("a row stays on a list only where every field it sets holds (BC-5)", () => {
+	const row = {
+		waiting: "you" as const,
+		text: "REQ-34 Export reports",
+		state: "agreed",
+		createdAt: "2026-10-08T00:00:00Z",
+	};
+	const now = new Date("2026-10-09T00:00:00Z");
+
+	it("keeps a row waiting on you under waitingOn you, and drops it under agent or running", () => {
+		expect(matchesListFilter({ waitingOn: "you" }, row, now)).toBe(true);
+		expect(matchesListFilter({ waitingOn: "agent" }, row, now)).toBe(false);
+		expect(matchesListFilter({ waitingOn: "running" }, row, now)).toBe(false);
+	});
+
+	it("drops a row that answers to none of the three under any waiting filter", () => {
+		expect(
+			matchesListFilter({ waitingOn: "you" }, { ...row, waiting: null }, now),
+		).toBe(false);
+		expect(matchesListFilter({}, { ...row, waiting: null }, now)).toBe(true);
+	});
+
+	it("reads text, a value set and since", () => {
+		expect(matchesListFilter({ text: "export" }, row, now)).toBe(true);
+		expect(matchesListFilter({ text: "import" }, row, now)).toBe(false);
+		expect(matchesListFilter({ state: ["draft", "agreed"] }, row, now)).toBe(
+			true,
+		);
+		expect(matchesListFilter({ state: ["draft"] }, row, now)).toBe(false);
+		expect(matchesListFilter({ since: "1d" }, row, now)).toBe(true);
+		expect(
+			matchesListFilter({ since: "1d" }, { ...row, createdAt: undefined }, now),
+		).toBe(false);
+	});
+
+	it("refuses a field it cannot read rather than pass it over", () => {
+		expect(() => matchesListFilter({ createdBy: "me" }, row, now)).toThrow(
+			/does not read "createdBy"/,
+		);
 	});
 });

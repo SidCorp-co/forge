@@ -1,6 +1,8 @@
 "use client";
 
 import { RELEASE_ATTENTION_GROUPS, RELEASE_ATTENTION_LABELS } from "@forge/contracts/releases";
+import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
+import { ListFilterBar, useListNarrowing } from "@/features/conversations/ui-actions/list-filter-bar";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo } from "react";
 import {
@@ -83,10 +85,16 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
   const text = params.get("q") ?? "";
   const fold = useGroupFold("web-v2:releases-fold");
   const all = q.data?.releases ?? [];
+  // the search box reads q; whom a release waits on and its state are the list filter the chat sets too (REQ-41 BC-5)
+  const filter = useListNarrowing("releases");
   const rows = useMemo(() => {
     const t = text.trim().toLowerCase();
-    return t ? all.filter((r) => `${r.version} ${r.headline} ${r.requirements.join(" ")}`.toLowerCase().includes(t)) : all;
-  }, [all, text]);
+    return all.filter(
+      (r) =>
+        (!t || `${r.version} ${r.headline} ${r.requirements.join(" ")}`.toLowerCase().includes(t)) &&
+        matchesListFilter(filter, { waiting: waitingFilterOf(r), text: "", state: r.state }),
+    );
+  }, [all, text, filter]);
   const groups = useMemo(() => groupsOf(rows, label), [rows, label]);
   const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.version), [groups, fold]);
   const allKeys = useMemo(() => all.map((r) => r.version), [all]);
@@ -170,6 +178,7 @@ function SearchBar({
           className="w-full min-w-0 border-0 bg-transparent text-fg outline-none"
         />
       </label>
+      <ListFilterBar list="releases" />
       {productionUnreadable === null ? null : (
         <span className="text-12 text-muted" title={productionUnreadable} data-testid="production-unreadable">
           {t("releases.productionUnreadable")}

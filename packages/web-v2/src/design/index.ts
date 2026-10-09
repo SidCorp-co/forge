@@ -96,6 +96,8 @@ export {
 export { DetailTabs, DetailLayout, DetailPane, FieldLabel, useUrlTab, ViewHeading } from "./patterns/detail-tabs";
 export { ViewModeSwitcher, useViewMode, type ViewMode } from "./patterns/view-mode-switcher";
 export { useUrlParams, useUrlChoice } from "./hooks/use-url-params";
+export { pageShown, useReportShown, useShownKeys } from "./hooks/use-page-shown";
+export { highlightOnPage, highlightStore, useHighlight, type HighlightState } from "./hooks/use-highlight";
 
 export { useDebounced } from "./hooks/use-debounced";
 export { useElapsed } from "./hooks/use-elapsed";

@@ -4,8 +4,9 @@
 // primary module) and Waves (by layers of open blockers), over core's read model
 // (`GET /projects/:id/issues/standing`). The toolbar holds the scope, a search and three quick
 // filters; the assistant's `ui.issues.filter` params (status, priority, createdBy, assignee) narrow
-// these views the same way they narrow the Table. The URL is the state, so back from a full page
-// lands on the same view, filters and peek.
+// these views the same way they narrow the Table, and whom an issue waits on (`waiting`, REQ-41 BC-5)
+// narrows them from each row's standing. The URL is the state, so back from a full page lands on the
+// same view, filters and peek.
 
 import {
   ISSUE_ATTENTION_GROUPS,
@@ -15,6 +16,7 @@ import {
   type IssueStandingRow,
   type IssueStandingScope,
 } from "@forge/contracts/issue-standing";
+import { listFilterFromSearch, type UiWaitingFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
@@ -47,6 +49,8 @@ import { useEtaSort, useProjectForecast } from "@/features/forecast/hooks";
 import { etaSortValue } from "@/features/forecast/eta";
 import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { Written } from "@/lib/i18n/written";
+import { useReportShown } from "@/design/hooks/use-page-shown";
+import { WaitingFilter } from "@/features/conversations/ui-actions/list-filter-bar";
 
 type BoardMode = "attention" | "module" | "waves";
 
@@ -67,6 +71,7 @@ interface Narrowing {
   priority: string;
   createdBy: string;
   assignee: string;
+  waiting: UiWaitingFilter | null;
 }
 
 function narrow(rows: IssueStandingRow[], n: Narrowing): IssueStandingRow[] {
@@ -80,6 +85,7 @@ function narrow(rows: IssueStandingRow[], n: Narrowing): IssueStandingRow[] {
     if (n.priority && r.priority !== n.priority) return false;
     if (n.createdBy && r.createdById !== n.createdBy) return false;
     if (n.assignee && r.assigneeId !== n.assignee) return false;
+    if (n.waiting && waitingFilterOf(r.standing) !== n.waiting) return false;
     return true;
   });
 }
@@ -301,6 +307,7 @@ function Toolbar({ data, scope, n, children }: { data: IssueStandingList | undef
         onChange={(v) => set({ filter: v === "open" ? null : v, peek: null })}
       />
       <ListSearch noun={t("issues.board.searchNoun")} value={n.q} onChange={(q) => set({ q: q || null })} />
+      <WaitingFilter value={n.waiting ?? undefined} />
       {QUICK.map((c) => {
         const on = n.quick.has(c.id);
         return (
@@ -350,6 +357,12 @@ function AssistantNarrowing({ n }: { n: Narrowing }) {
   );
 }
 
+/** The Waves view draws no grouped list, so it reports the rows it shows itself (REQ-41 BC-8). */
+function WavesShown({ keys }: { keys: readonly string[] }) {
+  useReportShown(keys);
+  return null;
+}
+
 export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { projectId: string; slug: string }; mode: BoardMode; toolbarLead?: ReactNode }) {
   const router = useRouter();
   const [params] = useUrlParams();
@@ -364,8 +377,9 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
     priority: params.get("priority") ?? "",
     createdBy: params.get("createdBy") ?? "",
     assignee: params.get("assignee") ?? "",
+    waiting: listFilterFromSearch("issues", params).waitingOn ?? null,
   };
-  const key = `${n.q}|${[...n.quick].join()}|${n.statuses.join()}|${n.priority}|${n.createdBy}|${n.assignee}`;
+  const key = `${n.q}|${[...n.quick].join()}|${n.statuses.join()}|${n.priority}|${n.createdBy}|${n.assignee}|${n.waiting}`;
   // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for every narrowing field
   const rows = useMemo(() => narrow(q.data?.issues ?? [], n), [q.data, key]);
   const forecastQ = useProjectForecast(project.projectId);
@@ -416,7 +430,10 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
                   <EmptyState title={scope === "closed" ? t("issues.board.noClosed") : t("issues.board.noIssue")} message={t("issues.board.emptyHint")} />
                 </div>
               ) : mode === "waves" ? (
-                <Waves rows={rows} selected={peek.open} onPeek={(k) => peek.set(k === peek.open ? null : k)} />
+                <>
+                  <WavesShown keys={visible} />
+                  <Waves rows={rows} selected={peek.open} onPeek={(k) => peek.set(k === peek.open ? null : k)} />
+                </>
               ) : (
                 <GroupedList
                   ariaLabel={t("issues.screen.title")}
