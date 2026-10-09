@@ -123,6 +123,25 @@ describe('a room is opened, joined and built in with no gate (BC-1, BC-3, BC-4, 
   });
 });
 
+describe('an ask into a preview that cannot show it (BC-4)', () => {
+  it('is refused by name and kept as no turn when the preview failed', async () => {
+    const key = await agreedScreen('Cart shows a failed preview');
+    const room = await liveRoom(key);
+    const failed = await world.box.report(room.preview.id, {
+      kind: 'failed',
+      reason: 'PORT_IN_USE',
+      detail: '3000 held by pid 9',
+    });
+    expect(failed.status, JSON.stringify(failed.body)).toBe(200);
+
+    const refused = await api(owner, 'POST', `/api/rooms/${room.id}/asks`, { text: 'make it red' });
+
+    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
+    expect((refused.body.error as Body).code).toBe('ROOM_ASLEEP');
+    expect((await read(room.id)).room.turns).toHaveLength(1);
+  });
+});
+
 describe('a room preview is asked, kept and abandoned through its room only (BC-3)', () => {
   it('refuses the preview doors by name, so no edit reaches the agent without a turn', async () => {
     const key = await agreedScreen('Cart shows a coupon');

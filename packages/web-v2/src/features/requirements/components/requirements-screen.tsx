@@ -1,10 +1,10 @@
 "use client";
 
-// The Requirements list (`forge-prototype.html` #/requirements): the grouping in the top header, a
-// search, the BA assistant's open suggestions, then the shared GroupedList by whose turn it is, by
-// state, or by roadmap lane (REQ-33 BC-3: Now, Next and Later by `ROADMAP_HORIZON_OF`, the rule the
-// status report's roadmap reads). Each row reads core's standing (`requirements/standing.ts`);
-// nothing here derives whose turn it is.
+// The Requirements list (REQ-29): the view in the top header, a search, the BA assistant's open
+// suggestions, then one line per requirement by whose turn it is or by business area, or the Map of
+// stages and Now, Next and Later (`requirement-roadmap.ts:roadmapHorizonOf`, the rule the status
+// report's roadmap reads). Each row reads core's standing (`requirements/standing.ts`); nothing here
+// derives whose turn it is.
 // The URL carries the view (`?group=…&q=…&peek=REQ-n`), so back from the full page restores it.
 
 import { useRouter } from "next/navigation";

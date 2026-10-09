@@ -154,6 +154,8 @@ export function useSetAreas(projectId: string) {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["requirement-areas", projectId] });
       qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      // an open requirement shows its area by name, which a rename changes
+      qc.invalidateQueries({ queryKey: ["requirement", projectId] });
     },
   });
 }
@@ -180,7 +182,10 @@ export function useAcceptAllPlacements(projectId: string) {
     mutationFn: async (keys: string[]) => {
       for (const k of keys) await requirementsApi.acceptPlacement(projectId, k);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["requirements", projectId] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      qc.invalidateQueries({ queryKey: ["requirement", projectId] });
+    },
   });
 }
 

@@ -20,8 +20,9 @@ function Overview({ projectId, slug, module }: { projectId: string; slug: string
     <div className="grid gap-1.5" data-testid="module-hover">
       <p className="font-semibold">{module.name}</p>
       {q.isLoading ? <p className="text-muted">{t("issues.module.loading")}</p> : null}
-      {q.isError ? <p className="text-muted">{t("issues.module.noOverview")}</p> : null}
+      {q.isError ? <p className="text-muted">{t("issues.module.loadFailed")}</p> : null}
       {purpose ? <p className="line-clamp-4 text-muted">{purpose}</p> : null}
+      {d && !purpose ? <p className="text-muted">{t("issues.module.noOverview")}</p> : null}
       {d ? (
         <p className="border-t border-line-subtle pt-1.5 text-12 text-muted">
           {t("issues.module.standing", { open: d.standing.open, running: d.standing.running })}

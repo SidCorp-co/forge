@@ -203,6 +203,13 @@ export async function askRoom(roomId: string, actor: PreviewActor, text: string)
   await addMember(room.id, actor.userId);
   await wake(room, actor.userId);
   const preview = await rowOf(room.previewId);
+  // a failed or closed preview never shows a turn, so an ask kept there could never be settled
+  if (preview.state !== 'live' && preview.state !== 'starting') {
+    throw refuseRoom(
+      'ROOM_ASLEEP',
+      `the room's preview is ${preview.state}${preview.reason ? ` (${preview.reason})` : ''} and did not wake: nothing was asked; open a new room`,
+    );
+  }
   await insertTurn(room.id, 'ask', actor.userId, text);
   await deliverToSketch(preview, null, actor, text);
   return readRoom(room.id, actor);
