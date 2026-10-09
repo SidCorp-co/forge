@@ -6,11 +6,8 @@
 
 import { requirementKey } from '@forge/contracts/requirements';
 import { db } from '../db/client.js';
-import {
-  type RevisionState,
-  requirementReturns,
-  requirementRevisions,
-} from '../db/schema-requirements.js';
+import { requirementReturns } from '../db/schema-requirement-acts.js';
+import { type RevisionState, requirementRevisions } from '../db/schema-requirements.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';

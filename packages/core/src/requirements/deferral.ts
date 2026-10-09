@@ -8,11 +8,8 @@ import { REQUIREMENT_MACHINE } from '@forge/contracts/requirement-machine';
 import { and, eq, notInArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import {
-  type RequirementStatus,
-  requirementDeferrals,
-  requirements,
-} from '../db/schema-requirements.js';
+import { requirementDeferrals } from '../db/schema-requirement-acts.js';
+import { type RequirementStatus, requirements } from '../db/schema-requirements.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { movedRow, transition } from '../lifecycle/index.js';

@@ -63,7 +63,9 @@ it lives in numbered revisions, and each revision carries business criteria unde
    ask's \`about\`), and \`unclear\` counts the open ones; an answer reaches it as a decision.
    **edit** rewrites a draft in place, whole: send the criteria list you read back, codes included,
    and a code the draft itself gave keeps that code, as a live code of its base does. Anything past
-   draft is \`REQUIREMENT_REVISION_NOT_DRAFT\`.
+   draft is \`REQUIREMENT_REVISION_NOT_DRAFT\`. A draft nobody touched for 7 days that a person answers
+   "drop" on Forge's merge-or-drop question is **withdrawn** (terminal, with the question as its reason);
+   it no longer counts as the open revision, and editing or proposing it is \`REQUIREMENT_REVISION_WITHDRAWN\`.
 3. **propose** puts the draft in front of whoever approves it. Proposing also checks the base is still the head.
 4. A holder of \`requirements.approve\` **accepts** it (it becomes current, the previous current is superseded) or **returns** it
    with a reason (it goes back to draft, and each return is kept as its own record).

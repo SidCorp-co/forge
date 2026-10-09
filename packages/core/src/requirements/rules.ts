@@ -71,6 +71,13 @@ export function stateRefusal(
   want: 'draft' | 'proposed',
 ): RequirementRefusal | null {
   if (state === want) return null;
+  if (state === 'withdrawn') {
+    return {
+      code: 'REQUIREMENT_REVISION_WITHDRAWN',
+      path: '/revision',
+      detail: `revision ${revision} was withdrawn; a withdrawn draft is never edited, proposed, accepted or returned again. Write a new revision to say what it said.`,
+    };
+  }
   return want === 'draft'
     ? {
         code: 'REQUIREMENT_REVISION_NOT_DRAFT',

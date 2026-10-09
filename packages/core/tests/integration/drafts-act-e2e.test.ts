@@ -378,3 +378,78 @@ describe('BC-12: a merge a rule refuses is refused by name and stays with the ma
     expect(await needsYouKeys()).not.toContain(drafts.refusedReq);
   });
 });
+
+describe('BC-12: a stale draft revision answered "drop" is withdrawn, never stuck', () => {
+  let key = '';
+
+  beforeAll(async () => {
+    key = await agreedRequirement('Coordinator call notes', { scopeIn: ['Notes per call'] }, [
+      { body: 'Each call keeps its notes.' },
+    ]);
+    ok(
+      await as('POST', `/requirements/${key}/revisions`, {
+        baseRevision: 1,
+        reason: 'someone started an edit once',
+        criteria: [
+          { code: 'BC-1', body: 'Each call keeps its notes.' },
+          { body: 'Notes are searchable.' },
+        ],
+      }),
+    );
+    const seq = Number(key.slice(4));
+    await db.execute(sql`
+      UPDATE requirement_revisions
+         SET created_at = ${daysAgo(9)},
+             proposed_at = CASE WHEN proposed_at IS NULL THEN NULL ELSE ${daysAgo(9)}::timestamptz END,
+             decided_at = CASE WHEN decided_at IS NULL THEN NULL ELSE ${daysAgo(9)}::timestamptz END
+       WHERE requirement_id = (SELECT id FROM requirements WHERE project_id = ${projectId} AND req_seq = ${seq})`);
+    await db.execute(sql`
+      UPDATE requirements SET updated_at = ${daysAgo(8)} WHERE project_id = ${projectId} AND req_seq = ${seq}`);
+    const { sweepStaleDrafts } = await import('../../src/requirements/stale-drafts.js');
+    await sweepStaleDrafts();
+  });
+
+  it('withdraws the draft revision naming the question, and the requirement leaves Needs you', async () => {
+    const q = await questionOn({ requirement: key });
+    expect(String(q.last.prompt)).toContain('is a draft revision (r2)');
+    expect((await decisionOf(key))?.group).toBe('merge_or_drop');
+    expect(await needsYouKeys()).toContain(key);
+
+    await answer(q.id, 'stale_draft.drop');
+
+    expect((await questionOn({ requirement: key })).last.resume, 'carried out, not refused').toBe(
+      undefined,
+    );
+    const [r2] = await rows<{ state: string; withdrawn_reason: string | null }>(sql`
+      SELECT state, withdrawn_reason FROM requirement_revisions
+       WHERE requirement_id = ${await reqId(key)} AND revision = 2`);
+    expect(r2).toEqual({
+      state: 'withdrawn',
+      withdrawn_reason: `Withdrawn on the answer to Forge's merge-or-drop question ${q.id}.`,
+    });
+    const detail = ok(await as('GET', `/requirements/${key}`)) as Doc;
+    expect(detail.status).toBe('agreed');
+    expect(detail.latestRevision).toEqual({ revision: 1, state: 'current' });
+    expect(((detail.criteria as Doc[]) ?? []).map((c) => c.body)).toEqual([
+      'Each call keeps its notes.',
+    ]);
+    expect(await decisionOf(key)).toBeUndefined();
+    expect(await needsYouKeys(), 'it reads as it did before the draft').not.toContain(key);
+  });
+
+  it('refuses to propose a withdrawn revision by name, and the next draft can be written', async () => {
+    const refused = await as('POST', `/requirements/${key}/revisions/2/propose`, {});
+    expect(refused.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(refused.json)).toContain('REQUIREMENT_REVISION_WITHDRAWN');
+    ok(
+      await as('POST', `/requirements/${key}/revisions`, {
+        baseRevision: 1,
+        reason: 'the edit, started again',
+        criteria: [{ code: 'BC-1', body: 'Each call keeps its notes.' }],
+      }),
+    );
+    const [r3] = await rows<{ state: string }>(sql`
+      SELECT state FROM requirement_revisions WHERE requirement_id = ${await reqId(key)} AND revision = 3`);
+    expect(r3?.state).toBe('draft');
+  });
+});

@@ -3081,6 +3081,13 @@
       "when": 1824422400000,
       "tag": "0480_a_kept_idea_preview_is_a_requirements_picture",
       "breakpoints": true
+    },
+    {
+      "idx": 481,
+      "version": "7",
+      "when": 1824508800000,
+      "tag": "0481_a_stale_draft_revision_can_be_withdrawn",
+      "breakpoints": true
     }
   ]
 }
