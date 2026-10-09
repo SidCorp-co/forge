@@ -546,8 +546,8 @@ function RunnerRow({
 
 	return (
 		<div className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-3">
-			<div className="flex items-center justify-between gap-2">
-				<div className="flex min-w-0 items-center gap-2">
+			<div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2">
+				<div className="flex min-w-0 flex-wrap items-center gap-2">
 					<HealthDot health={online ? "healthy" : "idle"} withLabel={false} />
 					<span className="truncate font-semibold text-fg">
 						{runner.deviceName ?? "Unknown device"}
@@ -591,7 +591,7 @@ function RunnerRow({
 				</div>
 				{canEdit &&
 					(confirmRemove ? (
-						<span className="inline-flex items-center gap-1.5">
+						<span className="inline-flex flex-wrap items-center gap-1.5">
 							<Button
 								variant="danger"
 								size="sm"
@@ -614,7 +614,7 @@ function RunnerRow({
 							</Button>
 						</span>
 					) : (
-						<span className="inline-flex items-center gap-1">
+						<span className="inline-flex flex-wrap items-center gap-1">
 							{runner.deviceId && deviceDisabled && (
 								<Button
 									variant="secondary"
