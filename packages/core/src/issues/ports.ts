@@ -24,6 +24,8 @@ export interface IssueProjectDocument {
   source: {
     type: 'git' | 'storefront' | 'none';
     storefront?: { provider: string; binding: string };
+    /** The repository a git project builds from; whose pattern catalog it reads (`issues/patterns.ts:catalogOf`). */
+    git?: { repository: string } | undefined;
   };
   delivery?: Parameters<typeof verdictsRequiredOf>[0];
   plan?: { approval: { required: boolean } } | undefined;
@@ -64,7 +66,10 @@ export interface RunnerAvailability {
   total: number;
 }
 
-export type DispatchGateCode = 'WORKFLOW_DESIGN_NOT_APPROVED' | 'CONTRACT_WAIT_UNSETTLED';
+export type DispatchGateCode =
+  | 'WORKFLOW_DESIGN_NOT_APPROVED'
+  | 'CONTRACT_WAIT_UNSETTLED'
+  | 'PATTERN_REVIEW_PENDING';
 
 export type GateReader = Pick<Tx, 'execute' | 'select'>;
 

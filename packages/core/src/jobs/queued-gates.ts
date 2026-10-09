@@ -1,6 +1,7 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { contractWaitUnsettledSql } from '../db/schema-contract-waits.js';
+import { patternReviewPendingSql } from '../db/schema-issue-patterns.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import {
   claimCapableSql,
@@ -21,6 +22,7 @@ type GateSkipReason =
   | 'runner_stale'
   | 'release_label_missing'
   | 'contract_wait_unsettled'
+  | 'pattern_review_pending'
   | 'checkout_unbound';
 
 interface BarrierFragments {
@@ -100,6 +102,8 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
         WHEN ${predicates.issueBusyJob} THEN 'issue_busy'
         WHEN j.issue_id IS NOT NULL AND ${contractWaitUnsettledSql(sql`j.issue_id`)}
           THEN 'contract_wait_unsettled'
+        WHEN j.issue_id IS NOT NULL AND ${patternReviewPendingSql(sql`j.issue_id`)}
+          THEN 'pattern_review_pending'
         -- must too: uncorrelated, a project with no box of its own reads as served the moment ANY
         -- project in the set has one, which is the deadlock these arms exist to name, inverted.
         WHEN NOT EXISTS (

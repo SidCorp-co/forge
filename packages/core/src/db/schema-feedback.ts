@@ -230,7 +230,7 @@ export const feedbackRouteIssues = pgTable(
   }),
 );
 
-// a decision is a row, not an overwrite (domain-entities.md "Records and audit"): a re-triage
+// a decision is a row, not an overwrite (docs/patterns/core-module.md "Records and events"): a re-triage
 // after a reopen keeps the route it replaced. Insert-only by trigger, removed only with its item
 export const feedbackDecisions = pgTable(
   'feedback_decisions',

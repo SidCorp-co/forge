@@ -1,13 +1,11 @@
 import type { CodeTraceResponse, CodeTraceScope, CodeTraceUnit } from '@forge/contracts/modules';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { THIS_REPOSITORY } from './lib/this-repository.js';
 import { type AuthVars, requireAuth } from './middleware/auth.js';
 import declaration from './modules.json' with { type: 'json' };
 import { actorFor, projectResource, requireCan } from './permissions/index.js';
 import { readDeclaredSource } from './project-config/index.js';
-
-/** The repository this trace declares; only a project built from it reads the trace as its own. */
-const THIS_REPOSITORY = 'github.com/SidCorp-co/forge';
 
 const SECTIONS: Record<CodeTraceScope, 'modules' | 'web' | 'runner'> = {
   core: 'modules',

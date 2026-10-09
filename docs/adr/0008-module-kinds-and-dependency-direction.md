@@ -21,6 +21,7 @@ and patterns are the root the code is reconciled to. A read-only review of `pack
   needs-you, job context, pins, permission, status sets and the release refusal each had two to
   twelve live implementations, so two screens could disagree about one issue
   (`VISION: state-never-lies`).
+<!-- doc-citation: unchecked `docs/conventions/domain-entities.md` — the page the pattern catalog replaced, named as history; ISS-466 deleted it -->
 - **The pattern covered one slice kind.** The previous `docs/conventions/domain-entities.md` was a
   sound recipe for an entity slice (contracts as the one declaration, the refusal envelope, revisions,
   keys), and 7 directories followed it. It said nothing about state machines, events, read models,
@@ -33,7 +34,8 @@ and patterns are the root the code is reconciled to. A read-only review of `pack
 `packages/core/src/modules.json`: kernel, domain, read-model, adapter, door, platform. Imports run
 one way — door → read-model → domain → kernel → platform, with a domain reaching an adapter only
 through its port — and nothing imports upward or in a cycle. Pattern v2
-(`docs/conventions/domain-entities.md`) states the rules; REQ-12 revision 3 makes each one a
+<!-- doc-citation: unchecked `docs/conventions/domain-entities.md` — the page the pattern catalog replaced, named as history; ISS-466 deleted it -->
+(`docs/patterns/core-module.md`, until ISS-466 `docs/conventions/domain-entities.md`) states the rules; REQ-12 revision 3 makes each one a
 citable business criterion (BC-11 to BC-22).
 
 The choices inside that, and why:
@@ -107,7 +109,7 @@ contradicts itself (an undeclared directory among it) and blocks, with type-awar
 ratcheted by bulk suppressions (ISS-196), the rules an import graph cannot show: table writers,
 database calls in routes, refusal shape and the global fetch outside an adapter; a status
 written outside the kernel transition is refused by a database trigger instead (ISS-189,
-`docs/conventions/domain-entities.md`, Status machines); `--markers` writes those findings as the Wrong markers of the
+`docs/patterns/core-module.md`, Status machines); `--markers` writes those findings as the Wrong markers of the
 reconciliation checklist, a JSON document the REQ-17/18 observation store can import. The owner
 ruled on 2026-10-04 that dev is code only and QA comes later ("build trước đi đã test gọi QA test
 sau"), so neither ships with unit tests, and the only check before a push on dev is

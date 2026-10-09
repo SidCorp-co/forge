@@ -42,7 +42,7 @@ export const DESIGN_STATUS_HINTS: Record<DesignStatus, string> = {
 	returned: "returned: sent back to the master to revise",
 };
 
-// the design keeps one head status (domain-entities item 7), so a revision's own state is
+// the design keeps one head status (docs/patterns/core-module.md, "Revisions: one vocabulary"), so a revision's own state is
 // derived on read from the head and that revision's decision (core `workflows/design-standing.ts:revisionStateOf`)
 export const DESIGN_REVISION_STATES = [
 	"proposed",

@@ -1,4 +1,4 @@
-// The one refusal body, at REST and MCP alike (docs/conventions/domain-entities.md).
+// The one refusal body, at REST and MCP alike (docs/patterns/core-module.md).
 export type Refusal = {
 	code: string;
 	path: string;

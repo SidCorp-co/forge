@@ -103,7 +103,7 @@ export const REQUIREMENT_STATE_HINTS: Record<RequirementState, string> = {
 	dropped: "dropped: no longer wanted",
 };
 
-/** A revision's one state (domain-entities.md "Revisions: one vocabulary"). */
+/** A revision's one state (docs/patterns/core-module.md "Revisions: one vocabulary"). */
 export const REVISION_STATES = [
 	"draft",
 	"proposed",

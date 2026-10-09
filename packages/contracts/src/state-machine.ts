@@ -123,7 +123,7 @@ export function defineMachine<const E extends string, const S extends string>(
 	const shape = machineShape(machine);
 	if (machine.shapes.at(-1) !== shape) {
 		throw new Error(
-			`machine \`${machine.entity}\` has states or edges that no version records: its shape is now ${shape}, and its last recorded shape is ${machine.shapes.at(-1) ?? "none"}. Append "${shape}" to its \`shapes\` (version ${machine.shapes.length + 1}); a change that removes a state or an edge ships the declared migration that moves its rows (docs/conventions/domain-entities.md, Status machines).`,
+			`machine \`${machine.entity}\` has states or edges that no version records: its shape is now ${shape}, and its last recorded shape is ${machine.shapes.at(-1) ?? "none"}. Append "${shape}" to its \`shapes\` (version ${machine.shapes.length + 1}); a change that removes a state or an edge ships the declared migration that moves its rows (docs/patterns/core-module.md, Status machines).`,
 		);
 	}
 	return { ...machine, version: machine.shapes.length };

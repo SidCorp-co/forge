@@ -13,6 +13,7 @@ const APPROVAL_RESOURCES = [
 	"feedback",
 	"releases",
 	"plans",
+	"patterns",
 ] as const;
 export type ApprovalResource = (typeof APPROVAL_RESOURCES)[number];
 export type ApprovalPermission = `${ApprovalResource}.approve`;

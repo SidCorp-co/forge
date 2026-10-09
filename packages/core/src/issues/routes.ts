@@ -234,6 +234,7 @@ export { issueDependencyRoutes } from './dependency-routes.js';
 export { issueExtrasRoutes } from './extras-routes.js';
 export { issueGraphRoutes } from './graph-routes.js';
 export { issueMergeRoutes } from './merge-routes.js';
+export { issuePatternRoutes } from './pattern-routes.js';
 export { issueProjectRoutes } from './project-issue-routes.js';
 export { searchRoutes } from './search.js';
 export { issueStandingRoutes } from './standing-routes.js';

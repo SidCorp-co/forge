@@ -1,10 +1,66 @@
-# Core modules: one build pattern (pattern v2)
+# Core module
+
+**Change kind:** Core module
+**Introduced by:** ISS-466
+
+The one build pattern (pattern v2) for every module of `packages/core/src`, and for the contracts
+and web modules that serve it. A change takes this entry when it adds a module, adds a table,
+moves a table's owner, adds a status machine, an outbox event, a read model or a permission, or
+changes which module may import which. Every other entry builds on it: an API route, a screen, an
+assistant tool and a migration are each a part of a module, and their entries say only what is
+particular to that part.
+
+## Reference
+
+- `packages/core/src/modules.json` — the declaration: each module's kind, context, owned tables, reads and what it serves
+- `packages/core/src/suggestions/rules.ts` — pure guards returning refusals
+- `packages/core/src/suggestions/read.ts` — `rowIn`, the list and detail views, the actor type
+- `packages/core/src/suggestions/service.ts` — writes in one transaction under the entity's lock, answering an outcome
+- `packages/core/src/suggestions/index.ts` — the light face
+- `packages/core/src/db/schema-suggestions.ts` — the table, its CHECKs built from contracts arrays
+- `packages/contracts/src/suggestions.ts` — statuses, refusal codes, request schemas and their SHAPE strings, views
+- `packages/core/src/lib/refusal.ts` — the one refusal envelope
+- `packages/core/src/lifecycle/transition.ts` — the only writer of a status
+- `packages/core/src/runs/facts-read.ts` — the reference read model shape
+- `scripts/check-module-boundaries.mjs` — the import rules this page states, enforced; the catalog points at it and restates none of its rules
+- `scripts/check-module-shape.mjs` — the declaration and semantic rules this page states, enforced
+
+## Test shape
+
+- `packages/core/src/suggestions/rules.test.ts` — a pure guard's refusals and their order, with no database
+- `packages/core/src/suggestions/revise-accept.test.ts` — a service's answer with its collaborators mocked at the module face
+- `packages/core/tests/integration/contract-waits-e2e.test.ts` — the act end to end over HTTP on a throwaway Postgres: the write, its refusals by name, and every door that reads it
+
+A module's guards get a vitest file beside **rules.ts** that calls them with plain values and asserts
+the refusal codes and paths. A write that crosses the database, a lock or another module gets one
+`*-e2e.test.ts` under `packages/core/tests/integration/`, collected by
+`packages/core/vitest.integration.config.ts` (`pnpm --filter @forge/core test:integration`). The
+direct tests of a change are the test files beside the files it touched and the integration tests
+of the modules it touched (REQ-36 BC-7, BC-9). A test plants the failure it guards against and is
+seen red before its green counts.
+
+## Review checklist
+
+1. Every new directory under `packages/core/src` has an entry in `modules.json` with its kind, context and `serves`.
+2. Every new table is listed under exactly one module's `owns`, and only that module writes it.
+3. No import runs against context or kind direction, and another module is reached through its **index.ts** only.
+4. A route file holds no database call and no rule; it validates, calls one service or read function, and answers.
+5. A service returns its refusals; none is thrown as an error class, an `HTTPException` or text, and each code is declared in contracts.
+6. Enum values, refusal codes, request schemas and views are declared once in contracts, and the table's CHECK is built from the same array.
+7. A status is written only through the kernel transition, and a changed machine records a new shape.
+8. A fact another module reacts to is an outbox event with a declared consumer; nothing emits an event nobody consumes.
+9. A derived fact has one function in one read model, and a gate deciding on it calls the same input-builder.
+10. Every check of who may act asks `can()` for a permission in `packages/contracts/src/permissions.ts`.
+11. Code this change replaced is removed in it, and a compatibility path names its issue and the condition that ends it.
+
+## The rules (pattern v2)
 
 The owner ruled on 2026-10-03 that every build gets a clearly defined schema and a clear pattern,
 not a style per place, and on 2026-10-04 that the logic was not clean and the build pattern not
-stable ("Logic tôi thấy chưa sạch sẽ và build pattern chưa ổn"). This page is the one build
+stable ("Logic tôi thấy chưa sạch sẽ và build pattern chưa ổn"). This entry is the one build
 pattern for every module of `packages/core/src`, and for the contracts and web modules that serve
-it. It is a root of the reconciliation checklist
+<!-- doc-citation: unchecked `docs/conventions/domain-entities.md` — the page the pattern catalog replaced, named as history; ISS-466 deleted it -->
+it; until ISS-466 it was `docs/conventions/domain-entities.md`. It is a root of the reconciliation checklist
 ([design-is-the-root…](../proposals/design-is-the-root-and-code-is-reconciled-to-it.md)), beside
 requirements and workflow designs.
 
@@ -33,9 +89,10 @@ requirements and workflow designs.
 - **The API comes first.** The CLI wraps the routes, and MCP keeps only what neither covers
   ([api-first.md](../proposals/destination/api-first.md)), so every rule below is stated for the
   route first.
-- **Code only on dev, QA later.** On dev the only check before a push is `pnpm tc:changed`
-  (`scripts/tc-changed.mjs`), which typechecks the packages a change touched and their importers. Tests, verify, checkers and CI are not run while building; QA is a
-  later phase (owner, 2026-10-04: "build trước đi đã test gọi QA test sau").
+- **What a change runs before it lands.** `pnpm tc:changed` (`scripts/tc-changed.mjs`), which
+  typechecks the packages a change touched and their importers, and the direct tests of the files it
+  touched (REQ-36 BC-7); then `pnpm verify`, which runs every checker named on this page. The whole
+  suite is not a developer's check (REQ-36 BC-10, BC-17).
 
 ## Business contexts
 
@@ -211,7 +268,7 @@ và CLI hơn thì không cần MCP".
 
 | Shape | Lives in | Reference |
 |---|---|---|
-| Table, CHECKs, indexes | `packages/core/src/db/schema-<x>.ts`, one file per entity family, listed in `packages/core/drizzle.config.ts` | `packages/core/src/db/schema-suggestions.ts:suggestions` |
+| Table, CHECKs, indexes | `packages/core/src/db/schema-<x>.ts`, one file per entity family, which `packages/core/drizzle.config.ts` reads by its `schema*.ts` name | `packages/core/src/db/schema-suggestions.ts:suggestions` |
 | Enum values (`as const`) including kernel statuses, refusal codes, request schemas, response shapes, limits, status machines, event types | `packages/contracts/src/<module>.ts`, compiled (`tsconfig.emit.json`) and exported at `@forge/contracts/<module>` | `packages/contracts/src/suggestions.ts:SUGGESTION_STATUSES`, `:SUGGESTION_REFUSAL_CODES`, `:createSuggestionRequestSchema`, `:SuggestionView` |
 | The refusal body | `packages/contracts/src/refusal.ts:RefusalEnvelope` | `packages/web-v2/src/lib/api/refusals.ts:namedRefusals` |
 | Web types | `packages/web-v2/src/features/<module>/types.ts`, re-exporting from contracts plus UI-local unions | `packages/web-v2/src/features/suggestions/types.ts` |
@@ -529,7 +586,9 @@ written:
 - **Approval is a permission**
   ([ADR 0007](../adr/0007-approval-is-a-permission.md)): every approve-type act asks for
   `<resource>.approve`. No rule refuses an actor for being an agent, for being a person or for being
-  the author; whoever holds the permission acts.
+  the author; whoever holds the permission acts. One exception is drawn by an approved design: a new pattern's
+  reviewer is never the account that named it (`PATTERN_REVIEWER_IS_AUTHOR`, Issue lifecycle r14
+  `design-check`; [the catalog index](README.md)).
 - **One refusal**: a caller with a role that lacks the permission is refused `PERMISSION_FORBIDDEN`
   with 403 in the envelope, naming `permission` and `scope`; a caller with no role on the project
   is a 403 (transport).
@@ -676,7 +735,7 @@ web-v2/src/features/feedback/     api.ts, hooks.ts, types.ts, routes.ts, compone
 | A version per machine | Any edit to a machine's states or edges appends a fingerprint to its `shapes`, and one that removes a state or an edge ships a data migration with it |
 | One durable outbox | Every reaction is asynchronous and survives a crash, at the price of a table write per event plus one per consumer, and a consumer whose effect leaves the database must be idempotent |
 | The status chosen by what the client should do | Each code that is not 422 is declared in a status map beside it; a code thrown in core but declared in no contracts array answers 422, whatever it means |
-| The semantic rules run on demand, not before a push | New code can break a table-writer, route-query or refusal rule and land; the break shows only when the orchestrator or QA next runs the script |
+| The semantic rules are type-aware lint, run by `pnpm verify` and CI | They need the workspace installed and the contracts built, so a change that skips verify meets a table-writer, route-query or refusal break only in CI |
 | Read models SELECT owners' tables they declare | An owner's column change can break a read model's SQL that no owner code calls, so the `reads` list is where an owner looks before it changes a table |
 | One input-builder per fact, shared with the gate | The builder answers what both callers need, so the read model's page query and the gate's single-row check run the same statement shape, and the gate may read a column it does not use |
 | Import rules with nothing frozen | A violation fails the run the moment it appears, a file move that surfaces one included; there is no baseline to re-freeze it into, so it is fixed before the change lands |

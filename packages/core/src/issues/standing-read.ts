@@ -35,6 +35,7 @@ import { designHoldPhrase } from './design-delivery.js';
 import { issueRunLiveSql, issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { loadIssuePark } from './park-view.js';
+import { patternReviewPendingSql } from './patterns.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import {
   answeredSinceSql,
@@ -103,6 +104,7 @@ interface IssueRowRaw {
   design_returned: { flow: string; revision: number } | null;
   design_unapproved: boolean;
   contract_unsettled: boolean;
+  pattern_pending: boolean;
 }
 
 // The design revision drawn under this issue that its approver returned and nobody has redrawn yet.
@@ -147,6 +149,7 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
              )} END AS answered_park,
              ${designReturnedUnderSql(sql`i.id`)} AS design_returned,
              ${contractWaitUnsettledSql(sql`i.id`)} AS contract_unsettled,
+             ${patternReviewPendingSql(sql`i.id`)} AS pattern_pending,
              ${issueWorkMovingSql({
                issueId: sql`i.id`,
                projectId: sql`i.project_id`,

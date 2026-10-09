@@ -77,6 +77,13 @@ export const CHECKS = [
   },
   {
     axis: 'knowledge',
+    label: 'pattern-catalog',
+    cmd: ['node', 'scripts/check-pattern-catalog.mjs'],
+    scanned: /^pattern-catalog: (\d+) entr\(y\/ies\) scanned/m,
+    unit: 'catalog entries',
+  },
+  {
+    axis: 'knowledge',
     label: 'honest-costs',
     cmd: ['node', 'scripts/check-honest-costs.mjs'],
     scanned: /^honest-costs: (\d+) document/m,

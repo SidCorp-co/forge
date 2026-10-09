@@ -1,5 +1,5 @@
 {
-  "$comment": "Pattern v2 (docs/conventions/domain-entities.md, ADR 0008): every directory under packages/core/src is exactly one kind and sits in one business context, and every table has exactly one owning module, the only one that writes it. A read model lists under `reads` the owners' tables or views it SELECTs, and writes none. A nested path (integrations/<port>) is a module of its own. `contexts` lists the contexts in dependency order: a module imports only its own context or one listed before it, a door excepted. Each context's label is its root module label on the Forge project. scripts/check-module-boundaries.mjs generates its dependency-cruiser rules from this file, and scripts/check-module-shape.mjs reads it for the declaration checks and the semantic rules. Every module, every web-v2 feature directory (`web`) and every runner crate (`runner`) lists under `serves` the requirements (REQ-<n>) and workflow steps (<workflow>#<step>) it exists for, or `via:<module>` for code that serves only through a module that serves one directly; scripts/check-module-shape.mjs checks them against .forge/design-index.json.",
+  "$comment": "Pattern v2 (docs/patterns/core-module.md, ADR 0008): every directory under packages/core/src is exactly one kind and sits in one business context, and every table has exactly one owning module, the only one that writes it. A read model lists under `reads` the owners' tables or views it SELECTs, and writes none. A nested path (integrations/<port>) is a module of its own. `contexts` lists the contexts in dependency order: a module imports only its own context or one listed before it, a door excepted. Each context's label is its root module label on the Forge project. scripts/check-module-boundaries.mjs generates its dependency-cruiser rules from this file, and scripts/check-module-shape.mjs reads it for the declaration checks and the semantic rules. Every module, every web-v2 feature directory (`web`) and every runner crate (`runner`) lists under `serves` the requirements (REQ-<n>) and workflow steps (<workflow>#<step>) it exists for, or `via:<module>` for code that serves only through a module that serves one directly; scripts/check-module-shape.mjs checks them against .forge/design-index.json.",
   "contexts": [
     {
       "name": "platform",
@@ -515,6 +515,7 @@
         "criterionVerdicts",
         "issueAttachments",
         "issueContractWaits",
+        "issuePatterns",
         "issueCriteria",
         "issueDependencies",
         "issueLabels",
@@ -536,6 +537,9 @@
         "issue-delivery#case-run",
         "agent-run-standing#queued",
         "requirement-to-delivery#contract-first",
+        "REQ-36",
+        "issue-lifecycle#design-check",
+        "issue-delivery#admissible",
         "core-kernel#k-issues"
       ]
     },

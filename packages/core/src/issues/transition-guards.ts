@@ -17,6 +17,8 @@
  *   awaiting_release   the run holding it makes the move, or a holder of          NOT_THE_HOLDER
  *                      `releases.approve` or `project.admin` does
  *                      the merge is recorded (a landing moves no status)          MERGE_NOT_RECORDED
+ *                      no new pattern waits on its reviewer, and each approved    PATTERN_REVIEW_PENDING,
+ *                      one has its entry in the catalog the project reads        PATTERN_ENTRY_MISSING
  *                      every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
  *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_DRAFT_SUPERSEDED, VERDICT_UNCORROBORATED
  *                      (a project document with `delivery.verdictsRequired: false` passes the move
@@ -58,6 +60,8 @@ import {
 import { refuseHeldTake } from './blocked-by.js';
 import type { CurrentDrafts } from './criteria/storefront-draft.js';
 import { mergeNotRecorded } from './merged-at.js';
+import { type CatalogReading, catalogReadingOf } from './pattern-rules.js';
+import { patternReleaseRefusal } from './patterns.js';
 import { planDriftOf, readProjectDocument } from './ports.js';
 import {
   type CriteriaEvidence,
@@ -118,6 +122,8 @@ interface IssueMoveFacts {
   callerDeviceId: string | null;
   /** The permission that lets the mover make a move another run's hold reserves, or null. */
   holdOverride: HoldOverride | null;
+  /** The pattern catalog the project reads, which an approved new pattern's entry must be in. */
+  patternCatalog: CatalogReading;
 }
 
 const HOLD_OVERRIDES = ['releases.approve', 'project.admin'] as const;
@@ -170,6 +176,7 @@ export async function readIssueMoveFacts(args: {
     source: document?.source.type ?? null,
     permissions: await permissionFactsOf(args.actorUserId, issue.projectId),
     drafts: await readMoveDrafts(issue, args.to),
+    patternCatalog: catalogReadingOf(document?.source.git?.repository ?? null),
   };
 }
 
@@ -465,7 +472,7 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
             detail: missing.detail,
             details: missing.details,
           } as Refusal)
-        : null;
+        : patternReleaseRefusal(input.tx, input.row.id, base.facts.patternCatalog);
     },
     released: async (input) => refusalOf(await releaseGuard(ctxOf(input))),
     verdicts: async (input) => {

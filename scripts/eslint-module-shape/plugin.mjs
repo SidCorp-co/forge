@@ -1,4 +1,4 @@
-// Pattern v2's semantic module rules (docs/conventions/domain-entities.md, ADR 0008) as type-aware
+// Pattern v2's semantic module rules (docs/patterns/core-module.md, ADR 0008) as type-aware
 // ESLint rules over packages/core/src. scripts/check-module-shape.mjs runs them.
 
 import globalFetch from './rules/global-fetch.mjs';

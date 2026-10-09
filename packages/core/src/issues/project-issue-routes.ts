@@ -23,6 +23,7 @@ import { readLandingShape } from './landing-evidence.js';
 import { serializeRestListRow } from './list-projection.js';
 import { listIssues } from './list-service.js';
 import { liveReachForIssue } from './live-reach-read.js';
+import { issuePatternsOf } from './patterns.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import {
   buildsWorkflowOf,
@@ -52,6 +53,7 @@ export async function issueDetailOf(issue: IssueRow) {
     liveReach: await liveReachForIssue(issue),
     buildsWorkflow: await buildsWorkflowOf(issue.id),
     contractWait: await contractWaitHoldOf(issue.projectId, issue.id),
+    patterns: await issuePatternsOf(issue.projectId, issue.id),
     proposesWorkflow: await proposesWorkflowOf(issue.id),
     requirement: await requirementOfIssue(issue.id),
     relations: await loadIssueRelations(issue.id, issue.projectId),

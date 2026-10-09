@@ -114,6 +114,10 @@ export {
 } from './memory-reads.js';
 export { mergedCommitShaSchema } from './merge-marker.js';
 export { mergeMarkKindOf, recordIssueMerge } from './merge-record.js';
+export {
+  assertPatternReviewsSettledForIssue,
+  patternReviewPendingSql,
+} from './patterns.js';
 export { publishPipelineHealthChanged } from './pipeline-health.js';
 export {
   assertDesignApprovedForIssue,

@@ -1,4 +1,4 @@
-// The codes the pipeline refuses with, in the one refusal envelope (docs/conventions/domain-entities.md).
+// The codes the pipeline refuses with, in the one refusal envelope (docs/patterns/core-module.md).
 import type { RefusalStatuses } from "./refusal.js";
 
 export const PIPELINE_REFUSAL_CODES = [

@@ -237,6 +237,7 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
 const DISPATCH_GATES: Record<string, Said> = {
   issue_busy: say('runs.gate.issueBusy'),
   contract_wait_unsettled: say('runs.gate.contractWait'),
+  pattern_review_pending: say('runs.gate.patternReview'),
   runner_stale: say('runs.gate.runnerStale'),
   runner_too_old: say('runs.gate.runnerTooOld'),
 };

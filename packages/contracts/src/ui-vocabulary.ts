@@ -1,7 +1,7 @@
 // How a person reads enums whose values are declared outside contracts (core's db schema, its
 // ecosystem and pipeline modules): one label and one legend tone per value, so a screen draws them
 // through the shared badge and never prints the stored token. An enum that moves into contracts
-// takes its reading with it (domain-entities.md, "Badges"); until then this file is its one reading.
+// takes its reading with it (docs/patterns/core-module.md, "Badges"); until then this file is its one reading.
 
 import type { AgentReportTriage } from "./agent-reports.js";
 import type { ScheduleState } from "./automation-standing.js";
@@ -510,6 +510,7 @@ export const ENUM_LABELS = {
 		deploy_locked: "Deploy locked",
 		issue_busy: "Issue busy",
 		contract_wait_unsettled: "Contract wait",
+		pattern_review_pending: "Pattern review",
 		runner_stale: "Runner stale",
 		runner_too_old: "Runner too old",
 		blocked_on_machine: "Blocked on a machine",

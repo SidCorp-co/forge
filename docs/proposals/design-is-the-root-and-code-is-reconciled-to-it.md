@@ -14,9 +14,9 @@ that is badly off is deleted and rebuilt to its design, not patched.
 
 ### Phase 0 — the root
 - [x] Requirements (REQ-n with BCs), approved workflow designs and patterns
-      (`docs/conventions/domain-entities.md`, the ADRs, ports and adapters) are named as the root.
+      (the pattern catalog `docs/patterns/`, the ADRs, ports and adapters) are named as the root.
       See [Phase 0 — the root list](#phase-0--the-root-list).
-- [x] **Patterns are a root, as pattern v2** (ISS-160): `docs/conventions/domain-entities.md` is
+- [x] **Patterns are a root, as pattern v2** (ISS-160): `docs/patterns/core-module.md` is
       the one build pattern for every core module, REQ-12 revision 3 makes each rule a business
       criterion (BC-8 widened; BC-11 module kinds, BC-12 dependency direction, BC-13 public face,
       BC-14 table ownership, BC-15 no queries in routes, BC-16 one refusal body, BC-17 status
@@ -75,10 +75,10 @@ that is badly off is deleted and rebuilt to its design, not patched.
 Read from project forge on dev, 2026-10-04. A link is a `requirement_workflows` row
 (`POST /api/projects/:id/requirements/:req/workflows`); the requirement detail lists its designs and
 the design reads them back as `requirements`. Every row also answers to
-`docs/conventions/domain-entities.md`, pattern v2 (REQ-12 BC-8 and BC-11 to BC-22), so it is not
+`docs/patterns/core-module.md`, pattern v2 (REQ-12 BC-8 and BC-11 to BC-22), so it is not
 repeated per row.
 
-| Requirement | Designs it serves (approved revision) | Patterns beyond domain-entities |
+| Requirement | Designs it serves (approved revision) | Patterns beyond the core-module entry |
 |---|---|---|
 | REQ-1 job given design + requirement | issue-lifecycle r3, requirement-to-delivery r2 | |
 | REQ-2 status says who it waits on | issue-lifecycle r3 | |
@@ -91,7 +91,7 @@ repeated per row.
 | REQ-9 cross-project contract (draft) | none | no BCs yet |
 | REQ-10 onboarding | project-onboarding r1 | |
 | REQ-11 Development screens | requirement-to-delivery r2, issue-lifecycle r3 | ADR 0001–0005 (Releases) |
-| REQ-12 one set of conventions (r3) | none: it is the pattern root itself | domain-entities.md (pattern v2), ADR 0006, ADR 0007, ADR 0008 |
+| REQ-12 one set of conventions (r3) | none: it is the pattern root itself | `docs/patterns/core-module.md` (pattern v2), ADR 0006, ADR 0007, ADR 0008 |
 | REQ-13 project's own rules | project-onboarding r1 | |
 | REQ-14 Development to prototype (draft) | none | no BCs yet |
 | REQ-15 Agents / Runs | agent-run-standing r1 | |

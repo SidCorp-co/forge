@@ -74,6 +74,7 @@ import {
   issueExtrasRoutes,
   issueGraphRoutes,
   issueMergeRoutes,
+  issuePatternRoutes,
   issueProjectRoutes,
   issueRoutes,
   issueStandingRoutes,
@@ -220,6 +221,7 @@ function mountEcosystemRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', linkProjectRoutes);
   app.route('/api/projects', contractStandingRoutes);
   app.route('/api/issues', contractWaitRoutes);
+  app.route('/api/issues', issuePatternRoutes);
   app.route('/api/ecosystems', ecosystemRoutes);
   app.route('/api/ecosystems', busRoutes);
   app.route('/api/memberships', membershipRoutes);

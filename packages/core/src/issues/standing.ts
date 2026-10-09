@@ -326,6 +326,10 @@ const WITHHELD_ACT: Record<IssueWithheldCode, { who: Said | 'admins'; act: Said 
     who: say('issues.standing.who.contractProvider'),
     act: say('issues.standing.act.approveContract'),
   },
+  PATTERN_REVIEW_PENDING: {
+    who: say('issues.standing.who.patternReviewer'),
+    act: say('issues.standing.act.decidePattern'),
+  },
 };
 
 /** A takeable issue no master is handed: stuck, the dispatch door's refusal named as its rule. */

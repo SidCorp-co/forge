@@ -1,6 +1,6 @@
 /**
  * Filing, listing and reading agent reports (automation#report), once for every door: REST
- * serves them first, and the MCP tool calls the same functions (domain-entities BC-21).
+ * serves them first, and the MCP tool calls the same functions (docs/patterns/core-module.md, BC-21).
  */
 
 import { AGENT_REPORT_TRIAGES } from '@forge/contracts/agent-reports';

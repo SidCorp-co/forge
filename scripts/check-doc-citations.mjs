@@ -359,6 +359,9 @@ function main() {
     verdict.markerFaults.length;
   if (faults > 0) {
     reportFaults(verdict);
+    // The count a red run carries too: `pnpm verify` proves a checker ran by this line, and one
+    // printed only on a pass turns every red into "cannot prove it ran".
+    console.error(`\ndoc-citations: ${docs.length} document(s) scanned, ${faults} fault(s)`);
     process.exit(1);
   }
 

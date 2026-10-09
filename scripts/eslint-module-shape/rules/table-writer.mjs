@@ -17,7 +17,7 @@ export default {
     type: 'problem',
     docs: {
       description:
-        'A table is written only by the module modules.json names as its owner (docs/conventions/domain-entities.md).',
+        'A table is written only by the module modules.json names as its owner (docs/patterns/core-module.md).',
     },
     schema: [
       {

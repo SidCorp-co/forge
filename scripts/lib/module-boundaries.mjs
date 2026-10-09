@@ -1,4 +1,4 @@
-// Pattern v2's import rules (docs/conventions/domain-entities.md, ADR 0008), as a dependency-cruiser
+// Pattern v2's import rules (docs/patterns/core-module.md, ADR 0008), as a dependency-cruiser
 // rule set generated from packages/core/src/modules.json, and the keys its violations are reported
 // by. Pure functions: the CLI hands in the declaration and the cruise result.
 

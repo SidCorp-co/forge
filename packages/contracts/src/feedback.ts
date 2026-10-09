@@ -102,7 +102,7 @@ export type FeedbackRoute = (typeof FEEDBACK_ROUTES)[number];
 export const FEEDBACK_TRIAGE_ROUTES = [...FEEDBACK_ROUTES, "decline"] as const;
 export type FeedbackTriageRoute = (typeof FEEDBACK_TRIAGE_ROUTES)[number];
 
-/** One row per decision on an item, insert-only, so a re-triage keeps the history (domain-entities.md "Records and audit"). */
+/** One row per decision on an item, insert-only, so a re-triage keeps the history (docs/patterns/core-module.md "Records and events"). */
 export const FEEDBACK_DECISIONS = [
 	"triaged",
 	"declined",

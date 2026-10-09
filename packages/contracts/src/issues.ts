@@ -163,6 +163,7 @@ export const ISSUE_UPDATE_REFUSAL_CODES = [
 	"BRANCH_SELF_REFERENCE",
 	"ASSIGNEE_NOT_MEMBER",
 	"STATUS_MOVES_BY_TRANSITION",
+	"PATTERN_REVIEW_PENDING",
 ] as const;
 export type IssueUpdateRefusalCode =
 	(typeof ISSUE_UPDATE_REFUSAL_CODES)[number];

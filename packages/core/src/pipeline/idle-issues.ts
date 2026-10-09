@@ -28,6 +28,7 @@ import {
   leaseIsReleasable,
   leaseIsWorkInProgress,
   leaseShowsHolderGone,
+  patternReviewPendingSql,
   readClaim,
   SHORTEST_GRACE_MS,
   STRAND_RULES,
@@ -105,6 +106,7 @@ export interface CandidateRow {
   held_by: number[];
   design_unapproved: boolean;
   contract_unsettled: boolean;
+  pattern_pending: boolean;
   cursor_ts: string;
 }
 
@@ -236,8 +238,20 @@ function judge(
 /** What withholds the row from dispatch, as the candidate read took it; null where nothing does. */
 function withheldOf(row: CandidateRow): StrandWithheld | null {
   const blockers = (row.held_by ?? []).map((seq) => formatIssueRef(row.issue_prefix, seq));
-  if (blockers.length === 0 && !row.design_unapproved && !row.contract_unsettled) return null;
-  return { blockers, design: row.design_unapproved, contract: row.contract_unsettled };
+  if (
+    blockers.length === 0 &&
+    !row.design_unapproved &&
+    !row.contract_unsettled &&
+    !row.pattern_pending
+  ) {
+    return null;
+  }
+  return {
+    blockers,
+    design: row.design_unapproved,
+    contract: row.contract_unsettled,
+    pattern: row.pattern_pending,
+  };
 }
 
 function unclassifiedRecord(row: CandidateRow, lease: LeaseReading, now: Date): StrandRecord {
@@ -291,7 +305,8 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
            -- finding never says a dispatch is missing on a row no dispatch would be handed
            ${holdingBlockerSeqsSql({ issueId: sql`i.id`, projectId: sql`i.project_id` })} AS held_by,
            ${designUnapprovedSql(sql`i.id`)} AS design_unapproved,
-           ${contractWaitUnsettledSql(sql`i.id`)} AS contract_unsettled
+           ${contractWaitUnsettledSql(sql`i.id`)} AS contract_unsettled,
+           ${patternReviewPendingSql(sql`i.id`)} AS pattern_pending
       FROM issues i
       JOIN projects p ON p.id = i.project_id
      WHERE i.status NOT IN (${excluded})

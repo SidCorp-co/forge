@@ -125,6 +125,10 @@ jobs:
       # it date a document against the file it cites, and it says so rather than reporting
       # no drift when the checkout is shallow.
       - run: node scripts/check-doc-citations.mjs --all
+      # The pattern catalog (REQ-36 BC-3, BC-4): every docs/patterns page names a reference, a test
+      # shape and a review checklist that exist, and the catalog core reads is what the pages say.
+      # Reads markdown and `git ls-files` only, so it lives in this install-free job.
+      - run: node scripts/check-pattern-catalog.mjs
       # CI-parity: proves every step in this file is either run by `pnpm verify`
       # or declared as covered by another root script. Without it the local
       # command and this workflow drift, and a green `pnpm verify` stops meaning

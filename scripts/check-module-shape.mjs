@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Pattern v2's module declaration and semantic rules (docs/conventions/domain-entities.md, ADR 0008)
+// Pattern v2's module declaration and semantic rules (docs/patterns/core-module.md, ADR 0008)
 // over packages/core/src. It refuses a declaration that contradicts itself
 // (packages/core/src/modules.json: a table owned twice, `owns` on a kind that owns nothing, a module
 // with no known context, a directory with no declared kind), then runs the type-aware ESLint rules

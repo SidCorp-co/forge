@@ -12,6 +12,7 @@ import { refuseHeldTake } from './blocked-by.js';
 import { syncCriteriaFromText } from './criteria/store.js';
 import type { ResolvedLabelAttach } from './label-service.js';
 import { scrubIssueText } from './patch-fields.js';
+import { assertPatternReviewsSettledForIssue } from './patterns.js';
 import { plannedRevisionFor } from './ports.js';
 import { ISSUE_READ_COLUMNS, type IssueRow, issueScopeOf } from './read-service.js';
 import { leaseWriteTakes } from './session-claim.js';
@@ -24,6 +25,9 @@ import {
 } from './work-state.js';
 
 const refuse = refuser<IssueUpdateRefusalCode>('ISSUE_UPDATE_REFUSED');
+
+/** The steps a new pattern awaiting its reviewer holds the work out of. */
+const BUILD_STEPS: readonly string[] = ['build', 'test', 'release'];
 
 type IssueUpdateInput = {
   issueId: string;
@@ -103,7 +107,13 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       columns.sessionContext = split.rest;
       await writeSplitSessionContext(tx, issueId, split);
     }
-    if (workState) await writeWorkStateFields(tx, issueId, workState);
+    if (workState) {
+      // a new pattern awaiting its reviewer holds the work at design (Issue lifecycle r14 design-check)
+      if (scope && workState.step && BUILD_STEPS.includes(workState.step)) {
+        await assertPatternReviewsSettledForIssue(scope.projectId, issueId, tx);
+      }
+      await writeWorkStateFields(tx, issueId, workState);
+    }
 
     const [row] = await tx
       .update(issues)

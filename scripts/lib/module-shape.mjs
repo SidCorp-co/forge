@@ -1,4 +1,4 @@
-// Pattern v2's declaration checks (docs/conventions/domain-entities.md, ADR 0008) over
+// Pattern v2's declaration checks (docs/patterns/core-module.md, ADR 0008) over
 // packages/core/src, and the markers its findings are written as. The import rules are
 // dependency-cruiser's (module-boundaries.mjs); the semantic rules are the ESLint rules in
 // scripts/eslint-module-shape. Pure functions: nothing here reads the disk.

@@ -17,6 +17,7 @@ const CI_COVERAGE = {
   'node scripts/check-honest-costs.mjs': 'verify',
   'node scripts/check-status-tuples.mjs --all': 'verify',
   'node scripts/check-doc-citations.mjs --all': 'verify',
+  'node scripts/check-pattern-catalog.mjs': 'verify',
   'node scripts/check-release-record.mjs': 'verify',
   'node scripts/check-retired-model.mjs': 'verify',
   'node scripts/check-pat-surface.mjs': 'verify',

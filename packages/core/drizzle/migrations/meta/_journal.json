@@ -3032,6 +3032,13 @@
       "when": 1823817600000,
       "tag": "0473_a_revision_names_its_kind_and_holds_one_picture",
       "breakpoints": true
+    },
+    {
+      "idx": 474,
+      "version": "7",
+      "when": 1823904000000,
+      "tag": "0474_an_issue_names_its_patterns_and_a_new_one_waits_on_its_reviewer",
+      "breakpoints": true
     }
   ]
 }

@@ -24,6 +24,7 @@ import {
   activeIssuePrefix,
   assertContractWaitsSettledForIssue,
   assertDesignApprovedForIssue,
+  assertPatternReviewsSettledForIssue,
   type DispatchGateCode,
   heldTakeRefusal,
   refuseBlockedTake,
@@ -238,8 +239,9 @@ async function policyStateFor(job: JobRow): Promise<DispatchState> {
 
 /**
  * A job for an unstarted issue a live blocks edge holds, one that builds a workflow whose design is
- * not approved, or one that waits on a contract version no approved version settles, is refused by the policy-refusal shape the box already
- * reads, and stays queued until the design is approved or the version is.
+ * not approved, one that waits on a contract version no approved version settles, or one that names a new pattern no reviewer has
+ * decided, is refused by the policy-refusal shape the box already reads, and stays queued until the design, the version or the
+ * pattern is approved.
  */
 async function designGateFor(job: JobRow): Promise<void> {
   if (!job.issueId) return;
@@ -247,6 +249,7 @@ async function designGateFor(job: JobRow): Promise<void> {
     await refuseBlockedTake(db, job.issueId, 'a pool job for it');
     await assertDesignApprovedForIssue(job.projectId, job.issueId);
     await assertContractWaitsSettledForIssue(job.projectId, job.issueId);
+    await assertPatternReviewsSettledForIssue(job.projectId, job.issueId);
   } catch (err) {
     const refused = heldTakeRefusal(err);
     if (!refused) throw err;

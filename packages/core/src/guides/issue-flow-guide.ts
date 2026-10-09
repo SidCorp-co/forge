@@ -89,6 +89,13 @@ The plan names the files it will change and the goal it serves. A file it does n
 wrong is corrected the same way and rewritten in the field — never relaxed to match what got built.
 Choices taken under an assumption are \`decision\` records carrying how to reverse them.
 
+Name the pattern the change builds to: \`POST /api/issues/:id/patterns\` \`{ pattern, summary? }\`, a
+slug of the project's catalog (\`docs/patterns/<slug>.md\`). A catalogued one is reuse and needs no
+approval. Any other is a new pattern: it needs \`summary\` (\`PATTERN_SUMMARY_REQUIRED\`), holds the
+issue (\`PATTERN_REVIEW_PENDING\`, the work step cannot move to build) until one holder of
+\`patterns.approve\` other than its author decides it, and its catalog page lands in this change.
+A project whose catalog Forge cannot read is refused \`PATTERN_CATALOG_UNDECLARED\`.
+
 A question only a person can answer parks the issue:
 \`POST /api/issues/:id/transition\` \`{ toStatus: 'needs_info', reason, waitingKind, needs }\`, with
 \`needs\` written as the ask.

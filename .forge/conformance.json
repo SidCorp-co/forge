@@ -20,8 +20,8 @@
     },
     "knowledge": {
       "level": 3,
-      "gate": "check-honest-costs + check-pat-surface + check-status-tuples + check-doc-citations + check-api-contracts",
-      "owns": "whether a document asking to be adopted prices what adopting it costs; whether the PAT permission menu covers every route it claims; whether one question in the source has more than one answer; whether a document's citations of this repo's own files are still true; whether the committed API and MCP contracts are what the code serves, route by route and tool by tool"
+      "gate": "check-honest-costs + check-pat-surface + check-status-tuples + check-doc-citations + check-api-contracts + check-pattern-catalog",
+      "owns": "whether a document asking to be adopted prices what adopting it costs; whether the PAT permission menu covers every route it claims; whether one question in the source has more than one answer; whether a document's citations of this repo's own files are still true; whether the committed API and MCP contracts are what the code serves, route by route and tool by tool; whether every pattern catalog entry names a reference, a test shape and a review checklist that exist, and whether the catalog core reads is what the entries say"
     },
     "relations": {
       "level": 2,
@@ -61,6 +61,12 @@
     }
   },
   "checkers": {
+    "pattern-catalog": {
+      "$comment": "ISS-466 (REQ-36 BC-3, BC-4) \u2014 the change kinds this repository builds, each of which must have a page under `dir`. A pattern is the reference a change copies, the test shape it is proven by and the checklist its review reads; a page missing one, or naming a file no tracked file carries, is refused by name, and so is a generated catalog (`generated`, which core reads to tell a catalogued pattern from a new one) that disagrees with the pages. Knowledge axis, because a catalog entry is a document naming this repository\u0027s files; module shape stays relations\u0027, and the core-module page points at its checkers instead of restating them.",
+      "dir": "docs/patterns",
+      "generated": "packages/contracts/src/pattern-catalog.ts",
+      "changeKinds": ["Core module", "API route", "Screen", "Assistant tool", "Migration", "Runner actor"]
+    },
     "archmap": {
       "maxUnresolvableEdges": 50,
       "$comment": "Ceiling on edges `arch check` cannot resolve. Measured 2026-08-23: 171, all of them node_modules subpath exports (hono/http-exception and friends), which belong to no module and so cannot violate a contract. It was 997 until `.arch.json` declared a tsConfig \u2014 841 of those were web-v2's `@/*` alias, and an unresolvable edge is DROPPED, so three locked contracts over that package were being checked against an empty graph. It had drifted back to 201 by 2026-09-16, 167 of them `hono/http-exception`; a `hono/*` entry in `.arch-tsconfig.json` took it to 33 with `archmap check` still reporting 0 blocking and the same 10 frozen, so nothing was being hidden by the drop. The ceiling came down 200 -> 50 in the same change (ISS-1046): a ceiling four times the measurement is not a ratchet. What remains is the MCP SDK's subpath exports and mermaid. Audit rule R7 fails if it climbs back."

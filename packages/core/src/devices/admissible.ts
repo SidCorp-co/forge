@@ -22,6 +22,7 @@ import {
   designUnapprovedSql,
   dispatchOrderSql,
   issueWorkInFlightSql,
+  patternReviewPendingSql,
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/index.js';
@@ -156,11 +157,12 @@ export async function readAdmissibleIssues(args: {
         AND i.status IN (${takeableList})
         ${a.entryOnRelease ? sql`AND (i.status <> ${AUTONOMOUS_ENTRY_STATUS} OR i.session_context ? 'runRelease')` : sql``}
         AND NOT ${blockedByUnsettledSql({ issueId: sql`i.id`, projectId: a.projectId })}
-        -- an issue that builds a workflow whose design is not approved, or waits on a contract
-        -- version no approved version settles, is withheld; Issues > Stuck names the refusal
+        -- an issue that builds a workflow whose design is not approved, waits on a contract
+        -- version no approved version settles, or names a new pattern no reviewer has decided, is withheld; Issues > Stuck names the refusal
         -- (issues/standing.ts:withheldTurn).
         AND NOT ${designUnapprovedSql(sql`i.id`)}
         AND NOT ${contractWaitUnsettledSql(sql`i.id`)}
+        AND NOT ${patternReviewPendingSql(sql`i.id`)}
         -- one predicate for "is this issue being worked", shared with the orphan sweep that
         -- used to carry a verbatim copy of it (ISS-1109). The key is canonicalised and never
         -- the project's own prefix, or a run's issues silently stop being seen (ISS-992).

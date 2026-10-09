@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Pattern v2's import rules over packages/core/src (docs/conventions/domain-entities.md, ADR 0008):
+// Pattern v2's import rules over packages/core/src (docs/patterns/core-module.md, ADR 0008):
 // context direction, kind direction, runtime cycles between modules, face-only access, adapters
 // reached through their port, and read models SELECTing only the tables they declare under `reads`.
 // dependency-cruiser checks the imports with a rule set generated from packages/core/src/modules.json.
