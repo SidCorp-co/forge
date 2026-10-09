@@ -1,5 +1,6 @@
 export { doorOf, tokenIdOf } from './channel-author.js';
 export { decideChannelGate } from './channel-gate.js';
+export { documentTypeWithArticle } from './channel-schema.js';
 export { landingDriftRefusal, landingWorld } from './contract/drift.js';
 export { pathsNamedIn, renderContractContext } from './contract/run-context.js';
 export { loadContractContext, recordContractContext } from './contract/run-context-service.js';

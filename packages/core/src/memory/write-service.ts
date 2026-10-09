@@ -1,3 +1,4 @@
+import { articleFor } from '@forge/contracts/articles';
 import type { MemoryRefusalCode } from '@forge/contracts/memory';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
@@ -74,7 +75,7 @@ function assertAgentMemoryQuality(input: WriteMemoryInput): void {
   if (blockLines > MAX_CODE_BLOCK_LINES) {
     throw refuse(
       'MEMORY_CODE_BLOCK_TOO_LONG',
-      `textContent contains a ${blockLines}-line fenced code block (max ${MAX_CODE_BLOCK_LINES}). Memory stores logic, not code — copied code rots on the next commit. Replace the block with a one-sentence invariant + a file:line or SHA pointer; one-line runnable commands (verify, query) are fine.`,
+      `textContent contains ${articleFor(String(blockLines))} ${blockLines}-line fenced code block (max ${MAX_CODE_BLOCK_LINES}). Memory stores logic, not code — copied code rots on the next commit. Replace the block with a one-sentence invariant + a file:line or SHA pointer; one-line runnable commands (verify, query) are fine.`,
       '/textContent',
     );
   }

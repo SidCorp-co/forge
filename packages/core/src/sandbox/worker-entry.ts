@@ -10,9 +10,11 @@
 // malloc_usable_size is unavailable, so it counts no bytes, and a 32 MB limit let 100 MB through
 // (measured on quickjs-emscripten 0.32.0, 2026-10-09).
 //
-// This file stays a leaf: it imports the engine and the message types and nothing else from core.
+// This file stays a leaf: it imports the engine, the message types and the shared article helper,
+// and nothing else from core.
 
 import { parentPort, workerData } from 'node:worker_threads';
+import { typeWithArticle } from '@forge/contracts/articles';
 import variant from '@jitl/quickjs-wasmfile-release-sync';
 import {
   type CustomizeVariantOptions,
@@ -68,7 +70,7 @@ function givenOf(v: unknown): string {
   if (v === null || v === undefined) return 'nothing';
   if (Array.isArray(v)) return 'an array';
   if (typeof v === 'string') return v.trim() === '' ? 'an empty string' : 'a string';
-  return `a ${typeof v}`;
+  return typeWithArticle(v);
 }
 
 function notice(json: string): string | null {

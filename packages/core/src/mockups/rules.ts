@@ -5,6 +5,7 @@
  * Each refusal is named; nothing is written.
  */
 
+import { withArticle } from '@forge/contracts/articles';
 import {
   MOCKUP_KIND_MIMES,
   MOCKUP_LIMITS,
@@ -57,7 +58,7 @@ export function typeRefusal(kind: MockupKind, mime: string, why?: string): Mocku
   return refusal(
     'MOCKUP_TYPE_INVALID',
     '/mime',
-    `${why ?? `${mime || 'this type'} is not a ${kind} mockup`}; a ${kind} mockup is ${MOCKUP_KIND_MIMES[kind].join(' or ')}.`,
+    `${why ?? `${mime || 'this type'} is not ${withArticle(kind)} mockup`}; ${withArticle(kind)} mockup is ${MOCKUP_KIND_MIMES[kind].join(' or ')}.`,
   );
 }
 
@@ -70,7 +71,7 @@ export function sizeRefusal(kind: MockupKind, size: number): MockupRefusal | nul
   return refusal(
     'MOCKUP_TOO_LARGE',
     '/contentBase64',
-    `the ${kind} mockup is ${size} bytes; a ${kind} mockup holds at most ${most}.`,
+    `the ${kind} mockup is ${size} bytes; ${withArticle(kind)} mockup holds at most ${most}.`,
   );
 }
 

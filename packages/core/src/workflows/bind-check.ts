@@ -5,6 +5,7 @@
  * never silently read as touching no screen.
  */
 
+import { withArticle } from '@forge/contracts/articles';
 import { isElementIndexed } from '@forge/contracts/ecosystem';
 import { inArray } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
@@ -35,7 +36,7 @@ export function unindexedBindRefusals(
       {
         code: 'REQUIREMENT_BINDING_NOT_INDEXED' as const,
         path: b.at,
-        detail: `step \`${b.step}\` binds ${b.element} of ${contract}, ${/^[aeiou]/.test(type) ? 'an' : 'a'} ${type} contract; only an element-indexed contract (openapi, mcp-tools, json-schema, graphql) can be bound, so a change to it could never name the screens it reaches. Name it in the step's \`contracts\` instead, or publish the contract as an indexed type.`,
+        detail: `step \`${b.step}\` binds ${b.element} of ${contract}, ${withArticle(type)} contract; only an element-indexed contract (openapi, mcp-tools, json-schema, graphql) can be bound, so a change to it could never name the screens it reaches. Name it in the step's \`contracts\` instead, or publish the contract as an indexed type.`,
       },
     ];
   });

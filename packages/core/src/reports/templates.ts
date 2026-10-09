@@ -7,6 +7,7 @@
 // the runs never returned, or one they hold that no block of the report shows its reader, is refused
 // by name before it is written.
 
+import { withArticle } from '@forge/contracts/articles';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { ReportRefusalCode, ReportRun, ReportSurface } from '@forge/contracts/report-queries';
 import {
@@ -272,7 +273,7 @@ export async function runTemplate(args: {
   const slots = slotsOf(t);
   const { document, narrative } = await writeTemplateNarrative({
     projectId: args.projectId,
-    what: args.what ?? `a ${t.id} report run through ${args.surface}`,
+    what: args.what ?? `${withArticle(t.id)} report run through ${args.surface}`,
     title: t.title,
     document: drawn.document,
     slots,
@@ -446,7 +447,7 @@ export async function readTemplateRuns(
     if (run.queryId !== wanted) {
       throw refuse(
         'REPORT_TEMPLATE_RUNS_MISMATCH',
-        `run ${runId} is a ${run.queryId} run, and position ${i} of template "${t.id}" is ${wanted}; the template's own runs only`,
+        `run ${runId} is ${withArticle(run.queryId)} run, and position ${i} of template "${t.id}" is ${wanted}; the template's own runs only`,
         `/runIds/${i}`,
       );
     }

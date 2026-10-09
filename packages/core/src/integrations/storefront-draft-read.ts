@@ -1,3 +1,4 @@
+import { withArticle } from '@forge/contracts/articles';
 import { getIntegration } from './registry.js';
 import {
   decryptConnectionSecrets,
@@ -42,7 +43,7 @@ async function readPerWorkflow<R>(
   const read = decl ? hook(decl) : undefined;
   if (!read) {
     return every(
-      `core has no ${what} reader for provider \`${provider}\`, so a ${provider} ${what} graph cannot be read back`,
+      `core has no ${what} reader for provider \`${provider}\`, so ${withArticle(provider)} ${what} graph cannot be read back`,
     );
   }
   let readings: Map<string, R>;

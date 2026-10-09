@@ -6,6 +6,7 @@
 // is a button the person presses (REQ-41 BC-9).
 
 import { z } from "zod";
+import { withArticle } from "./articles.js";
 import {
 	describeListFilter,
 	listFilterParamsOf,
@@ -130,7 +131,7 @@ export const uiOpenParamsSchema = z
 			ctx.addIssue({
 				code: "custom",
 				path: ["key"],
-				message: `a ${kind} is opened by ${KEY_EXAMPLE[kind]}`,
+				message: `${withArticle(kind)} is opened by ${KEY_EXAMPLE[kind]}`,
 			});
 			return z.NEVER;
 		}
@@ -246,7 +247,7 @@ export const uiHighlightParamsSchema = z
 				if (!has.includes(t.section))
 					return refuse(
 						"section",
-						`${t.key} is ${kind === "issue" ? "an" : "a"} ${kind}, whose page has ${has.join(", ")}, not "${t.section}"`,
+						`${t.key} is ${withArticle(kind)}, whose page has ${has.join(", ")}, not "${t.section}"`,
 					);
 			}
 			return {
@@ -259,7 +260,7 @@ export const uiHighlightParamsSchema = z
 			if (kind !== null)
 				return refuse(
 					"step",
-					`${t.key} is ${kind === "issue" ? "an" : "a"} ${kind}, which has sections, not steps; a step belongs to a workflow, named by its flow`,
+					`${t.key} is ${withArticle(kind)}, which has sections, not steps; a step belongs to a workflow, named by its flow`,
 				);
 			return {
 				target: "step",
@@ -571,7 +572,7 @@ export function highlightRefusal(h: UiHighlight, s: UiSnapshot): string | null {
 		if (h.section === undefined || !sections.includes(h.section))
 			return no(
 				kind
-					? `names section "${h.section}", which a ${kind} page does not have (it has ${sections.join(", ") || "none"})`
+					? `names section "${h.section}", which ${withArticle(kind)} page does not have (it has ${sections.join(", ") || "none"})`
 					: `names section "${h.section}" and no record is open; open one with ui.open first`,
 			);
 	}

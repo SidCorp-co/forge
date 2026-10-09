@@ -243,7 +243,7 @@
     "requirements.promote.refusal.forbidden": "{key} stays a draft: promoting it needs permission to admit issues.",
     "requirements.promote.refusal.moved": "{key} is no longer a draft as this page shows it: reload to see where it is.",
     "requirements.promote.refusal.none": "Nothing linked to this requirement is still a draft: reload to see its issues as they are.",
-    "requirements.promote.refusal.other": "{key} stays a draft: Forge refused to move it ({code}).",
+    "requirements.promote.refusal.stays": "{key} stays a draft:",
     "requirements.promote.refused": "Not promoted:",
     "requirements.promote.row": "Promote",
     "requirements.promote.rowLabel": "Promote {key}",

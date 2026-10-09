@@ -1,3 +1,4 @@
+import { withArticle } from '@forge/contracts/articles';
 import { REASON_NOTE_MAX } from '@forge/contracts/comments';
 import { PERSON_VIAS } from '@forge/contracts/ecosystem';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
@@ -15,6 +16,17 @@ export const TYPE_ABBREVIATIONS: Readonly<Record<DocumentType, string>> = {
   'change-request': 'CR',
   decision: 'DEC',
 };
+
+/** The types a person says by their code's letters, so a sentence writes the code: "an RFI". */
+const SAID_AS_CODE: ReadonlySet<string> = new Set<DocumentType>(['rfi']);
+
+/**
+ * A document type with its article, as a sentence names it: "an RFI", "an acknowledgement",
+ * "a change-notice". A value that is no document type is named as written.
+ */
+export function documentTypeWithArticle(type: string): string {
+  return withArticle(SAID_AS_CODE.has(type) ? TYPE_ABBREVIATIONS[type as DocumentType] : type);
+}
 
 const DOCUMENT_STATES = [
   'draft',

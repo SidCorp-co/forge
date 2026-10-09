@@ -1,4 +1,5 @@
 import { jsonPointer as pointer } from '../lib/refusal.js';
+import { documentTypeWithArticle } from './channel-schema.js';
 import type { EcosystemRefusal } from './refusals.js';
 import type { EcosystemDocument } from './schema.js';
 
@@ -48,7 +49,7 @@ export function checkEcosystem(doc: EcosystemDocument, world: EcosystemWorld): E
       out.push({
         code: 'RESPONSE_WINDOW_EXCEEDS_ECOSYSTEM',
         path: pointer(['channel', 'responseDays', kind]),
-        detail: `${allowed} day(s) for a ${kind} is shorter than what active members already promise: ${over.join(', ')}; they shorten their commitments first.`,
+        detail: `${allowed} day(s) for ${documentTypeWithArticle(kind)} is shorter than what active members already promise: ${over.join(', ')}; they shorten their commitments first.`,
       });
     }
   }

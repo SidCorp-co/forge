@@ -5,6 +5,7 @@
  * answer fits its item. Who may post or submit is a permission.
  */
 
+import { withArticle } from '@forge/contracts/articles';
 import {
   type OnboardingRefusal,
   QUESTIONNAIRE_MAX_ROUNDS,
@@ -50,12 +51,12 @@ export function itemRefusals(items: readonly QuestionnaireItem[]): Questionnaire
       if (options.length > 0)
         bad(
           '/options',
-          `a ${item.control} item takes no options; "${item.id}" lists ${options.length}.`,
+          `${withArticle(item.control)} item takes no options; "${item.id}" lists ${options.length}.`,
         );
       if (item.inferredDefault !== undefined)
         bad(
           '/inferredDefault',
-          `a ${item.control} item has no option to infer; drop inferredDefault on "${item.id}".`,
+          `${withArticle(item.control)} item has no option to infer; drop inferredDefault on "${item.id}".`,
         );
     }
     if ((item.group === 'recommendation') !== (item.control === 'accept_reject'))
@@ -175,7 +176,7 @@ function fits(item: QuestionnaireItem, a: QuestionnaireAnswer): string | null {
     accept_reject: 'decision',
   }[item.control];
   if (given.length !== 1 || given[0] !== field)
-    return `a ${item.control} item is answered with \`${field}\` alone; this answer gives ${given.length ? given.join(', ') : 'nothing'}.`;
+    return `${withArticle(item.control)} item is answered with \`${field}\` alone; this answer gives ${given.length ? given.join(', ') : 'nothing'}.`;
   const ids = new Set((item.options ?? []).map((o) => o.id));
   if (item.control === 'choice' && !ids.has(a.choice as string))
     return `"${a.choice}" is not an option of "${item.id}" (${[...ids].join(', ')}).`;

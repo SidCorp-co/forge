@@ -3,7 +3,7 @@ import type { Tx } from '../db/client.js';
 import { listProjectHeads } from '../projects/index.js';
 import { insertAskedQuestion } from '../questions/index.js';
 import { GATE_OPTIONS } from './channel-gate.js';
-import type { ChannelDocument } from './channel-schema.js';
+import { type ChannelDocument, documentTypeWithArticle } from './channel-schema.js';
 
 // the approve gate is a question on the sending project with no issue and no session, so it parks no run and holds no lease while it waits
 export async function askGate(tx: Tx, documentId: string, d: ChannelDocument): Promise<string> {
@@ -21,7 +21,7 @@ export async function askGate(tx: Tx, documentId: string, d: ChannelDocument): P
   await insertAskedQuestion(tx, {
     id,
     projectId: d.from,
-    prompt: `Publish ${d.number}, a ${d.type} to ${to}? It reaches the other side only once an admin of this project approves it.`,
+    prompt: `Publish ${d.number}, ${documentTypeWithArticle(d.type)} to ${to}? It reaches the other side only once an admin of this project approves it.`,
     blockerKind: 'human',
     origin: { kind: 'channel_gate', documentId, number: d.number },
     answer: {

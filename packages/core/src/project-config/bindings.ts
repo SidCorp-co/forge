@@ -1,3 +1,4 @@
+import { withArticle } from '@forge/contracts/articles';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import type { BindingRole as RowRole } from '../db/release-axes.js';
 import { bindEffects } from './bind-effects.js';
@@ -227,7 +228,7 @@ function casRefusal(
   return {
     code: 'BINDING_IN_USE',
     path: '/role',
-    detail: `this project already has a ${ctx.doc.target.provider} service binding labelled "${ctx.encoded.label}", switched on or off; a service binding is one per provider and label, so write that binding's document, or give this one its own \`target.label\`.`,
+    detail: `this project already has ${withArticle(ctx.doc.target.provider)} service binding labelled "${ctx.encoded.label}", switched on or off; a service binding is one per provider and label, so write that binding's document, or give this one its own \`target.label\`.`,
   };
 }
 

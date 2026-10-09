@@ -19,6 +19,7 @@
 // A write the person's own role could not make is refused for that first, by the permission it
 // lacks, as the route itself would: a card offering it would only fail when pressed.
 
+import { withArticle } from '@forge/contracts/articles';
 import {
   CHAT_PROPOSAL_BODY_MAX_BYTES,
   type ChatProposalKind,
@@ -233,7 +234,7 @@ export async function refuseChatToolWrite(
   }
   if (door.door === 'box-session' && (await answersNoRoom(door.sessionId))) return null;
   if (verdict.verdict === 'hold') {
-    return `CHAT_WRITE_REFUSED: ${name} writes a ${verdict.kind}, and a chat's write over /mcp has no card to wait on. Send it to its REST route with forge-runner api, where core holds it for the person's press on a confirm card; nothing was written.`;
+    return `CHAT_WRITE_REFUSED: ${name} writes ${withArticle(verdict.kind)}, and a chat's write over /mcp has no card to wait on. Send it to its REST route with forge-runner api, where core holds it for the person's press on a confirm card; nothing was written.`;
   }
   return `CHAT_WRITE_REFUSED: ${refusedWriteText(verdict, name)}`;
 }

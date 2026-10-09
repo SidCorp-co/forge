@@ -4,7 +4,12 @@
  * rules it switches on. Each refusal names the type or rule and the template that declares it.
  */
 
-import { bandOfNode, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
+import { withArticle } from '@forge/contracts/articles';
+import {
+  bandOfNode,
+  templateIdWithArticle,
+  type WorkflowTemplate,
+} from '@forge/contracts/workflow-templates';
 import { jsonPointer as pointer } from '../lib/refusal.js';
 import { designLines, nodeOf } from './edges.js';
 import type { WorkflowRefusal } from './rules.js';
@@ -23,7 +28,7 @@ export function structureRefusals(doc: WorkflowWriteV2, t: WorkflowTemplate): Wo
       out.push({
         code: 'WORKFLOW_NODE_NOT_ENTRY',
         path: pointer(['steps', i, 'after']),
-        detail: `${node.type} step "${s.id}" comes after nothing, and in ${name(t)} only a ${entries.join(' or ')} starts the flow; every other step is reached from one. List what "${s.id}" comes after in its \`after\`.`,
+        detail: `${node.type} step "${s.id}" comes after nothing, and in ${name(t)} only ${templateIdWithArticle(entries.join(' or '))} starts the flow; every other step is reached from one. List what "${s.id}" comes after in its \`after\`.`,
       });
     }
   }
@@ -56,7 +61,7 @@ export function structureRefusals(doc: WorkflowWriteV2, t: WorkflowTemplate): Wo
           out.push({
             code: 'WORKFLOW_NODE_LINES',
             path: pointer(['steps', i]),
-            detail: `${type.id} step "${s.id}" has ${n} ${side === 'in' ? 'incoming' : 'outgoing'} ${what}, and ${name(t)} gives a ${type.id} ${bound}: ${type.tooltip}`,
+            detail: `${type.id} step "${s.id}" has ${n} ${side === 'in' ? 'incoming' : 'outgoing'} ${what}, and ${name(t)} gives ${templateIdWithArticle(type.id)} ${bound}: ${type.tooltip}`,
           });
         }
       }
@@ -71,7 +76,7 @@ export function structureRefusals(doc: WorkflowWriteV2, t: WorkflowTemplate): Wo
           out.push({
             code: 'WORKFLOW_NODE_FIELD_NOT_UNIQUE',
             path: pointer(['steps', i, 'node', field]),
-            detail: `${type.id} steps "${first}" and "${s.id}" share ${field} "${value}"; in ${name(t)} no two ${type.id} steps share a ${field}.`,
+            detail: `${type.id} steps "${first}" and "${s.id}" share ${field} "${value}"; in ${name(t)} no two ${type.id} steps share ${withArticle(field)}.`,
           });
         else seen.set(value, s.id);
       }
@@ -165,7 +170,7 @@ export function ruleRefusals(doc: WorkflowWriteV2, t: WorkflowTemplate): Workflo
             broken(
               pointer(['steps', i, 'after', j]),
               rule,
-              `the line ${a} → ${s.id} runs back up from band "${bandAt.get(a)}" to "${bandAt.get(s.id)}"; a forward line never climbs the bands. Move "${s.id}" to a later band (\`node.band\`), or draw the return as a ${returns} edge.`,
+              `the line ${a} → ${s.id} runs back up from band "${bandAt.get(a)}" to "${bandAt.get(s.id)}"; a forward line never climbs the bands. Move "${s.id}" to a later band (\`node.band\`), or draw the return as ${templateIdWithArticle(returns)} edge.`,
             );
         });
       });

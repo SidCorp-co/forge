@@ -30,6 +30,7 @@ import {
   type UiFilterField,
   type UiListFilterSnapshot,
 } from "@forge/contracts/ui-list-filters";
+import { withArticle } from "@forge/contracts/articles";
 import { ISSUE_STATUSES } from "@forge/contracts/issue-machine";
 import { REGISTRY_ISSUE_PRIORITIES } from "@forge/contracts/pipeline-registry";
 import { applyWireframePatch, type WireframeDoc } from "@forge/contracts/wireframe";
@@ -294,7 +295,7 @@ function applyHighlight(h: UiHighlight, env: UiActionEnv): UiActionOutcome {
   if (h.target !== "row" && h.of !== undefined && item && item.kind !== "workflow" && item.key !== h.of)
     return no(`names ${h.of}, but the page beside the chat shows ${item.key}; open ${h.of} first`);
   const selectors = selectorsOf(h, item?.kind ?? null);
-  if (selectors.length === 0) return no(`names section "${what}", which ${item?.kind === "issue" ? "an" : "a"} ${item?.kind} page does not draw`);
+  if (selectors.length === 0) return no(`names section "${what}", which ${withArticle(String(item?.kind))} page does not draw`);
   const onPage = env.find(selectors);
   const tab = tabOf(h, item?.kind ?? null);
   if (!onPage) {

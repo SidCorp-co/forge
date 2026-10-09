@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { withArticle } from '@forge/contracts/articles';
 import { refuseEcosystem } from '../refusals.js';
 import { type MeasuredChange, type MeasuredDiff, measured } from './diff.js';
 import { elementsOf, isIndexed } from './elements.js';
@@ -31,7 +32,7 @@ export function parseArtifact(type: string, text: string): unknown {
     doc = JSON.parse(text);
   } catch (err) {
     throw unreadable(
-      `a ${type} artifact is JSON, and this one does not parse (${err instanceof Error ? err.message : String(err)})`,
+      `${withArticle(type)} artifact is JSON, and this one does not parse (${err instanceof Error ? err.message : String(err)})`,
     );
   }
   if (type === 'mcp-tools' && !toolsOf(doc)) {

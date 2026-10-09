@@ -400,11 +400,19 @@ export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefu
 }
 
 /** Outcome tally of a bulk apply. `skipped` = the server refused the change
- *  (403 permission, 409 stale, 422 invalid transition / no-op) — surfaced, not failed. */
+ *  (403 permission, 409 stale, 422 invalid transition / no-op / a checklist gap) — surfaced, not
+ *  failed, each by its issue and core's own words for why (REQ-34 BC-2, BC-18). */
 interface BulkSummary {
   updated: number;
   skipped: number;
   failed: number;
+  why: { key: string; detail: string }[];
+}
+
+/** An issue of a bulk apply, by the key a person reads it under. */
+export interface BulkIssue {
+  id: string;
+  displayId: string;
 }
 
 /** Max concurrent requests per wave — a no-limit selection shouldn't open 100
@@ -415,31 +423,37 @@ export function useBulkUpdateIssues() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const t = useCopy();
-  return useMutation<BulkSummary, unknown, { ids: string[]; update: BulkUpdate }>({
-    mutationFn: async ({ ids, update }) => {
-      const summary: BulkSummary = { updated: 0, skipped: 0, failed: 0 };
+  return useMutation<BulkSummary, unknown, { issues: BulkIssue[]; update: BulkUpdate }>({
+    mutationFn: async ({ issues, update }) => {
+      const summary: BulkSummary = { updated: 0, skipped: 0, failed: 0, why: [] };
       const apply = (id: string) =>
         update.kind === "status"
           ? issuesApi.transition(id, update.toStatus)
           : issuesApi.patch(id, { priority: update.priority });
-      for (let i = 0; i < ids.length; i += BULK_CHUNK) {
-        const results = await Promise.allSettled(ids.slice(i, i + BULK_CHUNK).map(apply));
-        for (const r of results) {
+      for (let i = 0; i < issues.length; i += BULK_CHUNK) {
+        const wave = issues.slice(i, i + BULK_CHUNK);
+        const results = await Promise.allSettled(wave.map((issue) => apply(issue.id)));
+        results.forEach((r, n) => {
           if (r.status === "fulfilled") summary.updated++;
-          else if (r.reason instanceof ApiError && [403, 409, 422].includes(r.reason.status)) summary.skipped++;
-          else summary.failed++;
-        }
+          else if (r.reason instanceof ApiError && [403, 409, 422].includes(r.reason.status)) {
+            summary.skipped++;
+            const detail = refusalsOf(r.reason).map((x) => x.detail).join(" ");
+            summary.why.push({ key: wave[n]?.displayId ?? "", detail });
+          } else summary.failed++;
+        });
       }
       return summary;
     },
-    onSuccess: (summary, { ids }) => {
+    onSuccess: (summary, { issues }) => {
       qc.invalidateQueries({ queryKey: ["issues"] });
-      for (const id of ids) qc.invalidateQueries({ queryKey: ["issue", id] });
+      for (const { id } of issues) qc.invalidateQueries({ queryKey: ["issue", id] });
       const parts = [t("issues.toast.bulkUpdated", { n: summary.updated })];
       if (summary.skipped) parts.push(t("issues.toast.bulkSkipped", { n: summary.skipped }));
       if (summary.failed) parts.push(t("issues.toast.bulkFailedN", { n: summary.failed }));
+      const why = summary.why.map((w) => t("issues.toast.bulkSkippedWhy", w)).join(" ");
       toast({
         title: parts.join(" · "),
+        ...(why ? { description: why } : {}),
         tone: summary.failed > 0 ? "error" : "success",
       });
     },

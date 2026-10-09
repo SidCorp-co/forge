@@ -9,6 +9,7 @@
  * device's runners and the project's binding every time it is asked for.
  */
 
+import { withArticle } from '@forge/contracts/articles';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -37,7 +38,7 @@ deviceGitCredentialRoutes.post(
 
     if (protocol && protocol !== 'https') {
       throw new HTTPException(400, {
-        message: `git asked for a ${protocol} credential; this helper issues HTTPS credentials only`,
+        message: `git asked for ${withArticle(protocol)} credential; this helper issues HTTPS credentials only`,
       });
     }
 

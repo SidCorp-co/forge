@@ -23,7 +23,8 @@ import type {
 
 export interface RowActions {
   patch: (args: { id: string; body: PatchIssueInput }) => void;
-  transition: (args: { id: string; toStatus: IssueStatus }) => void;
+  /** A move of the row's issue from the status the row shows it at. */
+  transition: (args: { id: string; from: IssueStatus; toStatus: IssueStatus }) => void;
   isPending: boolean;
   /** False for project viewers (read-only): the row menu drops every mutation
    *  item and keeps only navigation. Optional — omitted means writable. */

@@ -136,6 +136,58 @@ describe('a requirement whose live issues are all drafts', () => {
   });
 });
 
+describe('a draft the issue-ready checklist holds back (REQ-34 BC-2, BC-18)', () => {
+  /** A draft linked to the requirement with no plan and no criteria: two blocking gaps. */
+  async function unplannedDraft(req: string): Promise<Body> {
+    const issue = await ok(
+      api(owner, 'POST', at('/issues'), { title: 'slice unplanned', status: 'draft' }),
+      201,
+    );
+    await ok(api(owner, 'POST', at(`/requirements/${req}/issues`), { issue: issue.id }));
+    return issue;
+  }
+
+  const fieldKeys = /requirementId|acceptanceCriteria|buildsWorkflow|`/;
+
+  it("names each gap once, in the checklist's words on its question's path, while the rest moved", async () => {
+    const { req, issues } = await agreedWithDrafts(1);
+    const held = await unplannedDraft(req);
+    const answer = await ok(api(owner, 'POST', at(`/requirements/${req}/promote`), {}));
+    expect((answer.promoted as Body[]).map((p) => p.issueId)).toEqual([issues[0]?.id]);
+    const refused = answer.refused as {
+      displayId: string;
+      code: string;
+      path: string;
+      detail: string;
+    }[];
+    expect(refused.map((r) => `${r.displayId} ${r.code} ${r.path}`)).toEqual([
+      `${held.displayId as string} CHECKLIST_INCOMPLETE /answers/requirement`,
+      `${held.displayId as string} CHECKLIST_INCOMPLETE /answers/criteria`,
+    ]);
+    expect(refused[0]?.detail).toContain("it has no plan yet. Write the issue's plan");
+    for (const r of refused) expect(r.detail).not.toMatch(fieldKeys);
+    expect(await statusOf(held.id)).toBe('draft');
+  });
+
+  it('refuses the act whole when none moved, each refusal under its draft and its question', async () => {
+    const { req } = await agreedWithDrafts(0);
+    const held = await unplannedDraft(req);
+    const res = await api(owner, 'POST', at(`/requirements/${req}/promote`), {});
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    const key = held.displayId as string;
+    const refusals = refusalsOf(res.body);
+    expect(refusals.map((r) => `${r.code} ${r.path}`)).toEqual([
+      `CHECKLIST_INCOMPLETE /issues/${key}/answers/requirement`,
+      `CHECKLIST_INCOMPLETE /issues/${key}/answers/criteria`,
+    ]);
+    for (const r of refusals) {
+      expect(r.detail.startsWith(`${key}: `)).toBe(true);
+      expect(r.detail).not.toMatch(fieldKeys);
+    }
+    expect(await statusOf(held.id)).toBe('draft');
+  });
+});
+
 describe('a mix where one draft cannot move', () => {
   it('moves the rest and names the refused one by its own code', async () => {
     const { req, issues } = await agreedWithDrafts(3);

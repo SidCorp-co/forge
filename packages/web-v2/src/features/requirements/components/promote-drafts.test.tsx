@@ -4,7 +4,9 @@
 // a signer who can admit issues is offered it (`canPromote`, question 3b8292dc): a signer without
 // issues.admit is not invited to an act core would refuse.
 
-import { screen, waitFor } from "@testing-library/react";
+import { ISSUE_READY_CHECKLIST } from "@forge/contracts/checklist-registry";
+import { checklistRefusals, evaluateChecklist, fieldKeyShownIn } from "@forge/contracts/checklists";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
@@ -109,9 +111,87 @@ describe("the requirement's promote act", () => {
     const user = userEvent.setup();
     renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={detail(["draft"])} />);
     await user.click(screen.getByRole("button", { name: "Promote 1 draft issue" }));
-    const line = await screen.findByTestId("refusal");
+    const line = await screen.findByTestId("promote-refused");
     expect(line).toHaveTextContent("ISS-11 is archived, so it stays a draft");
     expect(line.textContent).not.toMatch(/\/api\/|POST|8a2f0c1e|\{filter/);
+  });
+});
+
+// REQ-34 BC-2, BC-18: a draft the issue-ready checklist holds back is refused once per blocking gap,
+// each in core's plain words on its question's path. These are the refusals the shared contract
+// produces for the kernel, so the page is read against the words a person is actually sent.
+const GAPS = checklistRefusals(
+  evaluateChecklist(ISSUE_READY_CHECKLIST, {
+    given: {},
+    record: {
+      requirement: {
+        gap: "It is linked to REQ-2, and it has no plan yet.",
+        fix: "Write the issue's plan: saving it records the current revision of REQ-2 as the one it is written against.",
+      },
+      criteria: { gap: "The issue has no acceptance criteria.", fix: "Write its numbered acceptance criteria." },
+      design: { value: "None: it builds no workflow design." },
+    },
+  }),
+);
+
+/** What a person reads of the refused drafts: core's words once each, no code, no field key. */
+function expectCoresWords(line: HTMLElement) {
+  expect(GAPS.map((g) => g.path)).toEqual(["/answers/requirement", "/answers/criteria"]);
+  const text = line.textContent ?? "";
+  expect(text.match(/ISS-11 stays a draft:/g)).toHaveLength(1);
+  for (const g of GAPS) expect(text.split(g.detail)).toHaveLength(2);
+  expect(text).not.toMatch(/CHECKLIST_|ISS-11: /);
+  expect(fieldKeyShownIn(ISSUE_READY_CHECKLIST, text), text).toBeNull();
+  // the code and the field stay machine-readable, on the line for its question
+  const item = within(line).getByText(GAPS[0]?.detail ?? "");
+  expect(item).toHaveAttribute("data-path", "/answers/requirement");
+  expect(item).toHaveAttribute("data-code", "CHECKLIST_INCOMPLETE");
+}
+
+describe("a draft the issue-ready checklist holds back", () => {
+  it("is named once with each of core's refusals once, while the rest moved", async () => {
+    fakeCore(() => ({
+      body: {
+        requirement: detail(["open", "draft"]),
+        promoted: [{ issueId: "i10", displayId: "ISS-10" }],
+        refused: GAPS.map((g) => ({ issueId: "i11", displayId: "ISS-11", code: g.code, path: g.path, detail: g.detail })),
+      },
+    }));
+    const user = userEvent.setup();
+    renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={detail(["draft", "draft"])} />);
+    await user.click(promoteAll() as HTMLElement);
+    expectCoresWords(await screen.findByTestId("promote-refused"));
+    expect(screen.queryByTestId("refusal")).toBeNull();
+  });
+
+  it("is named the same way when none moved and the act is refused whole", async () => {
+    const refusals = GAPS.map((g) => ({ code: g.code, path: `/issues/ISS-11${g.path}`, detail: `ISS-11: ${g.detail}` }));
+    fakeCore(() => ({
+      status: 422,
+      body: { error: { code: "CHECKLIST_INCOMPLETE", message: "refused, nothing written", refusals } },
+    }));
+    const user = userEvent.setup();
+    renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={detail(["draft"])} />);
+    await user.click(screen.getByRole("button", { name: "Promote 1 draft issue" }));
+    expectCoresWords(await screen.findByTestId("promote-refused"));
+    expect(screen.queryByTestId("refusal")).toBeNull();
+  });
+
+  it("reads a refusal of the act itself as core wrote it, with this page's words where it gives them", async () => {
+    fakeCore(() => ({
+      status: 422,
+      body: {
+        error: {
+          code: "REQUIREMENT_NO_DRAFT_ISSUES",
+          message: "refused, nothing written",
+          refusals: [{ code: "REQUIREMENT_NO_DRAFT_ISSUES", path: "", detail: "REQ-2 has no linked issue at draft, so there is nothing to promote." }],
+        },
+      },
+    }));
+    const user = userEvent.setup();
+    renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={detail(["draft"])} />);
+    await user.click(screen.getByRole("button", { name: "Promote 1 draft issue" }));
+    expect(await screen.findByTestId("refusal")).toHaveTextContent("Nothing linked to this requirement is still a draft");
   });
 });
 

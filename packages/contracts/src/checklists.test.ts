@@ -8,10 +8,13 @@ import {
 	checklistRefusals,
 	checklistShape,
 	countsAsPassed,
+	fieldKeyShownIn,
 	defineChecklist,
 	evaluateChecklist,
 	gatedMoveStanding,
 	parseAnswers,
+	QUESTION_KEY_ECHOED,
+	sentAs,
 } from "./checklists.js";
 import { ISSUE_MACHINE } from "./issue-machine.js";
 import { defineMachine } from "./state-machine.js";
@@ -178,6 +181,23 @@ describe("evaluateChecklist", () => {
 			/record reader answered nothing for `owner`/,
 		);
 	});
+
+	it("throws where the record reader's words for a gap show a record field's key or code formatting", () => {
+		const leaks = [
+			{ gap: "The ownerId is empty.", fix: "Name its owner." },
+			{ gap: "It has no owner.", fix: "Set ownerId on the issue." },
+			{ gap: "It has no owner.", fix: "Set `owner` on the issue." },
+		];
+		for (const held of leaks) {
+			expect(() => evaluateChecklist(c, { given: {}, record: { owner: held } })).toThrow(
+				/record reader's words for `owner` show (the field key ownerId|code formatting)/,
+			);
+		}
+		// a value is a reading, not a sentence of the reader's: it is not judged for words
+		expect(evaluateChecklist(c, { given: {}, record: { owner: { value: "ownerId 7" } } }).complete).toBe(
+			true,
+		);
+	});
 });
 
 describe("parseAnswers refuses a wrong answer by name, never widening it", () => {
@@ -205,7 +225,7 @@ describe("parseAnswers refuses a wrong answer by name, never widening it", () =>
 				path: "/answers/owner",
 				field: "ownerId",
 				detail:
-					'"Who owns it?" is answered on the issue itself, by its owner, so the move cannot answer it. Leave it out of the move. Name its owner.',
+					'"Who owns it?" is answered on the issue itself, by its owner, so the move cannot answer it. Leave it out of the move.',
 			}),
 		]);
 	});
@@ -355,6 +375,36 @@ describe("each refusal says in plain words what to fix (REQ-34 BC-18)", () => {
 		);
 	});
 
+	it("names what a wrong answer was sent as with its own article, never one built from a type's name", () => {
+		expect([{}, [], 7, true, null, "x"].map(sentAs)).toEqual([
+			"an object",
+			"a list",
+			"a number",
+			"true or false",
+			"null",
+			"text",
+		]);
+		expect(refused({ hotfix: { text: "yes" } })[0]?.detail).toBe(
+			`The answer to "${prompt}" was sent as an object. Send it as text. Or leave the question out of the move to take the assumed answer: "Not a hotfix: it fixes no production failure."`,
+		);
+		expect(refused("yes")[0]?.detail).toMatch(/^The answers to the Issue ready checklist were sent as text\. /);
+		expect(refused(5)[0]?.detail).toMatch(/were sent as a number\. /);
+		const every = [{ hotfix: {} }, { hotfix: [] }, { hotfix: 1 }, { hotfix: false }, { hotfix: null }, 1, true, "x", []];
+		for (const raw of every) {
+			for (const r of refused(raw)) expect(r.detail, r.detail).not.toMatch(/\ba (object|undefined|[aeiou]\w*)\b/i);
+		}
+	});
+
+	it("does not repeat an unknown question's key longer than any question id, so the refused move stays small", () => {
+		const key = "k".repeat(20_000);
+		const [r] = refused({ [key]: "x" });
+		expect(r).toMatchObject({ path: "/answers", question: null });
+		expect(r?.detail).toMatch(/^The Issue ready checklist has no question named by a key 20000 characters long\. /);
+		expect(JSON.stringify(r).length).toBeLessThan(1_000);
+		const edge = "q".repeat(QUESTION_KEY_ECHOED);
+		expect(refused({ [edge]: "x" })[0]?.path).toBe(`/answers/${edge}`);
+	});
+
 	it("an answer that is not text says to send text", () => {
 		expect(refused({ hotfix: 5 })[0]?.detail).toBe(
 			`The answer to "${prompt}" was sent as a number. Send it as text. Or leave the question out of the move to take the assumed answer: "Not a hotfix: it fixes no production failure."`,
@@ -367,7 +417,7 @@ describe("each refusal says in plain words what to fix (REQ-34 BC-18)", () => {
 				path: "/answers/requirement",
 				field: "requirementId",
 				detail:
-					'"Which agreed requirement does this issue deliver, and at which revision?" is answered on the issue itself, by its linked requirement and its plan, so the move cannot answer it. Leave it out of the move. Link the issue to the agreed or accepted requirement it delivers, then write its plan: saving the plan records the revision of that requirement it is written against.',
+					'"Which agreed requirement does this issue deliver, and at which revision?" is answered on the issue itself, by its linked requirement and its plan, so the move cannot answer it. Leave it out of the move.',
 			}),
 		]);
 	});
@@ -411,7 +461,7 @@ describe("each refusal says in plain words what to fix (REQ-34 BC-18)", () => {
 			expect(texts.length).toBeGreaterThan(checklist.questions.length);
 			for (const text of texts) {
 				for (const key of keys) expect(text, text).not.toContain(key);
-				expect(text, text).not.toContain("`");
+				expect(fieldKeyShownIn(checklist, text), text).toBeNull();
 			}
 		}
 	});

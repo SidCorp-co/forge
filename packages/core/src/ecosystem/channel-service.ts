@@ -7,7 +7,12 @@ import type { Writer } from './channel-author.js';
 import { checked, parsedOrRefused } from './channel-checks.js';
 import { askGate } from './channel-gate-ask.js';
 import { addDays, today } from './channel-rules.js';
-import { DOCUMENT_SCHEMA_ID, type Gate, TYPE_ABBREVIATIONS } from './channel-schema.js';
+import {
+  DOCUMENT_SCHEMA_ID,
+  documentTypeWithArticle,
+  type Gate,
+  TYPE_ABBREVIATIONS,
+} from './channel-schema.js';
 import { emitPublished } from './channel-signals.js';
 import { insertDraft, insertEvent, reserveNumber, rewriteDocument } from './channel-store.js';
 import { serve } from './channel-world.js';
@@ -143,7 +148,7 @@ export async function editDraft(args: {
         refuse(
           'DOCUMENT_TYPE_IMMUTABLE',
           '/type',
-          `this draft is a ${row.type}; a type is fixed at draft, so write a new draft for a ${String(args.input.type)}.`,
+          `this draft is ${documentTypeWithArticle(row.type)}; a type is fixed at draft, so write a new draft for ${documentTypeWithArticle(String(args.input.type))}.`,
         );
       }
       const eco = await ecosystemOr(tx, row.ecosystemId);

@@ -1,3 +1,4 @@
+import { withArticle } from '@forge/contracts/articles';
 import { isPlainObject as isRecord } from '@forge/contracts/document-patch';
 import { REPO_PATH_MESSAGE } from '@forge/contracts/repo-path';
 import type { z } from 'zod';
@@ -155,7 +156,7 @@ export function callSiteRefusals(
       path: `${at}/artefact/kind`,
       detail:
         kinds.length > 0
-          ? `"${site.artefact.kind}" is not an artefact ${source.provider} holds; a ${source.provider} call site names ${kinds.join(' | ')}.`
+          ? `"${site.artefact.kind}" is not an artefact ${source.provider} holds; ${withArticle(source.provider)} call site names ${kinds.join(' | ')}.`
           : `no artefact kinds are declared for provider ${source.provider}, so a call site cannot name one of its artefacts yet.`,
     });
   }

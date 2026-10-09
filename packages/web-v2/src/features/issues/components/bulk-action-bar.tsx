@@ -93,7 +93,7 @@ export function BulkActionBar({
   const count = selectedRows.length;
   if (count === 0) return null;
 
-  const ids = selectedRows.map((r) => r.id);
+  const issues = selectedRows.map((r) => ({ id: r.id, displayId: r.displayId }));
   const statusTargets = commonMoves(selectedRows);
   const heldCount = heldInSelection(selectedRows);
   const heldReason = heldCount > 0 ? agentHoldsSelection(t, heldCount, count) : null;
@@ -101,7 +101,7 @@ export function BulkActionBar({
   const batchRelease = canBatchRelease(selectedRows, t);
 
   const run = (update: BulkUpdate) =>
-    bulk.mutate({ ids, update }, { onSuccess: onCleared });
+    bulk.mutate({ issues, update }, { onSuccess: onCleared });
 
   const statusItems: MenuItem[] = statusTargets.map((s) => ({
     label: L("issueStatus", s),

@@ -4,6 +4,7 @@
  * a refused observation is never partly kept.
  */
 
+import { withArticle } from '@forge/contracts/articles';
 import type { ObservationRefusalCode } from '@forge/contracts/workflow-health';
 import type { Citation, WriteObservation } from './observation-schema.js';
 import type { EvidenceSource } from './rules.js';
@@ -37,7 +38,7 @@ function citationRefusal(
     return {
       code: 'WORKFLOW_OBSERVATION_CITATION_KIND_MISMATCH',
       path: `${path}/evidence`,
-      detail: `${what} cites ${c.kind === 'repo' ? 'a repository file' : `a ${c.provider} artefact`}; this project's source is ${source.kind === 'storefront' ? `a ${source.provider} storefront` : 'a repository'}.`,
+      detail: `${what} cites ${c.kind === 'repo' ? 'a repository file' : `${withArticle(c.provider)} artefact`}; this project's source is ${source.kind === 'storefront' ? `${withArticle(source.provider)} storefront` : 'a repository'}.`,
     };
   }
   if (c.kind === 'storefront') return null;

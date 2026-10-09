@@ -55,7 +55,8 @@ impl Host {
                     "http" | "ws" => 80,
                     other => {
                         return Err(format!(
-                            "`{entry}` is a {other}:// URL; a host is reached over http or https"
+                            "`{entry}` is {} {other}:// URL; a host is reached over http or https",
+                            crate::english::indefinite_article(other)
                         ))
                     }
                 };

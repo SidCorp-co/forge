@@ -2,6 +2,8 @@ import {
   type LineKind,
   lineKindOf,
   type TemplateEdgeKind,
+  templateIdArticle,
+  templateIdWithArticle,
   type WorkflowTemplate,
 } from '@forge/contracts/workflow-templates';
 import { jsonPointer as pointer } from '../lib/refusal.js';
@@ -59,7 +61,7 @@ function endpointRefusals(
       {
         code: 'WORKFLOW_EDGE_ENDPOINT_NOT_IN_KIND' as const,
         path,
-        detail: `${kind.id} line ${from} → ${to} would ${verb} a ${type} ("${id}"); a ${kind.id} line may ${verb} only ${allowed.join(', ')}.${fits.length ? ` A line that may ${verb} a ${type} is ${fits.join(' or ')}.` : ''}`,
+        detail: `${kind.id} line ${from} → ${to} would ${verb} ${templateIdWithArticle(type)} ("${id}"); ${templateIdWithArticle(kind.id)} line may ${verb} only ${allowed.join(', ')}.${fits.length ? ` A line that may ${verb} ${templateIdWithArticle(type)} is ${fits.join(' or ')}.` : ''}`,
       },
     ];
   });
@@ -133,7 +135,7 @@ function unreadKind(
   return {
     code: 'WORKFLOW_EDGE_KIND_NONE',
     path,
-    detail: `no line of ${name} joins a ${a} to a ${b} (${from} → ${to}); a ${a} may leave by ${leave.map((k) => k.id).join(', ') || 'no kind'}, and a ${b} may be reached by ${reach.map((k) => k.id).join(', ') || 'no kind'}.`,
+    detail: `no line of ${name} joins ${templateIdWithArticle(a)} to ${templateIdWithArticle(b)} (${from} → ${to}); ${templateIdWithArticle(a)} may leave by ${leave.map((k) => k.id).join(', ') || 'no kind'}, and ${templateIdWithArticle(b)} may be reached by ${reach.map((k) => k.id).join(', ') || 'no kind'}.`,
   };
 }
 
@@ -186,7 +188,7 @@ function directionRefusals(
       {
         code: 'WORKFLOW_EDGE_RETURN_FORWARD',
         path: pointer(['edges', j, 'kind']),
-        detail: `${kind.id} edge ${e.from} → ${e.to} does not return: "${e.to}" is not a step "${e.from}" comes after. A ${kind.id} edge goes from a later step back to an earlier one; a line forward is drawn by listing "${e.from}" in step "${e.to}"'s \`after\`, as a forward kind.`,
+        detail: `${kind.id} edge ${e.from} → ${e.to} does not return: "${e.to}" is not a step "${e.from}" comes after. ${templateIdArticle(kind.id) === 'an' ? 'An' : 'A'} ${kind.id} edge goes from a later step back to an earlier one; a line forward is drawn by listing "${e.from}" in step "${e.to}"'s \`after\`, as a forward kind.`,
       },
     ];
   }
@@ -247,7 +249,7 @@ export function edgeRefusals(doc: WorkflowWriteV2, template: WorkflowTemplate): 
           {
             code: 'WORKFLOW_EDGE_FIELD_MISSING',
             path: pointer(['edges', j]),
-            detail: `${kind.id} edge ${e.from} → ${e.to} carries no ${absent.join(', ')}; template ${template.id}@${template.version} requires a ${kind.id} edge to carry ${kind.required.join(', ')}.${kind.direction === 'return' ? ' A line that runs backwards carries its whole contract, because a return with no idempotency or failure path is how a loop runs for ever.' : ''}`,
+            detail: `${kind.id} edge ${e.from} → ${e.to} carries no ${absent.join(', ')}; template ${template.id}@${template.version} requires ${templateIdWithArticle(kind.id)} edge to carry ${kind.required.join(', ')}.${kind.direction === 'return' ? ' A line that runs backwards carries its whole contract, because a return with no idempotency or failure path is how a loop runs for ever.' : ''}`,
           },
         ];
   });
@@ -265,7 +267,7 @@ export function edgeRefusals(doc: WorkflowWriteV2, template: WorkflowTemplate): 
       out.push({
         code: 'WORKFLOW_EDGE_FIELD_MISSING',
         path,
-        detail: `the line ${a} → ${s.id} is a ${implicit.id} edge with no entry in \`edges\`; template ${template.id}@${template.version} requires a ${implicit.id} edge to carry ${implicit.required.join(', ')}, so declare { from: "${a}", to: "${s.id}", ${implicit.required.map((f) => `${f}`).join(', ')} } in \`edges\`.`,
+        detail: `the line ${a} → ${s.id} is ${templateIdWithArticle(implicit.id)} edge with no entry in \`edges\`; template ${template.id}@${template.version} requires ${templateIdWithArticle(implicit.id)} edge to carry ${implicit.required.join(', ')}, so declare { from: "${a}", to: "${s.id}", ${implicit.required.map((f) => `${f}`).join(', ')} } in \`edges\`.`,
       });
     });
   });

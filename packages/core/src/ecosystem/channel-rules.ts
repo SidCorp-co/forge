@@ -5,6 +5,7 @@ import { changeNoticeRefusals } from './channel-notice-rules.js';
 import {
   type ChannelDocument,
   documentSchema,
+  documentTypeWithArticle,
   type ThreadHold,
   TYPE_ABBREVIATIONS,
 } from './channel-schema.js';
@@ -120,7 +121,7 @@ function numberRefusals(d: ChannelDocument, w: ChannelWorld): EcosystemRefusal[]
     out.push({
       code: 'NUMBER_TYPE_MISMATCH',
       path: '/number',
-      detail: `${d.number} does not carry ${TYPE_ABBREVIATIONS[d.type]}, the code of a ${d.type}.`,
+      detail: `${d.number} does not carry ${TYPE_ABBREVIATIONS[d.type]}, the code of ${documentTypeWithArticle(d.type)}.`,
     });
   }
   return out;
@@ -133,7 +134,7 @@ function gateRefusals(d: ChannelDocument, w: ChannelWorld): EcosystemRefusal[] {
     out.push({
       code: 'PUBLISHED_WITHOUT_GATE',
       path: '/gate',
-      detail: `a ${d.type} in this ecosystem is approved by a person before it is published, and this one carries no approval.`,
+      detail: `${documentTypeWithArticle(d.type)} in this ecosystem is approved by a person before it is published, and this one carries no approval.`,
     });
   }
   if (g?.decision === 'returned' && !g.note) {
@@ -148,7 +149,7 @@ function gateRefusals(d: ChannelDocument, w: ChannelWorld): EcosystemRefusal[] {
     out.push({
       code: 'GATE_MODE_MISMATCH',
       path: '/gate/mode',
-      detail: `ecosystem ${w.ecosystem.ecosystem.slug} gates a ${d.type} with "${mode}", and this document carries "${g.mode}"; the gate is the ecosystem's, copied at submit.`,
+      detail: `ecosystem ${w.ecosystem.ecosystem.slug} gates ${documentTypeWithArticle(d.type)} with "${mode}", and this document carries "${g.mode}"; the gate is the ecosystem's, copied at submit.`,
     });
   }
   return out;
@@ -161,7 +162,7 @@ function replyRefusals(d: ChannelDocument, w: ChannelWorld): EcosystemRefusal[] 
       out.push({
         code: 'REPLY_WITHOUT_PARENT',
         path: '/inReplyTo',
-        detail: `a ${d.type} answers a published document; name it in inReplyTo.`,
+        detail: `${documentTypeWithArticle(d.type)} answers a published document; name it in inReplyTo.`,
       });
     }
     return out;
@@ -187,7 +188,7 @@ function replyRefusals(d: ChannelDocument, w: ChannelWorld): EcosystemRefusal[] 
     out.push({
       code: 'REPLY_TYPE_NOT_ALLOWED',
       path: '/inReplyTo',
-      detail: `a ${parent.type} is answered ${allowed.length ? `only by ${allowed.join(' or ')}` : 'by nothing'}, not by a ${d.type}.`,
+      detail: `${documentTypeWithArticle(parent.type)} is answered ${allowed.length ? `only by ${allowed.join(' or ')}` : 'by nothing'}, not by ${documentTypeWithArticle(d.type)}.`,
     });
   }
   if (!parent.to.includes(d.from)) {
@@ -206,7 +207,7 @@ function replyRefusals(d: ChannelDocument, w: ChannelWorld): EcosystemRefusal[] 
         detail:
           parent.type === 'rfi'
             ? `an RFI is decided "answered", not "${d.body.disposition}".`
-            : `"answered" decides an RFI; a ${parent.type} is accepted, accepted-with-conditions, declined or deferred.`,
+            : `"answered" decides an RFI; ${documentTypeWithArticle(parent.type)} is accepted, accepted-with-conditions, declined or deferred.`,
       });
     }
   }
