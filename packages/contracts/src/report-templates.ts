@@ -1,5 +1,5 @@
 // The Template port: declarative data. A template names the queries to run, the blocks to draw
-// over their frames and the narrative slots a model fills. It is data, never code: no expression,
+// over their frames and the narrative slots a model fills, beside a one-line finding per block. It is data, never code: no expression,
 // formula, function or conditional exists in its schema, and a derived column is a query's job.
 // Built-in templates are contract data; a project's own, saved later, pass the same validator, so
 // a project template can do nothing a built-in cannot.
@@ -31,6 +31,8 @@ export const TEMPLATE_PARAM_TYPES = ["string", "number", "boolean"] as const;
 export const TEMPLATE_MAX_QUERIES = 12;
 export const TEMPLATE_MAX_BLOCKS = 24;
 export const NARRATIVE_MAX_WORDS = 400;
+/** The longest finding a template run writes for one of its blocks, in words. */
+export const FINDING_MAX_WORDS = 30;
 
 const Literal = z.union([z.string().max(200), z.number().finite(), z.boolean()]);
 

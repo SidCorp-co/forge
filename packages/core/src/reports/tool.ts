@@ -61,8 +61,11 @@ export const forgeReportTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:read',
-  description: `Runs a registered report query as the asker, kept 30 days: answers { runId, queryId, version, params, asOf, frame }, the frame being fields and rows. Call it when the answer is figures: progress, roadmap, release or coverage, then draw the run with forge_show and state only figures the frame holds. Queries: ${chatQueries()
-    .map((q) => `${q.id} (${q.title}; fields ${q.output.map((f) => f.name).join(', ')})`)
+  description: `Runs a registered report query as the asker, kept 30 days; answers { runId, queryId, asOf, frame: { fields, rows } }. Use it for figures (progress, roadmap, release, coverage, work over time), draw the run with forge_show, and state only figures its frame holds. Queries: ${chatQueries()
+    .map((q) => {
+      const params = Object.keys((q.params as { shape: object }).shape);
+      return `${q.id} (${q.title}${params.length > 0 ? `; params ${params.join(', ')}` : ''})`;
+    })
     .join('; ')}.`,
   inputSchema: zodToMcpSchema(reportInput),
   handler: async (args) => {
@@ -86,7 +89,7 @@ export const forgeShowTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/conversations',
   grant: 'assistant:write',
-  description: `Draws one block of a forge_report run in this room, above your reply: ${VISUAL_BLOCK_KINDS.join(', ')}. block is { kind, source: { runId } or forge_compute's { executionId, frame? }, ...fields } where fields name the frame's fields: table { columns, sort?: { field, dir }, limit? }; kpi { figures: [{ field, label, delta? }] 2-6, row? }; status-list { ref, status, waitingOn? }; chart { variant: bar|line|burndown, x, y: [field] }; timeline { label, start? end? | p50, p85, lane? }; flow { nodes: [{ id, label }], edges: [{ from, to, label? }] } with no source. A block holds no figure of its own: the run's frame is copied in, a differing frame is refused naming each figure, and so is a title or label stating a number the run lacks. The block is held and shown above your reply only once the reply passes the check; a rewrite shows only the blocks it draws again. Answers the block's text; do not repeat it. Write times as ISO 8601 (2026-10-09T01:03:00Z): screens read them in the viewer's timezone.`,
+  description: `Draws one block of a forge_report run in this room, above your reply: ${VISUAL_BLOCK_KINDS.join(', ')}. block is { kind, source: { runId } or forge_compute's { executionId, frame? }, finding?, ...fields } where fields name the frame's fields: table { columns, sort?: { field, dir }, limit? }; kpi { figures: [{ field, label, delta? }] 2-6, row? }; status-list { ref, status, waitingOn? }; chart { variant: bar|line|burndown, x, y: [field] }; timeline { label, start? end? | p50, p85, lane? }; flow { nodes: [{ id, label }], edges: [{ from, to, label? }] } with no source. A block holds no figure of its own: the run's frame is copied in, a differing frame is refused naming each figure, as is a title, label or finding with a number the run lacks. The block is held and shown above your reply only once the reply passes the check; a rewrite shows only the blocks it draws again. Answers its text; don't repeat it. Write times as ISO 8601 (2026-10-09T01:03:00Z): screens read them in the viewer's timezone.`,
   inputSchema: zodToMcpSchema(showInput),
   handler: async (args) => {
     const { projectId, block } = showInput.parse(args);
@@ -137,7 +140,12 @@ const templateInput = z.strictObject({
       recommendations: z.string().optional(),
     })
     .optional()
-    .describe('your slots, to be checked against those runs before you state them'),
+    .describe('slots you rewrote, to be checked against those runs before you state them'),
+  findings: z
+    .array(z.string())
+    .max(24)
+    .optional()
+    .describe("with narrative: each block's one-line finding, in order"),
 });
 
 export const forgeTemplateTool: ContextScopedMcpToolFactory = (ctx) => ({
@@ -151,7 +159,7 @@ export const forgeTemplateTool: ContextScopedMcpToolFactory = (ctx) => ({
     )
     .join(
       '; ',
-    )}. Answers { document: { runs, blocks }, slots, notDrawn } and keeps each run 30 days. Draw each block with forge_show (source its run), then write each slot from what document.blocks show alone. Before you state the slots, call again with runIds and narrative: a slot over its words, or a figure no block shows, is refused by name. To keep the report, save it with forge_template_save.`,
+    )}. Answers { document: { runs, blocks, narrative }, narrative, notDrawn }, keeping each run 30 days: the summary, risks and recommendations are already written from the blocks and checked, and each block carries its one-line finding. Draw each block with forge_show (source its run, its finding as given), then state the summary, risks and recommendations under those headings as given; the top-level narrative says how they were written, or why they are empty. To rewrite a slot, call again with runIds and narrative (and findings): a figure no block shows is refused by name. To keep the report, save it with forge_template_save.`,
   inputSchema: zodToMcpSchema(templateInput),
   handler: async (args) => {
     const input = templateInput.parse(args);
@@ -170,6 +178,7 @@ export const forgeTemplateTool: ContextScopedMcpToolFactory = (ctx) => ({
         templateId: input.templateId,
         runIds: input.runIds,
         narrative: input.narrative,
+        findings: input.findings,
         userId,
         agency,
       });

@@ -190,8 +190,8 @@ provideStatusReportsPorts({
   readProjectStatus: ({ projectId, access, userId, agency, days, now }) =>
     readProjectStatus(projectId, statusViewerOf(access, userId, agency), days, now),
   runTemplate: async (args) => {
-    const { document, slots, notDrawn } = await runTemplate({ ...args, surface: 'rest' });
-    return { document, slots, notDrawn };
+    const { document, narrative, notDrawn } = await runTemplate({ ...args, surface: 'rest' });
+    return { document, narrative, notDrawn };
   },
   checkTemplateNarrative,
 });

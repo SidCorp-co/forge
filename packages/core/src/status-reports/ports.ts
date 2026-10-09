@@ -5,6 +5,7 @@
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { ProjectStatus } from '@forge/contracts/project-status';
 import type { ReportDocument, TemplateNarrativeSlot } from '@forge/contracts/report-templates';
+import type { StatusReportNarrative } from '@forge/contracts/status-reports';
 import type { ProjectAccess } from '../lib/authz.js';
 import { portSlot } from '../lib/port-slot.js';
 
@@ -19,27 +20,33 @@ interface StatusReportsPorts {
     now?: Date;
   }): Promise<ProjectStatus>;
   /**
-   * One report template run for `asker` (`reports/templates.ts:runTemplate`): every query kept as a
-   * run read as them, the blocks drawn over the runs, every narrative slot left empty, and the
-   * template's guidance for each slot.
+   * One report template run for `asker` (`reports/templates.ts:runTemplate`), the run every door
+   * shares: every query kept as a run read as them, the blocks drawn over the runs, and the narrative
+   * and findings one model call wrote from them, with how that narrative came to be. `what` names the
+   * run in the model's scope and the log.
    */
   runTemplate(args: {
     projectId: string;
     templateId: string;
     params?: Record<string, unknown> | undefined;
     asker: { userId: string; agency: ActorAgency; access: ProjectAccess };
+    what: string;
     now?: Date;
   }): Promise<{
     document: ReportDocument;
-    slots: { slot: TemplateNarrativeSlot; guidance: string; maxWords: number }[];
+    narrative: StatusReportNarrative;
     notDrawn: { kind: string; as: string; why: string }[];
   }>;
-  /** A narrative judged against the template's own runs, read back as `userId`; the document with it set, or a refusal by name. */
+  /**
+   * A narrative and the findings beside it judged against the template's own runs, read back as
+   * `userId`; the document with them set, or a refusal by name.
+   */
   checkTemplateNarrative(args: {
     projectId: string;
     templateId: string;
     runIds: readonly string[];
     narrative: Partial<Record<TemplateNarrativeSlot, string | undefined>>;
+    findings?: readonly string[] | undefined;
     userId: string;
     agency: ActorAgency;
   }): Promise<ReportDocument>;

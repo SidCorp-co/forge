@@ -26,7 +26,12 @@ describe("templateSaveOf", () => {
           { type: "text", text: "Here it is." },
         ]),
       ),
-    ).toEqual({ templateId: "progress", runIds: ["r-a", "r-b"], narrative: { summary: "Two of three requirements are proven." } });
+    ).toEqual({ templateId: "progress", runIds: ["r-a", "r-b"], narrative: { summary: "Two of three requirements are proven." }, findings: [] });
+  });
+
+  it("keeps each block's finding in order, an empty one where a block has none", () => {
+    const output = { document: { templateId: "progress", runs: [{ runId: "r-a" }], narrative: {}, blocks: [{ finding: "Closed rose." }, {}] } };
+    expect(templateSaveOf(answer([call(output)]))?.findings).toEqual(["Closed rose.", ""]);
   });
 
   it("offers nothing for prose, a failed call, an output that is no document, or a person's turn", () => {

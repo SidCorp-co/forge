@@ -47,15 +47,21 @@ describe('a template run', () => {
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const document = res.body.document as Body;
     const runs = document.runs as Body[];
-    expect(runs.map((r) => r.queryId)).toEqual(['progress-by-requirement', 'criteria-coverage']);
+    expect(runs.map((r) => r.queryId)).toEqual([
+      'period-flow',
+      'issue-flow',
+      'status-time',
+      'closed-by-requirement',
+      'progress-by-requirement',
+    ]);
     expect((res.body.slots as Body[]).map((s) => s.slot)).toEqual([
       'summary',
       'risks',
       'recommendations',
     ]);
     for (const run of runs) expect((await readRun(String(run.runId))).status).toBe(200);
-    // progress draws five blocks: the chart, the status list, two tables of the progress run (its
-    // issues, and each lane and forecast, REQ-33 BC-3) and the coverage table
+    // progress draws five blocks: the period against the one before, the daily line, the hours per
+    // status, the closed work per requirement (REQ-32 BC-15) and each lane and forecast (REQ-33 BC-3)
     expect(((document.blocks as Body[]) ?? []).length + (res.body.notDrawn as Body[]).length).toBe(
       5,
     );
@@ -97,7 +103,7 @@ describe('a template run', () => {
     const opened = await api(member.token, 'POST', '/api/shares/open/member', { token });
     expect(opened.status, JSON.stringify(opened.body)).toBe(200);
     const document = opened.body.document as Body;
-    expect(document).toMatchObject({ templateId: 'progress', version: 1 });
+    expect(document).toMatchObject({ templateId: 'progress', version: 2 });
     expect((document.runs as Body[]).map((r) => r.runId)).toEqual(
       ((res.body.document as Body).runs as Body[]).map((r) => r.runId),
     );

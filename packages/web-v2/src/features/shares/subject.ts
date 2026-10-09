@@ -32,11 +32,12 @@ function decoded(output: unknown): unknown {
   }
 }
 
-/** What a `forge_template` call answered with: its template, its runs in order and its narrative. */
+/** What a `forge_template` call answered with: its template, its runs in order, its narrative and each block's finding. */
 interface TemplateOutput {
   templateId: string;
   runIds: string[];
   narrative: Record<string, unknown>;
+  findings: string[];
 }
 
 function templateOutputOf(block: StoredBlock): TemplateOutput | null {
@@ -44,7 +45,7 @@ function templateOutputOf(block: StoredBlock): TemplateOutput | null {
   if (block.type !== "tool" || !call || call.isError === true) return null;
   if (typeof call.name !== "string" || !call.name.endsWith(TEMPLATE_TOOL)) return null;
   const document = (decoded(call.output) as { document?: unknown } | null)?.document as
-    | { templateId?: unknown; runs?: unknown; narrative?: unknown }
+    | { templateId?: unknown; runs?: unknown; narrative?: unknown; blocks?: unknown }
     | undefined;
   if (!document || typeof document.templateId !== "string" || !Array.isArray(document.runs)) return null;
   const runIds = document.runs.map((r) => (r as { runId?: unknown })?.runId);
@@ -52,7 +53,11 @@ function templateOutputOf(block: StoredBlock): TemplateOutput | null {
     return null;
   }
   const narrative = document.narrative !== null && typeof document.narrative === "object" ? (document.narrative as Record<string, unknown>) : {};
-  return { templateId: document.templateId, runIds, narrative };
+  const findings = (Array.isArray(document.blocks) ? document.blocks : []).map((b) => {
+    const finding = (b as { finding?: unknown } | null)?.finding;
+    return typeof finding === "string" ? finding : "";
+  });
+  return { templateId: document.templateId, runIds, narrative, findings };
 }
 
 /** The template outputs of a stored assistant message, in the order its turn made them. */
@@ -69,12 +74,15 @@ export interface TemplateSave {
   templateId: string;
   runIds: string[];
   narrative: Partial<Record<TemplateNarrativeSlot, string>>;
+  /** Each block's one-line finding, in order; "" where a block has none. */
+  findings: string[];
 }
 
 /**
  * The template run an answer can be saved as: its last template output's template and runs, with
- * the narrative slots that output carries written; a blank slot is left out, never kept empty. Core
- * judges the narrative against the runs again when it keeps the report.
+ * the narrative slots that output carries written and each block's finding; a blank slot is left
+ * out, never kept empty. Core judges the narrative and findings against the runs again when it keeps
+ * the report.
  */
 export function templateSaveOf(message: {
   role: string;
@@ -87,7 +95,7 @@ export function templateSaveOf(message: {
     const text = last.narrative[slot];
     if (typeof text === "string" && text.trim()) narrative[slot] = text;
   }
-  return { templateId: last.templateId, runIds: last.runIds, narrative };
+  return { templateId: last.templateId, runIds: last.runIds, narrative, findings: last.findings };
 }
 
 /** The subject a stored message is shared as, or null when it is no part of an answer. */

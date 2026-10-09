@@ -57,7 +57,7 @@ describe('saving a template run', () => {
     reportId = String(saved.body.id);
     expect(saved.body).toMatchObject({
       days: null,
-      template: { id: 'progress', version: 1, title: expect.any(String) },
+      template: { id: 'progress', version: 2, title: expect.any(String) },
       producer: { kind: 'person', user: { id: author.id } },
     });
     const history = await list();
@@ -109,7 +109,7 @@ describe('saving a template run', () => {
     // the bytes as sent: a text decoder drops the byte order mark this asserts
     const res = await app.fetch(
       new Request(
-        `http://forge.test${base()}/status/reports/${reportId}/export?format=csv&block=2`,
+        `http://forge.test${base()}/status/reports/${reportId}/export?format=csv&block=3`,
         {
           headers: { authorization: `Bearer ${w.token}` },
         },
@@ -118,17 +118,19 @@ describe('saving a template run', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('text/csv; charset=utf-8');
     expect(res.headers.get('content-disposition')).toMatch(
-      /^attachment; filename="progress-\d{4}-\d{2}-\d{2}-block-3\.csv"$/,
+      /^attachment; filename="progress-\d{4}-\d{2}-\d{2}-block-4\.csv"$/,
     );
     const bytes = new Uint8Array(await res.arrayBuffer());
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes).slice(1);
     const doc = (await api(w.token, 'GET', `${base()}/status/reports/${reportId}`)).body
       .document as Body;
-    const block = (doc.blocks as Body[])[2] as { columns: string[]; frame: { fields: Body[] } };
-    const labels = block.columns.map(
-      (c) => block.frame.fields.find((f) => f.name === c)?.label as string,
-    );
+    const block = (doc.blocks as Body[])[3] as { columns: string[]; frame: { fields: Body[] } };
+    // a number column's heading carries its unit, since its cells carry none
+    const labels = block.columns.map((c) => {
+      const f = block.frame.fields.find((x) => x.name === c) as Body;
+      return f.unit && f.type === 'number' ? `${f.label} (${f.unit})` : String(f.label);
+    });
     expect(text.split('\r\n')[0]).toBe(labels.join(','));
     expect(text.endsWith('\r\n')).toBe(true);
     expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
@@ -139,10 +141,10 @@ describe('saving a template run', () => {
       api(w.token, 'GET', `${base()}/status/reports/${reportId}/export?${query}`);
     const none = await at('format=csv');
     expect(code(none)).toBe('STATUS_REPORT_REFUSED');
-    expect(detail(none)).toContain("this report's table blocks are 2, 3, 4");
-    const chart = await at('format=csv&block=0');
+    expect(detail(none)).toContain("this report's table blocks are 3, 4");
+    const chart = await at('format=csv&block=1');
     expect(code(chart)).toBe('STATUS_REPORT_REFUSED');
-    expect(detail(chart)).toContain('block 0 is a chart, not a table');
+    expect(detail(chart)).toContain('block 1 is a chart, not a table');
     const missing = await at('format=csv&block=9');
     expect(detail(missing)).toContain('block 9 is not in this report, which holds 5 block(s)');
     const markdownBlock = await at('block=2');

@@ -44,8 +44,6 @@ export function useSaveStatusReport(projectId: string) {
   });
 }
 
-/** Keep a template's runs as a report, then list it: from a chat answer, or from a template run on this page. */
-
 /** The templates this build offers; they change only with a deploy. */
 export function useReportTemplates(projectId: string | undefined) {
   return useQuery({

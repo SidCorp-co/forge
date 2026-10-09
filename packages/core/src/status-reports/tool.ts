@@ -27,6 +27,11 @@ const saveInput = z.strictObject({
     })
     .optional()
     .describe('the slots as you stated them; each is checked against what the blocks show'),
+  findings: z
+    .array(z.string())
+    .max(24)
+    .optional()
+    .describe("each block's finding, in order, as forge_template returned them"),
 });
 
 export const forgeTemplateSaveTool: ContextScopedMcpToolFactory = (ctx) => ({
@@ -38,7 +43,7 @@ export const forgeTemplateSaveTool: ContextScopedMcpToolFactory = (ctx) => ({
     "Saves a forge_template run of this turn to the project's report history, with its narrative, when the person asks to save or keep the report: answers the kept report's { id, templateId, asOf, … }. A slot stating a figure no block of the template shows is refused by name, as forge_template refuses it. Say a report is saved only after this answers, and name what it answered.",
   inputSchema: zodToMcpSchema(saveInput),
   handler: async (args) => {
-    const { projectId, templateId, runIds, narrative } = saveInput.parse(args);
+    const { projectId, templateId, runIds, narrative, findings } = saveInput.parse(args);
     const userId = ctx.principal.userId;
     return saveTemplateReport({
       projectId,
@@ -48,6 +53,7 @@ export const forgeTemplateSaveTool: ContextScopedMcpToolFactory = (ctx) => ({
       templateId,
       runIds,
       narrative: narrative ?? {},
+      findings,
     });
   },
 });
