@@ -23,7 +23,7 @@ const req = (key: string, state: StatusRequirement['state'], proven: number, tot
   standing: {
     state,
     attentionGroup: 'moving',
-    waitingOn: { who: 'Issues', act: '' },
+    waitingOn: { who: 'Issues', act: '', says: { who: { key: 'standing.who.issues' } } },
     facts: { passing: proven, judged: proven, criteria: total },
   },
   delivery: { criteriaCoverage: { passing: proven, criteria: total } },
