@@ -203,11 +203,14 @@ describe('a computation an executor ran', () => {
           source: { executionId },
           frame: (res.body.frames as Body[])[0],
         }),
+        // who asked and what it read ride on the block since REQ-37 BC-9 (2e819f022)
         execution: {
           executionId,
           adapter: 'fake-sandbox',
           language: 'javascript',
           at: kept.body.createdAt,
+          askedBy: { id: w.userId, name: expect.any(String) },
+          reads: [],
         },
       },
     ]);
