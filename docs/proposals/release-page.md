@@ -75,10 +75,11 @@ the merged commit or any other is "not judged on this build". With no cut, nothi
   requirement's record, media only from evidence of what it claims, and a clip used where one
   exists. A refusal is sent back once with the draft, as `writeTemplateNarrative` does; a second
   refusal stores `failed` with the refusals, and the page shows that instead of highlights.
-- **Written** when the release is cut, and again whenever a verdict is recorded on the release's
-  commit for a criterion it carries (the replay after deploy records these). Each draft stores a
-  digest of its facts; an unchanged digest is not redrafted. Stored per release (one table,
-  migration 0478), never hand-edited.
+- **Written** on each move of the release run and on each verdict recorded against a commit for an
+  issue it carries (outbox `verdict.recorded`; the replay after deploy records these), and when a
+  page read finds no draft answering today's facts. Each draft stores a digest of its facts; an
+  unchanged digest is not redrafted, and a read never shows a stored highlight the build no longer
+  proves. Stored per release (one table, migration 0478), never hand-edited.
 
 ## Clips (BC-3, BC-4)
 
