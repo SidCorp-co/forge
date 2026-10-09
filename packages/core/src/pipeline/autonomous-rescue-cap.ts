@@ -6,13 +6,12 @@ import type { IssueStatus } from '../db/schema.js';
 import { applyStatusTransition } from '../issues/index.js';
 import { traceStep } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
-import { AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
 import { postCapReachedComment } from './autonomous-rescue-comment.js';
 import { projectCreatorOf } from './ports.js';
 import { emitPipelineWedge, rescueCapWedgeEntityId } from './wedge.js';
 
 /**
- * Run sessions an issue may spend without moving on before it is handed to a person. Matches
+ * Run sessions an issue may spend without moving on before it is parked for its master. Matches
  * `STAGE_STALL_CAP` deliberately — same question, same tolerance — but counts a different thing.
  */
 const AUTONOMOUS_RESCUE_CAP = 3;
@@ -59,10 +58,16 @@ async function countSpentRunSessions(projectId: string, issueId: string): Promis
   return rows[0]?.n ?? 0;
 }
 
+/** Where a capped issue is parked: an agent park, which waits on the master, never on a person. */
+const RESCUE_CAP_PARK = 'on_hold' satisfies IssueStatus;
+
 /**
- * Has this issue spent its run sessions? Parks it at `AUTONOMOUS_QUESTION_STATUS` and comments
- * when it has, so the caller only has to skip. A failed check or a refused park throws, so the
- * caller skips the row rather than rescuing past the cap; a refused park is also raised as a wedge.
+ * Has this issue spent its run sessions? Parks it at `on_hold` as an agent park and comments when it
+ * has, so the caller only has to skip. The park asks nobody a question and names no blocker, so
+ * `issues/standing.ts:agentParkTurn` reads it as waiting on the master, who re-dispatches it with a
+ * changed brief, drops it, or asks a person a question carrying a recommended answer (REQ-41 BC-11,
+ * Issue lifecycle `on_hold`). A failed check or a refused park throws, so the caller skips the row
+ * rather than rescuing past the cap; a refused park is also raised as a wedge.
  */
 export async function checkAutonomousRescueCap(args: {
   projectId: string;
@@ -74,7 +79,7 @@ export async function checkAutonomousRescueCap(args: {
   if (spent < AUTONOMOUS_RESCUE_CAP) return { capped: false };
 
   try {
-    await parkForHuman({ ...args, spent });
+    await parkForMaster({ ...args, spent });
   } catch (err) {
     const why = err instanceof Error ? err.message : String(err);
     await emitPipelineWedge({
@@ -84,8 +89,8 @@ export async function checkAutonomousRescueCap(args: {
       entity: 'issue',
       entityId: rescueCapWedgeEntityId(args.issueId),
       reason: `rescue_cap_park_refused:${why}`,
-      title: 'An issue spent its run sessions and could not be handed to a person',
-      summary: `${spent} run sessions ended on this issue without it moving on, and moving it to \`${AUTONOMOUS_QUESTION_STATUS}\` was refused: ${why}. It is no longer rescued; it waits here.`,
+      title: 'An issue spent its run sessions and could not be parked for its master',
+      summary: `${spent} run sessions ended on this issue without it moving on, and moving it to \`${RESCUE_CAP_PARK}\` was refused: ${why}. It is no longer rescued; it waits here.`,
       nextStep: 'Read the refusal, settle what it names, then move the issue on by hand.',
       action: 'Settle the refused move; the issue is not being rescued.',
     });
@@ -94,7 +99,7 @@ export async function checkAutonomousRescueCap(args: {
   return { capped: true };
 }
 
-async function parkForHuman(args: {
+async function parkForMaster(args: {
   projectId: string;
   issueId: string;
   status: IssueStatus;
@@ -111,14 +116,11 @@ async function parkForHuman(args: {
       status: args.status,
       reopenCount: args.reopenCount,
     },
-    AUTONOMOUS_QUESTION_STATUS,
+    RESCUE_CAP_PARK,
     { id: actorId, ownerId: actorId },
     {
       reason: 'autonomous_rescue_cap_reached',
-      transitionReason: `${args.spent} run sessions ended on this issue without it moving on, so it has stopped rather than open another.`,
-      needs:
-        'Whether to send it back to the driver as it stands, or what to change first — answering returns the issue to the status it left.',
-      waitingKind: 'needs_decision',
+      transitionReason: `${args.spent} run sessions ended on this issue without it moving on, so it has stopped rather than open another; its master resumes it once with a changed brief, drops it, or asks a person.`,
     },
   );
 
@@ -132,7 +134,7 @@ async function parkForHuman(args: {
 
   logger.warn(
     { issueId: args.issueId, spent: args.spent, from: args.status, cap: AUTONOMOUS_RESCUE_CAP },
-    'autonomous-rescue-cap: run sessions spent — parked the issue for a human',
+    'autonomous-rescue-cap: run sessions spent — parked the issue for its master',
   );
   traceStep({
     category: 'pipeline.autonomous.rescue_cap_reached',

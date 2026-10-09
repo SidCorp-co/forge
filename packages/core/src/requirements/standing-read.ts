@@ -25,11 +25,13 @@ import { activeIssuePrefix, issueWaitsOf } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readEffectivePolicy, readProjectDocument } from '../project-config/index.js';
+import { followReadsOf } from './auto-follow.js';
 import { linkedContractsOf } from './baselines.js';
 import { requirementDependents } from './dependents.js';
 import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
 import { changedTracedOf } from './plan-drift.js';
 import { staleContractPinsOf, stalePinsOf } from './rules.js';
+import { openMergeOrDropOf } from './stale-drafts.js';
 import { deriveStanding } from './standing.js';
 import {
   closedAtOf,
@@ -123,6 +125,24 @@ async function uncoveredOf(ids: readonly string[]): Promise<Map<string, Map<stri
     out.set(row.requirementId, reasons);
   }
   return out;
+}
+
+/**
+ * The facts a requirement's turn reads beside its rows, per requirement: why an accepted breakdown
+ * left a BC uncovered, the traced nodes a stale design pin's approval removed or renamed (REQ-41
+ * BC-10, `auto-follow.ts`), and whether a merge-or-drop question stands open (REQ-41 BC-12).
+ */
+async function besideFactsOf(ids: readonly string[]) {
+  const [uncovered, follows, asked] = await Promise.all([
+    uncoveredOf(ids),
+    followReadsOf(db, ids),
+    openMergeOrDropOf(ids),
+  ]);
+  return (id: string) => ({
+    uncovered: uncovered.get(id) ?? new Map<string, string>(),
+    tracedChanges: (follows.get(id) ?? []).flatMap((f) => f.changes),
+    mergeOrDropAsked: asked.has(id),
+  });
 }
 
 const by = <T extends { requirementId: string | null }>(list: readonly T[], id: string) =>
@@ -245,7 +265,7 @@ export async function standingsOf(
     unapprovedDesignsOf(ids),
     readEffectivePolicy(projectId),
   ]);
-  const uncovered = await uncoveredOf(ids);
+  const beside = await besideFactsOf(ids);
   const linkedIds = linked.map((i) => i.id);
   const [people, issueCriteria, feedbackLinks, closedAt, changedTraced, work] = await Promise.all([
     peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
@@ -305,7 +325,7 @@ export async function standingsOf(
         issues: mine,
         issueCriteria: issueCriteria.filter((c) => issueIds.has(c.issueId)),
         openSuggestionKinds: by(open, row.id).map((s) => s.kind),
-        uncovered: uncovered.get(row.id) ?? new Map(),
+        ...beside(row.id),
         liveBuild,
         stalePins: stalePinsOf(by(pins, row.id)),
         staleContractPins: staleContractPinsOf(by(contracts, row.id), by(contractPins, row.id)),

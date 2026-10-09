@@ -175,6 +175,7 @@ export {
   leaseIsWorkInProgress,
   leaseShowsHolderGone,
 } from './session-claim.js';
+export { type StaleDraftIssue, staleDraftIssues } from './stale-drafts.js';
 export { issueWaitsOf, listIssueStanding } from './standing-read.js';
 export {
   heldReleaseWait,

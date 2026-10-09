@@ -23,6 +23,7 @@ import {
   type RequirementWaitingOn,
 } from '@forge/contracts/requirements';
 import { type Said, say } from '@forge/contracts/said';
+import { DRAFT_STALE_DAYS } from '@forge/contracts/stale-drafts';
 import { type WaitingSays, waitingOn } from '@forge/contracts/standing';
 import type { RequirementStatus } from '../db/schema-requirements.js';
 import {
@@ -31,7 +32,12 @@ import {
   type StandingIssueCriterion,
 } from './standing-coverage.js';
 import { designTurn, draftTurn, type StandingRevision } from './standing-draft.js';
-import { updateToApprovedAct, updateToApprovedEffect } from './standing-follow.js';
+import {
+  reviseForDesignAct,
+  type TracedChange,
+  updateToApprovedAct,
+  updateToApprovedEffect,
+} from './standing-follow.js';
 import { proofTurn } from './standing-proof.js';
 import { breakdownTaskOf, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
 import { type ParkedWait, workTurn } from './standing-work.js';
@@ -88,6 +94,13 @@ export interface StandingInput {
   /** Linked designs the latest baseline leaves unpinned or pins below their approved revision. */
   stalePins: readonly { flow: string; title: string; pinned: number | null; approved: number }[];
   staleContractPins: readonly { contract: string; pinned: string | null; current: string }[];
+  /**
+   * The nodes live criteria trace that a stale design pin's approval removed or renamed
+   * (`auto-follow.ts:followReadsOf`); absent or empty where none did, and the kernel follows it.
+   */
+  tracedChanges?: readonly TracedChange[];
+  /** An open merge-or-drop question on this draft or its draft revision (`stale-drafts.ts`, REQ-41 BC-12). */
+  mergeOrDropAsked?: boolean;
   /** Linked designs holding no approved revision, which an agree refuses (REQUIREMENT_DESIGN_UNAPPROVED). */
   unapprovedDesigns: readonly { flow: string; title: string; designStatus: string | null }[];
   feedback: { open: number; untriaged: readonly string[] };
@@ -166,8 +179,12 @@ function feedbackTurn(input: StandingInput): Turn | null {
 
 // Whose turn it is, first rule wins: 1. dropped or deferred → nobody (ISS-85), accepted →
 // done unless feedback waits on triage; 2. a proposed revision → a signer; 3. a draft revision →
-// its author; 4. a draft requirement → a signer agrees it; 4b. untriaged feedback → a signer
-// triages it (ISS-79); 5. a design approved past the pin → a signer re-pins it (ISS-86); 6. every
+// its author, unless 2b. the assistant asked whether to merge, drop or keep a stale draft → a signer
+// answers it (REQ-41 BC-12); 4. a draft requirement → a signer agrees it; 4b. untriaged feedback → a
+// signer triages it (ISS-79); 5. a design approved past the pin → the kernel re-pins it by itself
+// (`auto-follow.ts`, REQ-41 BC-10) and until then a signer may (ISS-86), unless the approval removed
+// or renamed a step a live criterion traces → the assistant revises those criteria, and once a
+// revision is suggested a signer reviews it; 6. every
 // issue closed and every BC proven → the BA's check task, a BC unproven → whoever owes its proof
 // (`proofTurn`); 7. an open breakdown → a signer; 8. an issue planned on an earlier revision or baseline → the master
 // re-plans it (its re-plan tasks); 9. no issue → the master breaks it down; 10. only drafts → a signer who can
@@ -209,6 +226,13 @@ function turnOf(
     );
   }
   const draft = input.revisions.find((r) => r.state === 'draft');
+  if (input.mergeOrDropAsked && (draft || status === 'draft')) {
+    return signerWait(
+      viewer,
+      say('standing.act.mergeOrDrop'),
+      say('requirements.rule.staleDraft', { days: DRAFT_STALE_DAYS }),
+    );
+  }
   if (draft) return draftTurn(draft, viewer);
   if (status === 'draft') {
     const head = input.currentRevision;
@@ -222,6 +246,25 @@ function turnOf(
   }
   const triage = feedbackTurn(input);
   if (triage) return triage;
+  const traced = input.tracedChanges ?? [];
+  if (traced.length > 0) {
+    if (input.openSuggestionKinds.includes('revision_diff')) {
+      return signerWait(
+        viewer,
+        say('standing.act.reviewSuggestedRevision'),
+        say('requirements.rule.revisionSuggested'),
+      );
+    }
+    return {
+      group: 'waiting',
+      waitingOn: wait(
+        'agent',
+        MASTER,
+        reviseForDesignAct(traced),
+        say('requirements.rule.tracedStepChanged'),
+      ),
+    };
+  }
   if (input.stalePins.length > 0 || input.staleContractPins.length > 0) {
     const act = updateToApprovedAct(input.stalePins, input.staleContractPins);
     const rule = say('requirements.rule.pinBehind');
