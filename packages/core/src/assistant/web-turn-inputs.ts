@@ -34,7 +34,7 @@ import {
 } from './door-persona.js';
 import { turnPageContext } from './page-item.js';
 import type { WindowTurnInputs } from './route-window.js';
-import { buildBaFirstRequirementsToolset } from './tools/ba-first-tools.js';
+import { buildBaFirstRequirementsToolset, buildRequirementDraftToolset } from './tools/ba-first-tools.js';
 import { buildBaToolset } from './tools/ba-tools.js';
 import { mergeToolsets } from './tools/mcp-adapter.js';
 import { buildOfferActToolset } from './tools/offer-act-tool.js';
@@ -302,6 +302,7 @@ async function prepareWebTurn(
     }),
     tools: mergeToolsets(
       buildProjectToolset(ctx),
+      buildRequirementDraftToolset(ctx, args.project.id),
       buildUiActionToolset({ snapshot: () => latestUiSnapshot(conversationId) }),
       buildOfferActToolset({
         projectId: args.project.id,

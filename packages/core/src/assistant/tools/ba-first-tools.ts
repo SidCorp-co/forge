@@ -115,3 +115,14 @@ export function buildBaFirstRequirementsToolset(ctx: McpContext, room: CaseRoom)
     { factory: sendFirstRequirementsQuestionnaire(room) },
   ]);
 }
+
+/**
+ * The project assistant's way to put a requirement it drafted in front of a person: read the
+ * approved designs and suggest one requirement per design. It writes a suggestion, never the
+ * requirement, so a person's accept is what creates it (REQ-8); with no tool of this kind the
+ * assistant drafted a whole requirement in chat and then could not write it (FB-85).
+ */
+export function buildRequirementDraftToolset(ctx: McpContext, projectId: string): ChatToolset {
+  const room: CaseRoom = { projectId, onboardingId: '' };
+  return buildToolset(ctx, [{ factory: readJourneys(room) }, { factory: suggestRequirement(room) }]);
+}
