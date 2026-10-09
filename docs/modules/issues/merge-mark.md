@@ -214,14 +214,20 @@ top of `createReleaseBatch`, and it places the issue in a shipped release (a run
 `finished`, with `finish.commit` the commit the probes verified live) by one of two evidences:
 
 - an `observed` mark names a commit: the release is the earliest whose commit holds it.
-- an `asserted` mark whose audit comment recorded a claimed commit (`mark_merged … commit=<sha>`, the
-  only place the tracker keeps it, read in exactly that shape) is placed like an observed one by that
-  commit, once the host confirms it; a claim in no shipped release is not placed by it. The claim
-  read is the current mark's own (`packages/core/src/issues/mark-trail.ts:currentMarkClaims`): the
-  newest stamped mark or unmark line, and only where it is a mark naming a commit. An unmark withdraws
-  every earlier claim, and a mark after it naming no commit claims none, so a withdrawn round's commit
-  never places the issue. A mark that names no commit records as its claim only the newest
-  implementation handoff written since the issue was last unmarked.
+- an `asserted` mark whose claimed commit the marker recorded is placed like an observed one by that
+  commit, once the host confirms it; a claim in no shipped release is not placed by it. The marker
+  keeps the claim in its own transaction twice: as the audit comment's first line people read
+  (`mark_merged … commit=<sha>`) and as the record the claim is read from, an `activity_log` row
+  `issue.mergeMarked` or `issue.mergeUnmarked` (`packages/core/src/issues/mark-trail.ts:recordMarkTrail`).
+  Comment text is never read: a comment shaped like a trail line, typed by anybody, is neither a claim
+  nor an unmark. The claim read is the current mark's own
+  (`packages/core/src/issues/mark-trail.ts:currentMarkClaims`): the newest stamped mark or unmark
+  record, and only where it is a mark naming a commit. An unmark withdraws every earlier claim, and a
+  mark after it naming no commit claims none, so a withdrawn round's commit never places the issue. A
+  mark that names no commit records as its claim only the newest implementation handoff written since
+  the issue was last unmarked. An unmark made before the record existed is read from the activity
+  feed's own row for it (`issue.updated` setting `mergedAt` to null, which only an unmark writes); a
+  claim made then has no record and places nothing until the issue is marked again.
 - an `asserted` mark with no claim the host confirms is placed by declaring commits: the
   repository is asked which commits declare the issue, by `commitOwners`, in each of the last twelve
   releases' own ranges. The release is the one whose range holds the last declaring commit, and only
@@ -241,7 +247,7 @@ evidence stays host-only, since it reads ranges of commit messages no box serves
 and cannot serve is not stood in for by a box. No box answering (none bound, none connected, or one
 that let a read lapse, which is not asked again for ten minutes) is `SHIPPED_EARLIER_HOST_UNAVAILABLE`
 naming both reasons; a box that answered it could not read a commit is `SHIPPED_EARLIER_UNREAD`.
-A row whose mark names no commit (no `merged_commit_sha`, no claimed `commit=`) is never offered a box: only the declaring-commits evidence could place it, so a connected box is not a way out. That row is `SHIPPED_EARLIER_NO_COMMIT`, and its hold names the two ways out: a source host binding, or its mark naming the landing commit (`unmark`, then mark again with `commit=<sha>`).
+A row whose mark names no commit (no `merged_commit_sha`, no recorded claim) is never offered a box: only the declaring-commits evidence could place it, so a connected box is not a way out. That row is `SHIPPED_EARLIER_NO_COMMIT`, and its hold names the two ways out: a source host binding, or its mark naming the landing commit (unmarked, then marked again through `POST /api/issues/:id/merge` with `commit`).
 
 The issue is closed through the release's own close (`closeRoster`, after `claimIssuesForRelease` onto
 that run), so `CLOSE_ONLY_BY_RELEASE` still holds and the run's `rosterClosed` names it. It gets a

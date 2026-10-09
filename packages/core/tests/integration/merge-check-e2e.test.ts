@@ -16,12 +16,7 @@
  * @direct-test-of packages/core/src/issues/record-events/store.ts
  */
 
-import { randomUUID } from 'node:crypto';
-import {
-  MERGE_CHECK_KINDS,
-  REQUIRED_MERGE_CHECKS,
-  type RequiredMergeCheck,
-} from '@forge/contracts/merge-check';
+import { REQUIRED_MERGE_CHECKS, type RequiredMergeCheck } from '@forge/contracts/merge-check';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { api, userToken } from '../helpers/api.js';
@@ -33,6 +28,7 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { passingCheck, passingReport } from '../helpers/merge-check-report.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 const environments = {
@@ -100,25 +96,20 @@ const call = async (method: 'GET' | 'POST', path: string, body?: unknown) => {
 const codes = (res: { body: Doc }): string[] =>
   (res.body.error?.refusals ?? []).map((r: Doc) => r.code);
 
+/** A passing check in the contract's shape, with `over` planted where a case sends a wrong one. */
 const run = (name: RequiredMergeCheck, over: Doc = {}) => ({
-  id: randomUUID(),
-  kind: MERGE_CHECK_KINDS[name],
-  startedAt: '2026-10-09T06:00:00.000Z',
-  name,
-  scope: 'workspace',
-  command: `run ${name}`,
+  ...passingCheck(name),
   files: name === 'direct-tests' ? ['packages/core/src/issues/x.test.ts'] : [],
-  result: 'pass',
-  durationMs: 1200,
   ...over,
 });
 
 const report = (over: Doc = {}) => ({
-  base: { branch: 'dev', sha: BASE },
-  head: HEAD,
-  mode: 'pre-merge',
-  touched: [{ path: 'packages/core/src/issues/x.ts', change: 'changed' }],
-  checks: REQUIRED_MERGE_CHECKS.map((n) => run(n)),
+  ...passingReport({
+    base: { branch: 'dev', sha: BASE },
+    head: HEAD,
+    touched: [{ path: 'packages/core/src/issues/x.ts', change: 'changed' }],
+    checks: REQUIRED_MERGE_CHECKS.map((n) => run(n)),
+  }),
   ...over,
 });
 

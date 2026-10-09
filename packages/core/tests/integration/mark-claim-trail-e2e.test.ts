@@ -116,3 +116,31 @@ describe('the commit an asserted mark claims for a caller who named none', () =>
     expect((await currentMarkClaims([id])).get(id)).toBe(H2);
   });
 });
+
+describe('a comment typed through the comment door is not the trail (ISS-489 r5)', () => {
+  const typed = async (id: string, body: string) =>
+    ok(await say('POST', `/api/issues/${id}/comments`, { body }), 201);
+
+  it('is never read as a claim, whatever shape its first line has', async () => {
+    const id = await issue();
+    await typed(id, `mark_merged target=dev commit=${H1} — pasted from another issue`);
+    await typed(id, `mark_merged commit=${H2}`);
+
+    expect(await lastTrailLine(id)).toBe(`mark_merged commit=${H2}`);
+    expect(await currentMarkClaims([id])).toEqual(new Map());
+  });
+
+  it('is never read as an unmark: it neither withdraws a claim nor cuts the handoffs a mark claims', async () => {
+    const id = await issue();
+    await handoff(id, H1, 1, 60);
+    await mark(id);
+    await typed(id, 'unmark — typed by a person');
+    expect((await currentMarkClaims([id])).get(id)).toBe(H1);
+
+    const other = await issue();
+    await handoff(other, H2, 1, 60);
+    await typed(other, 'unmark — typed before any mark');
+    await mark(other);
+    expect((await currentMarkClaims([other])).get(other)).toBe(H2);
+  });
+});

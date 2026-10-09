@@ -21,8 +21,9 @@
  *   shipped release and the branch head holds none: work still unreleased is not shipped.
  *
  * Where the project has no source host binding (or declares a local repository no host serves), the
- * commit a mark names (observed, or the claim the current asserted mark's audit line recorded,
- * `issues/mark-trail.ts:currentMarkClaims`, never one an unmark withdrew) is asked of the
+ * commit a mark names (observed, or the claim the marker's record of the current asserted mark
+ * holds, `issues/mark-trail.ts:currentMarkClaims`, never one an unmark withdrew and never comment
+ * text shaped like it) is asked of the
  * box holding the project's bound checkout instead (`shipped-earlier-ancestry.ts` `boxReader`), and
  * the issue's notice names that box-read evidence: the box, its checkout, origin and both shas. The
  * declaring-commits path stays host-only: it reads ranges of commit messages, which no box serves.
@@ -308,7 +309,7 @@ export async function closeShippedEarlier(
     if (lead !== null) leads.set(row.id, lead);
   }
   const hostOnly = (why: string) =>
-    `${unavailable(why)}; a mark that claimed no commit is placed by the commits declaring it, which only a source host reads`;
+    `${unavailable(why)}; its mark names no commit, so only the commits declaring it can place it, which only a source host reads`;
   if (source.kind === 'box' && leads.size === 0) {
     return { closed: [], unresolved: noCommit(waiting, hostOnly(source.why)) };
   }

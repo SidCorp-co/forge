@@ -484,7 +484,12 @@ export interface OutboxEventPayloads {
 		decidedBy: string;
 		decidedAt: string;
 	};
-	/** The requirement read delivered at `revision`, after a linked issue's move or on a later sweep, told once per revision; its BA owes the check. */
+	/**
+	 * The requirement read delivered at `revision`, after a linked issue's move or on a later sweep; its
+	 * BA owes the check. Emitted once per revision while the outbox keeps that event: past
+	 * `OUTBOX_RETENTION_DAYS` a revision not yet accepted can be emitted again. The person's
+	 * notification stays at one per revision (its dedupe key, `notify-requirements.ts`).
+	 */
 	"requirement.delivered": {
 		projectId: string;
 		requirementId: string;

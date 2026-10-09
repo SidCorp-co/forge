@@ -48,13 +48,18 @@ describe('the shipped-earlier clause on a hold', () => {
   it('names a source host or a mark naming its commit for a row with no commit lead, never a box', () => {
     const none = {
       code: 'SHIPPED_EARLIER_NO_COMMIT' as const,
-      detail: 'a mark that claimed no commit is placed by the commits declaring it.',
+      detail:
+        'the repository could not be read; its mark names no commit, so only the commits declaring it can place it, which only a source host reads',
     };
     const held = withShippedEarlier(ABORT, none);
 
     expect(held.waitingFor).toContain('source host binding');
-    expect(held.waitingFor).toContain('commit=<sha>');
+    expect(held.waitingFor).toContain('its mark naming the commit that landed it');
     expect(`${held.reason} ${held.waitingFor}`).not.toContain('box');
+    // ISS-489 r5: said once, through the REST route, and no plugin verb.
+    expect(held.reason.split(/names no commit/i)).toHaveLength(2);
+    expect(held.reason.split('POST /api/issues/:id/merge')).toHaveLength(2);
+    expect(held.reason).not.toMatch(/forge_issues|action=mark/);
     expect(withShippedEarlier(held, none)).toEqual(held);
   });
 

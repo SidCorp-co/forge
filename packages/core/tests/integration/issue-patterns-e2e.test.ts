@@ -12,7 +12,6 @@
  * @direct-test-of packages/core/src/issues/patterns.ts
  */
 
-import { REQUIRED_MERGE_CHECKS } from '@forge/contracts/merge-check';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -29,6 +28,7 @@ import {
   rows,
   seedIssueStatus,
 } from '../helpers/factories.js';
+import { passingReport } from '../helpers/merge-check-report.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 let readAdmissibleIssues: typeof import('../../src/devices/admissible.js').readAdmissibleIssues;
@@ -152,17 +152,14 @@ const mark = (
     changedPaths: { commit: SHA, changes },
   });
 
-const RAN = { scope: 'workspace', command: 'ran', files: [], result: 'pass', durationMs: 1 };
-
 /** The merge check's report at the landed commit, over the files the change touches. */
 const checked = (issue: string, touched: Parameters<typeof mark>[1]) =>
-  call('reviewer', 'POST', `/api/issues/${issue}/merge-check`, {
-    base: { branch: 'main', sha: 'b'.repeat(40) },
-    head: SHA,
-    mode: 'pre-merge',
-    touched,
-    checks: REQUIRED_MERGE_CHECKS.map((name) => ({ name, ...RAN })),
-  });
+  call(
+    'reviewer',
+    'POST',
+    `/api/issues/${issue}/merge-check`,
+    passingReport({ base: { branch: 'main', sha: 'b'.repeat(40) }, head: SHA, touched }),
+  );
 
 const statusOf = async (issue: string) =>
   (await rows<{ status: string }>(sql`SELECT status FROM issues WHERE id = ${issue}`))[0]?.status;

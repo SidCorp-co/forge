@@ -5,7 +5,9 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
+import { insertComment } from '../../src/comments/service.js';
 import { db } from '../../src/db/client.js';
+import { markTrailLabel, NOT_STAMPED, recordMarkTrail } from '../../src/issues/mark-trail.js';
 import { abortBlockedHold, writeReleaseHolds } from '../../src/release-batch/hold.js';
 import { rows } from './factories.js';
 import type { releaseWorld } from './release-world.js';
@@ -84,13 +86,60 @@ export function shippedEarlierWorld(
   /** A waiting row carrying an `asserted` mark: somebody's word, naming no commit. */
   const asserted = () => fx.insertIssue('awaiting_release');
 
-  /** The audit comment a mark writes (`merge-marker.ts` `writeMarkTrail`), as the kernel words it. */
-  async function claim(id: string, commit: string, tail = ''): Promise<void> {
-    await fx.postComment(
-      id,
-      `mark_merged target=dev commit=${commit}${tail}\nthis mark is a claim: commit ${commit} is recorded here as this call's claim`,
+  /**
+   * What the marker leaves for a mark or an unmark (`merge-marker.ts` `writeMarkTrail`): the audit
+   * comment, worded as the kernel words it, and the record the trail is read from
+   * (`issues/mark-trail.ts`), in one transaction. A mark whose comment says `NOT stamped` did not
+   * stamp, so its record says so.
+   */
+  async function trail(id: string, op: 'mark' | 'unmark', commit: string | null, rest: string) {
+    const [issue] = await rows<{ by: string }>(
+      sql`SELECT created_by_id AS by FROM issues WHERE id = ${id}`,
     );
+    const authorId = issue?.by ?? '';
+    const body = `${markTrailLabel(op, op === 'mark' ? 'dev' : undefined, commit)}${rest}`;
+    await db.transaction(async (tx) => {
+      const { row } = await insertComment(
+        { issueId: id, authorId, authorDeviceId: null, body, parentId: null },
+        tx,
+      );
+      const base = {
+        issueId: id,
+        actor: { type: 'user' as const, id: authorId, agency: 'agent' as const },
+        commentId: row.id,
+      };
+      await recordMarkTrail(
+        tx,
+        op === 'mark'
+          ? { ...base, op, target: 'dev', commit, stamped: !rest.includes(NOT_STAMPED) }
+          : { ...base, op },
+      );
+    });
   }
+
+  /** A mark claiming `commit`, as the marker writes it. */
+  const claim = (id: string, commit: string, tail = '') =>
+    trail(
+      id,
+      'mark',
+      commit,
+      `${tail}\nthis mark is a claim: commit ${commit} is recorded here as this call's claim`,
+    );
+
+  /** A mark naming no commit, as the marker writes it. */
+  const bareMark = (id: string, note: string) =>
+    trail(
+      id,
+      'mark',
+      null,
+      ` — ${note}\nthis mark is a CLAIM Forge did not observe: no commit is recorded`,
+    );
+
+  /** An unmark, as the marker writes it. */
+  const unmark = (id: string, note: string) => trail(id, 'unmark', null, ` — ${note}`);
+
+  /** A comment somebody typed through a comment door: text only, whatever shape it has. */
+  const typed = (id: string, body: string) => fx.postComment(id, body);
 
   async function runOf(id: string) {
     const [row] = await rows<{ status: string; claim: string | null }>(sql`
@@ -115,5 +164,5 @@ export function shippedEarlierWorld(
     });
   }
 
-  return { shipped, marked, asserted, claim, runOf, abortHold };
+  return { shipped, marked, asserted, claim, bareMark, unmark, typed, runOf, abortHold };
 }

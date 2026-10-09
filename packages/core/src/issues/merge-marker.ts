@@ -19,7 +19,7 @@ import {
   standingArtifactsRefusal,
   standingMarkRefusal,
 } from './landing-evidence.js';
-import { lastUnmarkedAt, markTrailLabel, NOT_STAMPED } from './mark-trail.js';
+import { lastUnmarkedAt, markTrailLabel, NOT_STAMPED, recordMarkTrail } from './mark-trail.js';
 import { uncheckedMergeRefusal } from './merge-check.js';
 import {
   clearIssueMerge,
@@ -355,6 +355,14 @@ async function writeMarkTrail(
     tx,
   );
   const actor = args.actor.hookActor;
+  // The record the trail is read from (`mark-trail.ts`); the comment above is only its words.
+  const trail = { issueId, actor, commentId: audit.id };
+  await recordMarkTrail(
+    tx,
+    marking
+      ? { ...trail, op: 'mark', target: args.target ?? null, commit, stamped: result.wrote }
+      : { ...trail, op: 'unmark' },
+  );
   await emitEvents(tx, [
     {
       type: 'comment.created',

@@ -6,10 +6,12 @@
  * asserted is which box was asked, and what the rows, holds and notices hold afterwards.
  */
 
+import { issueUpdatedPayload } from '@forge/contracts/field-changes';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { SourceHostUnavailable } from '../../src/integrations/source-host/index.js';
+import { recordActivityTx } from '../../src/issues/activity.js';
 import { sweepAutomaticReleases } from '../../src/release-batch/release-sweep.js';
 import {
   closeShippedEarlier,
@@ -33,10 +35,8 @@ let ownerId: string;
 let ours: string;
 let theirs: string;
 const fx = releaseWorld(() => ({ projectId, ownerId }));
-const { shipped, marked, asserted, claim, runOf, abortHold } = shippedEarlierWorld(
-  () => ({ projectId }),
-  fx,
-);
+const { shipped, marked, asserted, claim, bareMark, unmark, typed, runOf, abortHold } =
+  shippedEarlierWorld(() => ({ projectId }), fx);
 
 beforeAll(async () => {
   testEnv();
@@ -118,14 +118,6 @@ async function lastComment(id: string): Promise<string | undefined> {
   `);
   return row?.body;
 }
-
-/** The audit line an unmark writes (`issues/mark-trail.ts`), and a mark that named no commit. */
-const unmark = (id: string, note: string) => fx.postComment(id, `unmark — ${note}`);
-const bareMark = (id: string, note: string) =>
-  fx.postComment(
-    id,
-    `mark_merged target=dev — ${note}\nthis mark is a CLAIM Forge did not observe: no commit is recorded`,
-  );
 
 async function rosterClosedOf(runId: string): Promise<string[]> {
   const [row] = await rows<{ closed: string[] | null }>(sql`
@@ -282,6 +274,10 @@ describe("with no box answering, today's refusal stands by name", () => {
     expect(held?.waitingFor).toContain('naming the commit that landed it');
     expect(held?.waitingFor).not.toContain('box');
     expect(held?.reason).not.toContain('connected box holding');
+    // ISS-489 r5: said once, the way out named by its REST route, no plugin verb.
+    expect(held?.reason.split(/names no commit/i)).toHaveLength(2);
+    expect(held?.reason.split('POST /api/issues/:id/merge')).toHaveLength(2);
+    expect(`${held?.reason} ${held?.waitingFor}`).not.toMatch(/forge_issues|action=mark/);
     expect((await fx.holdOf(claimed))?.reason ?? '').not.toContain('SHIPPED_EARLIER_NO_COMMIT');
   });
 
@@ -358,5 +354,63 @@ describe("the claim a mark carries is the current mark's own", () => {
     expect(result.closed.map((c) => [c.version, c.evidence.includes(B)])).toEqual([
       ['0.4.0-dev.2', true],
     ]);
+  });
+});
+
+describe('a comment shaped like a trail line is not the trail', () => {
+  // ISS-489 r5: the reader took any comment whose first line had the audit shape as the current
+  // claim, so a pasted line closed the issue into the release holding the commit it named.
+  it('refuses a claim somebody typed: the sweep closes nothing on it and holds the row naming no commit', async () => {
+    await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
+    const id = await asserted();
+    await typed(id, `mark_merged target=dev commit=${A} — pasted from another issue`);
+    const { asked, deps } = box('history');
+
+    const result = await closeShippedEarlier({ projectId, issueIds: [id], userId: ownerId }, deps);
+
+    expect(result.closed).toEqual([]);
+    expect(asked).toEqual([]);
+    expect(result.unresolved.map((u) => u.code)).toEqual(['SHIPPED_EARLIER_NO_COMMIT']);
+
+    await sweepAutomaticReleases(new Date(), deps);
+    expect(await runOf(id)).toEqual({ status: 'awaiting_release', claim: null });
+    expect((await fx.holdOf(id))?.reason).toContain('(SHIPPED_EARLIER_NO_COMMIT)');
+  });
+
+  it('does not let a typed unmark withdraw the claim the marker recorded', async () => {
+    await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
+    const id = await asserted();
+    await claim(id, A);
+    await typed(id, 'unmark — typed by a person');
+
+    const result = await closeShippedEarlier(
+      { projectId, issueIds: [id], userId: ownerId },
+      box('history').deps,
+    );
+
+    expect(result.closed.map((c) => c.version)).toEqual(['0.4.0-dev.1']);
+  });
+
+  it("reads an unmark made before the record existed from the feed's own row for it", async () => {
+    await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
+    const id = await asserted();
+    await claim(id, A);
+    // What the activity feed wrote for an unmark's issue.updated: mergedAt set to null.
+    await recordActivityTx(db, {
+      issueId: id,
+      actor: { type: 'user', id: ownerId, agency: 'agent' },
+      action: 'issue.updated',
+      payload: {
+        ...issueUpdatedPayload(['mergedAt'], { mergedAt: new Date() }, { mergedAt: null }),
+      },
+    });
+
+    const result = await closeShippedEarlier(
+      { projectId, issueIds: [id], userId: ownerId },
+      box('history').deps,
+    );
+
+    expect(result.closed).toEqual([]);
+    expect(result.unresolved.map((u) => u.code)).toEqual(['SHIPPED_EARLIER_NO_COMMIT']);
   });
 });
