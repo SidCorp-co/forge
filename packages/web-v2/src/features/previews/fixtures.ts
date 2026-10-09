@@ -12,6 +12,7 @@ export function previewOf(over: Partial<PreviewRecord> = {}): PreviewRecord {
   return previewRecordSchema.parse({
     id: PREVIEW_ID,
     projectId: PROJECT_ID,
+    subject: { kind: "issue", issueId: ISSUE_ID },
     issueId: ISSUE_ID,
     sessionId: "44444444-4444-4444-8444-444444444444",
     deviceId: "55555555-5555-4555-8555-555555555555",

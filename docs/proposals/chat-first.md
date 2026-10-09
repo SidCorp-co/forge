@@ -145,15 +145,18 @@ or leave, where the dashboard already shows them.
 **How it starts (BC-14).** In chat the assistant offers "Build a preview" for a requirement or a
 feedback item. Pressing it calls `POST /api/projects/:id/previews` with `{kind: "idea", about,
 brief}`, as the person, and needs `project.write`. Core starts a sketch run on a runner:
-- the run is an agent session with no issue;
-- its worktree is off the base, on `sketch/<item>-<6 chars>`;
-- it is briefed with the item and the ask;
+- the run is a chat session with no issue, on a box that confines it: it holds only its own turn
+  token and reaches no host but the model and core;
+- its worktree is cut by the box off the base, on `sketch/<item>-<6 chars>`, under the binding's
+  `.claude/worktrees/`, with its push remote set to one that does not exist;
+- it is briefed with the item and the ask once the dev server serves that worktree;
 - it never pushes, never merges and never files anything.
 
 The preview serves that worktree.
 
 **Edits (BC-15).** Each chat message about the preview goes through REQ-39's preview door
-(`messages`, then `session.send`). The run edits, and the dev server's hot reload shows the change.
+(`messages`): a sketch run still working takes it as a `session.send` inject, an idle one as its
+next turn. The run edits, and the dev server's hot reload shows the change.
 
 **Keep (BC-16).** Keeping an idea snapshots its patch, base and files, takes screenshots, and writes
 a `preview` picture (`keptPreviewContentSchema`):
@@ -171,10 +174,12 @@ lifecycle r14 already says of every picture.
 ## Reproduce (BC-17..BC-22)
 
 - **Build (BC-17).** A feedback item opens `{kind: "reproduce", feedback}`. With no build named,
-  core takes the release live on the environment the item names at its `created_at`. Without one it
-  refuses `PREVIEW_BUILD_UNKNOWN`, naming "a release or a sha". The runner checks the sha out into
-  scratch and starts the dev server with no agent session. A sha the box cannot fetch fails the
-  preview `REF_NOT_FOUND` with the git output.
+  core takes the release the item targets, else the release shipped last before its `created_at`:
+  a feedback item records no environment, and Forge keeps release history only for what release
+  runs shipped. Without one it refuses `PREVIEW_BUILD_UNKNOWN`, naming "a release or a sha". The
+  runner checks the sha out detached under the binding's `.claude/worktrees/` and starts the dev
+  server with no agent session. A sha the box cannot fetch fails the preview `REF_NOT_FOUND` with
+  the git output.
 - **Data (BC-22).** `preview.demo` (`previewDemoSettingsSchema`) names a demo environment, a seed
   command, or both. Without it the reproduce uses the environment its dev server already uses
   (`reproduceDataOf`). Production is refused either way (`PREVIEW_PRODUCTION_ENVIRONMENT`).
@@ -225,7 +230,7 @@ lifecycle r14 already says of every picture.
 | Open an idea | `project.write` | `PREVIEW_ITEM_UNKNOWN`, `PREVIEW_RUNNER_UNSUPPORTED`, `PREVIEW_DOMAIN_UNCONFIGURED` |
 | Keep an idea | `requirements.write` | `PREVIEW_KEEP_NOT_IDEA`, `PREVIEW_SNAPSHOT_UNAVAILABLE` |
 | Open a reproduce | `project.read` | `PREVIEW_ITEM_UNKNOWN`, `PREVIEW_BUILD_UNKNOWN`, `PREVIEW_PRODUCTION_ENVIRONMENT` |
-| Send a recording batch | the viewer cookie of that preview | `RECORDING_CLOSED`, `RECORDING_SEQ_GAP`, `RECORDING_BATCH_TOO_LARGE`, `RECORDING_TOO_LARGE` |
+| Send a recording batch | the viewer cookie of that preview | `RECORDING_CLOSED`, `RECORDING_SEQ_GAP`, `RECORDING_BATCH_INVALID`, `RECORDING_BATCH_TOO_LARGE`, `RECORDING_TOO_LARGE` |
 | Read a recording | `project.read` | `RECORDING_NOT_FOUND`, `RECORDING_FORBIDDEN`, `RECORDING_EXPIRED` (events), `RECORDING_REDACTED` |
 | Confirm a fix | `project.read` | `PREVIEW_CONFIRM_NOT_FIX`, `PREVIEW_CONFIRM_REASON_REQUIRED` |
 

@@ -21,6 +21,7 @@ describe('previewPlan: which setting and environment a preview starts with (BC-1
           FORGE_ENVIRONMENT: 'dev',
           FORGE_ENVIRONMENT_URL: 'https://dev.example.test',
         },
+        seed: null,
       },
     });
   });
@@ -55,7 +56,61 @@ describe('previewPlan: which setting and environment a preview starts with (BC-1
         b: { tier: 'dev', deployment: external },
       },
     });
-    expect(planned).toEqual({ ok: true, plan: { settings: null, env: { FORGE_PREVIEW: '1' } } });
+    expect(planned).toEqual({
+      ok: true,
+      plan: { settings: null, env: { FORGE_PREVIEW: '1' }, seed: null },
+    });
+  });
+});
+
+describe('previewPlan for a reproduce: demo data where the project names it, else its environment (REQ-41 BC-22)', () => {
+  const environments = {
+    dev: { tier: 'dev' as const, deployment: external, url: 'https://dev.example.test' },
+    demo: { tier: 'staging' as const, deployment: external, url: 'https://demo.example.test' },
+    live: { tier: 'production' as const, deployment: external },
+  };
+
+  it('talks to the demo environment and seeds it first, where `preview.demo` names them', () => {
+    const planned = previewPlan(
+      {
+        preview: {
+          command: 'pnpm dev',
+          port: 3000,
+          demo: { environment: 'demo', seed: 'pnpm seed' },
+        },
+        environments,
+      },
+      'reproduce',
+    );
+    expect(planned.ok && planned.plan).toMatchObject({
+      env: { FORGE_ENVIRONMENT: 'demo', FORGE_ENVIRONMENT_URL: 'https://demo.example.test' },
+      seed: 'pnpm seed',
+    });
+    // an issue's run is never seeded and keeps its own environment
+    const issue = previewPlan(
+      { preview: { command: 'pnpm dev', port: 3000, demo: { seed: 'pnpm seed' } }, environments },
+      'issue',
+    );
+    expect(issue.ok && issue.plan).toMatchObject({ env: { FORGE_ENVIRONMENT: 'dev' }, seed: null });
+  });
+
+  it('falls back to the environment its dev server uses when no demo is named', () => {
+    const planned = previewPlan({ environments }, 'reproduce');
+    expect(planned.ok && planned.plan).toMatchObject({
+      env: { FORGE_ENVIRONMENT: 'dev' },
+      seed: null,
+    });
+  });
+
+  it('refuses a production demo by name, at the demo setting', () => {
+    const planned = previewPlan(
+      { preview: { command: 'pnpm dev', port: 3000, demo: { environment: 'live' } }, environments },
+      'reproduce',
+    );
+    expect(planned.ok ? null : planned.refusal).toMatchObject({
+      code: 'PREVIEW_PRODUCTION_ENVIRONMENT',
+      path: '/preview/demo/environment',
+    });
   });
 });
 

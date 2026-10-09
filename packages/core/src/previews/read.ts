@@ -1,7 +1,7 @@
 // The previews module's reads: its own rows, the record REST answers, and the run whose worktree
 // an issue's preview serves.
 
-import type { PreviewRecord, PreviewState } from '@forge/contracts/preview';
+import type { PreviewRecord, PreviewState, PreviewSubject } from '@forge/contracts/preview';
 import { TERMINAL_AGENT_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -59,11 +59,24 @@ export async function approvedPreviewOf(issueId: string) {
 
 const iso = (d: Date | null) => (d === null ? null : d.toISOString());
 
+/** What a preview serves: an issue's run, or the idea or reproduce subject its row holds. */
+export function subjectOf(row: PreviewRow): PreviewSubject {
+  if (row.subjectKind === 'issue') {
+    if (row.issueId === null) throw new Error(`preview ${row.id} serves an issue and names none`);
+    return { kind: 'issue', issueId: row.issueId };
+  }
+  if (row.subject === null || row.subject.kind !== row.subjectKind) {
+    throw new Error(`preview ${row.id} serves a ${row.subjectKind} and holds no such subject`);
+  }
+  return row.subject;
+}
+
 /** The record as REST answers it and the issue and chat show it. */
 export function previewView(row: PreviewRow, site: PreviewSite): PreviewRecord {
   return {
     id: row.id,
     projectId: row.projectId,
+    subject: subjectOf(row),
     issueId: row.issueId,
     sessionId: row.sessionId,
     deviceId: row.deviceId,

@@ -35,7 +35,7 @@ export const RECORDING_FAILURE_REASONS = [
 ] as const;
 export type RecordingFailureReason = (typeof RECORDING_FAILURE_REASONS)[number];
 
-/** The recording's moves: the kernel's alone, except a viewer stopping their own recording. Registered with its table by the reproduce lane. */
+/** The recording's moves: the kernel's alone, except a viewer stopping their own recording. Registered in `./machines.ts` with its table `preview_recordings`. */
 export const RECORDING_MACHINE = defineMachine({
 	entity: "recording",
 	shapes: ["13b58405"],
@@ -326,6 +326,8 @@ export const RECORDING_REFUSAL_CODES = [
 	/** A batch for a recording that is no longer `recording`. */
 	"RECORDING_CLOSED",
 	"RECORDING_SEQ_GAP",
+	/** A batch that is not `recordingBatchSchema`: not JSON, or events rrweb never sends. */
+	"RECORDING_BATCH_INVALID",
 	"RECORDING_BATCH_TOO_LARGE",
 	"RECORDING_TOO_LARGE",
 	/** Its events are past retention; the timeline is still read. */
@@ -340,7 +342,9 @@ export const RECORDING_REFUSAL_STATUSES = {
 	RECORDING_NOT_FOUND: 404,
 	RECORDING_CLOSED: 409,
 	RECORDING_SEQ_GAP: 409,
+	RECORDING_BATCH_INVALID: 400,
 	RECORDING_BATCH_TOO_LARGE: 400,
+	RECORDING_TOO_LARGE: 409,
 	RECORDING_EXPIRED: 409,
 	RECORDING_REDACTED: 409,
 	RECORDING_FORBIDDEN: 403,
@@ -368,6 +372,24 @@ export const fixConfirmationSchema = z.strictObject({
 	at: z.iso.datetime(),
 });
 export type FixConfirmation = z.infer<typeof fixConfirmationSchema>;
+
+/** `POST /api/previews/:id/confirm`: the word recorded for each feedback item the fix answers. */
+export const confirmFixResponseSchema = z.strictObject({
+	confirmations: z.array(fixConfirmationSchema).min(1),
+});
+export type ConfirmFixResponse = z.infer<typeof confirmFixResponseSchema>;
+
+/** `GET` of a feedback item's recordings, and of one recording. */
+export const recordingsResponseSchema = z.strictObject({
+	recordings: z.array(recordingRecordSchema),
+});
+export const recordingEnvelopeSchema = z.strictObject({
+	recording: recordingRecordSchema,
+});
+/** `GET /api/recordings/:id/events`: the scrubbed rrweb events, in the order they arrived. */
+export const recordingEventsResponseSchema = z.strictObject({
+	events: z.array(rrwebEventSchema),
+});
 
 /**
  * The feedback item's loop close (`feedback-lifecycle` loop-check), answered from a confirm made

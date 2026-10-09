@@ -3,11 +3,13 @@ import {
 	confirmFixRequestSchema,
 	keptPreviewContentSchema,
 	openPreviewRequestSchema,
+	PREVIEW_KEEP_REFUSAL_CODES,
+	PREVIEW_KEEP_ROUTE,
 	PREVIEW_REFUSAL_CODES,
 	PREVIEW_ROUTES,
-	PREVIEW_SUBJECT_REFUSAL_CODES,
-	PREVIEW_SUBJECT_ROUTES,
 	previewDemoSettingsSchema,
+	previewRecordSchema,
+	previewSettingsSchema,
 	previewSubjectSchema,
 	reproduceDataOf,
 } from "./preview.js";
@@ -158,12 +160,55 @@ describe("the reporter's confirm (BC-20)", () => {
 	});
 });
 
-describe("the additions do not collide with REQ-39's names", () => {
-	it("adds codes and routes REQ-39 does not have", () => {
-		for (const c of PREVIEW_SUBJECT_REFUSAL_CODES)
+describe("REQ-41's names live in REQ-39's registry", () => {
+	it("answers the open and confirm routes and their refusals from the one registry", () => {
+		expect(PREVIEW_ROUTES.ofProject).toBe("/api/projects/:id/previews");
+		expect(PREVIEW_ROUTES.confirm).toBe("/api/previews/:id/confirm");
+		for (const c of [
+			"PREVIEW_ITEM_UNKNOWN",
+			"PREVIEW_BUILD_UNKNOWN",
+			"PREVIEW_CONFIRM_NOT_FIX",
+			"PREVIEW_CONFIRM_REASON_REQUIRED",
+		])
+			expect(PREVIEW_REFUSAL_CODES as readonly string[]).toContain(c);
+	});
+
+	it("keeps keeping beside the registry until its route lands, and names nothing twice", () => {
+		for (const c of PREVIEW_KEEP_REFUSAL_CODES)
 			expect(PREVIEW_REFUSAL_CODES as readonly string[]).not.toContain(c);
-		const taken = new Set(Object.values(PREVIEW_ROUTES));
-		for (const r of Object.values(PREVIEW_SUBJECT_ROUTES))
-			expect(taken.has(r as never)).toBe(false);
+		expect(Object.values(PREVIEW_ROUTES)).not.toContain(PREVIEW_KEEP_ROUTE);
+	});
+
+	it("reads demo data from the project's preview setting (BC-22)", () => {
+		const s = previewSettingsSchema.parse({
+			command: "pnpm dev --port {port}",
+			environment: "dev",
+			demo: { environment: "demo", seed: "pnpm seed:demo" },
+		});
+		expect(reproduceDataOf(s)).toEqual({
+			kind: "demo",
+			environment: "demo",
+			seed: "pnpm seed:demo",
+		});
+		expect(
+			previewSettingsSchema.safeParse({ command: "x {port}", demo: {} })
+				.success,
+		).toBe(false);
+	});
+
+	it("carries what a preview serves, and no issue for one no issue holds", () => {
+		const reproduce = previewRecordSchema.shape.subject.parse({
+			kind: "reproduce",
+			feedback: "FB-52",
+			build: { sha: SHA, release: "1.4.0" },
+			record: true,
+		});
+		expect(reproduce.kind).toBe("reproduce");
+		expect(previewRecordSchema.shape.issueId.safeParse(null).success).toBe(
+			true,
+		);
+		expect(previewRecordSchema.shape.sessionId.safeParse(null).success).toBe(
+			true,
+		);
 	});
 });

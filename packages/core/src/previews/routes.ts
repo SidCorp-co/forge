@@ -3,7 +3,9 @@
 // its device credential. Each route validates, calls one service function and answers.
 
 import {
+  confirmFixRequestSchema,
   issuePreviewResponseSchema,
+  openPreviewRequestSchema,
   PREVIEW_LIMITS,
   previewApproveResponseSchema,
   previewEnvelopeSchema,
@@ -12,11 +14,24 @@ import {
   previewReportSchema,
   previewTicketResponseSchema,
 } from '@forge/contracts/preview';
+import {
+  confirmFixResponseSchema,
+  recordingEnvelopeSchema,
+  recordingEventsResponseSchema,
+  recordingsResponseSchema,
+} from '@forge/contracts/reproduce';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { confirmFix } from './confirm.js';
+import {
+  readRecording,
+  recordingEvents,
+  recordingsOfFeedback,
+  stopRecording,
+} from './recordings.js';
 import {
   abandonPreview,
   approvePreview,
@@ -28,6 +43,7 @@ import {
   reportPreview,
   sendPreviewMessage,
 } from './service.js';
+import { openSubjectPreview } from './subjects.js';
 
 const issueParam = z.strictObject({ issueId: z.uuid() });
 const previewParam = z.strictObject({ id: z.uuid() });
@@ -97,7 +113,14 @@ previewRoutes.post(
     ),
 );
 
-for (const at of ['/:id', '/:id/ticket', '/:id/approve', '/:id/abandon', '/:id/messages']) {
+for (const at of [
+  '/:id',
+  '/:id/ticket',
+  '/:id/approve',
+  '/:id/abandon',
+  '/:id/messages',
+  '/:id/confirm',
+]) {
   previewRoutes.use(at, requireAuth(), assertEmailVerified());
 }
 
@@ -151,4 +174,100 @@ previewRoutes.post(
       ),
       202,
     ),
+);
+
+// The reporter's word on a fix preview (REQ-41 BC-20). The body's shape is checked here; "not fixed"
+// without a note is refused by name in the service, PREVIEW_CONFIRM_REASON_REQUIRED.
+previewRoutes.post(
+  '/:id/confirm',
+  zValidator('param', previewParam, PATH),
+  zValidator(
+    'json',
+    z.strictObject(confirmFixRequestSchema.shape),
+    invalid('invalid body: { verdict: fixed | not_fixed, note?: what is still wrong }'),
+  ),
+  async (c) =>
+    c.json(
+      confirmFixResponseSchema.parse({
+        confirmations: await confirmFix(c.req.valid('param').id, actorOf(c), c.req.valid('json')),
+      }),
+      201,
+    ),
+);
+
+const projectParam = z.strictObject({ id: z.uuid() });
+
+/**
+ * Previews no issue's run holds, under `/api/projects` (REQ-41): open an idea or a reproduce, and
+ * a feedback item's recordings, which open only for the project's signed-in members (BC-21).
+ */
+export const projectPreviewRoutes = new Hono<{ Variables: AuthVars }>();
+projectPreviewRoutes.use('/:id/previews', requireAuth(), assertEmailVerified());
+projectPreviewRoutes.use('/:id/feedback/:fb/recordings', requireAuth(), assertEmailVerified());
+
+projectPreviewRoutes.post(
+  '/:id/previews',
+  zValidator('param', projectParam, invalid('invalid path: /api/projects/<project id>/previews')),
+  zValidator(
+    'json',
+    openPreviewRequestSchema,
+    invalid(
+      'invalid body: { kind: idea, about: REQ-n | FB-n, brief } | { kind: reproduce, feedback: FB-n, build?: { release } | { sha }, record? }',
+    ),
+  ),
+  async (c) =>
+    c.json(
+      previewEnvelopeSchema.parse({
+        preview: await openSubjectPreview(c.req.valid('param').id, c.req.valid('json'), actorOf(c)),
+      }),
+      201,
+    ),
+);
+
+projectPreviewRoutes.get(
+  '/:id/feedback/:fb/recordings',
+  zValidator(
+    'param',
+    z.strictObject({ id: z.uuid(), fb: z.string().regex(/^FB-\d{1,9}$/) }),
+    invalid('invalid path: /api/projects/<project id>/feedback/FB-<n>/recordings'),
+  ),
+  async (c) => {
+    const { id, fb } = c.req.valid('param');
+    return c.json(
+      recordingsResponseSchema.parse({
+        recordings: await recordingsOfFeedback(id, fb, actorOf(c)),
+      }),
+    );
+  },
+);
+
+/** One recording, under `/api/recordings`: members only (BC-21). */
+export const recordingRoutes = new Hono<{ Variables: AuthVars }>();
+const RECORDING_PATH = invalid('invalid path: /api/recordings/<recording id>');
+for (const at of ['/:id', '/:id/events', '/:id/stop']) {
+  recordingRoutes.use(at, requireAuth(), assertEmailVerified());
+}
+
+recordingRoutes.get('/:id', zValidator('param', previewParam, RECORDING_PATH), async (c) =>
+  c.json(
+    recordingEnvelopeSchema.parse({
+      recording: await readRecording(c.req.valid('param').id, actorOf(c)),
+    }),
+  ),
+);
+
+recordingRoutes.get('/:id/events', zValidator('param', previewParam, RECORDING_PATH), async (c) =>
+  c.json(
+    recordingEventsResponseSchema.parse({
+      events: await recordingEvents(c.req.valid('param').id, actorOf(c)),
+    }),
+  ),
+);
+
+recordingRoutes.post('/:id/stop', zValidator('param', previewParam, RECORDING_PATH), async (c) =>
+  c.json(
+    recordingEnvelopeSchema.parse({
+      recording: await stopRecording(c.req.valid('param').id, actorOf(c)),
+    }),
+  ),
 );

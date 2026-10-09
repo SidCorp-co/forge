@@ -48,7 +48,9 @@ import {
   previewsWhoseRunEnded,
   previewView,
 } from './read.js';
+import { sweepRecordings } from './recordings.js';
 import { OPEN_STATES, type PreviewPlan, stateRefusal, sweepMove } from './rules.js';
+import { briefSketchOnLive } from './subjects.js';
 import { signTicket } from './ticket.js';
 import { tunnelStatus } from './tunnel.js';
 
@@ -146,7 +148,7 @@ async function insertPreview(args: {
 
 /** An idle-closed preview starts again in the same worktree at the same link. */
 async function reopen(row: PreviewRow, actor: KernelActor): Promise<PreviewRow> {
-  const plan = await planOf(row.projectId);
+  const plan = await planOf(row.projectId, row.subjectKind);
   const moved = await transition(db, PREVIEW_MACHINE, {
     to: 'starting',
     expect: 'idle_closed',
@@ -240,7 +242,10 @@ export async function reportPreview(
         actor: box,
         source: SOURCE,
       });
-      return view(movedRow(moved) as PreviewRow);
+      const live = movedRow(moved) as PreviewRow;
+      const record = view(live);
+      await briefSketchOnLive(live, record.url);
+      return record;
     }
     case 'failed':
       throwRefusal(stateRefusal(row.id, row.state, ['starting', 'live'], 'fail'));
@@ -265,7 +270,7 @@ async function onFacts(
   throwRefusal(stateRefusal(row.id, row.state, ['starting'], 'be started from the repository'));
   const detected = detectPreviewSettings(facts);
   if (!detected.ok) return fail(row, ['starting'], detected.reason, detected.detail, box);
-  const plan = await planOf(row.projectId);
+  const plan = await planOf(row.projectId, row.subjectKind);
   const settings = detected.settings;
   return db.transaction(async (tx) => {
     const [updated] = await tx
@@ -325,7 +330,8 @@ let watchingSince: number | null = null;
 
 /**
  * The preview sweep (process timer): abandon the previews whose run ended, idle-close the ones
- * nobody viewed, and fail the ones whose box went away or never answered (BC-9, BC-10).
+ * nobody viewed, and fail the ones whose box went away or never answered (BC-9, BC-10); then the
+ * recordings' own sweep (REQ-41 BC-18).
  */
 export async function sweepPreviews(now = Date.now()): Promise<{ moved: number }> {
   watchingSince ??= now;
@@ -386,5 +392,7 @@ export async function sweepPreviews(now = Date.now()): Promise<{ moved: number }
     startedAt.delete(row.id);
     moved += result.rows.length;
   }
+  // a recording stops with its preview, past its length, or fails when no batch ever came (REQ-41)
+  moved += await sweepRecordings(new Date(now));
   return { moved };
 }

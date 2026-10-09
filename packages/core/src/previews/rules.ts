@@ -10,6 +10,8 @@ import {
   type PreviewRefusalCode,
   type PreviewSettings,
   type PreviewState,
+  type PreviewSubjectKind,
+  reproduceDataOf,
 } from '@forge/contracts/preview';
 import type { Refusal } from '../lib/refusal.js';
 import type { ProjectDocument } from '../project-config/index.js';
@@ -21,6 +23,8 @@ export interface PreviewPlan {
   settings: PreviewSettings | null;
   /** The variables of the environment the dev server talks to. */
   env: Record<string, string>;
+  /** The demo seed a reproduce runs in its checkout before the dev server (REQ-41 BC-22). */
+  seed: string | null;
 }
 
 const refusal = (code: PreviewRefusalCode, detail: string, path = ''): Refusal => ({
@@ -41,21 +45,18 @@ function variablesOf(name: string, environment: EnvironmentDeclaration): Record<
   return vars;
 }
 
+type Environments = Record<string, EnvironmentDeclaration>;
+
 /**
- * The setting a preview starts with and the environment it talks to (BC-11, BC-13): the project's
- * `preview` key, or none so the repository is read; the environment it names, else the project's
- * one `dev`-tier environment, else none. One whose tier is production is refused by name, as is a
- * name the project does not declare.
+ * The variables of the environment `named` at `path` of the setting: one the project declares and
+ * whose tier is not production (REQ-39 BC-13), else the project's one `dev`-tier environment when
+ * none is named, else none.
  */
-export function previewPlan(
-  document: {
-    preview?: PreviewSettings | undefined;
-    environments: Record<string, EnvironmentDeclaration>;
-  } | null,
-): { ok: true; plan: PreviewPlan } | { ok: false; refusal: Refusal } {
-  const settings = document?.preview ?? null;
-  const environments = document?.environments ?? {};
-  const named = settings?.environment;
+function environmentOf(
+  environments: Environments,
+  named: string | undefined,
+  path: string,
+): { ok: true; env: Record<string, string> } | { ok: false; refusal: Refusal } {
   if (named !== undefined) {
     const environment = environments[named];
     if (!environment) {
@@ -63,8 +64,8 @@ export function previewPlan(
         ok: false,
         refusal: refusal(
           'PREVIEW_SETTINGS_INVALID',
-          `preview.environment names ${named}, which the project document does not declare; name one of: ${Object.keys(environments).join(', ') || 'none is declared'}`,
-          '/preview/environment',
+          `${path.slice(1).replace(/\//g, '.')} names ${named}, which the project document does not declare; name one of: ${Object.keys(environments).join(', ') || 'none is declared'}`,
+          path,
         ),
       };
     }
@@ -73,19 +74,49 @@ export function previewPlan(
         ok: false,
         refusal: refusal(
           'PREVIEW_PRODUCTION_ENVIRONMENT',
-          `preview.environment names ${named}, whose tier is production: a preview talks to a dev environment, never production (REQ-39 BC-13)`,
-          '/preview/environment',
+          `${path.slice(1).replace(/\//g, '.')} names ${named}, whose tier is production: a preview talks to a dev environment or demo data, never production (REQ-39 BC-13, REQ-41 BC-22)`,
+          path,
         ),
       };
     }
-    return { ok: true, plan: { settings, env: variablesOf(named, environment) } };
+    return { ok: true, env: variablesOf(named, environment) };
   }
   const dev = Object.entries(environments).filter(([, e]) => e.tier === 'dev');
   const only = dev.length === 1 ? dev[0] : undefined;
-  return {
-    ok: true,
-    plan: { settings, env: only ? variablesOf(only[0], only[1]) : { FORGE_PREVIEW: '1' } },
-  };
+  return { ok: true, env: only ? variablesOf(only[0], only[1]) : { FORGE_PREVIEW: '1' } };
+}
+
+/**
+ * The setting a preview starts with and the environment it talks to (BC-11, BC-13): the project's
+ * `preview` key, or none so the repository is read; the environment it names, else the project's
+ * one `dev`-tier environment, else none. A reproduce (REQ-41 BC-22) reads its data through
+ * `reproduceDataOf`: the demo environment and seed `preview.demo` names, else the same environment
+ * as any preview. One whose tier is production is refused by name, as is a name the project does
+ * not declare.
+ */
+export function previewPlan(
+  document: {
+    preview?: PreviewSettings | undefined;
+    environments: Environments;
+  } | null,
+  subject: PreviewSubjectKind = 'issue',
+): { ok: true; plan: PreviewPlan } | { ok: false; refusal: Refusal } {
+  const settings = document?.preview ?? null;
+  const environments = document?.environments ?? {};
+  if (subject === 'reproduce') {
+    const data = reproduceDataOf(settings ?? {});
+    const demoNamed = data.kind === 'demo' && settings?.demo?.environment !== undefined;
+    const path = demoNamed ? '/preview/demo/environment' : '/preview/environment';
+    const env = environmentOf(environments, data.environment ?? undefined, path);
+    if (!env.ok) return env;
+    return {
+      ok: true,
+      plan: { settings, env: env.env, seed: data.kind === 'demo' ? data.seed : null },
+    };
+  }
+  const env = environmentOf(environments, settings?.environment, '/preview/environment');
+  if (!env.ok) return env;
+  return { ok: true, plan: { settings, env: env.env, seed: null } };
 }
 
 /** The states a preview leaves only by a move: a run's one preview stands at one of these. */

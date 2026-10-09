@@ -877,8 +877,8 @@
     "previews": {
       "kind": "domain",
       "context": "execution",
-      "owns": ["previews"],
-      "serves": ["REQ-39"]
+      "owns": ["previewFixConfirmations", "previewRecordings", "previews"],
+      "serves": ["REQ-39", "REQ-41"]
     },
     "project-config": {
       "kind": "domain",

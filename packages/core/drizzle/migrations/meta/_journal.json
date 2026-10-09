@@ -3067,6 +3067,13 @@
       "when": 1824249600000,
       "tag": "0478_a_release_page_opens_on_highlights_and_can_be_shared",
       "breakpoints": true
+    },
+    {
+      "idx": 479,
+      "version": "7",
+      "when": 1824336000000,
+      "tag": "0479_a_preview_serves_an_idea_or_a_reported_build_and_records_it",
+      "breakpoints": true
     }
   ]
 }
