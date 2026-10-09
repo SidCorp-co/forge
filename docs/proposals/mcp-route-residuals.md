@@ -3,15 +3,17 @@
 ISS-1372 made the MCP tool layer a wrapper: no file under `packages/core/src/mcp/` reaches a table
 or a database handle, and the relations gate fails naming the file that does. It also closed the
 divergences where one rule had two answers and nothing recorded a reason: who may stamp a feedback
-report reviewed, who may edit a comment and under which parent it may hang, who may deploy a Coolify
-binding, which project a step-handoff write is made against, and which issue a phase is filed under.
+report reviewed, who may edit or delete a comment (the author or a project admin, and neither without the member
+role that may write one) and under which parent it may hang, who may deploy a Coolify binding, which
+project a step-handoff write is made against, which issue a phase is filed under, and what deleting a
+memory note by its natural key answers (the number of rows removed, on both doors).
 Each of those has a suite that drives both doors through the same cases
 (`packages/core/tests/integration/feedback-review-role-e2e.test.ts`, `comment-door-parity-e2e.test.ts`,
-`coolify-write-role-e2e.test.ts`, `handoff-door-parity-e2e.test.ts`).
+`coolify-write-role-e2e.test.ts`, `handoff-door-parity-e2e.test.ts`, `memory-delete-door-e2e.test.ts`).
 
 What follows is what that change found and did not close. Every seam below is a read of the source at
 `bc4f3c5f7`, found by three read-only audits of the tool files against their routes, and none of
-them was run; the five above were.
+them was run; the six above were.
 
 ## Kept on purpose, with the evidence that it was meant
 
@@ -78,6 +80,9 @@ Each line is accepted by one door and refused, or answered differently, by the o
   write `operator_exclude` and `operator_include`, and `retire` refuses a busy runner while `exclude`
   does not.
 - `forge_jobs` cancel refuses a platform admin who holds no project role; the REST cancel admits one.
+- Project membership wording: REST answers a viewer on feedback review and on the memory by-source
+  delete "not a project member", though a viewer is a member and was refused for the role. The tool
+  names the role held. Wording only; the refusal is the same on both doors.
 - Memory: the REST routes are rate limited and tag a search `web`; the tool is neither and tags
   `agent`, which changes rerank eligibility. A feedback verdict on a missing row is a 404 over REST
   and a 200 body from the tool.

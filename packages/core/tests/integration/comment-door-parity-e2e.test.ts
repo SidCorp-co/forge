@@ -5,7 +5,9 @@
  * REST `PATCH` and `DELETE /api/comments/:id` let the author and a project admin change a comment
  * and refuse everyone else; `forge_comments` update let any project writer rewrite another
  * person's comment. REST `POST /api/issues/:id/comments` refuses a reply whose parent sits on
- * another issue; the tool wrote it. This file drives both doors through the same cases, so a door
+ * another issue; the tool wrote it. A viewer who authored a comment (written before a demotion)
+ * was admitted to edit and delete it over REST and refused by the tool; whoever may not create a
+ * comment may not change one, so REST now refuses that viewer as the tool always did. This file drives both doors through the same cases, so a door
  * that admits what the other refuses goes red naming itself.
  */
 
@@ -125,6 +127,13 @@ describe.each(Object.entries(edits))('an edit through %s', (_name, edit) => {
     expect(await edit(callers.admin, id)).not.toHaveProperty('refused');
     expect(await bodyOf(id)).toBe('rewritten');
   });
+
+  it('refuses a viewer who authored the comment, because a viewer may not write one', async () => {
+    const id = await comment(await issue(), callers.viewer.userId);
+    const { refused } = await edit(callers.viewer, id);
+    expect(refused, 'whoever may not create a comment may not edit one either').toBeDefined();
+    expect(await bodyOf(id)).toBe('the first words');
+  });
 });
 
 describe.each(Object.entries(deletes))('a delete through %s', (_name, remove) => {
@@ -139,6 +148,13 @@ describe.each(Object.entries(deletes))('a delete through %s', (_name, remove) =>
     const id = await comment(await issue(), callers.member.userId);
     expect(await remove(callers.admin, id)).not.toHaveProperty('refused');
     expect(await bodyOf(id)).toBeUndefined();
+  });
+
+  it('refuses a viewer who authored the comment, and keeps it', async () => {
+    const id = await comment(await issue(), callers.viewer.userId);
+    const { refused } = await remove(callers.viewer, id);
+    expect(refused, 'whoever may not create a comment may not delete one either').toBeDefined();
+    expect(await bodyOf(id)).toBe('the first words');
   });
 });
 
@@ -164,6 +180,14 @@ describe.each(Object.entries(replies))('a reply through %s', (_name, reply) => {
     const { refused } = await reply(callers.member, here, parent);
     expect(refused, 'a reply must hang under a comment of its own issue').toBeDefined();
     expect(await commentCount(here)).toBe(0);
+  });
+
+  it('refuses a viewer, the rule an edit and a delete of their own are held to', async () => {
+    const here = await issue();
+    const parent = await comment(here, callers.admin.userId);
+    const { refused } = await reply(callers.viewer, here, parent);
+    expect(refused).toBeDefined();
+    expect(await commentCount(here)).toBe(1);
   });
 
   it('admits a parent on the same issue', async () => {
