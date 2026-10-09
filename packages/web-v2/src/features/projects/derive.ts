@@ -16,9 +16,9 @@ import type {
 /** Health states that count as "needs attention" (banner + filter + sort). */
 const ATTENTION_HEALTH: ReadonlySet<HealthKey> = new Set<HealthKey>(['attention', 'down']);
 
-/** A project whose health was not read is not one the console can say needs attention. */
-export function isAttention(item: Pick<ProjectConsoleItem, 'health'>): boolean {
-  return item.health !== null && ATTENTION_HEALTH.has(item.health);
+/** A project whose health was not read is not one the console can say needs attention, whatever health it still holds. */
+export function isAttention(item: Pick<ProjectConsoleItem, 'health' | 'healthRead'>): boolean {
+  return item.healthRead === 'read' && item.health !== null && ATTENTION_HEALTH.has(item.health);
 }
 
 export function deriveHealth(

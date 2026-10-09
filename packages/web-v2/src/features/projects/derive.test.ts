@@ -85,6 +85,13 @@ describe("filterProjects and sortProjects on an item whose rollup is unread but 
     expect(filterProjects([{ ...item, healthRead: "read" }], "sable", false)).toHaveLength(1);
   });
 
+  it("is not one that needs attention, however it came by a health, and is not filtered in as one", () => {
+    const item = stale("a", { health: "attention" });
+    expect(isAttention(item)).toBe(false);
+    expect(filterProjects([item], "", true)).toEqual([]);
+    expect(isAttention({ ...item, healthRead: "read" })).toBe(true);
+  });
+
   it("keeps the order it was given under the rollup sorts, whatever stale health or activity the items hold", () => {
     const a = stale("a", { health: "healthy", lastActivityAt: "2026-10-01T00:00:00Z" });
     const b = stale("b", { health: "down", lastActivityAt: "2026-10-09T00:00:00Z" });
