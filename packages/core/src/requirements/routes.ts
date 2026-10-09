@@ -57,7 +57,6 @@ import {
   revisionFields,
   viewQuery,
 } from './route-kit.js';
-import type { RequirementRefusal } from './rules.js';
 
 export const requirementRoutes = new Hono<RequirementEnv>();
 
@@ -180,10 +179,8 @@ requirementRoutes.put(
       actor: actorOf(c),
       names: c.req.valid('json').names,
     });
-    if (out.length > 0 && 'code' in (out[0] as object)) {
-      return refused(c, out as RequirementRefusal[], 'REQUIREMENT_REFUSED');
-    }
-    return c.json({ areas: out });
+    if (!out.ok) return refused(c, out.refusals, 'REQUIREMENT_REFUSED');
+    return c.json({ areas: out.areas });
   },
 );
 

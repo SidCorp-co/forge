@@ -670,6 +670,8 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_REVISION_EMPTY",
 	"REQUIREMENT_AREA_UNKNOWN",
 	"REQUIREMENT_AREA_DUPLICATE",
+	/** An area left out of the list still holds requirements: move them first, so none loses its area unseen. */
+	"REQUIREMENT_AREA_IN_USE",
 	"REQUIREMENT_SHORT_NAME_TOO_LONG",
 	"REQUIREMENT_PLACEMENT_NOT_PROPOSED",
 	"REQUIREMENT_REVISION_NOT_PROPOSED",
@@ -1052,9 +1054,14 @@ export const REQUIREMENT_AREAS_SHAPE =
 	"{ names: string[] } the project's areas, in the order a list draws them";
 
 /** `PUT …/requirements/:req/placement`: set the area and short name; a field left out stays, null clears it. */
-export const requirementPlacementRequestSchema = z.strictObject({
-	areaId: z.uuid().nullable().optional(),
-	shortName: z.string().trim().min(1).max(80).nullable().optional(),
-});
+export const requirementPlacementRequestSchema = z
+	.strictObject({
+		areaId: z.uuid().nullable().optional(),
+		shortName: z.string().trim().min(1).max(80).nullable().optional(),
+	})
+	// a body naming neither field changes nothing, so it is refused rather than answered 200
+	.refine((b) => b.areaId !== undefined || b.shortName !== undefined, {
+		message: "name areaId, shortName or both",
+	});
 export const REQUIREMENT_PLACEMENT_SHAPE =
-	"{ areaId?: uuid | null, shortName?: string (at most 6 words) | null }";
+	"{ areaId?: uuid | null, shortName?: string (at most 6 words) | null }, at least one of them";

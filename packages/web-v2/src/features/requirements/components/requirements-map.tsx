@@ -22,11 +22,13 @@ export function RequirementsMap({ rows, areas, slug, onPeek }: { rows: Requireme
     const stage = requirementStageOf(r.standing);
     return stage ? [{ r, stage }] : [];
   });
-  useReportShown(staged.map((x) => x.r.key));
+  // accepted work counts on the strip and sits on no horizon, so the rows draw only what has one
+  const placed = staged.filter((x) => roadmapHorizonOf(x.r.standing) !== null);
+  useReportShown(placed.map((x) => x.r.key));
   const count = (s: RequirementStage) => staged.filter((x) => x.stage === s).length;
   const strip = REQUIREMENT_STAGES.filter((s) => count(s) > 0 || s === "done");
   const lanes = [...areas.map((a) => ({ id: a.id, name: a.name })), { id: "none", name: t("requirements.noArea") }]
-    .map((a) => ({ ...a, own: staged.filter((x) => (x.r.area?.id ?? "none") === a.id) }))
+    .map((a) => ({ ...a, own: placed.filter((x) => (x.r.area?.id ?? "none") === a.id) }))
     .filter((a) => a.own.length > 0);
   return (
     <div className="px-5 pb-16 max-md:px-3" data-testid="requirements-map">

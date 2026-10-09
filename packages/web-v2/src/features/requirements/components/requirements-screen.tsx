@@ -86,9 +86,9 @@ export function CreateRequirementForm({ projectId, onDone }: { projectId: string
 
 /** The views in the interface language; the URL carries only their values. */
 const modesIn = (t: Copy) => [
-  { value: "attention" as const, label: t("requirements.mode.list"), title: t("requirements.mode.listTitle") },
-  { value: "area" as const, label: t("requirements.mode.area"), title: t("requirements.mode.areaTitle") },
-  { value: "map" as const, label: t("requirements.mode.map"), title: t("requirements.mode.mapTitle") },
+  { value: "attention" as const, label: t("requirements.mode.list") },
+  { value: "area" as const, label: t("requirements.mode.area") },
+  { value: "map" as const, label: t("requirements.mode.map") },
 ];
 
 function AssistantStrip({

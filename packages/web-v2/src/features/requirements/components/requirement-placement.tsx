@@ -16,7 +16,7 @@ export function PlacementBanner({ projectId, rows, hasAreas }: { projectId: stri
   const accept = useAcceptAllPlacements(projectId);
   const ask = useProposePlacements(projectId);
   const waiting = rows.filter((r) => r.placementProposal);
-  const unplaced = rows.filter((r) => !r.area && !r.shortName && !r.placementProposal).length;
+  const unplaced = rows.filter((r) => (!r.area || !r.shortName) && !r.placementProposal).length;
   if (waiting.length === 0 && unplaced === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-2.5 border-b border-line-subtle px-5 py-2.5 text-13 text-muted max-md:px-3" data-testid="placement-banner">

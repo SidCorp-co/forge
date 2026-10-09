@@ -7,7 +7,7 @@
 
 import { SHORT_NAME_MAX_WORDS, shortNameWords } from '@forge/contracts/requirement-roadmap';
 import { type RequirementAreaRef, requirementKey } from '@forge/contracts/requirements';
-import { and, asc, eq, isNull, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   requirementAreas,
@@ -19,6 +19,9 @@ import { completeOnce } from '../integrations/llm/index.js';
 import { logger } from '../lib/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { type RequirementActor, rowIn } from './read.js';
+
+/** The column's own cap (0486's check): a proposal over it is not stored. */
+const SHORT_NAME_MAX_CHARS = 80;
 import type { RequirementRefusal } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './write-tx.js';
 
@@ -31,44 +34,94 @@ export async function areasOf(projectId: string): Promise<RequirementAreaRef[]> 
     .orderBy(asc(requirementAreas.position), asc(requirementAreas.name));
 }
 
-/** Replaces the project's list with `names`: a name that stays keeps its row, one that goes leaves its requirements with no area. */
+/**
+ * Replaces the project's list with `names`. A name that stays keeps its row, matched without case,
+ * so a change of case renames it in place. A name that goes is deleted only while no requirement
+ * holds it or has it proposed: otherwise the list is refused naming those requirements, since
+ * deleting the area would leave each with none and say nothing.
+ */
 export async function setAreas(input: {
   projectId: string;
   actor: RequirementActor;
   names: string[];
-}): Promise<RequirementAreaRef[] | RequirementRefusal[]> {
+}): Promise<{ ok: true; areas: RequirementAreaRef[] } | { ok: false; refusals: RequirementRefusal[] }> {
   const { projectId, actor } = input;
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const names = input.names.map((n) => n.trim());
   if (new Set(names.map((n) => n.toLowerCase())).size !== names.length) {
-    return [
-      {
-        code: 'REQUIREMENT_AREA_DUPLICATE',
-        path: '/names',
-        detail: 'an area name appears twice in the list; each area is named once',
-      },
-    ];
+    return {
+      ok: false,
+      refusals: [
+        {
+          code: 'REQUIREMENT_AREA_DUPLICATE',
+          path: '/names',
+          detail: 'an area name appears twice in the list; each area is named once',
+        },
+      ],
+    };
   }
-  await db.transaction(async (tx) => {
-    for (const [position, name] of names.entries()) {
-      await tx
-        .insert(requirementAreas)
-        .values({ projectId, name, position })
-        .onConflictDoUpdate({
-          target: [requirementAreas.projectId, requirementAreas.name],
-          set: { position },
-        });
+  const refusals = await db.transaction(async (tx) => {
+    await lockRequirements(tx, projectId);
+    const held = await tx
+      .select({ id: requirementAreas.id, name: requirementAreas.name })
+      .from(requirementAreas)
+      .where(eq(requirementAreas.projectId, projectId));
+    const kept = new Map(names.map((n, position) => [n.toLowerCase(), { name: n, position }]));
+    const gone = held.filter((a) => !kept.has(a.name.toLowerCase()));
+    if (gone.length > 0) {
+      const holding = await tx
+        .select({ seq: requirements.reqSeq, area: requirementAreas.name })
+        .from(requirements)
+        .innerJoin(
+          requirementAreas,
+          sql`${requirementAreas.id} IN (${requirements.areaId}, ${requirements.proposedAreaId})`,
+        )
+        .where(
+          and(
+            eq(requirements.projectId, projectId),
+            inArray(
+              requirementAreas.id,
+              gone.map((a) => a.id),
+            ),
+          ),
+        )
+        .orderBy(asc(requirements.reqSeq));
+      if (holding.length > 0) {
+        const named = holding.map((h) => `${requirementKey(h.seq)} (${h.area})`).join(', ');
+        return [
+          {
+            code: 'REQUIREMENT_AREA_IN_USE' as const,
+            path: '/names',
+            detail: `the list leaves out areas that requirements still hold or have proposed: ${named}. Move them to another area first, then remove it`,
+          },
+        ];
+      }
     }
-    await tx
-      .delete(requirementAreas)
-      .where(
-        and(
-          eq(requirementAreas.projectId, projectId),
-          names.length ? notInArray(requirementAreas.name, names) : sql`true`,
+    for (const a of held) {
+      const stays = kept.get(a.name.toLowerCase());
+      if (stays) {
+        await tx
+          .update(requirementAreas)
+          .set({ name: stays.name, position: stays.position })
+          .where(eq(requirementAreas.id, a.id));
+      }
+    }
+    const heldNames = new Set(held.map((a) => a.name.toLowerCase()));
+    for (const [key, { name, position }] of kept) {
+      if (!heldNames.has(key)) await tx.insert(requirementAreas).values({ projectId, name, position });
+    }
+    if (gone.length > 0) {
+      await tx.delete(requirementAreas).where(
+        inArray(
+          requirementAreas.id,
+          gone.map((a) => a.id),
         ),
       );
+    }
+    return null;
   });
-  return areasOf(projectId);
+  if (refusals) return { ok: false, refusals };
+  return { ok: true, areas: await areasOf(projectId) };
 }
 
 function placementRefusal(
@@ -231,17 +284,38 @@ export async function proposePlacement(projectId: string, requirementId: string)
   }
   const area = areas.find((a) => a.name === parsed.area);
   const name =
-    typeof parsed.shortName === 'string' && shortNameWords(parsed.shortName) <= SHORT_NAME_MAX_WORDS
+    typeof parsed.shortName === 'string' &&
+    shortNameWords(parsed.shortName) <= SHORT_NAME_MAX_WORDS &&
+    parsed.shortName.trim().length <= SHORT_NAME_MAX_CHARS
       ? parsed.shortName.trim()
       : null;
   if (!(wantArea && area) && !(wantName && name)) return false;
-  await db
-    .update(requirements)
-    .set({
-      ...(wantArea && area ? { proposedAreaId: area.id } : {}),
-      ...(wantName && name ? { proposedShortName: name } : {}),
-    })
-    .where(eq(requirements.id, requirementId));
+  // the model call takes seconds: a field a person set meanwhile is theirs, so each proposal is
+  // written only where the row still holds neither a value nor a proposal for it
+  if (wantArea && area) {
+    await db
+      .update(requirements)
+      .set({ proposedAreaId: area.id })
+      .where(
+        and(
+          eq(requirements.id, requirementId),
+          isNull(requirements.areaId),
+          isNull(requirements.proposedAreaId),
+        ),
+      );
+  }
+  if (wantName && name) {
+    await db
+      .update(requirements)
+      .set({ proposedShortName: name })
+      .where(
+        and(
+          eq(requirements.id, requirementId),
+          isNull(requirements.shortName),
+          isNull(requirements.proposedShortName),
+        ),
+      );
+  }
   return true;
 }
 
@@ -257,10 +331,10 @@ export async function proposeMissingPlacements(
     .where(
       and(
         eq(requirements.projectId, projectId),
-        isNull(requirements.areaId),
-        isNull(requirements.proposedAreaId),
-        isNull(requirements.shortName),
-        isNull(requirements.proposedShortName),
+        or(
+          and(isNull(requirements.areaId), isNull(requirements.proposedAreaId)),
+          and(isNull(requirements.shortName), isNull(requirements.proposedShortName)),
+        ),
       ),
     );
   // one model call each, so the answer is the count asked and the proposals arrive on the list as they are made

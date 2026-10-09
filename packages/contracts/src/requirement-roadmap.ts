@@ -34,7 +34,7 @@ export type RoadmapHorizon = (typeof ROADMAP_HORIZONS)[number];
 export interface StageInput {
 	state: RequirementState;
 	attentionGroup: string;
-	waitingOn: { who: string; act: string };
+	waitingOn: { who: string; act: string; says: { who: { key: string } } };
 	facts: { passing: number; judged: number; criteria: number };
 }
 
@@ -55,7 +55,10 @@ export function requirementStageOf(s: StageInput): RequirementStage | null {
 			return "done";
 		case "in_delivery":
 			if (s.attentionGroup === "needs_you") return "decide";
-			return s.waitingOn.who === "Independent judge" ? "prove" : "build";
+			// read off the wait's registry key, never its English: a rewording leaves the stage alone
+			return s.waitingOn.says.who.key === "standing.who.independentJudge"
+				? "prove"
+				: "build";
 	}
 }
 
