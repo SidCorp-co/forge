@@ -115,7 +115,12 @@ import {
   stepHandoffRoutes,
 } from './pipeline/routes.js';
 import { preferenceRoutes, productStateRoutes } from './preferences/routes.js';
-import { issuePreviewRoutes, previewRoutes } from './previews/routes.js';
+import {
+  issuePreviewRoutes,
+  previewRoutes,
+  projectPreviewRoutes,
+  recordingRoutes,
+} from './previews/routes.js';
 import {
   contentLanguageRoutes,
   environmentStateRoutes,
@@ -207,6 +212,7 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api/projects', workflowRoutes);
   app.route('/api/projects', requirementRoutes);
   app.route('/api/projects', suggestionRoutes);
+  app.route('/api/projects', projectPreviewRoutes);
   app.route('/api/projects', feedbackRoutes);
   app.route('/api/projects', mockupRoutes);
   app.route('/api/projects', baDoorRoutes);
@@ -283,6 +289,7 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', issueLaneRoutes);
   app.route('/api/issues', issuePreviewRoutes);
   app.route('/api/previews', previewRoutes);
+  app.route('/api/recordings', recordingRoutes);
   app.route('/api/body', bodyRoutes);
   app.route('/api/comments', commentRoutes);
   app.route('/api/attachments', attachmentRoutes);

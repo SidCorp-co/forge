@@ -8,6 +8,7 @@ import { MOCKUP_MACHINE } from "./mockup-machine.js";
 import { QUESTIONNAIRE_MACHINE } from "./onboarding-machine.js";
 import { PREVIEW_MACHINE } from "./preview.js";
 import { QUESTION_MACHINE } from "./question-machine.js";
+import { RECORDING_MACHINE } from "./reproduce.js";
 import { REQUIREMENT_MACHINE } from "./requirement-machine.js";
 import { QUESTION_DELIVERY_MACHINE } from "./room-delivery-machine.js";
 import { RUN_MACHINE } from "./run-machine.js";
@@ -39,6 +40,7 @@ export const MACHINE_ENTITIES = [
 	"question_delivery",
 	"workflow_design",
 	"preview",
+	"recording",
 ] as const;
 export type MachineEntity = (typeof MACHINE_ENTITIES)[number];
 
@@ -60,6 +62,7 @@ export const MACHINES = {
 	question_delivery: QUESTION_DELIVERY_MACHINE,
 	workflow_design: WORKFLOW_DESIGN_MACHINE,
 	preview: PREVIEW_MACHINE,
+	recording: RECORDING_MACHINE,
 } as const satisfies { readonly [E in MachineEntity]: StatusMachine<E> };
 
 export type MachineOf<E extends MachineEntity> = (typeof MACHINES)[E];

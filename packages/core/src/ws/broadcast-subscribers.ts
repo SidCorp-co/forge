@@ -85,7 +85,7 @@ export function registerWsBroadcastSubscribers(): void {
     frame(projectRoom(p.projectId), 'preview.changed', {
       previewId: p.id,
       projectId: p.projectId,
-      issueId: p.issueId ?? '',
+      issueId: p.issueId ?? null,
       state: p.to,
       reason,
       at: p.at,

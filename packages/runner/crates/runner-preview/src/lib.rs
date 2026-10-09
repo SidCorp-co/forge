@@ -3,7 +3,9 @@
 //! read what it serves (`preview.snapshot.read`); the box reports each outcome to
 //! `POST /api/previews/:id/report` and carries the browser's bytes over its tunnel. Core decides
 //! the setting, who may view and for how long (ADR 0009, thin box agent); the box decides nothing.
+//! A preview no run holds (REQ-41) names the checkout the box cuts for it ([`checkout`]).
 
+pub mod checkout;
 pub mod codec;
 pub mod devserver;
 pub mod exposure;
@@ -20,6 +22,7 @@ use runner_transport::CoreClient;
 use serde::Deserialize;
 use tokio::sync::watch;
 
+use crate::checkout::Checkout;
 use crate::devserver::{Failure, Settings};
 
 /// The frames core sends this module, on the device's control socket.
@@ -35,7 +38,15 @@ pub trait Worktrees: Send + Sync + 'static {
 #[serde(rename_all = "camelCase")]
 struct Start {
     preview_id: String,
-    session_id: String,
+    /// The run whose worktree is served; none for a reproduce, which no run holds.
+    #[serde(default)]
+    session_id: Option<String>,
+    /// The checkout this box cuts where no run's worktree is served (REQ-41).
+    #[serde(default)]
+    checkout: Option<Checkout>,
+    /// The demo seed run in the checkout before the dev server (REQ-41 BC-22).
+    #[serde(default)]
+    seed: Option<String>,
     settings: Option<Settings>,
     #[serde(default)]
     env: serde_json::Map<String, serde_json::Value>,
@@ -54,6 +65,10 @@ struct Named {
 /// One preview this box holds: the worktree it serves and, while it runs, its dev server.
 struct Held {
     worktree: PathBuf,
+    /// The checkout this box cut for it, where no run's worktree is served.
+    checkout: Option<Checkout>,
+    /// Whether the demo seed already ran in this checkout: it runs once, not on every start.
+    seeded: bool,
     /// Bumped on every start, so an older start's watcher knows it was superseded.
     generation: u64,
     /// Asked to start and not yet serving or failed: it needs the tunnel too.
@@ -128,8 +143,7 @@ impl Previews {
             },
             "preview.stop" => match serde_json::from_value::<Named>(data) {
                 Ok(n) => {
-                    let forget = n.why.as_deref() != Some("idle");
-                    tokio::spawn(async move { this.stop(&n.preview_id, forget).await });
+                    tokio::spawn(async move { this.close(&n.preview_id, n.why.as_deref()).await });
                 }
                 Err(e) => tracing::warn!("[preview] preview.stop refused: {e}"),
             },
@@ -168,28 +182,42 @@ impl Previews {
         });
     }
 
+    /// The directory a preview serves: the checkout it names, cut here, or its run's worktree.
+    async fn worktree_of(&self, start: &Start) -> Result<PathBuf, Failure> {
+        if let Some(c) = &start.checkout {
+            return checkout::cut(c).await;
+        }
+        let Some(session) = start.session_id.as_deref() else {
+            return Err(Failure {
+                reason: "WORKTREE_GONE",
+                detail: "core named neither a run nor a checkout to serve".into(),
+            });
+        };
+        self.0.worktrees.of_session(session).ok_or_else(|| Failure {
+            reason: "WORKTREE_GONE",
+            detail: format!(
+                "this box holds no worktree for run session {session}: the run ended or its checkout was released"
+            ),
+        })
+    }
+
     async fn start_preview(&self, start: Start) {
         let id = start.preview_id.clone();
-        let Some(worktree) = self.0.worktrees.of_session(&start.session_id) else {
-            let detail = format!(
-                "this box holds no worktree for run session {}: the run ended or its checkout was released",
-                start.session_id
-            );
-            self.report_failure(
-                &id,
-                &Failure {
-                    reason: "WORKTREE_GONE",
-                    detail,
-                },
-            )
-            .await;
-            return;
+        let worktree = match self.worktree_of(&start).await {
+            Ok(w) => w,
+            Err(f) => {
+                self.report_failure(&id, &f).await;
+                return;
+            }
         };
+        let seeded = self.held().get(&id).is_some_and(|h| h.seeded);
         let generation = self.stop(&id, false).await + 1;
         self.held().insert(
             id.clone(),
             Held {
                 worktree: worktree.clone(),
+                checkout: start.checkout.clone(),
+                seeded,
                 generation,
                 starting: true,
                 server: None,
@@ -202,10 +230,24 @@ impl Previews {
             None => self.report_facts(&id, &worktree).await,
             Some(settings) => {
                 let ready = Duration::from_secs(start.ready_timeout_seconds);
-                if let Err(f) = self
-                    .run_server(&id, generation, &worktree, &settings, &start.env, ready)
-                    .await
-                {
+                let seeded = match start.seed.as_deref() {
+                    Some(seed) if !seeded => checkout::seed(&worktree, seed, &start.env, ready)
+                        .await
+                        .map(|()| {
+                            if let Some(h) = self.held().get_mut(&id) {
+                                h.seeded = true;
+                            }
+                        }),
+                    _ => Ok(()),
+                };
+                let served = match seeded {
+                    Ok(()) => {
+                        self.run_server(&id, generation, &worktree, &settings, &start.env, ready)
+                            .await
+                    }
+                    Err(f) => Err(f),
+                };
+                if let Err(f) = served {
                     self.forget_server(&id, generation);
                     self.report_failure(&id, &f).await;
                 }
@@ -264,7 +306,7 @@ impl Previews {
             .report(id, serde_json::json!({ "kind": "live", "port": port }))
             .await;
         if answer == Answer::Closed {
-            self.stop(id, true).await;
+            self.close(id, None).await;
             return Ok(());
         }
         self.watch_exit(id.to_string(), generation, output);
@@ -412,6 +454,22 @@ impl Previews {
                 tracing::warn!("[preview] {id}: the report did not reach core: {e}");
                 Answer::Unheard
             }
+        }
+    }
+
+    /// Close a preview core stopped (`preview.stop`): an idle stop keeps its worktree and checkout,
+    /// so it can start again; any other forgets it, and removes the checkout this box cut for it
+    /// where [`Checkout::removed_on`] says the box owns it.
+    async fn close(&self, id: &str, why: Option<&str>) {
+        let forget = why != Some("idle");
+        let checkout = if forget {
+            self.held().get(id).and_then(|h| h.checkout.clone())
+        } else {
+            None
+        };
+        self.stop(id, forget).await;
+        if let Some(c) = checkout.filter(|c| c.removed_on(why)) {
+            checkout::remove(&c).await;
         }
     }
 

@@ -71,15 +71,20 @@ export async function pushStart(tx: Tx, row: PreviewRow, plan: PreviewPlan): Pro
   await pushBox(tx, row.deviceId, 'preview.start', {
     previewId: row.id,
     sessionId: row.sessionId,
+    checkout: row.checkout ?? null,
+    seed: plan.seed,
     settings: plan.settings,
     env: plan.env,
     readyTimeoutSeconds: PREVIEW_LIMITS.readyTimeoutSeconds,
   });
 }
 
-export async function planOf(projectId: string): Promise<PreviewPlan> {
+export async function planOf(
+  projectId: string,
+  subject: PreviewRow['subjectKind'] = 'issue',
+): Promise<PreviewPlan> {
   const held = await readProjectDocument(projectId);
-  const planned = previewPlan(held?.document ?? null);
+  const planned = previewPlan(held?.document ?? null, subject);
   if (!planned.ok) throw new RefusalError([planned.refusal], planned.refusal.code);
   return planned.plan;
 }

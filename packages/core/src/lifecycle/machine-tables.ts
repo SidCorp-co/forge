@@ -3,6 +3,7 @@ import { agentSessions, devices, issues, jobs, pipelineRuns, runners } from '../
 import { feedback } from '../db/schema-feedback.js';
 import { mockups } from '../db/schema-mockups.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
+import { previewRecordings } from '../db/schema-preview-recordings.js';
 import { previews } from '../db/schema-previews.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { requirements } from '../db/schema-requirements.js';
@@ -30,6 +31,7 @@ interface MachineTables {
   question_delivery: typeof rocketchatQuestionDeliveries;
   workflow_design: typeof projectWorkflows;
   preview: typeof previews;
+  recording: typeof previewRecordings;
 }
 
 export type MachineRow<E extends MachineEntity> = MachineTables[E]['$inferSelect'];
@@ -81,6 +83,8 @@ export function machineTable<E extends MachineEntity>(entity: E): MachineTable<E
       return at(projectWorkflows, 'designStatus');
     case 'preview':
       return at(previews, 'state');
+    case 'recording':
+      return at(previewRecordings, 'state');
     default:
       throw new Error(`lifecycle: no table holds the status of machine \`${entity}\``);
   }

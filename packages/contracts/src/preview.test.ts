@@ -348,6 +348,10 @@ describe("the preview refusals", () => {
 			PREVIEW_SNAPSHOT_UNAVAILABLE: 503,
 			PREVIEW_DOMAIN_UNCONFIGURED: 503,
 			PREVIEW_TUNNEL_DOWN: 503,
+			PREVIEW_ITEM_UNKNOWN: 404,
+			PREVIEW_BUILD_UNKNOWN: 422,
+			PREVIEW_CONFIRM_NOT_FIX: 409,
+			PREVIEW_CONFIRM_REASON_REQUIRED: 400,
 		});
 	});
 });
@@ -393,6 +397,10 @@ describe("the preview record", () => {
 		const record = {
 			id: "6f1d3c1e-8a0b-4c55-9d43-2f3a1b0c9e11",
 			projectId: "d1bb4907-74d9-4228-85ff-76121523af7d",
+			subject: {
+				kind: "issue",
+				issueId: "6f1d3c1e-8a0b-4c55-9d43-2f3a1b0c9e15",
+			},
 			issueId: "6f1d3c1e-8a0b-4c55-9d43-2f3a1b0c9e15",
 			sessionId: "6f1d3c1e-8a0b-4c55-9d43-2f3a1b0c9e12",
 			deviceId: "6f1d3c1e-8a0b-4c55-9d43-2f3a1b0c9e13",

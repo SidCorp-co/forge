@@ -1,5 +1,11 @@
 import type { LaneDecision } from '@forge/contracts/fast-lane';
-import { PREVIEW_FAILURE_REASONS, PREVIEW_STATES } from '@forge/contracts/preview';
+import {
+  PREVIEW_FAILURE_REASONS,
+  PREVIEW_STATES,
+  PREVIEW_SUBJECT_KINDS,
+  type PreviewCheckout,
+  type PreviewSubject,
+} from '@forge/contracts/preview';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -15,6 +21,7 @@ import {
 import { agentSessions } from './schema-agent-sessions.js';
 import { users } from './schema-auth.js';
 import { devices } from './schema-devices.js';
+import { feedback } from './schema-feedback.js';
 import { issues } from './schema-issues.js';
 import { projects } from './schema-projects.js';
 
@@ -23,7 +30,10 @@ const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`
 // A run's dev server served to the project's members from a Forge link (REQ-39,
 // docs/proposals/live-preview.md). `state` is PREVIEW_MACHINE's, written only by the kernel
 // transition (0477 guards it); `slug` is the host label under PREVIEW_DOMAIN. One open preview per
-// session: a run holds one preview at a time.
+// session: a run holds one preview at a time. What it serves is `subject_kind` (REQ-41, 0479): an
+// issue's run (`issue_id` and `session_id`), an idea's sketch run (`session_id`, no issue) or a past
+// build of a feedback item (`feedback_id`, no run); the last two carry the `subject` and the
+// `checkout` the box cuts, both named by core.
 export const previews = pgTable(
   'previews',
   {
@@ -31,12 +41,15 @@ export const previews = pgTable(
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
-    issueId: uuid('issue_id')
-      .notNull()
-      .references(() => issues.id, { onDelete: 'cascade' }),
-    sessionId: uuid('session_id')
-      .notNull()
-      .references(() => agentSessions.id, { onDelete: 'cascade' }),
+    subjectKind: text('subject_kind', { enum: PREVIEW_SUBJECT_KINDS }).notNull().default('issue'),
+    /** The idea or reproduce subject; null for an issue's run, whose subject is `issue_id`. */
+    subject: jsonb('subject').$type<Exclude<PreviewSubject, { kind: 'issue' }>>(),
+    /** The checkout the box cuts for an idea or a reproduce; null where a run's worktree is served. */
+    checkout: jsonb('checkout').$type<PreviewCheckout>(),
+    issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id').references(() => agentSessions.id, { onDelete: 'cascade' }),
+    /** The feedback item a reproduce serves the build of. */
+    feedbackId: uuid('feedback_id').references(() => feedback.id, { onDelete: 'cascade' }),
     deviceId: uuid('device_id')
       .notNull()
       .references(() => devices.id, { onDelete: 'cascade' }),
@@ -66,6 +79,17 @@ export const previews = pgTable(
       .where(sql`state IN ('starting', 'live', 'idle_closed')`),
     issueIdx: index('previews_issue_idx').on(t.issueId, t.createdAt),
     deviceIdx: index('previews_device_idx').on(t.deviceId),
+    feedbackIdx: index('previews_feedback_idx').on(t.feedbackId),
+    subjectKindChk: check(
+      'previews_subject_kind_chk',
+      sql`${t.subjectKind} IN (${inList(PREVIEW_SUBJECT_KINDS)})`,
+    ),
+    subjectChk: check(
+      'previews_subject_chk',
+      sql`(${t.subjectKind} = 'issue' AND ${t.issueId} IS NOT NULL AND ${t.sessionId} IS NOT NULL AND ${t.subject} IS NULL AND ${t.checkout} IS NULL AND ${t.feedbackId} IS NULL)
+        OR (${t.subjectKind} = 'idea' AND ${t.issueId} IS NULL AND ${t.sessionId} IS NOT NULL AND ${t.subject} IS NOT NULL AND ${t.checkout} IS NOT NULL)
+        OR (${t.subjectKind} = 'reproduce' AND ${t.issueId} IS NULL AND ${t.sessionId} IS NULL AND ${t.subject} IS NOT NULL AND ${t.checkout} IS NOT NULL AND ${t.feedbackId} IS NOT NULL)`,
+    ),
     stateChk: check('previews_state_chk', sql`${t.state} IN (${inList(PREVIEW_STATES)})`),
     reasonChk: check(
       'previews_reason_chk',

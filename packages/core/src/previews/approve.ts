@@ -27,6 +27,7 @@ import {
 } from './access.js';
 import { previewOrigin } from './domain.js';
 import { OPEN_STATES, stateRefusal } from './rules.js';
+import { sendIdeaMessage } from './subjects.js';
 
 const SNAPSHOT_WAIT_MS = 20_000;
 
@@ -44,7 +45,8 @@ export function settleSnapshot(
   return true;
 }
 
-async function askSnapshot(row: PreviewRow) {
+/** What the box serves now: the patch id and files of the checkout's change against its base. */
+export async function askSnapshot(row: PreviewRow) {
   const answered = new Promise<Extract<PreviewReport, { kind: 'snapshot' }>>((resolve, reject) => {
     const timer = setTimeout(() => {
       snapshots.delete(row.id);
@@ -75,6 +77,12 @@ async function askSnapshot(row: PreviewRow) {
 export async function approvePreview(previewId: string, actor: PreviewActor) {
   const row = await rowOf(previewId);
   await accessFor(row.projectId, actor, 'previews.approve', 'approve the preview');
+  if (row.subjectKind !== 'issue') {
+    throw refuse(
+      'PREVIEW_NO_RUN',
+      `preview ${row.id} serves ${row.subjectKind === 'idea' ? 'an idea, which is kept as a picture' : 'a past build, which is reproduced'}, not an issue's run: only an issue's preview is approved down a lane`,
+    );
+  }
   throwRefusal(stateRefusal(row.id, row.state, ['live', 'idle_closed'], 'be approved'));
   const snapshot = await askSnapshot(row);
   const fastLane = (await readProjectDocument(row.projectId))?.document.fastLane ?? null;
@@ -126,6 +134,7 @@ async function tellRun(
   intentId: string,
   actor: PreviewActor,
 ): Promise<boolean> {
+  if (row.sessionId === null) return false;
   try {
     const sent = await requestSessionSend({
       agentSessionId: row.sessionId,
@@ -151,6 +160,13 @@ export async function sendPreviewMessage(previewId: string, actor: PreviewActor,
   await accessFor(row.projectId, actor, 'project.write', 'send the run a change');
   throwRefusal(stateRefusal(row.id, row.state, OPEN_STATES, 'take a change'));
   const url = `${previewOrigin(siteOrRefuse(), row.slug)}/`;
+  if (row.subjectKind === 'idea') return sendIdeaMessage(row, actor, text, url);
+  if (row.sessionId === null) {
+    throw refuse(
+      'PREVIEW_NO_RUN',
+      `preview ${row.id} serves a past build that no run edits: a change goes to the issue that fixes it`,
+    );
+  }
   const sent = await requestSessionSend({
     agentSessionId: row.sessionId,
     kind: 'inject',

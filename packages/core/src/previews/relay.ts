@@ -17,9 +17,14 @@ import {
   PREVIEW_LIMITS,
   PREVIEW_RESERVED_PATH,
 } from '@forge/contracts/preview';
+import { RECORDER_PATHS, RECORDING_LIMITS } from '@forge/contracts/reproduce';
+import { eq } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { previewRecordings } from '../db/schema-preview-recordings.js';
 import type { PreviewRow } from '../db/schema-previews.js';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
+import { RefusalError, refusalEnvelope } from '../lib/refusal.js';
 import { actorFor, can, projectResource } from '../permissions/index.js';
 import { labelOfHost, type PreviewSite, previewOrigin, previewSite } from './domain.js';
 import {
@@ -35,6 +40,8 @@ import {
   tunnelDownPage,
 } from './pages.js';
 import { previewBySlug } from './read.js';
+import { decoded, recorderScript, withRecorderTag } from './recorder.js';
+import { ingestBatch, recordingFor, records } from './recordings.js';
 import { serves } from './rules.js';
 import { noteViewed, reopenForViewer } from './service.js';
 import { readViewer, signViewer, spendTicket } from './ticket.js';
@@ -86,20 +93,37 @@ type Admission =
   | { ok: true; row: PreviewRow; userId: string; site: PreviewSite }
   | { ok: false; page: Page };
 
+/** A request for the recorder's own paths, from a member holding this preview's viewer cookie. */
+type RecorderAdmission = { ok: 'recorder'; row: PreviewRow; userId: string };
+
+const RECORDER = new Set<string>([RECORDER_PATHS.script, RECORDER_PATHS.ingest]);
+
 /** Who the request is and whether the preview serves them now; a page in Forge's words if not. */
-async function admit(req: IncomingMessage, url: URL): Promise<Admission | { ok: 'enter' }> {
+async function admit(
+  req: IncomingMessage,
+  url: URL,
+): Promise<Admission | RecorderAdmission | { ok: 'enter' }> {
   const site = previewSite();
   const label = labelOfHost(req.headers.host, site);
   if (site === null || label === null) return { ok: false, page: notFoundPage() };
   const row = await previewBySlug(label);
   if (!row) return { ok: false, page: notFoundPage() };
   if (url.pathname === PREVIEW_ENTER_PATH) return { ok: 'enter' };
-  if (url.pathname.startsWith(PREVIEW_RESERVED_PATH)) return { ok: false, page: notFoundPage() };
+  const recorder = RECORDER.has(url.pathname);
+  if (url.pathname.startsWith(PREVIEW_RESERVED_PATH) && !recorder)
+    return { ok: false, page: notFoundPage() };
   const token = cookiesOf(req.headers.cookie).viewer;
   const grant = token === null ? null : await readViewer(token);
   if (!grant || grant.previewId !== row.id) return { ok: false, page: signInPage() };
   if (!(await stillMember(grant.userId, row.projectId)))
     return { ok: false, page: notMemberPage() };
+  // the recorder's paths answer a member of a recording preview only, whatever its state: a batch
+  // after the preview closed is refused by the recording, by name
+  if (recorder) {
+    return records(row)
+      ? { ok: 'recorder', row, userId: grant.userId }
+      : { ok: false, page: notFoundPage() };
+  }
   if (row.state === 'idle_closed') {
     return (await reopenForViewer(row, grant.userId))
       ? { ok: false, page: startingPage() }
@@ -186,12 +210,104 @@ function streamFor(row: PreviewRow): { ok: true; stream: Duplex } | { ok: false;
 
 const failureCode = (err: unknown) => streamEndOf(err) ?? (err as Error).message;
 
+function sendJson(res: ServerResponse, status: number, body: unknown, type = 'application/json') {
+  const text = JSON.stringify(body);
+  res.writeHead(status, {
+    'content-type': type,
+    'content-length': Buffer.byteLength(text),
+    'cache-control': 'no-store',
+  });
+  res.end(text);
+}
+
+/** A request body, up to `limit` bytes; one byte more says it is over. */
+function bodyOf(req: IncomingMessage, limit: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (c: Buffer) => {
+      size += c.byteLength;
+      if (size <= limit + 1) chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).subarray(0, limit + 1)));
+    req.on('error', reject);
+  });
+}
+
+/** The recorder's script, and the batches it posts (BC-18): answered by core, never by the dev server. */
+async function serveRecorder(req: IncomingMessage, res: ServerResponse, at: RecorderAdmission) {
+  const url = new URL(req.url ?? '/', 'http://preview.invalid');
+  if (url.pathname === RECORDER_PATHS.script) {
+    const recording = await recordingFor(at.row, at.userId);
+    const script = recorderScript(recording.id);
+    res.writeHead(200, {
+      'content-type': 'text/javascript; charset=utf-8',
+      'content-length': Buffer.byteLength(script),
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+    });
+    res.end(script);
+    return;
+  }
+  if (req.method !== 'POST') {
+    res.writeHead(405, { allow: 'POST', 'content-length': 0 });
+    res.end();
+    return;
+  }
+  try {
+    const raw = await bodyOf(req, RECORDING_LIMITS.batchBytes);
+    sendJson(res, 202, await ingestBatch(at.row, at.userId, raw));
+  } catch (err) {
+    if (!(err instanceof RefusalError)) throw err;
+    const envelope = refusalEnvelope(err.refusals, err.fallbackCode);
+    let owes: number | undefined;
+    if (envelope.code === 'RECORDING_SEQ_GAP') {
+      const id = (await recordingFor(at.row, at.userId)).id;
+      const [held] = await db
+        .select({ nextSeq: previewRecordings.nextSeq })
+        .from(previewRecordings)
+        .where(eq(previewRecordings.id, id));
+      owes = held?.nextSeq;
+    }
+    sendJson(res, envelope.status, { ...envelope, ...(owes === undefined ? {} : { owes }) });
+  }
+}
+
+/**
+ * The dev server's HTML with the recorder's tag after `<head>` (BC-18): buffered whole, decoded
+ * where the server compressed it anyway, and sent with its own length. Every other answer streams.
+ */
+function injectRecorder(
+  answer: IncomingMessage,
+  res: ServerResponse,
+  headers: Record<string, string | string[]>,
+  status: number,
+): void {
+  const chunks: Buffer[] = [];
+  answer.on('data', (c: Buffer) => chunks.push(c));
+  answer.on('error', () => res.destroy());
+  answer.on('end', () => {
+    const encoding = answer.headers['content-encoding'];
+    const html = withRecorderTag(decoded(Buffer.concat(chunks), encoding).toString('utf8'));
+    const out = { ...headers };
+    delete out['content-encoding'];
+    delete out['transfer-encoding'];
+    out['content-length'] = String(Buffer.byteLength(html));
+    res.writeHead(status, out);
+    res.end(html);
+  });
+}
+
+const isHtml = (headers: IncomingHttpHeaders) =>
+  /^text\/html\b/i.test(String(headers['content-type'] ?? ''));
+
 /** One HTTP request to a preview host. */
 export async function relayPreviewRequest(req: IncomingMessage, res: ServerResponse) {
   try {
     const url = new URL(req.url ?? '/', 'http://preview.invalid');
     const admitted = await admit(req, url);
     if (admitted.ok === 'enter') return await enter(req, res, url);
+    if (admitted.ok === 'recorder') return await serveRecorder(req, res, admitted);
     if (!admitted.ok) return sendPage(res, admitted.page);
     const { row, site } = admitted;
     await noteViewed(row);
@@ -199,14 +315,31 @@ export async function relayPreviewRequest(req: IncomingMessage, res: ServerRespo
     if (!opened.ok) return sendPage(res, opened.page);
     const origin = previewOrigin(site, row.slug);
     const port = row.port ?? 0;
+    const recording = records(row);
+    const headers = upstreamHeaders(req, port, origin, false);
+    // a recording preview's HTML is rewritten, so it is asked for unencoded (BC-18)
+    if (recording) headers['accept-encoding'] = 'identity';
     const upstream = httpRequest({
       method: req.method,
       path: req.url,
-      headers: upstreamHeaders(req, port, origin, false),
+      headers,
       createConnection: () => opened.stream as never,
     });
     upstream.on('response', (answer) => {
-      res.writeHead(answer.statusCode ?? 502, downstreamHeaders(answer.headers, port, origin));
+      const status = answer.statusCode ?? 502;
+      const out = downstreamHeaders(answer.headers, port, origin);
+      if (recording && isHtml(answer.headers)) {
+        delete out['content-length'];
+        void recordingFor(row, admitted.userId).then(
+          () => injectRecorder(answer, res, out, status),
+          (err: unknown) => {
+            logger.error({ err, previewId: row.id }, 'preview relay: the recording could not open');
+            injectRecorder(answer, res, out, status);
+          },
+        );
+        return;
+      }
+      res.writeHead(status, out);
       answer.pipe(res);
     });
     upstream.on('error', (err) => {
@@ -240,7 +373,8 @@ export async function relayPreviewUpgrade(req: IncomingMessage, socket: Duplex, 
   try {
     const url = new URL(req.url ?? '/', 'http://preview.invalid');
     const admitted = await admit(req, url);
-    if (admitted.ok === 'enter') return refuseUpgrade(socket, notFoundPage());
+    if (admitted.ok === 'enter' || admitted.ok === 'recorder')
+      return refuseUpgrade(socket, notFoundPage());
     if (!admitted.ok) return refuseUpgrade(socket, admitted.page);
     const { row, site } = admitted;
     await noteViewed(row);
