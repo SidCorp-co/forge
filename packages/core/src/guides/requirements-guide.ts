@@ -93,8 +93,8 @@ it lives in numbered revisions, and each revision carries business criteria unde
   revision whose BCs differ from the plan's in a BC one of its criteria traces (reworded or removed),
   or when its plan names no revision. A re-pin, or a revision that changed only BCs it does not
   trace, leaves it unflagged. Re-plan against the current head; do not build against a plan that reads changed. An issue that
-  reads changed is refused \`awaiting_release\` as
-  \`REQUIREMENT_CHANGED_SINCE_PLAN\` until its plan is rewritten. While it reads changed and has not
+  reads changed carries \`REQUIREMENT_CHANGED_SINCE_PLAN\` on its requirement link and in its
+  run's context until its plan is rewritten; no status move refuses on it. While it reads changed and has not
   closed, the agreed requirement's standing holds a \`re-plan\` task for it in \`tasks\`, the
   project master's, one per issue and revision, with no due date.
 - A plan written before the link reads changed-since-plan, unless a holder of \`requirements.approve\`

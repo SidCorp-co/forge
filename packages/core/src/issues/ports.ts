@@ -37,16 +37,6 @@ export interface IssueProjectDocument {
   validation?: { mergeCheck?: 'required' | undefined } | undefined;
 }
 
-/** Whether the issue's requirement moved since its plan was written; null when it delivers none. */
-interface IssuePlanDrift {
-  key: string;
-  plannedRevision: number | null;
-  currentRevision: number | null;
-  changed: boolean;
-  changedCriteria: { code: string; revision: number }[];
-  detail: string;
-}
-
 export type StorefrontDraftReading =
   | { readonly kind: 'read'; readonly draftVersion: string; readonly workflowCode: string }
   | { readonly kind: 'missing'; readonly detail: string }
@@ -188,7 +178,6 @@ interface IssuePorts {
   messageRefusalHttp: (err: unknown) => RefusalError | null;
 
   readProjectDocument: (projectId: string) => Promise<{ document: IssueProjectDocument } | null>;
-  planDriftOf: (executor: Pick<Tx, 'execute'>, issueId: string) => Promise<IssuePlanDrift | null>;
   changedTracedOf: (
     executor: Pick<Tx, 'execute'>,
     issueIds: readonly string[],
@@ -363,7 +352,6 @@ export const postIssueNotice = port('postIssueNotice');
 export const messageRefusalHttp = port('messageRefusalHttp');
 
 export const readProjectDocument = port('readProjectDocument');
-export const planDriftOf = port('planDriftOf');
 export const changedTracedOf = port('changedTracedOf');
 export const readLandingBranches = port('readLandingBranches');
 export const issueRefPattern = port('issueRefPattern');

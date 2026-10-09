@@ -205,11 +205,13 @@ naming its own rule before the green counts.
    Vietnamese letter in it) — no paths, hashes or refactors; \`section: 'Skip'\` where they will see
    nothing. A release refuses to claim an issue without one.
 4. \`POST /api/issues/:id/transition\` \`{ toStatus: 'awaiting_release' }\`. It is refused
-   \`MERGE_NOT_RECORDED\`, \`NO_WORK_EVIDENCE\` or \`VERDICT_IDENTITY_REQUIRED\` while what it names is
-   missing.
+   \`MERGE_NOT_RECORDED\` while the merge is not recorded; it asks no verdict, since verdicts are
+   judged on the release that carries the work.
 
-**Never move an issue to \`closed\`.** Only a release that claimed it closes it
-(\`CLOSE_ONLY_BY_RELEASE\`), so the run's last rung is \`awaiting_release\`.
+**Never move an issue that ships code to \`closed\`.** Only a release that claimed it closes it
+(\`CLOSE_ONLY_BY_RELEASE\`), so the run's last rung is \`awaiting_release\`. An issue whose only
+deliverable is a design closes once its design revisions are approved (\`DESIGN_NOT_DELIVERED\`
+until then).
 
 ### 7. What you found beside the work
 - A defect in reach and inside this issue's ownership line: fix it here and declare it in the

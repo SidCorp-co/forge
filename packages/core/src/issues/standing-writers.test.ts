@@ -27,6 +27,7 @@ const input = (
 ): IssueStandingInput => ({
   status,
   leftStatus: null,
+  designOnly: false,
   holdsDependents: false,
   waitingKind: null,
   merged: false,

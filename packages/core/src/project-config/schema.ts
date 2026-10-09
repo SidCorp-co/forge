@@ -188,10 +188,10 @@ export const projectDocumentSchema = z.strictObject({
   // which surface each changed path of a git landing touches (`surfaces-schema.ts`); absent, a
   // landing's paths are shown unclassified
   surfaces: surfacesSchema.optional(),
-  // what the delivery gate asks of an issue (owner ruling on dev, 2026-10-04):
-  // `verdictsRequired: false` lets `awaiting_release` and the release cut pass without a passing
-  // verdict per criterion, and the move's record says `verdicts-waived`
-  // (`issues/transition-guards.ts:verdictGuard`). Absent is `true`.
+  // what the release asks of an issue (owner ruling on dev, 2026-10-04): `verdictsRequired: false`
+  // lets the release hold pass without a passing verdict per criterion
+  // (`issues/criteria-verdicts.ts:unearnedCriteriaReports`). Absent is `true`. `awaiting_release`
+  // asks no verdict either way (REQ-45 BC-2).
   delivery: deliveryPolicySchema.optional(),
   // `designApprover` is retired (ADR 0007): ISS-159 until:no stored project document carries
   // it — still parsed so a stored document reads, refused on write (`rules.ts:checkRetiredApprovers`),

@@ -50,13 +50,6 @@ export const ISSUE_TRANSITION_REFUSAL_CODES = [
 	"PATTERN_ENTRY_MISSING",
 	"PLAN_REQUIRED",
 	"PERMISSION_FORBIDDEN",
-	"NO_WORK_EVIDENCE",
-	"VERDICT_IDENTITY_REQUIRED",
-	"VERDICT_PREDATES_REOPEN",
-	"VERDICT_IDENTITY_NOT_ADMISSIBLE",
-	"VERDICT_UNCORROBORATED",
-	"VERDICT_DRAFT_SUPERSEDED",
-	"REQUIREMENT_CHANGED_SINCE_PLAN",
 	"MERGE_NOT_RECORDED",
 	"CLOSE_REQUIRES_SHIPPED",
 	"CLOSE_ONLY_BY_RELEASE",
@@ -295,10 +288,13 @@ const DISCARD_TARGETS = ISSUE_TERMINAL_STATUSES;
  * The moves a person may offer from a status, read off the machine in the order it declares them:
  * a park's return to the status it left first (every parkable status when none is recorded), then
  * the status's own exits. The first move is the forward one, then the bounces, then the discards.
+ * The design-only close is offered only where the issue's merge mark is design-only (`designOnly`);
+ * its guard still asks that the revisions are approved.
  */
 export function issueMovesFrom(
 	from: IssueStatus,
 	leftStatus: IssueStatus | null,
+	designOnly: boolean,
 ): IssueMove[] {
 	const returns = ISSUE_MACHINE.edges
 		.filter((e) => e.from === from && e.guards.includes("left_status"))
@@ -306,6 +302,7 @@ export function issueMovesFrom(
 	const back = leftStatus ? returns.filter((to) => to === leftStatus) : returns;
 	const rest = ISSUE_MACHINE.edges
 		.filter((e) => e.from === from && !e.recovery && !e.guards.includes("left_status"))
+		.filter((e) => designOnly || !e.guards.includes("design_delivered"))
 		.map((e) => e.to);
 	const targets = [...new Set([...back, ...rest])];
 	const kindOf = (to: IssueStatus, i: number): IssueMoveKind => {

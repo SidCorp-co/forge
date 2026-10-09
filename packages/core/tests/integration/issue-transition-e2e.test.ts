@@ -19,6 +19,7 @@ import {
   rows,
   truncateAll,
 } from '../helpers/factories.js';
+import { seedProjectDocument } from '../helpers/release-world.js';
 
 let projectId: string;
 let ownerId: string;
@@ -103,16 +104,58 @@ describe('a move along an edge', () => {
   });
 });
 
+describe('landed work moves on without verdicts (REQ-45 BC-1)', () => {
+  it('moves a merged in_progress issue with no criteria and no verdicts to awaiting_release', async () => {
+    await seedProjectDocument(projectId, ownerId, { environments: {} });
+    const id = await issueAt('in_progress');
+    await withKernelMarker(db, (tx) =>
+      tx.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${id}`),
+    );
+
+    const res = await move(id, { toStatus: 'awaiting_release' });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await statusOf(id)).toBe('awaiting_release');
+  });
+
+  it('still refuses it while no merge is recorded', async () => {
+    const id = await issueAt('in_progress');
+
+    const res = await move(id, { toStatus: 'awaiting_release' });
+
+    expect(res.status).toBe(422);
+    expect(refusalCodes(res)).toEqual(['MERGE_NOT_RECORDED']);
+    expect(await statusOf(id)).toBe('in_progress');
+  });
+});
+
 describe('a move that is not an edge is refused by name, with nothing written', () => {
-  it('refuses open → closed', async () => {
+  it('refuses open → awaiting_release', async () => {
+    const id = await issueAt('open');
+
+    const res = await move(id, { toStatus: 'awaiting_release' });
+
+    expect(res.status).toBe(422);
+    expect(refusalCodes(res)).toEqual(['ILLEGAL_TRANSITION']);
+    expect(JSON.stringify(res.body)).toMatch(/open.*awaiting_release/);
+    expect(await statusOf(id)).toBe('open');
+    expect(await audit(id)).toEqual([]);
+  });
+
+  // open → closed is an edge only for a design-only issue (REQ-45 BC-4): any other issue is refused
+  // by that edge's guard, and its menu never offers the move
+  it('refuses open → closed on an issue that is not design-only, and its menu offers no close', async () => {
     const id = await issueAt('open');
 
     const res = await move(id, { toStatus: 'closed' });
 
     expect(res.status).toBe(422);
-    expect(JSON.stringify(res.body)).toMatch(/open.*closed/);
+    expect(refusalCodes(res)).toEqual(['DESIGN_NOT_DELIVERED']);
     expect(await statusOf(id)).toBe('open');
     expect(await audit(id)).toEqual([]);
+    const { issueMovesFrom } = await import('@forge/contracts/issue-machine');
+    expect(issueMovesFrom('open', null, false).map((m) => m.to)).not.toContain('closed');
+    expect(issueMovesFrom('open', null, true).map((m) => m.to)).toContain('closed');
   });
 
   it('refuses a move to the status the issue is already at', async () => {

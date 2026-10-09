@@ -5,8 +5,7 @@
  * it and its last activity. One query per fact over the whole page, never one per row.
  */
 
-import type { IssueStatus } from '@forge/contracts/issue-machine';
-import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import { ISSUE_TERMINAL_STATUSES, type IssueStatus } from '@forge/contracts/issue-machine';
 import type {
   IssueAttentionGroup,
   IssueLeaseView,
@@ -31,7 +30,7 @@ import { peopleOf } from '../lib/people.js';
 import { holderNames, holds } from '../permissions/index.js';
 import { type BlockingEdge, blockerUnsettledSql, blockingEdgesIn } from './blocked-by.js';
 import { contractWaitUnsettledSql } from './contract-waits.js';
-import { designHoldPhrase } from './design-delivery.js';
+import { designHoldPhrase, designOnlyMarkSql } from './design-delivery.js';
 import { issueRunLiveSql, issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { loadIssuePark } from './park-view.js';
@@ -95,6 +94,7 @@ interface IssueRowRaw {
   branch: string | null;
   head_sha: string | null;
   left_status: IssueStatus | null;
+  design_only: boolean;
   ws_updated_at: string | null;
   last_activity: string | null;
   moving: boolean;
@@ -135,7 +135,7 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
              CASE WHEN btrim(coalesce(i.plan, '')) <> '' THEN 'written' END AS plan,
              i.created_at, i.updated_at,
              w.step, w.step_started_at, w.steps, w.lease, w.branch, w.head_sha, w.left_status,
-             w.updated_at AS ws_updated_at,
+             w.updated_at AS ws_updated_at, ${designOnlyMarkSql(sql`i`)} AS design_only,
              (SELECT max(a.created_at) FROM activity_log a WHERE a.issue_id = i.id) AS last_activity,
              ${holdsOpenHumanQuestion(sql`i.id`)} AS owes_answer,
              CASE WHEN i.status = 'draft' THEN ${staleDraftQuestionSql(sql`i`)} END AS stale_draft,
@@ -263,6 +263,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
   return {
     status: r.status,
     leftStatus: r.left_status,
+    designOnly: r.design_only === true,
     holdsDependents: r.holds_dependents,
     waitingKind: r.waiting_kind,
     merged: r.merged_at !== null,

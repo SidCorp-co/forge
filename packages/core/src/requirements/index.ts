@@ -20,7 +20,7 @@ export { drawKeptPreview, type KeptPreviewAbout, liveCriteriaOf } from './kept-p
 export type { ProposeDuplicate } from './near-duplicate.js';
 export { owedBreakdowns } from './owed-breakdowns.js';
 export { owedRequirementRevisions } from './owed-revisions.js';
-export { changedTracedOf, planDriftOf } from './plan-drift.js';
+export { changedTracedOf } from './plan-drift.js';
 export { listRequirementsAs, readRequirementAs, requirementIdIn, rowIn } from './read.js';
 export {
   createRequirementIn,

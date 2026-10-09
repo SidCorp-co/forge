@@ -117,9 +117,8 @@ block names what that criterion was judged against before the next \`criterion\`
   each time the verdict is read or weighed, never trusting what it read when the verdict was
   written: corroborated while the source holds that draft version, superseded once the draft has
   moved, uncorroborated with the reason when the source cannot be read. Only a corroborated draft
-  on a project whose \`source.type\` is \`storefront\` counts toward \`awaiting_release\` and the
-  release cut (\`VERDICT_DRAFT_SUPERSEDED\`, \`VERDICT_UNCORROBORATED\`,
-  \`VERDICT_IDENTITY_NOT_ADMISSIBLE\`), and the release hold earns neither of the other two.
+  on a project whose \`source.type\` is \`storefront\` counts toward the release hold, which earns
+  neither a superseded nor an uncorroborated one.
 
 A block carrying a verdict and naming none of the five is refused at the write door under
 \`verdict-identity\`, as is an identity not written as one and a \`runtime\` written as an

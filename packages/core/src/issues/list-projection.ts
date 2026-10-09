@@ -2,6 +2,7 @@ import { type IssueMove, type IssueStatus, issueMovesFrom } from '@forge/contrac
 import { sql } from 'drizzle-orm';
 import { issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { designOnlyMarkSql } from './design-delivery.js';
 import { type MergeMarkColumns, type MergeMarkKind, mergeMarkKindOf } from './merge-record.js';
 import { type WorkStateListView, workStateListSql } from './work-state.js';
 
@@ -35,6 +36,8 @@ export const REST_ISSUE_LIST_COLUMNS = {
   mergedAt: issues.mergedAt,
   mergedCommitSha: issues.mergedCommitSha,
   mergedLanding: issues.mergedLanding,
+  /** The merge mark names design artifacts alone: the status menu offers the design-only close. */
+  designOnly: sql<boolean>`${designOnlyMarkSql(sql`${issues}`)}`.as('design_only'),
   releaseBatchRunId: issues.releaseBatchRunId,
   metadata: issues.metadata,
   archivedAt: issues.archivedAt,
@@ -60,6 +63,7 @@ export function serializeRestListRow<
     issSeq: number;
     status: IssueStatus;
     workState: Pick<WorkStateListView, 'leftStatus'> | null;
+    designOnly: boolean;
   } & MergeMarkColumns,
 >(
   row: T,
@@ -69,6 +73,6 @@ export function serializeRestListRow<
     ...row,
     displayId: formatIssueRef(prefix, row.issSeq),
     mergeMark: mergeMarkKindOf(row),
-    moves: issueMovesFrom(row.status, row.workState?.leftStatus ?? null),
+    moves: issueMovesFrom(row.status, row.workState?.leftStatus ?? null, row.designOnly),
   };
 }
