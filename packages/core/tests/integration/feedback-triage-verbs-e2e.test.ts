@@ -4,6 +4,9 @@
  * not apply; a decline and a merge each tell their reporters once; a message goes to the audience its
  * preview named, with the text the preview showed; an internal note is kept for members and never
  * becomes a notice.
+ *
+ * It reads the item over HTTP, so it names the read model it guards:
+ * @direct-test-of packages/core/src/feedback/read.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -239,6 +242,28 @@ describe('attachments: a reporter attaches, and the item names where the bytes a
       item(fb, `attachments/${a?.id}`),
     );
     expect((await say('bo', 'GET', a?.url as string)).status).toBe(200);
+  });
+
+  it('stores a recording, and names who attached each file (REQ-35 BC-8)', async () => {
+    const fb = await file('ann', 'The save spinner never stops');
+    const mp4 = Buffer.from([
+      0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 2, 0,
+    ]).toString('base64');
+    ok(
+      await say('ann', 'POST', item(fb, 'attachments'), {
+        name: 'save.mp4',
+        mime: 'video/mp4',
+        contentBase64: mp4,
+      }),
+    );
+    const view = await read(fb, 'bo');
+    const [a] = view.attachments as Doc[];
+    expect(a).toMatchObject({ name: 'save.mp4', mime: 'video/mp4', uploadedBy: people.ann });
+    const [reporter] = view.reporters as Doc[];
+    expect(reporter?.name, 'the fixture user must have a name for this to compare').toEqual(
+      expect.any(String),
+    );
+    expect(a?.uploadedByName, 'the uploader is named as the reporter is').toBe(reporter?.name);
   });
 });
 

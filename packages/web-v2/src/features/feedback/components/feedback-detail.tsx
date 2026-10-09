@@ -1,9 +1,10 @@
 "use client";
 
-// A feedback item's full page: what the reporter said and the acts a person can take (Overview), the
-// mockups proposed about it (Mockups), and every decision on it (History), as tabs beside the sticky
-// facts rail. The page leads with the reporter's answer (where it stands, when, the release that
-// shipped it); the phase, whose turn and what carries it live in the rail.
+// A feedback item's full page: its screenshots, recordings and the step it hits, then the acts a
+// person can take and what the reporter said (Overview), the mockups proposed about it (Mockups), and
+// every decision on it (History), as tabs beside the sticky facts rail. The page leads with the
+// reporter's answer (where it stands, when, the release that shipped it); the phase, whose turn and
+// what carries it live in the rail.
 
 import { Written, WrittenMark } from "@/lib/i18n/written";
 import type { ReactNode } from "react";
@@ -20,6 +21,7 @@ import {
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
+import { ReproduceSection } from "@/features/previews/reproduce-section";
 import { useMockups } from "@/features/mockups/hooks";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
@@ -30,9 +32,9 @@ import type { FeedbackView } from "../types";
 import { FeedbackActions, Proposals } from "./feedback-actions";
 import { FeedbackAnswer } from "./feedback-answer";
 import { FeedbackAttachments } from "./feedback-attachments";
+import { FeedbackEvidence } from "./feedback-evidence";
 import { FeedbackBanner, FeedbackFacts } from "./feedback-facts";
 import { Messages } from "./feedback-messages";
-import { FeedbackRecordings } from "./recordings";
 
 const FEEDBACK_TABS = ["overview", "mockups", "history"] as const;
 type FeedbackTab = (typeof FEEDBACK_TABS)[number];
@@ -149,6 +151,7 @@ export function FeedbackPage({
               {tab === "mockups" ? <MockupsPanel projectId={projectId} target={{ type: "feedback", key: f.key }} canPropose={!f.redacted} /> : null}
               {tab === "overview" ? (
                 <div className="grid gap-8" data-testid="view-overview">
+                  <FeedbackEvidence projectId={projectId} slug={slug} f={f} />
                   <Proposals projectId={projectId} f={f} />
                   {f.can.triage || f.can.verify || f.can.reopen || f.can.askVerify || f.can.redact ? (
                     <section id="feedback-act" data-highlight="triage verify">
@@ -156,7 +159,12 @@ export function FeedbackPage({
                     </section>
                   ) : null}
                   <Body projectId={projectId} f={f} />
-                  <FeedbackRecordings projectId={projectId} f={f} />
+                  <ReproduceSection
+                    projectId={projectId}
+                    fbKey={f.key}
+                    carriers={f.route?.route === "issue" ? f.route.carriers.flatMap((c) => (c.key ? [c.key] : [])) : []}
+                    redacted={f.redacted}
+                  />
                   <Messages projectId={projectId} f={f} />
                 </div>
               ) : null}

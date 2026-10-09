@@ -6,7 +6,7 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { productCopy } from "@/lib/i18n/product-copy";
 import { type Canvas, readCanvas } from "./model";
-import { focusChrome, litOf, useStepFocus } from "./step-focus";
+import { focusChrome, litOf, presentTrace, useStepFocus } from "./step-focus";
 
 const step = (id: string, after: string[] = []) => ({ id, title: `Step ${id}`, after });
 const c: Canvas = readCanvas(
@@ -78,5 +78,21 @@ describe("the shared canvas focus", () => {
     act(() => result.current.setSelection({ edge: "a>b" }));
     expect([...(litOf(result.current.focus, highlight)?.nodes ?? [])].sort()).toEqual(["a", "b"]);
     expect([...(litOf(result.current.focus, highlight)?.edges ?? [])]).toEqual(["a>b"]);
+  });
+});
+
+describe("a workflow's traces read against its current design", () => {
+  const design = ["cart", "pay", "done"];
+
+  it("lights what the design still holds and names the traced steps that left it", () => {
+    const read = presentTrace({ steps: new Set(["pay", "shipping"]), edges: new Set(["cart>pay", "pay>shipping"]) }, design);
+    expect([...read.steps]).toEqual(["pay"]);
+    expect([...read.edges]).toEqual(["cart>pay"]);
+    expect(read.gone).toEqual(["shipping"]);
+  });
+
+  it("lights nothing where every traced step has left, and keeps a whole trace whole", () => {
+    expect(presentTrace({ steps: new Set(["shipping"]), edges: new Set(["shipping>done"]) }, design)).toEqual({ steps: new Set(), edges: new Set(), gone: ["shipping"] });
+    expect(presentTrace({ steps: new Set(["cart"]), edges: new Set(["cart>pay"]) }, design)).toEqual({ steps: new Set(["cart"]), edges: new Set(["cart>pay"]), gone: [] });
   });
 });
