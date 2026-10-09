@@ -3,7 +3,7 @@ import { TERMINAL_AGENT_SESSION_STATUSES } from '@forge/contracts/session-machin
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import { applyStatusTransition } from '../issues/index.js';
+import { applyStatusTransition, RESCUE_CAP_REASON_LEAD } from '../issues/index.js';
 import { traceStep } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
 import { postCapReachedComment } from './autonomous-rescue-comment.js';
@@ -120,7 +120,7 @@ async function parkForMaster(args: {
     { id: actorId, ownerId: actorId },
     {
       reason: 'autonomous_rescue_cap_reached',
-      transitionReason: `${args.spent} run sessions ended on this issue without it moving on, so it has stopped rather than open another; its master resumes it once with a changed brief, drops it, or asks a person.`,
+      transitionReason: `${args.spent} ${RESCUE_CAP_REASON_LEAD}; its master resumes it once with a changed brief, drops it, or asks a person.`,
     },
   );
 

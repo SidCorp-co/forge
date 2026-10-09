@@ -190,7 +190,7 @@ function agentParkTurn(input: IssueStandingInput): Turn | null {
       say('issues.standing.act.answer'),
       say('issues.rule.parkedAsked', { why }),
     );
-    return { group: 'paused', waitingOn: r.waitingOn };
+    return { group: r.group, waitingOn: r.waitingOn };
   }
   const blocker = input.blockedBy.find((b) => b.holds);
   if (blocker) {

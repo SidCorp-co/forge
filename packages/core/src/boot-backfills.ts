@@ -1,4 +1,8 @@
-import { runActivityFieldChangesBackfillOnce, runCriteriaBackfillOnce } from './issues/index.js';
+import {
+  runActivityFieldChangesBackfillOnce,
+  runCriteriaBackfillOnce,
+  runRescueCapRehomeOnce,
+} from './issues/index.js';
 import { logger } from './lib/logger.js';
 
 /**
@@ -20,6 +24,18 @@ export async function runOnceBackfills(): Promise<void> {
         refused: criteria.refusals.length,
       },
       'boot: criteria backfill ran',
+    );
+  }
+  const rehome = await runRescueCapRehomeOnce();
+  if (rehome) {
+    for (const r of rehome.refusals)
+      logger.error(
+        { issueId: r.issueId, refusal: r.reason },
+        'boot: rescue-cap re-home refused an issue; the marker stays unset',
+      );
+    logger.info(
+      { rehomed: rehome.rehomed, left: rehome.left, refused: rehome.refusals.length },
+      'boot: rescue-cap parks re-homed to the master',
     );
   }
 }
