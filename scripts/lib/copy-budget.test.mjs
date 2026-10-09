@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { baselineOf, faults, frozen, isRefusalKey, overBudget, wordsOf } from './copy-budget.mjs';
 
-const CFG = { budget: 12, refusalBudget: 20, refusalSegments: /^(refusal|\w*Refused|deleteMessage)$/ };
+const CFG = {
+  budget: 12,
+  refusalBudget: 20,
+  refusalSegments: /^(refusal|\w*Refused|deleteMessage)$/,
+};
 const words = (n) => Array.from({ length: n }, (_, i) => `w${i}`).join(' ');
 const entry = (key, text, file = 'a/copy.json') => ({ file, key, text });
-const baselineWith = (...rows) => frozen({ files: Object.fromEntries(rows.map(([file, key, n]) => [file, { [key]: n }])) });
+const baselineWith = (...rows) =>
+  frozen({ files: Object.fromEntries(rows.map(([file, key, n]) => [file, { [key]: n }])) });
 
 describe('wordsOf', () => {
   it('counts each placeholder as one word, however it expands', () => {
@@ -25,7 +30,12 @@ describe('overBudget', () => {
   });
   it('allows a refusal or confirmation 20 and no more, by its key path', () => {
     const over = overBudget(
-      [entry('x.refusal.moved', words(20)), entry('x.parkRefused', words(21)), entry('x.deleteMessage', words(20)), entry('x.hint', words(20))],
+      [
+        entry('x.refusal.moved', words(20)),
+        entry('x.parkRefused', words(21)),
+        entry('x.deleteMessage', words(20)),
+        entry('x.hint', words(20)),
+      ],
       CFG,
     );
     expect([...over.keys()].sort()).toEqual(['a/copy.json::x.hint', 'a/copy.json::x.parkRefused']);
@@ -48,7 +58,9 @@ describe('faults', () => {
     expect(f).toContain('13 words, budget 12');
   });
   it('refuses a string that grew past its baseline', () => {
-    expect(faults(over(entry('k', words(15))), baselineWith(['a/copy.json', 'k', 13]))[0]).toContain('grew from 13 to 15');
+    expect(
+      faults(over(entry('k', words(15))), baselineWith(['a/copy.json', 'k', 13]))[0],
+    ).toContain('grew from 13 to 15');
   });
   it('refuses a fixed string whose baseline entry stays, and a deleted key likewise', () => {
     const base = baselineWith(['a/copy.json', 'k', 13]);
@@ -56,7 +68,9 @@ describe('faults', () => {
     expect(faults(over(), base)[0]).toContain('remove its baseline entry');
   });
   it('refuses a string trimmed but still over until the baseline records the new count', () => {
-    expect(faults(over(entry('k', words(14))), baselineWith(['a/copy.json', 'k', 20]))[0]).toContain('trim the baseline entry');
+    expect(
+      faults(over(entry('k', words(14))), baselineWith(['a/copy.json', 'k', 20]))[0],
+    ).toContain('trim the baseline entry');
   });
 });
 

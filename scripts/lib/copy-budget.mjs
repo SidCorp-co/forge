@@ -47,17 +47,23 @@ export function faults(over, baseline) {
   for (const [id, o] of over) {
     const was = baseline.get(id);
     if (was === undefined) {
-      out.push(`${o.file} · ${o.key}: ${o.words} words, budget ${o.budget}; a new string over budget is refused`);
+      out.push(
+        `${o.file} · ${o.key}: ${o.words} words, budget ${o.budget}; a new string over budget is refused`,
+      );
     } else if (o.words > was) {
       out.push(`${o.file} · ${o.key}: grew from ${was} to ${o.words} words, budget ${o.budget}`);
     } else if (o.words < was) {
-      out.push(`${o.file} · ${o.key}: now ${o.words} words (baseline ${was}), budget ${o.budget}; trim the baseline entry`);
+      out.push(
+        `${o.file} · ${o.key}: now ${o.words} words (baseline ${was}), budget ${o.budget}; trim the baseline entry`,
+      );
     }
   }
   for (const [id, was] of baseline) {
     if (over.has(id)) continue;
     const [file, key] = id.split('::');
-    out.push(`${file} · ${key}: within budget now (baseline ${was}) or gone; remove its baseline entry`);
+    out.push(
+      `${file} · ${key}: within budget now (baseline ${was}) or gone; remove its baseline entry`,
+    );
   }
   return out;
 }
@@ -65,8 +71,11 @@ export function faults(over, baseline) {
 /** The baseline document for `over`, entries sorted so a diff shows only what changed. */
 export function baselineOf(over) {
   const files = {};
-  for (const o of [...over.values()].sort((a, b) => `${a.file}::${a.key}`.localeCompare(`${b.file}::${b.key}`))) {
-    (files[o.file] ??= {})[o.key] = o.words;
+  for (const o of [...over.values()].sort((a, b) =>
+    `${a.file}::${a.key}`.localeCompare(`${b.file}::${b.key}`),
+  )) {
+    files[o.file] ??= {};
+    files[o.file][o.key] = o.words;
   }
   return { files };
 }

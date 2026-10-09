@@ -28,9 +28,11 @@ const refusalSegments = new RegExp(CFG.refusalSegments);
 const inCopyDir = (path) => CFG.copyDirs.some((dir) => path.startsWith(`${dir}/`));
 const files = walkFiles(CFG.scanRoot, {
   skipDirs: ['node_modules', '.next'],
-  keep: (path, name) => name.endsWith('.json') && (/^copy[^/]*\.json$/.test(name) || inCopyDir(path)),
+  keep: (path, name) =>
+    name.endsWith('.json') && (/^copy[^/]*\.json$/.test(name) || inCopyDir(path)),
 }).sort();
-if (files.length === 0) die(`no copy file under ${CFG.scanRoot}: the scan read nothing, which is not a pass`);
+if (files.length === 0)
+  die(`no copy file under ${CFG.scanRoot}: the scan read nothing, which is not a pass`);
 
 const entries = [];
 for (const file of files) {
@@ -57,7 +59,9 @@ try {
 
 if (process.argv.includes('--freeze')) {
   if (existsSync(path)) {
-    console.error(`copy-budget: ${CFG.baseline} exists; --freeze writes the first baseline only, --trim shrinks it`);
+    console.error(
+      `copy-budget: ${CFG.baseline} exists; --freeze writes the first baseline only, --trim shrinks it`,
+    );
     process.exit(1);
   }
   writeFileSync(path, `${JSON.stringify(baselineOf(over), null, 2)}\n`);
@@ -72,7 +76,9 @@ if (process.argv.includes('--trim')) {
   }
   const refused = faults(over, baseline).filter((f) => /new string|grew from/.test(f));
   if (refused.length > 0) {
-    console.error(`copy-budget: --trim only shrinks the baseline; refused:\n  ${refused.join('\n  ')}`);
+    console.error(
+      `copy-budget: --trim only shrinks the baseline; refused:\n  ${refused.join('\n  ')}`,
+    );
     process.exit(1);
   }
   writeFileSync(path, `${JSON.stringify(baselineOf(over), null, 2)}\n`);
