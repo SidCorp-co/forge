@@ -1,4 +1,5 @@
 import type { SpeakerRefusalCode } from '@forge/contracts/assistant';
+import type { HeldPart } from '@forge/contracts/reply-check';
 import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
 import type { StagedBlock } from '../lib/staged-block.js';
 import type { DoorId, MessageVerdict } from '../messaging/contract.js';
@@ -64,6 +65,8 @@ export interface ScreenedMessage {
   readonly text: string;
   /** The door's proof for `text`, or null where this codebase wrote it. */
   readonly proof: ProvenMessage | null;
+  /** Set where the reply check held part of the answer and this is the part it could check (REQ-41 BC-3). */
+  readonly held?: HeldPart;
 }
 
 /** Text this codebase wrote — an ack, a fallback, a refusal. It screens nothing because there is nothing to screen. */

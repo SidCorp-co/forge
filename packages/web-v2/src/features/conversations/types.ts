@@ -1,4 +1,5 @@
 
+import type { ReplyVerdict } from "@forge/contracts/reply-check";
 import { isAssistantTurnFailureCode } from "@forge/contracts/conversations";
 import type { OnboardingStatus, QuestionnaireView } from "@forge/contracts/onboarding";
 import { type CanonicalBlock, type MessageEntry, parseMessages, type RenderBlock } from "@/features/session/types";
@@ -121,8 +122,11 @@ export interface ConversationProgressEntry {
   entry: MessageEntry;
   /** The room's view of the tools the turn ran. */
   tools?: ConversationRoomTool[];
-  /** Absent while the text streamed is a draft the reply check has not passed. */
-  verdict?: "checked" | "withheld";
+  /**
+   * Absent while the text streamed is a draft the reply check has not passed; `partial` where what
+   * went out is the part of it the check passed, with a notice naming what was left out (REQ-41 BC-3).
+   */
+  verdict?: ReplyVerdict;
   /**
    * Set when the text that went out is NOT the prose these frames streamed.
    */

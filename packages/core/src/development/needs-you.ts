@@ -199,18 +199,25 @@ export async function readAttention(
   return { rows, requirements, releases, issues, feedback: items };
 }
 
+/** Each area's rows that wait on the viewer, newest first: the one filter every Needs you read takes. */
+export function owedOf(
+  rows: Record<NeedsYouAreaKey, AttentionRow[]>,
+): Record<NeedsYouAreaKey, AttentionRow[]> {
+  return Object.fromEntries(
+    Object.entries(rows).map(([area, list]) => [
+      area,
+      list.filter((r) => needsViewer(r.standing)).sort(newestFirst),
+    ]),
+  ) as Record<NeedsYouAreaKey, AttentionRow[]>;
+}
+
 export async function readNeedsYou(
   projectId: string,
   viewer: NeedsYouViewer,
   now: Date = new Date(),
 ): Promise<NeedsYouResponse> {
   const { rows, requirements, feedback } = await readAttention(projectId, viewer, now);
-  const owed = Object.fromEntries(
-    Object.entries(rows).map(([area, list]) => [
-      area,
-      list.filter((r) => needsViewer(r.standing)).sort(newestFirst),
-    ]),
-  ) as Record<NeedsYouAreaKey, AttentionRow[]>;
+  const owed = owedOf(rows);
   const items = NEEDS_YOU_AREAS.flatMap((area) =>
     owed[area].map(
       (r): NeedsYouItem => ({

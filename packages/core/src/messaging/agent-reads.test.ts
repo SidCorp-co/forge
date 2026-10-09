@@ -15,6 +15,7 @@ describe('a forge-runner api call is the read its route names', () => {
     [`forge-runner api ${P}/requirements/REQ-30`, 'forge_requirement'],
     [`forge-runner api ${P}/requirements/REQ-30/decisions`, 'forge_decisions'],
     [`forge-runner api '${P}/issues/ISS-4/comments?intent=decision'`, 'forge_decisions'],
+    [`forge-runner api ${P}/needs-you/decisions`, 'forge_needs_you'],
     [`forge-runner api ${P}/releases`, 'forge_releases'],
     [`forge-runner api ${P}/releases/0.4.0`, 'forge_release'],
     [`forge-runner api ${P}/metrics/timeseries`, 'forge_metrics_project_timeseries'],

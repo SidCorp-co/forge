@@ -46,7 +46,7 @@ const seenBy = (userId: string) =>
 const framesTo = (userId: string) =>
   sent.filter((f) => f.userIds.includes(userId)).map((f) => f.data);
 
-async function runTurn(settle: { text: string; screenReplaced: boolean } | null) {
+async function runTurn(settle: { text: string; screenReplaced: boolean; heldPart?: true } | null) {
   sent.length = 0;
   const progress = new ConversationProgress('c-1', 'e-1');
   progress.askedBy(ASKER);
@@ -142,6 +142,17 @@ describe('a reply the screen held', () => {
     expect(JSON.stringify(last?.entry)).not.toContain('90%');
     expect(seenBy(OTHER)).not.toContain('90%');
     expect(framesTo(OTHER).at(-1)?.verdict).toBe('withheld');
+  });
+
+  it('settles as `partial` where the part the check passed went out, never as checked or withheld (REQ-41 BC-3)', async () => {
+    const shown =
+      'REQ-4 has three of four criteria agreed.\n\nThe reply check left out a figure that nothing this answer read backs. What is shown above was checked.';
+    await runTurn({ text: shown, screenReplaced: true, heldPart: true });
+    const last = framesTo(ASKER).at(-1);
+    expect(last?.verdict).toBe('partial');
+    expect(last?.entry.content).toBe(shown);
+    expect(JSON.stringify(last?.entry)).not.toContain('90%');
+    expect(framesTo(OTHER).at(-1)?.verdict).toBe('partial');
   });
 });
 

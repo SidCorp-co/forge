@@ -96,16 +96,21 @@ describe('a true answer is never rewritten into a false one', () => {
     expect(out.proof).not.toBeNull();
   });
 
-  it('a rewrite that names an issue the answer did not, where no issue claim was refused, is refused; the answer goes out with its refused claim marked', async () => {
+  it('a rewrite that names an issue the answer did not, where no issue claim was refused, is refused; the one clause it held is cut, never sent marked (REQ-41 BC-3)', async () => {
     const wrongDate = WRONG_DATE; // i18n-allow: the case under test
     const out = await screen(wrongDate, [
       attempt('Issue cũ nhất là ISS-299, được tạo lúc 2026-10-06.'), // i18n-allow: the case under test
     ]);
     expect(out.asked).toHaveLength(1);
-    expect(out.text).toBe(
-      'Issue cũ nhất là ISS-261, được tạo lúc 2026-10-01 (chưa kiểm chứng, có thể sai).', // i18n-allow: the case under test
+    expect(out.text).not.toContain('ISS-299');
+    expect(out.text).not.toContain('2026-10-01');
+    expect(out.text).toContain(
+      'forge wrote an answer, but the reply check held it: it stated a date',
     );
-    expect(out.proof, 'the marked answer passed the same screen').not.toBeNull();
+    expect(
+      out.proof,
+      'with no clause left and no block, the held line is code-authored',
+    ).toBeNull();
   });
 
   it('a rewrite that corrects only the refused date from what the turn read goes out', async () => {
@@ -116,13 +121,14 @@ describe('a true answer is never rewritten into a false one', () => {
     expect(out.text).toBe('Issue cũ nhất là ISS-261, được tạo lúc 2026-10-06.'); // i18n-allow: the case under test
   });
 
-  it('a rewrite stating a date nothing read carries is refused, and the answer goes out marked', async () => {
+  it('a rewrite stating a date nothing read carries is refused, and neither date goes out', async () => {
     const out = await screen(WRONG_DATE, [
       // i18n-allow: the case under test
       attempt('Issue cũ nhất là ISS-261, được tạo lúc 2026-09-20.'), // i18n-allow: the case under test
     ]);
-    expect(out.text).toContain('2026-10-01 (chưa kiểm chứng, có thể sai)'); // i18n-allow: the case under test
+    expect(out.text).not.toContain('2026-10-01');
     expect(out.text).not.toContain('2026-09-20');
+    expect(out.text).toContain('the reply check held it');
   });
 
   it('a rewrite the provider broke off, over an answer nothing can mark, is reported as the failure it is', async () => {

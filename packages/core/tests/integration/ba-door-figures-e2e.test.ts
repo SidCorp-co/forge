@@ -10,6 +10,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 interface Step {
@@ -59,7 +60,7 @@ const { webConversationTurn } = await import('../../src/assistant/web-turn-input
 const { ConversationProgress } = await import('../../src/assistant/conversation-progress.js');
 const { resolveTurnAuthority } = await import('../../src/permissions/index.js');
 const { api, userToken } = await import('../helpers/api.js');
-const { addProjectMember, createTestProject, createTestUser } = await import(
+const { addProjectMember, createTestProject, createTestUser, rows } = await import(
   '../helpers/factories.js'
 );
 
@@ -115,7 +116,7 @@ async function baTurn(key: string, message: string) {
   });
   const resolved = await resolveTurnAuthority({ userId: owner, projectId, viaTokenId: null });
   if (!resolved.ok) throw new Error(resolved.refusal.message);
-  const settled: { text: string; screenReplaced: boolean }[] = [];
+  const settled: { text: string; screenReplaced: boolean; heldPart?: true }[] = [];
   const outcome = await runConversationTurn({
     ...inputs,
     onSettled: (s) => {
@@ -158,10 +159,36 @@ describe('the BA door holds a figure its turn did not read (REQ-32 BC-6)', () =>
     expect(script.asked).toHaveLength(2);
     expect(script.asked[1]).toContain('the reply states the figure 4,812');
     expect(script.asked[1]).toContain('this door runs no report');
-    // no rewrite passed, so the first answer goes out with the figure marked as unchecked
+    // no rewrite passed and its one clause held the figure, so it is cut, never sent marked, and
+    // with no clause and no block left the reply is withheld as the held line (REQ-41 BC-3)
+    expect(settled?.text).not.toContain('4,812');
+    expect(settled?.text).toContain('the reply check held it: it stated a figure');
+    expect(settled?.heldPart).toBeUndefined();
+  });
+
+  it('a reply the check holds still shows the part it could check, with the notice (REQ-41 BC-3)', async () => {
+    const key = await requirement('A session is kept', ['A person stays signed in.']);
+    const checked = `${key} has 1 criterion.`;
+    const draft = `${checked} ${STATED}`;
+    script.asked = [];
+    script.offered = [];
+    script.steps = [
+      { tool: { name: 'ba_read_requirement', args: {} } },
+      { text: draft },
+      { text: draft },
+    ];
+    const { outcome, settled } = await baTurn(key, `How many criteria does ${key} have? ${ASKED}`);
+
+    expect(outcome).toMatchObject({ kind: 'delivered' });
     expect(settled?.text).toBe(
-      'Forge has 4,812 open issues right now (unverified, this may be wrong).',
+      `${checked}\n\nThe reply check left out a figure that nothing this answer read backs. What is shown above was checked.`,
     );
+    expect(settled?.heldPart).toBe(true);
+    // the reply stored for the room is the part shown, never the held figure
+    const [stored] = await rows<{ content: string }>(
+      sql`SELECT content FROM conversation_messages WHERE role = 'assistant' AND content LIKE ${`${checked}%`}`,
+    );
+    expect(stored?.content).not.toContain('4,812');
   });
 
   it('a rewrite that says the figure back as the asker figure goes out', async () => {

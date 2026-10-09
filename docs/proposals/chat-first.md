@@ -39,7 +39,7 @@ it through one new tool, `forge_needs_you`, built on the same function. There is
 1–8 buttons. Each button is a `DECISION_ACTS` entry: the route the record's own page calls, filled by
 core, posted by the browser as the person who presses it, under the permission that route checks
 (BC-9). A decision without a recommendation must say why (`noRecommendation`); the schema refuses
-one that does neither.
+one that does neither. `opens` is null for a question a run asked on no record.
 
 | Row source | Group | Question | Recommended | Buttons |
 |---|---|---|---|---|
@@ -54,9 +54,12 @@ one that does neither.
 `awaiting_proposal` (a draft the assistant has not proposed on yet).
 
 **A free-text question gets a recommended answer.** `FreeTextStep` gains `recommended?: string`. A
-question asked of a person without one is refused `QUESTION_RECOMMENDATION_REQUIRED`, naming the
-field. This is kernel input, so it is refused, never filled in. Questions already open read
-`noRecommendation: "The run that asked gave no recommended answer"`.
+question a run asks a person through the box's door (`POST /api/devices/me/questions`, which
+`forge-runner question ask --needs … --recommend …` sends) without one is refused
+`QUESTION_RECOMMENDATION_REQUIRED`, naming the field. This is kernel input, so it is refused, never
+filled in. A park question minted from a transition's `needs` or a comment's question intent is not
+yet held to it: its writer is forge-plugin, whose half is reported there. Those, and questions
+already open, read `noRecommendation: "The run that asked gave no recommended answer"`.
 
 **In chat.** "What waits on me" is answered from the decisions, grouped, each with its question,
 the recommendation and its buttons drawn from the tool result (the `offer_act` card pattern of

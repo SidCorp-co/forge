@@ -11,6 +11,7 @@ import type {
 	RunnerChange,
 } from "./outbox-events.js";
 import type { PreviewChangedFrame } from "./preview.js";
+import type { ReplyVerdict } from "./reply-check.js";
 
 interface IssueRef {
 	issueId: string;
@@ -98,7 +99,7 @@ export interface WsFramePayloads extends JobFrames {
 			durationMs?: number;
 			isError?: true;
 		}[];
-		verdict?: "checked" | "withheld";
+		verdict?: ReplyVerdict;
 		/** The reply check replaced the draft this turn streamed; the draft's words are never sent again. */
 		replaced?: true;
 	};

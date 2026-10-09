@@ -26,6 +26,7 @@ import { logUnprovenPatPeppers } from './credentials/pat.js';
 import { provideCredentialsPorts } from './credentials/ports.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
+import { forgeNeedsYouTool } from './development/index.js';
 import {
   contractHolding,
   contractProviderGate,
@@ -277,7 +278,13 @@ provideProjectConfigPorts({
 // the chat toolset composed below describes the registered queries, so they are registered first
 registerReportQueries();
 provideReportPorts();
-provideChatTools([...CHAT_READ_MODEL_TOOLS, ...CHAT_RECORD_TOOLS, ...CHAT_REPORT_TOOLS]);
+// the needs-me read (REQ-41 BC-1) is the development module's own tool, wired here beside the read models
+provideChatTools([
+  ...CHAT_READ_MODEL_TOOLS,
+  { factory: forgeNeedsYouTool },
+  ...CHAT_RECORD_TOOLS,
+  ...CHAT_REPORT_TOOLS,
+]);
 provideHeldWriteVets(CHAT_RECORD_VETS);
 provideDataPolicy(
   async (projectId) => (await readProjectDocument(projectId))?.document.sensitiveData,

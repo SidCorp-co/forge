@@ -49,7 +49,7 @@ type QuestionExecutor = IssueDependencyExecutor;
 
 export type AskAnswer =
   | { shape: 'choice'; options: QuestionOption[]; recommendedOptionId: string }
-  | { shape: 'free_text'; needed: string };
+  | { shape: 'free_text'; needed: string; recommended?: string };
 
 export type AskInput = {
   id: string;
@@ -76,6 +76,11 @@ export type AskInput = {
   awaitsDesign?: AwaitedDesign;
   /** The issue whose merge mark answers this question; only a park names one. */
   awaitsMerge?: AwaitedMerge;
+  /**
+   * A run asks this of a person through its own door: a free-text round then owes the answer it
+   * recommends (REQ-41 BC-2), as a choice round owes its recommended option.
+   */
+  askedByRun?: true;
 };
 
 export const refuseQuestion = refuser<QuestionRefusalCode>('QUESTION_REFUSED');
@@ -117,7 +122,7 @@ function checkOptions(options: QuestionOption[], recommendedOptionId: string) {
   }
 }
 
-function checkAnswer(answer: AskAnswer): void {
+function checkAnswer(answer: AskAnswer, owesRecommendation = false): void {
   if (answer.shape === 'choice') {
     checkOptions(answer.options, answer.recommendedOptionId);
     return;
@@ -126,6 +131,13 @@ function checkAnswer(answer: AskAnswer): void {
     throw refuseQuestion(
       'QUESTION_SHAPE_INVALID',
       'a free-text round states what would settle it — the credential, the missing paragraph, which reading was meant. Without that the person is asked to guess what counts as an answer',
+    );
+  }
+  if (owesRecommendation && !answer.recommended?.trim()) {
+    throw refuseQuestion(
+      'QUESTION_RECOMMENDATION_REQUIRED',
+      '`recommended` is required on a free-text question a run asks a person: the answer you recommend, which they may send as it stands or replace. A person is asked only what nobody else can answer, and always with a recommended answer; or ask a choice round with `recommendedOptionId`',
+      '/recommended',
     );
   }
 }
@@ -153,7 +165,12 @@ function buildStep(
         options: answer.options,
         recommendedOptionId: answer.recommendedOptionId,
       }
-    : { ...common, answerShape: 'free_text', needed: answer.needed };
+    : {
+        ...common,
+        answerShape: 'free_text',
+        needed: answer.needed,
+        ...(answer.recommended?.trim() ? { recommended: answer.recommended.trim() } : {}),
+      };
 }
 
 async function checkIssueBelongsToProject(
@@ -201,7 +218,7 @@ async function refuseFinishedWork(executor: QuestionExecutor, issueId: string | 
  * live issue, row.
  */
 export async function insertAskedQuestion(executor: QuestionExecutor, input: AskInput) {
-  checkAnswer(input.answer);
+  checkAnswer(input.answer, input.askedByRun === true && input.blockerKind === 'human');
   await checkIssueBelongsToProject(executor, input.issueId, input.projectId);
   await refuseFinishedWork(executor, input.issueId);
   if (input.about && input.awaitsMerge) {

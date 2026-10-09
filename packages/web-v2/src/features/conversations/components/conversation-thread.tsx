@@ -23,8 +23,9 @@ import { USER_BUBBLE } from "@/features/session/layout";
 import { settingsHref } from "@/features/project-settings/sections";
 import { SaveTemplateReport, ShareAction, shareSubjectOf, templateSaveOf } from "@/features/shares";
 import { executionFactsIn, runFactsIn, VisualBlockProvider, VisualBlockView } from "@/features/visual-blocks";
-import { type MessageEntry, parseMessages } from "@/features/session/types";
+import { type CanonicalBlock, type MessageEntry, parseMessages } from "@/features/session/types";
 import { type Correction, withoutCorrections } from "../corrections";
+import { TurnDecisions } from "../turn-decisions";
 import {
   AGENT_TURN_LABEL,
   type AgentTurn,
@@ -383,6 +384,7 @@ export function ConversationThread({
                 share={projectId ? { projectId, projectSlug } : undefined}
               />
               {afterEntry?.(entry.message.id)}
+              <TurnDecisions blocks={entry.message.blocks} slug={projectSlug} />
             </div>
           );
         if (entry.kind === "outbox")
@@ -414,6 +416,9 @@ export function ConversationThread({
               {...(newestAgentId ? { newestAgentId } : {})}
             />
             {afterEntry?.(entry.progress.entry.id ?? "live")}
+            {entry.progress.verdict && entry.progress.verdict !== "withheld" && (
+              <TurnDecisions blocks={entry.progress.entry.blocks as CanonicalBlock[] | undefined} slug={projectSlug} />
+            )}
             </div>
           );
         const undelivered = undeliveredReplyOf(entry.detail, t);

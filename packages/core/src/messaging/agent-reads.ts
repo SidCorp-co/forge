@@ -30,6 +30,7 @@ const AGENT_READ_ROUTES: readonly { re: RegExp; method: Method; read: string }[]
     method: 'GET',
     read: 'forge_decisions',
   },
+  { re: /^projects\/[^/]+\/needs-you\/decisions$/, method: 'GET', read: 'forge_needs_you' },
   { re: /^projects\/[^/]+\/releases$/, method: 'GET', read: 'forge_releases' },
   { re: /^projects\/[^/]+\/releases\/[^/]+$/, method: 'GET', read: 'forge_release' },
   {

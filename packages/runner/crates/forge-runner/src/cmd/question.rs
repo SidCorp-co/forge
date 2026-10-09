@@ -57,7 +57,9 @@ pub struct AskArgs {
     /// An option the person clicks instead of typing, `id=label`, repeatable.
     #[arg(long = "option", value_name = "ID=LABEL")]
     pub options: Vec<String>,
-    /// Which option is recommended, by id.
+    /// Which option is recommended, by id; with `--needs`, the answer you
+    /// recommend, in the words the person may send as it stands. Core refuses a
+    /// free-text ask of a person without one (REQ-41 BC-2).
     #[arg(long)]
     pub recommend: Option<String>,
     /// The issue this is about. Left out, the question is the box's own and is
@@ -105,6 +107,8 @@ struct Shape {
     options: serde_json::Value,
     recommended_option_id: String,
     needed: Option<String>,
+    /// A free-text round's recommended answer, sent as written.
+    recommended: Option<String>,
 }
 
 fn shape_of(a: &AskArgs) -> anyhow::Result<Shape> {
@@ -125,12 +129,19 @@ fn shape_of(a: &AskArgs) -> anyhow::Result<Shape> {
             options: serde_json::json!([]),
             recommended_option_id: String::new(),
             needed: Some(need.to_string()),
+            recommended: a
+                .recommend
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
         }),
         (None, false) => Ok(Shape {
             answer_shape: None,
             options: options_of(&a.options, &a.authority)?,
             recommended_option_id: a.recommend.clone().unwrap_or_default(),
             needed: None,
+            recommended: None,
         }),
     }
 }
@@ -233,6 +244,7 @@ async fn send_ask(
             options: shape.options,
             recommended_option_id: &shape.recommended_option_id,
             needed: shape.needed.as_deref(),
+            recommended: shape.recommended.as_deref(),
             assumed: None,
             cost: None,
             sensitive: Some(a.sensitive),
@@ -378,5 +390,46 @@ fn refused_answer(err: Error, question_id: &str, run_id: &str) -> anyhow::Error 
              pass here. The answer itself is on the screen either way."
         ),
         other => anyhow::anyhow!("{other}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(needs: Option<&str>, recommend: Option<&str>, options: &[&str]) -> AskArgs {
+        AskArgs {
+            project: "forge-dev".into(),
+            prompt: "Which region does the backup go to?".into(),
+            needs: needs.map(str::to_string),
+            options: options.iter().map(|o| o.to_string()).collect(),
+            recommend: recommend.map(str::to_string),
+            issue: None,
+            run: None,
+            blocker: "human".into(),
+            authority: "writer".into(),
+            sensitive: false,
+        }
+    }
+
+    #[test]
+    fn a_free_text_ask_carries_the_answer_it_recommends() {
+        let shape = shape_of(&args(Some("a region name"), Some(" eu-west-1 "), &[])).unwrap();
+        assert_eq!(shape.answer_shape, Some("free_text"));
+        assert_eq!(shape.recommended.as_deref(), Some("eu-west-1"));
+        assert_eq!(shape.recommended_option_id, "");
+    }
+
+    #[test]
+    fn a_blank_recommendation_is_sent_as_none_for_core_to_refuse_by_name() {
+        let shape = shape_of(&args(Some("a region name"), Some("  "), &[])).unwrap();
+        assert_eq!(shape.recommended, None);
+    }
+
+    #[test]
+    fn a_choice_ask_names_its_recommended_option_by_id_and_sends_no_text() {
+        let shape = shape_of(&args(None, Some("keep"), &["keep=Keep it", "move=Move it"])).unwrap();
+        assert_eq!(shape.recommended_option_id, "keep");
+        assert_eq!(shape.recommended, None);
     }
 }

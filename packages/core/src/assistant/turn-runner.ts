@@ -392,7 +392,11 @@ async function continueInThread(
       : rest.ended === 'failed'
         ? rest.report
         : codeAuthored(nothingMoreReply(req.handleName, language));
-    entry?.onSettled?.({ text: message.text, screenReplaced: rest.send && rest.screenReplaced });
+    entry?.onSettled?.({
+      text: message.text,
+      screenReplaced: rest.send && rest.screenReplaced,
+      ...(message.held ? { heldPart: true } : {}),
+    });
     const blocks = rest.send ? (rest.blocks ?? []) : [];
     const receipt = await transport.deliver(req.venue, message, {
       addressee: req.addressee ?? null,
@@ -454,7 +458,11 @@ async function deliverReply(
     if (req.onBeforeDeliver && !(await req.onBeforeDeliver())) {
       return { kind: 'superseded', reason: 'the right to answer here moved to another holder' };
     }
-    req.onSettled?.({ text: reply.message.text, screenReplaced: reply.screenReplaced });
+    req.onSettled?.({
+      text: reply.message.text,
+      screenReplaced: reply.screenReplaced,
+      ...(reply.message.held ? { heldPart: true } : {}),
+    });
     const blocks = reply.blocks ?? [];
     receipt = await transport.deliver(req.venue, reply.message, {
       addressee: req.addressee ?? null,

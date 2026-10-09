@@ -179,11 +179,22 @@ export const needsYouDecisionSchema = z
 		/** The row's key, as the Needs you read lists it. */
 		key: z.string().min(1).max(200),
 		title: z.string().max(500),
-		/** The record that opens to decide it, as `ui.open` takes it (it may be the row's own key, or the issue a requirement waits on). */
-		opens: z.strictObject({
-			kind: z.enum(["issue", "requirement", "feedback", "workflow", "release"]),
-			key: z.string().min(1).max(200),
-		}),
+		/**
+		 * The record that opens to decide it, as `ui.open` takes it (it may be the row's own key, or the
+		 * issue a requirement waits on); null where no record holds it, a question a run asked on nothing.
+		 */
+		opens: z
+			.strictObject({
+				kind: z.enum([
+					"issue",
+					"requirement",
+					"feedback",
+					"workflow",
+					"release",
+				]),
+				key: z.string().min(1).max(200),
+			})
+			.nullable(),
 		/** What is asked, in the asker's words, or Forge's for an approval. */
 		question: z.string().min(1).max(LIMITS.question),
 		recommended: decisionRecommendationSchema.nullable(),
