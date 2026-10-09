@@ -1,5 +1,5 @@
 import { articleFor } from '@forge/contracts/articles';
-import type { MemoryRefusalCode } from '@forge/contracts/memory';
+import { MEMORY_MIRROR_SOURCES, type MemoryRefusalCode } from '@forge/contracts/memory';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -116,10 +116,24 @@ interface WriteBy {
   writtenBy?: string | undefined;
 }
 
+/**
+ * A mirror (`issue`, `comment`, `job`) is core's copy of another record, indexed under that record's
+ * id: a caller's write there would replace the copy in silence and be replaced by the next index.
+ */
+function assertNotMirror(input: WriteMemoryInput): void {
+  if (!(MEMORY_MIRROR_SOURCES as readonly string[]).includes(input.source)) return;
+  throw refuse(
+    'MEMORY_MIRROR_READ_ONLY',
+    `${input.source} memory is core's copy of each ${input.source}, written from the ${input.source} itself, so a write here would replace it. Write a learning as source note, or change the ${input.source}.`,
+    '/source',
+  );
+}
+
 export async function runMemoryWrite(
   input: WriteMemoryInput,
   by: WriteBy = {},
 ): Promise<IndexResult> {
+  assertNotMirror(input);
   assertAgentMemoryQuality(input);
   const carried = await carriedFromExisting(input);
   const metadata = {

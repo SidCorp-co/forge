@@ -212,4 +212,36 @@ describe('memory as a person reads it, and a person acts on it', () => {
     const res = await act(w, row.id, 'retire', { reason: 'not mine' }, await userToken(reader.id));
     expect(res.status).toBe(403);
   });
+
+  // ISS-457 round 1 saw a run's learning, written as source issue, replace the issue's own search
+  // entry and answer 201 with the same row id: a mirror is core's copy of its record, never a caller's.
+  it('refuses a caller write under a mirror source by name, and leaves the mirror as core wrote it', async () => {
+    for (const source of ['issue', 'comment', 'job'] as const) {
+      const ref = randomUUID();
+      await db.execute(sql`
+        INSERT INTO memories (project_id, source, source_ref, text_content)
+        VALUES (${w.projectId}, ${source}, ${ref}, ${`${source} text as core indexed it`})
+      `);
+      const res = await api(agentToken, 'POST', '/api/memory', {
+        projectId: w.projectId,
+        source,
+        sourceRef: ref,
+        textContent: 'A learning the run meant to keep.',
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(code(res.body)).toBe('MEMORY_MIRROR_READ_ONLY');
+      expect((res.body.error as { refusals: { path: string }[] }).refusals[0]?.path).toBe('/source');
+      const kept = await db.execute<{ text_content: string }>(sql`
+        SELECT text_content FROM memories WHERE project_id = ${w.projectId} AND source = ${source} AND source_ref = ${ref}
+      `);
+      expect(kept.map((r) => r.text_content)).toEqual([`${source} text as core indexed it`]);
+    }
+    const fresh = await api(agentToken, 'POST', '/api/memory', {
+      projectId: w.projectId,
+      source: 'issue',
+      sourceRef: randomUUID(),
+      textContent: 'A learning with no mirror under it yet.',
+    });
+    expect(code(fresh.body)).toBe('MEMORY_MIRROR_READ_ONLY');
+  });
 });
