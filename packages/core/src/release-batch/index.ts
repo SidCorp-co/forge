@@ -37,8 +37,8 @@ export {
 } from './queries.js';
 export { bindingReachesProduction } from './release-coolify.js';
 export { nextDraftVersion, readRelease } from './release-read.js';
-export { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-earlier.js';
-export { deploymentConfirms } from './verify.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export type { ViewerFacts } from './release-view.js';
+export { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-earlier.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';
+export { deploymentConfirms } from './verify.js';

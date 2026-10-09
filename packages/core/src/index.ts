@@ -113,6 +113,7 @@ import {
 import { registerOutboxConsumers } from './outbox-consumers.js';
 import { providePermissionsPorts, readsTechnical } from './permissions/index.js';
 import { pipelineRunProjectId } from './pipeline/index.js';
+import { providePreferencesPorts } from './preferences/index.js';
 import { approvedPreviewOf, withPreviewHosts } from './previews/index.js';
 import {
   encryptPlaintextBindingSecrets,
@@ -143,7 +144,6 @@ import {
   registerReleaseBatchFinish,
   releaseVersionsAmong,
 } from './release-batch/index.js';
-import { providePreferencesPorts } from './preferences/index.js';
 import { releaseShareSource } from './release-page/index.js';
 import { provideReportPorts } from './report-ports.js';
 import { registerReportQueries } from './report-queries/index.js';
@@ -174,8 +174,8 @@ import {
   staleOnTargetRevised,
 } from './suggestions/index.js';
 import { coreTimers } from './timer-registry.js';
-import { provideWorkPorts } from './work-ports.js';
 import { readServing } from './whats-new/index.js';
+import { provideWorkPorts } from './work-ports.js';
 import { workflowDesign, workflowFlowsOf } from './workflows/index.js';
 import { attachWs, closeWs, publishEphemeralFrame } from './ws/index.js';
 
