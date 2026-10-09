@@ -10,6 +10,7 @@ import type {
 	OutboxEventPayload,
 	RunnerChange,
 } from "./outbox-events.js";
+import type { PreviewChangedFrame } from "./preview.js";
 
 interface IssueRef {
 	issueId: string;
@@ -64,6 +65,12 @@ export interface WsFramePayloads extends JobFrames {
 	};
 	"issue.pipelineHealth.changed": { issueId?: string; projectId?: string };
 	"issue.unblockCascade": UnblockCascadeFrame;
+	/**
+	 * A preview moved (REQ-39): the issue and chat showing it refetch. Listed ahead of its router as
+	 * the contract the preview build lanes share; the preview-web lane routes it in
+	 * `lib/ws/event-router.ts`, which ends that exception to the rule above.
+	 */
+	"preview.changed": PreviewChangedFrame;
 	/** A question was asked, answered, voided or expired: screens showing questions, or the marker a question leaves, refetch. */
 	"question.changed": {
 		questionId: string;
