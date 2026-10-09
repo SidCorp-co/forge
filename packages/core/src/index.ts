@@ -1,7 +1,7 @@
 // The composition root: run the start sequence, mount the route registry, serve, wind down.
 
 import './error-tracking-init.js';
-import type { Server as HttpServer } from 'node:http';
+import { createServer, type Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -33,6 +33,7 @@ import {
   interfaceContractsOf,
 } from './ecosystem/index.js';
 import { provideExecutionPorts } from './execution-ports.js';
+import { provideFastLanePorts } from './fast-lane/index.js';
 import {
   embedFeedback,
   provideFeedbackDependents,
@@ -112,6 +113,7 @@ import {
 import { registerOutboxConsumers } from './outbox-consumers.js';
 import { providePermissionsPorts, readsTechnical } from './permissions/index.js';
 import { pipelineRunProjectId } from './pipeline/index.js';
+import { approvedPreviewOf, withPreviewHosts } from './previews/index.js';
 import {
   encryptPlaintextBindingSecrets,
   provideProjectConfigPorts,
@@ -192,6 +194,8 @@ providePermissionsPorts({
 });
 provideWorkPorts();
 provideExecutionPorts();
+// the fast lane reads an issue's approved preview from the previews module (REQ-39 BC-7)
+provideFastLanePorts({ approvedPreviewOf });
 provideStatusReportsPorts({
   readProjectStatus: ({ projectId, access, userId, agency, days, now }) =>
     readProjectStatus(projectId, statusViewerOf(access, userId, agency), days, now),
@@ -422,9 +426,19 @@ if (isMain) {
   registerOutboxConsumers();
   await startOutboxWorker();
 
-  const server = serve({ fetch: app.fetch, port }, (info) => {
-    logger.info({ port: info.port }, '@forge/core listening');
-  });
+  // a preview host (`<label>.<PREVIEW_DOMAIN>`) is answered by the preview relay before the API
+  // routes, as raw Node requests it streams to the box (REQ-39)
+  const server = serve(
+    {
+      fetch: app.fetch,
+      port,
+      createServer: ((options, listener) =>
+        createServer(options, withPreviewHosts(listener))) as typeof createServer,
+    },
+    (info) => {
+      logger.info({ port: info.port }, '@forge/core listening');
+    },
+  );
 
   attachWs(server as unknown as HttpServer);
   startDeferredBackfills();

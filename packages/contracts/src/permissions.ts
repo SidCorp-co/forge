@@ -14,12 +14,14 @@ const APPROVAL_RESOURCES = [
 	"releases",
 	"plans",
 	"patterns",
+	"previews",
 ] as const;
 export type ApprovalResource = (typeof APPROVAL_RESOURCES)[number];
 export type ApprovalPermission = `${ApprovalResource}.approve`;
 
-export const approvalPermission = (resource: ApprovalResource): ApprovalPermission =>
-	`${resource}.approve`;
+export const approvalPermission = (
+	resource: ApprovalResource,
+): ApprovalPermission => `${resource}.approve`;
 
 const APPROVE = APPROVAL_RESOURCES.map(approvalPermission);
 
@@ -101,7 +103,10 @@ export type ProjectPermission = (typeof PROJECT_PERMISSIONS)[number];
 export const ORG_PERMISSIONS = ["org.read", "org.admin", "org.own"] as const;
 export type OrgPermission = (typeof ORG_PERMISSIONS)[number];
 
-export const PERMISSIONS = [...PROJECT_PERMISSIONS, ...ORG_PERMISSIONS] as const;
+export const PERMISSIONS = [
+	...PROJECT_PERMISSIONS,
+	...ORG_PERMISSIONS,
+] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 /** Whether a person or an agent is at the keyboard of an act: what an actor carries and an audit row records. */
 export type ActorAgency = "human" | "agent";
@@ -114,16 +119,29 @@ type ProjectRole = (typeof PROJECT_ROLES)[number];
  * What each project role holds. Approval is admin's by default; to let members approve, add
  * `...APPROVE` to the member line.
  */
-export const ROLE_PERMISSIONS: Readonly<Record<ProjectRole, readonly ProjectPermission[]>> = {
+export const ROLE_PERMISSIONS: Readonly<
+	Record<ProjectRole, readonly ProjectPermission[]>
+> = {
 	viewer: [...READ],
 	member: [...READ, ...WRITE, ...PERSONAL],
-	admin: [...READ, ...WRITE, ...PERSONAL, ...APPROVE, ...DEPLOY, ...PUBLIC_SHARE, ...EXEC, ...ADMIN],
+	admin: [
+		...READ,
+		...WRITE,
+		...PERSONAL,
+		...APPROVE,
+		...DEPLOY,
+		...PUBLIC_SHARE,
+		...EXEC,
+		...ADMIN,
+	],
 };
 
 const ORG_ROLES = ["member", "admin", "owner"] as const;
 type OrgRole = (typeof ORG_ROLES)[number];
 
-export const ORG_ROLE_PERMISSIONS: Readonly<Record<OrgRole, readonly OrgPermission[]>> = {
+export const ORG_ROLE_PERMISSIONS: Readonly<
+	Record<OrgRole, readonly OrgPermission[]>
+> = {
 	member: ["org.read"],
 	admin: ["org.read", "org.admin"],
 	owner: ["org.read", "org.admin", "org.own"],
@@ -154,8 +172,13 @@ export const TOKEN_EXPLICIT_PERMISSIONS: readonly Permission[] = [
  * credential reads the code into an observation and cannot write or decide the design it is read
  * against (REQ-17 BC-20, design-reconciliation `dispatch-observer`).
  */
-export const TOKEN_GRANT_EXCLUSIONS: Readonly<Partial<Record<Permission, readonly Permission[]>>> = {
-	"workflow-observations.write": ["workflow-designs.write", "workflow-designs.approve"],
+export const TOKEN_GRANT_EXCLUSIONS: Readonly<
+	Partial<Record<Permission, readonly Permission[]>>
+> = {
+	"workflow-observations.write": [
+		"workflow-designs.write",
+		"workflow-designs.approve",
+	],
 };
 
 /** The verb of a permission: anything but `read` is a write, and needs a token's `write` scope. */

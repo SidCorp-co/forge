@@ -6,6 +6,7 @@ import { SENSITIVE_DATA_LEVELS } from '@forge/contracts/data-policy';
 import { deliveryPolicySchema } from '@forge/contracts/delivery-policy';
 import { fastLaneSettingsSchema } from '@forge/contracts/fast-lane';
 import { FEEDBACK_VERIFY_WINDOW } from '@forge/contracts/feedback';
+import { previewSettingsSchema } from '@forge/contracts/preview';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
 import { rewriteThresholdSchema } from '@forge/contracts/workflow-health';
@@ -255,6 +256,11 @@ export const projectDocumentSchema = z.strictObject({
         .optional(),
     })
     .optional(),
+  // how a run's live preview starts (REQ-39 BC-11): the dev command, its port or `{port}`, the
+  // directory and the idle close. Absent, core reads it from the repository's package.json each time
+  // a preview opens (`@forge/contracts/preview:detectPreviewSettings`); `environment` naming a
+  // production-tier environment is refused when a preview opens (BC-13).
+  preview: previewSettingsSchema.optional(),
   // which changed files may take the fast lane after a preview is approved, the full-gate areas a
   // project adds to the built-in ones, and the deploy targets a web-only deploy fans out to (REQ-39
   // BC-7, BC-8; `@forge/contracts/fast-lane:classifyLane`). Absent, every change is full lane.

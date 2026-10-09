@@ -49,6 +49,11 @@ export const PREVIEW_FAILURE_REASONS = [
 	"DEV_SERVER_EXITED",
 	/** The dev server kept running but never answered on its port within the ready timeout. */
 	"DEV_SERVER_NOT_LISTENING",
+	/**
+	 * The dev server answered on an address other than loopback, where anyone who can reach the box
+	 * could open it without Forge (BC-5); the box stopped it. `detail` names the address.
+	 */
+	"DEV_SERVER_EXPOSED",
 	/** The box's tunnel dropped and did not return within the grace period. */
 	"RUNNER_OFFLINE",
 	/** The box's runner predates previews and does not declare the capability. */
@@ -294,6 +299,18 @@ export type PreviewDetection =
  * known dev server gets `--port {port}`; a script that fixes its own port keeps it; anything else is
  * refused by name, never guessed.
  */
+/**
+ * The flag that keeps a dev server on loopback where its framework binds every address by default:
+ * `next dev` listens on 0.0.0.0 unless given `--hostname`, and reads no variable for it, so the box's
+ * `HOST=127.0.0.1` does not reach it (BC-5). Empty where the script names its own host or binds
+ * loopback already.
+ */
+function loopbackFlagOf(dev: string): string {
+	if (!/\bnext\s+dev\b/.test(dev)) return "";
+	if (/(?:^|\s)(?:-H|--hostname)(?:[ =]|$)/.test(dev)) return "";
+	return "--hostname 127.0.0.1";
+}
+
 export function detectPreviewSettings(
 	facts: RepositoryFacts,
 ): PreviewDetection {
@@ -330,10 +347,15 @@ export function detectPreviewSettings(
 	const manager = packageManagerOf(pkg, facts.lockfiles);
 	const base = { ...(facts.cwd === "" ? {} : { cwd: facts.cwd }) };
 	const fixed = /(?:--port[ =]|-p )(\d{2,5})\b/.exec(dev);
+	const loopback = loopbackFlagOf(dev);
 	if (fixed?.[1] !== undefined) {
 		return {
 			ok: true,
-			settings: { command: manager.run, port: Number(fixed[1]), ...base },
+			settings: {
+				command: `${manager.run}${loopback === "" ? "" : ` ${manager.pass}${loopback}`}`,
+				port: Number(fixed[1]),
+				...base,
+			},
 			framework: frameworkOf(pkg) ?? "unknown",
 			packageManager: manager.name,
 		};
@@ -349,7 +371,7 @@ export function detectPreviewSettings(
 	return {
 		ok: true,
 		settings: {
-			command: `${manager.run} ${manager.pass}--port ${PREVIEW_PORT_PLACEHOLDER}`,
+			command: `${manager.run} ${manager.pass}--port ${PREVIEW_PORT_PLACEHOLDER}${loopback === "" ? "" : ` ${loopback}`}`,
 			...base,
 		},
 		framework,

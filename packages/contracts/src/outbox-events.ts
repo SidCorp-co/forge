@@ -55,6 +55,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"session.pushed",
 	"issue.pushed",
 	"conversation.pushed",
+	"preview.transitioned",
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
@@ -124,6 +125,7 @@ export const TRANSITION_EVENTS = {
 	job: ["done", "failed"],
 	run: "every",
 	question: ["answered", "void", "expired"],
+	preview: "every",
 } as const satisfies {
 	readonly [E in MachineEntity]?: "every" | readonly StateOf<E>[];
 };
@@ -219,6 +221,8 @@ export interface OutboxEventPayloads {
 	"job.transitioned": TransitionEvent<"job">;
 	"run.transitioned": TransitionEvent<"run">;
 	"question.transitioned": TransitionEvent<"question">;
+	/** A preview moved (REQ-39); a failure's `reason` is its `PreviewFailureReason`. */
+	"preview.transitioned": TransitionEvent<"preview">;
 	/** A question was written open, by any door; an answer, a void and an expiry are its `question.transitioned`. */
 	"question.asked": {
 		questionId: string;

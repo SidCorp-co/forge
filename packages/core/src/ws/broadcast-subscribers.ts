@@ -1,5 +1,6 @@
 import type { ConsumedBy, OutboxConsumerOf } from '@forge/contracts/outbox-consumers';
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
+import { PREVIEW_FAILURE_REASONS, type PreviewFailureReason } from '@forge/contracts/preview';
 import type { WsFrameName, WsFramePayloads } from '@forge/contracts/ws-frames';
 import { refuser } from '../lib/refusal.js';
 import { deviceRoom, projectRoom, roomManager, runnerRoom, userRoom } from '../lib/rooms.js';
@@ -72,6 +73,22 @@ export function registerWsBroadcastSubscribers(): void {
       projectId: p.projectId,
       issueId: p.issueId,
       change: p.to,
+    });
+  });
+
+  // the issue and chat showing a preview refetch it; a failure names its reason (REQ-39 BC-10)
+  on('preview.transitioned', (p) => {
+    const reason =
+      p.to === 'failed' && (PREVIEW_FAILURE_REASONS as readonly string[]).includes(p.reason ?? '')
+        ? (p.reason as PreviewFailureReason)
+        : null;
+    frame(projectRoom(p.projectId), 'preview.changed', {
+      previewId: p.id,
+      projectId: p.projectId,
+      issueId: p.issueId ?? '',
+      state: p.to,
+      reason,
+      at: p.at,
     });
   });
 

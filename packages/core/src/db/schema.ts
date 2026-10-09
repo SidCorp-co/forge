@@ -36,6 +36,7 @@ export * from './schema-orgs.js';
 export * from './schema-permissions.js';
 export * from './schema-pipeline.js';
 export * from './schema-preferences.js';
+export * from './schema-previews.js';
 export * from './schema-product-state.js';
 export * from './schema-project-config.js';
 export * from './schema-projects.js';
