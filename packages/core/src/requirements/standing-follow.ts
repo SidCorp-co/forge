@@ -34,3 +34,30 @@ export function updateToApprovedEffect(
     ],
   });
 }
+
+/** A node a live criterion traces that a newer approved design removed or renamed (`auto-follow.ts:tracedStepChanges`). */
+export interface TracedChange {
+  code: string;
+  flow: string;
+  /** The design's own name, as the stale pin names it. */
+  title: string;
+  approved: number;
+  /** The step id, or `from>to` for an edge. */
+  node: string;
+  change: 'removed' | 'renamed';
+}
+
+const unique = (xs: readonly string[]) => [...new Set(xs)];
+
+/** What the assistant owes when an approved design changed what criteria trace: revise them, named by the first design that did. */
+export function reviseForDesignAct(changes: readonly TracedChange[]): Said {
+  const [first] = changes;
+  if (!first) throw new Error('reviseForDesignAct: called with no traced change');
+  const same = changes.filter((c) => c.flow === first.flow);
+  return say('standing.act.reviseForDesign', {
+    codes: unique(same.map((c) => c.code)).join(', '),
+    design: first.title,
+    r: first.approved,
+    steps: unique(same.map((c) => `${c.node} ${c.change}`)).join(', '),
+  });
+}

@@ -1,0 +1,1 @@
+**Fewer rows wait on a person for nothing.** A requirement follows an approved design unless a traced step changed, a run that spent its sessions parks for its master, and a week-old draft gets one merge-or-drop question.

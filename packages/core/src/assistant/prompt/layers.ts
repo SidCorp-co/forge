@@ -7,11 +7,18 @@ import { WEB_AGENT_DOOR_LAYER } from './door-web-agent.js';
 import { IDENTITY_LAYER } from './identity.js';
 import type { PromptLayer } from './layer.js';
 import { LINKING_LAYER } from './linking.js';
+import { MERGE_OR_DROP_LAYER } from './merge-or-drop.js';
 import { TOOLS_LAYER } from './tools.js';
 export const METHOD_LAYERS: readonly PromptLayer[] = [BASE_LAYER, TOOLS_LAYER];
 
 /** What every door renders before its own layer. */
-const OPENING: readonly PromptLayer[] = [IDENTITY_LAYER, BASE_LAYER, TOOLS_LAYER, LINKING_LAYER];
+const OPENING: readonly PromptLayer[] = [
+  IDENTITY_LAYER,
+  BASE_LAYER,
+  TOOLS_LAYER,
+  LINKING_LAYER,
+  MERGE_OR_DROP_LAYER,
+];
 
 export const WEB_DOOR_LAYERS: readonly PromptLayer[] = [...OPENING, WEB_DOOR_LAYER];
 export const WEB_AGENT_DOOR_LAYERS: readonly PromptLayer[] = [...OPENING, WEB_AGENT_DOOR_LAYER];

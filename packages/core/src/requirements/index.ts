@@ -1,4 +1,5 @@
 export { dropAsDuplicateIn } from './acceptance.js';
+export { followApprovedDesigns, registerRequirementFollow } from './auto-follow.js';
 export { latestBaselineIn } from './baselines.js';
 export { requirementKeysAndTitles, requirementStatusesBySeq } from './cited-requirements.js';
 export {
@@ -29,5 +30,6 @@ export {
   rewriteRevisionIn,
 } from './revision-write.js';
 export { linkIssueRefusal } from './rules.js';
+export { sweepStaleDrafts } from './stale-drafts.js';
 export { deliveredAmong, requirementStatesOf, standingsOf } from './standing-read.js';
 export { lockRequirements } from './write-tx.js';

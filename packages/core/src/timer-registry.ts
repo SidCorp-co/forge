@@ -31,7 +31,11 @@ import { runPipelineSweep } from './pipeline-sweep.js';
 import { sweepPreviews } from './previews/index.js';
 import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
 import { sweepExpiredExecutions, sweepExpiredReportRuns } from './reports/index.js';
-import { sweepDeliveredRequirements } from './requirements/index.js';
+import {
+  followApprovedDesigns,
+  sweepDeliveredRequirements,
+  sweepStaleDrafts,
+} from './requirements/index.js';
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
 import { sweepSuggestions } from './suggestions/index.js';
@@ -89,6 +93,39 @@ const logged =
     const result = await run();
     if (when(result)) logger.info(result, message);
   };
+
+/**
+ * REQ-41 BC-10, BC-12: a design approval a requirement's traces survive is followed by itself (the
+ * outbox consumer acts on the approval; this catches a row the approval found not agreed, rows stale
+ * before the rule, and a lost delivery), and a draft untouched for a week is asked about once.
+ */
+function requirementTimers(): Timer[] {
+  return [
+    {
+      kind: 'cluster',
+      name: 'design-follow-sweep',
+      cron: '23 * * * *',
+      run: logged(
+        'design-follow-sweep: followed',
+        followApprovedDesigns,
+        (r) => (r as { followed: number }).followed > 0,
+      ),
+    },
+    {
+      kind: 'cluster',
+      name: 'stale-draft-sweep',
+      cron: '41 * * * *',
+      run: logged(
+        'stale-draft-sweep: asked',
+        () => sweepStaleDrafts(),
+        (r) => {
+          const { asked, refused } = r as { asked: number; refused: number };
+          return asked > 0 || refused > 0;
+        },
+      ),
+    },
+  ];
+}
 
 export function coreTimers(): Timer[] {
   return [
@@ -272,6 +309,7 @@ export function coreTimers(): Timer[] {
         (r) => (r as { raised: number }).raised > 0,
       ),
     },
+    ...requirementTimers(),
 
     // Process timers: faster than a minute, or bound to this process's sockets, memory or disk.
     // A preview idles, or fails when its box's tunnel is away: the tunnels are this process's sockets.

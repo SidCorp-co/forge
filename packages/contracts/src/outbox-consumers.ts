@@ -47,7 +47,11 @@ export const OUTBOX_CONSUMERS = {
 	"source.merged": ["issue-merge-stamp"],
 	"source.reviewed": ["review-note"],
 	"integration.changed": ["ws-broadcast"],
-	"workflow.designDecided": ["master-wake", "first-requirements"],
+	"workflow.designDecided": [
+		"master-wake",
+		"first-requirements",
+		"requirement-follow",
+	],
 	"channel.documentPublished": ["notify-ecosystem", "master-wake"],
 	"channel.gateAsked": ["notify-ecosystem"],
 	"channel.gateDecided": ["notify-ecosystem"],
