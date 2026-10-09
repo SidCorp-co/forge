@@ -3153,6 +3153,8 @@
 
 ### Fixed
 
+- **Two runner commands saving the box's config at once no longer fail or lose each other's change.** Commands such as `bind` and `config set` used to save the whole file through one shared temporary name, so a second one failed with an error naming no path, or saved a config missing the first one's binding. They now take turns, each change is made to the file as the last one left it, and an error says which file and which step.
+
 - **Two installs of the master skill into one checkout no longer fail one of them.** A bind and the daemon's start sweep reaching one checkout together now take turns, and both end with the shipped tree.
 
 - **A provision that stopped advancing is now read as stalled, with its age.** It no longer holds release or dispatch on a box running the project's master, and binding over a running master is refused by name.
