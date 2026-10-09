@@ -1,4 +1,4 @@
-import type { CriterionStanding } from '@forge/contracts/issue-vocabulary';
+import { type CriterionStanding, criterionCountsAsPass } from '@forge/contracts/issue-vocabulary';
 import type {
   ReleaseAttemptStage,
   ReleaseAttentionGroup,
@@ -195,7 +195,7 @@ export function turnOf(f: TurnFacts): Turn {
 }
 
 export function totalsOf(standings: readonly CriterionStanding[]): ReleaseCriteriaTotals {
-  const proven = standings.filter((s) => s === 'pass').length;
+  const proven = standings.filter(criterionCountsAsPass).length;
   const failing = standings.filter((s) => s === 'fail').length;
   return { proven, failing, open: standings.length - proven - failing, total: standings.length };
 }

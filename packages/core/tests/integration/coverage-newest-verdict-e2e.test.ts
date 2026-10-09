@@ -225,6 +225,26 @@ describe('a trace left on a reworded BC is refreshed to the current wording', ()
     });
   });
 
+  it("the issue's own standing reads a trace on an earlier wording as stale, not as current, until it is tied again", async () => {
+    const req = await agreedRequirement();
+    await closedIssueTracing(req, 1, ['BC-1', 'BC-2']);
+    const issue = await closedIssueTracing(req, 2, ['BC-1']);
+    await reword(req);
+    const rail = async (key: string) =>
+      (
+        (await ok(onProject('GET', `/issues/standing/${key}`))) as {
+          standing: { requirement: { criteria: string[]; staleCriteria: string[] } };
+        }
+      ).standing.requirement;
+
+    expect(await rail('ISS-1')).toMatchObject({ criteria: ['BC-2'], staleCriteria: ['BC-1'] });
+    expect(await rail('ISS-2')).toMatchObject({ criteria: [], staleCriteria: ['BC-1'] });
+
+    await ok(api(token, 'POST', `/api/issues/${issue}/criteria/traces`, { codes: ['BC-1'] }));
+
+    expect(await rail('ISS-2')).toMatchObject({ criteria: ['BC-1'], staleCriteria: [] });
+  });
+
   it('tying a BC the issue already traces at its current wording is refused, naming the criterion', async () => {
     const req = await agreedRequirement();
     const issue = await closedIssueTracing(req, 1, ['BC-1']);

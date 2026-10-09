@@ -10,6 +10,8 @@ interface CriteriaRaw {
   issue_id: string;
   verdict: 'pass' | 'short' | 'fail' | 'skipped' | null;
   bc_code: string | null;
+  /** The traced wording is not the one live at its requirement's current revision. */
+  bc_stale: boolean | null;
   identity_kind: string | null;
   storefront_workflow_id: string | null;
   storefront_draft_version: string | null;
@@ -27,9 +29,13 @@ export async function criteriaOf(
   const rows = rowsOf<Omit<CriteriaRaw, 'stands'>>(
     await db.execute(sql`
       SELECT c.issue_id, v.verdict, rc.code AS bc_code, v.identity_kind,
-             v.storefront_workflow_id, v.storefront_draft_version
+             v.storefront_workflow_id, v.storefront_draft_version,
+             NOT (rc.since_revision <= r.current_revision
+                  AND (rc.retired_revision IS NULL OR rc.retired_revision > r.current_revision))
+               AS bc_stale
         FROM issue_criteria c
         LEFT JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
+        LEFT JOIN requirements r ON r.id = rc.requirement_id
         LEFT JOIN LATERAL (
           SELECT cv.verdict, cv.identity_kind, cv.storefront_workflow_id, cv.storefront_draft_version
             FROM criterion_verdicts cv
@@ -56,6 +62,22 @@ export async function criteriaOf(
           draftVersion: r.storefront_draft_version ?? '',
         }).corroboration === 'corroborated'),
   }));
+}
+
+const byCode = (rows: readonly CriteriaRaw[]) =>
+  [...new Set(rows.flatMap((c) => (c.bc_code ? [c.bc_code] : [])))].sort(
+    (a, b) => Number(a.slice(3)) - Number(b.slice(3)),
+  );
+
+/**
+ * The BCs an issue's live criteria trace, split as the requirement's coverage reads them
+ * (`requirements/standing-coverage.ts`): at their current wording, and only at an earlier one, which
+ * counts as stale until the BC is tied again. A BC traced at both reads current.
+ */
+export function tracedCodesOf(rows: readonly CriteriaRaw[]) {
+  const criteria = byCode(rows.filter((c) => !c.bc_stale));
+  const staleCriteria = byCode(rows.filter((c) => c.bc_stale)).filter((c) => !criteria.includes(c));
+  return { criteria, staleCriteria };
 }
 
 export interface RequirementRaw {

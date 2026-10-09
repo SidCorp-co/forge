@@ -54,6 +54,7 @@ import {
   modulesOf,
   type RequirementRaw,
   requirementsOf,
+  tracedCodesOf,
 } from './standing-facts-read.js';
 import { wavesOf } from './standing-waves.js';
 import { withheldOf } from './standing-withheld-read.js';
@@ -240,9 +241,7 @@ function requirementRef(
   return {
     key: `REQ-${req.req_seq}`,
     title: req.title,
-    criteria: [...new Set(mine.map((c) => c.bc_code).filter((c): c is string => !!c))].sort(
-      (a, b) => Number(a.slice(3)) - Number(b.slice(3)),
-    ),
+    ...tracedCodesOf(mine),
     plannedRevision: r.planned_revision,
     currentRevision: req.current_revision,
     changedSincePlan: changedSincePlan({
