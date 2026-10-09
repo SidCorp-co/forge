@@ -23,7 +23,6 @@ import {
   needsYouDecisionsSchema,
 } from '@forge/contracts/needs-you-decisions';
 import { type OpenPersonQuestion, readOpenPersonQuestions } from '../questions/index.js';
-import { approvalsOfRuns } from '../release-batch/approvals.js';
 import { type AttentionRow, type NeedsYouViewer, owedOf, readAttention } from './needs-you.js';
 import {
   agreeDecision,
@@ -33,6 +32,7 @@ import {
   releaseDecision,
   revisionDecision,
 } from './needs-you-decision-builders.js';
+import { releaseApprovalsOfRuns } from './ports.js';
 
 /** How many decisions one answer carries; `total` counts them all. */
 const DECISIONS_MAX = 200;
@@ -152,7 +152,7 @@ export async function readNeedsYouDecisions(
   );
   const [questions, approvals] = await Promise.all([
     readOpenPersonQuestions(projectId),
-    approvalsOfRuns(runIds),
+    releaseApprovalsOfRuns(runIds),
   ]);
   const facts: Facts = {
     projectId,

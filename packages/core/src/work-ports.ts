@@ -119,7 +119,7 @@ import {
   settleOpenQuestions,
   voidCancelledRunQuestions,
 } from './questions/index.js';
-import { approvalRequired, judgedBuildOf } from './release-batch/index.js';
+import { approvalRequired, approvalsOfRuns, judgedBuildOf } from './release-batch/index.js';
 import {
   changedTracedOf,
   contractAboutRefusal,
@@ -307,7 +307,11 @@ export function provideWorkPorts(): void {
     },
   });
 
-  provideDevelopmentPorts({ designHealthOf: projectHealthAs, designRepinsOf: repinGroupsAs });
+  provideDevelopmentPorts({
+    designHealthOf: projectHealthAs,
+    designRepinsOf: repinGroupsAs,
+    releaseApprovalsOfRuns: approvalsOfRuns,
+  });
 
   provideWorkflowHealthPorts({
     openFeedbackOf: async (viewer, projectId) => {
