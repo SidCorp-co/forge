@@ -49,7 +49,13 @@ export async function recordDecision(
   // the approved revision is its design issue's deliverable: its mark records it (ISS-262)
   const approved =
     decision === 'approve'
-      ? await recordApprovedDesign(tx, { designIssueId, flow: row.flow, revision, decider })
+      ? await recordApprovedDesign(tx, {
+          designIssueId,
+          flow: row.flow,
+          revision,
+          decider,
+          kernel: input.kernel,
+        })
       : null;
   // the decision is the answer a question waiting on this revision asked for (ISS-254)
   await answerDesignQuestions(tx, {

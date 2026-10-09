@@ -7,10 +7,12 @@
  * the requirement re-pin of BC-10 runs on that approval as on any other.
  */
 
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { withKernelMarker } from '../../src/db/kernel-marker.js';
 import {
   closeWorld,
   type Doc,
@@ -22,6 +24,7 @@ import {
   testEnv,
 } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, rows } from '../helpers/factories.js';
+import { seedProjectDocument } from '../helpers/release-world.js';
 
 let say: (who: 'owner', method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
@@ -59,13 +62,19 @@ async function approvedAt1(flow: string, basedOn?: Doc[]): Promise<string> {
 const read = async (flow: string) => ok(await as('GET', `/workflows/${ids.get(flow)}/design`));
 
 /** The design written again with `edit` applied, which proposes it. */
-async function rewrite(flow: string, edit: (d: Doc) => void): Promise<void> {
+async function rewrite(flow: string, edit: (d: Doc) => void, issue?: string): Promise<void> {
   const current = ok(await as('GET', `/workflows/${ids.get(flow)}`));
   const { id, createdAt, updatedAt, ...doc } = current.document;
   void createdAt;
   void updatedAt;
   edit(doc);
-  ok(await as('PUT', `/workflows/${id}`, { baseRevision: current.revision, document: doc }));
+  ok(
+    await as('PUT', `/workflows/${id}`, {
+      baseRevision: current.revision,
+      document: doc,
+      ...(issue ? { issue } : {}),
+    }),
+  );
 }
 
 /** Access written with a visible change and approved at its next revision. */
@@ -136,6 +145,7 @@ beforeAll(async () => {
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
+  await seedProjectDocument(projectId, ownerId, { environments: {} });
   say = requester(app, { owner: await signUserToken(ownerId) });
   await approvedAt1('access');
   // every dependent is approved on access r1, before access moves
@@ -156,8 +166,12 @@ describe('BC-23: a decision names who made it', () => {
       VALUES (${ids.get('access')}, 99, '{}'::jsonb, ${ownerId}, 'approve', ${user}, ${kind}, now())`);
 
   it('refuses a kernel decision that names a user, and a person decision that names none', async () => {
-    await expect(insertDecided('kernel', ownerId)).rejects.toThrow();
-    await expect(insertDecided('person', null)).rejects.toThrow();
+    await expect(insertDecided('kernel', ownerId)).rejects.toMatchObject({
+      cause: { constraint_name: 'project_workflow_designs_decided_chk' },
+    });
+    await expect(insertDecided('person', null)).rejects.toMatchObject({
+      cause: { constraint_name: 'project_workflow_designs_decided_chk' },
+    });
     await expect(insertDecided('kernel', null)).resolves.toBeDefined();
     await db.execute(sql`DELETE FROM project_workflow_designs WHERE revision = 99`);
     await expect(insertDecided('person', ownerId)).resolves.toBeDefined();
@@ -202,6 +216,22 @@ describe('BC-23: a revision whose only change is its pins approves by itself', (
     // the ordinary approval's consequences follow: BC-10 re-pins the requirement on this approval
     await settleOutbox();
     expect((await baselineActs(key)).map((b) => b.act)).toEqual(['agree', 'repin']);
+    // the follow was Forge's own, so the baseline names no person for it (state-never-lies)
+    const [followed] = await rows<{ agreed_kind: string; agreed_by: string | null }>(sql`
+      SELECT b.agreed_kind, b.agreed_by FROM requirement_baselines b JOIN requirements r ON r.id = b.requirement_id
+       WHERE r.project_id = ${projectId} AND r.req_seq = ${Number(key.slice(4))} AND b.act = 'repin'`);
+    expect(followed).toEqual({ agreed_kind: 'kernel', agreed_by: null });
+    const detail = ok(await as('GET', `/requirements/${key}`));
+    expect((detail.baselines as Doc[]).find((b) => b.act === 'repin')).toMatchObject({
+      agreedBy: null,
+      agreedKind: 'kernel',
+      agreedByName: 'Forge (pin-only)',
+    });
+    const history = detail.history as Doc[];
+    const entry = history.find((h) => h.kind === 'Agreed' && h.source === 'system');
+    expect(entry, JSON.stringify(history.map((h) => [h.kind, h.source, h.who]))).toBeDefined();
+    expect(String(entry?.who)).toBe('Forge');
+    expect(String(entry?.text)).toContain('Forge followed design ux r2 (pin-only)');
   });
 
   it('leaves a proposal that moves a pin and changes one step label waiting on a person', async () => {
@@ -295,5 +325,72 @@ describe('BC-23: a revision whose only change is its pins approves by itself', (
     ]);
     expect(settled.approved.map((a) => a.workflowId)).not.toContain(id);
     expect((await read('opaque')).status).toBe('proposed');
+  });
+});
+
+describe('BC-23: the design issue is told by Forge, not by a person', () => {
+  it('posts the approval notice as the project agent, saying Forge approved it', async () => {
+    const issue = randomUUID();
+    const second = randomUUID();
+    await withKernelMarker(db, (tx) =>
+      tx.execute(sql`INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+        VALUES (${issue}, ${projectId}, 801, 'draws noticed', 'in_progress', ${ownerId})`),
+    );
+    await withKernelMarker(db, (tx) =>
+      tx.execute(sql`INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+        VALUES (${second}, ${projectId}, 802, 'draws the pin move', 'in_progress', ${ownerId})`),
+    );
+    const access = (await read('access')).approvedRevision as number;
+    const made = ok(
+      await as('POST', '/workflows', {
+        baseRevision: null,
+        document: fixture('noticed', pinTo(access)),
+      }),
+      201,
+    ).document as Doc;
+    ids.set('noticed', made.id as string);
+    ok(await as('POST', `/workflows/${made.id}/design/propose`, { revision: 1, issue: 'ISS-801' }));
+    ok(
+      await as('POST', `/workflows/${made.id}/design/decision`, {
+        revision: 1,
+        decision: 'approve',
+      }),
+    );
+    await moveAccess('Hospital HIS (fourth)');
+    const r = (await read('access')).approvedRevision as number;
+    await rewrite(
+      'noticed',
+      (d) => {
+        d.basedOn = pinTo(r);
+      },
+      'ISS-802',
+    );
+    expect((await read('noticed')).status).toBe('approved');
+    const notices = await rows<{ body: string; kind: string; author: string }>(sql`
+      SELECT c.body, u.kind, c.author_id::text AS author FROM comments c JOIN users u ON u.id = c.author_id
+       WHERE c.issue_id = ${second} ORDER BY c.created_at`);
+    const told = notices.find((n) => n.body.includes('by Forge itself (pin-only'));
+    expect(told, JSON.stringify(notices)).toBeDefined();
+    expect(told).toMatchObject({ kind: 'agent' });
+    expect(told?.author).not.toBe(ownerId);
+  });
+});
+
+describe('BC-23: a baseline names who filed it', () => {
+  it('refuses a kernel baseline that names a user, and a person baseline that names none', async () => {
+    const [b] = await rows<{ requirement_id: string; revision: number }>(
+      sql`SELECT requirement_id, revision FROM requirement_baselines WHERE act = 'agree' LIMIT 1`,
+    );
+    const insert = (kind: string, user: string | null) =>
+      db.execute(sql`INSERT INTO requirement_baselines
+        (requirement_id, revision, seq, act, agreed_by, agreed_kind)
+        VALUES (${b?.requirement_id}, ${b?.revision}, 99, 'repin', ${user}, ${kind})`);
+    await expect(insert('kernel', ownerId)).rejects.toMatchObject({
+      cause: { constraint_name: 'requirement_baselines_agreed_kind_chk' },
+    });
+    await expect(insert('person', null)).rejects.toMatchObject({
+      cause: { constraint_name: 'requirement_baselines_agreed_kind_chk' },
+    });
+    await expect(insert('kernel', null)).resolves.toBeDefined();
   });
 });

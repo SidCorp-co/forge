@@ -271,14 +271,19 @@ export type FollowOutcome =
   | 'no_approver'
   | 'refused';
 
-/** Who the follow is recorded as: whoever approved the newest of the designs it follows; where Forge's kernel approved it (BC-23), whoever proposed it, since a baseline names a user and its reason says it followed by itself. */
-async function approverOf(tx: Tx, pins: readonly StaleDesignPin[]): Promise<string | null> {
+/**
+ * Who the follow is recorded as: whoever approved the newest of the designs it follows, or the kernel
+ * where that approval was Forge's own (a pin-only revision, REQ-41 BC-23), which no person took.
+ */
+async function approverOf(
+  tx: Tx,
+  pins: readonly StaleDesignPin[],
+): Promise<{ by: string } | { kernel: true } | null> {
   for (const p of [...pins].sort((a, b) => b.approved - a.approved)) {
     const [row] = await tx
       .select({
         by: projectWorkflowDesigns.decidedByUser,
         kind: projectWorkflowDesigns.decidedKind,
-        proposer: projectWorkflowDesigns.proposedByUser,
       })
       .from(projectWorkflowDesigns)
       .where(
@@ -287,8 +292,8 @@ async function approverOf(tx: Tx, pins: readonly StaleDesignPin[]): Promise<stri
           eq(projectWorkflowDesigns.revision, p.approved),
         ),
       );
-    if (row?.by) return row.by;
-    if (row?.kind === 'kernel') return row.proposer;
+    if (row?.kind === 'kernel') return { kernel: true };
+    if (row?.by) return { by: row.by };
   }
   return null;
 }
@@ -342,8 +347,8 @@ export async function followRequirement(
       outcome = 'contract_moved';
       return null;
     }
-    const by = await approverOf(tx, stale);
-    if (!by) {
+    const approver = await approverOf(tx, stale);
+    if (!approver) {
       outcome = 'no_approver';
       return null;
     }
@@ -351,8 +356,11 @@ export async function followRequirement(
       projectId,
       requirementId,
       revision: row.head,
-      by,
-      reason: `Followed by itself on the design approval: ${pinWords(stale)}. No step a current criterion traces was removed or renamed, so no criterion changes (REQ-41 BC-10).`,
+      by: 'by' in approver ? approver.by : null,
+      reason:
+        'by' in approver
+          ? `Followed by itself on the design approval: ${pinWords(stale)}. No step a current criterion traces was removed or renamed, so no criterion changes (REQ-41 BC-10).`
+          : stale.map((p) => `design ${p.flow} r${p.approved}`).join(', '),
     });
     outcome = refused?.length ? 'refused' : 'followed';
     return refused;

@@ -283,6 +283,7 @@ export function provideWorkPorts(): void {
   });
 
   provideWorkflowPorts({
+    projectAgentOf: async (tx, projectId) => (await resolveProjectHandle(tx, projectId)).userId,
     changedTracedOf,
     requirementStatesOf,
     answerDesignQuestions,

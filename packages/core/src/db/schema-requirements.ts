@@ -322,9 +322,11 @@ export const requirementBaselines = pgTable(
     revision: integer('revision').notNull(),
     seq: integer('seq').notNull().default(1),
     act: text('act', { enum: BASELINE_ACTS }).notNull().default('agree'),
-    agreedBy: uuid('agreed_by')
+    // a person names their user; the kernel's follow of a pin-only design names none (REQ-41 BC-23)
+    agreedBy: uuid('agreed_by').references(() => users.id, { onDelete: 'restrict' }),
+    agreedKind: text('agreed_kind', { enum: ['person', 'kernel'] })
       .notNull()
-      .references(() => users.id, { onDelete: 'restrict' }),
+      .default('person'),
     agreedAt: timestamp('agreed_at', { withTimezone: true }).notNull().defaultNow(),
     reason: text('reason'),
     readiness: jsonb('readiness').$type<BaselineReadiness>(),
@@ -332,6 +334,10 @@ export const requirementBaselines = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.requirementId, t.revision, t.seq] }),
     seqChk: check('requirement_baselines_seq_chk', sql`${t.seq} >= 1`),
+    agreedKindChk: check(
+      'requirement_baselines_agreed_kind_chk',
+      sql`(${t.agreedKind} = 'person' AND ${t.agreedBy} IS NOT NULL) OR (${t.agreedKind} = 'kernel' AND ${t.agreedBy} IS NULL AND ${t.act} = 'repin')`,
+    ),
     actChk: check(
       'requirement_baselines_act_chk',
       sql`${t.act} IN (${inList(BASELINE_ACTS)}) AND (${t.act} = 'agree') = (${t.seq} = 1)`,

@@ -57,7 +57,8 @@ export async function repinIn(
     projectId: string;
     requirementId: string;
     revision: number;
-    by: string;
+    /** The approver the follow records; null where Forge's kernel is the one that acts (BC-23). */
+    by: string | null;
     reason?: string | null | undefined;
   },
 ): Promise<RequirementRefusal[] | null> {
@@ -113,6 +114,7 @@ export async function repinIn(
     seq,
     act: 'repin',
     agreedBy: input.by,
+    agreedKind: input.by === null ? 'kernel' : 'person',
     reason: input.reason?.trim() || null,
     readiness: latest.readiness,
   });

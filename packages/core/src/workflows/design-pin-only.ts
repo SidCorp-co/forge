@@ -14,6 +14,7 @@ import type { DesignRefusal } from './design.js';
 import { standingBaseRefusal } from './design-bases.js';
 import { recordDecision } from './design-record.js';
 import { pinOnlyChange } from './design-repin.js';
+import { projectAgentOf } from './ports.js';
 import { readStoredWorkflow } from './schema.js';
 import { designsOf, type StoredWorkflow, workflowsOf } from './store.js';
 
@@ -89,7 +90,14 @@ export async function settlePinOnly(
         decision: 'approve',
         reason: sayEn(reason),
         reasonSays: reason,
-        decider: { userId: proposal.proposedByUser, agency: 'agent' },
+        // the project's agent account authors the design issue's notice, the one act that names a user;
+        // the decision row (`decided_kind = 'kernel'`) and the ledger name none, so a design with no issue needs none
+        decider: {
+          userId: proposal.designIssueId
+            ? await projectAgentOf(tx, projectId)
+            : proposal.proposedByUser,
+          agency: 'agent',
+        },
         kernel: true,
       });
       out.approved.push({

@@ -154,14 +154,18 @@ const baselineEntry = (b: BaselineRow, n: Namer) =>
   entry({
     id: `baseline-${b.revision}-${b.seq}`,
     at: b.agreedAt.toISOString(),
-    source: 'person',
-    who: n.who(b.agreedBy, SIGNER),
+    source: b.agreedKind === 'kernel' ? 'system' : 'person',
+    who:
+      b.agreedKind === 'kernel' ? say('requirements.history.who.forge') : n.who(b.agreedBy, SIGNER),
     kind: say('requirements.history.kind.Agreed'),
     text: noted(baselineText(b), readinessNote(b.readiness)),
   });
 
 function baselineText(b: BaselineRow): Said {
   const r = b.revision;
+  if (b.act === 'repin' && b.agreedKind === 'kernel') {
+    return say('requirements.history.text.followedPinOnly', { rest: b.reason ?? '' });
+  }
   if (b.act === 'repin') {
     return b.reason
       ? say('requirements.history.text.repinnedWhy', { r, rest: b.reason })

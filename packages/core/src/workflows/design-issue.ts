@@ -53,6 +53,8 @@ export async function recordApprovedDesign(
     flow: string;
     revision: number;
     decider: WorkflowWriter;
+    /** Forge's own approval of a pin-only revision: the notice says so, and its author is the project's agent. */
+    kernel?: boolean | undefined;
   },
 ): Promise<DesignIssueOutcome> {
   if (!input.designIssueId) return { issueId: null, action: 'none', status: null };
