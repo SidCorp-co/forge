@@ -355,6 +355,31 @@ export async function revokePat(id: string, userId: string): Promise<Pat | null>
     .returning();
   return updated ?? existing;
 }
+/**
+ * Replace the project fence of one live personal token its holder minted (FB-48), so reaching one
+ * more project does not mean a new secret on every box. Null when the token is not the holder's, is
+ * revoked, or belongs to a box (a box's reach is core's to set).
+ */
+export async function setPatFence(
+  id: string,
+  userId: string,
+  fence: { projectIds: string[] | null; boundProjectId: string | null },
+): Promise<Pat | null> {
+  const [updated] = await db
+    .update(personalAccessTokens)
+    .set({ projectIds: fence.projectIds, boundProjectId: fence.boundProjectId })
+    .where(
+      and(
+        eq(personalAccessTokens.id, id),
+        eq(personalAccessTokens.userId, userId),
+        isNull(personalAccessTokens.revokedAt),
+        isNull(personalAccessTokens.deviceId),
+      ),
+    )
+    .returning();
+  return updated ?? null;
+}
+
 /** Count active PATs for a user. Used for the per-user cap. */
 export async function countActivePatsForUser(userId: string): Promise<number> {
   const rows = await db
