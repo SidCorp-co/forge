@@ -15,17 +15,16 @@ import { ProjectList } from "./project-list";
 import { ProjectsConsole } from "./projects-console";
 import { StatsBand } from "./stats-band";
 
-const consoleState: { read: QueryRead; items: ProjectConsoleItem[] } = { read: "read", items: [] };
+const consoleState: { read: QueryRead; items: ProjectConsoleItem[]; activeOrgId: string | null } = { read: "read", items: [], activeOrgId: null };
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: () => {}, replace: () => {} }),
   useSearchParams: () => new URLSearchParams(),
 }));
-vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrg: null, activeOrgId: null }) }));
+vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrg: null, activeOrgId: consoleState.activeOrgId }) }));
 vi.mock("./new-project-dialog", () => ({ NewProjectDialog: () => null }));
 vi.mock("../hooks", () => ({
   useProjectsConsole: () => ({
     items: consoleState.items,
-    totals: { projects: consoleState.items.length, healthRead: consoleState.read, liveRuns: null, openIssues: null, runners: null, spend24hUsd: null },
     isLoading: false,
     isError: false,
     error: null,
@@ -36,7 +35,10 @@ vi.mock("../hooks", () => ({
   }),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  consoleState.activeOrgId = null;
+});
 
 const unread = (read: QueryRead): ProjectConsoleItem => ({
   id: "p1", slug: "sable", name: "Sable", orgId: "o1", orgName: "Org", orgIsPersonal: true, role: "admin",
@@ -217,5 +219,54 @@ describe("the console's search, filter and sort, where the health read did not c
     consoleState.items = [read];
     rerender(<ProjectsConsole />);
     expect(screen.queryByText(/not sorted by/)).toBeNull();
+  });
+});
+
+describe("the workspace band and the attention banner, with two organizations", () => {
+  const inOrg = (id: string, orgId: string, over: Partial<ProjectConsoleItem>): ProjectConsoleItem => ({
+    ...read, id, slug: id, name: id, orgId, ...over,
+  });
+
+  it("count what the active organization's console lists, the same projects the cards show", () => {
+    consoleState.read = "read";
+    consoleState.activeOrgId = "o1";
+    consoleState.items = [
+      inOrg("alpha", "o1", { openIssues: 29, liveRuns: 2, runnerCount: 1, spend24hUsd: 1.5, health: "attention" }),
+      inOrg("beta", "o2", { openIssues: 5, liveRuns: 1, runnerCount: 3, spend24hUsd: 2, health: "attention" }),
+      inOrg("gamma", "o2", { openIssues: 7, liveRuns: 1, runnerCount: 1, spend24hUsd: 1, health: "attention" }),
+    ];
+    render(<ProjectsConsole />);
+    const band = screen.getByText("Workspace").parentElement as HTMLElement;
+    expect(band.textContent).toContain("1 projects");
+    expect(band.textContent).toContain("29 open work");
+    expect(band.textContent).toContain("2 live runs");
+    expect(band.textContent).toContain("1 runners");
+    expect(band.textContent).toContain("$1.50 / 24h");
+    expect(screen.getByText("alpha")).toBeTruthy();
+    expect(screen.queryByText("beta")).toBeNull();
+    expect(screen.getByText(/1 project\b/)).toBeTruthy();
+  });
+
+  it("leave an organization with no project saying so, not the page of a workspace with none", () => {
+    consoleState.read = "read";
+    consoleState.activeOrgId = "o9";
+    consoleState.items = [inOrg("alpha", "o1", { openIssues: 29 })];
+    render(<ProjectsConsole />);
+    expect(screen.queryByText("No projects yet")).toBeNull();
+    expect(screen.getByText(/No projects in this organization yet/)).toBeTruthy();
+    expect(screen.getByText("0 projects")).toBeTruthy();
+  });
+
+  it("count every project where no organization is active", () => {
+    consoleState.read = "read";
+    consoleState.activeOrgId = null;
+    consoleState.items = [
+      inOrg("alpha", "o1", { openIssues: 29 }),
+      inOrg("beta", "o2", { openIssues: 5 }),
+    ];
+    render(<ProjectsConsole />);
+    const band = screen.getByText("Workspace").parentElement as HTMLElement;
+    expect(band.textContent).toContain("2 projects");
+    expect(band.textContent).toContain("34 open work");
   });
 });

@@ -18,7 +18,7 @@ import {
 } from '@/design';
 import { formatApiError } from '@/lib/api/error';
 import { useActiveOrg } from '@/features/orgs/active-org';
-import { blindSearchEmpty, filterProjects, isAttention, sortProjects, unreadStatements } from '../derive';
+import { blindSearchEmpty, filterProjects, isAttention, sortProjects, unreadStatements, workspaceTotals } from '../derive';
 import { useProjectsConsole } from '../hooks';
 import type { ProjectConsoleItem, ProjectSort, ProjectView } from '../types';
 import { AttentionBanner } from './attention-banner';
@@ -50,7 +50,7 @@ function SectionLabel({
 }
 
 export function ProjectsConsole() {
-  const { items, totals, isLoading, isError, error, healthRead, refetch, toggle } = useProjectsConsole();
+  const { items: allItems, isLoading, isError, error, healthRead, refetch, toggle } = useProjectsConsole();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -73,14 +73,21 @@ export function ProjectsConsole() {
   const [now, setNow] = useState(0);
   useEffect(() => setNow(Date.now()), []);
 
+  // The console is hard-scoped to the active org, so the band, the banner and the list read one set:
+  // what the cards and list below show. null only while orgs load.
+  const items = useMemo(
+    () => (activeOrgId ? allItems.filter((p) => p.orgId === activeOrgId) : allItems),
+    [allItems, activeOrgId],
+  );
+  const totals = useMemo(() => workspaceTotals(items, healthRead), [items, healthRead]);
   const attentionCount = useMemo(() => items.filter(isAttention).length, [items]);
 
   // Where health is not read no project is known to need attention, so the filter cannot hold: it
   // would empty the list and the banner above it offers no way out.
   const attentionFilter = attentionOnly && healthRead === 'read';
   const visible = useMemo(
-    () => sortProjects(filterProjects(items, query, attentionFilter, activeOrgId), sort),
-    [items, query, attentionFilter, sort, activeOrgId],
+    () => sortProjects(filterProjects(items, query, attentionFilter), sort),
+    [items, query, attentionFilter, sort],
   );
 
   // When searching/filtering/sorting, collapse the pinned section into one flat
@@ -138,7 +145,7 @@ export function ProjectsConsole() {
             <ProjectCardSkeleton key={i} />
           ))}
         </div>
-      ) : items.length === 0 ? (
+      ) : allItems.length === 0 ? (
         <EmptyState
           title="No projects yet"
           message="Projects you own or are a member of will appear here."
