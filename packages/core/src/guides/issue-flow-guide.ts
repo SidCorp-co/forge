@@ -195,10 +195,14 @@ repository at that commit. A path on your own machine is refused. \`skipped\` ci
 says what was out of reach.
 
 A verdict on a criterion the design classes \`observable\` sends the probe it ran, \`probe\` on the same
-body: \`{ kind: 'request', request: { method, path, headers?, body?, as }, expect: { status, bodyIncludes? } }\`
+body: \`{ kind: 'request', request: { method, path, headers?, body?, as, service? }, expect: { status, bodyIncludes? } }\`
 or \`{ kind: 'command', command: { argv, cwd? }, expect: { exitCode, stdoutIncludes? } }\`. The path is
-on the running build's origin, so a deploy can replay it, and it carries no credential:
-\`as: 'replayer'\` has whoever replays it attach its own. It is kept on the criterion
+on the production environment's \`url\`, or on the origin of the \`service\` it names (one the project
+document declares under \`environments.<name>.services\`; any other is refused \`VERDICT_PROBE_SHAPE\`):
+each verified deploy replays it there and records the result on the served build, and a fail
+reopens the issue. A path on another origin with no \`service\` fails that replay. It carries no
+credential: \`as: 'replayer'\` has the replayer attach its own, which it does only on this Forge's
+own origin. A command probe is not replayed yet. It is kept on the criterion
 (\`GET /api/issues/:id/criteria\` answers it as \`probe\`), and a later verdict that sends none rests on
 it. A \`pass\` or \`short\` on an observable criterion with no probe sent and none kept is refused
 \`VERDICT_PROBE_REQUIRED\`; a malformed probe \`VERDICT_PROBE_SHAPE\` at its path, one holding a
