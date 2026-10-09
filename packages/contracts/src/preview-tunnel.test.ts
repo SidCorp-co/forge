@@ -122,6 +122,14 @@ describe("the tunnel's limits", () => {
 	});
 
 	it("starts each stream with yamux's window and grants back at half of it", () => {
+		// the box's backstop is core's limit doubled, so a stream core released but the box has not yet
+		// read the reset of never makes the box refuse
+		expect(TUNNEL_LIMITS.boxStreamsPerPreview).toBe(
+			2 * TUNNEL_LIMITS.maxStreamsPerPreview,
+		);
+		expect(TUNNEL_LIMITS.boxStreamsPerTunnel).toBe(
+			2 * TUNNEL_LIMITS.maxStreamsPerTunnel,
+		);
 		expect(TUNNEL_LIMITS.initialWindow).toBe(256 * 1024);
 		expect(TUNNEL_LIMITS.windowUpdateAt).toBe(TUNNEL_LIMITS.initialWindow / 2);
 		expect(TUNNEL_LIMITS.maxDataBytes).toBeLessThan(

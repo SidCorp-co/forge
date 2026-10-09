@@ -476,8 +476,13 @@ describe("the preview record", () => {
 			liveAt: null,
 			lastViewedAt: null,
 			closedAt: "2026-10-09T10:01:00.000Z",
+			streams: 0,
+			streamsWaiting: 0,
 		};
 		expect(issuesOf(previewRecordSchema, record)).toEqual([]);
+		expect(
+			issuesOf(previewRecordSchema, { ...record, streams: -1 }),
+		).not.toEqual([]);
 		expect(
 			issuesOf(previewRecordSchema, { ...record, state: "closed" }),
 		).toHaveLength(1);

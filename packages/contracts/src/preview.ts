@@ -567,6 +567,10 @@ export const previewRecordSchema = z.strictObject({
 	liveAt: z.iso.datetime().nullable(),
 	lastViewedAt: z.iso.datetime().nullable(),
 	closedAt: z.iso.datetime().nullable(),
+	/** Tunnel streams open to the dev server now (browser connections); 0 once every page is closed. */
+	streams: z.int().min(0),
+	/** Browser requests waiting for a stream because the preview holds as many as it may. */
+	streamsWaiting: z.int().min(0),
 });
 export type PreviewRecord = z.infer<typeof previewRecordSchema>;
 

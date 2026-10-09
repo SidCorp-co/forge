@@ -8,6 +8,7 @@ import {
   request as httpRequest,
   type IncomingHttpHeaders,
   type Server,
+  type ServerResponse,
 } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { connect, type Socket } from 'node:net';
@@ -64,14 +65,41 @@ export interface DevServer {
   port: number;
   /** Every request the dev server saw, with the headers it was sent. */
   seen: { url: string; headers: Record<string, string | string[] | undefined> }[];
+  /** Requests to `/hold` the dev server has not answered; `release()` answers them all. */
+  held(): number;
+  release(): void;
+  /** The most requests it had open at one moment (`/slow` and `/hold` stay open). */
+  peak(): number;
+  /** Connections it holds open now. */
+  sockets(): number;
   close(): Promise<void>;
 }
 
 /** A dev server on loopback: `/` answers HTML and a project cookie, `/hmr` is its hot-reload socket. */
 export async function devServer(): Promise<DevServer> {
   const seen: DevServer['seen'] = [];
+  const holding = new Set<ServerResponse>();
+  let open = 0;
+  let peak = 0;
   const server = createHttpServer((req, res) => {
     seen.push({ url: req.url ?? '', headers: req.headers });
+    if (req.url === '/slow' || req.url === '/hold') {
+      open += 1;
+      peak = Math.max(peak, open);
+      const answer = () => {
+        holding.delete(res);
+        if (res.writableEnded) return;
+        res.writeHead(200, { 'content-type': 'text/javascript' });
+        res.end('chunk');
+      };
+      res.on('close', () => {
+        open -= 1;
+        holding.delete(res);
+      });
+      if (req.url === '/hold') holding.add(res);
+      else setTimeout(answer, 300);
+      return;
+    }
     if (req.url === '/redirect') {
       res.writeHead(302, { location: `http://localhost:${port}/landed` });
       res.end();
@@ -84,13 +112,37 @@ export async function devServer(): Promise<DevServer> {
     });
     res.end('<!doctype html><title>dev</title><h1>the change being made</h1>');
   });
-  const hmr = new WebSocketServer({ server, path: '/hmr' });
+  const hmr = new WebSocketServer({ noServer: true });
+  server.on('upgrade', (req, socket, head) => {
+    if (req.url === '/hmr') {
+      hmr.handleUpgrade(req, socket, head, (ws) => hmr.emit('connection', ws, req));
+      return;
+    }
+    // `/silent`: an upgrade the dev server takes and never answers
+    open += 1;
+    peak = Math.max(peak, open);
+    socket.on('close', () => {
+      open -= 1;
+    });
+    socket.on('end', () => socket.end());
+    socket.resume();
+  });
   hmr.on('connection', (ws) => ws.on('message', (m) => ws.send(`update:${String(m)}`)));
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
   const port = (server.address() as AddressInfo).port;
   return {
     port,
     seen,
+    held: () => holding.size,
+    release: () => {
+      for (const res of [...holding]) {
+        holding.delete(res);
+        res.writeHead(200, { 'content-type': 'text/javascript' });
+        res.end('chunk');
+      }
+    },
+    peak: () => peak,
+    sockets: () => open,
     close: async () => {
       hmr.close();
       server.closeAllConnections();

@@ -10,8 +10,11 @@ pub const MAX_DATA_BYTES: usize = 65_536;
 pub const MAX_OPEN_BYTES: usize = 1024;
 pub const INITIAL_WINDOW: u32 = 262_144;
 pub const WINDOW_UPDATE_AT: u32 = 131_072;
-pub const MAX_STREAMS_PER_PREVIEW: usize = 64;
-pub const MAX_STREAMS_PER_TUNNEL: usize = 512;
+/// The box's backstop: twice core's limits (`boxStreamsPerPreview`, `boxStreamsPerTunnel`), because
+/// core queues what passes its own and forgets a stream when it sends the reset, the box when it
+/// reads it.
+pub const MAX_STREAMS_PER_PREVIEW: usize = 128;
+pub const MAX_STREAMS_PER_TUNNEL: usize = 1024;
 pub const STREAM_IDLE_SECONDS: u64 = 300;
 
 /// Why a stream was torn down; the wire carries the number.

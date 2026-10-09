@@ -253,3 +253,137 @@ async fn the_tunnel_ends_when_the_daemon_that_could_cancel_it_is_gone() {
         "a closed cancel channel left the tunnel actor polling it for ever"
     );
 }
+
+/// A dev server that holds every connection open and never answers, counting those it holds.
+async fn silent_dev_server() -> (u16, Arc<std::sync::atomic::AtomicUsize>) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let held = Arc::new(AtomicUsize::new(0));
+    let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let count = held.clone();
+    tokio::spawn(async move {
+        while let Ok((mut sock, _)) = listener.accept().await {
+            let count = count.clone();
+            count.fetch_add(1, Ordering::SeqCst);
+            tokio::spawn(async move {
+                let _ = sock.read_to_end(&mut Vec::new()).await;
+                count.fetch_sub(1, Ordering::SeqCst);
+            });
+        }
+    });
+    (port, held)
+}
+
+async fn eventually(what: &str, mut ok: impl FnMut() -> bool) {
+    for _ in 0..200 {
+        if ok() {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("{what}");
+}
+
+#[tokio::test]
+async fn the_box_backstop_refuses_past_its_limit_and_a_reset_gives_every_stream_back() {
+    use std::sync::atomic::Ordering;
+    let (port, held) = silent_dev_server().await;
+    let mut w = world(&[(PREVIEW, port)]).await;
+    let limit = codec::MAX_STREAMS_PER_PREVIEW as u32;
+    for stream in 1..=limit + 5 {
+        send(
+            &mut w.core,
+            Frame::Open {
+                stream,
+                preview_id: PREVIEW.into(),
+            },
+        )
+        .await;
+    }
+    // the five past the limit are refused by name, the rest are connected to the dev server
+    for stream in limit + 1..=limit + 5 {
+        assert_eq!(
+            next(&mut w.core, 5000).await,
+            Some(Frame::Reset {
+                stream,
+                code: ResetCode::StreamLimit
+            })
+        );
+    }
+    eventually("the dev server holds every admitted stream", || {
+        held.load(Ordering::SeqCst) == limit as usize
+    })
+    .await;
+    // core ends them all: the box lets go of every connection and its count returns to zero, so the
+    // same number open again
+    for stream in 1..=limit {
+        send(
+            &mut w.core,
+            Frame::Reset {
+                stream,
+                code: ResetCode::Cancelled,
+            },
+        )
+        .await;
+    }
+    eventually("every connection to the dev server is closed", || {
+        held.load(Ordering::SeqCst) == 0
+    })
+    .await;
+    for stream in 1000..1000 + limit {
+        send(
+            &mut w.core,
+            Frame::Open {
+                stream,
+                preview_id: PREVIEW.into(),
+            },
+        )
+        .await;
+    }
+    eventually("the released streams are open again", || {
+        held.load(Ordering::SeqCst) == limit as usize
+    })
+    .await;
+    assert_eq!(next(&mut w.core, 300).await, None, "none was refused");
+}
+
+#[tokio::test]
+async fn a_stream_the_dev_server_ends_and_core_closes_is_given_back() {
+    let port = dev_server(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nhi".to_vec()).await;
+    let mut w = world(&[(PREVIEW, port)]).await;
+    let limit = codec::MAX_STREAMS_PER_PREVIEW as u32;
+    // two full rounds: a round that left streams behind would be refused in the second
+    for round in 0..2u32 {
+        let base = round * limit + 1;
+        for stream in base..base + limit {
+            send(
+                &mut w.core,
+                Frame::Open {
+                    stream,
+                    preview_id: PREVIEW.into(),
+                },
+            )
+            .await;
+            send(
+                &mut w.core,
+                Frame::Data {
+                    stream,
+                    bytes: b"GET / HTTP/1.1\r\n\r\n".to_vec(),
+                },
+            )
+            .await;
+            send(&mut w.core, Frame::Close { stream }).await;
+        }
+        let mut closed = 0;
+        while closed < limit {
+            match next(&mut w.core, 10_000)
+                .await
+                .expect("every stream answers")
+            {
+                Frame::Close { .. } => closed += 1,
+                Frame::Data { .. } | Frame::Window { .. } => {}
+                other => panic!("a stream was refused or reset: {other:?}"),
+            }
+        }
+    }
+}

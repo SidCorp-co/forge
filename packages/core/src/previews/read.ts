@@ -12,6 +12,7 @@ import { db } from '../db/client.js';
 import { type PreviewRow, previews } from '../db/schema-previews.js';
 import { type PreviewSite, previewOrigin } from './domain.js';
 import { OPEN_STATES, runEndedWhy } from './rules.js';
+import { streamCountsOf } from './tunnel.js';
 
 export async function previewById(id: string): Promise<PreviewRow | null> {
   const [row] = await db.select().from(previews).where(eq(previews.id, id)).limit(1);
@@ -75,6 +76,11 @@ export function subjectOf(row: PreviewRow): PreviewSubject {
   return row.subject;
 }
 
+const streamCounts = (row: PreviewRow) => {
+  const { streams, waiting } = streamCountsOf(row.deviceId, row.id);
+  return { streams, streamsWaiting: waiting };
+};
+
 /** The record as REST answers it and the issue and chat show it. */
 export function previewView(row: PreviewRow, site: PreviewSite): PreviewRecord {
   return {
@@ -98,6 +104,7 @@ export function previewView(row: PreviewRow, site: PreviewSite): PreviewRecord {
     liveAt: iso(row.liveAt),
     lastViewedAt: iso(row.lastViewedAt),
     closedAt: iso(row.closedAt),
+    ...streamCounts(row),
   };
 }
 
