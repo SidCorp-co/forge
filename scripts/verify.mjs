@@ -24,6 +24,7 @@ const CI_COVERAGE = {
   'node scripts/check-pat-surface.mjs': 'verify',
   'node scripts/check-api-contracts.mjs': 'verify',
   'node scripts/check-source-language.mjs --all': 'verify',
+  'node scripts/check-copy-budget.mjs': 'verify',
   'node scripts/check-test-signal.mjs --all': 'verify',
   'node scripts/check-provider-literals.mjs --all': 'verify',
   'node scripts/check-integration-declarations.mjs --all': 'verify',
@@ -86,7 +87,9 @@ let BASE_REF = null;
 function mergeBase() {
   const target = baseRef(ROOT);
   if (target.refusal) return { refusal: target.refusal };
-  BASE_REF = target.ref;
+  BASE_REF = target.landedSince
+    ? `${target.ref.slice(0, 12)}, the base of a landing already on ${target.branch}`
+    : target.ref;
   const base = git(['merge-base', target.ref, 'HEAD']);
   if (base === null) {
     return {

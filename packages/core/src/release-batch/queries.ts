@@ -14,7 +14,7 @@ import { contentLanguageName, releaseNoteAttention } from '@forge/contracts/cont
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/schema.js';
-import { activeIssuePrefix } from '../issues/index.js';
+import { activeIssuePrefix, designOnlyMarkSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readReleasePath } from '../project-config/index.js';
 import { nextRunFor } from '../schedules/index.js';
@@ -107,7 +107,14 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
       releaseBatchRunId: issues.releaseBatchRunId,
     })
     .from(issues)
-    .where(and(eq(issues.projectId, projectId), eq(issues.status, gateStatus)))
+    // a design-only issue ships nothing a release carries: it closes on its approved revisions
+    .where(
+      and(
+        eq(issues.projectId, projectId),
+        eq(issues.status, gateStatus),
+        sql`NOT ${designOnlyMarkSql(sql`${issues}`)}`,
+      ),
+    )
     .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`);
 
   const now = Date.now();
@@ -134,11 +141,12 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
 
 export async function findReleaseBatchRun(
   runId: string,
-): Promise<{ id: string; projectId: string } | null> {
+): Promise<{ id: string; projectId: string; version: string | null } | null> {
   const [run] = await db
     .select({
       id: pipelineRuns.id,
       projectId: pipelineRuns.projectId,
+      version: pipelineRuns.releaseVersion,
       metadata: pipelineRuns.metadata,
     })
     .from(pipelineRuns)
@@ -146,7 +154,9 @@ export async function findReleaseBatchRun(
     .limit(1);
   if (!run) return null;
   const meta = (run.metadata ?? {}) as Record<string, unknown>;
-  return meta.source === 'release-batch' ? { id: run.id, projectId: run.projectId } : null;
+  return meta.source === 'release-batch'
+    ? { id: run.id, projectId: run.projectId, version: run.version }
+    : null;
 }
 
 export async function isOpenReleaseBatchRun(projectId: string, runId: string): Promise<boolean> {

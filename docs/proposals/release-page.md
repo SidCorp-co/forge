@@ -51,16 +51,20 @@ hairlines, no cards. English copy.
 |---|---|---|---|---|
 | Header: version, date, where it runs, commit, approved by | both | 1, 12 | `ReleaseDetail` (version, releasedAt, production, finish commit, verified, approvals) | approval reads "not asked" where the setting asks nobody |
 | Highlights, 1–3, each with a clip or picture | both | 2, 3 | stored highlights (below) | judged by `judgeHighlights` before they show |
-| Requirements completed or advanced, with criteria proven live | both | 5 | `requirementsCompleted` + verdicts | a criterion is listed as proven only under the truth rule; "proven" is `criterionCountsAsPass` (a pass, or a short) in the header, this list and the release record alike; a short is listed with a "short of its wording" mark. Highlights stay pass-only |
+| Requirements completed or advanced, with criteria proven live | both | 5 | `requirementsCompleted` + verdicts | "proven" is `criterionCountsAsPass(releaseStandingOf(verdicts, build))` (a pass or a short on the build) in the header, the Proof panel, this list and the release record alike, over the same carried criteria; each carried criterion is one row, one tracing no code listed by its issue key and those of issues tracing no requirement listed apart (`untraced`), so the list sums to the header's total; a short is listed with a "short of its wording" mark. Highlights stay pass-only |
 | Improvements, Fixes | both | 6 | `customerNotes` over each issue's `releaseNotes.userFacing`; section read as new, improved or fixed | an issue with no note is named, not invented |
-| Action required: settings, migrations, permissions | both | 7 | the release's commit range (`release-batch/shipped-range.ts`: journal entries, new required settings of the deployment files) and the release's landing artifacts (`ReleaseChanges`): migration files, permission keys, project-config paths | each item names the artifact that owes it; a range that could not be read says so, never "Nothing is required" |
+| Action required: settings, migrations, permissions | both | 7 | the release's commit range as the run that cut it reported it from its checkout (`forge-runner release range` → `release-batch/shipped-range.ts:recordRange`, read by `shippedBetween`; no source host is called): journal entries, new required settings of the deployment files; and the release's landing artifacts (`ReleaseChanges`): migration files, permission keys, project-config paths | each item names the artifact that owes it; a range not reported, or reported for another head, says so, never "Nothing is required" |
 | Known issues | both | 8 | every carried criterion the truth rule does not claim | fail, short, skipped, or not judged on this build; the user view says the criterion's own wording and its state, the developer view adds the verdict's reason and where it was judged instead |
-| Technical notes: changes, migrations, API contracts, dependencies | developer | 9 | `releaseNotes.technical`, `ReleaseChanges`, and the commit range: journal entries, generated API contract operations, `package.json` dependency moves, new deployment settings | none |
+| Technical notes: changes, migrations, API contracts, dependencies | developer | 9 | `releaseNotes.technical`, `ReleaseChanges`, and the reported commit range: journal entries, generated API contract operations, `package.json` dependency moves, new deployment settings | the view says which range the lists were read from, or why none was |
 
 **Truth rule (BC-13).** The build a page describes is the commit the release was cut at and
 deploys. A criterion is claimed only when the newest verdict whose identity is that commit is a
 pass (`releaseClaimOf`). A short, fail or skip on the build is a known issue as itself; a pass on
 the merged commit or any other is "not judged on this build". With no cut, nothing is claimed.
+A verdict on an earlier build of the same requirement revision does not count here: the criterion
+reads "Not yet judged" on this build in the header, the panel and the list alike, and the developer
+view names the build it was judged on instead. A draft, which has no build, is counted by its newest
+verdicts (`releaseStandingOf`) and claims nothing.
 
 ## Highlights
 

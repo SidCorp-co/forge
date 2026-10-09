@@ -60,6 +60,8 @@ enum Command {
     Master(cmd::master::Args),
     /// Ask a person on this box's pairing, and read the answer back.
     Question(cmd::question::Args),
+    /// Report to Forge what a release's commit range ships, from the checkout that cut it.
+    Release(cmd::release::Args),
     /// Pull the latest skills for bound projects now (on-demand, one-shot).
     Sync(cmd::sync::Args),
     /// Check for a newer release and self-update.
@@ -120,6 +122,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Runners(a) => cmd::runners::run(ctx, a).await,
         Command::Master(a) => cmd::master::run(ctx, a).await,
         Command::Question(a) => cmd::question::run(ctx, a).await,
+        Command::Release(a) => cmd::release::run(ctx, a).await,
         Command::Sync(a) => cmd::sync::run(ctx, a).await,
         Command::Update(a) => cmd::update::run(ctx, a).await,
         Command::EgressBridge(a) => cmd::egress_bridge::run(a).await,

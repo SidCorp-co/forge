@@ -1,5 +1,6 @@
 import { CHECKLIST_REFUSAL_CODES } from '@forge/contracts/checklists';
 import {
+  AUTONOMOUS_QUESTION_STATUS,
   ISSUE_DISPATCH_TERMINAL_STATUSES,
   ISSUE_MACHINE,
   type IssueTransitionRefusalCode,
@@ -19,7 +20,7 @@ import { issueChecklistRecord } from './checklist-record.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { postDropUnblockNotices } from './drop-unblock.js';
 import { mintParkQuestion, needsNotApplicable } from './park-question.js';
-import { settleOpenQuestions } from './ports.js';
+import { settleOpenQuestions, withdrawParkQuestions } from './ports.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
 import { refuseOffRecoveryEdge } from './recovery-move.js';
 import { edgeFault, reasonFault } from './transition-faults.js';
@@ -119,8 +120,6 @@ export interface StatusTransitionResult {
   unblockedDependents: UnblockedDependent[];
   /** The step the run is at inside the status after this move, or null. */
   step: WorkStep | null;
-  /** True where the move passed the verdict gate because the project does not require verdicts. */
-  verdictsWaived?: true;
 }
 
 const authorOf = (actor: TransitionActor) => (actor.type === 'user' ? actor.id : actor.ownerId);
@@ -222,7 +221,6 @@ export async function transitionIssueStatus(
     terminal,
     unblockedDependents: txResult.unblockedDependents,
     step,
-    ...(txResult.verdictsWaived ? { verdictsWaived: true as const } : {}),
   };
 }
 
@@ -241,7 +239,6 @@ export type TransitionWriteInput = {
 type TransitionWriteResult = {
   row: { id: string; status: IssueStatus; reopenCount: number; updatedAt: Date };
   unblockedDependents: UnblockedDependent[];
-  verdictsWaived: boolean;
 };
 
 /**
@@ -272,7 +269,6 @@ async function writeWorkStateOfMove(tx: TransitionTx, input: TransitionWriteInpu
 async function executeTransitionWrite(input: TransitionWriteInput): Promise<TransitionWriteResult> {
   const { issue, fromStatus, toStatus, actor, options, recovering } = input;
   const by = authorOf(actor);
-  const waiver = { waived: false };
   let unblockedDependents: UnblockedDependent[] = [];
   const facts = await readIssueMoveFacts({
     issue,
@@ -308,9 +304,6 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         transitionReason: options.transitionReason,
         waitingKind: options.waitingKind,
         recoveringRunId: options.recoveringRunId,
-        onVerdictsWaived: () => {
-          waiver.waived = true;
-        },
       }),
       beforeWrite: async (tx) => {
         const archiveRefusal = await archiveRefusalForTransition(tx, issue.id, toStatus);
@@ -341,11 +334,22 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
           actor: kernelActorFor(actor),
         });
         if (asked) throw transitionRefused(asked.code, asked.detail, asked.details);
+        // leaving the park ends what it asked, after the refusals above so a terminal move or an
+        // answer's resume still meets an open question first (REQ-41 BC-11)
+        if (fromStatus === AUTONOMOUS_QUESTION_STATUS) {
+          await withdrawParkQuestions(tx, {
+            issueId: issue.id,
+            toStatus,
+            reason: options.transitionReason?.trim() || options.reason?.trim() || null,
+            by,
+            actor: kernelActorFor(actor),
+          });
+        }
       },
       afterWrite: async (tx, rows) => {
         const row = rows[0];
         if (!row) return;
-        await recordMove(tx, moveOf(input, row.reopenCount, waiver.waived));
+        await recordMove(tx, moveOf(input, row.reopenCount));
         await writeWorkStateOfMove(tx, input);
         if (toStatus === 'dropped') {
           unblockedDependents = await expireBlocksEdgesOnDrop(tx, issue.projectId, issue.id);
@@ -387,7 +391,6 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
   return {
     row: { ...row, status: row.status as IssueStatus },
     unblockedDependents,
-    verdictsWaived: waiver.waived,
   };
 }
 

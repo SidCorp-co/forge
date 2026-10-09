@@ -7,7 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { IssueDetail } from "../types";
-import { CriteriaTab } from "./detail/issue-tabs";
+import { CriteriaSection } from "./criteria-section";
 
 const ATTACHMENT = "00000000-0000-4000-8000-0000000000bb";
 
@@ -68,7 +68,9 @@ describe("a criterion's verdict on the issue Criteria tab", () => {
       String(input).endsWith("/download") ? new Response("webm", { headers: { "content-type": "video/webm" } }) : core(input, init),
     );
     vi.stubGlobal("fetch", fetchMock);
-    renderWithQuery(<CriteriaTab issue={issue} projectId="p1" hasCriteriaRows checklist={[]} canWrite={false} requirementKey="REQ-40" />);
+    renderWithQuery(<CriteriaSection issue={issue} projectId="p1" checklist={[]} canWrite={false} requirementKey="REQ-40" />);
+    // the row is one line; its evidence is on the open row
+    await userEvent.click((await screen.findByTestId("criterion-1-verdict")).closest("button") as HTMLElement);
     const evidence = await screen.findByTestId("verdict-evidence");
     expect(within(evidence).getByTestId("verdict-note")).toHaveTextContent("Opened 0.4.0 and read its version, date and approver");
     // only the file the issue keeps is reachable; a name it keeps nothing under is not a link to nothing
@@ -87,8 +89,9 @@ describe("a criterion's verdict on the issue Criteria tab", () => {
           ? { body: [] }
           : undefined,
     );
-    renderWithQuery(<CriteriaTab issue={issue} projectId="p1" hasCriteriaRows checklist={[]} canWrite={false} requirementKey="REQ-40" />);
-    expect(await screen.findByText("Each release has a page.")).toBeInTheDocument();
+    renderWithQuery(<CriteriaSection issue={issue} projectId="p1" checklist={[]} canWrite={false} requirementKey="REQ-40" />);
+    await userEvent.click((await screen.findByTestId("criterion-1-verdict")).closest("button") as HTMLElement);
+    expect(await screen.findAllByText("Each release has a page.")).not.toHaveLength(0);
     expect(screen.queryByTestId("verdict-evidence")).toBeNull();
   });
 });

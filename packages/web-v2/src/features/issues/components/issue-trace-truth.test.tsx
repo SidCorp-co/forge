@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { IssueStandingRow } from "@forge/contracts/issue-standing";
 import type { IssueDetail } from "../types";
-import { CriteriaTab } from "./detail/issue-tabs";
+import { CriteriaSection } from "./criteria-section";
 import { IssueStandingFacts } from "./issue-standing-bits";
 
 const AT = "2026-10-08T21:49:14.000Z";
@@ -80,10 +80,9 @@ describe("a Short verdict on the Criteria tab", () => {
           }
         : undefined,
     );
-    renderWithQuery(<CriteriaTab issue={{ id: "i1", projectId: "p1", status: "closed" } as IssueDetail} projectId="p1" hasCriteriaRows checklist={[]} canWrite={false} requirementKey="REQ-37" />);
+    renderWithQuery(<CriteriaSection issue={{ id: "i1", projectId: "p1", status: "closed" } as IssueDetail} projectId="p1" checklist={[]} canWrite={false} requirementKey="REQ-37" />);
     const short = await screen.findByTestId("criterion-1-verdict");
-    expect(short).toHaveTextContent("Short");
-    expect(short).not.toHaveTextContent("Pass");
-    expect(screen.getByTestId("criterion-2-verdict")).toHaveTextContent("Pass");
+    expect(short).toHaveAccessibleName("Short");
+    expect(screen.getByTestId("criterion-2-verdict")).toHaveAccessibleName("Pass");
   });
 });

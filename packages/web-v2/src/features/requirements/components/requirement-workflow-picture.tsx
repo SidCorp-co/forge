@@ -10,11 +10,12 @@ import Link from "next/link";
 import { type ReactNode, useMemo, useState } from "react";
 import { NativeSelect } from "@/design";
 import { templateFor } from "@/features/workflows/canvas/model";
+import { presentTrace } from "@/features/workflows/canvas/step-focus";
 import { WorkflowCanvas } from "@/features/workflows/canvas/workflow-canvas";
 import { useWorkflowTemplates, useWorkflows } from "@/features/workflows/hooks";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { workflowHref } from "@/lib/routes/workflows";
-import { presentTrace, type TracedWorkflow } from "../picture-model";
+import type { TracedWorkflow } from "../picture-model";
 import { Figure } from "./picture-figure";
 
 /** A process requirement's linked workflow on the canvas, the steps and links its criteria trace lit and the rest dimmed. */

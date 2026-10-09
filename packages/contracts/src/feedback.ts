@@ -661,6 +661,9 @@ export interface FeedbackAttachmentView {
 	size: number;
 	/** On a sensitive project: may hold personal data, so it is never sent to a provider. */
 	flagged: boolean;
+	/** Who attached it, so a recording on the item names who made it (REQ-35 BC-8). */
+	uploadedBy: string;
+	uploadedByName: string | null;
 	createdAt: string;
 	/** Where its bytes are read: the item's own attachment route, under the item's key. */
 	url: string;

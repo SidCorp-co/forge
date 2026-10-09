@@ -9,6 +9,13 @@ export const CHECKS = [
     scanned: /across (\d+) files/,
   },
   {
+    axis: 'language',
+    label: 'copy-budget',
+    cmd: ['node', 'scripts/check-copy-budget.mjs'],
+    scanned: /^copy-budget: (\d+) string\(s\)/m,
+    unit: 'copy strings',
+  },
+  {
     axis: 'record',
     label: 'release-record',
     cmd: ['node', 'scripts/check-release-record.mjs'],

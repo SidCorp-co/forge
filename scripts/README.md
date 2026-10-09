@@ -71,7 +71,7 @@ passed, because the external record of what shipped belonged to none of them.
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | selection | `check-whole-tree-gates` — `whole-tree`, after the merge | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case or failed to load, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
-| language | `check-source-language` — `lang-check` | English-only source policy | everything else |
+| language | `check-source-language` — `lang-check`, `check-copy-budget` | English-only source policy; length of web copy strings | everything else |
 | record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, whether a published entry can leave without a declared reason, and what an added or corrected entry may spend | whether an entry is TRUE, or whether a change deserved one — that is review's |
 
 ### Why `core` lint prints every diagnostic
@@ -639,6 +639,17 @@ Row 4 is the repository's own statement of what a pull request from this checkou
 the merge target for any change taking the default base. For a local run aimed at some other base,
 `GITHUB_BASE_REF=<branch>` in front of the command scopes it; CI needs nothing, having row 1.
 
+**A landing already on its base** is the one case where the target's tip cannot be the scope: on a
+push to `dev` that tip IS the landing, so its merge-base with `HEAD` is `HEAD` and every delta-scoped
+gate measured nothing — dev push run 37967422844 landed ten runner files and `check-runner-gates`
+reported 0 crate files, and run 37955058837 landed migration 0480 and `check-migration-order` reported
+0 landing (ISS-472 round 3). `FORGE_LANDED_SINCE=<sha>` names the commit the landing was made on:
+`baseRef` then answers that commit as the ref, with `landedSince` set, so the merge-base is the
+landing's base and each gate measures `<sha>..HEAD`. It is not a fifth source — the branch still comes
+from the four rows above — and a value that names no commit, or one `HEAD` does not contain, is refused
+naming the variable. `merge-check --since` sets it for the `pnpm verify` it runs and for nothing else;
+`lib/landed-scope.test.mjs` runs that shape over a fixture standing on dev's tip.
+
 `branchSetFaults(ciYamlText, target)` is the other half, and `conformance-audit` R11 runs it: a
 workflow trigger cannot read a variable, so the branches CI gates are written three times over —
 the push trigger, the pull-request trigger, and the step deciding a tree a pull request already
@@ -934,7 +945,7 @@ their own.
 |---|---|---|---|
 | `pnpm test:changed [--integration] [--report <path>]` | before a push | `tc-changed`'s typecheck (and `cargo check` when the runner is touched), the direct tests of what changed against the merge-base with the target, committed or not, each timed; writes the checks' report | 0 · 1 a check red · 2 could not run |
 | `GITHUB_BASE_REF=dev pnpm merge-check` | before landing on dev, and in `ci.yml`'s `merge-check` job | fetches the base, refuses `MERGE_BEHIND_BASE` unless HEAD holds its tip and a dirty checkout by name; then the typecheck, the direct tests, the direct core integration tests and `pnpm verify`, each timed; writes the report, which on either lane carries the change's `patchId` (`git diff --binary <base> <head> \| git patch-id --stable`) — core records it and matches a feedback reporter's Fixed / Not fixed to it (REQ-41 BC-20). **Priced amnesty (REQ-41 BC-20):** a full-lane report from a checkout whose script predates patch ids is still taken, recorded `patch-id: absent (script predates patch ids)`, and answered with a `warnings` entry naming `PATCH_ID_ABSENT`. Traded: a full-lane fix landed from an old checkout cannot close a reporter's confirm. Cost: one extra ask of the reporter. Ends when no open dev branch's merge-base predates this merge — check on 2026-10-23, then make `patchId` required on every lane in `mergeCheckReportSchema` and drop `PATCH_ID_ABSENT` | 0 · 1 red or behind · 2 could not run |
-| `pnpm merge-check --since <sha>` | a push run on dev | the same over a landing already on the base, `<sha>..HEAD`, recorded as `landed` | as above |
+| `pnpm merge-check --since <sha>` | a push run on dev | the same over a landing already on the base, `<sha>..HEAD`, recorded as `landed`; its `verify` runs under `FORGE_LANDED_SINCE=<sha>`, so the cargo gates, migration order and the baseline ratchets measure that range too (`lib/base-branch.mjs`) | as above |
 | `pnpm merge-check --lane fast` | a change a person approved in its live preview (REQ-39 BC-7) | the fast lane: `rebased-on-base`, the typecheck and the direct tests only — no integration tests, no `verify`; the report carries `lane: 'fast'`, and its `patchId`, which core also holds to the approved preview's and refuses `FAST_LANE_*` by name | as above |
 
 **Every check is timed once** (REQ-36 BC-14, ISS-474). `lib/direct-test-run.mjs` makes each check a
@@ -970,7 +981,8 @@ runner's `cargo test --workspace` left `check-runner-gates.mjs` with this change
 pre-push hook's `PREPUSH_TEST=1` runs `pnpm test:changed` where `PREPUSH_FULL` ran whole suites.
 The hook tells its exit 1 (a check red) from its exit 2 (it could not run, so nothing was checked),
 and `PREPUSH_BUILD=1` measures a new branch from its merge target (`lib/base-branch.mjs`), refusing by
-name where none resolves; `lib/pre-push.test.mjs` runs the hook in a fixture repository. A landed
+name where none resolves, and builds `observability` and then `contracts` before any consumer, since
+core's build imports `@forge/contracts/dist`; `lib/pre-push.test.mjs` runs the hook in a fixture repository. A landed
 push run (`--since`) says it checked what already landed, and asks for no record before a mark.
 
 ## whole-suite.mjs — the whole suite on one commit, the cut it gates, and the merge it names
@@ -1079,6 +1091,19 @@ Exit codes: `0` clean, `1` violations found, `2` invalid invocation.
 ### Bypass
 
 CI cannot be bypassed — translate the offending strings or add an `i18n-allow:` directive with a reason.
+
+## check-copy-budget.mjs — web copy strings are short
+
+Every English string in `packages/web-v2/src/**/copy*.json` and `lib/i18n/copy/**` is at most 12
+words, a placeholder counting as one; a refusal or confirmation at most 20 (REQ-43 BC-1, BC-2). A
+string is a refusal when a dot-separated segment of its key matches `refusalSegments` in
+`.forge/conformance.json` (`checkers.copy-budget`), never guessed from its sentence. Only English is
+read: the other languages translate it. The strings over budget when the gate landed are frozen in
+`.forge/copy-budget-baseline.json` by file and key with their word count, which the `language` axis
+declares `improves: down`: a new string over budget, one that grew, or a fixed one still listed is
+refused naming file, key, count and budget. `--trim` rewrites the baseline downward only and
+`--freeze` writes the first one. The copy-budget-baseline amnesty prices what it trades. The rule's
+text is the Copy rule in `docs/patterns/screen.md`.
 
 ## The web suite's language checks — Forge is not multilingual
 

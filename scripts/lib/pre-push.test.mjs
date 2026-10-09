@@ -53,6 +53,15 @@ function seedRepo(path, branch) {
       scripts: { build: 'node -e "console.log(\'built fx-core\')"' },
     }),
     'packages/core/a.ts': 'export const a = 1;\n',
+    // Core's build imports contracts' dist/, so the hook builds it first; $FX_CONTRACTS_EXIT breaks it.
+    'packages/contracts/package.json': JSON.stringify({
+      name: 'fx-contracts',
+      private: true,
+      scripts: {
+        build:
+          'node -e "console.log(\'built fx-contracts\');process.exit(Number(process.env.FX_CONTRACTS_EXIT||0))"',
+      },
+    }),
   };
   for (const [p, text] of Object.entries(files)) {
     mkdirSync(dirname(join(path, p)), { recursive: true });
@@ -127,6 +136,20 @@ describe('PREPUSH_BUILD measures a new branch from where it lands', () => {
     const r = prePush(clone, { PREPUSH_BUILD: '1' });
     expect([r.status, r.out]).toEqual([0, expect.stringContaining('validating packages: core')]);
     expect(r.out).toContain('built fx-core');
+  });
+
+  it('builds contracts before core, which imports its dist/, in a checkout that never built it', () => {
+    const r = prePush(clone, { PREPUSH_BUILD: '1' });
+    expect(r.status).toBe(0);
+    const contracts = r.out.indexOf('built fx-contracts');
+    expect([contracts > -1, contracts < r.out.indexOf('built fx-core')]).toEqual([true, true]);
+  });
+
+  it('a contracts build that breaks stops the push by its own name, building nothing after it', () => {
+    const r = prePush(clone, { PREPUSH_BUILD: '1', FX_CONTRACTS_EXIT: '1' });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('FAIL: contracts build broke, so nothing that depends on it was built');
+    expect(r.out).not.toContain('built fx-core');
   });
 
   it('refuses by name where no merge target resolves, building nothing', () => {

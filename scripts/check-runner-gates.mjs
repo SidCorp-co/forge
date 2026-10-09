@@ -3,8 +3,8 @@
 import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import { baseRef } from './lib/base-branch.mjs';
 import { gitOut, ROOT } from './lib/gate.mjs';
+import { crateScope } from './lib/runner-gates-scope.mjs';
 
 const CRATE_DIR = resolve(ROOT, 'packages/runner');
 const all = process.argv.includes('--all');
@@ -25,44 +25,16 @@ const GATES = [
 // which runs only the direct tests of what a change touched (REQ-36 BC-17, ISS-472). Those are
 // `scripts/lib/direct-test-run.mjs`'s; the whole suite runs nightly and on a release cut's commit.
 
-/** Why the scope could not be computed, set beside the `no-base` sentinel below. */
-let noBase = null;
-
-function changedCrateFiles() {
-  if (gitOut(['rev-parse', '--git-dir']) === null) return 'no-git';
-  const target = baseRef(ROOT);
-  if (target.refusal) {
-    noBase = target.refusal;
-    return 'no-base';
-  }
-  const base = gitOut(['merge-base', target.ref, 'HEAD'])?.trim();
-  if (!base) {
-    noBase =
-      `\`git merge-base ${target.ref} HEAD\` did not answer, so the changed set cannot be scoped —\n` +
-      `run \`git fetch origin ${target.branch}\`, or pass --all to run every gate unconditionally.`;
-    return 'no-base';
-  }
-  const files = new Set();
-  const diffed = gitOut(['diff', '--name-only', base, '--', 'packages/runner']) ?? '';
-  for (const l of diffed.split('\n')) {
-    if (l.trim()) files.add(l.trim());
-  }
-  for (const l of (gitOut(['status', '--porcelain', '--', 'packages/runner']) ?? '').split('\n')) {
-    const p = l.slice(3).trim();
-    if (p) files.add(p);
-  }
-  return files;
-}
-
-const changed = all ? null : changedCrateFiles();
-if (changed === 'no-git') {
+const scope = all ? null : crateScope(ROOT);
+if (scope?.noGit) {
   console.log('runner-gates: skipped — no git repository, so the changed set is unknowable');
   process.exit(0);
 }
-if (changed === 'no-base') {
-  console.error(`runner-gates: ${noBase}`);
+if (scope?.refusal) {
+  console.error(`runner-gates: ${scope.refusal}`);
   process.exit(2);
 }
+const changed = scope ? scope.files : null;
 if (changed !== null && changed.size === 0) {
   console.log('runner-gates: 0 crate file(s) in scope — nothing to check');
   process.exit(0);

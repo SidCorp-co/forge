@@ -1,4 +1,8 @@
 import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
+import {
+  ReleaseRangeReadsBodySchema,
+  ReleaseRangeReportSchema,
+} from '@forge/contracts/release-page';
 import { RELEASE_HOLD_OWERS } from '@forge/contracts/releases';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -20,6 +24,7 @@ import {
 } from './queries.js';
 import { loadReleaseReadiness } from './readiness.js';
 import { readReleaseRecord, recordPerformedRelease } from './recorded.js';
+import { rangeBaseOf, rangeReads, recordRange } from './shipped-range.js';
 import { readReleaseRunState } from './state.js';
 import { releaseVersionRoutes } from './version-routes.js';
 
@@ -177,6 +182,7 @@ async function loadRunForProject(runId: string, projectId: string, userId: strin
 
   const access = await loadProjectAccess(projectId, userId);
   requireHeld(access, 'project.write');
+  return run;
 }
 
 releaseBatchRoutes.get(
@@ -274,6 +280,41 @@ releaseBatchRoutes.post(
     const { projectId, runId } = c.req.valid('param');
     await loadRunForProject(runId, projectId, c.get('userId'));
     return c.json(await announceMethod({ runId, ...c.req.valid('json') }));
+  },
+);
+
+// REQ-40 BC-7, BC-9 — the run that cut the release reports what its range ships, from its checkout:
+// where the range starts, which of its changed files the reader reads, then those files' two ends.
+releaseBatchRoutes.get(
+  '/:projectId/release-batches/:runId/range',
+  zValidator('param', runParamSchema),
+  async (c) => {
+    const { projectId, runId } = c.req.valid('param');
+    const run = await loadRunForProject(runId, projectId, c.get('userId'));
+    return c.json(await rangeBaseOf(projectId, run.version));
+  },
+);
+
+releaseBatchRoutes.post(
+  '/:projectId/release-batches/:runId/range/reads',
+  zValidator('param', runParamSchema),
+  zValidator('json', ReleaseRangeReadsBodySchema),
+  async (c) => {
+    const { projectId, runId } = c.req.valid('param');
+    await loadRunForProject(runId, projectId, c.get('userId'));
+    return c.json({ reads: rangeReads(c.req.valid('json').changes) });
+  },
+);
+
+releaseBatchRoutes.post(
+  '/:projectId/release-batches/:runId/range',
+  zValidator('param', runParamSchema),
+  zValidator('json', ReleaseRangeReportSchema),
+  async (c) => {
+    const { projectId, runId } = c.req.valid('param');
+    const run = await loadRunForProject(runId, projectId, c.get('userId'));
+    const report = c.req.valid('json');
+    return c.json(await recordRange({ projectId, runId, version: run.version, report }));
   },
 );
 

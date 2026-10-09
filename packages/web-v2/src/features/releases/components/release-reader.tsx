@@ -5,7 +5,7 @@
 // page in the app (a member, with links into the project) and a frozen page a share link opens (no
 // links, tickets for its media), so the two cannot read differently.
 
-import type { ReleasePage } from "@forge/contracts/release-page";
+import type { ReleasePage, ReleasePageCriteria } from "@forge/contracts/release-page";
 import Link from "next/link";
 import { useState } from "react";
 import { ViewHeading } from "@/design";
@@ -54,12 +54,43 @@ function ReleaseHeader({ page }: { page: ReleasePage }) {
   );
 }
 
+/** One group's carried criteria: each proven one (a short marked, one tracing no code under its issue's key), then how many are not. */
+function Criteria({ group }: { group: ReleasePageCriteria }) {
+  const t = useCopy();
+  return (
+    <>
+      {group.proven.length > 0 ? (
+        <ul className="grid gap-0.5 text-12-5" data-testid="page-proven">
+          {group.proven.map((p) => (
+            <li key={`${p.issueKey ?? ""}:${p.code ?? ""}:${p.statement}`} data-testid="page-proven-row">
+              <span className="mr-2 font-mono text-12 text-subtle">{p.code ?? p.issueKey}</span>
+              {p.statement}
+              {p.short ? (
+                <span className="ml-2 text-12 text-muted" data-testid="page-proven-short">
+                  {t("releases.page.requirements.short")}
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <span className="text-12-5 text-muted">{t("releases.page.requirements.noneProven")}</span>
+      )}
+      {group.unproven > 0 ? (
+        <span className="text-12-5 text-muted" data-testid="page-unproven" data-n={group.unproven}>
+          {t("releases.page.requirements.unproven", { n: group.unproven })}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 function Requirements({ page, slug }: { page: ReleasePage; slug?: string | undefined }) {
   const t = useCopy();
   return (
     <section aria-label={t("releases.page.requirements.title")} data-testid="page-requirements">
       <ViewHeading>{t("releases.page.requirements.title")}</ViewHeading>
-      {page.requirements.length === 0 ? (
+      {page.requirements.length === 0 && !page.untraced ? (
         <p className="text-13 text-muted">{t("releases.page.requirements.none")}</p>
       ) : (
         <ul className="divide-y divide-line-subtle border-y border-line-subtle">
@@ -76,30 +107,15 @@ function Requirements({ page, slug }: { page: ReleasePage; slug?: string | undef
                 <span className="min-w-0 flex-1 font-semibold">{r.title}</span>
                 <span className="text-12 text-muted">{r.completes ? t("releases.page.requirements.completes") : t("releases.page.requirements.advances")}</span>
               </span>
-              {r.proven.length > 0 ? (
-                <ul className="grid gap-0.5 text-12-5" data-testid="page-proven">
-                  {r.proven.map((p) => (
-                    <li key={p.code}>
-                      <span className="mr-2 font-mono text-12 text-subtle">{p.code}</span>
-                      {p.statement}
-                      {p.short ? (
-                        <span className="ml-2 text-12 text-muted" data-testid="page-proven-short">
-                          {t("releases.page.requirements.short")}
-                        </span>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <span className="text-12-5 text-muted">{t("releases.page.requirements.noneProven")}</span>
-              )}
-              {r.unproven > 0 ? (
-                <span className="text-12-5 text-muted" data-testid="page-unproven">
-                  {t("releases.page.requirements.unproven", { n: r.unproven })}
-                </span>
-              ) : null}
+              <Criteria group={r} />
             </li>
           ))}
+          {page.untraced ? (
+            <li className="grid gap-1 py-3 text-13" data-testid="page-untraced">
+              <span className="font-semibold">{t("releases.page.requirements.untraced")}</span>
+              <Criteria group={page.untraced} />
+            </li>
+          ) : null}
         </ul>
       )}
     </section>
@@ -268,6 +284,11 @@ function Technical({ page, slug }: { page: ReleasePage; slug?: string | undefine
           </ul>
         )}
       </div>
+      <p className="text-12-5 text-muted" data-testid="page-technical-range" data-read={page.shipped.state}>
+        {page.shipped.state === "read"
+          ? t("releases.page.technical.range", { base: shortSha(page.shipped.base), head: shortSha(page.shipped.head) })
+          : t("releases.page.technical.unread", { why: page.shipped.why })}
+      </p>
       <List title={t("releases.page.technical.migrations")} items={tech.migrations} testId="page-technical-migrations" />
       <List title={t("releases.page.technical.contracts")} items={tech.contracts} testId="page-technical-contracts" />
       <List title={t("releases.page.technical.dependencies")} items={tech.dependencies} testId="page-technical-dependencies" />

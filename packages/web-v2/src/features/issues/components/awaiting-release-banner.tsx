@@ -4,6 +4,20 @@ import { Banner, Button } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useBatchRelease, useReleaseRoster } from "../hooks";
 
+/** The release-now act of an issue waiting at the release gate, as a button; nothing where it is not offered. */
+export function ReleaseNowAct({ projectId, issueId, canWrite }: { projectId: string; issueId: string; canWrite: boolean }) {
+	const { data } = useReleaseRoster(projectId);
+	const batch = useBatchRelease(projectId);
+	const t = useCopy();
+	const entry = data?.issues.find((i) => i.id === issueId);
+	if (!canWrite || !data?.gateStatus || !entry || entry.claimedByRunId) return null;
+	return (
+		<Button size="sm" disabled={batch.isPending} onClick={() => batch.mutate({ issueIds: [issueId] })}>
+			{t("issues.batch.releaseNow")}
+		</Button>
+	);
+}
+
 /**
  * What "awaiting release" means, on the issue a person is actually reading:
  * it is merged, it is not shipped, and here is when that changes.

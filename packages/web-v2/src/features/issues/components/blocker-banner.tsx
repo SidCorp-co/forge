@@ -17,6 +17,41 @@ interface BlockerBannerProps {
   onProvideInfo: () => void;
 }
 
+/** The one act a blocker offers its reader, as a button; nothing where it offers none. */
+export function BlockerAct({
+  blocker,
+  pending,
+  onResumePark,
+  onResumeRun,
+  onProvideInfo,
+}: Omit<BlockerBannerProps, "slug">) {
+  const { act: cta, runId, resumeAt } = blocker;
+  const language = useInterfaceLanguage();
+  const label = said(blocker.says.act, language);
+  if (cta.kind === "resume_park" && resumeAt) {
+    return (
+      <Button variant="primary" size="sm" icon="rerun" loading={pending} onClick={() => onResumePark(resumeAt)}>
+        {label}
+      </Button>
+    );
+  }
+  if (cta.kind === "provide_info") {
+    return (
+      <Button variant="primary" size="sm" icon="mail" onClick={onProvideInfo}>
+        {label}
+      </Button>
+    );
+  }
+  if (cta.kind === "resume_run" && runId) {
+    return (
+      <Button variant="primary" size="sm" icon="rerun" loading={pending} onClick={() => onResumeRun(runId)}>
+        {label}
+      </Button>
+    );
+  }
+  return null;
+}
+
 export function BlockerBanner({
   blocker,
   slug,
@@ -25,47 +60,15 @@ export function BlockerBanner({
   onResumeRun,
   onProvideInfo,
 }: BlockerBannerProps) {
-  const { act: cta, runId, resumeAt } = blocker;
   const t = useCopy();
   const language = useInterfaceLanguage();
-  const label = said(blocker.says.act, language);
   const detail = saidOrNull(blocker.says.detail, language);
-
-  let action: React.ReactNode = null;
-  if (cta.kind === "resume_park" && resumeAt) {
-    action = (
-      <Button
-        variant="primary"
-        size="sm"
-        icon="rerun"
-        loading={pending}
-        onClick={() => onResumePark(resumeAt)}
-      >
-        {label}
-      </Button>
-    );
-  } else if (cta.kind === "provide_info") {
-    action = (
-      <Button variant="primary" size="sm" icon="mail" onClick={onProvideInfo}>
-        {label}
-      </Button>
-    );
-  } else if (cta.kind === "resume_run" && runId) {
-    action = (
-      <Button
-        variant="primary"
-        size="sm"
-        icon="rerun"
-        loading={pending}
-        onClick={() => onResumeRun(runId)}
-      >
-        {label}
-      </Button>
-    );
-  }
+  const action = (
+    <BlockerAct blocker={blocker} pending={pending} onResumePark={onResumePark} onResumeRun={onResumeRun} onProvideInfo={onProvideInfo} />
+  );
 
   return (
-    <Banner tone={blocker.tone} action={action ?? undefined}>
+    <Banner tone={blocker.tone} action={action}>
       <div className="space-y-1">
         <p className="font-medium">{said(blocker.says.reason, language)}</p>
         <p className="opacity-90">{said(blocker.says.whoMustAct, language)}</p>

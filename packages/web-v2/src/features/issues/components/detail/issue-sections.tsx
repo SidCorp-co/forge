@@ -1,133 +1,28 @@
 import Link from "next/link";
 import {
-  Checkbox,
   EmptyPanelLine,
   ErrorState,
   enumLabel,
-  Markdown,
   SegmentedControl,
   Skeleton,
   StatusBadge,
   ViewHeading,
 } from "@/design";
 import type { IssueStepOutcome } from "@forge/contracts/issue-standing";
-import { PreviewPanel } from "@/features/previews/preview-panel";
-import { settingsHref } from "@/features/project-settings/sections";
-import { useCurrentProject } from "@/features/projects/current-project";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { agentsListHref, runHref } from "@/lib/routes/agents";
-import type { useActivity, useAttachments, useComments } from "../../detail-hooks";
+import type { ReactNode } from "react";
+import type { useActivity, useComments } from "../../detail-hooks";
 import type { useIssueStandingOf, useProjectMembers } from "../../hooks";
-import type { IssueAgentSession, IssueDetail } from "../../types";
+import type { IssueAgentSession } from "../../types";
 import { ActivityFeed } from "../activity-feed";
 import { CommentThread } from "../comment-thread";
-import { TieCriteria } from "../criteria-acts";
-import { CriteriaList } from "../criteria-list";
-import { IssueDescription } from "../issue-description";
-import { ReleaseNoteCard } from "../release-note-card";
 import { SessionGroupTimeline } from "../session-group-timeline";
 import { StepArtifactCard } from "../step-artifact-card";
 import { CheckTimes } from "./check-times";
 
-export const ISSUE_TABS = ["overview", "criteria", "runs", "mockups", "decisions", "memory", "activity"] as const;
-
 export type ActivityThread = "comments" | "activity";
-
-export function OverviewTab({
-  issue,
-  attachmentsQ,
-  canWrite,
-}: {
-  issue: IssueDetail;
-  attachmentsQ: ReturnType<typeof useAttachments>;
-  canWrite: boolean;
-}) {
-  const t = useCopy();
-  const slug = useCurrentProject()?.slug;
-  return (
-    <div className="grid gap-8" data-testid="view-overview">
-      <ReleaseNoteCard issue={issue} />
-      <IssueDescription
-        issue={issue}
-        attachments={attachmentsQ.data ?? []}
-        attachmentsLoading={attachmentsQ.isLoading}
-        attachmentsError={attachmentsQ.isError ? attachmentsQ.error : null}
-        canWrite={canWrite}
-      />
-      <div data-highlight="preview">
-        <PreviewPanel
-          issueId={issue.id}
-          issueLabel={issue.displayId}
-          canWrite={canWrite}
-          settingsHref={slug ? settingsHref(slug, "preview") : undefined}
-          hasLiveRun={(issue.agentSessions ?? []).some((s) => s.status === "running")}
-        />
-      </div>
-      <section aria-label={t("issues.plan.title")} data-highlight="plan">
-        <ViewHeading>{t("issues.plan.title")}</ViewHeading>
-        {issue.plan ? (
-          <Markdown>{issue.plan}</Markdown>
-        ) : (
-          <p className="text-13 text-subtle" data-testid="issue-plan-empty">
-            {t(issue.status === "closed" || issue.status === "dropped" ? "issues.plan.emptyEnded" : "issues.plan.empty")}
-          </p>
-        )}
-      </section>
-    </div>
-  );
-}
-
-/**
- * The criteria rows when the issue has them, else the checklist parsed from its acceptance-criteria
- * text. A reader who may write records verdicts on the rows and, where the issue delivers a
- * requirement, ties it to that requirement's criteria, a closed issue included.
- */
-export function CriteriaTab({
-  issue,
-  projectId,
-  hasCriteriaRows,
-  checklist,
-  canWrite,
-  requirementKey,
-}: {
-  issue: IssueDetail;
-  projectId: string;
-  hasCriteriaRows: boolean;
-  checklist: { key: string; text: string; checked: boolean }[];
-  canWrite: boolean;
-  /** The requirement the issue delivers, by key; null where it delivers none. */
-  requirementKey: string | null;
-}) {
-  const t = useCopy();
-  const tie =
-    canWrite && requirementKey && issue.status !== "dropped" ? (
-      <TieCriteria issueId={issue.id} projectId={projectId} requirementKey={requirementKey} />
-    ) : null;
-  return (
-    <div data-testid="view-criteria">
-      {hasCriteriaRows ? (
-        <CriteriaList issueId={issue.id} judge={canWrite} headingAct={tie} />
-      ) : checklist.length > 0 ? (
-        <section aria-label={t("issues.criteria.acceptance")}>
-          <ViewHeading right={tie}>{t("issues.criteria.acceptance")}</ViewHeading>
-          <ul className="space-y-2">
-            {checklist.map((item) => (
-              <li key={item.key}>
-                <Checkbox checked={item.checked} disabled label={item.text} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : (
-        <section aria-label={t("issues.criteria.acceptance")}>
-          <ViewHeading right={tie}>{t("issues.criteria.acceptance")}</ViewHeading>
-          <p className="text-13 text-subtle">{t(tie ? "issues.criteria.emptyTie" : "issues.criteria.empty")}</p>
-        </section>
-      )}
-    </div>
-  );
-}
 
 /**
  * The Runs tab counts the issue's runs: a delegated run records no step, so counting steps read 0
@@ -144,7 +39,6 @@ function RunList({ slug, sessions }: { slug: string; sessions: IssueAgentSession
   const rows = [...sessions].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return (
     <section aria-label={t("issues.tab.runs")}>
-      <ViewHeading>{t("issues.tab.runs")}</ViewHeading>
       <ul className="divide-y divide-line-subtle border-y border-line-subtle">
         {rows.map((s) => (
           <li key={s.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 py-2 text-13" data-testid="issue-run">
@@ -223,6 +117,7 @@ export function ActivityTab({
   activityQ,
   members,
   canWrite,
+  past,
 }: {
   issueId: string;
   thread: ActivityThread;
@@ -231,10 +126,13 @@ export function ActivityTab({
   activityQ: ReturnType<typeof useActivity>;
   members: ReturnType<typeof useProjectMembers>["data"];
   canWrite: boolean;
+  /** What is over and done with, drawn above the thread: voided questions, retired criteria. */
+  past?: ReactNode;
 }) {
   const t = useCopy();
   return (
-    <section id="issue-comments" aria-label={t("issues.tab.activity")} data-testid="view-activity">
+    <section id="issue-comments" aria-label={t("issues.tab.activity")} data-testid="view-activity" className="grid gap-4">
+      {past}
       <SegmentedControl
         options={[
           { value: "comments", label: t("issues.activity.comments"), count: commentsQ.data?.totalCount },

@@ -244,8 +244,18 @@ describe('no count of touched files and no share of the suite widens the selecti
   const byCollection = (out) =>
     Object.fromEntries(out.collections.map((c) => [c.collection.name, c.files.map((f) => f.test)]));
 
+  // Sizes past any plausible threshold (ISS-472 round 3): dev landings touch 16 to 55 files, and a
+  // guard whose fixture stopped at 12 let a fallback above 12 stay green. A count- or share-keyed
+  // fallback fires for every count past its threshold, so the largest count here catches any
+  // threshold below it, and every count up to `EVERY` catches one that fires on a window.
+  const COUNT = 1200;
+  const EVERY = 80;
+  const counts = [
+    ...Array.from({ length: EVERY }, (_, i) => i + 1),
+    ...[100, 128, 200, 256, 400, 512, 600, 800, 1000, 1024, COUNT - 1, COUNT],
+  ];
+
   it('at every count, n touched files select exactly their n tests, past half the suite and short of all', () => {
-    const COUNT = 12;
     const collection = { name: '@forge/core' };
     const index = [
       ...Array.from({ length: COUNT }, (_, i) => ({
@@ -256,13 +266,95 @@ describe('no count of touched files and no share of the suite widens the selecti
       })),
       { path: 'packages/core/src/z.test.ts', collection, reaches: new Set(), declares: [] },
     ];
-    for (let n = 1; n <= COUNT; n++) {
+    for (const n of counts) {
       const touched = Array.from({ length: n }, (_, i) => `packages/core/src/s${i}.ts`);
       const out = selectDirect(touched, index);
-      expect([n, byCollection(out)]).toEqual([
+      expect([n, byCollection(out), out.untested]).toEqual([
         n,
         { '@forge/core': touched.map((t) => t.replace(/\.ts$/, '.test.ts')) },
+        [],
       ]);
+    }
+  });
+
+  it("over a synthetic index of thousands of tests, any set's selection is the union of each file's own", () => {
+    // Deterministic: a seeded generator, so a red names the same set on every run.
+    let seed = 472;
+    const rand = (n) => {
+      seed = (seed * 1103515245 + 12345) % 2 ** 31;
+      return seed % n;
+    };
+    const SOURCES = 900;
+    const sources = Array.from({ length: SOURCES }, (_, i) => {
+      const pkg = ['core', 'web-v2', 'contracts'][i % 3];
+      return `packages/${pkg}/src/m${Math.floor(i / 30)}/f${i}.ts`;
+    });
+    const collections = Object.fromEntries(
+      ['core', 'web-v2', 'contracts'].map((p) => [p, { name: p }]),
+    );
+    // Each test reaches one to four sources, a tenth declare a directory, and some sources are reached
+    // by no test at all, so the untested report is exercised as well.
+    const index = Array.from({ length: 2 * SOURCES }, (_, i) => {
+      const pkg = ['core', 'web-v2', 'contracts'][i % 3];
+      const reaches = new Set(
+        Array.from({ length: 1 + rand(4) }, () => sources[rand(SOURCES - 60)]),
+      );
+      const declares = i % 10 === 0 ? [`packages/${pkg}/src/m${rand(28)}/`] : [];
+      return {
+        path: `packages/${pkg}/src/t${i}.test.ts`,
+        collection: collections[pkg],
+        reaches,
+        declares,
+      };
+    });
+    // Tests no touched file can reach: any one of them selected is the selection widened.
+    for (const pkg of Object.keys(collections)) {
+      for (let i = 0; i < 40; i++) {
+        index.push({
+          path: `packages/${pkg}/src/orphan${i}.test.ts`,
+          collection: collections[pkg],
+          reaches: new Set(),
+          declares: [],
+        });
+      }
+    }
+    const sorted = (out) =>
+      Object.fromEntries(
+        Object.entries(byCollection(out))
+          .map(([k, v]) => [k, [...v].sort()])
+          .sort(([a], [b]) => a.localeCompare(b)),
+      );
+    const alone = new Map(sources.map((f) => [f, selectDirect([f], index)]));
+    for (const size of [1, 2, 13, 20, 55, 100, 300, 450, 600, 899, SOURCES]) {
+      const set =
+        size === SOURCES
+          ? sources
+          : [...new Set(Array.from({ length: size }, () => sources[rand(SOURCES)]))];
+      const union = {};
+      const untested = new Set();
+      for (const f of set) {
+        for (const [name, list] of Object.entries(byCollection(alone.get(f)))) {
+          union[name] = [...new Set([...(union[name] ?? []), ...list])];
+        }
+        for (const u of alone.get(f).untested) untested.add(u);
+      }
+      const got = selectDirect(set, index);
+      const want = sorted({
+        collections: Object.entries(union).map(([name, list]) => ({
+          collection: { name },
+          files: list.map((test) => ({ test })),
+        })),
+      });
+      expect([size, sorted(got), [...got.untested].sort()]).toEqual([
+        size,
+        want,
+        [...untested].sort(),
+      ]);
+      // No test reaching none of the set is selected, at any size, the whole set of sources included.
+      const orphans = Object.values(byCollection(got))
+        .flat()
+        .filter((t) => t.includes('/orphan'));
+      expect([size, orphans]).toEqual([size, []]);
     }
   });
 

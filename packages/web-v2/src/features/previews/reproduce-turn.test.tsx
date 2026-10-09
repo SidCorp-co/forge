@@ -7,7 +7,6 @@ import { BUILD_THE_FIX, type RecordingToolResult, recordingToolResultSchema } fr
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
-import { previewOf } from "./fixtures";
 import { recordingReadIn, TurnReproduce } from "./reproduce-turn";
 
 const push = vi.fn();
@@ -71,16 +70,30 @@ describe("the recording a turn read, under its reply", () => {
         ? {
             status: 201,
             body: {
-              preview: previewOf({
+              preview: {
                 id: REPRO_ID,
+                projectId: PROJECT_ID,
                 subject: { kind: "reproduce", feedback: "FB-52", build: { sha: "c".repeat(40), release: "1.4.0" }, record: true },
                 issueId: null,
                 sessionId: null,
+                deviceId: "55555555-5555-4555-8555-555555555555",
+                url: "https://p-abcdefghijklmnop.preview.localhost:8443/",
                 state: "starting",
+                reason: null,
+                detail: null,
                 command: "npm run dev",
                 port: null,
+                idleMinutes: 30,
+                approvedPatchId: null,
+                approvedBy: null,
+                createdBy: "66666666-6666-4666-8666-666666666666",
+                createdAt: "2026-10-09T10:00:00.000Z",
                 liveAt: null,
-              }),
+                lastViewedAt: null,
+                closedAt: null,
+                streams: 0,
+                streamsWaiting: 0,
+              },
             },
           }
         : undefined,

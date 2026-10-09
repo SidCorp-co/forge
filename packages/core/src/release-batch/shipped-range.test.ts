@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type RangeHost, shippedBetween } from './shipped-range.js';
+import { type RangeHost, rangeReads, shippedBetween } from './shipped-range.js';
 
 const BASE = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
@@ -189,5 +189,25 @@ describe('what a release range ships, read from the repository (BC-7, BC-9)', ()
     const read = await shippedBetween(host, BASE, HEAD);
     expect(read.state).toBe('unread');
     expect(read.state === 'unread' && read.why).toContain(JOURNAL);
+  });
+});
+
+describe('which changed files the run sends the reader (rangeReads)', () => {
+  it('names the journal, the generated contract, each package.json and each compose file, once, in order', () => {
+    expect(
+      rangeReads([
+        { path: 'packages/core/src/index.ts', change: 'changed' },
+        { path: PKG, change: 'changed' },
+        { path: COMPOSE, change: 'added' },
+        { path: JOURNAL, change: 'changed' },
+        { path: OPENAPI, change: 'changed' },
+        { path: 'packages/web-v2/package.json', change: 'removed' },
+        { path: 'docs/package.json.md', change: 'added' },
+      ]),
+    ).toEqual([COMPOSE, OPENAPI, JOURNAL, PKG, 'packages/web-v2/package.json'].sort());
+  });
+
+  it('names none for a range that touches none of them', () => {
+    expect(rangeReads([{ path: 'README.md', change: 'changed' }])).toEqual([]);
   });
 });

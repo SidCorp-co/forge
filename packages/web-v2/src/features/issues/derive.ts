@@ -434,3 +434,9 @@ export function canonicalIssueId(rawId: string, fetchedId: string | undefined): 
 export function issueQueryKey(id: string | undefined, projectId: string | undefined): readonly unknown[] {
 	return !id || UUID_RE.test(id) ? ["issue", id] : ["issue", id, projectId];
 }
+
+/** `text` cut to `max` words and ended with an ellipsis; whole where it is already that short. */
+export function clipWords(text: string, max: number): string {
+	const words = text.split(/\s+/).filter(Boolean);
+	return words.length <= max ? words.join(" ") : `${words.slice(0, max).join(" ")}…`;
+}

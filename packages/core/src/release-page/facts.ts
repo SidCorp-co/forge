@@ -7,33 +7,14 @@ import type { ReleaseDetail } from '@forge/contracts/releases';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueAttachments } from '../db/schema.js';
-import { criterionVerdicts } from '../db/schema-issue-criteria.js';
 import {
   requirementCriteria,
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
 import { listCriteriaOf, reopenedAtOf } from '../issues/index.js';
+import { carriedVerdictsOf } from '../release-batch/index.js';
 import type { CarriedCriterion, CarriedRequirement, CarriedVerdict, IssueFile } from './claims.js';
-
-const VERDICTS = new Set(['pass', 'short', 'fail', 'skipped']);
-
-async function verdictsOf(criterionIds: readonly string[]) {
-  if (criterionIds.length === 0) return [];
-  return db
-    .select({
-      id: criterionVerdicts.id,
-      criterionId: criterionVerdicts.criterionId,
-      verdict: criterionVerdicts.verdict,
-      reason: criterionVerdicts.reason,
-      identityKind: criterionVerdicts.identityKind,
-      commitSha: criterionVerdicts.commitSha,
-      evidence: criterionVerdicts.evidence,
-      createdAt: criterionVerdicts.createdAt,
-    })
-    .from(criterionVerdicts)
-    .where(inArray(criterionVerdicts.criterionId, [...criterionIds]));
-}
 
 /**
  * Each live criterion of the issues the release carries, with every verdict it earned since the
@@ -47,7 +28,8 @@ export async function carriedCriteria(detail: ReleaseDetail): Promise<CarriedCri
     reopenedAtOf(db, issueIds),
   ]);
   const all = [...criteria.values()].flat();
-  const verdicts = await verdictsOf(all.map((c) => c.id));
+  // the rows the release record counts by (`release-batch/release-facts.ts:criteriaAt`)
+  const verdicts = await carriedVerdictsOf(all.map((c) => c.id));
   return detail.issues.flatMap((issue) => {
     const voidedBy = reopened.get(issue.id)?.getTime() ?? Number.NEGATIVE_INFINITY;
     const traced = detail.issueCriteria.find((i) => i.key === issue.key)?.criteria ?? [];
@@ -59,19 +41,16 @@ export async function carriedCriteria(detail: ReleaseDetail): Promise<CarriedCri
       statement: c.statement,
       bc: traced.find((t) => t.n === c.n)?.bc ?? null,
       verdicts: verdicts
-        .filter(
-          (v) =>
-            v.criterionId === c.id && v.createdAt.getTime() > voidedBy && VERDICTS.has(v.verdict),
-        )
+        .filter((v) => v.criterionId === c.id && new Date(v.at).getTime() > voidedBy)
         .map(
           (v): CarriedVerdict => ({
             id: v.id,
-            verdict: v.verdict as CarriedVerdict['verdict'],
+            verdict: v.verdict,
             identityKind: v.identityKind,
             commitSha: v.commitSha,
-            at: v.createdAt.toISOString(),
+            at: v.at,
             reason: v.reason,
-            evidence: v.evidence ?? [],
+            evidence: v.evidence,
           }),
         ),
     }));

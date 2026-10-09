@@ -118,7 +118,7 @@ export function IssueBanner({ standing, className }: { standing: IssueStanding; 
 }
 
 /** Triage → … → Release with the current step lit; an issue past release is all done. */
-function IssueSteps({ standing }: { standing: IssueStanding }) {
+export function IssueSteps({ standing, caption = true }: { standing: IssueStanding; caption?: boolean }) {
   const t = useCopy();
   const L = useLabel();
   const time = useTimeFormat();
@@ -134,7 +134,7 @@ function IssueSteps({ standing }: { standing: IssueStanding }) {
         tone: standing.tone === "you" ? "you" : "run",
       }))}
       caption={
-        !over && standing.stepStartedAt ? (
+        caption && !over && standing.stepStartedAt ? (
           <span title={time.dateTime(standing.stepStartedAt)}>
             {t("issues.steps.since", { step: L("workStep", standing.step ?? ""), at: time.relative(standing.stepStartedAt) })}
           </span>

@@ -99,6 +99,15 @@ describe('a release run says what left when it stops', () => {
     expect(unknown(releaseBatchStatePrompt)).toEqual([]);
   });
 
+  // REQ-40 BC-7, BC-9: the release page reads what an admin must do from the range the run reports
+  it('reports its range from the checkout before finish, by the verb the runner ships', () => {
+    const report = releaseBatchStatePrompt.indexOf(
+      'forge-runner release range --project-id <projectId> --run <runId> --head <sha>',
+    );
+    expect(report).toBeGreaterThan(-1);
+    expect(report).toBeLessThan(releaseBatchStatePrompt.indexOf('/finish -X POST'));
+  });
+
   it('catches a refusal no code list holds', () => {
     expect(unknown('refused `RELEASE_VERSION_UNDECIDE`')).toEqual(['RELEASE_VERSION_UNDECIDE']);
   });

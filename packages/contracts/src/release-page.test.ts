@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { criterionCountsAsPass } from "./issue-vocabulary.js";
 import { refusalStatusOf } from "./refusal-statuses.js";
 import {
 	judgeHighlights,
@@ -11,11 +12,13 @@ import {
 	ReleaseHighlightsSchema,
 	type ReleaseMediaRef,
 	ReleaseMediaRefSchema,
+	ReleaseRangeReportSchema,
 	ReleaseSeenSchema,
 	type ReleaseVerdictReading,
 	releaseClaimOf,
 	releaseMediaKindOf,
 	releasePagePath,
+	releaseStandingOf,
 	whatsNewReleaseOwed,
 } from "./release-page.js";
 
@@ -130,6 +133,71 @@ const highlight = (over: Partial<ReleaseHighlight> = {}): ReleaseHighlight => ({
 
 const codes = (h: ReleaseHighlight[], f = facts) =>
 	judgeHighlights(h, f).map((r) => r.code);
+
+describe("the one standing a release counts a criterion by (BC-5, BC-13)", () => {
+	it("reads the newest verdict on the build, a short counted as proven", () => {
+		const verdicts = [
+			v("fail", BUILD, "2026-10-09T10:00:00Z"),
+			v("short", BUILD, "2026-10-09T11:00:00Z"),
+		];
+		expect(releaseStandingOf(verdicts, BUILD)).toBe("short");
+		expect(criterionCountsAsPass(releaseStandingOf(verdicts, BUILD))).toBe(
+			true,
+		);
+	});
+	it("never counts a pass on an earlier build: the criterion is not judged on this one", () => {
+		const earlier = [v("pass", MERGED, "2026-10-09T12:00:00Z")];
+		expect(releaseStandingOf(earlier, BUILD)).toBe("unjudged");
+		// newer than the verdict on the build, and still not the build's
+		const both = [v("fail", BUILD, "2026-10-09T10:00:00Z"), ...earlier];
+		expect(releaseStandingOf(both, BUILD)).toBe("fail");
+	});
+	it("reads a draft, which has no build, by its newest verdict", () => {
+		const verdicts = [
+			v("fail", BUILD, "2026-10-09T10:00:00Z"),
+			v("pass", MERGED, "2026-10-09T12:00:00Z"),
+		];
+		expect(releaseStandingOf(verdicts, null)).toBe("pass");
+		expect(releaseStandingOf([], null)).toBe("unjudged");
+		expect(
+			releaseStandingOf(
+				[v("pass", "abc1234", "2026-10-09T10:00:00Z", "commit_unresolved")],
+				null,
+			),
+		).toBe("unresolved");
+	});
+});
+
+describe("a release run's range report is refused unless whole", () => {
+	const ok = { base: BUILD, head: MERGED, changes: [], files: [] };
+	it("takes full commits, each changed path once named, and each file's two ends", () => {
+		expect(ReleaseRangeReportSchema.safeParse(ok).success).toBe(true);
+		expect(
+			ReleaseRangeReportSchema.safeParse({
+				...ok,
+				changes: [{ path: "a.json", change: "added" }],
+				files: [{ path: "a.json", base: null, head: "{}" }],
+			}).success,
+		).toBe(true);
+	});
+	it("refuses an abbreviated commit, an unknown change and a file missing an end", () => {
+		expect(
+			ReleaseRangeReportSchema.safeParse({ ...ok, base: "abc1234" }).success,
+		).toBe(false);
+		expect(
+			ReleaseRangeReportSchema.safeParse({
+				...ok,
+				changes: [{ path: "a.json", change: "renamed" }],
+			}).success,
+		).toBe(false);
+		expect(
+			ReleaseRangeReportSchema.safeParse({
+				...ok,
+				files: [{ path: "a.json", head: "{}" }],
+			}).success,
+		).toBe(false);
+	});
+});
 
 describe("drafted highlights are judged before they show (BC-2, BC-3, BC-13)", () => {
 	it("passes a highlight drawn from the record, claiming a pass, showing its clip", () => {

@@ -113,9 +113,10 @@ type Page = {
     refusals?: Array<{ code: string }>;
     why?: string;
   };
+  untraced: unknown;
   requirements: Array<{
     key: string;
-    proven: Array<{ code: string; statement: string; short: boolean }>;
+    proven: Array<{ code: string | null; statement: string; short: boolean; issueKey: string }>;
     unproven: number;
   }>;
   improvements: Array<{ issueKey: string; kind: string; line: string }>;
@@ -148,12 +149,14 @@ describe('a release page claims a criterion only with a pass verdict on the buil
         title: 'Visit reminders',
         completes: false,
         proven: [
-          { code: 'BC-1', statement: 'A nurse sees the reminder', short: false },
-          { code: 'BC-2', statement: 'A nurse sees it on a phone', short: true },
+          { code: 'BC-1', statement: 'A nurse sees the reminder', short: false, issueKey: 'ISS-1' },
+          { code: 'BC-2', statement: 'A nurse sees it on a phone', short: true, issueKey: 'ISS-1' },
         ],
         unproven: 2,
       },
     ]);
+    // every carried issue traces the requirement, so nothing is listed apart
+    expect(p.untraced).toBeNull();
     // the user view says the criterion and its state; QA's reasons and the other build are the developer view's
     expect(p.knownIssues.map((k) => [k.bc, k.standing, k.reason, k.elsewhere])).toEqual([
       ['BC-2', 'short', null, null],

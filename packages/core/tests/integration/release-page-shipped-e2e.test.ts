@@ -1,8 +1,9 @@
 /**
  * What QA judged short on 0.4.0-dev.218 of the release page (REQ-40 BC-4, BC-5, BC-7, BC-9, BC-11),
  * through the app's own routes against real Postgres: the verdict's note and clip reach the
- * criterion, the header counts what the list proves, what the release ships is read from its commit
- * range (answered by a fake repository), and a share and both exports carry the user view only.
+ * criterion, the header counts what the list proves, and a share and both exports carry the user
+ * view only. What the release ships, read from the range its run reports, is
+ * release-page-range-e2e.test.ts.
  */
 
 import {
@@ -11,7 +12,7 @@ import {
   releasePageMarkdown,
 } from '@forge/contracts/release-page-export';
 import { sql } from 'drizzle-orm';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { register } from '../../src/integrations/llm/registry.js';
 import type { ChatMessage, ChatStreamEvent } from '../../src/integrations/llm/types.js';
@@ -41,37 +42,6 @@ register('anthropic', () => ({
   },
 }));
 
-// the project's repository, answered by a fake host: what each commit holds and which paths differ
-const repository = vi.hoisted(() => ({
-  files: {} as Record<string, Record<string, string>>,
-  changed: [] as string[],
-  unreachable: false,
-}));
-vi.mock('../../src/integrations/source-host/index.js', async (importOriginal) => {
-  const real = await importOriginal<typeof import('../../src/integrations/source-host/index.js')>();
-  return {
-    ...real,
-    resolveSourceHost: async () => {
-      if (repository.unreachable) {
-        throw new real.SourceHostUnavailable(
-          'no_binding',
-          'the project has no repository binding',
-          null,
-        );
-      }
-      return {
-        compareFiles: async () => ({
-          status: 'ahead',
-          files: repository.changed,
-          changes: repository.changed.map((path) => ({ path, change: 'changed' })),
-        }),
-        readFile: async (path: string, ref: string) =>
-          repository.files[ref]?.[path] ?? { missing: `${path} does not exist at ${ref}` },
-      };
-    },
-  };
-});
-
 let projectId: string;
 let ownerId: string;
 const tokens: Record<'owner' | 'member' | 'agent', string> = { owner: '', member: '', agent: '' };
@@ -90,9 +60,6 @@ beforeEach(async () => {
   unplant = plantLiveBuild(BUILD);
   asked.length = 0;
   answers = [];
-  repository.files = {};
-  repository.changed = [];
-  repository.unreachable = false;
   await truncateAll();
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
@@ -249,114 +216,6 @@ describe('a criterion reaches the note and the clip its verdict kept (BC-4)', ()
     // the file is what the criterion links to: it downloads for a member
     const file = await api(tokens.member, 'GET', `/api/attachments/${w.clipId}/download`);
     expect(file.status).toBe(200);
-  });
-});
-
-// QA 0.4.0-dev.218: Action required and Technical notes read "None" because no issue filled the
-// structured fields, though the release added migrations 0477 and 0478 and a new setting
-describe('what the release ships is read from its commit range, not from hand-filled fields', () => {
-  const PREVIOUS = 'd'.repeat(40);
-  const JOURNAL = 'packages/core/drizzle/migrations/meta/_journal.json';
-  const OPENAPI = 'packages/core/contracts/forge-api.openapi.json';
-  const PKG = 'packages/core/package.json';
-  const COMPOSE = 'docker-compose.prod.yml';
-  const journal = (...tags: string[]) =>
-    JSON.stringify({ entries: tags.map((tag, idx) => ({ idx, tag })) });
-  const spec = (paths: string[]) =>
-    JSON.stringify({
-      paths: Object.fromEntries(paths.map((p) => [p, { get: { summary: p } }])),
-      components: { schemas: {} },
-    });
-
-  // a compose file's own interpolation: `NAME: ${NAME:?why}` refuses to start without it, `${NAME:-}` does not
-  const env = (name: string, tail: string) => `      ${name}: \${${name}${tail}}\n`;
-  const compose = (...lines: string[]) => `services:\n  core:\n    environment:\n${lines.join('')}`;
-
-  async function earlierRelease() {
-    await db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, release_version, release_released_at, metadata)
-      VALUES (gen_random_uuid(), ${projectId}, 'system', 'completed', now() - interval '2 days', '0.0.9', now() - interval '2 days',
-              ${JSON.stringify({ source: 'release-batch', finish: { requestId: 'r', state: 'finished', commit: PREVIOUS, version: 1 } })}::jsonb)
-    `);
-  }
-
-  function plantRange() {
-    repository.changed = [JOURNAL, OPENAPI, PKG, COMPOSE];
-    repository.files = {
-      [PREVIOUS]: {
-        [JOURNAL]: journal('0475_a', '0476_b'),
-        [OPENAPI]: spec(['/api/old']),
-        [PKG]: JSON.stringify({ dependencies: { hono: '4.1.0' } }),
-        [COMPOSE]: compose(env('DATABASE_URL', ':?set it')),
-      },
-      [BUILD]: {
-        [JOURNAL]: journal('0475_a', '0476_b', '0477_a_preview', '0478_a_release_page'),
-        [OPENAPI]: spec(['/api/old', '/api/previews']),
-        [PKG]: JSON.stringify({ dependencies: { hono: '4.2.0', zod: '4.6.5' } }),
-        [COMPOSE]: compose(
-          env('DATABASE_URL', ':?set it'),
-          env('PREVIEW_DOMAIN', ':-'),
-          env('VAULT_KEY', ':?a key'),
-        ),
-      },
-    };
-  }
-
-  it('asks an admin for each migration the release adds and each new required setting, in the user view', async () => {
-    await releaseWorldOfFour();
-    await earlierRelease();
-    plantRange();
-    const p = await page('member', 'user');
-    expect(p.shipped).toMatchObject({ state: 'read', base: PREVIOUS, head: BUILD });
-    expect(p.actionRequired.map((x) => [x.kind, x.ref])).toEqual([
-      ['migration', 'packages/core/drizzle/migrations/0477_a_preview.sql'],
-      ['migration', 'packages/core/drizzle/migrations/0478_a_release_page.sql'],
-      ['setting', 'VAULT_KEY'],
-      // what an issue named of its own adds, and is not said twice
-      ['migration', 'packages/core/drizzle/migrations/0999_reminders.sql'],
-      ['setting', 'reminders.leadHours'],
-      ['permission', 'shares.write'],
-    ]);
-    expect(p.actionRequired[0]?.sentence).toMatch(/^Back up the database/);
-    expect(p.actionRequired[2]?.sentence).toMatch(/^Set VAULT_KEY/);
-  });
-
-  it('lists the derived migrations, contracts, dependencies and settings in the developer view', async () => {
-    await releaseWorldOfFour();
-    await earlierRelease();
-    plantRange();
-    const dev = await page('member', 'developer');
-    expect(dev.technical?.migrations).toEqual([
-      'packages/core/drizzle/migrations/0477_a_preview.sql',
-      'packages/core/drizzle/migrations/0478_a_release_page.sql',
-      'packages/core/drizzle/migrations/0999_reminders.sql',
-    ]);
-    expect(dev.technical?.contracts).toEqual(['added GET /api/previews']);
-    expect(dev.technical?.dependencies).toEqual([
-      'packages/core: added zod 4.6.5',
-      'packages/core: hono 4.1.0 -> 4.2.0',
-    ]);
-    expect(dev.technical?.settings).toEqual(['PREVIEW_DOMAIN (optional)', 'VAULT_KEY (required)']);
-  });
-
-  it('says the range was not read, and why, where the repository cannot be reached or nothing shipped before', async () => {
-    await releaseWorldOfFour();
-    const first = await page('member');
-    expect(first.shipped).toMatchObject({
-      state: 'unread',
-      why: expect.stringContaining('no release shipped before'),
-    });
-    await earlierRelease();
-    repository.unreachable = true;
-    const down = await page('member');
-    expect(down.shipped).toMatchObject({
-      state: 'unread',
-      why: expect.stringContaining('could not be reached'),
-    });
-    // what the issues named still stands: an unread range adds nothing, and takes nothing away
-    expect(down.actionRequired.map((x) => x.ref)).toContain(
-      'packages/core/drizzle/migrations/0999_reminders.sql',
-    );
   });
 });
 

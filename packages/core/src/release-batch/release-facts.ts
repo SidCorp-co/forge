@@ -1,12 +1,18 @@
 import type { LandingArtifact, ReadPaths } from '@forge/contracts/landing-artifacts';
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
+import { type ReleaseVerdictReading, releaseStandingOf } from '@forge/contracts/release-page';
 import type { ReleaseCriterionView, ReleasePerson } from '@forge/contracts/releases';
 import type { RequirementState } from '@forge/contracts/requirements';
 import { requirementKey } from '@forge/contracts/requirements';
-import { criterionStandingOf, identityPhraseOf } from '@forge/contracts/verdict-identity';
+import {
+  commitIdentityPhrase,
+  criterionStandingOf,
+  identityPhraseOf,
+} from '@forge/contracts/verdict-identity';
 import { and, asc, eq, inArray, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
+import { criterionVerdicts } from '../db/schema-issue-criteria.js';
 import { requirements } from '../db/schema-requirements.js';
 import {
   activeIssuePrefix,
@@ -27,7 +33,10 @@ export interface IssueFact {
   updatedAt: Date;
   releaseNotes: ReleaseNotes | null;
   requirementId: string | null;
+  /** Each live criterion read by its latest verdict: what a release with no cut build counts. */
   criteria: ReleaseCriterionView[];
+  /** Every verdict each live criterion earned since the issue's last reopen, by its number. */
+  verdicts: ReadonlyMap<number, readonly CarriedVerdict[]>;
   /** The merged mark's columns, which `landing-surfaces.ts` reads what the landing changed from. */
   merged: {
     at: Date | null;
@@ -42,6 +51,74 @@ export interface ReleaseFacts {
   issues: Map<string, IssueFact>;
   requirements: Map<string, CompletionFacts>;
   cutters: Map<string, ReleasePerson>;
+}
+
+/** One verdict a carried criterion earned, as a release reads it. */
+export interface CarriedVerdict extends ReleaseVerdictReading {
+  id: string;
+  criterionId: string;
+  reason: string | null;
+  evidence: readonly string[];
+  agency: 'human' | 'agent';
+}
+
+/**
+ * Every verdict on `criterionIds`, oldest first: what a release reads a criterion it carries by.
+ * The page reads the same rows (`release-page/facts.ts`), so the two cannot count differently.
+ */
+export async function carriedVerdictsOf(
+  criterionIds: readonly string[],
+): Promise<CarriedVerdict[]> {
+  if (criterionIds.length === 0) return [];
+  const rows = await db
+    .select({
+      id: criterionVerdicts.id,
+      criterionId: criterionVerdicts.criterionId,
+      verdict: criterionVerdicts.verdict,
+      reason: criterionVerdicts.reason,
+      identityKind: criterionVerdicts.identityKind,
+      commitSha: criterionVerdicts.commitSha,
+      evidence: criterionVerdicts.evidence,
+      agency: criterionVerdicts.authorAgency,
+      createdAt: criterionVerdicts.createdAt,
+    })
+    .from(criterionVerdicts)
+    .where(inArray(criterionVerdicts.criterionId, [...criterionIds]))
+    .orderBy(asc(criterionVerdicts.createdAt));
+  return rows.map((v) => ({
+    id: v.id,
+    criterionId: v.criterionId,
+    verdict: v.verdict as CarriedVerdict['verdict'],
+    identityKind: v.identityKind,
+    commitSha: v.commitSha,
+    at: v.createdAt.toISOString(),
+    reason: v.reason,
+    evidence: v.evidence ?? [],
+    agency: v.agency,
+  }));
+}
+
+/**
+ * An issue's criteria as the release whose build is `build` counts them (`releaseStandingOf`): the
+ * newest verdict on that build, or not judged where none is on it. A release with no cut build reads
+ * each by its latest verdict.
+ */
+export function criteriaAt(issue: IssueFact, build: string | null): ReleaseCriterionView[] {
+  if (build === null) return issue.criteria;
+  return issue.criteria.map((c) => {
+    const verdicts = issue.verdicts.get(c.n) ?? [];
+    const on = [...verdicts]
+      .reverse()
+      .find((v) => v.identityKind === 'commit' && v.commitSha === build);
+    return {
+      ...c,
+      standing: releaseStandingOf(verdicts, build),
+      identity: on ? commitIdentityPhrase(build) : null,
+      reason: on?.reason ?? null,
+      judgedAt: on?.at ?? null,
+      judgedBy: on?.agency ?? null,
+    };
+  });
 }
 
 function criterionView(c: CriterionWithVerdict, voidedBy: Date | undefined): ReleaseCriterionView {
@@ -163,6 +240,19 @@ export async function loadReleaseFacts(
       rows.flatMap((r) => (r.requirementId ? [r.requirementId] : [])),
     ),
   ]);
+  const verdicts = await carriedVerdictsOf(
+    [...criteria.values()].flatMap((list) => list.map((c) => c.id)),
+  );
+  // a reopen voids what was judged before it, as `criterionView` reads the latest
+  const judged = (issueId: string) => {
+    const voidedBy = reopened.get(issueId)?.getTime() ?? Number.NEGATIVE_INFINITY;
+    return new Map(
+      (criteria.get(issueId) ?? []).map((c) => [
+        c.n,
+        verdicts.filter((v) => v.criterionId === c.id && new Date(v.at).getTime() > voidedBy),
+      ]),
+    );
+  };
   const byIssue = new Map<string, IssueFact>(
     rows.map((r) => [
       r.id,
@@ -175,6 +265,7 @@ export async function loadReleaseFacts(
         releaseNotes: r.releaseNotes ?? null,
         requirementId: r.requirementId,
         criteria: (criteria.get(r.id) ?? []).map((c) => criterionView(c, reopened.get(r.id))),
+        verdicts: judged(r.id),
         merged: {
           at: r.mergedAt,
           landing: r.mergedLanding,

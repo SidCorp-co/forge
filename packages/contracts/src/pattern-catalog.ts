@@ -199,7 +199,7 @@ export const PATTERN_CATALOG: readonly PatternEntry[] = [
 			"Types come from `@forge/contracts`; no shape core answers is redeclared by hand.",
 			"A refused write is drawn from the refusal envelope (`refusalsOf`, `namedRefusals`, `RefusalLine`), naming the code's sentence, never a generic error.",
 			"Badges use `StatusBadge` or `EnumBadge` with tones from contracts; the feature declares no colour map.",
-			"New words are copy keys in English only; none is written inline in the component, and no Vietnamese is added.",
+			"New words are copy keys in English only; none is written inline in the component, and no Vietnamese is added. Each obeys the Copy rule above: at most 12 words, and the page it lands on stays inside the first-screen budget.",
 			"A mutation invalidates every query its effect changes.",
 			"The screen is reachable: a route or a parent component renders it, and it works at phone width."
 		]

@@ -12,7 +12,7 @@ import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useAbandonPreview, useApprovePreview, useIssueLane, useOpenPreview, usePreview, useSendPreviewMessage } from "./hooks";
-import { PreviewFrame } from "./preview-frame";
+import { openPreviewInTab, PreviewFrame } from "./preview-frame";
 
 type Copy = ReturnType<typeof useCopy>;
 
@@ -33,6 +33,8 @@ export interface PreviewPanelProps {
   /** A run holds a worktree to serve now; without one nothing can be started. */
   hasLiveRun: boolean;
   compact?: boolean;
+  /** One row: the state and the acts, with no frame, message box or hint; the whole panel is the developer view's. */
+  row?: boolean;
   /** Classes for the section itself, so a wrapper never stands empty where the panel draws nothing. */
   className?: string;
   /** Where the project's preview settings are, from the page that mounts the panel; no link is drawn without it. */
@@ -40,7 +42,7 @@ export interface PreviewPanelProps {
 }
 
 export function PreviewPanel(props: PreviewPanelProps) {
-  const { issueId, canWrite, hasLiveRun, compact = false, className } = props;
+  const { issueId, canWrite, hasLiveRun, compact = false, row = false, className } = props;
   const t = useCopy();
   const previewQ = usePreview(issueId);
   const open = useOpenPreview(issueId);
@@ -58,6 +60,7 @@ export function PreviewPanel(props: PreviewPanelProps) {
   }
   // nothing to show and nothing a reader could start (beside the chat, nothing is started): the section stays out of the way
   if (!preview && (compact || !(hasLiveRun && canWrite))) return null;
+  if (row && preview) return <PreviewRow preview={preview} issueId={issueId} canWrite={canWrite} className={className} />;
 
   return (
     <section aria-label={t("previews.title")} data-testid="preview-panel" data-state={preview?.state ?? "none"} className={cn("grid gap-3", className)}>
@@ -83,6 +86,44 @@ function Refusal({ error, lead }: { error: unknown; lead: string }) {
     <p role="alert" className="fg-body-sm" style={{ color: "var(--red-600)" }}>
       {lead}: {formatApiError(error)}
     </p>
+  );
+}
+
+/** The preview as one row of the issue page: its state in a word, then Open, Abandon and Approve where they apply. */
+function PreviewRow({ preview, issueId, canWrite, className }: { preview: PreviewRecord; issueId: string; canWrite: boolean; className: string | undefined }) {
+  const t = useCopy();
+  const approve = useApprovePreview(issueId);
+  const abandon = useAbandonPreview(issueId);
+  const [opening, setOpening] = useState<unknown>(null);
+  const serving = (PREVIEW_SERVING_STATES as readonly string[]).includes(preview.state);
+  const approvable = preview.state === "live" || preview.state === "idle_closed";
+  return (
+    <section aria-label={t("previews.title")} data-testid="preview-panel" data-state={preview.state} className={cn("grid gap-1", className)}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span data-testid="preview-state" className="fg-label text-fg">
+          {t(`previews.state.${preview.state}`)}
+        </span>
+        <span className="min-w-0 flex-1" />
+        {preview.state === "live" ? (
+          <Button size="sm" variant="secondary" onClick={() => openPreviewInTab(preview.id).then(() => setOpening(null), setOpening)}>
+            {t("previews.open")}
+          </Button>
+        ) : null}
+        {canWrite && serving ? (
+          <Button size="sm" variant="secondary" loading={abandon.isPending} onClick={() => abandon.mutate(preview.id)}>
+            {t("previews.abandon")}
+          </Button>
+        ) : null}
+        {canWrite && approvable ? (
+          <Button size="sm" variant="primary" loading={approve.isPending} onClick={() => approve.mutate(preview.id)}>
+            {t("previews.approve")}
+          </Button>
+        ) : null}
+      </div>
+      <Refusal error={opening} lead={t("previews.frame.ticketFailed")} />
+      <Refusal error={approve.error} lead={t("previews.approveFailed")} />
+      <Refusal error={abandon.error} lead={t("previews.abandonFailed")} />
+    </section>
   );
 }
 

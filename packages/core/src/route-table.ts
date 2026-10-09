@@ -15,5 +15,6 @@ const table = {
   levels: permissions.PAT_PERMISSION_LEVELS,
   ungrantable: permissions.PAT_UNGRANTABLE,
 };
-process.stdout.write(JSON.stringify(table));
-process.exit(0);
+// exit only once the write has drained: a pipe takes a large table in several chunks, and an exit
+// straight after write() cuts it short (the checker then reads truncated JSON)
+process.stdout.write(JSON.stringify(table), () => process.exit(0));

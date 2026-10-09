@@ -54,7 +54,23 @@ const recording = (over: Partial<RecordingRecord> = {}): RecordingRecord =>
     ...over,
   });
 
-const item = { key: "FB-52", reporter: { id: REPORTER, name: "Ann", agency: "human" }, route: null, redacted: false } as unknown as FeedbackView;
+const item = { key: "FB-52", title: "Save order fails", reporter: { id: REPORTER, name: "Ann", agency: "human" }, route: null, redacted: false, attachments: [] } as unknown as FeedbackView;
+
+const BO = "55555555-5555-4555-8555-555555555555";
+/** A video someone attached to the item: core serves it from the item's own attachment route. */
+const upload = (over: Record<string, unknown> = {}) => ({
+  id: "v1",
+  from: null,
+  name: "spinner.mp4",
+  mime: "video/mp4",
+  size: 900_000,
+  flagged: false,
+  uploadedBy: BO,
+  uploadedByName: "Bo",
+  createdAt: "2026-10-09T11:00:00.000Z",
+  url: `/api/projects/${PROJECT_ID}/feedback/FB-52/attachments/v1`,
+  ...over,
+});
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -117,6 +133,52 @@ describe("the item's recordings", () => {
     renderWithQuery(<Recordings projectId={PROJECT_ID} f={item} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't read the recordings: recordings open only for signed-in members of the project");
     expect(screen.queryByTestId("recordings-table")).toBeNull();
+  });
+
+  it("lists an uploaded video and a reproduce recording as one list, newest first, each naming who made it", async () => {
+    fakeCore((c) => (c.path === LIST ? { body: { recordings: [recording()] } } : undefined));
+    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: [upload(), { ...upload({ id: "i1", name: "shot.png", mime: "image/png" }) }] } as unknown as FeedbackView} />);
+    await screen.findByText("1.4.0");
+    const rows = screen.getAllByTestId("recording-row");
+    expect(rows.map((r) => r.getAttribute("data-kind")), "a screenshot is not a recording").toEqual(["upload", "reproduce"]);
+    expect(rows[0]).toHaveTextContent("Bo");
+    expect(rows[0]).toHaveTextContent("Uploaded");
+    expect(rows[1]).toHaveTextContent("Ann");
+  });
+
+  it("plays an uploaded video in the page, read by its text alternative, not its file name", async () => {
+    fakeCore((c) => (c.path === LIST ? { body: { recordings: [] } } : undefined));
+    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: [upload({ uploadedBy: REPORTER, uploadedByName: "Ann" })] } as unknown as FeedbackView} />);
+    const video = await screen.findByTestId("recording-video");
+    expect(video.tagName).toBe("VIDEO");
+    expect(video.getAttribute("src")).toBe(upload().url);
+    expect(video.hasAttribute("controls")).toBe(true);
+    expect(video.getAttribute("aria-label")).toBe("Recording 1 of 1 for FB-52: Save order fails");
+    expect(screen.getByTestId("recording-row")).toHaveTextContent("Ann");
+    expect(screen.queryByText("spinner.mp4")).toBeNull();
+  });
+
+  it("opens a reproduce recording from the list in place of the video", async () => {
+    fakeCore((c) => (c.path === LIST ? { body: { recordings: [recording()] } } : undefined));
+    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: [upload()] } as unknown as FeedbackView} />);
+    await screen.findByText("1.4.0");
+    expect(screen.getByTestId("recording-video"), "the newest, the upload, is open first").toBeTruthy();
+    fireEvent.click(within(screen.getAllByTestId("recording-row")[1] as HTMLElement).getByRole("button", { name: "Show" }));
+    expect(await screen.findByTestId("recording-timeline")).toHaveTextContent("Clicked Save order");
+    expect(screen.queryByTestId("recording-video")).toBeNull();
+  });
+
+  it("describes a replay by its timeline, the text a screen reader reads for it", async () => {
+    fakeCore((c) => {
+      if (c.path === LIST) return { body: { recordings: [recording()] } };
+      if (c.path === `/recordings/${REC}/events`) return { body: { events: [] } };
+      return undefined;
+    });
+    renderWithQuery(<Recordings projectId={PROJECT_ID} f={item} />);
+    fireEvent.click(await screen.findByTestId("recording-replay"));
+    const player = await screen.findByRole("figure", { name: "Recording replay" });
+    const described = document.getElementById(player.getAttribute("aria-describedby") ?? "");
+    expect(described).toHaveTextContent("Clicked Save order");
   });
 
   it("writes times from the recording's start", () => {

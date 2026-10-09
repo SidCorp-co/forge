@@ -10,6 +10,7 @@ pub mod login;
 pub mod logs;
 pub mod master;
 pub mod question;
+pub mod release;
 pub mod run;
 pub mod runners;
 pub mod service;

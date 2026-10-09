@@ -1,11 +1,12 @@
 // The Ask Agent panel beside the page, witnessed at a phone, a laptop and wide windows (REQ-31 r2;
-// ISS-493): a first open takes the large width, which leaves the page exactly its 480px minimum; the
-// size control switches it to half and back; a drag sets a width between, stops at either size, and
-// the control snaps it back. With a board open the control names the width drawn and one click moves
-// the panel to the size it names, from large and from half, and that is the size kept. The browser
+// ISS-493): a first open takes the large width, which leaves the page exactly its 480px minimum. The
+// switch draws Half and Large as two targets, and a click on either, at the point it is drawn, moves
+// the panel to that size and keeps it: from half, from large, from a dragged width and from the width
+// an open board widened it to. A drag sets a width between and stops at either size. The browser
 // arrives with a width saved by the old build, which the first open moves to large. On a phone the
 // panel is the full-screen slide-over with no size control. Every stage also reads the panel's own
-// layout: the title is not cut, no header control leaves the panel, and nothing in it scrolls sideways.
+// layout: the title is not cut, no header control leaves the panel, nothing in it scrolls sideways,
+// and Tab visits the header's controls in the order its rows are drawn.
 //
 //   pnpm --filter web-v2 witness witness/chat-dock.witness.tsx --out <dir>
 
@@ -80,9 +81,15 @@ function laidOut(): string[] {
   const close = header.querySelector<HTMLElement>("button[aria-label^='Close']");
   if (close) {
     const c = close.getBoundingClientRect();
-    const h = title.getBoundingClientRect();
     const right = header.getBoundingClientRect().right - parseFloat(getComputedStyle(header).paddingRight);
-    if (Math.abs((c.top + c.bottom) / 2 - (h.top + h.bottom) / 2) > 8 || Math.abs(c.right - right) > 1) wrong.push(`close is not on the title's row at the header's right edge (it sits at ${Math.round(c.left)}, ${Math.round(c.top)})`);
+    if (Math.abs(c.right - right) > 1) wrong.push(`close is not at the header's right edge (it sits at ${Math.round(c.left)}, ${Math.round(c.top)})`);
+  }
+  // Tab visits the controls in the order they are in the page, so that order must read the rows as drawn
+  const tabbed = [...header.querySelectorAll<HTMLElement>("button")].map((b) => ({ name: b.getAttribute("aria-label") ?? b.textContent ?? "", r: b.getBoundingClientRect() }));
+  for (let i = 1; i < tabbed.length; i++) {
+    const [a, b] = [tabbed[i - 1], tabbed[i]];
+    const sameRow = Math.abs((a.r.top + a.r.bottom) / 2 - (b.r.top + b.r.bottom) / 2) <= 8;
+    if (sameRow ? b.r.left < a.r.left : b.r.top < a.r.top) wrong.push(`Tab goes from "${a.name}" to "${b.name}", which is drawn ${sameRow ? "before" : "above"} it`);
   }
   for (const b of header.querySelectorAll<HTMLElement>("button")) {
     const r = b.getBoundingClientRect();
@@ -103,8 +110,8 @@ function at(width: number, label: string): string[] {
   return [...wrong, ...laidOut()];
 }
 
-/** The control names `shown` as the size the panel is at, marks it, and names where a click goes. */
-function reads(shown: string, next?: "half" | "large"): string[] {
+/** The switch names `shown` as the size the panel is at and marks it; Half and Large are its two targets, a width between is not one. */
+function reads(shown: string): string[] {
   const c = control();
   if (!c) return ["no size control"];
   const wrong: string[] = [];
@@ -113,10 +120,15 @@ function reads(shown: string, next?: "half" | "large"): string[] {
   const narrow = widthOf(panel()) < 448;
   const short = shown.replace(/ \(\d+ px\)$/, "");
   if (marked !== (narrow ? short : shown)) wrong.push(`the size control marks "${marked}", not "${narrow ? short : shown}"`);
-  for (const size of ["Half", "Large"]) if (!c.querySelector(`[data-segment=${size.toLowerCase()}]`)) wrong.push(`the size control does not show ${size}`);
+  for (const size of ["Half", "Large"]) {
+    const t = c.querySelector<HTMLElement>(`[data-segment=${size.toLowerCase()}]`);
+    if (!t) wrong.push(`the size control does not show ${size}`);
+    else if (t.tagName !== "BUTTON") wrong.push(`${size} is drawn on the switch but is not a target of its own`);
+    else if (t.getAttribute("aria-pressed") !== String(shown === size)) wrong.push(`${size} reads aria-pressed=${t.getAttribute("aria-pressed")} while the panel is at ${shown}`);
+  }
+  if (c.querySelector("[data-segment=custom], [data-segment=board]")?.closest("button")) wrong.push("a width between the sizes is drawn as a target");
   const name = c.getAttribute("aria-label") ?? "";
-  if (!name.startsWith(`Panel size: ${shown}.`)) wrong.push(`the size control is named "${name}", not for "${shown}"`);
-  if (next && !name.endsWith(`Switch to ${next}`)) wrong.push(`the size control is named "${name}", which does not say a click goes to ${next}`);
+  if (name !== `Panel size: ${shown}`) wrong.push(`the size control is named "${name}", not for "${shown}"`);
   return wrong;
 }
 
@@ -129,54 +141,63 @@ function keeps(size: string): string[] {
 function boardOver(width: number) {
   const { large, half } = expected();
   const drawn = Math.max(width, Math.min(large, Math.max(half, BOARD)));
-  const shown = drawn === large ? "Large" : drawn === half ? "Half" : `Board (${drawn} px)`;
-  const next: "half" | "large" = drawn === large ? "half" : drawn === half ? "large" : drawn - half < large - drawn ? "half" : "large";
-  return { drawn, shown, next, to: next === "large" ? large : half };
+  return { drawn, shown: drawn === large ? "Large" : drawn === half ? "Half" : `Board (${drawn} px)` };
 }
 
-async function setTo(size: "half" | "large") {
-  for (let i = 0; i < 3 && control()?.dataset.size !== size; i++) await click(control());
-}
-
-/** A board opened over the panel at one size, the control clicked once, then the board closed: one stage each. */
-function boardFrom(size: "half" | "large") {
-  let want = boardOver(0);
-  return [
-    {
-      name: `board-open-from-${size}`,
-      run: async () => {
-        boardStore.close();
-        await frame();
-        await setTo(size);
-        const before = widthOf(panel());
-        boardStore.load({ v: WIREFRAME_VERSION, shapes: [] });
-        await frame();
-        want = boardOver(before);
-        return [...at(want.drawn, "board-widened"), ...reads(want.shown, want.next)];
-      },
-    },
-    {
-      name: `board-click-from-${size}`,
-      run: async () => {
-        await click(control());
-        return [...at(want.to, `${want.next} the click names`), ...keeps(want.next)];
-      },
-    },
-    {
-      name: `board-closed-from-${size}`,
-      run: async () => {
-        boardStore.close();
-        await frame();
-        return [...at(want.to, `${want.next} kept once the board closes`), ...keeps(want.next)];
-      },
-    },
-  ];
-}
-
-async function click(el: HTMLElement | null) {
-  el?.click();
+/** A click where `size` is drawn on the switch, landing on whatever the browser finds at that point. */
+async function press(size: "half" | "large") {
+  const t = control()?.querySelector<HTMLElement>(`[data-segment=${size}]`);
+  if (!t) return;
+  const r = t.getBoundingClientRect();
+  (document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2) as HTMLElement | null)?.click();
   await frame();
 }
+
+/** Puts the panel at `from` by a drag and a board, never by the switch under witness; answers what is wrong if it did not get there. */
+async function reach(from: "half" | "large" | "custom" | "board"): Promise<string[]> {
+  boardStore.close();
+  await frame();
+  const { large, half } = expected();
+  await dragTo(from === "large" || from === "custom" ? window.innerWidth : 10);
+  if (from === "custom") {
+    const between = Math.round((large + half) / 2) + 20;
+    await dragTo(between);
+    return [...at(between, "dragged"), ...reads(`Custom (${between} px)`)];
+  }
+  if (from === "board") {
+    boardStore.load({ v: WIREFRAME_VERSION, shapes: [] });
+    await frame();
+    const want = boardOver(half);
+    return [...at(want.drawn, "board-widened"), ...reads(want.shown)];
+  }
+  return [...at(from === "large" ? large : half, from), ...reads(from === "large" ? "Large" : "Half")];
+}
+
+/** From each width the panel is drawn at, a click on each size on the switch: one stage each. */
+const clicks = (["half", "large", "custom", "board"] as const).flatMap((from) =>
+  (["half", "large"] as const).flatMap((to) => {
+    const named = to === "large" ? "Large" : "Half";
+    const drawn = () => (to === "large" ? expected().large : expected().half);
+    const click = {
+      name: `from-${from}-click-${to}`,
+      run: async () => {
+        const off = (await reach(from)).map((w) => `before the click: ${w}`);
+        await press(to);
+        return [...off, ...at(drawn(), `${to} the click on ${named} names`), ...keeps(to), ...reads(named)];
+      },
+    };
+    if (from !== "board") return [click];
+    const closed = {
+      name: `from-board-click-${to}-closed`,
+      run: async () => {
+        boardStore.close();
+        await frame();
+        return [...at(drawn(), `${to} kept once the board closes`), ...keeps(to)];
+      },
+    };
+    return [click, closed];
+  }),
+);
 
 async function dragTo(width: number) {
   const h = handle();
@@ -208,37 +229,6 @@ const stages = docked()
         },
       },
       {
-        name: "half",
-        run: async () => {
-          await click(control());
-          const { half } = expected();
-          return [...at(half, "half"), ...reads("Half")];
-        },
-      },
-      {
-        name: "large-again",
-        run: async () => {
-          await click(control());
-          return [...at(expected().large, "large"), ...reads("Large")];
-        },
-      },
-      {
-        name: "dragged",
-        run: async () => {
-          const { large, half } = expected();
-          const between = Math.round((large + half) / 2) + 20;
-          await dragTo(between);
-          return [...at(between, "dragged"), ...reads(`Custom (${between} px)`)];
-        },
-      },
-      {
-        name: "snapped",
-        run: async () => {
-          await click(control());
-          return [...at(expected().large, "large it snaps to"), ...reads("Large")];
-        },
-      },
-      {
         name: "dragged-past",
         run: async () => {
           const { large, half } = expected();
@@ -248,8 +238,9 @@ const stages = docked()
           return [...wrong, ...at(half, "half a drag below it stops at"), ...reads("Half")];
         },
       },
-      ...boardFrom("half"),
-      ...boardFrom("large"),
+      { name: "at-custom", run: () => reach("custom") },
+      { name: "at-board", run: () => reach("board") },
+      ...clicks,
     ]
   : [
       {
