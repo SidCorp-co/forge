@@ -1,11 +1,12 @@
 import { articleFor } from '@forge/contracts/articles';
-import { MEMORY_MIRROR_SOURCES, type MemoryRefusalCode } from '@forge/contracts/memory';
+import type { MemoryRefusalCode } from '@forge/contracts/memory';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories, memoryWritableSources } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
 import { type IndexResult, indexMemory, MAX_EMBED_CHARS } from './indexer.js';
+import { type LandedAs, landingOfMirrorWrite } from './issue-learning.js';
 
 /**
  * Shared service for writing a memory row, behind REST `POST /api/memory`.
@@ -116,24 +117,14 @@ interface WriteBy {
   writtenBy?: string | undefined;
 }
 
-/**
- * A mirror (`issue`, `comment`, `job`) is core's copy of another record, indexed under that record's
- * id: a caller's write there would replace the copy in silence and be replaced by the next index.
- */
-function assertNotMirror(input: WriteMemoryInput): void {
-  if (!(MEMORY_MIRROR_SOURCES as readonly string[]).includes(input.source)) return;
-  throw refuse(
-    'MEMORY_MIRROR_READ_ONLY',
-    `${input.source} memory is core's copy of each ${input.source}, written from the ${input.source} itself, so a write here would replace it. Write a learning as source note, or change the ${input.source}.`,
-    '/source',
-  );
-}
+/** What a write answers: the row, and where it landed when that is not the ref it named. */
+export type MemoryWriteResult = IndexResult & { landedAs?: LandedAs };
 
 export async function runMemoryWrite(
-  input: WriteMemoryInput,
+  given: WriteMemoryInput,
   by: WriteBy = {},
-): Promise<IndexResult> {
-  assertNotMirror(input);
+): Promise<MemoryWriteResult> {
+  const { input, landedAs } = await landingOfMirrorWrite(given);
   assertAgentMemoryQuality(input);
   const carried = await carriedFromExisting(input);
   const metadata = {
@@ -141,7 +132,7 @@ export async function runMemoryWrite(
     ...carried,
     ...(by.writtenBy ? { writtenBy: by.writtenBy } : {}),
   };
-  return indexMemory(
+  const written = await indexMemory(
     {
       projectId: input.projectId,
       source: input.source,
@@ -151,4 +142,5 @@ export async function runMemoryWrite(
     },
     { nearDuplicateProbe: NEAR_DUPLICATE_PROBE_SOURCES.has(input.source) },
   );
+  return landedAs ? { ...written, landedAs } : written;
 }
