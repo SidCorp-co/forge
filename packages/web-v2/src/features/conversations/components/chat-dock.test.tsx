@@ -226,6 +226,8 @@ const control = () => screen.getByTestId("chat-dock-size");
 const handle = () => screen.getByTestId("chat-dock-resize");
 /** The segment the switch marks as the size the panel is at, as a wide panel draws it. */
 const marked = () => control().querySelector("[data-on]")?.firstChild?.textContent;
+/** The size on the switch a click moves the panel to. */
+const target = (size: "half" | "large") => control().querySelector<HTMLElement>(`[data-segment=${size}]`) as HTMLElement;
 
 const openBoard = () => act(() => boardStore.load({ v: WIREFRAME_VERSION, shapes: [] }));
 const closeBoard = () => act(() => boardStore.close());
@@ -248,7 +250,7 @@ describe("the panel's two sizes", () => {
     await waitFor(() => expect(panel().style.width).toBe("680px"));
     expect(1440 - 280 - 680).toBe(480);
     expect(marked()).toBe("Large");
-    expect(control().getAttribute("aria-label")).toBe("Panel size: Large. Switch to half");
+    expect(control().getAttribute("aria-label")).toBe("Panel size: Large");
   });
 
   it("draws one switch with both sizes on it and the one the panel is at marked", async () => {
@@ -259,7 +261,7 @@ describe("the panel's two sizes", () => {
     const segments = [...control().querySelectorAll("[data-segment]")].map((s) => [s.getAttribute("data-segment"), s.hasAttribute("data-on")]);
     expect(segments).toEqual([["half", false], ["large", true]]);
     expect(control().className).toContain("border");
-    fireEvent.click(control());
+    fireEvent.click(target("half"));
     expect([...control().querySelectorAll("[data-on]")].map((s) => s.getAttribute("data-segment"))).toEqual(["half"]);
   });
 
@@ -267,23 +269,24 @@ describe("the panel's two sizes", () => {
     core([]);
     docked(1440);
     renderWithQuery(<Panel />);
-    fireEvent.click(await screen.findByRole("button", { name: "Panel size: Large. Switch to half" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Half" }));
     expect(panel().style.width).toBe("340px");
     expect(marked()).toBe("Half");
-    fireEvent.click(screen.getByRole("button", { name: "Panel size: Half. Switch to large" }));
+    fireEvent.click(screen.getByRole("button", { name: "Large" }));
     expect(panel().style.width).toBe("680px");
   });
 
-  it("is reached by keyboard: the control is a button in the tab order", async () => {
+  it("is reached by keyboard: both sizes are buttons in the tab order, the one the panel is at pressed", async () => {
     core([]);
     docked(1440);
     renderWithQuery(<Panel />);
-    const button = await screen.findByRole("button", { name: /Panel size/ });
-    expect(button.tagName).toBe("BUTTON");
-    expect(button.getAttribute("tabindex")).not.toBe("-1");
+    const group = await screen.findByRole("group", { name: "Panel size: Large" });
+    const buttons = [...group.querySelectorAll("button")];
+    expect(buttons.map((b) => [b.textContent, b.getAttribute("aria-pressed")])).toEqual([["Half", "false"], ["Large", "true"]]);
+    for (const b of buttons) expect(b.getAttribute("tabindex")).not.toBe("-1");
   });
 
-  it("drags to any width between, then the control snaps it to the nearer size", async () => {
+  it("drags to any width between, then Half or Large snaps it to that size", async () => {
     core([]);
     docked(1440);
     renderWithQuery(<Panel initial="half" />);
@@ -292,12 +295,12 @@ describe("the panel's two sizes", () => {
     expect(panel().style.width).toBe("404px");
     expect(marked()).toBe("Custom (404 px)");
     expect(control().getAttribute("data-size")).toBe("custom");
-    expect(control().getAttribute("aria-label")).toBe("Panel size: Custom (404 px). Switch to half");
-    fireEvent.click(control());
+    expect(control().getAttribute("aria-label")).toBe("Panel size: Custom (404 px)");
+    fireEvent.click(target("half"));
     expect(panel().style.width).toBe("340px");
     for (let i = 0; i < 4; i++) fireEvent.keyDown(handle(), { key: "ArrowLeft", shiftKey: true });
     expect(panel().style.width).toBe("596px");
-    fireEvent.click(control());
+    fireEvent.click(target("large"));
     expect(panel().style.width).toBe("680px");
     expect(marked()).toBe("Large");
   });
@@ -337,27 +340,27 @@ describe("the panel's two sizes", () => {
 
 });
 
-// REQ-31 BC-2 with a board open: the control names the width the panel is drawn at, and one click
-// moves the panel to the size it names at once and keeps that size, never one the person did not see
+// REQ-31 BC-2 with a board open: the control names the width the panel is drawn at, and one click on
+// a size moves the panel there at once and keeps that size, never one the person did not see
 describe("the size control with a board open", () => {
   afterEach(resetBoard);
 
   for (const [from, w, open, name, to, toWidth] of [
-    ["half", 1440, "680px", "Panel size: Large. Switch to half", "half", "340px"],
-    ["large", 1440, "680px", "Panel size: Large. Switch to half", "half", "340px"],
-    ["half", 1024, "360px", "Panel size: Large. Switch to half", "half", "180px"],
-    ["large", 1024, "360px", "Panel size: Large. Switch to half", "half", "180px"],
-    ["half", 2120, "880px", "Panel size: Board (880 px). Switch to half", "half", "680px"],
-    ["large", 2120, "1360px", "Panel size: Large. Switch to half", "half", "680px"],
+    ["half", 1440, "680px", "Panel size: Large", "half", "340px"],
+    ["large", 1440, "680px", "Panel size: Large", "half", "340px"],
+    ["half", 1024, "360px", "Panel size: Large", "half", "180px"],
+    ["large", 1024, "360px", "Panel size: Large", "half", "180px"],
+    ["half", 2120, "880px", "Panel size: Board (880 px)", "half", "680px"],
+    ["large", 2120, "1360px", "Panel size: Large", "half", "680px"],
   ] as const) {
-    it(`names the width drawn and one click moves it there, from ${from} at ${w}`, async () => {
+    it(`names the width drawn and a click on ${to} moves it there, from ${from} at ${w}`, async () => {
       core([]);
       docked(w);
       renderWithQuery(<Panel initial={from} window={w} />);
       openBoard();
       await waitFor(() => expect(panel().style.width).toBe(open));
       expect(control().getAttribute("aria-label")).toBe(name);
-      fireEvent.click(control());
+      fireEvent.click(target(to));
       expect(panel().style.width).toBe(toWidth);
       expect(kept).toEqual([to]);
       closeBoard();
@@ -371,11 +374,11 @@ describe("the size control with a board open", () => {
     renderWithQuery(<Panel initial="half" />);
     openBoard();
     await waitFor(() => expect(panel().style.width).toBe("680px"));
-    fireEvent.click(control());
+    fireEvent.click(target("half"));
     expect(panel().style.width).toBe("340px");
-    fireEvent.click(screen.getByRole("button", { name: "Panel size: Half. Switch to large" }));
+    fireEvent.click(screen.getByRole("button", { name: "Large" }));
     expect(panel().style.width).toBe("680px");
-    fireEvent.click(control());
+    fireEvent.click(target("half"));
     expect(kept).toEqual(["half", "large", "half"]);
     closeBoard();
     expect(panel().style.width).toBe("340px");
@@ -393,6 +396,60 @@ describe("the size control with a board open", () => {
     expect(panel().style.width).toBe("616px");
     expect(kept).toEqual([616]);
     expect(marked()).toBe("Custom (616 px)");
+  });
+});
+
+// REQ-31 BC-2, ISS-493 r3: what the switch draws is where a click goes. Half and Large are each a
+// target that moves the panel to the size it names, from every width the panel can be drawn at:
+// half, large, a dragged width, and the width an open board widened it to.
+describe("each size on the switch is where a click on it goes", () => {
+  afterEach(resetBoard);
+
+  const windows = [
+    { w: 1440, large: 680, half: 340, custom: 530, board: 680, boardShown: "Large" },
+    { w: 2120, large: 1360, half: 680, custom: 1000, board: 880, boardShown: "Board (880 px)" },
+  ] as const;
+  for (const win of windows) {
+    const from = [
+      { name: "half", initial: "half" as DockSize, board: false, drawn: win.half, shown: "Half" },
+      { name: "large", initial: "large" as DockSize, board: false, drawn: win.large, shown: "Large" },
+      { name: "custom", initial: win.custom as DockSize, board: false, drawn: win.custom, shown: `Custom (${win.custom} px)` },
+      { name: "board", initial: "half" as DockSize, board: true, drawn: win.board, shown: win.boardShown },
+    ];
+    for (const f of from) {
+      for (const to of ["half", "large"] as const) {
+        it(`at ${win.w}, from ${f.name}, a click on ${to} draws ${to} and keeps it`, async () => {
+          core([]);
+          docked(win.w);
+          renderWithQuery(<Panel initial={f.initial} window={win.w} />);
+          if (f.board) openBoard();
+          await waitFor(() => expect(panel().style.width).toBe(`${f.drawn}px`));
+          const named = control().getAttribute("aria-label");
+          fireEvent.click(target(to));
+          const toWidth = to === "large" ? win.large : win.half;
+          expect(panel().style.width).toBe(`${toWidth}px`);
+          expect(kept).toEqual([to]);
+          expect(named).toBe(`Panel size: ${f.shown}`);
+          expect(target(to).getAttribute("aria-pressed")).toBe("true");
+          expect(target(to === "large" ? "half" : "large").getAttribute("aria-pressed")).toBe("false");
+          if (f.board) {
+            closeBoard();
+            expect(panel().style.width).toBe(`${toWidth}px`);
+          }
+        });
+      }
+    }
+  }
+
+  it("draws Custom and Board as a mark between the two, never as a target", async () => {
+    core([]);
+    docked(2120);
+    renderWithQuery(<Panel initial={1000} window={2120} />);
+    await waitFor(() => expect(panel().style.width).toBe("1000px"));
+    const between = control().querySelector<HTMLElement>("[data-segment=custom]");
+    expect(between?.closest("button")).toBeNull();
+    expect(screen.getAllByRole("button", { name: /^(Half|Large)$/ }).map((b) => b.textContent)).toEqual(["Half", "Large"]);
+    expect(screen.queryByRole("button", { name: /Custom/ })).toBeNull();
   });
 });
 

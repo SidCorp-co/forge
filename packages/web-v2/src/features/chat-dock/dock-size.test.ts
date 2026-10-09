@@ -10,7 +10,6 @@ import {
   PAGE_MIN_WIDTH,
   dockSizes,
   dockWidth,
-  nextSize,
   settleDockSize,
   sizeAt,
   sizeFromDrag,
@@ -70,17 +69,6 @@ describe("the size control", () => {
     expect(sizeAt(680, ROOM)).toBe("large");
     expect(sizeAt(340, ROOM)).toBe("half");
     expect(sizeAt(500, ROOM)).toBeNull();
-  });
-
-  it("switches large to half and half to large", () => {
-    expect(nextSize(680, ROOM)).toBe("half");
-    expect(nextSize(340, ROOM)).toBe("large");
-  });
-
-  it("snaps a dragged width to the nearer size, large at the exact middle", () => {
-    expect(nextSize(400, ROOM)).toBe("half");
-    expect(nextSize(600, ROOM)).toBe("large");
-    expect(nextSize(510, ROOM)).toBe("large");
   });
 });
 
