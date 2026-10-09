@@ -85,6 +85,10 @@ async fn a_checkout_outside_the_bindings_worktrees_or_on_another_branch_is_refus
     let f = cut(&outside).await.unwrap_err();
     assert_eq!(f.reason, "WORKTREE_GONE");
     assert!(f.detail.contains(".claude/worktrees/"), "{}", f.detail);
+    let nested = sketch(&repo, "a\\b", "sketch/fb-52-abcdef");
+    assert_eq!(cut(&nested).await.unwrap_err().reason, "WORKTREE_GONE");
+    let relative = sketch("repo", "sketch-fb-52-abcdef", "sketch/fb-52-abcdef");
+    assert_eq!(cut(&relative).await.unwrap_err().reason, "WORKTREE_GONE");
     let main = sketch(&repo, "x", "main");
     assert!(cut(&main).await.unwrap_err().detail.contains("not sketch/"));
     let _ = std::fs::remove_dir_all(&root);
@@ -135,23 +139,25 @@ async fn the_demo_seed_runs_in_the_checkout_with_its_environment_and_a_failing_o
     let mut env = serde_json::Map::new();
     env.insert("FORGE_ENVIRONMENT".into(), "demo".into());
     let dir = PathBuf::from(&repo);
-    seed(
-        &dir,
-        "echo seeded-$FORGE_ENVIRONMENT > seeded.txt",
-        &env,
-        Duration::from_secs(10),
-    )
-    .await
-    .expect("the seed runs");
+    // the seed runs under the box's own shell: `sh -c` here, `cmd /C` on Windows
+    let (writes, fails) = if cfg!(windows) {
+        (
+            "echo seeded-%FORGE_ENVIRONMENT%> seeded.txt",
+            "echo no database 1>&2 & exit 3",
+        )
+    } else {
+        (
+            "echo seeded-$FORGE_ENVIRONMENT > seeded.txt",
+            "echo no database >&2; exit 3",
+        )
+    };
+    seed(&dir, writes, &env, Duration::from_secs(10))
+        .await
+        .expect("the seed runs");
     assert_eq!(sh(&dir, "cat seeded.txt").await, "seeded-demo");
-    let f = seed(
-        &dir,
-        "echo no database >&2; exit 3",
-        &env,
-        Duration::from_secs(10),
-    )
-    .await
-    .unwrap_err();
+    let f = seed(&dir, fails, &env, Duration::from_secs(10))
+        .await
+        .unwrap_err();
     assert_eq!(f.reason, "DEV_SERVER_EXITED");
     assert!(
         f.detail.contains("demo seed") && f.detail.contains("no database"),
