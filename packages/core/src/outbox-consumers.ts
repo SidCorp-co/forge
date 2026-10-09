@@ -30,7 +30,11 @@ import {
   registerReleaseBatchClaimSubscriber,
 } from './release-batch/index.js';
 import { registerReleaseHighlightsRefresh } from './release-page/index.js';
-import { registerRequirementDelivery, registerRequirementFollow } from './requirements/index.js';
+import {
+  registerRequirementDelivery,
+  registerRequirementFollow,
+  registerStaleDraftAct,
+} from './requirements/index.js';
 import { registerMasterWakeSubscribers, registerWsBroadcastSubscribers } from './ws/index.js';
 
 /**
@@ -64,5 +68,6 @@ export function registerOutboxConsumers(): void {
   registerRequirementNotifications();
   registerFirstRequirementsCase();
   registerRequirementFollow();
+  registerStaleDraftAct();
   registerFeedbackNotifications();
 }

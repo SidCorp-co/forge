@@ -101,6 +101,8 @@ export interface StandingInput {
   tracedChanges?: readonly TracedChange[];
   /** An open merge-or-drop question on this draft or its draft revision (`stale-drafts.ts`, REQ-41 BC-12). */
   mergeOrDropAsked?: boolean;
+  /** Its newest merge-or-drop question was answered with an act core refused to carry out (`stale-draft-act.ts`). */
+  mergeOrDropRefused?: { code: string; detail: string } | null;
   /** Linked designs holding no approved revision, which an agree refuses (REQUIREMENT_DESIGN_UNAPPROVED). */
   unapprovedDesigns: readonly { flow: string; title: string; designStatus: string | null }[];
   feedback: { open: number; untriaged: readonly string[] };
@@ -232,6 +234,17 @@ function turnOf(
       say('standing.act.mergeOrDrop'),
       say('requirements.rule.staleDraft', { days: DRAFT_STALE_DAYS }),
     );
+  }
+  if (input.mergeOrDropRefused && (draft || status === 'draft')) {
+    return {
+      group: 'waiting',
+      waitingOn: wait(
+        'agent',
+        MASTER,
+        say('standing.act.draftAnswerByHand'),
+        say('standing.rule.draftAnswerRefused', input.mergeOrDropRefused),
+      ),
+    };
   }
   if (draft) return draftTurn(draft, viewer);
   if (status === 'draft') {

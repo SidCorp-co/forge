@@ -9,7 +9,12 @@ import {
   decisionPath,
   type NeedsYouDecision,
 } from '@forge/contracts/needs-you-decisions';
-import { isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
+import {
+  DRAFT_STALE_DAYS,
+  isStaleDraftQuestion,
+  STALE_DRAFT_OPTION_IDS,
+} from '@forge/contracts/stale-drafts';
+import { type ChoiceStep, isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
 import type { OpenPersonQuestion } from '../questions/index.js';
 import type { AttentionRow } from './needs-you.js';
 
@@ -38,6 +43,66 @@ function answer(
   return { needsReason: false, effect: null, recommended: false, body: null, ...over };
 }
 
+/** What pressing a merge-or-drop answer makes core do (`requirements/stale-draft-act.ts`). */
+function staleDraftEffect(option: ChoiceStep['options'][number]): string {
+  if (option.id === STALE_DRAFT_OPTION_IDS.merge) {
+    const into = option.target?.key ?? 'the item it names';
+    return `Moves this draft into ${into} (a proposed revision of a requirement, a comment on an issue) and drops the draft.`;
+  }
+  if (option.id === STALE_DRAFT_OPTION_IDS.drop)
+    return 'Drops the draft, naming this question as why.';
+  return `Keeps it as a draft and changes nothing; Forge asks again after ${DRAFT_STALE_DAYS} days.`;
+}
+
+/** Forge's own reason for the answer it recommends, as the sweep wrote it into the prompt. */
+function staleDraftWhy(step: ChoiceStep, label: string): string {
+  const tail = step.prompt.slice(step.prompt.lastIndexOf('Recommended: '));
+  const at = tail.indexOf(', because ');
+  const reason = at < 0 ? '' : tail.slice(at + ', because '.length).trim();
+  const lead = `Forge recommends "${clip(label, 200)}"`;
+  return clip(reason ? `${lead} because ${reason}` : `${lead}.`, 600);
+}
+
+/** A merge-or-drop round Forge asked about a stale draft (REQ-41 BC-12), grouped as one. */
+function staleDraftDecision(
+  base: Omit<NeedsYouDecision, 'group' | 'recommended' | 'noRecommendation' | 'answers'>,
+  q: OpenPersonQuestion,
+  step: ChoiceStep,
+  path: string,
+): Built {
+  const recommended = step.options.find((o) => o.id === step.recommendedOptionId);
+  if (!recommended) {
+    throw new Error(
+      `needs-you: merge-or-drop question ${q.id} recommends ${step.recommendedOptionId}, which it does not offer`,
+    );
+  }
+  const shown = [recommended, ...step.options.filter((o) => o.id !== recommended.id)];
+  return {
+    questionId: q.id,
+    decision: {
+      ...base,
+      group: 'merge_or_drop',
+      recommended: {
+        answerId: recommended.id,
+        why: staleDraftWhy(step, recommended.label),
+        by: 'rule',
+      },
+      noRecommendation: null,
+      answers: shown.map((o) =>
+        answer({
+          id: o.id,
+          label: clip(o.label, 120),
+          act: 'question.answer',
+          path,
+          body: { round: step.round, optionId: o.id },
+          effect: staleDraftEffect(o),
+          recommended: o.id === recommended.id,
+        }),
+      ),
+    },
+  };
+}
+
 /** A question's round as a decision: each option a button, or the recommended text and a typed answer. */
 export function questionDecision(
   row: AttentionRow,
@@ -57,6 +122,9 @@ export function questionDecision(
     question: clip(step.prompt.trim() || row.title || 'A run asked a question', QUESTION_MAX),
     touchedAt: q.at,
   };
+  if (isChoiceStep(step) && isStaleDraftQuestion(step.options)) {
+    return staleDraftDecision(base, q, step, path);
+  }
   if (isChoiceStep(step)) {
     const recommended = step.options.find((o) => o.id === step.recommendedOptionId);
     const rest = step.options.filter((o) => o.id !== step.recommendedOptionId);

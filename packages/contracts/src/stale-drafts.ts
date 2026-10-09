@@ -1,6 +1,7 @@
 // A draft nobody touched for a week is a decision, not a wait (REQ-41 BC-12; Requirement lifecycle
 // `draft`): core asks one merge-or-drop question about it, with a recommended answer read from the
-// product record (`core/src/requirements/stale-drafts.ts`). Before that it is `awaiting_proposal`
+// product record (`core/src/requirements/stale-drafts.ts`), and carries the answer out by itself
+// (`core/src/requirements/stale-draft-act.ts`). Before that it is `awaiting_proposal`
 // (`./needs-you-decisions.ts`), which is not a decision. The option ids are the question's mark: the
 // needs-me read files a question carrying them under `merge_or_drop`, and the sweep reads them to ask
 // once per stale spell.
@@ -15,6 +16,46 @@ export const STALE_DRAFT_OPTION_IDS = {
 	keep: "stale_draft.keep",
 } as const;
 export type StaleDraftAnswer = keyof typeof STALE_DRAFT_OPTION_IDS;
+
+/** The jsonb a merge-or-drop question's first round options contain, for a Postgres `@>` test. */
+export const STALE_DRAFT_ASKED_MARK = JSON.stringify([
+	{ id: STALE_DRAFT_OPTION_IDS.drop },
+]);
+
+/**
+ * Why core did not carry an answer out by itself, recorded on the answered round; the draft then
+ * waits on the master, never on nothing. A refusal a service gave (a revision already open on the
+ * target, a transition the machine refuses) is recorded under that service's own code.
+ */
+export const STALE_DRAFT_ACT_REFUSALS = [
+	"STALE_DRAFT_MERGE_NO_TARGET",
+	"STALE_DRAFT_MERGE_TARGET_ENDED",
+	"STALE_DRAFT_MERGE_HAS_DEPENDENTS",
+	"STALE_DRAFT_MERGE_REVISION",
+	"STALE_DRAFT_REVISION_DROP",
+] as const;
+export type StaleDraftActRefusal = (typeof STALE_DRAFT_ACT_REFUSALS)[number];
+
+/** What an answered round's `resume` records where core refused to carry the answer out. */
+export interface StaleDraftRefused {
+	code: string;
+	detail: string;
+}
+
+/**
+ * The refusal the newest merge-or-drop question on a draft carries, read from its status and its
+ * last round's `resume`; null while it is open, or where its answer was carried out.
+ */
+export function staleDraftRefusedOf(
+	status: string,
+	resume: { kind?: string; code?: string; detail?: string } | null | undefined,
+): StaleDraftRefused | null {
+	if (status !== "answered" || resume?.kind !== "refused") return null;
+	return {
+		code: String(resume.code ?? ""),
+		detail: String(resume.detail ?? ""),
+	};
+}
 
 const IDS = new Set<string>(Object.values(STALE_DRAFT_OPTION_IDS));
 
