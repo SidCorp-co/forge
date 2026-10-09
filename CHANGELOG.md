@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.215] - 2026-10-09
+
+Requirement coverage counts each criterion's newest live verdict; stale traces re-tie
+
+### Fixed
+
+- **A requirement's criteria now count their newest verdict.** An unjudged or older failing issue no longer holds a criterion back, each criterion names the verdict that counts, and a trace on reworded wording can be tied again from the issue.
+
 ## [0.4.0-dev.214] - 2026-10-09
 
 Chat answers show figure settings and computation scripts; dates read one way

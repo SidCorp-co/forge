@@ -1,1 +1,0 @@
-**A requirement's criteria now count their newest verdict.** An unjudged or older failing issue no longer holds a criterion back, each criterion names the verdict that counts, and a trace on reworded wording can be tied again from the issue.
