@@ -10,7 +10,7 @@ import { FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_TO
 import type { StandingGroupLabels } from "@forge/contracts/standing";
 import { needsViewer } from "@forge/contracts/standing";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
-import { ListFilterBar, useListNarrowing } from "@/features/conversations/ui-actions/list-filter-bar";
+import { ListFilterBar, useListNarrowing } from "@/features/chat-dock/list-filter-bar";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import {

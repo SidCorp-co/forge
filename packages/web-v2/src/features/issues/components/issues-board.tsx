@@ -50,7 +50,7 @@ import { etaSortValue } from "@/features/forecast/eta";
 import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { Written } from "@/lib/i18n/written";
 import { useReportShown } from "@/design/hooks/use-page-shown";
-import { WaitingFilter } from "@/features/conversations/ui-actions/list-filter-bar";
+import { WaitingFilter } from "@/features/chat-dock/list-filter-bar";
 
 type BoardMode = "attention" | "module" | "waves";
 

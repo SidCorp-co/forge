@@ -33,7 +33,7 @@ import { useCreateRequirement, useRequirements } from "../hooks";
 import { REQUIREMENTS_LIST, requirementHref } from "@/lib/routes/requirements";
 import type { RequirementSummary } from "../types";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
-import { ListFilterBar, useListNarrowing } from "@/features/conversations/ui-actions/list-filter-bar";
+import { ListFilterBar, useListNarrowing } from "@/features/chat-dock/list-filter-bar";
 import { RequirementPeek } from "./requirement-peek";
 import { revisionText } from "./standing-bits";
 

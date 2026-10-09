@@ -2,7 +2,7 @@
 
 import { RELEASE_ATTENTION_GROUPS, RELEASE_ATTENTION_LABELS } from "@forge/contracts/releases";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
-import { ListFilterBar, useListNarrowing } from "@/features/conversations/ui-actions/list-filter-bar";
+import { ListFilterBar, useListNarrowing } from "@/features/chat-dock/list-filter-bar";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo } from "react";
 import {

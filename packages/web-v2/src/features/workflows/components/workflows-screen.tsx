@@ -3,7 +3,7 @@
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
 import { useReportShown } from "@/design/hooks/use-page-shown";
-import { ListFilterBar, useListFilter } from "@/features/conversations/ui-actions/list-filter-bar";
+import { ListFilterBar, useListFilter } from "@/features/chat-dock/list-filter-bar";
 import Link from "next/link";
 import { Button, EmptyState, PageTitle, rememberListOrigin, Tooltip } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
