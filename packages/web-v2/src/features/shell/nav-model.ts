@@ -35,20 +35,29 @@ interface ProjGroup extends NavItemGroup {
 
 type ProjEntry = ProjItem | ProjGroup;
 
-const DEVELOPMENT_GROUP_KEY = "development";
+const PRODUCT_GROUP_KEY = "product";
+const DELIVERY_GROUP_KEY = "delivery";
 
-// the owner's IA ruling (ISS-65, FB-6): what a project is for comes first, and the
-// machinery that builds it sits under one Development group. Decisions, the roadmap and memory
-// have no row of their own (REQ-33): each is read on the requirement, workflow or issue it is about.
+// what a project is for comes first, under Product, open as its rows were before they were grouped;
+// the machinery that builds it sits under Delivery (REQ-34 BC-23, after ISS-65 and FB-6). Decisions,
+// the roadmap and memory have no row of their own (REQ-33): each is read on the item it is about.
 const PROJECT_MENU: ProjEntry[] = [
   { key: "proj-overview", label: "Dashboard", icon: "grid", sub: "" },
-  { key: "proj-requirements", label: "Requirements", icon: "book", sub: "/requirements" },
-  { key: "proj-workflows", label: "Workflows", icon: "flow", sub: "/workflows" },
-  { key: "proj-releases", label: "Releases", icon: "rocket", sub: "/releases" },
-  { key: "proj-feedback", label: "Feedback", icon: "chat", sub: "/feedback" },
   {
-    key: DEVELOPMENT_GROUP_KEY,
-    label: "Development",
+    key: PRODUCT_GROUP_KEY,
+    label: "Product",
+    icon: "folder",
+    defaultOpen: true,
+    items: [
+      { key: "proj-requirements", label: "Requirements", icon: "book", sub: "/requirements" },
+      { key: "proj-workflows", label: "Workflows", icon: "flow", sub: "/workflows" },
+      { key: "proj-releases", label: "Releases", icon: "rocket", sub: "/releases" },
+      { key: "proj-feedback", label: "Feedback", icon: "chat", sub: "/feedback" },
+    ],
+  },
+  {
+    key: DELIVERY_GROUP_KEY,
+    label: "Delivery",
     icon: "code",
     items: [
       { key: "proj-dev-overview", label: "Overview", icon: "activity", sub: "/overview" },

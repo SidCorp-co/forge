@@ -11,7 +11,7 @@ import { ecosystemRoutes } from "../routes";
 
 type Section = "channel" | "api";
 
-// Threads is the workspace inbox, so its tab leaves the project; Project API is this project's own page, and its contracts live under Development
+// Threads is the workspace inbox, so its tab leaves the project; Project API is this project's own page, and its contracts live under Delivery
 const SECTIONS: { value: Section; label: string; href: (slug: string) => string }[] = [
   { value: "channel", label: "Threads", href: () => ecosystemRoutes.threads() },
   { value: "api", label: "Project API", href: ecosystemRoutes.apiPage },

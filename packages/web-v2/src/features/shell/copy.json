@@ -2,7 +2,7 @@
   "en": {
     "nav.attention": "Attention",
     "nav.chat": "Ask Agent",
-    "nav.development": "Development",
+    "nav.delivery": "Delivery",
     "nav.eco-new": "New ecosystem",
     "nav.eco-threads": "Threads",
     "nav.ecosystem": "Ecosystem",
@@ -11,6 +11,7 @@
     "nav.more": "More",
     "nav.overview": "Overview",
     "nav.pipeline-ops": "Pipeline ops",
+    "nav.product": "Product",
     "nav.proj-agents": "Agents / Runs",
     "nav.proj-automation": "Automation",
     "nav.proj-contracts": "Contracts",
@@ -309,7 +310,6 @@
   "vi": {
     "nav.attention": "Cần chú ý",
     "nav.chat": "Hỏi Agent",
-    "nav.development": "Phát triển",
     "nav.eco-new": "Hệ sinh thái mới",
     "nav.eco-threads": "Trao đổi",
     "nav.ecosystem": "Hệ sinh thái",
