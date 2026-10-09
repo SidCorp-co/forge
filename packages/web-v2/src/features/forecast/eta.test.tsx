@@ -109,11 +109,11 @@ describe("the ETA cell where there is no date", () => {
     expect(etaOfForecast({ ...stamp, kind: "landed", landedAt: at(-60) }, vi).kind).toBe("done");
   });
 
-  it("shipped: the day it shipped, its version in the tooltip", () => {
+  it("shipped: says so with its version and no date, the day in the tooltip", () => {
     const d: DeliveryForecast = { ...stamp, landing: { ...stamp, kind: "landed", landedAt: at(-3000) }, release: null, inHands: null, shipped: { version: "0.3.1", at: at(-2880) } };
     const eta = etaOfDelivery(d, vi);
-    expect(etaLines(eta, vi)).toEqual({ line: "05/10", sub: null });
-    expect(eta.detail).toMatch(/^Đã phát hành 0\.3\.1 /); // i18n-allow: asserts the vi ETA copy
+    expect(etaLines(eta, vi)).toEqual({ line: "Shipped 0.3.1", sub: null });
+    expect(eta.detail).toMatch(/^Đã phát hành 0\.3\.1 /); // i18n-allow: asserts the existing vi ETA detail
   });
 });
 

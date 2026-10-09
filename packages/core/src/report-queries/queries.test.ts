@@ -20,7 +20,12 @@ const ctx = { projectId: 'p', now: new Date('2026-10-08T09:00:00.000Z'), viewer:
 const req = (key: string, state: StatusRequirement['state'], proven: number, total: number) => ({
   key,
   title: `Title ${key}`,
-  standing: { state },
+  standing: {
+    state,
+    attentionGroup: 'moving',
+    waitingOn: { who: 'Issues', act: '' },
+    facts: { passing: proven, judged: proven, criteria: total },
+  },
   delivery: { criteriaCoverage: { passing: proven, criteria: total } },
 });
 const scope = (key: string, d: DeliveryForecast | null = null) => ({
@@ -110,7 +115,7 @@ describe('progress-by-requirement', () => {
     expect(frame.rows.map((r) => [r.key, r.lane])).toEqual([
       ['REQ-2', 'now'],
       ['REQ-1', 'now'],
-      ['REQ-3', 'later'],
+      ['REQ-3', 'next'],
       ['REQ-4', null],
       ['REQ-5', null],
     ]);
