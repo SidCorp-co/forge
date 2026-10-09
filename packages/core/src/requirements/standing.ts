@@ -108,6 +108,11 @@ export interface StandingInput {
   feedback: { open: number; untriaged: readonly string[] };
   /** Who judges an issue's criteria: its own runs (`self`) or a judge apart from them (`independent`), the policy's `qa`; null where no policy is declared. */
   judge: PolicyQaMode | null;
+  /**
+   * Whether the project has a runner online, so a master can act (FB-77). False reads a wait on
+   * "Master" as a wait on a person; absent reads as live.
+   */
+  runnerOnline?: boolean;
   /** When the current revision was first agreed: its first baseline. */
   agreedAt: Date | null;
   /**
@@ -433,6 +438,12 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
   const input = { ...raw, phase: delivery.phase };
   const touched = touchedAt(input);
   let { group, waitingOn } = turnOf(input, live, coverage);
+  if (input.runnerOnline === false && waitingOn.says.who.key === MASTER.key) {
+    // no runner can carry a master here, so the wait names who actually can act (FB-77)
+    waitingOn = wait('person', SIGNER, waitingOn.says.act, waitingOn.says.rule, {
+      ...(waitingOn.dueAt ? { dueAt: waitingOn.dueAt } : {}),
+    });
+  }
   if (group !== 'needs_you' && group !== 'done' && group !== 'deferred') {
     if (input.owner === null) {
       group = 'stuck';
