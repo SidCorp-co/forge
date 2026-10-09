@@ -4,7 +4,10 @@
 // writer to `issues.status` and it is `issues/apply-transition.ts`. Nothing here
 // moves an issue; it refuses or voids alongside the move that does (ISS-1257).
 
-import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import {
+  AUTONOMOUS_QUESTION_STATUS,
+  ISSUE_TERMINAL_STATUSES,
+} from '@forge/contracts/issue-machine';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import { and, eq, inArray, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
@@ -17,6 +20,7 @@ type Executor = IssueDependencyExecutor;
 
 const QUESTION_ENDED_WITH_ISSUE = 'issue_terminal';
 const QUESTION_NOT_NEEDED = 'not_needed';
+const QUESTION_PARK_LEFT = 'park_left';
 
 /**
  * The marker that a person owes an issue an answer: an open `human` question on it.
@@ -141,12 +145,26 @@ export async function settleOpenQuestions(
 }
 
 /**
- * Void the open person question a park minted, found by the prompt it was asked with, inside the
- * move that makes the park's wait moot. Any other question on the issue is somebody's own and stays.
+ * Withdraw the question a park minted, inside the move that takes its issue out of that park, by
+ * whichever door makes the move: once the issue stands elsewhere the question waits on nothing, and
+ * an open row would go on saying a person owes it (REQ-41 BC-11, `VISION: state-never-lies`).
+ *
+ * The park's question is a kernel fact, not a reading of its words: it is the open person question
+ * written in the park's own transaction, so its `created_at` is the `created_at` of the issue's
+ * latest recorded move into `needs_info` (both are that transaction's `now()`). A question anybody
+ * asked before or during the park is theirs and stays open. An answered park has no open question
+ * left, so the answer's own resume withdraws nothing.
  */
-export async function voidParkQuestions(
+export async function withdrawParkQuestions(
   tx: Executor,
-  args: { issueId: string; prompt: string; reason: string; by: string; actor: KernelActor },
+  args: {
+    issueId: string;
+    toStatus: IssueStatus;
+    /** The move's own reason, in the mover's words; null when the move gave none. */
+    reason: string | null;
+    by: string;
+    actor: KernelActor;
+  },
 ): Promise<string[]> {
   const open = await tx
     .select({ id: agentQuestions.id })
@@ -156,22 +174,27 @@ export async function voidParkQuestions(
         eq(agentQuestions.issueId, args.issueId),
         eq(agentQuestions.status, 'open'),
         eq(agentQuestions.blockerKind, 'human'),
-        sql`${agentQuestions.steps} -> 0 ->> 'prompt' = ${args.prompt}`,
+        sql`${agentQuestions.createdAt} = (
+          select max(k.created_at) from kernel_transitions k
+           where k.entity = 'issue' and k.entity_id = ${args.issueId}
+             and k.to_status = ${AUTONOMOUS_QUESTION_STATUS})`,
       ),
     );
   if (open.length === 0) return [];
   const ids = open.map((r) => r.id);
+  const why = args.reason?.trim();
+  const sentence = `the issue moved from ${ISSUE_STATUS_LABELS[AUTONOMOUS_QUESTION_STATUS]} to ${ISSUE_STATUS_LABELS[args.toStatus]} without this being answered, so the park that asked it no longer waits on a person${why ? `: ${why}` : ''}`;
   await transition(tx, QUESTION_MACHINE, {
     to: 'void',
     from: 'open',
     set: {
-      voidReason: `the park that asked it now waits on the master: ${args.reason}`,
+      voidReason: sentence,
       endedBy: args.by,
-      endedReason: QUESTION_NOT_NEEDED,
+      endedReason: QUESTION_PARK_LEFT,
       updatedAt: new Date(),
     },
     where: inArray(agentQuestions.id, ids),
-    reason: args.reason,
+    reason: sentence,
     actor: args.actor,
     source: 'issues',
     returning: ['id'],

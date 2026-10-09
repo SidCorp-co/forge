@@ -139,8 +139,12 @@ Today an Assistant-mode reply that no rewrite fixes is replaced whole by
 | 11 | A run parked after repeated failures waits on the master | `pipeline/autonomous-rescue-cap.ts` parks at `on_hold` as an agent park (no question, no blocker). `issues/standing.ts`'s agent-park turn already reads that as waiting on the master ("resume once"). The master re-dispatches with a changed brief, drops it, or asks a person a question carrying a recommended answer. | The cap that exists: 3 run sessions ended since the issue last moved on |
 | 12 | A draft untouched for 7 days gets a merge-or-drop proposal | A sweep finds drafts (requirement draft revisions, draft requirements, draft issues) whose newest touch is 7 days old and that have no open proposal. The assistant asks one question on the record: merge into a named item, drop, or keep, with a recommended option and its reason, read by rule from requirements (a near-duplicate, an accepted or dropped requirement), feedback (open items asking for it) and issues (a same-titled live one). Merge is offered only where a live item to merge into was found, and the option names it (`target`). The answer acts by itself (`requirements/stale-draft-act.ts`): drop drops the draft naming the question (a stale draft revision of a requirement past draft is withdrawn, and the requirement reads as it did before it); merge moves it into the target (a proposed revision of a requirement, a comment on an issue) and drops it naming the target; keep changes nothing and buys another 7 days. A merge a rule cannot do safely (target ended, links the merge would strand, a revision already open on the target, merging a draft revision of an agreed requirement) is refused by name on the answered round, and the draft waits on the master. Before the question the draft is `awaiting_proposal`, which is not a decision. | `touched_at` older than 7 days (`DRAFT_STALE_DAYS`), and no open question of that origin |
 
-The 7 crash-park questions already open are voided by the master through the API after the change
-lands, each moving its issue to the agent park, so no SQL rewrites a kernel row.
+A park's question ends in the move that takes its issue out of `needs_info`, by any door:
+`issues/apply-transition.ts` calls `questions/issue-coupling.ts:withdrawParkQuestions`, which
+withdraws the question written in the park's own transaction and names the status the issue left
+for. Parks the cap made at `needs_info` before it parked for the master are re-homed at boot
+(`issues/rescue-cap-rehome.ts`); park questions already left behind by an issue that moved on
+(ISS-439) are withdrawn by migration 0484.
 
 ## Pin-only design revisions (BC-23)
 

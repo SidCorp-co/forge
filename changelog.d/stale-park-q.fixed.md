@@ -1,0 +1,1 @@
+**A park's question ends when its issue leaves the park.** Any move out of Needs info withdraws the question that park asked, naming why, so a moved-on issue stops waiting on a person; migration 0484 withdraws those already left behind.

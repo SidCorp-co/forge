@@ -1,5 +1,6 @@
 import { CHECKLIST_REFUSAL_CODES } from '@forge/contracts/checklists';
 import {
+  AUTONOMOUS_QUESTION_STATUS,
   ISSUE_DISPATCH_TERMINAL_STATUSES,
   ISSUE_MACHINE,
   type IssueTransitionRefusalCode,
@@ -19,7 +20,7 @@ import { issueChecklistRecord } from './checklist-record.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { postDropUnblockNotices } from './drop-unblock.js';
 import { mintParkQuestion, needsNotApplicable } from './park-question.js';
-import { settleOpenQuestions } from './ports.js';
+import { settleOpenQuestions, withdrawParkQuestions } from './ports.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
 import { refuseOffRecoveryEdge } from './recovery-move.js';
 import { edgeFault, reasonFault } from './transition-faults.js';
@@ -341,6 +342,17 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
           actor: kernelActorFor(actor),
         });
         if (asked) throw transitionRefused(asked.code, asked.detail, asked.details);
+        // leaving the park ends what it asked, after the refusals above so a terminal move or an
+        // answer's resume still meets an open question first (REQ-41 BC-11)
+        if (fromStatus === AUTONOMOUS_QUESTION_STATUS) {
+          await withdrawParkQuestions(tx, {
+            issueId: issue.id,
+            toStatus,
+            reason: options.transitionReason?.trim() || options.reason?.trim() || null,
+            by,
+            actor: kernelActorFor(actor),
+          });
+        }
       },
       afterWrite: async (tx, rows) => {
         const row = rows[0];
