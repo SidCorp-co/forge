@@ -15,3 +15,15 @@ export function useNeedsYou(projectId: string | undefined) {
     staleTime: 15_000,
   });
 }
+
+export const needsYouDecisionsKey = (projectId: string) => [...NEEDS_YOU_ROOT, projectId, "decisions"] as const;
+
+/** The decisions only the viewer can make (REQ-41 BC-1), the read the home and the chat share. */
+export function useNeedsYouDecisions(projectId: string | undefined) {
+  return useQuery({
+    queryKey: needsYouDecisionsKey(projectId ?? ""),
+    queryFn: () => needsYouApi.decisions(projectId as string),
+    enabled: Boolean(projectId),
+    staleTime: 15_000,
+  });
+}

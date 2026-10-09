@@ -56,6 +56,8 @@ const askBodySchema = z.object({
     .optional(),
   recommendedOptionId: z.string().optional(),
   needed: z.string().optional(),
+  /** A free-text round's recommended answer: a run asking a person owes one (REQ-41 BC-2). */
+  recommended: z.string().max(2000).optional(),
   assumed: z.record(z.string(), z.unknown()).optional(),
   cost: z
     .object({
@@ -267,7 +269,11 @@ devicePoolRoutes.post(
 
 function askAnswerOf(body: AskBody) {
   if (body.answerShape === 'free_text') {
-    return { shape: 'free_text' as const, needed: body.needed ?? '' };
+    return {
+      shape: 'free_text' as const,
+      needed: body.needed ?? '',
+      ...(body.recommended === undefined ? {} : { recommended: body.recommended }),
+    };
   }
   return {
     shape: 'choice' as const,
@@ -296,6 +302,7 @@ devicePoolRoutes.post(
       prompt: body.prompt,
       blockerKind: body.blockerKind ?? 'human',
       answer: askAnswerOf(body),
+      askedByRun: true,
     });
     if (body.runId) {
       await devicesPorts().questions.registerWaiter({

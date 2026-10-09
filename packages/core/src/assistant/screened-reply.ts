@@ -1,4 +1,10 @@
 import {
+  type HeldClaimCount,
+  type HeldPart,
+  heldPartNotice,
+  heldPartSchema,
+} from '@forge/contracts/reply-check';
+import {
   CORRECTIVE_PREFIX,
   codeAuthored,
   confidentLanguageOf,
@@ -25,7 +31,7 @@ import { FIGURES_GROUNDED } from '../messaging/figures-rule.js';
 import { datesIn, GROUNDING_RULE } from '../messaging/grounding-rule.js';
 import { PROGRESS_FIGURES_MATCH } from '../messaging/progress-rule.js';
 import { withRepairs } from '../messaging/repairs.js';
-import { markUnverified, repairIssueLinks } from '../messaging/reply-marks.js';
+import { cutClauses, repairIssueLinks } from '../messaging/reply-marks.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import { STATUS_CLAIMS_GROUNDED } from '../messaging/status-claims-rule.js';
 import type { ExternalChatTurnResult } from './external-chat.js';
@@ -177,20 +183,18 @@ export function withRewriteKept(
   return { ok: false, refusals: [...refusalsOf(verdict), ...breaks] };
 }
 
+/** What one refused claim was about, or null where the refusal is about no claim. */
+function heldClaimOf(r: MessageRefusal): HeldClaim | null {
+  if (r.rule === FIGURES_GROUNDED.id || r.rule === PROGRESS_FIGURES_MATCH.id) return 'figure';
+  if (r.rule === CREATION_CLAIMS_GROUNDED.id) return 'record';
+  if (r.rule === STATUS_CLAIMS_GROUNDED.id) return 'status';
+  const kind = claimRefused(r);
+  return kind === 'date' || kind === 'issue' ? kind : null;
+}
+
 /** What each refused claim was about, as the fallback names it; a refusal about no claim names nothing. */
 export function heldClaimsOf(refused: readonly MessageRefusal[]): HeldClaim[] {
-  const claims: HeldClaim[] = [];
-  for (const r of refused) {
-    if (r.rule === FIGURES_GROUNDED.id || r.rule === PROGRESS_FIGURES_MATCH.id)
-      claims.push('figure');
-    else if (r.rule === CREATION_CLAIMS_GROUNDED.id) claims.push('record');
-    else if (r.rule === STATUS_CLAIMS_GROUNDED.id) claims.push('status');
-    else {
-      const kind = claimRefused(r);
-      if (kind === 'date' || kind === 'issue') claims.push(kind);
-    }
-  }
-  return claims;
+  return refused.flatMap((r) => heldClaimOf(r) ?? []);
 }
 
 /** The checks a refusal says could not run, each with why (`RuleBreak.unchecked`). */
@@ -198,30 +202,43 @@ export function uncheckedRulesOf(refused: readonly MessageRefusal[]): UncheckedR
   return refused.flatMap((r) => (r.unchecked ? [{ rule: r.rule, why: r.unchecked }] : []));
 }
 
-/** The refusals marking cannot carry: there is no claim in them to mark, only a message that may not go out. */
-const UNMARKABLE: ReadonlySet<string> = new Set([
-  'non-empty',
-  'no-redacted-secret',
-  'no-empty-promise',
-]);
+/** How many clauses the check holds a reply to cutting before it is withheld instead. */
+const CUT_ROUNDS = 3;
 
 /**
- * The first answer with each claim its screen refused marked unverified, or null where a refusal
- * names no claim that can be found and marked. A refusal of its language marks nothing: the answer
- * is true, only in the other language.
+ * The first answer with each clause the screen refused cut whole, screened again until what is left
+ * passes, or null where a refusal names no claim that can be found and named. A refusal of its
+ * language cuts nothing: the answer is true, only in the other language. Empty `shown` means no
+ * clause was left that the check passed.
  */
-export function markedOriginal(
+export async function checkedPart(
   original: string,
   refused: readonly MessageRefusal[],
-  language: ReplyLanguage,
-): string | null {
-  const claims = refused.filter((r) => r.rule !== 'reply-language');
-  if (claims.some((r) => UNMARKABLE.has(r.rule) || r.quote === null)) return null;
-  return markUnverified(
-    original,
-    claims.map((r) => r.quote as string),
-    language,
-  );
+  screen: (text: string) => Promise<MessageVerdict>,
+): Promise<{ shown: string; held: HeldClaimCount[] } | null> {
+  const counts = new Map<HeldClaim, number>();
+  let text = original;
+  let left = refused;
+  for (let round = 0; round < CUT_ROUNDS; round += 1) {
+    const claims = left.filter((r) => r.rule !== 'reply-language');
+    const kinds = claims.map(heldClaimOf);
+    if (claims.length === 0 || claims.some((r, i) => r.quote === null || kinds[i] === null)) {
+      return null;
+    }
+    const cut = cutClauses(
+      text,
+      claims.map((r) => r.quote as string),
+    );
+    if (cut === null) return null;
+    for (const kind of kinds as HeldClaim[]) counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    const held = [...counts].map(([claim, count]) => ({ claim, count }));
+    if (!cut.trim()) return { shown: '', held };
+    const verdict = await screen(cut);
+    if (verdict.ok) return { shown: cut, held };
+    text = cut;
+    left = refusalsOf(verdict);
+  }
+  return { shown: '', held: [...counts].map(([claim, count]) => ({ claim, count })) };
 }
 
 export interface ScreenedTurnArgs {
@@ -279,8 +296,9 @@ export function assertAnswerableDoor(door: DoorId): void {
  *
  * An issue link written as a hash route is pointed at the path the web serves before anything is
  * judged. A refused answer is rewritten within the door's budget, and the rewrite is held to the
- * same screen and to the answer it rewrites. Where no rewrite passes, the first answer goes out with
- * its refused claims marked unverified if that passes the screen; never a claim nothing checked.
+ * same screen and to the answer it rewrites. Where no rewrite passes, the first answer goes out as
+ * the part the check passed, each refused clause cut and a notice naming what was left out, with the
+ * blocks its reads drew (REQ-41 BC-3); never a claim nothing checked, and never nothing.
  */
 export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<ScreenedMessage | null> {
   assertAnswerableDoor(args.door);
@@ -346,18 +364,16 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
   });
 
   if (outcome.kind === 'exhausted') {
-    const marked = markedOriginal(original, firstRefused, args.askedIn ?? args.language);
-    if (marked !== null) {
-      const verdict = await judge(marked, args.first, false, 0);
-      const admitted = verdict.ok ? screened(marked, args.door, verdict) : null;
-      if (admitted) {
-        args.stage?.settle(0);
-        logger.warn(
-          { ...args.log, refusals: firstRefused },
-          'conversations: no rewrite passed; the first answer goes out with its refused claims marked unverified',
-        );
-        return admitted;
-      }
+    const partial = await partialReply(args, original, firstRefused, (text) =>
+      judge(text, args.first, false, 0),
+    );
+    if (partial) {
+      args.stage?.settle(0);
+      logger.warn(
+        { ...args.log, refusals: firstRefused, held: partial.held },
+        'conversations: no rewrite passed; the part of the first answer the check passed goes out',
+      );
+      return partial;
     }
     logger.error(
       { ...args.log, refusals: refusalsOf(outcome.verdict) },
@@ -388,4 +404,34 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
   const passed = screened(trimmed, args.door, outcome.verdict);
   if (!passed) throw new Error('conversations: a passing verdict yielded no screened message');
   return passed;
+}
+
+/**
+ * A held reply as the part the check passed (REQ-41 BC-3): the clauses left once each refused one is
+ * cut, the blocks the first answer's reads drew, and the one notice naming what was left out. With
+ * neither text nor a block it is null, and the reply is withheld as the held line. A check that
+ * could not run cuts nothing: that failure is Forge's, and the held line says so.
+ */
+async function partialReply(
+  args: ScreenedTurnArgs,
+  original: string,
+  refused: readonly MessageRefusal[],
+  screen: (text: string) => Promise<MessageVerdict>,
+): Promise<ScreenedMessage | null> {
+  if (uncheckedRulesOf(refused).length > 0) return null;
+  const part = await checkedPart(original, refused, screen);
+  if (!part) return null;
+  const blocks = args.stage?.of(0).length ?? 0;
+  if (!part.shown && blocks === 0) return null;
+  const held: HeldPart = heldPartSchema.parse({
+    verdict: 'partial',
+    shown: part.shown,
+    blocks,
+    held: part.held,
+  });
+  const notice = heldPartNotice(held.held);
+  if (!part.shown) return { ...codeAuthored(notice), held };
+  const text = `${part.shown}\n\n${notice}`;
+  const admitted = screened(text, args.door, await screen(text));
+  return admitted ? { ...admitted, held } : null;
 }

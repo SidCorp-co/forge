@@ -30,6 +30,7 @@ export const GROUNDING_TOOLS = {
   decisions: 'forge_decisions',
   report: 'forge_report',
   template: 'forge_template',
+  needsYou: 'forge_needs_you',
 } as const;
 
 /** The chat's memory read; it grounds only a decision, and only one cited with its date. */
@@ -44,8 +45,17 @@ interface ClaimFamily {
   readonly datedMemoryGrounds?: true;
 }
 
-const { status, requirements, requirement, releases, release, decisions, report, template } =
-  GROUNDING_TOOLS;
+const {
+  status,
+  requirements,
+  requirement,
+  releases,
+  release,
+  decisions,
+  report,
+  template,
+  needsYou,
+} = GROUNDING_TOOLS;
 
 const FAMILIES: readonly ClaimFamily[] = [
   {
@@ -56,7 +66,7 @@ const FAMILIES: readonly ClaimFamily[] = [
       /\b(?:awaiting|waits? (?:on|for)|waiting (?:on|for)) (?:release )?approval\b/i,
       /đã\s+phát\s+hành|(?:tới|đến)\s+(?:tay\s+)?người\s+dùng|bản\s+phát\s+hành|đã\s+ra\s+mắt|chờ\s+(?:phê\s+)?duyệt/i, // i18n-allow: the Vietnamese phrasing of a shipped claim this rule reads
     ],
-    groundedBy: [status, releases, release, report, template],
+    groundedBy: [status, releases, release, report, template, needsYou],
   },
   {
     name: "a requirement's progress",
@@ -66,7 +76,7 @@ const FAMILIES: readonly ClaimFamily[] = [
       /\b\d+\s*(?:\/|of)\s*\d+\s+(?:criteria|BCs?)\b/i,
       /yêu\s+cầu[^.\n]{0,60}(?:đang\s+(?:làm|giao|triển\s+khai)|đã\s+xong|hoàn\s+thành|đã\s+giao|in[_ ]progress|in[_ ]delivery)|\d+\s*\/\s*\d+\s+tiêu\s+chí/i, // i18n-allow: the Vietnamese phrasing of a requirement-progress claim this rule reads
     ],
-    groundedBy: [status, requirements, requirement, report, template],
+    groundedBy: [status, requirements, requirement, report, template, needsYou],
   },
   {
     name: 'what comes next and when',
@@ -74,7 +84,7 @@ const FAMILIES: readonly ClaimFamily[] = [
       /\b(?:roadmap|next release|forecast|ETA|expected (?:on|by|to (?:land|ship|reach))|will (?:ship|reach users|land) (?:on|by|in))\b/i,
       /lộ\s+trình|release\s+kế\s+tiếp|bản\s+kế\s+tiếp|dự\s+kiến/i, // i18n-allow: the Vietnamese phrasing of a roadmap claim this rule reads
     ],
-    groundedBy: [status, releases, release, requirements, requirement, report, template],
+    groundedBy: [status, releases, release, requirements, requirement, report, template, needsYou],
   },
   {
     name: 'what is late or blocked',
@@ -82,7 +92,7 @@ const FAMILIES: readonly ClaimFamily[] = [
       /\b(?:is|are|running|currently)\s+(?:late|overdue|behind schedule)\b|\bnothing is late\b|\bno(?:thing)? (?:is )?(?:late|overdue|blocked)\b/i,
       /đang\s+trễ|bị\s+trễ|không\s+có\s+gì\s+trễ|bị\s+kẹt|đang\s+kẹt/i, // i18n-allow: the Vietnamese phrasing of a lateness claim this rule reads
     ],
-    groundedBy: [status, report, template],
+    groundedBy: [status, report, template, needsYou],
   },
   {
     name: 'what was decided',

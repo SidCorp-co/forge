@@ -56,6 +56,8 @@ const DECISION_NAMES = [
   /\bdecision(?:s|\s+log|\s+records?)?\b|\bdecided\b/i,
   /quyết\s+định/iu, // i18n-allow: the Vietnamese word for a decision
 ];
+/** The needs-me read: what waits on the person asking, as decisions (REQ-41 BC-1). */
+const NEEDS_YOU_NAMES = [/\bneeds? (?:you|me)\b|\bwait(?:s|ing)? on (?:you|me)\b|\bdecisions?\b/i];
 
 /**
  * The reads whose own result grounds a figure, the part of the result that does, and the names
@@ -86,6 +88,7 @@ export const FIGURE_READS: readonly {
   { tool: 'forge_metrics_project_timeseries', names: METRICS_NAMES },
   { tool: 'forge_requirement_draft', keys: ['preview', 'taken'], names: DOCUMENT_NAMES },
   { tool: 'forge_decisions', names: DECISION_NAMES },
+  { tool: 'forge_needs_you', names: NEEDS_YOU_NAMES },
   { tool: 'ba_read_requirement', names: REQUIREMENTS_NAMES },
   {
     tool: 'ba_find_similar',
@@ -239,6 +242,7 @@ function readNames(sources: readonly FigureSource[]): string {
     forge_releases: 'the releases list or the release version',
     forge_release: 'the release by its version',
     forge_decisions: 'the decisions',
+    forge_needs_you: 'what needs you',
     forge_requirement_draft: 'the attached file by its name',
   };
   return [...new Set(sources.map((s) => say[s.read] ?? s.read))].join(' or ');

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { ReplyVerdict } from '@forge/contracts/reply-check';
 import type { ChatStreamEvent } from '../integrations/llm/index.js';
 import type { AgentMessage, ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../lib/logger.js';
@@ -7,6 +8,7 @@ import {
   WEB_CONVERSATION_PROGRESS_EVENT,
 } from './conversation-adapter.js';
 import { ENTRY_FLUSH_MS, TranscriptAccumulator } from './transcript-entry.js';
+import type { SettledReply } from './turn-request.js';
 
 /**
  * One tool a turn ran, as a reader who did not ask is shown it: by name, and how long it took once
@@ -22,9 +24,10 @@ interface RoomTool {
 
 /**
  * What the reply screen settled for the text these frames streamed: `checked` carries the reply
- * that goes out, `withheld` says nothing of the draft went out.
+ * that goes out, `partial` the part of it the check passed (REQ-41 BC-3), `withheld` says nothing of
+ * the draft went out.
  */
-type ProgressVerdict = 'checked' | 'withheld';
+type ProgressVerdict = ReplyVerdict;
 
 /** Everything published under one conversation, so a client can order what it receives. */
 interface ConversationProgressFrame {
@@ -169,7 +172,7 @@ export class ConversationProgress {
   };
 
   /** The text the screen admitted, before it is delivered: the asker's draft gives way to it. */
-  onSettled = ({ text, screenReplaced }: { text: string; screenReplaced: boolean }): void => {
+  onSettled = ({ text, screenReplaced, heldPart }: SettledReply): void => {
     const entry = this.#acc.entry();
     const draft = (entry?.content ?? '').trim();
     const settled = text.trim();
@@ -178,10 +181,11 @@ export class ConversationProgress {
       content: settled,
       blocks: this.blocksForRecord(settled) ?? [{ type: 'text', text: settled }],
     };
-    this.#verdict = 'checked';
+    const verdict = heldPart ? 'partial' : 'checked';
+    this.#verdict = verdict;
     this.#send({
       entry: checked,
-      verdict: 'checked',
+      verdict,
       ...(screenReplaced && draft && draft !== settled ? { replaced: true as const } : {}),
     });
   };

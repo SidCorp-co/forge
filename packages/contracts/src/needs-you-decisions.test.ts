@@ -66,6 +66,18 @@ describe("a decision shows its question, a recommended answer and a button (BC-2
 		);
 	});
 
+	it("takes a question a run asked on nothing, which opens no record, and refuses an empty one", () => {
+		expect(
+			needsYouDecisionSchema.safeParse({ ...iss451, opens: null }).success,
+		).toBe(true);
+		expect(
+			needsYouDecisionSchema.safeParse({
+				...iss451,
+				opens: { kind: "requirement", key: "" },
+			}).success,
+		).toBe(false);
+	});
+
 	it("takes one whose asker gave no recommendation, saying so", () => {
 		const r = needsYouDecisionSchema.safeParse({
 			...iss451,

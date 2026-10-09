@@ -115,7 +115,7 @@ async function baTurn(key: string, message: string) {
   });
   const resolved = await resolveTurnAuthority({ userId: owner, projectId, viaTokenId: null });
   if (!resolved.ok) throw new Error(resolved.refusal.message);
-  const settled: { text: string; screenReplaced: boolean }[] = [];
+  const settled: { text: string; screenReplaced: boolean; heldPart?: true }[] = [];
   const outcome = await runConversationTurn({
     ...inputs,
     onSettled: (s) => {
@@ -158,10 +158,11 @@ describe('the BA door holds a figure its turn did not read (REQ-32 BC-6)', () =>
     expect(script.asked).toHaveLength(2);
     expect(script.asked[1]).toContain('the reply states the figure 4,812');
     expect(script.asked[1]).toContain('this door runs no report');
-    // no rewrite passed, so the first answer goes out with the figure marked as unchecked
-    expect(settled?.text).toBe(
-      'Forge has 4,812 open issues right now (unverified, this may be wrong).',
-    );
+    // no rewrite passed and its one clause held the figure, so it is cut, never sent marked, and
+    // with no clause and no block left the reply is withheld as the held line (REQ-41 BC-3)
+    expect(settled?.text).not.toContain('4,812');
+    expect(settled?.text).toContain('the reply check held it: it stated a figure');
+    expect(settled?.heldPart).toBeUndefined();
   });
 
   it('a rewrite that says the figure back as the asker figure goes out', async () => {

@@ -84,6 +84,8 @@ export type ChoiceStep = StepCommon & {
 export type FreeTextStep = StepCommon & {
   answerShape: 'free_text';
   needed: string;
+  /** The answer the asker recommends, which a person may send as it stands (REQ-41 BC-2); absent on rounds asked before it was taken. */
+  recommended?: string;
   answerText?: string;
 };
 

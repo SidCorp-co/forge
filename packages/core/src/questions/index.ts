@@ -16,7 +16,12 @@ export {
   voidCancelledRunQuestions,
 } from './issue-coupling.js';
 export { type AwaitedMerge, answerMergeQuestions } from './merge-wait.js';
-export { type DetachedQuestionRow, readDetachedOpenQuestions } from './needs-you-read.js';
+export {
+  type DetachedQuestionRow,
+  type OpenPersonQuestion,
+  readDetachedOpenQuestions,
+  readOpenPersonQuestions,
+} from './needs-you-read.js';
 export { provideQuestionPorts } from './ports.js';
 export {
   answerAs,

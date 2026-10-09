@@ -57,6 +57,16 @@ export interface TurnHookContext {
   blockStage: BlockStage;
 }
 
+/**
+ * The text the screen admitted; `heldPart` where it is the part of a held answer the check passed
+ * (REQ-41 BC-3), never a turn's early partial reply.
+ */
+export interface SettledReply {
+  text: string;
+  screenReplaced: boolean;
+  heldPart?: true;
+}
+
 export type TurnReply =
   | { send: false; reason: string; ended?: 'declined' | 'superseded' | 'not-dispatched' }
   /**
@@ -90,7 +100,7 @@ export type TurnReply =
  */
 export interface ContinuedEntry {
   onTurnEvent?: ((event: ChatStreamEvent) => void) | undefined;
-  onSettled?: ((settled: { text: string; screenReplaced: boolean }) => void) | undefined;
+  onSettled?: ((settled: SettledReply) => void) | undefined;
   replyEntry?:
     | ((deliveredText: string) => { id: string; blocks: readonly ContentBlock[] | null })
     | undefined;
@@ -149,7 +159,7 @@ export interface ConversationTurnRequest {
   /**
    * Called once with the text the screen admitted, before it is delivered.
    */
-  onSettled?: ((settled: { text: string; screenReplaced: boolean }) => void) | undefined;
+  onSettled?: ((settled: SettledReply) => void) | undefined;
   /**
    * The identity and the blocks the delivered reply's row is written with.
    */

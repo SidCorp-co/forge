@@ -1,6 +1,20 @@
 {
   "en": {
-    "needs.lastActivity": "Last activity {at}"
+    "needs.lastActivity": "Last activity {at}",
+    "needsYou.decisions.aria": "Decisions waiting on you",
+    "needsYou.decisions.recommended": "Recommended",
+    "needsYou.decisions.noRecommendation": "No recommended answer",
+    "needsYou.decisions.reasonLabel": "Why",
+    "needsYou.decisions.answerLabel": "Your answer",
+    "needsYou.decisions.send": "Send",
+    "needsYou.decisions.cancel": "Cancel",
+    "needsYou.decisions.sent": "Sent: {label}",
+    "needsYou.decisions.none": "Nothing waits on you to decide.",
+    "needsYou.decisions.more": "{shown} of {total} decisions shown.",
+    "needsYou.decisions.leftOut": "Left out, not decisions: {list}.",
+    "needsYou.decisions.reason.own_work": "{n} of your own drafts to finish",
+    "needsYou.decisions.reason.work": "{n} tasks to carry out",
+    "needsYou.decisions.reason.awaiting_proposal": "{n} drafts nobody has proposed merging or dropping yet"
   },
   "vi": {
     "needs.lastActivity": "Hoạt động gần nhất {at}",

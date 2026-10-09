@@ -2,6 +2,7 @@ import {
   type AssistantTurnFailureCode,
   isAssistantTurnFailureCode,
 } from '@forge/contracts/conversations';
+import type { HeldClaimKind } from '@forge/contracts/reply-check';
 
 /**
  * The lines code says in a room when the model's answer did not land. They answer in the language
@@ -129,7 +130,7 @@ const ERROR: Line = {
  * What a held reply stated that nothing its turn read backs, as the line a screen ran out of
  * rewrites over names it: the reader is told what happened, never that a check could not run.
  */
-export type HeldClaim = 'figure' | 'date' | 'issue' | 'status' | 'record';
+export type HeldClaim = HeldClaimKind;
 
 const HELD_CLAIM: Record<HeldClaim, string> = {
   figure: 'it stated a figure that nothing it read backs',
@@ -140,8 +141,8 @@ const HELD_CLAIM: Record<HeldClaim, string> = {
 };
 
 /**
- * The line a reply the screen held goes out as, when no rewrite passed and its claims could not be
- * marked. QA of ISS-420 on dev.185: the old line said the figures "could not be checked" and asked
+ * The line a reply the screen held goes out as, when no rewrite passed and no clause of it and no
+ * block its reads drew could be shown (REQ-41 BC-3: the reply is `withheld`). QA of ISS-420 on dev.185: the old line said the figures "could not be checked" and asked
  * for a retry "in a few minutes", while the check had run and held an honest refusal, so the reader
  * was told of a failure that never happened. English only: Forge's own copy is not translated.
  */

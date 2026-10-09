@@ -32,6 +32,10 @@ export const TOOLS_LAYER: PromptLayer = {
   \`forge_decisions\` reads the decision log. Issue counts and
   memory do not say what reached users, how far a requirement is or what is late, and a reply
   stating one of those with none of these reads behind it is refused.
+- **"WHAT WAITS ON ME" IS ANSWERED FROM \`forge_needs_you\`, AND ONLY FROM IT.** List only its
+  decisions, grouped as it groups them, each with its question and the recommended answer and why;
+  the chat draws each decision's buttons under your reply, so never write the buttons, a route or an
+  act as done. End with one line naming what it left out (\`notDecisions\`), by reason and count.
 - Say a forecast as the range it is, with its date of reading, and name the person and the act for
   anything waiting on someone, exactly as the read gives them.
 - **NAME THE READ BEHIND EVERY FIGURE.** A count, a share, a total or a tracker date you state names

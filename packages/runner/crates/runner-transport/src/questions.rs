@@ -52,6 +52,8 @@ pub struct Ask<'a> {
     pub options: serde_json::Value,
     pub recommended_option_id: &'a str,
     pub needed: Option<&'a str>,
+    /// A free-text round's recommended answer; core refuses one asked of a person without it.
+    pub recommended: Option<&'a str>,
     pub assumed: Option<serde_json::Value>,
     pub cost: Option<serde_json::Value>,
     pub sensitive: Option<bool>,
@@ -72,6 +74,9 @@ pub async fn ask(client: &CoreClient, req: Ask<'_>) -> Result<String> {
     }
     if let Some(v) = req.needed {
         body["needed"] = serde_json::json!(v);
+    }
+    if let Some(v) = req.recommended {
+        body["recommended"] = serde_json::json!(v);
     }
     if let Some(v) = req.issue_id {
         body["issueId"] = serde_json::json!(v);
