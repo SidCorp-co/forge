@@ -3,9 +3,21 @@
 
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CriteriaChecklist } from "./requirement-proof";
 import type { RequirementDetail } from "../types";
+
+/** jsdom has no object URLs: hand out a stable one per file. */
+function stubObjectUrls() {
+  let n = 0;
+  URL.createObjectURL = vi.fn(() => `blob:clip-${++n}`);
+  URL.revokeObjectURL = vi.fn();
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 const d = {
   criteria: [{ code: "BC-1", form: "plain", sinceRevision: 1 }],
@@ -17,7 +29,7 @@ const d = {
         body: "Checkout totals include tax.",
         verdict: "passing",
         issues: [
-          { issueId: "i1", displayId: "ISS-12", title: "Add tax to checkout", status: "closed", tone: "done", criterion: 2, verdict: "pass", verdictAt: "2026-10-05T09:30:00Z", stale: false },
+          { issueId: "i1", displayId: "ISS-12", title: "Add tax to checkout", status: "closed", tone: "done", note: null, files: [], criterion: 2, verdict: "pass", verdictAt: "2026-10-05T09:30:00Z", stale: false },
         ],
       },
     ],
@@ -30,11 +42,58 @@ describe("a criterion's evidence", () => {
     await userEvent.click(screen.getByText(/What the evidence says/));
     const row = screen.getByTestId("criterion-evidence-row");
     expect(row).toHaveTextContent("Pass");
-    expect(row).toHaveTextContent("Add tax to checkout");
     expect(row.querySelector("span[title]")).not.toBeNull();
     const key = within(row).getByRole("link", { name: "ISS-12" });
     expect(key).toHaveAttribute("href", "/projects/epod/issues/ISS-12");
     expect(key.className).toContain("text-subtle");
+  });
+
+  // REQ-40 BC-4 (QA 0.4.0-dev.218): the row printed the issue title where the verdict's own evidence
+  // note belongs, and the clip the verdict kept was not reachable from the criterion
+  it("shows the verdict's own evidence note, not the issue title, and plays the clip it kept", async () => {
+    const kept = {
+      criteria: [{ code: "BC-1", form: "plain", sinceRevision: 1 }],
+      standing: {
+        shownRevision: 1,
+        coverage: [
+          {
+            code: "BC-1",
+            body: "Each release has a page.",
+            verdict: "passing",
+            issues: [
+              {
+                issueId: "i1",
+                displayId: "ISS-492",
+                title: "A release page a person can read",
+                status: "developed",
+                tone: "done",
+                criterion: 1,
+                verdict: "pass",
+                verdictAt: "2026-10-09T10:00:00Z",
+                note: "Opened 0.4.0 and read its version, date, commit and approver.",
+                files: [{ attachmentId: "00000000-0000-4000-8000-0000000000aa", name: "bc1-header.webm", mime: "video/webm" }],
+                stale: false,
+              },
+            ],
+          },
+        ],
+      },
+    } as unknown as RequirementDetail;
+    stubObjectUrls();
+    const fetchMock = vi.fn(async () => new Response("webm", { headers: { "content-type": "video/webm" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<CriteriaChecklist d={kept} slug="epod" />);
+    await userEvent.click(screen.getByText(/What the evidence says/));
+    const row = screen.getByTestId("criterion-evidence-row");
+    expect(within(row).getByTestId("verdict-note")).toHaveTextContent("Opened 0.4.0 and read its version, date, commit and approver.");
+    expect(row).not.toHaveTextContent("A release page a person can read");
+    await userEvent.click(within(row).getByRole("button", { name: /Watch the clip: bc1-header.webm/ }));
+    const video = await within(row).findByTestId("verdict-clip");
+    expect(video.tagName).toBe("VIDEO");
+    expect(video).toHaveAttribute("src", "blob:clip-1");
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/attachments/00000000-0000-4000-8000-0000000000aa/download");
+    expect(init.credentials).toBe("include");
   });
 
   it("leads the inline link with the issue's title, not its key", () => {
@@ -57,11 +116,11 @@ describe("a criterion's evidence", () => {
             code: "BC-1",
             body: "Checkout totals include tax.",
             verdict: "passing",
-            counts: { issueId: "i2", displayId: "ISS-31", criterion: 4, verdict: "short", at: "2026-10-08T16:17:36Z", identity: `runtime ${NEW.slice(0, 12)}`, commit: NEW, inLiveBuild: true },
+            counts: { issueId: "i2", displayId: "ISS-31", note: null, files: [], criterion: 4, verdict: "short", at: "2026-10-08T16:17:36Z", identity: `runtime ${NEW.slice(0, 12)}`, commit: NEW, inLiveBuild: true },
             why: null,
             issues: [
-              { issueId: "i1", displayId: "ISS-12", title: "Add tax", status: "closed", tone: "done", criterion: 2, verdict: "fail", verdictAt: "2026-10-01T09:30:00Z", identity: `commit ${OLD.slice(0, 12)}`, commit: OLD, inLiveBuild: false, notCounted: `judged at commit ${OLD.slice(0, 12)}, which the live build does not hold`, stale: false },
-              { issueId: "i2", displayId: "ISS-31", title: "Fix tax", status: "closed", tone: "done", criterion: 4, verdict: "short", verdictAt: "2026-10-08T16:17:36Z", identity: `runtime ${NEW.slice(0, 12)}`, commit: NEW, inLiveBuild: true, notCounted: null, stale: false },
+              { issueId: "i1", displayId: "ISS-12", title: "Add tax", status: "closed", tone: "done", note: null, files: [], criterion: 2, verdict: "fail", verdictAt: "2026-10-01T09:30:00Z", identity: `commit ${OLD.slice(0, 12)}`, commit: OLD, inLiveBuild: false, notCounted: `judged at commit ${OLD.slice(0, 12)}, which the live build does not hold`, stale: false },
+              { issueId: "i2", displayId: "ISS-31", title: "Fix tax", status: "closed", tone: "done", note: null, files: [], criterion: 4, verdict: "short", verdictAt: "2026-10-08T16:17:36Z", identity: `runtime ${NEW.slice(0, 12)}`, commit: NEW, inLiveBuild: true, notCounted: null, stale: false },
             ],
           },
         ],
@@ -95,7 +154,7 @@ describe("a criterion's evidence", () => {
             verdict: "stale",
             counts: null,
             why: "ISS-7 trace only an earlier wording of this criterion, so no verdict on them counts: tie it again from the issue's Criteria tab, then judge it",
-            issues: [{ issueId: "i7", displayId: "ISS-7", title: "Seven", status: "closed", tone: "done", criterion: 1, verdict: "pass", verdictAt: "2026-10-01T09:30:00Z", identity: "commit aaaaaaaaaaaa", commit: "a".repeat(40), inLiveBuild: null, notCounted: null, stale: true }],
+            issues: [{ issueId: "i7", displayId: "ISS-7", title: "Seven", status: "closed", tone: "done", note: null, files: [], criterion: 1, verdict: "pass", verdictAt: "2026-10-01T09:30:00Z", identity: "commit aaaaaaaaaaaa", commit: "a".repeat(40), inLiveBuild: null, notCounted: null, stale: true }],
           },
           {
             code: "BC-11",
@@ -103,7 +162,7 @@ describe("a criterion's evidence", () => {
             verdict: "not_live",
             counts: null,
             why: "judged only at builds the live one does not hold (ISS-8 criterion 1: commit bbbbbbbbbbbb): judge it again on the live build",
-            issues: [{ issueId: "i8", displayId: "ISS-8", title: "Eight", status: "closed", tone: "done", criterion: 1, verdict: "pass", verdictAt: "2026-10-01T09:30:00Z", identity: "commit bbbbbbbbbbbb", commit: "b".repeat(40), inLiveBuild: false, notCounted: "judged at commit bbbbbbbbbbbb, which the live build does not hold", stale: false }],
+            issues: [{ issueId: "i8", displayId: "ISS-8", title: "Eight", status: "closed", tone: "done", note: null, files: [], criterion: 1, verdict: "pass", verdictAt: "2026-10-01T09:30:00Z", identity: "commit bbbbbbbbbbbb", commit: "b".repeat(40), inLiveBuild: false, notCounted: "judged at commit bbbbbbbbbbbb, which the live build does not hold", stale: false }],
           },
         ],
       },

@@ -76,6 +76,15 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 		],
 		withoutNotes: [],
 		actionRequired: [],
+		shipped: {
+			state: "read",
+			base: "b".repeat(40),
+			head: BUILD,
+			migrations: [],
+			contracts: [],
+			dependencies: [],
+			settings: [],
+		},
 		knownIssues: [
 			{
 				issueKey: "ISS-3",
@@ -113,13 +122,58 @@ describe("a release page as Markdown (BC-11)", () => {
 		expect(md).toContain(
 			"- Release page (complete): Each release has a page. (1 not yet proven on this build)",
 		);
-		expect(md).toContain(
-			"- Known issues are listed. (falls short: the list is empty on mobile)",
-		);
+		expect(md).toContain("- Known issues are listed. (Falls short)");
 	});
 	it("says an empty Action required reads empty, and never names an issue key", () => {
 		expect(md).toContain("## Action required\nNothing is required of you.");
 		expect(md).not.toContain("ISS-");
+	});
+	it("says a known issue as the criterion's own words and its state, never QA's reason (BC-11)", () => {
+		const both = page({
+			view: "developer",
+			knownIssues: [
+				{
+					issueKey: "ISS-3",
+					requirementKey: "REQ-40",
+					bc: "BC-8",
+					statement: "Known issues are listed.",
+					standing: "fail",
+					reason: "GET /api/x answers 500 on commit 0e697e0",
+					elsewhere: { verdict: "pass", commitSha: "c".repeat(40) },
+				},
+				{
+					issueKey: "ISS-4",
+					requirementKey: null,
+					bc: null,
+					statement: "A developer view adds notes.",
+					standing: "not_judged",
+					reason: null,
+					elsewhere: null,
+				},
+			],
+		});
+		for (const out of [
+			releasePageMarkdown(both),
+			releasePageEmail(both).text,
+			releasePageEmail(both).html,
+		]) {
+			expect(out).toContain("Known issues are listed.");
+			expect(out).toContain("Failing");
+			expect(out).toContain("Not yet judged");
+			expect(out).not.toContain("answers 500");
+			expect(out).not.toContain("0e697e0");
+		}
+	});
+	it("does not say nothing is required of a range it could not read", () => {
+		const out = releasePageMarkdown(
+			page({
+				shipped: { state: "unread", why: "the repository was unreachable" },
+			}),
+		);
+		expect(out).not.toContain("Nothing is required of you.");
+		expect(out).toContain(
+			"What this release requires of you could not be read: the repository was unreachable.",
+		);
 	});
 	it("never carries the technical notes of a developer-view page", () => {
 		const dev = page({
@@ -131,6 +185,7 @@ describe("a release page as Markdown (BC-11)", () => {
 				migrations: ["0478_release_highlights.sql"],
 				contracts: [],
 				dependencies: [],
+				settings: [],
 				changes: {
 					surfaces: [],
 					risks: [],

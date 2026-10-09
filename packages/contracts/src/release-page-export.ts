@@ -23,11 +23,12 @@ export interface ReleasePageEmail {
 	html: string;
 }
 
-const STANDING_WORDS: Record<string, string> = {
-	fail: "failing",
-	short: "falls short",
-	skipped: "skipped",
-	not_judged: "not judged on this build",
+/** A known issue's state in the words a person outside the team reads; the verdict's reason is the developer view's and never leaves with an export. */
+export const KNOWN_ISSUE_WORDS: Record<string, string> = {
+	fail: "Failing",
+	short: "Falls short",
+	skipped: "Skipped",
+	not_judged: "Not yet judged",
 };
 
 const APPROVAL_WORDS: Record<
@@ -119,12 +120,15 @@ function sectionsOf(page: ReleasePage, origin: string | undefined): Section[] {
 		items: page.actionRequired.map((a) => ({
 			text: `${a.sentence} (${a.ref})`,
 		})),
-		none: "Nothing is required of you.",
+		none:
+			page.shipped.state === "unread"
+				? `What this release requires of you could not be read: ${page.shipped.why}.`
+				: "Nothing is required of you.",
 	});
 	out.push({
 		title: "Known issues",
 		items: page.knownIssues.map((k) => ({
-			text: `${k.statement} (${STANDING_WORDS[k.standing] ?? k.standing}${k.reason ? `: ${k.reason}` : ""})`,
+			text: `${k.statement} (${KNOWN_ISSUE_WORDS[k.standing] ?? k.standing})`,
 		})),
 		none: "No known issues on this build.",
 	});

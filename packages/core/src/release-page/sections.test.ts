@@ -1,8 +1,10 @@
+import type { ReleaseShipped } from '@forge/contracts/release-page';
 import type { ReleaseApprovalView, ReleaseDetail } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
-import { actionsOf, approvalOf, buildOf, changesOf, technicalOf } from './sections.js';
+import { actionsOf, approvalOf, buildOf, changesOf, headerOf, technicalOf } from './sections.js';
 
 const HEAD = 'c'.repeat(40);
+const UNREAD: ReleaseShipped = { state: 'unread', why: 'planted' };
 const OWNER = { id: 'u-1', name: 'Linh', kind: 'human' as const };
 
 function detail(over: Partial<ReleaseDetail> = {}): ReleaseDetail {
@@ -177,7 +179,7 @@ describe('what an admin must do (BC-7) and the technical notes (BC-9)', () => {
   };
 
   it('derives settings, migrations and permissions from what the release ships, naming each artifact', () => {
-    expect(actionsOf(changes)).toEqual([
+    expect(actionsOf(changes, UNREAD)).toEqual([
       {
         kind: 'migration',
         ref: 'packages/core/drizzle/migrations/0478_highlights.sql',
@@ -218,10 +220,101 @@ describe('what an admin must do (BC-7) and the technical notes (BC-9)', () => {
           attention: [],
         },
       }),
+      UNREAD,
     );
     expect(t.notes).toEqual([{ issueKey: 'ISS-1', title: 'Page', technical: 'New table.' }]);
     expect(t.migrations).toEqual(['packages/core/drizzle/migrations/0478_highlights.sql']);
     expect(t.contracts).toEqual(['GET /api/projects/:id/releases/:version/page', 'package.json']);
     expect(t.dependencies).toEqual(['package.json']);
+  });
+});
+
+describe('what the commit range ships adds to what the issues named (BC-7, BC-9)', () => {
+  const none = {
+    surfaces: [],
+    risks: [],
+    unclassified: [],
+    boxRead: [],
+    shipsNothing: false,
+  };
+  const shipped: ReleaseShipped = {
+    state: 'read',
+    base: 'a'.repeat(40),
+    head: HEAD,
+    migrations: [
+      'packages/core/drizzle/migrations/0477_preview.sql',
+      'packages/core/drizzle/migrations/0478_page.sql',
+    ],
+    contracts: ['added GET /api/previews'],
+    dependencies: ['packages/core: added zod 4.6.5'],
+    settings: [
+      { name: 'PREVIEW_DOMAIN', required: false },
+      { name: 'FORGE_VAULT_KEY', required: true },
+    ],
+  };
+
+  it('asks an admin for each migration and each new required setting though no issue filled a field', () => {
+    const items = actionsOf(none, shipped);
+    expect(items.map((i) => `${i.kind}:${i.ref}`)).toEqual([
+      'migration:packages/core/drizzle/migrations/0477_preview.sql',
+      'migration:packages/core/drizzle/migrations/0478_page.sql',
+      'setting:FORGE_VAULT_KEY',
+    ]);
+    expect(items[0]?.sentence).toMatch(/^Back up the database/);
+    expect(items[2]?.sentence).toMatch(/^Set FORGE_VAULT_KEY/);
+  });
+
+  it('says an item once where an issue also named it, keeping that issue', () => {
+    const named = {
+      ...none,
+      surfaces: [
+        {
+          surface: 'data' as const,
+          count: 1,
+          shipsNothing: false,
+          issues: ['ISS-491'],
+          artifacts: [
+            {
+              ref: 'packages/core/drizzle/migrations/0477_preview.sql',
+              change: 'added' as const,
+              issues: ['ISS-491'],
+              carriedBy: null,
+            },
+          ],
+        },
+      ],
+    };
+    const items = actionsOf(named, shipped);
+    const mig = items.filter((i) => i.ref.endsWith('0477_preview.sql'));
+    expect(mig).toHaveLength(1);
+    expect(mig[0]?.issues).toEqual(['ISS-491']);
+  });
+
+  it('lists the derived migrations, contracts, dependencies and every new setting in the developer notes', () => {
+    const t = technicalOf(detail({ changes: none }), shipped);
+    expect(t.migrations).toHaveLength(2);
+    expect(t.contracts).toEqual(['added GET /api/previews']);
+    expect(t.dependencies).toEqual(['packages/core: added zod 4.6.5']);
+    expect(t.settings).toEqual(['FORGE_VAULT_KEY (required)', 'PREVIEW_DOMAIN (optional)']);
+  });
+
+  it('claims nothing from a range it did not read', () => {
+    expect(actionsOf(none, UNREAD)).toEqual([]);
+    expect(technicalOf(detail({ changes: none }), UNREAD).migrations).toEqual([]);
+  });
+});
+
+describe('the header proves what the page proves (BC-5)', () => {
+  it('states the page count, not the record count that takes a short as a pass', () => {
+    const d = detail({
+      verified: { level: 'criteria', proven: 9, total: 9, check: null, provider: null },
+    });
+    const h = headerOf(d, { proven: 6, total: 9 });
+    expect(h.verified).toMatchObject({ proven: 6, total: 9, level: 'some_criteria' });
+  });
+
+  it('reads criteria level only where every criterion is proven', () => {
+    const verified = { level: 'none' as const, proven: 0, total: 0, check: null, provider: null };
+    expect(headerOf(detail({ verified }), { proven: 4, total: 4 }).verified.level).toBe('criteria');
   });
 });

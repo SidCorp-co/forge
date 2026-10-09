@@ -15,8 +15,15 @@ import {
 import type { ReleaseDetail } from '@forge/contracts/releases';
 import { HTTPException } from 'hono/http-exception';
 import { refuser } from '../lib/refusal.js';
-import { readRelease, type ViewerFacts } from '../release-batch/index.js';
-import { type ClaimReading, knownIssuesOf, mediaOf, readClaims, requirementsOf } from './claims.js';
+import { readRelease, readShipped, type ViewerFacts } from '../release-batch/index.js';
+import {
+  type ClaimReading,
+  knownIssuesOf,
+  mediaOf,
+  provenTotals,
+  readClaims,
+  requirementsOf,
+} from './claims.js';
 import { carriedCriteria, carriedRequirements, issueFiles, type RequirementText } from './facts.js';
 import { digestOf, highlightFacts, highlightsRow, shownHighlights } from './highlights.js';
 import { actionsOf, buildOf, changesOf, headerOf, technicalOf } from './sections.js';
@@ -80,6 +87,19 @@ function linked(highlights: ReleaseHighlights): ReleaseHighlights {
   };
 }
 
+/**
+ * What a known issue says to the reader of the view. The user view says the criterion's own wording
+ * and its state; the verdict's reason, and the other build it was judged on, are QA's technical
+ * words and belong to the developer view (BC-11).
+ */
+export function userKnownIssues(
+  issues: ReleasePage['knownIssues'],
+  view: ReleasePageViewKind,
+): ReleasePage['knownIssues'] {
+  if (view === 'developer') return issues;
+  return issues.map((k) => ({ ...k, reason: null, elsewhere: null }));
+}
+
 export function isPageView(view: string): view is ReleasePageViewKind {
   return (RELEASE_PAGE_VIEWS as readonly string[]).includes(view);
 }
@@ -109,18 +129,20 @@ export async function readReleasePage(args: {
   const shown = shownHighlights(row, page.facts, page.digest, page.build);
   if (shown.owed && detail.runId) args.onOwed?.({ projectId, runId: detail.runId });
   const changes = changesOf(detail.notes);
+  const shipped = await readShipped(projectId, detail.version, page.build);
   return {
     view,
     projectId,
-    header: headerOf(detail),
+    header: headerOf(detail, provenTotals(page.claims)),
     highlights: linked(shown.highlights),
     requirements: requirementsOf(page.requirements, page.claims),
     improvements: changes.improvements,
     fixes: changes.fixes,
     withoutNotes: changes.withoutNotes,
-    actionRequired: actionsOf(detail.changes),
-    knownIssues: knownIssuesOf(page.claims),
-    technical: view === 'developer' ? technicalOf(detail) : null,
+    actionRequired: actionsOf(detail.changes, shipped),
+    shipped,
+    knownIssues: userKnownIssues(knownIssuesOf(page.claims), view),
+    technical: view === 'developer' ? technicalOf(detail, shipped) : null,
     can: { share: viewer?.mayShare ?? false, export: true, approve: detail.can.decide },
   };
 }

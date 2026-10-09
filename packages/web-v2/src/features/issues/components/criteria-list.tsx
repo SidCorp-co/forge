@@ -7,13 +7,14 @@
 // verdict it earned, so an earlier judge's finding stays readable (ISS-489).
 
 import type { ReactNode } from "react";
-import { EmptyPanelLine, StatusBadge, statusReading, Tooltip, ViewHeading } from "@/design";
+import { EmptyPanelLine, StatusBadge, statusReading, Tooltip, VerdictEvidence, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { criterionStandingOf } from "@forge/contracts/verdict-identity";
 import { identityPhrase } from "../identity-phrase";
 import { type CriterionRow, type CriterionVerdict, type RetiredCriterionRow, useCriteria } from "../criteria";
+import { useAttachments } from "../detail-hooks";
 import { RecordVerdict } from "./criteria-acts";
 
 function tooltipOf(row: CriterionRow, t: Copy, language: string, at: (iso: string) => string): string {
@@ -43,6 +44,7 @@ export function CriteriaList({
   headingAct?: ReactNode;
 }) {
   const q = useCriteria(issueId);
+  const kept = useAttachments(issueId);
   const t = useCopy();
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
@@ -65,7 +67,17 @@ export function CriteriaList({
               <span className="w-6 shrink-0 tabular-nums" style={{ color: "var(--fg-muted)" }}>
                 {row.n}.
               </span>
-              <span className="min-w-0 flex-1 whitespace-pre-wrap">{row.statement}</span>
+              <div className="min-w-0 flex-1">
+                <span className="whitespace-pre-wrap">{row.statement}</span>
+                <VerdictEvidence
+                  className="mt-1 grid gap-1 text-12-5"
+                  note={row.latest?.reason?.trim() ? row.latest.reason : null}
+                  files={(row.latest?.evidence ?? []).flatMap((name) => {
+                    const file = (kept.data ?? []).find((a) => a.name === name);
+                    return file ? [{ name: file.name, mime: file.mime, url: file.url }] : [];
+                  })}
+                />
+              </div>
               <Tooltip label={tooltipOf(row, t, language, time.dateTime)} multiline>
                 <span data-testid={`criterion-${row.n}-verdict`}>
                   <StatusBadge family="criterion" value={criterionStandingOf(row.latest)} />

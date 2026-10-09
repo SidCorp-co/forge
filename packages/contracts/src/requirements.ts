@@ -349,6 +349,13 @@ export interface RequirementFeedbackItem {
 	route: FeedbackRouteView | null;
 }
 
+/** A file an issue keeps that a verdict's evidence names: where a person reaches the clip or picture QA recorded. */
+export interface CoverageFile {
+	attachmentId: string;
+	name: string;
+	mime: string;
+}
+
 export interface CoverageIssue {
 	issueId: string;
 	displayId: string;
@@ -365,6 +372,10 @@ export interface CoverageIssue {
 	/** What that verdict names as the thing it was judged against, in words (`commit 1a2b…`,
 	 *  `runtime 3c4d…`, `design issue-lifecycle rev 14`, `contract forge/api@1.2.0`); null with no verdict. */
 	identity: string | null;
+	/** The note the verdict was written with (its own reason); null where none was written or there is no verdict. */
+	note: string | null;
+	/** The files that verdict's evidence names which the issue keeps, a clip or a picture among them. */
+	files: CoverageFile[];
 	/** The commit that verdict was judged at, or the commit its runtime served; null where it names
 	 *  none or its runtime resolves to none. */
 	commit: string | null;

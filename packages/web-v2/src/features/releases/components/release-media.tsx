@@ -6,41 +6,9 @@
 // short-lived download ticket that carries its own right to be read, so it plays from its address.
 
 import type { ReleaseMediaRef } from "@forge/contracts/release-page";
-import { useEffect, useState } from "react";
 import { Skeleton } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { coreFileUrl } from "@/lib/utils/core-url";
-
-type Src = { state: "loading" } | { state: "ready"; src: string } | { state: "lost" };
-
-/** The address a media file plays from, or why it cannot. */
-export function useMediaSrc(url: string | undefined, authed: boolean): Src {
-  const [got, setGot] = useState<{ url: string; src: Src } | null>(null);
-  useEffect(() => {
-    if (!url || !authed) return;
-    const ctl = new AbortController();
-    let made: string | null = null;
-    fetch(coreFileUrl(url), { credentials: "include", signal: ctl.signal })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`${res.status}`);
-        return res.blob();
-      })
-      .then((blob) => {
-        made = URL.createObjectURL(blob);
-        setGot({ url, src: { state: "ready", src: made } });
-      })
-      .catch(() => {
-        if (!ctl.signal.aborted) setGot({ url, src: { state: "lost" } });
-      });
-    return () => {
-      ctl.abort();
-      if (made) URL.revokeObjectURL(made);
-    };
-  }, [url, authed]);
-  if (!url) return { state: "lost" };
-  if (!authed) return { state: "ready", src: coreFileUrl(url) };
-  return got?.url === url ? got.src : { state: "loading" };
-}
+import { useMediaSrc } from "@/lib/utils/use-media-src";
 
 export function ReleaseMedia({ media, label, authed }: { media: ReleaseMediaRef; label: string; authed: boolean }) {
   const t = useCopy();

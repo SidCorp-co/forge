@@ -7,6 +7,7 @@
 import type {
   BcVerdict,
   CoverageCount,
+  CoverageFile,
   CoverageIssue,
   RequirementCoverage,
 } from '@forge/contracts/requirements';
@@ -31,6 +32,10 @@ export interface StandingIssueCriterion {
   requirementCriterionId: string;
   verdict: CoverageIssue['verdict'];
   verdictAt: Date | null;
+  /** The verdict's own note; absent reads as none written. */
+  note?: string | null;
+  /** The files the verdict's evidence names that the issue keeps; absent reads as none. */
+  files?: readonly CoverageFile[];
   /** What the verdict was judged against; null where there is no verdict or it names nothing. */
   identity: CoverageIdentity | null;
 }
@@ -209,6 +214,8 @@ export function coverageOf(
           criterion: ic.n,
           verdict: ic.verdict,
           verdictAt: ic.verdictAt?.toISOString() ?? null,
+          note: ic.verdict === null ? null : (ic.note ?? null),
+          files: ic.verdict === null ? [] : [...(ic.files ?? [])],
           identity: ic.verdict === null ? null : identityWords(ic.identity),
           commit: r?.commit ?? null,
           inLiveBuild: r?.inLiveBuild ?? null,

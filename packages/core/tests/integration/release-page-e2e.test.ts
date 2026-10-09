@@ -151,12 +151,19 @@ describe('a release page claims a criterion only with a pass verdict on the buil
         unproven: 3,
       },
     ]);
-    expect(p.knownIssues.map((k) => [k.bc, k.standing, k.reason])).toEqual([
+    // the user view says the criterion and its state; QA's reasons and the other build are the developer view's
+    expect(p.knownIssues.map((k) => [k.bc, k.standing, k.reason, k.elsewhere])).toEqual([
+      ['BC-2', 'short', null, null],
+      ['BC-3', 'not_judged', null, null],
+      ['BC-4', 'fail', null, null],
+    ]);
+    const dev = await page('member', 'developer');
+    expect(dev.knownIssues.map((k) => [k.bc, k.standing, k.reason])).toEqual([
       ['BC-2', 'short', 'only on a desktop browser'],
       ['BC-3', 'not_judged', null],
       ['BC-4', 'fail', 'the filter resets on reload'],
     ]);
-    expect(p.knownIssues[1]?.elsewhere).toEqual({ verdict: 'pass', commitSha: MERGED });
+    expect(dev.knownIssues[1]?.elsewhere).toEqual({ verdict: 'pass', commitSha: MERGED });
   });
 
   it('withdraws a claim once a later verdict on the build fails it', async () => {

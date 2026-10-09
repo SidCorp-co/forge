@@ -72,6 +72,15 @@ export function readClaims(
   }));
 }
 
+/**
+ * How many carried criteria the page claims, of how many it carries: the one count the header's
+ * "proven" and the requirements' proven lists both read (BC-5). Only a pass on the build is
+ * claimed, so a short, which the release record counts as a pass for gating, is not proven here.
+ */
+export function provenTotals(claims: readonly ClaimReading[]): { proven: number; total: number } {
+  return { proven: claims.filter((c) => c.claim.claimed).length, total: claims.length };
+}
+
 /** Every carried criterion the page does not claim, with its standing on the build and where it was judged instead. */
 export function knownIssuesOf(claims: readonly ClaimReading[]): ReleaseKnownIssue[] {
   return claims.flatMap(({ criterion, claim, onBuild }) =>

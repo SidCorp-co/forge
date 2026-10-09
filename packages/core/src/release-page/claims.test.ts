@@ -5,6 +5,7 @@ import {
   type IssueFile,
   knownIssuesOf,
   mediaOf,
+  provenTotals,
   readClaims,
   requirementsOf,
 } from './claims.js';
@@ -149,5 +150,42 @@ describe('the media a highlight may show', () => {
       verdict('pass', MERGED, '2026-10-09T10:00:00.000Z', { evidence: ['clip.webm'] }),
     ]);
     expect(mediaOf(readClaims([elsewhere], BUILD), files, BUILD)).toEqual([]);
+  });
+});
+
+describe('the header and the requirements list prove the same criteria (BC-5)', () => {
+  // QA 0.4.0-dev.218 read "9 of 26 criteria proven" in the header and 6 under the requirement: the
+  // header counted the three criteria that fall short as proven
+  it('counts only a pass on the build as proven, and agrees with what each requirement lists', () => {
+    const rows = [
+      criterion(1, 'BC-1', [verdict('pass', BUILD, '2026-10-09T10:00:00.000Z')]),
+      criterion(2, 'BC-2', [verdict('pass', BUILD, '2026-10-09T10:00:00.000Z')]),
+      criterion(3, 'BC-3', [verdict('short', BUILD, '2026-10-09T10:00:00.000Z')]),
+      criterion(4, 'BC-4', [verdict('short', BUILD, '2026-10-09T10:00:00.000Z')]),
+      criterion(5, 'BC-5', [verdict('fail', BUILD, '2026-10-09T10:00:00.000Z')]),
+      criterion(6, 'BC-6', []),
+    ];
+    const claims = readClaims(rows, BUILD);
+    expect(provenTotals(claims)).toEqual({ proven: 2, total: 6 });
+    const listed = requirementsOf(
+      [
+        {
+          key: 'REQ-1',
+          title: 'r',
+          completes: false,
+          criteria: new Map(rows.map((r) => [r.bc as string, r.statement])),
+        },
+      ],
+      claims,
+    );
+    expect(listed.flatMap((r) => r.proven)).toHaveLength(provenTotals(claims).proven);
+  });
+
+  it('proves nothing on a release nobody cut', () => {
+    const claims = readClaims(
+      [criterion(1, 'BC-1', [verdict('pass', BUILD, '2026-10-09T10:00:00.000Z')])],
+      null,
+    );
+    expect(provenTotals(claims)).toEqual({ proven: 0, total: 1 });
   });
 });

@@ -50,6 +50,7 @@ export function releasePage(over: Partial<ReleasePage> = {}): ReleasePage {
     fixes: [{ issueKey: "ISS-2", kind: "fixed", line: "Dates show correctly." }],
     withoutNotes: [{ issueKey: "ISS-9", title: "Rename a helper", why: "no_note" }],
     actionRequired: [{ kind: "migration", sentence: "Run the database migration before opening the app.", ref: "0478_release_highlights.sql", issues: ["ISS-1"] }],
+    shipped: { state: "read", base: "b".repeat(40), head: BUILD, migrations: ["packages/core/drizzle/migrations/0478_release_highlights.sql"], contracts: [], dependencies: [], settings: [] },
     knownIssues: [
       { issueKey: "ISS-3", requirementKey: "REQ-40", bc: "BC-8", statement: "Known issues are listed.", standing: "short", reason: "the list is empty on mobile", elsewhere: null },
       { issueKey: "ISS-4", requirementKey: "REQ-40", bc: "BC-9", statement: "A developer view adds notes.", standing: "not_judged", reason: null, elsewhere: { verdict: "pass", commitSha: "b".repeat(40) } },
@@ -65,5 +66,6 @@ export const TECHNICAL: NonNullable<ReleasePage["technical"]> = {
   migrations: ["0478_release_highlights.sql"],
   contracts: ["packages/contracts/src/release-page.ts"],
   dependencies: ["no new dependency"],
+  settings: ["PREVIEW_DOMAIN (optional)"],
   changes: { surfaces: [], risks: [], unclassified: [], boxRead: [], shipsNothing: false },
 };
