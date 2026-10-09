@@ -29,7 +29,7 @@ the person's share of the thread was 98 and 123 characters against 26,000 and 46
 | What you have | Where it goes | Format |
 |---|---|---|
 | A sentence a person needs to read | \`comments\` | prose, no fence, no field list. Say what happened and what it means |
-| A verdict on an acceptance criterion | ${route('verdict')} → \`criterion_verdicts\` | \`{ criterion, verdict, reason?, identity?, evidence? }\`, one row per criterion judged |
+| A verdict on an acceptance criterion | ${route('verdict')} → \`criterion_verdicts\` | \`{ criterion, verdict, reason?, identity?, evidence?, probe? }\`, one row per criterion judged |
 | A step's handoff, per attempt | \`POST /api/issue-step-contexts\` → \`issue_step_contexts\` | the handoff payload, keyed \`(issue, step, attempt)\` |
 | A run's own record — a review, a decision, a baseline, a correction, a finding | ${route('review')} → \`activity_log\` | a typed record event of one kind in the closed set; a kind outside it is refused \`EVENT_KIND_UNKNOWN\` |
 | A transcript, a tool result, what the agent said | \`agent_session_turns\` | written by the session; never copied into a comment |

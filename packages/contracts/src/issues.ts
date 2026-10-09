@@ -1,4 +1,5 @@
 import type { RefusalStatuses } from "./refusal.js";
+import { PROBE_REFUSAL_CODES } from "./criterion-probes.js";
 import { DESIGN_CHECK_CODES, VERDICT_JUDGE_REFUSAL_CODES } from "./issue-design.js";
 import { STOREFRONT_DRAFT_REFUSAL_CODES } from "./verdict-identity.js";
 
@@ -33,6 +34,7 @@ export const VERDICT_REFUSAL_CODES = [
 	"VERDICT_CONTRACT_UNKNOWN",
 	...VERDICT_JUDGE_REFUSAL_CODES,
 	...STOREFRONT_DRAFT_REFUSAL_CODES,
+	...PROBE_REFUSAL_CODES,
 ] as const;
 export type VerdictRefusalCode = (typeof VERDICT_REFUSAL_CODES)[number];
 

@@ -11,7 +11,7 @@ import { z } from "zod";
  * What a check is, in the order the issue page lists them. `conformance` is the project's
  * conformance gate (`pnpm verify` here); `base` is the check that the change contains its base's
  * latest commit. `probes` and `review` are kinds a run records when it made one: no script here
- * runs either yet (ISS-469, ISS-473).
+ * runs either yet: kept probes are replayed by ISS-470, the review by ISS-473.
  */
 export const CHECK_KINDS = [
 	"tests",

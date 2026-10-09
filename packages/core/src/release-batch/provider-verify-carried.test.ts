@@ -240,6 +240,7 @@ function draftVerdict(workflowId: string, draftVersion: string): CriterionWithVe
       corroboration: 'corroborated',
       corroborationNote: null,
       evidence: [],
+      probeId: null,
       authorAgency: 'agent',
       backfilled: false,
       createdAt: '2026-10-07T18:41:36.201Z',

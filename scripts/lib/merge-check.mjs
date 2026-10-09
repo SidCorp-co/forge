@@ -58,8 +58,8 @@ export function patchIdOf(printed) {
 export const NOT_RUN_HERE = [
   {
     name: 'probes',
-    owner: 'ISS-469',
-    why: 'kept probes are replayed by the tracker once they exist',
+    owner: 'ISS-470',
+    why: 'kept probes are replayed against a running build, and no replayer exists yet',
   },
   {
     name: 'review',

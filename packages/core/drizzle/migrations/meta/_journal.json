@@ -3144,6 +3144,13 @@
       "when": 1825200000000,
       "tag": "0489_a_new_requirement_or_feedback_item_is_drafted_by_the_intake_assistant",
       "breakpoints": true
+    },
+    {
+      "idx": 490,
+      "version": "7",
+      "when": 1825286400000,
+      "tag": "0490_a_verdict_keeps_the_probe_it_rests_on",
+      "breakpoints": true
     }
   ]
 }

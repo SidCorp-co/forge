@@ -3,6 +3,7 @@
 // `verdict-input.ts:verdictDraftFault` (VERDICT_VALUE_UNKNOWN), not by a schema's generic 400.
 
 import { REASON_TEXT_MAX } from '@forge/contracts/comments';
+import { criterionProbeSchema } from '@forge/contracts/criterion-probes';
 import { CRITERION_JUDGES } from '@forge/contracts/issue-design';
 import { storefrontDraftIdentitySchema } from '@forge/contracts/verdict-identity';
 import { z } from 'zod';
@@ -65,5 +66,7 @@ export const verdictPostSchema = z
     evidence: z.array(z.string().trim().min(1).max(500)).max(50).optional(),
     /** Recorded as QA's judgement of the running build (the default) or as the review's. */
     judge: z.enum(CRITERION_JUDGES).optional(),
+    /** The probe this verdict keeps on its criterion: what it runs against the build and expects. */
+    probe: criterionProbeSchema.optional(),
   })
   .strict();

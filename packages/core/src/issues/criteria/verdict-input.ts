@@ -14,6 +14,7 @@
  * `commit_unresolved` is not an identity a writer can name: it exists only on backfilled rows.
  */
 
+import type { CriterionProbe } from '@forge/contracts/criterion-probes';
 import type { CriterionJudge } from '@forge/contracts/issue-design';
 import type { VerdictRefusalCode } from '@forge/contracts/issues';
 import {
@@ -50,6 +51,8 @@ export interface VerdictDraft {
   readonly evidence: readonly string[];
   /** QA's judgement of the running build, or the review's; omitted, it is QA's. */
   readonly judge?: CriterionJudge | undefined;
+  /** The probe this verdict keeps on its criterion (ISS-469); only the REST door sends one. */
+  readonly probe?: CriterionProbe | undefined;
 }
 
 export interface VerdictRefusal {

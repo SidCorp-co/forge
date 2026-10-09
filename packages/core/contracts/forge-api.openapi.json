@@ -14236,6 +14236,163 @@
                     ],
                     "type": "string"
                   },
+                  "probe": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "expect": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bodyIncludes": {
+                                "items": {
+                                  "maxLength": 500,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "maxItems": 20,
+                                "type": "array"
+                              },
+                              "status": {
+                                "maximum": 599,
+                                "minimum": 100,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "status"
+                            ],
+                            "type": "object"
+                          },
+                          "kind": {
+                            "const": "request",
+                            "type": "string"
+                          },
+                          "request": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "as": {
+                                "enum": [
+                                  "anonymous",
+                                  "replayer"
+                                ],
+                                "type": "string"
+                              },
+                              "body": {
+                                "maxLength": 20000,
+                                "type": "string"
+                              },
+                              "headers": {
+                                "additionalProperties": {
+                                  "maxLength": 1000,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "propertyNames": {
+                                  "pattern": "^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,100}$",
+                                  "type": "string"
+                                },
+                                "type": "object",
+                                "x-forge-refinements": [
+                                  "at most 20 headers"
+                                ]
+                              },
+                              "method": {
+                                "enum": [
+                                  "GET",
+                                  "HEAD",
+                                  "POST",
+                                  "PUT",
+                                  "PATCH",
+                                  "DELETE",
+                                  "OPTIONS"
+                                ],
+                                "type": "string"
+                              },
+                              "path": {
+                                "maxLength": 2000,
+                                "pattern": "^\\/(?!\\/)\\S*$",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "method",
+                              "path",
+                              "as"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "request",
+                          "expect"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "command": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "argv": {
+                                "items": {
+                                  "maxLength": 2000,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "maxItems": 50,
+                                "minItems": 1,
+                                "type": "array"
+                              },
+                              "cwd": {
+                                "pattern": "^(?!.*(?:^|\\/)\\.\\.(?:\\/|$))[\\w.@-]+(?:\\/[\\w.@-]+)*$",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "argv"
+                            ],
+                            "type": "object"
+                          },
+                          "expect": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "exitCode": {
+                                "maximum": 255,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "stdoutIncludes": {
+                                "items": {
+                                  "maxLength": 500,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "maxItems": 20,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "exitCode"
+                            ],
+                            "type": "object"
+                          },
+                          "kind": {
+                            "const": "command",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "command",
+                          "expect"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
                   "reason": {
                     "anyOf": [
                       {

@@ -106,19 +106,6 @@ export async function assertDesignPasses(
   );
 }
 
-/** The judge a live criterion's class routes it to, or null where no design classes it. */
-export async function judgeOfCriterion(
-  executor: Pick<Tx, 'select'>,
-  criterionId: string,
-): Promise<CriterionJudge | null> {
-  const [line] = await executor
-    .select({ criterionClass: issueDesignCriteria.criterionClass })
-    .from(issueDesignCriteria)
-    .where(eq(issueDesignCriteria.criterionId, criterionId))
-    .limit(1);
-  return line ? JUDGE_OF_CLASS[line.criterionClass] : null;
-}
-
 function viewOf(
   facts: Awaited<ReturnType<typeof readDesignFacts>>,
   modules: readonly { id: string; name: string }[],

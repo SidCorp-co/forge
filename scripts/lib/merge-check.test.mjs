@@ -93,7 +93,7 @@ describe('what a merge needs', () => {
 
   it('says probes and review are not run here, each with the issue that builds it', () => {
     expect(NOT_RUN_HERE.map((n) => [n.name, n.owner])).toEqual([
-      ['probes', 'ISS-469'],
+      ['probes', 'ISS-470'],
       ['review', 'ISS-473'],
     ]);
   });

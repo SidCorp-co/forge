@@ -58,6 +58,8 @@ export interface LatestVerdict {
   readonly corroboration: VerdictDraftReading | null;
   readonly corroborationNote: string | null;
   readonly evidence: readonly string[];
+  /** The kept probe this verdict rests on (ISS-469), or null. */
+  readonly probeId: string | null;
   readonly authorAgency: ActorAgency;
   readonly backfilled: boolean;
   readonly createdAt: string;
@@ -357,7 +359,7 @@ const LIST_SQL = (issueIds: readonly string[]) => sql`
          v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,
          v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
          v.contract_version, v.storefront_workflow_id, v.storefront_draft_version,
-         v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.author_agency, v.backfilled, v.created_at AS v_created_at
+         v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.probe_id, v.author_agency, v.backfilled, v.created_at AS v_created_at
     FROM issue_criteria c
     LEFT JOIN LATERAL (
       SELECT * FROM criterion_verdicts cv
@@ -396,6 +398,7 @@ type ListRow = {
   corroboration: VerdictCorroboration | null;
   corroboration_note: string | null;
   evidence: string[] | null;
+  probe_id: string | null;
   author_agency: ActorAgency | null;
   backfilled: boolean | null;
   v_created_at: Date | string | null;
@@ -421,6 +424,7 @@ function latestOf(row: ListRow): LatestVerdict | null {
     corroboration: row.corroboration,
     corroborationNote: row.corroboration_note,
     evidence: row.evidence ?? [],
+    probeId: row.probe_id ?? null,
     authorAgency: row.author_agency ?? 'human',
     backfilled: row.backfilled === true,
     createdAt: new Date(row.v_created_at ?? 0).toISOString(),
@@ -471,7 +475,7 @@ export async function listRetiredCriteria(
            v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,
            v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
            v.contract_version, v.storefront_workflow_id, v.storefront_draft_version,
-           v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence,
+           v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.probe_id,
            v.author_agency, v.backfilled, v.created_at AS v_created_at
       FROM issue_criteria c
       LEFT JOIN criterion_verdicts v ON v.criterion_id = c.id

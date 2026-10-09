@@ -1,5 +1,6 @@
 import { db } from '../../db/client.js';
 import { criterionRoutesOf } from '../design-record.js';
+import { keptProbesOf } from './probes.js';
 import { type CriterionInput, listCriteria, listRetiredCriteria, putCriteria } from './store.js';
 import { withCurrentDrafts } from './storefront-draft.js';
 import { appendTracedCriteria } from './tie.js';
@@ -7,15 +8,18 @@ import { recordVerdict } from './verdict-record.js';
 
 /**
  * An issue's live criteria with their latest verdicts and the storefront's current drafts, each with
- * the class its design records and the judge that class routes it to (null where none classes it).
+ * the class its design records, the judge that class routes it to (null where none classes it) and
+ * the probe it keeps (null where it keeps none).
  */
 export async function readCriteriaWithDrafts(issue: { id: string; projectId: string }) {
   const criteria = await withCurrentDrafts(issue.projectId, await listCriteria(db, issue.id));
-  const routes = await criterionRoutesOf(criteria.map((c) => c.id));
+  const ids = criteria.map((c) => c.id);
+  const [routes, probes] = await Promise.all([criterionRoutesOf(ids), keptProbesOf(db, ids)]);
   return criteria.map((c) => ({
     ...c,
     class: routes.get(c.id)?.class ?? null,
     judge: routes.get(c.id)?.judge ?? null,
+    probe: probes.get(c.id) ?? null,
   }));
 }
 

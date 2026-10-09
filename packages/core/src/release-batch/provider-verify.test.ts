@@ -136,6 +136,7 @@ function verdict(
       corroboration: draft ? 'corroborated' : null,
       corroborationNote: null,
       evidence: [],
+      probeId: null,
       authorAgency: 'agent',
       backfilled: false,
       createdAt: draft?.at ?? JUDGED,

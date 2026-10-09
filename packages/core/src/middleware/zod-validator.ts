@@ -109,6 +109,25 @@ export function fieldShape(field: string, code: string, shape: string): Hook {
   }) as Hook;
 }
 
+/**
+ * A body whose one structured field answers its wrong shape under a code of its own, one row per
+ * fault at the fault's own path inside it, each naming `shape`. Every other failing field keeps its
+ * BAD_REQUEST row.
+ */
+export function nestedFieldShape(field: string, code: string, shape: string): Hook {
+  return ((r: Failed) => {
+    if (r.success || !r.error) return;
+    const issues = r.error.issues;
+    if (!issues.some((i) => i.path[0] === field)) return;
+    const rows: Refusal[] = issues.map((i) =>
+      i.path[0] === field
+        ? { code, path: jsonPointer(i.path), detail: `${i.message}. \`${field}\` is ${shape}` }
+        : { code: 'BAD_REQUEST', path: jsonPointer(i.path), detail: i.message },
+    );
+    throw new RefusalError(rows, 'BAD_REQUEST');
+  }) as Hook;
+}
+
 // the API contract reads a route's inputs off its middleware, not off a second description
 export const zValidator = ((...args: Args) => {
   const [target, declaredSchema, hook, ...rest] = args;

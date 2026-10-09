@@ -2,8 +2,11 @@
 // `issue_criteria` holds one row per criterion (its number is what a verdict names); a reworded or
 // removed criterion is retired, never deleted, so the verdicts on it stay readable.
 // `criterion_verdicts` is insert-only: the latest row per criterion is what the
-// `awaiting_release` gate reads (`issues/criteria/store.ts:listCriteria`).
+// `awaiting_release` gate reads (`issues/criteria/store.ts:listCriteria`). `criterion_probes` is
+// insert-only too: each kept probe of a criterion, the newest being the one a verdict that sends none
+// rests on (ISS-469).
 
+import { PROBE_KINDS, PROBE_LIMITS } from '@forge/contracts/criterion-probes';
 import { CRITERION_JUDGES } from '@forge/contracts/issue-design';
 import {
   VERDICT_CORROBORATIONS,
@@ -17,6 +20,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -68,6 +72,36 @@ export type VerdictValue = (typeof verdictValues)[number];
 export const verdictIdentityKinds = VERDICT_IDENTITY_KINDS;
 export type VerdictIdentityKind = (typeof verdictIdentityKinds)[number];
 
+const quoted = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
+
+// A probe kept on a criterion (REQ-36 BC-6; ISS-469): `spec` is the probe as the verdict door
+// validated it (`@forge/contracts/criterion-probes`), never a credential. The guard trigger holds the
+// criterion to its issue, and a verdict to a probe of its own criterion.
+export const criterionProbes = pgTable(
+  'criterion_probes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    criterionId: uuid('criterion_id')
+      .notNull()
+      .references(() => issueCriteria.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: PROBE_KINDS }).notNull(),
+    spec: jsonb('spec').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    kindChk: check('criterion_probes_kind_chk', sql`${t.kind} IN (${quoted(PROBE_KINDS)})`),
+    specChk: check(
+      'criterion_probes_spec_chk',
+      sql`jsonb_typeof(${t.spec}) = 'object' AND ${t.spec}->>'kind' = ${t.kind} AND octet_length(${t.spec}::text) <= ${sql.raw(String(PROBE_LIMITS.stored))}`,
+    ),
+    keptIdx: index('criterion_probes_kept_idx').on(t.criterionId, t.createdAt),
+    issueIdx: index('criterion_probes_issue_idx').on(t.issueId),
+  }),
+);
+
 export const criterionVerdicts = pgTable(
   'criterion_verdicts',
   {
@@ -103,6 +137,8 @@ export const criterionVerdicts = pgTable(
     backfilled: boolean('backfilled').notNull().default(false),
     /** QA's judgement of the running build, or the review's (0487); null on older rows. */
     judge: text('judge', { enum: CRITERION_JUDGES }),
+    /** The kept probe this verdict rests on: sent with it, or the criterion's newest (ISS-469). */
+    probeId: uuid('probe_id').references(() => criterionProbes.id, { onDelete: 'restrict' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -144,3 +180,4 @@ export const criterionVerdicts = pgTable(
 
 export type IssueCriterionRow = typeof issueCriteria.$inferSelect;
 export type CriterionVerdictRow = typeof criterionVerdicts.$inferSelect;
+export type CriterionProbeRow = typeof criterionProbes.$inferSelect;

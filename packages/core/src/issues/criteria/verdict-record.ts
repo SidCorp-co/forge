@@ -1,7 +1,7 @@
 // Recording one verdict on a live criterion: the identity it was judged against, resolved and
 // refused by name, the row, and its kernel record.
 
-import type { CriterionJudge } from '@forge/contracts/issue-design';
+import type { CriterionClass, CriterionJudge } from '@forge/contracts/issue-design';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
@@ -16,10 +16,12 @@ import { contractLookup } from '../../messaging/verdict-contract.js';
 import { designLookup } from '../../messaging/verdict-design.js';
 import { emitEvent } from '../../outbox/index.js';
 import type { Actor } from '../activity.js';
-import { judgeOfCriterion } from '../design-record.js';
+import { criterionRoutesOf } from '../design-record.js';
 import { readProjectDocument } from '../ports.js';
 import type { RecordEventField } from '../record-events/store.js';
 import { writeKernelRecord } from '../record-events/store.js';
+import { probeNote } from './probe-rules.js';
+import { probeOfVerdict } from './probes.js';
 import { liveRows } from './store.js';
 import {
   corroborationOf,
@@ -227,6 +229,15 @@ function misrouted(criterion: number, routed: CriterionJudge): VerdictRefusal {
       };
 }
 
+function probeField(
+  verdict: string,
+  criterionClass: CriterionClass | null,
+  probeId: string | null,
+): RecordEventField[] {
+  const note = probeNote(verdict, criterionClass, probeId);
+  return note ? [{ key: 'probe', value: note }] : [];
+}
+
 /** Insert one verdict, refused by name where the draft, its criterion or its design is wrong. */
 export async function recordVerdict(
   tx: Tx,
@@ -268,14 +279,22 @@ export async function recordVerdict(
     });
   }
   const judge = draft.judge ?? 'qa';
-  const routed = await judgeOfCriterion(tx, criterion.id);
-  if (routed !== null && routed !== judge) throw verdictRefused(misrouted(draft.criterion, routed));
+  const route = (await criterionRoutesOf([criterion.id], tx)).get(criterion.id) ?? null;
+  if (route !== null && route.judge !== judge) {
+    throw verdictRefused(misrouted(draft.criterion, route.judge));
+  }
   const identity = await identityColumns(
     tx,
     issue.projectId,
     draft,
     args.readDraft ?? readSourceDrafts,
   );
+  const probeId = await probeOfVerdict(tx, {
+    issueId: issue.id,
+    criterion: { id: criterion.id, n: draft.criterion, class: route?.class ?? null },
+    verdict: draft.verdict,
+    probe: draft.probe ?? null,
+  });
   const [row] = await tx
     .insert(criterionVerdicts)
     .values({
@@ -290,6 +309,7 @@ export async function recordVerdict(
       authorAgency: author.agency,
       commentId: args.commentId ?? null,
       judge,
+      probeId,
     })
     .returning({ id: criterionVerdicts.id });
   if (!row) throw new Error('criterion_verdicts insert returned no row');
@@ -300,6 +320,7 @@ export async function recordVerdict(
     fields: [
       ...verdictRecordFields({ id: row.id, draft, identity }),
       { key: 'judge', value: judge },
+      ...probeField(draft.verdict, route?.class ?? null, probeId),
     ],
     commentId: args.commentId ?? null,
   });

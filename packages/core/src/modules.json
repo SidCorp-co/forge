@@ -530,6 +530,7 @@
       "context": "work",
       "owns": [
         "activityLog",
+        "criterionProbes",
         "criterionVerdicts",
         "issueAttachments",
         "issueCheckRuns",

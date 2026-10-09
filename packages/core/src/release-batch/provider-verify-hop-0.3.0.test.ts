@@ -311,6 +311,7 @@ function criterion(n: number, v: FixtureIssue['verdicts'][number] | null): Crite
       corroboration: v?.workflowId ? 'corroborated' : null,
       corroborationNote: null,
       evidence: [],
+      probeId: null,
       authorAgency: 'agent',
       backfilled: false,
       createdAt: v?.at ?? '2026-10-07T00:00:00Z',

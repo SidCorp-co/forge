@@ -187,6 +187,17 @@ box \`forge-runner api issues/<id>/attachments -F file=@<path>\`), a URL, or a p
 repository at that commit. A path on your own machine is refused. \`skipped\` cites nothing and
 says what was out of reach.
 
+A verdict on a criterion the design classes \`observable\` sends the probe it ran, \`probe\` on the same
+body: \`{ kind: 'request', request: { method, path, headers?, body?, as }, expect: { status, bodyIncludes? } }\`
+or \`{ kind: 'command', command: { argv, cwd? }, expect: { exitCode, stdoutIncludes? } }\`. The path is
+on the running build's origin, so a deploy can replay it, and it carries no credential:
+\`as: 'replayer'\` has whoever replays it attach its own. It is kept on the criterion
+(\`GET /api/issues/:id/criteria\` answers it as \`probe\`), and a later verdict that sends none rests on
+it. A \`pass\` or \`short\` on an observable criterion with no probe sent and none kept is refused
+\`VERDICT_PROBE_REQUIRED\`; a malformed probe \`VERDICT_PROBE_SHAPE\` at its path, one holding a
+credential \`VERDICT_PROBE_SECRET\`, one on a code property \`VERDICT_PROBE_CODE_PROPERTY\`. A criterion
+no design classes owes none, and its verdict's record says so.
+
 A test is evidence only where it can fail: plant the failure it guards against and watch it go red
 naming its own rule before the green counts.
 

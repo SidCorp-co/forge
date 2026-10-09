@@ -229,13 +229,19 @@ describe('the design record (criteria 2 and 3)', () => {
   it('refuses a QA verdict on a code property and a review verdict on an observable criterion', async () => {
     const issue = await issueAt(forge, 'in_progress');
     ok(await call('author', 'PUT', design(issue), whole));
+    // an observable criterion's pass rests on a kept probe (ISS-469), so the QA one sends one
+    const probe = {
+      kind: 'request',
+      request: { method: 'GET', path: '/', as: 'anonymous' },
+      expect: { status: 200 },
+    };
     const verdict = (criterion: number, judge?: string) =>
       call('author', 'POST', `/api/issues/${issue}/verdicts`, {
         criterion,
         verdict: 'pass',
         reason: 'shown',
         identity: { kind: 'commit', sha: 'b'.repeat(40) },
-        ...(judge ? { judge } : {}),
+        ...(judge ? { judge } : { probe }),
       });
     expect(refused(await verdict(2))).toEqual(['VERDICT_JUDGED_BY_REVIEW']);
     expect(refused(await verdict(1, 'review'))).toEqual(['VERDICT_JUDGED_BY_QA']);

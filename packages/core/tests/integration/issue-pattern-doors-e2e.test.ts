@@ -334,6 +334,12 @@ describe('an issue that names no pattern', () => {
           verdict: 'pass',
           reason: 'shown',
           identity: { kind: 'commit', sha: SHA },
+          // an observable criterion's pass rests on a kept probe (ISS-469)
+          probe: {
+            kind: 'request',
+            request: { method: 'GET', path: '/', as: 'anonymous' },
+            expect: { status: 200 },
+          },
         }),
       );
       const moved = await call(adminToken, 'POST', `/api/issues/${id}/transition`, {
