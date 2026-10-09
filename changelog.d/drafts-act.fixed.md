@@ -1,1 +1,0 @@
-**A stale draft's merge-or-drop answer acts by itself.** Drop drops it, merge moves it into the named item, keep changes nothing; a refused merge waits on the master, and Needs you files these questions under Merge or drop.
