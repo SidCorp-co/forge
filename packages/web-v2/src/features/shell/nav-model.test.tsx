@@ -32,19 +32,35 @@ describe("the nav model", () => {
     expect(isNavGroup(eco) && eco.items.map((it) => it.key)).toEqual(["eco-threads", "eco-new"]);
   });
 
-  it("folds the build machinery under Development and badges its rows from the needs-you read", () => {
+  it("groups the product record under Product, open, and the build machinery under Delivery (REQ-34 BC-23)", () => {
+    const menu = projectMenu({});
+    expect(menu.map((e) => e.label)).toEqual(["Dashboard", "Product", "Delivery"]);
+    const groups = menu.filter(isNavGroup);
+    expect(groups.map((g) => [g.key, g.defaultOpen])).toEqual([
+      ["product", true],
+      ["delivery", undefined],
+    ]);
+    const product = groups[0]?.items.map((it) => it.label) ?? [];
+    expect([...product].sort()).toEqual(["Feedback", "Releases", "Requirements", "Workflows"]);
+    expect(groups[1]?.items.map((it) => it.label)).toEqual(["Overview", "Issues", "Modules", "Agents / Runs", "Contracts", "Automation"]);
+    expect(PROJECT_ITEMS.map((it) => it.label)).not.toContain("Development");
+  });
+
+  it("badges a grouped row from the needs-you read", () => {
     const needsYou = { areas: { issues: { you: 2, total: 2, acts: [] } } } as never;
-    const dev = projectMenu({ needsYou }).find(isNavGroup);
-    expect(dev?.key).toBe("development");
-    expect(dev?.defaultOpen).toBeUndefined();
-    expect(dev?.items.find((it) => it.key === "proj-issues")).toMatchObject({ badge: 2 });
-    expect(dev?.items.find((it) => it.key === "proj-modules")?.badge).toBeUndefined();
+    const delivery = projectMenu({ needsYou }).filter(isNavGroup).find((g) => g.key === "delivery");
+    expect(delivery?.items.find((it) => it.key === "proj-issues")).toMatchObject({ badge: 2 });
+    expect(delivery?.items.find((it) => it.key === "proj-modules")?.badge).toBeUndefined();
+  });
+
+  it("lights a Product row on its own page", () => {
+    expect(buildActiveKey("/projects/hop/requirements/REQ-3", "hop")).toBe("proj-requirements");
+    expect(buildActiveKey("/projects/hop/feedback", "hop")).toBe("proj-feedback");
   });
 
   it("holds no Decisions, Roadmap or Memory entry: each is read on the item it is about (REQ-33 BC-1)", () => {
     for (const sub of ["/decisions", "/roadmap", "/memory"]) expect(PROJECT_ITEMS.map((it) => it.sub)).not.toContain(sub);
     for (const key of ["proj-decisions", "proj-roadmap", "proj-memory"]) expect(PROJECT_ITEMS.map((it) => it.key)).not.toContain(key);
-    expect(projectMenu({}).map((e) => e.label)).toEqual(["Dashboard", "Requirements", "Workflows", "Releases", "Feedback", "Development"]);
     expect(buildActiveKey("/projects/hop/memory", "hop")).toBe("proj-overview");
     const palette = buildWorkspaceCommands({ router: { push: vi.fn() }, slug: "hop", onNewChat: vi.fn(), activeProjectName: "HOP", scopedProjects: [], pinnedIds: new Set(), pinnedViews: [], recents: [], toast: vi.fn() });
     expect(palette.map((c) => c.label).filter((l) => /^HOP · (Decisions|Roadmap|Memory)$/.test(l))).toEqual([]);
