@@ -23,7 +23,7 @@ import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { readContentLanguage } from '../project-config/index.js';
-import { applyDraft, triageFault } from './apply.js';
+import { applyDraft, triageJudgeFor } from './apply.js';
 import { type DraftDeps, type DraftOutcome, draftIntake, type Spent } from './draft.js';
 import { dbIntakeReads, type IntakeItem } from './reads.js';
 
@@ -135,11 +135,12 @@ async function keep(
   });
 }
 
-/** What a live draft is made with: the database reads and the deployment's model. */
-async function liveDeps(projectId: string): Promise<DraftDeps> {
-  const [level, language] = await Promise.all([
-    dataPolicyOf(projectId),
-    readContentLanguage(projectId),
+/** What a live draft of `item` is made with: the database reads and the deployment's model. */
+async function liveDeps(item: IntakeItem): Promise<DraftDeps> {
+  const [level, language, triageFault] = await Promise.all([
+    dataPolicyOf(item.projectId),
+    readContentLanguage(item.projectId),
+    triageJudgeFor(item),
   ]);
   return { reads: dbIntakeReads, complete: completeOnce, level, language, triageFault };
 }
@@ -159,7 +160,7 @@ export async function draftIntakeFor(
   const reads = deps?.reads ?? dbIntakeReads;
   const item = await reads.item(kind, id);
   if (!item) return { kind: 'not_owed', why: `there is no such ${kind}` };
-  const out = await draftIntake(item, deps ?? (await liveDeps(item.projectId)));
+  const out = await draftIntake(item, deps ?? (await liveDeps(item)));
   await recordSpend(item.projectId, out.spent);
   if (out.outcome === 'failed') {
     await keep(item, out, null);

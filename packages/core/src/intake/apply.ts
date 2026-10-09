@@ -5,27 +5,77 @@
  * what was applied, never thrown, so the draft itself is still kept on the item.
  */
 
+import { FEEDBACK_TRIAGE_CHECKLIST } from '@forge/contracts/checklist-registry';
+import { evaluateChecklist, parseAnswers, type RecordAnswers } from '@forge/contracts/checklists';
+import type { FeedbackKind } from '@forge/contracts/feedback';
+import {
+  criterionAnswerOf,
+  TRIAGE_ROUTE_QUESTION,
+  triageAnswersOf,
+} from '@forge/contracts/feedback-triage';
 import {
   INTAKE_FIELDS,
   type IntakeDraftApplied,
   intakeRefOf,
 } from '@forge/contracts/intake-drafts';
 import { SUGGESTION_PAYLOADS } from '@forge/contracts/suggestions';
+import { db } from '../db/client.js';
+import { feedbackTriageRecord } from '../feedback/index.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type DraftGapFill, fillDraftGaps } from '../requirements/index.js';
 import { createSuggestion } from '../suggestions/index.js';
 import type { IntakeItem } from './reads.js';
 import type { JudgedDraft } from './rules.js';
 
-/** The feedback_triage payload's own schema, so a draft is judged by what the suggestion takes. */
-export function triageFault(triage: unknown): string | null {
-  const parsed = SUGGESTION_PAYLOADS.feedback_triage.schema.safeParse(triage);
-  return parsed.success
-    ? null
-    : parsed.error.issues
-        .slice(0, 6)
-        .map((i) => `${i.path.join('.') || 'triage'}: ${i.message}`)
-        .join('; ');
+const faultsOf = (faults: readonly string[]): string | null =>
+  faults.length ? faults.slice(0, 6).join('; ') : null;
+
+const objectOf = (v: unknown): Record<string, unknown> | null =>
+  typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+
+/**
+ * A proposed triage judged as its accept judges it: the feedback_triage payload's own schema, then
+ * the checklist answers it hands the triage over what the item's record answers already (REQ-34
+ * BC-2; `feedback/recording-tool.ts:proposalGaps` judges an assistant's proposal the same way). A
+ * proposal its approver could only be refused for is refused here, so the retry drafts the missing
+ * answers. Whether a named criterion stands on the item's requirement is left to the accept.
+ */
+export function triageFaultOver(record: RecordAnswers) {
+  return (triage: unknown): string | null => {
+    const parsed = SUGGESTION_PAYLOADS.feedback_triage.schema.safeParse(triage);
+    if (!parsed.success) {
+      return faultsOf(
+        parsed.error.issues.map((i) => `${i.path.join('.') || 'triage'}: ${i.message}`),
+      );
+    }
+    const { route, kind, answers } = parsed.data;
+    if (route === 'decline') {
+      return answers === undefined ? null : 'answers: a decline asks no checklist questions';
+    }
+    const given = objectOf(answers);
+    if (given && Object.hasOwn(given, TRIAGE_ROUTE_QUESTION)) {
+      return "answers.route: the route is the triage's own field, not an answer";
+    }
+    const criterion = given?.criterion;
+    if (typeof criterion === 'string' && criterion.trim() && !criterionAnswerOf(criterion)) {
+      return `answers.criterion: "${criterion.slice(0, 80)}" is not REQ-n BC-m or none`;
+    }
+    const recorded = record.kind && 'value' in record.kind ? record.kind.value : undefined;
+    const sent = parseAnswers(
+      FEEDBACK_TRIAGE_CHECKLIST,
+      triageAnswersOf({ kind: (kind ?? recorded) as FeedbackKind, route, answers }),
+    );
+    if (!sent.ok) return faultsOf(sent.refusals.map((r) => `answers: ${r.detail}`));
+    const { gaps } = evaluateChecklist(FEEDBACK_TRIAGE_CHECKLIST, { given: sent.answers, record });
+    return faultsOf(gaps.map((g) => `answers: ${g.detail}`));
+  };
+}
+
+/** `item`'s triage judge: a feedback item's own record is read once, before the model is asked. */
+export async function triageJudgeFor(
+  item: IntakeItem,
+): Promise<(triage: unknown) => string | null> {
+  return triageFaultOver(item.kind === 'feedback' ? await feedbackTriageRecord(db, item.id) : {});
 }
 
 async function applyToRequirement(

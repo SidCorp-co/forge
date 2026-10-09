@@ -24,7 +24,7 @@ import {
   rows,
 } from '../helpers/factories.js';
 
-type Mode = 'requirement' | 'feedback' | 'nothing' | 'four' | 'down';
+type Mode = 'requirement' | 'feedback' | 'unchecked' | 'nothing' | 'four' | 'down';
 let mode: Mode = 'requirement';
 const seen: { system: string; user: string }[] = [];
 let gateway: Server;
@@ -70,6 +70,16 @@ function reply(m: Mode): string {
       questions: [question(1), question(2), question(3), question(4)],
     });
   }
+  const triage = {
+    route: 'issue',
+    createIssue: { title: 'Referrals ignore the clinic code' },
+    kind: 'bug',
+    answers: {
+      criterion: 'REQ-1 BC-1',
+      severity: 'high',
+      reproduced: 'A referral coded C1 matched a patient of clinic C2.',
+    },
+  };
   return JSON.stringify({
     fills: [
       { field: 'kind', value: 'bug', source: 'FB-1' },
@@ -83,12 +93,8 @@ function reply(m: Mode): string {
     ],
     questions: [],
     nothingToAsk: 'The record settles the triage.',
-    triage: {
-      route: 'issue',
-      createIssue: { title: 'Referrals ignore the clinic code' },
-      kind: 'bug',
-      severity: 'high',
-    },
+    // the triage the accept would refuse: no checklist answers (Feedback lifecycle r14 triage-check)
+    triage: m === 'unchecked' ? { route: 'issue', kind: 'bug' } : triage,
   });
 }
 
@@ -105,8 +111,12 @@ function startGateway(): Promise<string> {
           .filter((m) => m.role === r)
           .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
           .join('\n');
-      seen.push({ system: text('system'), user: text('user') });
-      if (mode === 'down') {
+      // a create asks the model more than the draft (REQ-29 proposes an area and a short name): only
+      // the intake assistant's call is recorded and drafted, and any other is answered with nothing
+      const system = text('system');
+      const intake = system.includes('business analyst assistant');
+      if (intake) seen.push({ system, user: text('user') });
+      if (intake && mode === 'down') {
         res.writeHead(500, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: { message: 'gateway is down' } }));
         return;
@@ -114,7 +124,7 @@ function startGateway(): Promise<string> {
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       const chunk = (delta: object, finish: string | null, extra: object = {}) =>
         `data: ${JSON.stringify({ id: 'c1', object: 'chat.completion.chunk', created: 1, model: 'stub-gateway', choices: [{ index: 0, delta, finish_reason: finish }], ...extra })}\n\n`;
-      res.write(chunk({ role: 'assistant', content: reply(mode) }, null));
+      res.write(chunk({ role: 'assistant', content: intake ? reply(mode) : '{}' }, null));
       res.write(
         chunk({}, 'stop', {
           usage: { prompt_tokens: 50, completion_tokens: 20, total_tokens: 70 },
@@ -370,6 +380,27 @@ describe('a feedback item filed in one sentence is drafted on filing, with no ch
     ]);
     expect(draft?.applied?.as).toBe('suggestion');
     expect(seen.at(-1)?.system).toContain('"triage"');
+  });
+
+  it('refuses a triage its accept would refuse, without the checklist answers, and proposes none', async () => {
+    mode = 'unchecked';
+    const before = seen.length;
+    const res = await api(token, 'POST', `/api/projects/${projectId}/feedback`, {
+      kind: 'bug',
+      title: 'A second referral went to the wrong patient.',
+      requirement: 'REQ-1',
+    });
+    expect(res.status, JSON.stringify(res.body).slice(0, 400)).toBe(201);
+    const key = (res.body as { feedback: { key: string } }).feedback.key;
+    await settleOutbox();
+    expect(seen.length - before).toBe(2);
+    expect(seen.at(-1)?.user).toMatch(/That was refused: triage: answers: /);
+    const draft = await draftOf(key);
+    expect([draft?.outcome, draft?.code]).toEqual(['failed', 'INTAKE_SHAPE']);
+    const sugg = await rows<{ n: string }>(
+      sql`SELECT count(*)::text AS n FROM suggestions s JOIN feedback f ON f.id = s.feedback_id WHERE f.project_id = ${projectId} AND f.fb_seq = ${Number(key.slice(3))}`,
+    );
+    expect(sugg[0]?.n).toBe('0');
   });
 });
 

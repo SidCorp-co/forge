@@ -1,5 +1,6 @@
 export { reportLinksOf } from './about.js';
 export { sweepResolvedFeedback } from './auto-verify.js';
+export { feedbackTriageRecord } from './checklist-record.js';
 export { fileContractChangeIn } from './contract-change.js';
 export { provideFeedbackDependents } from './dependents.js';
 export type { ReadDoor } from './egress.js';
