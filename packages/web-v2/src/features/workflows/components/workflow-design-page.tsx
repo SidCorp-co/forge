@@ -257,7 +257,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
       railCollapsed={tab === "design" && railCollapsed}
       rail={
         <FactsRail testId="design-rail">
-          <WorkflowDesignFacts d={d} record={record} shown={shown} shownRevision={shownRevision} template={template} slug={slug} health={health} />
+          <WorkflowDesignFacts d={d} record={record} shown={shown} shownRevision={shownRevision} template={template} slug={slug} health={health} projectId={projectId} />
         </FactsRail>
       }
     >
