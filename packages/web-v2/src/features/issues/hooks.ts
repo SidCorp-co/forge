@@ -10,7 +10,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, releaseBatchApi } from "./api";
 import type { IssueStandingScope } from "@forge/contracts/issue-standing";
-import { issueKeySegment } from "./derive";
+import { issueKeySegment } from "@/lib/api/ref-bridge";
 import type {
   IssueLabel,
   IssuePriority,

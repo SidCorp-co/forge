@@ -8,7 +8,8 @@ import { useEffect, useMemo, useRef } from "react";
 import type { IssueMove } from "@forge/contracts/issue-machine";
 import type { MenuItem } from "@/design";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { issueKeySegment, type ParkReading } from "./derive";
+import { issueKeySegment } from "@/lib/api/ref-bridge";
+import type { ParkReading } from "./derive";
 import { issueDetailApi } from "./detail-api";
 import type { IssuePark, IssueStatus } from "./types";
 

@@ -68,23 +68,39 @@ fn listening_on(row: &str, port: u16, v6: bool) -> Option<String> {
     Some(std::net::Ipv6Addr::from(octets).to_string())
 }
 
-/// macOS and the BSDs: `lsof`'s listening sockets on the port, `n<addr>:<port>` per row.
+/// macOS and the BSDs: `lsof`'s listening sockets on the port.
 #[cfg(all(unix, not(target_os = "linux")))]
 fn listeners(port: u16) -> Vec<String> {
     let Ok(out) = std::process::Command::new("lsof")
-        .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-Fn"])
+        .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-Ftn"])
         .output()
     else {
         return Vec::new();
     };
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .filter_map(|l| l.strip_prefix('n'))
-        .filter_map(|a| {
-            a.rsplit_once(':')
-                .map(|(h, _)| h.trim_matches(['[', ']']).to_string())
+    lsof_addresses(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// `lsof -Ftn` rows: `t<IPv4|IPv6>` then `n<addr>:<port>` per socket. lsof writes either family's
+/// wildcard as `*`, so the type before it says whether that is `0.0.0.0` or `::`.
+#[cfg(any(all(unix, not(target_os = "linux")), test))]
+fn lsof_addresses(text: &str) -> Vec<String> {
+    let mut v6 = false;
+    text.lines()
+        .filter_map(|l| match l.split_at_checked(1) {
+            Some(("t", kind)) => {
+                v6 = kind == "IPv6";
+                None
+            }
+            Some(("n", addr)) => {
+                addr.rsplit_once(':')
+                    .map(|(h, _)| match (h.trim_matches(['[', ']']), v6) {
+                        ("*", true) => "::".to_string(),
+                        ("*", false) => "0.0.0.0".to_string(),
+                        (h, _) => h.to_string(),
+                    })
+            }
+            _ => None,
         })
-        .map(|h| if h == "*" { "0.0.0.0".into() } else { h })
         .collect()
 }
 

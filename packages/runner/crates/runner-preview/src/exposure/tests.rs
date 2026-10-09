@@ -34,6 +34,15 @@ fn the_kernel_rows_read_as_addresses() {
 }
 
 #[test]
+fn lsof_rows_read_as_addresses_with_the_wildcard_named_by_its_family() {
+    let text = "p4242\nf5\ntIPv4\nn*:8080\nf6\ntIPv6\nn*:8080\nf7\ntIPv6\nn[::1]:8080\nf8\ntIPv4\nn127.0.0.1:8080\n";
+    assert_eq!(
+        lsof_addresses(text),
+        ["0.0.0.0", "::", "::1", "127.0.0.1"].map(String::from)
+    );
+}
+
+#[test]
 fn an_ipv6_listener_is_named_in_brackets() {
     let Ok(held) = std::net::TcpListener::bind(("::", 0)) else {
         return; // a box with no IPv6 has no such listener to name

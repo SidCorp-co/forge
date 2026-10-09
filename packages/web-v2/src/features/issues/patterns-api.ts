@@ -1,7 +1,7 @@
 import type { IssuePatternResponse, IssuePatterns, PatternDecision } from "@forge/contracts/patterns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
-import { issueKeySegment } from "./derive";
+import { issueKeySegment } from "@/lib/api/ref-bridge";
 
 // An issue's patterns (REQ-36 BC-2; Issue lifecycle r14 `design-check`): what it names, and the one
 // review a new one waits on. Keyed under `['issue', id]`, which the event router invalidates, and

@@ -431,24 +431,6 @@ export function canonicalIssueId(rawId: string, fetchedId: string | undefined): 
 	return UUID_RE.test(rawId) ? rawId : fetchedId;
 }
 
-/**
- * The key segment an issue's own reads are cached under: its uuid, or, while a page holds only the
- * display key off its URL, the key with the project it is scoped by (a display key alone collides
- * across projects). The page switches to the uuid once the issue answers (`useBridgedRef`).
- */
-export function issueKeySegment(id: string | undefined, projectId: string | undefined): unknown {
-	return !id || UUID_RE.test(id) ? id : { issue: id, project: projectId ?? null };
-}
-
-/** The provisional segment {@link issueKeySegment} wrote for `key` in `projectId`, renamed to the issue's uuid. */
-export function issueRekey(key: string, projectId: string | undefined, uuid: string): (segment: unknown) => unknown {
-	return (segment) => {
-		if (typeof segment !== "object" || segment === null) return undefined;
-		const s = segment as { issue?: unknown; project?: unknown };
-		return s.issue === key && s.project === (projectId ?? null) ? uuid : undefined;
-	};
-}
-
 export function issueQueryKey(id: string | undefined, projectId: string | undefined): readonly unknown[] {
 	return !id || UUID_RE.test(id) ? ["issue", id] : ["issue", id, projectId];
 }

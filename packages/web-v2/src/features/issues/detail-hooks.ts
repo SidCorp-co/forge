@@ -6,7 +6,8 @@ import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { issueDetailApi } from "./detail-api";
-import { canonicalIssueId, issueKeySegment, issueQueryKey } from "./derive";
+import { issueKeySegment } from "@/lib/api/ref-bridge";
+import { canonicalIssueId, issueQueryKey } from "./derive";
 
 // ISS-1160 — `id` is the display key as often as the row uuid; `projectId` is
 // what lets it resolve. Optional here (some callers hold only a uuid already),

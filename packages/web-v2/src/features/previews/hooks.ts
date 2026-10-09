@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { issueKeySegment } from "@/lib/api/ref-bridge";
 import { type IssueLane, previewsApi } from "./api";
 
 /** The key `lib/ws/event-router.ts` invalidates on `preview.changed`. */
@@ -9,10 +10,14 @@ export const previewKey = (issueId: string | undefined) => ["preview", issueId] 
 /** A preview still starting is read again on a short clock, so a missed frame cannot leave it starting for good. */
 const STARTING_POLL_MS = 3000;
 
-export function usePreview(issueId: string | undefined) {
+/**
+ * `issueId` is the uuid, or the display key with the `projectId` it is scoped by: the issue page
+ * sends this read with its first reads on the key, and hands it to the uuid once the issue answers.
+ */
+export function usePreview(issueId: string | undefined, projectId?: string) {
   return useQuery({
-    queryKey: previewKey(issueId),
-    queryFn: () => previewsApi.ofIssue(issueId as string),
+    queryKey: ["preview", issueKeySegment(issueId, projectId)],
+    queryFn: () => previewsApi.ofIssue(issueId as string, projectId),
     enabled: !!issueId,
     refetchInterval: (q) => (q.state.data?.state === "starting" ? STARTING_POLL_MS : false),
   });

@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { wholeShaSchema } from "./check-runs.js";
 import { LANES } from "./fast-lane.js";
+import { REASON_PARAGRAPH_MAX } from "./reason-text.js";
 import type { RefusalStatuses } from "./refusal.js";
 import { defineMachine, fromEach } from "./state-machine.js";
 
@@ -761,7 +762,7 @@ export const PREVIEW_SUBJECT_REFUSAL_STATUSES = {
 export const confirmFixRequestSchema = z
 	.strictObject({
 		verdict: z.enum(["fixed", "not_fixed"]),
-		note: z.string().trim().max(2000).optional(),
+		note: z.string().trim().max(REASON_PARAGRAPH_MAX).optional(),
 	})
 	.refine((c) => c.verdict === "fixed" || (c.note !== undefined && c.note !== ""), {
 		message: "PREVIEW_CONFIRM_REASON_REQUIRED: not fixed says what is still wrong",

@@ -10,6 +10,7 @@ fn settings(command: &str, port: Option<u16>) -> Settings {
     }
 }
 
+#[cfg(unix)]
 fn no_env() -> serde_json::Map<String, serde_json::Value> {
     serde_json::Map::new()
 }

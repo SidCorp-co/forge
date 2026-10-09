@@ -15,7 +15,9 @@ struct World {
     _wanted: watch::Sender<bool>,
 }
 
-/// A dev server that answers every connection with `body` after reading its first line.
+/// A dev server that answers every connection with `body` after reading its first three bytes,
+/// then reads the rest of the request to its end before it lets go: a socket closed with bytes
+/// unread is reset, and macOS drops the answer still buffered at the box when the reset lands.
 async fn dev_server(body: Vec<u8>) -> u16 {
     let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -27,6 +29,7 @@ async fn dev_server(body: Vec<u8>) -> u16 {
                 if sock.read_exact(&mut first).await.is_ok() {
                     let _ = sock.write_all(&body).await;
                     let _ = sock.shutdown().await;
+                    let _ = sock.read_to_end(&mut Vec::new()).await;
                 }
             });
         }

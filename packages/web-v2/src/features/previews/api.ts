@@ -54,9 +54,12 @@ export interface IssueLane {
 }
 
 export const previewsApi = {
-  /** The issue's latest preview, or null where it has had none. */
-  ofIssue: async (issueId: string): Promise<PreviewRecord | null> =>
-    read("GET preview of issue", issuePreviewResponseSchema, await apiClient<unknown>(routeOf(PREVIEW_ROUTES.ofIssue, { issueId }))).preview,
+  /** The issue's latest preview, or null where it has had none; a display key is scoped by `projectId`. */
+  ofIssue: async (issueId: string, projectId?: string): Promise<PreviewRecord | null> => {
+    const path = routeOf(PREVIEW_ROUTES.ofIssue, { issueId });
+    const scoped = projectId ? `${path}?projectId=${encodeURIComponent(projectId)}` : path;
+    return read("GET preview of issue", issuePreviewResponseSchema, await apiClient<unknown>(scoped)).preview;
+  },
 
   /** Opens the preview of the issue's live run, or reopens its idle-closed one at the same link. */
   open: async (issueId: string): Promise<PreviewRecord> =>

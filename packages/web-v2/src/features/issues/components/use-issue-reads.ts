@@ -2,10 +2,10 @@
 
 import { useIssueForecast } from "@/features/forecast/hooks";
 import { useMockups } from "@/features/mockups/hooks";
+import { usePreview } from "@/features/previews/hooks";
 import { useIssueQuestions } from "@/features/questions/hooks";
-import { isUuid, useBridgedRef } from "@/lib/api/ref-bridge";
+import { issueRekey, isUuid, useBridgedRef } from "@/lib/api/ref-bridge";
 import { useCriteria } from "../criteria";
-import { issueRekey } from "../derive";
 import { useActivity, useAttachments, useComments, useIssue } from "../detail-hooks";
 import {
   useIssueCost,
@@ -42,6 +42,7 @@ export function useIssueReads(id: string, projectId: string) {
   useProjectModules(projectId);
   useReleaseRoster(projectId);
   useIssuePatterns(canonicalId, projectId);
+  usePreview(canonicalId, projectId);
   const issue = issueQ.data;
   return {
     issueQ,

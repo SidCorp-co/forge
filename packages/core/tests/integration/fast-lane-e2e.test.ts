@@ -213,12 +213,14 @@ const check = (issue: string, body: unknown) =>
   call('POST', `/api/issues/${issue}/merge-check`, body);
 const lane = (issue: string, as = token) => call('GET', `/api/issues/${issue}/lane`, undefined, as);
 
-describe('before any previews reader is provided', () => {
-  it('refuses a fast report saying this core serves no previews, never recording it', async () => {
+// the booted core reads approvals from the previews module (src/index.ts); a core with no reader at
+// all is the `unread` rule, held in src/fast-lane/rules.test.ts
+describe('on the previews reader the core boots with', () => {
+  it('refuses a fast report on an issue with no approved preview, naming the approval it lacks', async () => {
     const issue = await issueIn(declared);
     const res = await check(issue, fastReport());
     expect([res.status, codes(res)]).toEqual([409, ['FAST_LANE_NOT_APPROVED']]);
-    expect(detail(res)).toContain('serves no live previews');
+    expect(detail(res)).toContain('has no approved live preview');
   });
 });
 
