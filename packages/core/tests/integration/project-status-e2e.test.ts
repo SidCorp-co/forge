@@ -101,7 +101,8 @@ describe('the project status read', () => {
     expect((day.latest as Body).version).toBe(lastVersion);
   });
 
-  it('places each requirement by its state: in delivery now, agreed next, deferred and drafts later', async () => {
+  // a draft stands in Next and only deferred work in Later (`@forge/contracts/requirement-roadmap:roadmapHorizonOf`)
+  it('places each requirement by its state: in delivery now, agreed and drafts next, deferred later', async () => {
     const list = (await get(w, '/requirements')).requirements as Body[];
     const stateOf = (key: string) =>
       (list.find((r) => r.key === key)?.standing as Body | undefined)?.state;
@@ -110,7 +111,7 @@ describe('the project status read', () => {
       (['now', 'next', 'later'] as const).find((h) =>
         (roadmap[h] as Body[]).some((i) => i.key === key),
       );
-    const expected = { in_delivery: 'now', agreed: 'next', deferred: 'later', draft: 'later' };
+    const expected = { in_delivery: 'now', agreed: 'next', deferred: 'later', draft: 'next' };
     for (const key of [req.drafted, req.agreed, req.deferred]) {
       expect(where(key), key).toBe(expected[stateOf(key) as keyof typeof expected]);
     }
@@ -119,7 +120,7 @@ describe('the project status read', () => {
       key: req.deferred,
       deferral: { reason: 'printing waits for the new layout', targetPhase: 'phase 2' },
     });
-    expect(later.at(-1)?.key).toBe(req.drafted);
+    expect(later.map((i) => i.key)).toEqual([req.deferred]);
   });
 
   it('reads the numbers the dashboard reads: requirements by state, needs-you, the draft release', async () => {
