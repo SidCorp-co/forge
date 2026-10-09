@@ -2,6 +2,7 @@ import { PREVIEW_LIMITS } from '@forge/contracts/preview';
 import { describe, expect, it } from 'vitest';
 import {
   previewPlan,
+  roomLanding,
   type RunFacts,
   runEndedWhy,
   type SweepFacts,
@@ -232,5 +233,36 @@ describe('runEndedWhy: what ends a preview with its run (REQ-41 BC-14, REQ-39 BC
         /box reports the checkout released/,
       );
     }
+  });
+});
+
+describe('roomLanding: the dev branch a settled POC room merges into (REQ-44 BC-2)', () => {
+  const doc = (defaultBranch: string, ...deploysFrom: string[]) =>
+    ({
+      source: { type: 'git', git: { repository: 'r', defaultBranch, branches: [defaultBranch] } },
+      environments: Object.fromEntries(
+        deploysFrom.map((from, i) => [`live${i}`, { tier: 'production', deploysFrom: from }]),
+      ),
+    }) as never;
+
+  it('merges into a dev branch production does not deploy from', () => {
+    expect(roomLanding(doc('dev', 'main'))).toEqual({ ok: true, into: 'dev' });
+  });
+
+  it('refuses main by its name even where production deploys from another branch', () => {
+    expect(roomLanding(doc('main', 'release'))).toMatchObject({
+      ok: false,
+      code: 'ROOM_PRODUCTION_BRANCH',
+    });
+  });
+
+  it('refuses a branch any production environment deploys from, not only the first', () => {
+    const refused = roomLanding(doc('dev', 'main', 'dev'));
+    expect(refused).toMatchObject({ ok: false, code: 'ROOM_PRODUCTION_BRANCH' });
+    expect(JSON.stringify(refused)).toContain('live1');
+  });
+
+  it('refuses a project with no git source by name', () => {
+    expect(roomLanding(null)).toMatchObject({ ok: false, code: 'ROOM_NO_DEV_BRANCH' });
   });
 });

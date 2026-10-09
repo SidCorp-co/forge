@@ -157,7 +157,6 @@ function SettledList({ room, frame }: { room: Room; frame: React.RefObject<HTMLI
           <Button type="submit" size="sm" variant="primary" disabled={alt.trim() === "" || room.preview.state !== "live"} loading={settle.isPending}>
             {t("previews.room.settle.button")}
           </Button>
-          <p className="fg-caption w-full text-muted">{t("previews.room.settle.hint")}</p>
         </form>
       ) : null}
       {settle.isError ? (
@@ -231,7 +230,7 @@ export function RoomScreen({ roomId, slug }: { roomId: string; slug: string | un
       </p>
     );
   }
-  if (!room) return <p className="fg-body-sm text-muted">{t("previews.room.lead")}</p>;
+  if (!room) return <p className="fg-body-sm text-muted">{t("previews.room.loading")}</p>;
   const settledTurns = new Set(room.items.map((i) => i.turnId));
   const asleep = room.preview.state === "idle_closed";
   return (

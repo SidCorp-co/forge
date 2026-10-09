@@ -1,6 +1,6 @@
 // What settling a POC room needs of the requirement and issue modules (REQ-44 BC-7, BC-8), which sit
 // in a later context than previews and so cannot be imported from it: the composition root hands the
-// writer in at boot (`requirements/room-settle.ts:writeSettledRoom`), as it hands the keep writer.
+// writer in at boot (`requirements/room-settle.ts:roomSettleWriter`), as it hands the keep writer.
 
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { KeptPreviewContent } from '@forge/contracts/preview';

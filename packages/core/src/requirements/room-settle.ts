@@ -70,7 +70,7 @@ const refusal: RoomSettleWriter['refusal'] = async ({ projectId, about }) => {
 };
 
 /** What the follow-up issue's plan says: the merge it follows, and the after-the-fact work it owes. */
-export function followUpPlan(input: {
+export function followUpBody(input: {
   requirement: string;
   merge: { into: string; sha: string; branch: string; roomId: string };
   items: readonly { text: string; commit: string }[];
@@ -151,9 +151,9 @@ const write: RoomSettleWriter['write'] = async (input) => {
       {
         projectId,
         title: `Verify, review and clean the POC of ${key ?? about.key} merged into ${merge.into}`,
-        description: `POC room ${merge.roomId} settled ${items.length} item${items.length === 1 ? '' : 's'} and merged ${merge.branch} straight into ${merge.into} as ${merge.sha}. Verify, review and code standards run now, after the merge.`,
+        // what the merge left owed is the issue's body; its plan is the plan step's to write
+        description: followUpBody({ requirement: key ?? about.key, merge, items }),
         priority: 'high',
-        plan: followUpPlan({ requirement: key ?? about.key, merge, items }),
       },
       {
         createdById: actor.userId,
@@ -162,7 +162,15 @@ const write: RoomSettleWriter['write'] = async (input) => {
         actor: { type: 'user', id: actor.userId, agency: actor.agency },
       },
     );
-    issue = filed.deduped ? null : filed.issue;
+    // no detector key is passed, so a create never dedupes; one that did would be named, never dropped
+    if (filed.deduped) {
+      refusals.push({
+        code: 'ROOM_FOLLOW_UP_NOT_FILED',
+        detail: `the follow-up issue was taken as ${filed.existingIssueDisplayId ?? filed.existingIssueId}, already filed`,
+      });
+    } else {
+      issue = filed.issue;
+    }
   } catch (err) {
     const cause = (err as { cause?: { message?: string } }).cause?.message;
     refusals.push({

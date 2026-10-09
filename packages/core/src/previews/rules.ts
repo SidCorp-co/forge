@@ -266,15 +266,15 @@ export function roomLanding(
         'the project document declares no git source with a default branch, so a settled room has no dev branch to merge into: declare source.git.defaultBranch',
     };
   }
+  // every production environment, not the first: any one deploying from the branch is production's
   const production = Object.entries(document?.environments ?? {}).find(
-    ([, e]) => e.tier === 'production',
+    ([, e]) => e.tier === 'production' && e.deploysFrom === into,
   );
-  const deploysFrom = production?.[1].deploysFrom;
-  if ((ROOM_NEVER_MERGES_INTO as readonly string[]).includes(into) || deploysFrom === into) {
+  if ((ROOM_NEVER_MERGES_INTO as readonly string[]).includes(into) || production) {
     return {
       ok: false,
       code: 'ROOM_PRODUCTION_BRANCH',
-      detail: `the project's default branch is ${into}${deploysFrom === into ? `, which production environment ${production?.[0]} deploys from` : ''}: a POC branch merges straight into a dev branch only, never main or production's. Land work on a dev branch (source.git.defaultBranch) promoted to production`,
+      detail: `the project's default branch is ${into}${production ? `, which production environment ${production[0]} deploys from` : ''}: a POC branch merges straight into a dev branch only, never main or production's. Land work on a dev branch (source.git.defaultBranch) promoted to production`,
     };
   }
   return { ok: true, into };

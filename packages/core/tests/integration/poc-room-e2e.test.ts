@@ -253,12 +253,14 @@ describe('settled items, and a settle that merges straight into dev (BC-2, BC-6,
     const issueId = done.settle?.issue?.id as string;
     expect(done.settle?.issue?.displayId).toMatch(/^[A-Z]+-\d+$/);
     const [issue] = (await db.execute(sql`
-      SELECT i.plan, i.title, i.requirement_id, r.req_seq FROM issues i LEFT JOIN requirements r ON r.id = i.requirement_id WHERE i.id = ${issueId}::uuid
-    `)) as unknown as { plan: string; title: string; req_seq: number }[];
-    expect(issue?.plan).toContain(ROOM_MERGE);
-    expect(issue?.plan).toContain('Verify');
-    expect(issue?.plan).toContain('Review');
-    expect(issue?.plan).toContain('code standards');
+      SELECT i.plan, i.description, i.title, i.requirement_id, r.req_seq FROM issues i LEFT JOIN requirements r ON r.id = i.requirement_id WHERE i.id = ${issueId}::uuid
+    `)) as unknown as { plan: string | null; description: string; title: string; req_seq: number }[];
+    // what the merge left owed is the body; the plan is the plan step's to write
+    expect(issue?.plan).toBeNull();
+    expect(issue?.description).toContain(ROOM_MERGE);
+    expect(issue?.description).toContain('Verify');
+    expect(issue?.description).toContain('Review');
+    expect(issue?.description).toContain('code standards');
     expect(issue?.req_seq).toBe(Number(key.slice(4)));
 
     // the preview closes and the box removes the merged sketch
