@@ -1,0 +1,1 @@
+**What's new opens once on the release your instance runs.** It shows that release's highlights and lines when it is new to you, and the mark is written when you close it. An instance naming no environment refuses.

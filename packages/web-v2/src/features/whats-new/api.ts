@@ -2,17 +2,23 @@ import { WHATS_NEW_SEEN_KEY } from "@forge/contracts/product-state";
 import { apiClient } from "@/lib/api/client";
 import type { ProductStateView, WhatsNewFeed, WhatsNewSummary } from "./types";
 
+/** The release a person closed What's new on, and the environment that served it. */
+export interface SeenRelease {
+  environment: string;
+  version: string;
+}
+
 export const whatsNewApi = {
-  /** `GET /api/me/whats-new/summary` — whether anything is unread, read on every page load. */
+  /** `GET /api/me/whats-new/summary` — whether the serving release is owed, read on every page load. */
   summary: () => apiClient<WhatsNewSummary>("/me/whats-new/summary"),
 
-  /** `GET /api/me/whats-new` — Forge's own released changes, grouped by day in `tz`; read when the panel opens. */
-  feed: (tz: string) => apiClient<WhatsNewFeed>(`/me/whats-new?tz=${encodeURIComponent(tz)}`),
+  /** `GET /api/me/whats-new` — the release this instance serves, read when the panel opens. */
+  feed: () => apiClient<WhatsNewFeed>("/me/whats-new"),
 
-  /** Move the reader's seen mark to `at`: entries released before it stop being unread. */
-  markSeen: (at: Date) =>
+  /** Close What's new on `release`: the seen mark names it, so core stops owing it to this person. */
+  markSeen: (release: SeenRelease, at: Date) =>
     apiClient<ProductStateView>(`/me/product-state/${WHATS_NEW_SEEN_KEY}`, {
       method: "PUT",
-      body: JSON.stringify({ value: { at: at.toISOString() } }),
+      body: JSON.stringify({ value: { at: at.toISOString(), release: { ...release, at: at.toISOString() } } }),
     }),
 };

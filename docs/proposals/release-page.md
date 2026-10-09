@@ -34,7 +34,7 @@ by view (BC-9) because its readers are a customer and a developer of the same pr
 | Verdict door | `packages/core/src/issues/criteria/routes.ts:issueCriteriaRoutes`; Judge form `packages/web-v2/src/features/issues/components/criteria-acts.tsx:RecordVerdict` | clip capture (BC-4) |
 | Issue attachments | `packages/core/src/lib/attachment-mime.ts:ALLOWED_BY_TARGET` (issue takes `video/webm`, `video/mp4`), 10 MiB ceiling, local disk | where a clip is stored |
 | Drafting with a figure check | `packages/core/src/reports/narrative.ts:writeTemplateNarrative` over `packages/core/src/integrations/llm/chat.ts:completeOnce`, judged by `packages/core/src/reports/templates.ts:judgeNarrative` | highlight drafting (BC-2) |
-| What's new and its seen mark | `packages/core/src/whats-new/read.ts:readWhatsNew`; `packages/contracts/src/product-state.ts:whatsNewSeenValueSchema` in `user_product_state` | BC-10 |
+| What's new and its seen mark | `packages/core/src/whats-new/read.ts:readWhatsNew` over `serving.ts:requireServing`; `packages/contracts/src/product-state.ts:whatsNewSeenValueSchema` in `user_product_state` | BC-10 |
 | Share port | `packages/core/src/shares/ports.ts:provideShareSubjectSources`, example `packages/core/src/status-reports/share-source.ts:statusReportShareSource` | BC-11 share |
 | Markdown export | `packages/contracts/src/status-reports.ts:reportDocumentMarkdown`; `packages/contracts/src/release-page-export.ts:releasePageMarkdown`, `releasePageEmail`, `releasePageEml` | BC-11 export |
 | Approval setting | `packages/contracts/src/releases.ts:releaseApprovalRequired`, `release_approvals.decided_by_user` | BC-1 "who approved", BC-12 |
@@ -97,9 +97,20 @@ the merged commit or any other is "not judged on this build". With no cut, nothi
 The seen mark becomes the release a person last saw in this environment: `ReleaseSeen
 { environment, version, at }`, kept in the existing `user_product_state` row for What's new (no new
 key, so no CHECK change). What's new opens by itself once when the environment serves a newer
-release than the mark (`whatsNewReleaseOwed`); a rollback opens nothing. It shows the serving
-release's user view: highlights first, then the lines. The changelog feed is replaced as its source,
-not kept beside it.
+release than the mark (`whatsNewReleaseOwed`); a rollback opens nothing; closing it writes the mark.
+
+The instance says what it is: `FORGE_ENVIRONMENT` (its own name) and `FORGE_PRODUCT_PROJECT_ID` (the
+project holding its own releases). The serving release is that project's shipped release whose
+commit is the one the build was made from (`whats-new/serving.ts`); a build that is no release's
+commit serves none and opens nothing. An instance naming either setting not at all is refused by name
+(`WHATS_NEW_INSTANCE_UNSET`), never guessed from the projects it holds, and a mark naming a release
+or an environment the instance does not serve is refused (`RELEASE_SEEN_NOT_SERVING`,
+`RELEASE_SEEN_ENVIRONMENT_UNKNOWN`).
+
+A reader of What's new need not be a member of the product project, so it shows the user view's
+highlights and lines only, never its requirements or known issues, and each clip is a download ticket
+minted for that reader (the way a share link's are). The changelog feed is gone as a source, not kept
+beside it.
 
 ## Share and export (BC-11)
 

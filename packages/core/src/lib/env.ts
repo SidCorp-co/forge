@@ -39,6 +39,13 @@ const EnvSchema = z.object({
     })
     .optional(),
   PORT: z.coerce.number().int().positive().default(8080),
+  /**
+   * What this Forge instance calls where it runs (`dev`, `beta`, `production`), and the project that
+   * holds its own releases. What's new reads the release of that project whose commit this build is
+   * (REQ-40 BC-10); unset, it refuses by name rather than guess an instance's own product.
+   */
+  FORGE_ENVIRONMENT: z.string().trim().min(1).max(200).optional(),
+  FORGE_PRODUCT_PROJECT_ID: z.uuid().optional(),
   NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
   RATE_LIMIT_AUTH_LOCAL_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_AUTH_LOCAL_WINDOW_MS: z.coerce.number().int().positive().optional(),

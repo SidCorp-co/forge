@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 import type { RefusalStatuses } from "./refusal.js";
+import { ReleaseSeenSchema } from "./release-page.js";
 
 /** When the person last opened What's new: entries released after it are unread. */
 export const WHATS_NEW_SEEN_KEY = "whats_new_seen_at" as const;
@@ -15,16 +16,22 @@ export const TOUR_KEY_PREFIX = "tour:" as const;
 const TOUR_ID_MAX = 64;
 const TOUR_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-export type ProductStateKey = typeof WHATS_NEW_SEEN_KEY | `${typeof TOUR_KEY_PREFIX}${string}`;
+export type ProductStateKey =
+	| typeof WHATS_NEW_SEEN_KEY
+	| `${typeof TOUR_KEY_PREFIX}${string}`;
 
 export const PRODUCT_STATE_KEY_SHAPE = `\`${WHATS_NEW_SEEN_KEY}\`, or \`${TOUR_KEY_PREFIX}<id>\` where <id> is lower-case kebab-case of at most ${TOUR_ID_MAX} characters`;
 
 /** Which family a key belongs to, or null for a key outside the closed namespace. */
-export function productStateKeyKind(key: string): "whats_new_seen" | "tour" | null {
+export function productStateKeyKind(
+	key: string,
+): "whats_new_seen" | "tour" | null {
 	if (key === WHATS_NEW_SEEN_KEY) return "whats_new_seen";
 	if (!key.startsWith(TOUR_KEY_PREFIX)) return null;
 	const id = key.slice(TOUR_KEY_PREFIX.length);
-	return id.length > 0 && id.length <= TOUR_ID_MAX && TOUR_ID.test(id) ? "tour" : null;
+	return id.length > 0 && id.length <= TOUR_ID_MAX && TOUR_ID.test(id)
+		? "tour"
+		: null;
 }
 
 export const productStateKeySchema = z
@@ -37,9 +44,14 @@ export const productStateKeySchema = z
 /** How far ahead of the server's clock a seen mark may be, for a browser clock running fast. */
 export const SEEN_AT_SKEW_MS = 5 * 60 * 1000;
 
-/** `whats_new_seen_at`: the moment the person opened What's new. */
+/**
+ * `whats_new_seen_at`: the moment the person last closed What's new, and the release it showed them in
+ * the environment that serves it (REQ-40 BC-10). The same key and the same row as before: a mark with
+ * no `release` is one from before What's new read releases.
+ */
 export const whatsNewSeenValueSchema = z.strictObject({
 	at: z.iso.datetime({ offset: true, error: "at is an ISO 8601 date-time" }),
+	release: ReleaseSeenSchema.optional(),
 });
 export type WhatsNewSeenValue = z.infer<typeof whatsNewSeenValueSchema>;
 
@@ -55,11 +67,14 @@ export const tourStateValueSchema = z.strictObject({
 export type TourStateValue = z.infer<typeof tourStateValueSchema>;
 
 export const PRODUCT_STATE_VALUE_SHAPES = {
-	whats_new_seen: "{ value: { at: ISO 8601 date-time, no later than now } }",
+	whats_new_seen:
+		"{ value: { at: ISO 8601 date-time, no later than now, release?: { environment: the instance's own environment name, version: the release it serves, at: ISO 8601 date-time } } }",
 	tour: "{ value: { revision: positive integer, outcome: 'completed' | 'dismissed', step?: 1-4, at: ISO 8601 date-time } }",
 } as const;
 
-export const putProductStateRequestSchema = z.strictObject({ value: z.unknown() });
+export const putProductStateRequestSchema = z.strictObject({
+	value: z.unknown(),
+});
 
 export interface ProductStateView {
 	key: ProductStateKey;
@@ -76,7 +91,8 @@ const PRODUCT_STATE_REFUSAL_CODES = [
 	"PRODUCT_STATE_VALUE_INVALID",
 	"PRODUCT_STATE_REFUSED",
 ] as const;
-export type ProductStateRefusalCode = (typeof PRODUCT_STATE_REFUSAL_CODES)[number];
+export type ProductStateRefusalCode =
+	(typeof PRODUCT_STATE_REFUSAL_CODES)[number];
 export const PRODUCT_STATE_REFUSAL_STATUSES = {
 	PRODUCT_STATE_KEY_UNKNOWN: 400,
 	PRODUCT_STATE_VALUE_INVALID: 400,

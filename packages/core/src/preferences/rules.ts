@@ -11,20 +11,63 @@ import {
   productStateKeyKind,
   SEEN_AT_SKEW_MS,
   tourStateValueSchema,
+  type WhatsNewSeenValue,
   whatsNewSeenValueSchema,
 } from '@forge/contracts/product-state';
+import type { ReleasePageRefusalCode } from '@forge/contracts/release-page';
 import type { Refusal } from '../lib/refusal.js';
+import type { ServingRead } from './ports.js';
 
-function refusal(code: ProductStateRefusalCode, detail: string, path = '/value'): Refusal {
+function refusal(
+  code: ProductStateRefusalCode | ReleasePageRefusalCode,
+  detail: string,
+  path = '/value',
+): Refusal {
   return { code, path, detail };
 }
 
+/**
+ * Why a What's new mark naming a release is refused: the instance declares no environment, or the
+ * mark is for another environment, or for a release this instance does not serve (so a mark can
+ * neither pretend a release was seen that is not here, nor be carried over from another instance).
+ */
+function releaseMarkRefusal(
+  mark: { environment: string; version: string },
+  serving: ServingRead,
+): Refusal | null {
+  if (serving.environment === null) {
+    return refusal(
+      'RELEASE_SEEN_ENVIRONMENT_UNKNOWN',
+      'this instance declares no environment name (FORGE_ENVIRONMENT), so a release seen here cannot be counted against one',
+      '/value/release/environment',
+    );
+  }
+  if (mark.environment !== serving.environment) {
+    return refusal(
+      'RELEASE_SEEN_NOT_SERVING',
+      `release ${mark.version} was seen in environment "${mark.environment}", but this instance is "${serving.environment}"`,
+      '/value/release/environment',
+    );
+  }
+  if (mark.version !== serving.version) {
+    return refusal(
+      'RELEASE_SEEN_NOT_SERVING',
+      serving.version === null
+        ? `this instance serves no release, so release ${mark.version} cannot have been seen here`
+        : `this instance serves release ${serving.version}, not ${mark.version}`,
+      '/value/release/version',
+    );
+  }
+  return null;
+}
+
 /** Why `value` is not a value `key` holds, or null when it is. */
-export function productStateValueRefusal(
+export async function productStateValueRefusal(
   key: ProductStateKey,
   value: unknown,
   now: Date,
-): Refusal | null {
+  serving: () => Promise<ServingRead>,
+): Promise<Refusal | null> {
   const kind = productStateKeyKind(key);
   if (kind === null) {
     return refusal('PRODUCT_STATE_KEY_UNKNOWN', `${key} is not a product state key`, '');
@@ -46,5 +89,6 @@ export function productStateValueRefusal(
       '/value/at',
     );
   }
-  return null;
+  const mark = kind === 'whats_new_seen' ? (parsed.data as WhatsNewSeenValue).release : undefined;
+  return mark ? releaseMarkRefusal(mark, await serving()) : null;
 }

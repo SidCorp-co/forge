@@ -74,12 +74,14 @@ export interface TestProject {
 export async function createTestProject(
   createdBy: string,
   opts: {
+    /** A project whose id a setting of the instance names, fixed before the process starts. */
+    id?: string;
     orgId?: string;
     agentConfig?: Record<string, unknown>;
     policy?: Record<string, unknown> | null;
   } = {},
 ): Promise<TestProject> {
-  const id = randomUUID();
+  const id = opts.id ?? randomUUID();
   const orgId = opts.orgId ?? (await seedOrg(createdBy));
   const slug = `test-${id.slice(0, 8)}`;
   await db.execute(sql`

@@ -1,1 +1,1 @@
-export {};
+export { readServing } from './serving.js';

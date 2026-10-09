@@ -23,6 +23,7 @@ import { productTourEvents, userProductState } from '../db/schema-product-state.
 import { lockXact } from '../lib/advisory-lock.js';
 import { type Refusal, refuser } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
+import { preferencesPorts } from './ports.js';
 import {
   ASSISTANT_PREFERENCE_DEFAULTS,
   ME_PREFERENCE_DEFAULTS,
@@ -311,7 +312,9 @@ export async function writeProductState(args: {
   now?: Date;
 }): Promise<ProductStateOutcome> {
   const now = args.now ?? new Date();
-  const refused = productStateValueRefusal(args.key, args.value, now);
+  const refused = await productStateValueRefusal(args.key, args.value, now, () =>
+    preferencesPorts().serving(),
+  );
   if (refused) return { ok: false, refusals: [refused] };
   return defaultDb.transaction(async (tx) => {
     await lockPreferences(tx, args.userId);

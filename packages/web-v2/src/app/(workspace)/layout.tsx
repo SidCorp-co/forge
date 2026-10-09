@@ -58,7 +58,6 @@ import { HelpToursButton } from "@/features/tours/components/help-tours-button";
 import { TourReleaseProvider } from "@/features/tours/release-context";
 import { useReleases } from "@/features/releases/hooks";
 import { TourLauncher } from "@/features/tours/components/tour-launcher";
-import { tourShowMe } from "@/features/tours/components/tour-show-me";
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -242,7 +241,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         onViewAllProjects={() => router.push("/projects")}
         version={
           <>
-            <WhatsNewButton entryAction={tourShowMe} />
+            <WhatsNewButton />
             <HelpToursButton />
             <SidebarVersion
               onDocs={() => router.push("/docs")}
