@@ -167,7 +167,7 @@ export function ChatDockBody({ dock, fullScreen, sizeControl }: { dock: ChatDock
 
   return (
     <SecondaryRegion>
-      <div className="flex h-full min-h-0 flex-col" data-testid="chat-dock-body">
+      <div className="@container flex h-full min-h-0 flex-col" data-testid="chat-dock-body">
         {fullScreen && (
           <div className="flex flex-none items-center border-b border-line px-3 py-2">
             <button
@@ -181,38 +181,44 @@ export function ChatDockBody({ dock, fullScreen, sizeControl }: { dock: ChatDock
             </button>
           </div>
         )}
-        <header className="flex flex-none items-center gap-1 border-b border-line bg-surface px-3 py-2">
-          <h2 className="fg-body-sm min-w-0 flex-1 truncate font-semibold text-fg">
+        {/* under a 24rem panel the header takes two rows: the title with pin and close, then the rest,
+            so the title and every control stay inside the narrowest panel (half of the 360px floor) */}
+        <header data-testid="chat-dock-header" className="flex flex-none flex-wrap items-center gap-1 border-b border-line bg-surface px-3 py-2">
+          <h2 className="fg-body-sm min-w-0 flex-[1_0_auto] truncate font-semibold text-fg">
             {listing ? t("shell.dock.conversations") : title}
           </h2>
-          <IconButton
-            icon="history"
-            size="sm"
-            aria-label={listing ? t("shell.dock.backToConversation") : t("shell.dock.past")}
-            title={listing ? t("shell.dock.backToConversation") : t("shell.dock.past")}
-            aria-pressed={listing}
-            onClick={() => setListing((v) => !v)}
-          />
-          <IconButton
-            icon="plus"
-            size="sm"
-            aria-label={t("shell.dock.newConversation")}
-            title={t("shell.dock.newConversation")}
-            onClick={() => pick(dock.projectId ? { kind: "draft", projectId: dock.projectId } : { kind: "people" })}
-          />
-          {!fullScreen && sizeControl}
-          {!fullScreen && (
+          <div className="ml-auto flex min-w-0 flex-none items-center gap-1 @max-sm:order-last @max-sm:basis-full @max-sm:flex-wrap @max-sm:justify-end">
             <IconButton
-              icon="pin"
+              icon="history"
               size="sm"
-              aria-pressed={dock.pinned}
-              aria-label={dock.pinned ? t("shell.dock.unpinLabel") : t("shell.dock.pinLabel")}
-              title={dock.pinned ? t("shell.dock.pinnedTitle") : t("shell.dock.pinTitle")}
-              className={dock.pinned ? "text-accent-text" : undefined}
-              onClick={() => dock.setPinned(!dock.pinned)}
+              aria-label={listing ? t("shell.dock.backToConversation") : t("shell.dock.past")}
+              title={listing ? t("shell.dock.backToConversation") : t("shell.dock.past")}
+              aria-pressed={listing}
+              onClick={() => setListing((v) => !v)}
             />
-          )}
-          <IconButton icon="x" size="sm" aria-label={t("shell.dock.close", { title })} title={t("shell.dock.closeShort")} onClick={dock.close} />
+            <IconButton
+              icon="plus"
+              size="sm"
+              aria-label={t("shell.dock.newConversation")}
+              title={t("shell.dock.newConversation")}
+              onClick={() => pick(dock.projectId ? { kind: "draft", projectId: dock.projectId } : { kind: "people" })}
+            />
+            {!fullScreen && sizeControl}
+          </div>
+          <div className="ml-auto flex flex-none items-center gap-1">
+            {!fullScreen && (
+              <IconButton
+                icon="pin"
+                size="sm"
+                aria-pressed={dock.pinned}
+                aria-label={dock.pinned ? t("shell.dock.unpinLabel") : t("shell.dock.pinLabel")}
+                title={dock.pinned ? t("shell.dock.pinnedTitle") : t("shell.dock.pinTitle")}
+                className={dock.pinned ? "text-accent-text" : undefined}
+                onClick={() => dock.setPinned(!dock.pinned)}
+              />
+            )}
+            <IconButton icon="x" size="sm" aria-label={t("shell.dock.close", { title })} title={t("shell.dock.closeShort")} onClick={dock.close} />
+          </div>
         </header>
         {!listing && (target?.kind === "room" || target?.kind === "draft") && (
           <WaitingOffer projectId={target.projectId} openId={conversationId} onOpen={pick} />
@@ -235,24 +241,53 @@ function BoardForProject({ projectId, slug }: { projectId: string; slug: string 
   return <BoardPanel projectId={projectId} issueKey={snapshot.item?.kind === "issue" ? snapshot.item.key : undefined} />;
 }
 
-/** Shows the size the panel is at and moves it to the other one; from a dragged width it snaps to the nearer (REQ-31 BC-2, BC-6). */
-function SizeControl({ width, room, onSize }: { width: number; room: number; onSize: (size: DockSize) => void }) {
+function Segment({ on, size, children }: { on: boolean; size: string; children: React.ReactNode }) {
+  return (
+    <span
+      aria-hidden
+      data-segment={size}
+      data-on={on || undefined}
+      className={`whitespace-nowrap rounded px-1.5 py-0.5 ${on ? "bg-surface text-fg shadow-sm" : "text-muted"}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+/**
+ * One switch between the two sizes, both on it and the one the panel is at marked; a width between them
+ * is marked between them, named for what set it. A click moves it to the other size, or snaps a width
+ * between to the nearer (REQ-31 BC-2, BC-6). `byBoard`: the width is the one an open board widened it to.
+ */
+function SizeControl({ width, room, byBoard, onSize }: { width: number; room: number; byBoard: boolean; onSize: (size: DockSize) => void }) {
   const t = useCopy();
   const at = sizeAt(width, room);
   const next = nextSize(width, room);
-  const shown = at === "large" ? t("shell.dock.size.large") : at === "half" ? t("shell.dock.size.half") : t("shell.dock.size.px", { width });
+  const between = byBoard ? t("shell.dock.size.board", { width }) : t("shell.dock.size.custom", { width });
+  const shown = at === "large" ? t("shell.dock.size.large") : at === "half" ? t("shell.dock.size.half") : between;
   const label = t(next === "half" ? "shell.dock.size.toHalf" : "shell.dock.size.toLarge", { size: shown });
   return (
     <button
       type="button"
       data-testid="chat-dock-size"
-      data-size={at ?? "dragged"}
+      data-size={at ?? (byBoard ? "board" : "custom")}
       aria-label={label}
       title={label}
       onClick={() => onSize(next)}
-      className="fg-caption inline-flex h-7 flex-none items-center rounded-md px-2 font-semibold text-muted hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--link)]"
+      className="fg-caption inline-flex h-7 min-w-0 flex-none cursor-pointer items-center gap-0.5 rounded-md border border-line bg-sunken p-0.5 font-semibold hover:border-[color:var(--link)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--link)]"
     >
-      {shown}
+      <Segment on={at === "half"} size="half">
+        {t("shell.dock.size.half")}
+      </Segment>
+      {at === null && (
+        <Segment on size={byBoard ? "board" : "custom"}>
+          <span className="@max-md:hidden">{between}</span>
+          <span className="hidden @max-md:inline">{byBoard ? t("shell.dock.size.boardShort") : t("shell.dock.size.customShort")}</span>
+        </Segment>
+      )}
+      <Segment on={at === "large"} size="large">
+        {t("shell.dock.size.large")}
+      </Segment>
     </button>
   );
 }
@@ -319,6 +354,9 @@ export function ChatDock({ dock, page }: { dock: ChatDockApi; page: RefObject<HT
   const room = usePageRoom(page);
   const [live, setLive] = useState<number | null>(null);
   const board = useBoard();
+  // a size picked while a board is open is drawn at once and kept; the board widens the panel only until then
+  const [pickedOverBoard, setPickedOverBoard] = useState(false);
+  if (pickedOverBoard && !board.open) setPickedOverBoard(false);
   const t = useCopy();
   if (!dock.open) return null;
   if (!docked) {
@@ -330,7 +368,12 @@ export function ChatDock({ dock, page }: { dock: ChatDockApi; page: RefObject<HT
   }
   const kept = dockWidth(dock.size, room);
   // a board open in the conversation widens the panel to the board, never past large
-  const width = live ?? (board.open ? Math.max(kept, dockWidth(BOARD_DOCK_WIDTH, room)) : kept);
+  const widened = board.open && !pickedOverBoard ? Math.max(kept, dockWidth(BOARD_DOCK_WIDTH, room)) : kept;
+  const width = live ?? widened;
+  const pick = (size: DockSize) => {
+    if (board.open) setPickedOverBoard(true);
+    dock.setSize(size);
+  };
   return (
     <aside
       aria-label={dockTitle(t)}
@@ -338,8 +381,11 @@ export function ChatDock({ dock, page }: { dock: ChatDockApi; page: RefObject<HT
       className="relative hidden h-full flex-none flex-col border-l border-line bg-app md:flex"
       style={{ width }}
     >
-      <ResizeHandle width={width} room={room} onDrag={setLive} onCommit={dock.setSize} />
-      <ChatDockBody dock={dock} sizeControl={<SizeControl width={width} room={room} onSize={dock.setSize} />} />
+      <ResizeHandle width={width} room={room} onDrag={setLive} onCommit={pick} />
+      <ChatDockBody
+        dock={dock}
+        sizeControl={<SizeControl width={width} room={room} byBoard={live === null && widened !== kept} onSize={pick} />}
+      />
     </aside>
   );
 }

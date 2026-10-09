@@ -61,7 +61,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
   };
 
   return (
-    <div className="grid h-full min-h-0 place-items-center overflow-y-auto px-4 py-8">
+    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] place-items-center overflow-y-auto px-4 py-8">
       <div className="flex w-full max-w-sm flex-col gap-4">
         <div className="text-center">
           <p className="fg-h3">{t("shell.chat.emptyTitle")}</p>

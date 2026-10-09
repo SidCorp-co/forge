@@ -12,8 +12,9 @@
 // one fresh load at that width; its screenshot is written to `<out>/<case>.png`. An entry whose
 // component has to be used, not only looked at, declares `stages: [{ name, run() }]` in place of
 // `probe`: each stage acts on the same load in order, answers (or resolves to) what is wrong after it,
-// and is shot to `<out>/<case>-<stage>.png`. The run exits 1 naming every failed probe, and 2 when
-// it could not witness at all.
+// and is shot to `<out>/<case>-<stage>.png`. A probe or stage that throws, or answers anything but a
+// list of sentences, fails by name. The run exits 1 naming every failed probe, and 2 when it could
+// not witness at all.
 //
 // Chrome reaches no network on some boxes, so everything is a `file://` page in `<out>`; the
 // browser binary is `WITNESS_CHROME`, else `google-chrome`.
@@ -139,6 +140,16 @@ async function witnessCase(cdp, session, url, c, out) {
   await loaded;
   const value = async (expression) =>
     (await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true })).result.value;
+  // what a probe or a stage answered: its list of what is wrong, or why it gave none — a throw or a
+  // non-list is a failure named for the step, never read as a pass or as a crash of the runner
+  const answer = async (expression, step) => {
+    const r = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
+    if (r.exceptionDetails) return [`${step} threw: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`];
+    const wrong = r.result.value;
+    if (wrong === undefined || wrong === null) return [`${step} answered nothing`];
+    if (!Array.isArray(wrong) || wrong.some((w) => typeof w !== "string")) return [`${step} answered ${JSON.stringify(wrong)}, not a list of sentences`];
+    return wrong;
+  };
   for (let i = 0; i < 100 && !(await value("Boolean(window.__witness && window.__witness.ready())")); i++) await pause(100);
   if (!(await value("Boolean(window.__witness && window.__witness.ready())"))) return [`${c.name}: the entry never said it was ready`];
   const failures = [];
@@ -154,11 +165,11 @@ async function witnessCase(cdp, session, url, c, out) {
   };
   const stages = await value("Array.isArray(window.__witness.stages) ? window.__witness.stages.map((s) => s.name) : null");
   if (!stages) {
-    failures.push(...((await value("window.__witness.probe()")) ?? ["the entry's probe answered nothing"]));
+    failures.push(...(await answer("window.__witness.probe()", "the entry's probe")));
     await shoot(c.name);
   } else {
     for (const [i, stage] of stages.entries()) {
-      const wrong = (await value(`Promise.resolve(window.__witness.stages[${i}].run())`)) ?? ["the stage answered nothing"];
+      const wrong = await answer(`Promise.resolve(window.__witness.stages[${i}].run())`, "the stage");
       failures.push(...wrong.map((f) => `${stage}: ${f}`));
       await shoot(`${c.name}-${stage}`);
     }
