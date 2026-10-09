@@ -42,6 +42,6 @@ export function resolveChatProvider(
   if (provider) return { provider, model: model ?? provider.defaultModel };
   throw refuser<ConversationRefusalCode>('ASSISTANT_MODEL_NOT_CONFIGURED')(
     'ASSISTANT_MODEL_NOT_CONFIGURED',
-    'no chat model is configured on this instance, so Assistant mode cannot answer: set ANTHROPIC_API_KEY, or LITELLM_API_URL + LITELLM_API_KEY, in the instance .env and restart core',
+    'no chat model is configured on this instance, so Assistant mode cannot answer: set LITELLM_API_URL + LITELLM_API_KEY (the model gateway) in the instance .env and restart core',
   );
 }
