@@ -87,7 +87,15 @@ function DecisionRow({ d, slug }: { d: NeedsYouDecision; slug: string | undefine
       </p>
       {d.recommended && recommended ? (
         <p className="fg-caption text-muted" data-testid="needs-you-decision-recommended">
-          <span className="font-semibold text-fg">{t("needsYou.decisions.recommended")}:</span> {recommended.label}. {d.recommended.why}
+          {d.recommended.by === "assistant" ? (
+            <>
+              <span className="font-semibold text-fg">{t("needsYou.decisions.suggested")}:</span> {d.recommended.why}
+            </>
+          ) : (
+            <>
+              <span className="font-semibold text-fg">{t("needsYou.decisions.recommended")}:</span> {recommended.label}. {d.recommended.why}
+            </>
+          )}
         </p>
       ) : (
         <p className="fg-caption text-subtle" data-testid="needs-you-decision-no-recommendation">

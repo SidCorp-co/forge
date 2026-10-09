@@ -12,6 +12,7 @@ import {
   chatDoorOfToken,
   deriveSessionFinal,
   EMPTY_USAGE_TOTALS,
+  recordModelCallUsage,
   resolveSessionSend,
   stampFinalizeAttempt,
   transitionSessions,
@@ -354,6 +355,7 @@ export function provideWorkPorts(): void {
     },
     requirementIdIn,
     contractAboutRefusal,
+    recordModelCallUsage,
   });
 
   provideUploadPorts({ persistConversationAttachment });

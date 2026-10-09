@@ -74,6 +74,42 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
     );
   });
 
+  it("labels a suggestion the assistant drafted, and sends its text in one click", async () => {
+    const text = "Use the clinic code printed on the referral letter.";
+    const read = needsYouDecisionsSchema.parse({
+      ...READ,
+      total: 1,
+      decisions: [
+        {
+          group: "answer",
+          area: "issues",
+          entity: "issue",
+          key: "ISS-1",
+          title: "Import",
+          opens: { kind: "issue", key: "ISS-1" },
+          question: "Which identifier should the referral import match on?",
+          recommended: { answerId: "suggested", why: `"${text}" REQ-1 says referrals match by clinic code. (read ISS-1, REQ-1)`, by: "assistant" },
+          noRecommendation: null,
+          answers: [
+            { id: "suggested", label: "Send the suggested answer", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1, text }, needsReason: false, effect: null, recommended: true },
+            { id: "write", label: "Write another answer", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1 }, needsReason: true, effect: null, recommended: false },
+          ],
+          touchedAt: "2026-10-08T10:00:00.000Z",
+        },
+      ],
+      notDecisions: [],
+    });
+    const calls = fakeCore(() => ({ body: { ok: true } }));
+    renderWithQuery(<DecisionList read={read} slug="hop" />);
+    const line = screen.getByTestId("needs-you-decision-recommended");
+    expect(line).toHaveTextContent("Suggested by the assistant:");
+    expect(line).toHaveTextContent(text);
+    expect(line).not.toHaveTextContent("Recommended:");
+    fireEvent.click(screen.getByRole("button", { name: "Send the suggested answer" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === `/questions/${Q}/answer`)).toBe(true));
+    expect(calls.find((c) => c.method === "POST")?.body).toEqual({ round: 1, text });
+  });
+
   it("posts the button's own body to its route as the person, and says it was sent", async () => {
     const calls = fakeCore(() => ({ body: { ok: true } }));
     renderWithQuery(<DecisionList read={READ} slug="hop" />);

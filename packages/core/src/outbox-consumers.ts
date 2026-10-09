@@ -25,6 +25,7 @@ import {
   registerPhaseJournalClose,
 } from './pipeline/index.js';
 import { registerLiveReadingInvalidation } from './projects/index.js';
+import { registerQuestionSuggest } from './questions/index.js';
 import {
   registerReleaseApprovalWake,
   registerReleaseBatchClaimSubscriber,
@@ -69,5 +70,6 @@ export function registerOutboxConsumers(): void {
   registerFirstRequirementsCase();
   registerRequirementFollow();
   registerStaleDraftAct();
+  registerQuestionSuggest();
   registerFeedbackNotifications();
 }

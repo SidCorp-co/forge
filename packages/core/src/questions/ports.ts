@@ -37,6 +37,16 @@ interface QuestionPorts {
   requirementIdIn: (tx: Tx, projectId: string, ref: string) => Promise<string | null>;
   /** Why `contract` is not one the project publishes or consumes; null when it is. */
   contractAboutRefusal: (projectId: string, contract: string) => Promise<string | null>;
+  /** Records a model call core made itself, counted in the project's cost (a suggested answer's draft). */
+  recordModelCallUsage: (args: {
+    projectId: string;
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    requestCount: number;
+    recordedAt: Date;
+  }) => Promise<void>;
 }
 
 const slot = portSlot<QuestionPorts>('questions', 'provideQuestionPorts');
@@ -48,3 +58,4 @@ export const doorOfRequest = port('doorOfRequest');
 export const conversationTurnOf = port('conversationTurnOf');
 export const requirementIdIn = port('requirementIdIn');
 export const contractAboutRefusal = port('contractAboutRefusal');
+export const recordModelCallUsage = port('recordModelCallUsage');

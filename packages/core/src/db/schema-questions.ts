@@ -13,6 +13,7 @@ import { QUESTION_STATUSES } from '@forge/contracts/question-machine';
 // registered in `drizzle.config.ts` and the client's schema map beside it.
 
 import type { QuestionnaireItem } from '@forge/contracts/onboarding';
+import type { QuestionSuggestion } from '@forge/contracts/question-suggestion';
 import type { AnswerHold, AnswerResume, QuestionAbout } from '@forge/contracts/questions';
 
 import { sql } from 'drizzle-orm';
@@ -177,6 +178,8 @@ export const agentQuestions = pgTable(
     }),
     /** What the asker named the question as about (a requirement or a contract); it moves no visibility. */
     about: jsonb('about').$type<QuestionAbout>(),
+    /** The assistant's suggested answer for the current round, or why it drafted none (REQ-41 BC-2, migration 0482). */
+    suggestion: jsonb('suggestion').$type<QuestionSuggestion>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -223,6 +226,10 @@ export const agentQuestions = pgTable(
         (${t.about} ->> 'kind' = 'requirement' and jsonb_typeof(${t.about} -> 'requirementId') = 'string')
         or (${t.about} ->> 'kind' = 'contract' and jsonb_typeof(${t.about} -> 'contract') = 'string')
       )`,
+    ),
+    check(
+      'agent_questions_suggestion_shape_chk',
+      sql`${t.suggestion} IS NULL OR (jsonb_typeof(${t.suggestion}) = 'object' AND ${t.suggestion} ->> 'outcome' IN ('suggested', 'failed') AND jsonb_typeof(${t.suggestion} -> 'round') = 'number')`,
     ),
     // the BA assistant asks the reporter of a feedback item one clarification at a time
     uniqueIndex('agent_questions_feedback_open_uq')

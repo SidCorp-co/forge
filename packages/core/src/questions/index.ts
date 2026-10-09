@@ -39,6 +39,12 @@ export {
 } from './requirement-read.js';
 export { agentAuthoredSegments } from './screen.js';
 export {
+  registerQuestionSuggest,
+  type SuggestResult,
+  suggestAnswerFor,
+  sweepQuestionSuggestions,
+} from './suggest-answer.js';
+export {
   type AskInput,
   askParkQuestion,
   askQuestion,
