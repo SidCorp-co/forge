@@ -5160,6 +5160,10 @@ mod tests {
             body[claim..register].contains("Unplaced::Provisioning"),
             "a placement that stands aside for a provision says why"
         );
+        assert!(
+            !body.contains("drop(_placing") && !body.contains("let _ = masters.begin_placing"),
+            "the claim is dropped before the placement ends, so a provision can begin under the pane"
+        );
     }
 
     #[test]
