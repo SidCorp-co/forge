@@ -39,7 +39,7 @@ function core(schedules: unknown[] = []) {
       return { body: [{ userId: ME, email: "me@forge.test", displayName: "Me", kind: "human", role: "admin", createdAt: "2026-10-01T00:00:00Z" }] };
     }
     if (call.method === "GET" && call.path === `/projects/${P}/report-templates`) {
-      return { body: { templates: [{ id: "progress", version: 1, title: "Progress", params: ["state"] }] } };
+      return { body: { templates: [{ id: "progress", version: 1, title: "Progress", params: ["days"] }] } };
     }
     if (call.method === "POST" && call.path === "/schedules") return { status: 201, body: row((call.body as { params: Record<string, unknown> }).params) };
     return undefined;
@@ -53,14 +53,14 @@ describe("scheduling a report template", () => {
     renderWithQuery(<ReportSchedule projectId={P} />);
     await screen.findByRole("option", { name: "Progress" });
     await user.selectOptions(screen.getByLabelText("Report"), "progress");
-    await user.type(screen.getByLabelText("Only requirements in this state"), "agreed");
+    await user.type(screen.getByLabelText("Period, in days (compared with the period before)"), "7");
     await user.click(await screen.findByRole("checkbox", { name: "Me" }));
     await user.click(screen.getByRole("button", { name: "Send it every week" }));
     await waitFor(() => expect(calls.find((c) => c.method === "POST")).toBeDefined());
     expect(calls.find((c) => c.method === "POST")?.body).toMatchObject({
       kind: "status_report",
       name: "Weekly report: Progress",
-      params: { recipients: [ME], templateId: "progress", templateParams: { state: "agreed" } },
+      params: { recipients: [ME], templateId: "progress", templateParams: { days: 7 } },
     });
   });
 

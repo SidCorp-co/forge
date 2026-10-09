@@ -1,8 +1,9 @@
 // One period of a `status_report` schedule: store the report it answers (once per schedule and
 // period) and tell each recipient once, in their language, linking to the stored report. A schedule
-// that names a template runs it for the schedule's owner, has one model call write its narrative from
-// those runs alone (`narrative.ts`) and stores the output with how the narrative came to be; a
-// narrative not written is named in the notice with the reason. A period whose every recipient is
+// that names a template runs it for the schedule's owner through the one template run every door
+// shares (`reports/templates.ts:runTemplate`, whose one model call writes the narrative from those
+// runs alone) and stores the output with how the narrative came to be; a narrative not written is
+// named in the notice with the reason. A period whose every recipient is
 // already told is refused by name and tells nobody; one stored but not yet told to everyone (a
 // recipient added since, a send cut short) tells only those it still owes.
 
@@ -27,7 +28,6 @@ import { refuser } from '../lib/refusal.js';
 import { emitNotification } from '../notifications/index.js';
 import type { StatusReportSendOutcome } from '../schedules/index.js';
 import { digestText } from './digest.js';
-import { writeFireNarrative } from './narrative.js';
 import { statusReportsPorts } from './ports.js';
 import { previousReport, reportOfPeriod, storeStatusReport, storeTemplateReport } from './store.js';
 
@@ -87,20 +87,12 @@ export async function sendStatusReport(args: {
     } as const;
     try {
       if (args.template) {
-        const run = await statusReportsPorts().runTemplate({
+        const { document, narrative } = await statusReportsPorts().runTemplate({
           projectId: args.projectId,
           templateId: args.template.id,
           params: args.template.params,
           asker: { userId: args.viewerUserId, agency, access },
-        });
-        const { document, narrative } = await writeFireNarrative({
-          projectId: args.projectId,
-          scheduleId: args.scheduleId,
-          title: templateTitleOf(args.template.id),
-          document: run.document,
-          slots: run.slots,
-          userId: args.viewerUserId,
-          agency,
+          what: `schedule ${args.scheduleId}'s ${args.template.id} report`,
         });
         report = await storeTemplateReport({
           projectId: args.projectId,

@@ -23,6 +23,7 @@ const narrativeBody = z.strictObject({
     risks: z.string().optional(),
     recommendations: z.string().optional(),
   }),
+  findings: z.array(z.string()).max(24).optional(),
 });
 const roomParam = z.strictObject({ id: z.uuid() });
 const executionParam = z.strictObject({ id: z.uuid(), executionId: z.string().min(1).max(64) });
@@ -106,8 +107,9 @@ reportRoutes.get(
 );
 
 /**
- * Agent mode's door to forge_template: runs the template's queries as the caller, keeps each run,
- * and answers the document with its blocks and the slots to write; the narrative is left empty.
+ * Agent mode's and the status page's door to a template: runs the template's queries as the caller,
+ * keeps each run, and answers the document with its blocks, each block's finding and the narrative
+ * written once from them, with how that narrative came to be (the run every door shares).
  */
 reportRoutes.post(
   '/projects/:id/report-templates/:templateId/runs',
@@ -135,7 +137,7 @@ reportRoutes.post(
   },
 );
 
-/** Judges a narrative against the template's own runs; answers the document with it set, or refuses by name. */
+/** Judges a narrative and findings against the template's own runs; answers the document with them set, or refuses by name. */
 reportRoutes.post(
   '/projects/:id/report-templates/:templateId/narrative',
   zValidator(
@@ -147,17 +149,18 @@ reportRoutes.post(
     'json',
     narrativeBody,
     invalid(
-      'invalid body: { runIds: [<run of each template query, in order>], narrative: { summary?, risks?, recommendations? } }',
+      'invalid body: { runIds: [<run of each template query, in order>], narrative: { summary?, risks?, recommendations? }, findings?: [<one line per block, in order>] }',
     ),
   ),
   async (c) => {
     const { id: projectId, templateId } = c.req.valid('param');
-    const { runIds, narrative } = c.req.valid('json');
+    const { runIds, narrative, findings } = c.req.valid('json');
     const document = await checkTemplateNarrative({
       projectId,
       templateId,
       runIds,
       narrative,
+      findings,
       userId: c.get('userId'),
       agency: gated(c.get('agency')),
     });

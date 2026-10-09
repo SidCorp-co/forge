@@ -5,14 +5,19 @@ import { clearReportQueriesForTest, listReportQueries } from './registry.js';
 afterEach(() => clearReportQueriesForTest());
 
 describe('registerReportQueries', () => {
-  it('registers the five Phase A queries, each declaring what it reads, under one shape', () => {
+  it('registers every query, each declaring what it reads, under one shape', () => {
     registerReportQueries();
     const all = listReportQueries();
     expect(all.map((q) => q.descriptor.id).sort()).toEqual([
+      'burndown',
+      'closed-by-requirement',
       'criteria-coverage',
+      'issue-flow',
+      'period-flow',
       'progress-by-requirement',
       'release-readiness',
       'roadmap-eta',
+      'status-time',
       'workflow-status',
     ]);
     for (const q of all) {

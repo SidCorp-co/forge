@@ -8,8 +8,9 @@ import { api, type Body } from '../helpers/api.js';
 import { type World, world } from '../helpers/forecast-world.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
-// A template report a schedule stores carries a narrative one model call wrote from the template's
-// slot guidance and what this fire's blocks show of its own runs alone, judged like any narrative (no
+// A template report a schedule stores carries a narrative, and a finding per block, one model call
+// wrote from the template's slot guidance and what this fire's blocks show of its own runs alone
+// (the template run every door shares, `reports/templates.ts:runTemplate`), judged like any narrative (no
 // number its blocks do not show). A refused answer gets one retry carrying the refusal; a second refusal, no model, or a
 // project whose data policy forbids it stores the slots empty, names the reason in the notice and
 // keeps which path ran on the report (REQ-32 criteria 7 and 8). The model is faked at the provider
@@ -29,11 +30,20 @@ register('anthropic', () => ({
   },
 }));
 
-const CLEAN = {
+const SLOTS = {
   summary: 'Work is under way.',
   risks: 'None are known from these rows.',
   recommendations: 'Keep taking the next issue.',
 };
+/** One finding per block the progress template draws over an empty project. */
+const FINDINGS = [
+  'Nothing moved in either period.',
+  'No issue was filed or closed on any day.',
+  'No status held any hours.',
+  'No closed work served a requirement.',
+  'No requirement stands on the roadmap.',
+];
+const CLEAN = { ...SLOTS, findings: FINDINGS };
 const INVENTED = { ...CLEAN, summary: 'There are 98765 requirements.' };
 
 let w: World;
@@ -98,7 +108,8 @@ describe('a scheduled template report writes its narrative', () => {
       model: 'scripted-model',
       calls: 1,
     });
-    expect((detail.document as Body).narrative).toEqual(CLEAN);
+    expect((detail.document as Body).narrative).toEqual(SLOTS);
+    expect(((detail.document as Body).blocks as Body[]).map((b) => b.finding)).toEqual(FINDINGS);
     expect(asked).toHaveLength(1);
     const [system, input] = asked[0] as ChatMessage[];
     expect(String(system?.content)).toContain(
@@ -134,7 +145,7 @@ describe('a scheduled template report writes its narrative', () => {
       model: 'scripted-model',
       calls: 2,
     });
-    expect((detail.document as Body).narrative).toEqual(CLEAN);
+    expect((detail.document as Body).narrative).toEqual(SLOTS);
     const retry = asked[1] as ChatMessage[];
     expect(String(retry.at(-1)?.content)).toContain(
       'states 98765, which no block of template "progress" shows',

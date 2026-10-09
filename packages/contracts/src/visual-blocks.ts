@@ -38,6 +38,8 @@ export type ChartVariant = (typeof CHART_VARIANTS)[number];
 
 const FIELD = z.string().min(1).max(64);
 const TITLE = z.string().min(1).max(120);
+/** The longest one-line finding a block carries under its title. */
+export const BLOCK_FINDING_MAX = 200;
 const FLOW_ID = z.string().regex(/^[A-Za-z0-9_-]{1,40}$/);
 const FLOW_LABEL = z.string().min(1).max(80);
 
@@ -130,7 +132,22 @@ export const BlockSpecSchema = z.discriminatedUnion("kind", [
 ]);
 export type BlockSpec = z.infer<typeof BlockSpecSchema>;
 
-const COMMON = { v: z.literal(VISUAL_BLOCK_VERSION) };
+/**
+ * What every stored block holds besides its spec: the version, and an optional one-line finding read
+ * under its title, which says what its own figures show. A finding is written for a block, never by
+ * a template's layout, and a number in it is held to the block's own frame like a title's (core's
+ * `reports/templates.ts:checkTemplateNarrative` for a template run, `messaging/figures-rule.ts` for
+ * a block a chat turn draws).
+ */
+const COMMON = {
+  v: z.literal(VISUAL_BLOCK_VERSION),
+  finding: z
+    .string()
+    .min(1)
+    .max(BLOCK_FINDING_MAX)
+    .regex(/^[^\r\n]*$/, "a finding is one line")
+    .optional(),
+};
 const FRAMED = { source: BlockSourceSchema, frame: ReportFrameSchema };
 
 export const TableBlockSchema = TableSpecSchema.extend({ ...COMMON, ...FRAMED });
@@ -169,15 +186,15 @@ export type BlockCheck =
 /** The valid shape of each kind, quoted in every refusal of it. */
 export const BLOCK_SHAPES: Record<VisualBlockKind, string> = {
   table:
-    '{ v: 1, kind: "table", columns: [field, ...], sort?: { field, dir: "asc" | "desc" }, limit?: 1-500, title?, source: { runId } | { executionId, frame? }, frame }',
+    '{ v: 1, kind: "table", columns: [field, ...], sort?: { field, dir: "asc" | "desc" }, limit?: 1-500, title?, finding?, source: { runId } | { executionId, frame? }, frame }',
   chart:
-    '{ v: 1, kind: "chart", variant: "bar" | "line" | "burndown", x: field, y: [numeric field, ...1-6], series?: field, title?, source: { runId } | { executionId, frame? }, frame }',
-  flow: '{ v: 1, kind: "flow", nodes: [{ id, label }, ...1-60], edges: [{ from, to, label? }, ...], title?, source?: { runId } | { executionId, frame? }, frame? } with source and frame given together or not at all',
+    '{ v: 1, kind: "chart", variant: "bar" | "line" | "burndown", x: field, y: [numeric field, ...1-6], series?: field, title?, finding?, source: { runId } | { executionId, frame? }, frame }',
+  flow: '{ v: 1, kind: "flow", nodes: [{ id, label }, ...1-60], edges: [{ from, to, label? }, ...], title?, finding?, source?: { runId } | { executionId, frame? }, frame? } with source and frame given together or not at all',
   timeline:
-    '{ v: 1, kind: "timeline", label: field, start?: date field, end?: date field, p50?: date field, p85?: date field, lane?: field, title?, source: { runId } | { executionId, frame? }, frame } with a start, or a p50 and a p85',
-  kpi: '{ v: 1, kind: "kpi", row?: index, figures: [{ field: numeric field, label, delta?: numeric field }, ...2-6], title?, source: { runId } | { executionId, frame? }, frame }',
+    '{ v: 1, kind: "timeline", label: field, start?: date field, end?: date field, p50?: date field, p85?: date field, lane?: field, title?, finding?, source: { runId } | { executionId, frame? }, frame } with a start, or a p50 and a p85',
+  kpi: '{ v: 1, kind: "kpi", row?: index, figures: [{ field: numeric field, label, delta?: numeric field }, ...2-6], title?, finding?, source: { runId } | { executionId, frame? }, frame }',
   "status-list":
-    '{ v: 1, kind: "status-list", ref: ref field, status: status field, waitingOn?: field, title?, source: { runId } | { executionId, frame? }, frame }',
+    '{ v: 1, kind: "status-list", ref: ref field, status: status field, waitingOn?: field, title?, finding?, source: { runId } | { executionId, frame? }, frame }',
 };
 
 /** A label is plain text: an angle bracket is refused so no label can carry markup. */
@@ -475,8 +492,9 @@ export function cellText(field: ReportField, cell: ReportCell | undefined, readi
 
 const md = (s: string): string => s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ");
 
-function titled(block: { title?: string | undefined }, body: string): string {
-  return block.title === undefined ? body : `**${md(block.title)}**\n\n${body}`;
+function titled(block: { title?: string | undefined; finding?: string | undefined }, body: string): string {
+  const withFinding = block.finding === undefined ? body : `${md(block.finding)}\n\n${body}`;
+  return block.title === undefined ? withFinding : `**${md(block.title)}**\n\n${withFinding}`;
 }
 
 function markdownTable(frame: ReportFrame, columns: readonly string[], rows = frame.rows, reading?: InstantReading): string {

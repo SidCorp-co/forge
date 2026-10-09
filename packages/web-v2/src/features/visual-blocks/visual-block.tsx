@@ -56,7 +56,7 @@ function CsvAction({ onCsv, testId }: { onCsv: () => void; testId: string }) {
 }
 
 /**
- * One block's frame: its title, its drawing, its source. Every screen that shows a block, the chat
+ * One block's frame: its title, its finding, its drawing, its source. Every screen that shows a block, the chat
  * panel, the full-page thread and a share page, draws it through this one frame, so the same content
  * is drawn the same way and only the width differs. A kind that gains from room offers to open the
  * same drawing at full width in the shared dialog, and a table a kept report exports offers its CSV
@@ -65,11 +65,14 @@ function CsvAction({ onCsv, testId }: { onCsv: () => void; testId: string }) {
 function Frame({
   kind,
   title,
+  finding,
   onCsv,
   children,
 }: {
   kind: VisualBlockKind;
   title?: string | undefined;
+  /** The block's one-line finding: what its own figures show, read before the drawing. */
+  finding?: string | undefined;
   onCsv?: (() => void) | undefined;
   children: React.ReactNode;
 }) {
@@ -88,6 +91,11 @@ function Frame({
   return (
     <figure className="m-0 my-1 min-w-0 max-w-full" data-testid="visual-block" data-kind={kind}>
       <Caption title={title} actions={actions} />
+      {finding && (
+        <p className="mb-1.5 text-[12.5px] text-muted" data-testid="visual-block-finding">
+          {finding}
+        </p>
+      )}
       {children}
       {wide && (
         <Dialog open onOpenChange={(next) => !next && setWide(false)}>
@@ -99,6 +107,7 @@ function Frame({
               <DialogTitle className="min-w-0 flex-1 text-[13px] font-semibold text-fg">{title ?? "Answer"}</DialogTitle>
               {csv && <CsvAction onCsv={csv} testId="visual-block-wide-csv" />}
             </div>
+            {finding && <p className="text-[12.5px] text-muted">{finding}</p>}
             <div className="min-w-0">{children}</div>
           </DialogContent>
         </Dialog>
@@ -132,7 +141,7 @@ export function VisualBlockView({ block: raw, onCsv }: { block: unknown; onCsv?:
     );
   }
   return (
-    <Frame kind={kind} title={block.title} onCsv={onCsv}>
+    <Frame kind={kind} title={block.title} finding={block.finding} onCsv={onCsv}>
       <Renderer block={block as never} />
       <SourceNote source={block.source} facts={facts} execution={block.source ? executionFacts?.(block.source) : undefined} />
     </Frame>

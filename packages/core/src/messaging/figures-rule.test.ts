@@ -166,6 +166,17 @@ describe('a figure typed into a block', () => {
     ).toEqual(['12']);
     expect(await figureRefusals('Above.', { calls: [{ ...titled, isError: true }] })).toEqual([]);
   });
+
+  it("holds a block finding's invented figure as it holds a title's (REQ-32 BC-15)", async () => {
+    const found = show({
+      kind: 'table',
+      finding: 'Closed work rose by 34 this period.',
+      source: { runId: RUN },
+    });
+    const r = await figureRefusals('Above.', { calls: [found], results: [REPORTED] });
+    expect(r.map((x) => x.quote)).toEqual(['34']);
+    expect(r[0]?.why).toContain("table block's finding");
+  });
 });
 
 describe('the exemptions', () => {

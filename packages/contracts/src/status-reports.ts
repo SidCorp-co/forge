@@ -126,9 +126,10 @@ export interface StatusReportDiff {
 }
 
 /**
- * How a schedule fire's narrative came to be: written by the model at the first call, written at the
- * one retry that carried the refusal of the first, or not written, with the reason. A report saved by
- * a person, or a project status read, holds none.
+ * How a template run's narrative came to be: written by the model at the first call, written at the
+ * one retry that carried the refusal of the first, or not written, with the reason. Every door a
+ * template is run through answers it; a schedule fire keeps it on the report, while a report saved
+ * by a person, or a project status read, holds none.
  */
 export const STATUS_REPORT_NARRATIVE_PATHS = [
 	"written",

@@ -152,7 +152,7 @@ function unshownBreak(figure: StatedFigure): RuleBreak {
 
 type Call = MessageFacts['toolCalls'][number];
 
-/** A text a block was given: its title or a label, where it was typed. */
+/** A text a block was given: its title, a label or its finding, where it was typed. */
 export interface BlockText {
   readonly kind: string;
   readonly key: string;
@@ -160,7 +160,7 @@ export interface BlockText {
 }
 
 const BLOCK_ROUTE_RE = /conversations\/[^\s"'\\/]+\/blocks\b/;
-const TEXT_KEY_RE = /"(title|label)"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+const TEXT_KEY_RE = /"(title|label|finding)"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
 const KIND_RE = /"kind"\s*:\s*"([\w-]+)"/;
 
 /** What an Agent session's Bash call ran, or the arguments as given where they name no command. */
@@ -202,7 +202,7 @@ function withoutFrame(body: string): string {
   );
 }
 
-/** Every title and label one block's body was given, as typed: a block, a call's arguments or a command. */
+/** Every title, label and finding one block's body was given, as typed: a block, a call's arguments or a command. */
 export function blockTextsIn(raw: string): BlockText[] {
   const body = withoutFrame(raw);
   const kind = KIND_RE.exec(body)?.[1] ?? 'visual';

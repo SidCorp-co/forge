@@ -40,6 +40,20 @@ function show(block: unknown, slug: string | null = "forge-dev", facts = true) {
   );
 }
 
+describe("a block's finding (REQ-32 BC-15)", () => {
+  it("is read under the title, before the drawing", () => {
+    show({ ...base, kind: "table", title: "Closed work", finding: "REQ-3 closed the most.", columns: ["key"] });
+    const finding = screen.getByTestId("visual-block-finding");
+    expect(finding.textContent).toBe("REQ-3 closed the most.");
+    expect(finding.compareDocumentPosition(screen.getByRole("table")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("is not drawn where the block has none", () => {
+    show({ ...base, kind: "table", columns: ["key"] });
+    expect(screen.queryByTestId("visual-block-finding")).toBeNull();
+  });
+});
+
 describe("table block", () => {
   it("draws the chosen columns as a table, in the block's order", () => {
     show({ ...base, kind: "table", columns: ["status", "key"] });

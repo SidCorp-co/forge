@@ -53,10 +53,11 @@ const saveTemplateBody = z.strictObject({
       recommendations: z.string().optional(),
     })
     .default({}),
+  findings: z.array(z.string()).max(24).optional(),
 });
 const saveBody = z.union([saveTemplateBody, saveStatusBody]);
 const SAVE_SHAPE =
-  'invalid body: { days?: 1..90 } saves the project status, or { templateId, runIds: [<run of each template query, in order>], narrative?: { summary?, risks?, recommendations? } } saves a template run';
+  'invalid body: { days?: 1..90 } saves the project status, or { templateId, runIds: [<run of each template query, in order>], narrative?: { summary?, risks?, recommendations? }, findings?: [<one line per block, in order>] } saves a template run';
 
 const agencyOf = (agency: AuthVars['agency']) => {
   if (!agency)
@@ -127,6 +128,7 @@ statusReportRoutes.post(
         templateId: body.templateId,
         runIds: body.runIds,
         narrative: body.narrative,
+        findings: body.findings,
       });
       return c.json(meta, 201);
     }

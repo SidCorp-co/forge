@@ -65,6 +65,7 @@ describe("Save report on a chat answer", () => {
       templateId: "progress",
       runIds: ["r-a", "r-b"],
       narrative: { summary: "Two of three requirements are proven." },
+      findings: [],
     });
     expect(kept.getAttribute("href")).toBe("/projects/forge-dev/status?tab=history&report=rep-1");
   });

@@ -15,8 +15,9 @@ export const STATUS_REPORTS_ROOT = ["status-reports"] as const;
 
 /**
  * Keeps a template run as a status report (`POST /projects/:id/status/reports`): its template, its
- * runs in order and the narrative slots written. Core reads each run back as the saver and judges
- * the narrative against them; a refusal names what is wrong and nothing is kept.
+ * runs in order, the narrative slots written and each block's finding. Core reads each run back as
+ * the saver and judges the narrative and findings against them; a refusal names what is wrong and
+ * nothing is kept.
  */
 export function useSaveTemplateReport(projectId: string) {
   const qc = useQueryClient();

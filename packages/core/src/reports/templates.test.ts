@@ -6,15 +6,21 @@ import { registerReportQueries } from '../report-queries/register.js';
 import { getReportQuery, listReportQueries } from '../report-queries/registry.js';
 
 // A template is data; running it runs its queries as the asker, draws its layout over their frames and
-// leaves the words to the model. A narrative may cite only the figures of the template's own runs.
+// has the narrative writer word it, judged by this file. A narrative may cite only the figures of the
+// template's own runs, and a block's finding only those of its own block.
 
 const runReport = vi.fn();
 const readReportRun = vi.fn();
+const writeNarrative = vi.fn();
 vi.mock('./runs.js', async (original) => ({
   ...(await original<typeof import('./runs.js')>()),
   runReport: (...args: unknown[]) => runReport(...args),
   readReportRun: (...args: unknown[]) => readReportRun(...args),
 }));
+vi.mock('./narrative.js', () => ({
+  writeTemplateNarrative: (...args: unknown[]) => writeNarrative(...args),
+}));
+const NOT_ASKED = { path: 'not_written', reason: 'no model is asked here', model: null, calls: 0 };
 
 const { provideReportsPorts } = await import('./ports.js');
 const { checkTemplateNarrative, documentOf, listReportTemplates, runTemplate, templateNamed } =
@@ -74,6 +80,11 @@ beforeEach(() => {
   });
   readReportRun.mockReset();
   readReportRun.mockImplementation(async (a: { runId: string }) => stored.get(a.runId));
+  writeNarrative.mockReset();
+  writeNarrative.mockImplementation(async (a: { document: unknown }) => ({
+    document: a.document,
+    narrative: NOT_ASKED,
+  }));
 });
 
 const go = (templateId: string, params?: Record<string, unknown>) =>
@@ -98,40 +109,43 @@ describe('the built-in templates', () => {
       }
       expect(out.slots.map((s) => s.slot)).toEqual(['summary', 'risks', 'recommendations']);
       expect(out.document.narrative).toEqual({ summary: '', risks: '', recommendations: '' });
+      expect(out.narrative).toEqual(NOT_ASKED);
     }
   });
 });
 
 describe('running a template', () => {
   it('runs each query as the asker on the surface, with the template param bound to the query param', async () => {
-    await go('progress', { state: 'active' });
-    expect(runReport).toHaveBeenCalledTimes(2);
-    expect(runReport.mock.calls[0]?.[0]).toMatchObject({
-      queryId: 'progress-by-requirement',
-      params: { state: 'active' },
-      surface: 'chat',
-      asker,
-    });
-    expect(runReport.mock.calls[1]?.[0]).toMatchObject({
-      queryId: 'criteria-coverage',
-      params: {},
-    });
+    await go('progress', { days: 7 });
+    expect(runReport.mock.calls.map((c) => [c[0].queryId, c[0].params])).toEqual([
+      ['period-flow', { days: 7 }],
+      ['issue-flow', { bucket: 'day', periods: 7 }],
+      ['status-time', { days: 7 }],
+      ['closed-by-requirement', { days: 7 }],
+      ['progress-by-requirement', {}],
+    ]);
+    expect(runReport.mock.calls[0]?.[0]).toMatchObject({ surface: 'chat', asker });
+  });
+
+  it('runs the progress template over its default period when none is given', async () => {
+    await go('progress');
+    expect(runReport.mock.calls[0]?.[0].params).toEqual({ days: 14 });
   });
 
   it('passes no param a template param left unset', async () => {
-    await go('progress');
+    await go('roadmap');
     expect(runReport.mock.calls[0]?.[0].params).toEqual({});
   });
 
   it('refuses a param the template does not declare, naming those it does', async () => {
-    const err = await go('progress', { stat: 'active' }).catch((e: unknown) => e);
+    const err = await go('progress', { state: 'active' }).catch((e: unknown) => e);
     expect(isRefusal(err, 'REPORT_TEMPLATE_PARAM_REFUSED')).toBe(true);
-    expect((err as Error).message).toContain('takes no param "stat"; it takes: state');
+    expect((err as Error).message).toContain('takes no param "state"; it takes: days');
     expect(runReport).not.toHaveBeenCalled();
   });
 
   it('refuses a param of the wrong type before any query is read', async () => {
-    const err = await go('progress', { state: 3 }).catch((e: unknown) => e);
+    const err = await go('progress', { days: 'seven' }).catch((e: unknown) => e);
     expect(isRefusal(err, 'REPORT_TEMPLATE_PARAM_REFUSED')).toBe(true);
     expect(runReport).not.toHaveBeenCalled();
   });
@@ -164,9 +178,32 @@ describe('running a template', () => {
   });
 
   it('reads the template params back from the runs it made', async () => {
-    const out = await go('progress', { state: 'active' });
+    const out = await go('progress', { days: 7 });
     const again = documentOf(templateNamed('progress'), out.document.runs, out.document.narrative);
-    expect(again.document.params).toEqual({ state: 'active' });
+    expect(again.document.params).toEqual({ days: 7 });
+  });
+
+  it('hands the narrative writer a judge over its own runs, and answers what the writer kept', async () => {
+    writeNarrative.mockImplementation(
+      async (a: { judge: (x: unknown) => unknown; title: string; what: string }) => ({
+        document: await a.judge({
+          narrative: { summary: 'REQ-12 holds 7 issues.' },
+          findings: ['The next release holds 7 issues.'],
+        }),
+        narrative: { path: 'written', reason: null, model: 'm', calls: 1 },
+      }),
+    );
+    const out = await go('release');
+    expect(writeNarrative.mock.calls[0]?.[0]).toMatchObject({
+      title: 'Release readiness',
+      what: 'a release report run through chat',
+    });
+    expect(out.narrative).toMatchObject({ path: 'written' });
+    expect(out.document.narrative.summary).toBe('REQ-12 holds 7 issues.');
+    expect(out.document.blocks[0]?.finding).toBe('The next release holds 7 issues.');
+    expect(out.document.blocks[1]?.finding).toBeUndefined();
+    expect(out.text).toContain('Summary: REQ-12 holds 7 issues.');
+    expect(out.text).toContain('The next release holds 7 issues.');
   });
 });
 
@@ -216,19 +253,57 @@ describe('a narrative cites only the template runs', () => {
   });
 
   it('keeps a figure the same field holds where a block of the template draws it', async () => {
-    const out = await go('progress');
-    const ids = out.document.runs.map((r) => r.runId);
-    const progress = stored.get(ids[0] as string) as ReportRun;
-    (progress.frame.rows[0] as Record<string, unknown>).toDo = 12;
-    const doc = await checkTemplateNarrative({
-      projectId: 'p1',
-      templateId: 'progress',
-      runIds: ids,
-      narrative: { risks: 'REQ-12 still has 12 issues to do.' },
-      userId: 'asker',
-      agency: 'human' as never,
-    });
+    const ids = await ran();
+    const release = stored.get(ids[0] as string) as ReportRun;
+    (release.frame.rows[0] as Record<string, unknown>).toDo = 12;
+    const doc = await check(ids, { risks: 'The next release still has 12 issues to do.' });
     expect(doc.narrative.risks).toContain('12 issues');
+  });
+
+  describe("a block's finding", () => {
+    const withFindings = (runIds: string[], findings: string[]) =>
+      checkTemplateNarrative({
+        projectId: 'p1',
+        templateId: 'release',
+        runIds,
+        narrative: {},
+        findings,
+        userId: 'asker',
+        agency: 'human' as never,
+      });
+
+    it('is kept on its block when it states only figures its own block shows; an empty one leaves none', async () => {
+      const ids = await ran();
+      const doc = await withFindings(ids, ['', 'The window shipped 7 releases.']);
+      expect(doc.blocks[0]?.finding).toBeUndefined();
+      expect(doc.blocks[1]?.finding).toBe('The window shipped 7 releases.');
+    });
+
+    it('is refused when it states a figure only another block shows, naming its block', async () => {
+      const ids = await ran();
+      const release = stored.get(ids[0] as string) as ReportRun;
+      (release.frame.rows[0] as Record<string, unknown>).toDo = 12;
+      // block 0 (the next release) shows toDo; block 1 (shipped in the window) does not
+      const err = (await withFindings(ids, ['', '12 issues are left.']).catch(
+        (e: unknown) => e,
+      )) as Error;
+      expect(isRefusal(err, 'REPORT_NARRATIVE_REFUSED')).toBe(true);
+      expect(err.message).toContain(
+        'finding 2 (kpi "Shipped in the window") states 12, which its own block does not show',
+      );
+    });
+
+    it('is refused past one line, and past one finding per block', async () => {
+      const ids = await ran();
+      const multi = (await withFindings(ids, ['Two\nlines.']).catch((e: unknown) => e)) as Error;
+      expect(multi.message).toContain('finding 1 (kpi "The next release") is not one line');
+      const many = (await withFindings(ids, ['a', 'b', 'c', 'd', 'e']).catch(
+        (e: unknown) => e,
+      )) as Error;
+      expect(many.message).toContain(
+        '5 findings were given and template "release" draws 4 block(s)',
+      );
+    });
   });
 
   it('refuses a slot over its word cap and a slot the template does not declare', async () => {

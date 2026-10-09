@@ -1,5 +1,6 @@
 // The built-in report templates, as data. Each names the registered queries it runs, the blocks it
-// draws over their frames and the narrative slots a model fills from those runs alone. Adding one is
+// draws over their frames and the narrative slots a model fills from those runs alone, with a
+// one-line finding for each block it draws. Adding one is
 // an entry here; `validateTemplate` (report-templates.ts) is the only judge of it, and no template
 // holds code. A project's own template, saved later, passes the same validator.
 
@@ -11,26 +12,50 @@ const slots = (summary: string, risks: string, recommendations: string): ReportT
   { slot: "recommendations", guidance: recommendations, maxWords: 80 },
 ];
 
+// Progress is an analysis of a period against the one before it, not a copy of what the Requirements
+// pages list (REQ-32 BC-15): what the work did over the chosen days, where its hours went, and which
+// requirements the closed work served and proved. It still says where each requirement stands on the
+// roadmap, which REQ-33 BC-3 reads in the progress report. Every block carries a one-line finding.
 const PROGRESS = {
   id: "progress",
-  version: 1,
+  version: 2,
   title: "Progress",
-  params: { state: { type: "string", label: "Only requirements in this state" } },
+  params: { days: { type: "number", label: "Period, in days (compared with the period before)", default: 14 } },
   queries: [
-    { as: "progress", query: "progress-by-requirement", params: { state: { param: "state" } } },
-    { as: "coverage", query: "criteria-coverage", params: {} },
+    { as: "period", query: "period-flow", params: { days: { param: "days" } } },
+    { as: "daily", query: "issue-flow", params: { bucket: { literal: "day" }, periods: { param: "days" } } },
+    { as: "hours", query: "status-time", params: { days: { param: "days" } } },
+    { as: "byRequirement", query: "closed-by-requirement", params: { days: { param: "days" } } },
+    { as: "roadmap", query: "progress-by-requirement", params: {} },
   ],
   layout: [
-    { kind: "chart", as: "progress", title: "Criteria proven per requirement", variant: "bar", x: "key", y: ["criteriaProven", "criteriaTotal"] },
-    { kind: "status-list", as: "progress", title: "Requirements", ref: "key", status: "state" },
-    { kind: "table", as: "progress", title: "Issues behind each requirement", columns: ["key", "title", "shipped", "awaitingRelease", "toDo"] },
-    { kind: "table", as: "progress", title: "Where each stands on the roadmap", columns: ["key", "title", "lane", "p50At", "p85At", "basis"] },
-    { kind: "table", as: "coverage", title: "Criteria and their proof", columns: ["requirement", "criterion", "verdict", "issues"] },
+    {
+      kind: "kpi",
+      as: "period",
+      title: "This period against the one before",
+      figures: [
+        { field: "closed", label: "Closed", delta: "closedChange" },
+        { field: "verified", label: "Verified", delta: "verifiedChange" },
+        { field: "created", label: "Filed", delta: "createdChange" },
+        { field: "sentBack", label: "Sent back", delta: "sentBackChange" },
+        { field: "closedLinked", label: "Closed, linked to a requirement", delta: "closedLinkedChange" },
+        { field: "closedProven", label: "Closed, proven against its criteria", delta: "closedProvenChange" },
+      ],
+    },
+    { kind: "chart", as: "daily", title: "Filed, verified and closed per day", variant: "line", x: "start", y: ["created", "verified", "closed"] },
+    { kind: "chart", as: "hours", title: "Hours spent in each status", variant: "bar", x: "status", y: ["hours", "previousHours"] },
+    {
+      kind: "table",
+      as: "byRequirement",
+      title: "Closed work by requirement",
+      columns: ["requirement", "title", "closed", "previousClosed", "proven", "sentBack"],
+    },
+    { kind: "table", as: "roadmap", title: "Where each requirement stands on the roadmap", columns: ["key", "title", "lane", "p50At", "p85At", "basis"] },
   ],
   narrative: slots(
-    "Say where the work stands: how many requirements and how far their criteria are proven.",
-    "Name the requirements with unproven criteria or issues still to do, as the runs show them.",
-    "Say what to take next, from the unproven criteria and the issues still to do.",
+    "Say how this period went against the one before: work closed, verified and filed, and the change in each.",
+    "Name what slipped: work sent back, hours piling up in one status, closed work not linked to a requirement or not proven.",
+    "Say what to change in the next period, from where the hours went and what was sent back.",
   ),
 } satisfies ReportTemplate;
 

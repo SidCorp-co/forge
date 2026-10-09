@@ -1,9 +1,11 @@
 // A template run: the template's queries are run as the asker through `runReport` (so each is a
-// stored run a block can name), its layout is drawn over those frames, and what the model writes is
-// left to it: the slots come back empty with their guidance. A template is contract data; this is
+// stored run a block can name), its layout is drawn over those frames, and one model call writes its
+// narrative and a finding per block (`narrative.ts`), so every door a template is run through gets
+// the same summary, risks and recommendations (REQ-32 BC-7). A template is contract data; this is
 // the only code that reads it. A narrative is checked here against what the template's own blocks
-// show of its own runs and no others, so a figure the runs never returned, or one they hold that no
-// block of the report shows its reader, is refused by name before it is written.
+// show of its own runs and no others, and a finding against what its own block shows, so a figure
+// the runs never returned, or one they hold that no block of the report shows its reader, is refused
+// by name before it is written.
 
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { ReportRefusalCode, ReportRun, ReportSurface } from '@forge/contracts/report-queries';
@@ -12,6 +14,7 @@ import {
   builtinReportTemplate,
 } from '@forge/contracts/report-template-builtins';
 import {
+  FINDING_MAX_WORDS,
   type ReportDocument,
   type ReportTemplate,
   TEMPLATE_NARRATIVE_SLOTS,
@@ -19,6 +22,7 @@ import {
   validateTemplate,
 } from '@forge/contracts/report-templates';
 import {
+  BLOCK_FINDING_MAX,
   blockToText,
   checkBlock,
   shownFrame,
@@ -27,6 +31,7 @@ import {
   type VisualBlock,
 } from '@forge/contracts/visual-blocks';
 import { refuser } from '../lib/refusal.js';
+import { type NarrativeOutcome, writeTemplateNarrative } from './narrative.js';
 import { type ReportAsker, reportsPorts } from './ports.js';
 import { readReportRun, runReport } from './runs.js';
 
@@ -49,11 +54,14 @@ export interface TemplateSlot {
 }
 
 export interface TemplateRun {
+  /** The runs, the blocks each with its finding, and the narrative the run wrote. */
   document: ReportDocument;
-  /** What to write, slot by slot, from what `document.blocks` show alone. */
+  /** How the narrative came to be: written, written on the one retry, or not written and why. */
+  narrative: NarrativeOutcome;
+  /** The guidance each slot was written to. */
   slots: TemplateSlot[];
   notDrawn: NotDrawn[];
-  /** The blocks as plain text, as a door that draws none reads them. */
+  /** The narrative and the blocks as plain text, as a door that draws none reads them. */
   text: string;
 }
 
@@ -212,9 +220,26 @@ const emptyNarrative = (): ReportDocument['narrative'] => ({
   recommendations: '',
 });
 
+const SLOT_HEADINGS: Record<TemplateNarrativeSlot, string> = {
+  summary: 'Summary',
+  risks: 'Risks',
+  recommendations: 'Recommendations',
+};
+
+/** A document as plain text: its narrative slot by slot, then each block with its finding. */
+export function documentText(document: ReportDocument): string {
+  const slots = TEMPLATE_NARRATIVE_SLOTS.flatMap((slot) => {
+    const said = document.narrative[slot]?.trim();
+    return said ? [`${SLOT_HEADINGS[slot]}: ${said}`] : [];
+  });
+  return [...slots, ...document.blocks.map((b) => blockToText(b, UTC_READING))].join('\n\n');
+}
+
 /**
  * Runs one template for the asker: each of its queries through `runReport` on `surface`, then its
- * layout over their frames. Every figure of the document is one of those runs'.
+ * layout over their frames, then its narrative and findings, written once from those blocks. Every
+ * figure of the document is one of those runs'. `what` names the run in the model's scope and the
+ * log, a schedule's fire naming its schedule.
  */
 export async function runTemplate(args: {
   projectId: string;
@@ -222,6 +247,7 @@ export async function runTemplate(args: {
   params?: Record<string, unknown> | undefined;
   asker: ReportAsker;
   surface: ReportSurface;
+  what?: string;
   now?: Date;
 }): Promise<TemplateRun> {
   const t = templateNamed(args.templateId);
@@ -242,13 +268,17 @@ export async function runTemplate(args: {
     );
   }
   const ordered = t.queries.map((q) => runs.get(q.as) as ReportRun);
-  const { document, notDrawn } = documentOf(t, ordered, emptyNarrative());
-  return {
-    document,
-    slots: slotsOf(t),
-    notDrawn,
-    text: document.blocks.map((b) => blockToText(b, UTC_READING)).join('\n\n'),
-  };
+  const drawn = documentOf(t, ordered, emptyNarrative());
+  const slots = slotsOf(t);
+  const { document, narrative } = await writeTemplateNarrative({
+    projectId: args.projectId,
+    what: args.what ?? `a ${t.id} report run through ${args.surface}`,
+    title: t.title,
+    document: drawn.document,
+    slots,
+    judge: ({ narrative: said, findings }) => judgeNarrative(t, ordered, said, findings),
+  });
+  return { document, narrative, slots, notDrawn: drawn.notDrawn, text: documentText(document) };
 }
 
 const NUMBER = /\d[\d,]*(?:\.\d+)?/g;
@@ -287,28 +317,24 @@ const blocksNamed = (blocks: readonly VisualBlock[]): string =>
 const wordsIn = (text: string): number => text.trim().split(/\s+/).filter(Boolean).length;
 
 /**
- * Judges a narrative against what the template's blocks show of its own runs: the runs are those of
- * this template's queries, in its order, read back as the asker, and the blocks its layout draws over
- * them; a slot the template does not declare, one over its word cap, or a number no block shows is
- * refused by name. Answers the document with the narrative set.
+ * Judges a narrative and the findings beside it against what the template's blocks show of its own
+ * `runs`: a slot the template does not declare, one over its word cap, or a number no block shows is
+ * refused by name, and so is a finding that is not one line within its cap, that names a block the
+ * report does not draw, or that states a number its own block does not show. Answers the document
+ * with the narrative set and each finding on its block; an empty finding leaves its block without one.
  */
-export async function checkTemplateNarrative(args: {
-  projectId: string;
-  templateId: string;
-  runIds: readonly string[];
-  narrative: Partial<Record<TemplateNarrativeSlot, string | undefined>>;
-  userId: string;
-  agency: ActorAgency;
-  now?: Date;
-}): Promise<ReportDocument> {
-  const t = templateNamed(args.templateId);
-  const runs = await readTemplateRuns(t, args);
+export function judgeNarrative(
+  t: ReportTemplate,
+  runs: readonly ReportRun[],
+  said: Partial<Record<TemplateNarrativeSlot, string | undefined>>,
+  findings: readonly (string | null | undefined)[] = [],
+): ReportDocument {
   const declared = new Map(t.narrative.map((n) => [n.slot, n]));
   const { blocks } = documentOf(t, runs, emptyNarrative()).document;
   const figures = figuresShown(blocks);
   const refusals: string[] = [];
   const narrative = emptyNarrative();
-  for (const [slot, text] of Object.entries(args.narrative)) {
+  for (const [slot, given] of Object.entries(said)) {
     if (
       !(TEMPLATE_NARRATIVE_SLOTS as readonly string[]).includes(slot) ||
       !declared.has(slot as TemplateNarrativeSlot)
@@ -319,24 +345,71 @@ export async function checkTemplateNarrative(args: {
       continue;
     }
     const spec = declared.get(slot as TemplateNarrativeSlot) as TemplateSlot;
-    const said = text ?? '';
-    if (wordsIn(said) > spec.maxWords) {
+    const text = given ?? '';
+    if (wordsIn(text) > spec.maxWords) {
       refusals.push(
-        `slot "${slot}" is ${wordsIn(said)} words and the template allows ${spec.maxWords}`,
+        `slot "${slot}" is ${wordsIn(text)} words and the template allows ${spec.maxWords}`,
       );
     }
-    const stray = [...new Set(numeralsIn(said))].filter((n) => !figures.has(n));
+    const stray = [...new Set(numeralsIn(text))].filter((n) => !figures.has(n));
     if (stray.length > 0) {
       refusals.push(
         `slot "${slot}" states ${stray.join(', ')}, which no block of template "${t.id}" shows; state only figures its blocks show of its runs (${blocksNamed(blocks)}; runs ${runs.map((r) => `${r.queryId} ${r.runId}`).join(', ')})`,
       );
     }
-    narrative[slot as TemplateNarrativeSlot] = said;
+    narrative[slot as TemplateNarrativeSlot] = text;
   }
+  if (findings.length > blocks.length) {
+    refusals.push(
+      `${findings.length} findings were given and template "${t.id}" draws ${blocks.length} block(s) over these runs; give at most one per block, in order`,
+    );
+  }
+  const found = blocks.map((block, i) => {
+    const text = findings[i]?.trim() ?? '';
+    if (text === '') return block;
+    const name = `finding ${i + 1} (${block.kind}${block.title ? ` "${block.title}"` : ''})`;
+    if (
+      /[\r\n]/.test(text) ||
+      text.length > BLOCK_FINDING_MAX ||
+      wordsIn(text) > FINDING_MAX_WORDS
+    ) {
+      refusals.push(
+        `${name} is not one line of at most ${FINDING_MAX_WORDS} words and ${BLOCK_FINDING_MAX} characters`,
+      );
+    }
+    const own = figuresShown([block]);
+    const stray = [...new Set(numeralsIn(text))].filter((n) => !own.has(n));
+    if (stray.length > 0) {
+      refusals.push(
+        `${name} states ${stray.join(', ')}, which its own block does not show; a finding states only figures of the block it sits on`,
+      );
+    }
+    return { ...block, finding: text };
+  });
   if (refusals.length > 0) {
     throw refuse('REPORT_NARRATIVE_REFUSED', refusals.join('; '), '/narrative');
   }
-  return documentOf(t, runs, narrative).document;
+  const document = documentOf(t, runs, narrative).document;
+  return { ...document, blocks: found };
+}
+
+/**
+ * Judges a narrative and findings against the template's own runs, read back as `userId` in its
+ * query order (`judgeNarrative`). Answers the document with them set.
+ */
+export async function checkTemplateNarrative(args: {
+  projectId: string;
+  templateId: string;
+  runIds: readonly string[];
+  narrative: Partial<Record<TemplateNarrativeSlot, string | undefined>>;
+  findings?: readonly (string | null | undefined)[] | undefined;
+  userId: string;
+  agency: ActorAgency;
+  now?: Date;
+}): Promise<ReportDocument> {
+  const t = templateNamed(args.templateId);
+  const runs = await readTemplateRuns(t, args);
+  return judgeNarrative(t, runs, args.narrative, args.findings ?? []);
 }
 
 /**

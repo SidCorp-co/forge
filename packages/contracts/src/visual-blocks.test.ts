@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ReportFrame } from "./report-queries.js";
 import {
   BLOCK_KINDS,
+  BlockSpecSchema,
   blockToText,
   checkBlock,
   checkBlocks,
@@ -246,6 +247,21 @@ describe("kpi", () => {
     const r = checkBlock(good.kpi);
     if (!r.ok) throw new Error(JSON.stringify(r));
     expect(blockToText(r.block)).toBe("- Proven: 3 (+2)\n- All: 9");
+  });
+});
+
+describe("a block's finding (REQ-32 BC-15)", () => {
+  it("is read under the title, before the figures, wherever the block is text", () => {
+    const r = checkBlock({ ...(good.kpi as object), title: "Proof", finding: "Proof rose by 2." });
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    expect(blockToText(r.block)).toBe("**Proof**\n\nProof rose by 2.\n\n- Proven: 3 (+2)\n- All: 9");
+  });
+
+  it("is one line, and never part of a template's layout", () => {
+    const r = checkBlock({ ...(good.kpi as object), finding: "Two\nlines" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.refusals[0]?.message).toContain("a finding is one line");
+    expect(BlockSpecSchema.safeParse({ kind: "table", columns: ["a"], finding: "x" }).success).toBe(false);
   });
 });
 

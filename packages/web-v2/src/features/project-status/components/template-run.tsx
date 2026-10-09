@@ -2,11 +2,14 @@
 
 // The status page's Templates tab: run one of the build's report templates as the reader and read
 // what it draws, then keep it. Run calls core's template door (`POST .../report-templates/:id/runs`),
-// which runs each query as the reader and answers the document with an empty narrative; the document
-// is drawn with the shared report body. Save report keeps those runs (`POST .../status/reports`), and
-// the history lists the kept report. Flat: one heading, the form, the drawn report on hairlines.
+// the run every door shares: each query run as the reader, and the summary, risks, recommendations
+// and each block's finding written once from them, with a line saying how they were written or why
+// they were not. The document is drawn with the shared report body. Save report keeps those runs and
+// that narrative (`POST .../status/reports`), and the history lists the kept report. Flat: one
+// heading, the form, the drawn report on hairlines.
 
 import type { ReportDocument } from "@forge/contracts/report-templates";
+import { narrativeOutcomeLine, type StatusReportNarrative } from "@forge/contracts/status-reports";
 import Link from "next/link";
 import { useId, useState } from "react";
 import { Button, ErrorState, ProjectLoader, ViewHeading } from "@/design";
@@ -18,9 +21,22 @@ import { keptReportHref } from "@/lib/routes/status";
 import { useReportTemplates, useRunTemplate } from "../hooks";
 import { TemplateParamFields, type TemplateParamValues, TemplatePicker, templateParamsOf } from "./template-params";
 
-function DrawnReport({ projectId, slug, title, document }: { projectId: string; slug: string; title: string; document: ReportDocument }) {
+function DrawnReport({
+  projectId,
+  slug,
+  title,
+  document,
+  narrative,
+}: {
+  projectId: string;
+  slug: string;
+  title: string;
+  document: ReportDocument;
+  narrative: StatusReportNarrative;
+}) {
   const t = useCopy();
   const save = useSaveTemplateReport(projectId);
+  const outcome = narrativeOutcomeLine(narrative);
   return (
     <section className="grid gap-2" data-testid="template-run-document">
       <ViewHeading
@@ -34,7 +50,14 @@ function DrawnReport({ projectId, slug, title, document }: { projectId: string; 
               variant="primary"
               size="sm"
               disabled={save.isPending}
-              onClick={() => save.mutate({ templateId: document.templateId, runIds: document.runs.map((r) => r.runId), narrative: {} })}
+              onClick={() =>
+                save.mutate({
+                  templateId: document.templateId,
+                  runIds: document.runs.map((r) => r.runId),
+                  narrative: document.narrative,
+                  findings: document.blocks.map((b) => b.finding ?? ""),
+                })
+              }
             >
               {t("status.save")}
             </Button>
@@ -44,6 +67,11 @@ function DrawnReport({ projectId, slug, title, document }: { projectId: string; 
         {title}
       </ViewHeading>
       <RefusalLine error={save.error} testid="template-run-refusal" />
+      {outcome && (
+        <p className="fg-caption text-subtle" data-testid="template-run-narrative">
+          {outcome}
+        </p>
+      )}
       <ReportDocumentBody document={document} />
     </section>
   );
@@ -85,7 +113,16 @@ export function TemplateRun({ projectId, slug }: { projectId: string; slug: stri
         </span>
         <RefusalLine error={run.error} testid="template-run-run-refusal" />
       </form>
-      {run.data ? <DrawnReport key={run.data.document.runs.map((r) => r.runId).join(",")} projectId={projectId} slug={slug} title={template.title} document={run.data.document} /> : null}
+      {run.data ? (
+        <DrawnReport
+          key={run.data.document.runs.map((r) => r.runId).join(",")}
+          projectId={projectId}
+          slug={slug}
+          title={template.title}
+          document={run.data.document}
+          narrative={run.data.narrative}
+        />
+      ) : null}
     </div>
   );
 }

@@ -30,10 +30,15 @@ describe('the report-queries door', () => {
     expect(res.status).toBe(200);
     const queries = res.body.queries as Body[];
     expect(queries.map((q) => q.id).sort()).toEqual([
+      'burndown',
+      'closed-by-requirement',
       'criteria-coverage',
+      'issue-flow',
+      'period-flow',
       'progress-by-requirement',
       'release-readiness',
       'roadmap-eta',
+      'status-time',
       'workflow-status',
     ]);
     const progress = queries.find((q) => q.id === 'progress-by-requirement') as Body;
@@ -86,10 +91,10 @@ describe('the report-queries door', () => {
   });
 
   it('refuses an unknown query, naming the ones that exist', async () => {
-    const res = await run(w.token, 'burndown');
+    const res = await run(w.token, 'velocity');
     expect(res.status).toBe(404);
     expect(detail(res)).toBe(
-      'report query "burndown" is not registered; registered: progress-by-requirement, roadmap-eta, release-readiness, criteria-coverage, workflow-status',
+      'report query "velocity" is not registered; registered: progress-by-requirement, roadmap-eta, release-readiness, criteria-coverage, workflow-status, issue-flow, burndown, period-flow, status-time, closed-by-requirement',
     );
   });
 
