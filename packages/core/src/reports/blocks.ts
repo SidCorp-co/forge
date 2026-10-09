@@ -17,6 +17,7 @@ import {
   VISUAL_BLOCK_VERSION,
   type VisualBlock,
 } from '@forge/contracts/visual-blocks';
+import { scrubSecretsDeep } from '@forge/observability';
 import { userNames } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -131,6 +132,16 @@ async function executionSourced(
         name: (await userNames([execution.askedBy])).get(execution.askedBy) ?? null,
       },
       reads: execution.reads,
+      ...scrubSecretsDeep({
+        script: execution.script,
+        result: {
+          exit: execution.exit,
+          durationMs: execution.durationMs,
+          ...(execution.stopped ? { stopped: execution.stopped } : {}),
+          ...(execution.error ? { error: execution.error } : {}),
+          stdout: execution.logs.stdout,
+        },
+      }),
     },
   };
 }
@@ -250,18 +261,21 @@ export async function attachVisualBlock(args: {
       'REPORT_BLOCK_REFUSED',
       checked.refusals.map((r) => r.message),
     );
-  const drawn = blockToText(checked.block, UTC_READING);
   // a computed block says so wherever it is read as text, not only where it is drawn
-  const text = execution
-    ? `${drawn}\n\nComputed by execution ${execution.executionId} (${execution.language} on ${execution.adapter}), not read from a report.`
-    : drawn;
+  const computed = execution
+    ? `\n\nComputed by execution ${execution.executionId} (${execution.language} on ${execution.adapter}), not read from a report.`
+    : '';
+  // the stored fallback is an export: UTC, said so. What the model reads keeps its instants as ISO, so
+  // it never copies a server-made UTC time into prose, which a screen reads in each viewer's zone.
+  const text = `${blockToText(checked.block, UTC_READING)}${computed}`;
+  const modelText = `${blockToText(checked.block)}${computed}`;
   const visual = {
     type: 'visual' as const,
     visual: checked.block,
     ...(facts ? { run: facts } : {}),
     ...(execution ? { execution } : {}),
   };
-  const attached = { kind: checked.block.kind, run: facts, execution, text };
+  const attached = { kind: checked.block.kind, run: facts, execution, text: modelText };
   if (args.stage) {
     const staged: StagedBlock = {
       text,

@@ -3,7 +3,7 @@ import {
   EXECUTION_IO,
   EXECUTION_TURN_CAPS,
 } from '@forge/contracts/report-executions';
-import { VISUAL_BLOCK_KINDS } from '@forge/contracts/visual-blocks';
+import { blockToText, VISUAL_BLOCK_KINDS } from '@forge/contracts/visual-blocks';
 import { z } from 'zod';
 import { principalAgency } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
@@ -86,7 +86,7 @@ export const forgeShowTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/conversations',
   grant: 'assistant:write',
-  description: `Draws one block of a forge_report run in this room, above your reply: ${VISUAL_BLOCK_KINDS.join(', ')}. block is { kind, source: { runId } or forge_compute's { executionId, frame? }, ...fields } where fields name the frame's fields: table { columns, sort?: { field, dir }, limit? }; kpi { figures: [{ field, label, delta? }] 2-6, row? }; status-list { ref, status, waitingOn? }; chart { variant: bar|line|burndown, x, y: [field] }; timeline { label, start? end? | p50, p85, lane? }; flow { nodes: [{ id, label }], edges: [{ from, to, label? }] } with no source. A block holds no figure of its own: the run's frame is copied in, a frame that differs from it is refused naming each figure, and so is a title or label stating a number the run does not hold. The block is held with your reply and shown above it only once the reply passes the reply check; if the reply has to be rewritten, only the blocks the rewrite draws again are shown. Answers the block's text, which your reply need not repeat.`,
+  description: `Draws one block of a forge_report run in this room, above your reply: ${VISUAL_BLOCK_KINDS.join(', ')}. block is { kind, source: { runId } or forge_compute's { executionId, frame? }, ...fields } where fields name the frame's fields: table { columns, sort?: { field, dir }, limit? }; kpi { figures: [{ field, label, delta? }] 2-6, row? }; status-list { ref, status, waitingOn? }; chart { variant: bar|line|burndown, x, y: [field] }; timeline { label, start? end? | p50, p85, lane? }; flow { nodes: [{ id, label }], edges: [{ from, to, label? }] } with no source. A block holds no figure of its own: the run's frame is copied in, a differing frame is refused naming each figure, and so is a title or label stating a number the run lacks. The block is held and shown above your reply only once the reply passes the check; a rewrite shows only the blocks it draws again. Answers the block's text; do not repeat it. Write times as ISO 8601 (2026-10-09T01:03:00Z): screens read them in the viewer's timezone.`,
   inputSchema: zodToMcpSchema(showInput),
   handler: async (args) => {
     const { projectId, block } = showInput.parse(args);
@@ -182,7 +182,8 @@ export const forgeTemplateTool: ContextScopedMcpToolFactory = (ctx) => ({
       surface: 'chat',
     });
     for (const run of output.document.runs) runsOf(ctx).add(run.runId);
-    return output;
+    // the export text reads in UTC; what the model reads keeps ISO, so it never copies a server-made UTC time into prose
+    return { ...output, text: output.document.blocks.map((b) => blockToText(b)).join('\n\n') };
   },
 });
 

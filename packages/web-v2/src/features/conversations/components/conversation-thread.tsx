@@ -102,23 +102,16 @@ function CorrectionLine({ correction }: { correction: Correction }) {
 }
 
 /**
- * A draft the reply screen refused, named and struck through, above the turn that replaced it.
+ * The one trace a replaced draft leaves: a line saying it was replaced, and by which rule. The
+ * draft's words are not here, because nobody in the room is shown what the reply check withdrew.
  */
-function WithdrawnDraft({ draft }: { draft: string }) {
+function ReplacedDraftNote() {
   const t = useCopy();
   return (
-    <div
-      className="rounded-md border border-line bg-surface px-3 py-2"
-      data-testid="thread-reply-withdrawn"
-    >
-      <p className="fg-body-sm flex items-start gap-2 text-muted">
-        <Icon name="alert" size={13} className="mt-0.5 flex-none" />
-        <span>
-          {t("shell.thread.withdrawn")}
-        </span>
-      </p>
-      <p className="fg-caption mt-1 whitespace-pre-wrap text-subtle line-through">{draft}</p>
-    </div>
+    <p className="fg-caption flex items-start gap-2 text-subtle" data-testid="thread-reply-withdrawn">
+      <Icon name="alert" size={13} className="mt-0.5 flex-none" />
+      <span>{t("shell.thread.withdrawn")}</span>
+    </p>
   );
 }
 
@@ -228,7 +221,7 @@ function Said({
   share,
 }: {
   message: ConversationMessage;
-  withdrawn?: string;
+  withdrawn?: boolean;
   newestAgentId?: string;
   firstDesigns?: boolean;
   share?: ShareScope | undefined;
@@ -278,7 +271,7 @@ function Said({
   }
   return (
     <div className="flex flex-col gap-2">
-      {withdrawn && <WithdrawnDraft draft={withdrawn} />}
+      {withdrawn && <ReplacedDraftNote />}
       <AssistantTurn entry={entryOf(message)} {...(newestAgentId ? { newestAgentId } : {})} />
       <MessageActions message={message} share={share} />
     </div>
@@ -355,7 +348,7 @@ export function ConversationThread({
   /** The turn running right now, as the socket's frames have it so far (ISS-1078). */
   progress?: ConversationProgressEntry | null;
   /** Drafts the reply screen refused in this room, by the entry id that replaced each (ISS-1078). */
-  withdrawn?: Record<string, string>;
+  withdrawn?: Record<string, true>;
   /**
    * Whether the reader is at the bottom of this thread (ISS-1083).
    */
@@ -468,7 +461,7 @@ function LiveTurn({
   newestAgentId,
 }: {
   progress: ConversationProgressEntry;
-  withdrawn?: string;
+  withdrawn?: boolean;
   newestAgentId?: string;
 }) {
   const t = useCopy();
@@ -476,7 +469,7 @@ function LiveTurn({
   const draft = !progress.verdict && carriesProse(progress.entry);
   return (
     <div className="flex flex-col gap-2" data-testid="thread-live-turn" data-live-view="asker">
-      {withdrawn && <WithdrawnDraft draft={withdrawn} />}
+      {withdrawn && <ReplacedDraftNote />}
       {draft && (
         <p className="fg-caption flex items-center gap-1.5 text-subtle" data-testid="thread-live-draft" title={t("conversations.live.draftWhy")}>
           <Icon name="alert" size={12} className="flex-none" />

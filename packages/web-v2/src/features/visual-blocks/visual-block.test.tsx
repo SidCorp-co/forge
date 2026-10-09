@@ -220,3 +220,55 @@ describe("refHref", () => {
     expect(executionFactsIn([{ blocks: [{ type: "visual", execution: old }] }])({ executionId: "ex-3" })?.askedBy).toBeUndefined();
   });
 });
+
+describe("a source shows what the figures were read with (REQ-32 BC-2, BC-16)", () => {
+  const withParams = (params: Record<string, unknown> | undefined) =>
+    render(
+      <VisualBlockProvider
+        value={{
+          projectSlug: "forge-dev",
+          sourceFacts: () => ({ queryId: "release-readiness", asOf: "2026-10-08T09:30:00.000Z", ...(params ? { params } : {}) }),
+        }}
+      >
+        <VisualBlockView block={{ ...base, kind: "table", columns: ["key"] }} />
+      </VisualBlockProvider>,
+    );
+
+  it("names the settings the run used once the source is opened", () => {
+    withParams({ windowDays: 30, status: ["open", "agreed"] });
+    expect(screen.queryByTestId("visual-block-settings")).toBeNull();
+    fireEvent.click(screen.getByTestId("visual-block-source-toggle"));
+    expect(screen.getByTestId("visual-block-settings").textContent).toBe("Settings: window days 30 · status open, agreed");
+  });
+
+  it("says a run with no settings used the report's defaults, and a block stored before settings were copied claims nothing", () => {
+    withParams({});
+    fireEvent.click(screen.getByTestId("visual-block-source-toggle"));
+    expect(screen.getByTestId("visual-block-settings").textContent).toContain("defaults");
+    cleanup();
+    withParams(undefined);
+    fireEvent.click(screen.getByTestId("visual-block-source-toggle"));
+    expect(screen.queryByTestId("visual-block-settings")).toBeNull();
+  });
+
+  it("shows a computation's script and how it ended behind the source line, without being asked", () => {
+    const facts = {
+      executionId: "ex-9",
+      adapter: "forge-sandbox",
+      language: "javascript",
+      at: "2026-10-08T08:00:00.000Z",
+      askedBy: { id: "u1", name: "Orchestrator" },
+      reads: [],
+      script: "const rows = await ctx.forge.get('/api/x');\nreturn rows.length;",
+      result: { exit: 0, durationMs: 41, stdout: "16" },
+    };
+    render(
+      <VisualBlockProvider value={{ projectSlug: "forge-dev", executionFacts: executionFactsIn([{ blocks: [{ type: "visual", execution: facts }] }]) }}>
+        <VisualBlockView block={{ ...base, source: { executionId: "ex-9" }, kind: "table", columns: ["key"] }} />
+      </VisualBlockProvider>,
+    );
+    fireEvent.click(screen.getByTestId("visual-block-source-toggle"));
+    expect(screen.getByTestId("visual-block-script").textContent).toContain("ctx.forge.get('/api/x')");
+    expect(screen.getByTestId("visual-block-result").textContent).toContain("Finished with exit 0 in 41 ms · printed: 16");
+  });
+});

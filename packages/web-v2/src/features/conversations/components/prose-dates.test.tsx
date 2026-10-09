@@ -4,7 +4,7 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { doneDayText } from "@/lib/i18n/eta-clock-words";
-import { instantsOn, readProseInstants } from "@/features/visual-blocks/instants";
+import { instantsOn, readProseInstants } from "@/lib/i18n/instants";
 import type { ConversationMessage, ConversationWindow } from "../types";
 import { ConversationThread } from "./conversation-thread";
 
@@ -49,6 +49,13 @@ describe("an assistant's prose reads an instant as the blocks do", () => {
     const text = drawn(`REQ-3 shipped at ${SHIPPED}.`);
     expect(text).toContain(`shipped at ${doneDayText(SHIPPED, clock())}.`);
     expect(text).not.toContain("2026-10-04");
+  });
+
+  it("reads the model's spaced UTC form ('2026-10-09 01:03 UTC') as the one instant it names, not as a day with a UTC time left beside it (BC-4, BC-17)", () => {
+    const text = drawn("The report was read at 2026-10-09 01:03 UTC.");
+    expect(text).toContain(`read at ${doneDayText("2026-10-09T01:03:00Z", clock())}.`);
+    expect(text).not.toContain("UTC");
+    expect(text).not.toContain("2026-10-09");
   });
 
   it("keeps an instant in a code span, a fenced block and a link destination as written", () => {

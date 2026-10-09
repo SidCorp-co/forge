@@ -1,7 +1,8 @@
 import type { ShareSnapshot } from "@forge/contracts/shares";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { doneDayText } from "@/lib/i18n/eta-clock-words";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { SharedAnswer, SharedAnswerView } from "./components/shared-answer";
 
@@ -117,6 +118,28 @@ describe("a shared answer", () => {
     expect(reply.compareDocumentPosition(container.querySelector('[data-testid="visual-block"]') as Node)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
+  });
+
+  it("reads every instant on the page in the viewer's timezone as chat does, never as the stored UTC text (REQ-32 BC-4, BC-17)", () => {
+    const s = snapshot();
+    s.document = {
+      ...s.document,
+      templateId: "chat-answer",
+      reply: "The report was read at 2026-10-09 01:03 UTC and the next one is due 2026-10-10T19:27:00.000Z.",
+      narrative: { summary: "", risks: "", recommendations: "" },
+    };
+    const { container } = renderWithQuery(<SharedAnswerView snapshot={s} />);
+    expect(container.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    expect(container.textContent).not.toContain("UTC");
+    expect(screen.getByTestId("shared-reply").textContent).toContain(doneDayText("2026-10-09T01:03:00Z", { lang: "en", now: Date.now() }));
+  });
+
+  it("shows the settings of a run in its source, from the frozen run", () => {
+    const s = snapshot();
+    (s.document.runs[0] as { params: Record<string, unknown> }).params = { windowDays: 30 };
+    renderWithQuery(<SharedAnswerView snapshot={s} />);
+    fireEvent.click(screen.getByTestId("visual-block-source-toggle"));
+    expect(screen.getByTestId("visual-block-settings")).toHaveTextContent("Settings: window days 30");
   });
 
   it("names a chat answer shared before it carried its question a shared answer, never by its template id", () => {

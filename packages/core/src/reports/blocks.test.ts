@@ -31,7 +31,7 @@ const run: ReportRun = {
   runId: 'run-1',
   queryId: 'progress-by-requirement',
   version: 1,
-  params: {},
+  params: { windowDays: 30 },
   projectId: 'p1',
   actor: { kind: 'human', id: 'asker' },
   asOf: '2026-10-08T09:30:00.000Z',
@@ -123,12 +123,41 @@ describe('attaching a visual block', () => {
           {
             type: 'visual',
             visual: { v: 1, ...table, frame: run.frame },
-            run: { runId: 'run-1', queryId: 'progress-by-requirement', version: 1, asOf: run.asOf },
+            run: {
+              runId: 'run-1',
+              queryId: 'progress-by-requirement',
+              version: 1,
+              asOf: run.asOf,
+              params: { windowDays: 30 },
+            },
           },
         ],
       },
     ]);
     expect(attached.text).toContain('| REQ-2 | 5 |');
+  });
+
+  it("keeps the settings the run read with beside the block, so its source can show them (BC-2)", async () => {
+    const attached = await attach(table);
+    expect(attached.run?.params).toEqual({ windowDays: 30 });
+  });
+
+  it('hands the model its dates as ISO and stores the UTC reading, so the model never copies a server-made UTC time (BC-4, BC-17)', async () => {
+    const dated: ReportRun = {
+      ...run,
+      frame: {
+        fields: [
+          { name: 'key', type: 'ref', label: 'Requirement' },
+          { name: 'shipped', type: 'date', label: 'Shipped' },
+        ],
+        rows: [{ key: 'REQ-1', shipped: '2026-10-09T01:03:00.000Z' }],
+      },
+    };
+    readReportRun.mockResolvedValue(dated);
+    const attached = await attach({ kind: 'table', columns: ['key', 'shipped'], source: { runId: 'run-1' } });
+    expect(attached.text).toContain('2026-10-09T01:03:00.000Z');
+    expect(attached.text).not.toContain('UTC');
+    expect((posted[0] as { content: string }).content).toContain('Oct 9, 01:03 UTC');
   });
 
   it('refuses a figure the run never read, naming the cell, and posts nothing', async () => {
@@ -251,6 +280,8 @@ describe('a block drawn from an execution', () => {
       at: '2026-10-08T10:00:00.000Z',
       askedBy: { id: 'asker', name: 'Person asker' },
       reads: [{ method: 'GET', path: '/api/projects/p1/requirements', status: 200 }],
+      script: 'return { frames: [] }',
+      result: { exit: 0, durationMs: 12, stdout: '' },
     });
     expect(answer.text).toContain('Computed by execution ex-1');
     const [post] = posted as { blocks: Record<string, unknown>[] }[];
@@ -340,7 +371,13 @@ describe("a block drawn on a turn's stage", () => {
         block: {
           type: 'visual',
           visual: { v: 1, ...table, frame: run.frame },
-          run: { runId: 'run-1', queryId: 'progress-by-requirement', version: 1, asOf: run.asOf },
+          run: {
+            runId: 'run-1',
+            queryId: 'progress-by-requirement',
+            version: 1,
+            asOf: run.asOf,
+            params: { windowDays: 30 },
+          },
         },
         kind: 'table',
         runId: 'run-1',

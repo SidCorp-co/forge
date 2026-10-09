@@ -7,6 +7,7 @@ import {
   checkBlocks,
   CSV_BOM,
   cellText,
+  readInstantsIn,
   isSensible,
   kpiFigures,
   shownFrame,
@@ -468,5 +469,18 @@ describe("a text no viewer is behind reads its instants in UTC (REQ-32 BC-17)", 
 
   it("keeps ISO when no reading is handed in", () => {
     expect(tableCsv(table())).toContain("2026-10-06T07:05:00.000Z");
+  });
+});
+
+describe("readInstantsIn takes the model's spaced UTC form as one instant (REQ-32 BC-17)", () => {
+  const reading = { instant: (iso: string) => `<${iso}>` };
+  it.each([
+    ["2026-10-09 01:03 UTC", "<2026-10-09T01:03Z>"],
+    ["2026-10-09 01:03:30 UTC", "<2026-10-09T01:03:30Z>"],
+    ["2026-10-09T01:03:00.000Z", "<2026-10-09T01:03:00.000Z>"],
+    ["2026-10-09", "<2026-10-09>"],
+    ["2026-10-09 and 01:03 UTC", "<2026-10-09> and 01:03 UTC"],
+  ])("%s", (input, want) => {
+    expect(readInstantsIn(`at ${input}.`, reading)).toBe(`at ${want}.`);
   });
 });

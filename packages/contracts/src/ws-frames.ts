@@ -92,7 +92,8 @@ export interface WsFramePayloads extends JobFrames {
 			isError?: true;
 		}[];
 		verdict?: "checked" | "withheld";
-		replaced?: { draft: string };
+		/** The reply check replaced the draft this turn streamed; the draft's words are never sent again. */
+		replaced?: true;
 	};
 	"conversation.accepted": {
 		conversationId: string;

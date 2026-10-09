@@ -290,7 +290,7 @@ function useSocketWrittenKey<T>(key: readonly unknown[], empty: T): T {
 /** Nothing has arrived yet — one reference, for the guard above. */
 const NO_PROGRESS = null;
 const NO_ACCEPTED: Record<string, { messageId: string; seq: number }> = {};
-const NO_WITHDRAWN: Record<string, string> = {};
+const NO_WITHDRAWN: Record<string, true> = {};
 
 /**
  * The turn running in this room right now, as the socket's frames have it.
@@ -307,7 +307,8 @@ export function useAcceptedMessages(id: string | undefined) {
 }
 
 /**
- * The drafts the reply screen refused in this room, by the entry that replaced each.
+ * The entries whose draft the reply screen replaced in this room. Only the fact is kept: the
+ * withdrawn words are never sent to a screen, so none can show them.
  */
 export function useWithdrawnDrafts(id: string | undefined) {
   return useSocketWrittenKey(["conversations", id, "withdrawn"], NO_WITHDRAWN);

@@ -4,6 +4,7 @@ import { ApiError } from "./client";
 import { formatApiError } from "./error";
 import { namedRefusals, type Refusal } from "./refusals";
 import { LEGEND } from "@/design";
+import { readInstantsNow } from "@/lib/i18n/instants";
 
 /** A screen's own words for a refusal, from its code and facts; null leaves core's detail. */
 export type RefusalWords = (r: Refusal) => string | null;
@@ -13,10 +14,10 @@ function lineOf(err: unknown, words?: RefusalWords): { code: string | null; deta
   const [first, ...rest] = namedRefusals(err);
   if (!first) return { code: err instanceof ApiError ? (err.code ?? null) : null, detail: formatApiError(err) };
   const worded = words?.(first);
-  if (worded) return { code: first.code, detail: rest.length > 0 ? `${worded} (+${rest.length})` : worded };
+  if (worded) return { code: first.code, detail: readInstantsNow(rest.length > 0 ? `${worded} (+${rest.length})` : worded) };
   const at = first.path ? ` (${first.path})` : "";
   const more = rest.length > 0 ? ` · ${rest.length} more` : "";
-  return { code: first.code, detail: `${first.detail}${at}${more}` };
+  return { code: first.code, detail: readInstantsNow(`${first.detail}${at}${more}`) };
 }
 
 /** A refusal is one tinted line: the code, then what was wrong and where — in the screen's words where it gives them. */

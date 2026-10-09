@@ -1,4 +1,5 @@
 import { ApiError } from './client';
+import { readInstantsNow } from '@/lib/i18n/instants';
 import { refusalFact } from './refusals';
 import { SESSION_ENDED_LINE } from './session-ended';
 
@@ -69,7 +70,12 @@ function mergeMarkSentence(err: ApiError): string | null {
   return null;
 }
 
+/** A failure in a person's words, its instants read in their timezone like every other screen's. */
 export function formatApiError(err: unknown): string {
+  return readInstantsNow(apiErrorSentence(err));
+}
+
+function apiErrorSentence(err: unknown): string {
   if (err instanceof ApiError) {
     const mergeMark = mergeMarkSentence(err);
     if (mergeMark) return mergeMark;

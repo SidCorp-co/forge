@@ -1,0 +1,1 @@
+**A chat answer reads the same on every screen.** A figure's source shows its settings, a computation shows its script and result, a replaced draft is never shown again, and times read in your timezone everywhere.
