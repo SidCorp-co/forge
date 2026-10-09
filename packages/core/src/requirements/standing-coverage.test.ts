@@ -65,44 +65,52 @@ const input = (issues: StandingIssue[]) => ({
   now: at('2026-09-28T00:00:00Z'),
 });
 
-// coverage-truth: a BC used to pass only where EVERY row tracing it passed, so one unjudged row or
-// one old fail anywhere held it for good; the newest judgement on a build the live one is not read
-// to lack now decides, and the BC names it
-describe('the verdict a business criterion counts', () => {
-  const bc1 = { id: 'c1', code: 'BC-1', body: 'rule 1', sinceRevision: 1, retiredRevision: null };
-  const old1 = { id: 'c0', code: 'BC-1', body: 'rule 1 r1', sinceRevision: 1, retiredRevision: 2 };
-  const A = 'a'.repeat(40);
-  const B = 'b'.repeat(40);
-  const F = 'f'.repeat(40);
-  const row = (
-    issueN: number,
-    verdict: 'pass' | 'short' | 'fail' | 'skipped' | null,
-    iso: string | null,
-    commit: string | null = null,
-    wording = 'c1',
-    identity: CoverageIdentity | null = verdict === null
-      ? null
-      : { kind: 'commit', sha: commit ?? F },
-  ): StandingIssueCriterion => ({
-    issueId: `i${issueN}`,
-    n: 1,
-    requirementCriterionId: wording,
-    verdict,
-    verdictAt: iso ? at(iso) : null,
-    identity,
-  });
-  const read = (
-    rows: StandingIssueCriterion[],
-    liveBuild: Map<string, boolean> | null = null,
-    runtimes: Map<string, string | null> = new Map(),
-  ) =>
-    deriveStanding({
-      ...input([issue(1, 'closed', false), issue(2, 'closed', false), issue(3, 'closed', false)]),
-      criteria: [old1, bc1],
-      issueCriteria: rows,
-      liveBuild: liveBuild ? { sha: 'c'.repeat(40), holds: liveBuild, runtimes } : null,
-    }).coverage[0];
+const bc1 = { id: 'c1', code: 'BC-1', body: 'rule 1', sinceRevision: 1, retiredRevision: null };
+const old1 = { id: 'c0', code: 'BC-1', body: 'rule 1 r1', sinceRevision: 1, retiredRevision: 2 };
+const A = 'a'.repeat(40);
+const B = 'b'.repeat(40);
+const F = 'f'.repeat(40);
+const row = (
+  issueN: number,
+  verdict: 'pass' | 'short' | 'fail' | 'skipped' | null,
+  iso: string | null,
+  commit: string | null = null,
+  wording = 'c1',
+  identity: CoverageIdentity | null = verdict === null
+    ? null
+    : { kind: 'commit', sha: commit ?? F },
+): StandingIssueCriterion => ({
+  issueId: `i${issueN}`,
+  n: 1,
+  requirementCriterionId: wording,
+  verdict,
+  verdictAt: iso ? at(iso) : null,
+  identity,
+});
+/** Every commit these rows name held by the live build, unless a test says otherwise. */
+const HELD = new Map([
+  [A, true],
+  [B, true],
+  [F, true],
+]);
+const read = (
+  rows: StandingIssueCriterion[],
+  liveBuild: Map<string, boolean> | null = HELD,
+  unanswered: Map<string, string> = new Map(),
+) =>
+  deriveStanding({
+    ...input([issue(1, 'closed', false), issue(2, 'closed', false), issue(3, 'closed', false)]),
+    criteria: [old1, bc1],
+    issueCriteria: rows,
+    liveBuild: liveBuild
+      ? { sha: 'c'.repeat(40), holds: liveBuild, runtimes: new Map(), unanswered }
+      : null,
+  }).coverage[0];
 
+// coverage-truth: a BC used to pass only where EVERY row tracing it passed, so one unjudged row or
+// one old fail anywhere held it for good; the newest judgement on a build the live one is read to
+// hold now decides, and the BC names it
+describe('the verdict a business criterion counts', () => {
   it('an older fail and an unjudged row do not outvote a newer pass, and the pass is named', () => {
     const c = read([
       row(1, 'fail', '2026-10-01T00:00:00Z', A),
@@ -118,7 +126,7 @@ describe('the verdict a business criterion counts', () => {
       at: '2026-10-05T00:00:00.000Z',
       identity: `commit ${B.slice(0, 12)}`,
       commit: B,
-      inLiveBuild: null,
+      inLiveBuild: true,
     });
   });
 
@@ -161,16 +169,18 @@ describe('the verdict a business criterion counts', () => {
     );
   });
 
-  it('a commit nobody answered is judged neither way and still counts', () => {
-    const c = read([row(1, 'pass', '2026-10-01T00:00:00Z', A)], new Map());
-    expect(c).toMatchObject({ verdict: 'passing', counts: { inLiveBuild: null } });
-  });
-
   it('traced only at an earlier wording reads stale, naming the re-tie on the criterion', () => {
     const c = read([row(1, 'pass', '2026-10-05T00:00:00Z', A, 'c0')]);
     expect(c).toMatchObject({ verdict: 'stale', counts: null });
     expect(c?.why).toBe(
-      "ISS-1 trace only an earlier wording of this criterion, so no verdict on them counts: tie it again from the issue's Criteria tab, then judge it",
+      "ISS-1 traces only an earlier wording of this criterion, so no verdict on it counts: tie it again from the issue's Criteria tab, then judge it",
+    );
+    const two = read([
+      row(1, 'pass', '2026-10-05T00:00:00Z', A, 'c0'),
+      row(2, 'pass', '2026-10-05T00:00:00Z', B, 'c0'),
+    ]);
+    expect(two?.why).toBe(
+      "ISS-1, ISS-2 trace only an earlier wording of this criterion, so no verdict on them counts: tie it again from the issue's Criteria tab, then judge it",
     );
   });
 
@@ -198,12 +208,88 @@ describe('the verdict a business criterion counts', () => {
       ...input([issue(1, 'closed', false)]),
       criteria: [old1, bc1],
       issueCriteria: [row(1, 'pass', '2026-10-05T00:00:00Z', A)],
-      liveBuild: { sha: 'c'.repeat(40), holds: new Map([[A, false]]), runtimes: new Map() },
+      liveBuild: {
+        sha: 'c'.repeat(40),
+        holds: new Map([[A, false]]),
+        runtimes: new Map(),
+        unanswered: new Map(),
+      },
       judge: 'independent',
     });
     expect(s.coverage[0]?.verdict).toBe('not_live');
     expect(s.waitingOn).toMatchObject({ who: 'Independent judge' });
     expect(s.waitingOn.act).toContain('ISS-1');
+  });
+});
+
+// ISS-489 r3: a commit whose hold nobody answered counted with inLiveBuild null and nothing said
+// why, so a probe outage or a silent ancestry reader read every such criterion passing
+describe('a commit nobody could check against the live build', () => {
+  it('a commit whose hold the ancestry reader did not answer does not count, and its line says why', () => {
+    const c = read(
+      [row(1, 'pass', '2026-10-01T00:00:00Z', A)],
+      new Map(),
+      new Map([[A, 'the ancestry reader gave no answer']]),
+    );
+    expect(c).toMatchObject({ verdict: 'not_judged', counts: null });
+    expect(c?.issues[0]).toMatchObject({ commit: A, inLiveBuild: null });
+    expect(c?.issues[0]?.notCounted).toBe(
+      `judged at commit ${A.slice(0, 12)}, and whether the live build (cccccccccccc) holds it could not be checked: the ancestry reader gave no answer`,
+    );
+    expect(c?.why).toBe(`no verdict counts yet: ISS-1 criterion 1: ${c?.issues[0]?.notCounted}`);
+  });
+
+  it('a commit judged while production could not be read does not count, and says the live build was unread', () => {
+    const c = deriveStanding({
+      ...input([issue(1, 'closed', false)]),
+      criteria: [bc1],
+      issueCriteria: [row(1, 'pass', '2026-10-01T00:00:00Z', A)],
+      liveBuild: {
+        sha: null,
+        holds: new Map(),
+        runtimes: new Map(),
+        unanswered: new Map([[A, 'the live build could not be read: probe timed out']]),
+      },
+    }).coverage[0];
+    expect(c).toMatchObject({ verdict: 'not_judged', counts: null });
+    expect(c?.issues[0]?.notCounted).toBe(
+      `judged at commit ${A.slice(0, 12)}, and whether the live build holds it could not be checked: the live build could not be read: probe timed out`,
+    );
+  });
+
+  it('a commit read with no live build at all does not count either', () => {
+    const c = read([row(1, 'pass', '2026-10-01T00:00:00Z', A)], null);
+    expect(c).toMatchObject({ verdict: 'not_judged', counts: null });
+    expect(c?.issues[0]?.notCounted).toBe(
+      `judged at commit ${A.slice(0, 12)}, and whether the live build holds it could not be checked: the live build was not read`,
+    );
+  });
+
+  it('a newer verdict nobody could check does not outvote an older one the live build holds', () => {
+    const c = read(
+      [row(1, 'pass', '2026-10-01T00:00:00Z', A), row(2, 'fail', '2026-10-05T00:00:00Z', B)],
+      new Map([[A, true]]),
+      new Map([[B, 'the ancestry reader gave no answer']]),
+    );
+    expect(c).toMatchObject({
+      verdict: 'passing',
+      counts: { displayId: 'ISS-1', inLiveBuild: true },
+    });
+    expect(c?.issues[1]?.notCounted).toMatch(
+      /could not be checked: the ancestry reader gave no answer$/,
+    );
+  });
+
+  it('beside a build the live one lacks, an unchecked line is named too', () => {
+    const c = read(
+      [row(1, 'pass', '2026-10-01T00:00:00Z', A), row(2, 'pass', '2026-10-05T00:00:00Z', B)],
+      new Map([[A, false]]),
+      new Map([[B, 'the ancestry reader gave no answer']]),
+    );
+    expect(c?.verdict).toBe('not_live');
+    expect(c?.why).toBe(
+      `judged only at builds the live one does not hold (ISS-1 criterion 1: commit ${A.slice(0, 12)}): judge it again on the live build; not counted either: ISS-2 criterion 1: ${c?.issues[1]?.notCounted}`,
+    );
   });
 });
 
@@ -229,10 +315,16 @@ describe('what a verdict identity counts for on coverage', () => {
       ],
       liveBuild,
     }).coverage[0];
-  const live = (holds: [string, boolean][], runtimes: [string, string | null][]) => ({
-    sha: 'c'.repeat(40),
+  const live = (
+    holds: [string, boolean][],
+    runtimes: [string, string | null][],
+    unanswered: [string, string][] = [],
+    sha: string | null = 'c'.repeat(40),
+  ) => ({
+    sha,
     holds: new Map(holds),
     runtimes: new Map(runtimes),
+    unanswered: new Map(unanswered),
   });
 
   it('a runtime counts at the commit it served, where the live build holds it', () => {
@@ -250,6 +342,31 @@ describe('what a verdict identity counts for on coverage', () => {
     expect(c).toMatchObject({ verdict: 'not_live', counts: null });
     expect(c?.issues[0]?.notCounted).toBe(
       `judged at runtime ${R.slice(0, 12)}, which served commit ${R.slice(0, 12)}, which the live build (cccccccccccc) does not hold`,
+    );
+  });
+
+  // ISS-489 r3: the judge's plant - a runtime whose served commit nobody checked counted
+  it('a runtime whose served commit nobody answered does not count, and says why', () => {
+    const c = one(
+      { kind: 'runtime', ref: R },
+      live([], [[R, R]], [[R, 'the ancestry reader could not answer: host timed out']]),
+    );
+    expect(c).toMatchObject({ verdict: 'not_judged', counts: null });
+    expect(c?.issues[0]).toMatchObject({ commit: R, inLiveBuild: null });
+    expect(c?.issues[0]?.notCounted).toBe(
+      `judged at runtime ${R.slice(0, 12)}, which served commit ${R.slice(0, 12)}, and whether the live build (cccccccccccc) holds it could not be checked: the ancestry reader could not answer: host timed out`,
+    );
+    expect(c?.why).toMatch(/^no verdict counts yet: ISS-1 criterion 2: judged at runtime /);
+  });
+
+  it('a runtime judged while production could not be read does not count, and says so', () => {
+    const c = one(
+      { kind: 'runtime', ref: R },
+      live([], [[R, R]], [[R, 'the live build could not be read: no probe']], null),
+    );
+    expect(c).toMatchObject({ verdict: 'not_judged', counts: null });
+    expect(c?.issues[0]?.notCounted).toBe(
+      `judged at runtime ${R.slice(0, 12)}, which served commit ${R.slice(0, 12)}, and whether the live build holds it could not be checked: the live build could not be read: no probe`,
     );
   });
 

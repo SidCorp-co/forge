@@ -8,7 +8,7 @@
  */
 
 import { criterionStandingOf } from '@forge/contracts/verdict-identity';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { totalsOf } from '../../src/release-batch/release-view.js';
 import { api, userToken } from '../helpers/api.js';
 import {
@@ -17,18 +17,26 @@ import {
   createTestUser,
   truncateAll,
 } from '../helpers/factories.js';
+import { plantLiveBuild } from '../helpers/live-build.js';
 
 const LIVE = '0d91ae7c74f70295ede115463b17559e650b5207';
 
 let projectId: string;
 let ownerId: string;
 let token: string;
+let unplant: (() => void) | null = null;
 
 beforeEach(async () => {
   await truncateAll();
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
   token = await userToken(ownerId);
+  // production serves LIVE, so a verdict judged at it is one coverage can check (ISS-489 r3)
+  unplant = plantLiveBuild(LIVE);
+});
+
+afterEach(() => {
+  unplant?.();
 });
 
 const onProject = (method: 'GET' | 'POST', path: string, body?: unknown) =>

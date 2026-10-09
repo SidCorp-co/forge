@@ -118,7 +118,7 @@ export async function deliveryIn(
     unshipped: read.live.filter((i) => i.status !== 'closed').map((i) => i.displayId),
     unproven: read.coverage
       .filter((c) => c.verdict !== 'passing')
-      .map((c) => ({ code: c.code, verdict: c.verdict })),
+      .map((c) => ({ code: c.code, verdict: c.verdict, why: c.why })),
   };
   return { ...read, proof };
 }

@@ -19,6 +19,7 @@ import {
   testEnv,
 } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, rows, seedIssueStatus } from '../helpers/factories.js';
+import { plantLiveBuild } from '../helpers/live-build.js';
 
 let say: (who: 'owner', method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
@@ -45,9 +46,14 @@ const history = async (key: string): Promise<string[]> => {
   return entries.map((e) => `${e.kind}: ${e.text}`);
 };
 
+let unplant: (() => void) | null = null;
+
 beforeAll(async () => {
   testEnv();
   const { app } = await import('../../src/index.js');
+  // production serves the commit the filed issue's pass names, so the delivery accept reads it as
+  // checked (ISS-489 r3); planted after the app boots, which provides the ports it replaces
+  unplant = plantLiveBuild('a'.repeat(40));
   await startQueue();
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   const owner = (await createTestUser({ verified: true })).id;
@@ -56,6 +62,7 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
+  unplant?.();
   await closeWorld();
 });
 

@@ -8,9 +8,10 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import { type Doc, ok, refusal, refusedByDb } from '../helpers/ecosystem-world.js';
 import { rows, seedIssueStatus } from '../helpers/factories.js';
+import { plantLiveBuild } from '../helpers/live-build.js';
 import {
   BOARD,
   openPictureWorld,
@@ -204,6 +205,8 @@ describe('a new revision carries the picture of its kind; a correction drops it 
 
 describe('no picture gates the requirement (criterion 5)', () => {
   it('a requirement with no kind and no picture is agreed, delivered and accepted', async () => {
+    // production serves the commit the pass below names, so coverage can check it (ISS-489 r3)
+    onTestFinished(plantLiveBuild('a'.repeat(40)));
     const key = await requirement('The board keeps its cards');
     await agreeR1(key);
     expect(await read(key)).toMatchObject({ status: 'agreed' });

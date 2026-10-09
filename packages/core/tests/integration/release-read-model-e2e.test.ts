@@ -5,7 +5,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { addVerdict, replaceCriteria } from '../../src/issues/criteria/service.js';
 import { userNames } from '../../src/lib/people.js';
@@ -17,6 +17,7 @@ import {
   seedIssueStatus,
   truncateAll,
 } from '../helpers/factories.js';
+import { plantLiveBuild } from '../helpers/live-build.js';
 import { declareProductionDocument, releaseWorld } from '../helpers/release-world.js';
 
 const BETA_SHA = 'e7af41887a0e90ed541bb0dbfb34d4f9cb4f8510';
@@ -27,8 +28,16 @@ let agentId: string;
 const tokens: Record<'owner' | 'member' | 'agent', string> = { owner: '', member: '', agent: '' };
 
 const fx = releaseWorld(() => ({ projectId, ownerId }));
+let unplant: (() => void) | null = null;
+
+afterEach(() => {
+  unplant?.();
+});
 
 beforeEach(async () => {
+  // the requirement's coverage reads production serving BETA_SHA, so a verdict at it is checked
+  // (ISS-489 r3); this world's production declares no probe of its own
+  unplant = plantLiveBuild(BETA_SHA);
   await truncateAll();
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;

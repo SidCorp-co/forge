@@ -6,13 +6,15 @@
  * BC names the verdict that counts. A trace left on a reworded BC's earlier wording is refreshed to
  * the current wording from the issue's Criteria tab by the same tie act, matched by wording as
  * coverage matches it; the verdict the old wording earned stays on its retired row and does not
- * count for the new wording until it is judged again. Through the app's own routes, against real
- * Postgres.
+ * count for the new wording until it is judged again. A commit verdict, or the commit a runtime
+ * served, counts only where the live build is read to hold it (`tests/helpers/live-build.ts` plants
+ * one); where production cannot be read or the ancestry goes unanswered it does not count and its
+ * line says why. Through the app's own routes, against real Postgres.
  */
 
 import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { api, userToken } from '../helpers/api.js';
 import {
@@ -21,19 +23,29 @@ import {
   createTestUser,
   truncateAll,
 } from '../helpers/factories.js';
+import { plantLiveBuild } from '../helpers/live-build.js';
 
 const OLD = '1111111111111111111111111111111111111111';
 const NEW = '2222222222222222222222222222222222222222';
+/** The commit production serves in these tests, holding both OLD and NEW. */
+const LIVE = '9999999999999999999999999999999999999999';
 
 let projectId: string;
 let ownerId: string;
 let token: string;
+let unplant: (() => void) | null = null;
 
 beforeEach(async () => {
   await truncateAll();
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
   token = await userToken(ownerId);
+  unplant = plantLiveBuild(LIVE, { [OLD]: true, [NEW]: true });
+});
+
+afterEach(() => {
+  unplant?.();
+  unplant = null;
 });
 
 const onProject = (method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown) =>
@@ -116,6 +128,7 @@ type Bc = {
     at: string;
     identity: string;
     commit: string | null;
+    inLiveBuild: boolean | null;
   } | null;
 };
 
@@ -149,7 +162,7 @@ describe('the newest verdict across the rows tracing a BC is the one that counts
       at: '2026-10-05T10:00:00.000Z',
       identity: `commit ${NEW.slice(0, 12)}`,
       commit: NEW,
-      inLiveBuild: null,
+      inLiveBuild: true,
     });
     expect((await standingOf(req)).facts).toMatchObject({ criteria: 2, passing: 1, judged: 1 });
   });
@@ -329,7 +342,7 @@ describe('every verdict identity is checked by a rule or named as not counting',
 
     expect(await bc(req, 'BC-1')).toMatchObject({
       verdict: 'passing',
-      counts: { identity: `runtime ${NEW.slice(0, 12)}`, commit: NEW },
+      counts: { identity: `runtime ${NEW.slice(0, 12)}`, commit: NEW, inLiveBuild: true },
     });
     const unresolved = await bc(req, 'BC-2');
     expect(unresolved).toMatchObject({ verdict: 'not_judged', counts: null });
@@ -412,5 +425,59 @@ describe('every verdict identity is checked by a rule or named as not counting',
     expect(other.issues[0]?.notCounted).toBe(
       `judged against contract ${ref}@1.1.0, and the requirement's latest baseline pins 1.2.0`,
     );
+  });
+});
+
+// ISS-489 r3: a commit or runtime pass whose hold nobody answered counted with inLiveBuild null and
+// nothing said why — the round-2 runtime case above passed that way, with no live build read here
+describe('a verdict nobody could check against the live build does not count', () => {
+  it('production unread: neither a commit nor a runtime pass counts, and each line says the live build could not be read', async () => {
+    unplant?.();
+    unplant = null;
+    const req = await agreedRequirement();
+    const a = await closedIssueTracing(req, 1, ['BC-1']);
+    const b = await closedIssueTracing(req, 2, ['BC-2']);
+    await judge(a, 1, 'pass', NEW, '2026-10-05T10:00:00Z');
+    await judge(b, 1, 'pass', { kind: 'runtime', ref: NEW }, '2026-10-05T10:00:00Z');
+
+    const commit = await bc(req, 'BC-1');
+    const runtime = await bc(req, 'BC-2');
+
+    for (const [c, judged] of [
+      [commit, `commit ${NEW.slice(0, 12)}`],
+      [runtime, `runtime ${NEW.slice(0, 12)}, which served commit ${NEW.slice(0, 12)}`],
+    ] as const) {
+      expect(c).toMatchObject({ verdict: 'not_judged', counts: null });
+      expect(c.issues[0]?.notCounted).toBe(
+        `judged at ${judged}, and whether the live build holds it could not be checked: the live build could not be read: its production declares no source probe, so nothing reads which commit it serves`,
+      );
+      expect(c.why).toContain('no verdict counts yet:');
+    }
+    expect((await standingOf(req)).facts).toMatchObject({ passing: 0, judged: 0 });
+  });
+
+  it('ancestry unanswered: neither a commit nor a runtime pass counts, and each line names the reader', async () => {
+    unplant?.();
+    const live = '8888888888888888888888888888888888888888';
+    unplant = plantLiveBuild(live, { [NEW]: { unread: 'the host timed out' } });
+    const req = await agreedRequirement();
+    const a = await closedIssueTracing(req, 1, ['BC-1']);
+    const b = await closedIssueTracing(req, 2, ['BC-2']);
+    await judge(a, 1, 'pass', NEW, '2026-10-05T10:00:00Z');
+    await judge(b, 1, 'pass', { kind: 'runtime', ref: NEW }, '2026-10-05T10:00:00Z');
+
+    const commit = await bc(req, 'BC-1');
+    const runtime = await bc(req, 'BC-2');
+
+    for (const [c, judged] of [
+      [commit, `commit ${NEW.slice(0, 12)}`],
+      [runtime, `runtime ${NEW.slice(0, 12)}, which served commit ${NEW.slice(0, 12)}`],
+    ] as const) {
+      expect(c).toMatchObject({ verdict: 'not_judged', counts: null });
+      expect(c.issues[0]).toMatchObject({ inLiveBuild: null });
+      expect(c.issues[0]?.notCounted).toBe(
+        `judged at ${judged}, and whether the live build (888888888888) holds it could not be checked: the ancestry reader could not answer: the host timed out`,
+      );
+    }
   });
 });

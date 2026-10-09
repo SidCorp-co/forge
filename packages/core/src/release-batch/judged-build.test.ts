@@ -158,9 +158,14 @@ describe('what the live build holds of verdict commits', () => {
       [sha('2'), false],
     ]);
     expect(r.asked).not.toContain(`${live}@${live}`);
+    expect([...(read?.unanswered ?? [])]).toEqual([
+      [sha('3'), 'the ancestry reader could not answer: not planted'],
+    ]);
   });
 
-  it('reads nothing where nothing is asked, and holds nothing where production cannot be read', async () => {
+  // ISS-489 r3: a hold nobody answered was dropped with its reason, so coverage counted the verdict
+  // silently; every asked commit is now answered either way or carries why it was not
+  it('reads nothing where nothing is asked, and names why for every commit where production cannot be read', async () => {
     expect(await liveBuildHolds('p-none', { commits: [] }, deps(sha('9'), []))).toBeNull();
     const down = await liveBuildHolds(
       'p-down',
@@ -169,6 +174,52 @@ describe('what the live build holds of verdict commits', () => {
     );
     expect(down?.sha).toBeNull();
     expect([...(down?.holds ?? [])]).toEqual([]);
+    expect([...(down?.unanswered ?? [])]).toEqual([
+      [sha('1'), 'the live build could not be read: no probe'],
+    ]);
+    const unnamed = await liveBuildHolds(
+      'p-unnamed',
+      { commits: [sha('1')] },
+      deps('v9.9.9', [DEV_192]),
+    );
+    expect([...(unnamed?.unanswered ?? [])]).toEqual([
+      [sha('1'), 'production answers `v9.9.9`, which names no single release Forge verified'],
+    ]);
+  });
+
+  it('names why a commit went unanswered where no reader can be asked, one is silent, or one fails', async () => {
+    const live = sha('6');
+    const none = await liveBuildHolds('p-noreader', { commits: [sha('1')] }, deps(live, []));
+    expect([...(none?.unanswered ?? [])]).toEqual([
+      [sha('1'), 'no ancestry reader can be asked: no source host and no box'],
+    ]);
+    const silent: AncestryReader = {
+      ask: async () => ({ silent: 'the box holding the checkout is offline' }),
+      witness: () => ({ via: 'source-host' }),
+    };
+    const quiet = await liveBuildHolds(
+      'p-silent',
+      { commits: [sha('2')] },
+      deps(live, [], { kind: 'box', why: 'no host', reader: silent }),
+    );
+    expect([...(quiet?.unanswered ?? [])]).toEqual([
+      [sha('2'), 'the ancestry reader did not answer: the box holding the checkout is offline'],
+    ]);
+    const failing: AncestryReader = {
+      ask: async () => {
+        throw new Error('socket hang up');
+      },
+      witness: () => ({ via: 'source-host' }),
+    };
+    const failed = await liveBuildHolds(
+      'p-failing',
+      { commits: [sha('3')] },
+      deps(live, [], { kind: 'box', why: 'no host', reader: failing }),
+    );
+    expect(failed?.holds.size).toBe(0);
+    expect([...(failed?.unanswered ?? [])]).toEqual([
+      [sha('3'), 'the ancestry reader failed: socket hang up'],
+    ]);
   });
 
   // ISS-489 r2: a runtime-identity verdict reached coverage with no commit, so it was never checked
@@ -203,6 +254,7 @@ describe('what the live build holds of verdict commits', () => {
       sha: null,
       holds: new Map(),
       runtimes: new Map([[DEV_192.commit, DEV_192.commit]]),
+      unanswered: new Map([[DEV_192.commit, 'the live build could not be read: no probe']]),
     });
   });
 

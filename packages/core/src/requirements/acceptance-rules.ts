@@ -9,8 +9,9 @@ export interface DeliveryProof {
   /** Live linked issues not yet closed, by key. */
   unshipped: readonly string[];
   liveIssues: number;
-  /** Current business criteria whose coverage is not passing, each with its verdict. */
-  unproven: readonly { code: string; verdict: string }[];
+  /** Current business criteria whose coverage is not passing, each with its verdict and the reason
+   *  coverage gives for it (`RequirementCoverage.why`), null where it gives none. */
+  unproven: readonly { code: string; verdict: string; why: string | null }[];
 }
 
 // workflow requirement-lifecycle edge delivered → accepted: a holder of requirements.approve names
@@ -68,7 +69,7 @@ export function acceptRefusals(input: {
       code: 'REQUIREMENT_CRITERIA_UNPROVEN',
       path: '',
       detail: `every current business criterion is proven by a passing verdict before the accept; not proven: ${proof.unproven
-        .map((c) => `${c.code} (${c.verdict.replace('_', ' ')})`)
+        .map((c) => `${c.code} (${c.verdict.replace('_', ' ')}${c.why ? `: ${c.why}` : ''})`)
         .join(', ')}.`,
     });
   }

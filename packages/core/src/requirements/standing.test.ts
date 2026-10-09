@@ -260,6 +260,13 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
     verdictAt: verdict ? at('2026-09-22T00:00:00Z') : null,
     identity: verdict ? ({ kind: 'commit', sha: 'f'.repeat(40) } as const) : null,
   });
+  /** The live build, read to hold the commit every verdict here names: only a checked one counts. */
+  const liveBuild = {
+    sha: 'f'.repeat(40),
+    holds: new Map([['f'.repeat(40), true]]),
+    runtimes: new Map(),
+    unanswered: new Map(),
+  };
   const shipped = (
     issueCriteria: ReturnType<typeof traced>[],
     judge: 'self' | 'independent' | null,
@@ -269,6 +276,7 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
       criteria: [bc(1), bc(3), bc(5)],
       issueCriteria,
       judge,
+      liveBuild,
     });
 
   it('waits on the independent judge to judge both unjudged BCs on the issues that carry them', () => {
@@ -313,6 +321,7 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
       criteria: [bc(1), bc(3), bc(5)],
       issueCriteria: [traced(1, 1, 'pass'), traced(2, 3, 'pass')],
       judge: 'independent',
+      liveBuild,
       uncovered: new Map([
         ['BC-5', 'covered by the vendor contract, not by an issue here'],
         ['BC-1', 'an earlier reason the trace now outranks'],

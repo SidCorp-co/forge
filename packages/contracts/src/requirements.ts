@@ -369,7 +369,8 @@ export interface CoverageIssue {
 	 *  none or its runtime resolves to none. */
 	commit: string | null;
 	/** Whether the live build holds that commit; null where it was not read (no commit, no probe,
-	 *  no answer). A verdict at a commit the live build does not hold never counts. */
+	 *  no answer). A verdict at a commit counts only where this is true: one the live build does not
+	 *  hold, and one nobody could check, never count, `notCounted` naming which. */
 	inLiveBuild: boolean | null;
 	/** Why this pass, short or fail does not count toward the criterion; null where it counts or is
 	 *  no judgement (none yet, or could not judge). */
@@ -378,7 +379,8 @@ export interface CoverageIssue {
 }
 
 /** The one verdict a business criterion's coverage reads: the newest pass, short or fail recorded on
- *  an issue criterion tracing its current wording, at a commit the live build is not read to lack. */
+ *  an issue criterion tracing its current wording whose identity coverage could check (a commit the
+ *  live build is read to hold, or the pinned design revision or contract version). */
 export interface CoverageCount {
 	issueId: string;
 	displayId: string;

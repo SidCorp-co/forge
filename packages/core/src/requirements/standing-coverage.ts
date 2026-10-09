@@ -38,14 +38,16 @@ export interface StandingIssueCriterion {
 /**
  * What the live build holds of the verdict commits asked about (`dependents.ts:liveBuildHolds`):
  * the commit production serves (null where it could not be read), per verdict commit (lower case)
- * whether it is that commit or an ancestor of it, and per runtime ref (lower case) the commit that
- * build served, or null where nothing resolves it. A commit absent from `holds` was not answered and
- * is judged neither way; a runtime absent from `runtimes` was not resolved and does not count.
+ * whether it is that commit or an ancestor of it, or why nobody could answer that, and per runtime
+ * ref (lower case) the commit that build served, or null where nothing resolves it. A commit absent
+ * from `holds` was not checked and does not count, `unanswered` naming why; a runtime absent from
+ * `runtimes` was not resolved and does not count.
  */
 export interface LiveBuildHolds {
   sha: string | null;
   holds: ReadonlyMap<string, boolean>;
   runtimes: ReadonlyMap<string, string | null>;
+  unanswered: ReadonlyMap<string, string>;
 }
 
 /** What coverage reads: the requirement's wordings, its issues, their traced criteria and verdicts. */
@@ -97,21 +99,33 @@ interface Resolved {
 
 // Kernel input (`VISION: kernel-hard-policy-soft`): every identity a verdict can name is either
 // resolved to something a rule checks or does not count, saying why. A commit and the commit a
-// runtime served are held to the live build (`liveBuildHolds`); a design or contract to the revision
-// or version the requirement's latest baseline pins (requirement-to-delivery `verdict-result`). A
-// storefront draft is judged on a non-production environment and a backfilled abbreviation names
-// no whole commit, so neither is evidence about the live build.
+// runtime served are held to the live build (`liveBuildHolds`) and count only where it is read to
+// hold them: one the live build lacks, and one whose hold nobody could answer (production unread,
+// ancestry unanswered), do not count (`VISION: state-never-lies`: an outage reads as unchecked,
+// named, never as passing). A design or contract is held to the revision or version the
+// requirement's latest baseline pins (requirement-to-delivery `verdict-result`). A storefront draft
+// is judged on a non-production environment and a backfilled abbreviation names no whole commit, so
+// neither is evidence about the live build.
 function resolve(identity: CoverageIdentity | null, live: LiveBuildHolds | null): Resolved {
-  const held = (commit: string) => live?.holds.get(commit.toLowerCase()) ?? null;
   const atCommit = (commit: string, judged: string): Resolved => {
-    const inLiveBuild = held(commit);
+    const key = commit.toLowerCase();
+    const inLiveBuild = live?.holds.get(key) ?? null;
+    const build = `the live build${live?.sha ? ` (${short(live.sha)})` : ''}`;
+    if (inLiveBuild === true) return { commit, inLiveBuild, notCounted: null };
+    if (inLiveBuild === false) {
+      return {
+        commit,
+        inLiveBuild,
+        notCounted: `judged at ${judged}, which ${build} does not hold`,
+      };
+    }
+    const why = live
+      ? (live.unanswered.get(key) ?? 'nothing answered it')
+      : 'the live build was not read';
     return {
       commit,
       inLiveBuild,
-      notCounted:
-        inLiveBuild === false
-          ? `judged at ${judged}, which the live build${live?.sha ? ` (${short(live.sha)})` : ''} does not hold`
-          : null,
+      notCounted: `judged at ${judged}, and whether ${build} holds it could not be checked: ${why}`,
     };
   };
   const none = (why: string): Resolved => ({ commit: null, inLiveBuild: null, notCounted: why });
@@ -257,15 +271,20 @@ function whyOf(verdict: BcVerdict, links: readonly CoverageIssue[]): string | nu
   const keys = (ls: readonly CoverageIssue[]) =>
     [...new Set(ls.map((l) => l.displayId))].join(', ');
   if (verdict === 'stale') {
-    return `${keys(links)} trace only an earlier wording of this criterion, so no verdict on them counts: tie it again from the issue's Criteria tab, then judge it`;
+    const one = new Set(links.map((l) => l.displayId)).size === 1;
+    return `${keys(links)} ${one ? 'traces' : 'trace'} only an earlier wording of this criterion, so no verdict on ${one ? 'it' : 'them'} counts: tie it again from the issue's Criteria tab, then judge it`;
   }
   const uncounted = links.filter((l) => !l.stale && l.notCounted !== null);
+  const named = (ls: readonly CoverageIssue[]) =>
+    ls.map((l) => `${l.displayId} criterion ${l.criterion}: ${l.notCounted}`).join('; ');
   if (verdict === 'not_live') {
     const off = uncounted.filter((l) => l.inLiveBuild === false);
-    return `judged only at builds the live one does not hold (${off.map((l) => `${l.displayId} criterion ${l.criterion}: ${l.identity}`).join('; ')}): judge it again on the live build`;
+    const rest = uncounted.filter((l) => l.inLiveBuild !== false);
+    const also = rest.length > 0 ? `; not counted either: ${named(rest)}` : '';
+    return `judged only at builds the live one does not hold (${off.map((l) => `${l.displayId} criterion ${l.criterion}: ${l.identity}`).join('; ')}): judge it again on the live build${also}`;
   }
   if (verdict === 'not_judged' && uncounted.length > 0) {
-    return `no verdict counts yet: ${uncounted.map((l) => `${l.displayId} criterion ${l.criterion}: ${l.notCounted}`).join('; ')}`;
+    return `no verdict counts yet: ${named(uncounted)}`;
   }
   return null;
 }

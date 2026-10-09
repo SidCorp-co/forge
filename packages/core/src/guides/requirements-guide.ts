@@ -30,13 +30,16 @@ it lives in numbered revisions, and each revision carries business criteria unde
   still reads \`in_delivery\`; the fix is a verdict, not a status move. A BC's coverage is the newest
   pass, short or fail on any issue criterion tracing its current wording that its identity lets
   count, and the BC names it. An unjudged one masks nothing. A commit, or the commit a runtime
-  served, counts unless the live build does not hold it; a runtime that resolves to no commit, a
-  design revision or contract version other than the one the requirement's latest baseline pins, a
-  storefront draft and a backfilled abbreviated commit never count, and each says why on its line. A
-  BC traced only at an earlier wording reads \`stale\`, one judged only at builds the live one does
-  not hold \`not_live\`, each with its reason (\`why\`). A trace left on an earlier wording is
-  refreshed by tying the BC again from the issue's Criteria tab; the retired row keeps its verdicts,
-  read back as \`retired\` beside \`criteria\` from \`GET /api/issues/:id/criteria\`.
+  served, counts only where the live build is read to hold it. One it does not hold, and one
+  nobody could check (production unreadable, or its ancestry unanswered), do not count and say
+  which on their line, so an outage reads \`not_judged\` with its reason, never \`passing\`. A
+  runtime that resolves to no commit, a design revision or contract version other than the one the
+  requirement's latest baseline pins, a storefront draft and a backfilled abbreviated commit never
+  count, and each says why on its line. A BC traced only at an earlier wording reads \`stale\`, one
+  judged only at builds the live one does not hold \`not_live\`, each with its reason (\`why\`). A
+  trace left on an earlier wording is refreshed by tying the BC again from the issue's Criteria
+  tab; the retired row keeps its verdicts, read back as \`retired\` beside \`criteria\` from
+  \`GET /api/issues/:id/criteria\`.
 
 ### The order of the work
 1. **create** \`{ title, reason, criteria }\` writes REQ-n at revision 1, a draft. Any member of the

@@ -70,13 +70,37 @@ describe('accepting a delivered requirement', () => {
         liveIssues: 1,
         unshipped: [],
         unproven: [
-          { code: 'BC-2', verdict: 'not_judged' },
-          { code: 'BC-4', verdict: 'gap' },
+          { code: 'BC-2', verdict: 'not_judged', why: null },
+          { code: 'BC-4', verdict: 'gap', why: null },
         ],
       },
     });
     expect(r?.code).toBe('REQUIREMENT_CRITERIA_UNPROVEN');
     expect(r?.detail).toContain('BC-2 (not judged), BC-4 (gap)');
+  });
+
+  // ISS-489 r3: a pass nobody could check against the live build leaves its BC not judged; the
+  // refusal names that reason, so an outage is not read as a criterion nobody judged
+  it('names the reason a criterion is unproven where coverage gives one', () => {
+    const [r] = acceptRefusals({
+      status: 'agreed',
+      named: 3,
+      head: 3,
+      proof: {
+        liveIssues: 1,
+        unshipped: [],
+        unproven: [
+          {
+            code: 'BC-2',
+            verdict: 'not_judged',
+            why: 'no verdict counts yet: ISS-1 criterion 1: judged at commit ffffffffffff, and whether the live build holds it could not be checked: the live build could not be read: no probe',
+          },
+        ],
+      },
+    });
+    expect(r?.detail).toBe(
+      'every current business criterion is proven by a passing verdict before the accept; not proven: BC-2 (not judged: no verdict counts yet: ISS-1 criterion 1: judged at commit ffffffffffff, and whether the live build holds it could not be checked: the live build could not be read: no probe).',
+    );
   });
 
   it('names every cause at once', () => {
@@ -87,7 +111,7 @@ describe('accepting a delivered requirement', () => {
       proof: {
         liveIssues: 1,
         unshipped: ['ISS-1'],
-        unproven: [{ code: 'BC-1', verdict: 'failing' }],
+        unproven: [{ code: 'BC-1', verdict: 'failing', why: null }],
       },
     });
     expect(codes(rs)).toEqual([
@@ -180,10 +204,37 @@ describe('the delivery phase the accept reads', () => {
         criteria,
         issues: [issue('i1', 'closed'), issue('i2', 'dropped')],
         issueCriteria: verdict('pass'),
+        liveBuild: {
+          sha: 'f'.repeat(40),
+          holds: new Map([['f'.repeat(40), true]]),
+          runtimes: new Map(),
+          unanswered: new Map(),
+        },
       },
       1,
     );
     expect(delivery.phase).toBe('delivered');
+  });
+
+  // ISS-489 r3: an unread live build counted the pass, so an outage could read a requirement delivered
+  it('reads in_delivery where the pass sits on a commit nobody could check against the live build', () => {
+    const { delivery, coverage } = deliveryAt(
+      {
+        status: 'agreed',
+        criteria,
+        issues: [issue('i1', 'closed')],
+        issueCriteria: verdict('pass'),
+        liveBuild: {
+          sha: null,
+          holds: new Map(),
+          runtimes: new Map(),
+          unanswered: new Map([['f'.repeat(40), 'the live build could not be read: no probe']]),
+        },
+      },
+      1,
+    );
+    expect(delivery.phase).toBe('in_delivery');
+    expect(coverage[0]?.verdict).toBe('not_judged');
   });
 
   it('reads in_delivery when every issue closed but a BC is unproven', () => {
