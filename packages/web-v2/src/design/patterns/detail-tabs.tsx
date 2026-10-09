@@ -38,7 +38,8 @@ export function DetailTabs<T extends string>({ tabs, value, onChange, testId }: 
   return (
     <>
       <div ref={top} />
-      <div className="sticky top-0 z-10 overflow-x-auto bg-app px-6 max-md:px-2" data-testid={testId ?? "detail-tabs"}>
+      {/* the tabs wrap onto a second row where the page is too narrow for them, never scrolling sideways (REQ-31 BC-3) */}
+      <div className="sticky top-0 z-10 bg-app px-6 max-md:px-2" data-testid={testId ?? "detail-tabs"}>
         <Tabs tabs={tabs.map((t) => ({ ...t }))} value={value} onChange={go} />
       </div>
     </>

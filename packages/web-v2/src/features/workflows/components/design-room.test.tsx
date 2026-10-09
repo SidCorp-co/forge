@@ -217,21 +217,21 @@ describe("the facts rail", () => {
 // jsdom lays nothing out, so the page's geometry at 1280x720 is stood in for: the column under the
 // 48px top bar, a one-line banner and the tabs, and the long return reason when it is in the flow.
 describe("the canvas keeps its share of the viewport", () => {
-  const VIEW = { width: 1280, height: 720 };
+  const VIEW = { width: 1280, viewportHeight: 720 };
   const LINE = 37;
   const TABS = 45;
   const REASON = 300;
 
   function layOut() {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: VIEW.width });
-    Object.defineProperty(window, "innerHeight", { configurable: true, value: VIEW.height });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: VIEW.viewportHeight });
     const rect = (h: number) => ({ x: 0, y: 0, top: 0, left: 0, right: 0, bottom: h, width: 800, height: h, toJSON: () => ({}) }) as DOMRect;
     const detailIn = () => {
       const d = document.querySelector<HTMLElement>("[data-testid=design-banner-detail]");
       return d && !d.hidden ? d : null;
     };
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-      if (this.dataset.testid === "view-design") return rect(VIEW.height - 48);
+      if (this.dataset.testid === "view-design") return rect(VIEW.viewportHeight - 48);
       if (this.dataset.testid === "design-banner-detail") return rect(this.hidden ? 0 : REASON);
       if (this.contains(screen.queryByTestId("design-tabs")) && this.contains(screen.queryByTestId("design-banner"))) {
         const d = detailIn();
@@ -243,7 +243,7 @@ describe("the canvas keeps its share of the viewport", () => {
   const canvasShare = () => {
     const column = screen.getByTestId("view-design").getBoundingClientRect().height;
     const head = (screen.getByTestId("view-design").firstElementChild as HTMLElement).getBoundingClientRect().height;
-    return (column - head) / VIEW.height;
+    return (column - head) / VIEW.viewportHeight;
   };
 
   it("compacts a banner the reader left open when its long return reason would push the canvas under 60%", () => {
@@ -265,16 +265,16 @@ describe("the canvas keeps its share of the viewport", () => {
   });
 
   it("decides on the head without the detail, so showing it never flips the answer", () => {
-    const m = { viewport: VIEW, column: 672, detail: 300 };
+    const m = { ...VIEW, column: 672, detail: 300 };
     expect(detailSqueezes({ ...m, head: LINE + TABS, detailInFlow: false })).toBe(true);
     expect(detailSqueezes({ ...m, head: LINE + TABS + 300, detailInFlow: true })).toBe(true);
     expect(detailSqueezes({ ...m, detail: 80, head: LINE + TABS, detailInFlow: false })).toBe(false);
     expect(detailSqueezes({ ...m, detail: 80, head: LINE + TABS + 80, detailInFlow: true })).toBe(false);
     // the boundary: exactly 60% left is enough
-    expect(detailSqueezes({ viewport: VIEW, column: 672, detail: 672 - 82 - 432, head: 82, detailInFlow: false })).toBe(false);
-    expect(detailSqueezes({ viewport: VIEW, column: 672, detail: 672 - 82 - 431, head: 82, detailInFlow: false })).toBe(true);
+    expect(detailSqueezes({ ...VIEW, column: 672, detail: 672 - 82 - 432, head: 82, detailInFlow: false })).toBe(false);
+    expect(detailSqueezes({ ...VIEW, column: 672, detail: 672 - 82 - 431, head: 82, detailInFlow: false })).toBe(true);
     // below the wide layout the page scrolls, and nothing has been measured yet
-    expect(detailSqueezes({ ...m, viewport: { width: 1023, height: 720 }, head: 82, detailInFlow: false })).toBe(false);
+    expect(detailSqueezes({ ...m, width: 1023, head: 82, detailInFlow: false })).toBe(false);
     expect(detailSqueezes({ ...m, detail: 0, head: 82, detailInFlow: false })).toBe(false);
   });
 });

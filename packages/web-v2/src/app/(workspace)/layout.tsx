@@ -207,7 +207,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     <TourReleaseProvider value={tourRelease}>
     <ChatDockProvider value={dock}>
     <TopBarSlotProvider>
-    <div className="flex h-dvh overflow-hidden bg-app" data-print="frame">
+    <div className="flex h-dvh overflow-hidden bg-app" data-print="frame" data-shell>
       <div className="hidden h-full md:block" data-testid="desktop-sidebar" data-print="chrome">
         <WorkspaceSidebar
           collapsed={sidebar.collapsed}
@@ -258,7 +258,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       />
       <NotificationsBell open={notificationsOpen} onClose={closeNotifications} anchor={bellAnchor} />
 
-      <div ref={pageColumn} className="flex min-w-0 flex-1 flex-col" data-print="frame">
+      {/* data-page: the container the page's breakpoints read while the Ask Agent panel is beside it (globals.css) */}
+      <div ref={pageColumn} className="flex min-w-0 flex-1 flex-col" data-print="frame" data-page>
         <div className="contents" data-print="chrome">
           <ShellTopBar chatOpen={dock.open} onToggleChat={dock.toggle} />
           <PinnedTabBar
@@ -269,7 +270,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           />
         </div>
 
-        <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0" data-print="frame">
+        <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(56px+env(safe-area-inset-bottom))] window-md:pb-0" data-print="frame">
           {children}
           <TourLauncher />
         </main>

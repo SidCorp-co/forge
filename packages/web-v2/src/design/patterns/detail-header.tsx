@@ -5,7 +5,8 @@
 // with the state. An entity that nests (a module under its parent) adds its ancestors between the back
 // control and the title as a trail, "← Modules › Execution › Runs"; nothing else does. Back lands on the list view the page was opened from — its mode,
 // filters and open peek — kept in session storage per list; a page reached by a link goes to the
-// plain list. Below 768px the bar is too narrow for the title, so it heads the main column instead.
+// plain list. Below 768px of page the bar is too narrow for the title, so it heads the main column
+// instead, and the back control is its arrow alone, so the page's actions never cover it.
 
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -64,11 +65,13 @@ export function DetailHeader({ back, itemKey, title, badge, action, keyTitle, tr
               className="inline-flex h-[30px] flex-none items-center gap-1.5 whitespace-nowrap rounded-sm bg-sunken pl-2 pr-2.5 text-13 font-semibold text-fg hover:bg-active"
               data-testid="detail-back"
               aria-label={t("common.backTo", { label: back.label })}
+              title={t("common.backTo", { label: back.label })}
             >
               <span aria-hidden className="text-[15px] leading-none text-muted">
                 ←
               </span>
-              {back.label}
+              {/* below 768px the bar holds the back control and the page's actions: the arrow, named by its label */}
+              <span className="max-md:hidden">{back.label}</span>
             </Link>
             {trail?.length ? (
               <nav aria-label={t("common.ancestors")} className="flex min-w-0 flex-none items-center gap-1.5 text-13 max-md:hidden" data-testid="detail-trail">

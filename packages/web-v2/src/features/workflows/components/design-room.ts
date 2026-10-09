@@ -1,6 +1,7 @@
 "use client";
 
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { breakpointWidth } from "@/lib/utils/breakpoint-width";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 
 /** The bare anchor a focused canvas keeps in the address, so it can be linked and survives a reload. */
@@ -47,7 +48,9 @@ export const useBannerOpen = () => useViewerFlag(BANNER_OPEN_KEY);
 export const useRailCollapsed = () => useViewerFlag(RAIL_COLLAPSED_KEY);
 
 export interface RoomMeasure {
-  viewport: { width: number; height: number };
+  /** The width the page's `lg` breakpoint reads (breakpointWidth): the window's, or the page's while the Ask Agent panel is beside it. */
+  width: number;
+  viewportHeight: number;
   /** The design view's column: the viewport less the page's top bar. */
   column: number;
   /** Everything stacked above the canvas, as laid out now. */
@@ -63,9 +66,9 @@ export interface RoomMeasure {
  * against the head without the detail, so showing or hiding it never flips the answer.
  */
 export function detailSqueezes(m: RoomMeasure): boolean {
-  if (m.viewport.width < ROOM_MIN_WIDTH || m.detail <= 0) return false;
+  if (m.width < ROOM_MIN_WIDTH || m.detail <= 0) return false;
   const headWithout = m.head - (m.detailInFlow ? m.detail : 0);
-  return m.column - headWithout - m.detail < CANVAS_SHARE * m.viewport.height;
+  return m.column - headWithout - m.detail < CANVAS_SHARE * m.viewportHeight;
 }
 
 /**
@@ -94,7 +97,8 @@ export function useDetailSqueezes(
       if (d && shown) lastDetail.current = d.getBoundingClientRect().height;
       setSqueezed(
         detailSqueezes({
-          viewport: { width: window.innerWidth, height: window.innerHeight },
+          width: breakpointWidth(c),
+          viewportHeight: window.innerHeight,
           column: c.getBoundingClientRect().height,
           head: h.getBoundingClientRect().height,
           detail: lastDetail.current,

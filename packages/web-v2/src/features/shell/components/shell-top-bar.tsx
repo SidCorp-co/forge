@@ -21,7 +21,7 @@ export function ShellTopBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onT
         icon="chat"
         aria-pressed={chatOpen}
         onClick={onToggleChat}
-        className="hidden md:inline-flex aria-pressed:bg-active aria-pressed:text-fg"
+        className="hidden window-md:inline-flex aria-pressed:bg-active aria-pressed:text-fg"
       >
         {dockTitle(t)}
       </Button>

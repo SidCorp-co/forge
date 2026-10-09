@@ -9,7 +9,7 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { type ChatDockApi, usePageRoom } from "@/features/chat-dock/dock";
 import { DockPreview } from "./dock-preview";
-import { type DockSize, dockSizes, dockWidth, sizeAt, sizeFromDrag } from "@/features/chat-dock/dock-size";
+import { type DockSize, dockOverPage, dockSizes, dockWidth, sizeAt, sizeFromDrag } from "@/features/chat-dock/dock-size";
 import { isScopedRoom, targetConversationId } from "@/features/chat-dock/dock-target";
 import { BOARD_DOCK_WIDTH, BoardPanel } from "../board/board-panel";
 import { useBoard } from "@/features/board/board-store";
@@ -79,7 +79,7 @@ function RoomScopeChip({
   return <ScopeChip ecosystem label={t("nav.ecosystem")} title={t("shell.dock.ecosystemTitle", { label, project: project.name })} />;
 }
 
-/** What the full-screen panel's way back is called: the page underneath it. */
+/** What the way back from a panel over the page is called: the page underneath it. */
 export function pageLabel(pathname: string | null, t: Copy): string {
   const parts = (pathname ?? "").split("/").filter(Boolean);
   if (parts[0] === "projects" && parts.length <= 2) return t("nav.proj-overview");
@@ -90,7 +90,11 @@ export function pageLabel(pathname: string | null, t: Copy): string {
   return last.replace(/[-_]/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 
-export function ChatDockBody({ dock, fullScreen, sizeControl }: { dock: ChatDockApi; fullScreen?: boolean; sizeControl?: React.ReactNode }) {
+/**
+ * `fullScreen`: the phone's slide-over, one size and no pin. `overPage`: a panel the window could not hold
+ * beside the page (REQ-31 BC-4). Both cover the page, so both lead with the way back to it.
+ */
+export function ChatDockBody({ dock, fullScreen, overPage, sizeControl }: { dock: ChatDockApi; fullScreen?: boolean; overPage?: boolean; sizeControl?: React.ReactNode }) {
   const pathname = usePathname();
   const pageKey = pageSubjectKey(pathname);
   const t = useCopy();
@@ -106,6 +110,8 @@ export function ChatDockBody({ dock, fullScreen, sizeControl }: { dock: ChatDock
   const ecosystemId =
     target?.kind === "room" ? (roomQ.data?.ecosystemId ?? null) : target?.kind === "draft" ? (target.ecosystemId ?? null) : null;
   const subjectKey = target?.kind === "room" ? (roomQ.data?.subjectKey ?? null) : null;
+  const under = pageLabel(pathname, t);
+  const wayBack = under === t("shell.dock.back") ? under : t("common.backTo", { label: under });
 
   const pick = useCallback(
     (t: Parameters<ChatDockApi["select"]>[0]) => {
@@ -169,16 +175,16 @@ export function ChatDockBody({ dock, fullScreen, sizeControl }: { dock: ChatDock
   return (
     <SecondaryRegion>
       <div className="@container flex h-full min-h-0 flex-col" data-testid="chat-dock-body">
-        {fullScreen && (
+        {(fullScreen || overPage) && (
           <div className="flex flex-none items-center border-b border-line px-3 py-2">
             <button
               type="button"
               onClick={dock.close}
-              aria-label={pageLabel(pathname, t) === t("shell.dock.back") ? t("shell.dock.back") : t("common.backTo", { label: pageLabel(pathname, t) })}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-sunken px-2.5 text-[13px] font-semibold text-fg hover:bg-hover"
+              data-testid="chat-dock-way-back"
+              className="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-md bg-sunken px-2.5 text-[13px] font-semibold text-fg hover:bg-hover"
             >
               <span aria-hidden>←</span>
-              {pageLabel(pathname, t)}
+              <span className="truncate">{wayBack}</span>
             </button>
           </div>
         )}
@@ -349,7 +355,13 @@ function ResizeHandle({
   );
 }
 
-/** The panel beside the page. `page` is the page column: the panel and the page share the width from its left edge to the window's right. */
+/**
+ * The panel beside the page, or over it where the window cannot hold the page's readable minimum beside
+ * the panel at the width it is drawn (REQ-31 BC-4). `page` is the page column: the panel and the page
+ * share the width from its left edge to the window's right. Beside, the page reflows into what is left
+ * (the `page` container in app/globals.css); over, the page keeps the whole width and the panel leads
+ * with the way back to it.
+ */
 export function ChatDock({ dock, page }: { dock: ChatDockApi; page: RefObject<HTMLElement | null> }) {
   const docked = useMediaQuery("(min-width: 48rem)");
   const room = usePageRoom(page);
@@ -375,16 +387,23 @@ export function ChatDock({ dock, page }: { dock: ChatDockApi; page: RefObject<HT
     if (board.open) setPickedOverBoard(true);
     dock.setSize(size);
   };
+  const over = dockOverPage(width, room);
   return (
     <aside
       aria-label={dockTitle(t)}
       data-testid="chat-dock"
-      className="relative hidden h-full flex-none flex-col border-l border-line bg-app md:flex"
+      data-dock-placement={over ? "over" : "beside"}
+      className={
+        over
+          ? "fixed inset-y-0 right-0 z-30 hidden flex-col border-l border-line bg-app shadow-[var(--shadow-lg)] md:flex"
+          : "relative hidden h-full flex-none flex-col border-l border-line bg-app md:flex"
+      }
       style={{ width }}
     >
       <ResizeHandle width={width} room={room} onDrag={setLive} onCommit={pick} />
       <ChatDockBody
         dock={dock}
+        overPage={over}
         sizeControl={<SizeControl width={width} room={room} byBoard={live === null && widened !== kept} onSize={pick} />}
       />
     </aside>

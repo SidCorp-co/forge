@@ -7,7 +7,7 @@
 export const PAGE_MIN_WIDTH = 480;
 
 /** The narrowest the large size is drawn. Under a window this cannot hold beside the page's minimum,
- *  the page gets less than PAGE_MIN_WIDTH: the too-narrow case REQ-31 BC-4 gives the overlay. */
+ *  the panel goes over the page (dockOverPage). */
 export const LARGE_FLOOR = 360;
 
 /** What a browser keeps: one of the two sizes, which follows the window, or a dragged width in px. */
@@ -38,6 +38,13 @@ export function sizeFromDrag(px: number, room: number): DockSize {
   if (w >= large) return "large";
   if (w <= half) return "half";
   return w;
+}
+
+/** Whether the panel drawn `width` px wide goes over the page rather than beside it: beside, the page
+ *  would keep less than its readable minimum of `room` (REQ-31 BC-4). Read at whatever width the panel
+ *  is drawn: large, half, dragged or widened by a board. */
+export function dockOverPage(width: number, room: number): boolean {
+  return room - width < PAGE_MIN_WIDTH;
 }
 
 /** Which of the two sizes `width` is, or null for a width a drag left between them. */

@@ -8,6 +8,7 @@ import {
   LARGE_FLOOR,
   LEGACY_DOCK_WIDTH_KEY,
   PAGE_MIN_WIDTH,
+  dockOverPage,
   dockSizes,
   dockWidth,
   settleDockSize,
@@ -69,6 +70,35 @@ describe("the size control", () => {
     expect(sizeAt(680, ROOM)).toBe("large");
     expect(sizeAt(340, ROOM)).toBe("half");
     expect(sizeAt(500, ROOM)).toBeNull();
+  });
+});
+
+// REQ-31 BC-4 (ISS-494): where the window cannot hold the page's minimum beside the panel at the width
+// it is drawn, the panel goes over the page instead of squeezing it
+describe("beside the page or over it", () => {
+  it("stays beside while the page keeps its 480px, and goes over at one px less", () => {
+    expect(dockOverPage(ROOM - PAGE_MIN_WIDTH, ROOM)).toBe(false);
+    expect(dockOverPage(ROOM - PAGE_MIN_WIDTH + 1, ROOM)).toBe(true);
+    expect(dockOverPage(ROOM - PAGE_MIN_WIDTH - 1, ROOM)).toBe(false);
+  });
+
+  it("keeps large and half beside on a window wide enough for both", () => {
+    expect(dockOverPage(dockWidth("large", ROOM), ROOM)).toBe(false);
+    expect(dockOverPage(dockWidth("half", ROOM), ROOM)).toBe(false);
+  });
+
+  it("puts large over the page where its floor leaves the page under its minimum, and judges half on its own width", () => {
+    // a 1024px window with the 280px sidebar open: large is held at its 360px floor and would leave 384
+    const room = 1024 - 280;
+    expect(dockOverPage(dockWidth("large", room), room)).toBe(true);
+    expect(dockOverPage(dockWidth("half", room), room)).toBe(false);
+    // a 900px window: even half leaves the page 440
+    expect(dockOverPage(dockWidth("half", 900 - 280), 900 - 280)).toBe(true);
+  });
+
+  it("judges a dragged width or a board-widened one by the width it is drawn at", () => {
+    expect(dockOverPage(dockWidth(700, ROOM), ROOM)).toBe(false);
+    expect(dockOverPage(ROOM - 400, ROOM)).toBe(true);
   });
 });
 
