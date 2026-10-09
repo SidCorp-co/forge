@@ -203,11 +203,29 @@ async fn a_dropped_room_sketch_leaves_no_checkout_branch_or_kept_ref() {
     // what an idea's abandon did before: the checkout goes, the branch stays
     remove(&c).await;
     assert!(!at.exists());
-    assert_eq!(sh(&repo_dir, "git branch --list 'sketch/req-44-abcdef'").await, "sketch/req-44-abcdef");
+    assert_eq!(
+        sh(&repo_dir, "git branch --list 'sketch/req-44-abcdef'").await,
+        "sketch/req-44-abcdef"
+    );
     drop_sketch(&c, "p1").await;
-    assert_eq!(sh(&repo_dir, "git branch --list 'sketch/*'").await, "", "the room's branch is deleted");
-    assert_eq!(sh(&repo_dir, "git for-each-ref refs/forge/kept/").await, "", "its kept ref is deleted");
-    assert_eq!(sh(&repo_dir, "git config --get-regexp '^branch\\.sketch' || true").await, "");
+    assert_eq!(
+        sh(&repo_dir, "git branch --list 'sketch/*'").await,
+        "",
+        "the room's branch is deleted"
+    );
+    assert_eq!(
+        sh(&repo_dir, "git for-each-ref refs/forge/kept/").await,
+        "",
+        "its kept ref is deleted"
+    );
+    assert_eq!(
+        sh(
+            &repo_dir,
+            "git config --get-regexp '^branch\\.sketch' || true"
+        )
+        .await,
+        ""
+    );
     // a drop naming a branch that is not a sketch, or a path outside the worktrees, touches nothing
     let main = Checkout::Sketch {
         repo_path: repo.clone(),

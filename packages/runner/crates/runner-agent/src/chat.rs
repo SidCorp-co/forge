@@ -877,9 +877,15 @@ mod tests {
             "sessionId": "s1", "message": "make it green", "forgeToken": "t", "confined": true, "ungated": true
         });
         let spec = chat_spec("s1", "make it green", &turn_of(frame, None));
-        assert!(spec.hooks_off, "an ungated turn spawned a session that runs the checkout's hooks");
+        assert!(
+            spec.hooks_off,
+            "an ungated turn spawned a session that runs the checkout's hooks"
+        );
         let args = crate::claude_code::args_for_test(&spec);
-        let at = args.iter().position(|a| a == "--settings").expect("no --settings flag");
+        let at = args
+            .iter()
+            .position(|a| a == "--settings")
+            .expect("no --settings flag");
         assert_eq!(args[at + 1], r#"{"disableAllHooks":true}"#);
         let plain = serde_json::json!({ "sessionId": "s1", "message": "hi", "forgeToken": "t" });
         let spec = chat_spec("s1", "hi", &turn_of(plain, None));

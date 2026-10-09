@@ -210,7 +210,9 @@ pub async fn drop_sketch(c: &Checkout, preview_id: &str) {
     remove(c).await;
     let _ = git(c.repo(), &["worktree", "prune"]).await;
     if let Err(e) = git(c.repo(), &["branch", "-D", branch]).await {
-        tracing::warn!("[preview] {preview_id}: the sketch branch {branch} could not be deleted: {e}");
+        tracing::warn!(
+            "[preview] {preview_id}: the sketch branch {branch} could not be deleted: {e}"
+        );
     }
     let kept = format!("refs/forge/kept/{preview_id}");
     let _ = git(c.repo(), &["update-ref", "-d", &kept]).await;

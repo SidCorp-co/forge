@@ -215,7 +215,12 @@ pub async fn settle(dir: &Path, branch: &str, ask: &SettleAsk) -> Result<String,
     let _ = std::fs::remove_dir_all(&at);
     let place = at.to_string_lossy().into_owned();
     git(dir, None, &["worktree", "prune"]).await?;
-    git(dir, None, &["worktree", "add", "--detach", &place, &remote_ref]).await?;
+    git(
+        dir,
+        None,
+        &["worktree", "add", "--detach", &place, &remote_ref],
+    )
+    .await?;
     let merged = async {
         let identity = [
             "-c",
@@ -226,12 +231,23 @@ pub async fn settle(dir: &Path, branch: &str, ask: &SettleAsk) -> Result<String,
             "commit.gpgsign=false",
         ];
         let mut merge: Vec<&str> = identity.to_vec();
-        merge.extend(["merge", "--no-ff", "--no-verify", "-q", "-m", &ask.message, branch]);
+        merge.extend([
+            "merge",
+            "--no-ff",
+            "--no-verify",
+            "-q",
+            "-m",
+            &ask.message,
+            branch,
+        ]);
         if let Err(e) = git(&at, None, &merge).await {
             let _ = git(&at, None, &["merge", "--abort"]).await;
             return Err(format!("the merge of {branch} into {into} conflicts: {e}"));
         }
-        let sha = git(&at, None, &["rev-parse", "HEAD"]).await?.trim().to_string();
+        let sha = git(&at, None, &["rev-parse", "HEAD"])
+            .await?
+            .trim()
+            .to_string();
         git(
             &at,
             None,
@@ -366,28 +382,77 @@ mod tests {
         let work = root.join("repo/.claude/worktrees/sketch-req-44-abcdef");
         sh(&work, "echo settled > web.txt").await;
         let kept = keep(&work, "p9").await.expect("a keep");
-        let main_before = git(&root.join("origin.git"), None, &["rev-parse", "main"]).await.unwrap();
-        let ask = SettleAsk { into: "dev".into(), message: "Merge POC room r1".into() };
-        let sha = settle(&work, "sketch/req-44-abcdef", &ask).await.expect("the merge lands");
+        let main_before = git(&root.join("origin.git"), None, &["rev-parse", "main"])
+            .await
+            .unwrap();
+        let ask = SettleAsk {
+            into: "dev".into(),
+            message: "Merge POC room r1".into(),
+        };
+        let sha = settle(&work, "sketch/req-44-abcdef", &ask)
+            .await
+            .expect("the merge lands");
         let origin = root.join("origin.git");
-        assert_eq!(git(&origin, None, &["rev-parse", "dev"]).await.unwrap().trim(), sha, "origin's dev is the merge");
-        let parents = git(&origin, None, &["rev-list", "--parents", "-n", "1", "dev"]).await.unwrap();
-        assert!(parents.contains(kept.head.as_deref().unwrap()), "the merge's second parent is the kept head: {parents}");
-        assert_eq!(git(&origin, None, &["show", "dev:web.txt"]).await.unwrap().trim(), "settled");
-        assert_eq!(git(&origin, None, &["rev-parse", "main"]).await.unwrap(), main_before, "main is untouched");
-        assert!(!root.join("repo/.claude/worktrees/sketch-req-44-abcdef-settle").exists(), "the merge checkout is removed");
+        assert_eq!(
+            git(&origin, None, &["rev-parse", "dev"])
+                .await
+                .unwrap()
+                .trim(),
+            sha,
+            "origin's dev is the merge"
+        );
+        let parents = git(&origin, None, &["rev-list", "--parents", "-n", "1", "dev"])
+            .await
+            .unwrap();
+        assert!(
+            parents.contains(kept.head.as_deref().unwrap()),
+            "the merge's second parent is the kept head: {parents}"
+        );
+        assert_eq!(
+            git(&origin, None, &["show", "dev:web.txt"])
+                .await
+                .unwrap()
+                .trim(),
+            "settled"
+        );
+        assert_eq!(
+            git(&origin, None, &["rev-parse", "main"]).await.unwrap(),
+            main_before,
+            "main is untouched"
+        );
+        assert!(
+            !root
+                .join("repo/.claude/worktrees/sketch-req-44-abcdef-settle")
+                .exists(),
+            "the merge checkout is removed"
+        );
 
         // a conflict lands nothing and says so
         sh(&root, "cd seed && git checkout -q dev && git pull -q origin dev && echo theirs > web.txt && git add web.txt && git -c user.email=a@b -c user.name=a commit -q -m clash && git push -q origin dev").await;
         let before = git(&origin, None, &["rev-parse", "dev"]).await.unwrap();
         sh(&work, "echo ours-again > web.txt").await;
         keep(&work, "p9").await.expect("a second keep");
-        let err = settle(&work, "sketch/req-44-abcdef", &ask).await.unwrap_err();
+        let err = settle(&work, "sketch/req-44-abcdef", &ask)
+            .await
+            .unwrap_err();
         assert!(err.contains("conflicts"), "{err}");
-        assert_eq!(git(&origin, None, &["rev-parse", "dev"]).await.unwrap(), before, "a conflict pushed nothing");
+        assert_eq!(
+            git(&origin, None, &["rev-parse", "dev"]).await.unwrap(),
+            before,
+            "a conflict pushed nothing"
+        );
 
         for never in ["main", "master", "-x", "a..b"] {
-            let err = settle(&work, "sketch/req-44-abcdef", &SettleAsk { into: never.into(), message: "m".into() }).await.unwrap_err();
+            let err = settle(
+                &work,
+                "sketch/req-44-abcdef",
+                &SettleAsk {
+                    into: never.into(),
+                    message: "m".into(),
+                },
+            )
+            .await
+            .unwrap_err();
             assert!(err.contains("never merges into"), "{never}: {err}");
         }
         let _ = std::fs::remove_dir_all(&root);

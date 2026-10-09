@@ -165,9 +165,9 @@ impl Previews {
             },
             "preview.snapshot.read" => match serde_json::from_value::<Named>(data) {
                 Ok(n) => {
-                    tokio::spawn(async move {
-                        this.snapshot(&n.preview_id, n.keep, n.settle).await
-                    });
+                    tokio::spawn(
+                        async move { this.snapshot(&n.preview_id, n.keep, n.settle).await },
+                    );
                 }
                 Err(e) => tracing::warn!("[preview] preview.snapshot.read refused: {e}"),
             },
