@@ -2,9 +2,8 @@ import { sql } from 'drizzle-orm';
 import { backfillMarkedIn, markBackfillIn } from '../db/backfill-markers.js';
 import { type Db, db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import type { KernelActor } from '../lifecycle/index.js';
 import { applyStatusTransition } from './apply-transition.js';
-import { projectCreatorOf, voidParkQuestions } from './ports.js';
+import { projectCreatorOf } from './ports.js';
 
 /** The `backfill_markers` key set once no issue waits on a person for a run-sessions-spent park. */
 export const RESCUE_CAP_REHOME_KEY = 'rescue-cap-rehome';
@@ -48,9 +47,10 @@ interface Parked {
 /**
  * Re-home the issues the rescue cap parked for a person before it parked for the master (REQ-41
  * BC-11): each `needs_info` whose latest kernel move is the cap's goes to `on_hold` through the
- * issue machine's own `paused` edge, as an agent move whose reason says why, with the question that
- * park minted voided in the same write. A person's own `needs_info`, and the other questions on a
- * re-homed issue, stay as they are. A row with no recorded move into `needs_info` cannot be told
+ * issue machine's own `paused` edge, as an agent move whose reason says why; the move out of the park
+ * withdraws the question that park minted in the same write (`questions/issue-coupling.ts:
+ * withdrawParkQuestions`). A person's own `needs_info`, and the other questions on a re-homed issue,
+ * stay as they are. A row with no recorded move into `needs_info` cannot be told
  * apart from a person's park, so it is refused by name and the marker stays unset. Returns null
  * when it already ran to completion.
  */
@@ -100,7 +100,6 @@ export async function runRescueCapRehomeOnce(conn: Executor = db): Promise<Rehom
 async function rehome(row: Parked, spent: number): Promise<void> {
   const actorId = await projectCreatorOf(row.project_id);
   if (!actorId) throw new Error(`the project of issue ${row.id} has no owner to act as`);
-  const actor: KernelActor = { type: 'runner', id: actorId };
   const why = `${spent} run sessions ended on this issue without it moving on, and it was parked for a person before a run that spends its sessions waited on its master; it now waits on its master, who resumes it once with a changed brief, drops it, or asks a person a question carrying a recommended answer.`;
   await applyStatusTransition(
     {
@@ -114,15 +113,6 @@ async function rehome(row: Parked, spent: number): Promise<void> {
     {
       reason: 'autonomous_rescue_cap_rehomed',
       transitionReason: why,
-      beforeStatusWrite: async (tx) => {
-        await voidParkQuestions(tx, {
-          issueId: row.id,
-          prompt: row.reason ?? '',
-          reason: why,
-          by: actorId,
-          actor,
-        });
-      },
     },
   );
 }

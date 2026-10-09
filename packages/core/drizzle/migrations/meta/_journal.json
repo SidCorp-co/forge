@@ -3102,6 +3102,13 @@
       "when": 1824681600000,
       "tag": "0483_a_design_decision_names_who_made_it_a_person_or_the_kernel",
       "breakpoints": true
+    },
+    {
+      "idx": 484,
+      "version": "7",
+      "when": 1824768000000,
+      "tag": "0484_a_park_question_ends_when_its_issue_leaves_the_park",
+      "breakpoints": true
     }
   ]
 }

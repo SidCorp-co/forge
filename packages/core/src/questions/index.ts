@@ -14,7 +14,7 @@ export {
   personOwesAnAnswer,
   settleOpenQuestions,
   voidCancelledRunQuestions,
-  voidParkQuestions,
+  withdrawParkQuestions,
 } from './issue-coupling.js';
 export { type AwaitedMerge, answerMergeQuestions } from './merge-wait.js';
 export {
