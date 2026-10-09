@@ -27224,6 +27224,13 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "findings": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 24,
+                    "type": "array"
+                  },
                   "narrative": {
                     "additionalProperties": false,
                     "properties": {
@@ -31296,6 +31303,13 @@
                   {
                     "additionalProperties": false,
                     "properties": {
+                      "findings": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 24,
+                        "type": "array"
+                      },
                       "narrative": {
                         "additionalProperties": false,
                         "default": {},
