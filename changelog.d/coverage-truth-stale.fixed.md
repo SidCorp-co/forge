@@ -1,1 +1,0 @@
-**Stale criterion traces read as stale and Short reads as Short.** The issue rail names criteria traced only at an earlier wording with the re-tie act; the Criteria tab draws Short as Short, still counted as a pass.
