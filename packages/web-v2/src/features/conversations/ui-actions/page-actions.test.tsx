@@ -109,7 +109,7 @@ function Dock({ progress }: { progress: ConversationProgressEntry | null }) {
 
 let n = 0;
 /** One live turn holding the stored calls, as the asker's browser receives it. */
-const turn = (...calls: { name: string; args: unknown }[]): ConversationProgressEntry => ({
+const turn = (...calls: { name: string; args: Record<string, unknown> }[]): ConversationProgressEntry => ({
   conversationId: "c1",
   rev: ++n,
   view: "asker",
