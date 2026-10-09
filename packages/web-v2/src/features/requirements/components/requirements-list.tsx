@@ -5,6 +5,7 @@
 
 import { REQUIREMENT_ATTENTION_GROUPS, type RequirementSummary } from "@forge/contracts/requirements";
 import { useState } from "react";
+import { useReportShown } from "@/design";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import { RequirementLine } from "./requirement-line";
 
@@ -31,6 +32,8 @@ export function listGroupsOf(rows: RequirementSummary[], by: ListGrouping, areas
 export function RequirementsList({ groups, slug, now, selected, onPeek }: { groups: Group[]; slug: string; now: number; selected: string | null; onPeek: (key: string) => void }) {
   const t = useCopy();
   const [closed, setClosed] = useState<Record<string, boolean>>({ done: true });
+  // the chat reads which rows are on screen (REQ-41 BC-6)
+  useReportShown(groups.filter((g) => !(closed[g.id] ?? false)).flatMap((g) => g.rows.map((r) => r.key)));
   if (groups.length === 0) return <p className="px-5 py-10 text-13 text-muted">{t("requirements.noMatch")}</p>;
   return (
     <div data-testid="requirements-list" className="px-5 pb-16 max-md:px-3">

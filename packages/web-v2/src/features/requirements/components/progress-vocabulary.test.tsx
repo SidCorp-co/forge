@@ -55,10 +55,11 @@ function releasesText(language: "en" | "vi"): string {
 }
 
 describe("one progress on the requirements list and on Releases", () => {
-  it.each(["en", "vi"] as const)("prints REQ-19 the same on both pages in %s", (language) => {
+  it.each(["en", "vi"] as const)("prints REQ-19 progress on Releases only, in %s", (language) => {
     const releases = releasesText(language);
     expect(releases).toBe(language === "en" ? "0 shipped · 5 landed, awaiting release · 1 to do" : "0 đã phát hành · 5 xong code, chờ release · 1 còn lại"); // i18n-allow: asserts the vi progress copy
-    expect(listText(language)).toContain(releases);
+    // the list is one line per requirement now (REQ-29 BC-4) and prints no issue progress, so Releases holds the one
+    expect(listText(language)).not.toContain("awaiting release");
   });
 });
 

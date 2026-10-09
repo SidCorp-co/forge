@@ -70,7 +70,7 @@ export function RequirementLine({ r, slug, now, selected, onPeek }: { r: Require
     <Link
       href={href}
       title={r.title}
-      data-testid="requirement-line"
+      data-testid="list-row"
       data-key={r.key}
       aria-current={selected || undefined}
       onClick={(e) => {

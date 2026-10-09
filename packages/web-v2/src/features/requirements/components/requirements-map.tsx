@@ -7,6 +7,7 @@
 import { REQUIREMENT_STAGE_LABELS, REQUIREMENT_STAGES, ROADMAP_HORIZONS, type RequirementStage, requirementStageOf, roadmapHorizonOf } from "@forge/contracts/requirement-roadmap";
 import type { RequirementSummary } from "@forge/contracts/requirements";
 import Link from "next/link";
+import { useReportShown } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
@@ -21,6 +22,7 @@ export function RequirementsMap({ rows, areas, slug, onPeek }: { rows: Requireme
     const stage = requirementStageOf(r.standing);
     return stage ? [{ r, stage }] : [];
   });
+  useReportShown(staged.map((x) => x.r.key));
   const count = (s: RequirementStage) => staged.filter((x) => x.stage === s).length;
   const strip = REQUIREMENT_STAGES.filter((s) => count(s) > 0 || s === "done");
   const lanes = [...areas.map((a) => ({ id: a.id, name: a.name })), { id: "none", name: t("requirements.noArea") }]

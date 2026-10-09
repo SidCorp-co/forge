@@ -101,7 +101,7 @@ describe("a project page's first reads", () => {
   it("leave with the page on Requirements, and none goes twice", async () => {
     const { reads, waterfall } = await load(<ProjectRequirementsPage />, "/projects/forge/requirements", { slug: "forge" });
     expect(reads.map((s) => s.path)).toEqual(
-      expect.arrayContaining(["/projects/forge/requirements", "/projects/forge/forecast/requirements"]),
+      expect.arrayContaining(["/projects/forge/requirements", "/projects/forge/requirement-areas"]),
     );
     expect(waterfall.serialDepth).toBe(1);
     expect(waterfall.sentTwice).toEqual([]);
