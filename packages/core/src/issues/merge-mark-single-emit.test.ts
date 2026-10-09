@@ -38,6 +38,7 @@ vi.mock('../outbox/index.js', () => ({
 vi.mock('./read-service.js', () => ({ findIssueById: async () => prior }));
 // the project declares no merge check and the issue no approved new pattern, so none is owed
 vi.mock('./merge-check.js', () => ({ uncheckedMergeRefusal: async () => null }));
+vi.mock('./pattern-entry.js', () => ({ markEntryRefusal: async () => null }));
 vi.mock('./ports.js', () => ({
   answerMergeQuestions: async () => [],
   contractDrift: async () => null,

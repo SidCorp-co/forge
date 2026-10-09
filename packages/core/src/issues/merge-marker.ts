@@ -34,6 +34,7 @@ import {
   recordReadPaths,
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
+import { markEntryRefusal } from './pattern-entry.js';
 import { contractDrift, postIssueNotice } from './ports.js';
 import { findIssueById, type IssueRow } from './read-service.js';
 import { findMissingWorkEvidence, latestHandoffCommit } from './work-evidence.js';
@@ -407,7 +408,9 @@ async function writeMarkTrail(
 /**
  * A merge a check is owed for is marked only at a commit a passing merge check is recorded at
  * (Issue to release r20 `rule-merge`; `merge-check.ts`). The commit is the one the mark names, else
- * the one the row or the issue's work evidence already records.
+ * the one the row or the issue's work evidence already records. Before that, each approved new
+ * pattern's catalog page must be in the change at that commit (`pattern-entry.ts`): a check that ran
+ * while the pattern waited on its reviewer did not ask for it.
  */
 async function refuseUncheckedMerge(
   args: MergeMarkArgs,
@@ -417,6 +420,13 @@ async function refuseUncheckedMerge(
   if (shape !== 'git') return;
   const commit =
     args.commit ?? prior.mergedCommitSha ?? (await resolveRecordedCommit(prior.id)) ?? null;
+  const entry = await markEntryRefusal({
+    issueId: prior.id,
+    projectId: prior.projectId,
+    commit,
+    changedPaths: args.changedPaths ?? null,
+  });
+  if (entry) throw refuse(entry.code, entry.detail, entry.path);
   const detail = await uncheckedMergeRefusal({
     issueId: prior.id,
     projectId: prior.projectId,

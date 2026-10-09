@@ -6,13 +6,14 @@
  * (a) named while pending, the merge marked without the page, then approved; (b) the merge marked
  * first, then named and approved. A third has the merge check run while the pattern waited.
  *
- * The page is now asked again against the change the merge mark names: at an approval on an issue
- * already marked, and at the move to awaiting_release. The repository is read through a source host
+ * The page is now asked against the commit being marked, and again against the change the merge
+ * mark names: at an approval on an issue already marked, and at the move to awaiting_release. The repository is read through a source host
  * this suite stands in for, so its answers (a page held, a page missing, a commit it does not know,
  * a failure, an answer that is neither) are each shown.
  *
  * @direct-test-of packages/core/src/issues/pattern-entry.ts
  * @direct-test-of packages/core/src/issues/transition-guards.ts
+ * @direct-test-of packages/core/src/issues/merge-marker.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -210,7 +211,7 @@ describe('order (a): named while pending, the merge marked without the page, the
     expect([refused.status, codes(refused)]).toEqual([422, ['PATTERN_ENTRY_MISSING']]);
     expect(detail(refused)).toContain(pageOf(issue));
     expect(detail(refused)).toContain(
-      `the paths the box read at ${SHA} when the merge was marked list none`,
+      `the paths the box read at ${SHA} for the merge mark list none`,
     );
     expect(detail(refused)).toContain(`${pageOf(issue)} does not exist at ${SHA}`);
     expect(detail(refused)).toContain('Nothing was decided');
@@ -264,16 +265,29 @@ describe('order (b): the merge marked first, then named and approved', () => {
 });
 
 describe('a merge check run while the pattern waited', () => {
-  it('passes then, the mark takes it once approved, and the move refuses the page that change did not carry', async () => {
+  it('passes then, and once the pattern is approved the mark of that commit is refused for the page the change did not carry', async () => {
     const issue = await inProgress();
     const pattern = await named(issue);
     expect((await checked(issue, [CODE])).status).toBe(201);
     ok(await approve(issue, pattern));
-    ok(await mark(issue));
-    await judged(issue);
-    const moved = await toAwaitingRelease(issue);
-    expect([moved.status, codes(moved)]).toEqual([422, ['PATTERN_ENTRY_MISSING']]);
-    expect(detail(moved)).toContain(`the merge check passing at ${SHA} recorded none`);
+    const marked = await mark(issue);
+    expect([marked.status, codes(marked)]).toEqual([422, ['PATTERN_ENTRY_MISSING']]);
+    expect(detail(marked)).toContain(`the merge check passing at ${SHA} recorded none`);
+    expect(detail(marked)).toContain('Nothing was marked');
+    const row = await rows<{ merged_at: Date | null }>(
+      sql`SELECT merged_at FROM issues WHERE id = ${issue}`,
+    );
+    expect(row[0]?.merged_at).toBeNull();
+  });
+
+  it('refuses a mark naming the page missing before the merge check it owes, and asks the check once the page is there', async () => {
+    const issue = await inProgress();
+    const pattern = await named(issue);
+    ok(await approve(issue, pattern));
+    const bare = await mark(issue, [CODE]);
+    expect(codes(bare)).toEqual(['PATTERN_ENTRY_MISSING']);
+    const paged = await mark(issue, [CODE, { path: pageOf(issue), change: 'added' }]);
+    expect(codes(paged)).toEqual(['MERGE_CHECK_MISSING']);
   });
 
   it('records the catalog page its change carried, which the move reads with no repository', async () => {

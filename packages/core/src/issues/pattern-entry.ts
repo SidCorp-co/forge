@@ -6,6 +6,7 @@
  *
  *   - the merge check (`merge-check.ts:recordMergeCheck`), over the files its report says the change
  *     touches, for the patterns approved when it runs;
+ *   - the merge mark (`merge-marker.ts`), over the commit it marks, for the patterns approved then;
  *   - the approval of a new pattern on an issue whose merge is already marked
  *     (`patterns.ts:decidePattern`), over the change the mark names;
  *   - the move to awaiting_release (`transition-guards.ts`), over the change the mark names, for every
@@ -111,13 +112,18 @@ function whatWasRead(reading: EntryReading, pages: readonly string[]): string {
 }
 
 /** Where the refusal is given, which decides what the change is called and what to do next. */
-export type EntrySite = 'merge-check' | 'approval' | 'move';
+export type EntrySite = 'merge-check' | 'mark' | 'approval' | 'move';
 
 const SITES: Record<EntrySite, { path: string; change: string; next: string }> = {
   'merge-check': {
     path: '/touched',
     change: 'the change this merge check reads',
     next: "The page lands in this issue's own change, so add it and run the merge check again. Nothing was recorded",
+  },
+  mark: {
+    path: '/commit',
+    change: 'the change this mark names',
+    next: "The page lands in this issue's own change: add it, run the merge check on that change, and mark the commit that carries it. Nothing was marked",
   },
   approval: {
     path: '/decision',
@@ -303,6 +309,19 @@ export async function readMarkedChange(
   const row = await markColumnsOf(db, issue.id);
   if (!row || row.mergedAt === null) return null;
   const commit = await markedCommitOf(db, issue.id, row);
+  return readChangeAt(issue, commit, row.mergedPaths, approved);
+}
+
+/**
+ * The change at `commit`, read for the pages of `approved`: the paths the box read there, the pages
+ * a merge check passing there recorded, then the repository there for what neither listed.
+ */
+async function readChangeAt(
+  issue: { id: string; projectId: string },
+  commit: string | null,
+  read: { commit: string; changes: readonly FileChange[] } | null,
+  approved: readonly string[],
+): Promise<MarkedReading> {
   if (commit === null) {
     return {
       commit,
@@ -315,12 +334,11 @@ export async function readMarkedChange(
       tree: { kind: 'unread', why: 'there is no commit to read it at' },
     };
   }
-  const read = row.mergedPaths;
   const boxList: ChangeList =
     read && sameCommit(read.commit, commit)
       ? {
           pages: new Set(catalogPagesIn(read.changes)),
-          none: `the paths the box read at ${commit} when the merge was marked list none`,
+          none: `the paths the box read at ${commit} for the merge mark list none`,
         }
       : { pages: new Set(), none: `the mark carries no paths the box read at ${commit}` };
   const checked = await checkedPagesAt(issue.id, commit);
@@ -333,6 +351,25 @@ export async function readMarkedChange(
   const lists = [boxList, checkList];
   const tree = await readTree(issue.projectId, commit, unlisted(approved, lists));
   return { commit, lists, tree };
+}
+
+/**
+ * The merge mark's refusal (Issue to release r20 `rule-merge`): marking `commit` while an approved
+ * new pattern of the issue has no page in that change, as the paths the mark sends, the merge checks
+ * passing there, or the repository there show it. Null where the issue has no approved new pattern.
+ * Asked before the mark's owed merge check, so the refusal names the page rather than the check.
+ */
+export async function markEntryRefusal(args: {
+  issueId: string;
+  projectId: string;
+  commit: string | null;
+  changedPaths: { commit: string; changes: readonly FileChange[] } | null;
+}): Promise<EntryRefusal | null> {
+  const approved = await approvedNewOf(db, args.issueId);
+  if (approved.length === 0) return null;
+  const issue = { id: args.issueId, projectId: args.projectId };
+  const reading = await readChangeAt(issue, args.commit, args.changedPaths, approved);
+  return entryRefusal(await issueRefOf(args.issueId), approved, reading, 'mark');
 }
 
 /**

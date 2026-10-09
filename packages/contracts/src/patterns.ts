@@ -44,8 +44,9 @@ export const PATTERN_REVIEW_PENDING = "PATTERN_REVIEW_PENDING" as const;
 /**
  * An approved new pattern whose catalog page is not in the issue's change (Issue to release r20
  * `rule-merge`): refused by the merge check over the change it reads
- * (`POST /api/issues/:id/merge-check`), and, over the change the merge mark names, by an approval on
- * an issue already marked and by the move to awaiting_release.
+ * (`POST /api/issues/:id/merge-check`), by the merge mark over the commit it marks, and, over the
+ * change the merge mark names, by an approval on an issue already marked and by the move to
+ * awaiting_release.
  */
 export const PATTERN_ENTRY_MISSING = "PATTERN_ENTRY_MISSING" as const;
 

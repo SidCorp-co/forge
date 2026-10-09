@@ -102,8 +102,8 @@ does not hold the issue sends \`run\`, the run id the box declared. A returned p
 posted on the issue. Until the issue names a catalogued pattern or names the slug again revised, its
 work does not move to build and it does not reach \`awaiting_release\` (\`PATTERN_RETURNED\`). An
 approved one's catalog page lands in this change, whichever comes first: the merge check reads the
-change, and an approval on an issue already marked and the move to \`awaiting_release\` read the
-change the merge mark names. Each refuses \`PATTERN_ENTRY_MISSING\` where the page is not in it.
+change, the merge mark reads the commit it marks, and an approval on an issue already marked and the
+move to \`awaiting_release\` read the change the merge mark names. Each refuses \`PATTERN_ENTRY_MISSING\` where the page is not in it.
 
 A question only a person can answer parks the issue:
 \`POST /api/issues/:id/transition\` \`{ toStatus: 'needs_info', reason, waitingKind, needs }\`, with

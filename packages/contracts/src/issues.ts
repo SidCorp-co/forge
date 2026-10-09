@@ -79,6 +79,7 @@ export const MERGE_REFUSAL_CODES = [
 	"MERGE_RUN_OF_ANOTHER_PROJECT",
 	"NO_BINDING",
 	"MERGE_CHECK_MISSING",
+	"PATTERN_ENTRY_MISSING",
 	...COMMIT_LANDING_REFUSAL_CODES,
 ] as const;
 export type MergeRefusalCode = (typeof MERGE_REFUSAL_CODES)[number];
