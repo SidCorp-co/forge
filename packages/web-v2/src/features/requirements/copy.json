@@ -88,6 +88,8 @@
     "requirements.diff.goal": "Goal and problem",
     "requirements.diff.unchanged": "The wording is unchanged; only the reason differs.",
     "requirements.emptyMessage": "A requirement says what is wanted and how anyone can tell it is done.",
+    "requirements.draftFromDesigns": "Draft one from {n} approved designs",
+    "requirements.draftFromDesignsAsk": "Draft a requirement from each approved design.",
     "requirements.emptyTitle": "No requirement has been written",
     "requirements.facts.agreedR": "Agreed r{r} {when}",
     "requirements.facts.bindingTitle": "{flow} r{r}, step {step}: {contract}",

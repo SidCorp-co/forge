@@ -30,6 +30,8 @@ import { progressText } from "@/features/forecast/progress";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useEtaSort, useRequirementForecasts } from "@/features/forecast/hooks";
 import { useCreateRequirement, useRequirements } from "../hooks";
+import { useChatDock } from "@/features/chat-dock/dock";
+import { useWorkflows } from "@/features/workflows/hooks";
 import { REQUIREMENTS_LIST, requirementHref } from "@/lib/routes/requirements";
 import type { RequirementSummary } from "../types";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
@@ -255,6 +257,8 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
   const text = params.get("q") ?? "";
   const [creating, setCreating] = useState(false);
   const fold = useGroupFold("web-v2:requirements-fold");
+  const dock = useChatDock();
+  const approvedDesigns = (useWorkflows(projectId).data?.workflows ?? []).filter((w) => w.design.status === "approved").length;
 
   const all = q.data?.requirements ?? [];
   // the search box reads q; whom a row waits on and its state are the list filter the chat sets too (REQ-41 BC-5)
@@ -326,7 +330,15 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
               <AssistantStrip projectId={projectId} rows={all} onPeek={(k) => peek.set(k)} />
               {all.length === 0 ? (
                 <div className="px-5 py-10">
-                  <EmptyState title={t("requirements.emptyTitle")} message={t("requirements.emptyMessage")} />
+                  <EmptyState
+                    title={t("requirements.emptyTitle")}
+                    message={t("requirements.emptyMessage")}
+                    action={
+                      dock && approvedDesigns > 0
+                        ? { label: t("requirements.draftFromDesigns", { n: approvedDesigns }), onClick: () => dock.show({ kind: "draft", projectId, draft: t("requirements.draftFromDesignsAsk") }) }
+                        : undefined
+                    }
+                  />
                 </div>
               ) : (
                 <GroupedList
