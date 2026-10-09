@@ -5,36 +5,44 @@
  * none of this kind written within the spell, and asks one choice question on the record: merge
  * into a named item, drop, or keep, with a recommended answer and its reason read from the product
  * record only (requirements, feedback, and what shipped: an accepted requirement), never the code.
- * Answering is a person's; the master carries the chosen act out (`executedBy: agent`), and a keep
- * buys another spell. Before the question a draft is `awaiting_proposal`, which is not a decision.
+ * Merge is offered only where a live item to merge into was found, and the option names it
+ * (`target`). Answering is a person's; core carries the chosen act out (`stale-draft-act.ts`), and a
+ * keep buys another spell. Before the question a draft is `awaiting_proposal`, which is not a decision.
  */
 
 import { randomUUID } from 'node:crypto';
 import { requirementKey } from '@forge/contracts/requirements';
 import {
   DRAFT_STALE_DAYS,
+  STALE_DRAFT_ASKED_MARK,
   STALE_DRAFT_OPTION_IDS,
   type StaleDraftAnswer,
+  type StaleDraftRefused,
+  staleDraftRefusedOf,
 } from '@forge/contracts/stale-drafts';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
+import type { QuestionOption } from '../db/schema-questions.js';
 import { issueDisplayIds, staleDraftIssues } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { askQuestion } from '../questions/index.js';
 import { feedbackLinksOf } from './feedback-links.js';
 import { nearDuplicatesOf } from './near-duplicate.js';
+import { requirementIdIn } from './read.js';
 
 const DAY_MS = 86_400_000;
 
-/** The jsonb a merge-or-drop question's first round options contain, for a `@>` test. */
-const ASKED_MARK = JSON.stringify([{ id: STALE_DRAFT_OPTION_IDS.drop }]);
+const ASKED_MARK = STALE_DRAFT_ASKED_MARK;
+
+/** A live item a stale draft reads as the same as, which its merge folds it into. */
+export type MergeTarget = NonNullable<QuestionOption['target']>;
 
 /** What the product record says about one stale draft, read before recommending. */
 export interface DraftFacts {
   key: string;
   /** A live item it reads as the same as: a near-duplicate requirement, a same-titled issue. */
-  mergeInto: string | null;
+  mergeInto: MergeTarget | null;
   /** Open feedback that asks for it. */
   asks: readonly string[];
   /** The requirement it delivers has ended: accepted (shipped) or dropped. */
@@ -61,7 +69,7 @@ export function recommendationOf(f: DraftFacts): Recommendation {
   if (f.mergeInto) {
     return {
       answer: 'merge',
-      why: `it reads as the same as ${f.mergeInto}, which is live; one record keeps one history.`,
+      why: `it reads as the same as ${f.mergeInto.key}, which is live; one record keeps one history.`,
     };
   }
   if (f.asks.length > 0) {
@@ -76,29 +84,38 @@ export function recommendationOf(f: DraftFacts): Recommendation {
   };
 }
 
-const LABELS: Record<StaleDraftAnswer, (into: string | null) => string> = {
-  merge: (into) => (into ? `Merge into ${into}` : 'Merge into another item'),
+const LABELS: Record<StaleDraftAnswer, (into: MergeTarget | null) => string> = {
+  merge: (into) => `Merge into ${into?.key ?? 'the item it repeats'}`,
   drop: () => 'Drop it',
   keep: () => 'Keep it as a draft',
 };
 
-/** The question's prompt and its three options, the recommended one named with its reason. */
+/**
+ * The question's prompt and its options, the recommended one named with its reason. Merge is
+ * offered only with a target to merge into, named on the option, so the answer can act on it.
+ */
 export function staleDraftQuestion(
   subject: { key: string; title: string; what: string },
   facts: DraftFacts,
 ) {
   const rec = recommendationOf(facts);
   const fingerprint = `stale-draft:${subject.key}`;
-  const options = (Object.keys(STALE_DRAFT_OPTION_IDS) as StaleDraftAnswer[]).map((a) => ({
+  const into = facts.mergeInto;
+  const offered = (Object.keys(STALE_DRAFT_OPTION_IDS) as StaleDraftAnswer[]).filter(
+    (a) => a !== 'merge' || into !== null,
+  );
+  const options: QuestionOption[] = offered.map((a) => ({
     id: STALE_DRAFT_OPTION_IDS[a],
-    label: LABELS[a](facts.mergeInto),
-    authority: 'writer' as const,
-    bindsTo: 'this_call' as const,
-    executedBy: 'agent' as const,
+    label: LABELS[a](into),
+    authority: 'writer',
+    bindsTo: 'this_call',
+    executedBy: 'core',
     fingerprint,
+    ...(a === 'merge' && into ? { target: into } : {}),
   }));
-  const label = LABELS[rec.answer](facts.mergeInto);
-  const prompt = `${subject.key} "${subject.title}" is ${subject.what} nobody has touched for ${facts.days} days. Merge it into another item, drop it, or keep it? Recommended: ${label}, because ${rec.why}`;
+  const label = LABELS[rec.answer](into);
+  const ask = into ? `Merge it into ${into.key}, drop it, or keep it?` : 'Drop it, or keep it?';
+  const prompt = `${subject.key} "${subject.title}" is ${subject.what} nobody has touched for ${facts.days} days. ${ask} Recommended: ${label}, because ${rec.why}`;
   return { prompt, options, recommendedOptionId: STALE_DRAFT_OPTION_IDS[rec.answer] };
 }
 
@@ -149,9 +166,10 @@ async function requirementFacts(row: StaleRequirementRow, now: Date): Promise<Dr
     feedbackLinksOf(row.project_id, [row.id]),
   ]);
   const twin = near.filter((n) => !n.decided).sort((a, b) => b.similarity - a.similarity)[0];
+  const intoId = twin ? await requirementIdIn(db, row.project_id, twin.key) : null;
   return {
     key: requirementKey(Number(row.req_seq)),
-    mergeInto: twin?.key ?? null,
+    mergeInto: twin && intoId ? { kind: 'requirement', id: intoId, key: twin.key } : null,
     asks: links.filter((l) => !CLOSED_FEEDBACK.includes(l.status)).map((l) => `FB-${l.fbSeq}`),
     ended: null,
     days: Math.floor((now.getTime() - new Date(row.touched_at).getTime()) / DAY_MS),
@@ -259,7 +277,9 @@ export async function sweepStaleDrafts(
         subject: { key, title: issue.title, what: 'a draft issue' },
         facts: {
           key,
-          mergeInto: issue.twinId ? (keys.get(issue.twinId) ?? null) : null,
+          mergeInto: issue.twinId
+            ? { kind: 'issue', id: issue.twinId, key: keys.get(issue.twinId) ?? issue.twinId }
+            : null,
           asks: context.asks.get(issue.id) ?? [],
           ended: context.ended.get(issue.id) ?? null,
           days: Math.floor((now.getTime() - issue.touchedAt.getTime()) / DAY_MS),
@@ -270,14 +290,32 @@ export async function sweepStaleDrafts(
   return { asked, refused };
 }
 
-/** Which of these requirements an open merge-or-drop question stands on, for their standing. */
-export async function openMergeOrDropOf(ids: readonly string[]): Promise<Set<string>> {
-  if (ids.length === 0) return new Set();
-  const rows = rowsOf<{ requirement_id: string }>(
+/** What the newest merge-or-drop question on a draft says about it: still open, or answered with an act core refused. */
+export interface MergeOrDropFact {
+  open: boolean;
+  refused: StaleDraftRefused | null;
+}
+
+/** Per requirement, its newest merge-or-drop question, for its standing (REQ-41 BC-12). */
+export async function mergeOrDropOf(ids: readonly string[]): Promise<Map<string, MergeOrDropFact>> {
+  if (ids.length === 0) return new Map();
+  const rows = rowsOf<{
+    requirement_id: string;
+    status: string;
+    resume: { kind?: string; code?: string; detail?: string } | null;
+  }>(
     await db.execute(sql`
-      SELECT DISTINCT q.requirement_id FROM agent_questions q
-       WHERE q.requirement_id IN (${idList(ids)}) AND q.status = 'open'
-         AND q.steps -> 0 -> 'options' @> ${ASKED_MARK}::jsonb`),
+      SELECT DISTINCT ON (q.requirement_id) q.requirement_id, q.status, q.steps -> -1 -> 'resume' AS resume
+        FROM agent_questions q
+       WHERE q.requirement_id IN (${idList(ids)})
+         AND q.status IN ('open', 'answered')
+         AND q.steps -> 0 -> 'options' @> ${ASKED_MARK}::jsonb
+       ORDER BY q.requirement_id, q.created_at DESC, q.id DESC`),
   );
-  return new Set(rows.map((r) => r.requirement_id));
+  return new Map(
+    rows.map((r) => [
+      r.requirement_id,
+      { open: r.status === 'open', refused: staleDraftRefusedOf(r.status, r.resume) },
+    ]),
+  );
 }

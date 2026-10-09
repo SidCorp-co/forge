@@ -71,6 +71,15 @@ export interface IssueStandingInput {
   runLive: boolean;
   /** An open `human` question on it (`questions/issue-coupling.ts:holdsOpenHumanQuestion`). */
   owesAnswer: boolean;
+  /**
+   * At `draft`: its newest merge-or-drop question (REQ-41 BC-12), still open, or answered with an
+   * act core refused to carry out; `days` is how long it was untouched when Forge asked.
+   */
+  staleDraft?: {
+    open: boolean;
+    days: number;
+    refused: { code: string; detail: string } | null;
+  } | null;
   /** At `needs_info`: the question answered since the park, with what it said and did (ISS-258). */
   answered?: Pick<ParkAnsweredView, 'hold' | 'resume'> | null;
   /** The move that parked it at `on_hold`: its reason, and whether a run (not a person) made it. */
@@ -154,8 +163,9 @@ const held = (lease: IssueLeaseView | null) =>
   lease !== null && (lease.verdict === 'live' || lease.verdict === 'shared');
 
 // whose turn it is, first rule that holds wins: closed or dropped → done; on_hold → paused;
-// needs_info or an open human question → a person answers; draft → its live blocker first, else a
-// person takes it on or drops it; awaiting_release → the master while a criterion no longer passes or no note is written, else
+// needs_info or an open human question → a person answers (merge, drop or keep where it is Forge's
+// question on a stale draft); a draft whose merge-or-drop answer core refused → the master; draft →
+// its live blocker first, else a person takes it on or drops it; awaiting_release → the master while a criterion no longer passes or no note is written, else
 // a person approves where the project requires it, else queued for the release; a live lease or a job in flight →
 // moving; a live unsettled blocker → stuck on the first, worded as waiting on its judge where its
 // change landed; a landed row nothing holds → queued for its judge
@@ -253,8 +263,28 @@ function personTurn(input: IssueStandingInput): Turn | null {
       say('issues.rule.needsInfo'),
     );
   }
+  const stale = status === 'draft' ? input.staleDraft : null;
+  if (input.owesAnswer && stale?.open) {
+    // Forge's own sweep asked, not a run: the person answers merge, drop or keep
+    return forPerson(
+      input,
+      say('standing.act.mergeOrDrop'),
+      say('issues.rule.staleDraftAsked', { days: stale.days }),
+    );
+  }
   if (input.owesAnswer) {
     return forPerson(input, say('issues.standing.act.answer'), say('issues.rule.runAsked'));
+  }
+  if (stale?.refused) {
+    return {
+      group: 'stuck',
+      waitingOn: wait(
+        'master',
+        MASTER,
+        say('standing.act.draftAnswerByHand'),
+        say('standing.rule.draftAnswerRefused', stale.refused),
+      ),
+    };
   }
   if (status === 'draft') {
     // a draft behind a live blocker waits on that blocker first, not on a person's Needs you

@@ -55,6 +55,8 @@ export type QuestionOption = {
   bindsTo: (typeof optionBindings)[number];
   executedBy: (typeof optionExecutors)[number];
   fingerprint?: string;
+  /** The record the option acts on, where it names one: a merge-or-drop question's merge target (REQ-41 BC-12). */
+  target?: { kind: 'requirement' | 'issue'; id: string; key: string };
 };
 
 export const answerShapes = ['choice', 'free_text'] as const;

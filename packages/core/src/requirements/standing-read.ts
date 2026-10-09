@@ -31,7 +31,7 @@ import { requirementDependents } from './dependents.js';
 import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
 import { changedTracedOf } from './plan-drift.js';
 import { staleContractPinsOf, stalePinsOf } from './rules.js';
-import { openMergeOrDropOf } from './stale-drafts.js';
+import { mergeOrDropOf } from './stale-drafts.js';
 import { deriveStanding } from './standing.js';
 import {
   closedAtOf,
@@ -130,18 +130,20 @@ async function uncoveredOf(ids: readonly string[]): Promise<Map<string, Map<stri
 /**
  * The facts a requirement's turn reads beside its rows, per requirement: why an accepted breakdown
  * left a BC uncovered, the traced nodes a stale design pin's approval removed or renamed (REQ-41
- * BC-10, `auto-follow.ts`), and whether a merge-or-drop question stands open (REQ-41 BC-12).
+ * BC-10, `auto-follow.ts`), and whether its newest merge-or-drop question stands open or was answered
+ * with an act core refused (REQ-41 BC-12).
  */
 async function besideFactsOf(ids: readonly string[]) {
   const [uncovered, follows, asked] = await Promise.all([
     uncoveredOf(ids),
     followReadsOf(db, ids),
-    openMergeOrDropOf(ids),
+    mergeOrDropOf(ids),
   ]);
   return (id: string) => ({
     uncovered: uncovered.get(id) ?? new Map<string, string>(),
     tracedChanges: (follows.get(id) ?? []).flatMap((f) => f.changes),
-    mergeOrDropAsked: asked.has(id),
+    mergeOrDropAsked: asked.get(id)?.open === true,
+    mergeOrDropRefused: asked.get(id)?.refused ?? null,
   });
 }
 
