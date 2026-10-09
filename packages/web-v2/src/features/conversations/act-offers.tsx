@@ -16,7 +16,7 @@ import { useIssue } from "@/features/issues/detail-hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import type { ConversationMessage, ConversationProgressEntry } from "./types";
-import { textOf } from "./ui-actions/actions";
+import { toolOutputText } from "@/lib/tool-output";
 
 /** Every offer an entry's blocks carry, in the order the turn made them. */
 export function actOffersOf(blocks: readonly CanonicalBlock[] | null | undefined): ChatActOffer[] {
@@ -24,7 +24,7 @@ export function actOffersOf(blocks: readonly CanonicalBlock[] | null | undefined
   for (const b of blocks ?? []) {
     if (b.type !== "tool" || b.toolCall?.name !== CHAT_ACT_TOOL || b.toolCall.isError) continue;
     if (b.toolCall.output === undefined) continue;
-    const offer = readChatActOffer(textOf(b.toolCall.output));
+    const offer = readChatActOffer(toolOutputText(b.toolCall.output));
     if (offer) out.push(offer);
   }
   return out;

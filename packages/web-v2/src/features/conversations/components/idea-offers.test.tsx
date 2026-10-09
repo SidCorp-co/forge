@@ -75,6 +75,11 @@ describe("the assistant's offer (BC-14)", () => {
     expect(ideaOffersOf([block({ offer: OFFER }, { name: "offer_act" })])).toEqual([]);
   });
 
+  it("reads the offer in the shape core's own assistant stores: the result body as plain JSON", () => {
+    const stored = JSON.stringify({ offer: OFFER, note: "Shown to the person as a button in this conversation." });
+    expect(ideaOffersOf([{ type: "tool", toolCall: { id: "c2", name: IDEA_OFFER_TOOL, output: stored } }])).toEqual([OFFER]);
+  });
+
   it("opens nothing before the press, then posts the idea as the person and draws the idea beside the chat", async () => {
     const calls = core({
       [`POST /projects/${PROJECT}/previews`]: () => ({ status: 201, body: { preview: idea({ state: "starting", liveAt: null }) } }),

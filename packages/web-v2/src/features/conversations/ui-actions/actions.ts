@@ -34,6 +34,7 @@ import { ISSUE_STATUSES } from "@forge/contracts/issue-machine";
 import { REGISTRY_ISSUE_PRIORITIES } from "@forge/contracts/pipeline-registry";
 import { applyWireframePatch, type WireframeDoc } from "@forge/contracts/wireframe";
 import { boardStore } from "@/features/board/board-store";
+import { toolOutputText } from "@/lib/tool-output";
 import { assistantFilters } from "@/features/chat-dock/assistant-filters";
 import type { IssueSelectionBridge } from "@/features/chat-dock/selection-bridge";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
@@ -434,17 +435,6 @@ export type UiCallReading =
   | { kind: "action"; action: UiAction }
   | { kind: "refused"; name: string; code: string; message: string };
 
-export function textOf(output: unknown): string {
-  if (typeof output !== "string") return JSON.stringify(output ?? "");
-  try {
-    const parsed: unknown = JSON.parse(output);
-    const content = (parsed as { content?: { type: string; text?: string }[] } | null)?.content;
-    if (Array.isArray(content)) return content.map((b) => b.text ?? "").join("\n");
-  } catch {
-    // a plain text result, read as is
-  }
-  return output;
-}
 
 /** Null where the call is not a UI action at all, or its result has not arrived yet. */
 export function readUiCall(call: {
@@ -454,7 +444,7 @@ export function readUiCall(call: {
 }): UiCallReading | null {
   if (!call.name.startsWith("ui_") && !call.name.startsWith("ui.")) return null;
   if (call.output === undefined) return null;
-  const text = textOf(call.output);
+  const text = toolOutputText(call.output);
   let body: Record<string, unknown> = {};
   try {
     body = JSON.parse(text) as Record<string, unknown>;

@@ -1,0 +1,1 @@
+**An idea the assistant offers now shows its Preview button.** The thread read only one of the two shapes a tool result is stored in, so the offer drew nothing; every turn block now reads results through one shared reader.

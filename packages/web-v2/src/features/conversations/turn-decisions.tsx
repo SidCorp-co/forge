@@ -7,7 +7,7 @@
 import { type NeedsYouDecisions, needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
 import { DecisionList } from "@/features/needs-you/components/decision-list";
 import type { CanonicalBlock } from "@/features/session/types";
-import { textOf } from "./ui-actions/actions";
+import { toolOutputText } from "@/lib/tool-output";
 
 /** The assistant's read of the decisions waiting on the asker, the one the needs-you route answers. */
 export const NEEDS_YOU_TOOL = "forge_needs_you";
@@ -19,7 +19,7 @@ export function decisionsIn(blocks: readonly CanonicalBlock[] | null | undefined
     if (b.type !== "tool" || b.toolCall?.name !== NEEDS_YOU_TOOL || b.toolCall.isError) continue;
     if (b.toolCall.output === undefined) continue;
     try {
-      const parsed = needsYouDecisionsSchema.safeParse(JSON.parse(textOf(b.toolCall.output)));
+      const parsed = needsYouDecisionsSchema.safeParse(JSON.parse(toolOutputText(b.toolCall.output)));
       if (parsed.success) found = parsed.data;
     } catch {
       // a result that is not the read's JSON draws nothing

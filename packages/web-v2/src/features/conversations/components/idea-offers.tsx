@@ -15,19 +15,7 @@ import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
 import { ideaApi } from "@/features/previews/idea-api";
 import { IdeaPanel } from "@/features/previews/idea-panel";
-
-/** The text a tool result carries, whatever shape the thread stored it in. */
-function textOf(output: unknown): string {
-  if (typeof output === "string") {
-    try {
-      return textOf(JSON.parse(output));
-    } catch {
-      return output;
-    }
-  }
-  const content = (output as { content?: { type?: string; text?: string }[] } | null)?.content;
-  return Array.isArray(content) ? content.map((c) => c.text ?? "").join("") : "";
-}
+import { toolOutputText } from "@/lib/tool-output";
 
 /** Every idea offer an entry's blocks carry, in the order the turn made them. */
 export function ideaOffersOf(blocks: readonly CanonicalBlock[] | null | undefined): IdeaOffer[] {
@@ -35,7 +23,7 @@ export function ideaOffersOf(blocks: readonly CanonicalBlock[] | null | undefine
   for (const b of blocks ?? []) {
     if (b.type !== "tool" || b.toolCall?.name !== IDEA_OFFER_TOOL || b.toolCall.isError) continue;
     if (b.toolCall.output === undefined) continue;
-    const offer = readIdeaOffer(textOf(b.toolCall.output));
+    const offer = readIdeaOffer(toolOutputText(b.toolCall.output));
     if (offer) out.push(offer);
   }
   return out;

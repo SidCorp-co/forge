@@ -17,6 +17,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Button } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { toolOutputText } from "@/lib/tool-output";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { reproduceApi } from "./reproduce-api";
@@ -29,22 +30,6 @@ interface ToolBlock {
   toolCall?: { name?: string; isError?: boolean; output?: unknown } | null;
 }
 
-/**
- * A tool's output as the thread stores it, read as `conversations/ui-actions/actions.ts:textOf`
- * reads it (an MCP `content` envelope or plain text): this feature sits below conversations and may
- * not import it.
- */
-const textOf = (output: unknown): string => {
-  if (typeof output !== "string") return JSON.stringify(output ?? "");
-  try {
-    const content = (JSON.parse(output) as { content?: { type: string; text?: string }[] } | null)?.content;
-    if (Array.isArray(content)) return content.map((b) => b.text ?? "").join("\n");
-  } catch {
-    // a plain text result, read as is
-  }
-  return output;
-};
-
 /** The newest `forge_recording` result a turn's blocks hold, or null where it read none. */
 export function recordingReadIn(blocks: readonly ToolBlock[] | null | undefined): RecordingToolResult | null {
   let found: RecordingToolResult | null = null;
@@ -52,7 +37,7 @@ export function recordingReadIn(blocks: readonly ToolBlock[] | null | undefined)
     if (b.type !== "tool" || !b.toolCall?.name?.endsWith(RECORDING_TOOL) || b.toolCall.isError) continue;
     if (b.toolCall.output === undefined) continue;
     try {
-      const parsed = recordingToolResultSchema.safeParse(JSON.parse(textOf(b.toolCall.output)));
+      const parsed = recordingToolResultSchema.safeParse(JSON.parse(toolOutputText(b.toolCall.output)));
       if (parsed.success) found = parsed.data;
     } catch {
       // a result that is not the read's JSON draws nothing
