@@ -24,6 +24,7 @@ import { PROJECT_CONFIG_REFUSAL_STATUSES } from "./project-config.js";
 import { PROJECT_REFUSAL_STATUSES } from "./projects.js";
 import { QUESTION_REFUSAL_STATUSES } from "./questions.js";
 import type { RefusalStatus } from "./refusal.js";
+import { RELEASE_PAGE_REFUSAL_STATUSES } from "./release-page.js";
 import { RELEASE_REFUSAL_STATUSES } from "./releases.js";
 import { EXECUTION_REFUSAL_STATUSES } from "./report-executions.js";
 import { REPORT_REFUSAL_STATUSES } from "./report-queries.js";
@@ -65,6 +66,7 @@ const DECLARED: ReadonlyArray<
 	PROJECT_REFUSAL_STATUSES,
 	QUESTION_REFUSAL_STATUSES,
 	RELEASE_REFUSAL_STATUSES,
+	RELEASE_PAGE_REFUSAL_STATUSES,
 	EXECUTION_REFUSAL_STATUSES,
 	REPORT_REFUSAL_STATUSES,
 	REQUIREMENT_REFUSAL_STATUSES,
