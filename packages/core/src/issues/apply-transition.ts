@@ -120,8 +120,6 @@ export interface StatusTransitionResult {
   unblockedDependents: UnblockedDependent[];
   /** The step the run is at inside the status after this move, or null. */
   step: WorkStep | null;
-  /** True where the move passed the verdict gate because the project does not require verdicts. */
-  verdictsWaived?: true;
 }
 
 const authorOf = (actor: TransitionActor) => (actor.type === 'user' ? actor.id : actor.ownerId);
@@ -223,7 +221,6 @@ export async function transitionIssueStatus(
     terminal,
     unblockedDependents: txResult.unblockedDependents,
     step,
-    ...(txResult.verdictsWaived ? { verdictsWaived: true as const } : {}),
   };
 }
 
@@ -242,7 +239,6 @@ export type TransitionWriteInput = {
 type TransitionWriteResult = {
   row: { id: string; status: IssueStatus; reopenCount: number; updatedAt: Date };
   unblockedDependents: UnblockedDependent[];
-  verdictsWaived: boolean;
 };
 
 /**
@@ -273,7 +269,6 @@ async function writeWorkStateOfMove(tx: TransitionTx, input: TransitionWriteInpu
 async function executeTransitionWrite(input: TransitionWriteInput): Promise<TransitionWriteResult> {
   const { issue, fromStatus, toStatus, actor, options, recovering } = input;
   const by = authorOf(actor);
-  const waiver = { waived: false };
   let unblockedDependents: UnblockedDependent[] = [];
   const facts = await readIssueMoveFacts({
     issue,
@@ -309,9 +304,6 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         transitionReason: options.transitionReason,
         waitingKind: options.waitingKind,
         recoveringRunId: options.recoveringRunId,
-        onVerdictsWaived: () => {
-          waiver.waived = true;
-        },
       }),
       beforeWrite: async (tx) => {
         const archiveRefusal = await archiveRefusalForTransition(tx, issue.id, toStatus);
@@ -357,7 +349,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       afterWrite: async (tx, rows) => {
         const row = rows[0];
         if (!row) return;
-        await recordMove(tx, moveOf(input, row.reopenCount, waiver.waived));
+        await recordMove(tx, moveOf(input, row.reopenCount));
         await writeWorkStateOfMove(tx, input);
         if (toStatus === 'dropped') {
           unblockedDependents = await expireBlocksEdgesOnDrop(tx, issue.projectId, issue.id);
@@ -399,7 +391,6 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
   return {
     row: { ...row, status: row.status as IssueStatus },
     unblockedDependents,
-    verdictsWaived: waiver.waived,
   };
 }
 

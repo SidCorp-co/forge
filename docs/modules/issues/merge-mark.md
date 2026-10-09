@@ -202,11 +202,19 @@ holds its dependents, and is no sample of the landed history.
 Nothing beyond the record. Recording a landing — a mark on either door, a design approval, or the
 source host's merge webhook — writes the merge columns and moves no status and no hold (owner decision 2026-10-04,
 workflow `issue-lifecycle` rev 8). The run that holds the issue moves it `in_progress` →
-`awaiting_release` itself, an edge that asks for the recorded merge (`MERGE_NOT_RECORDED`) and the
-verdicts the project's `delivery.verdictsRequired` asks for; when the run ends without doing so, the
-kernel hands the issue back to the status the run took it from. `awaiting_release` → `closed` is
-written only by a release that claimed the issue (`CLOSE_ONLY_BY_RELEASE`), and needs the merge too
-(`CLOSE_REQUIRES_SHIPPED`).
+`awaiting_release` itself, an edge that asks for the recorded merge (`MERGE_NOT_RECORDED`) and no
+verdict: verdicts are judged on the release that carries the work, and a failing one reopens the
+issue (REQ-45 BC-1, BC-2). When the run ends without moving it, the kernel hands the issue back to the
+status the run took it from. `awaiting_release` → `closed` is written by a release that claimed the
+issue (`CLOSE_ONLY_BY_RELEASE`), and needs the merge too (`CLOSE_REQUIRES_SHIPPED`).
+
+A design-only issue — its mark names design artifacts and nothing else, no commit and no read paths
+(`packages/core/src/issues/design-delivery.ts:designOnlyMarkSql`) — ships nothing a release carries.
+An agent closes it from any live status once every design revision it delivers is approved, the
+`design_delivered` edge (`DESIGN_NOT_DELIVERED` otherwise); from `awaiting_release` the release guard
+takes the same delivery. The approval itself still moves no status. A release roster leaves such an
+issue out, and a release batch naming only design-only issues is refused `RELEASE_ALL_DESIGN_ONLY`
+(REQ-45 BC-4).
 
 ## A mark written after the release that shipped it
 

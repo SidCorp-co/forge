@@ -1,12 +1,15 @@
 // The issue machine: workflow `issue-lifecycle`, approved revision 12. A status answers only "who is
 // it waiting on"; a run's step is progress inside `in_progress`, kept in `issue_work_state`. A
-// landing moves no status: it records the merge, and an issue closes only through a release. A draft
-// opens through the issue-ready checklist (`checklist-registry.ts:ISSUE_READY_CHECKLIST`).
+// landing moves no status: it records the merge, and the agent holding the issue moves it on. Work
+// that landed moves to `awaiting_release` without verdicts, which are judged on the release that
+// carries it (REQ-45 BC-1, BC-2). An issue closes through a release, or, where its only deliverable
+// is a design, once its design revisions are approved (REQ-45 BC-4). A draft opens through the
+// issue-ready checklist (`checklist-registry.ts:ISSUE_READY_CHECKLIST`).
 
 import { ISSUE_READY_CHECKLIST } from "./checklist-registry.js";
 import { CHECKLIST_GUARD } from "./checklists.js";
 import type { Refusal, RefusalStatuses } from "./refusal.js";
-import { defineMachine, type MachineEdge } from "./state-machine.js";
+import { defineMachine, fromEach, type MachineEdge } from "./state-machine.js";
 
 export const ISSUE_STATUSES = [
 	"draft",
@@ -57,6 +60,7 @@ export const ISSUE_TRANSITION_REFUSAL_CODES = [
 	"MERGE_NOT_RECORDED",
 	"CLOSE_REQUIRES_SHIPPED",
 	"CLOSE_ONLY_BY_RELEASE",
+	"DESIGN_NOT_DELIVERED",
 	"TRANSITION_REASON_REQUIRED",
 	"WAITING_KIND_REQUIRED",
 	"VOID_REASON_REQUIRED",
@@ -173,11 +177,11 @@ export const ISSUE_GUARDS = [
 	"holder",
 	"plan_checkpoint",
 	"merged",
-	"verdicts",
 	"released",
 	"left_status",
 	"unheld",
 	"run_holder",
+	"design_delivered",
 ] as const;
 export type IssueGuard = (typeof ISSUE_GUARDS)[number];
 
@@ -186,6 +190,18 @@ export type IssueGuard = (typeof ISSUE_GUARDS)[number];
 export const ISSUE_ADMIT_PERMISSION = "issues.admit";
 
 const MOVE = "project.write";
+
+/** Where a design-only issue may close from once its design revisions are approved: every status
+ *  but the terminals and `awaiting_release`, whose own edge to `closed` takes that delivery too. */
+const DESIGN_CLOSABLE_STATUSES: readonly IssueStatus[] = [
+	"draft",
+	"open",
+	"reopen",
+	"in_progress",
+	"approved",
+	"needs_info",
+	"on_hold",
+];
 
 type IssueEdge = MachineEdge<IssueStatus> & {
 	readonly guards: readonly (IssueGuard | typeof CHECKLIST_GUARD)[];
@@ -212,7 +228,7 @@ const recovery = (to: IssueStatus, guards: readonly IssueGuard[]): IssueEdge => 
 
 export const ISSUE_MACHINE = defineMachine({
 	entity: "issue",
-	shapes: ["853ac6ba", "23991d04", "5a3cd8b3"],
+	shapes: ["853ac6ba", "23991d04", "5a3cd8b3", "07fda5db"],
 	design: { flow: "issue-lifecycle", revision: 12 },
 	states: ISSUE_STATUSES,
 	initial: ISSUE_INITIAL_STATUSES,
@@ -229,7 +245,7 @@ export const ISSUE_MACHINE = defineMachine({
 		...sideExits("reopen"),
 
 		{ from: "in_progress", to: "approved", act: "plan.recorded", permission: MOVE, guards: ["plan_checkpoint"] },
-		{ from: "in_progress", to: "awaiting_release", act: "merged.and.proven", permission: MOVE, guards: ["run_holder", "merged", "verdicts"] },
+		{ from: "in_progress", to: "awaiting_release", act: "merged", permission: MOVE, guards: ["run_holder", "merged"] },
 		...sideExits("in_progress"),
 
 		{ from: "approved", to: "in_progress", act: "run.claimed", permission: MOVE, guards: ["holder"] },
@@ -248,6 +264,10 @@ export const ISSUE_MACHINE = defineMachine({
 		{ from: "on_hold", to: "dropped", act: "not.work", permission: MOVE, guards: [] },
 
 		{ from: "closed", to: "reopen", act: "returned", permission: MOVE, guards: [] },
+
+		// a design-only issue's deliverable is its approved design revisions: it closes on them, and
+		// from awaiting_release the `released` guard takes the same delivery as its release
+		...fromEach(DESIGN_CLOSABLE_STATUSES, "closed", { act: "design.delivered", permission: MOVE, guards: ["design_delivered", "merged"] }),
 
 		recovery("open", []),
 		recovery("approved", ["plan_checkpoint"]),

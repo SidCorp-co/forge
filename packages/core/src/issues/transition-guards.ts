@@ -20,14 +20,13 @@
  *                      no new pattern waits on its reviewer, and no returned      PATTERN_REVIEW_PENDING,
  *                      one stands unanswered; each approved new pattern's         PATTERN_RETURNED,
  *                      catalog page is in the change the merge mark names        PATTERN_ENTRY_MISSING
- *                      (`pattern-entry.ts`, read before the lock)
- *                      every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
- *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_DRAFT_SUPERSEDED, VERDICT_UNCORROBORATED
- *                      (a project document with `delivery.verdictsRequired: false` passes the move
- *                      and the move's record says `verdicts-waived`), and its     REQUIREMENT_CHANGED_SINCE_PLAN
- *                      requirement has not changed since its plan
- *   closed             only from awaiting_release, by a release that claimed it  CLOSE_ONLY_BY_RELEASE
+ *                      (`pattern-entry.ts`, read before the lock). No verdict is asked: verdicts are
+ *                      judged on the release that carries the work (REQ-45 BC-2)
+ *   closed             from awaiting_release, by a release that claimed it        CLOSE_ONLY_BY_RELEASE
  *                      (a release batch or a recorded release), merge recorded   CLOSE_REQUIRES_SHIPPED
+ *                      from any other live status, or from awaiting_release      DESIGN_NOT_DELIVERED
+ *                      without a release, only a design-only issue whose design
+ *                      revisions are all approved (REQ-45 BC-4)
  *
  *   needs_info         a question (the reason) and its kind                      TRANSITION_REASON_REQUIRED,
  *                                                                                WAITING_KIND_REQUIRED
@@ -36,7 +35,6 @@
  */
 
 import { CHECKLIST_GUARD } from '@forge/contracts/checklists';
-import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import type { IssueTransitionRefusalCode } from '@forge/contracts/issue-machine';
 import {
   ISSUE_ADMIT_PERMISSION,
@@ -60,17 +58,11 @@ import {
   projectResource,
 } from '../permissions/index.js';
 import { refuseHeldTake } from './blocked-by.js';
-import type { CurrentDrafts } from './criteria/storefront-draft.js';
+import { designHeldSql, designHoldsOf, designOnlyMarkSql } from './design-delivery.js';
 import { mergeNotRecorded } from './merged-at.js';
 import { type MoveEntryFacts, moveEntryRefusal, readMoveEntryFacts } from './pattern-entry.js';
 import { patternReleaseRefusal } from './patterns.js';
-import { planDriftOf, readProjectDocument } from './ports.js';
-import {
-  type CriteriaEvidence,
-  readMoveDrafts,
-  type SourceType,
-  unpassedCriteria,
-} from './release-evidence.js';
+import { readProjectDocument } from './ports.js';
 import { isBlankPlan } from './transition-evidence.js';
 import { edgeFault, quote } from './transition-faults.js';
 import { issueHolder } from './work-state.js';
@@ -104,22 +96,14 @@ export interface GuardContext {
   waitingKind?: WaitingKind | undefined;
   executor: Pick<Tx, 'select' | 'execute'>;
   facts: IssueMoveFacts;
-  /** Called with the refusal a move passed only because the project does not require verdicts. */
-  onVerdictsWaived?: ((waived: GuardFault) => void) | undefined;
 }
 
 /** What the guards read from outside the issue's rows, read before the move takes its lock. */
 interface IssueMoveFacts {
   /** The project document sets `plan.approval.required`. */
   planApprovalRequired: boolean;
-  /** The project document requires verdicts for a release (`delivery.verdictsRequired`). */
-  verdictsRequired: boolean;
-  /** The project document's source type, which decides which verdict identities are admissible. */
-  source: SourceType;
   /** The mover's role and grants on the project. */
   permissions: PermissionFacts;
-  /** The drafts the criteria's storefront verdicts name, as the source holds them now. */
-  drafts: CurrentDrafts;
   /** Who is asking, as the run lane names a holder: the box the device or its token belongs to. */
   callerDeviceId: string | null;
   /** The permission that lets the mover make a move another run's hold reserves, or null. */
@@ -174,10 +158,7 @@ export async function readIssueMoveFacts(args: {
       : null,
     holdOverride: asksForHolder ? await holdOverrideOf(args.actorUserId, issue.projectId) : null,
     planApprovalRequired: document?.plan?.approval.required === true,
-    verdictsRequired: verdictsRequiredOf(document?.delivery),
-    source: document?.source.type ?? null,
     permissions: await permissionFactsOf(args.actorUserId, issue.projectId),
-    drafts: await readMoveDrafts(issue, args.to),
     patternEntry: args.to === 'awaiting_release' ? await readMoveEntryFacts(issue) : null,
   };
 }
@@ -310,123 +291,73 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
   return null;
 }
 
-// A flagged issue cannot reach awaiting_release until it is re-planned against the current head
-// (requirement-to-delivery, step `impact`).
-async function planDriftGuard(ctx: GuardContext): Promise<GuardFault | null> {
-  const drift = await planDriftOf(ctx.executor, ctx.issue.id);
-  if (!drift?.changed) return null;
-  return {
-    code: 'REQUIREMENT_CHANGED_SINCE_PLAN',
-    detail: `${quote(ctx.to)} is reached only by work planned against its requirement as it stands: ${drift.detail} Rewrite the plan (it records the current revision and baseline), then move it.`,
-    details: {
-      from: ctx.from,
-      to: ctx.to,
-      requirement: drift.key,
-      plannedRevision: drift.plannedRevision,
-      currentRevision: drift.currentRevision,
-      changedCriteria: drift.changedCriteria,
-    },
-  };
-}
-
 /**
- * awaiting_release: every criterion's latest verdict passes, says what it
- * held in, and was recorded after the issue's latest reopen. A project document with
- * `delivery.verdictsRequired: false` lets the move through and reports what it would have refused,
- * so the move's record says the verdicts were waived and not that they held.
+ * closed from awaiting_release: a release closes what it claimed (`issues.release_batch_run_id`); a
+ * design-only issue needs none, its approved revisions being what shipped (REQ-45 BC-4).
  */
-async function verdictGuard(ctx: GuardContext): Promise<GuardFault | null> {
-  const fault = await verdictFault(ctx, ctx.facts.source);
-  if (fault === null || ctx.facts.verdictsRequired) return fault;
-  ctx.onVerdictsWaived?.(fault);
-  return null;
-}
-
-async function verdictFault(ctx: GuardContext, source: SourceType): Promise<GuardFault | null> {
-  const found = await unpassedCriteria(ctx.executor, ctx.issue, source, ctx.facts.drafts);
-  const into = quote(ctx.to);
-  if (found.kind === 'no-criteria') {
-    return {
-      code: 'NO_WORK_EVIDENCE',
-      detail: `${into} says every criterion holds a passing verdict, and this issue has no criteria for a verdict to hold on. Write them (\`PUT /api/issues/:id/criteria\`, or numbered \`acceptanceCriteria\`) and record a verdict on each (\`POST /api/issues/:id/verdicts\`), then move it.`,
-      details: { from: ctx.from, to: ctx.to, criteria: [] },
-    };
-  }
-  if (found.unpassed.length > 0) {
-    const named = found.unpassed
-      .map((u) => `${u.criterion} (${u.verdict === null ? 'no verdict' : `\`${u.verdict}\``})`)
-      .join(', ');
-    return {
-      code: 'NO_WORK_EVIDENCE',
-      detail: `${into} says every criterion holds a passing verdict, and criteria ${named} do not. A \`skipped\` or \`fail\` verdict never passes. Record a passing verdict on each, then move it.`,
-      details: { from: ctx.from, to: ctx.to, unpassed: found.unpassed },
-    };
-  }
-  if (found.predateReopen.length > 0) {
-    const at = found.reopenedAt?.toISOString() ?? 'its reopen';
-    return {
-      code: 'VERDICT_PREDATES_REOPEN',
-      detail: `this issue was reopened at ${at}, and the passing verdicts on criteria ${found.predateReopen.join(', ')} were recorded before that: a reopen says the work was not right, so evidence from before it is not current. Record a new verdict on each against the work done since the reopen, then move it.`,
-      details: {
-        from: ctx.from,
-        to: ctx.to,
-        reopenedAt: found.reopenedAt?.toISOString() ?? null,
-        predateReopen: found.predateReopen,
-      },
-    };
-  }
-  if (found.unidentified.length > 0) {
-    return {
-      code: 'VERDICT_IDENTITY_REQUIRED',
-      detail: `a passing verdict says what it held in — a whole commit sha, a runtime, a design revision (\`<flow> rev <n>\`) or a contract version (\`<ref>@<version>\`) — and the latest verdict on criteria ${found.unidentified.join(', ')} names none the gate accepts (a backfilled \`commit_unresolved\` abbreviation is not one). Record each again with its identity, then move it.`,
-      details: { from: ctx.from, to: ctx.to, unidentified: found.unidentified },
-    };
-  }
-  return storefrontDraftFault(ctx, found, source);
-}
-
-export function storefrontDraftFault(
-  ctx: GuardContext,
-  found: Extract<CriteriaEvidence, { kind: 'criteria' }>,
-  source: SourceType,
-): GuardFault | null {
-  if (found.inadmissible.length > 0) {
-    const held = source === null ? 'declares no project document' : `has source \`${source}\``;
-    return {
-      code: 'VERDICT_IDENTITY_NOT_ADMISSIBLE',
-      detail: `the latest verdict on criteria ${found.inadmissible.join(', ')} names a storefront draft, and this project ${held}: a draft stands in for a landed commit only where the work lives on a storefront (\`source.type: "storefront"\`). Record each against the commit or runtime it was judged at, then move it.`,
-      details: { from: ctx.from, to: ctx.to, source, inadmissible: found.inadmissible },
-    };
-  }
-  if (found.superseded.length > 0) {
-    const named = found.superseded.map((u) => `${u.criterion} (${u.note})`).join('; ');
-    return {
-      code: 'VERDICT_DRAFT_SUPERSEDED',
-      detail: `a storefront draft counts only while it is the draft the storefront source holds, and the latest verdict on criteria ${named}. Judge each again at the draft \`forge_storefront_target\` reports now, record it naming that draft version, then move it.`,
-      details: { from: ctx.from, to: ctx.to, superseded: found.superseded },
-    };
-  }
-  if (found.uncorroborated.length > 0) {
-    const named = found.uncorroborated.map((u) => `${u.criterion} (${u.note})`).join('; ');
-    return {
-      code: 'VERDICT_UNCORROBORATED',
-      detail: `a storefront draft counts once the storefront source reads it back as the draft it holds, and the latest verdict on criteria ${named} was not. Record each again naming the draft version \`forge_storefront_target\` reports now, then move it.`,
-      details: { from: ctx.from, to: ctx.to, uncorroborated: found.uncorroborated },
-    };
-  }
-  return null;
-}
-
-/** closed: a release closes what it claimed (`issues.release_batch_run_id`), and nothing else does. */
 async function releaseGuard(ctx: GuardContext): Promise<GuardFault | null> {
   const rows = (await ctx.executor.execute(
     sql`SELECT release_batch_run_id FROM issues WHERE id = ${ctx.issue.id}`,
   )) as unknown as Array<{ release_batch_run_id: string | null }>;
   if (rows[0]?.release_batch_run_id) return null;
+  const design = await readDesignDelivery(ctx);
+  if (design.designOnly && design.unapproved.length === 0 && design.approved.length > 0) return null;
   return {
     code: 'CLOSE_ONLY_BY_RELEASE',
-    detail: `an issue closes only through a release, and no release has claimed this one. Finish a release batch carrying it (\`POST /api/projects/${ctx.issue.projectId}/release-batches\`), or record the release that already happened (\`POST /api/projects/${ctx.issue.projectId}/release-records\`); either closes every issue it carries.`,
-    details: { from: ctx.from, to: ctx.to },
+    detail: `an issue that ships code closes through a release, and no release has claimed this one${design.designOnly ? `; it is design-only, and ${designShortfall(design)}` : ''}. Finish a release batch carrying it (\`POST /api/projects/${ctx.issue.projectId}/release-batches\`), or record the release that already happened (\`POST /api/projects/${ctx.issue.projectId}/release-records\`); either closes every issue it carries.`,
+    details: { from: ctx.from, to: ctx.to, designOnly: design.designOnly },
+  };
+}
+
+interface DesignDelivery {
+  /** The merge mark names design artifacts and nothing else: no commit, no paths. */
+  designOnly: boolean;
+  /** The design revisions the mark names. */
+  marked: string[];
+  /** `<flow> rev <n>` of every revision this issue drew that was approved. */
+  approved: string[];
+  /** `<flow> rev <n>` of every revision it delivers that is not approved yet. */
+  unapproved: string[];
+}
+
+async function readDesignDelivery(ctx: GuardContext): Promise<DesignDelivery> {
+  const rows = (await ctx.executor.execute(sql`
+    SELECT ${designOnlyMarkSql(sql`i`)} AS design_only,
+           coalesce((SELECT array_agg(a->>'ref') FROM jsonb_array_elements(
+                       CASE WHEN jsonb_typeof(i.merged_artifacts) = 'array' THEN i.merged_artifacts ELSE '[]'::jsonb END) a),
+                    '{}') AS marked,
+           coalesce((SELECT array_agg(DISTINCT w.flow || ' rev ' || d.revision)
+                       FROM project_workflow_designs d JOIN project_workflows w ON w.id = d.workflow_id
+                      WHERE d.design_issue_id = i.id AND d.decision = 'approve'), '{}') AS approved,
+           ${designHeldSql(sql`i.id`)} AS held
+      FROM issues i WHERE i.id = ${ctx.issue.id}
+  `)) as unknown as Array<{ design_only: boolean; marked: string[]; approved: string[]; held: boolean }>;
+  const row = rows[0];
+  if (!row) return { designOnly: false, marked: [], approved: [], unapproved: [] };
+  const unapproved = row.held
+    ? (((await designHoldsOf(ctx.executor, [ctx.issue.id])).get(ctx.issue.id) ?? []).map(
+        (h) => `${h.flow} rev ${h.revision}`,
+      ))
+    : [];
+  return { designOnly: row.design_only === true, marked: row.marked, approved: row.approved, unapproved };
+}
+
+function designShortfall(d: DesignDelivery): string {
+  if (d.unapproved.length > 0) return `design ${d.unapproved.join(', ')} is not approved yet`;
+  return 'no design revision it drew is approved';
+}
+
+/** closed from a live status: the issue is design-only and every revision it delivers is approved. */
+async function designDeliveredGuard(ctx: GuardContext): Promise<GuardFault | null> {
+  const d = await readDesignDelivery(ctx);
+  if (d.designOnly && d.unapproved.length === 0 && d.approved.length > 0) return null;
+  const why = d.designOnly
+    ? designShortfall(d)
+    : 'its merge mark does not name design revisions alone (a commit, read paths, or a non-design artifact is on it, or there is no mark), so its work ships through a release';
+  return {
+    code: 'DESIGN_NOT_DELIVERED',
+    detail: `${quote(ctx.from)} → \`closed\` is the close of an issue whose only deliverable is a design, once its design revisions are approved, and ${why}. An issue that ships code moves to \`awaiting_release\` and closes through its release.`,
+    details: { from: ctx.from, to: ctx.to, designOnly: d.designOnly, marked: d.marked, approved: d.approved, unapproved: d.unapproved },
   };
 }
 
@@ -491,10 +422,7 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
             (await patternEntryGuard(input.tx, input.row.id, base.facts.patternEntry)));
     },
     released: async (input) => refusalOf(await releaseGuard(ctxOf(input))),
-    verdicts: async (input) => {
-      const ctx = ctxOf(input);
-      return refusalOf((await planDriftGuard(ctx)) ?? (await verdictGuard(ctx)));
-    },
+    design_delivered: async (input) => refusalOf(await designDeliveredGuard(ctxOf(input))),
     // A park returning to the status it left is the park's own edge, not an entry: the status was
     // earned when it was first entered. A park with no recorded left status going anywhere is an
     // entry like any other, and owes that entry's guards.

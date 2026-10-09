@@ -2,10 +2,15 @@
 // step, enqueues one release_batch job. Finish and abort end the run (finish.ts, abort.ts).
 
 import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
-import { inArray } from 'drizzle-orm';
+import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
-import { activeIssuePrefix, heldByEndedReleaseIds, setWorkStep } from '../issues/index.js';
+import {
+  activeIssuePrefix,
+  designOnlyMarkSql,
+  heldByEndedReleaseIds,
+  setWorkStep,
+} from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
@@ -189,13 +194,41 @@ async function withoutShippedEarlier(
   return rest;
 }
 
+/**
+ * The named ids less the design-only ones: a design ships nothing a release carries, so it rides no
+ * roster and closes on its approved revisions instead (REQ-45 BC-4). A call naming only design-only
+ * issues is refused by name, so a cut never opens with nothing to release (dev.210).
+ */
+async function withoutDesignOnly(projectId: string, named: string[]): Promise<string[]> {
+  if (named.length === 0) return named;
+  const rows = await db
+    .select({ id: issues.id, key: issues.issSeq })
+    .from(issues)
+    .where(and(inArray(issues.id, named), sql`${designOnlyMarkSql(sql`${issues}`)}`));
+  if (rows.length === 0) return named;
+  const skipped = new Set(rows.map((r) => r.id));
+  const rest = named.filter((id) => !skipped.has(id));
+  if (rest.length > 0) {
+    logger.info({ projectId, skipped: [...skipped] }, 'release batch skips design-only issues');
+    return rest;
+  }
+  const prefix = await activeIssuePrefix(projectId);
+  const keys = rows.map((r) => (r.key != null ? formatIssueRef(prefix, r.key) : r.id)).join(', ');
+  throw refuseRelease(
+    'RELEASE_ALL_DESIGN_ONLY',
+    `Every issue this call names is design-only (${keys}): its landing is an approved design revision, which a release does not carry, so there is nothing to release. Close each through its \`design_delivered\` edge (move it to \`closed\`) once its revisions are approved; no release was cut.`,
+    '/issueIds',
+  );
+}
+
 export async function createReleaseBatch(
   args: CreateReleaseBatchArgs,
   deps: ShippedEarlierDeps = {},
 ): Promise<CreateReleaseBatchResult> {
   const { projectId, userId } = args;
 
-  const named = await withoutShippedEarlier(projectId, args.issueIds, userId, deps);
+  const code = await withoutDesignOnly(projectId, args.issueIds);
+  const named = await withoutShippedEarlier(projectId, code, userId, deps);
   const { report, issueIds } = await admitBatch(projectId, named);
   const providerLiveGateOff = await askProviderLiveGate(issueIds);
 
