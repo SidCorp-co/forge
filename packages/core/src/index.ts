@@ -129,6 +129,7 @@ import {
 } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import {
+  liveBuildHolds,
   provideReleaseBatchPorts,
   registerDeployWorker,
   registerReleaseBatchFinish,
@@ -284,6 +285,7 @@ provideRequirementDependents({
   revised: staleOnTargetRevised,
   proposeDuplicate: proposeRequirementDuplicate,
   releaseLeg: releaseLegFor,
+  liveBuildHolds,
 });
 provideFeedbackDependents({
   redactSuggestions: redactFeedbackSuggestions,

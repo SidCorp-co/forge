@@ -30,8 +30,8 @@ import {
 } from './acceptance-rules.js';
 import { type RequirementActor, type Row, rowIn, signerRefusal } from './read.js';
 import type { RequirementRefusal } from './rules.js';
-import { deliveryAt, type ProofIssue } from './standing.js';
-import { issueCriteriaOf } from './standing-facts.js';
+import { deliveryAt, type LiveBuildHolds, type ProofIssue } from './standing.js';
+import { issueCriteriaOf, liveBuildOf } from './standing-facts.js';
 import {
   answer,
   inTx,
@@ -42,11 +42,30 @@ import {
 
 const DROPPABLE = entriesOf(REQUIREMENT_MACHINE, 'dropped') as RequirementStatus[];
 
-/** The delivery phase of `row` at its head, read on `ex` by the computation the standing reads. */
+/**
+ * What the live build holds of the verdict commits on `requirementId`'s issues, read apart from any
+ * transaction since it asks production and the source host (`standing-facts.ts:liveBuildOf`).
+ */
+export async function liveBuildOfRequirement(
+  projectId: string,
+  requirementId: string,
+): Promise<LiveBuildHolds | null> {
+  const linked = await db
+    .select({ id: issues.id })
+    .from(issues)
+    .where(eq(issues.requirementId, requirementId));
+  return liveBuildOf(projectId, await issueCriteriaOf(linked.map((i) => i.id)));
+}
+
+/**
+ * The delivery phase of `row` at its head, read on `ex` by the computation the standing reads,
+ * against what the live build holds (`liveBuildOfRequirement`, read before `ex` was opened).
+ */
 export async function deliveryIn(
   ex: Tx,
   projectId: string,
   row: Pick<Row, 'id' | 'status' | 'currentRevision'>,
+  liveBuild: LiveBuildHolds | null = null,
 ) {
   const linked = await ex
     .select({
@@ -90,6 +109,7 @@ export async function deliveryIn(
       criteria,
       issues: standingIssues,
       issueCriteria,
+      liveBuild,
     },
     row.currentRevision,
   );
@@ -115,10 +135,11 @@ export async function acceptDelivery(input: {
   const row = await rowIn(db, projectId, input.ref);
   const signer = await signerRefusal(actor, projectId, 'accepting a delivery', row);
   if (signer) return { ok: false, refusals: [signer] };
+  const liveBuild = await liveBuildOfRequirement(projectId, row.id);
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     const current = await rowIn(tx, projectId, row.id);
-    const { proof } = await deliveryIn(tx, projectId, current);
+    const { proof } = await deliveryIn(tx, projectId, current, liveBuild);
     const refused = acceptRefusals({
       status: current.status as RequirementStatus,
       named: input.revision,

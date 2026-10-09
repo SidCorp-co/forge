@@ -269,6 +269,7 @@ export const SAID = {
 	"standing.act.releaseItByHand": { en: "release it by hand and close it" },
 	"standing.act.releaseRunning": { en: "a release is running" },
 	"standing.act.replan": { en: "re-plan {keys}", vars: { keys: "key" } },
+	"standing.act.retie": { en: "tie {keys} to the current wording of {codes}, then judge it", vars: { codes: "key", keys: "key" } },
 	"standing.act.reviewBreakdown": { en: "Review how this requirement is split into work" },
 	"standing.act.reviseReturned": { en: "revise returned r{r}", vars: { r: "count" } },
 	"standing.act.reviseThenProposeOrDrop": { en: "revise returned r{r}, then propose or drop it", vars: { r: "count" } },

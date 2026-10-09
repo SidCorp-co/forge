@@ -27,7 +27,10 @@ it lives in numbered revisions, and each revision carries business criteria unde
 - **The delivery phase**, read and never written: an agreed requirement reads \`agreed\` until a
   linked issue starts, then \`in_delivery\`, and \`delivered\` only when every live linked issue is
   closed **and** every current BC is covered by a passing verdict. A closed set with one unproven BC
-  still reads \`in_delivery\`; the fix is a verdict, not a status move.
+  still reads \`in_delivery\`; the fix is a verdict, not a status move. A BC's coverage is the newest
+  pass, short or fail on any issue criterion tracing its current wording (an unjudged one masks
+  nothing; a verdict at a commit the live build does not hold never counts), and the BC names it. A
+  trace left on an earlier wording is refreshed by tying the BC again from the issue's Criteria tab.
 
 ### The order of the work
 1. **create** \`{ title, reason, criteria }\` writes REQ-n at revision 1, a draft. Any member of the

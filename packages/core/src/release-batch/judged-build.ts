@@ -12,7 +12,8 @@
  */
 
 import type { JudgedBuild } from '@forge/contracts/verdict-identity';
-import { pairKey } from '../runners/index.js';
+import { logger } from '../lib/logger.js';
+import { ANCESTRY_PAIRS_MAX, type AncestryPair, pairKey } from '../runners/index.js';
 import { type Reading, servedProductionCommit } from './provider-live.js';
 import {
   type AncestrySource,
@@ -153,4 +154,78 @@ export async function judgedBuildOf(
       ? `production serves \`${live}\`, which does not hold it`
       : `whether production's \`${live}\` holds it could not be read: ${answer.unread}`,
   );
+}
+
+/**
+ * What the live build holds of `commits` (the commits verdicts were judged at), for a requirement's
+ * coverage (`requirements/standing.ts:coverageOf`): the commit production serves now, and per commit,
+ * lower case, whether it is that commit or an ancestor of it, read by the same reader and kept in the
+ * same cache as `judgedBuildOf`'s. A commit nobody could answer is left out, and so judged neither
+ * way; null where the live build itself cannot be read, so nothing is judged against it.
+ */
+export async function liveBuildHolds(
+  projectId: string,
+  commits: readonly string[],
+  deps: JudgedBuildDeps = LIVE_DEPS,
+): Promise<{ sha: string; holds: Map<string, boolean> } | null> {
+  const asked = [...new Set(commits.map((c) => c.trim().toLowerCase()).filter((c) => c !== ''))];
+  if (asked.length === 0) return null;
+  const live = await liveCommitFor(projectId, deps);
+  if (!live) return null;
+  const holds = new Map<string, boolean>();
+  const open: AncestryPair[] = [];
+  for (const commit of asked) {
+    const same = commit.length >= 7 && live.startsWith(commit);
+    const held = same ? true : ANSWERED.get(pairKey({ commit, release: live }));
+    if (held !== undefined) holds.set(commit, held);
+    else open.push({ commit, release: live });
+  }
+  if (open.length > 0) await askAncestry(projectId, open, deps);
+  for (const pair of open) {
+    const answer = ANSWERED.get(pairKey(pair));
+    if (answer !== undefined) holds.set(pair.commit, answer);
+  }
+  return { sha: live, holds };
+}
+
+// A list of requirements reads its coverage on every load, so the commit production serves is read
+// at most once per project in LIVE_FOR_MS; a deploy shows in coverage that much later at most.
+const LIVE_FOR_MS = 30_000;
+const LIVE_READ = new Map<string, { at: number; sha: string }>();
+
+/** The commit production serves now, whole, or null where it cannot be read. */
+async function liveCommitFor(projectId: string, deps: JudgedBuildDeps): Promise<string | null> {
+  const held = deps === LIVE_DEPS ? LIVE_READ.get(projectId) : undefined;
+  if (held && Date.now() - held.at < LIVE_FOR_MS) return held.sha;
+  const served = await deps.served(projectId);
+  if (!served.ok) return null;
+  const live = liveCommitOf(served.value, await deps.releases(projectId));
+  if (live && deps === LIVE_DEPS) LIVE_READ.set(projectId, { at: Date.now(), sha: live });
+  return live;
+}
+
+/** Asks `pairs` of the project's ancestry reader and keeps each answer; a reader that cannot serve is logged, and its pairs stay unanswered. */
+async function askAncestry(
+  projectId: string,
+  pairs: readonly AncestryPair[],
+  deps: JudgedBuildDeps,
+) {
+  try {
+    const source = await deps.ancestry(projectId);
+    if (source.kind === 'none') return;
+    for (let at = 0; at < pairs.length; at += ANCESTRY_PAIRS_MAX) {
+      const answers = await source.reader.ask(pairs.slice(at, at + ANCESTRY_PAIRS_MAX));
+      if (!(answers instanceof Map)) return;
+      for (const [key, answer] of answers) {
+        if (typeof answer !== 'boolean') continue;
+        if (ANSWERED.size >= ANSWERED_LIMIT) ANSWERED.clear();
+        ANSWERED.set(key, answer);
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      { projectId, err: err instanceof Error ? err.message : String(err) },
+      'live build ancestry unread: verdict commits are judged neither held nor lacking',
+    );
+  }
 }

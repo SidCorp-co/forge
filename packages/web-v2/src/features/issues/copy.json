@@ -476,6 +476,7 @@
     "issues.thread.reasonHint": "Why: the agent working this issue reads it with the decision.",
     "issues.thread.reply": "Reply",
     "issues.thread.replyPlaceholder": "Write a reply…",
+    "issues.tieAct.earlier": "tied to an earlier wording; tying refreshes it to this one, to be judged again",
     "issues.tieAct.held": "already tied",
     "issues.tieAct.lead": "Each criterion you pick becomes a criterion of this issue, worded as the requirement words it, so it can be judged. A closed issue takes them too.",
     "issues.tieAct.open": "Tie to {req} criteria",

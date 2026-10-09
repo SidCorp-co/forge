@@ -163,7 +163,14 @@ describe('the delivery phase the accept reads', () => {
   });
   const criteria = [{ id: 'c1', code: 'BC-1', body: 'b', sinceRevision: 1, retiredRevision: null }];
   const verdict = (v: 'pass' | 'fail' | null) => [
-    { issueId: 'i1', n: 1, requirementCriterionId: 'c1', verdict: v, verdictAt: v ? at : null },
+    {
+      issueId: 'i1',
+      n: 1,
+      requirementCriterionId: 'c1',
+      verdict: v,
+      verdictAt: v ? at : null,
+      commit: null,
+    },
   ];
 
   it('reads delivered when every live issue closed and every BC passes, a dropped issue left out', () => {

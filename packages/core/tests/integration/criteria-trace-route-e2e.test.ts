@@ -1,7 +1,8 @@
 /**
  * Tying an issue to business criteria of its requirement (`POST /api/issues/:id/criteria/traces`),
  * the act a person takes from the issue's Criteria tab: one appended criterion per BC, worded as
- * the BC was at the revision the issue was planned against and traced to that wording. A closed
+ * the BC is at the requirement's current revision and traced to that wording (a trace left on an
+ * earlier wording is refreshed: coverage-newest-verdict-e2e.test.ts). A closed
  * issue takes it, and then takes a verdict on it, since verifying shipped work is the point. Wrong
  * input is refused by name, with nothing written. Through the app's own routes, against real
  * Postgres.

@@ -281,12 +281,13 @@ export const BC_VERDICT_TONES: Record<BcVerdict, StandingTone> = {
 
 export const BC_VERDICT_HINTS: Record<BcVerdict, string> = {
 	passing:
-		"passing: every issue criterion tracing to this wording has a pass verdict",
+		"passing: the newest verdict on an issue criterion tracing to this wording is a pass",
 	failing:
-		"failing: an issue criterion tracing to this wording failed its latest verdict",
+		"failing: the newest verdict on an issue criterion tracing to this wording is a fail",
 	stale:
-		"stale: issue criteria trace only to an earlier wording of this criterion",
-	not_judged: "not_judged: an issue criterion tracing here has no verdict yet",
+		"stale: issue criteria trace only to an earlier wording of this criterion, or were judged only at commits the live build does not hold",
+	not_judged:
+		"not_judged: no issue criterion tracing to this wording has a pass or fail verdict yet",
 	gap: "gap: no issue criterion traces to this criterion",
 };
 
@@ -356,7 +357,25 @@ export interface CoverageIssue {
 	verdict: "pass" | "short" | "fail" | "skipped" | null;
 	/** When that verdict was recorded (ISO); null while there is none. */
 	verdictAt: string | null;
+	/** The commit that verdict was judged at; null where it names none. */
+	commit: string | null;
+	/** Whether the live build holds that commit; null where it was not read (no commit, no probe,
+	 *  no answer). A verdict at a commit the live build does not hold is stale and never counts. */
+	inLiveBuild: boolean | null;
 	stale: boolean;
+}
+
+/** The one verdict a business criterion's coverage reads: the newest pass, short or fail recorded on
+ *  an issue criterion tracing its current wording, at a commit the live build is not read to lack. */
+export interface CoverageCount {
+	issueId: string;
+	displayId: string;
+	criterion: number;
+	verdict: "pass" | "short" | "fail";
+	/** When it was recorded (ISO). */
+	at: string;
+	commit: string | null;
+	inLiveBuild: boolean | null;
 }
 
 export interface RequirementCoverage {
@@ -364,6 +383,8 @@ export interface RequirementCoverage {
 	body: string;
 	verdict: BcVerdict;
 	issues: CoverageIssue[];
+	/** The verdict the coverage reads, so a person sees why it reads as it does; null where none counts. */
+	counts: CoverageCount | null;
 	/** On a gap, why the newest accepted breakdown naming this criterion left it without an issue
 	 *  (its `uncovered[]` reason); null where no accepted breakdown says. */
 	uncoveredReason: string | null;

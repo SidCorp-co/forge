@@ -5,11 +5,13 @@ import type { Tx } from '../db/client.js';
 import type { ReadDoor } from '../feedback/index.js';
 import { portSlot } from '../lib/port-slot.js';
 import type { ProposeDuplicate } from './near-duplicate.js';
+import type { LiveBuildHolds } from './standing.js';
 
 /**
- * What feedback and suggestions answer for, and file on, a requirement, and what the release owes the
- * issues it has landed. Each builds on requirements or sits in a later context, so the composition
- * root hands them in at boot rather than this module importing them.
+ * What feedback and suggestions answer for, and file on, a requirement, what the release owes the
+ * issues it has landed, and what the live build holds of the commits verdicts were judged at. Each
+ * builds on requirements or sits in a later context, so the composition root hands them in at boot
+ * rather than this module importing them.
  */
 export interface RequirementDependents {
   /** Every feedback item about the requirement, as its detail shows them. */
@@ -25,6 +27,8 @@ export interface RequirementDependents {
   proposeDuplicate: ProposeDuplicate;
   /** What follows a landing on the project as `userId` reads it (`forecast/release.ts:releaseLegFor`): the release on its own, or the act a person owes. */
   releaseLeg(projectId: string, userId: string | null): Promise<ReleaseLeg>;
+  /** What the project's live build holds of verdict commits (`release-batch/judged-build.ts:liveBuildHolds`); null where it cannot be read. */
+  liveBuildHolds(projectId: string, commits: readonly string[]): Promise<LiveBuildHolds | null>;
 }
 
 const slot = portSlot<RequirementDependents>('requirements', 'provideRequirementDependents');

@@ -5,7 +5,7 @@
 // Here the default is read from the build production serves and the releases Forge verified.
 
 import { describe, expect, it } from 'vitest';
-import { type JudgedBuildDeps, judgedBuildOf } from './judged-build.js';
+import { type JudgedBuildDeps, judgedBuildOf, liveBuildHolds } from './judged-build.js';
 import type { AncestrySource, ShippedReleaseRun } from './shipped-earlier.js';
 import type { AncestryReader } from './shipped-earlier-ancestry.js';
 
@@ -137,5 +137,39 @@ describe('the build a verdict defaults to', () => {
     await judgedBuildOf(ISSUE, deps(served, [shipped], r.source));
     await judgedBuildOf(ISSUE, deps(served, [shipped], r.source));
     expect(r.asked).toEqual([`${shipped.commit}@${served}`]);
+  });
+});
+
+// coverage-truth: a requirement's coverage counts a verdict only where the live build holds the
+// commit it was judged at; what production serves and each commit's ancestry are read here
+describe('what the live build holds of verdict commits', () => {
+  it('answers each commit: the served one itself, an ancestor, one it lacks; an unread one is left out', async () => {
+    const live = sha('9');
+    const r = reader({ [`${sha('1')}@${live}`]: true, [`${sha('2')}@${live}`]: false });
+    const read = await liveBuildHolds(
+      'p-holds',
+      [live, sha('1'), sha('2').toUpperCase(), sha('3')],
+      deps(live, [], r.source),
+    );
+    expect(read?.sha).toBe(live);
+    expect([...(read?.holds ?? [])]).toEqual([
+      [live, true],
+      [sha('1'), true],
+      [sha('2'), false],
+    ]);
+    expect(r.asked).not.toContain(`${live}@${live}`);
+  });
+
+  it('reads nothing where no commit is asked, and is null where production cannot be read', async () => {
+    expect(await liveBuildHolds('p-none', [], deps(sha('9'), []))).toBeNull();
+    expect(await liveBuildHolds('p-down', [sha('1')], deps({ why: 'no probe' }, []))).toBeNull();
+  });
+
+  it('keeps an answer, so the same pair is not asked twice', async () => {
+    const live = sha('8');
+    const r = reader({ [`${sha('4')}@${live}`]: true });
+    await liveBuildHolds('p-kept', [sha('4')], deps(live, [], r.source));
+    await liveBuildHolds('p-kept', [sha('4')], deps(live, [], r.source));
+    expect(r.asked).toEqual([`${sha('4')}@${live}`]);
   });
 });

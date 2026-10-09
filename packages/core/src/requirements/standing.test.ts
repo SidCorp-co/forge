@@ -258,6 +258,7 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
     requirementCriterionId: `c${bcN}`,
     verdict,
     verdictAt: verdict ? at('2026-09-22T00:00:00Z') : null,
+    commit: null,
   });
   const shipped = (
     issueCriteria: ReturnType<typeof traced>[],
@@ -347,5 +348,109 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
     );
     expect(s.state).toBe('delivered');
     expect(s.waitingOn.act).toMatch(/^check BC-1, BC-3, BC-5 against the traceability matrix/);
+  });
+});
+
+// coverage-truth: a BC used to pass only where EVERY row tracing it passed, so one unjudged row or
+// one old fail anywhere held it for good; the newest judgement on a build the live one is not read
+// to lack now decides, and the BC names it
+describe('the verdict a business criterion counts', () => {
+  const bc1 = { id: 'c1', code: 'BC-1', body: 'rule 1', sinceRevision: 1, retiredRevision: null };
+  const old1 = { id: 'c0', code: 'BC-1', body: 'rule 1 r1', sinceRevision: 1, retiredRevision: 2 };
+  const A = 'a'.repeat(40);
+  const B = 'b'.repeat(40);
+  const row = (
+    issueN: number,
+    verdict: 'pass' | 'short' | 'fail' | 'skipped' | null,
+    iso: string | null,
+    commit: string | null = null,
+    wording = 'c1',
+  ) => ({
+    issueId: `i${issueN}`,
+    n: 1,
+    requirementCriterionId: wording,
+    verdict,
+    verdictAt: iso ? at(iso) : null,
+    commit,
+  });
+  const read = (rows: ReturnType<typeof row>[], liveBuild: Map<string, boolean> | null = null) =>
+    deriveStanding({
+      ...input([issue(1, 'closed', false), issue(2, 'closed', false), issue(3, 'closed', false)]),
+      criteria: [old1, bc1],
+      issueCriteria: rows,
+      liveBuild: liveBuild ? { sha: 'c'.repeat(40), holds: liveBuild } : null,
+    }).coverage[0];
+
+  it('an older fail and an unjudged row do not outvote a newer pass, and the pass is named', () => {
+    const c = read([
+      row(1, 'fail', '2026-10-01T00:00:00Z', A),
+      row(2, 'pass', '2026-10-05T00:00:00Z', B),
+      row(3, null, null),
+    ]);
+    expect(c?.verdict).toBe('passing');
+    expect(c?.counts).toEqual({
+      issueId: 'i2',
+      displayId: 'ISS-2',
+      criterion: 1,
+      verdict: 'pass',
+      at: '2026-10-05T00:00:00.000Z',
+      commit: B,
+      inLiveBuild: null,
+    });
+  });
+
+  it('a fail stands while it is the newest; could-not-judge masks nothing', () => {
+    const c = read([
+      row(1, 'pass', '2026-10-01T00:00:00Z'),
+      row(2, 'fail', '2026-10-05T00:00:00Z'),
+      row(3, 'skipped', '2026-10-07T00:00:00Z'),
+    ]);
+    expect(c?.verdict).toBe('failing');
+    expect(c?.counts?.displayId).toBe('ISS-2');
+  });
+
+  it('a verdict at a commit the live build lacks never counts: the newest one it holds does', () => {
+    const c = read(
+      [row(1, 'pass', '2026-10-01T00:00:00Z', A), row(2, 'fail', '2026-10-05T00:00:00Z', B)],
+      new Map([
+        [A, true],
+        [B, false],
+      ]),
+    );
+    expect(c?.verdict).toBe('passing');
+    expect(c?.counts).toMatchObject({ displayId: 'ISS-1', inLiveBuild: true });
+    expect(c?.issues.map((l) => [l.displayId, l.inLiveBuild])).toEqual([
+      ['ISS-1', true],
+      ['ISS-2', false],
+    ]);
+  });
+
+  it('judged only at commits the live build lacks reads stale, naming no verdict', () => {
+    const c = read([row(1, 'pass', '2026-10-01T00:00:00Z', A)], new Map([[A, false]]));
+    expect(c).toMatchObject({ verdict: 'stale', counts: null });
+  });
+
+  it('a commit nobody answered is judged neither way and still counts', () => {
+    const c = read([row(1, 'pass', '2026-10-01T00:00:00Z', A)], new Map());
+    expect(c).toMatchObject({ verdict: 'passing', counts: { inLiveBuild: null } });
+  });
+
+  it('a pass on the earlier wording counts for nothing on the current one', () => {
+    const c = read([row(1, 'pass', '2026-10-05T00:00:00Z', A, 'c0'), row(2, null, null)]);
+    expect(c).toMatchObject({ verdict: 'not_judged', counts: null });
+  });
+
+  it('a BC traced only on an earlier wording waits on the judge to tie those issues again, not to judge them', () => {
+    const s = deriveStanding({
+      ...input([issue(1, 'closed', false), issue(2, 'closed', false)]),
+      criteria: [old1, bc1],
+      issueCriteria: [row(1, 'pass', '2026-10-05T00:00:00Z', A, 'c0')],
+      judge: 'independent',
+    });
+    expect(s.coverage[0]?.verdict).toBe('stale');
+    expect(s.waitingOn).toMatchObject({
+      who: 'Independent judge',
+      act: 'tie ISS-1 to the current wording of BC-1, then judge it',
+    });
   });
 });

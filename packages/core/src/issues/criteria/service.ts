@@ -1,6 +1,7 @@
 import { db } from '../../db/client.js';
-import { appendTracedCriteria, type CriterionInput, listCriteria, putCriteria } from './store.js';
+import { type CriterionInput, listCriteria, putCriteria } from './store.js';
 import { withCurrentDrafts } from './storefront-draft.js';
+import { appendTracedCriteria } from './tie.js';
 import { recordVerdict } from './verdict-record.js';
 
 /** An issue's live criteria with their latest verdicts and the storefront's current drafts. */
@@ -18,7 +19,7 @@ export async function addVerdict(args: Parameters<typeof recordVerdict>[1]) {
   return db.transaction((tx) => recordVerdict(tx, args));
 }
 
-/** Ties the issue to business criteria of its requirement, one appended criterion each, in one transaction. */
+/** Ties the issue to business criteria of its requirement, one appended or refreshed criterion each, in one transaction. */
 export async function traceCriteria(issueId: string, codes: readonly string[]) {
   return db.transaction((tx) => appendTracedCriteria(tx, issueId, codes));
 }
