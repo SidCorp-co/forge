@@ -4,6 +4,8 @@ import { type DraftFacts, recommendationOf, staleDraftQuestion } from './stale-d
 
 // REQ-41 BC-12: the recommended answer a merge-or-drop question carries, read from the product record.
 
+const REQ_2 = { kind: 'requirement' as const, id: 'r2', key: 'REQ-2' };
+
 const facts = (over: Partial<DraftFacts> = {}): DraftFacts => ({
   key: 'REQ-7',
   mergeInto: null,
@@ -16,7 +18,11 @@ const facts = (over: Partial<DraftFacts> = {}): DraftFacts => ({
 describe('recommendationOf', () => {
   it('drops a draft whose requirement ended, before anything else is weighed', () => {
     const r = recommendationOf(
-      facts({ ended: { key: 'REQ-3', status: 'accepted' }, mergeInto: 'ISS-9', asks: ['FB-1'] }),
+      facts({
+        ended: { key: 'REQ-3', status: 'accepted' },
+        mergeInto: { kind: 'issue', id: 'i9', key: 'ISS-9' },
+        asks: ['FB-1'],
+      }),
     );
     expect(r).toEqual({
       answer: 'drop',
@@ -25,7 +31,7 @@ describe('recommendationOf', () => {
   });
 
   it('merges a draft that reads as a live item, naming it', () => {
-    expect(recommendationOf(facts({ mergeInto: 'REQ-2', asks: ['FB-1'] })).answer).toBe('merge');
+    expect(recommendationOf(facts({ mergeInto: REQ_2, asks: ['FB-1'] })).answer).toBe('merge');
   });
 
   it('keeps a draft open feedback still asks for, naming the feedback', () => {
@@ -46,7 +52,7 @@ describe('staleDraftQuestion', () => {
   it('offers merge, drop and keep, recommends one of them, and carries the mark the needs-me read files it by', () => {
     const q = staleDraftQuestion(
       { key: 'REQ-7', title: 'Export to CSV', what: 'a draft requirement' },
-      facts({ mergeInto: 'REQ-2' }),
+      facts({ mergeInto: REQ_2 }),
     );
     expect(q.options.map((o) => o.label)).toEqual([
       'Merge into REQ-2',
@@ -60,5 +66,18 @@ describe('staleDraftQuestion', () => {
       'Recommended: Merge into REQ-2, because it reads as the same as REQ-2',
     );
     expect(DRAFT_STALE_DAYS).toBe(7);
+    const merge = q.options.find((o) => o.id === 'stale_draft.merge');
+    expect(merge?.target, 'the merge option names what it merges into').toEqual(REQ_2);
+    expect(q.options.every((o) => o.executedBy === 'core')).toBe(true);
+  });
+
+  it('offers no merge where no live item reads as the same, so no answer names nothing to merge into', () => {
+    const q = staleDraftQuestion(
+      { key: 'REQ-7', title: 'Export to CSV', what: 'a draft requirement' },
+      facts(),
+    );
+    expect(q.options.map((o) => o.id)).toEqual(['stale_draft.drop', 'stale_draft.keep']);
+    expect(isStaleDraftQuestion(q.options)).toBe(true);
+    expect(q.prompt).toContain('Drop it, or keep it? Recommended: Drop it');
   });
 });

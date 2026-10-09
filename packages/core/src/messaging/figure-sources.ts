@@ -56,6 +56,8 @@ const DECISION_NAMES = [
   /\bdecision(?:s|\s+log|\s+records?)?\b|\bdecided\b/i,
   /quyết\s+định/iu, // i18n-allow: the Vietnamese word for a decision
 ];
+/** A reproduce's recording: its timeline's times and the status codes of requests that failed (REQ-41 BC-19). */
+const RECORDING_NAMES = [/\brecording\b|\btimeline\b|\breproduc(?:e|ed|tion)\b|\bFB-\d+\b/i];
 /** The needs-me read: what waits on the person asking, as decisions (REQ-41 BC-1). */
 const NEEDS_YOU_NAMES = [/\bneeds? (?:you|me)\b|\bwait(?:s|ing)? on (?:you|me)\b|\bdecisions?\b/i];
 
@@ -89,6 +91,7 @@ export const FIGURE_READS: readonly {
   { tool: 'forge_requirement_draft', keys: ['preview', 'taken'], names: DOCUMENT_NAMES },
   { tool: 'forge_decisions', names: DECISION_NAMES },
   { tool: 'forge_needs_you', names: NEEDS_YOU_NAMES },
+  { tool: 'forge_recording', names: RECORDING_NAMES },
   { tool: 'ba_read_requirement', names: REQUIREMENTS_NAMES },
   {
     tool: 'ba_find_similar',
@@ -243,6 +246,7 @@ function readNames(sources: readonly FigureSource[]): string {
     forge_release: 'the release by its version',
     forge_decisions: 'the decisions',
     forge_needs_you: 'what needs you',
+    forge_recording: 'the recording or its timeline',
     forge_requirement_draft: 'the attached file by its name',
   };
   return [...new Set(sources.map((s) => say[s.read] ?? s.read))].join(' or ');

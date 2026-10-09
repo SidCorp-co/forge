@@ -9,6 +9,43 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.218] - 2026-10-09
+
+Live previews with a fast lane, and every release becomes a readable page
+
+### Added
+
+- **An issue shows how long its runs spent on checks.** The Runs tab lists the time per kind with the slowest, then each check with its result, duration, run, commit and note, readable on a phone.
+
+### Changed
+
+- **Ask Agent opens large, and one switch halves it.** The panel opens at the widest size that leaves the page 480px. A Half/Large switch moves it, even with a board open; dragging still works, and your choice is remembered.
+
+### Fixed
+
+- **Chat-first design and its shared contracts are in place.** The needs-me decisions read, a held reply's checked part, page actions for every Product list, and idea and reproduce previews with session recording have one agreed shape.
+- **Dev serves live previews at `<label>.iosbenchmarks.com`.** The dev stack now names its preview site and its own product project, so previews and What's new answer there instead of refusing as unconfigured.
+- **An approved web change can take the fast lane.** Its merge check runs the typecheck and touched tests only, is refused if the change moved since approval or touches kernel, migration, permission or security files, and deploys web alone.
+- **The project home opens on chat.** The conversation leads the page, with flat Needs you, Running and At risk tables beside it (below on a phone); Needs you is the decisions list the chat answers from, with its buttons.
+- **Dev's merge gate can no longer pass a change it never checked.** CI is red when the merge check is skipped on dev, a selected test that never ran fails by name, and the pre-push hook says when nothing ran.
+- **Errors and refusals are drawn in red.** Failed checks, refused actions and error lines across the app showed as plain text because their colour was never defined; they now use the danger colour.
+- **A verdict nobody could check against the live build no longer counts.** When production cannot be read, or cannot say whether it holds the commit, the criterion reads Not judged and its line says why.
+- **An issue is no longer closed into a release by a landing that was taken back.** A reopened issue stops reading "Shipped in" that release, and a delivery unchecked at its last close is announced once checked.
+- **A comment that only looks like a merge mark can no longer close an issue into a release.** An issue held because its mark names no commit now says so once, and names the route that fixes it.
+- **Asking what waits on you answers with only your decisions.** Each shows its question, a recommended answer and a button to answer it; a reply the check holds now shows the part it could check, never nothing.
+- **Fewer rows wait on a person for nothing.** A requirement follows an approved design unless a traced step changed, a run that spent its sessions parks for its master, and a week-old draft gets one merge-or-drop question.
+- **Live preview has a design and shared contracts.** The record, its lifecycle, failure reasons, tunnel frames, project setting with detection from package.json, and the fast-lane rule that keeps kernel, migrations, permissions and security on full gates.
+- **A person can see a run's change live before it lands.** Opening an issue's preview starts the run's dev server on its box and serves it, to project members only, at its own link over the box's own connection.
+- **A live preview shows inside the issue and beside chat.** Members see the run's change in a frame or tab, read why a preview did not start, ask for changes, approve it, and set previews up in settings.
+- **The Judge form takes a short screen clip as a verdict's evidence.** A webm or mp4 up to 10 MB sits beside screenshots and plays before it is recorded; a larger clip or another file type is refused by name.
+- **An issue page's live preview loads with the page's first reads.** It no longer waits for the issue to answer first, and a preview listening on every IPv6 address is now named correctly on macOS.
+- **A release now has a designed page and a shared contract for it.** Highlights with QA clips, requirements proven live, fixes, actions and known issues, claiming a criterion only with a pass on that release's own build.
+- **A release is a page you can read.** It opens on highlights with clips, then what it proves, improvements, fixes, actions and known issues; a Developer switch adds technical notes. Share it by link, or export Markdown or email.
+- **Every release now has a readable page.** It opens on drafted highlights with QA clips, lists requirements proven on its own build, fixes, admin actions and known issues, adds technical notes for developers, and shares by Forge link.
+- **What's new opens once on the release your instance runs.** It shows that release's highlights and lines when it is new to you, and the mark is written when you close it. An instance naming no environment refuses.
+- **A branch cut from another no longer reads as a migration collision.** The order check treats the identical journal entry on both as one migration. Integration tests clear leftover outbox jobs, so later deliveries are no longer dropped.
+- **Chat now drives Requirements, Feedback, Workflows and Releases beside it.** It opens any record by key, filters every list by whom a row waits on, highlights a section, step or row, and knows which rows the page shows.
+
 ## [0.4.0-dev.217] - 2026-10-09
 
 The assistant draws a requirement's picture with its draft

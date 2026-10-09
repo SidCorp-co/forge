@@ -47,8 +47,11 @@ const OWN_WORK: ReadonlySet<string> = new Set([
   'issues.standing.act.reviseDesign',
 ]);
 
-/** A draft nobody has proposed merging or dropping yet (BC-12): not a decision until the assistant asks it. */
+/** A draft nobody has proposed merging or dropping yet (BC-12): not a decision until Forge asks it. */
 const AWAITING_PROPOSAL: ReadonlySet<string> = new Set(['issues.standing.act.takeOnOrDrop']);
+
+/** A draft Forge asked to merge, drop or keep (BC-12): its question is the decision. */
+const MERGE_OR_DROP = 'standing.act.mergeOrDrop';
 
 /** The issue acts a person owes as the answer to a run's question. */
 const ANSWER_ACTS: ReadonlySet<string> = new Set([
@@ -62,7 +65,7 @@ type Classified = Built | { reason: NeedsYouNotDecisionReason };
 interface Facts {
   questions: OpenPersonQuestion[];
   issueIdOf: ReadonlyMap<string, string>;
-  requirementOf: ReadonlyMap<string, { proposed: number | null; head: number | null }>;
+  requirementOf: ReadonlyMap<string, { id: string; proposed: number | null; head: number | null }>;
   releaseOf: ReadonlyMap<string, { runId: string | null; failing: number; total: number }>;
   approvalOf: ReadonlyMap<string, string>;
   feedbackAnswerOf: ReadonlyMap<string, string | null>;
@@ -89,6 +92,10 @@ function questionOf(
   issueKey: string | null,
 ): OpenPersonQuestion | null {
   if (row.entity === 'question') return f.questions.find((q) => q.id === row.key) ?? null;
+  if (row.entity === 'requirement') {
+    const id = f.requirementOf.get(row.key)?.id;
+    return id ? (f.questions.filter((q) => q.requirementId === id).at(-1) ?? null) : null;
+  }
   const issueId = issueKey ? f.issueIdOf.get(issueKey) : undefined;
   if (!issueId) return null;
   // the newest round waiting on the issue is the one its standing reads
@@ -100,6 +107,11 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
   const act = actOf(row);
   if (OWN_WORK.has(act.key)) return { reason: 'own_work' };
   if (AWAITING_PROPOSAL.has(act.key)) return { reason: 'awaiting_proposal' };
+  if (act.key === MERGE_OR_DROP && (row.entity === 'issue' || row.entity === 'requirement')) {
+    const q = questionOf(row, f, row.entity === 'issue' ? row.key : null);
+    if (!q) return { reason: 'awaiting_proposal' };
+    return questionDecision(row, area, q, { kind: row.entity, key: row.key });
+  }
   if (row.entity === 'question' || (row.entity === 'issue' && ANSWER_ACTS.has(act.key))) {
     const q = questionOf(row, f, row.entity === 'issue' ? row.key : null);
     if (!q) return { reason: 'work' };
@@ -162,6 +174,7 @@ export async function readNeedsYouDecisions(
       attention.requirements.map((r) => [
         r.key,
         {
+          id: r.id,
           proposed: r.standing.facts.proposedRevision,
           head: r.latestRevision?.revision ?? r.currentRevision,
         },

@@ -174,7 +174,8 @@ export async function acceptDelivery(input: {
 
 /** A requirement not going to be built is dropped, with a reason, once no live issue links to it. */
 /** Drops `rowId` inside the caller's transaction, under the requirements lock; refusals when it may not go. */
-async function dropIn(
+/** The drop of one requirement in the caller's transaction, under the project's requirement lock. */
+export async function dropIn(
   tx: Tx,
   projectId: string,
   rowId: string,

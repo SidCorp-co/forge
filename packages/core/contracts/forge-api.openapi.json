@@ -23884,6 +23884,32 @@
                     },
                     "type": "object"
                   },
+                  "diagnosis": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cause": {
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "fix": {
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "recording": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "recording",
+                      "cause",
+                      "fix"
+                    ],
+                    "type": "object"
+                  },
                   "duplicateOf": {
                     "maxLength": 200,
                     "minLength": 1,

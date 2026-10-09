@@ -290,13 +290,13 @@ const NOT_A_PROJECT_WRITE: Record<string, string> = {
   forge_release: 'a read',
   forge_decisions: 'a read',
   forge_needs_you: 'a read',
+  forge_recording: 'a read: a diagnosis it is given is checked and answered, never written',
   forge_metrics_project_step_durations: 'a read',
   forge_metrics_project_timeseries: 'a read',
   forge_report: "a run of a query, kept as the asker's own read",
   forge_show: 'draws a block of a run this turn made into the room',
   forge_template: "a template run, kept as the asker's own read",
 };
-
 /** Each write tool, a call a member could make, and the permission a viewer is refused it by. */
 const viewerWrites = (): [string, Record<string, unknown>, string][] => [
   ['forge_feedback', { kind: 'bug', title: 'Viewer feedback', screen: '/board' }, 'project.write'],
