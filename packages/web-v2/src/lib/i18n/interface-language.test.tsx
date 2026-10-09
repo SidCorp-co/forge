@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CurrentProjectProvider } from "@/features/projects/current-project";
 import type { ProjectListItem } from "@/features/projects/types";
-import { LateItems } from "@/features/project-dashboard/components/plan-sections";
+import { LandsThisWeek } from "@/features/project-dashboard/components/plan-sections";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { resolveInterfaceLanguage, WorkspaceInterfaceLanguage } from "./interface-language";
 import { PRODUCT_STRINGS as product } from "./product-copy";
@@ -21,7 +21,7 @@ function screenWith(choice: "en" | "vi" | null, content: string) {
   renderWithQuery(
     <CurrentProjectProvider project={project}>
       <WorkspaceInterfaceLanguage>
-        <LateItems rows={[]} clock={clock} />
+        <LandsThisWeek rows={[]} clock={clock} slug="hop" />
       </WorkspaceInterfaceLanguage>
     </CurrentProjectProvider>,
   );
@@ -38,17 +38,17 @@ describe("the interface language a screen renders in", () => {
 
   it("renders vi when the person picks vi on a project that writes English", async () => {
     screenWith("vi", "en");
-    expect(await screen.findByText(product.vi["dash.lateEmpty"])).toBeInTheDocument();
+    expect(await screen.findByText(product.vi["dash.landsEmpty"])).toBeInTheDocument();
   });
 
   it("renders English when the person picks English on a project that writes Vietnamese", async () => {
     screenWith("en", "vi");
-    expect(await screen.findByText(product.en["dash.lateEmpty"])).toBeInTheDocument();
-    expect(screen.queryByText(product.vi["dash.lateEmpty"])).toBeNull();
+    expect(await screen.findByText(product.en["dash.landsEmpty"])).toBeInTheDocument();
+    expect(screen.queryByText(product.vi["dash.landsEmpty"])).toBeNull();
   });
 
   it("follows the project's content language when the person chose nothing", async () => {
     screenWith(null, "vi");
-    expect(await screen.findByText(product.vi["dash.lateEmpty"])).toBeInTheDocument();
+    expect(await screen.findByText(product.vi["dash.landsEmpty"])).toBeInTheDocument();
   });
 });
