@@ -70,13 +70,12 @@ interface VerdictReading extends StorefrontDraftVerdictView {
 	contractVersion: string | null;
 }
 
-// `short` is a judged pass, and a backfilled abbreviated commit that never resolved reads Unresolved whatever it said, so every screen folds a verdict the way the release gate reads it
+// a backfilled abbreviated commit that never resolved reads Unresolved whatever it said; `short` reads Short on every screen and counts as a pass where verdicts are counted (`criterionCountsAsPass`)
 export function criterionStandingOf(
 	latest: Pick<VerdictReading, "verdict" | "identityKind"> | null,
 ): CriterionStanding {
 	if (!latest) return "unjudged";
 	if (latest.identityKind === "commit_unresolved") return "unresolved";
-	if (latest.verdict === "pass" || latest.verdict === "short") return "pass";
 	return latest.verdict;
 }
 

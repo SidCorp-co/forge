@@ -162,10 +162,12 @@ export const ISSUE_CATEGORY_LABELS: Record<string, string> = {
 	release: "Release",
 };
 
-/** What one issue criterion reads as on every screen: its latest verdict, folded the way the gate
- *  reads it (`short` is a judged pass; an abbreviated backfilled commit is unresolved). */
+/** What one issue criterion reads as on every screen: its latest verdict, with an abbreviated
+ *  backfilled commit read as unresolved. `short` is drawn as itself, never as a pass, though the gate
+ *  and coverage count it as one (`criterionCountsAsPass`). */
 export const CRITERION_STANDINGS = [
 	"pass",
+	"short",
 	"fail",
 	"skipped",
 	"unresolved",
@@ -175,6 +177,7 @@ export type CriterionStanding = (typeof CRITERION_STANDINGS)[number];
 
 export const CRITERION_STANDING_LABELS: Record<CriterionStanding, string> = {
 	pass: "Pass",
+	short: "Short",
 	fail: "Fail",
 	skipped: "Skipped",
 	unresolved: "Unresolved",
@@ -186,6 +189,7 @@ export const CRITERION_STANDING_TONES: Record<
 	IssueStatusTone
 > = {
 	pass: "ready",
+	short: "ready",
 	fail: "err",
 	skipped: "neutral",
 	unresolved: "you",
@@ -194,14 +198,21 @@ export const CRITERION_STANDING_TONES: Record<
 
 export const CRITERION_STANDING_GLYPHS: Record<CriterionStanding, string> = {
 	pass: "✓",
+	short: "≈",
 	fail: "×",
 	skipped: "–",
 	unresolved: "!",
 	unjudged: "○",
 };
 
+/** Whether a criterion's standing earns it: a pass, or a short (met, short of its wording). */
+export const criterionCountsAsPass = (standing: CriterionStanding): boolean =>
+	standing === "pass" || standing === "short";
+
 export const CRITERION_STANDING_HINTS: Record<CriterionStanding, string> = {
-	pass: "pass: the latest verdict passed (or passed short of the wording, judged not to block)",
+	pass: "pass: the latest verdict passed",
+	short:
+		"short: met, short of its wording, and judged not to block; it counts as a pass",
 	fail: "fail: the latest verdict failed",
 	skipped: "skipped: judged and skipped with a reason; never counts as a pass",
 	unresolved:

@@ -56,7 +56,7 @@ const standing = (over: Partial<IssueStandingRow["standing"]> = {}): IssueStandi
     attentionGroup: "moving",
     waitingOn: waitingOn("run", { who: say("issues.standing.who.run"), act: say("issues.standing.act.stepFor", { step: "build", n: 12 }), rule: say("issues.rule.leaseHeld", { holder: "box-1" }) }),
     criteria: { total: 4, passing: 2, failing: 1, skipped: 0 },
-    requirement: { key: "REQ-1", title: "Dang nhap", criteria: ["BC-1"], plannedRevision: 1, currentRevision: 2, changedSincePlan: true },
+    requirement: { key: "REQ-1", title: "Dang nhap", criteria: ["BC-1"], staleCriteria: [], plannedRevision: 1, currentRevision: 2, changedSincePlan: true },
     module: { id: "m1", path: "kho/don", name: "Don" },
     feedback: ["FB-3"],
     blockedBy: [],

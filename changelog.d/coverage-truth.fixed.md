@@ -1,1 +1,1 @@
-**A requirement's criteria now count their newest verdict.** An unjudged or older failing issue no longer holds a criterion back, each criterion names the verdict that counts, and a trace on reworded wording can be tied again from the issue.
+**Requirement criteria now count their newest verdict.** Unjudged or older failing issues no longer hold a criterion back, and each names the verdict that counts. Traces on reworded wording read stale everywhere and can be re-tied; Short verdicts read Short.

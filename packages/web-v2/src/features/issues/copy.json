@@ -177,6 +177,8 @@
     "issues.facts.plannedOnShort": "planned on r{planned}, now r{now}",
     "issues.facts.reports": "Reports {n}",
     "issues.facts.requirement": "Requirement",
+    "issues.facts.staleShort": "{codes} on an earlier wording",
+    "issues.facts.staleTraces": "{codes} trace an earlier wording, which counts as stale: tie them again from the Criteria tab, then judge them",
     "issues.facts.tracesTo": "Traces to {codes}",
     "issues.facts.unknown": "Unknown",
     "issues.facts.waitsOn": "Waits on",

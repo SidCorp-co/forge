@@ -62,6 +62,7 @@ function factsLine(r: IssueStandingRow, t: Copy): string[] {
   const parts: string[] = [];
   if (s.module) parts.push(s.module.path);
   if (s.requirement) parts.push(`${s.requirement.key}${s.requirement.criteria.length ? ` ${s.requirement.criteria.join(", ")}` : ""}`);
+  if (s.requirement?.staleCriteria.length) parts.push(t("issues.facts.staleShort", { codes: s.requirement.staleCriteria.join(", ") }));
   if (r.priority === "high" || r.priority === "critical") parts.push(r.priority === "critical" ? t("issues.facts.critical") : t("issues.facts.high"));
   if (s.feedback[0]) parts.push(t("issues.facts.from", { key: s.feedback[0] }));
   if (s.criteria.total > 0) parts.push(t("issues.facts.passing", { passing: s.criteria.passing, total: s.criteria.total }));
@@ -229,6 +230,11 @@ export function IssuePeekFacts({
               {s.requirement.key}
             </Link>
             {s.requirement.criteria.length ? <span className="ml-1.5 font-mono text-12">{s.requirement.criteria.join(", ")}</span> : null}
+            {s.requirement.staleCriteria.length ? (
+              <span className="ml-1.5 text-12-5" data-testid="stale-traces">
+                · {t("issues.facts.staleShort", { codes: s.requirement.staleCriteria.join(", ") })}
+              </span>
+            ) : null}
             {s.requirement.changedSincePlan ? (
               <span className="ml-1.5 text-12-5" data-testid="changed-since-plan">
                 · {t("issues.facts.plannedOnShort", { planned: s.requirement.plannedRevision ?? "", now: s.requirement.currentRevision ?? "" })}
@@ -345,6 +351,11 @@ export function IssueStandingFacts({ row, slug }: { row: IssueStandingRow; slug:
             </span>
           </div>
           {s.requirement.criteria.length ? <p className="mt-1 font-mono text-12 text-muted">{t("issues.facts.tracesTo", { codes: s.requirement.criteria.join(", ") })}</p> : null}
+          {s.requirement.staleCriteria.length ? (
+            <p className="mt-1 text-12-5" data-testid="stale-traces">
+              {t("issues.facts.staleTraces", { codes: s.requirement.staleCriteria.join(", ") })}
+            </p>
+          ) : null}
           {s.requirement.changedSincePlan ? (
             <p className="mt-1 text-12-5" data-testid="changed-since-plan">
               {t("issues.facts.plannedOn", { planned: s.requirement.plannedRevision ?? "", now: s.requirement.currentRevision ?? "" })}

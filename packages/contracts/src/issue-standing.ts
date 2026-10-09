@@ -98,8 +98,11 @@ export interface IssueCriteriaTally {
 export interface IssueRequirementRef {
 	key: string;
 	title: string;
-	/** The business criteria the issue's criteria trace to, e.g. ["BC-3"]. */
+	/** The business criteria the issue's criteria trace to at their current wording, e.g. ["BC-3"]. */
 	criteria: string[];
+	/** The business criteria it traces only at an earlier wording: the requirement counts those
+	 *  traces stale, and no verdict on them counts until the BC is tied again from the Criteria tab. */
+	staleCriteria: string[];
 	plannedRevision: number | null;
 	currentRevision: number | null;
 	/** Planned on an older revision than the requirement's current one. */
