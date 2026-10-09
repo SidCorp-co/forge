@@ -15,6 +15,7 @@ import { Avatar, Button, enumLabel, FactsGroup, MonoTag, type SelectOption, Stat
 import { useComplexityOptions, usePriorityOptions } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
 import { LiveReachValue } from "./live-reach-row";
+import { ModuleHover } from "./module-hover";
 import { MergeMarkerControl } from "./merge-marker-control";
 import { IssueRequirementProperty } from "./requirement-property";
 import { type EditRefusal, InlineSelect } from "./inline-edit-cell";
@@ -434,9 +435,9 @@ export function PropertiesRail({
           {developer && hasModule ? (
             <Row label={t("issues.field.module")}>
               <div className="flex flex-wrap items-center justify-end gap-1.5">
-                {primaryModule && <MonoTag hue="cobalt">{primaryModule.name}</MonoTag>}
+                {primaryModule && <ModuleHover projectId={issue.projectId} slug={slug} module={primaryModule} primary />}
                 {secondaryModules.map((m) => (
-                  <MonoTag key={m.id}>{m.name}</MonoTag>
+                  <ModuleHover key={m.id} projectId={issue.projectId} slug={slug} module={m} primary={false} />
                 ))}
                 {onEditModules && (
                   <Button variant="ghost" size="sm" icon="settings" onClick={onEditModules}>
