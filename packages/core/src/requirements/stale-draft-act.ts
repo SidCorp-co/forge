@@ -9,6 +9,7 @@
  * draft's standing then waits on the master, never on nobody.
  */
 
+import { ISSUE_TERMINAL_STATUSES, type IssueStatus } from '@forge/contracts/issue-machine';
 import type { RequirementSpec } from '@forge/contracts/requirements';
 import { requirementKey } from '@forge/contracts/requirements';
 import {
@@ -290,8 +291,6 @@ async function requirementActor(userId: string): Promise<RequirementActor> {
 
 // ── issues ──────────────────────────────────────────────────────────────────────────────────────
 
-const ENDED_ISSUE = ['dropped', 'closed'];
-
 /** Drop or merge a stale draft issue through the issue machine; a refused move is recorded. */
 async function actOnIssue(
   a: StaleDraftAnswered,
@@ -373,7 +372,7 @@ async function issueMergePlan(
     .from(issues)
     .where(and(eq(issues.id, target.id), eq(issues.projectId, issue.projectId)))
     .limit(1);
-  if (!into || ENDED_ISSUE.includes(into.status)) {
+  if (!into || ISSUE_TERMINAL_STATUSES.includes(into.status as IssueStatus)) {
     return {
       refused: ruled(
         'STALE_DRAFT_MERGE_TARGET_ENDED',
