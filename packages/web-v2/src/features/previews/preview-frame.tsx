@@ -18,6 +18,21 @@ export const PREVIEW_SANDBOX = "allow-scripts allow-same-origin allow-forms allo
 /** A framed page that has not loaded by now is probably held back by the browser, not slow. */
 export const FRAME_SLOW_MS = 12_000;
 
+/** Opens the preview in its own tab, entered with a ticket; throws what the ticket's read refused with. */
+export async function openPreviewInTab(previewId: string): Promise<void> {
+  // opened before the ticket is asked for: a window opened after an await is a blocked popup
+  const tab = window.open("", "_blank");
+  if (tab) tab.opener = null;
+  try {
+    const url = await previewsApi.ticketUrl(previewId);
+    if (tab) tab.location.href = url;
+    else window.location.assign(url);
+  } catch (err) {
+    tab?.close();
+    throw err;
+  }
+}
+
 export function PreviewFrame({ preview, issueLabel, height = 520, frameRef }: { preview: PreviewRecord; issueLabel: string; height?: number; frameRef?: Ref<HTMLIFrameElement> }) {
   const t = useCopy();
   const [src, setSrc] = useState<string | null>(null);
@@ -51,16 +66,10 @@ export function PreviewFrame({ preview, issueLabel, height = 520, frameRef }: { 
   }, [src, loaded]);
 
   const openInTab = useCallback(async () => {
-    // opened before the ticket is asked for: a window opened after an await is a blocked popup
-    const tab = window.open("", "_blank");
-    if (tab) tab.opener = null;
     setTabFailure(null);
     try {
-      const url = await previewsApi.ticketUrl(preview.id);
-      if (tab) tab.location.href = url;
-      else window.location.assign(url);
+      await openPreviewInTab(preview.id);
     } catch (err) {
-      tab?.close();
       setTabFailure(err);
     }
   }, [preview]);

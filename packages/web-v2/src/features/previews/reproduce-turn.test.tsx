@@ -91,6 +91,8 @@ describe("the recording a turn read, under its reply", () => {
                 liveAt: null,
                 lastViewedAt: null,
                 closedAt: null,
+                streams: 0,
+                streamsWaiting: 0,
               },
             },
           }

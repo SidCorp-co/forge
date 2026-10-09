@@ -4,8 +4,11 @@ import Link from "next/link";
 import { MonoTag } from "@/design";
 import { STATUS_META } from "@/design/status";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { statusToChip } from "../derive";
+import { clipWords, statusToChip } from "../derive";
 import type { IssueStatus } from "../types";
+
+/** Words of a related issue's title drawn beside its key; the whole title is the link's tooltip. */
+const TITLE_WORDS = 6;
 
 interface IssueRefBadgeProps {
   /** Issue UUID — the routable id (`/projects/:slug/issues/:id`). */
@@ -50,7 +53,7 @@ export function IssueRefBadge({
         <MonoTag hue="cobalt">{displayId ?? t("issues.noun")}</MonoTag>
       </span>
       {withTitle && (
-        <span className="fg-caption min-w-0 flex-1 truncate text-left text-xs">{title}</span>
+        <span className="fg-caption min-w-0 flex-1 truncate text-left text-xs">{clipWords(title, TITLE_WORDS)}</span>
       )}
     </Link>
   );

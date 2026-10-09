@@ -39,6 +39,27 @@ it touched.
 3. Types come from `@forge/contracts`; no shape core answers is redeclared by hand.
 4. A refused write is drawn from the refusal envelope (`refusalsOf`, `namedRefusals`, `RefusalLine`), naming the code's sentence, never a generic error.
 5. Badges use `StatusBadge` or `EnumBadge` with tones from contracts; the feature declares no colour map.
-6. New words are copy keys in English only; none is written inline in the component, and no Vietnamese is added.
+6. New words are copy keys in English only; none is written inline in the component, and no Vietnamese is added. Each obeys the Copy rule above: at most 12 words, and the page it lands on stays inside the first-screen budget.
 7. A mutation invalidates every query its effect changes.
 8. The screen is reachable: a route or a parent component renders it, and it works at phone width.
+
+## Copy rule
+
+Every person-facing page reads as state, not prose (owner, 2026-10-10: "UI full of text is garbage").
+The same rule is project knowledge `ui-copy-rule`, which every agent run reads.
+
+1. A page opens on what is true now: properties and short rows. A label is 1-3 words; a row or value at most 12 words.
+2. No explaining copy. No sentence tells the reader what a section is, what a button does, who can see something, or what will happen later. If a control needs a sentence, change the control.
+3. Each fact once per page. No repeated status, warning or count.
+4. Empty is one word: "Nothing", "None", "No runs".
+5. Verdicts and states are a mark or a colour plus one word; counts live in the filter, not on every row.
+6. Agent text (plans, rounds, file lists, paths, shas, BC codes, function names, refusal codes) sits folded behind a Developer view, never the default.
+7. Past and voided items go to Activity, not the top.
+8. Budget: the first screen at 1440x900 shows at most 300 words; a copy string is at most 12 words (refusals and confirmations 20). A longer string is a defect, not a style choice.
+
+Held by `scripts/check-copy-budget.mjs` (the `language` axis): a copy string over budget is refused
+naming its file, key and word count, and the strings frozen in `.forge/copy-budget-baseline.json`
+only shrink. A key is a refusal or confirmation when a segment of its path matches
+`refusalSegments` in `.forge/conformance.json`. The first-screen budget is held for the issue page
+by `packages/web-v2/src/features/issues/components/issue-detail-screen.test.tsx`, whose page is the
+reference for rules 1, 3, 5, 6 and 7.

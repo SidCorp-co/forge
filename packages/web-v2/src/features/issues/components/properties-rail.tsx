@@ -1,31 +1,24 @@
 "use client";
 
-// Issue-detail properties rail. Read + inline-edit of the core fields, plus a
-// cost rollup, the merge mark (its date, and whether Forge observed the merge or
-// only recorded somebody's claim of it — ISS-1126), the ISS-<seq> branch
-// convention, and dependency edges (rendered as clickable `ISS-X` badges linking
-// to the related issue — ISS-331).
+// Issue-detail properties rail (REQ-43): Properties (the requirement it delivers, priority, size,
+// kind, owner, when it was opened), then what it Waits for and what it Holds up. The developer view
+// adds the rest: modules, labels, branch, the merge mark (its date, and whether Forge observed the
+// merge or only recorded somebody's claim of it — ISS-1126), what it carries, production, cost, and
+// every other kind of relation.
 
-import type { IssueMove } from "@forge/contracts/issue-machine";
 import { ISSUE_CATEGORY_LABELS } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
-import { type ComponentProps, useId } from "react";
-import { Avatar, Button, enumLabel, MonoTag, type SelectOption, Stat, StatusBadge, StatusChip } from "@/design";
-import { EtaInline } from "@/features/forecast/components/eta-cell";
-import { etaOfForecast } from "@/features/forecast/eta";
-import { ETA_COPY } from "@/lib/i18n/eta-copy";
-import { useEtaClock } from "@/lib/i18n/eta-clock";
-import { useIssueForecast } from "@/features/forecast/hooks";
+import { useState } from "react";
+import { Avatar, Button, enumLabel, FactsGroup, MonoTag, type SelectOption, Stat, StatusBadge } from "@/design";
 import { useComplexityOptions, usePriorityOptions } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
 import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";
 import { IssueRequirementProperty } from "./requirement-property";
-import { type EditRefusal, InlineSelect, StatusEdit } from "./inline-edit-cell";
-import { creatorLabelOf, initials, liveDependencies, runStatusChip } from "../derive";
+import { type EditRefusal, InlineSelect } from "./inline-edit-cell";
+import { creatorLabelOf, initials, liveDependencies } from "../derive";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";
-import { releaseHref } from "@/lib/routes/releases";
 import { agentHoldsEdit, heldByAgent } from "../edit-lock";
 import type {
   IssueComplexity,
@@ -34,7 +27,6 @@ import type {
   IssueDependencyEdge,
   IssueDetail,
   IssuePriority,
-  IssueStatus,
   LandingShape,
   MergeMarkKind,
 } from "../types";
@@ -226,24 +218,62 @@ interface PropertiesRailProps {
   cost: IssueCostSummary | undefined;
   deps: IssueDependencies | undefined;
   pending: boolean;
-  /** The reader holds no write on this project: the fields say so rather than grey out silently. */
+  /** The reader holds no write on this project: the fields are disabled, and say why on hover. */
   readOnly?: boolean | undefined;
   onPatch: (body: {
     priority?: IssuePriority;
     complexity?: IssueComplexity | null;
     category?: string | null;
   }) => void;
-  onTransition: (toStatus: IssueStatus) => void;
   /** Open the module picker. Absent for a reader who cannot write. */
   onEditModules?: (() => void) | undefined;
   /** ISS-791 — offer the shipped-work claim. False for a reader who cannot write. */
   canMarkMerged?: boolean | undefined;
-  /** What a person owes this issue, so the status control at a park offers that decision first. */
-  park?: ComponentProps<typeof StatusEdit>["park"];
-  /** Core's moves from the issue's status (`IssueStanding.moves`). */
-  moves: readonly IssueMove[];
   /** The requirement the issue delivers (`IssueStanding.requirement.key`), null while none; undefined until the standing is read. */
   requirementKey?: string | null | undefined;
+  /** Who owns the issue now (`IssueStanding.owner`); the creator where the standing names none. */
+  owner?: { name: string | null; kind: "human" | "agent" } | null | undefined;
+  /** The developer view: every row the person's view leaves out. */
+  developer?: boolean;
+}
+
+/** Edges shown before "N more": the rail is a glance, and the issue's own page lists the rest. */
+const EDGES_SHOWN = 2;
+
+/** One kind of relation as rows of key and title; more than two show the first two and a count that opens the rest. */
+function EdgeRows({ edges, self, slug, label, testId }: { edges: IssueDependencyEdge[]; self: string; slug: string; label: string; testId: string }) {
+  const t = useCopy();
+  const [all, setAll] = useState(false);
+  if (edges.length === 0) return null;
+  const shown = all ? edges : edges.slice(0, EDGES_SHOWN);
+  return (
+    <section className="pt-4" data-testid={testId}>
+      <h3 className="mb-1 text-13 font-semibold text-muted">{label}</h3>
+      <ul className="divide-y divide-line-subtle">
+        {shown.map((e) => {
+          const isFromSelf = e.fromIssueId === self;
+          const other = isFromSelf ? e.toIssueId : e.fromIssueId;
+          const displayId = isFromSelf ? e.toDisplayId : e.fromDisplayId;
+          const title = isFromSelf ? e.toTitle : e.fromTitle;
+          const status = isFromSelf ? e.toStatus : e.fromStatus;
+          return (
+            <li key={e.id} className="min-w-0 py-1.5">
+              {displayId ? (
+                <IssueRefBadge id={other} slug={slug} displayId={displayId} title={title} status={status} showTitle />
+              ) : (
+                <MonoTag>{other.slice(0, 8)}</MonoTag>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {edges.length > EDGES_SHOWN && !all ? (
+        <button type="button" onClick={() => setAll(true)} className="py-1.5 text-13 text-muted hover:text-fg">
+          {t("issues.rail.more", { n: edges.length - EDGES_SHOWN })}
+        </button>
+      ) : null}
+    </section>
+  );
 }
 
 export function PropertiesRail({
@@ -254,16 +284,13 @@ export function PropertiesRail({
   pending,
   readOnly = false,
   onPatch,
-  onTransition,
   onEditModules,
   canMarkMerged,
-  park,
-  moves,
   requirementKey,
+  owner,
+  developer = false,
 }: PropertiesRailProps) {
   const language = useInterfaceLanguage();
-  const forecast = useIssueForecast(issue.projectId, issue.displayId).data?.forecast;
-  const clock = useEtaClock();
   const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
   const plainLabels = (issue.labels ?? []).filter((l) => l.kind !== "module");
   const primaryModule = modules.find((m) => m.isPrimary);
@@ -278,213 +305,189 @@ export function PropertiesRail({
   const duplicates = [...incoming, ...outgoing].filter((e) => e.kind === "duplicates");
   const related = [...incoming, ...outgoing].filter((e) => e.kind === "relates");
   const held = heldByAgent(issue.status, issue.agentStatus);
-  const refusalId = useId();
   const t = useCopy();
   const time = useTimeFormat();
   const priorityOptions = usePriorityOptions();
   const complexityOptions = useComplexityOptions();
   const day = (iso: string) => (Number.isNaN(new Date(iso).getTime()) ? "—" : time.date(iso));
+  // said on hover only: the page never states a lock until someone reaches for the field it holds
   const refusal: EditRefusal | null = held
-    ? { id: refusalId, text: agentHoldsEdit(t) }
+    ? { text: agentHoldsEdit(t) }
     : readOnly
-      ? { id: refusalId, text: t("issues.edit.readOnly") }
+      ? { text: t("issues.edit.readOnly") }
       : null;
-  const runChip = runStatusChip(issue);
   const tokens = totalTokens(cost);
   const hasModule = primaryModule !== undefined || secondaryModules.length > 0;
-  // An empty field renders no row; one whose action this reader holds keeps the action, on the shared `Not set` row.
   const offerModule = !hasModule && onEditModules !== undefined;
   const offerMerge = !issue.mergedAt && canMarkMerged === true;
+  const ownerName = owner ? (owner.name ?? t("issues.facts.unknown")) : creatorLabelOf(issue);
   return (
-    <div className="divide-y divide-line-subtle">
-      {refusal && (
-        <p id={refusal.id} role="status" className="fg-body-sm py-2 text-subtle">
-          {refusal.text}
-        </p>
-      )}
-      <Row label={t("issues.field.status")}>
-        <StatusEdit
-          status={issue.status}
-          step={issue.workState?.step ?? null}
-          moves={moves}
-          agentStatus={issue.agentStatus}
-          disabled={pending || readOnly}
-          onTransition={onTransition}
-          park={park}
-        />
-      </Row>
-      {forecast && forecast.kind !== "landed" && forecast.kind !== "ended" && (
-        <Row label={ETA_COPY[clock.lang].header}>
-          <EtaInline eta={etaOfForecast(forecast, clock)} clock={clock} />
-        </Row>
-      )}
-      {issue.shippedIn ? (
-        <div data-testid="rail-shipped-in">
-          <Row label={t("issues.shippedIn")}>
-            <Link href={releaseHref(slug, issue.shippedIn.version)} className="font-mono text-12 text-link hover:underline">
-              {issue.shippedIn.version}
-            </Link>
-          </Row>
-        </div>
-      ) : null}
-      {runChip && (
-        <Row label={t("issues.rail.run")}>
-          <StatusChip status={runChip} size="sm" domain="session" />
-        </Row>
-      )}
-      {requirementKey !== undefined ? (
-        <Row label={t("issues.facts.requirement")}>
-          <IssueRequirementProperty projectId={issue.projectId} slug={slug} issueKey={issue.displayId} current={requirementKey} disabled={readOnly} />
-        </Row>
-      ) : null}
-      <Row label={t("issues.field.priority")}>
-        <InlineSelect
-          ariaLabel={t("issues.field.priority")}
-          value={issue.priority}
-          options={priorityOptions}
-          disabled={pending}
-          refusal={refusal}
-          onCommit={(p) => onPatch({ priority: p as IssuePriority })}
-          className="w-36"
-        />
-      </Row>
-      <Row label={t("issues.field.complexity")}>
-        <InlineSelect
-          ariaLabel={t("issues.field.complexity")}
-          value={issue.complexity ?? ""}
-          options={complexityOptions}
-          disabled={pending}
-          refusal={refusal}
-          onCommit={(c) => onPatch({ complexity: c === "" ? null : (c as IssueComplexity) })}
-          className="w-36"
-        />
-      </Row>
-      <Row label={t("issues.category.label")}>
-        <InlineSelect
-          ariaLabel={t("issues.category.label")}
-          value={issue.category ?? ""}
-          options={categoryOptions(issue.category ?? null, language, t("issues.category.notSet"))}
-          disabled={pending}
-          refusal={refusal}
-          onCommit={(c) => onPatch({ category: c === "" ? null : c })}
-          className="w-36"
-        />
-      </Row>
-      <Row label={t("issues.field.creator")}>
-        <div className="flex items-center justify-end gap-2">
-          <Avatar initials={initials(creatorLabelOf(issue))} size={22} />
-          <span className="fg-body-sm truncate text-fg" title={creatorLabelOf(issue)}>
-            {creatorLabelOf(issue)}
-          </span>
-        </div>
-      </Row>
-      {hasModule && (
-        <Row label={t("issues.field.module")}>
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            {primaryModule && <MonoTag hue="cobalt">{primaryModule.name}</MonoTag>}
-            {secondaryModules.map((m) => (
-              <MonoTag key={m.id}>{m.name}</MonoTag>
-            ))}
-            {onEditModules && (
-              <Button variant="ghost" size="sm" icon="settings" onClick={onEditModules}>
-                {t("issues.rail.edit")}
-              </Button>
-            )}
-          </div>
-        </Row>
-      )}
-      {plainLabels.length > 0 && (
-        <Row label={t("issues.rail.labels")}>
-          <div className="flex flex-wrap justify-end gap-1.5">
-            {plainLabels.map((l) => (
-              <MonoTag key={l.id}>{l.name}</MonoTag>
-            ))}
-          </div>
-        </Row>
-      )}
-      <Row label={t("issues.rail.branch")}>
-        <MonoTag>{issue.displayId}</MonoTag>
-      </Row>
-      {issue.mergedAt && (
-        <Row label={t("issues.rail.merged")}>
-          <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
-            <span className="fg-body-sm whitespace-nowrap font-mono text-muted">{day(issue.mergedAt)}</span>
-            <MergeMarkBadge
-              mark={issue.mergeMark}
-              commitSha={issue.mergedCommitSha}
-              landing={issue.mergedLanding}
-              landingShape={issue.landingShape}
+    <div data-testid="issue-properties">
+      <FactsGroup title={t("issues.rail.properties")} testId="facts-properties">
+        <div className="divide-y divide-line-subtle">
+          {requirementKey !== undefined ? (
+            <Row label={t("issues.facts.requirement")}>
+              <IssueRequirementProperty projectId={issue.projectId} slug={slug} issueKey={issue.displayId} current={requirementKey} disabled={readOnly} />
+            </Row>
+          ) : null}
+          <Row label={t("issues.field.priority")}>
+            <InlineSelect
+              ariaLabel={t("issues.field.priority")}
+              value={issue.priority}
+              options={priorityOptions}
+              disabled={pending}
+              refusal={refusal}
+              onCommit={(p) => onPatch({ priority: p as IssuePriority })}
+              className="w-36"
             />
-            {canMarkMerged && (
-              <MergeMarkerControl
-                issueId={issue.id}
-                mergedAt={issue.mergedAt}
-                suggestedTarget={issue.displayId}
-                landingShape={issue.landingShape}
-              />
-            )}
-          </div>
-        </Row>
-      )}
-      {issue.carriage && issue.carriage.carriedBy.length > 0 && (
-        <Row label={t("issues.rail.carriedBy")}>
-          <CarriageList items={issue.carriage.carriedBy.map((c) => ({ ref: c.ref, key: c.issue }))} slug={slug} />
-        </Row>
-      )}
-      {issue.carriage && issue.carriage.carries.length > 0 && (
-        <Row label={t("issues.rail.carries")}>
-          <CarriageList items={issue.carriage.carries.map((c) => ({ ref: c.ref, key: c.from }))} slug={slug} from />
-        </Row>
-      )}
-      {issue.liveReach && (
-        <Row label={t("issues.rail.production")}>
-          <LiveReachValue reach={issue.liveReach} />
-        </Row>
-      )}
-      {cost && cost.estimatedCost > 0 && (
-        <Row label={t("issues.rail.cost")}>
-          <Stat icon="dollar">{`$${cost.estimatedCost.toFixed(2)}`}</Stat>
-        </Row>
-      )}
-      {tokens > 0 && (
-        <Row label={t("issues.rail.tokens")}>
-          <Stat icon="cpu">
-            <span title={t("issues.rail.tokensExact", { n: time.number(tokens) })}>{fmtTokens(tokens)}</span>
-          </Stat>
-        </Row>
-      )}
-      <Row label={t("issues.rail.created")}>
-        <span className="fg-body-sm whitespace-nowrap font-mono text-muted">{day(issue.createdAt)}</span>
-      </Row>
-      <Row label={t("issues.rail.reopens")}>
-        <span className="fg-body-sm font-mono text-muted">{issue.reopenCount}</span>
-      </Row>
-      {(offerModule || offerMerge) && (
-        <Row label={t("issues.rail.notSet")}>
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            {offerModule && (
-              <Button variant="ghost" size="sm" icon="settings" onClick={onEditModules}>
-                {t("issues.rail.setModule")}
-              </Button>
-            )}
-            {offerMerge && (
-              <MergeMarkerControl
-                issueId={issue.id}
-                mergedAt={null}
-                suggestedTarget={issue.displayId}
-                landingShape={issue.landingShape}
-              />
-            )}
-          </div>
-        </Row>
-      )}
-      <DepList edges={blockedBy} self={issue.id} slug={slug} label={t("issues.rail.blockedBy")} />
-      <DepList edges={blocks} self={issue.id} slug={slug} label={t("issues.rail.blocks")} />
-      <DepList edges={parents} self={issue.id} slug={slug} label={t("issues.rail.parent")} />
-      <DepList edges={subtasks} self={issue.id} slug={slug} label={t("issues.rail.subtasks")} />
-      <DepList edges={duplicates} self={issue.id} slug={slug} label={t("issues.rail.duplicates")} />
-      <DepList edges={related} self={issue.id} slug={slug} label={t("issues.rail.related")} />
-      <DepList edges={expired} self={issue.id} slug={slug} label={t("issues.rail.expired")} expired />
+          </Row>
+          <Row label={t("issues.field.size")}>
+            <InlineSelect
+              ariaLabel={t("issues.field.size")}
+              value={issue.complexity ?? ""}
+              options={complexityOptions}
+              disabled={pending}
+              refusal={refusal}
+              onCommit={(c) => onPatch({ complexity: c === "" ? null : (c as IssueComplexity) })}
+              className="w-36"
+            />
+          </Row>
+          <Row label={t("issues.field.kind")}>
+            <InlineSelect
+              ariaLabel={t("issues.field.kind")}
+              value={issue.category ?? ""}
+              options={categoryOptions(issue.category ?? null, language, t("issues.category.notSet"))}
+              disabled={pending}
+              refusal={refusal}
+              onCommit={(c) => onPatch({ category: c === "" ? null : c })}
+              className="w-36"
+            />
+          </Row>
+          <Row label={t("issues.facts.owner")}>
+            <div className="flex min-w-0 items-center justify-end gap-2">
+              <Avatar initials={initials(ownerName)} size={22} />
+              <span className="fg-body-sm truncate text-fg" title={ownerName}>
+                {ownerName}
+              </span>
+            </div>
+          </Row>
+          <Row label={t("issues.rail.opened")}>
+            <span className="fg-body-sm whitespace-nowrap font-mono text-muted">{day(issue.createdAt)}</span>
+          </Row>
+          {developer && hasModule ? (
+            <Row label={t("issues.field.module")}>
+              <div className="flex flex-wrap items-center justify-end gap-1.5">
+                {primaryModule && <MonoTag hue="cobalt">{primaryModule.name}</MonoTag>}
+                {secondaryModules.map((m) => (
+                  <MonoTag key={m.id}>{m.name}</MonoTag>
+                ))}
+                {onEditModules && (
+                  <Button variant="ghost" size="sm" icon="settings" onClick={onEditModules}>
+                    {t("issues.rail.edit")}
+                  </Button>
+                )}
+              </div>
+            </Row>
+          ) : null}
+          {developer && plainLabels.length > 0 ? (
+            <Row label={t("issues.rail.labels")}>
+              <div className="flex flex-wrap justify-end gap-1.5">
+                {plainLabels.map((l) => (
+                  <MonoTag key={l.id}>{l.name}</MonoTag>
+                ))}
+              </div>
+            </Row>
+          ) : null}
+          {developer ? (
+            <Row label={t("issues.rail.branch")}>
+              <MonoTag>{issue.displayId}</MonoTag>
+            </Row>
+          ) : null}
+          {developer && issue.mergedAt ? (
+            <Row label={t("issues.rail.merged")}>
+              <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
+                <span className="fg-body-sm whitespace-nowrap font-mono text-muted">{day(issue.mergedAt)}</span>
+                <MergeMarkBadge
+                  mark={issue.mergeMark}
+                  commitSha={issue.mergedCommitSha}
+                  landing={issue.mergedLanding}
+                  landingShape={issue.landingShape}
+                />
+                {canMarkMerged && (
+                  <MergeMarkerControl
+                    issueId={issue.id}
+                    mergedAt={issue.mergedAt}
+                    suggestedTarget={issue.displayId}
+                    landingShape={issue.landingShape}
+                  />
+                )}
+              </div>
+            </Row>
+          ) : null}
+          {developer && issue.carriage && issue.carriage.carriedBy.length > 0 ? (
+            <Row label={t("issues.rail.carriedBy")}>
+              <CarriageList items={issue.carriage.carriedBy.map((c) => ({ ref: c.ref, key: c.issue }))} slug={slug} />
+            </Row>
+          ) : null}
+          {developer && issue.carriage && issue.carriage.carries.length > 0 ? (
+            <Row label={t("issues.rail.carries")}>
+              <CarriageList items={issue.carriage.carries.map((c) => ({ ref: c.ref, key: c.from }))} slug={slug} from />
+            </Row>
+          ) : null}
+          {developer && issue.liveReach ? (
+            <Row label={t("issues.rail.production")}>
+              <LiveReachValue reach={issue.liveReach} />
+            </Row>
+          ) : null}
+          {developer && cost && cost.estimatedCost > 0 ? (
+            <Row label={t("issues.rail.cost")}>
+              <Stat icon="dollar">{`$${cost.estimatedCost.toFixed(2)}`}</Stat>
+            </Row>
+          ) : null}
+          {developer && tokens > 0 ? (
+            <Row label={t("issues.rail.tokens")}>
+              <Stat icon="cpu">
+                <span title={t("issues.rail.tokensExact", { n: time.number(tokens) })}>{fmtTokens(tokens)}</span>
+              </Stat>
+            </Row>
+          ) : null}
+          {developer && issue.reopenCount > 0 ? (
+            <Row label={t("issues.rail.reopens")}>
+              <span className="fg-body-sm font-mono text-muted">{issue.reopenCount}</span>
+            </Row>
+          ) : null}
+          {developer && (offerModule || offerMerge) ? (
+            <Row label={t("issues.rail.notSet")}>
+              <div className="flex flex-wrap items-center justify-end gap-1.5">
+                {offerModule && (
+                  <Button variant="ghost" size="sm" icon="settings" onClick={onEditModules}>
+                    {t("issues.rail.setModule")}
+                  </Button>
+                )}
+                {offerMerge && (
+                  <MergeMarkerControl
+                    issueId={issue.id}
+                    mergedAt={null}
+                    suggestedTarget={issue.displayId}
+                    landingShape={issue.landingShape}
+                  />
+                )}
+              </div>
+            </Row>
+          ) : null}
+        </div>
+      </FactsGroup>
+      <EdgeRows edges={blockedBy} self={issue.id} slug={slug} label={t("issues.rail.waitsFor")} testId="rail-waits-for" />
+      <EdgeRows edges={blocks} self={issue.id} slug={slug} label={t("issues.rail.holdsUp")} testId="rail-holds-up" />
+      {developer ? (
+        <>
+          <DepList edges={parents} self={issue.id} slug={slug} label={t("issues.rail.parent")} />
+          <DepList edges={subtasks} self={issue.id} slug={slug} label={t("issues.rail.subtasks")} />
+          <DepList edges={duplicates} self={issue.id} slug={slug} label={t("issues.rail.duplicates")} />
+          <DepList edges={related} self={issue.id} slug={slug} label={t("issues.rail.related")} />
+          <DepList edges={expired} self={issue.id} slug={slug} label={t("issues.rail.expired")} expired />
+        </>
+      ) : null}
     </div>
   );
 }

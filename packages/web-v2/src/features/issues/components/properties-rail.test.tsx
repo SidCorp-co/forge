@@ -36,7 +36,7 @@ function issue(over: Partial<IssueDetail>): IssueDetail {
   } as IssueDetail;
 }
 
-function rail(detail: IssueDetail, readOnly = false, onPatch: (body: object) => void = () => {}) {
+function rail(detail: IssueDetail, readOnly = false, onPatch: (body: object) => void = () => {}, developer = false) {
   fakeCore(() => ({ body: {} }));
   renderWithQuery(
     <PropertiesRail
@@ -47,8 +47,7 @@ function rail(detail: IssueDetail, readOnly = false, onPatch: (body: object) => 
       pending={false}
       readOnly={readOnly}
       onPatch={onPatch}
-      onTransition={() => {}}
-      moves={[]}
+      developer={developer}
     />,
   );
 }
@@ -56,14 +55,14 @@ function rail(detail: IssueDetail, readOnly = false, onPatch: (body: object) => 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("the issue's editable fields name the refusal that disables them", () => {
-  it("says an agent's live run holds Priority and Complexity, on the controls themselves", () => {
+  it("says an agent's live run holds Priority, Size and Kind, on the controls themselves, and the page says it nowhere else", () => {
     rail(issue({ status: "in_progress", agentStatus: "running" }));
-    for (const name of ["Priority", "Complexity"]) {
+    for (const name of ["Priority", "Size", "Kind"]) {
       const control = screen.getByRole("combobox", { name });
       expect(control).toBeDisabled();
       expect(control).toHaveAccessibleDescription(AGENT_HOLDS_EDIT);
     }
-    expect(screen.getByRole("status")).toHaveTextContent(AGENT_HOLDS_EDIT);
+    expect(screen.queryByText(AGENT_HOLDS_EDIT)).toBeNull();
   });
 
   it("says a reader without write on the project cannot change them, rather than greying them silently", () => {
@@ -71,7 +70,7 @@ describe("the issue's editable fields name the refusal that disables them", () =
     const control = screen.getByRole("combobox", { name: "Priority" });
     expect(control).toBeDisabled();
     expect(control).toHaveAccessibleDescription(READ_ONLY);
-    expect(screen.getByRole("status")).toHaveTextContent(READ_ONLY);
+    expect(screen.queryByText(READ_ONLY)).toBeNull();
   });
 
   it("leaves the fields of a writable issue no run holds enabled, with nothing to explain", () => {
@@ -94,13 +93,13 @@ describe("the issue's editable fields name the refusal that disables them", () =
 });
 
 // HOP (dev, 2026-10-07): an issue filed with no category, or the wrong one, could only be put right
-// through the API. The rail sets and changes it beside Priority and Complexity, through the same PATCH.
-describe("the issue's category on the rail", () => {
+// through the API. The rail sets and changes it beside Priority and Size, through the same PATCH.
+describe("the issue's kind on the rail", () => {
   it("is set on an issue that has none, and sent as the PATCH's category", async () => {
     const user = userEvent.setup();
     const onPatch = vi.fn();
     rail(issue({ category: null }), false, onPatch);
-    const control = screen.getByRole("combobox", { name: "Category" });
+    const control = screen.getByRole("combobox", { name: "Kind" });
     expect(control).toHaveTextContent("Not set");
     await user.click(control);
     await user.click(await screen.findByRole("option", { name: "Bug" }));
@@ -111,7 +110,7 @@ describe("the issue's category on the rail", () => {
     const user = userEvent.setup();
     const onPatch = vi.fn();
     rail(issue({ category: "feature" }), false, onPatch);
-    const control = screen.getByRole("combobox", { name: "Category" });
+    const control = screen.getByRole("combobox", { name: "Kind" });
     expect(control).toHaveTextContent("Feature");
     await user.click(control);
     await user.click(await screen.findByRole("option", { name: "Not set" }));
@@ -120,12 +119,12 @@ describe("the issue's category on the rail", () => {
 
   it("keeps a category outside the usual words as the chosen option", () => {
     rail(issue({ category: "hop-theme" }));
-    expect(screen.getByRole("combobox", { name: "Category" })).toHaveTextContent("Hop theme");
+    expect(screen.getByRole("combobox", { name: "Kind" })).toHaveTextContent("Hop theme");
   });
 
   it("is held under the same refusal as Priority", () => {
     rail(issue({ status: "in_progress", agentStatus: "running", category: "bug" }));
-    const control = screen.getByRole("combobox", { name: "Category" });
+    const control = screen.getByRole("combobox", { name: "Kind" });
     expect(control).toBeDisabled();
     expect(control).toHaveAccessibleDescription(AGENT_HOLDS_EDIT);
   });
@@ -140,6 +139,9 @@ describe("an artifact carried between issues is said on both issues, flat", () =
           carries: [{ ref: "workflow 96 @d00d9028: stamp block", from: "ISS-41" }],
         },
       }),
+      false,
+      () => {},
+      true,
     );
     const by = screen.getByTestId("issue-carried-by");
     expect(by).toHaveTextContent("ISS-110");

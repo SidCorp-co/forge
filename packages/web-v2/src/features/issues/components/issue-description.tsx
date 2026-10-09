@@ -8,8 +8,7 @@
 
 import { WrittenMark } from "@/lib/i18n/written";
 import { useState } from "react";
-import { BodyView, Button, Skeleton, ViewHeading } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import { BodyView, Button } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { AttachmentRow, IssueDetail } from "../types";
 import { AttachmentList } from "@/features/attachments/components/attachment-list";
@@ -21,19 +20,11 @@ interface IssueDescriptionProps {
   issue: IssueDetail;
   attachments: AttachmentRow[];
   canWrite: boolean;
-  attachmentsLoading?: boolean;
-  /** A failed attachments read, said as such rather than drawn as none. */
-  attachmentsError?: unknown;
 }
 
-export function IssueDescription({
-  issue,
-  attachments,
-  canWrite,
-  attachmentsLoading = false,
-  attachmentsError = null,
-}: IssueDescriptionProps) {
+export function IssueDescription({ issue, attachments, canWrite }: IssueDescriptionProps) {
   const [draft, setDraft] = useState<string | null>(null);
+  const [refused, setRefused] = useState(false);
   const save = useSaveDescription(issue.id);
   const editing = draft !== null;
   const held = heldByAgent(issue.status, issue.agentStatus);
@@ -46,25 +37,19 @@ export function IssueDescription({
 
   return (
     <section aria-label={t("issues.description.title")} data-testid="issue-description">
-      <ViewHeading
-        right={
-          canWrite && !editing ? (
-            held ? (
-              <span role="status" className="fg-body-sm text-subtle">
-                {agentHoldsEdit(t)}
-              </span>
-            ) : (
-              <Button variant="ghost" size="sm" onClick={() => setDraft(issue.description ?? "")}>
-                {t("issues.rail.edit")}
-              </Button>
-            )
-          ) : undefined
-        }
-      >
-        {t("issues.description.title")}
+      <div className="mb-2 flex items-center justify-end gap-2">
         <WrittenMark lang={issue.writtenLang} />
-      </ViewHeading>
-      <IssueAttachments rows={attachments} loading={attachmentsLoading} error={attachmentsError} />
+        {canWrite && !editing ? (
+          <Button variant="ghost" size="sm" onClick={() => (held ? setRefused(true) : setDraft(issue.description ?? ""))}>
+            {t("issues.rail.edit")}
+          </Button>
+        ) : null}
+      </div>
+      {refused && held ? (
+        <p role="status" className="fg-body-sm mb-3 text-subtle">
+          {agentHoldsEdit(t)}
+        </p>
+      ) : null}
       {editing ? (
         <BodyEditor
           label={t("issues.description.label")}
@@ -107,39 +92,6 @@ export function IssueDescription({
           {canWrite ? t("issues.description.emptyWritable") : t("issues.description.empty")}
         </p>
       )}
-    </section>
-  );
-}
-
-/** The issue's attachments, above the text that refers to them; nothing at all when there are none. */
-function IssueAttachments({
-  rows,
-  loading,
-  error,
-}: {
-  rows: AttachmentRow[];
-  loading: boolean;
-  error: unknown;
-}) {
-  const t = useCopy();
-  if (loading) {
-    return (
-      <div className="mb-4" aria-busy>
-        <Skeleton variant="text" className="w-40" />
-      </div>
-    );
-  }
-  if (error) {
-    return (
-      <p role="alert" className="fg-body-sm mb-4 text-muted">
-        {t("issues.attachments.loadFailed", { error: formatApiError(error) })}
-      </p>
-    );
-  }
-  if (rows.length === 0) return null;
-  return (
-    <section aria-label={t("issues.attachments.title")} className="mb-4">
-      <AttachmentList rows={rows} />
     </section>
   );
 }

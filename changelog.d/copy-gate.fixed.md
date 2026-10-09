@@ -1,0 +1,1 @@
+**Issue pages read as state, not prose.** An issue opens on Now, Needs you and Done by, criteria as one-line rows and folded Details, in at most 300 words; a copy gate refuses new web strings over 12 words.

@@ -163,18 +163,32 @@ export function DecisionPanel({
   parkedForInfo = false,
   threadQuestion = null,
   onAnswerInThread,
+  show = "all",
 }: {
   issueId: string;
   parkedForInfo?: boolean;
   threadQuestion?: ParkThreadQuestion | null;
   onAnswerInThread?: (text: string) => Promise<unknown>;
+  /** `now`: what a person can still answer, drawn on a page's first screen. `past`: the answered, voided and expired ones, which a page keeps in its Activity. `all`: every one, where the panel is the page. */
+  show?: "now" | "past" | "all";
 }) {
   const t = useCopy();
   const { data, isLoading, isError, error, refetch } = useIssueQuestions(issueId);
   const mutation = useAnswerQuestion(issueId);
   const { answering, answer } = useAnsweringQuestions(mutation.mutateAsync);
-  const questions = data?.questions ?? [];
+  const all = data?.questions ?? [];
+  const questions = show === "all" ? all : all.filter((q) => (q.status === "open" || q.status === "needs_info") === (show === "now"));
 
+  if (show === "past") {
+    if (isLoading || isError || questions.length === 0) return null;
+    return (
+      <div className="space-y-3" data-testid="past-questions">
+        {questions.map((question) => (
+          <QuestionCard key={question.id} question={question} onAnswer={answer} pending={answering.has(question.id)} />
+        ))}
+      </div>
+    );
+  }
   if (!parkedForInfo && !isLoading && !isError && questions.length === 0) return null;
 
   return (

@@ -14,7 +14,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
 import type { IssueDetail } from "../types";
-import { CriteriaTab } from "./detail/issue-tabs";
+import { CriteriaSection } from "./criteria-section";
 
 const LIVE = "0d91ae7c74f70295ede115463b17559e650b5207";
 const SHIPPED = "33637c612ef15be6f924520c0d201a0889d8ed7e";
@@ -58,6 +58,8 @@ function core(
 
 async function openJudge(n: number) {
   const user = userEvent.setup();
+  // a criterion is one line; its row opens on the full statement and the act that records a verdict
+  await user.click((await screen.findByTestId(`criterion-${n}-verdict`)).closest("button") as HTMLElement);
   await user.click(await screen.findByTestId(`criterion-${n}-judge`));
   return { user, form: await screen.findByTestId("verdict-form") };
 }
@@ -67,7 +69,7 @@ const verdictPosted = (calls: Call[]) => calls.find((c) => c.method === "POST" &
 describe("the build a verdict is judged at, by default", () => {
   it("is the live build core names, on an issue whose merge names no commit", async () => {
     core();
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { form } = await openJudge(1);
     expect(await within(form).findByDisplayValue(LIVE)).toBeInTheDocument();
     expect(form).toHaveTextContent("The commit the live deployment runs (0.4.0-dev.192)");
@@ -75,7 +77,7 @@ describe("the build a verdict is judged at, by default", () => {
 
   it("is the build that shipped the work where core cannot show the live one carries it, and says why", async () => {
     core(undefined, { sha: SHIPPED, source: "shipped", version: "0.4.0-dev.191", basis: "release 0.4.0-dev.191 shipped this issue's work at this commit; whether production holds it could not be read" });
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { form } = await openJudge(1);
     expect(await within(form).findByDisplayValue(SHIPPED)).toBeInTheDocument();
     expect(form).toHaveTextContent("could not be read");
@@ -85,7 +87,7 @@ describe("the build a verdict is judged at, by default", () => {
 describe("recording a verdict from a criterion row", () => {
   it("sends pass at the deployed commit with the note as its reason, on a closed issue", async () => {
     const calls = core((c) => (c.method === "POST" && c.path === "/issues/i1/verdicts" ? { status: 201, body: { verdictId: "v1" } } : undefined));
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { user, form } = await openJudge(1);
     expect(await within(form).findByDisplayValue(LIVE)).toBeInTheDocument();
     expect(form).toHaveTextContent("The commit the live deployment runs");
@@ -113,7 +115,7 @@ describe("recording a verdict from a criterion row", () => {
       if (c.method === "POST" && c.path === "/issues/i1/verdicts") return { status: 201, body: { verdictId: "v1" } };
       return undefined;
     });
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { user, form } = await openJudge(2);
     await user.click(within(form).getByRole("button", { name: "Fail" }));
     await user.upload(within(form).getByTestId("verdict-screenshot"), new File(["png"], "report-1440.png", { type: "image/png" }));
@@ -126,7 +128,7 @@ describe("recording a verdict from a criterion row", () => {
 
   it("holds the verdict back until a whole sha is named, where core names no build", async () => {
     const calls = core(undefined, { sha: null, source: null, version: null, basis: "this issue has not merged, so no build carries its work yet" });
-    renderWithQuery(<CriteriaTab issue={issue({ status: "in_progress" })} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey={null} />);
+    renderWithQuery(<CriteriaSection issue={issue({ status: "in_progress" })} projectId="p1" checklist={[]} canWrite requirementKey={null} />);
     const { user, form } = await openJudge(1);
     const send = screen.getByRole("button", { name: "Record verdict" });
     expect(await within(form).findByText(/this issue has not merged/)).toBeInTheDocument();
@@ -147,7 +149,7 @@ describe("recording a verdict from a criterion row", () => {
         ? { status: 422, body: { error: { code: "VERDICT_COMMIT_NOT_FULL", message: "refused", refusals: [{ code: "VERDICT_COMMIT_NOT_FULL", path: "", detail: "criterion 1 names commit `x`, and a verdict names the whole 40-character sha" }] } } }
         : undefined,
     );
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { user, form } = await openJudge(1);
     await user.click(screen.getByRole("button", { name: "Record verdict" }));
     expect(await within(form).findByTestId("verdict-refusal")).toHaveTextContent("VERDICT_COMMIT_NOT_FULL");
@@ -156,7 +158,7 @@ describe("recording a verdict from a criterion row", () => {
 
   it("records could not judge as skipped, never as a pass, and only with a reason", async () => {
     const calls = core((c) => (c.method === "POST" && c.path === "/issues/i1/verdicts" ? { status: 201, body: { verdictId: "v1" } } : undefined));
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { user, form } = await openJudge(1);
     await within(form).findByDisplayValue(LIVE);
     await user.click(within(form).getByRole("button", { name: "Could not judge" }));
@@ -182,7 +184,7 @@ describe("recording a verdict from a criterion row", () => {
       (c) => (c.method === "POST" && c.path === "/issues/i1/verdicts" ? { status: 201, body: { verdictId: "v1" } } : undefined),
       { sha: null, source: null, version: null, basis: "this issue has not merged, so no build carries its work yet" },
     );
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { user, form } = await openJudge(1);
     await within(form).findByText(/this issue has not merged/);
     await user.click(within(form).getByRole("button", { name: "Could not judge" }));
@@ -193,7 +195,7 @@ describe("recording a verdict from a criterion row", () => {
 
   it("says plainly that Short counts as a pass", async () => {
     core();
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { form } = await openJudge(1);
     expect(within(form).getByRole("button", { name: "Pass, short of wording" })).toBeInTheDocument();
     expect(form).toHaveTextContent("Short counts as a pass");
@@ -201,7 +203,7 @@ describe("recording a verdict from a criterion row", () => {
 
   it("cites an attachment the issue already holds, uploading nothing", async () => {
     const calls = core((c) => (c.method === "POST" && c.path === "/issues/i1/verdicts" ? { status: 201, body: { verdictId: "v1" } } : undefined), LIVE_BUILD, ATTACHED);
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { user, form } = await openJudge(1);
     await within(form).findByDisplayValue(LIVE);
     await user.selectOptions(await within(form).findByRole("combobox", { name: "Attached to this issue" }), "report-1440.png");
@@ -220,7 +222,7 @@ describe("recording a verdict from a criterion row", () => {
       LIVE_BUILD,
       ATTACHED,
     );
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { user, form } = await openJudge(1);
     await within(form).findByRole("combobox", { name: "Attached to this issue" });
     await user.upload(within(form).getByTestId("verdict-screenshot"), new File(["png"], "report-1440.png", { type: "image/png" }));
@@ -233,7 +235,7 @@ describe("recording a verdict from a criterion row", () => {
 
   it("offers no verdict act to a reader who may not write", async () => {
     core();
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite={false} requirementKey="REQ-32" />);
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite={false} requirementKey="REQ-32" />);
     expect(await screen.findByTestId("criterion-1-verdict")).toBeInTheDocument();
     expect(screen.queryByTestId("criterion-1-judge")).toBeNull();
     expect(screen.queryByTestId("criteria-tie")).toBeNull();
@@ -253,7 +255,7 @@ describe("recording a clip as a verdict's evidence (REQ-40 BC-4)", () => {
       if (c.method === "POST" && c.path === "/issues/i1/verdicts") return { status: 201, body: { verdictId: "v1" } };
       return undefined;
     });
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { user, form } = await openJudge(1);
     const input = within(form).getByTestId("verdict-screenshot") as HTMLInputElement;
     expect(input.accept).toContain("video/webm");
@@ -269,7 +271,7 @@ describe("recording a clip as a verdict's evidence (REQ-40 BC-4)", () => {
 
   it("refuses a clip over the cap before any upload, naming the cap, and sends nothing", async () => {
     const calls = core();
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { user, form } = await openJudge(1);
     // userEvent.upload applies `accept`, so the oversize case is dropped past it, as a drag would
     const big = new File([new Uint8Array(10 * 1024 * 1024 + 1)], "long-tour.webm", { type: "video/webm" });
@@ -284,7 +286,7 @@ describe("recording a clip as a verdict's evidence (REQ-40 BC-4)", () => {
 
   it("refuses a file that is neither a clip nor a picture, naming what is valid", async () => {
     core();
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { form } = await openJudge(1);
     // a drag past `accept`, which userEvent.upload would filter out
     fireEvent.change(within(form).getByTestId("verdict-screenshot"), { target: { files: [new File(["x"], "run.log", { type: "text/plain" })] } });
@@ -301,9 +303,8 @@ describe("tying a closed issue to its requirement's criteria", () => {
       return undefined;
     });
     const user = userEvent.setup();
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows={false} checklist={[]} canWrite requirementKey="REQ-32" />);
-    expect(screen.getByTestId("view-criteria")).toHaveTextContent("Tie this issue to its requirement's criteria");
-    await user.click(screen.getByRole("button", { name: "Tie to REQ-32 criteria" }));
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
+    await user.click(await screen.findByRole("button", { name: "Tie to REQ-32 criteria" }));
     const form = await screen.findByTestId("tie-form");
     const held = await within(form).findByRole("checkbox", { name: /BC-1 The report names its source · already tied/ });
     expect(held).toBeChecked();
@@ -327,8 +328,8 @@ describe("tying a closed issue to its requirement's criteria", () => {
       return undefined;
     });
     const user = userEvent.setup();
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows={false} checklist={[]} canWrite requirementKey="REQ-32" />);
-    await user.click(screen.getByRole("button", { name: "Tie to REQ-32 criteria" }));
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
+    await user.click(await screen.findByRole("button", { name: "Tie to REQ-32 criteria" }));
     const form = await screen.findByTestId("tie-form");
     const box = await within(form).findByRole("checkbox", { name: /BC-13 .* · tied to an earlier wording; tying refreshes it to this one/ });
     expect(box).not.toBeChecked();
@@ -349,8 +350,8 @@ describe("tying a closed issue to its requirement's criteria", () => {
       };
     });
     const user = userEvent.setup();
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows={false} checklist={[]} canWrite requirementKey="REQ-32" />);
-    await user.click(screen.getByRole("button", { name: "Tie to REQ-32 criteria" }));
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
+    await user.click(await screen.findByRole("button", { name: "Tie to REQ-32 criteria" }));
     const form = await screen.findByTestId("tie-form");
     await user.click(await within(form).findByRole("checkbox", { name: /BC-7/ }));
     await user.click(screen.getByRole("button", { name: "Tie 1" }));
@@ -359,8 +360,8 @@ describe("tying a closed issue to its requirement's criteria", () => {
 
   it("offers no tie where the issue delivers no requirement", async () => {
     fakeCore((c) => (c.path === "/issues/i1/criteria" ? { body: { criteria: [] } } : undefined));
-    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows={false} checklist={[]} canWrite requirementKey={null} />);
-    expect(screen.getByTestId("view-criteria")).toHaveTextContent("No criteria yet; the plan step writes them.");
+    renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey={null} />);
+    expect(await screen.findByTestId("view-criteria")).toHaveTextContent("None");
     expect(screen.queryByTestId("criteria-tie")).toBeNull();
   });
 });
