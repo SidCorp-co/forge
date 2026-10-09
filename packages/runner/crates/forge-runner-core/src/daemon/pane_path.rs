@@ -472,6 +472,31 @@ mod tests {
         )
     }
 
+    /// `world` replaces the whole process's `PATH` for as long as its guard
+    /// lives, and every other test spawns `git` by name in that time. What it
+    /// takes out is the `forge` under test and nothing else; a `git` that is
+    /// gone with it fails an unrelated test's fixture with NotFound, which is
+    /// how `daemon::master_skill`'s concurrent-install test and
+    /// `daemon::recovery`'s fixtures failed now and then.
+    #[test]
+    fn the_replaced_path_still_runs_git_and_holds_no_forge() {
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let p = Planted::new();
+        let _w = world(&p);
+        let ran = std::process::Command::new("git").arg("--version").output();
+        assert!(
+            ran.as_ref().is_ok_and(|o| o.status.success()),
+            "git cannot be spawned by name while the test PATH is in place: {ran:?}"
+        );
+        assert_eq!(
+            crate::exe::on_path("forge"),
+            None,
+            "a forge is on the test PATH"
+        );
+    }
+
     /// ISS-1332 criterion 1, as `for_pane` hands it on: the variable is the
     /// `forge` the PATH it built resolves, an absolute path to an executable.
     #[test]
