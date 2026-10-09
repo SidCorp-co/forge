@@ -9,6 +9,24 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.214] - 2026-10-09
+
+Chat answers show figure settings and computation scripts; dates read one way
+
+### Added
+
+- **A requirement revision names its kind and holds one picture.** A flow, an example table, a wireframe or a sample chart, labelled a rough sketch with a text alternative, shows at once, and anyone who can edit replaces it.
+- **An issue names the pattern it builds to.** A catalogued pattern needs no approval; a new one holds the issue until one reviewer holding patterns.approve, never its author, approves or returns it.
+
+### Fixed
+
+- **A chat answer reads the same on every screen.** A figure's source shows its settings, a computation shows its script and result, a replaced draft is never shown again, and times read in your timezone everywhere.
+- **The issue-ready checklist now says what to fix, and keeps what you typed.** Each refusal names the missing step in plain words, such as writing the plan, and a hotfix answer survives a refused move and is recorded as given.
+
+### Removed
+
+- **A mockup is no longer proposed, accepted or pinned for a requirement.** Its revision's picture replaces it; earlier requirement mockups stay readable, the assistant's mockup tool is gone, and the chat board proposes only on issues and feedback.
+
 ## [0.4.0-dev.213] - 2026-10-09
 
 Records the requirement progress strip; a draft opens only on a complete checklist
