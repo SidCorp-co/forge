@@ -166,6 +166,11 @@ export {
   linkIssueToRequirement,
   unlinkIssueFromRequirement,
 } from './requirement-link.js';
+export {
+  RESCUE_CAP_REASON_LEAD,
+  runRescueCapRehomeOnce,
+  spentOfRescueCapReason,
+} from './rescue-cap-rehome.js';
 export { buildIlikePattern } from './search-predicate.js';
 export {
   classifyLease,

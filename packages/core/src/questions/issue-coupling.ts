@@ -140,6 +140,45 @@ export async function settleOpenQuestions(
   return null;
 }
 
+/**
+ * Void the open person question a park minted, found by the prompt it was asked with, inside the
+ * move that makes the park's wait moot. Any other question on the issue is somebody's own and stays.
+ */
+export async function voidParkQuestions(
+  tx: Executor,
+  args: { issueId: string; prompt: string; reason: string; by: string; actor: KernelActor },
+): Promise<string[]> {
+  const open = await tx
+    .select({ id: agentQuestions.id })
+    .from(agentQuestions)
+    .where(
+      and(
+        eq(agentQuestions.issueId, args.issueId),
+        eq(agentQuestions.status, 'open'),
+        eq(agentQuestions.blockerKind, 'human'),
+        sql`${agentQuestions.steps} -> 0 ->> 'prompt' = ${args.prompt}`,
+      ),
+    );
+  if (open.length === 0) return [];
+  const ids = open.map((r) => r.id);
+  await transition(tx, QUESTION_MACHINE, {
+    to: 'void',
+    from: 'open',
+    set: {
+      voidReason: `the park that asked it now waits on the master: ${args.reason}`,
+      endedBy: args.by,
+      endedReason: QUESTION_NOT_NEEDED,
+      updatedAt: new Date(),
+    },
+    where: inArray(agentQuestions.id, ids),
+    reason: args.reason,
+    actor: args.actor,
+    source: 'issues',
+    returning: ['id'],
+  });
+  return ids;
+}
+
 const QUESTION_ENDED_WITH_RUN = 'run_cancelled';
 
 /**

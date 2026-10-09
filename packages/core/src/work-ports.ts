@@ -118,6 +118,7 @@ import {
   recordAnswerResume,
   settleOpenQuestions,
   voidCancelledRunQuestions,
+  voidParkQuestions,
 } from './questions/index.js';
 import { approvalRequired, approvalsOfRuns, judgedBuildOf } from './release-batch/index.js';
 import {
@@ -205,6 +206,7 @@ export function provideWorkPorts(): void {
   provideIssuePorts({
     projectCreatorOf,
     settleOpenQuestions,
+    voidParkQuestions,
     holdsOpenHumanQuestion,
     personOwesAnAnswer,
     askParkQuestion,

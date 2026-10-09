@@ -122,6 +122,11 @@ interface IssuePorts {
     detail: string;
     details: Record<string, unknown>;
   } | null>;
+  /** Void the open person question a park minted, by its prompt; other questions stay open. */
+  voidParkQuestions: (
+    tx: Tx,
+    args: { issueId: string; prompt: string; reason: string; by: string; actor: KernelActor },
+  ) => Promise<string[]>;
   holdsOpenHumanQuestion: (issueId: SQLWrapper) => SQL;
   personOwesAnAnswer: (executor: Tx, issueId: string) => Promise<boolean>;
   askParkQuestion: (
@@ -339,6 +344,7 @@ const { port } = slot;
 export const projectCreatorOf = port('projectCreatorOf');
 
 export const settleOpenQuestions = port('settleOpenQuestions');
+export const voidParkQuestions = port('voidParkQuestions');
 export const holdsOpenHumanQuestion = port('holdsOpenHumanQuestion');
 export const personOwesAnAnswer = port('personOwesAnAnswer');
 export const askParkQuestion = port('askParkQuestion');

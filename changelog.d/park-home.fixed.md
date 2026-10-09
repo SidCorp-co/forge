@@ -1,0 +1,1 @@
+**A run that spent its sessions waits on its master, rows parked before included.** On boot, issues the rescue cap parked for a person move to on-hold through the issue machine, its own question voided; a person's questions stay.
