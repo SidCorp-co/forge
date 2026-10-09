@@ -1495,6 +1495,7 @@ dependencies = [
  "runner-agent",
  "runner-core",
  "runner-platform",
+ "runner-preview",
  "runner-proto",
  "runner-transport",
  "runner-update",
@@ -1522,6 +1523,22 @@ dependencies = [
  "toml",
  "tracing",
  "which",
+]
+
+[[package]]
+name = "runner-preview"
+version = "0.18.0"
+dependencies = [
+ "futures-util",
+ "nix",
+ "reqwest",
+ "runner-transport",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

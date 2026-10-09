@@ -500,6 +500,8 @@ pub(crate) struct FrameCtx {
     pub(crate) wake_tx: tokio::sync::mpsc::Sender<master::Wake>,
     /// The job panes the supervisor works, which a `job.cancel` closes first (ISS-252).
     pub(crate) pool: pool_jobs::PoolPanes,
+    /// The live previews this box serves (REQ-39).
+    pub(crate) previews: runner_preview::Previews,
 }
 
 /// Route one frame from core. Nothing here blocks the frame loop.
@@ -512,6 +514,7 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
         cfg,
         wake_tx,
         pool,
+        previews,
     } = ctx;
     match frame.event.as_str() {
         "job.cancel" => {
@@ -587,6 +590,7 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
             }
         }
         event if box_frames::takes(event) => box_frames::on_frame(frame, client, cfg),
+        event if runner_preview::FRAMES.contains(&event) => previews.on_frame(event, frame.data),
         "master.wake" => match master::Wake::of_frame(&frame.data) {
             Ok(wake) => {
                 if wake_tx.try_send(wake).is_err() {

@@ -72,6 +72,7 @@ export const OUTBOX_CONSUMERS = {
 	"session.pushed": ["ws-broadcast"],
 	"issue.pushed": ["ws-broadcast"],
 	"conversation.pushed": ["ws-broadcast"],
+	"preview.transitioned": ["ws-broadcast"],
 } as const satisfies {
 	readonly [T in OutboxEventType]: readonly string[];
 };

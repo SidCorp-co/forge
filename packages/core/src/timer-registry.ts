@@ -28,6 +28,7 @@ import { runConsolidationSweep, runEmbeddingBackfill, runMemoryDecay } from './m
 import { pruneOutbox } from './outbox/index.js';
 import { backfillPhaseJournal, runReconcilerOnce, runRetentionSweep } from './pipeline/index.js';
 import { runPipelineSweep } from './pipeline-sweep.js';
+import { sweepPreviews } from './previews/index.js';
 import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
 import { sweepExpiredExecutions, sweepExpiredReportRuns } from './reports/index.js';
 import { sweepDeliveredRequirements } from './requirements/index.js';
@@ -273,6 +274,13 @@ export function coreTimers(): Timer[] {
     },
 
     // Process timers: faster than a minute, or bound to this process's sockets, memory or disk.
+    // A preview idles, or fails when its box's tunnel is away: the tunnels are this process's sockets.
+    {
+      kind: 'process',
+      name: 'preview-sweep',
+      everyMs: 15_000,
+      run: logged('preview-sweep: moved', sweepPreviews, (r) => (r as { moved: number }).moved > 0),
+    },
     {
       kind: 'process',
       name: 'web-conversation-drain',

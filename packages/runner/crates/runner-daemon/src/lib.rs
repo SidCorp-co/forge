@@ -29,6 +29,7 @@ pub mod master_limit;
 pub mod master_pass;
 pub mod pool_jobs;
 pub mod pool_reads;
+mod previews;
 mod probation;
 pub mod recovery;
 pub mod recovery_ports;
@@ -632,7 +633,7 @@ pub async fn run(
     boot(&cfg, &client).await;
 
     let (cancel_tx, cancel_rx) = watch::channel(false);
-    let (frame_tx, mut frame_rx) = mpsc::channel::<Frame>(256);
+    let (frame_tx, frame_rx) = mpsc::channel::<Frame>(256);
     let (ledger_tx, ledger_rx) = watch::channel::<Option<String>>(None);
 
     spawn_ws(
@@ -724,6 +725,7 @@ pub async fn run(
         spawn_panes_and_master(&client, &cfg, &masters, drain, &activity, &cancel_rx)?;
 
     let ctx = actors::FrameCtx {
+        previews: previews::start(&client, &core_url, &device_token, &cancel_rx),
         client,
         runner,
         masters,
@@ -732,16 +734,7 @@ pub async fn run(
         wake_tx,
         pool,
     };
-    let mut cancel_rx = cancel_rx.clone();
-    loop {
-        tokio::select! {
-            frame = frame_rx.recv() => {
-                let Some(frame) = frame else { break };
-                actors::on_frame(frame, &ctx);
-            }
-            _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
-        }
-    }
+    previews::serve_frames(&ctx, frame_rx, cancel_rx.clone()).await;
 
     Ok(())
 }

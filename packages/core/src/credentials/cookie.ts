@@ -35,22 +35,49 @@ export function requestCookieValues(c: Context, name: string): string[] {
 }
 
 /**
+ * The configured cookie domain when the browser addressed a host under it, else none. The host is
+ * the proxy's forwarded one first: Forge's own web previewed from a run (REQ-39) proxies `/api` to
+ * core from a preview host outside that domain, where a cookie naming the domain is refused by the
+ * browser, so it is written host-only there.
+ */
+export function sessionCookieDomain(
+  domain: string | undefined,
+  forwardedHost: string | undefined,
+  host: string | undefined,
+) {
+  if (!domain) return undefined;
+  const addressed = (forwardedHost?.split(',')[0] ?? host)
+    ?.trim()
+    .toLowerCase()
+    .replace(/:\d+$/, '');
+  if (!addressed) return domain;
+  const bare = domain.toLowerCase().replace(/^\./, '');
+  return addressed === bare || addressed.endsWith(`.${bare}`) ? domain : undefined;
+}
+
+/**
  * A cookie of `name` at `path` written under the configured domain, after clearing the host-only
  * variant: that one lingers from before `AUTH_COOKIE_DOMAIN` was set, and with the same path the
- * browser sends whichever is older first. With no domain configured the write replaces the
- * host-only cookie itself. A parent-domain cookie this server did not set (a sibling instance's)
- * is left alone — clearing it would sign the person out of that instance; it is outlasted by
- * reading every value instead ({@link cookieValues}).
+ * browser sends whichever is older first. With no domain configured, or a request addressed to a
+ * host outside it ({@link sessionCookieDomain}), the write replaces the host-only cookie itself. A
+ * parent-domain cookie this server did not set (a sibling instance's) is left alone — clearing it
+ * would sign the person out of that instance; it is outlasted by reading every value instead
+ * ({@link cookieValues}).
  */
 function writeSessionCookie(c: Context, name: string, value: string, path: string, maxAge: number) {
-  if (env.AUTH_COOKIE_DOMAIN) deleteCookie(c, name, { path });
+  const domain = sessionCookieDomain(
+    env.AUTH_COOKIE_DOMAIN,
+    c.req.header('x-forwarded-host'),
+    c.req.header('host'),
+  );
+  if (domain) deleteCookie(c, name, { path });
   setCookie(c, name, value, {
     httpOnly: true,
     secure: env.NODE_ENV !== 'development' && env.NODE_ENV !== 'test',
     sameSite: 'Lax',
     path,
     maxAge,
-    ...(env.AUTH_COOKIE_DOMAIN ? { domain: env.AUTH_COOKIE_DOMAIN } : {}),
+    ...(domain ? { domain } : {}),
   });
 }
 

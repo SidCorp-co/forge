@@ -195,7 +195,7 @@ describe("reading the setting from the repository (BC-11, BC-12)", () => {
 		expect(found).toEqual({
 			ok: true,
 			settings: {
-				command: "pnpm run dev --port {port}",
+				command: "pnpm run dev --port {port} --hostname 127.0.0.1",
 				cwd: "packages/web-v2",
 			},
 			framework: "next",
@@ -244,9 +244,26 @@ describe("reading the setting from the repository (BC-11, BC-12)", () => {
 			}),
 		);
 		expect(found.ok && found.settings).toEqual({
-			command: "npm run dev",
+			command: "npm run dev -- --hostname 127.0.0.1",
 			port: 4100,
 		});
+	});
+
+	it("keeps a Next dev server on loopback, and leaves a host the script names its own (BC-5)", () => {
+		const own = detectPreviewSettings(
+			facts({
+				scripts: { dev: "next dev -H 127.0.0.1" },
+				dependencies: { next: "16" },
+			}),
+		);
+		expect(own.ok && own.settings.command).toBe("npm run dev -- --port {port}");
+		const custom = detectPreviewSettings(
+			facts({
+				scripts: { dev: "node server.js --port 4200" },
+				dependencies: { next: "16" },
+			}),
+		);
+		expect(custom.ok && custom.settings.command).toBe("npm run dev");
 	});
 
 	it("names the missing start command rather than guessing one", () => {

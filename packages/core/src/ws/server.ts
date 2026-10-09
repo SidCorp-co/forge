@@ -1,5 +1,6 @@
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Server as HttpsServer } from 'node:https';
+import { PREVIEW_ROUTES } from '@forge/contracts/preview';
 import { type WebSocket, WebSocketServer } from 'ws';
 import { AUTH_COOKIE_NAME, cookieValues } from '../credentials/cookie.js';
 import { verifyDeviceToken } from '../credentials/device-credential.js';
@@ -10,6 +11,12 @@ import { roomManager } from '../lib/rooms.js';
 import { markWsListening } from '../lib/ws-listening.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { actorFor, can, projectResource } from '../permissions/index.js';
+import {
+  acceptTunnelUpgrade,
+  closeAllTunnels,
+  isPreviewRequest,
+  relayPreviewUpgrade,
+} from '../previews/index.js';
 import { runnerPlacement } from '../runners/index.js';
 
 type AnyServer = HttpServer | HttpsServer;
@@ -162,6 +169,21 @@ async function canSubscribe(principal: Principal, room: string): Promise<boolean
   return false;
 }
 
+/** A box dials its preview tunnel with the device credential it holds `/ws` with; nothing else may. */
+async function acceptPreviewTunnel(
+  req: IncomingMessage,
+  socket: import('node:stream').Duplex,
+  head: Buffer,
+): Promise<void> {
+  const result = await authenticate(req).catch(() => null);
+  if (result?.principal.type !== 'device') {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  acceptTunnelUpgrade(result.principal.deviceId, req, socket, head);
+}
+
 export function attachWs(server: AnyServer): void {
   if (wss) return;
 
@@ -173,7 +195,16 @@ export function attachWs(server: AnyServer): void {
       socket.destroy();
       return;
     }
+    // a preview host's upgrade is its dev server's hot reload, relayed over the box's tunnel
+    if (isPreviewRequest(req)) {
+      void relayPreviewUpgrade(req, socket, head);
+      return;
+    }
     const url = new URL(req.url, 'http://localhost');
+    if (url.pathname === PREVIEW_ROUTES.tunnel) {
+      void acceptPreviewTunnel(req, socket, head);
+      return;
+    }
     if (url.pathname !== '/ws') return;
 
     void (async () => {
@@ -294,6 +325,7 @@ export function attachWs(server: AnyServer): void {
 const WS_CLOSE_FALLBACK_MS = 2_000;
 
 export async function closeWs(): Promise<void> {
+  closeAllTunnels();
   if (heartbeatTimer) {
     clearInterval(heartbeatTimer);
     heartbeatTimer = null;

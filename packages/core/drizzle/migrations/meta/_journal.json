@@ -3053,6 +3053,13 @@
       "when": 1824076800000,
       "tag": "0476_a_check_a_run_makes_is_recorded_with_its_kind_and_duration",
       "breakpoints": true
+    },
+    {
+      "idx": 477,
+      "version": "7",
+      "when": 1824163200000,
+      "tag": "0477_a_preview_serves_a_runs_worktree",
+      "breakpoints": true
     }
   ]
 }
