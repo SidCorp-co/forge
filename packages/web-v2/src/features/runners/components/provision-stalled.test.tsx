@@ -41,7 +41,8 @@ describe("ProvisionStalledBanner", () => {
 
 		const text = screen.getByText(/Stalled\./).parentElement?.textContent ?? "";
 		expect(text).toContain("for 9 days");
-		expect(text).toContain("nothing is held back");
+		expect(text).toContain("does not hold it back by itself");
+		expect(text).not.toContain("nothing is held back");
 		expect(text).toContain("refused while that master runs");
 	});
 

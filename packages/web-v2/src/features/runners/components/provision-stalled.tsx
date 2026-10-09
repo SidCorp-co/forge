@@ -29,7 +29,7 @@ export function ProvisionStalledBanner({ runner }: { runner: ProjectRunner }) {
 			{runner.residentMaster === undefined
 				? ""
 				: runner.residentMaster
-					? "This box is running the project's master from the workspace, so nothing is held back; Re-provision is refused while that master runs."
+					? "This box is running the project's master from the workspace, so the stalled provision does not hold it back by itself; Re-provision is refused while that master runs."
 					: "The box re-runs it on its next sweep once it is polling again, or use Re-provision."}
 		</Banner>
 	);

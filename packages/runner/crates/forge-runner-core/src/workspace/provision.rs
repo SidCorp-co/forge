@@ -460,6 +460,17 @@ fn clear_partial_clone(repo_path: &Path) -> std::result::Result<(), String> {
     Ok(())
 }
 
+/// Empties what an overrun clone wrote, and says so in `stop` where it could not: a `.git` left
+/// behind reads as a repository on the next provision, which would report it `ready`.
+fn clear_after_overrun(stop: &mut Stop, repo_path: &Path) {
+    if let Err(e) = clear_partial_clone(repo_path) {
+        stop.detail.push_str(&format!(
+            " What it had written to {} could not be removed ({e}); empty that folder before provisioning again.",
+            repo_path.display()
+        ));
+    }
+}
+
 /// `git clone <url> <path>` with the deploy key (if any) via `GIT_SSH_COMMAND`.
 /// Returns the trimmed git stderr on failure. When `branch` is set (the
 /// project's base branch), check it out after cloning so the main worktree
@@ -473,21 +484,37 @@ async fn clone_repo(
     branch: Option<&str>,
     limit: Duration,
 ) -> std::result::Result<(), Stop> {
+    clone_repo_with(
+        Path::new("git"),
+        repo_url,
+        repo_path,
+        ssh_cmd,
+        git_cfg,
+        branch,
+        limit,
+    )
+    .await
+}
+
+async fn clone_repo_with(
+    program: &Path,
+    repo_url: &str,
+    repo_path: &Path,
+    ssh_cmd: Option<&str>,
+    git_cfg: &[String],
+    branch: Option<&str>,
+    limit: Duration,
+) -> std::result::Result<(), Stop> {
     if let Some(parent) = repo_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| Stop::manual(format!("mkdir parent: {e}")))?;
     }
-    let mut cmd = git_command(Path::new("git"), None, git_cfg, ssh_cmd);
+    let mut cmd = git_command(program, None, git_cfg, ssh_cmd);
     cmd.arg("clone").arg(repo_url).arg(repo_path);
     let out = match run_git(cmd, limit).await {
         Ok(Some(out)) => out,
         Ok(None) => {
             let mut stop = Stop::timed_out("git clone", limit);
-            if let Err(e) = clear_partial_clone(repo_path) {
-                stop.detail.push_str(&format!(
-                    " What it had written to {} could not be removed ({e}); empty that folder before provisioning again.",
-                    repo_path.display()
-                ));
-            }
+            clear_after_overrun(&mut stop, repo_path);
             return Err(stop);
         }
         Err(e) => return Err(Stop::manual(format!("spawn git clone: {e}"))),
@@ -500,7 +527,10 @@ async fn clone_repo(
     }
 
     if let Some(branch) = branch.map(str::trim).filter(|b| !b.is_empty()) {
-        checkout_base_branch(repo_path, branch, limit).await?;
+        if let Err(mut stop) = checkout_base_branch(program, repo_path, branch, limit).await {
+            clear_after_overrun(&mut stop, repo_path);
+            return Err(stop);
+        }
     }
     Ok(())
 }
@@ -511,11 +541,12 @@ async fn clone_repo(
 /// needs_manual_setup. A checkout that overruns its limit is another matter, and is a failure by
 /// name like any other step, because nothing says what state the tree was left in.
 async fn checkout_base_branch(
+    program: &Path,
     repo_path: &Path,
     branch: &str,
     limit: Duration,
 ) -> std::result::Result<(), Stop> {
-    let mut cmd = git_command(Path::new("git"), Some(repo_path), &[], None);
+    let mut cmd = git_command(program, Some(repo_path), &[], None);
     cmd.arg("checkout").arg(branch);
     match run_git(cmd, limit).await {
         Ok(Some(o)) if o.status.success() => {}
@@ -621,38 +652,46 @@ async fn claim_workspace(
     repo_path: &Path,
     pane_up: impl std::future::Future<Output = bool>,
 ) -> std::result::Result<Option<ProvisionLease>, String> {
-    let refuse = |holder: String| {
+    let refuse = |holder: String, advice: String| {
         format!(
-            "{}: refused — {holder}, and provisioning writes into the checkout at {} under it. Nothing was written and no status was reported. `forge-runner master kill {}` ends the master, after which this provisions; until then the checkout is served as it stands.",
+            "{}: refused — {holder}, and provisioning writes into the checkout at {}. Nothing was written and no status was reported. {advice}",
             p.slug,
             repo_path.display(),
-            p.slug
         )
     };
+    let kill = format!(
+        "`forge-runner master kill {}` ends the master, after which this provisions; until then the checkout is served as it stands.",
+        p.slug
+    );
     let lease = match masters.map(|m| m.begin_provisioning(&p.project_id)) {
         Some(Err(Refused::Live { session, pane })) => {
-            return Err(refuse(format!(
-                "{pane} (session {session}) is this box's live master for the project"
-            )))
-        }
-        Some(Err(Refused::Provisioning)) => {
             return Err(refuse(
-                "another provision of this workspace is already running on this box".into(),
+                format!("{pane} (session {session}) is this box's live master for the project"),
+                kill,
             ))
         }
+        Some(Err(Refused::Provisioning)) => return Err(refuse(
+            "another provision of this workspace is already running on this box".into(),
+            "That one reports its own outcome, and the next sweep provisions again if it fails."
+                .into(),
+        )),
         Some(Err(Refused::Placing)) => {
             return Err(refuse(
                 "this box is placing the project's master this moment".into(),
+                kill,
             ))
         }
         Some(Ok(lease)) => Some(lease),
         None => None,
     };
     if pane_up.await {
-        return Err(refuse(format!(
-            "the project's master pane {} is running on this box's tmux",
-            terminal::session_name(terminal::MASTER_PREFIX, &p.slug)
-        )));
+        return Err(refuse(
+            format!(
+                "the project's master pane {} is running on this box's tmux",
+                terminal::session_name(terminal::MASTER_PREFIX, &p.slug)
+            ),
+            kill,
+        ));
     }
     Ok(lease)
 }
@@ -1329,14 +1368,42 @@ mod tests {
             .is_ok());
     }
 
-    #[tokio::test]
-    async fn a_base_branch_checkout_that_overruns_fails_the_provision_by_name() {
-        let dir = tmp("checkout-overrun");
-        fs::create_dir_all(&dir).unwrap();
+    #[cfg(unix)]
+    fn fake_git(dir: &Path, script: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        fs::create_dir_all(dir).unwrap();
+        let git = dir.join("git");
+        fs::write(&git, format!("#!/bin/sh\n{script}\n")).unwrap();
+        fs::set_permissions(&git, fs::Permissions::from_mode(0o755)).unwrap();
+        git
+    }
 
-        let stop = checkout_base_branch(&dir, "main", Duration::ZERO)
-            .await
-            .expect_err("a checkout that overran cannot be read as done");
+    /// The clone finished and the base-branch checkout hung: nothing says what state the tree is in,
+    /// and a `.git` left behind reads as a ready repository on the next provision.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_base_branch_checkout_that_overruns_fails_the_clone_and_clears_what_it_wrote() {
+        let bin = tmp("fake-git-checkout");
+        let git = fake_git(
+            &bin,
+            r#"case "$*" in
+  *clone*) mkdir -p "$3/.git";;
+  *checkout*) sleep 30;;
+esac"#,
+        );
+        let dir = tmp("checkout-overrun");
+
+        let stop = clone_repo_with(
+            &git,
+            "git://127.0.0.1:1/x.git",
+            &dir,
+            None,
+            &[],
+            Some("main"),
+            Duration::from_millis(500),
+        )
+        .await
+        .expect_err("a checkout that overran cannot be read as done");
 
         assert_eq!(stop.status, "failed");
         assert!(
@@ -1344,6 +1411,12 @@ mod tests {
             "{}",
             stop.detail
         );
+        assert_eq!(
+            fs::read_dir(&dir).map(|d| d.count()).unwrap_or(0),
+            0,
+            "a half-made clone is left to read as ready"
+        );
+        let _ = fs::remove_dir_all(&bin);
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -1381,16 +1454,11 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn an_adopt_whose_remote_head_lookup_overruns_fails_by_name() {
-        use std::os::unix::fs::PermissionsExt;
         let bin = tmp("fake-git");
-        fs::create_dir_all(&bin).unwrap();
-        let git = bin.join("git");
-        fs::write(
-            &git,
-            "#!/bin/sh\ncase \"$*\" in *set-head*) sleep 30;; *) exit 0;; esac\n",
-        )
-        .unwrap();
-        fs::set_permissions(&git, fs::Permissions::from_mode(0o755)).unwrap();
+        let git = fake_git(
+            &bin,
+            r#"case "$*" in *set-head*) sleep 30;; *) exit 0;; esac"#,
+        );
         let dir = tmp("adopt-sethead");
         fs::create_dir_all(&dir).unwrap();
 
@@ -1410,5 +1478,25 @@ mod tests {
         assert!(stop.detail.contains("remote set-head"), "{}", stop.detail);
         let _ = fs::remove_dir_all(&bin);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_refusal_for_a_running_provision_does_not_tell_the_operator_to_kill_a_master() {
+        let dir = tmp("advice");
+        let p = provision_for("proj-1", "iss1359-advice", Some(&dir), None);
+        let masters = Masters::new();
+        let _first = claim_workspace(Some(&masters), &p, &dir, never_up())
+            .await
+            .unwrap();
+
+        let said = claim_workspace(Some(&masters), &p, &dir, never_up())
+            .await
+            .expect_err("refused");
+
+        assert!(said.contains("another provision"), "{said}");
+        assert!(
+            !said.contains("master kill") && !said.contains("served as it stands"),
+            "{said}"
+        );
     }
 }
