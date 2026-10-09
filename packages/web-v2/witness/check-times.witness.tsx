@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { CheckTimes } from "@/features/issues/components/detail/check-times";
 import type { IssueAgentSession } from "@/features/issues/types";
+import "./entry";
 
 const SESSION = "5e55a0b1-0000-4000-8000-000000000001";
 const sessions: IssueAgentSession[] = [
@@ -115,12 +116,6 @@ function probe(): string[] {
   if (darkDanger === danger) wrong.push(`the dark theme declares no danger colour of its own (${darkDanger})`);
   if (colourOf(marked("dark-danger")) !== darkDanger) wrong.push(`text-danger in the dark theme is ${colourOf(marked("dark-danger"))}, not ${darkDanger}`);
   return wrong;
-}
-
-declare global {
-  interface Window {
-    __witness?: { cases: { name: string; width: number }[]; ready: () => boolean; probe: () => string[] };
-  }
 }
 
 window.__witness = {

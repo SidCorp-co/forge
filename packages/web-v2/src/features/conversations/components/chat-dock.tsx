@@ -1,14 +1,15 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useCallback, useRef, useState } from "react";
+import { type RefObject, useCallback, useRef, useState } from "react";
 import { Icon, IconButton, SecondaryRegion, SlideOver, useMediaQuery } from "@/design";
 import { useProjectEcosystems } from "@/features/ecosystem/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import type { ChatDockApi } from "@/features/chat-dock/dock";
-import { DOCK_MAX_WIDTH, DOCK_MIN_WIDTH, clampDockWidth, isScopedRoom, targetConversationId } from "@/features/chat-dock/dock-target";
+import { type ChatDockApi, usePageRoom } from "@/features/chat-dock/dock";
+import { type DockSize, dockSizes, dockWidth, nextSize, sizeAt, sizeFromDrag } from "@/features/chat-dock/dock-size";
+import { isScopedRoom, targetConversationId } from "@/features/chat-dock/dock-target";
 import { BOARD_DOCK_WIDTH, BoardPanel } from "../board/board-panel";
 import { useBoard } from "@/features/board/board-store";
 import { useUiSnapshot } from "../ui-actions/use-ui-actions";
@@ -88,7 +89,7 @@ export function pageLabel(pathname: string | null, t: Copy): string {
   return last.replace(/[-_]/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 
-export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScreen?: boolean }) {
+export function ChatDockBody({ dock, fullScreen, sizeControl }: { dock: ChatDockApi; fullScreen?: boolean; sizeControl?: React.ReactNode }) {
   const pathname = usePathname();
   const pageKey = pageSubjectKey(pathname);
   const t = useCopy();
@@ -199,6 +200,7 @@ export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScre
             title={t("shell.dock.newConversation")}
             onClick={() => pick(dock.projectId ? { kind: "draft", projectId: dock.projectId } : { kind: "people" })}
           />
+          {!fullScreen && sizeControl}
           {!fullScreen && (
             <IconButton
               icon="pin"
@@ -233,25 +235,51 @@ function BoardForProject({ projectId, slug }: { projectId: string; slug: string 
   return <BoardPanel projectId={projectId} issueKey={snapshot.item?.kind === "issue" ? snapshot.item.key : undefined} />;
 }
 
+/** Shows the size the panel is at and moves it to the other one; from a dragged width it snaps to the nearer (REQ-31 BC-2, BC-6). */
+function SizeControl({ width, room, onSize }: { width: number; room: number; onSize: (size: DockSize) => void }) {
+  const t = useCopy();
+  const at = sizeAt(width, room);
+  const next = nextSize(width, room);
+  const shown = at === "large" ? t("shell.dock.size.large") : at === "half" ? t("shell.dock.size.half") : t("shell.dock.size.px", { width });
+  const label = t(next === "half" ? "shell.dock.size.toHalf" : "shell.dock.size.toLarge", { size: shown });
+  return (
+    <button
+      type="button"
+      data-testid="chat-dock-size"
+      data-size={at ?? "dragged"}
+      aria-label={label}
+      title={label}
+      onClick={() => onSize(next)}
+      className="fg-caption inline-flex h-7 flex-none items-center rounded-md px-2 font-semibold text-muted hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--link)]"
+    >
+      {shown}
+    </button>
+  );
+}
+
 function ResizeHandle({
   width,
+  room,
   onDrag,
   onCommit,
 }: {
   width: number;
+  room: number;
   onDrag: (w: number | null) => void;
-  onCommit: (w: number) => void;
+  onCommit: (size: DockSize) => void;
 }) {
   const dragging = useRef(false);
   const t = useCopy();
-  const fromPointer = (e: React.PointerEvent) => clampDockWidth(window.innerWidth - e.clientX);
+  const { large, half } = dockSizes(room);
+  const held = (px: number) => dockWidth(sizeFromDrag(px, room), room);
+  const fromPointer = (e: React.PointerEvent) => window.innerWidth - e.clientX;
   return (
     <hr
       aria-orientation="vertical"
       aria-label={t("shell.dock.resize", { title: dockTitle(t) })}
       aria-valuenow={width}
-      aria-valuemin={DOCK_MIN_WIDTH}
-      aria-valuemax={DOCK_MAX_WIDTH}
+      aria-valuemin={half}
+      aria-valuemax={large}
       tabIndex={0}
       data-testid="chat-dock-resize"
       onKeyDown={(e) => {
@@ -259,7 +287,7 @@ function ResizeHandle({
         const delta = e.key === "ArrowLeft" ? step : e.key === "ArrowRight" ? -step : 0;
         if (delta === 0) return;
         e.preventDefault();
-        onCommit(clampDockWidth(width + delta));
+        onCommit(sizeFromDrag(width + delta, room));
       }}
       onPointerDown={(e) => {
         e.preventDefault();
@@ -267,13 +295,13 @@ function ResizeHandle({
         (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
       }}
       onPointerMove={(e) => {
-        if (dragging.current) onDrag(fromPointer(e));
+        if (dragging.current) onDrag(held(fromPointer(e)));
       }}
       onPointerUp={(e) => {
         if (!dragging.current) return;
         dragging.current = false;
         onDrag(null);
-        onCommit(fromPointer(e));
+        onCommit(sizeFromDrag(fromPointer(e), room));
       }}
       onPointerCancel={() => {
         dragging.current = false;
@@ -285,8 +313,10 @@ function ResizeHandle({
   );
 }
 
-export function ChatDock({ dock }: { dock: ChatDockApi }) {
+/** The panel beside the page. `page` is the page column: the panel and the page share the width from its left edge to the window's right. */
+export function ChatDock({ dock, page }: { dock: ChatDockApi; page: RefObject<HTMLElement | null> }) {
   const docked = useMediaQuery("(min-width: 48rem)");
+  const room = usePageRoom(page);
   const [live, setLive] = useState<number | null>(null);
   const board = useBoard();
   const t = useCopy();
@@ -298,7 +328,9 @@ export function ChatDock({ dock }: { dock: ChatDockApi }) {
       </SlideOver>
     );
   }
-  const width = live ?? (board.open ? Math.max(dock.width, clampDockWidth(BOARD_DOCK_WIDTH)) : dock.width);
+  const kept = dockWidth(dock.size, room);
+  // a board open in the conversation widens the panel to the board, never past large
+  const width = live ?? (board.open ? Math.max(kept, dockWidth(BOARD_DOCK_WIDTH, room)) : kept);
   return (
     <aside
       aria-label={dockTitle(t)}
@@ -306,8 +338,8 @@ export function ChatDock({ dock }: { dock: ChatDockApi }) {
       className="relative hidden h-full flex-none flex-col border-l border-line bg-app md:flex"
       style={{ width }}
     >
-      <ResizeHandle width={width} onDrag={setLive} onCommit={dock.setWidth} />
-      <ChatDockBody dock={dock} />
+      <ResizeHandle width={width} room={room} onDrag={setLive} onCommit={dock.setSize} />
+      <ChatDockBody dock={dock} sizeControl={<SizeControl width={width} room={room} onSize={dock.setSize} />} />
     </aside>
   );
 }

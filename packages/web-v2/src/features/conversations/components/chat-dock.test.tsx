@@ -4,14 +4,18 @@
 // opens a new chat in the conversation's place.
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { boardStore } from "@/features/board/board-store";
 import type { ChatDockApi } from "@/features/chat-dock/dock";
+import type { DockSize } from "@/features/chat-dock/dock-size";
 import { type ChatTarget, targetInScope } from "@/features/chat-dock/dock-target";
 import { fakeCore, renderWithQuery } from "@/test/render";
-import { ChatDockBody } from "./chat-dock";
+import { ChatDock, ChatDockBody } from "./chat-dock";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/projects/epod/requirements" }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
+vi.mock("../board/board-panel", () => ({ BOARD_DOCK_WIDTH: 880, BoardPanel: () => <div data-testid="board" /> }));
 vi.mock("./conversation-chat", () => ({
   ConversationChat: ({ conversationId }: { conversationId?: string }) => (
     <div data-testid="chat" data-conversation={conversationId ?? "new"} />
@@ -67,8 +71,8 @@ function dockOn(target: ChatTarget | null): ChatDockApi {
     setPinned: vi.fn(),
     target,
     generation: 0,
-    width: 400,
-    setWidth: vi.fn(),
+    size: "large",
+    setSize: vi.fn(),
     show: vi.fn(),
     close: vi.fn(),
     toggle: vi.fn(),
@@ -181,5 +185,132 @@ describe("a room scoped to a record", () => {
     expect(await screen.findByTestId("chat")).toBeTruthy();
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.queryByTestId("subject-scope-notice")).toBeNull();
+  });
+});
+
+// REQ-31 r2 (ISS-493): the docked panel opens large, the widest that leaves the page 480px; one
+// control switches it to half and back and says which it is at; a drag sets any width between and
+// stops at either size; the control snaps a dragged width back to one of them.
+describe("the panel's two sizes", () => {
+  // the page column starts after the 280px sidebar
+  function Panel({ initial = "large", window: w = 1440 }: { initial?: DockSize; window?: number }) {
+    const [size, setSize] = useState<DockSize>(initial);
+    const page = useRef<HTMLElement | null>(null);
+    const measured = (el: HTMLDivElement | null) => {
+      if (el) el.getBoundingClientRect = () => ({ left: 280, right: w, width: w - 280 }) as DOMRect;
+      page.current = el;
+    };
+    return (
+      <>
+        <div ref={measured} />
+        <ChatDock dock={{ ...dockOn({ kind: "draft", projectId: "p1" }), size, setSize }} page={page} />
+      </>
+    );
+  }
+
+  function docked(width: number) {
+    vi.stubGlobal("innerWidth", width);
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(min-width: 48rem)" && width >= 768,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+  }
+
+  const panel = () => screen.getByTestId("chat-dock");
+  const control = () => screen.getByTestId("chat-dock-size");
+  const handle = () => screen.getByTestId("chat-dock-resize");
+
+  afterEach(() => boardStore.close());
+
+  it("opens at large, leaving the page 480px, with no drag", async () => {
+    core([]);
+    docked(1440);
+    renderWithQuery(<Panel />);
+    await waitFor(() => expect(panel().style.width).toBe("680px"));
+    expect(1440 - 280 - 680).toBe(480);
+    expect(control().textContent).toBe("Large");
+    expect(control().getAttribute("aria-label")).toBe("Panel size: Large. Switch to half");
+  });
+
+  it("switches to half of large and back with one control", async () => {
+    core([]);
+    docked(1440);
+    renderWithQuery(<Panel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Panel size: Large. Switch to half" }));
+    expect(panel().style.width).toBe("340px");
+    expect(control().textContent).toBe("Half");
+    fireEvent.click(screen.getByRole("button", { name: "Panel size: Half. Switch to large" }));
+    expect(panel().style.width).toBe("680px");
+  });
+
+  it("is reached by keyboard: the control is a button in the tab order", async () => {
+    core([]);
+    docked(1440);
+    renderWithQuery(<Panel />);
+    const button = await screen.findByRole("button", { name: /Panel size/ });
+    expect(button.tagName).toBe("BUTTON");
+    expect(button.getAttribute("tabindex")).not.toBe("-1");
+  });
+
+  it("drags to any width between, then the control snaps it to the nearer size", async () => {
+    core([]);
+    docked(1440);
+    renderWithQuery(<Panel initial="half" />);
+    await waitFor(() => expect(panel().style.width).toBe("340px"));
+    fireEvent.keyDown(handle(), { key: "ArrowLeft", shiftKey: true });
+    expect(panel().style.width).toBe("404px");
+    expect(control().textContent).toBe("404 px");
+    expect(control().getAttribute("aria-label")).toBe("Panel size: 404 px. Switch to half");
+    fireEvent.click(control());
+    expect(panel().style.width).toBe("340px");
+    for (let i = 0; i < 4; i++) fireEvent.keyDown(handle(), { key: "ArrowLeft", shiftKey: true });
+    expect(panel().style.width).toBe("596px");
+    fireEvent.click(control());
+    expect(panel().style.width).toBe("680px");
+    expect(control().textContent).toBe("Large");
+  });
+
+  it("stops a drag past large at large and one below half at half", async () => {
+    core([]);
+    docked(1440);
+    renderWithQuery(<Panel />);
+    await waitFor(() => expect(panel().style.width).toBe("680px"));
+    expect(handle().getAttribute("aria-valuemin")).toBe("340");
+    expect(handle().getAttribute("aria-valuemax")).toBe("680");
+    fireEvent.keyDown(handle(), { key: "ArrowLeft", shiftKey: true });
+    expect(panel().style.width).toBe("680px");
+    fireEvent.pointerDown(handle(), { pointerId: 1, clientX: 760 });
+    fireEvent.pointerMove(handle(), { pointerId: 1, clientX: 100 });
+    expect(panel().style.width).toBe("680px");
+    fireEvent.pointerUp(handle(), { pointerId: 1, clientX: 100 });
+    expect(panel().style.width).toBe("680px");
+    expect(control().textContent).toBe("Large");
+    fireEvent.pointerDown(handle(), { pointerId: 1, clientX: 760 });
+    fireEvent.pointerUp(handle(), { pointerId: 1, clientX: 1400 });
+    expect(panel().style.width).toBe("340px");
+    expect(control().textContent).toBe("Half");
+  });
+
+  it("widens to an open board, but never past large", async () => {
+    core([]);
+    docked(1440);
+    const { unmount } = renderWithQuery(<Panel initial="half" />);
+    boardStore.load({ version: 1, elements: [] } as never);
+    await waitFor(() => expect(panel().style.width).toBe("680px"));
+    unmount();
+    docked(2120);
+    renderWithQuery(<Panel initial="half" window={2120} />);
+    await waitFor(() => expect(panel().style.width).toBe("880px"));
+  });
+
+  it("draws no size control in the full-screen panel of a phone-width window", async () => {
+    core([]);
+    docked(390);
+    renderWithQuery(<Panel window={390} />);
+    expect(await screen.findByTestId("chat-dock-body")).toBeTruthy();
+    expect(screen.queryByTestId("chat-dock")).toBeNull();
+    expect(screen.queryByTestId("chat-dock-size")).toBeNull();
   });
 });

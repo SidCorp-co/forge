@@ -1,13 +1,13 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, type RefObject, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { type AskAbout, aboutDraft } from "./ask-about";
-import { type ChatTarget, clampDockWidth, defaultDockWidth, targetInScope } from "./dock-target";
+import { type ChatTarget, targetInScope } from "./dock-target";
+import { DOCK_SIZE_KEY, type DockSize, settleDockSize } from "./dock-size";
 
 export const DOCK_OPEN_ON_KEY = "web-v2:chat-dock-open-on";
-export const DOCK_WIDTH_KEY = "web-v2:chat-dock-width";
 export const DOCK_PINNED_KEY = "web-v2:chat-dock-pinned";
 
 export interface ChatDockApi {
@@ -18,8 +18,9 @@ export interface ChatDockApi {
   setPinned: (pinned: boolean) => void;
   target: ChatTarget | null;
   generation: number;
-  width: number;
-  setWidth: (w: number) => void;
+  /** The size this browser keeps (REQ-31 BC-5); the panel resolves it to px against the room it has. */
+  size: DockSize;
+  setSize: (size: DockSize) => void;
   show: (target?: ChatTarget) => void;
   close: () => void;
   toggle: () => void;
@@ -39,7 +40,7 @@ const ChatDockContext = createContext<ChatDockApi | null>(null);
 
 export function useChatDockState(projectId: string | null): ChatDockApi {
   const [openOn, setOpenOn] = usePersistedState<string | null>(DOCK_OPEN_ON_KEY, null, { syncTabs: false });
-  const [storedWidth, setStoredWidth] = usePersistedState(DOCK_WIDTH_KEY, defaultDockWidth(), { syncTabs: false });
+  const [size, setSize] = useDockSize();
   const [pinned, setPinnedState] = usePersistedState(DOCK_PINNED_KEY, false, { syncTabs: false });
   const pathname = usePathname() ?? "";
   const [picked, setPicked] = useState<ChatTarget | null>(null);
@@ -100,8 +101,8 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
       setPinned,
       target,
       generation,
-      width: clampDockWidth(storedWidth),
-      setWidth: (w: number) => setStoredWidth(clampDockWidth(w)),
+      size,
+      setSize,
       show,
       close: () => setOpen(false),
       // opening from the top bar on a page that named a door lands in that page's room (the
@@ -119,8 +120,49 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
         door.current = d;
       },
     }),
-    [projectId, open, pinned, setPinned, target, generation, storedWidth, setStoredWidth, show, setOpen, select, follow, askAbout],
+    [projectId, open, pinned, setPinned, target, generation, size, setSize, show, setOpen, select, follow, askAbout],
   );
+}
+
+/** The kept size, read once storage is reachable: a first open settles it to large (dock-size.ts). */
+function useDockSize(): [DockSize, (size: DockSize) => void] {
+  const [size, setState] = useState<DockSize>("large");
+  useEffect(() => {
+    try {
+      setState(settleDockSize(window.localStorage));
+    } catch {
+      /* storage refused (private mode, quota): the panel opens large and keeps nothing */
+    }
+  }, []);
+  const set = useCallback((next: DockSize) => {
+    setState(next);
+    try {
+      window.localStorage.setItem(DOCK_SIZE_KEY, JSON.stringify(next));
+    } catch {
+      /* best-effort, as above */
+    }
+  }, []);
+  return [size, set];
+}
+
+/** The width the page and the panel share: from the page column left edge to the window right edge,
+ *  so the sidebar counts whether it is collapsed or not. Measured before paint, and again when the
+ *  window or the page column changes width. */
+export function usePageRoom(page: RefObject<HTMLElement | null>): number {
+  const [room, setRoom] = useState(() => (typeof window === "undefined" ? 0 : window.innerWidth));
+  useLayoutEffect(() => {
+    const el = page.current;
+    const measure = () => setRoom(Math.round(window.innerWidth - (el?.getBoundingClientRect().left ?? 0)));
+    measure();
+    window.addEventListener("resize", measure);
+    const watch = el && typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    if (el) watch?.observe(el);
+    return () => {
+      window.removeEventListener("resize", measure);
+      watch?.disconnect();
+    };
+  }, [page]);
+  return room;
 }
 
 export function ChatDockProvider({ value, children }: { value: ChatDockApi; children: React.ReactNode }) {

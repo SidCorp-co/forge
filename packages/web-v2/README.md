@@ -75,6 +75,9 @@ pnpm --filter web-v2 witness witness/check-times.witness.tsx --out <dir>   # scr
 ```
 
 An entry (`witness/*.witness.tsx`) stubs core's reads, mounts the component and sets
-`window.__witness` — its cases, when it is ready, and its probe. Chrome is `WITNESS_CHROME`,
+`window.__witness` — its cases, when it is ready, and its probe. An entry whose component has to be
+used rather than only looked at declares `stages` in place of the probe: each acts on the same load
+in order and is shot as `<case>-<stage>.png` (`witness/chat-dock.witness.tsx` clicks and drags the
+Ask Agent panel). Chrome is `WITNESS_CHROME`,
 else `google-chrome`. No CI job runs it: a screen change that can break at a width runs it and
 attaches what it printed.

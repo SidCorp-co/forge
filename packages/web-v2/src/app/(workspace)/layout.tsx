@@ -129,6 +129,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { selectedProject, activeOrgId, scopedProjects, pinnedIds, railSlug, railProject, railRef } =
     useShellProject(pathname);
   const dock = useChatDockState(railProject?.id ?? null);
+  const pageColumn = useRef<HTMLDivElement>(null);
   const releases = useReleases(railRef).data?.releases;
   const tourRelease = (releases?.find((r) => r.current) ?? releases?.[0])?.version ?? null; // any release carries a tour's anchors
   const needsYou = useNeedsYou(railRef).data;
@@ -255,7 +256,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       />
       <NotificationsBell open={notificationsOpen} onClose={closeNotifications} anchor={bellAnchor} />
 
-      <div className="flex min-w-0 flex-1 flex-col" data-print="frame">
+      <div ref={pageColumn} className="flex min-w-0 flex-1 flex-col" data-print="frame">
         <div className="contents" data-print="chrome">
           <ShellTopBar chatOpen={dock.open} onToggleChat={dock.toggle} />
           <PinnedTabBar
@@ -273,7 +274,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className="contents" data-print="chrome">
-        <ChatDock dock={dock} />
+        <ChatDock dock={dock} page={pageColumn} />
 
         <BottomTabBar
           items={bottomTabItems(attentionCount)}

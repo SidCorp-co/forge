@@ -5,17 +5,6 @@ export type ChatTarget =
   | { kind: "latest"; projectId: string }
   | { kind: "people" };
 
-export const DOCK_MIN_WIDTH = 360;
-export const DOCK_MAX_WIDTH = 900;
-export const DOCK_DEFAULT_WIDTH = 400;
-
-/** The panel's width before a person drags it: 400px, 380 under a 1300px window (the chat panel prototype, ISS-63). */
-export const defaultDockWidth = () =>
-  typeof window !== "undefined" && window.innerWidth < 1300 ? 380 : DOCK_DEFAULT_WIDTH;
-
-export const clampDockWidth = (w: number) =>
-  Math.round(Math.min(DOCK_MAX_WIDTH, Math.max(DOCK_MIN_WIDTH, Number.isFinite(w) ? w : DOCK_DEFAULT_WIDTH)));
-
 // the dock's scope is the project the rail has selected: with nothing picked, or a pick left over
 // from another project, it opens on this project's latest conversation rather than a fresh draft,
 // so a reload, a new tab or a project switch does not strand the conversation the person was having

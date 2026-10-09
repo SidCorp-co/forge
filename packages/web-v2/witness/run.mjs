@@ -9,8 +9,11 @@
 // An entry mounts its component over a stubbed core and sets `window.__witness` to
 // `{ cases: [{ name, width }], ready(): boolean, probe(): string[] }`: `ready` says the component has
 // drawn what the probes read, and `probe` answers one sentence per thing that is wrong. Each case is
-// one fresh load at that width; its screenshot is written to `<out>/<case>.png`. The run exits 1
-// naming every failed probe, and 2 when it could not witness at all.
+// one fresh load at that width; its screenshot is written to `<out>/<case>.png`. An entry whose
+// component has to be used, not only looked at, declares `stages: [{ name, run() }]` in place of
+// `probe`: each stage acts on the same load in order, answers (or resolves to) what is wrong after it,
+// and is shot to `<out>/<case>-<stage>.png`. The run exits 1 naming every failed probe, and 2 when
+// it could not witness at all.
 //
 // Chrome reaches no network on some boxes, so everything is a `file://` page in `<out>`; the
 // browser binary is `WITNESS_CHROME`, else `google-chrome`.
@@ -60,6 +63,8 @@ async function buildPage(entry, out) {
     loader: { ".css": "empty" },
     tsconfig: resolve(WEB, "tsconfig.json"),
     define: { "process.env.NODE_ENV": '"production"' },
+    // a package that exports its files per build (excalidraw's css) resolves the production one, as the define says
+    conditions: ["production"],
     logLevel: "error",
   });
   const postcss = load("postcss");
@@ -136,14 +141,28 @@ async function witnessCase(cdp, session, url, c, out) {
     (await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true })).result.value;
   for (let i = 0; i < 100 && !(await value("Boolean(window.__witness && window.__witness.ready())")); i++) await pause(100);
   if (!(await value("Boolean(window.__witness && window.__witness.ready())"))) return [`${c.name}: the entry never said it was ready`];
-  const failures = (await value("window.__witness.probe()")) ?? ["the entry's probe answered nothing"];
+  const failures = [];
   // a page laid out wider than its window and scaled down would measure nothing a phone shows
   const laidOut = await value("window.innerWidth");
   if (laidOut !== c.width) failures.push(`the page laid out at ${laidOut} px, not the case's ${c.width} px`);
-  const { cssContentSize } = await send("Page.getLayoutMetrics");
-  await metrics(Math.ceil(cssContentSize.height));
-  const shot = await send("Page.captureScreenshot", { format: "png" });
-  writeFileSync(resolve(out, `${c.name}.png`), Buffer.from(shot.data, "base64"));
+  const shoot = async (name) => {
+    const { cssContentSize } = await send("Page.getLayoutMetrics");
+    await metrics(Math.ceil(cssContentSize.height));
+    const shot = await send("Page.captureScreenshot", { format: "png" });
+    writeFileSync(resolve(out, `${name}.png`), Buffer.from(shot.data, "base64"));
+    await metrics(900);
+  };
+  const stages = await value("Array.isArray(window.__witness.stages) ? window.__witness.stages.map((s) => s.name) : null");
+  if (!stages) {
+    failures.push(...((await value("window.__witness.probe()")) ?? ["the entry's probe answered nothing"]));
+    await shoot(c.name);
+  } else {
+    for (const [i, stage] of stages.entries()) {
+      const wrong = (await value(`Promise.resolve(window.__witness.stages[${i}].run())`)) ?? ["the stage answered nothing"];
+      failures.push(...wrong.map((f) => `${stage}: ${f}`));
+      await shoot(`${c.name}-${stage}`);
+    }
+  }
   return failures.map((f) => `${c.name} (${c.width} px): ${f}`);
 }
 
