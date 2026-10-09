@@ -166,7 +166,13 @@ LANDED=$(git rev-parse HEAD)
 
 # ---- step 5: push ---------------------------------------------------------
 if [ "$PUSH" -eq 1 ]; then
-  git push -q origin "$RELEASE_BRANCH"
+  # The branch can land again between step 4b's fetch and this push, which is then refused as not a
+  # fast-forward. That is a refusal like any other, named, with the way back: the checkout goes back
+  # to the cut commit, whose whole suite is green, so a cut --at it merges onto the head as it is then.
+  if ! git push -q origin "$RELEASE_BRANCH"; then
+    git checkout -q -B "$RELEASE_BRANCH" "$CUT"
+    die "origin/$RELEASE_BRANCH did not take the release: it moved past $(git rev-parse --short "$TIP") after this cut last read it, or refused the push. Nothing was pushed, and $RELEASE_BRANCH is back on $(git rev-parse --short "$CUT"), the commit this cut was taken on, whose whole suite is green. Cut again with --at $CUT to merge the release onto the head as it is then."
+  fi
   [ "$RELEASE_BRANCH" = dev ] || git push -q origin "$TAG"
   PUSHED="pushed to origin"
 else
@@ -179,10 +185,14 @@ if [ "$RODE" -gt 0 ]; then
   release commit is merged onto it as $(git rev-parse --short "$LANDED"). A deploy that builds the branch head
   carries those landings, which this cut's suite did not run; the next cut's suite does."
 fi
+# The tag names the commit forge-dev serves (docs/adr/0002), which is the one pushed: the merge onto
+# the moved head where the branch landed during the wait, and the release commit only where it is
+# itself what landed. The release commit under a merge was never served, so a tag on it would name
+# a build nobody ran.
 if [ "$RELEASE_BRANCH" = dev ]; then
   DEPLOYS="Not tagged yet. Deploy this commit through the Forge release that cut $NEW;
   once https://forge-dev-api.sidcorp.co/api/version serves $LANDED:
-    git tag $TAG $RELEASE && git push origin $TAG"
+    git tag $TAG $LANDED && git push origin $TAG"
 else
   DEPLOYS="No workflow builds from this tag. core and web reach forge-beta through their
   own Coolify deploy, which this script does not trigger."

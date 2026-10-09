@@ -825,9 +825,10 @@ jobs:
           echo "whole suite green: every job succeeded"
 
   # A red whole-suite run names the merge that broke it (BC-11): it bisects the first-parent
-  # landings since the last green whole-suite run by what CI recorded on each, and names one merge
-  # and the issue it carries, or the range and every merge in it where no record separates them.
-  # It reads; it reruns and dispatches nothing.
+  # landings since the last green whole-suite run, found on any ancestor through any parent, by what
+  # CI recorded on each for the jobs that failed on their own steps, and names one merge and the
+  # issue it carries, or the range and every merge in it where no record separates them. It reads;
+  # it reruns and dispatches nothing.
   suite-bisect:
     needs: whole-suite
     if: always() && (github.event_name == 'schedule' || inputs.suite == 'whole') && needs.whole-suite.result == 'failure'
@@ -837,7 +838,7 @@ jobs:
       checks: read
       actions: read
     steps:
-      # fetch-depth: 0 — the bisect walks the branch's first-parent history back to the last green run.
+      # fetch-depth: 0 — the bisect walks the branch's history, every parent, back to the last green run.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0

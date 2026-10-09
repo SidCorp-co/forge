@@ -21,6 +21,7 @@ import { ROOT } from './lib/gate.mjs';
 import {
   bisect,
   bisectReport,
+  brokenJobs,
   dispatchCommand,
   evidenceOf,
   failingJobs,
@@ -29,8 +30,8 @@ import {
   HISTORY_LIMIT,
   issuesOf,
   lastGreen,
-  SUITE_REPORTERS,
   suiteState,
+  unjudgedJobs,
 } from './lib/whole-suite.mjs';
 
 const USAGE =
@@ -129,6 +130,28 @@ function ghReader(repo) {
   };
 }
 
+function workflowText() {
+  try {
+    return readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8');
+  } catch (e) {
+    throw new CannotRead(`cannot read .github/workflows/ci.yml: ${e.message}`);
+  }
+}
+
+/**
+ * The jobs a whole-suite run does not judge, from the ci.yml this checkout holds, which is the one
+ * the run read: a cut checks out the commit it cuts, and the bisect job checks out the red commit.
+ */
+function unjudged() {
+  const set = unjudgedJobs(workflowText());
+  if (set === null) {
+    throw new CannotRead(
+      'cannot read which jobs a whole-suite run judges: .github/workflows/ci.yml has no `jobs:` or no `whole-suite` job with a flow-list `needs: [...]`',
+    );
+  }
+  return set;
+}
+
 /** How long a run just asked for may take to show on the commit before the ask counts as lost. */
 const SHOW_UP_MS = 3 * 60_000;
 
@@ -159,6 +182,7 @@ function gate({ commit, branch, dispatch, wait, poll }) {
   const sha = git(['rev-parse', '--verify', `${commit}^{commit}`]);
   const at = sha.slice(0, 9);
   const reader = ghReader(repository());
+  const outside = unjudged();
   const deadline = Date.now() + waitMs;
   const did = [];
   let asked = null;
@@ -169,7 +193,7 @@ function gate({ commit, branch, dispatch, wait, poll }) {
   };
   for (;;) {
     reader.fresh();
-    const status = suiteState(reader, sha);
+    const status = suiteState(reader, sha, outside);
     const verdict = gateVerdict(status);
     if (verdict.ok) {
       for (const line of did) console.log(line);
@@ -254,42 +278,59 @@ function bisectRed({ commit, run: runArg }) {
   if (!runId) cannot('bisect needs --run, or GITHUB_RUN_ID, to read which jobs failed');
   const red = git(['rev-parse', '--verify', `${commit}^{commit}`]);
   const reader = ghReader(repository());
+  const outside = unjudged();
   const jobs = reader.jobs(runId);
-  const failing = failingJobs(jobs);
-  const failingNames = jobs
-    .filter((j) => !SUITE_REPORTERS.includes(j.name) && j.conclusion !== 'success')
-    .map((j) => j.name);
-  const history = git([
-    'rev-list',
-    '--first-parent',
-    `--max-count=${HISTORY_LIMIT + 1}`,
-    red,
-  ]).split('\n');
-  const ancestors = history.slice(1);
-  const green = lastGreen(reader, ancestors);
-  const span = green === null ? history : history.slice(0, history.indexOf(green));
-  const landings = span.reverse().map(landing);
-  const result = bisect(landings, (sha) =>
-    sha === red ? 'bad' : evidenceOf(reader.checkRuns(sha), failingNames),
-  );
-  const report = bisectReport({ red, failing, green, result, searched: ancestors.length });
+  const failing = failingJobs(jobs, outside);
+  const broken = brokenJobs(jobs, outside);
+  let green = null;
+  let result = null;
+  let searched = 0;
+  if (broken.length > 0) {
+    // The window is the last HISTORY_LIMIT first-parent landings; the green run is looked for on
+    // every commit they brought in, through any parent, the oldest landing included.
+    const history = git([
+      'rev-list',
+      '--first-parent',
+      `--max-count=${HISTORY_LIMIT + 1}`,
+      red,
+    ]).split('\n');
+    const oldest = history[history.length - 1];
+    const brought = git(['rev-list', `${red}^@`, `^${oldest}`]);
+    const ancestors = [...(brought ? brought.split('\n') : []), oldest].filter((s) => s !== red);
+    const holds = (a, b) => {
+      if (a === b) return true;
+      const r = run('git', ['merge-base', '--is-ancestor', b, a]);
+      if (r.status !== 0 && r.status !== 1) {
+        throw new CannotRead(`git merge-base --is-ancestor ${b} ${a}: ${r.stderr.trim()}`);
+      }
+      return r.status === 0;
+    };
+    const found = lastGreen(reader, { landings: history, ancestors, holds });
+    green = found?.green ?? null;
+    searched = history.length - 1;
+    const span = found === null ? history : history.slice(0, found.index);
+    const landings = span.reverse().map(landing);
+    result = bisect(landings, (sha) =>
+      sha === red ? 'bad' : evidenceOf(reader.checkRuns(sha), broken),
+    );
+  }
+  const report = bisectReport({ red, failing, green, result, searched, runId });
   console.log(report);
   if (process.env.GITHUB_STEP_SUMMARY) {
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Whole suite red\n\n${report}\n`);
   }
-  const named = result.named
-    ? `the merge that broke it is ${result.named.sha.slice(0, 9)} (${result.named.issues.join(', ') || 'names no issue'})`
-    : `no single merge is named; ${result.range.length} are in range (see the job summary)`;
+  const named = !result
+    ? 'no job failed on its own steps, so no merge is named: rerun it'
+    : result.named
+      ? `the merge that broke it is ${result.named.sha.slice(0, 9)} (${result.named.issues.join(', ') || 'names no issue'})`
+      : `no single merge is named; ${result.range.length} are in range (see the job summary)`;
   console.log(`::error title=Whole suite red::${named}`);
   return 0;
 }
 
 function fanout({ 'ran-on': ranOn }) {
   if (!ranOn) cannot(`fanout needs --ran-on\n${USAGE}`);
-  const targets = fanoutTargets(
-    readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8'),
-    ranOn,
-  );
+  const targets = fanoutTargets(workflowText(), ranOn);
   if (targets === null) cannot('cannot read the gated branches from ci.yml on.push.branches');
   const reader = ghReader(repository());
   const failed = [];

@@ -19,8 +19,50 @@ export const SUITE_REPORTERS = ['whole-suite', 'suite-bisect', 'nightly-fanout',
 /** The refusal a cut answers with when its commit has no green whole-suite run. */
 export const REFUSAL = 'RELEASE_SUITE_NOT_GREEN';
 
-/** How far back the first-parent history is searched for the last green whole-suite run. */
+/** How many first-parent landings back the bisect looks for the last green whole-suite run. */
 export const HISTORY_LIMIT = 100;
+
+/** One top-level job's block of a workflow, up to the next job, or null. */
+function jobBlock(ciText, id) {
+  const text = String(ciText ?? '');
+  const at = text.indexOf(`\n  ${id}:\n`);
+  if (at === -1) return null;
+  const rest = text.slice(at + 1);
+  const next = rest.slice(1).search(/\n {2}[\w-]+:\n/);
+  return next === -1 ? rest : rest.slice(0, next + 1);
+}
+
+/**
+ * The jobs of ci.yml a whole-suite run does not judge, by job id: every job its `whole-suite` job
+ * does not need. That is the reporters and `merge-check`, dev's merge path, which every whole-suite
+ * run skips by design (ISS-472); a skip there says nothing about the suite, so it is never a reason
+ * the suite went red and never a job to bisect (ISS-471's judge, comment 49f4b0cd). Null where the
+ * jobs or the aggregate's `needs` cannot be read: a caller refuses rather than reading every job.
+ */
+export function unjudgedJobs(ciText) {
+  const text = String(ciText ?? '');
+  const jobsAt = text.indexOf('\njobs:\n');
+  const aggregate = jobBlock(text, WHOLE_SUITE_CHECK);
+  const needs = aggregate && /^ {4}needs:\s*\[([^\]]*)\]/m.exec(aggregate);
+  if (jobsAt === -1 || !needs) return null;
+  const ids = [...text.slice(jobsAt).matchAll(/^ {2}([\w-]+):\s*$/gm)].map((m) => m[1]);
+  const judged = new Set(
+    needs[1]
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  return new Set(ids.filter((id) => !judged.has(id)));
+}
+
+/**
+ * The job id a job of a run carries: its name, less the matrix values GitHub appends
+ * (`runner-platforms (windows-latest)` is `runner-platforms`). ci.yml gives no job a `name:` of its
+ * own, so the name is the id; one that did would read as judged, and be named, never dropped.
+ */
+const jobIdOf = (name) => String(name).replace(/ \(.*\)$/, '');
+
+const judged = (unjudged) => (j) => !unjudged.has(jobIdOf(j.name));
 
 const EVENTS_THAT_RUN_THE_SUITE = new Set(['schedule', 'workflow_dispatch']);
 
@@ -56,10 +98,14 @@ function runUrlOf(htmlUrl) {
   return m ? m[1] : (htmlUrl ?? null);
 }
 
-/** The jobs of a run that did not succeed, by name, the reporters left out. */
-export function failingJobs(jobs) {
+/**
+ * The reasons a whole-suite run went red: each job it judges that did not succeed, a skipped one
+ * included (a whole suite that skipped a job did not run the whole suite), with its conclusion.
+ * `unjudged` is `unjudgedJobs(ci.yml)`.
+ */
+export function failingJobs(jobs, unjudged) {
   return jobs
-    .filter((j) => !SUITE_REPORTERS.includes(j.name))
+    .filter(judged(unjudged))
     .filter((j) => j.conclusion !== 'success')
     .map((j) => `${j.name} (${j.conclusion ?? j.status ?? 'unknown'})`);
 }
@@ -71,9 +117,21 @@ export function failingJobs(jobs) {
  */
 const FAILED_ON_ITS_OWN = new Set(['failure', 'timed_out']);
 
+/**
+ * The jobs a red whole-suite run is bisected on, by name: each one it judges that failed on its own
+ * steps. A cancelled or skipped job recorded nothing about the code, so no landing can be told good
+ * or bad by it.
+ */
+export function brokenJobs(jobs, unjudged) {
+  return jobs
+    .filter(judged(unjudged))
+    .filter((j) => FAILED_ON_ITS_OWN.has(j.conclusion))
+    .map((j) => j.name);
+}
+
 /** Whether any job of the suite failed on its own steps, rather than being cancelled or skipped. */
-export function failedOnATest(jobs) {
-  return jobs.some((j) => !SUITE_REPORTERS.includes(j.name) && FAILED_ON_ITS_OWN.has(j.conclusion));
+export function failedOnATest(jobs, unjudged) {
+  return brokenJobs(jobs, unjudged).length > 0;
 }
 
 /**
@@ -85,9 +143,10 @@ export function failedOnATest(jobs) {
  * reads `running`, whether or not it is a whole-suite run and whether or not an older one was red:
  * it is told apart only once its jobs finish (a rerun of a red one keeps its run id, and its new
  * whole-suite check appears only when every job it waits on has), and starting another beside it
- * doubles the cost of a question one run answers.
+ * doubles the cost of a question one run answers. A red run's reasons are the jobs it judges
+ * (`unjudged` is `unjudgedJobs(ci.yml)`).
  */
-export function suiteState(reader, sha) {
+export function suiteState(reader, sha, unjudged) {
   const check = newest(reader.checkRuns(sha), WHOLE_SUITE_CHECK);
   if (check?.conclusion === 'success') {
     return { state: 'green', sha, url: runUrlOf(check.html_url) };
@@ -110,8 +169,8 @@ export function suiteState(reader, sha) {
     runId,
     checkId: check.id,
     conclusion: check.conclusion,
-    failing: failingJobs(jobs),
-    onATest: failedOnATest(jobs),
+    failing: failingJobs(jobs, unjudged),
+    onATest: failedOnATest(jobs, unjudged),
   };
 }
 
@@ -169,12 +228,31 @@ export function gateVerdict(status) {
   }
 }
 
-/** The last green whole-suite run among `ancestors` (newest first), or null within the limit. */
-export function lastGreen(reader, ancestors) {
-  for (const sha of ancestors.slice(0, HISTORY_LIMIT)) {
-    if (newest(reader.checkRuns(sha), WHOLE_SUITE_CHECK)?.conclusion === 'success') return sha;
+/**
+ * Where the suspects start: the green whole-suite run that holds the newest of the red commit's
+ * first-parent landings, or null where none in the window does.
+ *
+ * `history.landings` is the red commit's first-parent history, newest first and the red commit
+ * itself first; `history.ancestors` every commit those landings brought in, through any parent,
+ * newest first; `history.holds(a, b)` whether commit `b` is `a` or an ancestor of it. A green run
+ * counts wherever it sits, not only on the first-parent line: a merge of `origin/dev` into a local
+ * `dev` puts the branch's own line second, and a green run there (6885f4552, reaching 00176acd7
+ * through the second parent of 0f5c17610) holds every landing it reaches, which are then no
+ * suspect (ISS-471's judge, comment 49f4b0cd). Answers `{ green, index }`, `index` the newest
+ * landing `green` holds.
+ */
+export function lastGreen(reader, { landings, ancestors, holds }) {
+  let best = null;
+  for (const sha of ancestors) {
+    // A commit the best green's landing already holds holds no newer landing than it.
+    if (best && holds(landings[best.index], sha)) continue;
+    if (newest(reader.checkRuns(sha), WHOLE_SUITE_CHECK)?.conclusion !== 'success') continue;
+    const before = best ? best.index : landings.length;
+    const index = landings.findIndex((l, i) => i > 0 && i < before && holds(sha, l));
+    if (index !== -1) best = { green: sha, index };
+    if (best?.index === 1) break;
   }
-  return null;
+  return best;
 }
 
 /**
@@ -234,12 +312,18 @@ function landingLine(l) {
   return `${short(l.sha)} ${l.subject} (${issues.length > 0 ? issues.join(', ') : 'names no issue'})`;
 }
 
-/** The sentence a red whole-suite run leaves, naming the merge or the range. */
-export function bisectReport({ red, failing, green, result, searched }) {
+/**
+ * The sentence a red whole-suite run leaves, naming the merge or the range. With no `result` no job
+ * failed on its own steps, so there is nothing to bisect and no merge is named: a rerun settles it.
+ */
+export function bisectReport({ red, failing, green, result, searched, runId }) {
   const head = `The whole suite went red on ${short(red)}: ${failing.length > 0 ? failing.join(', ') : 'no failing job was read'}.`;
+  if (!result) {
+    return `${head}\nNo job failed on its own steps, so no merge is named: a rerun settles it, not a fix (${rerunCommand(runId)}).`;
+  }
   const since = green
     ? `Last green whole-suite run: ${short(green)}.`
-    : `No green whole-suite run in the last ${searched} first-parent commits, so the range runs from the oldest of them.`;
+    : `No green whole-suite run on any commit the last ${searched} first-parent landings brought in, so the range runs from the oldest of them.`;
   if (result.named) {
     return `${head}\n${since}\nThe merge that broke it: ${landingLine(result.named)}.`;
   }

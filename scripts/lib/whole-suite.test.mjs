@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   bisect,
+  bisectReport,
+  brokenJobs,
   evidenceOf,
   failedOnATest,
   failingJobs,
@@ -18,11 +20,13 @@ import {
   lastGreen,
   SUITE_REPORTERS,
   suiteState,
+  unjudgedJobs,
 } from './whole-suite.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CI = readFileSync(join(HERE, '../../.github/workflows/ci.yml'), 'utf8');
 const WHOLE = "github.event_name == 'schedule' || inputs.suite == 'whole'";
+const UNJUDGED = unjudgedJobs(CI);
 
 const check = (name, status, conclusion, id = 1, runId = 900, slug = 'github-actions') => ({
   id,
@@ -41,7 +45,7 @@ function reader({ checkRuns = {}, runs = {}, jobs = {} } = {}) {
   };
 }
 
-const stateOf = (plan) => suiteState(reader(plan), 'a').state;
+const stateOf = (plan) => suiteState(reader(plan), 'a', UNJUDGED).state;
 
 /** One top-level job's block of ci.yml, up to the next job. */
 function job(name) {
@@ -73,9 +77,10 @@ describe('where the whole suite stands on a commit', () => {
       { name: 'docs', conclusion: 'skipped' },
       { name: 'web', conclusion: 'success' },
       { name: 'whole-suite', conclusion: 'failure' },
+      { name: 'merge-check', conclusion: 'skipped' },
     ];
     const checkRuns = { a: [check('whole-suite', 'completed', 'failure', 2, 77)] };
-    const red = suiteState(reader({ checkRuns, jobs: { 77: jobs } }), 'a');
+    const red = suiteState(reader({ checkRuns, jobs: { 77: jobs } }), 'a', UNJUDGED);
     expect(red).toMatchObject({ state: 'red', failing: ['core (failure)', 'docs (skipped)'] });
 
     expect(stateOf({ checkRuns: { a: [check('whole-suite', 'in_progress', null)] } })).toBe(
@@ -98,7 +103,67 @@ describe('where the whole suite stands on a commit', () => {
 
   it('the reporters are not counted as the suite', () => {
     const reporters = SUITE_REPORTERS.map((name) => ({ name, conclusion: 'failure' }));
-    expect(failingJobs(reporters)).toEqual([]);
+    expect(failingJobs(reporters, UNJUDGED)).toEqual([]);
+  });
+});
+
+describe('a job a whole-suite run does not judge is no reason it went red, and nothing to bisect', () => {
+  // Run 37949879909 on 00176acd7, as GitHub recorded it: the Windows leg failed, and merge-check,
+  // dev's merge path, was skipped by design, as in every whole-suite run since ISS-472.
+  const jobs = [
+    { name: 'changes', conclusion: 'success' },
+    { name: 'nightly-fanout', conclusion: 'skipped' },
+    { name: 'core', conclusion: 'success' },
+    { name: 'runner-platforms (windows-latest)', conclusion: 'failure' },
+    { name: 'runner-platforms (macos-latest)', conclusion: 'success' },
+    { name: 'merge-check', conclusion: 'skipped' },
+    { name: 'ci-passed', conclusion: 'success' },
+    { name: 'whole-suite', conclusion: 'failure' },
+    { name: 'suite-bisect', conclusion: 'success' },
+  ];
+
+  it('the jobs not judged are read from ci.yml: every job the whole-suite job does not need', () => {
+    expect([...UNJUDGED].sort()).toEqual([...SUITE_REPORTERS, 'merge-check'].sort());
+    expect(unjudgedJobs('jobs:\n  a:\n    runs-on: x\n')).toBe(null);
+    expect(unjudgedJobs('name: CI\n')).toBe(null);
+  });
+
+  it('merge-check, skipped, is neither a reason nor bisected; the failed leg is both', () => {
+    expect(failingJobs(jobs, UNJUDGED)).toEqual(['runner-platforms (windows-latest) (failure)']);
+    expect(brokenJobs(jobs, UNJUDGED)).toEqual(['runner-platforms (windows-latest)']);
+  });
+
+  it('a judged job that was skipped or cancelled is a reason the suite went red, but not bisected', () => {
+    const more = [
+      ...jobs,
+      { name: 'web', conclusion: 'skipped' },
+      { name: 'docs', conclusion: 'cancelled' },
+      { name: 'core-integration', conclusion: 'timed_out' },
+    ];
+    expect(failingJobs(more, UNJUDGED)).toEqual([
+      'runner-platforms (windows-latest) (failure)',
+      'web (skipped)',
+      'docs (cancelled)',
+      'core-integration (timed_out)',
+    ]);
+    expect(brokenJobs(more, UNJUDGED)).toEqual([
+      'runner-platforms (windows-latest)',
+      'core-integration',
+    ]);
+  });
+
+  it('a red run no job of which failed on its own steps names no merge, and says rerun', () => {
+    const report = bisectReport({
+      red: '00176acd78c7',
+      failing: ['runner-platforms (macos-latest) (cancelled)'],
+      green: null,
+      result: null,
+      searched: 0,
+      runId: 37949879909,
+    });
+    expect(report).toContain('No job failed on its own steps, so no merge is named');
+    expect(report).toContain('gh run rerun 37949879909 --failed');
+    expect(report).not.toContain('The merge that broke it');
   });
 });
 
@@ -109,7 +174,7 @@ describe('a whole-suite check concluded skipped is no record', () => {
   const skipped = (id = 5) => check('whole-suite', 'completed', 'skipped', id, 950);
 
   it('the gate reads a commit carrying only a skipped one as having no run, so the cut starts one', () => {
-    const s = suiteState(reader({ checkRuns: { a: [skipped()] } }), 'a');
+    const s = suiteState(reader({ checkRuns: { a: [skipped()] } }), 'a', UNJUDGED);
     expect(s.state).toBe('none');
     expect(gateVerdict(s).dispatch).toBe(true);
   });
@@ -136,7 +201,8 @@ describe('a whole-suite check concluded skipped is no record', () => {
   });
 
   it('it is never the last green', () => {
-    expect(lastGreen(reader({ checkRuns: { b: [skipped()] } }), ['b'])).toBe(null);
+    const history = { landings: ['r', 'b'], ancestors: ['b'], holds: (x, y) => x === y };
+    expect(lastGreen(reader({ checkRuns: { b: [skipped()] } }), history)).toBe(null);
   });
 });
 
@@ -164,11 +230,16 @@ describe('a cut on a commit (RELEASE_SUITE_NOT_GREEN)', () => {
   });
 
   it('a failure or a timeout is a failure on its own steps; cancelled, skipped and the reporters are not', () => {
-    expect(failedOnATest([{ name: 'core', conclusion: 'failure' }])).toBe(true);
-    expect(failedOnATest([{ name: 'web', conclusion: 'timed_out' }])).toBe(true);
+    expect(failedOnATest([{ name: 'core', conclusion: 'failure' }], UNJUDGED)).toBe(true);
+    expect(failedOnATest([{ name: 'web', conclusion: 'timed_out' }], UNJUDGED)).toBe(true);
     const none = ['cancelled', 'skipped', 'startup_failure', 'success'];
-    expect(failedOnATest(none.map((conclusion) => ({ name: 'core', conclusion })))).toBe(false);
-    expect(failedOnATest([{ name: 'whole-suite', conclusion: 'failure' }])).toBe(false);
+    expect(
+      failedOnATest(
+        none.map((conclusion) => ({ name: 'core', conclusion })),
+        UNJUDGED,
+      ),
+    ).toBe(false);
+    expect(failedOnATest([{ name: 'whole-suite', conclusion: 'failure' }], UNJUDGED)).toBe(false);
   });
 
   it('a rerun of a red run in flight reads running, so the cut waits on it', () => {
@@ -232,7 +303,13 @@ describe('bisecting a red run by what CI recorded', () => {
     expect(evidenceOf([check('core', 'completed', 'skipped')], ['core'])).toBe(null);
   });
 
-  it('the last green whole-suite run is the newest ancestor carrying one', () => {
+  /** A graph by each commit's parents; `holds(a, b)` walks every parent, as git does. */
+  const graph = (parents) => {
+    const holds = (a, b) => a === b || (parents[a] ?? []).some((p) => holds(p, b));
+    return holds;
+  };
+
+  it('on a straight line, the last green is the newest landing carrying one', () => {
     const r = reader({
       checkRuns: {
         c: [check('core', 'completed', 'success')],
@@ -240,8 +317,92 @@ describe('bisecting a red run by what CI recorded', () => {
         a: [check('whole-suite', 'completed', 'success')],
       },
     });
-    expect(lastGreen(r, ['c', 'b', 'a'])).toBe('b');
-    expect(lastGreen(reader(), ['c', 'b'])).toBe(null);
+    const holds = graph({ r: ['c'], c: ['b'], b: ['a'] });
+    const history = { landings: ['r', 'c', 'b', 'a'], ancestors: ['c', 'b', 'a'], holds };
+    expect(lastGreen(r, history)).toEqual({ green: 'b', index: 2 });
+    expect(lastGreen(reader(), history)).toBe(null);
+  });
+
+  // dev's graph around 00176acd7 (run 37949879909): the agent merged origin/previews-core (6599553c8,
+  // the breaking merge) onto its own line, then merged origin/dev (0f5c17610), whose second parent
+  // 6885f4552 carries a green whole-suite run and fixed the Windows leg dd16bbfe7 had broken. The
+  // first-parent line meets only the older green on 176fbddaa. Abridged: c25ca259b's second
+  // parent, and the landings between ed76e3cce and dd16bbfe7, are left out.
+  const live = {
+    '00176acd7': ['b8b710fa7', '0e697e0dc'],
+    b8b710fa7: ['b38f83899'],
+    b38f83899: ['0f5c17610', 'afe9b4d77'],
+    '0f5c17610': ['6599553c8', '6885f4552'],
+    '6599553c8': ['8ba9b17e3', '8efc65766'],
+    '8efc65766': ['ae7a74d6b'],
+    ae7a74d6b: ['dd16bbfe7'],
+    '0e697e0dc': ['0f5c17610', '3885c1663'],
+    '3885c1663': ['6885f4552'],
+    '6885f4552': ['ad95727a4'],
+    ad95727a4: ['8ba9b17e3'],
+    afe9b4d77: ['ed76e3cce'],
+    '8ba9b17e3': ['c25ca259b'],
+    c25ca259b: ['ed76e3cce'],
+    ed76e3cce: ['dd16bbfe7'],
+    dd16bbfe7: ['176fbddaa'],
+  };
+  const liveHistory = {
+    landings: [
+      '00176acd7',
+      'b8b710fa7',
+      'b38f83899',
+      '0f5c17610',
+      '6599553c8',
+      '8ba9b17e3',
+      'c25ca259b',
+      'ed76e3cce',
+      'dd16bbfe7',
+      '176fbddaa',
+    ],
+    ancestors: [
+      'b8b710fa7',
+      '0e697e0dc',
+      '3885c1663',
+      'b38f83899',
+      'afe9b4d77',
+      '0f5c17610',
+      '6885f4552',
+      'ad95727a4',
+      '6599553c8',
+      '8efc65766',
+      'ae7a74d6b',
+      '8ba9b17e3',
+      'c25ca259b',
+      'ed76e3cce',
+      'dd16bbfe7',
+      '176fbddaa',
+    ],
+    holds: graph(live),
+  };
+
+  it('a green reached through the second parent of a merge of origin/dev is the last green, and what it holds is no suspect', () => {
+    const r = reader({
+      checkRuns: {
+        '6885f4552': [check('whole-suite', 'completed', 'success', 1, 37946526345)],
+        dd16bbfe7: [check('whole-suite', 'completed', 'failure', 2, 37939100373)],
+        '176fbddaa': [check('whole-suite', 'completed', 'success', 3, 37892678039)],
+      },
+    });
+    const found = lastGreen(r, liveHistory);
+    expect(found).toEqual({ green: '6885f4552', index: 5 });
+    expect(liveHistory.landings.slice(0, found.index)).toContain('6599553c8');
+    expect(liveHistory.landings.slice(0, found.index)).not.toContain('dd16bbfe7');
+  });
+
+  it('a green on a side line that holds no newer landing does not move the start', () => {
+    const r = reader({
+      checkRuns: {
+        afe9b4d77: [check('whole-suite', 'completed', 'success', 1)],
+        '6885f4552': [check('whole-suite', 'completed', 'success', 2)],
+      },
+    });
+    // afe9b4d77 holds ed76e3cce (index 7); 6885f4552 holds 8ba9b17e3 (index 5), the newer one.
+    expect(lastGreen(r, liveHistory)).toEqual({ green: '6885f4552', index: 5 });
   });
 
   it('a landing names its issues from its subject, its branch, or what it merged in', () => {

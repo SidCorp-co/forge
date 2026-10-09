@@ -991,7 +991,7 @@ last green run (ISS-471's independent judge, comment 9da9b859).
 | Act | Where it runs | What it reads | What it answers |
 |---|---|---|---|
 | `gate --commit <sha> --branch <b> [--dispatch [--wait <min> --poll <s>]]` | `cut-release.sh` step 1b, on the box cutting | the `whole-suite` check on the commit; the CI runs in flight on it; a red run's jobs | 0 green · 1 `RELEASE_SUITE_NOT_GREEN` · 2 could not read |
-| `bisect --commit <sha> --run <id>` | `suite-bisect`, on a red whole-suite run | the run's failing jobs; the first-parent landings since the last green whole-suite run, and the check runs recorded on each | the merge that broke it and the issue it names, or the range and every merge in it |
+| `bisect --commit <sha> --run <id>` | `suite-bisect`, on a red whole-suite run | the run's jobs that failed on their own steps; the last green whole-suite run on any commit the branch's last first-parent landings brought in; the check runs recorded on each landing since | the merge that broke it and the issue it names, or the range and every merge in it |
 | `fanout --ran-on <branch>` | `nightly-fanout`, on a schedule | `on.push.branches` of `ci.yml` | a whole-suite dispatch onto every other gated branch |
 
 **A cut ends green or red, not "come back later".** `cut-release.sh` runs the gate with
@@ -1007,20 +1007,42 @@ with no run, every time, on a branch that lands several commits an hour, so it n
   passed and is merged onto the branch's head, head first, so the first-parent history stays the
   branch's landings. A conflict refuses by name and pushes nothing. The cut says how many landings
   rode along: a deploy that builds the branch head carries them, untested by this cut's suite; the
-  next cut's suite tests them before the release that claims them.
+  next cut's suite tests them before the release that claims them. The tag hint names the commit
+  the cut pushed, which is what forge-dev serves (`docs/adr/0002`): the merge onto the moved head,
+  and the release commit only where nothing landed during the wait.
 - **`--at <sha>`** cuts on an earlier commit of the branch, so a cut stopped while waiting (a tool
   time limit, a lost session) goes on waiting on the run it started instead of starting one on a
   newer head. A dispatch runs on the head, so `--at` on a commit with no run is refused.
 - **`--no-push` is a rehearsal**: it reads, refuses as a cut would, and starts and reruns nothing.
-- **A refused cut after a batch has claimed its roster.** With the wait, only a red on a test (or
-  an unreadable GitHub, or a run the wait outlasted) refuses. A release run that aborts on it with
-  `pushed: false`, `carried: []` and a person's blocker holds the roster, which stops an `on-land`
+- **A refused cut after a batch has claimed its roster.** With the wait, these are the refusals the
+  gate and the landing still meet:
+  - a red on a test;
+  - GitHub that cannot be read;
+  - a run the wait outlasted;
+  - a rerun that came back red the same way;
+  - a dispatch or a rerun that GitHub refused, or that never showed on the cut commit;
+  - `--at` on a commit with no run that is no longer the head;
+  - a release commit that does not merge onto the moved head;
+  - a head that no longer holds the cut commit;
+  - a push the branch refused because it landed again after the merge, which puts the checkout back
+    on the cut commit and says to cut again with `--at` it.
+
+  Every one takes the same way out: a release run that aborts on it with `pushed: false`, `carried: []` and a person's blocker holds the roster, which stops an `on-land`
   project re-cutting it every sweep tick; the first release that ships a later commit closes the held
   rows against itself (`packages/core/src/release-batch/shipped-earlier.ts:closeShippedEarlier`), so no person has to
   act once the fix ships.
 
-**The bisect reads, it reruns nothing.** A landing reads good on a green whole-suite run, or where
-every failing job recorded success on it; bad where a failing job recorded failure. A red
+**The bisect reads, it reruns nothing.** It bisects only the jobs of the red run that failed on
+their own steps (`failure`, `timed_out`) and that the run judges: every job the `whole-suite` job
+needs, read from `ci.yml` (`lib/whole-suite.mjs:unjudgedJobs`). `merge-check` is skipped in every
+whole-suite run by design, so it is neither bisected nor named as a reason the suite went red; on dev
+an old `merge-check` failure ended the range at the wrong merge (ISS-471's judge, comment
+49f4b0cd). A red run with no job failed on its own steps names no merge and says rerun. The last
+green whole-suite run is looked for on every commit the window of first-parent landings brought in,
+through any parent: a merge of `origin/dev` into a local `dev` puts the branch's own line second,
+and a green run there holds every landing it reaches, which are then no suspect. A landing reads
+good on a green whole-suite run, or where every failing job recorded success on it; bad where a
+failing job recorded failure. A red
 whole-suite run is not read as bad by itself: it may be red for a job that is not failing now, or
 for a cancelled leg, so its jobs' own checks on the commit are read as on any other run. A check of
 another name is not read, since a merge check runs a selection and may not have run the test now

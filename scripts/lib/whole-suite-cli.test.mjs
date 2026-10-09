@@ -1,4 +1,6 @@
 // @direct-test-of .github/workflows/ci.yml
+// @direct-test-of scripts/whole-suite.mjs
+// @direct-test-of scripts/cut-release.sh
 // @gate-input whole-tree — it runs scripts/cut-release.sh under bash, which the guard cannot see
 // into.
 // The whole suite's shells, run as written: ci.yml's aggregate step, and its two doors against a
@@ -27,6 +29,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const CI = readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8');
 const AGGREGATE_NEEDS = /\n {2}whole-suite:\n[\s\S]*?needs:\s*\[([^\]]*)\]/;
 const COPIED = [
+  '.github/workflows/ci.yml',
   'scripts/cut-release.sh',
   'scripts/whole-suite.mjs',
   'scripts/lib/whole-suite.mjs',
@@ -201,6 +204,7 @@ const redOnCore = (sha, runId = 901) => ({
       { name: 'core', conclusion: 'success' },
       { name: 'web', conclusion: 'failure' },
       { name: 'runner-platforms (windows-latest)', conclusion: 'skipped' },
+      { name: 'merge-check', conclusion: 'skipped' },
       { name: 'whole-suite', conclusion: 'failure' },
     ],
   },
@@ -240,8 +244,11 @@ describe('cut-release.sh cuts only on a commit whose whole suite is green (RELEA
       expect.arrayContaining(['ref=dev', 'inputs[base]=dev', 'inputs[suite]=whole']),
     );
     expect(versionOf(repo)).toBe('0.4.0-dev.2');
-    expect(originHead(repo)).toBe(git(repo.work, 'rev-parse', 'HEAD'));
+    const release = git(repo.work, 'rev-parse', 'HEAD');
+    expect(originHead(repo)).toBe(release);
     expect(git(repo.work, 'rev-parse', 'HEAD^')).toBe(head);
+    // Nothing landed during the wait, so the release commit is itself what was pushed and served.
+    expect(r.stdout).toContain(`git tag dev-v0.4.0-dev.2 ${release} && git push`);
   });
 
   it('only a skipped whole-suite check on the commit (a run that was not a whole-suite run): read as none, so one is started', () => {
@@ -312,6 +319,7 @@ describe('cut-release.sh cuts only on a commit whose whole suite is green (RELEA
     expect(r.stderr).toContain('web (failure), runner-platforms (windows-latest) (skipped)');
     expect(r.stderr).toContain('Land the fix');
     expect(r.stderr).not.toContain('whole-suite (failure)');
+    expect(r.stderr).not.toContain('merge-check');
     expect(dispatches(calls())).toHaveLength(1);
     expect(reruns(calls())).toHaveLength(0);
     expect(versionOf(repo)).toBe('0.4.0-dev.1');
@@ -446,7 +454,9 @@ describe('a cut finishes on a branch that moves while its whole suite runs', () 
     );
     expect(r.stdout).toContain('dev landed 1 commit(s) past');
     expect(r.stdout).toContain(`serves ${tip}`);
-    expect(r.stdout).toContain(`git tag dev-v0.4.0-dev.2 ${second}`);
+    // The tag names the merge forge-dev serves, never the release commit under it (docs/adr/0002).
+    expect(r.stdout).toContain(`git tag dev-v0.4.0-dev.2 ${tip} && git push`);
+    expect(r.stdout).not.toContain(`git tag dev-v0.4.0-dev.2 ${second}`);
   });
 
   it('--at goes on waiting on the run an earlier attempt started, after the head moved, and starts none', () => {
@@ -481,6 +491,48 @@ describe('a cut finishes on a branch that moves while its whole suite runs', () 
     expect(r.status).toBe(1);
     expect(r.stderr).toContain(`${first.slice(0, 9)} is no longer the head of dev`);
     expect(posts(calls())).toHaveLength(0);
+  });
+
+  it('a landing between the merge and the push: refused by name, nothing pushed, and --at the cut commit then lands', () => {
+    const repo = repository();
+    const head = git(repo.work, 'rev-parse', 'HEAD');
+    const other = lander(repo, 'late.txt');
+    // The pre-push hook lands a commit on origin from another clone, as dev does at any moment, so
+    // the cut's push is no longer a fast-forward.
+    const hook = join(repo.work, '.git/hooks/pre-push');
+    writeFileSync(
+      hook,
+      [
+        '#!/usr/bin/env bash',
+        'unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE',
+        `cd '${other.cwd}'`,
+        'git pull -q origin dev',
+        "echo late > late.txt && git add -A && git commit -q -m 'ISS-78: a late landing'",
+        'git push -q origin dev',
+        '',
+      ].join('\n'),
+    );
+    chmodSync(hook, 0o755);
+    const green = { checkRuns: { [head]: [check('whole-suite', 'completed', 'success', 8, 902)] } };
+    const { env } = withStub(repo, green);
+    const r = cut(repo, env);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('origin/dev did not take the release');
+    expect(r.stderr).toContain('Nothing was pushed');
+    expect(r.stderr).toContain(`Cut again with --at ${head}`);
+    expect(git(repo.top, '--git-dir=origin.git', 'log', '-1', '--format=%s', 'dev')).toBe(
+      'ISS-78: a late landing',
+    );
+    expect(git(repo.work, 'rev-parse', 'dev')).toBe(head);
+
+    rmSync(hook);
+    const again = cut(repo, env, '--at', head);
+    expect(again.stderr).toBe('');
+    expect(again.status).toBe(0);
+    const tip = originHead(repo);
+    expect(git(repo.work, 'log', '-1', '--format=%s', `${tip}^1`)).toBe('ISS-78: a late landing');
+    expect(git(repo.work, 'rev-parse', `${tip}^2^`)).toBe(head);
+    expect(again.stdout).toContain(`git tag dev-v0.4.0-dev.2 ${tip} && git push`);
   });
 
   it('a landing that touched a fragment the release folds: refused by name, nothing pushed', () => {
@@ -615,20 +667,241 @@ describe('a red whole-suite run names the merge that broke it', () => {
       expect(r.stdout).not.toContain('ISS-902');
     });
   }
+
+  it('a red run no job of which failed on its own steps names no merge, and says rerun', () => {
+    const repo = repository();
+    const [base, , , m3] = landings(repo);
+    const { env } = withStub(repo, {
+      checkRuns: { [base]: [check('whole-suite', 'completed', 'success', 1)] },
+      jobs: { 904: [{ name: 'runner-platforms (macos-latest)', conclusion: 'cancelled' }] },
+    });
+    const r = sh(
+      repo.work,
+      process.execPath,
+      ['scripts/whole-suite.mjs', 'bisect', '--commit', m3, '--run', '904'],
+      env,
+    );
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('runner-platforms (macos-latest) (cancelled)');
+    expect(r.stdout).toContain('No job failed on its own steps, so no merge is named');
+    expect(r.stdout).toContain('gh run rerun 904 --failed');
+    expect(r.stdout).not.toContain('The merge that broke it');
+  });
+});
+
+/**
+ * dev as it stood around 00176acd7, abridged, with the records GitHub holds on each commit (read
+ * 2026-10-10 with `gh api repos/SidCorp-co/forge/commits/<sha>/check-runs`). Landed in this order:
+ *
+ *   base (176fbddaa, green) ─ p1 (1660931c8) ─ tunnel (46c6934c6, merge-check red) ─ web (dd16bbfe7,
+ *   whole suite red on Windows) ─ home (8ba9b17e3, merge-check red) ─ core (6599553c8, merges the
+ *   previews-core branch, which broke the Windows leg) ─ sync (0f5c17610, merges origin/dev, whose
+ *   head fix (6885f4552) is green and fixed web's Windows red) ─ drafts (b38f83899) ─ stale
+ *   (b8b710fa7) ─ red (00176acd7, merges origin/dev holding the release merge rel (0e697e0dc)).
+ */
+function devAround00176acd7(repo) {
+  const at = {};
+  const head = () => git(repo.work, 'rev-parse', 'HEAD');
+  const commit = (file, subject) => {
+    writeFileSync(join(repo.work, file), `${subject}\n`);
+    git(repo.work, 'add', '-A');
+    git(repo.work, 'commit', '-q', '-m', subject);
+    return head();
+  };
+  const branchOff = (name, from, file, subject) => {
+    git(repo.work, 'checkout', '-q', '-b', name, from);
+    const sha = commit(file, subject);
+    git(repo.work, 'checkout', '-q', 'dev');
+    return sha;
+  };
+  const merge = (theirs, subject) => {
+    git(repo.work, 'merge', '-q', '--no-ff', theirs, '-m', subject);
+    return head();
+  };
+  at.base = head();
+  at.p1 = commit(
+    'p1.txt',
+    "fix(gates): verify's not-run-here header says ci-passed gates main, merge-check gates dev (ISS-472)",
+  );
+  branchOff('preview-tunnel', at.p1, 'tunnel.txt', 'feat(previews): a run dev server is seen live');
+  at.tunnel = merge('preview-tunnel', "Merge branch 'origin/preview-tunnel' into dev");
+  branchOff(
+    'preview-web',
+    at.tunnel,
+    'web.txt',
+    'fix(web): previews reach no higher module (ISS-491)',
+  );
+  at.web = merge('preview-web', "Merge branch 'origin/preview-web' into dev");
+  at.home = commit('home.txt', 'fix(web): project-home is its own feature module');
+  at.breaking = branchOff(
+    'previews-core',
+    at.home,
+    'checkout.rs',
+    'feat(previews): a feedback item or an idea opens as a live preview (REQ-41, ISS-495)',
+  );
+  at.core = merge('previews-core', "Merge branch 'origin/previews-core' into dev");
+  git(repo.work, 'checkout', '-q', '-b', 'origin-dev', at.home);
+  commit('fix1.txt', "fix: the whole suite's last three reds on 30885b1b1 (ISS-491, ISS-495)");
+  at.fix = commit(
+    'fix2.txt',
+    'test(web): the English-only copy test reads a core sentence (ISS-495)',
+  );
+  git(repo.work, 'checkout', '-q', 'dev');
+  at.sync = merge('origin-dev', "Merge remote-tracking branch 'origin/dev' into dev");
+  branchOff(
+    'drafts-act',
+    at.home,
+    'drafts.txt',
+    'feat(core): a stale draft acts by itself (ISS-495)',
+  );
+  at.drafts = merge('drafts-act', "Merge branch 'origin/drafts-act' into dev");
+  at.stale = commit('stale.txt', 'fix(core): the stale-draft act reads an ended issue');
+  git(repo.work, 'checkout', '-q', '-b', 'release', at.fix);
+  at.release = commit('package.json', 'Release dev-v0.4.0-dev.218');
+  git(repo.work, 'checkout', '-q', '-b', 'origin-dev-2', at.sync);
+  at.rel = merge('release', 'Merge release dev-v0.4.0-dev.218 into dev');
+  git(repo.work, 'checkout', '-q', 'dev');
+  at.red = merge('origin-dev-2', "Merge remote-tracking branch 'origin/dev' into dev");
+  return at;
+}
+
+/** A push run on dev: merge-check only, every other job and the whole-suite check skipped. */
+const pushRun = (runId, mergeCheck) => [
+  check('merge-check', 'completed', mergeCheck, runId * 10 + 1, runId),
+  check('whole-suite', 'completed', 'skipped', runId * 10 + 2, runId),
+  check('runner-platforms', 'completed', 'skipped', runId * 10 + 3, runId),
+  check('core', 'completed', 'skipped', runId * 10 + 4, runId),
+];
+
+/** A whole-suite run: each named job with its conclusion, merge-check skipped by design. */
+const wholeRun = (runId, verdict, jobs) => [
+  ...Object.entries(jobs).map(([name, c], i) => check(name, 'completed', c, runId * 10 + i, runId)),
+  check('merge-check', 'completed', 'skipped', runId * 10 + 8, runId),
+  check('whole-suite', 'completed', verdict, runId * 10 + 9, runId),
+];
+
+const allGreen = {
+  core: 'success',
+  web: 'success',
+  'core-integration': 'success',
+  'runner-platforms (windows-latest)': 'success',
+  'runner-platforms (macos-latest)': 'success',
+};
+
+/** What GitHub recorded on each commit of `devAround00176acd7`, by run, as it did on dev. */
+function recordsOnDev(at) {
+  return {
+    [at.base]: wholeRun(3789267, 'success', allGreen),
+    [at.p1]: pushRun(3789349, 'success'),
+    [at.tunnel]: pushRun(3793115, 'failure'),
+    [at.web]: wholeRun(3793910, 'failure', {
+      ...allGreen,
+      core: 'failure',
+      web: 'failure',
+      'core-integration': 'failure',
+      'runner-platforms (windows-latest)': 'failure',
+      'runner-platforms (macos-latest)': 'failure',
+    }),
+    [at.home]: pushRun(3794485, 'failure'),
+    [at.fix]: wholeRun(3794652, 'success', allGreen),
+    [at.sync]: pushRun(3794659, 'success'),
+    [at.rel]: pushRun(3794887, 'success'),
+    [at.red]: wholeRun(3794987, 'failure', {
+      ...allGreen,
+      'runner-platforms (windows-latest)': 'failure',
+    }),
+  };
+}
+
+/** The jobs of a red whole-suite run, as GitHub lists them, merge-check skipped by design. */
+const runJobs = (failed) =>
+  [
+    'changes',
+    'install-check',
+    'core',
+    'web',
+    'runner',
+    'core-integration',
+    'runner-platforms (windows-latest)',
+    'runner-platforms (macos-latest)',
+    'docs',
+    'images',
+    'whole-tree',
+  ]
+    .map((name) => ({ name, conclusion: failed.includes(name) ? 'failure' : 'success' }))
+    .concat([
+      { name: 'nightly-fanout', conclusion: 'skipped' },
+      { name: 'merge-check', conclusion: 'skipped' },
+      { name: 'ci-passed', conclusion: 'success' },
+      { name: 'whole-suite', conclusion: 'failure' },
+    ]);
+
+describe("the bisect on dev's own shape (runs 37949879909 and 37939100373)", () => {
+  const bisectOn = (repo, env, commit, runId) =>
+    sh(
+      repo.work,
+      process.execPath,
+      ['scripts/whole-suite.mjs', 'bisect', '--commit', commit, '--run', String(runId)],
+      env,
+    );
+  const rangeOf = (stdout) =>
+    stdout
+      .split('\n')
+      .filter((l) => l.startsWith('- '))
+      .map((l) => l.slice(2, 11));
+
+  it('run 37949879909: the last green is the one reached through a merge of origin/dev, and the range holds the breaking merge', () => {
+    const repo = repository();
+    const at = devAround00176acd7(repo);
+    const { env } = withStub(repo, {
+      checkRuns: recordsOnDev(at),
+      jobs: { 37949879909: runJobs(['runner-platforms (windows-latest)']) },
+    });
+    const r = bisectOn(repo, env, at.red, 37949879909);
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain(
+      `The whole suite went red on ${at.red.slice(0, 9)}: runner-platforms (windows-latest) (failure).`,
+    );
+    expect(r.stdout).toContain(`Last green whole-suite run: ${at.fix.slice(0, 9)}.`);
+    const range = rangeOf(r.stdout);
+    expect(range).toEqual(
+      [at.core, at.sync, at.drafts, at.stale, at.red].map((s) => s.slice(0, 9)),
+    );
+    expect(r.stdout).toContain(
+      `- ${at.core.slice(0, 9)} Merge branch 'origin/previews-core' into dev (ISS-495)`,
+    );
+    expect(range).not.toContain(at.web.slice(0, 9));
+    expect(range).not.toContain(at.tunnel.slice(0, 9));
+  });
+
+  it('run 37939100373: a merge-check skipped in the red run is not bisected, so a merge-check failure on an earlier landing does not end the range', () => {
+    const repo = repository();
+    const at = devAround00176acd7(repo);
+    const failed = [
+      'core',
+      'web',
+      'runner',
+      'core-integration',
+      'runner-platforms (windows-latest)',
+      'runner-platforms (macos-latest)',
+    ];
+    const { env } = withStub(repo, {
+      checkRuns: recordsOnDev(at),
+      jobs: { 37939100373: runJobs(failed) },
+    });
+    const r = bisectOn(repo, env, at.web, 37939100373);
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+    expect(r.stdout).not.toContain('merge-check (skipped)');
+    expect(r.stdout).toContain(`Last green whole-suite run: ${at.base.slice(0, 9)}.`);
+    expect(rangeOf(r.stdout)).toEqual([at.p1, at.tunnel, at.web].map((s) => s.slice(0, 9)));
+  });
 });
 
 describe('a scheduled run starts the whole suite on every other gated branch', () => {
-  function withWorkflow(repo) {
-    mkdirSync(join(repo.work, '.github/workflows'), { recursive: true });
-    copyFileSync(
-      join(ROOT, '.github/workflows/ci.yml'),
-      join(repo.work, '.github/workflows/ci.yml'),
-    );
-  }
-
   it('run on main, it dispatches suite: whole onto dev and nothing onto main', () => {
     const repo = repository();
-    withWorkflow(repo);
     const { env, calls } = withStub(repo, {});
     const r = sh(
       repo.work,
@@ -647,7 +920,6 @@ describe('a scheduled run starts the whole suite on every other gated branch', (
 
   it('a dispatch GitHub refuses fails the job, naming the branch', () => {
     const repo = repository();
-    withWorkflow(repo);
     const { env } = withStub(repo, { dispatchFails: true });
     const r = sh(
       repo.work,
