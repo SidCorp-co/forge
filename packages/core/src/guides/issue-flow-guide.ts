@@ -89,12 +89,20 @@ The plan names the files it will change and the goal it serves. A file it does n
 wrong is corrected the same way and rewritten in the field — never relaxed to match what got built.
 Choices taken under an assumption are \`decision\` records carrying how to reverse them.
 
-Name the pattern the change builds to: \`POST /api/issues/:id/patterns\` \`{ pattern, summary? }\`, a
-slug of the project's catalog (\`docs/patterns/<slug>.md\`). A catalogued one is reuse and needs no
-approval. Any other is a new pattern: it needs \`summary\` (\`PATTERN_SUMMARY_REQUIRED\`), holds the
-issue (\`PATTERN_REVIEW_PENDING\`, the work step cannot move to build) until one holder of
-\`patterns.approve\` other than its author decides it, and its catalog page lands in this change.
-A project whose catalog Forge cannot read is refused \`PATTERN_CATALOG_UNDECLARED\`.
+Where the project reads a pattern catalog, name the pattern the change builds to. Read
+\`GET /api/issues/:id/patterns\` first: where its \`catalog.declared\` is false the project reads none,
+and naming one is refused \`PATTERN_CATALOG_UNDECLARED\`, so skip this paragraph. Otherwise
+\`POST /api/issues/:id/patterns\` \`{ pattern, summary? }\` with a slug of the catalog
+(\`docs/patterns/<slug>.md\`). A catalogued one is reuse and needs no approval. Any other is a new
+pattern. It needs \`summary\` (\`PATTERN_SUMMARY_REQUIRED\`) and holds the issue
+(\`PATTERN_REVIEW_PENDING\`, the work step cannot move to build) until one holder of
+\`patterns.approve\` decides it. That holder is a person or another run, never the run that named it
+(\`PATTERN_REVIEWER_IS_AUTHOR\`). Runs on one box share its credential, so a call from a run that
+does not hold the issue sends \`run\`, the run id the box declared. A returned pattern's reason is
+posted on the issue. Until the issue names a catalogued pattern or names the slug again revised, its
+work does not move to build and it does not reach \`awaiting_release\` (\`PATTERN_RETURNED\`). An
+approved one's catalog page lands in this change: the merge mark reads the change and refuses
+\`PATTERN_ENTRY_MISSING\` where the page is not in it.
 
 A question only a person can answer parks the issue:
 \`POST /api/issues/:id/transition\` \`{ toStatus: 'needs_info', reason, waitingKind, needs }\`, with
@@ -147,6 +155,9 @@ naming its own rule before the green counts.
    It is refused \`COMMIT_NOT_LANDED\` until it is there, and \`COMMIT_UNVERIFIED\` where core
    cannot read the project's repository; there the mark is sent with \`target\` and a \`note\`
    naming the commit, and reads as asserted rather than observed. A merge mark moves no status.
+   An issue with an approved new pattern is refused \`PATTERN_ENTRY_MISSING\` until the change the
+   mark reads carries the pattern's catalog page: the \`changedPaths\` \`forge-runner api\` adds for
+   the commit named, or the repository at that commit.
    Where the project's work lands outside git, the mark carries \`landing\` and \`artifacts\`
    \`[{ surface, ref, change }]\` instead of a commit. An artifact this landing touched that another
    open issue's own release will ship carries \`carriedBy: '<that issue's key>'\`: this issue's

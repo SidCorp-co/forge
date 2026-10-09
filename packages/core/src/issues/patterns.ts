@@ -6,14 +6,19 @@
  * One predicate (`db/schema-issue-patterns.ts:patternReviewPendingSql`), asked the ways the contract
  * wait is (`issues/contract-waits.ts`): the admissible list leaves a held issue out, a run session,
  * a pool job or a move to in_progress over it is refused by name (PATTERN_REVIEW_PENDING), and a
- * queued job names it as its dispatch gate. The rules are `pattern-rules.ts`.
+ * queued job names it as its dispatch gate. A returned pattern no later one answers holds the work
+ * out of build and the issue out of awaiting_release (PATTERN_RETURNED), and its reason is posted on
+ * the issue. The rules are `pattern-rules.ts`, the run a call is `pattern-runs.ts`, and the catalog
+ * entry the merge mark asks for `pattern-entry.ts`.
  */
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import {
   type IssuePatterns,
   type IssuePatternView,
+  PATTERN_RETURNED,
   PATTERN_REVIEW_PENDING,
+  type PatternCatalogStanding,
   type PatternDecision,
   type PatternRefusal,
 } from '@forge/contracts/patterns';
@@ -25,6 +30,8 @@ import { issuePatterns, patternReviewPendingSql } from '../db/schema-issue-patte
 import { lockXact } from '../lib/advisory-lock.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
+import { emitEvents } from '../outbox/index.js';
+import { actorFor, can, projectResource } from '../permissions/index.js';
 import { issueDisplayIds } from './display-ids.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import {
@@ -32,12 +39,16 @@ import {
   catalogReadingOf,
   decideRefusals,
   nameOutcome,
+  type PatternDecider,
   type PatternRowFacts,
   pendingDetail,
   releaseFaults,
   retractRefusals,
+  returnedDetail,
+  unansweredReturns,
 } from './pattern-rules.js';
-import { type GateReader, readProjectDocument } from './ports.js';
+import { liveOnBox, runOfCall } from './pattern-runs.js';
+import { type GateReader, postIssueNotice, readProjectDocument } from './ports.js';
 
 export { patternReviewPendingSql };
 
@@ -51,12 +62,22 @@ export async function catalogOf(projectId: string): Promise<CatalogReading> {
   return catalogReadingOf(document?.source.git?.repository ?? null);
 }
 
+/** Whether the project reads a catalog, for the read a run asks before it names a pattern. */
+function catalogStanding(catalog: CatalogReading): PatternCatalogStanding {
+  return catalog.kind === 'read'
+    ? { declared: true, detail: null }
+    : { declared: false, detail: catalog.detail };
+}
+
 const factsOf = (r: IssuePatternRow): PatternRowFacts => ({
   id: r.id,
   pattern: r.pattern,
   kind: r.kind,
   namedBy: r.namedBy,
+  namedSession: r.namedSessionId,
+  createdAt: r.createdAt,
   decision: r.decision,
+  decidedAt: r.decidedAt,
   retractedAt: r.retractedAt,
 });
 
@@ -72,7 +93,11 @@ export async function patternRowsOf(
     .orderBy(issuePatterns.createdAt);
 }
 
-export function patternView(r: IssuePatternRow, issue: string): IssuePatternView {
+export function patternView(
+  r: IssuePatternRow,
+  issue: string,
+  unanswered: ReadonlySet<string> = new Set(),
+): IssuePatternView {
   return {
     id: r.id,
     issue,
@@ -80,20 +105,28 @@ export function patternView(r: IssuePatternRow, issue: string): IssuePatternView
     kind: r.kind,
     summary: r.summary,
     namedBy: r.namedBy,
+    namedSession: r.namedSessionId,
     namedAt: r.createdAt.toISOString(),
     decision: r.decision,
     decidedBy: r.decidedBy,
+    decidedSession: r.decidedSessionId,
     decidedAt: r.decidedAt?.toISOString() ?? null,
     decisionReason: r.decisionReason,
     retractedAt: r.retractedAt?.toISOString() ?? null,
     retractReason: r.retractReason,
     pending: r.kind === 'new' && r.decision === null && r.retractedAt === null,
+    unanswered: unanswered.has(r.id),
   };
 }
 
-export async function patternViews(rows: readonly IssuePatternRow[]): Promise<IssuePatternView[]> {
+/** The rows as the REST answers show them; `siblings` are the issue's rows, which say what a return is answered by. */
+export async function patternViews(
+  rows: readonly IssuePatternRow[],
+  siblings: readonly IssuePatternRow[] = rows,
+): Promise<IssuePatternView[]> {
   const refs = await issueDisplayIds([...new Set(rows.map((r) => r.issueId))]);
-  return rows.map((r) => patternView(r, refs.get(r.issueId) ?? r.issueId));
+  const unanswered = new Set(unansweredReturns(siblings.map(factsOf)).map((r) => r.id));
+  return rows.map((r) => patternView(r, refs.get(r.issueId) ?? r.issueId, unanswered));
 }
 
 interface PendingReview {
@@ -184,20 +217,86 @@ export async function assertPatternReviewsSettledForIssue(
   refuseHeld(await heldWhere(projectId, sql`i.id = ${issueId}`, executor));
 }
 
-/** The issue read's answer: its patterns, whether a pending review holds it, and the refusal a door would give. */
-export async function issuePatternsOf(projectId: string, issueId: string): Promise<IssuePatterns> {
-  const rows = await patternRowsOf([issueId]);
-  const held = detailsByIssue(await heldWhere(projectId, sql`i.id = ${issueId}`)).get(issueId);
-  return {
-    patterns: await patternViews(rows),
-    dispatchable: held === undefined,
-    refusal: held === undefined ? null : { code: PATTERN_REVIEW_PENDING, detail: held },
-  };
-}
-
 export interface PatternActor {
   userId: string;
   agency: ActorAgency | null;
+  /** The device a box credential belongs to; null on a person's. */
+  box: string | null;
+  /** The run the call names (`run`), on a box credential. */
+  run?: string | undefined;
+}
+
+/** The issue's unanswered return, in the refusal the build step and awaiting_release give, or null. */
+function returnHold(
+  issueRef: string,
+  rows: readonly PatternRowFacts[],
+): { code: typeof PATTERN_RETURNED; detail: string } | null {
+  const returned = unansweredReturns(rows).map((r) => r.pattern);
+  return returned.length === 0
+    ? null
+    : { code: PATTERN_RETURNED, detail: returnedDetail(issueRef, returned) };
+}
+
+/** The pending rows `caller` may decide now; none where it holds no patterns.approve or cannot be told apart. */
+async function decidableBy(
+  issue: { id: string; projectId: string },
+  rows: readonly PatternRowFacts[],
+  caller: PatternActor | null,
+): Promise<string[]> {
+  const pending = rows.filter((r) => r.kind === 'new' && r.decision === null && !r.retractedAt);
+  if (!caller || pending.length === 0) return [];
+  if (!(await can(actorFor(caller.userId), 'patterns.approve', projectResource(issue.projectId)))) {
+    return [];
+  }
+  const run = await runOfCall({ projectId: issue.projectId, issueId: issue.id, ...caller });
+  if (!run.ok) return [];
+  const out: string[] = [];
+  for (const row of pending) {
+    const decider = await deciderOf(caller.userId, run.value, row);
+    if (decideRefusals('', row, decider).length === 0) out.push(row.id);
+  }
+  return out;
+}
+
+/**
+ * The issue read's answer: whether the project reads a catalog, the issue's patterns, whether a
+ * pending review holds it (and the refusal a door would give), an unanswered return, and the pending
+ * patterns `caller` may decide.
+ */
+export async function issuePatternsOf(
+  projectId: string,
+  issueId: string,
+  caller: PatternActor | null = null,
+): Promise<IssuePatterns> {
+  const rows = await patternRowsOf([issueId]);
+  const facts = rows.map(factsOf);
+  const held = detailsByIssue(await heldWhere(projectId, sql`i.id = ${issueId}`)).get(issueId);
+  const issueRef = (await issueDisplayIds([issueId])).get(issueId) ?? issueId;
+  return {
+    catalog: catalogStanding(await catalogOf(projectId)),
+    patterns: await patternViews(rows),
+    dispatchable: held === undefined,
+    refusal: held === undefined ? null : { code: PATTERN_REVIEW_PENDING, detail: held },
+    returned: returnHold(issueRef, facts),
+    decidable: await decidableBy({ id: issueId, projectId }, facts, caller),
+  };
+}
+
+/** Refuses the work step's move to build while a return stands unanswered (PATTERN_RETURNED). */
+export async function assertNoUnansweredReturn(
+  issueId: string,
+  executor: Pick<Tx, 'select'>,
+): Promise<void> {
+  const rows = await patternFactsIn(executor, issueId);
+  if (rows.length === 0) return;
+  const issueRef = (await issueDisplayIds([issueId], executor as Tx)).get(issueId) ?? issueId;
+  const hold = returnHold(issueRef, rows);
+  if (hold) {
+    throw new RefusalError(
+      [{ code: hold.code, path: '/workState/step', detail: hold.detail }],
+      hold.code,
+    );
+  }
 }
 
 interface IssueScope {
@@ -219,6 +318,20 @@ export async function namePattern(args: {
 }): Promise<Outcome<IssuePatternRow>> {
   const { issue, pattern, actor } = args;
   const catalog = await catalogOf(issue.projectId);
+  const run = await runOfCall({ projectId: issue.projectId, issueId: issue.id, ...actor });
+  if (!run.ok) return run;
+  if (run.value.box !== null && run.value.session === null) {
+    return {
+      ok: false,
+      refusals: [
+        {
+          code: 'PATTERN_RUN_UNNAMED',
+          path: '/run',
+          detail: `this call comes from a box that holds no run over the issue, and a box's runs share one credential, so the run naming the pattern cannot be told: send \`run\`, the run id this box declared for it, or name it as a person`,
+        },
+      ],
+    };
+  }
   return db.transaction(async (tx) => {
     await lockXact(tx, 'issuePatterns', issue.id);
     const live = await tx
@@ -244,6 +357,7 @@ export async function namePattern(args: {
         summary: args.summary,
         namedBy: actor.userId,
         namedAgency: actor.agency,
+        namedSessionId: run.value.session,
       })
       .returning();
     if (!row) throw new Error(`pattern ${pattern} was not named on ${issue.id}`);
@@ -261,22 +375,60 @@ async function lockedRow(tx: Tx, issueId: string, patternId: string) {
   return row ?? null;
 }
 
+/** Who asks to decide `row`: the account, and on a box the run it is and whether the naming run is live there. */
+async function deciderOf(
+  userId: string,
+  run: { box: string | null; session: string | null },
+  row: PatternRowFacts,
+): Promise<PatternDecider> {
+  const namerLiveHere =
+    run.box !== null && row.namedSession !== null
+      ? await liveOnBox(row.namedSession, run.box)
+      : false;
+  return { userId, box: run.box, session: run.session, namerLiveHere };
+}
+
+/** The return's reason, posted on the issue for the run that answers it (Issue lifecycle r14). */
+async function postReturn(tx: Tx, row: IssuePatternRow, actor: PatternActor, reason: string) {
+  const body = `Pattern \`${row.pattern}\` was returned by its reviewer: ${reason}\n\nUntil this issue names a catalogued pattern instead, or names \`${row.pattern}\` again with a revised summary for a new review, its work does not move to build and it does not move to awaiting_release (PATTERN_RETURNED).`;
+  const notice = await postIssueNotice({ issueId: row.issueId, authorId: actor.userId, body }, tx);
+  await emitEvents(tx, [
+    {
+      type: 'comment.created',
+      payload: {
+        issueId: row.issueId,
+        projectId: row.projectId,
+        actor: { type: 'user', id: actor.userId, agency: actor.agency ?? 'human' },
+        authored: actor.agency ?? 'human',
+        commentId: notice.id,
+        body: notice.body,
+        parentId: notice.parentId,
+      },
+    },
+  ]);
+}
+
 /**
  * One reviewer's decision on a new pattern. The route has asked for patterns.approve; the rule
- * here refuses the account that named it. Null when the issue holds no such pattern.
+ * here refuses the run that named it, or the person who did. A return posts its reason on the issue.
+ * Null when the issue holds no such pattern.
  */
 export async function decidePattern(args: {
   issueId: string;
+  projectId: string;
   patternId: string;
   decision: PatternDecision;
   reason: string;
   actor: PatternActor;
 }): Promise<Outcome<IssuePatternRow> | null> {
   const { actor } = args;
+  const run = await runOfCall({ projectId: args.projectId, issueId: args.issueId, ...actor });
+  if (!run.ok) return run;
   return db.transaction(async (tx) => {
     const row = await lockedRow(tx, args.issueId, args.patternId);
     if (!row) return null;
-    const refusals = decideRefusals(await issueRefOf(args.issueId, tx), factsOf(row), actor.userId);
+    const decider = await deciderOf(actor.userId, run.value, factsOf(row));
+    const refusals = decideRefusals(await issueRefOf(args.issueId, tx), factsOf(row), decider);
     if (refusals.length > 0) return { ok: false as const, refusals };
     const [decided] = await tx
       .update(issuePatterns)
@@ -284,12 +436,14 @@ export async function decidePattern(args: {
         decision: args.decision,
         decidedBy: actor.userId,
         decidedAgency: actor.agency,
+        decidedSessionId: run.value.session,
         decidedAt: new Date(),
         decisionReason: args.reason,
       })
       .where(and(eq(issuePatterns.id, row.id), isNull(issuePatterns.decision)))
       .returning();
     if (!decided) throw new Error(`pattern ${row.id} was decided under its own lock`);
+    if (args.decision === 'returned') await postReturn(tx, decided, actor, args.reason);
     return { ok: true as const, value: decided };
   });
 }
@@ -325,18 +479,17 @@ export async function patternFactsIn(
 }
 
 /**
- * The merge's half of the pattern rule, asked by the move to awaiting_release (and to closed) under
- * its lock: no new pattern waits on its reviewer, and every approved one has its catalog entry
- * (`pattern-rules.ts:releaseFaults`). The first fault, or null.
+ * What the move to awaiting_release (and to closed) asks of the issue's patterns under its lock: no
+ * new pattern waits on its reviewer, and no return stands unanswered (`pattern-rules.ts:releaseFaults`).
+ * The catalog entry is the merge mark's to ask (`pattern-entry.ts`). The first fault, or null.
  */
 export async function patternReleaseRefusal(
   executor: Pick<Tx, 'select'>,
   issueId: string,
-  catalog: CatalogReading,
 ): Promise<Refusal | null> {
   const rows = await patternFactsIn(executor, issueId);
   if (rows.length === 0) return null;
   const issueRef = (await issueDisplayIds([issueId], executor as Tx)).get(issueId) ?? issueId;
-  const [fault] = releaseFaults(issueRef, rows, catalog);
+  const [fault] = releaseFaults(issueRef, rows);
   return fault ? { code: fault.code, path: '/status', detail: fault.detail } : null;
 }

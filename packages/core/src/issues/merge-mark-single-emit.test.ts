@@ -36,6 +36,8 @@ vi.mock('../outbox/index.js', () => ({
   },
 }));
 vi.mock('./read-service.js', () => ({ findIssueById: async () => prior }));
+// the issue names no approved new pattern, so the mark asks no catalog page (pattern-entry.test.ts)
+vi.mock('./pattern-entry.js', () => ({ patternEntryRefusal: async () => null }));
 vi.mock('./ports.js', () => ({
   answerMergeQuestions: async () => [],
   contractDrift: async () => null,

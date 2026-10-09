@@ -38,6 +38,7 @@ function reply(method: string, path: string): unknown {
   if (path.includes("/attachments")) return [];
   if (path.includes("/dependencies")) return { incoming: [], outgoing: [] };
   if (path.includes("/criteria")) return { criteria: [] };
+  if (path.includes("/patterns")) return { catalog: { declared: true, detail: null }, patterns: [], dispatchable: true, refusal: null, returned: null, decidable: [] };
   if (path.includes("/park")) return { park: null };
   if (path.startsWith("/questions")) return { questions: [] };
   if (path.endsWith("/requirements")) return { requirements: [] };
@@ -119,6 +120,7 @@ describe("a project page's first reads", () => {
         "/issues/ISS-7/cost-summary",
         "/issues/ISS-7/park",
         "/issues/ISS-7/criteria",
+        "/issues/ISS-7/patterns",
         "/projects/forge/issues/standing/ISS-7",
       ]),
     );

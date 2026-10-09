@@ -8,8 +8,10 @@ const quoted = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`
 // The patterns an issue names (REQ-36 BC-2, BC-3; Issue lifecycle r14 `design-check`), written by the
 // issue kernel (`issues/patterns.ts`). A `reuse` is catalogued and nobody decides it; a `new` one waits
 // on one reviewer, and its decision is taken once. A returned row stays as history; naming the slug
-// again opens a new review. `issue_pattern_guard()` (0474) refuses a write that re-aims a row,
-// changes a decision or unretracts one.
+// again opens a new review. `named_session_id` and `decided_session_id` (0475) name the run that
+// named and decided it, null for a person: the author rule compares the run, since a box's runs share
+// one account. `issue_pattern_guard()` (0474, 0475) refuses a write that re-aims a row, changes a
+// decision or unretracts one.
 export const issuePatterns = pgTable(
   'issue_patterns',
   {
@@ -27,10 +29,12 @@ export const issuePatterns = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     namedAgency: text('named_agency', { enum: ['human', 'agent'] }),
+    namedSessionId: uuid('named_session_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     decision: text('decision', { enum: PATTERN_DECISIONS }),
     decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'restrict' }),
     decidedAgency: text('decided_agency', { enum: ['human', 'agent'] }),
+    decidedSessionId: uuid('decided_session_id'),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     decisionReason: text('decision_reason'),
     retractedBy: uuid('retracted_by').references(() => users.id, { onDelete: 'restrict' }),
@@ -65,6 +69,10 @@ export const issuePatterns = pgTable(
     decidedChk: check(
       'issue_patterns_decided_chk',
       sql`(${t.decision} IS NULL) = (${t.decidedBy} IS NULL) AND (${t.decision} IS NULL) = (${t.decidedAt} IS NULL) AND (${t.decision} IS NULL) = (${t.decisionReason} IS NULL)`,
+    ),
+    decidedSessionChk: check(
+      'issue_patterns_decided_session_chk',
+      sql`${t.decidedSessionId} IS NULL OR ${t.decision} IS NOT NULL`,
     ),
     reasonChk: check(
       'issue_patterns_reason_chk',

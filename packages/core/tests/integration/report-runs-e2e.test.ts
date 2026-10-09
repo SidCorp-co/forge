@@ -95,7 +95,14 @@ describe('report runs and the blocks drawn from them', () => {
           source: { runId: run.runId },
           frame: run.frame,
         },
-        run: { runId: run.runId, queryId: 'progress-by-requirement', version: 1, asOf: run.asOf },
+        // the run's settings ride on the block since REQ-32 BC-2 (6f2068ab4): this run took none
+        run: {
+          runId: run.runId,
+          queryId: 'progress-by-requirement',
+          version: 1,
+          asOf: run.asOf,
+          params: {},
+        },
       },
     ]);
   });

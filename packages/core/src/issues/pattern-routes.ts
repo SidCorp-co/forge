@@ -1,7 +1,9 @@
 /**
  * An issue's patterns over REST (REQ-36 BC-2, BC-3; Issue lifecycle r14 `design-check`): list them,
  * name one (a catalogued slug is reuse and needs no approval; any other is new and waits on one
- * reviewer), decide a new one (a holder of patterns.approve who did not name it), retract one.
+ * reviewer), decide a new one (a holder of patterns.approve, never the run or person that named it),
+ * retract one. A box's runs share its credential, so a box call is the run holding the issue there,
+ * or the one its `run` names (`pattern-runs.ts`).
  */
 
 import {
@@ -12,7 +14,7 @@ import {
   RETRACT_PATTERN_SHAPE,
   retractPatternRequestSchema,
 } from '@forge/contracts/patterns';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -24,9 +26,23 @@ import {
   decidePattern,
   issuePatternsOf,
   namePattern,
+  type PatternActor,
+  patternRowsOf,
   patternViews,
   retractPattern,
 } from './patterns.js';
+
+type Ctx = Context<{ Variables: AuthVars }>;
+
+/** The caller as the pattern rules read it: its account, its agency, and the box a box credential is. */
+function actorOf(c: Ctx, run?: string): PatternActor {
+  return {
+    userId: c.get('userId'),
+    agency: c.get('agency') ?? null,
+    box: c.get('patDeviceId') ?? c.get('deviceId') ?? null,
+    run,
+  };
+}
 
 const issueParam = z.object({ id: z.string().min(1) });
 const patternParam = z.object({ id: z.string().min(1), patternId: z.uuid() });
@@ -47,7 +63,7 @@ issuePatternRoutes.get(
       c.req.valid('query').projectId,
       c.get('userId'),
     );
-    return c.json(await issuePatternsOf(issue.projectId, issue.id));
+    return c.json(await issuePatternsOf(issue.projectId, issue.id, actorOf(c)));
   },
 );
 
@@ -70,10 +86,10 @@ issuePatternRoutes.post(
       issue: { id: issue.id, projectId: issue.projectId, status: issue.status },
       pattern: body.pattern,
       summary: body.summary ?? null,
-      actor: { userId, agency: c.get('agency') ?? null },
+      actor: actorOf(c, body.run),
     });
     if (!out.ok) return refused(c, out.refusals, 'PATTERN_REFUSED');
-    const [pattern] = await patternViews([out.value]);
+    const [pattern] = await patternViews([out.value], await patternRowsOf([issue.id]));
     return c.json({ pattern }, 201);
   },
 );
@@ -92,14 +108,15 @@ issuePatternRoutes.post(
     const body = c.req.valid('json');
     const out = await decidePattern({
       issueId: issue.id,
+      projectId: issue.projectId,
       patternId,
       decision: body.decision,
       reason: body.reason,
-      actor: { userId, agency: c.get('agency') ?? null },
+      actor: actorOf(c, body.run),
     });
     if (!out) throw notFound(`the issue names no pattern ${patternId}`);
     if (!out.ok) return refused(c, out.refusals, 'PATTERN_REFUSED');
-    const [pattern] = await patternViews([out.value]);
+    const [pattern] = await patternViews([out.value], await patternRowsOf([issue.id]));
     return c.json({ pattern });
   },
 );
@@ -123,7 +140,7 @@ issuePatternRoutes.post(
     });
     if (!out) throw notFound(`the issue names no pattern ${patternId}`);
     if (!out.ok) return refused(c, out.refusals, 'PATTERN_REFUSED');
-    const [pattern] = await patternViews([out.value]);
+    const [pattern] = await patternViews([out.value], await patternRowsOf([issue.id]));
     return c.json({ pattern });
   },
 );

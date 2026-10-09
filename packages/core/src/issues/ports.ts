@@ -60,6 +60,8 @@ export interface CommitHost {
   readonly provider: string;
   readCommit(sha: string): Promise<HostCommit | null>;
   branchContains(branch: string, sha: string): Promise<boolean>;
+  /** A file's text at `ref`, or why there is none (`integrations/source-host/types.ts:SourceHost`). */
+  readFile(path: string, ref: string, maxBytes: number): Promise<string | { missing: string }>;
 }
 
 export interface RunnerAvailability {

@@ -41,8 +41,19 @@ export type PatternDecision = (typeof PATTERN_DECISIONS)[number];
 /** A dispatch door refuses, and the admissible list withholds, an issue whose new pattern waits on its reviewer. */
 export const PATTERN_REVIEW_PENDING = "PATTERN_REVIEW_PENDING" as const;
 
-/** The move to awaiting_release refuses an approved new pattern the catalog the project reads does not hold. */
+/**
+ * The merge mark refuses an approved new pattern whose catalog page is not in the change it reads
+ * (Issue to release r20 `rule-merge`, which ISS-472's merge check takes over before the merge).
+ */
 export const PATTERN_ENTRY_MISSING = "PATTERN_ENTRY_MISSING" as const;
+
+/**
+ * A returned new pattern no later pattern of the issue answers: the work step cannot move to build
+ * and the issue cannot move to awaiting_release until the issue names another pattern or names the
+ * slug again revised (Issue lifecycle r14 `design-check`). The issue stays dispatchable, because a
+ * run has to take it to answer.
+ */
+export const PATTERN_RETURNED = "PATTERN_RETURNED" as const;
 
 export const PATTERN_REFUSAL_CODES = [
 	"PATTERN_REFUSED",
@@ -54,8 +65,12 @@ export const PATTERN_REFUSAL_CODES = [
 	"PATTERN_RETRACTED",
 	"PATTERN_REVIEWER_IS_AUTHOR",
 	"PATTERN_SUMMARY_REQUIRED",
+	"PATTERN_RUN_UNKNOWN",
+	"PATTERN_RUN_UNNAMED",
+	"PATTERN_REVIEWER_RUN_UNNAMED",
 	PATTERN_REVIEW_PENDING,
 	PATTERN_ENTRY_MISSING,
+	PATTERN_RETURNED,
 	...PERMISSION_REFUSAL_CODES,
 ] as const;
 export type PatternRefusalCode = (typeof PATTERN_REFUSAL_CODES)[number];
@@ -71,22 +86,33 @@ export interface PatternRefusal {
 	detail: string;
 }
 
+/**
+ * The run a box's call is made from: the run id the box declared (`POST /api/devices/me/run-sessions`
+ * `runId`) or core's id for that run. A box's runs share its credential, so a call that does not hold
+ * the issue's lease says which run it is; a person's call names none.
+ */
+const runField = z.uuid();
+
 export const namePatternRequestSchema = z.strictObject({
 	pattern: z.string().trim().regex(PATTERN_SLUG_PATTERN),
 	/** What the new pattern is and why no catalogued one serves; required where the pattern is not catalogued. */
 	summary: z.string().trim().min(1).max(PATTERN_LIMITS.summary).optional(),
+	/** The run naming it, where the box making the call holds no lease on the issue. */
+	run: runField.optional(),
 });
 export type NamePatternRequest = z.infer<typeof namePatternRequestSchema>;
 export const NAME_PATTERN_SHAPE =
-	"{ pattern: the slug of a catalog entry (docs/patterns/<slug>.md), or of the new pattern this issue introduces; summary?: what a new pattern is and why no catalogued one serves, required for a new one }";
+	"{ pattern: the slug of a catalog entry (docs/patterns/<slug>.md), or of the new pattern this issue introduces; summary?: what a new pattern is and why no catalogued one serves, required for a new one; run?: on a box credential that holds no lease on the issue, the run id the box declared }";
 
 export const decidePatternRequestSchema = z.strictObject({
 	decision: z.enum(PATTERN_DECISIONS),
 	reason: z.string().trim().min(1).max(PATTERN_LIMITS.reason),
+	/** The run deciding it, on a box credential; never the run that named it. */
+	run: runField.optional(),
 });
 export type DecidePatternRequest = z.infer<typeof decidePatternRequestSchema>;
 export const DECIDE_PATTERN_SHAPE =
-	"{ decision: 'approved' | 'returned'; reason: why, which a returned pattern's author reads }";
+	"{ decision: 'approved' | 'returned'; reason: why, which a returned pattern's author reads and which is posted on the issue when it is returned; run?: on a box credential, the run id the box declared for the run deciding }";
 
 export const retractPatternRequestSchema = z.strictObject({
 	reason: z.string().trim().min(1).max(PATTERN_LIMITS.reason),
@@ -102,23 +128,41 @@ export interface IssuePatternView {
 	kind: IssuePatternKind;
 	summary: string | null;
 	namedBy: string;
+	/** The run session that named it; null where a person named it. */
+	namedSession: string | null;
 	namedAt: string;
 	/** The new pattern's decision; always null for a reuse, which nobody decides. */
 	decision: PatternDecision | null;
 	decidedBy: string | null;
+	/** The run session that decided it; null where a person did, or nobody yet. */
+	decidedSession: string | null;
 	decidedAt: string | null;
 	decisionReason: string | null;
 	retractedAt: string | null;
 	retractReason: string | null;
 	/** Whether this row holds its issue: a new pattern, undecided, not retracted. */
 	pending: boolean;
+	/** A returned row no later live row of the issue answers: it holds the work out of build. */
+	unanswered: boolean;
+}
+
+/** Whether the project reads a pattern catalog; where it does not, a run names no pattern. */
+export interface PatternCatalogStanding {
+	declared: boolean;
+	/** Why it reads none, in the words naming one would be refused with; null where it reads one. */
+	detail: string | null;
 }
 
 export interface IssuePatterns {
+	catalog: PatternCatalogStanding;
 	patterns: IssuePatternView[];
 	/** False while a new pattern waits on its reviewer. */
 	dispatchable: boolean;
 	refusal: { code: typeof PATTERN_REVIEW_PENDING; detail: string } | null;
+	/** An unanswered return: the work step cannot move to build, nor the issue to awaiting_release. */
+	returned: { code: typeof PATTERN_RETURNED; detail: string } | null;
+	/** The pending patterns the caller may decide now: holding patterns.approve, and not their author. */
+	decidable: string[];
 }
 
 export interface IssuePatternResponse {

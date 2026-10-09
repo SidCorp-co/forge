@@ -12,7 +12,7 @@ import { refuseHeldTake } from './blocked-by.js';
 import { syncCriteriaFromText } from './criteria/store.js';
 import type { ResolvedLabelAttach } from './label-service.js';
 import { scrubIssueText } from './patch-fields.js';
-import { assertPatternReviewsSettledForIssue } from './patterns.js';
+import { assertNoUnansweredReturn, assertPatternReviewsSettledForIssue } from './patterns.js';
 import { plannedRevisionFor } from './ports.js';
 import { ISSUE_READ_COLUMNS, type IssueRow, issueScopeOf } from './read-service.js';
 import { leaseWriteTakes } from './session-claim.js';
@@ -26,7 +26,7 @@ import {
 
 const refuse = refuser<IssueUpdateRefusalCode>('ISSUE_UPDATE_REFUSED');
 
-/** The steps a new pattern awaiting its reviewer holds the work out of. */
+/** The steps a new pattern awaiting its reviewer, or an unanswered return, holds the work out of. */
 const BUILD_STEPS: readonly string[] = ['build', 'test', 'release'];
 
 type IssueUpdateInput = {
@@ -108,9 +108,11 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       await writeSplitSessionContext(tx, issueId, split);
     }
     if (workState) {
-      // a new pattern awaiting its reviewer holds the work at design (Issue lifecycle r14 design-check)
+      // a new pattern awaiting its reviewer, or a return the issue has not answered, holds the work
+      // at design (Issue lifecycle r14 design-check)
       if (scope && workState.step && BUILD_STEPS.includes(workState.step)) {
         await assertPatternReviewsSettledForIssue(scope.projectId, issueId, tx);
+        await assertNoUnansweredReturn(issueId, tx);
       }
       await writeWorkStateFields(tx, issueId, workState);
     }

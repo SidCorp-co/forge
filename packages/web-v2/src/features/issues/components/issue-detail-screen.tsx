@@ -61,6 +61,7 @@ import { ReleaseApprovalProvider } from "../release-approval";
 import { IssueBanner, IssueStandingFacts } from "./issue-standing-bits";
 import type { IssueAgentSession, IssueStatus } from "../types";
 import { AwaitingReleaseBanner } from "./awaiting-release-banner";
+import { PatternsPanel } from "./patterns-panel";
 import { BlockerBanner } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
 import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
@@ -264,6 +265,7 @@ export function IssueDetailScreen({
             threadQuestion={threadQuestion}
             onAnswerInThread={canWrite ? (text) => answerInThread.mutateAsync({ body: text }) : undefined}
           />
+          <PatternsPanel issueId={issue.id} projectId={issue.projectId} />
           <AwaitingReleaseBanner projectId={issue.projectId} issueId={issue.id} canWrite={canWrite} />
           {reasonDialog}
           {agentState && <LiveAgentPanel state={agentState} step={liveStep ?? "—"} slug={slug} issueId={id} />}

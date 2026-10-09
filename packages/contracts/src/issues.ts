@@ -78,6 +78,7 @@ export const MERGE_REFUSAL_CODES = [
 	"MERGE_RUN_NOT_FOUND",
 	"MERGE_RUN_OF_ANOTHER_PROJECT",
 	"NO_BINDING",
+	"PATTERN_ENTRY_MISSING",
 	...COMMIT_LANDING_REFUSAL_CODES,
 ] as const;
 export type MergeRefusalCode = (typeof MERGE_REFUSAL_CODES)[number];
@@ -164,6 +165,7 @@ export const ISSUE_UPDATE_REFUSAL_CODES = [
 	"ASSIGNEE_NOT_MEMBER",
 	"STATUS_MOVES_BY_TRANSITION",
 	"PATTERN_REVIEW_PENDING",
+	"PATTERN_RETURNED",
 ] as const;
 export type IssueUpdateRefusalCode =
 	(typeof ISSUE_UPDATE_REFUSAL_CODES)[number];

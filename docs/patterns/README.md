@@ -37,27 +37,40 @@ relations axis); the Core module entry points at them and restates none of their
 
 ## Naming a pattern on an issue
 
-`POST /api/issues/:id/patterns` `{ pattern: '<slug>', summary? }`, the slug being an entry's file
-name without `.md`. A catalogued slug is recorded as reuse and needs no approval. A slug no entry
+`POST /api/issues/:id/patterns` `{ pattern: '<slug>', summary?, run? }`, the slug being an entry's
+file name without `.md`. A catalogued slug is recorded as reuse and needs no approval. A slug no entry
 holds is a new pattern: it is recorded as new, with the summary saying what it is, and waits on its
-reviewer. `GET /api/issues/:id/patterns` lists what an issue named.
+reviewer. `GET /api/issues/:id/patterns` lists what an issue named. It also says whether the project
+reads a catalog at all (`catalog.declared`), any return the issue has not answered (`returned`), and
+which pending patterns the caller may decide (`decidable`).
 
-Only a project whose declared repository is this one reads this catalog, from the build it runs;
-naming a pattern on any other project is refused `PATTERN_CATALOG_UNDECLARED`.
+Only a project whose declared repository is this one reads this catalog, from the build it runs.
+Naming a pattern on any other project is refused `PATTERN_CATALOG_UNDECLARED`, so a run reads
+`catalog.declared` first and names none where it is false.
 
 ## The new-pattern approval
 
 - **One reviewer decides.** `POST /api/issues/:id/patterns/:patternId/decision`
-  `{ decision: 'approved' | 'returned', reason }`, by a holder of `patterns.approve` (a person or an
-  agent), never the account that named it (`PATTERN_REVIEWER_IS_AUTHOR`). The decision records who,
-  when and why. A returned pattern is no longer pending: the run names a catalogued pattern instead,
-  or names a revised one, which waits again.
+  `{ decision: 'approved' | 'returned', reason, run? }` is sent by a holder of `patterns.approve`,
+  a person or an agent. It is never the run that named the pattern, or, for a pattern a person
+  named, that person's account (`PATTERN_REVIEWER_IS_AUTHOR`). A box's runs share one credential.
+  A box's call is the run holding the issue there, or the run its `run` names (the run id the box
+  declared). A call that cannot be told apart from the naming run is refused
+  `PATTERN_REVIEWER_RUN_UNNAMED`, never guessed. The decision records who, which run, when and why.
+  The issue page lists an issue's new patterns, and a reviewer who may decide one approves or
+  returns it there.
 - **While it waits, the issue is held.** Every dispatch door refuses or withholds it as
   `PATTERN_REVIEW_PENDING`: the move to `in_progress`, a run session over it, the admissible list,
   a pool claim, a queued job, the issue list and its standing. Its work step cannot move to build,
   test or release.
+- **A return holds until it is answered.** The reason is posted on the issue. Until the issue names
+  a catalogued pattern instead, or names the slug again with a revised summary, its work step cannot
+  move to build and it cannot move to `awaiting_release` (`PATTERN_RETURNED`). A returned pattern
+  cannot be retracted. The issue stays dispatchable, because a run has to take it to answer.
 - **The entry lands in the same change.** The approved pattern's page is added here, with its three
   sections and `**Introduced by:**` naming the issue, in the change that introduces the pattern. The
-  move to `awaiting_release` is refused `PATTERN_ENTRY_MISSING` until the catalog the project reads
-  holds the entry. The design puts this condition on the merge check; it sits on `awaiting_release`
-  until that check exists (ISS-472).
+  merge mark (`POST /api/issues/:id/merge`) reads that change: the `changedPaths` the box sends for
+  the marked commit, or the repository at that commit. It refuses `PATTERN_ENTRY_MISSING` until the
+  page is in the change (`packages/core/src/issues/pattern-entry.ts`). The design puts this on the
+  merge check, which takes it over before the merge once it exists (ISS-472). The move to
+  `awaiting_release` does not read the catalog: the running build holds a page only after a release.

@@ -16,6 +16,7 @@ import {
   useReleaseRoster,
 } from "../hooks";
 import { useIssuePark } from "../park";
+import { useIssuePatterns } from "../patterns-api";
 
 /**
  * Every read the issue page makes, sent with the page. `id` off the URL is the display key as often
@@ -40,6 +41,7 @@ export function useIssueReads(id: string, projectId: string) {
   useProjectMembers(projectId);
   useProjectModules(projectId);
   useReleaseRoster(projectId);
+  useIssuePatterns(canonicalId, projectId);
   const issue = issueQ.data;
   return {
     issueQ,

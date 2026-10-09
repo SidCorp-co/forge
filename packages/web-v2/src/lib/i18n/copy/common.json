@@ -270,6 +270,7 @@
     "common.runGate.deploy_locked": "Deploy locked",
     "common.runGate.issue_busy": "Issue busy",
     "common.runGate.paused": "Paused",
+    "common.runGate.pattern_review_pending": "Pattern review",
     "common.runGate.retry_cooldown": "Retry cooldown",
     "common.runGate.runner_stale": "Runner stale",
     "common.runGate.runner_too_old": "Runner too old",

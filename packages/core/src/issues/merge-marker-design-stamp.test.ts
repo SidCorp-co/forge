@@ -43,6 +43,8 @@ vi.mock('./landing-evidence.js', async (importOriginal) => ({
 }));
 const readCommitLanding = vi.fn();
 vi.mock('./commit-landing.js', () => ({ readCommitLanding }));
+// the issue names no approved new pattern, so the mark asks no catalog page (pattern-entry.test.ts)
+vi.mock('./pattern-entry.js', () => ({ patternEntryRefusal: async () => null }));
 vi.mock('./work-evidence.js', () => ({
   findMissingWorkEvidence: async () => null,
   collectWorkEvidence: async () => ({ handoffCommitSha: null }),

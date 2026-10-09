@@ -32,6 +32,7 @@ import {
   recordReadPaths,
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
+import { patternEntryRefusal } from './pattern-entry.js';
 import { contractDrift, postIssueNotice } from './ports.js';
 import { findIssueById, type IssueRow } from './read-service.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from './work-evidence.js';
@@ -393,6 +394,29 @@ async function writeMarkTrail(
   return { mark, markDetail };
 }
 
+/**
+ * An approved new pattern's catalog page lands in this issue's own change, or its mark is refused
+ * PATTERN_ENTRY_MISSING (Issue to release r20 `rule-merge`; `pattern-entry.ts`). The change is read
+ * through the box's paths when they were read at the commit marked; paths read at another commit are
+ * left to the stamp, which refuses them by their own name.
+ */
+async function refuseMissingEntry(
+  args: MergeMarkArgs,
+  prior: IssueRow,
+  shape: LandingShape,
+): Promise<void> {
+  const commit = args.commit ?? prior.mergedCommitSha ?? null;
+  const read = markReadPaths({ shape, commit, sent: args.changedPaths ?? null });
+  if (!read.ok) return;
+  const refusal = await patternEntryRefusal({
+    issueId: prior.id,
+    projectId: prior.projectId,
+    commit,
+    changedPaths: read.paths,
+  });
+  if (refusal) throw refuse(refusal.code, refusal.detail, refusal.path);
+}
+
 /** The mark's artifacts with each `carriedBy` resolved to its carrier's key, or the refusal naming it. */
 async function withCarriers(args: MergeMarkArgs, prior: IssueRow): Promise<MergeMarkArgs> {
   if (args.op !== 'mark' || !args.artifacts?.some((a) => a.carriedBy !== undefined)) return args;
@@ -427,6 +451,7 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
   if (!prior) throw notFound('issue not found');
   const args = await withCarriers(input, prior);
   const preflight = args.op === 'mark' ? await preflightMark(args, prior) : null;
+  if (preflight) await refuseMissingEntry(args, prior, preflight.shape);
 
   // The stamp, its audit comment and their events commit together or not at all.
   const { stamp, mark, markDetail } = await db.transaction(async (tx) => {

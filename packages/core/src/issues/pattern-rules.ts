@@ -1,14 +1,16 @@
 /**
  * The pattern rules (REQ-36 BC-2, BC-3; Issue lifecycle r14 `design-check`), pure over what the
  * service read: which catalog a project reads, what naming a pattern records, who may decide a new
- * one, and what the move to awaiting_release asks of an approved one. Each returns its refusals.
+ * one, what a return holds until it is answered, and what the move to awaiting_release asks. The
+ * catalog entry is asked at the merge mark, which reads the change (`pattern-entry.ts`). Each returns
+ * its refusals.
  */
 
 import { PATTERN_CATALOG } from '@forge/contracts/pattern-catalog';
 import {
   type IssuePatternKind,
   PATTERN_CATALOG_DIR,
-  PATTERN_ENTRY_MISSING,
+  PATTERN_RETURNED,
   PATTERN_REVIEW_PENDING,
   type PatternDecision,
   type PatternRefusal,
@@ -36,8 +38,24 @@ export interface PatternRowFacts {
   pattern: string;
   kind: IssuePatternKind;
   namedBy: string;
+  /** The run session that named it; null where a person did. */
+  namedSession: string | null;
+  createdAt: Date;
   decision: PatternDecision | null;
+  decidedAt: Date | null;
   retractedAt: Date | null;
+}
+
+/**
+ * Who asks to decide a row. `box` is set on a box's credential, whose runs share one account, and
+ * `session` is the run it was told to be (the issue's lease on that box, or the call's `run`).
+ * `namerLiveHere` says whether the run that named the row is still a live session on that box.
+ */
+export interface PatternDecider {
+  userId: string;
+  box: string | null;
+  session: string | null;
+  namerLiveHere: boolean;
 }
 
 const refusal = (code: PatternRefusal['code'], detail: string, path = ''): PatternRefusal => ({
@@ -101,11 +119,16 @@ export function nameOutcome(args: {
   return { ok: true, kind: 'new' };
 }
 
-/** Whether `actorUserId` may decide this row: a new pattern, live, undecided, named by someone else. */
+/**
+ * Whether `decider` may decide this row: a new pattern, live, undecided, and not its author. A run's
+ * pattern is refused only to that run, whatever account it shares; a person's is refused to that
+ * person's account. A box call that cannot say which run it is, on the box where the naming run is
+ * still live, is refused rather than guessed.
+ */
 export function decideRefusals(
   issueRef: string,
   row: PatternRowFacts,
-  actorUserId: string,
+  decider: PatternDecider,
 ): PatternRefusal[] {
   if (row.kind !== 'new') {
     return [
@@ -131,7 +154,16 @@ export function decideRefusals(
       ),
     ];
   }
-  if (row.namedBy === actorUserId) {
+  return authorRefusals(issueRef, row, decider);
+}
+
+function authorRefusals(
+  issueRef: string,
+  row: PatternRowFacts,
+  decider: PatternDecider,
+): PatternRefusal[] {
+  if (row.namedSession === null) {
+    if (row.namedBy !== decider.userId) return [];
     return [
       refusal(
         'PATTERN_REVIEWER_IS_AUTHOR',
@@ -139,12 +171,59 @@ export function decideRefusals(
       ),
     ];
   }
+  if (decider.session === row.namedSession) {
+    return [
+      refusal(
+        'PATTERN_REVIEWER_IS_AUTHOR',
+        `this run (session ${row.namedSession}) named \`${row.pattern}\` on ${issueRef}, so another run or a person holding patterns.approve decides it: a new pattern has one reviewer, never the run that wrote it`,
+      ),
+    ];
+  }
+  if (decider.box !== null && decider.session === null && decider.namerLiveHere) {
+    return [
+      refusal(
+        'PATTERN_REVIEWER_RUN_UNNAMED',
+        `\`${row.pattern}\` on ${issueRef} was named by a run that is still live on this box (session ${row.namedSession}), and this box's runs share one credential, so this call could be that run. Send \`run\`, the run id this box declared for the run deciding, or decide it as a person`,
+        '/run',
+      ),
+    ];
+  }
   return [];
 }
 
+/**
+ * The returned rows no later live row answers: the issue has named neither another pattern nor the
+ * slug again since the return. A retracted later row answers nothing.
+ */
+export function unansweredReturns(rows: readonly PatternRowFacts[]): PatternRowFacts[] {
+  const live = rows.filter((r) => r.retractedAt === null);
+  return live.filter(
+    (r) =>
+      r.decision === 'returned' &&
+      r.decidedAt !== null &&
+      !live.some((later) => later.id !== r.id && later.createdAt > (r.decidedAt as Date)),
+  );
+}
+
+/** An unanswered return, in the words the build step and the move to awaiting_release refuse it with. */
+export function returnedDetail(issueRef: string, patterns: readonly string[]): string {
+  const named = patterns.map((p) => `\`${p}\``).join(', ');
+  return `${PATTERN_RETURNED}: the reviewer returned ${named} on ${issueRef}, and the issue has not answered: name a catalogued pattern instead, or name ${patterns.length > 1 ? 'each slug' : 'the slug'} again with a revised summary for a new review. Until then its work does not move to build and it does not move to awaiting_release`;
+}
+
 export function retractRefusals(issueRef: string, row: PatternRowFacts): PatternRefusal[] {
-  if (row.retractedAt === null) return [];
-  return [refusal('PATTERN_RETRACTED', `\`${row.pattern}\` on ${issueRef} is already retracted`)];
+  if (row.retractedAt !== null) {
+    return [refusal('PATTERN_RETRACTED', `\`${row.pattern}\` on ${issueRef} is already retracted`)];
+  }
+  if (row.decision === 'returned') {
+    return [
+      refusal(
+        PATTERN_RETURNED,
+        `\`${row.pattern}\` on ${issueRef} was returned, and it stays as the record of that return. A return is answered by naming another pattern or naming the slug again revised, not by retracting it`,
+      ),
+    ];
+  }
+  return [];
 }
 
 /** A new pattern waiting on its reviewer, in the words every dispatch door refuses it with. */
@@ -154,32 +233,27 @@ export function pendingDetail(issueRef: string, patterns: readonly string[]): st
 }
 
 /**
- * What the move to awaiting_release asks of the issue's patterns: none waits on its reviewer, and
- * every approved new one has its entry in the catalog the project reads. A returned or retracted
- * row asks nothing.
+ * What the move to awaiting_release asks of the issue's patterns: none waits on its reviewer, and no
+ * return stands unanswered. The catalog entry is not asked here: it is in the change, which the merge
+ * mark reads (`pattern-entry.ts`), and the running build holds it only after a release.
  */
 export function releaseFaults(
   issueRef: string,
   rows: readonly PatternRowFacts[],
-  catalog: CatalogReading,
-): { code: typeof PATTERN_REVIEW_PENDING | typeof PATTERN_ENTRY_MISSING; detail: string }[] {
-  const live = rows.filter((r) => r.kind === 'new' && r.retractedAt === null);
-  const pending = live.filter((r) => r.decision === null).map((r) => r.pattern);
+): { code: typeof PATTERN_REVIEW_PENDING | typeof PATTERN_RETURNED; detail: string }[] {
+  const pending = rows
+    .filter((r) => r.kind === 'new' && r.retractedAt === null && r.decision === null)
+    .map((r) => r.pattern);
   const faults: {
-    code: typeof PATTERN_REVIEW_PENDING | typeof PATTERN_ENTRY_MISSING;
+    code: typeof PATTERN_REVIEW_PENDING | typeof PATTERN_RETURNED;
     detail: string;
   }[] = [];
   if (pending.length > 0) {
     faults.push({ code: PATTERN_REVIEW_PENDING, detail: pendingDetail(issueRef, pending) });
   }
-  const approved = live.filter((r) => r.decision === 'approved').map((r) => r.pattern);
-  const missing =
-    catalog.kind === 'read' ? approved.filter((p) => !catalog.slugs.has(p)) : approved;
-  if (missing.length > 0) {
-    faults.push({
-      code: PATTERN_ENTRY_MISSING,
-      detail: `${issueRef} introduced the approved new pattern${missing.length > 1 ? 's' : ''} ${missing.map((p) => `\`${p}\``).join(', ')}, and the catalog its project reads holds no entry for ${missing.length > 1 ? 'them' : 'it'}: the entry (${missing.map((p) => `${PATTERN_CATALOG_DIR}/${p}.md`).join(', ')}) lands in this issue's own change, and is read once the build that carries it is the one running`,
-    });
+  const returned = unansweredReturns(rows).map((r) => r.pattern);
+  if (returned.length > 0) {
+    faults.push({ code: PATTERN_RETURNED, detail: returnedDetail(issueRef, returned) });
   }
   return faults;
 }

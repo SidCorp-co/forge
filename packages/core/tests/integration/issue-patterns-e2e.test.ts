@@ -1,8 +1,11 @@
 /**
- * An issue names the patterns it builds to (REQ-36 BC-2, BC-3; Issue lifecycle r14 `design-check`):
- * a catalogued one is reuse and records no approval, an uncatalogued one is new and holds the issue
- * at every dispatch door until one reviewer holding patterns.approve, never its author, decides it;
- * and the move to awaiting_release asks an approved one for its catalog entry.
+ * An issue names the patterns it builds to (REQ-36 BC-2, BC-3; Issue lifecycle r14 `design-check`,
+ * Issue to release r20 `rule-merge`): a catalogued one is reuse and records no approval, an
+ * uncatalogued one is new and holds the issue until one reviewer holding patterns.approve, never its
+ * author, decides it. A return is posted on the issue and holds the work until the issue answers it.
+ * An approved one's catalog page is asked for by the merge mark, which reads the change, so the issue
+ * that introduces it reaches awaiting_release. The dispatch doors and the run author rule are
+ * `issue-pattern-doors-e2e.test.ts`.
  */
 
 import { sql } from 'drizzle-orm';
@@ -19,12 +22,11 @@ import {
   createTestProject,
   createTestUser,
   rows,
+  seedIssueStatus,
 } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 let readAdmissibleIssues: typeof import('../../src/devices/admissible.js').readAdmissibleIssues;
-let patternReleaseRefusal: typeof import('../../src/issues/patterns.js').patternReleaseRefusal;
-let catalogReadingOf: typeof import('../../src/issues/pattern-rules.js').catalogReadingOf;
 
 const tokens = { reviewer: '', author: '', viewer: '' };
 let reviewerId = '';
@@ -55,8 +57,6 @@ beforeAll(async () => {
   await import('../../src/index.js');
   await startQueue();
   ({ readAdmissibleIssues } = await import('../../src/devices/admissible.js'));
-  ({ patternReleaseRefusal } = await import('../../src/issues/patterns.js'));
-  ({ catalogReadingOf } = await import('../../src/issues/pattern-rules.js'));
   const reviewer = await createTestUser({ verified: true });
   const author = await createTestUser({ kind: 'agent' });
   const viewer = await createTestUser({ verified: true });
@@ -106,6 +106,49 @@ function refused(res: { status: number; body: Doc }): string[] {
 const patterns = (issue: string) => `/api/issues/${issue}/patterns`;
 const admitted = async () =>
   (await readAdmissibleIssues({ deviceId: box, projectId: forge })).items.map((a) => a.issueId);
+
+const SHA = 'c'.repeat(40);
+
+/** The merge stamped as a repository would have, for a case whose subject is past the mark. */
+async function landedAt(issue: string): Promise<void> {
+  await db.execute(
+    sql`UPDATE issues SET merged_at = now(), merged_commit_sha = ${SHA} WHERE id = ${issue}`,
+  );
+}
+
+/** One criterion, judged passing at the landed commit: all the move to awaiting_release asks besides. */
+async function judged(issue: string): Promise<void> {
+  ok(
+    await call('reviewer', 'PATCH', `/api/issues/${issue}`, { acceptanceCriteria: '1. It holds.' }),
+  );
+  ok(
+    await call('reviewer', 'POST', `/api/issues/${issue}/verdicts`, {
+      criterion: 1,
+      verdict: 'pass',
+      reason: 'shown',
+      identity: { kind: 'commit', sha: SHA },
+    }),
+    201,
+  );
+}
+
+const toAwaitingRelease = (issue: string) =>
+  call('reviewer', 'POST', `/api/issues/${issue}/transition`, { toStatus: 'awaiting_release' });
+
+/** A mark naming the landed commit, with the files the box read it changed. */
+const mark = (
+  issue: string,
+  changes: { path: string; change: 'added' | 'changed' | 'removed' }[],
+) =>
+  call('reviewer', 'POST', `/api/issues/${issue}/merge`, {
+    target: 'main',
+    commit: SHA,
+    note: 'landed',
+    changedPaths: { commit: SHA, changes },
+  });
+
+const statusOf = async (issue: string) =>
+  (await rows<{ status: string }>(sql`SELECT status FROM issues WHERE id = ${issue}`))[0]?.status;
 
 const ids = { reuse: '', held: '', pattern: '' };
 
@@ -257,40 +300,18 @@ describe('the work it holds and the merge it asks of', () => {
     ok(await call('author', 'PATCH', `/api/issues/${issue}`, { workState: { step: 'plan' } }));
   });
 
-  it('asks an approved new pattern for its entry in the catalog the project reads', async () => {
-    const catalog = catalogReadingOf(THIS_REPOSITORY);
-    const ask = () => db.transaction((tx) => patternReleaseRefusal(tx, ids.held, catalog));
-    expect((await ask())?.code).toBe('PATTERN_ENTRY_MISSING');
-    const landed = { kind: 'read' as const, slugs: new Set(['webhook-door']) };
-    expect(await db.transaction((tx) => patternReleaseRefusal(tx, ids.held, landed))).toBeNull();
-    expect(await db.transaction((tx) => patternReleaseRefusal(tx, ids.reuse, catalog))).toBeNull();
-  });
-
-  it('refuses the move to awaiting_release itself while a review waits, then while the entry is missing', async () => {
+  it('refuses the move to awaiting_release while a review waits, through the route', async () => {
     const issue = await issueAt(forge, 'in_progress');
-    await db.execute(
-      sql`UPDATE issues SET merged_at = now(), merged_commit_sha = ${'a'.repeat(40)} WHERE id = ${issue}`,
-    );
-    const made = ok(
+    await landedAt(issue);
+    ok(
       await call('author', 'POST', patterns(issue), {
         pattern: 'queue-door',
         summary: 'a queue consumer as a door',
       }),
       201,
     );
-    const move = () =>
-      call('reviewer', 'POST', `/api/issues/${issue}/transition`, { toStatus: 'awaiting_release' });
-    const pending = await move();
+    const pending = await toAwaitingRelease(issue);
     expect([pending.status, refused(pending)]).toEqual([422, ['PATTERN_REVIEW_PENDING']]);
-    ok(
-      await call('reviewer', 'POST', `${patterns(issue)}/${made.pattern.id}/decision`, {
-        decision: 'approved',
-        reason: 'nothing catalogued consumes a queue',
-      }),
-    );
-    const missing = await move();
-    expect([missing.status, refused(missing)]).toEqual([422, ['PATTERN_ENTRY_MISSING']]);
-    expect(missing.body.error.refusals[0].detail).toContain('docs/patterns/queue-door.md');
   });
 
   it('a retracted pending pattern stops holding its issue, and is retracted once', async () => {
@@ -320,18 +341,152 @@ describe('a project whose catalog Forge cannot read', () => {
   });
 });
 
-describe('the table keeps a decision', () => {
-  it('refuses rewriting a decided row at the database', async () => {
-    const err = await db
-      .execute(sql`UPDATE issue_patterns SET decision = 'returned' WHERE id = ${ids.pattern}`)
-      .then(
-        () => null,
-        (e: { cause?: { message?: string } }) => e,
-      );
-    expect(err?.cause?.message).toMatch(/ISSUE_PATTERN_DECIDED_ONCE/);
-    const [row] = await rows<{ decision: string }>(
-      sql`SELECT decision FROM issue_patterns WHERE id = ${ids.pattern}`,
+describe('the issue that introduces a pattern reaches awaiting_release (BC-3)', () => {
+  const page = 'docs/patterns/queue-door.md';
+  let issue = '';
+
+  it('is refused at the merge mark while the change it reads holds no page for the approved pattern', async () => {
+    issue = await issueAt(forge, 'in_progress');
+    const made = ok(
+      await call('author', 'POST', patterns(issue), {
+        pattern: 'queue-door',
+        summary: 'a queue consumer as a door; no catalogued pattern consumes a queue',
+      }),
+      201,
     );
-    expect(row?.decision).toBe('approved');
+    ok(
+      await call('reviewer', 'POST', `${patterns(issue)}/${made.pattern.id}/decision`, {
+        decision: 'approved',
+        reason: 'nothing catalogued consumes a queue',
+      }),
+    );
+    const without = await mark(issue, [
+      { path: 'packages/core/src/queue/door.ts', change: 'added' },
+    ]);
+    expect([without.status, refused(without)]).toEqual([422, ['PATTERN_ENTRY_MISSING']]);
+    expect(without.body.error.refusals[0].detail).toContain(page);
+    expect(without.body.error.refusals[0].detail).toContain(`the files commit ${SHA} changed`);
+    const removed = await mark(issue, [{ path: page, change: 'removed' }]);
+    expect(refused(removed)).toEqual(['PATTERN_ENTRY_MISSING']);
+    const [row] = await rows<{ merged_at: Date | null }>(
+      sql`SELECT merged_at FROM issues WHERE id = ${issue}`,
+    );
+    expect(row?.merged_at).toBeNull();
+  });
+
+  it('is refused at a mark that reads no change at all, saying what to send', async () => {
+    const res = await call('reviewer', 'POST', `/api/issues/${issue}/merge`, {
+      target: 'main',
+      commit: SHA,
+    });
+    expect(refused(res)).toEqual(['PATTERN_ENTRY_MISSING']);
+    expect(res.body.error.refusals[0].detail).toContain('changedPaths');
+  });
+
+  it('is marked once the change carries the page, and moves to awaiting_release with no PATTERN_* refusal', async () => {
+    const marked = ok(
+      await mark(issue, [
+        { path: 'packages/core/src/queue/door.ts', change: 'added' },
+        { path: page, change: 'added' },
+      ]),
+    );
+    expect(marked.action).toBe('merged');
+    await judged(issue);
+    const moved = await toAwaitingRelease(issue);
+    expect([moved.status, refused(moved)]).toEqual([200, []]);
+    expect(await statusOf(issue)).toBe('awaiting_release');
+  });
+
+  it('asks nothing of an issue whose patterns are all reuse', async () => {
+    const reuse = await issueAt(forge, 'in_progress');
+    ok(await call('author', 'POST', patterns(reuse), { pattern: 'api-route' }), 201);
+    ok(await mark(reuse, [{ path: 'packages/core/src/x/routes.ts', change: 'changed' }]));
+  });
+});
+
+describe('a returned pattern holds the work until the issue answers it', () => {
+  let issue = '';
+  let returned = '';
+
+  it('posts the reason on the issue and leaves the issue dispatchable', async () => {
+    issue = await issueAt(forge, 'open');
+    const made = ok(
+      await call('author', 'POST', patterns(issue), {
+        pattern: 'cache-door',
+        summary: 'a cache as a door',
+      }),
+      201,
+    );
+    returned = made.pattern.id;
+    ok(
+      await call('reviewer', 'POST', `${patterns(issue)}/${returned}/decision`, {
+        decision: 'returned',
+        reason: 'the api-route pattern already serves a cached read',
+      }),
+    );
+    const comments = ok(await call('author', 'GET', `/api/issues/${issue}/comments`));
+    const bodies: string[] = (comments.items ?? comments.comments ?? comments).map(
+      (c: Doc) => c.body,
+    );
+    expect(
+      bodies.some(
+        (b) => b.includes('`cache-door`') && b.includes('the api-route pattern already serves'),
+      ),
+    ).toBe(true);
+    const read = ok(await call('author', 'GET', patterns(issue)));
+    expect(read.dispatchable).toBe(true);
+    expect(read.returned.code).toBe('PATTERN_RETURNED');
+    expect(read.patterns[0]).toMatchObject({ decision: 'returned', unanswered: true });
+    expect(await admitted()).toContain(issue);
+  });
+
+  it('holds the work step out of build and the issue out of awaiting_release, and refuses retracting it', async () => {
+    await seedIssueStatus(issue, 'in_progress');
+    const build = await call('author', 'PATCH', `/api/issues/${issue}`, {
+      workState: { step: 'build' },
+    });
+    expect(refused(build)).toEqual(['PATTERN_RETURNED']);
+    await landedAt(issue);
+    await judged(issue);
+    const moved = await toAwaitingRelease(issue);
+    expect([moved.status, refused(moved)]).toEqual([422, ['PATTERN_RETURNED']]);
+    const retract = await call('author', 'POST', `${patterns(issue)}/${returned}/retract`, {
+      reason: 'never mind',
+    });
+    expect(refused(retract)).toEqual(['PATTERN_RETURNED']);
+  });
+
+  it('is answered by naming a catalogued pattern, after which build and awaiting_release are open', async () => {
+    ok(await call('author', 'POST', patterns(issue), { pattern: 'api-route' }), 201);
+    const read = ok(await call('author', 'GET', patterns(issue)));
+    expect(read.returned).toBeNull();
+    ok(await call('author', 'PATCH', `/api/issues/${issue}`, { workState: { step: 'build' } }));
+    const moved = await toAwaitingRelease(issue);
+    expect([moved.status, refused(moved)]).toEqual([200, []]);
+  });
+
+  it('is answered by naming the slug again revised, which waits on a new review', async () => {
+    const other = await issueAt(forge, 'open');
+    const made = ok(
+      await call('author', 'POST', patterns(other), { pattern: 'mail-door', summary: 'mail' }),
+      201,
+    );
+    ok(
+      await call('reviewer', 'POST', `${patterns(other)}/${made.pattern.id}/decision`, {
+        decision: 'returned',
+        reason: 'say what it takes in',
+      }),
+    );
+    ok(
+      await call('author', 'POST', patterns(other), {
+        pattern: 'mail-door',
+        summary: 'inbound mail as a door: what it takes in and why no route serves it',
+      }),
+      201,
+    );
+    const read = ok(await call('author', 'GET', patterns(other)));
+    expect(read.returned).toBeNull();
+    expect(read.dispatchable).toBe(false);
+    expect(read.refusal.code).toBe('PATTERN_REVIEW_PENDING');
   });
 });

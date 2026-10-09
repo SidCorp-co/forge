@@ -211,6 +211,9 @@ describe('a computation an executor ran', () => {
           at: kept.body.createdAt,
           askedBy: { id: w.userId, name: expect.any(String) },
           reads: [],
+          // and the script with what it printed, scrubbed, since REQ-32 BC-16 (6f2068ab4)
+          script,
+          result: { exit: 0, durationMs: expect.any(Number), stdout: 'token=[Filtered] done' },
         },
       },
     ]);

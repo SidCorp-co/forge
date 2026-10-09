@@ -3039,6 +3039,13 @@
       "when": 1823904000000,
       "tag": "0474_an_issue_names_its_patterns_and_a_new_one_waits_on_its_reviewer",
       "breakpoints": true
+    },
+    {
+      "idx": 475,
+      "version": "7",
+      "when": 1823990400000,
+      "tag": "0475_a_pattern_names_the_run_that_wrote_it",
+      "breakpoints": true
     }
   ]
 }
