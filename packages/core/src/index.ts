@@ -143,6 +143,7 @@ import {
   registerReleaseBatchFinish,
   releaseVersionsAmong,
 } from './release-batch/index.js';
+import { releaseShareSource } from './release-page/index.js';
 import { provideReportPorts } from './report-ports.js';
 import { registerReportQueries } from './report-queries/index.js';
 import {
@@ -206,8 +207,14 @@ provideStatusReportsPorts({
   checkTemplateNarrative,
 });
 // a message's blocks, a template's output and a kept template report: each is frozen by the module
-// that owns it into one report document (REQ-32 A4, A7, B3)
-provideShareSubjectSources([messageShareSource, templateShareSource, statusReportShareSource]);
+// that owns it into one report document (REQ-32 A4, A7, B3); a release page is frozen as its user
+// view (REQ-40 BC-11)
+provideShareSubjectSources([
+  messageShareSource,
+  templateShareSource,
+  statusReportShareSource,
+  releaseShareSource,
+]);
 provideAssistantMethod(composeLayers(METHOD_LAYERS));
 provideKnowledgePorts({
   searchMemory: runMemorySearch,

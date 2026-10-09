@@ -3060,6 +3060,13 @@
       "when": 1824163200000,
       "tag": "0477_a_preview_serves_a_runs_worktree",
       "breakpoints": true
+    },
+    {
+      "idx": 478,
+      "version": "7",
+      "when": 1824249600000,
+      "tag": "0478_a_release_page_opens_on_highlights_and_can_be_shared",
+      "breakpoints": true
     }
   ]
 }

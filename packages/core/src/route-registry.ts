@@ -133,6 +133,7 @@ import {
 import { questionnaireRoutes } from './questionnaires/routes.js';
 import { questionRoutes } from './questions/routes.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
+import { releasePageRoutes } from './release-page/routes.js';
 import { reportQueryRoutes } from './report-queries/routes.js';
 import { reportRoutes } from './reports/routes.js';
 import { requirementRoutes } from './requirements/routes.js';
@@ -337,6 +338,7 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
 function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/pipeline', pipelineAnalyticsRoutes);
   app.route('/api/projects', releaseBatchRoutes);
+  app.route('/api/projects', releasePageRoutes);
   app.route('/api/schedules', scheduleRoutes);
   app.route('/api/agent-reports', agentReportRoutes);
   app.route('/api/shares', shareOpenRoutes);

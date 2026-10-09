@@ -1,10 +1,12 @@
 // The one writer of `share_links`: create, revoke and open a share. A share is a frozen, scrubbed
-// report document; opening it reads that row and nothing else in the project. It stands only while
+// report document or release page; opening it reads that row and nothing else in the project, but
+// for the media links a release page's source mints for that opening. It stands only while
 // it is unexpired, unrevoked, and its creator still holds the permission that made it, so a creator
 // who leaves the project takes their links with them on the next request.
 
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import type { ActorAgency, ProjectPermission } from '@forge/contracts/permissions';
+import type { ReleasePageSnapshot } from '@forge/contracts/release-page';
 import type { ReportDocument } from '@forge/contracts/report-templates';
 import {
   SHARE_AUDIENCES,
@@ -13,8 +15,9 @@ import {
   type ShareAudienceOption,
   type ShareCreate,
   type ShareCreated,
+  type ShareFrozen,
   type ShareLinkView,
-  type ShareSnapshot,
+  type ShareOpened,
 } from '@forge/contracts/shares';
 import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -28,7 +31,7 @@ import { consumeRateLimit } from '../middleware/rate-limit.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import { forgeLink } from './forge-link.js';
 import { refuse, shareSubjectSource } from './ports.js';
-import { linkEgress, shareSnapshot } from './snapshot.js';
+import { linkEgress, releaseShareSnapshot, shareSnapshot } from './snapshot.js';
 import { hashShareToken, isShareTokenShaped } from './token.js';
 
 type Row = typeof shareLinks.$inferSelect;
@@ -42,12 +45,14 @@ const CREATED_WITH: Record<ShareAudience, ProjectPermission> = {
 };
 
 /**
- * What a stored snapshot is named by: its own title (a shared chat answer's question), else its first
- * block title; both were scrubbed with the rest of the snapshot.
+ * What a stored snapshot is named by: its own title (a shared chat answer's question), a release
+ * page's version, else its first block title; all were scrubbed with the rest of the snapshot.
  */
 function titleOf(snapshot: unknown): string | null {
   const own = (snapshot as { title?: unknown } | null)?.title;
   if (typeof own === 'string' && own.trim()) return own;
+  const version = (snapshot as { header?: { version?: unknown } } | null)?.header?.version;
+  if (typeof version === 'string' && version.trim()) return `Release ${version}`;
   const blocks = (snapshot as { blocks?: unknown } | null)?.blocks;
   if (!Array.isArray(blocks)) return null;
   for (const block of blocks) {
@@ -148,12 +153,9 @@ export async function createShare(args: {
     agency: args.agency,
     access,
   });
-  const snapshot: ReportDocument = shareSnapshot({
-    document,
-    projectId,
-    audience: body.audience,
-    level,
-  });
+  const frozen = { document, projectId, audience: body.audience, level };
+  const snapshot: ShareFrozen =
+    body.subjectKind === 'release' ? releaseShareSnapshot(frozen) : shareSnapshot(frozen);
   const published = await forgeLink.publish({
     projectId,
     audience: body.audience,
@@ -216,7 +218,7 @@ export type ShareOpener = { userId: string } | null;
  * revoked token, and one whose creator no longer holds what created it, all answer the same
  * `SHARE_NOT_AVAILABLE`, so the answer says nothing about which tokens exist.
  */
-export async function openShare(token: string, opener: ShareOpener): Promise<ShareSnapshot> {
+export async function openShare(token: string, opener: ShareOpener): Promise<ShareOpened> {
   if (!isShareTokenShaped(token)) {
     throw refuse('SHARE_TOKEN_MALFORMED', `a share token is ${SHARE_TOKEN_SHAPE}`, '/token');
   }
@@ -268,9 +270,14 @@ export async function openShare(token: string, opener: ShareOpener): Promise<Sha
     )
     .returning({ snapshot: shareLinks.snapshot, expiresAt: shareLinks.expiresAt });
   if (!opened) throw unavailable();
-  return {
-    audience: row.audience,
-    expiresAt: opened.expiresAt.toISOString(),
-    document: opened.snapshot as ReportDocument,
-  };
+  const base = { audience: row.audience, expiresAt: opened.expiresAt.toISOString() };
+  if (row.subjectKind !== 'release') {
+    return { ...base, document: opened.snapshot as ReportDocument };
+  }
+  const source = shareSubjectSource('release');
+  const frozen = opened.snapshot as ReleasePageSnapshot;
+  const release = source.opened
+    ? await source.opened(frozen, { projectId: row.projectId, openerId: opener?.userId ?? null })
+    : frozen;
+  return { ...base, release: release as ReleasePageSnapshot };
 }
