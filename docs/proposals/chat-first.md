@@ -203,17 +203,26 @@ lifecycle r14 already says of every picture.
     item's reporter data is redacted.
   - A recording stops at 30 minutes and is refused past 50 MB.
 - **Diagnosis (BC-19).** The assistant reads the timeline through `forge_recording`, never the raw
-  events. It reads the build's release page for what changed in it. It proposes a cause and a fix
-  as a `feedback_triage` suggestion: route `issue`, short form, with the recording as the
-  reproduction evidence. It reads the product record, not the code; the fix is built by the routed
-  issue's run.
-- **Confirm (BC-20).** The routed issue's run opens its REQ-39 preview. The reporter, or anyone on
-  the project for them, presses Fixed or Not fixed there (`POST /api/previews/:id/confirm`). The
-  confirm is bound to the patch id served. When the issue ships, `loopCloseFromConfirm` answers the
-  item's loop close:
-  - gone, where the shipped patch is the one confirmed;
-  - not gone, on Not fixed, which reopens the item with its note;
-  - asked again as today, where what shipped differs.
+  events. It reads the build's release page for what changed in it. It proposes one cause and one
+  fix by calling `forge_recording` again with `diagnosis: { recording, cause, fix }`; core checks the
+  recording is the item's and answers the proposal, which the chat draws under the reply with its
+  recommended answer "Build the fix, ask the reporter to confirm". That button is the item's own
+  triage route, `issue` with the `diagnosis` (`feedbackTriageSchema.diagnosis`, so a
+  `feedback_triage` suggestion may carry it too), posted by the person who presses it; a diagnosis
+  on another route, or naming another item's recording, is refused `FEEDBACK_DIAGNOSIS_INVALID`. The
+  issue it files carries the cause, the fix and the recording as the reproduction evidence, as the
+  item's own text travels under its data policy. It reads the product record, not the code; the fix
+  is built by the routed issue's run.
+- **Confirm (BC-20).** The routed issue's run opens its REQ-39 preview. The item's page shows it
+  while it is live, and the reporter, or anyone on the project for them, presses Fixed or Not fixed
+  there (`POST /api/previews/:id/confirm`). The confirm is bound to the patch id served. When the
+  item reads resolved, the verify sweep (`feedback/auto-verify.ts`) reads `loopCloseFromConfirm`
+  against the patch id the passing merge check recorded at the commit the issue merged (the fast
+  lane's own test), as the person who confirmed and under the rules their own press meets:
+  - gone, where they said Fixed of the patch that shipped: verified;
+  - not gone, where they said Not fixed of the patch that shipped: reopened with their note;
+  - asked again as today, where what shipped differs, or its merge check names no patch (a full-lane
+    check sends none).
 - **Members only (BC-21).** Recordings are read by `project.read` holders: the route, and the
   feedback page's player. The preview relay already admits members only, by ticket and cookie, with
   the membership checked again within 60 s. `feedback.redact` deletes the recordings with the rest
@@ -278,7 +287,7 @@ These are text-only revisions, approved by the orchestrator.
 | 16 kept preview is the picture | `keptPreviewContentSchema`, picture kind `preview` | idea |
 | 17 preview of the reporter's build | `reproduce` subject, build resolution | previews-core, reproduce |
 | 18 records clicks, errors, failed requests, inputs masked | `RECORDER_OPTIONS`, `timelineOf`, relay injection | previews-core |
-| 19 assistant proposes cause and fix | `forge_recording`, triage suggestion | reproduce |
+| 19 assistant proposes cause and fix | `forge_recording`, triage `diagnosis` | reproduce |
 | 20 reporter confirms, that is the verdict | `confirmFixRequestSchema`, `loopCloseFromConfirm` | previews-core, reproduce |
 | 21 members only | relay admission, `RECORDING_FORBIDDEN` | previews-core |
 | 22 demo data, else dev environment | `previewDemoSettingsSchema`, `reproduceDataOf` | previews-core |

@@ -26,6 +26,7 @@ import { executionFactsIn, runFactsIn, VisualBlockProvider, VisualBlockView } fr
 import { type CanonicalBlock, type MessageEntry, parseMessages } from "@/features/session/types";
 import { type Correction, withoutCorrections } from "../corrections";
 import { TurnDecisions } from "../turn-decisions";
+import { TurnReproduce } from "@/features/previews/reproduce-turn";
 import {
   AGENT_TURN_LABEL,
   type AgentTurn,
@@ -385,6 +386,7 @@ export function ConversationThread({
               />
               {afterEntry?.(entry.message.id)}
               <TurnDecisions blocks={entry.message.blocks} slug={projectSlug} />
+              <TurnReproduce blocks={entry.message.blocks} slug={projectSlug} />
             </div>
           );
         if (entry.kind === "outbox")

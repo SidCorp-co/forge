@@ -190,6 +190,21 @@ describe("the reporter's confirm answers the loop close ahead (BC-20)", () => {
 		expect(loopCloseFromConfirm([], A)).toBeNull();
 	});
 
+	it("reads not fixed only on the change it was said of: a different shipped patch asks again", () => {
+		expect(
+			loopCloseFromConfirm(
+				[{ patchId: A, verdict: "not_fixed", at: "2026-10-09T10:00:00Z" }],
+				B,
+			),
+		).toBeNull();
+		expect(
+			loopCloseFromConfirm(
+				[{ patchId: A, verdict: "not_fixed", at: "2026-10-09T10:00:00Z" }],
+				null,
+			),
+		).toBeNull();
+	});
+
 	it("reads the latest confirm: not fixed after fixed is not gone", () => {
 		const confirms = [
 			{ patchId: A, verdict: "fixed" as const, at: "2026-10-09T10:00:00Z" },

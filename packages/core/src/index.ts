@@ -37,6 +37,7 @@ import { provideExecutionPorts } from './execution-ports.js';
 import { provideFastLanePorts } from './fast-lane/index.js';
 import {
   embedFeedback,
+  forgeRecordingTool,
   provideFeedbackDependents,
   requirementFeedbackAs,
 } from './feedback/index.js';
@@ -278,10 +279,12 @@ provideProjectConfigPorts({
 // the chat toolset composed below describes the registered queries, so they are registered first
 registerReportQueries();
 provideReportPorts();
-// the needs-me read (REQ-41 BC-1) is the development module's own tool, wired here beside the read models
+// the needs-me read (REQ-41 BC-1) is the development module's own tool, and the recording read
+// (BC-19) the feedback module's, wired here beside the read models
 provideChatTools([
   ...CHAT_READ_MODEL_TOOLS,
   { factory: forgeNeedsYouTool },
+  { factory: forgeRecordingTool },
   ...CHAT_RECORD_TOOLS,
   ...CHAT_REPORT_TOOLS,
 ]);

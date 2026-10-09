@@ -7,6 +7,7 @@
 // The reporter's confirm on the fix preview answers the item's loop close ahead of time (BC-20).
 
 import { z } from "zod";
+import { recordingDiagnosisSchema } from "./feedback.js";
 import { PREVIEW_RESERVED_PATH, previewBuildSchema } from "./preview.js";
 import { REASON_PARAGRAPH_MAX } from "./reason-text.js";
 import type { RefusalStatuses } from "./refusal.js";
@@ -393,19 +394,50 @@ export const recordingEventsResponseSchema = z.strictObject({
 
 /**
  * The feedback item's loop close (`feedback-lifecycle` loop-check), answered from a confirm made
- * before the fix shipped: `gone` where the reporter said fixed and the change that shipped is the
- * one they saw (same patch id, the fast lane's own test), `not_gone` where they said not fixed,
- * and null where nothing they saw is what shipped, so the item asks again when it reads resolved.
- * The latest confirm wins.
+ * before the fix shipped. A confirm is a word on the change its preview served, so it answers only
+ * where the change that shipped is that one (same patch id, the fast lane's own test): `gone` where
+ * the reporter said fixed, `not_gone` where they said not fixed. Null where nothing they saw is what
+ * shipped, or nothing tells what shipped, so the item asks again when it reads resolved. The latest
+ * confirm wins.
  */
 export function loopCloseFromConfirm(
 	confirms: readonly Pick<FixConfirmation, "patchId" | "verdict" | "at">[],
 	shippedPatchId: string | null,
 ): "gone" | "not_gone" | null {
 	const latest = [...confirms].sort((a, b) => b.at.localeCompare(a.at))[0];
-	if (!latest) return null;
-	if (latest.verdict === "not_fixed") return "not_gone";
-	return shippedPatchId !== null && latest.patchId === shippedPatchId
-		? "gone"
-		: null;
+	if (!latest || shippedPatchId === null || latest.patchId !== shippedPatchId)
+		return null;
+	return latest.verdict === "fixed" ? "gone" : "not_gone";
 }
+
+/**
+ * The assistant's read of a feedback item's recordings (REQ-41 BC-19): the short timeline of each,
+ * never the raw events. Called with a `diagnosis`, the cause and fix it read are checked against the
+ * item and come back as the proposal the chat draws under the reply, its recommended answer the
+ * button the person presses (the item's own triage route, as them).
+ */
+export const RECORDING_TOOL = "forge_recording";
+
+/** The one recommended answer to a diagnosis: the issue route, whose run builds the fix the reporter confirms in its preview (BC-20). */
+export const BUILD_THE_FIX = "Build the fix, ask the reporter to confirm";
+
+export const recordingToolResultSchema = z.strictObject({
+	projectId: z.uuid(),
+	feedback: z.strictObject({
+		key: z.string().regex(/^FB-\d{1,9}$/),
+		title: z.string(),
+		phase: z.string(),
+	}),
+	/** Newest first; the latest few, each with its timeline. */
+	recordings: z.array(recordingRecordSchema).max(10),
+	proposal: z
+		.strictObject({
+			diagnosis: recordingDiagnosisSchema,
+			recommended: z.literal(BUILD_THE_FIX),
+			/** Whether the asker may press it now; `why` says what stops them where they may not. */
+			pressable: z.boolean(),
+			why: z.string().nullable(),
+		})
+		.nullable(),
+});
+export type RecordingToolResult = z.infer<typeof recordingToolResultSchema>;

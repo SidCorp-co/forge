@@ -320,6 +320,9 @@ importers:
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1
+      rrweb:
+        specifier: 2.1.7
+        version: 2.1.7
       shadcn:
         specifier: ^4.21.2
         version: 4.21.2

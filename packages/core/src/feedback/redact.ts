@@ -6,6 +6,7 @@ import { getStorage } from '../integrations/index.js';
 import { deleteFeedbackEmbedding } from '../knowledge/index.js';
 import { logger } from '../lib/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { redactRecordingsOf } from '../previews/index.js';
 import { deleteFeedbackQuestions } from '../questions/index.js';
 import { feedbackDependents } from './dependents.js';
 import { type FeedbackActor, rowIn } from './read.js';
@@ -22,8 +23,9 @@ import {
 
 /**
  * UC15: a project admin person deletes what the reporter gave — the text, the attachments and
- * mockups with their bytes, the embedding, the clarification answers and the suggestion payloads
- * quoting it — and keeps the keyed row as a tombstone so every link to it still resolves.
+ * mockups with their bytes, the embedding, the clarification answers, the suggestion payloads
+ * quoting it, and every reproduce recording of it with its events and timeline (REQ-41) — and keeps
+ * the keyed row as a tombstone so every link to it still resolves.
  */
 /** What stands in for a reporter's words once they are deleted; where_seen stays non-null for a screen item. */
 const REDACTED = 'reporter data deleted';
@@ -44,6 +46,9 @@ export async function redactReporterData(input: {
     const row = await rowIn(tx, projectId, first.id, true);
     const done = redactedRefusal(row.redactedAt);
     if (done) return [done];
+    // the recordings go first and on their own: a redaction that then fails leaves none standing,
+    // and the retry finds them redacted already
+    await redactRecordingsOf(row.id, feedbackKernelActor(actor));
     const gone = await tx
       .delete(feedbackAttachments)
       .where(eq(feedbackAttachments.feedbackId, row.id))

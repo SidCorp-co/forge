@@ -14,9 +14,10 @@ import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
-import type { Refusal } from '../lib/refusal.js';
+import { isRefusal, type Refusal } from '../lib/refusal.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { readRecording } from '../previews/index.js';
 import { phaseOfRow } from './list-read.js';
 import { type FeedbackActor, type Row, rowIn, targetRequirementOf } from './read.js';
 import { tellReporters } from './reporter-language.js';
@@ -26,6 +27,7 @@ import { NO_ROUTE, writeRouteIn } from './route-write.js';
 import {
   carriersNamed,
   decideActRefusal,
+  refusal,
   routeRuleRefusal,
   routeShapeRefusal,
   triagePhaseRefusal,
@@ -69,6 +71,59 @@ async function declineTriageIn(
 }
 
 /**
+ * A diagnosis (REQ-41 BC-19) rides the issue route only, and names a recording of this very item
+ * that still holds its timeline: the reproduction the cause was read from. Read as the triager,
+ * so a recording they may not read is refused as unknown, never trusted.
+ */
+async function diagnosisRefusal(
+  t: FeedbackTriage,
+  row: Row,
+  actor: FeedbackActor,
+): Promise<Refusal | null> {
+  const d = t.diagnosis;
+  if (!d) return null;
+  if (t.route !== 'issue') {
+    return refusal(
+      'FEEDBACK_DIAGNOSIS_INVALID',
+      '/diagnosis',
+      `a diagnosis is the cause and fix of a reproduced bug, carried by the issue that builds the fix: send it with route issue, not ${t.route}`,
+    );
+  }
+  const key = feedbackKey(row.fbSeq);
+  let recording: Awaited<ReturnType<typeof readRecording>>;
+  try {
+    recording = await readRecording(d.recording, actor);
+  } catch (err) {
+    if (!isRefusal(err)) throw err;
+    const why = err.refusals.map((r) => r.detail).join('; ');
+    return refusal(
+      'FEEDBACK_DIAGNOSIS_INVALID',
+      '/diagnosis/recording',
+      `recording ${d.recording} cannot be read as ${key}'s reproduction (${why}): name a recording of ${key}`,
+    );
+  }
+  if (recording.feedbackId !== row.id) {
+    return refusal(
+      'FEEDBACK_DIAGNOSIS_INVALID',
+      '/diagnosis/recording',
+      `recording ${d.recording} is a reproduction of another item, not ${key}: name a recording of ${key}`,
+    );
+  }
+  if (recording.state === 'redacted') {
+    return refusal(
+      'FEEDBACK_DIAGNOSIS_INVALID',
+      '/diagnosis/recording',
+      `recording ${d.recording} was deleted with ${key}'s reporter data, so it evidences nothing: name a recording that stands`,
+    );
+  }
+  return null;
+}
+
+/** What a diagnosis says on the item's history when the triager wrote no note of their own. */
+const diagnosisNote = (t: FeedbackTriage): string | null =>
+  t.diagnosis ? `Cause: ${t.diagnosis.cause} Fix: ${t.diagnosis.fix}` : null;
+
+/**
  * Triage inside the caller's transaction: the route is checked against the target, the item moves to
  * triaged (or declined, the decline act), and what carries the route is written in the same act.
  */
@@ -88,7 +143,10 @@ export async function triageIn(
   const forbidden = decideActRefusal(await roleFacts(actor, projectId), 'picking a feedback route');
   if (forbidden) return { refusals: [forbidden] };
   await lockFeedback(tx, projectId);
-  const early = triagePhaseRefusal(await phaseOfRow(projectId, input.row)) ?? routeShapeRefusal(t);
+  const early =
+    triagePhaseRefusal(await phaseOfRow(projectId, input.row)) ??
+    routeShapeRefusal(t) ??
+    (await diagnosisRefusal(t, input.row, actor));
   if (early) return { refusals: [early] };
   const row: Row = {
     ...input.row,
@@ -147,7 +205,7 @@ export async function triageIn(
     decision: 'triaged',
     route: t.route,
     carrier: carriers.length ? carriers.join(', ') : null,
-    reason: t.note ?? null,
+    reason: t.note ?? diagnosisNote(t),
     fromSuggestionId,
   });
   await closeClarification(tx, row.id, `routed as ${t.route}`);
