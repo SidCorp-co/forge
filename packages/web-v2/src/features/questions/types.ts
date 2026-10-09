@@ -1,3 +1,4 @@
+import type { QuestionSuggestion } from "@forge/contracts/question-suggestion";
 import type { AnswerHold, AnswerResume } from "@forge/contracts/questions";
 
 
@@ -45,6 +46,8 @@ export interface ChoiceStep extends StepCommon {
 export interface FreeTextStep extends StepCommon {
   answerShape: "free_text";
   needed: string;
+  /** The answer the asker recommends, which a person may send as it stands. */
+  recommended?: string;
   answerText?: string;
 }
 
@@ -76,6 +79,8 @@ export interface AgentQuestion {
   recommendedOptionId: string;
   needed: string;
   locked: boolean;
+  /** The assistant's record for a round (REQ-41 BC-2): the suggested answer, or why it drafted none. */
+  suggestion?: QuestionSuggestion | null;
   origin?: { kind: string; documentId?: string; number?: string } | null;
   /** The issue whose merge mark answers this question, by its key; recording the mark answers it. */
   awaitsMerge?: { issueId: string; key: string } | null;

@@ -9,6 +9,7 @@ import {
   decisionPath,
   type NeedsYouDecision,
 } from '@forge/contracts/needs-you-decisions';
+import { type QuestionSuggestion, suggestionFor } from '@forge/contracts/question-suggestion';
 import {
   DRAFT_STALE_DAYS,
   isStaleDraftQuestion,
@@ -103,6 +104,80 @@ function staleDraftDecision(
   };
 }
 
+/** The one line a suggestion shows: the text, why, and the records it read. */
+function suggestionWhy(text: string, why: string, from: readonly string[]): string {
+  return clip(`"${clip(text, 320)}" ${why}${from.length ? ` (read ${from.join(', ')})` : ''}`, 600);
+}
+
+/** Why a round with no recommendation from its asker shows none, naming what the assistant's draft came to. */
+function noRecommendationOf(
+  suggestion: QuestionSuggestion | null,
+  round: number,
+  asked = 'The run that asked gave no recommended answer',
+): string {
+  if (!suggestion || suggestion.round !== round) {
+    return `${asked}, and the assistant has not drafted one yet.`;
+  }
+  if (suggestion.outcome === 'failed') {
+    return clip(
+      `${asked}, and the assistant drafted none (${suggestion.code}): ${suggestion.detail}`,
+      600,
+    );
+  }
+  return `${asked}.`;
+}
+
+/**
+ * A free-text round whose asker recommended nothing: the assistant's suggestion for this round where
+ * it drafted one (REQ-41 BC-2), sent as it stands by one click; else the reason there is none.
+ */
+function unrecommendedDecision(
+  base: Omit<NeedsYouDecision, 'group' | 'recommended' | 'noRecommendation' | 'answers'> & {
+    group: 'answer';
+  },
+  q: OpenPersonQuestion,
+  step: QuestionStep,
+  typed: DecisionAnswer,
+  path: string,
+): Built {
+  const suggested = suggestionFor(q.suggestion, step.round);
+  if (!suggested) {
+    return {
+      questionId: q.id,
+      decision: {
+        ...base,
+        recommended: null,
+        noRecommendation: noRecommendationOf(q.suggestion, step.round),
+        answers: [typed],
+      },
+    };
+  }
+  return {
+    questionId: q.id,
+    decision: {
+      ...base,
+      recommended: {
+        answerId: 'suggested',
+        why: suggestionWhy(suggested.text, suggested.why, suggested.from),
+        by: 'assistant',
+      },
+      noRecommendation: null,
+      answers: [
+        answer({
+          id: 'suggested',
+          label: 'Send the suggested answer',
+          act: 'question.answer',
+          path,
+          body: { round: step.round, text: suggested.text },
+          effect: "Sends the assistant's suggested answer, as written, to the run that asked.",
+          recommended: true,
+        }),
+        typed,
+      ],
+    },
+  };
+}
+
 /** A question's round as a decision: each option a button, or the recommended text and a typed answer. */
 export function questionDecision(
   row: AttentionRow,
@@ -126,23 +201,38 @@ export function questionDecision(
     return staleDraftDecision(base, q, step, path);
   }
   if (isChoiceStep(step)) {
-    const recommended = step.options.find((o) => o.id === step.recommendedOptionId);
-    const rest = step.options.filter((o) => o.id !== step.recommendedOptionId);
+    const asked = step.options.find((o) => o.id === step.recommendedOptionId);
+    const suggested = asked ? null : suggestionFor(q.suggestion, step.round);
+    const suggestedOption = suggested?.optionId
+      ? step.options.find((o) => o.id === suggested.optionId)
+      : undefined;
+    const recommended = asked ?? suggestedOption;
+    const rest = step.options.filter((o) => o.id !== recommended?.id);
     const shown = [...(recommended ? [recommended] : []), ...rest].slice(0, 8);
     return {
       questionId: q.id,
       decision: {
         ...base,
         recommended: recommended
-          ? {
-              answerId: recommended.id,
-              why: `Whoever asked recommends "${clip(recommended.label, 200)}".`,
-              by: 'asker',
-            }
+          ? asked
+            ? {
+                answerId: recommended.id,
+                why: `Whoever asked recommends "${clip(recommended.label, 200)}".`,
+                by: 'asker',
+              }
+            : {
+                answerId: recommended.id,
+                why: suggestionWhy(recommended.label, suggested?.why ?? '', suggested?.from ?? []),
+                by: 'assistant',
+              }
           : null,
         noRecommendation: recommended
           ? null
-          : 'The run that asked named a recommended option it did not offer.',
+          : noRecommendationOf(
+              q.suggestion,
+              step.round,
+              'The run that asked named a recommended option it did not offer',
+            ),
         answers: shown.map((o) =>
           answer({
             id: o.id,
@@ -166,17 +256,7 @@ export function questionDecision(
     needsReason: true,
     effect: `Sends what you write to the run that asked. It needs: ${clip(step.needed, 200)}`,
   });
-  if (!step.recommended) {
-    return {
-      questionId: q.id,
-      decision: {
-        ...base,
-        recommended: null,
-        noRecommendation: 'The run that asked gave no recommended answer.',
-        answers: [typed],
-      },
-    };
-  }
+  if (!step.recommended) return unrecommendedDecision(base, q, step, typed, path);
   return {
     questionId: q.id,
     decision: {

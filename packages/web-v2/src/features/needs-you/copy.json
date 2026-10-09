@@ -3,6 +3,7 @@
     "needs.lastActivity": "Last activity {at}",
     "needsYou.decisions.aria": "Decisions waiting on you",
     "needsYou.decisions.recommended": "Recommended",
+    "needsYou.decisions.suggested": "Suggested by the assistant",
     "needsYou.decisions.noRecommendation": "No recommended answer",
     "needsYou.decisions.reasonLabel": "Why",
     "needsYou.decisions.answerLabel": "Your answer",

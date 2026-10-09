@@ -29,6 +29,7 @@ import { pruneOutbox } from './outbox/index.js';
 import { backfillPhaseJournal, runReconcilerOnce, runRetentionSweep } from './pipeline/index.js';
 import { runPipelineSweep } from './pipeline-sweep.js';
 import { sweepPreviews } from './previews/index.js';
+import { sweepQuestionSuggestions } from './questions/index.js';
 import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
 import { sweepExpiredExecutions, sweepExpiredReportRuns } from './reports/index.js';
 import {
@@ -109,6 +110,19 @@ function requirementTimers(): Timer[] {
         'design-follow-sweep: followed',
         followApprovedDesigns,
         (r) => (r as { followed: number }).followed > 0,
+      ),
+    },
+    {
+      kind: 'cluster',
+      name: 'question-suggest-sweep',
+      cron: '*/5 * * * *',
+      run: logged(
+        'question-suggest-sweep: drafted',
+        () => sweepQuestionSuggestions(),
+        (r) => {
+          const { suggested, failed } = r as { suggested: number; failed: number };
+          return suggested > 0 || failed > 0;
+        },
       ),
     },
     {
