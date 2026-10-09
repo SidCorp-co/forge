@@ -67,7 +67,9 @@ A candidate that survives carries:
 ### 4. Group what shares a place
 Issues that are unblocked, touch the same module and are proved by one build ride one branch: one
 dispatch, one run, one tree. Two issues that only share a file are neighbours, not a batch — they go
-to separate runs, and the second waits for the first to land.
+to separate runs, and the second waits for the first to land. Two issues whose designs name one
+module or contract never run at once: core withholds the second from the admissible list and
+refuses its run \`ISSUE_SCOPE_HELD\`, naming the run that holds it, until that run ends.
 
 ### 5. A tree per run, and its brief
 - **The tree.** A worktree of its own inside the checkout, where the project's convention puts one
@@ -77,7 +79,8 @@ to separate runs, and the second waits for the first to land.
   the remote's default, which can be another branch, and a diff against it reports the wrong files.
 - **What the other trees hold.** For each other worktree of the checkout, what it changes against
   \`origin/<baseBranch>\`, committed and uncommitted, read with git now. A run whose files another
-  tree holds waits for that tree to land.
+  tree holds waits for that tree to land. The files are the brief's information; the design
+  record's modules and contracts are what core refuses an overlap on.
 - **The brief** names the issue's key and uuid, the project, the tree, its branch and head, the base
   branch, what the other trees hold, the method to read (${guideRef('issue-flow')}), and the
   project's standing rules a run cannot read on its own. Nothing else goes in it. The box prints
@@ -88,8 +91,9 @@ to separate runs, and the second waits for the first to land.
    and answers the run's id. A dispatch with nothing declared is refused by the box. Before it
    writes the row the box asks core (\`POST /api/devices/me/run-sessions/preflight\`) the question
    the run's open would be asked, so an issue a live \`blocks\` edge holds, a build without its
-   approved design and a contract wait unsettled are refused to the pane by name, with the edge
-   and what it waits on, and nothing is recorded. A core the box cannot reach leaves the row
+   approved design, a contract wait unsettled and a design whose module or contract a live run
+   holds (\`ISSUE_SCOPE_HELD\`) are refused to the pane by name, with what it waits on, and
+   nothing is recorded. Declare it again once that run ends. A core the box cannot reach leaves the row
    written, and the open refuses it as before.
 2. \`forge-runner run brief <run id>\` prints that run's brief: its issues with their uuids, the
    project, the base branch read from the project, its tree, branch and head, what every other

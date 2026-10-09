@@ -265,20 +265,24 @@ pub(crate) fn refusal(what: &str, status: u16, text: &str) -> Error {
     }
 }
 
-/// The take refusals core answers `422` for when something holds the issues a run is
-/// declared over (`run-session-queued.ts:QUEUED_BEHIND`, the refusals a declared run
-/// waits behind). Each lifts when the holder moves, never because the same bytes were sent again.
+/// The take refusals core answers for when something holds the issues a run is declared
+/// over: every key of `run-session-queued.ts:QUEUED_BEHIND`, the refusals a declared run waits
+/// behind, which `run-session-queued.test.ts` pins this list to. Each lifts when the holder
+/// moves, never because the same bytes were sent again.
 pub const HELD_CODES: &[&str] = &[
     "ISSUE_BLOCKED",
     "WORKFLOW_DESIGN_NOT_APPROVED",
     "CONTRACT_WAIT_UNSETTLED",
+    "PATTERN_REVIEW_PENDING",
     "ISSUE_LEASE_HELD",
+    "ISSUE_SCOPE_HELD",
 ];
 
-/// The held code a `422` carries, read off the envelope's own code or the first of its
-/// refusals that names one.
+/// The held code a `422` carries, or a `409`, the status core answers `ISSUE_LEASE_HELD`
+/// with (`contracts/src/issues.ts:ISSUE_TAKE_REFUSAL_STATUSES`), read off the envelope's own
+/// code or the first of its refusals that names one.
 pub(crate) fn held_code(status: u16, body: &str) -> Option<String> {
-    if status != 422 {
+    if status != 422 && status != 409 {
         return None;
     }
     let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
@@ -355,6 +359,23 @@ mod held_tests {
             }
             other => panic!("a held refusal was read as {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_scope_hold_and_a_lease_held_by_another_run_are_held() {
+        let scope = r#"{"error":{"code":"ISSUE_SCOPE_HELD","refusals":[{"code":"ISSUE_SCOPE_HELD","path":"","detail":"a run session over these issues is refused. ISS-454 shares module issues with ISS-453, held by live run r1. It waits until that run ends."}]}}"#;
+        match refusal("run-session preflight", 422, scope) {
+            Error::Held { code, said } => {
+                assert_eq!(code, "ISSUE_SCOPE_HELD");
+                assert!(said.contains("ISS-454 shares module issues"), "{said}");
+            }
+            other => panic!("a scope hold was read as {other:?}"),
+        }
+        let lease = r#"{"error":{"code":"ISSUE_LEASE_HELD","refusals":[{"code":"ISSUE_LEASE_HELD","path":"","detail":"issue lease held"}]}}"#;
+        assert!(matches!(
+            refusal("run-session open", 409, lease),
+            Error::Held { code, .. } if code == "ISSUE_LEASE_HELD"
+        ));
     }
 
     #[test]

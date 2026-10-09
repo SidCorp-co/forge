@@ -123,6 +123,8 @@ export interface StrandWithheld {
   contract: boolean;
   /** It names a new pattern that waits on its reviewer (`patternReviewPendingSql`). */
   pattern: boolean;
+  /** A live run holds a module or contract its design names (`scopeHeldSql`). */
+  scope: boolean;
 }
 
 /**
@@ -135,7 +137,7 @@ export function withheldWait(
   withheld: StrandWithheld | null | undefined,
 ): { waitingFor: string; owes: StrandOwner; reason: string } | null {
   if (!withheld || !(TAKEABLE_STATUSES as readonly string[]).includes(status)) return null;
-  const { blockers, design, contract, pattern } = withheld;
+  const { blockers, design, contract, pattern, scope } = withheld;
   if (blockers.length > 0) {
     const named = blockers.join(', ');
     const edges = blockers.length === 1 ? 'a live `blocks` edge' : 'live `blocks` edges';
@@ -167,6 +169,14 @@ export function withheldWait(
       owes: 'blocker',
       reason:
         'it names a new pattern no reviewer has decided, so no run is handed it until a holder of patterns.approve approves or returns it: it is waiting on that review, not on a dispatch',
+    };
+  }
+  if (scope) {
+    return {
+      waitingFor: 'the live run holding a module or contract its design names to end',
+      owes: 'blocker',
+      reason:
+        'a live run holds a module or contract its design names, so no run is handed it until that run ends: it is waiting on that run, not on a dispatch',
     };
   }
   return null;

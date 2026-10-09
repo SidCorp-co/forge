@@ -16,6 +16,7 @@ import type { ReleaseHoldView } from '@forge/contracts/releases';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses } from '../db/schema.js';
+import { scopeHeldSql } from '../db/schema-issue-designs.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
 import {
   contractWaitUnsettledSql,
@@ -107,6 +108,7 @@ export interface CandidateRow {
   design_unapproved: boolean;
   contract_unsettled: boolean;
   pattern_pending: boolean;
+  scope_held: boolean;
   cursor_ts: string;
 }
 
@@ -242,7 +244,8 @@ function withheldOf(row: CandidateRow): StrandWithheld | null {
     blockers.length === 0 &&
     !row.design_unapproved &&
     !row.contract_unsettled &&
-    !row.pattern_pending
+    !row.pattern_pending &&
+    !row.scope_held
   ) {
     return null;
   }
@@ -251,6 +254,7 @@ function withheldOf(row: CandidateRow): StrandWithheld | null {
     design: row.design_unapproved,
     contract: row.contract_unsettled,
     pattern: row.pattern_pending,
+    scope: row.scope_held,
   };
 }
 
@@ -306,7 +310,8 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
            ${holdingBlockerSeqsSql({ issueId: sql`i.id`, projectId: sql`i.project_id` })} AS held_by,
            ${designUnapprovedSql(sql`i.id`)} AS design_unapproved,
            ${contractWaitUnsettledSql(sql`i.id`)} AS contract_unsettled,
-           ${patternReviewPendingSql(sql`i.id`)} AS pattern_pending
+           ${patternReviewPendingSql(sql`i.id`)} AS pattern_pending,
+           ${scopeHeldSql(sql`i.id`)} AS scope_held
       FROM issues i
       JOIN projects p ON p.id = i.project_id
      WHERE i.status NOT IN (${excluded})

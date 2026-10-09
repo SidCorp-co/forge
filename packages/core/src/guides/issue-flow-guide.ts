@@ -112,6 +112,13 @@ against the diff); \`pattern\` is a catalog slug or a new pattern approved on th
 only where \`catalog.declared\` is false; \`proof\` is the probe or the review line that will prove it;
 \`modules\` are the project's module names the change touches, \`contracts\` the
 \`<project>/<contract>\` it touches (\`[]\` for none). A write is refused by name for each wrong part.
+A module is one whose behaviour the change alters. A line in a shared registry does not make its
+owner one: the route registry, \`modules.json\`, the migration journal and a new migration, a
+module's \`index.ts\` face, a schema file for the module's own table, \`changelog.d\`. Every change
+touches those, and naming their owner would hold every other run. A live run holding an issue whose
+design names one of the same modules (or a label above it) or contracts holds this issue too: its
+run is refused \`ISSUE_SCOPE_HELD\`, naming that run, and so is the move of this work into build
+while that run is already building. It lifts when that run ends.
 \`GET /api/issues/:id/design\` reads it with \`check\`, the answer a move into build meets. Moving the
 work step into build, test or release, and moving to \`approved\`, is refused
 \`DESIGN_RECORD_MISSING\` or \`DESIGN_RECORD_INCOMPLETE\` naming each gap until the check passes; a

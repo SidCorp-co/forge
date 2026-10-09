@@ -16,6 +16,7 @@ import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { scopeHeldSql } from '../db/schema-issue-designs.js';
 import {
   blockedByUnsettledSql,
   contractWaitUnsettledSql,
@@ -163,6 +164,9 @@ export async function readAdmissibleIssues(args: {
         AND NOT ${designUnapprovedSql(sql`i.id`)}
         AND NOT ${contractWaitUnsettledSql(sql`i.id`)}
         AND NOT ${patternReviewPendingSql(sql`i.id`)}
+        -- a live run holds a module or contract its design names (issues/issue-scope.ts): the
+        -- run-session open would refuse it ISSUE_SCOPE_HELD, so no master is handed it
+        AND NOT ${scopeHeldSql(sql`i.id`)}
         -- one predicate for "is this issue being worked", shared with the orphan sweep that
         -- used to carry a verbatim copy of it (ISS-1109). The key is canonicalised and never
         -- the project's own prefix, or a run's issues silently stop being seen (ISS-992).

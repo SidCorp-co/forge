@@ -31,9 +31,10 @@ pub enum Error {
         named: Vec<String>,
     },
 
-    /// Core answered `422` naming a take refusal: the issues are held by something that
-    /// is not this request's shape and not this moment's luck, a `blocks` edge, an
-    /// unapproved design, an unsettled contract wait or another holder's lease. Sending
+    /// Core answered a take refusal (`422`, or `409` for a lease): the issues are held by
+    /// something that is not this request's shape and not this moment's luck, a `blocks` edge,
+    /// an unapproved design, an unsettled contract wait, a new pattern awaiting its reviewer,
+    /// another holder's lease or a live run holding a scope their designs meet. Sending
     /// the same declaration again before that changes is a loop, and sending it never is
     /// a stranded run, so a caller that sweeps matches this to slow its retry and say
     /// so once.

@@ -11,6 +11,7 @@ import { type Actor, recordActivityTx } from './activity.js';
 import { refuseHeldTake } from './blocked-by.js';
 import { syncCriteriaFromText } from './criteria/store.js';
 import { assertDesignPasses } from './design-record.js';
+import { refuseScopeHeldForBuild } from './issue-scope.js';
 import type { ResolvedLabelAttach } from './label-service.js';
 import { scrubIssueText } from './patch-fields.js';
 import {
@@ -129,6 +130,8 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
         // (a run at build recording its head is not a move into build)
         if ((await readWorkState(tx, issueId))?.step !== workState.step) {
           await assertDesignPasses(tx, { id: issueId, projectId: scope.projectId }, catalog);
+          // the design it now passes may meet a scope another run is building (REQ-36 BC-5)
+          await refuseScopeHeldForBuild(tx, { id: issueId, projectId: scope.projectId });
         }
       }
       await writeWorkStateFields(tx, issueId, workState);

@@ -35,12 +35,13 @@ export const DECLARATION_REFUSAL_METADATA_KEY = 'declarationRefusal';
 
 /** The take refusals that leave the declared run waiting rather than wrong, each with the gate
  *  word runs/standing serves it under (design agent-run-standing, waiting_gate). */
-const QUEUED_BEHIND: Readonly<Record<string, string>> = {
+export const QUEUED_BEHIND: Readonly<Record<string, string>> = {
   ISSUE_BLOCKED: 'blocked_on_issue',
   WORKFLOW_DESIGN_NOT_APPROVED: 'blocked_on_design',
   CONTRACT_WAIT_UNSETTLED: 'contract_wait_unsettled',
   PATTERN_REVIEW_PENDING: 'pattern_review_pending',
   ISSUE_LEASE_HELD: 'issue_busy',
+  ISSUE_SCOPE_HELD: 'scope_held',
 };
 
 export interface DeclarationRefusal {

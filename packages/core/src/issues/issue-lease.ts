@@ -22,7 +22,9 @@ import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { type SQL, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
+import { liveIssueLeasesSql } from '../db/schema-issue-leases.js';
 import { refuser } from '../lib/refusal.js';
+import { lockProjectScope, refuseScopeHeldForKeys } from './issue-scope.js';
 
 export const terminalSessionList = sql.join(
   terminalAgentSessionStatuses.map((s) => sql`${s}`),
@@ -44,7 +46,7 @@ const livePipelineRunList = sql.join(
   sql`, `,
 );
 
-/** Held-ness is the row AND a non-terminal session. `docs/modules/issues/issue-lease.md`. */
+/** Held-ness is the row AND a non-terminal session (`liveIssueLeasesSql`). `docs/modules/issues/issue-lease.md`. */
 function issueLeaseHeldSql(
   projectId: SQL | string,
   issueKey: SQL | string,
@@ -54,11 +56,9 @@ function issueLeaseHeldSql(
     exceptRunId === null ? sql`` : sql` AND l.run_id IS DISTINCT FROM ${exceptRunId}`;
   return sql`EXISTS (
     SELECT 1
-      FROM issue_leases l
-      JOIN agent_sessions ls ON ls.id = l.session_id
+      FROM ${liveIssueLeasesSql()} l
      WHERE l.project_id = ${projectId}
-       AND l.issue_key = ${issueKey}
-       AND ls.status NOT IN (${terminalSessionList})${notThatRun}
+       AND l.issue_key = ${issueKey}${notThatRun}
   )`;
 }
 
@@ -179,11 +179,9 @@ async function holdersOf(
   );
   const rows = (await executor.execute(sql`
     SELECT l.issue_key, l.device_id, l.session_id, l.run_id, l.acquired_at
-      FROM issue_leases l
-      JOIN agent_sessions ls ON ls.id = l.session_id
+      FROM ${liveIssueLeasesSql()} l
      WHERE l.project_id = ${args.projectId}
        AND l.issue_key IN (${keyList})
-       AND ls.status NOT IN (${terminalSessionList})
      ORDER BY l.issue_key
   `)) as unknown as Array<Record<string, unknown>>;
   return rows.map((r) => ({
@@ -212,6 +210,16 @@ export async function takeIssueLeases(
 ): Promise<void> {
   const keys = [...new Set(args.issueKeys)].sort();
   if (keys.length === 0) return;
+
+  // Under the project scope lock, so two opens over issues whose designs meet cannot both read the
+  // other as absent: the second is refused ISSUE_SCOPE_HELD and rolls back with nothing taken.
+  await lockProjectScope(executor, args.projectId);
+  await refuseScopeHeldForKeys(executor, {
+    projectId: args.projectId,
+    keys,
+    door: 'a run session over these issues',
+    filter: { exceptRunId: args.runId },
+  });
 
   // One key at a time, in key order, or two openers can invert and Postgres answers with a deadlock
   // abort instead of the refusal. A lease of an ended session is cleared before the take.

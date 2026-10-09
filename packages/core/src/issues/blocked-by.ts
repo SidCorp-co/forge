@@ -4,7 +4,7 @@ import type { IssueTakeRefusalCode } from '@forge/contracts/issues';
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
+import { canonicalIssueKey, formatIssueRef } from '../lib/issue-ref.js';
 import { isRefusal, RefusalError } from '../lib/refusal.js';
 import {
   assertContractWaitsSettledForIssue,
@@ -17,6 +17,7 @@ import {
   designHoldPhrase,
   designHoldsOf,
 } from './design-delivery.js';
+import { refuseScopeHeldForKeys } from './issue-scope.js';
 import {
   assertPatternReviewsSettledForIssue,
   assertPatternReviewsSettledForSeqs,
@@ -301,14 +302,18 @@ async function refuseBlockedTakeForSeqs(
   if (held.length > 0) throw issueBlocked(held, door);
 }
 
+// the run-session preflight and open: every gate above, then a live run holding a scope the issues'
+// designs meet (issue-scope.ts), which the lease take asks again under the project scope lock
 export async function refuseHeldTakeForSeqs(
   projectId: string,
   seqs: readonly number[],
 ): Promise<void> {
-  await refuseBlockedTakeForSeqs(db, projectId, seqs, 'a run session over these issues');
+  const door = 'a run session over these issues';
+  await refuseBlockedTakeForSeqs(db, projectId, seqs, door);
   await assertDesignsApprovedForSeqs(projectId, seqs);
   await assertContractWaitsSettledForSeqs(projectId, seqs);
   await assertPatternReviewsSettledForSeqs(projectId, seqs);
+  await refuseScopeHeldForKeys(db, { projectId, keys: seqs.map(canonicalIssueKey), door });
 }
 
 /** A refused take in the envelope: a blocked issue as thrown, a dispatch gate's refusal named. */
@@ -318,7 +323,8 @@ export function heldTakeRefusal(err: unknown): RefusalError | null {
     isRefusal(err, 'ISSUE_NOT_FOUND') ||
     isRefusal(err, 'WORKFLOW_DESIGN_NOT_APPROVED') ||
     isRefusal(err, 'CONTRACT_WAIT_UNSETTLED') ||
-    isRefusal(err, 'PATTERN_REVIEW_PENDING')
+    isRefusal(err, 'PATTERN_REVIEW_PENDING') ||
+    isRefusal(err, 'ISSUE_SCOPE_HELD')
   ) {
     return err;
   }

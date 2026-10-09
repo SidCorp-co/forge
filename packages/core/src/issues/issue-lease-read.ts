@@ -4,13 +4,14 @@ import { ISSUE_TERMINAL_STATUSES, PARK_STATUSES } from '@forge/contracts/issue-m
 import type { IssueTakeRefusalCode } from '@forge/contracts/issues';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { liveIssueLeasesSql } from '../db/schema-issue-leases.js';
 import {
   canonicalIssueKey,
   issueRefPrefixOf,
   LEGACY_ISSUE_PREFIX,
   parseIssueRef,
 } from '../lib/issue-ref.js';
-import { type IssueLeaseHolder, terminalSessionList } from './issue-lease.js';
+import type { IssueLeaseHolder } from './issue-lease.js';
 import { issuePrefixHolder } from './issue-prefix-read.js';
 
 /** The bindings it serves, plus any project it holds a lease in. */
@@ -101,10 +102,8 @@ export async function readDeviceIssueLease(args: {
   const inProject = args.projectId ? sql`AND l.project_id = ${args.projectId}` : sql.empty();
   const rows = (await db.execute(sql`
     SELECT l.project_id, l.issue_key, l.device_id, l.session_id, l.run_id, l.acquired_at
-      FROM issue_leases l
-      JOIN agent_sessions ls ON ls.id = l.session_id
+      FROM ${liveIssueLeasesSql()} l
      WHERE l.issue_key = ${args.issueKey}
-       AND ls.status NOT IN (${terminalSessionList})
        AND l.project_id IN ${reachableProjects(args.deviceId)}
        ${inProject}
      ORDER BY (l.device_id = ${args.deviceId}) DESC, l.acquired_at ASC

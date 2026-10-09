@@ -5,12 +5,13 @@
  * holder is three foreign keys, so only a real session on a real box fits.
  */
 
-import { relations } from 'drizzle-orm';
+import { relations, type SQL, sql } from 'drizzle-orm';
 import { index, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { agentSessions } from './schema-agent-sessions.js';
 import { devices } from './schema-devices.js';
 import { pipelineRuns } from './schema-pipeline.js';
 import { projects } from './schema-projects.js';
+import { terminalAgentSessionStatuses } from './session-vocabulary.js';
 
 export const issueLeases = pgTable(
   'issue_leases',
@@ -47,3 +48,21 @@ export const issueLeasesRelations = relations(issueLeases, ({ one }) => ({
   }),
   run: one(pipelineRuns, { fields: [issueLeases.runId], references: [pipelineRuns.id] }),
 }));
+
+/**
+ * The leases a run session that has not ended holds: held-ness, the row AND a live session
+ * (`docs/modules/issues/issue-lease.md`). Every reader of "is this issue held" selects from this one
+ * relation, the lease module and the design scope alike, so the two cannot disagree about a holder.
+ */
+export function liveIssueLeasesSql(): SQL {
+  const terminal = sql.join(
+    terminalAgentSessionStatuses.map((s) => sql`${s}`),
+    sql`, `,
+  );
+  return sql`(
+    SELECT l.project_id, l.issue_key, l.device_id, l.session_id, l.run_id, l.acquired_at
+      FROM issue_leases l
+      JOIN agent_sessions ls ON ls.id = l.session_id
+     WHERE ls.status NOT IN (${terminal})
+  )`;
+}

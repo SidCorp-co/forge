@@ -43,6 +43,7 @@ const LOCK_NAMESPACES = {
   issuePatterns: 29,
   issueCheckRuns: 30,
   intakeDrafts: 31,
+  issueScope: 32,
   releaseVersion: 1120,
 } as const;
 

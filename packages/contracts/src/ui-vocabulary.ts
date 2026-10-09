@@ -511,6 +511,7 @@ export const ENUM_LABELS = {
 		issue_busy: "Issue busy",
 		contract_wait_unsettled: "Contract wait",
 		pattern_review_pending: "Pattern review",
+		scope_held: "Scope held",
 		runner_stale: "Runner stale",
 		runner_too_old: "Runner too old",
 		blocked_on_machine: "Blocked on a machine",

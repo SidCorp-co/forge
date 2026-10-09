@@ -156,7 +156,7 @@ pub async fn open(
 
 /// Ask core whether a run over these issues would be opened, writing nothing: the
 /// refusal a master is owed at declare time, from the function the open itself calls.
-/// `Ok` is "would open as far as core can tell now"; a `422` is `Error::Held`.
+/// `Ok` is "would open as far as core can tell now"; a hold core names is `Error::Held`.
 pub async fn preflight(client: &CoreClient, project_id: &str, issue_keys: &[String]) -> Result<()> {
     let body = serde_json::json!({ "projectId": project_id, "issueKeys": issue_keys });
     let req = client

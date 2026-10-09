@@ -2,7 +2,9 @@
 
 `packages/core/src/issues/issue-lease.ts` is the only writer of `issue_leases`
 and the only place the SQL for *"is this issue being worked"* is written
-(`issueWorkInFlightSql`, `issueWorkMovingSql`).
+(`issueWorkInFlightSql`, `issueWorkMovingSql`). What *held* means is one
+relation, `packages/core/src/db/schema-issue-leases.ts:liveIssueLeasesSql`, which
+the lease and the design scope both select from.
 
 ## Why a row and not a jsonb array
 
@@ -138,3 +140,31 @@ the database to learn which box to stop. And the sentence differs by who holds â
 a box refused by its own earlier run closes that session or waits for the
 reaper; one refused by a stranger works something else. One sentence for both
 hides which of the two it is.
+
+## A lease holds the issue's declared scope too
+
+A live lease holds more than its own key: it holds every module and contract
+the held issue's design names (REQ-36 BC-5). The predicate is
+`packages/core/src/db/schema-issue-designs.ts:scopeHoldersSql`; the refusal,
+`ISSUE_SCOPE_HELD`, is built in `packages/core/src/issues/issue-scope.ts` and
+names the issue, what it shares, the holding issue and its run.
+
+Two designs meet on a module both name, or one names a label above the other,
+and on a contract both name, in one project. An issue with no design record
+declares no scope and meets nothing: it is admitted, and its scope is asked
+when the design gate first requires one, at the move of its work into build.
+There only a run already building counts, so of two runs that recorded
+overlapping designs after admission the first to build goes first and neither
+waits on the other in a circle.
+
+`takeIssueLeases` asks the scope under the project's `issueScope` advisory
+lock before its first insert, and the build move takes the same lock. Without
+it two opens over issues whose designs meet each read the other as absent and
+both take their leases. The run-session preflight asks the same question with
+no lock and writes nothing; the open asks it again where it counts.
+
+A refused declaration queues behind `scope_held`
+(`packages/core/src/devices/run-session-queued.ts`), and the box's re-sent open
+is admitted once the holding run's session ends. The runner's `HELD_CODES`
+mirrors that map; `packages/core/src/devices/run-session-queued.test.ts` fails
+when they part.

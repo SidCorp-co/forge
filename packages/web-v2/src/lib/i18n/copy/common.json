@@ -278,6 +278,7 @@
     "common.runGate.retry_cooldown": "Retry cooldown",
     "common.runGate.runner_stale": "Runner stale",
     "common.runGate.runner_too_old": "Runner too old",
+    "common.runGate.scope_held": "Scope held",
     "common.runGate.verify_unavailable": "Verify unavailable",
     "common.runHandbackClose.died": "Died",
     "common.runHandbackClose.ended": "Ended",
