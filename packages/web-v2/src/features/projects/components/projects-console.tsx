@@ -18,7 +18,7 @@ import {
 } from '@/design';
 import { formatApiError } from '@/lib/api/error';
 import { useActiveOrg } from '@/features/orgs/active-org';
-import { filterProjects, isAttention, sortProjects } from '../derive';
+import { blindSearchEmpty, filterProjects, isAttention, sortProjects, unreadStatements } from '../derive';
 import { useProjectsConsole } from '../hooks';
 import type { ProjectConsoleItem, ProjectSort, ProjectView } from '../types';
 import { AttentionBanner } from './attention-banner';
@@ -88,6 +88,12 @@ export function ProjectsConsole() {
   // NOT a "search" — it's the ambient workspace scope, so it doesn't collapse
   // the pinned section.
   const searching = query.trim() !== '' || attentionFilter || sort !== 'recent';
+  // What the console cannot answer until the health rollup is read, said beside the list it shapes.
+  const unreadSays = useMemo(
+    () => unreadStatements({ query, attentionOnly, sort, read: healthRead }),
+    [query, attentionOnly, sort, healthRead],
+  );
+  const searchBlind = query.trim() !== '' && healthRead !== 'read';
   const pinned = useMemo(() => visible.filter((p) => p.pinned), [visible]);
   const rest = useMemo(
     () => (searching ? visible : visible.filter((p) => !p.pinned)),
@@ -162,6 +168,13 @@ export function ProjectsConsole() {
             attentionOnly={attentionOnly}
             onToggle={() => setAttentionOnly((a) => !a)}
           />
+          {unreadSays.length > 0 && (
+            <ul role="status" className="mb-4 flex list-none flex-col gap-1 p-0 text-13 text-muted">
+              {unreadSays.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          )}
 
           {!searching && pinned.length > 0 && (
             <div className="mb-5">
@@ -178,7 +191,9 @@ export function ProjectsConsole() {
             renderGroup(rest)
           ) : (
             <div className="px-10 py-10 text-center text-13-5 text-subtle">
-              {searching
+              {searchBlind
+                ? blindSearchEmpty(query, healthRead)
+                : searching
                 ? 'No projects match your filters.'
                 : `No projects in ${scopeLabel ?? 'this organization'} yet.`}
             </div>

@@ -69,7 +69,13 @@ export function ProjectList({ items, now, onTogglePin }: ProjectListProps) {
                   </button>
                 </span>
               </TD>
-              <TD className="max-w-[1px] truncate text-muted">{p.description ?? '—'}</TD>
+              <TD className="max-w-[1px] truncate text-muted">
+                {p.healthRead === 'read' ? (
+                  (p.description ?? '—')
+                ) : (
+                  <ReadFigure value={null} read={p.healthRead} subject="the description" />
+                )}
+              </TD>
               <TD>
                 {p.health ? (
                   <HealthDot health={p.health} />

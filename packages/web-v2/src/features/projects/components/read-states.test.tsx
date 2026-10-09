@@ -81,6 +81,22 @@ describe.each([
     expect(document.body.textContent).not.toMatch(/0 live runs|\$0\.00/);
   });
 
+  it("is named on a project card where the repository and the description were, never as the dash of no value", () => {
+    render(<ProjectCard project={unread(state)} now={0} onTogglePin={() => {}} />);
+    const names = marks(name).map((m) => m.getAttribute("aria-label"));
+    expect(names).toContain(state === "failed" ? "the repository could not be read" : "reading the repository");
+    expect(names).toContain(state === "failed" ? "the description could not be read" : "reading the description");
+    expect(document.body.textContent).not.toContain("—");
+  });
+
+  it("is named in the projects list for the description, never as the dash of no value", () => {
+    render(<ProjectList items={[unread(state)]} now={0} onTogglePin={() => {}} />);
+    expect(marks(name).map((m) => m.getAttribute("aria-label"))).toContain(
+      state === "failed" ? "the description could not be read" : "reading the description",
+    );
+    expect(document.body.textContent).not.toContain("—");
+  });
+
   it("is named in the projects list, row by row", () => {
     render(<ProjectList items={[unread(state)]} now={0} onTogglePin={() => {}} />);
     expect(marks(name).length).toBeGreaterThanOrEqual(5);
@@ -115,6 +131,15 @@ describe("a health read that came in", () => {
     expect(screen.getByText("0 live runs")).toBeTruthy();
   });
 
+  it("draws the dash of no value only for a project read to have no repository and no description", () => {
+    render(<ProjectCard project={{ ...read, repoPath: null, description: null }} now={Date.parse("2026-10-02T01:00:00Z")} onTogglePin={() => {}} />);
+    expect(document.body.textContent).toContain("—");
+    expect(marks(/repository|description/)).toHaveLength(0);
+    cleanup();
+    render(<ProjectList items={[{ ...read, description: null }]} now={0} onTogglePin={() => {}} />);
+    expect(document.body.textContent).toContain("—");
+  });
+
   it("shows the banner for projects that need attention and none for a read zero", () => {
     render(<AttentionBanner count={2} read="read" attentionOnly={false} onToggle={() => {}} onRetry={() => {}} />);
     expect(screen.getByText(/need attention/)).toBeTruthy();
@@ -139,5 +164,58 @@ describe("the attention filter, where the health read then fails", () => {
     expect(screen.getByText("Sable")).toBeTruthy();
     expect(screen.queryByText(/No projects match your filters/)).toBeNull();
     expect(marks(FAILED).length).toBeGreaterThan(0);
+  });
+});
+
+describe("the console's search, filter and sort, where the health read did not come in", () => {
+  const named = (name: string, repoPath: string | null): ProjectConsoleItem => ({ ...unread("failed"), id: name, slug: name, name, repoPath });
+  const search = (value: string) =>
+    fireEvent.change(screen.getByLabelText("Search projects"), { target: { value } });
+
+  it("answers a search that matches no name as one it cannot answer, beside the banner, never as no match", () => {
+    consoleState.read = "failed";
+    consoleState.items = [named("Calm", null), unread("failed")];
+    render(<ProjectsConsole />);
+    search("org/sable");
+    expect(screen.queryByText(/No projects match your filters/)).toBeNull();
+    expect(screen.getByText(/Cannot say which projects match "org\/sable"/)).toBeTruthy();
+    expect(screen.getByText(/search matches names and organizations only/)).toBeTruthy();
+  });
+
+  it("still lists a project whose name matches, and says the repository and description were not searched", () => {
+    consoleState.read = "pending";
+    consoleState.items = [unread("pending")];
+    render(<ProjectsConsole />);
+    search("sable");
+    expect(screen.getByText("Sable")).toBeTruthy();
+    expect(screen.getByText(/matches names and organizations only until the repository and description are read/)).toBeTruthy();
+  });
+
+  it("says the attention filter is paused while it cannot apply, and says nothing once the read is in", () => {
+    const needsYou: ProjectConsoleItem = { ...read, health: "attention" };
+    consoleState.read = "read";
+    consoleState.items = [needsYou];
+    const { rerender } = render(<ProjectsConsole />);
+    fireEvent.click(screen.getByRole("button", { name: "Show only these" }));
+    expect(screen.queryByText(/needs-attention filter is paused/)).toBeNull();
+    consoleState.read = "failed";
+    consoleState.items = [unread("failed")];
+    rerender(<ProjectsConsole />);
+    expect(screen.getByText(/needs-attention filter is paused and every project is listed/)).toBeTruthy();
+    consoleState.read = "read";
+    consoleState.items = [needsYou];
+    rerender(<ProjectsConsole />);
+    expect(screen.queryByText(/needs-attention filter is paused/)).toBeNull();
+  });
+
+  it("says the default order is not by recent activity while unread, and not at all once read", () => {
+    consoleState.read = "failed";
+    consoleState.items = [unread("failed")];
+    const { rerender } = render(<ProjectsConsole />);
+    expect(screen.getByText(/not sorted by recent activity/)).toBeTruthy();
+    consoleState.read = "read";
+    consoleState.items = [read];
+    rerender(<ProjectsConsole />);
+    expect(screen.queryByText(/not sorted by/)).toBeNull();
   });
 });

@@ -6359,6 +6359,7 @@
 - **The Issues badge names its own figure.** Beside Overview's "10 need attention", the Issues row's tooltip and the bottom bar now read "29 in open work"; only the Attention figure says "need attention".
 - **The Issues badge says when it could not read.** The rail, bottom bar and menu show "…" while open work is read and "!" when the read failed, instead of the bare "Issues" a project with none gets.
 - **Project screens say when the health read did not come in.** Cards, the list, totals, the attention banner, the rail's live runs and the board's Draft and Finished counts show "…" or "!" with a name, not 0 or nothing.
+- **The projects page says what it could not read.** A card's repository and description show "…" or "!", not a dash; search then covers names and organizations only, and the attention filter and sorts say they are paused.
 - **A refused pipeline save names its stages in the words every screen uses.** It said "Auto triage" or "Auto test" for a toggle no screen shows; it now says Open or Testing.
 - **A release closes on a reading Forge took when asked, not a five-minute wait.** The agent
   calls `look`; a finish closes only on what was read at every live binding. A site serving the old
