@@ -46,10 +46,19 @@ if [ -n "$PREPUSH_FULL" ]; then
 fi
 
 if [ "$PREPUSH_TEST" = "1" ]; then
-  (cd "$repo_root" && pnpm test:changed) || {
+  # test:changed exits 1 when a check it ran is red, 2 when it could not run at all (a base it
+  # cannot derive, a bad argument): the two are different news, and the second ran nothing.
+  set +e
+  (cd "$repo_root" && pnpm test:changed)
+  status=$?
+  set -e
+  if [ "$status" = "1" ]; then
     echo "[pre-push] FAIL: the typecheck or a direct test is red. Push aborted."
     exit 1
-  }
+  elif [ "$status" != "0" ]; then
+    echo "[pre-push] FAIL: test:changed could not run (exit $status, the reason is above), so nothing was typechecked or tested. Push aborted."
+    exit 1
+  fi
 fi
 
 if [ "$PREPUSH_BUILD" != "1" ]; then
@@ -61,18 +70,30 @@ fi
 
 # Read pushed refs from the captured stdin (format:
 # <local-ref> <local-sha> <remote-ref> <remote-sha>)
+# A new branch is measured from the branch it lands on, derived as every gate derives it
+# (scripts/lib/base-branch.mjs), never from a local `main` that need not exist or be the target.
+# Where none resolves, or the merge base cannot be read, the build is refused by name: diffing the
+# commit against the working tree instead measures nothing and builds nothing, in silence.
 range=""
 while read -r local_ref local_sha remote_ref remote_sha; do
   if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
     continue # branch deletion
   fi
   if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
-    base=$(git merge-base "$local_sha" main 2>/dev/null || echo "")
-    if [ -n "$base" ]; then
-      range="$range $base..$local_sha"
-    else
-      range="$range $local_sha"
-    fi
+    target_ref=$(cd "$repo_root" && node --input-type=module -e "
+      import { baseRef } from './scripts/lib/base-branch.mjs';
+      const t = baseRef(process.cwd());
+      if (t.refusal) { console.error(t.refusal); process.exit(2); }
+      console.log(t.ref);
+    ") || {
+      echo "[pre-push] FAIL: PREPUSH_BUILD has no branch to measure the new branch ${local_ref#refs/heads/} against (the reason is above), so nothing was built. Push aborted."
+      exit 1
+    }
+    base=$(git merge-base "$local_sha" "$target_ref") || {
+      echo "[pre-push] FAIL: PREPUSH_BUILD could not read the merge base of $local_sha and $target_ref, so nothing was built. Push aborted."
+      exit 1
+    }
+    range="$range $base..$local_sha"
   else
     range="$range $remote_sha..$local_sha"
   fi
@@ -83,7 +104,11 @@ if [ -z "$range" ]; then
   exit 0
 fi
 
-changed=$(git diff --name-only $range 2>/dev/null | sort -u)
+changed=$(git diff --name-only $range) || {
+  echo "[pre-push] FAIL: PREPUSH_BUILD could not diff$range, so nothing was built. Push aborted."
+  exit 1
+}
+changed=$(echo "$changed" | sort -u)
 
 if [ -z "$changed" ]; then
   echo "[pre-push] no file changes in pushed commits"

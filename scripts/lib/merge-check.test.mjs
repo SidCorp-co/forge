@@ -17,6 +17,7 @@ import {
   emptyRefusal,
   missingCheck,
   NOT_RUN_HERE,
+  passedMessage,
   REQUIRED_CHECKS,
   redChecks,
   reportOf,
@@ -90,6 +91,19 @@ describe('what a merge needs', () => {
     ]);
   });
 
+  it('a pre-merge pass asks for its record before the mark; a landed push says it is already on its base', () => {
+    const at = { branch: 'dev', baseSha: TIP, head: HEAD, path: '/tmp/r.json' };
+    const before = passedMessage({ ...at, mode: 'pre-merge' });
+    expect(before).toContain('before the merge mark');
+    expect(before).toContain('POST /api/issues/<issue id>/merge-check');
+    const landed = passedMessage({ ...at, mode: 'landed' });
+    expect(landed).toContain(
+      `a landing already on dev (${TIP.slice(0, 12)}..${HEAD.slice(0, 12)})`,
+    );
+    expect(landed).not.toContain('before the merge mark');
+    expect(CLI).toContain('passedMessage({ mode: report.mode');
+  });
+
   it('writes the body the tracker takes', () => {
     const report = reportOf({
       branch: 'dev',
@@ -154,6 +168,10 @@ describe("dev's CI is the merge check, and main's is as it was", () => {
         expect.stringContaining("needs.changes.outputs.scoped != 'true'"),
       ]);
     }
+  });
+
+  it('ci-passed reads merge-check on every run, before it decides', () => {
+    expect(job('ci-passed')).toContain('if: always()');
   });
 
   it("keeps main's conditions as they were, each behind the switch", () => {

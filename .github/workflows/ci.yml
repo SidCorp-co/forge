@@ -875,7 +875,9 @@ jobs:
   # report `skipped` on PRs that don't touch them, which a required check
   # treats as "pending" → blocks merge forever. This job depends on all of
   # them with `if: always()` and fails only when a dependency genuinely
-  # `failure`d or was `cancelled` (a `skipped` path-filtered job passes). It
+  # `failure`d or was `cancelled` (a `skipped` path-filtered job passes), with
+  # one exception: on a push to dev or a pull request into dev, `merge-check`
+  # is the only job that runs, and anything but its success is red. It
   # makes CI — not the local pre-push hook, which contributors may not have
   # installed and can bypass — the authoritative merge gate. The blocking
   # signals it enforces today: install-check, lang-check, conformance,
@@ -928,6 +930,14 @@ jobs:
               FAILED=1
             fi
           done
+          # On a push to dev or a pull request into dev, merge-check is the one job that runs and
+          # dev's whole gate (ISS-472), so a skip there is a merge nothing checked: only its success
+          # passes. Everywhere else it is skipped by design and passes as every skipped job does.
+          # `scripts/lib/ci-passed.test.mjs` runs this step under each event's results.
+          if [ "${{ needs.changes.outputs.scoped }}" = "true" ] && [ "${{ needs.merge-check.result }}" != "success" ]; then
+            echo "::error::CI gate: merge-check is dev's whole gate and did not succeed on this push to dev or pull request into dev (result=${{ needs.merge-check.result }})"
+            FAILED=1
+          fi
           if [ "${FAILED:-0}" = "1" ]; then
             exit 1
           fi

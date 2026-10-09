@@ -619,7 +619,8 @@ records `origin/HEAD`, so such a rung would only ever have answered for `--depth
 the one shape where the branch fetched need not be the branch the work lands on. It could not tell
 "the only branch here is the target" from "the only branch here is the one somebody asked for", and
 a wrong floor from it is the silently skipped migration. That checkout is refused, naming
-`git remote set-head origin -a`.
+`GITHUB_BASE_REF=<branch>` for the branch the work lands on, and `git remote set-head origin -a`
+where that is the remote's default.
 
 **Nothing falls back to `main`.** `baseRef(root)` then resolves the branch to `origin/<b>`,
 `refs/remotes/origin/<b>` or `<b>`, and refuses naming all three rather than measuring against a
@@ -627,7 +628,10 @@ branch this change does not derive from.
 
 Row 4 is checked against the remote because the record does not move when the remote's default
 does: a clone taken before the default moved would measure the old base with nothing said. Where the
-remote names another branch, row 4 refuses, naming both and `git remote set-head origin -a`. Where
+remote names another branch, row 4 refuses, naming both: `GITHUB_BASE_REF=<the recorded branch>` for
+work that lands where the record says, and `git remote set-head origin -a` only for work that lands
+on the remote's new default — on this repository's dev work, that advice alone would measure against
+`main` (`lib/base-branch.test.mjs`). Where
 the remote cannot be asked — unreachable, or silent past 10 s, which stderr says in those words —
 the record stands and stderr says it went unconfirmed and which command confirms it.
 
@@ -895,8 +899,9 @@ REQ-36 BC-7, BC-9, BC-15 and BC-17, as Issue to release r20 draws `rule-merge`. 
 when one of its own import specifiers resolves to it (relative, or through its package's tsconfig
 `paths`; `vi.mock` counts), or when it declares the file in a comment line of its own,
 `// @direct-test-of <path>` (a trailing `/` covers a directory). Nothing goes further: no import
-graph, and no share of a suite that turns a selection into the suite. A touched code file no test
-reaches is printed, never covered by running more. Every package is in it: core's unit and
+graph, and no share of a suite that turns a selection into the suite: the selection of a set of
+touched files is the union of each file's own, at any count (`lib/direct-tests.test.mjs`). A touched
+code file no test reaches is printed, never covered by running more. Every package is in it: core's unit and
 integration tests, web-v2, contracts, observability and `scripts/` each under the vitest config
 that collects them, and the runner by crate — the touched module's own tests, inline and in its
 tests file beside it (a module named `tests` or ending `_tests`), read from `cargo test -- --list`
@@ -908,6 +913,15 @@ reading a file reaches it by no import, so the merge check cannot see it. When t
 red and the bisect names a merge whose merge check passed (`rule-suite`), the fix declares the path
 on the test that caught it; that change kind selects it from then on. The selection grows, the suite
 size at a merge does not.
+
+**What was selected is what ran.** `lib/direct-test-run.mjs:runDirectTests` runs each collection's
+selected files and each crate's selected tests, and then holds the selection against the checks it
+made: a selected test file, runner module or test target no check reached is a red check of its
+scope, `DIRECT_TESTS_NOT_RUN`, naming the files. "No test file is direct for any touched file" is
+said only where nothing was selected. Vitest is never handed a collection with no file, which would
+run the whole collection. `lib/direct-test-run.test.mjs` drives the run layer over a fixture
+repository with its commands recorded, and holds both entrypoints to starting no test runner of
+their own.
 
 | Command | When | What it runs | Exit |
 |---|---|---|---|
@@ -936,12 +950,19 @@ not run. A mark the project's `validation.mergeCheck: required` or an approved n
 check is refused `MERGE_CHECK_MISSING` until a passing one stands at the commit marked.
 
 **Where CI runs it.** A push to `dev` and a pull request into `dev` set the `changes` job's `scoped`
-output, which runs `merge-check` and skips every other job; `ci-passed` needs it. A pull request is
+output, which runs `merge-check` and skips every other job; there `ci-passed` is red unless
+`merge-check` succeeded, a skip included, while on every other event it accepts the skip as it
+accepts any skipped job's. `lib/ci-passed.test.mjs` runs `ci-passed`'s own step from `ci.yml` under
+each event's job results. A pull request is
 checked at its head, not at GitHub's merge ref, so a branch behind `dev` is refused rather than
 merged untested: branch protection's `strict` is off. `main`'s events never set `scoped`, so they
 run the jobs they always ran, with `merge-check` skipped. `verify` runs no test suite: the
 runner's `cargo test --workspace` left `check-runner-gates.mjs` with this change, and the
 pre-push hook's `PREPUSH_TEST=1` runs `pnpm test:changed` where `PREPUSH_FULL` ran whole suites.
+The hook tells its exit 1 (a check red) from its exit 2 (it could not run, so nothing was checked),
+and `PREPUSH_BUILD=1` measures a new branch from its merge target (`lib/base-branch.mjs`), refusing by
+name where none resolves; `lib/pre-push.test.mjs` runs the hook in a fixture repository. A landed
+push run (`--since`) says it checked what already landed, and asks for no record before a mark.
 
 ## whole-suite.mjs — the whole suite on one commit, the cut it gates, and the merge it names
 

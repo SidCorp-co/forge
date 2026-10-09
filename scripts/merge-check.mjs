@@ -32,6 +32,7 @@ import {
   emptyRefusal,
   missingCheck,
   NOT_RUN_HERE,
+  passedMessage,
   redChecks,
   reportOf,
 } from './lib/merge-check.mjs';
@@ -177,7 +178,4 @@ if (red.length) {
   );
   process.exit(1);
 }
-console.log(
-  `\nmerge-check: passed. Record it on the issue before the merge mark, with the report as the body:\n` +
-    `  POST /api/issues/<issue id>/merge-check   < ${path}`,
-);
+console.log(`\n${passedMessage({ mode: report.mode, branch, baseSha, head, path })}`);

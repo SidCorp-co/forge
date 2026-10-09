@@ -53,12 +53,12 @@ by the next run to land: read `main`'s latest run before you push. To run them o
 
 **On `dev`, a push and a pull request run the merge check and nothing else** — the `merge-check`
 job (ISS-472, replacing ISS-118's skip): `pnpm merge-check` on a pull request's head against the
-latest `dev`, or on a push over what it landed, and `ci-passed` needs it. Every other job skips
-there. GitHub runs a schedule on the default branch alone, which is `main`, so no nightly run has
+latest `dev`, or on a push over what it landed, and `ci-passed` is red there unless it succeeded,
+a skip included. Every other job skips there. GitHub runs a schedule on the default branch alone, which is `main`, so no nightly run has
 ever reached dev. `ci.yml`'s `nightly-fanout` starts dev's from `main`'s nightly run once this
 file is on `main`; until then dev's whole suite runs when a release cut starts it.
 
-**Green covers the jobs that RAN.** A skipped job passes `ci-passed`, and `changes` decides which
+**Green covers the jobs that RAN.** A skipped job passes `ci-passed` (but `merge-check` on `dev`), and `changes` decides which
 run: read which ran, not the aggregate alone. A suite the filter should have selected and did not
 is the defect.
 

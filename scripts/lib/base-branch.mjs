@@ -41,8 +41,9 @@ const NO_TARGET_SUMMARY =
 const NO_TARGET =
   `${NO_TARGET_SUMMARY}.\n` +
   `Four sources were read, in this order:\n${SOURCES.map((s) => `  - ${s}`).join('\n')}\n` +
-  `Set the fourth with \`git remote set-head ${REMOTE} -a\`, or fetch the branch this work is cut\n` +
-  'from. Nothing falls back to `main`: measuring a delta against a branch the work does not\n' +
+  'Name the branch this work lands on in front of the command — `GITHUB_BASE_REF=<branch>` — or,\n' +
+  `where it lands on the remote's default, record that with \`git remote set-head ${REMOTE} -a\`.\n` +
+  'Nothing falls back to `main`: measuring a delta against a branch the work does not\n' +
   'derive from reports a pass it has not earned, which is the failure this refusal exists to stop.';
 
 /**
@@ -126,8 +127,10 @@ function confirmedDefault(root, recorded) {
       summary,
       refusal:
         `${summary}.\n` +
-        `The record is stale, so measuring against it would measure against a branch this work no\n` +
-        `longer lands on. Refresh it with \`git remote set-head ${REMOTE} -a\` and run this again.`,
+        'Neither says which branch this work lands on, so nothing was measured. Name it:\n' +
+        `  GITHUB_BASE_REF=${recorded} <command>   where it lands on \`${recorded}\`, the branch the record holds\n` +
+        `  git remote set-head ${REMOTE} -a   where it lands on \`${now.branch}\`, the remote's default now;\n` +
+        '  that rewrites the record for every later run in this checkout.',
     };
   }
   if (now.unanswered) {

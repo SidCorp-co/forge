@@ -237,3 +237,59 @@ describe("the runner's direct tests are the touched modules' own", () => {
     expect(ownedTests(listed, '', modules)).toEqual(['tests::root_case']);
   });
 });
+
+describe('no count of touched files and no share of the suite widens the selection (REQ-36 BC-17)', () => {
+  // A missed red widens the selection for its change kind, never the suite size (`rule-suite`), so
+  // the selection of a set is exactly what its files select one by one, however many there are.
+  const byCollection = (out) =>
+    Object.fromEntries(out.collections.map((c) => [c.collection.name, c.files.map((f) => f.test)]));
+
+  it('at every count, n touched files select exactly their n tests, past half the suite and short of all', () => {
+    const COUNT = 12;
+    const collection = { name: '@forge/core' };
+    const index = [
+      ...Array.from({ length: COUNT }, (_, i) => ({
+        path: `packages/core/src/s${i}.test.ts`,
+        collection,
+        reaches: new Set([`packages/core/src/s${i}.ts`]),
+        declares: [],
+      })),
+      { path: 'packages/core/src/z.test.ts', collection, reaches: new Set(), declares: [] },
+    ];
+    for (let n = 1; n <= COUNT; n++) {
+      const touched = Array.from({ length: n }, (_, i) => `packages/core/src/s${i}.ts`);
+      const out = selectDirect(touched, index);
+      expect([n, byCollection(out)]).toEqual([
+        n,
+        { '@forge/core': touched.map((t) => t.replace(/\.ts$/, '.test.ts')) },
+      ]);
+    }
+  });
+
+  it("the selection of every set of the fixture's files is the union of each file's own", () => {
+    const files = [
+      'packages/core/src/issues/leaf.ts',
+      'packages/core/src/issues/middle.ts',
+      'packages/core/src/issues/top.test.ts',
+      'packages/core/src/untested.ts',
+      'packages/contracts/src/vocab.ts',
+      'packages/web-v2/src/lib/format.ts',
+      'scripts/lib/thing.mjs',
+      '.github/workflows/ci.yml',
+    ];
+    const alone = new Map(files.map((f) => [f, byCollection(selectDirect([f], tests))]));
+    for (let mask = 1; mask < 1 << files.length; mask++) {
+      const set = files.filter((_, i) => mask & (1 << i));
+      const union = {};
+      for (const f of set) {
+        for (const [name, list] of Object.entries(alone.get(f))) {
+          union[name] = [...new Set([...(union[name] ?? []), ...list])].sort();
+        }
+      }
+      const got = Object.fromEntries(
+        Object.entries(byCollection(selectDirect(set, tests))).map(([k, v]) => [k, [...v].sort()]),
+      );
+      expect([set, got]).toEqual([set, union]);
+    }
+  });
+});

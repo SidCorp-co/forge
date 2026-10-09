@@ -39,7 +39,8 @@ be current with the base (`strict: false`, read from the `main` protection on 20
 `ci-passed` judges your branch as it stands, not merged onto the latest base: merge the base in
 before you push when it has moved.
 
-**Green covers the jobs that ran.** A skipped job passes `ci-passed`; the `changes` filter decides
+**Green covers the jobs that ran.** A skipped job passes `ci-passed`, except `merge-check` on a push
+to or pull request into `dev`, where only its success does; the `changes` filter decides
 which run. Read which ran, not the aggregate alone — a suite the filter should have selected and
 did not is a defect, not a pass.
 

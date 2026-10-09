@@ -124,9 +124,18 @@ export function runTypecheck(root, { baseRef, touched }) {
   return checks;
 }
 
-/** The vitest runs of a selection, one per collection, under the collection's own config. */
-function runVitest(root, collections, name) {
+/**
+ * The vitest runs of a selection, one per collection, under the collection's own config. A run
+ * naming no file is refused: vitest given no path runs the whole collection, which is the fallback
+ * this selection exists to keep out (REQ-36 BC-17).
+ */
+function runVitest(root, collections, name, exec) {
   return collections.map(({ collection, files }) => {
+    if (files.length === 0) {
+      throw new Error(
+        `${name}: ${collection.name} was handed to vitest with no file, and vitest run naming no file runs the whole collection`,
+      );
+    }
     const paths = files.map((f) => join(root, f.test));
     const argv = ['pnpm', 'exec', 'vitest', 'run', '--config', collection.config, ...paths];
     console.log(
@@ -134,7 +143,7 @@ function runVitest(root, collections, name) {
         .map((f) => `  ${f.test}  ← ${f.because.join(', ')}`)
         .join('\n')}`,
     );
-    const r = run(argv, join(root, collection.cwd));
+    const r = exec(argv, join(root, collection.cwd));
     return check({
       name,
       kind: 'tests',
@@ -149,20 +158,20 @@ function runVitest(root, collections, name) {
 }
 
 /** The runner's direct tests of one crate: the touched modules' own tests and touched test targets. */
-function runCrate(root, known, entry) {
+function runCrate(root, known, entry, exec) {
   const cwd = join(root, 'packages/runner');
   const checks = [];
   const crateCheck = (fields) =>
     check({ name: 'direct-tests', kind: 'tests', scope: `runner/${entry.crate}`, ...fields });
   if (entry.modules.length) {
     const list = ['cargo', 'test', '-p', entry.crate, '--locked', '--', '--list'];
-    const listed = run(list, cwd, { capture: true });
+    const listed = exec(list, cwd, { capture: true });
     if (!listed.ok) {
       process.stderr.write(listed.stderr);
       checks.push(
         crateCheck({
           command: show(list),
-          files: [],
+          files: entry.modules.map((m) => m.path),
           result: 'fail',
           startedAt: listed.startedAt,
           durationMs: listed.durationMs,
@@ -192,7 +201,7 @@ function runCrate(root, known, entry) {
         `\ndirect-tests: runner/${entry.crate}, ${owned.length} test(s) of ${files.join(', ')}`,
       );
       const argv = ['cargo', 'test', '-p', entry.crate, '--locked', '--', '--exact', ...owned];
-      const r = run(argv, cwd);
+      const r = exec(argv, cwd);
       checks.push(
         crateCheck({
           command: `cargo test -p ${entry.crate} --locked -- --exact <${owned.length} tests>`,
@@ -206,7 +215,7 @@ function runCrate(root, known, entry) {
   }
   for (const t of entry.testTargets) {
     const argv = ['cargo', 'test', '-p', entry.crate, '--locked', '--test', t.target];
-    const r = run(argv, cwd);
+    const r = exec(argv, cwd);
     checks.push(
       crateCheck({
         command: show(argv),
@@ -235,39 +244,107 @@ const nothingToRun = (name, scope, note) =>
   });
 
 /**
+ * What a selection owes a run, by check and scope: each selected test file of a collection, and each
+ * touched runner module and test target of a crate.
+ */
+export function owedBy({ unit, integ, crates, integration }) {
+  const owed = [
+    ...unit.map((c) => ({
+      name: 'direct-tests',
+      scope: c.collection.name,
+      files: c.files.map((f) => f.test),
+    })),
+    ...crates
+      .map((e) => ({
+        name: 'direct-tests',
+        scope: `runner/${e.crate}`,
+        files: [...e.modules.map((m) => m.path), ...e.testTargets.map((t) => t.path)],
+      }))
+      .filter((o) => o.files.length > 0),
+  ];
+  if (integration) {
+    owed.push(
+      ...integ.map((c) => ({
+        name: 'integration-tests',
+        scope: c.collection.name,
+        files: c.files.map((f) => f.test),
+      })),
+    );
+  }
+  return owed;
+}
+
+/**
+ * The selected files no check ran, as one red check per scope: DIRECT_TESTS_NOT_RUN. A selection
+ * that ran nothing must never read as a change with no direct test (REQ-36 BC-7).
+ */
+export function notRun(owed, checks) {
+  const key = (scope, file) => `${scope}\n${file}`;
+  const ran = new Set(checks.flatMap((c) => c.files.map((f) => key(c.scope, f))));
+  return owed
+    .map((o) => ({ ...o, files: o.files.filter((f) => !ran.has(key(o.scope, f))) }))
+    .filter((o) => o.files.length > 0)
+    .map((o) =>
+      check({
+        name: o.name,
+        kind: 'tests',
+        scope: o.scope,
+        command: '',
+        files: o.files,
+        result: 'fail',
+        startedAt: Date.now(),
+        durationMs: 0,
+        note: `DIRECT_TESTS_NOT_RUN: ${o.files.length} selected file(s) no run reached: ${o.files.join(', ')}`,
+      }),
+    );
+}
+
+/**
+ * Run what a selection chose: each unit collection's files, each crate's tests and, when asked, the
+ * integration collections' files. The one place a selection becomes commands.
+ */
+export function runSelection(root, { unit, integ, crates, integration, known, exec }) {
+  const checks = runVitest(root, unit, 'direct-tests', exec);
+  for (const entry of crates) checks.push(...runCrate(root, known, entry, exec));
+  if (integration) checks.push(...runVitest(root, integ, 'integration-tests', exec));
+  return checks;
+}
+
+/**
  * Select and run the direct tests of `touched` (every package) and, when `integration` is set, the
  * core integration tests the same rule selects. Answers the checks made and the touched code no test
- * reaches; a collection nothing selected makes no run, and says so.
+ * reaches. "No test file is direct" is said only where nothing was selected; a selection the run did
+ * not reach is red by name (`notRun`). `exec` runs one command and `runSelected` runs a selection,
+ * `run` and `runSelection` unless a test stands in for them.
  */
-export function runDirectTests(root, { touched, integration }) {
+export function runDirectTests(
+  root,
+  { touched, integration, exec = run, runSelected = runSelection },
+) {
   const live = touched.filter((t) => t.change !== 'removed').map((t) => t.path);
   const known = knownFiles(root);
   const tests = indexTests(root, known);
   const { collections, untested } = selectDirect(live, tests);
   const unit = collections.filter((c) => !c.collection.integration);
   const integ = collections.filter((c) => c.collection.integration);
-  const checks = runVitest(root, unit, 'direct-tests');
   const crates = runnerSelection(live);
-  for (const entry of crates) checks.push(...runCrate(root, known, entry));
-  if (!checks.length) {
+  const owed = owedBy({ unit, integ, crates, integration });
+  const checks = runSelected(root, { unit, integ, crates, integration, known, exec });
+  if (!owed.some((o) => o.name === 'direct-tests')) {
     checks.push(
       nothingToRun('direct-tests', 'workspace', 'no test file is direct for any touched file'),
     );
   }
-  if (integration) {
-    const ran = runVitest(root, integ, 'integration-tests');
+  if (integration && integ.length === 0) {
     checks.push(
-      ...(ran.length
-        ? ran
-        : [
-            nothingToRun(
-              'integration-tests',
-              '@forge/core integration',
-              'no integration test is direct for any touched file',
-            ),
-          ]),
+      nothingToRun(
+        'integration-tests',
+        '@forge/core integration',
+        'no integration test is direct for any touched file',
+      ),
     );
   }
+  checks.push(...notRun(owed, checks));
   return {
     checks,
     untested: [...untested, ...crates.flatMap((c) => c.untested)],

@@ -83,3 +83,21 @@ export function reportOf({ branch, baseSha, head, mode, touched, checks }) {
     checks,
   };
 }
+
+/**
+ * What a passing run says it is owed next. A pre-merge run is recorded on the issue before the
+ * merge mark; a landed run (`--since`, dev's push run) checks what already landed, so it asks for
+ * nothing before a mark that has, or has not, already been made.
+ */
+export function passedMessage({ mode, branch, baseSha, head, path }) {
+  if (mode === 'landed') {
+    return (
+      `merge-check: passed on a landing already on ${branch} (${baseSha.slice(0, 12)}..${head.slice(0, 12)}).\n` +
+      `This checked what landed, after the merge; the report says what it ran:\n  ${path}`
+    );
+  }
+  return (
+    'merge-check: passed. Record it on the issue before the merge mark, with the report as the body:\n' +
+    `  POST /api/issues/<issue id>/merge-check   < ${path}`
+  );
+}
