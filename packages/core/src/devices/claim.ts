@@ -101,6 +101,7 @@ const ADMISSION_REFUSAL = {
   runner_unbound: 'POOL_RUNNER_UNBOUND',
   device_disabled: 'POOL_DEVICE_DISABLED',
   runner_withdrawn: 'POOL_RUNNER_WITHDRAWN',
+  token_cannot_reach: 'POOL_TOKEN_CANNOT_REACH',
 } as const satisfies Record<string, PoolClaimRefusalCode>;
 
 const RUNNER_TOO_OLD =

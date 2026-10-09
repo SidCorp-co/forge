@@ -18,6 +18,7 @@ import {
   listPatsOf,
   mintPat,
   revokePat,
+  setPatFence,
 } from './pat.js';
 import { coreTokenNamePrefixOf } from './pat-format.js';
 import {
@@ -47,6 +48,12 @@ const createBodySchema = z
       .nullable()
       .optional(),
     expiresAt: z.iso.datetime().optional(),
+  })
+  .strict();
+const fenceBodySchema = z
+  .object({
+    projectIds: z.array(z.uuid()).min(1).max(50).nullable().optional(),
+    boundProjectId: z.uuid().nullable().optional(),
   })
   .strict();
 const idParamSchema = z.object({ id: z.uuid() }).strict();
@@ -221,6 +228,63 @@ patRoutes.post('/pat', requireFreshAuth(5), zValidator('json', createBodySchema)
     201,
   );
 });
+
+// A token's project list is edited by its holder after mint (FB-48): the project list replaces the
+// old one, whole, and every project in it must be one the holder can see. A fence is changed, never
+// removed, so a fenced token cannot become one that reaches everything.
+patRoutes.patch(
+  '/pat/:id',
+  requireFreshAuth(5),
+  zValidator('param', idParamSchema),
+  zValidator('json', fenceBodySchema),
+  async (c) => {
+    const userId = c.get('userId');
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const projectIds = body.projectIds ?? null;
+    const boundProjectId = body.boundProjectId ?? null;
+    if (projectIds === null && boundProjectId === null) {
+      throw refuse(
+        'PAT_REFUSED',
+        'send `projectIds` (one or more project uuids) or `boundProjectId`; a token fence is changed, never removed, so mint a token with no project list to reach everything',
+        '/projectIds',
+      );
+    }
+    if (boundProjectId && projectIds) {
+      throw badRequest('boundProjectId and projectIds are mutually exclusive');
+    }
+    const row = (await listPatsOf(userId)).find((t) => t.id === id);
+    if (!row || row.deviceId) throw notFound();
+    if (row.revokedAt) {
+      throw refuse('PAT_REFUSED', 'this token is revoked; mint a new one', '/id');
+    }
+    const grant = row.permissions ?? [];
+    const accountOnly = grant.filter((p) =>
+      (PAT_ACCOUNT_ONLY_PERMISSIONS as readonly string[]).includes(p),
+    );
+    if (accountOnly.length > 0) {
+      throw refuse(
+        'PAT_ACCOUNT_PERMISSION_ON_SCOPED_TOKEN',
+        `${accountOnly.join(', ')} ${accountOnly.length === 1 ? 'is' : 'are'} account permissions, whose routes resolve no project, and this token would be fenced to projects. Mint a token without them.`,
+        '/permissions',
+      );
+    }
+    const allowed = new Set(await loadVisibleProjectIds(userId));
+    const missing = [...(projectIds ?? []), ...(boundProjectId ? [boundProjectId] : [])].find(
+      (pid) => !allowed.has(pid),
+    );
+    if (missing) {
+      throw new HTTPException(403, {
+        message: 'project not accessible',
+        cause: { code: 'FORBIDDEN_PROJECT', details: { projectId: missing } },
+      });
+    }
+    const updated = await setPatFence(id, userId, { projectIds, boundProjectId });
+    if (!updated) throw notFound();
+    forgetPatThrottle(updated.id);
+    return c.json(publicShape(updated));
+  },
+);
 
 patRoutes.delete('/pat/:id', zValidator('param', idParamSchema), async (c) => {
   const userId = c.get('userId');

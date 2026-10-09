@@ -9,7 +9,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { runnerMayTakeJob } from '../runners/index.js';
-import { ADMITTED_RUNNER } from './pool-admission.js';
+import { ADMITTED_RUNNER, BOX_TOKEN_REACHES_PROJECT } from './pool-admission.js';
 
 export type PoolRelation = {
   kind: string;
@@ -83,6 +83,7 @@ export async function readPool(args: {
     WHERE j.status = 'queued'
       AND ${ADMITTED_RUNNER}
       AND ${runnerMayTakeJob()}
+      AND (j.type <> 'onboarding' OR ${BOX_TOKEN_REACHES_PROJECT})
       AND pr.status = 'running'
       AND j.held_by IS NULL
       AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())
@@ -94,7 +95,9 @@ export async function readPool(args: {
       )
       ${projectFilter}
     GROUP BY j.id, i.iss_seq, i.title, i.description, i.priority, i.category, i.status, ipj.issue_prefix
-    ORDER BY j.queued_at ASC
+    -- A release lane (FB-74): a release_batch job is read before any other queued work, so a
+    -- long onboarding analysis queued earlier never holds a release behind it.
+    ORDER BY (j.type = 'release_batch') DESC, j.queued_at ASC
     LIMIT ${args.limit}
   `)) as unknown as Array<Record<string, unknown>>;
 

@@ -33,7 +33,7 @@ export function bootstrapChatProviders(): void {
   }
   if (listProviders().length === 0) {
     logger.info(
-      'chat provider: none configured (set LITELLM_API_URL + LITELLM_API_KEY, or ANTHROPIC_API_KEY)',
+      'chat provider: none configured (set LITELLM_API_URL + LITELLM_API_KEY: models are reached only through the gateway)',
     );
   }
 }

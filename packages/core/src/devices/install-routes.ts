@@ -54,6 +54,11 @@ dest="$HOME/.local/bin"
 mkdir -p "$dest"
 echo "Downloading forge-runner ($target)..."
 curl -fsSL "$BASE$PREFIX/install/bin/$target" -o "$dest/forge-runner.new"
+# Refuse by name unless the download matches the sha256 core publishes for this target.
+want=$(curl -fsSL "$BASE$PREFIX/install/latest.json" | tr -d ' \\n' | sed -n 's/.*"'"$target"'":{[^}]*"sha256":"\\([0-9a-f]*\\)".*/\\1/p')
+[ -n "$want" ] || { rm -f "$dest/forge-runner.new"; echo "INSTALL_SHA256_UNPUBLISHED: core publishes no sha256 for $target, so the download cannot be verified; nothing was installed." >&2; exit 1; }
+if command -v sha256sum >/dev/null 2>&1; then got=$(sha256sum "$dest/forge-runner.new" | cut -d' ' -f1); else got=$(shasum -a 256 "$dest/forge-runner.new" | cut -d' ' -f1); fi
+[ "$got" = "$want" ] || { rm -f "$dest/forge-runner.new"; echo "INSTALL_SHA256_MISMATCH: forge-runner for $target hashed $got, core publishes $want; nothing was installed." >&2; exit 1; }
 chmod +x "$dest/forge-runner.new"
 mv "$dest/forge-runner.new" "$dest/forge-runner"
 echo "Installed to $dest/forge-runner"

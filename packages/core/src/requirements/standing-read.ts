@@ -12,6 +12,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
+import { runners } from '../db/schema-runners.js';
 import {
   type RequirementStatus,
   type RevisionState,
@@ -201,6 +202,7 @@ export async function standingsOf(
     contractPins,
     unapproved,
     policy,
+    onlineRunners,
   ] = await Promise.all([
     held?.revisions ??
       db
@@ -266,6 +268,11 @@ export async function standingsOf(
     latestContractPinsOf(ids),
     unapprovedDesignsOf(ids),
     readEffectivePolicy(projectId),
+    db
+      .select({ id: runners.id })
+      .from(runners)
+      .where(and(eq(runners.projectId, projectId), eq(runners.status, 'online')))
+      .limit(1),
   ]);
   const beside = await besideFactsOf(ids);
   const linkedIds = linked.map((i) => i.id);
@@ -338,6 +345,7 @@ export async function standingsOf(
         })),
         feedback: feedbackBy.get(row.id) ?? { open: 0, untriaged: [] },
         judge: policy?.document.qa ?? null,
+        runnerOnline: onlineRunners.length > 0,
         agreedAt: firstBaselineAt(baselineSeqs, row.id, row.currentRevision),
         release: awaitsReleaseOnly(mine.filter((i) => i.status !== 'dropped')) ? release : null,
         updatedAt: row.updatedAt,
