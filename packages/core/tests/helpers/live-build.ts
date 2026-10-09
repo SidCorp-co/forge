@@ -41,6 +41,7 @@ export function plantLiveBuild(
       typeof live === 'string' ? { ok: true, value: live } : { ok: false, why: live.why },
     releases: async () => [],
     ancestry: async () => ({ kind: 'box', why: 'planted', reader }),
+    withdrawn: async () => false,
   };
   provideRequirementDependents({
     ...booted,

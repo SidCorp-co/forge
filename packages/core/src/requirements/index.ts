@@ -9,7 +9,7 @@ export {
 } from './contract-links.js';
 export { liveTracedCodesOf, traceWordingsOf } from './criterion-trace.js';
 export { deferralOf } from './deferral-read.js';
-export { registerRequirementDelivery } from './delivery-notice.js';
+export { registerRequirementDelivery, sweepDeliveredRequirements } from './delivery-notice.js';
 export { provideRequirementDependents } from './dependents.js';
 export { draftPictureRefusals, type Landing, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
 export { embedRequirementHead, similarRequirements } from './embeddings.js';

@@ -3,7 +3,12 @@
  * delivered and named none, and ISS-294's shipping release (dev.72) was only in comment prose. The
  * issue's detail and each issue on its requirement now carry `shippedIn`, and the requirement its
  * `releases`: read off the shipped release runs, the roster each was cut with and the rows it closed
- * afterwards (`metadata.rosterClosed`).
+ * afterwards (`metadata.rosterClosed`). An issue a reopen took out of `closed` names none until a
+ * release closes it again (ISS-489 r4).
+ *
+ * It reaches its subject over HTTP, so it names what it guards:
+ * @direct-test-of packages/core/src/pipeline/release-runs.ts
+ * @direct-test-of packages/core/src/issues/release-evidence.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -88,5 +93,48 @@ describe('the release that shipped an issue', () => {
       ]),
     );
     expect((detail.releases as Doc[]).map((r) => r.version)).toEqual(['0.1.0', '0.1.1']);
+  });
+
+  // ISS-489 r4: reopened out of 0.4.0-dev.215 (which shipped round 1), the issue still read shipped
+  // there while rounds 2 to 4 were in no release
+  it('names no release while a reopen has taken the issue out of closed, and the next close names its release', async () => {
+    const req = await createTestRequirement(projectId, 17, 'Reopened requirement');
+    const reopened = await createTestIssue(projectId, owner, 4, {
+      status: 'in_progress',
+      createdAt: T(1),
+      mergedAt: T(2),
+      requirementId: req.id,
+    });
+    const moved = (from: string | null, to: string, at: Date) =>
+      db.execute(sql`
+        INSERT INTO kernel_transitions (id, entity, entity_id, from_status, to_status, actor_type, actor_agency, source, created_at)
+        VALUES (${randomUUID()}, 'issue', ${reopened.id}, ${from}, ${to}, 'system', 'agent', 'fixture', ${at.toISOString()})`);
+    await createTestRelease(projectId, '0.2.0', [reopened.id], T(4));
+    await moved('awaiting_release', 'closed', T(4));
+    await moved('closed', 'reopen', T(6));
+    await moved('reopen', 'in_progress', T(7));
+
+    const issue = async (): Promise<Doc> =>
+      ok(await say('owner', 'GET', `/api/issues/${reopened.id}?projectId=${projectId}`));
+    const onRequirement = async () => {
+      const detail = ok(
+        await say('owner', 'GET', `/api/projects/${projectId}/requirements/${req.key}`),
+      );
+      return {
+        shippedIn: (detail.issues as Doc[])[0]?.shippedIn ?? null,
+        releases: (detail.releases as Doc[]).map((r) => r.version),
+      };
+    };
+    expect((await issue()).shippedIn).toBeNull();
+    expect(await onRequirement()).toEqual({ shippedIn: null, releases: [] });
+    // the release's own record still names what it shipped
+    const [run] = await db.execute<{ ids: string[] }>(sql`
+      SELECT metadata -> 'issueIds' AS ids FROM pipeline_runs WHERE project_id = ${projectId} AND release_version = '0.2.0'`);
+    expect(run?.ids).toEqual([reopened.id]);
+
+    await createTestRelease(projectId, '0.2.1', [reopened.id], T(9));
+    await moved('awaiting_release', 'closed', T(9));
+    expect((await issue()).shippedIn).toMatchObject({ version: '0.2.1' });
+    expect((await onRequirement()).releases).toEqual(['0.2.1']);
   });
 });

@@ -6,6 +6,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
 import { pipelineRuns } from '../db/schema.js';
+import { shipsWithdrawnOf } from '../issues/index.js';
 
 export interface ReleaseRunRow {
   id: string;
@@ -75,7 +76,9 @@ export interface ShippedRelease {
 /**
  * The release that shipped each of `issueIds`: a shipped release-batch run whose roster names it,
  * or that closed it afterwards (`metadata.rosterClosed`, `release-batch/versions.ts:issueIdsOf`) —
- * the latest ship where several carried it. An issue no shipped release carries is absent.
+ * the latest ship where several carried it. An issue no shipped release carries is absent, and so is
+ * one moved out of `closed` since it last closed (`issues/release-evidence.ts:shipsWithdrawnOf`): the
+ * work those releases shipped is what its reopen rejected, so none of them is where its work is.
  */
 export async function shippedReleasesOf(
   projectId: string,
@@ -97,7 +100,10 @@ export async function shippedReleasesOf(
          AND m.issue_id IN (${idList(issueIds)})
        ORDER BY m.issue_id, r.release_released_at DESC`),
   );
+  const withdrawn = await shipsWithdrawnOf(db, issueIds);
   return new Map(
-    rows.map((r) => [r.issue_id, { version: r.version, at: new Date(r.at).toISOString() }]),
+    rows
+      .filter((r) => !withdrawn.has(r.issue_id))
+      .map((r) => [r.issue_id, { version: r.version, at: new Date(r.at).toISOString() }]),
   );
 }

@@ -216,7 +216,12 @@ top of `createReleaseBatch`, and it places the issue in a shipped release (a run
 - an `observed` mark names a commit: the release is the earliest whose commit holds it.
 - an `asserted` mark whose audit comment recorded a claimed commit (`mark_merged … commit=<sha>`, the
   only place the tracker keeps it, read in exactly that shape) is placed like an observed one by that
-  commit, once the host confirms it; a claim in no shipped release is not placed by it.
+  commit, once the host confirms it; a claim in no shipped release is not placed by it. The claim
+  read is the current mark's own (`packages/core/src/issues/mark-trail.ts:currentMarkClaims`): the
+  newest stamped mark or unmark line, and only where it is a mark naming a commit. An unmark withdraws
+  every earlier claim, and a mark after it naming no commit claims none, so a withdrawn round's commit
+  never places the issue. A mark that names no commit records as its claim only the newest
+  implementation handoff written since the issue was last unmarked.
 - an `asserted` mark with no claim the host confirms is placed by declaring commits: the
   repository is asked which commits declare the issue, by `commitOwners`, in each of the last twelve
   releases' own ranges. The release is the one whose range holds the last declaring commit, and only

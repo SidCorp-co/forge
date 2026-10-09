@@ -50,6 +50,7 @@ function deps(
       typeof served === 'string' ? { ok: true, value: served } : { ok: false, why: served.why },
     releases: async () => releases,
     ancestry: async () => ancestry,
+    withdrawn: async () => false,
   };
 }
 
@@ -117,6 +118,15 @@ describe('the build a verdict defaults to', () => {
       deps(served, [], r.source),
     );
     expect(built).toMatchObject({ sha: merged, source: 'merged', version: null });
+  });
+
+  // ISS-489 r4: reopened out of the release that shipped round 1, the issue's verdicts defaulted to
+  // that release's build, which holds none of the work being judged now
+  it('names no release a reopen took the issue back from, even the one production serves', async () => {
+    const reopened = { ...deps(DEV_192.commit, [DEV_192]), withdrawn: async () => true };
+    const built = await judgedBuildOf(ISSUE, reopened);
+    expect(built).toMatchObject({ sha: null, source: null, version: null });
+    expect(built.basis).not.toContain('0.4.0-dev.192');
   });
 
   it('names no build where the issue has none, never the live one by default', async () => {

@@ -484,7 +484,7 @@ export interface OutboxEventPayloads {
 		decidedBy: string;
 		decidedAt: string;
 	};
-	/** A linked issue's move left the requirement reading delivered at `revision`; its BA owes the check. */
+	/** The requirement read delivered at `revision`, after a linked issue's move or on a later sweep, told once per revision; its BA owes the check. */
 	"requirement.delivered": {
 		projectId: string;
 		requirementId: string;

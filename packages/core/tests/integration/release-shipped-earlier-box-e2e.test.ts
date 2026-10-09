@@ -26,7 +26,7 @@ import {
   truncateAll,
 } from '../helpers/factories.js';
 import { releaseWorld, seedProductionDeployTrigger, stubProbe } from '../helpers/release-world.js';
-import { A, C1, C2, HISTORY, N, shippedEarlierWorld } from '../helpers/shipped-earlier-world.js';
+import { A, B, C1, C2, HISTORY, N, shippedEarlierWorld } from '../helpers/shipped-earlier-world.js';
 
 let projectId: string;
 let ownerId: string;
@@ -118,6 +118,14 @@ async function lastComment(id: string): Promise<string | undefined> {
   `);
   return row?.body;
 }
+
+/** The audit line an unmark writes (`issues/mark-trail.ts`), and a mark that named no commit. */
+const unmark = (id: string, note: string) => fx.postComment(id, `unmark — ${note}`);
+const bareMark = (id: string, note: string) =>
+  fx.postComment(
+    id,
+    `mark_merged target=dev — ${note}\nthis mark is a CLAIM Forge did not observe: no commit is recorded`,
+  );
 
 async function rosterClosedOf(runId: string): Promise<string[]> {
   const [row] = await rows<{ closed: string[] | null }>(sql`
@@ -290,5 +298,65 @@ describe("with no box answering, today's refusal stands by name", () => {
       expect(held?.reason).toContain('(SHIPPED_EARLIER_HOST_UNAVAILABLE)');
       expect(held?.waitingFor).toContain('a connected box holding a bound checkout');
     }
+  });
+});
+
+describe("the claim a mark carries is the current mark's own", () => {
+  // ISS-489 r4: the sweep read the newest trail line naming a commit, so round 1's withdrawn claim
+  // closed the issue into the release that shipped round 1, though rounds 2 and 3 replaced it
+  it("reads only the current mark's claim: an unmark withdraws it and a later bare mark claims none", async () => {
+    await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
+    const id = await asserted();
+    await claim(id, A);
+    await unmark(id, 'round 2 lands a new commit');
+    await bareMark(id, 'round 2 landed on dev');
+    await unmark(id, 'round 3 replaces round 2');
+    await bareMark(id, 'round 3 landed on dev');
+    const { asked, deps } = box('history');
+
+    const result = await closeShippedEarlier({ projectId, issueIds: [id], userId: ownerId }, deps);
+
+    expect(result.closed).toEqual([]);
+    expect(asked).toEqual([]);
+    expect(result.unresolved.map((u) => u.code)).toEqual(['SHIPPED_EARLIER_NO_COMMIT']);
+    expect(await runOf(id)).toEqual({ status: 'awaiting_release', claim: null });
+
+    await sweepAutomaticReleases(new Date(), deps);
+    expect((await runOf(id))?.status).toBe('awaiting_release');
+    expect((await fx.holdOf(id))?.reason ?? '').not.toContain('Shipped in');
+    expect(await lastComment(id)).not.toContain('Shipped in');
+  });
+
+  it('reads no claim where the newest trail line is an unmark', async () => {
+    await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
+    const id = await asserted();
+    await claim(id, A);
+    await unmark(id, 'withdrawn');
+
+    const result = await closeShippedEarlier(
+      { projectId, issueIds: [id], userId: ownerId },
+      box('history').deps,
+    );
+
+    expect(result.closed).toEqual([]);
+    expect(result.unresolved.map((u) => u.code)).toEqual(['SHIPPED_EARLIER_NO_COMMIT']);
+  });
+
+  it('places a row by the commit its mark after the newest unmark claims, not by the one withdrawn', async () => {
+    await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
+    await shipped('0.4.0-dev.2', C2, '2026-10-06T12:00:00Z');
+    const id = await asserted();
+    await claim(id, A);
+    await unmark(id, 'round 2 lands B');
+    await claim(id, B);
+
+    const result = await closeShippedEarlier(
+      { projectId, issueIds: [id], userId: ownerId },
+      box('history').deps,
+    );
+
+    expect(result.closed.map((c) => [c.version, c.evidence.includes(B)])).toEqual([
+      ['0.4.0-dev.2', true],
+    ]);
   });
 });

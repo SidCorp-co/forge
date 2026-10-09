@@ -19,6 +19,7 @@ import {
   standingArtifactsRefusal,
   standingMarkRefusal,
 } from './landing-evidence.js';
+import { lastUnmarkedAt, markTrailLabel, NOT_STAMPED } from './mark-trail.js';
 import { uncheckedMergeRefusal } from './merge-check.js';
 import {
   clearIssueMerge,
@@ -35,7 +36,7 @@ import {
 import { refuseUnmarkOnClosed } from './merged-at.js';
 import { contractDrift, postIssueNotice } from './ports.js';
 import { findIssueById, type IssueRow } from './read-service.js';
-import { collectWorkEvidence, findMissingWorkEvidence } from './work-evidence.js';
+import { findMissingWorkEvidence, latestHandoffCommit } from './work-evidence.js';
 
 type AuditComment = { id: string; body: string; parentId: string | null };
 
@@ -61,9 +62,12 @@ export const mergedCommitShaSchema = z
  * it in the prose of its note"*. Prose is not a field, so the note's form was
  * part of the contract. This is the field, and the fallback is what makes it
  * arrive without every client learning it first.
+ *
+ * Only the newest handoff written since the issue was last unmarked is this landing's: an unmark
+ * withdrew the landing every earlier handoff named, so a mark after it never claims one (ISS-489).
  */
 async function resolveRecordedCommit(issueId: string): Promise<string | null> {
-  return (await collectWorkEvidence(issueId)).handoffCommitSha;
+  return latestHandoffCommit(issueId, await lastUnmarkedAt(issueId));
 }
 
 async function writeAuditComment(
@@ -324,12 +328,10 @@ async function writeMarkTrail(
   const { result, claimedCommit, readFrom } = stamp;
   const marking = args.op === 'mark';
   const commit = result.commitSha ?? claimedCommit;
-  const label = marking
-    ? `mark_merged${args.target ? ` target=${args.target}` : ''}${commit ? ` commit=${commit}` : ''}`
-    : 'unmark';
+  const label = markTrailLabel(args.op, args.target, commit);
   const unchanged =
     marking && !result.wrote
-      ? `\nNOT stamped by this call: merged_at was already ${result.mergedAt?.toISOString() ?? 'set'} and the first stamp wins; \`unmark\` then \`mark\` is the only correction. It does not re-block dependents: those are held by the issue's STATUS and not by this column (ISS-1100)`
+      ? `\n${NOT_STAMPED}: merged_at was already ${result.mergedAt?.toISOString() ?? 'set'} and the first stamp wins; \`unmark\` then \`mark\` is the only correction. It does not re-block dependents: those are held by the issue's STATUS and not by this column (ISS-1100)`
       : '';
   // Read off the ROW, not off the branch this call took: docs/modules/issues/merge-mark.md.
   const mark: MergeMarkKind = marking

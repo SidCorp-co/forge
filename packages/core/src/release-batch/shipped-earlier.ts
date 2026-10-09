@@ -21,7 +21,8 @@
  *   shipped release and the branch head holds none: work still unreleased is not shipped.
  *
  * Where the project has no source host binding (or declares a local repository no host serves), the
- * commit a mark names (observed, or the claim an asserted mark's audit line recorded) is asked of the
+ * commit a mark names (observed, or the claim the current asserted mark's audit line recorded,
+ * `issues/mark-trail.ts:currentMarkClaims`, never one an unmark withdrew) is asked of the
  * box holding the project's bound checkout instead (`shipped-earlier-ancestry.ts` `boxReader`), and
  * the issue's notice names that box-read evidence: the box, its checkout, origin and both shas. The
  * declaring-commits path stays host-only: it reads ranges of commit messages, which no box serves.
@@ -47,6 +48,7 @@ import {
 import {
   accountActor,
   claimIssuesForRelease,
+  currentMarkClaims,
   heldByEndedRelease,
   mergeMarkKindOf,
   returnTakenClaims,
@@ -245,33 +247,6 @@ function witnessed(witness: Witness): string {
   );
 }
 
-/**
- * The commit each `asserted` mark's own audit comment recorded as the caller's claim. The tracker
- * keeps no structured field for it (`merge-marker.ts` `writeMarkTrail` writes it into the audit
- * comment's first line as `commit=<40 hex>`), so the latest such comment that stamped is read, in
- * exactly that shape and no other. It is the caller's word, and is used only as a lead the host
- * then has to confirm.
- */
-async function claimedCommits(issueIds: readonly string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  if (issueIds.length === 0) return out;
-  const found = await db.execute<{ issue_id: string; sha: string }>(sql`
-    SELECT DISTINCT ON (c.issue_id) c.issue_id,
-           substring(split_part(c.body, E'\\n', 1) from '^mark_merged(?: target=\\S+)? commit=([0-9a-f]{40})(?: |$)') AS sha
-      FROM comments c
-     WHERE c.issue_id IN (${sql.join(
-       issueIds.map((id) => sql`${id}`),
-       sql`, `,
-     )})
-       AND c.body LIKE 'mark_merged%'
-       AND c.body NOT LIKE '%NOT stamped by this call%'
-       AND split_part(c.body, E'\\n', 1) ~ '^mark_merged( target=\\S+)? commit=[0-9a-f]{40}( |$)'
-     ORDER BY c.issue_id, c.created_at DESC
-  `);
-  for (const r of found) out.set(r.issue_id, r.sha.toLowerCase());
-  return out;
-}
-
 /** The comment the issue carries, naming what the record shows. */
 function noticeFor(found: ClosedEarlier): string {
   const when = found.heldBy
@@ -325,7 +300,8 @@ export async function closeShippedEarlier(
     string,
     { release: ShippedRelease; evidence: string; witness?: Witness }
   >();
-  const claimedBy = await claimedCommits(waiting.filter((w) => w.sha === null).map((w) => w.id));
+  // The current mark's own claim only: an unmark withdrew every earlier one (`issues/mark-trail.ts`).
+  const claimedBy = await currentMarkClaims(waiting.filter((w) => w.sha === null).map((w) => w.id));
   const leads = new Map<string, string>();
   for (const row of waiting) {
     const lead = row.sha ?? claimedBy.get(row.id) ?? null;

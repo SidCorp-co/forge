@@ -30,6 +30,7 @@ import { backfillPhaseJournal, runReconcilerOnce, runRetentionSweep } from './pi
 import { runPipelineSweep } from './pipeline-sweep.js';
 import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
 import { sweepExpiredExecutions, sweepExpiredReportRuns } from './reports/index.js';
+import { sweepDeliveredRequirements } from './requirements/index.js';
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
 import { sweepSuggestions } from './suggestions/index.js';
@@ -259,6 +260,17 @@ export function coreTimers(): Timer[] {
       run: logged('integrations-health-sweep: complete', runIntegrationsHealthSweep),
     },
     { kind: 'cluster', name: 'admin-alert-sweep', cron: '*/5 * * * *', run: () => runAlertSweep() },
+    // A delivery a linked issue's close could not read (production unreadable then) is raised here.
+    {
+      kind: 'cluster',
+      name: 'requirement-delivery-sweep',
+      cron: '*/5 * * * *',
+      run: logged(
+        'requirement-delivery-sweep: raised',
+        sweepDeliveredRequirements,
+        (r) => (r as { raised: number }).raised > 0,
+      ),
+    },
 
     // Process timers: faster than a minute, or bound to this process's sockets, memory or disk.
     {

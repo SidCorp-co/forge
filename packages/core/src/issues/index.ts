@@ -107,6 +107,7 @@ export {
 } from './issue-route-ref.js';
 export { landingShapeOf, landingShortfall, requireLandingShape } from './landing-evidence.js';
 export { holderFanout, readClaim } from './lease-fanout.js';
+export { currentMarkClaims } from './mark-trail.js';
 export {
   archivedIssueIdsSql,
   issueHead,
@@ -150,7 +151,7 @@ export {
   releaseRunClaims,
   returnTakenClaims,
 } from './release-claim.js';
-export { reopenedAtOf } from './release-evidence.js';
+export { reopenedAtOf, shipsWithdrawnOf } from './release-evidence.js';
 export { issuesMissingReleaseRecord } from './release-record-required.js';
 export {
   type IssueCreateInput,

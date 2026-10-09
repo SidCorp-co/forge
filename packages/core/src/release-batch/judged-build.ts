@@ -12,6 +12,8 @@
  */
 
 import type { JudgedBuild } from '@forge/contracts/verdict-identity';
+import { db } from '../db/client.js';
+import { shipsWithdrawnOf } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { ANCESTRY_PAIRS_MAX, type AncestryPair, pairKey } from '../runners/index.js';
 import { type Reading, servedProductionCommit } from './provider-live.js';
@@ -36,12 +38,16 @@ export interface JudgedBuildDeps {
   served(projectId: string): Promise<Reading<string>>;
   releases(projectId: string): Promise<ShippedReleaseRun[]>;
   ancestry(projectId: string): Promise<AncestrySource>;
+  /** Whether the issue was moved out of `closed` since it last closed, so no release it was closed
+   *  into holds its current work (`issues/release-evidence.ts:shipsWithdrawnOf`). */
+  withdrawn(issueId: string): Promise<boolean>;
 }
 
 const LIVE_DEPS: JudgedBuildDeps = {
   served: servedProductionCommit,
   releases: shippedReleaseRuns,
   ancestry: (projectId) => ancestrySourceFor(projectId),
+  withdrawn: async (issueId) => (await shipsWithdrawnOf(db, [issueId])).has(issueId),
 };
 
 // Ancestry between two commits never changes, so an answer is kept for the process, bounded.
@@ -113,7 +119,11 @@ export async function judgedBuildOf(
   issue: JudgedBuildIssue,
   deps: JudgedBuildDeps = LIVE_DEPS,
 ): Promise<JudgedBuild> {
-  const releases = await deps.releases(issue.projectId);
+  const withdrawn = await deps.withdrawn(issue.id);
+  // A release that closed an issue its reopen took back shipped rejected work: none carries it now.
+  const releases = (await deps.releases(issue.projectId)).map((r) =>
+    withdrawn ? { ...r, issueIds: r.issueIds.filter((id) => id !== issue.id) } : r,
+  );
   const carrying = releases.filter((r) => r.issueIds.includes(issue.id));
   const shippedIn = carrying[carrying.length - 1] ?? null;
   const served = await deps.served(issue.projectId);

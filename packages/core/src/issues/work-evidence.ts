@@ -1,5 +1,5 @@
 import { WORK_EVIDENCE_WAIVER_KIND } from '@forge/contracts/issue-machine';
-import { and, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { issueDependencies, issueStepContexts, issues, jobs, projects } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
@@ -91,6 +91,33 @@ export async function collectWorkEvidence(
     mergedCommitSha:
       projectRow?.mergedAt != null ? projectRow.mergedCommitSha?.trim() || null : null,
   };
+}
+
+/**
+ * The commit the newest implementation handoff names, among those written after `since` (all where
+ * null); null where none does. A handoff is rewritten in place on a re-run of its attempt, so its
+ * last write is when it was written.
+ */
+export async function latestHandoffCommit(
+  issueId: string,
+  since: Date | null,
+  executor: EvidenceExecutor = db,
+): Promise<string | null> {
+  const rows = await executor
+    .select({ commit: sql<string | null>`${issueStepContexts.payload} ->> 'commitSha'` })
+    .from(issueStepContexts)
+    .where(
+      and(
+        eq(issueStepContexts.issueId, issueId),
+        eq(issueStepContexts.kind, 'handoff'),
+        inArray(issueStepContexts.step, IMPLEMENTATION_STEPS),
+        sql`coalesce(${issueStepContexts.payload} ->> 'commitSha', '') <> ''`,
+        ...(since ? [gt(issueStepContexts.updatedAt, since)] : []),
+      ),
+    )
+    .orderBy(desc(issueStepContexts.updatedAt), desc(issueStepContexts.id))
+    .limit(1);
+  return rows[0]?.commit ?? null;
 }
 
 function hasCodeEvidence(evidence: WorkEvidence): boolean {
