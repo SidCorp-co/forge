@@ -185,6 +185,12 @@ export const PREVIEW_ENTER_PATH = `${PREVIEW_RESERVED_PATH}enter`;
  */
 export const PREVIEW_COOKIE = "forge_preview";
 
+/** Whether a `Host` is under the preview domain, well-formed label or not: Forge answers it in words, never the API. */
+export function isPreviewHost(host: string, previewDomain: string): boolean {
+	const name = host.toLowerCase().replace(/:\d+$/, "");
+	return name.endsWith(`.${previewDomain.toLowerCase()}`);
+}
+
 /** The preview a `Host` header names, or null where it names none: one label under the preview domain. */
 export function previewLabelOf(
 	host: string,
@@ -229,9 +235,12 @@ export const previewDemoSettingsSchema = z
 	});
 export type PreviewDemoSettings = z.infer<typeof previewDemoSettingsSchema>;
 
-
-const REQUIREMENT_KEY = z.string().regex(/^REQ-\d{1,9}$/, "a requirement key such as REQ-30");
-const FEEDBACK_KEY = z.string().regex(/^FB-\d{1,9}$/, "a feedback key such as FB-12");
+const REQUIREMENT_KEY = z
+	.string()
+	.regex(/^REQ-\d{1,9}$/, "a requirement key such as REQ-30");
+const FEEDBACK_KEY = z
+	.string()
+	.regex(/^FB-\d{1,9}$/, "a feedback key such as FB-12");
 
 /** A build a preview serves: the commit, and the release version where that commit is one. */
 export const previewBuildSchema = z.strictObject({
@@ -260,7 +269,9 @@ export const previewSubjectSchema = z.discriminatedUnion("kind", [
 			z.strictObject({ kind: z.literal("requirement"), key: REQUIREMENT_KEY }),
 			z.strictObject({ kind: z.literal("feedback"), key: FEEDBACK_KEY }),
 		]),
-		branch: z.string().regex(SKETCH_BRANCH, "a sketch branch such as sketch/fb-51-abcdef"),
+		branch: z
+			.string()
+			.regex(SKETCH_BRANCH, "a sketch branch such as sketch/fb-51-abcdef"),
 	}),
 	z.strictObject({
 		kind: z.literal("reproduce"),
@@ -281,7 +292,8 @@ export type PreviewSubject = z.infer<typeof previewSubjectSchema>;
  */
 export const previewSettingsSchema = z
 	.strictObject({
-		command: z.string().trim().min(1).max(PREVIEW_LIMITS.command),
+		/** Unset, the command is read from the repository's package.json each time (detectPreviewSettings). */
+		command: z.string().trim().min(1).max(PREVIEW_LIMITS.command).optional(),
 		port: z
 			.int()
 			.min(PREVIEW_LIMITS.port.min)
@@ -302,6 +314,18 @@ export const previewSettingsSchema = z
 		demo: previewDemoSettingsSchema.optional(),
 	})
 	.superRefine((s, ctx) => {
+		if (s.command === undefined) {
+			// the repository's detection owns the command, and with it the port and the directory
+			for (const field of ["port", "cwd"] as const) {
+				if (s[field] === undefined) continue;
+				ctx.addIssue({
+					code: "custom",
+					path: [field],
+					message: `preview.${field} is set and preview.command is not: ${field === "port" ? "the port belongs to a command" : "the directory a command runs in"}; set preview.command, or clear preview.${field} so Forge reads both from the repository`,
+				});
+			}
+			return;
+		}
 		const placeholder = s.command.includes(PREVIEW_PORT_PLACEHOLDER);
 		if (placeholder && s.port !== undefined) {
 			ctx.addIssue({
@@ -319,6 +343,39 @@ export const previewSettingsSchema = z
 		}
 	});
 export type PreviewSettings = z.infer<typeof previewSettingsSchema>;
+
+/** A setting the runner can start from: detection always fills the command. */
+export type StartablePreviewSettings = PreviewSettings & { command: string };
+
+/**
+ * Why `named` cannot be the environment a preview talks to (BC-13): the project does not declare
+ * it, or its tier is production. `path` is the pointer of the setting that named it. One reading
+ * for the project-document write and for the plan a preview starts from.
+ */
+export function previewEnvironmentProblem(
+	named: string,
+	environments: Record<string, { tier: string }>,
+	path: string,
+): {
+	code: "PREVIEW_SETTINGS_INVALID" | "PREVIEW_PRODUCTION_ENVIRONMENT";
+	detail: string;
+} | null {
+	const where = path.slice(1).replace(/\//g, ".");
+	const environment = environments[named];
+	if (!environment) {
+		return {
+			code: "PREVIEW_SETTINGS_INVALID",
+			detail: `${where} names ${named}, which the project document does not declare; name one of: ${Object.keys(environments).join(", ") || "none is declared"}`,
+		};
+	}
+	if (environment.tier === "production") {
+		return {
+			code: "PREVIEW_PRODUCTION_ENVIRONMENT",
+			detail: `${where} names ${named}, whose tier is production: a preview talks to a dev environment or demo data, never production (REQ-39 BC-13, REQ-41 BC-22)`,
+		};
+	}
+	return null;
+}
 
 /** What the runner reads from the worktree for detection; core decides (thin box agent, ADR 0009). */
 export const repositoryFactsSchema = z.strictObject({
@@ -355,7 +412,7 @@ const PACKAGE_MANAGERS = [
 export type PreviewDetection =
 	| {
 			ok: true;
-			settings: PreviewSettings;
+			settings: StartablePreviewSettings;
 			framework: string;
 			packageManager: string;
 	  }
@@ -622,7 +679,13 @@ export interface PreviewControlFrames {
  * where the box lacks it, and fails REF_NOT_FOUND with git's output where it cannot.
  */
 export type PreviewCheckout =
-	| { kind: "sketch"; repoPath: string; path: string; branch: string; base: string | null }
+	| {
+			kind: "sketch";
+			repoPath: string;
+			path: string;
+			branch: string;
+			base: string | null;
+	  }
 	| { kind: "reproduce"; repoPath: string; path: string; sha: string };
 
 /** Pushed to the project room when a preview moves; web refetches it. */
@@ -773,7 +836,8 @@ export const pageSnapshotSchema = z
 	)
 	.length(2)
 	.refine((e) => e[0]?.type === 4 && e[1]?.type === 2, {
-		message: "PREVIEW_KEEP_SNAPSHOT_INVALID: a page snapshot is rrweb's Meta event then its FullSnapshot event",
+		message:
+			"PREVIEW_KEEP_SNAPSHOT_INVALID: a page snapshot is rrweb's Meta event then its FullSnapshot event",
 	});
 export type PageSnapshot = z.infer<typeof pageSnapshotSchema>;
 
@@ -798,7 +862,9 @@ export type KeepPreviewRequest = z.infer<typeof keepPreviewRequestSchema>;
 export const keptPreviewContentSchema = z.strictObject({
 	previewId: z.uuid(),
 	/** The sketch branch, on the box that cut it, never pushed. */
-	branch: z.string().regex(SKETCH_BRANCH, "a sketch branch such as sketch/fb-51-abcdef"),
+	branch: z
+		.string()
+		.regex(SKETCH_BRANCH, "a sketch branch such as sketch/fb-51-abcdef"),
 	/** The branch's head after the keep committed the sketch's edits. */
 	head: wholeShaSchema("head"),
 	base: wholeShaSchema("base"),
@@ -819,17 +885,19 @@ export const keepPreviewResponseSchema = z.strictObject({
 	startedFrom: z.string().nullable(),
 	suggestionId: z.uuid().nullable(),
 	/** Why no criteria draft was offered where the suggestions path refused one, by its own code; null otherwise. */
-	suggestionRefusal: z.strictObject({ code: z.string(), detail: z.string() }).nullable(),
+	suggestionRefusal: z
+		.strictObject({ code: z.string(), detail: z.string() })
+		.nullable(),
 });
 export type KeepPreviewResponse = z.infer<typeof keepPreviewResponseSchema>;
 
 /** Where a reproduce preview's data comes from, before the production check core makes on the tier. */
-export function reproduceDataOf(
-	settings: {
-		environment?: string | undefined;
-		demo?: PreviewDemoSettings | undefined;
-	},
-): { kind: "demo"; environment: string | null; seed: string | null } | { kind: "environment"; environment: string | null } {
+export function reproduceDataOf(settings: {
+	environment?: string | undefined;
+	demo?: PreviewDemoSettings | undefined;
+}):
+	| { kind: "demo"; environment: string | null; seed: string | null }
+	| { kind: "environment"; environment: string | null } {
 	if (settings.demo) {
 		return {
 			kind: "demo",
@@ -846,8 +914,12 @@ export const confirmFixRequestSchema = z
 		verdict: z.enum(["fixed", "not_fixed"]),
 		note: z.string().trim().max(REASON_PARAGRAPH_MAX).optional(),
 	})
-	.refine((c) => c.verdict === "fixed" || (c.note !== undefined && c.note !== ""), {
-		message: "PREVIEW_CONFIRM_REASON_REQUIRED: not fixed says what is still wrong",
-		path: ["note"],
-	});
+	.refine(
+		(c) => c.verdict === "fixed" || (c.note !== undefined && c.note !== ""),
+		{
+			message:
+				"PREVIEW_CONFIRM_REASON_REQUIRED: not fixed says what is still wrong",
+			path: ["note"],
+		},
+	);
 export type ConfirmFixRequest = z.infer<typeof confirmFixRequestSchema>;

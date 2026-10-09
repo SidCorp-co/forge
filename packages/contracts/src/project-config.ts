@@ -1,8 +1,8 @@
 // The refusal vocabulary of the project document, its bindings, its policy and its testing secrets.
 
 import { CONTENT_LANGUAGE_REFUSAL_CODES } from "./content-language.js";
-import { TEMPLATE_REFUSAL_CODES } from "./workflow-template-schema.js";
 import type { RefusalStatuses } from "./refusal.js";
+import { TEMPLATE_REFUSAL_CODES } from "./workflow-template-schema.js";
 
 const PURE_REFUSAL_CODES = [
 	"DEFAULT_BRANCH_UNDECLARED",
@@ -14,6 +14,9 @@ const PURE_REFUSAL_CODES = [
 	"DEPLOYS_FROM_UNDECLARED",
 	"DEPLOYS_FROM_NEEDS_GIT",
 	"PRODUCTION_NOT_UNIQUE",
+	/** A preview setting names an environment the project does not declare, or one whose tier is production. */
+	"PREVIEW_SETTINGS_INVALID",
+	"PREVIEW_PRODUCTION_ENVIRONMENT",
 	"ISOLATION_UNSUPPORTED",
 	"GATE_UNSUPPORTED",
 	"BINDING_NOT_FOUND",
@@ -80,7 +83,8 @@ export const PROJECT_CONFIG_REFUSAL_CODES = [
 	...BINDING_TARGET_REFUSAL_CODES,
 ] as const;
 
-export type ProjectConfigRefusalCode = (typeof PROJECT_CONFIG_REFUSAL_CODES)[number];
+export type ProjectConfigRefusalCode =
+	(typeof PROJECT_CONFIG_REFUSAL_CODES)[number];
 export const PROJECT_CONFIG_REFUSAL_STATUSES = {
 	STALE_BASE: 409,
 	AGENT_ACCESS_NEEDS_ORG_ADMIN: 403,
@@ -93,7 +97,8 @@ export const ENVIRONMENT_STATE_REFUSAL_CODES = [
 	"DEPLOY_HISTORY_UNSUPPORTED",
 ] as const;
 
-export type EnvironmentStateRefusalCode = (typeof ENVIRONMENT_STATE_REFUSAL_CODES)[number];
+export type EnvironmentStateRefusalCode =
+	(typeof ENVIRONMENT_STATE_REFUSAL_CODES)[number];
 
 /** Dispatch refused because the project's policy cannot say how this work runs. */
 export const POLICY_REFUSAL_CODES = [
@@ -122,7 +127,8 @@ export const TESTING_SECRETS_REFUSAL_CODES = [
 	"VAULT_NOT_CONFIGURED",
 ] as const;
 
-export type TestingSecretsRefusalCode = (typeof TESTING_SECRETS_REFUSAL_CODES)[number];
+export type TestingSecretsRefusalCode =
+	(typeof TESTING_SECRETS_REFUSAL_CODES)[number];
 
 /** A `secret://<scope>/<name>` reference into the project's vault, or null when the text is not one. */
 export function parseSecretRef(

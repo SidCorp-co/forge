@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 
 // The preview site, set before the process reads its environment: a development `host:port`.
@@ -240,4 +240,106 @@ it("refuses production, an issue with no run, a second open, and another box's r
   expect(
     (await api(await userToken(viewer.id), 'POST', `/api/issues/${fresh}/preview`)).status,
   ).toBe(403);
+});
+
+// QA of 0.4.0-dev.218 (ISS-491): the three criteria it failed, each driven the way the QA ran it.
+
+it('answers every host under the preview domain in words, a malformed label included (BC-9)', async () => {
+  const base = 'http://x.preview.localhost:7311/';
+  for (const label of [
+    'nosuch-qa218',
+    'p-short',
+    'P-AAAAAAAAAAAAAAA1',
+    'a.b',
+    'p-aaaaaaaaaaaaaaaa',
+  ]) {
+    const url = base.replace('x.', `${label}.`);
+    const page = await atPreview(core, url, '/');
+    expect(page.status, label).toBe(404);
+    expect(page.headers['content-type'], label).toContain('text/html');
+    expect(page.text, label).toContain('No preview at this link');
+    expect(page.text, label).not.toContain('Not Found: GET');
+  }
+  const signedIn = await atPreview(core, base.replace('x.', 'nosuch-qa218.'), '/api/projects', {
+    authorization: `Bearer ${owner}`,
+  });
+  expect(signedIn.text).toContain('No preview at this link');
+  // the API's own host is still the API
+  const apiHost = await fetch(`${core.base}/api/projects`, {
+    headers: { authorization: `Bearer ${owner}` },
+  });
+  expect(apiHost.headers.get('content-type')).toContain('application/json');
+});
+
+describe('the preview setting is saved through the project document (BC-11, BC-13)', () => {
+  const put = async (preview: Record<string, unknown> | undefined) => {
+    const held = (await api(owner, 'GET', `/api/projects/${projectId}/config`)).body as {
+      revision: number;
+      document: Record<string, unknown>;
+    };
+    const { preview: _drop, ...rest } = held.document;
+    // the seeded environments skip the write's own check that a git project's name its branch
+    const environments = Object.fromEntries(
+      Object.entries(rest.environments as Record<string, object>).map(([name, e]) => [
+        name,
+        { deploysFrom: 'main', ...e },
+      ]),
+    );
+    return api(owner, 'PUT', `/api/projects/${projectId}/config`, {
+      baseRevision: held.revision,
+      document: { ...rest, environments, ...(preview === undefined ? {} : { preview }) },
+    });
+  };
+  const refusedAt = (res: { status: number; body: Record<string, unknown> }, path: string) => {
+    expect(res.status, JSON.stringify(res.body)).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(res.body)).toContain(path);
+  };
+  afterAll(async () => {
+    await put(undefined);
+  });
+
+  it('saves with the command left empty and any other field set', async () => {
+    const idle = await put({ idleMinutes: 45 });
+    expect(idle.status, JSON.stringify(idle.body)).toBe(200);
+    const withEnv = await put({ idleMinutes: 45, environment: 'dev' });
+    expect(withEnv.status, JSON.stringify(withEnv.body)).toBe(200);
+  });
+
+  it('keeps the port and idle refusals at their own field, and names a port that has no command', async () => {
+    refusedAt(await put({ command: 'node server.js' }), '/preview/port');
+    refusedAt(await put({ command: 'pnpm dev --port {port}', port: 3000 }), '/preview/port');
+    refusedAt(
+      await put({ command: 'pnpm dev --port {port}', idleMinutes: 0 }),
+      '/preview/idleMinutes',
+    );
+    refusedAt(await put({ port: 3000 }), '/preview/port');
+    refusedAt(await put({ cwd: 'web' }), '/preview/cwd');
+  });
+
+  it('refuses a production-tier environment by name, at the field, and an undeclared one', async () => {
+    const prod = await put({ idleMinutes: 45, environment: 'live' });
+    expect(prod.status).toBe(422);
+    expect(prod.body).toMatchObject({ code: 'PREVIEW_PRODUCTION_ENVIRONMENT' });
+    expect(JSON.stringify(prod.body)).toContain('/preview/environment');
+    expect(JSON.stringify(prod.body)).toMatch(/live.*production/);
+    const demoProd = await put({ demo: { environment: 'live' } });
+    expect(JSON.stringify(demoProd.body)).toContain('/preview/demo/environment');
+    expect(demoProd.status).toBe(422);
+    const undeclared = await put({ environment: 'nope' });
+    expect(JSON.stringify(undeclared.body)).toContain('/preview/environment');
+    expect(undeclared.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('starts a preview from a setting with no command by reading the repository', async () => {
+    expect((await put({ idleMinutes: 45 })).status).toBe(200);
+    const id = await issueWithRun();
+    const before = box.heardOf('preview.start').length;
+    const preview = await livePreview(id);
+    const starts = box.heardOf('preview.start').slice(before);
+    expect(starts[0]?.data).toMatchObject({ settings: null });
+    expect(starts[1]?.data).toMatchObject({
+      settings: { command: 'npm run dev -- --port {port}' },
+    });
+    expect(preview.id).toBeTruthy();
+  });
 });

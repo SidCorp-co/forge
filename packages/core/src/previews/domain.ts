@@ -1,7 +1,7 @@
 // Where previews are served: one label under PREVIEW_DOMAIN, another site from Forge's own
 // (`lib/env.ts:previewDomainIssue` refuses one that is not at boot). Unset, nothing is served.
 
-import { PREVIEW_HOST_LABEL, previewLabelOf } from '@forge/contracts/preview';
+import { isPreviewHost, PREVIEW_HOST_LABEL, previewLabelOf } from '@forge/contracts/preview';
 import { env } from '../lib/env.js';
 
 export interface PreviewSite {
@@ -32,6 +32,12 @@ export function previewOrigin(site: PreviewSite, label: string): string {
 export function labelOfHost(host: string | undefined, site: PreviewSite | null): string | null {
   if (!host || site === null) return null;
   return previewLabelOf(host, site.host);
+}
+
+/** Whether a request's `Host` is under PREVIEW_DOMAIN at all: a malformed label is answered here too. */
+export function isHostUnderSite(host: string | undefined, site: PreviewSite | null): boolean {
+  if (!host || site === null) return false;
+  return isPreviewHost(host, site.host);
 }
 
 const BASE32 = 'abcdefghijklmnopqrstuvwxyz234567';

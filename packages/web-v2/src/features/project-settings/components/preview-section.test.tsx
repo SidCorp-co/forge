@@ -85,6 +85,32 @@ describe("the preview setting", () => {
     expect(screen.getByRole("textbox", { name: "Start command" })).toHaveValue("node server.js");
   });
 
+  it("saves idle minutes with the command left empty, writing no `command` key (BC-11)", async () => {
+    const calls = core({ declared: true, revision: 6, document: doc() });
+    mount();
+    expect(await field("Start command")).toHaveValue("");
+    fireEvent.change(await field("Close after idle minutes"), { target: { value: "45" } });
+    save();
+    await waitFor(() => expect(putOf(calls)).toBeDefined());
+    expect(putOf(calls)?.document.preview).toEqual({ idleMinutes: 45 });
+  });
+
+  it("offers the environments the project declares and never a production-tier one (BC-13)", async () => {
+    const environments = { dev: { tier: "dev" }, staging: { tier: "staging" }, live: { tier: "production" } };
+    core({ declared: true, revision: 6, document: doc({ environments }) });
+    mount();
+    fireEvent.click(await screen.findByRole("combobox", { name: "Environment" }));
+    const names = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    expect(names).toEqual(["The project's dev environment", "dev", "staging"]);
+  });
+
+  it("shows a saved production environment as refused, not as blank (BC-13)", async () => {
+    const environments = { dev: { tier: "production" } };
+    core({ declared: true, revision: 6, document: doc({ environments, preview: { idleMinutes: 45, environment: "dev" } }) });
+    mount();
+    expect(await screen.findByRole("combobox", { name: "Environment" })).toHaveTextContent("dev (production: refused)");
+  });
+
   it("holds an undeclared project's fields off and says why", async () => {
     core({ declared: false } as V1Read);
     mount();
