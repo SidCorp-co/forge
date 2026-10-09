@@ -205,6 +205,7 @@ fn spec(p: &Planted, confined: bool) -> JobSpec {
         counts_against_session_cap: false,
         credential: Some(TurnCredential(TURN.into())),
         confinement: confined.then(Confinement::default),
+        hooks_off: false,
     }
 }
 

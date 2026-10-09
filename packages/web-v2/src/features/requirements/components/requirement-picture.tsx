@@ -17,6 +17,7 @@ import dynamic from "next/dynamic";
 import { type ReactNode, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
+import { OpenRoom } from "@/features/previews/room-open";
 import { canWriteProject } from "@/features/projects/write-access";
 import { KeptPreviewPicture } from "@/features/previews/idea-kept-picture";
 import { BLOCK_RENDERERS } from "@/features/visual-blocks";
@@ -150,6 +151,11 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
       {body}
       <span ref={end} id={`${headingId}-end`} tabIndex={-1} className="outline-none" data-testid="picture-end" />
       {editing && rev && wanted && !linked ? <PictureEditor key={`${rev.revision}:${wanted}`} revision={rev.revision} kind={wanted} picture={picture} save={save} onDone={close} /> : null}
+      {kind === null || kind === "screen" ? (
+        <div className="mt-3 max-w-[80ch]">
+          <OpenRoom projectId={projectId} slug={slug} about={d.key} canWrite={writer} />
+        </div>
+      ) : null}
     </section>
   );
 }

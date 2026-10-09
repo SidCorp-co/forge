@@ -29,6 +29,7 @@ describe('previewPlan: which setting and environment a preview starts with (BC-1
           FORGE_ENVIRONMENT_URL: 'https://dev.example.test',
         },
         seed: null,
+        data: 'environment',
       },
     });
   });
@@ -99,6 +100,21 @@ describe('previewPlan for a reproduce: demo data where the project names it, els
       'issue',
     );
     expect(issue.ok && issue.plan).toMatchObject({ env: { FORGE_ENVIRONMENT: 'dev' }, seed: null });
+  });
+
+  it("a POC room's idea runs on the demo data a reproduce would, and says so (REQ-44 BC-12)", () => {
+    const document = {
+      preview: { command: 'pnpm dev', port: 3000, demo: { seed: 'pnpm seed' } },
+      environments,
+    };
+    const room = previewPlan(document, 'idea', true);
+    expect(room.ok && room.plan).toMatchObject({ seed: 'pnpm seed', data: 'demo' });
+    // an idea outside a room keeps the dev environment, unseeded
+    const idea = previewPlan(document, 'idea');
+    expect(idea.ok && idea.plan).toMatchObject({ seed: null, data: 'environment' });
+    // a room in a project that names no demo data says it runs on the dev environment
+    const bare = previewPlan({ environments }, 'idea', true);
+    expect(bare.ok && bare.plan).toMatchObject({ seed: null, data: 'environment' });
   });
 
   it('falls back to the environment its dev server uses when no demo is named', () => {

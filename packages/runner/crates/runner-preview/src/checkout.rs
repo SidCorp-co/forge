@@ -195,6 +195,29 @@ pub async fn remove(c: &Checkout) {
     }
 }
 
+/// An abandoned or settled POC room's sketch (REQ-44 BC-10): its checkout removed, its branch and
+/// its kept ref deleted, whether this box still held the preview or not. A checkout core names
+/// outside the binding's worktrees, or a branch that is not a sketch's, is left alone and logged.
+pub async fn drop_sketch(c: &Checkout, preview_id: &str) {
+    let Checkout::Sketch { branch, .. } = c else {
+        tracing::warn!("[preview] {preview_id}: a drop named a checkout that is not a sketch");
+        return;
+    };
+    if contained(c).is_err() || !valid_branch(branch) {
+        tracing::warn!("[preview] {preview_id}: a drop named {branch} at {}, which is not a sketch this box cuts", c.path());
+        return;
+    }
+    remove(c).await;
+    let _ = git(c.repo(), &["worktree", "prune"]).await;
+    if let Err(e) = git(c.repo(), &["branch", "-D", branch]).await {
+        tracing::warn!("[preview] {preview_id}: the sketch branch {branch} could not be deleted: {e}");
+    }
+    let kept = format!("refs/forge/kept/{preview_id}");
+    let _ = git(c.repo(), &["update-ref", "-d", &kept]).await;
+    let key = format!("branch.{branch}");
+    let _ = git(c.repo(), &["config", "--remove-section", &key]).await;
+}
+
 /// The demo seed (`preview.demo.seed`), run once in the checkout before the dev server starts.
 pub async fn seed(
     dir: &Path,

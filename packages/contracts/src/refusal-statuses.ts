@@ -18,6 +18,7 @@ import {
 import { MEMORY_REFUSAL_STATUSES } from "./memory.js";
 import { PATTERN_REFUSAL_STATUSES } from "./patterns.js";
 import { PIPELINE_REFUSAL_STATUSES } from "./pipeline.js";
+import { ROOM_REFUSAL_STATUSES } from "./poc-room.js";
 import { PREVIEW_REFUSAL_STATUSES } from "./preview.js";
 import { PRODUCT_STATE_REFUSAL_STATUSES } from "./product-state.js";
 import { PROJECT_CONFIG_REFUSAL_STATUSES } from "./project-config.js";
@@ -63,6 +64,7 @@ const DECLARED: ReadonlyArray<
 	PIPELINE_REFUSAL_STATUSES,
 	PREVIEW_REFUSAL_STATUSES,
 	RECORDING_REFUSAL_STATUSES,
+	ROOM_REFUSAL_STATUSES,
 	PRODUCT_STATE_REFUSAL_STATUSES,
 	PROJECT_CONFIG_REFUSAL_STATUSES,
 	PROJECT_REFUSAL_STATUSES,

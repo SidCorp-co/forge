@@ -30,6 +30,8 @@ import { OPEN_STATES, stateRefusal } from './rules.js';
 import { sendIdeaMessage } from './subjects.js';
 
 const SNAPSHOT_WAIT_MS = 20_000;
+/** A settle's merge fetches, merges and pushes: it is given longer than a read. */
+const SETTLE_WAIT_MS = 120_000;
 
 /** Waiters for a snapshot the approval asked of the box, by preview. */
 const snapshots = new Map<string, (s: Extract<PreviewReport, { kind: 'snapshot' }>) => void>();
@@ -45,18 +47,26 @@ export function settleSnapshot(
   return true;
 }
 
-/** What the box serves now: the patch id and files of the checkout's change against its base. */
-export async function askSnapshot(row: PreviewRow, keep = false) {
+/**
+ * What the box serves now: the patch id and files of the checkout's change against its base. A keep
+ * commits the sketch first; a settle (REQ-44 BC-8) then merges it into `settle.into` on origin.
+ */
+export async function askSnapshot(
+  row: PreviewRow,
+  keep = false,
+  settle?: { into: string; message: string },
+) {
+  const wait = settle ? SETTLE_WAIT_MS : SNAPSHOT_WAIT_MS;
   const answered = new Promise<Extract<PreviewReport, { kind: 'snapshot' }>>((resolve, reject) => {
     const timer = setTimeout(() => {
       snapshots.delete(row.id);
       reject(
         refuse(
           'PREVIEW_SNAPSHOT_UNAVAILABLE',
-          `the box holding preview ${row.id} did not answer with what it serves within ${SNAPSHOT_WAIT_MS / 1000}s: it is offline, or the worktree holds no change against its base; nothing was approved`,
+          `the box holding preview ${row.id} did not answer with what it serves within ${wait / 1000}s: it is offline, or the worktree holds no change against its base; nothing was ${settle ? 'merged' : 'approved'}`,
         ),
       );
-    }, SNAPSHOT_WAIT_MS);
+    }, wait);
     snapshots.set(row.id, (s) => {
       clearTimeout(timer);
       snapshots.delete(row.id);
@@ -66,7 +76,8 @@ export async function askSnapshot(row: PreviewRow, keep = false) {
   await db.transaction((tx) =>
     pushBox(tx, row.deviceId, 'preview.snapshot.read', {
       previewId: row.id,
-      ...(keep ? { keep: true } : {}),
+      ...(keep || settle ? { keep: true } : {}),
+      ...(settle ? { settle } : {}),
     }),
   );
   return answered;

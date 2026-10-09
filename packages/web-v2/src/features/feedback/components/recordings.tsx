@@ -11,6 +11,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Button, ViewHeading } from "@/design";
 import { reproduceApi } from "@/features/previews/reproduce-api";
+import { OpenRoom } from "@/features/previews/room-open";
+import { useProjects } from "@/features/projects/hooks";
+import { canWriteProject } from "@/features/projects/write-access";
 import { ReproduceSection, recordingsKey } from "@/features/previews/reproduce-section";
 import { TimelineTable } from "@/features/previews/reproduce-timeline";
 import { formatApiError } from "@/lib/api/error";
@@ -24,9 +27,11 @@ const RECORDING_POLL_MS = 10_000;
 export function FeedbackRecordings({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const carriers =
     f.route?.route === "issue" ? f.route.carriers.flatMap((c) => (c.key ? [c.key] : [])) : [];
+  const project = useProjects().data?.find((p) => p.id === projectId);
   return (
     <div className="grid gap-6">
       <ReproduceSection projectId={projectId} fbKey={f.key} carriers={carriers} redacted={f.redacted} />
+      <OpenRoom projectId={projectId} slug={project?.slug} about={f.key} canWrite={canWriteProject(project?.role)} />
       <Recordings projectId={projectId} f={f} />
     </div>
   );

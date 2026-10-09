@@ -190,3 +190,32 @@ async fn a_sketch_checkout_outlives_every_close_but_an_abandon_and_is_taken_as_i
     assert!(c.removed_on(Some("abandoned")));
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// REQ-44 BC-10: an abandoned POC room's sketch leaves nothing on the box: no checkout, no branch,
+/// no kept ref, no branch config. A plain abandon of an idea keeps its branch, as REQ-41 has it.
+#[tokio::test]
+async fn a_dropped_room_sketch_leaves_no_checkout_branch_or_kept_ref() {
+    let (root, repo, _) = world().await;
+    let c = sketch(&repo, "sketch-req-44-abcdef", "sketch/req-44-abcdef");
+    let at = cut(&c).await.expect("the sketch is cut");
+    sh(&at, "echo poc > web.txt && git add web.txt && git -c user.email=a@b -c user.name=a commit -q -m poc && git update-ref refs/forge/kept/p1 HEAD").await;
+    let repo_dir = PathBuf::from(&repo);
+    // what an idea's abandon did before: the checkout goes, the branch stays
+    remove(&c).await;
+    assert!(!at.exists());
+    assert_eq!(sh(&repo_dir, "git branch --list 'sketch/req-44-abcdef'").await, "sketch/req-44-abcdef");
+    drop_sketch(&c, "p1").await;
+    assert_eq!(sh(&repo_dir, "git branch --list 'sketch/*'").await, "", "the room's branch is deleted");
+    assert_eq!(sh(&repo_dir, "git for-each-ref refs/forge/kept/").await, "", "its kept ref is deleted");
+    assert_eq!(sh(&repo_dir, "git config --get-regexp '^branch\\.sketch' || true").await, "");
+    // a drop naming a branch that is not a sketch, or a path outside the worktrees, touches nothing
+    let main = Checkout::Sketch {
+        repo_path: repo.clone(),
+        path: format!("{repo}/.claude/worktrees/x"),
+        branch: "main".into(),
+        base: None,
+    };
+    drop_sketch(&main, "p2").await;
+    assert_eq!(sh(&repo_dir, "git branch --list main").await, "* main");
+    let _ = std::fs::remove_dir_all(&root);
+}

@@ -30,6 +30,7 @@ export {
   type RevisionWrite,
   rewriteRevisionIn,
 } from './revision-write.js';
+export { roomSettleWriter } from './room-settle.js';
 export { linkIssueRefusal } from './rules.js';
 export { actOnStaleDraftAnswer, registerStaleDraftAct } from './stale-draft-act.js';
 export { sweepStaleDrafts } from './stale-drafts.js';
