@@ -7,11 +7,12 @@
 
 import {
   PICTURE_KIND_OF,
+  type PictureKind,
   type RequirementKind,
   type WritePictureRequest,
 } from '@forge/contracts/requirement-pictures';
 import { requirementKey } from '@forge/contracts/requirements';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
   type RevisionState,
@@ -56,7 +57,36 @@ export async function pictureFitsKind(
   return (await pictureKindOf(tx, pictureId)) === PICTURE_KIND_OF[kind];
 }
 
-/** Draws or replaces revision `revision`'s picture; the one it showed stays in the history. */
+/**
+ * The open revision that follows the head's picture, if any: a new revision of the head's kind
+ * carries that picture until it is redrawn itself (r14 `picture_shown`), so it is the open (draft or
+ * proposed) revision whose kind takes `picture` and which holds no picture drawn for it — the one it
+ * shows was drawn for another revision, or it shows none. A picture drawn on it is its own and stays.
+ */
+async function followerOf(tx: Tx, requirementId: string, picture: PictureKind) {
+  const [open] = await tx
+    .select({
+      revision: requirementRevisions.revision,
+      kind: requirementRevisions.kind,
+      drawnFor: requirementPictures.drawnFor,
+    })
+    .from(requirementRevisions)
+    .leftJoin(requirementPictures, eq(requirementPictures.id, requirementRevisions.pictureId))
+    .where(
+      and(
+        eq(requirementRevisions.requirementId, requirementId),
+        inArray(requirementRevisions.state, ['draft', 'proposed']),
+      ),
+    );
+  if (!open || open.kind === null) return null;
+  if (PICTURE_KIND_OF[open.kind as RequirementKind] !== picture) return null;
+  return open.drawnFor === open.revision ? null : open.revision;
+}
+
+/**
+ * Draws or replaces revision `revision`'s picture; the one it showed stays in the history. Drawn on
+ * the head, it is shown by the open revision that follows the head too (`followerOf`).
+ */
 export async function writePicture(input: {
   projectId: string;
   ref: string;
@@ -110,6 +140,15 @@ export async function writePicture(input: {
       .update(requirementRevisions)
       .set({ pictureId: drawn.id })
       .where(revisionWhere(row.id, target.revision));
+    if (target.state === 'current') {
+      const follower = await followerOf(tx, row.id, body.kind);
+      if (follower !== null) {
+        await tx
+          .update(requirementRevisions)
+          .set({ pictureId: drawn.id })
+          .where(revisionWhere(row.id, follower));
+      }
+    }
     return null;
   });
   return answer(projectId, row.id, actor, refusals);

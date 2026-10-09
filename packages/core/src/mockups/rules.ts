@@ -78,6 +78,7 @@ export function sizeRefusal(kind: MockupKind, size: number): MockupRefusal | nul
 // `picture`): shown at once, replaced in place and pinned by no baseline, so a mockup is no longer
 // proposed or accepted about a requirement. One already proposed may still be returned or withdrawn.
 export function requirementTargetRefusal(
+  projectId: string,
   key: string,
   act: 'propose' | 'accept',
   revision: number,
@@ -85,7 +86,7 @@ export function requirementTargetRefusal(
   return refusal(
     'MOCKUP_TARGET_INVALID',
     act === 'propose' ? '/target/requirement' : '/target',
-    `${act === 'propose' ? 'a mockup is no longer proposed about' : 'a mockup is no longer accepted on'} ${key}: a requirement's picture is its revision's own, shown at once with no accept and replaced in place (PUT /api/projects/:id/requirements/${key}/revisions/${revision}/picture). Mockups are proposed about a feedback item or an issue.`,
+    `${act === 'propose' ? 'a mockup is no longer proposed about' : 'a mockup is no longer accepted on'} ${key}: a requirement's picture is its revision's own, shown at once with no accept and replaced in place (PUT /api/projects/${projectId}/requirements/${key}/revisions/${revision}/picture). Mockups are proposed about a feedback item or an issue.`,
   );
 }
 

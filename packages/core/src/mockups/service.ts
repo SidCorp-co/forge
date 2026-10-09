@@ -71,7 +71,7 @@ async function resolveMockupTarget(
   }
   const req = await requirementRefIn(projectId, target.requirement, '/target/requirement');
   if ('code' in req) return invalidTarget(req.path, req.detail);
-  return requirementTargetRefusal(req.key, 'propose', target.revision);
+  return requirementTargetRefusal(projectId, req.key, 'propose', target.revision);
 }
 
 async function answer(
@@ -217,6 +217,7 @@ export function acceptMockup(input: {
     async (row, key) =>
       row.requirementId !== null && row.revision !== null
         ? requirementTargetRefusal(
+            input.projectId,
             await requirementKeyOf(row.requirementId),
             'accept',
             row.revision,

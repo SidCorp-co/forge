@@ -8,109 +8,19 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { type Doc, ok, refusal, refusedByDb } from '../helpers/ecosystem-world.js';
+import { rows, seedIssueStatus } from '../helpers/factories.js';
 import {
-  closeWorld,
-  type Doc,
-  ok,
-  type Reply,
-  refusal,
-  refusedByDb,
-  requester,
-  startQueue,
-  testEnv,
-} from '../helpers/ecosystem-world.js';
-import {
-  addProjectMember,
-  createTestProject,
-  createTestUser,
-  rows,
-  seedIssueStatus,
-} from '../helpers/factories.js';
+  BOARD,
+  openPictureWorld,
+  PICTURES,
+  pictureDoors,
+  TABLE,
+} from '../helpers/requirement-picture-world.js';
 
-type Who = 'owner' | 'member' | 'viewer';
-let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
-let projectId = '';
-let ownerId = '';
-let memberId = '';
-const at = (path: string) => `/api/projects/${projectId}${path}`;
-const as = (who: Who, method: string, path: string, body?: unknown) =>
-  say(who, method, at(path), body);
-
-const BOARD = {
-  v: 'wireframe-v1',
-  title: 'Checkout',
-  shapes: [{ id: 'frame', type: 'frame', x: 20, y: 20, w: 400, h: 300 }],
-};
-const FLOW = {
-  nodes: [
-    { id: 'cart', label: 'Cart' },
-    { id: 'pay', label: 'Pay' },
-  ],
-  edges: [{ from: 'cart', to: 'pay' }],
-};
-const CHART = {
-  variant: 'bar',
-  x: 'week',
-  y: ['orders'],
-  frame: {
-    fields: [
-      { name: 'week', label: 'Week', type: 'string' },
-      { name: 'orders', label: 'Orders', type: 'number' },
-    ],
-    rows: [
-      { week: 'W1', orders: 3 },
-      { week: 'W2', orders: 5 },
-    ],
-  },
-};
-const TABLE = {
-  rows: [
-    { input: 'A cart of 3 items', expected: 'Shipping is free' },
-    { input: 'A cart of 1 item', expected: 'Shipping costs 5' },
-  ],
-};
-
-const PICTURES = {
-  process: { kind: 'flow', alt: 'A cart leads to payment.', content: FLOW },
-  rule: { kind: 'example_table', alt: 'Three items ship free; one pays.', content: TABLE },
-  screen: { kind: 'wireframe', alt: 'One checkout frame.', content: { board: BOARD } },
-  report: { kind: 'chart', alt: 'Orders rise from 3 to 5.', content: CHART },
-} as const;
-
-async function requirement(title: string, kind?: string | null): Promise<string> {
-  return ok(
-    await as('owner', 'POST', '/requirements', {
-      title,
-      reason: 'the rule it states',
-      ...(kind === undefined ? {} : { kind }),
-      criteria: [{ body: 'A buyer sees what shipping costs before paying.' }],
-    }),
-    201,
-  ).key as string;
-}
-
-const read = async (key: string): Promise<Doc> =>
-  ok(await as('owner', 'GET', `/requirements/${key}`));
-const revision = async (key: string, n: number): Promise<Doc> =>
-  ((await read(key)).revisions as Doc[]).find((r) => r.revision === n) as Doc;
-const history = async (key: string): Promise<string[]> =>
-  ((await read(key)).history as Doc[]).map((e) => `${e.kind}: ${e.text}`);
-const picture = (key: string, n: number, body: unknown, who: Who = 'owner') =>
-  as(who, 'PUT', `/requirements/${key}/revisions/${n}/picture`, body);
-const kindOf = (key: string, n: number, kind: string | null, who: Who = 'owner') =>
-  as(who, 'PUT', `/requirements/${key}/revisions/${n}/kind`, { kind });
-
-async function agreeR1(key: string): Promise<void> {
-  ok(await as('owner', 'POST', `/requirements/${key}/revisions/1/propose`, {}));
-  ok(await as('owner', 'POST', `/requirements/${key}/revisions/1/accept`, { reason: 'BA review' }));
-  ok(
-    await as('owner', 'POST', `/requirements/${key}/agree`, {
-      revision: 1,
-      reason: 'owner signed r1',
-    }),
-  );
-}
+const w = openPictureWorld();
+const { as, read, requirement, revision, history, picture, kindOf, agreeR1 } = pictureDoors(w);
 
 /** A mockup row about a requirement, as REQ-35's predecessors left them on forge-dev (MK-1, MK-2). */
 async function requirementMockup(requirementId: string, status: 'proposed' | 'accepted') {
@@ -118,40 +28,18 @@ async function requirementMockup(requirementId: string, status: 'proposed' | 'ac
   const { db } = await import('../../src/db/client.js');
   const id = randomUUID();
   const [{ seq } = { seq: 1 }] = await rows<{ seq: number }>(sql`
-    SELECT coalesce(max(mockup_seq), 0)::int + 1 AS seq FROM mockups WHERE project_id = ${projectId}`);
+    SELECT coalesce(max(mockup_seq), 0)::int + 1 AS seq FROM mockups WHERE project_id = ${w.projectId}`);
   await withKernelMarker(db, (tx) =>
     tx.execute(sql`
       INSERT INTO mockups (id, project_id, mockup_seq, requirement_id, revision, kind, name, mime, size,
                            storage_path, status, proposed_by, proposed_agency, decided_by, decided_at)
-      VALUES (${id}, ${projectId}, ${seq}, ${requirementId}, 1, 'wireframe', 'board.wireframe.json',
-              'application/json', 10, ${`mockups/${projectId}/${id}`}, ${status}, ${ownerId}, 'human',
-              ${status === 'accepted' ? ownerId : null},
+      VALUES (${id}, ${w.projectId}, ${seq}, ${requirementId}, 1, 'wireframe', 'board.wireframe.json',
+              'application/json', 10, ${`mockups/${w.projectId}/${id}`}, ${status}, ${w.ownerId}, 'human',
+              ${status === 'accepted' ? w.ownerId : null},
               CASE WHEN ${status} = 'accepted' THEN now() END)`),
   );
   return { id, key: `MK-${seq}` };
 }
-
-beforeAll(async () => {
-  testEnv();
-  const { app } = await import('../../src/index.js');
-  await startQueue();
-  const { signUserToken } = await import('../../src/credentials/jwt.js');
-  ownerId = (await createTestUser({ verified: true })).id;
-  memberId = (await createTestUser({ verified: true })).id;
-  const viewer = (await createTestUser({ verified: true })).id;
-  projectId = (await createTestProject(ownerId)).id;
-  await addProjectMember(projectId, memberId, 'member');
-  await addProjectMember(projectId, viewer, 'viewer');
-  say = requester(app, {
-    owner: await signUserToken(ownerId),
-    member: await signUserToken(memberId),
-    viewer: await signUserToken(viewer),
-  });
-}, 120_000);
-
-afterAll(async () => {
-  await closeWorld();
-});
 
 describe('a revision names its kind, and its picture fits it (criteria 1, 6)', () => {
   it.each(Object.entries(PICTURES))('a %s requirement holds its picture', async (kind, body) => {
@@ -210,7 +98,7 @@ describe('a picture shows at once and anyone who can edit replaces it (criteria 
     ok(await picture(key, 1, PICTURES.screen));
     const r1 = await revision(key, 1);
     expect(r1.state).toBe('draft');
-    expect(r1.picture).toMatchObject({ roughSketch: true, drawnFor: 1, writtenBy: ownerId });
+    expect(r1.picture).toMatchObject({ roughSketch: true, drawnFor: 1, writtenBy: w.ownerId });
     const listed = ok(await as('owner', 'GET', `/mockups?requirement=${key}`));
     expect(listed.mockups).toEqual([]);
   });
@@ -222,7 +110,7 @@ describe('a picture shows at once and anyone who can edit replaces it (criteria 
     );
     const now = (await revision(key, 1)).picture as Doc;
     expect(now.id).not.toBe(first);
-    expect(now).toMatchObject({ writtenBy: memberId, alt: 'The checkout frame, redrawn.' });
+    expect(now).toMatchObject({ writtenBy: w.memberId, alt: 'The checkout frame, redrawn.' });
     const lines = await history(key);
     expect(lines).toContain('Picture: Drew the picture of r1, a rough sketch: One checkout frame.');
     expect(lines).toContain(
@@ -251,11 +139,11 @@ describe('a text alternative is required (criterion 4)', () => {
   it('the database refuses a blank one written past the service', async () => {
     const key = await requirement('A picture written by hand', 'screen');
     const [req] = await rows<{ id: string }>(
-      sql`SELECT id FROM requirements WHERE project_id = ${projectId} AND req_seq = ${Number(key.slice(4))}`,
+      sql`SELECT id FROM requirements WHERE project_id = ${w.projectId} AND req_seq = ${Number(key.slice(4))}`,
     );
     await refusedByDb(
       rows(sql`INSERT INTO requirement_pictures (requirement_id, drawn_for, kind, content, alt, written_by, written_agency)
-               VALUES (${req?.id}, 1, 'wireframe', '{}'::jsonb, '  ', ${ownerId}, 'human')`),
+               VALUES (${req?.id}, 1, 'wireframe', '{}'::jsonb, '  ', ${w.ownerId}, 'human')`),
       /requirement_pictures_alt_chk/,
     );
   });
@@ -346,7 +234,7 @@ describe('no picture gates the requirement (criterion 5)', () => {
       SELECT c.issue_id, c.id AS criterion_id FROM issue_criteria c
         JOIN issues i ON i.id = c.issue_id
         JOIN requirements r ON r.id = i.requirement_id
-       WHERE r.project_id = ${projectId} AND r.req_seq = ${Number(key.slice(4))}
+       WHERE r.project_id = ${w.projectId} AND r.req_seq = ${Number(key.slice(4))}
          AND c.requirement_criterion_id IS NOT NULL`);
     if (!filed) throw new Error('the breakdown accept filed no traced criterion');
     await rows(sql`
@@ -374,7 +262,7 @@ describe('no baseline pins a picture or a mockup (criterion 10)', () => {
     const key = await requirement('The receipt lists every line', 'screen');
     ok(await picture(key, 1, PICTURES.screen));
     const [req] = await rows<{ id: string }>(
-      sql`SELECT id FROM requirements WHERE project_id = ${projectId} AND req_seq = ${Number(key.slice(4))}`,
+      sql`SELECT id FROM requirements WHERE project_id = ${w.projectId} AND req_seq = ${Number(key.slice(4))}`,
     );
     if (!req) throw new Error('no requirement row');
     await requirementMockup(req.id, 'accepted');
@@ -392,7 +280,7 @@ describe('no baseline pins a picture or a mockup (criterion 10)', () => {
     await agreeR1(key);
     const [b] = await rows<{ requirement_id: string }>(sql`
       SELECT b.requirement_id FROM requirement_baselines b JOIN requirements r ON r.id = b.requirement_id
-       WHERE r.project_id = ${projectId} AND r.req_seq = ${Number(key.slice(4))}`);
+       WHERE r.project_id = ${w.projectId} AND r.req_seq = ${Number(key.slice(4))}`);
     if (!b) throw new Error('no baseline');
     const mk = await requirementMockup(b.requirement_id, 'accepted');
     await refusedByDb(
@@ -409,7 +297,7 @@ describe('the mockup accept queue takes no requirement (criterion 11)', () => {
   beforeAll(async () => {
     key = await requirement('The cart badge counts items', 'screen');
     const [req] = await rows<{ id: string }>(
-      sql`SELECT id FROM requirements WHERE project_id = ${projectId} AND req_seq = ${Number(key.slice(4))}`,
+      sql`SELECT id FROM requirements WHERE project_id = ${w.projectId} AND req_seq = ${Number(key.slice(4))}`,
     );
     requirementId = req?.id ?? '';
   });
@@ -421,16 +309,22 @@ describe('the mockup accept queue takes no requirement (criterion 11)', () => {
       document: BOARD,
     });
     expect(refusal(r)).toEqual(['MOCKUP_TARGET_INVALID /target/requirement']);
-    expect(JSON.stringify(r.json)).toContain(`/requirements/${key}/revisions/1/picture`);
+    // criterion 16: the route is the one to call, the project's own id filled in
+    const said = JSON.stringify(r.json);
+    expect(said).toContain(`/api/projects/${w.projectId}/requirements/${key}/revisions/1/picture`);
+    expect(said).not.toContain(':id');
   });
 
   it('one already waiting is readable, offers no accept, and is refused one; a return still closes it', async () => {
     const mk = await requirementMockup(requirementId, 'proposed');
     const listed = ok(await as('owner', 'GET', `/mockups?requirement=${key}`)).mockups as Doc[];
     expect(listed.map((m) => [m.key, m.can.accept, m.can.return])).toEqual([[mk.key, false, true]]);
-    expect(refusal(await as('owner', 'POST', `/mockups/${mk.key}/accept`, {}))).toEqual([
-      'MOCKUP_TARGET_INVALID /target',
-    ]);
+    const accept = await as('owner', 'POST', `/mockups/${mk.key}/accept`, {});
+    expect(refusal(accept)).toEqual(['MOCKUP_TARGET_INVALID /target']);
+    expect(JSON.stringify(accept.json)).toContain(
+      `/api/projects/${w.projectId}/requirements/${key}/revisions/1/picture`,
+    );
+    expect(JSON.stringify(accept.json)).not.toContain(':id');
     const returned = ok(
       await as('owner', 'POST', `/mockups/${mk.key}/return`, { reason: 'the picture replaces it' }),
     );

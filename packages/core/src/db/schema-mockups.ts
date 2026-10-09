@@ -21,11 +21,12 @@ import { actorAgencies } from './schema-vocabulary.js';
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
-// a mockup (MK-n, ISS-78) is a proposal about exactly one target, as feedback is about one:
-// a requirement at the revision it was proposed against, a feedback item, or an issue; its bytes
-// live in the one attachment store and never change, a person accepts or returns it, and an
-// accepted requirement mockup is pinned by the next baseline beside the designs; migration 0370's
-// trigger refuses a content edit or a status move off that path as MOCKUP_IMMUTABLE
+// a mockup (MK-n, ISS-78) is a proposal about exactly one target, as feedback is about one: a
+// feedback item or an issue; its bytes live in the one attachment store and never change, and a
+// person accepts or returns it; migration 0370's trigger refuses a content edit or a status move off
+// that path as MOCKUP_IMMUTABLE. A row about a requirement, at the revision it was proposed against,
+// is history from before REQ-35: no new one is proposed or accepted (a revision's picture replaces
+// it), a waiting one may still be returned or withdrawn, and no baseline pins a mockup (0473)
 export const mockups = pgTable(
   'mockups',
   {

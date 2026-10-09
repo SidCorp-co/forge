@@ -58,8 +58,8 @@ export function rowRefusals(table: ExampleTableContent): RequirementRefusal[] {
   }
   return table.rows.flatMap((row, i) => {
     const lacks = [
-      ...(row.input?.trim() ? [] : ['an input']),
-      ...(row.expected?.trim() ? [] : ['an expected result']),
+      ...(row.input?.trim() ? [] : ['input']),
+      ...(row.expected?.trim() ? [] : ['expected result']),
     ];
     if (lacks.length === 0) return [];
     return [

@@ -51,9 +51,13 @@ describe("a rule's example table (REQUIREMENT_PICTURE_ROW_INCOMPLETE)", () => {
       ['REQUIREMENT_PICTURE_ROW_INCOMPLETE', '/content/rows/2'],
       ['REQUIREMENT_PICTURE_ROW_INCOMPLETE', '/content/rows/3'],
     ]);
-    expect(refusals[0]?.detail).toContain('no an expected result');
-    expect(refusals[1]?.detail).toContain('no an input');
-    expect(refusals[2]?.detail).toContain('no an input and no an expected result');
+    // read whole, as a person reads it: no stray article before either half
+    const said = 'each row is an input and the result it is expected to give.';
+    expect(refusals.map((r) => r.detail)).toEqual([
+      `row 2 of the example table has no expected result; ${said}`,
+      `row 3 of the example table has no input; ${said}`,
+      `row 4 of the example table has no input and no expected result; ${said}`,
+    ]);
   });
 
   it('refuses a table with no row', () => {

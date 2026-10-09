@@ -80,8 +80,21 @@ describe("a requirement's Mockups tab", () => {
 
   it("offers no proposal, even when the caller would let one through", async () => {
     requirementPanel();
-    await screen.findByText("No mockup proposed yet.");
+    await screen.findByText("No mockup was proposed for this requirement.");
     expect(screen.queryByRole("button", { name: "Upload" })).toBeNull();
+  });
+
+  // ISS-459 judge: the empty tab still read "No mockup proposed yet.", promising a proposal that can no longer be made
+  it("says none was proposed for it, never that one is yet to come", async () => {
+    requirementPanel();
+    const tab = await screen.findByTestId("view-mockups");
+    await screen.findByText("No mockup was proposed for this requirement.");
+    expect(tab).not.toHaveTextContent(/proposed yet/);
+  });
+
+  it("an item tab with none still says one may be proposed", async () => {
+    panel([]);
+    expect(await screen.findByText("No mockup proposed yet.")).toBeInTheDocument();
   });
 
   it("says the revision's picture replaces mockups, and never that someone other than the author accepts", async () => {

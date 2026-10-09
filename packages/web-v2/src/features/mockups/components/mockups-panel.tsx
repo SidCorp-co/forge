@@ -222,7 +222,9 @@ export function MockupsPanel({ projectId, target, canPropose = true }: { project
         {target.type === "requirement" ? t("common.mockups.leadRequirement") : t("common.mockups.leadItem")}
       </p>
       {q.isError ? <p className="text-13 text-muted">{formatApiError(q.error)}</p> : null}
-      {q.isSuccess && rows.length === 0 ? <p className="text-13 text-subtle">{t("common.mockups.none")}</p> : null}
+      {q.isSuccess && rows.length === 0 ? (
+        <p className="text-13 text-subtle">{target.type === "requirement" ? t("common.mockups.noneRequirement") : t("common.mockups.none")}</p>
+      ) : null}
       {rows.length ? (
         <ul className="border-t border-line-subtle" data-testid="mockup-list">
           {rows.map((m) => (

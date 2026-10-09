@@ -210,6 +210,7 @@
     "common.mockups.leadRequirement": "Mockups once proposed for this requirement, kept as its history. A requirement's picture now belongs to each revision: it shows at once with no accept, and anyone who can edit the requirement replaces it. A mockup still waiting here can be returned or withdrawn.",
     "common.mockups.loading": "Loading…",
     "common.mockups.none": "No mockup proposed yet.",
+    "common.mockups.noneRequirement": "No mockup was proposed for this requirement.",
     "common.mockups.openBoard": "Open the board",
     "common.mockups.openingBoard": "Opening the board…",
     "common.mockups.pinnedIn": "Pinned in r{r}",

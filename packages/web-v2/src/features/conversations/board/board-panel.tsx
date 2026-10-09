@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import { useState } from "react";
 import { Button, IconButton, Input } from "@/design";
 import { fileBase64, mockupsApi } from "@/features/mockups/api";
-import { requirementsApi } from "@/features/requirements/api";
 import { formatApiError } from "@/lib/api/error";
 import { boardExporter, boardStore, useBoard } from "@/features/board/board-store";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -24,21 +23,18 @@ const BoardCanvas = dynamic(() => import("@/features/board/board-canvas"), {
 /** The dock's width while a board is open: wide enough to draw in, still inside the dock's own bound. */
 export const BOARD_DOCK_WIDTH = 880;
 
-/** REQ-n is proposed against its open revision, else its head; FB-n and an issue key name themselves. */
-async function boardTarget(projectId: string, ref: string) {
-  if (/^REQ-\d+$/.test(ref)) {
-    const d = await requirementsApi.get(projectId, ref);
-    const revision = d.revisions.find((r) => r.state === "draft" || r.state === "proposed")?.revision ?? d.currentRevision ?? 1;
-    return { requirement: ref, revision };
-  }
-  return /^FB-\d+$/.test(ref) ? { feedback: ref } : { issue: ref };
-}
+/** A requirement takes no mockup: its picture is each revision's own, drawn on the requirement (REQ-35). */
+const REQUIREMENT_KEY = /^REQ-\d+$/;
+
+/** FB-n names a feedback item; any other key, an issue. */
+const boardTarget = (ref: string) => (/^FB-\d+$/.test(ref) ? { feedback: ref } : { issue: ref });
 
 const stamp = () => new Date().toISOString().replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-");
 
 /**
  * The assistant's board inside the chat panel, read-only to the person: the canvas, what it reads as, and Propose — which proposes the
- * board as a wireframe mockup, with its SVG beside it, on the issue, requirement or feedback item named (ISS-78).
+ * board as a wireframe mockup, with its SVG beside it, on the issue or feedback item named (ISS-78). A requirement key is
+ * refused here by name: a requirement's picture is drawn on the requirement, never proposed (REQ-35).
  */
 export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKey?: string | undefined }) {
   const t = useCopy();
@@ -56,7 +52,7 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
     setState({ busy: true, said: null, error: false });
     try {
       const ref = key.trim();
-      const target = await boardTarget(projectId, ref);
+      const target = boardTarget(ref);
       const svg = await boardExporter.svg();
       const name = `board-${stamp()}`;
       // stored beside the mockup, so it is the same line whoever proposes it, in whatever language
@@ -78,7 +74,8 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
     }
   };
 
-  const validKey = /^[A-Z][A-Z0-9]*-\d+$/.test(key.trim());
+  const requirementKey = REQUIREMENT_KEY.test(key.trim());
+  const validKey = /^[A-Z][A-Z0-9]*-\d+$/.test(key.trim()) && !requirementKey;
   return (
     <section data-testid="board-panel" className="flex h-full min-h-0 flex-col border-b border-line">
       <header className="flex flex-none flex-wrap items-center gap-2 px-3 py-2">
@@ -87,7 +84,7 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
         </p>
         <Input
           aria-label={t("conversations.board.targetLabel")}
-          placeholder="ISS-… REQ-… FB-…"
+          placeholder="ISS-… FB-…"
           value={key}
           onChange={(e) => setKey(e.target.value.toUpperCase())}
           className="w-40"
@@ -102,7 +99,12 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
         </Button>
         <IconButton icon="x" size="sm" aria-label={t("conversations.board.close")} onClick={boardStore.close} />
       </header>
-      {state.said && (
+      {requirementKey && (
+        <p role="alert" className="fg-caption flex-none px-3 pb-2 text-[color:var(--red-600)]">
+          {t("conversations.board.notRequirement", { key: key.trim() })}
+        </p>
+      )}
+      {state.said && !requirementKey && (
         <p
           role={state.error ? "alert" : "status"}
           className={`fg-caption flex-none px-3 pb-2 ${state.error ? "text-[color:var(--red-600)]" : "text-muted"}`}
