@@ -14,7 +14,7 @@ type Frame = {
   entry: { content?: string; blocks?: unknown[] };
   tools?: { name: string; done: boolean; durationMs?: number }[];
   verdict?: string;
-  replaced?: { draft: string };
+  replaced?: boolean;
 };
 const sent: { userIds: readonly string[]; data: Frame }[] = [];
 
@@ -121,8 +121,16 @@ describe('the person the turn answers', () => {
     const last = framesTo(ASKER).at(-1);
     expect(last?.verdict).toBe('checked');
     expect(last?.entry.content).toBe('REQ-4 has three of four criteria agreed.');
-    expect(last?.replaced).toEqual({ draft: DRAFT });
+    expect(last?.replaced).toBe(true);
     expect(framesTo(OTHER).at(-1)?.verdict).toBe('checked');
+  });
+
+  it('is told a draft was replaced, but never handed the withdrawn words again after the verdict (BC-6)', async () => {
+    await runTurn({ text: 'REQ-4 has three of four criteria agreed.', screenReplaced: true });
+    const verdictFrames = framesTo(ASKER).filter((f) => f.verdict !== undefined);
+    expect(verdictFrames.length).toBeGreaterThan(0);
+    expect(JSON.stringify(verdictFrames)).not.toContain('90%');
+    expect(JSON.stringify(verdictFrames)).not.toContain(DRAFT);
   });
 });
 

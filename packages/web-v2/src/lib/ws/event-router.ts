@@ -308,7 +308,7 @@ function routeConversation(env: ConversationFrame, qc: QueryClient): void {
 					["conversations", data.conversationId, "withdrawn"],
 					(prev: Record<string, unknown> | undefined) => ({
 						...prev,
-						[entry.id]: replaced.draft,
+						[entry.id]: true,
 					}),
 				);
 			}

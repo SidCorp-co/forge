@@ -438,12 +438,23 @@ export const UTC_READING: InstantReading = {
   },
 };
 
-/** An ISO-8601 instant or calendar date, wherever it stands inside a sentence. */
-const ISO_INSTANT = /\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?/g;
+/**
+ * An ISO-8601 instant or calendar date, wherever it stands inside a sentence, and the same moment
+ * written the way a model writes it: a space for the T and "UTC" for the Z ("2026-10-09 01:03 UTC").
+ * Read as parts, that one would leave "01:03 UTC" behind the day and read in the wrong zone.
+ */
+const ISO_INSTANT =
+  /\d{4}-\d{2}-\d{2}(?:(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)|(?: \d{2}:\d{2}(?::\d{2})? UTC))?/g;
+
+/** The ISO form of a matched instant: the model's spaced UTC form is taken as the instant it names. */
+const asIso = (found: string): string => {
+  const spaced = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}(?::\d{2})?) UTC$/.exec(found);
+  return spaced ? `${spaced[1]}T${spaced[2]}Z` : found;
+};
 
 /** Every ISO instant in a text, each read as the screen reads it; the rest of the text is untouched. */
 export function readInstantsIn(text: string, reading: InstantReading | undefined): string {
-  return reading ? text.replace(ISO_INSTANT, (iso) => reading.instant(iso)) : text;
+  return reading ? text.replace(ISO_INSTANT, (found) => reading.instant(asIso(found))) : text;
 }
 
 /**

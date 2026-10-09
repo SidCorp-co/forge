@@ -42,9 +42,10 @@ interface ConversationProgressFrame {
   /** Absent while the text streamed is a draft no screen has passed. */
   verdict?: ProgressVerdict;
   /**
-   * Set when the text that went out is NOT the prose these frames streamed. Asker's view only.
+   * Set when the text that went out is NOT the prose these frames streamed. Asker's view only, and
+   * only the fact: the withdrawn words are never sent again, so no screen can keep showing them.
    */
-  replaced?: { draft: string };
+  replaced?: true;
 }
 
 type AskerFrame = Pick<ConversationProgressFrame, 'entry' | 'verdict' | 'replaced'>;
@@ -181,7 +182,7 @@ export class ConversationProgress {
     this.#send({
       entry: checked,
       verdict: 'checked',
-      ...(screenReplaced && draft && draft !== settled ? { replaced: { draft } } : {}),
+      ...(screenReplaced && draft && draft !== settled ? { replaced: true as const } : {}),
     });
   };
 

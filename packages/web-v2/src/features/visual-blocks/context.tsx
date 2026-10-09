@@ -5,8 +5,8 @@ import type { ReportRunFacts } from "@forge/contracts/report-queries";
 import type { BlockSource } from "@forge/contracts/visual-blocks";
 import { createContext, type ReactNode, useContext } from "react";
 
-/** What a run says about itself: the query that produced a frame and the moment it was read. */
-export type SourceFacts = Pick<ReportRunFacts, "queryId" | "asOf">;
+/** What a run says about itself: the query that produced a frame, the settings it read with and the moment it was read. */
+export type SourceFacts = Pick<ReportRunFacts, "queryId" | "asOf" | "params">;
 
 export interface VisualBlockContextValue {
   /** The project's slug, for the links a ref cell opens; without it a ref is drawn as plain text. */

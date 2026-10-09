@@ -4,6 +4,7 @@ import type { ExecutionFacts } from "@forge/contracts/report-executions";
 import type { BlockSource } from "@forge/contracts/visual-blocks";
 import { useState } from "react";
 import { useTimeFormat } from "@/lib/i18n/interface-language";
+import { useBlockInstants } from "./instants";
 import type { SourceFacts } from "./context";
 
 /**
@@ -19,6 +20,18 @@ function useReadAt(iso: string, now: Date = new Date()): { label: string; full: 
 }
 
 const LINE = "mt-1 text-[11px] text-subtle";
+
+/** A setting's name as a person reads it: "windowDays" and "window_days" both read "window days". */
+const settingName = (key: string): string =>
+  key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").toLowerCase();
+
+/** A setting's value in words: a list joined, a nested value as JSON, an instant read in the viewer's timezone. */
+function settingValue(value: unknown, read: (iso: string) => string): string {
+  if (typeof value === "string") return read(value);
+  if (Array.isArray(value)) return value.map((v) => settingValue(v, read)).join(", ");
+  if (value !== null && typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
 
 /**
  * Where a block's figures came from, in one short line: the query and when it was read. The run id
@@ -44,6 +57,14 @@ export function SourceNote({
 function RunSource({ runId, facts }: { runId: string; facts: SourceFacts }) {
   const [open, setOpen] = useState(false);
   const read = useReadAt(facts.asOf);
+  const instants = useBlockInstants();
+  const settings = Object.entries(facts.params ?? {}).filter(([, v]) => v !== undefined && v !== null);
+  const settingsText =
+    facts.params === undefined
+      ? null
+      : settings.length === 0
+        ? "Settings: none set, the report's defaults"
+        : `Settings: ${settings.map(([k, v]) => `${settingName(k)} ${settingValue(v, instants.instant)}`).join(" · ")}`;
   return (
     <div className={LINE} data-testid="visual-block-source">
       <button
@@ -62,6 +83,11 @@ function RunSource({ runId, facts }: { runId: string; facts: SourceFacts }) {
       {open && (
         <p className="m-0 mt-0.5 font-mono" data-testid="visual-block-source-detail">
           Report run {runId} · read {read.full}
+        </p>
+      )}
+      {open && settingsText && (
+        <p className="m-0 mt-0.5" data-testid="visual-block-settings">
+          {settingsText}
         </p>
       )}
     </div>
@@ -83,7 +109,7 @@ function ExecutionSource({ executionId, execution }: { executionId: string; exec
       </p>
     );
   }
-  const { askedBy, reads } = execution;
+  const { askedBy, reads, script, result } = execution;
   return (
     <div className={LINE} data-testid="visual-block-source">
       <button
@@ -98,6 +124,22 @@ function ExecutionSource({ executionId, execution }: { executionId: string; exec
       {open && (
         <div className="mt-0.5" data-testid="visual-block-source-detail">
           <p className="m-0">Ran as {askedBy.name ?? askedBy.id}</p>
+          {script !== undefined && (
+            <pre className="m-0 mt-0.5 max-h-64 overflow-auto whitespace-pre-wrap font-mono" data-testid="visual-block-script">
+              {script}
+            </pre>
+          )}
+          {result && (
+            <p className="m-0 mt-0.5" data-testid="visual-block-result">
+              {result.error
+                ? `Failed: ${result.error.name}: ${result.error.message}`
+                : result.stopped
+                  ? `Stopped at the ${result.stopped} limit`
+                  : `Finished with exit ${result.exit}`}{" "}
+              in {result.durationMs} ms
+              {result.stdout.trim() ? ` · printed: ${result.stdout.trim()}` : ""}
+            </p>
+          )}
           {reads.length === 0 ? (
             <p className="m-0">Read nothing from Forge</p>
           ) : (

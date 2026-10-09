@@ -8,6 +8,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Markdown, Skeleton } from "@/design";
 import { ApiError } from "@/lib/api/client";
 import { type SourceFacts, VisualBlockProvider, VisualBlockView } from "@/features/visual-blocks";
+import { useBlockInstants } from "@/features/visual-blocks/instants";
+import { readProseInstants } from "@/lib/i18n/instants";
 import { openShare } from "../api";
 
 const NARRATIVE: readonly { slot: TemplateNarrativeSlot; label: string }[] = [
@@ -27,15 +29,12 @@ const REFUSED: Record<string, string> = {
   RATE_LIMITED: "This link is being opened too often. Try again in a minute.",
 };
 
-const when = (iso: string) =>
-  `${new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" })} UTC`;
-
 /** The frozen query and read time of each run the answer holds, keyed the way a block names its source. */
 function factsOf(document: ReportDocument): (source: BlockSource) => SourceFacts | undefined {
   return (source) => {
     if (!("runId" in source)) return undefined;
     const run = document.runs.find((r) => r.runId === source.runId);
-    return run ? { queryId: run.queryId, asOf: run.asOf } : undefined;
+    return run ? { queryId: run.queryId, asOf: run.asOf, params: run.params } : undefined;
   };
 }
 
@@ -61,19 +60,20 @@ export function documentTitle(document: Pick<ReportDocument, "templateId" | "tit
  * none.
  */
 export function ReportDocumentBody({ document, onTableCsv }: { document: ReportDocument; onTableCsv?: (blockIndex: number) => void }) {
+  const instants = useBlockInstants();
   const narrative = NARRATIVE.filter(({ slot }) => document.narrative[slot]?.trim());
   return (
     <>
       {document.reply?.trim() && (
         // a reader may not be a member: a link in the reply is drawn as its words and leads nowhere
         <section className="border-b border-line py-5" data-testid="shared-reply">
-          <Markdown inert>{document.reply}</Markdown>
+          <Markdown inert>{readProseInstants(document.reply, instants)}</Markdown>
         </section>
       )}
       {narrative.map(({ slot, label }) => (
         <section key={slot} className="border-b border-line py-5">
           <h2 className="fg-body-sm font-semibold text-fg">{label}</h2>
-          <p className="fg-body-sm mt-1 whitespace-pre-wrap text-fg">{document.narrative[slot]}</p>
+          <p className="fg-body-sm mt-1 whitespace-pre-wrap text-fg">{readProseInstants(document.narrative[slot] ?? "", instants)}</p>
         </section>
       ))}
       {/* No projectSlug: a viewer may not be a member, so a ref reads as its key and links nowhere. */}
@@ -91,6 +91,7 @@ export function ReportDocumentBody({ document, onTableCsv }: { document: ReportD
 
 export function SharedAnswerView({ snapshot }: { snapshot: ShareSnapshot }) {
   const { document } = snapshot;
+  const instants = useBlockInstants();
   return (
     <article className="flex flex-col">
       <header className="border-b border-line pb-5">
@@ -98,7 +99,7 @@ export function SharedAnswerView({ snapshot }: { snapshot: ShareSnapshot }) {
         <h1 className="fg-h3 mt-1 font-semibold text-fg">{documentTitle(document)}</h1>
         <p className="fg-caption mt-1 text-subtle">
           {snapshot.audience === "members" ? "Shared with the project's members" : "Shared by link"} ·
-          available until {when(snapshot.expiresAt)}
+          available until {instants.instant(snapshot.expiresAt)}
         </p>
       </header>
       <ReportDocumentBody document={document} />

@@ -255,6 +255,11 @@ export const ReportRunFactsSchema = z
     queryId: z.string().regex(REPORT_ID_PATTERN),
     version: z.number().int().min(1),
     asOf: z.iso.datetime(),
+    /**
+     * The settings the run read with (period, filters, forecast settings), as the stored run held
+     * them; absent on a block attached before they were copied, which is drawn without them.
+     */
+    params: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
 export type ReportRunFacts = z.infer<typeof ReportRunFactsSchema>;

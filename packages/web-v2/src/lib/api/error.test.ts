@@ -3,6 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiClient } from "./client";
 import { formatApiError } from "./error";
 
+describe("formatApiError reads an instant in a refusal as every screen does (REQ-32 BC-17)", () => {
+  it("never prints the ISO a refusal carries", () => {
+    const line = formatApiError(new ApiError(422, "first run 2026-10-03T20:00:00.000Z is in the past", "SCHEDULE_REFUSED"));
+    expect(line).toMatch(/^first run .+ is in the past$/);
+    expect(line).not.toMatch(/\d{4}-\d{2}-\d{2}|T20:00/);
+  });
+});
+
 describe("formatApiError on a refused session", () => {
   it("never shows core's own words for a 401 under an unmapped code", () => {
     const line = formatApiError(new ApiError(401, "invalid token", "SOMETHING_NEW"));

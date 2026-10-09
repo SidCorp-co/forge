@@ -254,6 +254,22 @@ export const ExecutionFactsSchema = z
 			.optional(),
 		/** Every read the script made of Forge, refused ones included; absent where `askedBy` is. */
 		reads: z.array(ScriptReadSchema).optional(),
+		/** The script that ran, shown with the answer; absent on a block attached before it was copied. */
+		script: z.string().optional(),
+		/** How the script ended, and what it printed; absent where `script` is. */
+		result: z
+			.object({
+				exit: z.number().int(),
+				durationMs: z.number().min(0),
+				stopped: z.enum(EXECUTION_LIMITS).optional(),
+				error: z
+					.object({ name: z.string(), message: z.string() })
+					.strict()
+					.optional(),
+				stdout: z.string(),
+			})
+			.strict()
+			.optional(),
 	})
 	.strict();
 export type ExecutionFacts = z.infer<typeof ExecutionFactsSchema>;

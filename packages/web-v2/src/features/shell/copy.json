@@ -297,7 +297,7 @@
     "shell.thread.sendFailed": "Couldn't send.",
     "shell.thread.sending": "Sending…",
     "shell.thread.tryAgain": "Try again",
-    "shell.thread.withdrawn": "That draft did not pass the reply check, so it was withdrawn and answered again below."
+    "shell.thread.withdrawn": "A draft was replaced by the reply check, which holds every reply to the reports this turn read, and was answered again below."
   },
   "vi": {
     "nav.attention": "Cần chú ý",

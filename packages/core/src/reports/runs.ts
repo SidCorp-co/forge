@@ -35,6 +35,7 @@ export const factsOf = (run: ReportRun): ReportRunFacts => ({
   queryId: run.queryId,
   version: run.version,
   asOf: run.asOf,
+  params: run.params as Record<string, unknown>,
 });
 
 /**
