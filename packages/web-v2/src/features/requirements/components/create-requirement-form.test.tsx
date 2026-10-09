@@ -61,4 +61,23 @@ describe("the New requirement form", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Create requirement/ })).toBeDisabled());
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
   });
+
+  it("shows a refused create's plain words on the field each refusal names, and only the rest under the form (REQ-34 BC-18)", async () => {
+    const refusals = [
+      { code: "CRITERION_SCENARIO_UNPARSEABLE", path: "/criteria/0/body", detail: "A scenario criterion reads Given, When, Then." },
+      { code: "BAD_REQUEST", path: "/reason", detail: "The reason is too long." },
+      { code: "REQUIREMENT_HELD", path: "", detail: "The project is read-only." },
+    ];
+    fakeCore((c: Call) => (c.method === "POST" ? { status: 422, body: { error: { code: refusals[0]?.code, message: "refused", refusals } } } : HANG));
+    mount();
+    fireEvent.change(screen.getByRole("textbox", { name: /Criteria/ }), { target: { value: "Given a page" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create requirement" }));
+    const criteria = await screen.findByRole("textbox", { name: /Criteria/, description: "A scenario criterion reads Given, When, Then." });
+    expect(criteria).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("textbox", { name: /Reason/ })).toHaveAccessibleDescription("The reason is too long.");
+    expect(screen.getByRole("textbox", { name: /Title/ })).not.toHaveAttribute("aria-invalid");
+    const line = screen.getByTestId("refusal");
+    expect(line).toHaveTextContent("The project is read-only.");
+    expect(line.textContent).not.toMatch(/Given, When, Then|too long/);
+  });
 });

@@ -3,6 +3,7 @@
 import { FEEDBACK_KINDS, FEEDBACK_SEVERITIES } from "@forge/contracts/feedback";
 import { useState } from "react";
 import { Button, enumLabel, Field, Input, NativeSelect, statusReading, Textarea } from "@/design";
+import { placeRefusals } from "@/lib/api/field-refusals";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
@@ -21,6 +22,15 @@ export interface FeedbackDraft {
   title: string;
   body: string;
 }
+
+// each field owns the paths core refuses a send on, About every target it may name (REQ-34 BC-18)
+const SEND_FIELDS = {
+  title: ["/title"],
+  kind: ["/kind"],
+  severity: ["/severity"],
+  about: ["/requirement", "/issue", "/release", "/workflow", "/endpoint", "/screen", "/node"],
+  body: ["/body"],
+} as const;
 
 const BLANK: FeedbackDraft = { kind: "bug", severity: "medium", targetType: "requirement", target: "", title: "", body: "" };
 
@@ -50,6 +60,7 @@ export function FeedbackForm({
   const [title, setTitle] = useState(draft.title);
   const [body, setBody] = useState(draft.body);
   const failed = attach.error instanceof AttachFailed ? attach.error : null;
+  const refused = placeRefusals(write.error, SEND_FIELDS);
   // the item is filed first; each staged file then goes to the key core answered with
   const filed = (key: string) => {
     if (staged.files.length === 0) return onDone(key);
@@ -75,36 +86,36 @@ export function FeedbackForm({
         else create.mutate(request, settle);
       }}
     >
-      <Field label={t("feedback.form.title")} required>
+      <Field label={t("feedback.form.title")} error={refused.at("title")} required>
         <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       </Field>
       <div className="grid gap-3 sm:grid-cols-[10rem_10rem_minmax(0,1fr)]">
-        <Field label={t("feedback.form.kind")}>
+        <Field label={t("feedback.form.kind")} error={refused.at("kind")}>
           <NativeSelect
             value={kind}
             onChange={(e) => setKind(e.target.value as FeedbackKind)}
             options={FEEDBACK_KINDS.filter((k) => k !== "contract_change").map((k) => ({ value: k, label: enumLabel("feedbackKind", k, language) }))}
           />
         </Field>
-        <Field label={t("feedback.form.severity")}>
+        <Field label={t("feedback.form.severity")} error={refused.at("severity")}>
           <NativeSelect
             value={severity}
             onChange={(e) => setSeverity(e.target.value as FeedbackSeverity)}
             options={FEEDBACK_SEVERITIES.map((v) => ({ value: v, label: statusReading("severity", v, language).label }))}
           />
         </Field>
-        <Field label={t("feedback.form.about")} hint={t("feedback.target.hint")}>
+        <Field label={t("feedback.form.about")} hint={t("feedback.target.hint")} error={refused.at("about")}>
           <TargetPicker projectId={projectId} type={targetType} onType={setTargetType} value={target} onValue={setTarget} />
         </Field>
       </div>
       <div {...staged.dropZone} className={staged.dragOver ? "ring-2 ring-cobalt-400 ring-offset-1" : undefined}>
-        <Field label={t("feedback.form.body")} hint={t("feedback.form.bodyHint")}>
+        <Field label={t("feedback.form.body")} hint={t("feedback.form.bodyHint")} error={refused.at("body")}>
           <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} />
         </Field>
       </div>
       <StagedFileList files={staged.files} warnings={staged.warnings} remove={staged.remove} />
       {agentReport ? <p className="text-12-5 text-muted">{t("feedback.form.copied", { id: agentReport.slice(0, 8) })}</p> : null}
-      <RefusalLine error={write.error} />
+      <RefusalLine error={write.error} onField={refused.onField} />
       {failed ? (
         <div className="grid gap-1.5" data-testid="feedback-attach-failed">
           <p className="text-13">{t("feedback.attach.failed", { key: failed.key, file: failed.file })}</p>

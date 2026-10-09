@@ -2,7 +2,7 @@
 // Autoflow's MCP tool save_backend_workflow was filed as a Screen. About now offers "API route or
 // tool", suggests what the project serves, and sends the name as `endpoint` for core to check.
 
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "@/providers/query-provider";
@@ -196,5 +196,25 @@ describe("filing feedback", () => {
     fireEvent.submit(form);
     await waitFor(() => expect(screen.getByRole("button", { name: /Send feedback/ })).toBeDisabled());
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+  });
+
+  it("shows a refused send's plain words on the field each refusal names, and only the rest under the form (REQ-34 BC-18)", async () => {
+    const refusals = [
+      { code: "BAD_REQUEST", path: "/title", detail: "The title is too long." },
+      { code: "FEEDBACK_TARGET_NOT_IN_PROJECT", path: "/requirement", detail: "REQ-3 is not in this project." },
+      { code: "BAD_REQUEST", path: "/writtenLang", detail: "Name the language it is written in." },
+    ];
+    core((c) => (c.method === "POST" ? { status: 422, body: { error: { code: "FEEDBACK_REFUSED", message: "refused", refusals } } } : undefined));
+    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    await screen.findByTestId("feedback-choices");
+    fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), { target: { value: "Cards vanish" } });
+    fireEvent.change(screen.getByLabelText("Target"), { target: { value: "The board keeps its cards" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
+    expect(await screen.findByRole("textbox", { name: /Title/, description: "The title is too long." })).toHaveAttribute("aria-invalid", "true");
+    const about = screen.getByText("About", { selector: "label" }).parentElement as HTMLElement;
+    expect(within(about).getByRole("alert")).toHaveTextContent("REQ-3 is not in this project.");
+    const line = screen.getByTestId("refusal");
+    expect(line).toHaveTextContent("Name the language it is written in.");
+    expect(line.textContent).not.toMatch(/too long|not in this project/);
   });
 });
