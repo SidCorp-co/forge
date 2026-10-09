@@ -21,15 +21,16 @@ export function stalledFor(seconds: number): string {
 export function ProvisionStalledBanner({ runner }: { runner: ProjectRunner }) {
 	const seconds = runner.provisionStalledSeconds;
 	if (seconds === null || seconds === undefined || runner.provisionStatus === null) return null;
-	const serving = Boolean(runner.residentMaster);
 	return (
 		<Banner tone="attention">
 			<span className="font-semibold">Stalled.</span> It has stood at{" "}
 			{PROVISION_LABEL[runner.provisionStatus]} for {stalledFor(seconds)} with no report from the
 			box, so it is not in progress.{" "}
-			{serving
-				? "This box is running the project's master from the workspace, so nothing is held back; Re-provision is refused while that master runs."
-				: "The box re-runs it on its next sweep once it is polling again, or use Re-provision."}
+			{runner.residentMaster === undefined
+				? ""
+				: runner.residentMaster
+					? "This box is running the project's master from the workspace, so nothing is held back; Re-provision is refused while that master runs."
+					: "The box re-runs it on its next sweep once it is polling again, or use Re-provision."}
 		</Banner>
 	);
 }

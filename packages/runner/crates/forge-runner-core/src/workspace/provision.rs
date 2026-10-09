@@ -16,10 +16,13 @@
 //! never panics.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
+use std::time::Duration;
 
 use crate::auth::git_cred;
 use crate::config::Config;
+use crate::daemon::master::{Masters, ProvisionLease, Refused};
+use crate::daemon::terminal;
 use crate::error::Result;
 use crate::mcp;
 use crate::transport::provision::{self, Provision};
@@ -31,7 +34,7 @@ use crate::workspace::trust;
 /// Pull all queued provisions and process them sequentially (one device, low
 /// volume). Errors are logged, never propagated, so a single bad row can't wedge
 /// the sweep.
-pub async fn run_pending(client: &CoreClient, cfg: &Config) {
+pub async fn run_pending(client: &CoreClient, cfg: &Config, masters: Option<&Masters>) {
     let pending = match provision::pull_pending(client).await {
         Ok(p) => p,
         Err(e) => {
@@ -56,13 +59,15 @@ pub async fn run_pending(client: &CoreClient, cfg: &Config) {
     }
     tracing::info!("[provision] {} pending", pending.provisions.len());
     for p in pending.provisions {
-        process_one(client, cfg, &p).await;
+        process_one(client, cfg, masters, &p).await;
     }
 }
 
+/// `masters` is `None` for `forge-runner bind`, a process that serves no master; core refuses a bind
+/// over a live master by name before that process asks for a provision.
 pub async fn reprovision(client: &CoreClient, cfg: &Config, runner_id: &str) {
     report(client, runner_id, "queued", None).await;
-    run_pending(client, cfg).await;
+    run_pending(client, cfg, None).await;
 }
 
 /// Best-effort status report (logs on failure).
@@ -72,7 +77,7 @@ async fn report(client: &CoreClient, runner_id: &str, status: &str, detail: Opti
     }
 }
 
-async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
+async fn process_one(client: &CoreClient, cfg: &Config, masters: Option<&Masters>, p: &Provision) {
     // 1. Resolve the target folder.
     let repo_path = match resolve_path(cfg, p) {
         Some(path) => path,
@@ -84,6 +89,17 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
                 Some("no repo path set for this device and no projects_root configured"),
             )
             .await;
+            return;
+        }
+    };
+
+    // Held to the end of this provision, so no master is placed under its writes.
+    let pane = terminal::session_name(terminal::MASTER_PREFIX, &p.slug);
+    let pane_up = async { terminal::available() && terminal::alive(&pane).await };
+    let _lease = match claim_workspace(masters, p, &repo_path, pane_up).await {
+        Ok(lease) => lease,
+        Err(said) => {
+            tracing::warn!("[provision] {said}");
             return;
         }
     };
@@ -157,14 +173,17 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
                 .map(str::trim)
                 .expect("WorkspaceMode::Adopt implies a non-empty repo url");
             report(client, &p.runner_id, "cloning", None).await;
-            if let Err(detail) = adopt_repo(
+            if let Err(stop) = adopt_repo(
                 repo_url,
                 &repo_path,
                 ssh_cmd.as_deref(),
                 &git_cfg,
                 p.branch.as_deref(),
-            ) {
-                report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;
+                GIT_STEP_LIMIT,
+            )
+            .await
+            {
+                report(client, &p.runner_id, stop.status, Some(&stop.detail)).await;
                 return;
             }
         }
@@ -175,14 +194,17 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
                 .map(str::trim)
                 .expect("WorkspaceMode::Clone implies a non-empty repo url");
             report(client, &p.runner_id, "cloning", None).await;
-            if let Err(detail) = clone_repo(
+            if let Err(stop) = clone_repo(
                 repo_url,
                 &repo_path,
                 ssh_cmd.as_deref(),
                 &git_cfg,
                 p.branch.as_deref(),
-            ) {
-                report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;
+                GIT_STEP_LIMIT,
+            )
+            .await
+            {
+                report(client, &p.runner_id, stop.status, Some(&stop.detail)).await;
                 return;
             }
         }
@@ -339,104 +361,264 @@ fn resolve_path(cfg: &Config, p: &Provision) -> Option<PathBuf> {
     cfg.projects_root.as_ref().map(|root| root.join(&p.slug))
 }
 
+/// How long one git step of a clone or an adopt may run before it is killed. Core calls a provision
+/// stalled after thirty minutes without a report, so a step must give up well inside that.
+const GIT_STEP_LIMIT: Duration = Duration::from_secs(600);
+
+/// Why a clone or an adopt stopped, and the status the row is to be left at. A timeout is `failed`
+/// and not `needs_manual_setup`: nothing about the folder or the key is for a person to set up.
+#[derive(Debug)]
+struct Stop {
+    status: &'static str,
+    detail: String,
+}
+
+impl Stop {
+    fn manual(detail: String) -> Self {
+        Self {
+            status: "needs_manual_setup",
+            detail,
+        }
+    }
+
+    fn timed_out(what: &str, limit: Duration) -> Self {
+        Self {
+            status: "failed",
+            detail: format!(
+                "{what} did not finish within {}s and was killed, so this provision stopped there and the sweep went on to the next. A slow link or a git host that does not answer does this; re-provision once it does.",
+                limit.as_secs()
+            ),
+        }
+    }
+}
+
+/// One git invocation under `limit`. On overrun the child and everything it spawned (ssh, the
+/// transport helpers) are killed, so nothing is left holding the folder, and the answer is `None`.
+async fn run_git(
+    mut cmd: tokio::process::Command,
+    limit: Duration,
+) -> std::io::Result<Option<Output>> {
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    cmd.process_group(0);
+    let child = cmd.spawn()?;
+    #[cfg(unix)]
+    let group = child.id();
+    match tokio::time::timeout(limit, child.wait_with_output()).await {
+        Ok(out) => out.map(Some),
+        Err(_) => {
+            #[cfg(unix)]
+            if let Some(pid) = group {
+                let _ = nix::sys::signal::killpg(
+                    nix::unistd::Pid::from_raw(pid as i32),
+                    nix::sys::signal::Signal::SIGKILL,
+                );
+            }
+            Ok(None)
+        }
+    }
+}
+
+fn git_command(
+    repo_path: Option<&Path>,
+    git_cfg: &[String],
+    ssh_cmd: Option<&str>,
+) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new("git");
+    if let Some(dir) = repo_path {
+        cmd.arg("-C").arg(dir);
+    }
+    cmd.args(git_cfg);
+    if let Some(ssh) = ssh_cmd {
+        cmd.env("GIT_SSH_COMMAND", ssh);
+    }
+    cmd
+}
+
+/// What a clone that timed out wrote into the folder, which was empty or missing or it would not
+/// have been a clone: git killed mid-write leaves a `.git` that reads as a repository, and the next
+/// provision would report that `ready`.
+fn clear_partial_clone(repo_path: &Path) -> std::result::Result<(), String> {
+    let entries = match std::fs::read_dir(repo_path) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("read {}: {e}", repo_path.display())),
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let removed = if path.is_dir() {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
+        removed.map_err(|e| format!("remove {}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
 /// `git clone <url> <path>` with the deploy key (if any) via `GIT_SSH_COMMAND`.
 /// Returns the trimmed git stderr on failure. When `branch` is set (the
 /// project's base branch), check it out after cloning so the main worktree
 /// lands on the base branch rather than the repo's default HEAD — the job
 /// dispatcher assumes the base branch is already checked out here.
-fn clone_repo(
+async fn clone_repo(
     repo_url: &str,
     repo_path: &Path,
     ssh_cmd: Option<&str>,
     git_cfg: &[String],
     branch: Option<&str>,
-) -> std::result::Result<(), String> {
+    limit: Duration,
+) -> std::result::Result<(), Stop> {
     if let Some(parent) = repo_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir parent: {e}"))?;
+        std::fs::create_dir_all(parent).map_err(|e| Stop::manual(format!("mkdir parent: {e}")))?;
     }
-    let mut cmd = Command::new("git");
-    cmd.args(git_cfg).arg("clone").arg(repo_url).arg(repo_path);
-    if let Some(ssh) = ssh_cmd {
-        cmd.env("GIT_SSH_COMMAND", ssh);
-    }
-    let out = cmd.output().map_err(|e| format!("spawn git clone: {e}"))?;
+    let mut cmd = git_command(None, git_cfg, ssh_cmd);
+    cmd.arg("clone").arg(repo_url).arg(repo_path);
+    let out = match run_git(cmd, limit).await {
+        Ok(Some(out)) => out,
+        Ok(None) => {
+            let mut stop = Stop::timed_out("git clone", limit);
+            if let Err(e) = clear_partial_clone(repo_path) {
+                stop.detail.push_str(&format!(
+                    " What it had written to {} could not be removed ({e}); empty that folder before provisioning again.",
+                    repo_path.display()
+                ));
+            }
+            return Err(stop);
+        }
+        Err(e) => return Err(Stop::manual(format!("spawn git clone: {e}"))),
+    };
     if !out.status.success() {
-        return Err(format!(
+        return Err(Stop::manual(format!(
             "git clone failed: {}",
             String::from_utf8_lossy(&out.stderr).trim()
-        ));
+        )));
     }
 
-    // A full clone already fetched every remote branch, so a local `git checkout
-    // <branch>` creates a tracking branch off origin/<branch> with no network.
-    // Best-effort: if the base branch doesn't exist upstream (or equals the
-    // default already checked out), stay put and let provisioning continue —
-    // a missing base branch shouldn't turn a good clone into needs_manual_setup.
     if let Some(branch) = branch.map(str::trim).filter(|b| !b.is_empty()) {
-        let checkout = Command::new("git")
-            .arg("-C")
-            .arg(repo_path)
-            .arg("checkout")
-            .arg(branch)
-            .output();
-        match checkout {
-            Ok(o) if o.status.success() => {}
-            Ok(o) => tracing::warn!(
-                "[provision] base-branch checkout '{branch}' failed (staying on default): {}",
-                String::from_utf8_lossy(&o.stderr).trim()
-            ),
-            Err(e) => tracing::warn!("[provision] spawn git checkout '{branch}': {e}"),
-        }
+        checkout_base_branch(repo_path, branch, limit).await?;
     }
     Ok(())
 }
 
-fn adopt_repo(
+/// A full clone already fetched every remote branch, so a local `git checkout <branch>` creates a
+/// tracking branch off origin/<branch> with no network. A branch that is missing upstream (or is
+/// the default already checked out) stays where it is: it should not turn a good clone into
+/// needs_manual_setup. A checkout that overruns its limit is another matter, and is a failure by
+/// name like any other step, because nothing says what state the tree was left in.
+async fn checkout_base_branch(
+    repo_path: &Path,
+    branch: &str,
+    limit: Duration,
+) -> std::result::Result<(), Stop> {
+    let mut cmd = git_command(Some(repo_path), &[], None);
+    cmd.arg("checkout").arg(branch);
+    match run_git(cmd, limit).await {
+        Ok(Some(o)) if o.status.success() => {}
+        Ok(Some(o)) => tracing::warn!(
+            "[provision] base-branch checkout '{branch}' failed (staying on default): {}",
+            String::from_utf8_lossy(&o.stderr).trim()
+        ),
+        Ok(None) => return Err(Stop::timed_out(&format!("git checkout {branch}"), limit)),
+        Err(e) => tracing::warn!("[provision] spawn git checkout '{branch}': {e}"),
+    }
+    Ok(())
+}
+
+async fn adopt_repo(
     repo_url: &str,
     repo_path: &Path,
     ssh_cmd: Option<&str>,
     git_cfg: &[String],
     branch: Option<&str>,
-) -> std::result::Result<(), String> {
-    let git = |args: &[&str]| -> std::result::Result<String, String> {
-        let mut cmd = Command::new("git");
-        cmd.arg("-C").arg(repo_path).args(git_cfg).args(args);
-        if let Some(ssh) = ssh_cmd {
-            cmd.env("GIT_SSH_COMMAND", ssh);
+    limit: Duration,
+) -> std::result::Result<(), Stop> {
+    let git = |args: &[&str]| {
+        let mut cmd = git_command(Some(repo_path), git_cfg, ssh_cmd);
+        cmd.args(args);
+        let what = format!("git {}", args.join(" "));
+        async move {
+            match run_git(cmd, limit).await {
+                Ok(Some(out)) if out.status.success() => {
+                    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+                }
+                Ok(Some(out)) => Err(Stop::manual(format!(
+                    "{what} failed: {}",
+                    String::from_utf8_lossy(&out.stderr).trim()
+                ))),
+                Ok(None) => Err(Stop::timed_out(&what, limit)),
+                Err(e) => Err(Stop::manual(format!("spawn {what}: {e}"))),
+            }
         }
-        let out = cmd
-            .output()
-            .map_err(|e| format!("spawn git {}: {e}", args.join(" ")))?;
-        if !out.status.success() {
-            return Err(format!(
-                "git {} failed: {}",
-                args.join(" "),
-                String::from_utf8_lossy(&out.stderr).trim()
-            ));
-        }
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     };
 
-    git(&["init"])?;
+    git(&["init"]).await?;
     // An adopt may re-run (a fetch that failed on a network blip), so the remote
     // may already be there. Set it either way rather than branching on `git
     // remote get-url`, which is one more process for the same outcome.
-    if git(&["remote", "add", "origin", repo_url]).is_err() {
-        git(&["remote", "set-url", "origin", repo_url])?;
+    if git(&["remote", "add", "origin", repo_url]).await.is_err() {
+        git(&["remote", "set-url", "origin", repo_url]).await?;
     }
-    git(&["fetch", "--prune", "origin"])?;
+    git(&["fetch", "--prune", "origin"]).await?;
 
     let target = match branch.map(str::trim).filter(|b| !b.is_empty()) {
         Some(b) => b.to_string(),
         None => {
-            let _ = git(&["remote", "set-head", "origin", "--auto"]);
-            let head = git(&["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])?;
+            let _ = git(&["remote", "set-head", "origin", "--auto"]).await;
+            let head = git(&["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]).await?;
             head.strip_prefix("origin/").unwrap_or(&head).to_string()
         }
     };
     let remote_ref = format!("origin/{target}");
-    git(&["checkout", "-f", "-B", &target, &remote_ref])?;
+    git(&["checkout", "-f", "-B", &target, &remote_ref]).await?;
     Ok(())
+}
+
+/// What lets a provision write into `p`'s workspace: the lease that keeps a master from being
+/// placed meanwhile, or the refusal naming who holds the workspace (ISS-1359). `None` where this
+/// process keeps no registry (`forge-runner bind`), which leaves the pane check alone.
+///
+/// The registry knows the masters this daemon placed or adopted, and `pane_up` is tmux's own
+/// answer, which covers a pane that outlived a restart and is not adopted yet. Nothing is written
+/// and no status is reported on a refusal: the row keeps what it had.
+async fn claim_workspace(
+    masters: Option<&Masters>,
+    p: &Provision,
+    repo_path: &Path,
+    pane_up: impl std::future::Future<Output = bool>,
+) -> std::result::Result<Option<ProvisionLease>, String> {
+    let refuse = |holder: String| {
+        format!(
+            "{}: refused — {holder}, and provisioning writes into the checkout at {} under it. Nothing was written and no status was reported. `forge-runner master kill {}` ends the master, after which this provisions; until then the checkout is served as it stands.",
+            p.slug,
+            repo_path.display(),
+            p.slug
+        )
+    };
+    let lease = match masters.map(|m| m.begin_provisioning(&p.project_id)) {
+        Some(Err(Refused::Live { session, pane })) => {
+            return Err(refuse(format!(
+                "{pane} (session {session}) is this box's live master for the project"
+            )))
+        }
+        Some(Err(Refused::Placing)) => {
+            return Err(refuse(
+                "this box is placing the project's master this moment".into(),
+            ))
+        }
+        Some(Ok(lease)) => Some(lease),
+        None => None,
+    };
+    if pane_up.await {
+        return Err(refuse(format!(
+            "the project's master pane {} is running on this box's tmux",
+            terminal::session_name(terminal::MASTER_PREFIX, &p.slug)
+        )));
+    }
+    Ok(lease)
 }
 
 /// Set repo-local `core.sshCommand` so pushes use the project deploy key.
@@ -459,8 +641,12 @@ fn set_repo_ssh_command(repo_path: &Path, ssh_cmd: &str) {
 /// Process a single `provision.request` WS event (`{ runnerId, projectId }`).
 /// We simply run the pending sweep — the server only returns `queued` rows, so
 /// this naturally provisions the just-requested one (and any other backlog).
-pub async fn handle_request(client: &CoreClient, cfg: &Config) -> Result<()> {
-    run_pending(client, cfg).await;
+pub async fn handle_request(
+    client: &CoreClient,
+    cfg: &Config,
+    masters: Option<&Masters>,
+) -> Result<()> {
+    run_pending(client, cfg, masters).await;
     Ok(())
 }
 
@@ -821,5 +1007,307 @@ mod tests {
             install < ready,
             "the workspace is reported ready before it holds the skill"
         );
+    }
+
+    /// A remote that accepts the connection and never answers, which is what a git host that has
+    /// stopped responding looks like from here. The listener must outlive the clone.
+    fn hung_remote() -> (std::net::TcpListener, String) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!(
+            "git://127.0.0.1:{}/x.git",
+            listener.local_addr().unwrap().port()
+        );
+        (listener, url)
+    }
+
+    const ONE_SECOND: Duration = Duration::from_secs(1);
+
+    /// ISS-1359 criterion 10: one hung clone used to hold the whole sweep, and a std `Command` held
+    /// the executor thread besides. The outer timeout makes a regression a red test and not a hang.
+    #[tokio::test]
+    async fn a_hung_clone_is_killed_cleared_and_reported_failed_by_name() {
+        let (_remote, url) = hung_remote();
+        let dir = tmp("hung-clone");
+        let started = std::time::Instant::now();
+
+        let stop = tokio::time::timeout(
+            Duration::from_secs(20),
+            clone_repo(&url, &dir, None, &[], None, ONE_SECOND),
+        )
+        .await
+        .expect("the clone was not bounded")
+        .expect_err("a clone that never answered cannot have succeeded");
+
+        assert!(started.elapsed() < Duration::from_secs(15));
+        assert_eq!(stop.status, "failed");
+        assert!(
+            stop.detail.contains("git clone did not finish within 1s"),
+            "{}",
+            stop.detail
+        );
+        let left = fs::read_dir(&dir).map(|d| d.count()).unwrap_or(0);
+        assert_eq!(
+            left, 0,
+            "what the killed clone wrote is still in the folder"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// An adopt works inside a workspace that already holds this provisioner's own output, so a
+    /// timeout there removes nothing of it.
+    #[tokio::test]
+    async fn an_adopt_that_times_out_removes_nothing_already_in_the_workspace() {
+        let (_remote, url) = hung_remote();
+        let dir = tmp("hung-adopt");
+        fs::create_dir_all(dir.join(".claude")).unwrap();
+        fs::write(dir.join(".claude").join("sentinel"), "mine").unwrap();
+
+        let stop = tokio::time::timeout(
+            Duration::from_secs(20),
+            adopt_repo(&url, &dir, None, &[], None, ONE_SECOND),
+        )
+        .await
+        .expect("the adopt was not bounded")
+        .expect_err("an adopt that never got an answer cannot have succeeded");
+
+        assert_eq!(stop.status, "failed");
+        assert!(stop.detail.contains("git fetch"), "{}", stop.detail);
+        assert_eq!(
+            fs::read_to_string(dir.join(".claude").join("sentinel")).unwrap(),
+            "mine"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The child git spawns (ssh, a transport helper) is what holds the folder open, and killing
+    /// only the leader orphans it.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_overrun_kills_what_the_command_spawned_and_not_only_the_command() {
+        let dir = tmp("group-kill");
+        fs::create_dir_all(&dir).unwrap();
+        let pidfile = dir.join("child.pid");
+        let mut cmd = tokio::process::Command::new("sh");
+        cmd.arg("-c").arg(format!(
+            "sleep 60 & echo $! > '{}'; wait",
+            pidfile.display()
+        ));
+
+        let out = run_git(cmd, Duration::from_millis(500)).await.unwrap();
+
+        assert!(out.is_none(), "the overrun was not reported as one");
+        let pid: i32 = fs::read_to_string(&pidfile)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let mut gone = false;
+        for _ in 0..50 {
+            if nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_err() {
+                gone = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert!(
+            gone,
+            "the grandchild {pid} is still running after the overrun"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_git_step_limit_ends_well_before_core_calls_the_provision_stalled() {
+        assert!(GIT_STEP_LIMIT < Duration::from_secs(30 * 60));
+    }
+
+    fn provision_for(
+        project: &str,
+        slug: &str,
+        path: Option<&Path>,
+        url: Option<&str>,
+    ) -> Provision {
+        Provision {
+            runner_id: "r1".into(),
+            project_id: project.into(),
+            slug: slug.into(),
+            repo_path: path.map(|p| p.display().to_string()),
+            branch: None,
+            repo_url: url.map(String::from),
+            ssh_key_source: None,
+            ssh_public_key: None,
+            ssh_private_key: None,
+            github_app_credential: false,
+            mcp_credential: None,
+        }
+    }
+
+    async fn never_up() -> bool {
+        false
+    }
+
+    /// ISS-1359 criterion 11: a master this box serves holds the workspace, and a provision for it
+    /// writes nothing, whatever its folder holds.
+    #[tokio::test]
+    async fn a_provision_for_a_project_whose_master_this_box_serves_writes_nothing() {
+        let dir = tmp("under-master");
+        fs::create_dir_all(&dir).unwrap();
+        let masters = Masters::new();
+        masters.remember_for_test("proj-1", "sess-1", "forge-master-anhome");
+        let p = provision_for("proj-1", "iss1359-under-master", Some(&dir), None);
+        let client = CoreClient::new("http://127.0.0.1:1", "tok");
+
+        process_one(&client, &Config::default(), Some(&masters), &p).await;
+
+        assert_eq!(
+            fs::read_dir(&dir).unwrap().count(),
+            0,
+            "a master's checkout was written to"
+        );
+        let said = claim_workspace(Some(&masters), &p, &dir, never_up())
+            .await
+            .expect_err("the refusal is named");
+        assert!(said.contains("forge-master-anhome") && said.contains(&dir.display().to_string()));
+        assert!(
+            said.contains("sess-1")
+                && said.contains("forge-runner master kill iss1359-under-master")
+        );
+        let other = provision_for("proj-2", "iss1359-other", Some(&dir), None);
+        assert!(claim_workspace(Some(&masters), &other, &dir, never_up())
+            .await
+            .is_ok());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Before anything is cloned the refusal comes first: a clone's first act is to make the
+    /// folder's parent, and a master's box has no business growing one for a provision it refuses.
+    #[tokio::test]
+    async fn a_provision_refused_under_a_master_makes_no_folder_for_its_clone() {
+        let parent = tmp("refused-before-clone");
+        let masters = Masters::new();
+        masters.remember_for_test("proj-1", "sess-1", "forge-master-anhome");
+        let p = provision_for(
+            "proj-1",
+            "iss1359-before-clone",
+            Some(&parent.join("ws")),
+            Some("/nonexistent/x.git"),
+        );
+        let client = CoreClient::new("http://127.0.0.1:1", "tok");
+
+        process_one(&client, &Config::default(), Some(&masters), &p).await;
+
+        assert!(!parent.exists(), "the refusal came after the clone began");
+    }
+
+    /// A pane that outlived a daemon restart is tmux's to name and not yet the registry's, and a
+    /// process with no registry at all (`forge-runner bind`) has only tmux.
+    #[tokio::test]
+    async fn a_pane_tmux_reports_up_refuses_with_or_without_a_registry() {
+        let dir = tmp("pane-up");
+        let p = provision_for("proj-1", "iss1359-pane-up", Some(&dir), None);
+        let up = async { true };
+
+        let said = claim_workspace(None, &p, &dir, up)
+            .await
+            .expect_err("a pane is running");
+        assert!(
+            said.contains("forge-master-iss1359-pane-up") && said.contains("tmux"),
+            "{said}"
+        );
+        let masters = Masters::new();
+        assert!(claim_workspace(Some(&masters), &p, &dir, async { true })
+            .await
+            .is_err());
+        assert!(
+            masters.begin_provisioning("proj-1").is_ok(),
+            "a refused provision left its lease behind"
+        );
+    }
+
+    /// The lease must outlive the clone and not only the check: a master placed during a clone
+    /// would be placed under the writes that follow it.
+    #[tokio::test]
+    async fn the_lease_is_held_for_the_whole_provision_and_released_when_it_ends() {
+        let (_remote, url) = hung_remote();
+        let dir = tmp("lease-held");
+        let masters = std::sync::Arc::new(Masters::new());
+        let p = provision_for("proj-1", "iss1359-lease-held", Some(&dir), Some(&url));
+        let client = CoreClient::new("http://127.0.0.1:1", "tok");
+        let running = {
+            let masters = masters.clone();
+            tokio::spawn(async move {
+                process_one(&client, &Config::default(), Some(&masters), &p).await;
+            })
+        };
+
+        let mut held = false;
+        for _ in 0..100 {
+            if masters.is_provisioning("proj-1") {
+                held = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(held, "no lease was held while the clone ran");
+        assert!(masters.placement_would_wait("proj-1"));
+
+        running.abort();
+        let _ = running.await;
+        assert!(
+            !masters.is_provisioning("proj-1"),
+            "the lease outlived the provision"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The lease makes the check and the writes one thing: while it is held no master is placed,
+    /// and while a master is being placed or serves, none is granted.
+    #[tokio::test]
+    async fn the_lease_and_a_master_placement_exclude_each_other() {
+        let dir = tmp("lease");
+        let p = provision_for("proj-1", "iss1359-lease", Some(&dir), None);
+        let masters = Masters::new();
+
+        let lease = claim_workspace(Some(&masters), &p, &dir, never_up())
+            .await
+            .unwrap();
+        assert!(
+            masters.placement_would_wait("proj-1"),
+            "a master was placed under a provision"
+        );
+        assert!(!masters.placement_would_wait("proj-2"));
+        drop(lease);
+        assert!(
+            !masters.placement_would_wait("proj-1"),
+            "the lease outlived its provision"
+        );
+
+        let placing = masters.hold_placing_for_test("proj-1");
+        let said = claim_workspace(Some(&masters), &p, &dir, never_up())
+            .await
+            .expect_err("a provision began while a master was being placed");
+        assert!(said.contains("placing"), "{said}");
+        drop(placing);
+        assert!(claim_workspace(Some(&masters), &p, &dir, never_up())
+            .await
+            .is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_base_branch_checkout_that_overruns_fails_the_provision_by_name() {
+        let dir = tmp("checkout-overrun");
+        fs::create_dir_all(&dir).unwrap();
+
+        let stop = checkout_base_branch(&dir, "main", Duration::ZERO)
+            .await
+            .expect_err("a checkout that overran cannot be read as done");
+
+        assert_eq!(stop.status, "failed");
+        assert!(
+            stop.detail.contains("git checkout main did not finish"),
+            "{}",
+            stop.detail
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 }

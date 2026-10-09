@@ -45,6 +45,15 @@ describe("ProvisionStalledBanner", () => {
 		expect(text).toContain("refused while that master runs");
 	});
 
+	it("says nothing about the box serving the project where core did not report it", () => {
+		render(<ProvisionStalledBanner runner={runner({ residentMaster: undefined })} />);
+
+		const text = screen.getByText(/Stalled\./).parentElement?.textContent ?? "";
+		expect(text).toContain("not in progress");
+		expect(text).not.toContain("Re-provision");
+		expect(text).not.toContain("nothing is held back");
+	});
+
 	it.each([
 		["a recent provision", { provisionStalledSeconds: null }],
 		["a core that does not serve the field", { provisionStalledSeconds: undefined }],

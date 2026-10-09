@@ -412,45 +412,34 @@ describe('re-provisioning a workspace a master is running in (criterion 7)', () 
 });
 
 describe('what the migration does to the rows it finds (criterion 9)', () => {
-  // The statement is read out of the migration file rather than copied here, so this fails if the
-  // backfill is edited into something else. `DEFAULT now()` is what every existing row got.
-  const backfill = readFileSync(
+  const migration = readFileSync(
     new URL('../../drizzle/migrations/0326_a_provision_has_an_age.sql', import.meta.url),
     'utf8',
-  )
-    .split('--> statement-breakpoint')
-    .map((s) => s.replace(/^--.*$/gm, '').trim())
-    .find((s) => s.startsWith('UPDATE'));
+  );
 
-  it('carries a backfill statement at all', () => {
-    expect(backfill).toBeTruthy();
-  });
-
-  it('dates a row that stood at cloning by its request, so it reads stalled at once, and leaves ready rows unheld', async () => {
+  it('dates no existing row earlier than the migration, so none reads stalled before a window has passed', async () => {
+    expect(migration).not.toMatch(/^\s*UPDATE\b/im);
     const stuck = await seed('cloning', 0);
     await harness.db.execute(sql`
-      UPDATE runners SET provision_requested_at = now() - interval '9 days',
-                         provisioned_at = NULL, provision_status_at = now(), updated_at = now()
+      UPDATE runners SET provision_requested_at = now() - interval '9 days', provision_status_at = DEFAULT
        WHERE id = ${stuck.runnerId}
     `);
-    expect(await onlineCapableDeviceIds(stuck.projectId, {})).toEqual([]);
+
     expect((await releaseIneligibleRunners(stuck.projectId)).map((h) => h.reason)).toEqual([
       'provisioning',
     ]);
 
-    await harness.db.execute(sql.raw(backfill as string));
-
+    await harness.db.execute(
+      sql`UPDATE runners SET provision_status_at = now() - interval '31 minutes' WHERE id = ${stuck.runnerId}`,
+    );
     expect((await releaseIneligibleRunners(stuck.projectId)).map((h) => h.reason)).toEqual([
       'provision-stalled',
     ]);
+  });
 
-    await truncateAll(harness.db);
-    const ready = await seed('ready', 0);
-    await harness.db.execute(sql`
-      UPDATE runners SET provisioned_at = now() - interval '40 days', provision_status_at = now()
-       WHERE id = ${ready.runnerId}
-    `);
-    await harness.db.execute(sql.raw(backfill as string));
+  it('leaves a ready row unheld however old its provision', async () => {
+    const ready = await seed('ready', 60 * 24 * 40);
+
     expect(await releaseIneligibleRunners(ready.projectId)).toEqual([]);
   });
 });
