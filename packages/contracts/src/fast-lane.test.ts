@@ -184,12 +184,11 @@ describe("a merge check report on the fast lane (BC-7)", () => {
 		expect(requiredMergeChecksOf(undefined)).toEqual(REQUIRED_MERGE_CHECKS);
 	});
 
-	it("names the patch id of what it checked, on every lane (REQ-41 BC-20)", () => {
+	it("requires the patch id on the fast lane; a full report may omit it (priced amnesty)", () => {
 		expect(paths({ lane: "fast" })).toEqual([]);
 		expect(paths({ lane: "full" })).toEqual([]);
-		expect(paths({})).toEqual([]);
-		expect(paths({ patchId: undefined })).toEqual(["patchId"]);
-		expect(paths({ lane: "full", patchId: undefined })).toEqual(["patchId"]);
+		expect(paths({ patchId: undefined })).toEqual([]);
+		expect(paths({ lane: "full", patchId: undefined })).toEqual([]);
 		expect(paths({ lane: "fast", patchId: undefined })).toEqual(["patchId"]);
 		expect(paths({ patchId: "C".repeat(40) })).toEqual(["patchId"]);
 	});

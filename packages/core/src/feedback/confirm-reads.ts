@@ -30,8 +30,8 @@ type Field = { key?: unknown; value?: unknown };
 /**
  * The patch id of what an issue shipped: the `patch-id` of the passing merge check recorded by core
  * at the commit it merged (`issues/merge-check-rules.ts:recordFields`). Null where it merged no
- * commit, or no merge check at that commit carries a patch id (a record written before every report
- * carried one), so nothing tells that what shipped is what a person saw. Either lane's check counts.
+ * commit, or no merge check at that commit carries a patch id (an older record, or a full-lane report
+ * from a script that predates patch ids: `PATCH_ID_ABSENT`), so nothing tells that what shipped is what a person saw. Either lane's check counts.
  */
 export async function shippedPatchOf(issue: ConfirmedIssue): Promise<string | null> {
   const merged = issue.mergedSha;
@@ -53,7 +53,8 @@ export async function shippedPatchOf(issue: ConfirmedIssue): Promise<string | nu
     // a mark takes 7 to 64 hex, so either side may be the shorter
     if (!head || !(head.startsWith(merged) || merged.startsWith(head))) continue;
     const patch = field('patch-id');
-    if (patch) return patch;
+    // the amnesty marker (`PATCH_ID_ABSENT`) is no patch: that change is unknown, never a match
+    if (patch && /^[0-9a-f]{40}$/.test(patch)) return patch;
   }
   return null;
 }

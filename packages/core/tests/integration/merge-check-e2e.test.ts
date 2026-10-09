@@ -145,16 +145,6 @@ describe('a report the merge check refuses, recording nothing', () => {
     expect(await verifications(issue)).toEqual([]);
   });
 
-  it('refuses a full-lane report with no patch id, naming it, recording nothing', async () => {
-    const issue = await issueIn(declared);
-    const { patchId: _dropped, ...old } = report();
-    const res = await check(issue, old);
-    expect(res.status).toBe(400);
-    expect(JSON.stringify(res.body)).toContain('patchId');
-    expect(JSON.stringify(res.body)).toContain('patch id of what it checked');
-    expect(await verifications(issue)).toEqual([]);
-  });
-
   it('refuses one missing a check every merge needs', async () => {
     const issue = await issueIn(declared);
     const res = await check(issue, report({ checks: [run('typecheck')] }));
@@ -240,6 +230,27 @@ describe('a passing check is recorded on its issue', () => {
       WHERE issue_id = ${issue} AND type = 'issue.updated' AND payload->'fields' ? 'checks'
     `);
     expect(events).toEqual([{ fields: ['checks'] }]);
+  });
+});
+
+describe('a full-lane report from a script that predates patch ids (priced amnesty)', () => {
+  it('is recorded with the absent marker and says so in the response, never silently', async () => {
+    const issue = await issueIn(declared);
+    const { patchId: _old, ...old } = report();
+    const res = await check(issue, old);
+    expect(res.status).toBe(201);
+    expect(res.body.warnings).toHaveLength(1);
+    expect(res.body.warnings[0]).toContain('PATCH_ID_ABSENT');
+    const [record] = await verifications(issue);
+    const fields = (record?.fields ?? []) as Doc[];
+    expect(fields.find((f) => f.key === 'patch-id')?.value).toBe(
+      'absent (script predates patch ids)',
+    );
+  });
+
+  it('a whole report carries no warning', async () => {
+    const issue = await issueIn(declared);
+    expect((await check(issue, report())).body.warnings).toEqual([]);
   });
 });
 

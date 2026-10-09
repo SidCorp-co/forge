@@ -10,6 +10,7 @@ import type { CheckRun } from '@forge/contracts/check-runs';
 import {
   MERGE_CHECK_KINDS,
   MERGE_CHECK_RECORD,
+  PATCH_ID_ABSENT,
   type MergeCheckRefusalCode,
   type MergeCheckReport,
   REQUIRED_MERGE_CHECKS,
@@ -86,6 +87,15 @@ export function checkRefusal(report: MergeCheckReport): CheckRefusal | null {
 /** At most this many characters in one record field. */
 const FIELD_MAX = 400;
 
+/** What a report says that the caller must not miss, by name: none when it is whole. */
+export function warningsOf(report: MergeCheckReport): string[] {
+  return report.patchId
+    ? []
+    : [
+        `PATCH_ID_ABSENT: this full-lane report names no patchId, so it was recorded as "${PATCH_ID_ABSENT}" and a feedback reporter's confirm cannot be matched to this change: they will be asked again. Update the checkout's scripts/merge-check.mjs (merge the base into the branch) to send it`,
+      ];
+}
+
 /** The checks a record names, by name and scope, cut to fit one field. */
 function namedChecks(checks: readonly CheckRun[]): string {
   const head = `${checks.length} recorded with their kinds and durations (GET /api/issues/:id/checks): `;
@@ -114,7 +124,7 @@ export function recordFields(report: MergeCheckReport): { key: string; value: st
     { key: 'result', value: 'pass' },
     { key: 'mode', value: report.mode },
     { key: 'lane', value: report.lane ?? 'full' },
-    { key: 'patch-id', value: report.patchId },
+    { key: 'patch-id', value: report.patchId ?? PATCH_ID_ABSENT },
     { key: 'base', value: `${report.base.branch}@${report.base.sha}` },
     { key: 'head', value: report.head },
     { key: 'touched', value: `${report.touched.length} file(s)` },

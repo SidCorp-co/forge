@@ -3,7 +3,8 @@
 // `POST /api/issues/:id/merge-check` records on the issue and the merge mark then asks for. A report
 // on the fast lane (REQ-39 BC-7, `./fast-lane.ts`) needs only `FAST_LANE_MERGE_CHECKS`. Every report
 // names the patch id of what it checked: core holds a fast one to the patch id the approved preview
-// served, and a reporter's confirm is matched to it on either lane (REQ-41 BC-20).
+// served, and a reporter's confirm is matched to it on either lane (REQ-41 BC-20). A full-lane report
+// from a script that predates patch ids is still taken, recorded with `PATCH_ID_ABSENT`.
 
 import { z } from "zod";
 import {
@@ -72,23 +73,27 @@ export const mergeCheckReportSchema = z.strictObject({
 	/** The lane the change takes; absent is the full lane, as every report written before the fast one. */
 	lane: z.enum(LANES).optional(),
 	/**
-	 * `git patch-id --stable` of `base..head` (`git diff --binary`), on every lane: the fast lane's rule
-	 * holds it to the approved preview's, and a reporter's confirm closes their item when it matches
-	 * the one recorded at the commit that shipped (REQ-41 BC-20). A report without one is refused.
+	 * `git patch-id --stable` of `base..head` (`git diff --binary`). Required on the fast lane (core
+	 * holds it to the approved preview's); sent on the full lane too, where a reporter's confirm is
+	 * matched to it (REQ-41 BC-20). A full-lane report without one is a priced amnesty: it is recorded
+	 * with `PATCH_ID_ABSENT` and the response says so (scripts/README.md, merge-check row).
 	 */
 	patchId: z
-		.string({
-			error:
-				"a merge-check report names the patch id of what it checked (`git diff --binary <base> <head> | git patch-id --stable`) on every lane: without it a reporter's confirm cannot be matched to what shipped. Run the current `scripts/merge-check.mjs`",
-		})
+		.string()
 		.regex(
 			/^[0-9a-f]{40}$/,
 			"patchId is the 40-hex id `git patch-id --stable` prints",
-		),
-});
+		)
+		.optional(),
+	})
+	.refine((r) => r.lane !== "fast" || r.patchId !== undefined, {
+		path: ["patchId"],
+		message:
+			"a fast-lane report names the patch id of what it checked (`git diff --binary <base> <head> | git patch-id --stable`): core holds it to the patch id the approved preview served",
+	});
 export type MergeCheckReport = z.infer<typeof mergeCheckReportSchema>;
 
-export const MERGE_CHECK_SHAPE = `{ base: { branch, sha }, head, mode: pre-merge | landed, touched: [{ path, change }], checks: [${CHECK_RUN_SHAPE}], lane?: fast | full, patchId: <40 hex> }`;
+export const MERGE_CHECK_SHAPE = `{ base: { branch, sha }, head, mode: pre-merge | landed, touched: [{ path, change }], checks: [${CHECK_RUN_SHAPE}], lane?: fast | full, patchId?: <40 hex, required on the fast lane> }`;
 
 /** A mark where a merge check is owed and none passed at the commit marked. */
 export const MERGE_CHECK_MISSING = "MERGE_CHECK_MISSING" as const;
@@ -102,6 +107,9 @@ export const MERGE_CHECK_REFUSAL_CODES = [
 	PATTERN_ENTRY_MISSING,
 ] as const;
 export type MergeCheckRefusalCode = (typeof MERGE_CHECK_REFUSAL_CODES)[number];
+
+/** What a record's `patch-id` field reads when a full-lane report sent none (a script older than patch ids). */
+export const PATCH_ID_ABSENT = "absent (script predates patch ids)";
 
 /** The `verification` record a passing check is kept as: its `check` field reads this. */
 export const MERGE_CHECK_RECORD = "merge";

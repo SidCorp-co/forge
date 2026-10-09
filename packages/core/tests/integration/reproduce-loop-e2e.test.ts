@@ -128,14 +128,14 @@ async function shippedWithConfirm(args: {
     head: MERGED,
     touched: [{ path: 'web/orders.tsx', change: 'changed' }],
     lane: 'full',
-    patchId: args.shipped ?? '9'.repeat(40),
+    // `shipped: null` is an old-shape full-lane report: it sent no patch id, so the record says absent
+    patchId: args.shipped ?? undefined,
   });
   await writeCoreRecord(db, {
     issueId: issue.id,
     actor: { type: 'device', id: deviceId, agency: 'agent' },
     kind: 'verification',
-    // `shipped: null` is a record written before every report carried a patch id: it has no field
-    fields: recordFields(report).filter((f) => args.shipped !== null || f.key !== 'patch-id'),
+    fields: recordFields(report),
   });
   return fb;
 }
@@ -313,7 +313,7 @@ describe("the reporter's confirm in the fix preview is the item's loop close (BC
     });
   });
 
-  it('asks again when the merge check record that shipped it names no patch (written before every report carried one)', async () => {
+  it('asks again when the merge check record that shipped it names no patch (an old-shape full-lane report: the absent marker)', async () => {
     const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
     const fb = await shippedWithConfirm({ patch: P, shipped: null, verdict: 'fixed' });
     await sweepResolvedFeedback();
