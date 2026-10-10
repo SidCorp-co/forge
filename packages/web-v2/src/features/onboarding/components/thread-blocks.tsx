@@ -68,8 +68,8 @@ export function ThreadMessage({
   const avatar = (
     <span
       aria-hidden
-      className={`grid size-[22px] flex-none place-items-center rounded-full text-[10px] font-bold ${
-        who === "me" ? "bg-[color:var(--amberw-500)] text-white" : "bg-[color:var(--ai-bg)] text-[color:var(--ai-fg)]"
+      className={`grid size-5.5 flex-none place-items-center rounded-full text-12 font-bold ${
+        who === "me" ? "bg-warn-9 text-white" : "bg-ai-bg text-ai"
       }`}
     >
       {who === "me" ? "Y" : name.startsWith("BA") ? "B" : "A"}
@@ -78,16 +78,16 @@ export function ThreadMessage({
   const header = (
     <div className="flex flex-wrap items-baseline gap-2">
       {wide && avatar}
-      <span className={`font-semibold ${who === "agent" ? "text-[color:var(--ai-fg)]" : "text-fg"}`}>{name}</span>
+      <span className={`font-semibold ${who === "agent" ? "text-ai" : "text-fg"}`}>{name}</span>
       {when.label && (
-        <time dateTime={at} title={when.title} className="font-mono text-[10.5px] text-subtle">
+        <time dateTime={at} title={when.title} className="font-mono text-12 text-subtle">
           {when.label}
         </time>
       )}
     </div>
   );
   return (
-    <div className={`grid items-start gap-2 text-[12.5px] ${wide ? "grid-cols-1" : "grid-cols-[22px_minmax(0,1fr)]"}`}>
+    <div className={`grid items-start gap-2 text-13 ${wide ? "grid-cols-1" : "grid-cols-[22px_minmax(0,1fr)]"}`}>
       {!wide && avatar}
       <div className="min-w-0">
         {header}
@@ -112,7 +112,7 @@ function LinkedItemsNote({ design }: { design: OnboardingDesignView }) {
   const open = design.openQuestions.length;
   return (
     <HoverNote
-      className="flex-none text-[11.5px] text-subtle"
+      className="flex-none text-12 text-subtle"
       label={open ? `${design.linkedItems.length} items · ${open} open` : `${design.linkedItems.length} items`}
     >
       <span className="flex flex-col gap-0.5">
@@ -137,7 +137,7 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
   return (
     <div className="my-1" data-testid="designs-block">
       {/* the analysis's list reads as a labelled count, as the prototype draws it; every later list is the message's own heading */}
-      <div className={first ? "py-1.5 text-[11.5px] text-subtle" : "mb-1 font-bold text-fg"}>
+      <div className={first ? "py-1.5 text-12 text-subtle" : "mb-1 font-bold text-fg"}>
         {block.heading}
         {first && ` ${rows.length}`}
       </div>
@@ -163,7 +163,7 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
               {block.approve && href && design?.designStatus === "proposed" && (
                 <Link
                   href={`${href}?focus=approve`}
-                  className="ml-1 inline-flex h-7 flex-none items-center rounded-md border border-line bg-surface px-2.5 text-[12px] font-semibold text-fg hover:bg-hover"
+                  className="ml-1 inline-flex h-7 flex-none items-center rounded-md border border-line bg-surface px-2.5 text-12 font-semibold text-fg hover:bg-hover"
                 >
                   Approve
                 </Link>
@@ -174,20 +174,20 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
       </div>
       {first && data?.kind === "onboarding" && onboarding && (
         <div className="mt-1 grid grid-cols-[84px_minmax(0,1fr)] items-start gap-x-2.5 border-t border-line-subtle py-1.5">
-          <span className="pt-px text-[11.5px] text-subtle">Analysis</span>
+          <span className="pt-px text-12 text-subtle">Analysis</span>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[12px] text-muted">
+            <span className="text-12 text-muted">
               Job {onboarding.job?.status ?? "none"}
               {onboarding.job && onboarding.job.attempt > 1 ? ` · attempt ${onboarding.job.attempt}` : ""}
             </span>
             {onboarding.job?.endedWith ? (
-              <span className="min-w-0 text-[12px] text-muted" data-testid="onboarding-ended-with">
+              <span className="min-w-0 text-12 text-muted" data-testid="onboarding-ended-with">
                 {onboarding.job.endedWith}
               </span>
             ) : null}
             <button
               type="button"
-              className="text-[12px] font-semibold text-link hover:underline disabled:opacity-60"
+              className="text-12 font-semibold text-link hover:underline disabled:opacity-60"
               disabled={reanalyze.pending}
               onClick={() => reanalyze.ask("reanalyze")}
             >
@@ -233,7 +233,7 @@ export function StructuredMessage({
     if (batch.status === "superseded") {
       return (
         <ThreadMessage who="agent" name={name} at={message.createdAt}>
-          <p className="my-[3px] text-muted">
+          <p className="my-0.75 text-muted">
             {batch.title} · Round {batch.round} · superseded by a re-analysis
           </p>
         </ThreadMessage>
@@ -241,7 +241,7 @@ export function StructuredMessage({
     }
     return (
       <ThreadMessage who="agent" name={name} at={message.createdAt} wide>
-        {batch.intro && <p className="my-[3px] mb-1.5">{batch.intro}</p>}
+        {batch.intro && <p className="my-0.75 mb-1.5">{batch.intro}</p>}
         <QuestionnaireCard projectId={data?.projectId ?? ""} batch={batch} designTitle={designTitle} />
       </ThreadMessage>
     );
@@ -252,7 +252,7 @@ export function StructuredMessage({
         const key = `${b.type}-${i}`;
         if (b.type === "text" && b.text)
           return (
-            <div key={key} className="my-[3px] [&_p]:my-[3px] [&_p]:mb-1.5 [&_p]:text-[12.5px]! [&_p]:leading-[1.55]! [&_p]:text-fg!">
+            <div key={key} className="my-0.75 [&_p]:my-0.75 [&_p]:mb-1.5 [&_p]:text-13! [&_p]:leading-normal! [&_p]:text-fg!">
               <Markdown>{b.text}</Markdown>
             </div>
           );

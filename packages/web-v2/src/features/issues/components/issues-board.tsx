@@ -195,8 +195,8 @@ function Waves({ rows, onPeek, selected }: { rows: IssueStandingRow[]; onPeek: (
         data-testid="wave-card"
         data-key={r.key}
         className={cn(
-          "relative z-[1] grid w-full gap-1 border-b border-line-subtle bg-app py-2.5 pl-3 pr-2.5 text-left hover:bg-hover",
-          selected === r.key && "bg-[var(--cobalt-50)] hover:bg-[var(--cobalt-50)]",
+          "relative z-1 grid w-full gap-1 border-b border-line-subtle bg-app py-2.5 pl-3 pr-2.5 text-left hover:bg-hover",
+          selected === r.key && "bg-info-2 hover:bg-info-2",
         )}
         style={{ borderLeft: `3px solid ${LEGEND[tone].dot}` }}
       >
@@ -206,7 +206,7 @@ function Waves({ rows, onPeek, selected }: { rows: IssueStandingRow[]; onPeek: (
         </span>
         <Written className={cn("text-13 font-medium text-fg", compact ? "truncate" : "line-clamp-2")} text={r.title} lang={r.writtenLang} />
         {compact ? null : (
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-11-5 text-subtle">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-12 text-subtle">
             {r.standing.module ? <span className="font-mono underline decoration-dotted underline-offset-2">{r.standing.module.path}</span> : null}
             {r.standing.attentionGroup === "needs_you" ? (
               <span className="rounded-sm px-1.5" style={{ color: LEGEND.you.fg, background: LEGEND.you.bg }}>
@@ -271,12 +271,12 @@ function Waves({ rows, onPeek, selected }: { rows: IssueStandingRow[]; onPeek: (
           ] as [LegendTone, string][]
         ).map(([tone, l]) => (
           <span key={tone} className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="h-[3px] w-3 rounded-pill" style={{ background: LEGEND[tone].dot }} />
+            <span aria-hidden className="h-0.75 w-3 rounded-pill" style={{ background: LEGEND[tone].dot }} />
             {l}
           </span>
         ))}
         <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden className="h-px w-4" style={{ background: "var(--fg-subtle)" }} />
+          <span aria-hidden className="h-px w-4 bg-subtle" />
           {t("issues.rail.blocks")}
         </span>
         {outside > 0 ? <span>{t("issues.wave.outside", { n: outside })}</span> : null}
@@ -317,13 +317,13 @@ function Toolbar({ data, scope, n, children }: { data: IssueStandingList | undef
             onClick={() => toggle(c.id)}
             data-testid={`quick-${c.id}`}
             className={cn(
-              "inline-flex h-[30px] items-center gap-1.5 rounded-pill border px-2.5 text-12-5 font-semibold",
-              on ? "border-link bg-[var(--cobalt-50)] text-fg" : "border-line bg-surface text-muted hover:text-fg",
+              "inline-flex h-7.5 items-center gap-1.5 rounded-pill border px-2.5 text-13 font-semibold",
+              on ? "border-link bg-info-2 text-fg" : "border-line bg-surface text-muted hover:text-fg",
             )}
           >
             <span className={c.mono ? "font-mono text-12" : undefined}>{quickLabel[c.id]}</span>
             {quickCount[c.id] !== undefined ? (
-              <span className="rounded-full px-1.5 text-11 tabular-nums" style={c.id === "you" && quickCount[c.id] ? { background: LEGEND.you.bg, color: LEGEND.you.fg } : undefined}>
+              <span className="rounded-full px-1.5 text-12 tabular-nums" style={c.id === "you" && quickCount[c.id] ? { background: LEGEND.you.bg, color: LEGEND.you.fg } : undefined}>
                 {quickCount[c.id]}
               </span>
             ) : null}
@@ -347,7 +347,7 @@ function AssistantNarrowing({ n }: { n: Narrowing }) {
   ].filter(Boolean);
   if (parts.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle bg-app px-5 py-1.5 text-12-5 text-muted" data-testid="issues-narrowed">
+    <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle bg-app px-5 py-1.5 text-13 text-muted" data-testid="issues-narrowed">
       <span>{t("issues.board.narrowed", { parts: parts.join(" · ") })}</span>
       <button type="button" className="font-semibold text-link hover:underline" onClick={() => set({ status: null, priority: null, createdBy: null, assignee: null })}>
         {t("issues.toolbar.clear")}
@@ -411,14 +411,14 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
 
   return (
     <div className="grid min-h-full content-start bg-app" data-testid="issues-board" data-mode={mode}>
-      <div className={cn("grid min-h-[60vh] items-start", openRow && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
+      <div className={cn("grid min-h-128 items-start", openRow && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
         <div className="min-w-0">
           <Toolbar data={q.data} scope={scope} n={n}>
             {toolbarLead}
           </Toolbar>
           <AssistantNarrowing n={n} />
           {truncated ? (
-            <p className="border-b border-line-subtle bg-app px-5 py-1.5 text-12-5 text-muted" data-testid="issues-truncated">
+            <p className="border-b border-line-subtle bg-app px-5 py-1.5 text-13 text-muted" data-testid="issues-truncated">
               {t("issues.board.truncated", { shown: q.data?.returned ?? 0, total: q.data?.counts[scope] ?? 0 })}
             </p>
           ) : null}

@@ -18,14 +18,14 @@ export function BlockerCard({ blocker, onOpenIssue }: { blocker: RunBlocker; onO
   const shown = lines.slice(0, MAX_LINES);
   return (
     <section
-      className="rounded-lg border px-5 py-4"
+      className="rounded-md border px-5 py-4"
       style={{ borderColor: "var(--red-500)", background: "var(--red-50)" }}
       aria-labelledby="run-blocker-title"
     >
       <div className="flex items-start gap-2.5">
-        <Icon name="alert" size={16} className="mt-0.5 flex-none" style={{ color: "var(--red-600)" }} />
+        <Icon name="alert" size={16} className="mt-0.5 flex-none text-danger-11" />
         <div className="min-w-0 flex-1">
-          <SectionTitle id="run-blocker-title" className="fg-h3" style={{ color: "var(--red-600)" }}>
+          <SectionTitle id="run-blocker-title" className="fg-h3 text-danger-11">
             {blocker.label}
           </SectionTitle>
           {blocker.errorCount > 1 && (
@@ -34,7 +34,7 @@ export function BlockerCard({ blocker, onOpenIssue }: { blocker: RunBlocker; onO
             </p>
           )}
           {shown.length > 0 && (
-            <pre className="fg-mono mt-2.5 overflow-x-auto rounded-md bg-surface px-3 py-2 text-11-5 leading-snug-1-5">
+            <pre className="fg-mono mt-2.5 overflow-x-auto rounded-md bg-surface px-3 py-2 text-12 leading-snug-1-5">
               {shown.join("\n")}
               {lines.length > shown.length ? `\n${t("runs.report.moreLines", { n: time.number(lines.length - shown.length) })}` : ""}
             </pre>

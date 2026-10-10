@@ -54,7 +54,7 @@ export function IssueQuickActions({
   const refusal = heldByAgent(status, agentStatus) ? { id: refusalId, text: agentHoldsEdit(t) } : null;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line-subtle bg-sunken px-3.5 py-2.5">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-line-subtle bg-sunken px-3.5 py-2.5">
       {dialog}
       <StatusEdit
         status={status}
@@ -66,7 +66,7 @@ export function IssueQuickActions({
         onTransition={(toStatus) => requestTransition({ id: issueId, status }, toStatus)}
       />
       {runChip && <StatusChip status={runChip} size="sm" domain="session" />}
-      <span aria-hidden className="h-4 w-px flex-none" style={{ background: "var(--border-default)" }} />
+      <span aria-hidden className="h-4 w-px flex-none bg-line" />
       <InlineSelect
         ariaLabel={t("issues.field.priority")}
         value={priority}

@@ -27,11 +27,11 @@ export function IssuePeek({
   return (
     <PeekPanel peek={peek} listLabel={t("issues.screen.title")} noun={t("issues.noun")} onOpenFull={onOpenFull} testId="issue-peek">
       <PeekHead noun={t("issues.noun")} itemKey={row.key} badge={issueBadge(row)} title={<Written text={row.title} lang={row.writtenLang} />} />
-      <div className="px-[18px] pb-3">
+      <div className="px-4.5 pb-3">
         <IssueStrip standing={row.standing} />
       </div>
-      <IssueBanner standing={row.standing} className="mx-[18px] rounded-md" />
-      <div className="px-[18px] pb-4 pt-2">
+      <IssueBanner standing={row.standing} className="mx-4.5 rounded-md" />
+      <div className="px-4.5 pb-4 pt-2">
         <IssuePeekFacts row={row} slug={slug} forecast={forecast} clock={clock} />
       </div>
     </PeekPanel>

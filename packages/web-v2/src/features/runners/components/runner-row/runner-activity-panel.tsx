@@ -56,7 +56,7 @@ export function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 								{s.failureReason && <EnumBadge family="failureCause" value={s.failureReason} />}
 							</div>
 							{s.errorExcerpt && (
-								<code className="whitespace-pre-wrap break-words font-mono text-11 text-[color:var(--red-600)]">
+								<code className="whitespace-pre-wrap break-words font-mono text-12 text-danger-11">
 									{s.errorExcerpt}
 								</code>
 							)}
@@ -79,7 +79,7 @@ export function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 								{e.reason && (
 									<span className="text-subtle">
 										{" · "}
-										<code className="font-mono text-11">{e.reason}</code>
+										<code className="font-mono text-12">{e.reason}</code>
 									</span>
 								)}
 							</span>

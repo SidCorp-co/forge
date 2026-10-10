@@ -116,7 +116,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
 
   if (isError) {
     return (
-      <div className="grid min-h-[40vh] place-items-center p-4">
+      <div className="grid min-h-80 place-items-center p-4">
         <ErrorState
           title={t("agents.questions.loadFailed")}
           message={formatApiError(error)}
@@ -136,7 +136,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
 
   if (questions.length === 0) {
     return (
-      <div id={EMPTY_TITLE_ID} tabIndex={-1} className="grid min-h-[40vh] place-items-center p-4 focus-visible:outline-none">
+      <div id={EMPTY_TITLE_ID} tabIndex={-1} className="grid min-h-80 place-items-center p-4 focus-visible:outline-none">
         <EmptyState message={t("agents.questions.emptyTitle")} />
       </div>
     );
@@ -158,7 +158,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="underline focus-visible:outline-none focus-visible:shadow-focus"
             onClick={() => void fetchNextPage()}
             disabled={isFetchingNextPage}
           >
@@ -174,7 +174,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
           {t("agents.questions.gone")}{" "}
           <button
             type="button"
-            className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="underline focus-visible:outline-none focus-visible:shadow-focus"
             onClick={() => router.refresh()}
           >
             {t("agents.questions.refresh")}
@@ -186,7 +186,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
           {t("agents.questions.unreachable")}{" "}
           <button
             type="button"
-            className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="underline focus-visible:outline-none focus-visible:shadow-focus"
             onClick={() => void linked.refetch()}
           >
             {t("agents.questions.tryAgain")}

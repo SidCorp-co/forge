@@ -16,13 +16,13 @@ export function HoverNote({ label, children, className }: { label: ReactNode; ch
       <TooltipTrigger
         render={
           <span
-            className={`cursor-help whitespace-nowrap underline decoration-dotted decoration-[color:var(--border-strong)] underline-offset-[3px] ${className ?? ""}`}
+            className={`cursor-help whitespace-nowrap underline decoration-dotted decoration-line-strong underline-offset-3 ${className ?? ""}`}
           />
         }
       >
         {label}
       </TooltipTrigger>
-      <TooltipContent side="top" className="block max-w-[280px] whitespace-normal text-left text-[11.5px] leading-[1.45]">
+      <TooltipContent side="top" className="block max-w-70 whitespace-normal text-left text-12 leading-normal">
         {children}
       </TooltipContent>
     </Tooltip>
@@ -67,7 +67,7 @@ export function AiMark({ children, title }: { children: ReactNode; title?: strin
   return (
     <span
       title={title}
-      className="inline-flex items-center gap-[3px] whitespace-nowrap text-[10px] font-semibold text-[color:var(--ai-fg)] before:size-[5px] before:rounded-full before:bg-[color:var(--ai-bar)] before:content-['']"
+      className="inline-flex items-center gap-0.75 whitespace-nowrap text-12 font-semibold text-ai before:size-1.25 before:rounded-full before:bg-ai-9"
     >
       {children}
     </span>

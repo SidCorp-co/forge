@@ -46,9 +46,9 @@ function Row({ row, open, onToggle }: { row: TranscriptRow; open: boolean; onTog
         aria-expanded={open}
         className="flex w-full items-baseline gap-2.5 px-3 py-1.5 text-left hover:bg-hover"
       >
-        <span className="fg-caption w-[62px] flex-none font-mono">{clockOf(row.timestamp)}</span>
+        <span className="fg-caption w-15.5 flex-none font-mono">{clockOf(row.timestamp)}</span>
         <span
-          className="fg-caption w-[92px] flex-none truncate font-mono"
+          className="fg-caption w-23 flex-none truncate font-mono"
           style={
             row.isMcp
               ? { color: "var(--cobalt-500)" }
@@ -78,7 +78,7 @@ function Row({ row, open, onToggle }: { row: TranscriptRow; open: boolean; onTog
             {body}
           </p>
         ) : (
-          <pre className="fg-mono mx-3 mb-2 overflow-x-auto rounded-md bg-sunken px-3 py-2 text-11-5 leading-snug-1-5">
+          <pre className="fg-mono mx-3 mb-2 overflow-x-auto rounded-md bg-sunken px-3 py-2 text-12 leading-snug-1-5">
             {body}
           </pre>
         ))}

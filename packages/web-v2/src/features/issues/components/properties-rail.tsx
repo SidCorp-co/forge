@@ -76,7 +76,7 @@ function CarriageList({ items, slug, from = false }: { items: Array<{ ref: strin
           <Link className="font-mono text-12 text-link hover:underline" href={issueHref(slug, c.key)}>
             {from ? t("issues.rail.carriesFrom", { issue: c.key }) : c.key}
           </Link>
-          <span className="break-all font-mono text-11-5 text-subtle">{c.ref}</span>
+          <span className="break-all font-mono text-12 text-subtle">{c.ref}</span>
         </li>
       ))}
     </ul>

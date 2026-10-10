@@ -62,7 +62,7 @@ function AddCommentBox({
     <div className="space-y-2" onPaste={staged.onPaste}>
       <div
         {...staged.dropZone}
-        className={`rounded-lg transition-colors ${
+        className={`rounded-md transition-colors ${
           staged.dragOver ? "ring-2 ring-cobalt-400 ring-offset-1" : ""
         }`}
       >

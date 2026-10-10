@@ -120,8 +120,8 @@ function RelationChip({
           type="button"
           className={
             danger
-              ? "fg-caption inline-flex items-center gap-1 rounded-pill border border-[color:var(--red-500)] bg-[color:var(--red-50)] px-1.5 py-0.5 font-medium text-[color:var(--red-600)] transition-[filter] hover:brightness-95 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-              : "fg-caption inline-flex items-center gap-1 rounded-pill border border-line px-1.5 py-0.5 text-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+              ? "fg-caption inline-flex items-center gap-1 rounded-pill border border-danger-9 bg-danger-3 px-1.5 py-0.5 font-medium text-danger-11 transition hover:brightness-95 focus-visible:outline-none focus-visible:shadow-focus"
+              : "fg-caption inline-flex items-center gap-1 rounded-pill border border-line px-1.5 py-0.5 text-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-focus"
           }
           title={label}
         >

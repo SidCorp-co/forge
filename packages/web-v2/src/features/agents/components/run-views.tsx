@@ -77,7 +77,7 @@ export const runRow =
       title: said(r.says.title, language),
       facts: rowFacts(r, t, language),
       state: <StatusBadge family="runStanding" value={r.state} />,
-      waitingOn: w.kind === "none" ? <span className="text-12-5 text-subtle">—</span> : <WaitingOn w={w} />,
+      waitingOn: w.kind === "none" ? <span className="text-13 text-subtle">—</span> : <WaitingOn w={w} />,
       owner: r.holder.source === "held" ? said(r.holder.says.name, language) : t("runs.noHolder"),
       age: { text: formatAge(at, language), title: t(r.finishedAt ? "runs.finishedAt" : "runs.sinceAt", { at: formatDateTime(at, language) }) },
       dim: isFinal(r.state),
@@ -89,7 +89,7 @@ export function RunBanner({ r, className }: { r: RunStanding; className?: string
   const b = runBanner(r, language);
   return (
     <WaitBanner tone={b.tone} head={b.head} body={b.body} rule={b.rule} className={className} testId="run-banner">
-      {b.detail ? <span className="text-12-5 text-muted">{b.detail}</span> : null}
+      {b.detail ? <span className="text-13 text-muted">{b.detail}</span> : null}
     </WaitBanner>
   );
 }
@@ -132,7 +132,7 @@ function HolderFacts({ r, slug }: { r: RunStanding; slug: string }) {
               <span title={t("runs.holderKind", { kind: t(`runs.holder.${h.kind}`) })}>{said(h.says.name, language)}</span>
             </Fact>
             <Fact label={t("runs.fact.box")}>
-              <span className="font-mono text-12-5">{h.device?.name ?? "—"}</span>
+              <span className="font-mono text-13">{h.device?.name ?? "—"}</span>
             </Fact>
             <Fact label={t("runs.fact.lease")}>
               <span title={saidOrNull(h.says.expiryDetail, language) ?? (h.expiresAt ? time.dateTime(h.expiresAt) : undefined)}>{leaseLeft(r, language) ?? saidOrNull(h.says.expiryDetail, language) ?? "—"}</span>
@@ -194,7 +194,7 @@ export function RunFacts({ r, slug }: { r: RunStanding; slug: string }) {
         <Fact label={t("runs.fact.subject")}>
           {r.issue ? (
             <>
-              <Link href={issueHref(slug, r.issue.key)} className="font-mono text-12-5 font-semibold text-link hover:underline">
+              <Link href={issueHref(slug, r.issue.key)} className="font-mono text-13 font-semibold text-link hover:underline">
                 {r.issue.key}
               </Link>
               <StatusBadge family="issue" value={r.issue.status} />
@@ -231,14 +231,14 @@ export function RunFacts({ r, slug }: { r: RunStanding; slug: string }) {
         ) : null}
         {r.boxRunId ? (
           <Fact label={t("runs.fact.boxRunId")}>
-            <span className="break-all font-mono text-12-5" data-testid="run-box-id">
+            <span className="break-all font-mono text-13" data-testid="run-box-id">
               {r.boxRunId}
             </span>
           </Fact>
         ) : null}
         {r.sessionId ? (
           <Fact label={t("runs.fact.session")}>
-            <span className="font-mono text-12-5" title={r.sessionId}>
+            <span className="font-mono text-13" title={r.sessionId}>
               {r.sessionId.slice(0, 8)}
             </span>
           </Fact>
@@ -274,12 +274,12 @@ export function RunActions({ r, slug, canWrite }: { r: RunStanding; slug: string
         </Button>
       ) : null}
       {cancel.isError ? (
-        <span className="text-12-5 text-danger" data-testid="run-cancel-refusal">
+        <span className="text-13 text-danger" data-testid="run-cancel-refusal">
           {formatRefusal(cancel.error)}
         </span>
       ) : null}
       {parkRefused ? (
-        <span className="text-12-5 text-danger" data-testid="run-cancel-park-refused">
+        <span className="text-13 text-danger" data-testid="run-cancel-park-refused">
           {t("runs.parkRefused", { why: parkRefused })}
         </span>
       ) : null}
@@ -311,11 +311,11 @@ export function RunPeek({
         title={said(r.says.title, language)}
         action={<RunActions r={r} slug={slug} canWrite={canWrite} />}
       />
-      <div className="px-[18px] pb-3">
+      <div className="px-4.5 pb-3">
         <RunPath r={r} />
       </div>
-      <RunBanner r={r} className="px-[18px]" />
-      <div className="px-[18px] pb-4 pt-4">
+      <RunBanner r={r} className="px-4.5" />
+      <div className="px-4.5 pb-4 pt-4">
         <RunFacts r={r} slug={slug} />
       </div>
     </PeekPanel>
@@ -363,9 +363,9 @@ function Overview({ r }: { r: RunStanding }) {
       </section>
       {stuck ? (
         <section>
-          <ViewHeading right={<span className="text-12-5 text-muted">{enumLabel("runStuckRule", stuck.rule, language)}</span>}>{t("runs.whyStuck")}</ViewHeading>
+          <ViewHeading right={<span className="text-13 text-muted">{enumLabel("runStuckRule", stuck.rule, language)}</span>}>{t("runs.whyStuck")}</ViewHeading>
           <p className="text-13">{said(stuck.says.detail, language)}</p>
-          <p className="mt-1 text-12-5 text-muted">{said(stuck.says.failsBy, language)}</p>
+          <p className="mt-1 text-13 text-muted">{said(stuck.says.failsBy, language)}</p>
           <p className="mt-2 font-mono text-12 text-subtle" title={stuck.evidence.value ?? undefined} translate="no">
             {stuck.evidence.table}.{stuck.evidence.column} · {stuck.evidence.id.slice(0, 8)}
             {stuck.evidence.at ? ` · ${fmtTime(stuck.evidence.at, language)}` : ""}
@@ -378,7 +378,7 @@ function Overview({ r }: { r: RunStanding }) {
           <ul className="border-t border-line-subtle">
             {o.returnedTo.map((x) => (
               <li key={x.issueKey} className="flex items-center gap-2 border-b border-line-subtle py-2 text-13">
-                <span className="font-mono text-12-5 font-semibold">{x.issueKey}</span>
+                <span className="font-mono text-13 font-semibold">{x.issueKey}</span>
                 <StatusBadge family="issue" value={x.status} />
               </li>
             ))}
@@ -411,9 +411,9 @@ function Attempts({ d, slug }: { d: RunStandingDetail; slug: string }) {
             <TR key={a.id}>
               <TD>
                 {a.id === r.id ? (
-                  <span className="font-mono text-12-5 font-semibold">#{a.n}</span>
+                  <span className="font-mono text-13 font-semibold">#{a.n}</span>
                 ) : (
-                  <Link href={runHref(slug, a.id)} className="font-mono text-12-5 font-semibold text-link hover:underline">
+                  <Link href={runHref(slug, a.id)} className="font-mono text-13 font-semibold text-link hover:underline">
                     #{a.n}
                   </Link>
                 )}
@@ -442,7 +442,7 @@ function Events({ d }: { d: RunStandingDetail }) {
   if (d.events.length === 0) return <FactsEmpty>{t("runs.noEvents")}</FactsEmpty>;
   return (
     <section>
-      <ViewHeading right={<span className="text-12-5 text-muted">{d.eventsHasMore ? t("runs.firstN", { n: time.number(d.events.length) }) : time.number(d.events.length)}</span>}>{t("runs.transitions")}</ViewHeading>
+      <ViewHeading right={<span className="text-13 text-muted">{d.eventsHasMore ? t("runs.firstN", { n: time.number(d.events.length) }) : time.number(d.events.length)}</span>}>{t("runs.transitions")}</ViewHeading>
       <Table aria-label={t("runs.transitions")}>
         <THead className="bg-sunken">
           <TR>
@@ -466,7 +466,7 @@ function Events({ d }: { d: RunStandingDetail }) {
               </TD>
               <TD>{e.actor.name ?? enumLabel("runActorType", e.actor.type, language)}</TD>
               <TD>
-                <span className="text-12-5 text-muted">{e.reason ? (/^[a-z_]+$/.test(e.reason) ? enumLabel("failureCause", e.reason, language) : e.reason) : "—"}</span>
+                <span className="text-13 text-muted">{e.reason ? (/^[a-z_]+$/.test(e.reason) ? enumLabel("failureCause", e.reason, language) : e.reason) : "—"}</span>
               </TD>
             </TR>
           ))}
@@ -531,13 +531,13 @@ function Lease({ r }: { r: RunStanding }) {
                 <EnumBadge family="runExpirySource" value={x.source} />
                 <span title={formatDateTime(x.at, language)}>{fmtTime(x.at, language)}</span>
                 <StatusBadge family="lease" value={x.verdict} />
-                <span className="text-12-5 text-muted">{said(x.says.rule, language)}</span>
+                <span className="text-13 text-muted">{said(x.says.rule, language)}</span>
               </li>
             ))}
           </ul>
         </section>
       ) : (
-        <p className="text-12-5 text-subtle" title={saidOrNull(h.expiries[0]?.says.rule, language) ?? undefined}>
+        <p className="text-13 text-subtle" title={saidOrNull(h.expiries[0]?.says.rule, language) ?? undefined}>
           {saidOrNull(h.expiries[0]?.says.rule, language) ?? saidOrNull(h.says.expiryDetail, language)}
         </p>
       )}

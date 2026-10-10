@@ -85,7 +85,7 @@ export function ReportLines({ reports, slug }: { reports: readonly ReportStandin
             <StatusBadge family="reportTriage" value={r.triage} />
             <Written className="min-w-0 flex-1 truncate" text={r.summary} lang={r.writtenLang} />
             <span className="text-subtle">{enumLabel("agentReportKind", r.kind, language)}</span>
-            <span className="font-mono text-11 text-subtle" title={time.dateTime(r.createdAt)}>
+            <span className="font-mono text-12 text-subtle" title={time.dateTime(r.createdAt)}>
               {time.age(r.createdAt)}
             </span>
           </Link>
@@ -116,7 +116,7 @@ function Outcome({ r, slug }: { r: ReportStanding; slug: string }) {
   const t = useCopy();
   if (r.feedback) {
     return (
-      <Link href={feedbackHref(slug, r.feedback.key)} className="font-mono text-12-5 text-link hover:underline">
+      <Link href={feedbackHref(slug, r.feedback.key)} className="font-mono text-13 text-link hover:underline">
         {r.feedback.key}
       </Link>
     );
@@ -124,14 +124,14 @@ function Outcome({ r, slug }: { r: ReportStanding; slug: string }) {
   if (r.linkedIssueId) {
     const key = r.waitingOn.kind === "issue" && r.waitingOn.ref ? r.waitingOn.ref : r.linkedIssueId;
     return (
-      <Link href={issueHref(slug, key)} className="font-mono text-12-5 text-link hover:underline">
+      <Link href={issueHref(slug, key)} className="font-mono text-13 text-link hover:underline">
         {r.waitingOn.ref ?? shortId(r.linkedIssueId)}
       </Link>
     );
   }
   if (r.duplicateOf) {
     return (
-      <Link href={reportHref(slug, r.duplicateOf)} className="font-mono text-12-5 text-link hover:underline">
+      <Link href={reportHref(slug, r.duplicateOf)} className="font-mono text-13 text-link hover:underline">
         {t("schedules.report.repeats", { id: shortId(r.duplicateOf) })}
       </Link>
     );
@@ -171,7 +171,7 @@ export function ReportFacts({ r, slug }: { r: ReportStanding; slug: string }) {
         <Fact label={t("schedules.report.fromLabel")}>
           {r.fire ? (
             <>
-              <Link href={fireHref(slug, r.fire.id)} className="font-mono text-12-5 text-link hover:underline">
+              <Link href={fireHref(slug, r.fire.id)} className="font-mono text-13 text-link hover:underline">
                 #{shortId(r.fire.id)}
               </Link>
               <span className="text-muted">{t("schedules.report.of")}</span>
@@ -191,7 +191,7 @@ export function ReportFacts({ r, slug }: { r: ReportStanding; slug: string }) {
 function Refusal({ error }: { error: unknown }) {
   if (!error) return null;
   return (
-    <p className="mt-2 text-12-5 text-danger" data-testid="triage-refusal">
+    <p className="mt-2 text-13 text-danger" data-testid="triage-refusal">
       {formatRefusal(error)}
     </p>
   );
@@ -279,7 +279,7 @@ function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projectId: st
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder={t("schedules.report.dismissPlaceholder")}
-            className="min-w-[280px] flex-1"
+            className="min-w-70 flex-1"
           />
           <Button type="submit" size="sm" disabled={triage.isPending} data-testid="report-dismiss">
             {t("schedules.report.dismiss")}
@@ -297,7 +297,7 @@ function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projectId: st
             if (dupOf) act({ act: "duplicate", duplicateOf: dupOf });
           }}
         >
-          <span className="min-w-[280px] flex-1">
+          <span className="min-w-70 flex-1">
             <NativeSelect
               aria-label={t("schedules.report.repeatsWhich")}
               value={dupOf}
@@ -323,7 +323,7 @@ function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projectId: st
       ) : null}
       <Refusal error={triage.error} />
       {r.feedback ? (
-        <p className="mt-2 text-12-5 text-muted">
+        <p className="mt-2 text-13 text-muted">
           {t("schedules.report.became")}{" "}
           <Link href={feedbackHref(slug, r.feedback.key)} className="text-link hover:underline">
             {r.feedback.key}
@@ -359,8 +359,8 @@ export function ReportPeek({
         title={<Written text={r.summary} lang={r.writtenLang} />}
         action={<ReportPrimary r={r} projectId={projectId} canWrite={canWrite} />}
       />
-      <ReportBanner r={r} className="px-[18px]" />
-      <div className="grid gap-5 px-[18px] pb-4 pt-4">
+      <ReportBanner r={r} className="px-4.5" />
+      <div className="grid gap-5 px-4.5 pb-4 pt-4">
         {canWrite ? <ReportTriage r={r} projectId={projectId} slug={slug} /> : null}
         <ReportFacts r={r} slug={slug} />
       </div>
@@ -375,7 +375,7 @@ function Prose({ title, children, lang }: { title: string; children: string | nu
   return (
     <section>
       <ViewHeading>{title}</ViewHeading>
-      <p className="max-w-[80ch] whitespace-pre-wrap text-14 leading-relaxed" lang={lang ?? undefined}>
+      <p className="max-w-3xl whitespace-pre-wrap text-14 leading-relaxed" lang={lang ?? undefined}>
         {children}
         <WrittenMark lang={lang} />
       </p>
@@ -387,9 +387,9 @@ function Source({ r, slug }: { r: ReportStanding; slug: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   return (
-    <dl className="grid max-w-[640px] grid-cols-[140px_minmax(0,1fr)] gap-y-2 text-13" data-testid="report-source">
+    <dl className="grid max-w-160 grid-cols-[140px_minmax(0,1fr)] gap-y-2 text-13" data-testid="report-source">
       <dt className="text-muted">{t("schedules.report.signal")}</dt>
-      <dd className="font-mono text-12-5">{r.signalKey}</dd>
+      <dd className="font-mono text-13">{r.signalKey}</dd>
       {r.fire ? (
         <>
           <dt className="text-muted">{t("schedules.report.fire")}</dt>

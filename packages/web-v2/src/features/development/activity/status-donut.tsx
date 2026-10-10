@@ -24,12 +24,12 @@ export function StatusDonut({ data }: { data: StatusDonutData }) {
         ) : (
           <div className="flex items-center gap-5">
             <div
-              className="relative size-[112px] flex-none rounded-full"
+              className="relative size-28 flex-none rounded-full"
               style={{ background: conicGradient(segments) }}
               role="img"
               aria-label={t("overview.donut.aria", { n: total })}
             >
-              <div className="absolute inset-[18px] flex flex-col items-center justify-center rounded-full bg-surface">
+              <div className="absolute inset-4.5 flex flex-col items-center justify-center rounded-full bg-surface">
                 <span className="font-mono text-xl font-bold tabular-nums text-fg">{total}</span>
                 <span className="fg-caption text-subtle">{t("overview.donut.open")}</span>
               </div>

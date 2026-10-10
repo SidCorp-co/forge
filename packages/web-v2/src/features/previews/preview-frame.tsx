@@ -125,7 +125,7 @@ export function PreviewFrame({ preview, issueLabel, height = 520, frameRef }: { 
         </Button>
       </div>
       {problem ? (
-        <p role="alert" className="fg-body-sm pb-2" style={{ color: "var(--red-600)" }}>
+        <p role="alert" className="fg-body-sm pb-2 text-danger-11">
           {t("previews.frame.ticketFailed")}: {formatApiError(problem)}
         </p>
       ) : null}

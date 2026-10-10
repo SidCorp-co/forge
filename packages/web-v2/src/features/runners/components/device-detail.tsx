@@ -39,7 +39,7 @@ export function BuildChip({ chip, className = "" }: { chip: DeviceBuildChip; cla
 			: "text-muted bg-sunken";
 	return (
 		<span
-			className={`${className}inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium ${tone}`}
+			className={`${className}inline-flex items-center rounded px-1.5 py-0.5 text-12 font-medium ${tone}`}
 			title={chip.title}
 		>
 			{chip.label}
@@ -233,7 +233,7 @@ function ProjectPoolRow({
 			onClick={() =>
 				router.push(`/projects/${assignment.slug}/settings?tab=connections#runners`)
 			}
-			className="flex w-full items-center justify-between gap-2 py-3 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+			className="flex w-full items-center justify-between gap-2 py-3 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
 		>
 			<div className="flex min-w-0 items-center gap-2">
 				<HealthDot health={runnerHealth(assignment.status)} withLabel={false} />
@@ -243,7 +243,7 @@ function ProjectPoolRow({
 			</div>
 			<div className="flex flex-none items-center gap-2">
 				{assignment.repoPath && (
-					<code className="fg-caption max-w-[200px] truncate text-subtle">
+					<code className="fg-caption max-w-50 truncate text-subtle">
 						{assignment.repoPath}
 					</code>
 				)}

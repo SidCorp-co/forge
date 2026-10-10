@@ -114,7 +114,7 @@ function ScopeTabs({
           onClick={() => onChange(s)}
           className={
             scope === s
-              ? "rounded px-3 py-1 text-13 font-medium text-fg bg-surface shadow-sm"
+              ? "rounded px-3 py-1 text-13 font-medium text-fg bg-surface"
               : "rounded px-3 py-1 text-13 text-muted hover:text-fg"
           }
         >
@@ -142,7 +142,7 @@ function DeviceNameCell({ device }: { device: DeviceRow | OrgDeviceRow }) {
       <span className="font-semibold text-fg">
         {device.name}
         {device.ownedByMe ? null : (
-          <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-muted bg-sunken">
+          <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-12 font-medium text-muted bg-sunken">
             {t("runners.device.pairedByOther")}
           </span>
         )}

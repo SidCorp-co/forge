@@ -31,7 +31,7 @@ export function TurnsTruncated({
         type="button"
         disabled={loading}
         onClick={onLoad}
-        className="fg-body-sm text-accent-text hover:underline disabled:text-muted disabled:no-underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        className="fg-body-sm text-accent-text hover:underline disabled:text-muted disabled:no-underline focus-visible:outline-none focus-visible:shadow-focus"
       >
         {loading ? t("sessions.truncatedLoading") : t("sessions.truncatedLoad", { n: time.number(TURN_PAGE_CAP * TURN_PAGE_SIZE) })}
       </button>

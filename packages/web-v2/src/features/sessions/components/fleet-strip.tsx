@@ -110,7 +110,7 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
             return (
               <div
                 key={d.id}
-                className="min-w-[200px] flex-none px-4 py-1 first:pl-0"
+                className="min-w-50 flex-none px-4 py-1 first:pl-0"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-1.5">
@@ -148,7 +148,7 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
                       </>
                     )}
                     {stale && (
-                      <span className="fg-caption" style={{ color: "var(--amberw-600)" }}>
+                      <span className="fg-caption text-warn-11">
                         {t("sessions.fleet.stalled")}
                       </span>
                     )}

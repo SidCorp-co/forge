@@ -60,7 +60,7 @@ export function LiveRunsCard({
                   <button
                     type="button"
                     onClick={() => open(run)}
-                    className="flex w-full items-center gap-2.5 py-2 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                    className="flex w-full items-center gap-2.5 py-2 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
                   >
                     <span className="size-2 flex-none rounded-full" style={{ background: stageColor(run.currentStep ?? "") }} />
                     <StatusBadge family="pipelineRun" value={run.status} />
@@ -91,7 +91,7 @@ export function LiveRunsCard({
           <button
             type="button"
             onClick={() => router.push(`/projects/${slug}/pipeline`)}
-            className="fg-caption mt-3 flex w-full items-center gap-1.5 rounded-md px-2.5 py-2 text-left text-muted transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="fg-caption mt-3 flex w-full items-center gap-1.5 rounded-md px-2.5 py-2 text-left text-muted transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
           >
             <Icon name="pause" size={13} className="flex-none text-subtle" />
             <span className="min-w-0 flex-1">

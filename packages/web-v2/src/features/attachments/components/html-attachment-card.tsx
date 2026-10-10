@@ -45,7 +45,7 @@ export function HtmlAttachmentCard({
         className="flex items-center gap-2 rounded-md border border-line bg-surface px-3 py-2 hover:bg-hover"
       >
         <Icon name="folder" size={16} className="flex-none text-subtle" />
-        <span className="fg-body-sm max-w-[14rem] truncate text-fg" title={name}>
+        <span className="fg-body-sm max-w-56 truncate text-fg" title={name}>
           {name}
         </span>
         <span className="fg-caption flex-none">

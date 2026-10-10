@@ -269,7 +269,7 @@ function useRememberIssue(id: string, slug: string, displayId: string | undefine
 function IssueUnread({ query, switching = false }: { query: ReturnType<typeof useIssue>; switching?: boolean }) {
   const t = useCopy();
   return (
-    <div className="grid min-h-[60vh] place-items-center">
+    <div className="grid min-h-128 place-items-center">
       {query.isLoading || switching ? (
         <ProjectLoader label={t("issues.detail.loading")} />
       ) : (

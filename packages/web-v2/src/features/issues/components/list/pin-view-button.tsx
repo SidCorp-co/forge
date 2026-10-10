@@ -71,7 +71,7 @@ export function PinViewButton({
         takesFocus
         role="dialog"
         aria-label={t("issues.pin.dialog")}
-        className="w-72 overflow-y-auto rounded-lg border border-line bg-surface p-3 shadow-lg"
+        className="w-72 overflow-y-auto rounded-md border border-line bg-surface p-3"
       >
         <p className="fg-caption mb-2 text-muted">
           {t("issues.pin.lead")}
