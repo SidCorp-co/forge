@@ -1,1 +1,1 @@
-**Requirements move on by themselves, and Forge says things briefly.** A ready draft advances where nobody must confirm. Reporters hear each step, every string is twelve words or fewer, and a token's projects can be edited, keeping its secret.
+**Requirements move on by themselves, and Forge speaks English, briefly.** A ready draft advances where nobody must confirm. Reporters hear each step, strings stay within twelve words, menus ignore a project's language, and a token's projects can be edited.

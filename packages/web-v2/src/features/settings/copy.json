@@ -2,7 +2,6 @@
   "en": {
     "language.en": "English",
     "language.label": "Interface language",
-    "language.project": "Project default",
     "language.vi": "Tiếng Việt",
     "settings.mcp.addTo": "Add to",
     "settings.mcp.andReplace": "and replace",
@@ -103,7 +102,6 @@
   "vi": {
     "language.en": "English",
     "language.label": "Ngôn ngữ giao diện",
-    "language.project": "Theo dự án",
     "language.vi": "Tiếng Việt",
     "settings.mcp.addTo": "Thêm vào",
     "settings.mcp.andReplace": "và thay",
