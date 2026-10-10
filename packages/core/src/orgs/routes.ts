@@ -6,6 +6,7 @@ import { mailDeliveryEnabled, sendMail } from '../integrations/identity/index.js
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { env } from '../lib/env.js';
 import { buildInvitationLink, escapeInvitationHtml } from '../lib/invitation.js';
+import { mailInvitation, refuseUnmailable } from '../lib/invitation-mail.js';
 import { logger } from '../lib/logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -182,6 +183,7 @@ orgRoutes.post(
           '/role',
         );
       }
+      refuseUnmailable(env, refuse);
       const invite = await orgInvitationContext(orgId, callerId);
       const { token, expiresAt } = await issueOrgInvitationToken({
         orgId,
@@ -189,15 +191,17 @@ orgRoutes.post(
         email,
         role,
       });
-      try {
-        await sendOrgInvitationEmail(email, {
-          orgName: invite.orgName ?? 'an organization',
-          inviterEmail: invite.inviterEmail ?? 'a teammate',
-          token,
-        });
-      } catch (sendErr) {
-        logger.error({ err: sendErr, orgId, email }, 'failed to send org invitation email');
-      }
+      await mailInvitation({
+        email,
+        send: () =>
+          sendOrgInvitationEmail(email, {
+            orgName: invite.orgName ?? 'an organization',
+            inviterEmail: invite.inviterEmail ?? 'a teammate',
+            token,
+          }),
+        withdraw: () => revokeOrgInvitation(orgId, email),
+        refuse,
+      });
       const body: { invited: true; expiresAt: Date; token?: string } = { invited: true, expiresAt };
       if (env.SMTP_DEBUG || env.NODE_ENV === 'test') body.token = token;
       return c.json(body, 202);

@@ -11,6 +11,8 @@ export const PROJECT_REFUSAL_CODES = [
 	"INVITATION_EMAIL_MISMATCH",
 	"PROJECT_SLUG_UNKNOWN",
 	"PROJECT_SLUG_RESERVED",
+	"MAIL_NOT_CONFIGURED",
+	"INVITATION_MAIL_FAILED",
 ] as const;
 
 export type ProjectRefusalCode = (typeof PROJECT_REFUSAL_CODES)[number];
@@ -18,4 +20,6 @@ export type ProjectRefusalCode = (typeof PROJECT_REFUSAL_CODES)[number];
 /** A route addressed by a slug no project carries is not found, not malformed. */
 export const PROJECT_REFUSAL_STATUSES = {
 	PROJECT_SLUG_UNKNOWN: 404,
+	MAIL_NOT_CONFIGURED: 503,
+	INVITATION_MAIL_FAILED: 503,
 } as const satisfies RefusalStatuses<ProjectRefusalCode>;

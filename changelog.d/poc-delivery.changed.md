@@ -1,1 +1,1 @@
-**An issue's rail shows its traces, plan revision, workflow, feedback, release and lease again; review time counts with its checks; passing has one definition.**
+**Invitations are mailed or refused by name, token writes are recorded, and an issue's rail shows its traces, workflow, feedback, release and lease.** Review time counts with checks; passing has one definition.
