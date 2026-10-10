@@ -9,6 +9,21 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.231] - 2026-10-10
+
+New requirements need only a title; Ask Agent opens large with a Half/Large switch
+
+### Changed
+
+- **Chat reaches models only through the gateway and does more from one conversation.** It edits idea previews and records feedback; masters write in the project's language; alerts say when their level changed; storefront MCP credentials stay behind a relay.
+- **The project dashboard shows its health over a window.** Invitations are mailed or refused by name, token writes are recorded, an issue's rail shows its traces, and a parked issue can no longer be closed.
+- **Requirements move on by themselves, and Forge speaks English, briefly.** A ready draft advances unconfirmed and each list row shows its stage. Reporters hear each step, strings stay within twelve words, menus ignore project language, and token projects are editable.
+- **The web app follows one written standard, in light and dark.** OKLCH colour scales, Inter, flat surfaces, five page templates and one set of blocks replace hand-made copies; the React Compiler is on.
+
+### Fixed
+
+- **Ten feedback items from the dev judges are fixed.** Recordings seek, titles refuse plainly, checklists read whole, runs are found by box id. Requirements keep their age per state and wrap Waits on; a decision can answer an open question.
+
 ## [0.4.0-dev.230] - 2026-10-10
 
 Record pages open on their state, and every screen's copy follows the twelve-word rule
