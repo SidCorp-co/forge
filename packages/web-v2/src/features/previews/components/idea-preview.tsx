@@ -14,6 +14,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
 import { ideaApi } from "../idea-api";
+import { previewQueries } from "../queries";
 import { askPageSnapshot, SnapshotUnavailable } from "../idea-snapshot";
 import { PreviewFrame } from "./preview-frame";
 import { MessageBox } from "./issue-preview";
@@ -21,16 +22,10 @@ import { MessageBox } from "./issue-preview";
 type Copy = ReturnType<typeof useCopy>;
 type CopyKey = Parameters<Copy>[0];
 
-const STARTING_POLL_MS = 3000;
 
 /** The idea preview's record, read again on a short clock while it starts, so a missed frame cannot leave it starting for good. */
 export function useIdeaPreview(initial: PreviewRecord) {
-  return useQuery({
-    queryKey: ["idea-preview", initial.id],
-    queryFn: () => ideaApi.get(initial.id),
-    initialData: initial,
-    refetchInterval: (q) => (q.state.data?.state === "starting" ? STARTING_POLL_MS : false),
-  });
+  return useQuery(previewQueries.idea(initial));
 }
 
 const reasonKeys = (r: PreviewFailureReason) => ({ name: `previews.failed.reason.${r}` as CopyKey, fix: `previews.failed.fix.${r}` as CopyKey });

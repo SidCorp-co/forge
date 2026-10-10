@@ -3,12 +3,12 @@
 // them the retired rows with every verdict each earned (ISS-489).
 
 import { formatAttachmentCap, safeAttachmentName } from "@forge/contracts/attachments";
+import { issueKeys } from "./queries";
 import { RELEASE_CLIP_MAX_BYTES, RELEASE_CLIP_MIMES, RELEASE_PICTURE_MIMES, releaseMediaKindOf } from "@forge/contracts/release-page";
 import type { JudgedBuild, StorefrontDraftVerdictView } from "@forge/contracts/verdict-identity";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { issueDetailApi } from "./detail-api";
-import { issueKeySegment } from "@/lib/api/ref-bridge";
 
 export interface CriterionVerdict extends StorefrontDraftVerdictView {
   verdict: "pass" | "short" | "fail" | "skipped";
@@ -49,7 +49,7 @@ export interface RetiredCriterionRow {
 /** `issueId` is the uuid, or the display key with the `projectId` it is scoped by. */
 export function useCriteria(issueId: string | undefined, projectId?: string) {
   return useQuery({
-    queryKey: ["issue", issueKeySegment(issueId, projectId), "criteria"],
+    queryKey: issueKeys.criteria(issueId, projectId),
     queryFn: () =>
       apiClient<{ criteria: CriterionRow[]; retired: RetiredCriterionRow[] }>(
         `/issues/${issueId}/criteria${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`,
@@ -70,7 +70,7 @@ export const isWholeSha = (sha: string) => WHOLE_SHA.test(sha.trim());
  */
 export function useJudgedBuild(issueId: string, enabled: boolean) {
   return useQuery({
-    queryKey: ["issue", issueId, "judged-build"],
+    queryKey: issueKeys.judgedBuild(issueId),
     queryFn: () => apiClient<JudgedBuild>(`/issues/${issueId}/judged-build`),
     enabled,
     staleTime: 60_000,

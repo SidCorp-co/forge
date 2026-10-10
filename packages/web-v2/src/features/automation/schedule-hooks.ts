@@ -7,16 +7,12 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useToast } from "@/providers/toast-provider";
 import { formatRefusal } from "@/lib/api/error";
-import { automationKey } from "@/features/automation/hooks";
+import { automationKeys, automationQueries } from "./queries";
 import { schedulesApi } from "./schedule-api";
 import type { ScheduleInput } from "./schedule-types";
 
 export function useSchedules(projectId: string | undefined) {
-  return useQuery({
-    queryKey: ["schedules", projectId, "list"],
-    queryFn: () => schedulesApi.list(projectId as string),
-    enabled: !!projectId,
-  });
+  return useQuery(automationQueries.scheduleList(projectId));
 }
 
 function useScheduleMutation<TArgs>(
@@ -29,8 +25,8 @@ function useScheduleMutation<TArgs>(
   const { toast } = useToast();
   const t = useCopy();
   const refresh = () => {
-    void qc.invalidateQueries({ queryKey: ["schedules", projectId] });
-    void qc.invalidateQueries({ queryKey: automationKey(projectId) });
+    void qc.invalidateQueries({ queryKey: automationKeys.schedules(projectId) });
+    void qc.invalidateQueries({ queryKey: automationKeys.project(projectId) });
   };
   return useMutation({
     mutationFn: fn,

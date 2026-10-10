@@ -2,12 +2,12 @@
 
 
 import { questionsApi } from "@/features/questions";
+import { issueKeys } from "./queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { issueDetailApi } from "./detail-api";
-import { issueKeySegment } from "@/lib/api/ref-bridge";
 import { canonicalIssueId, issueQueryKey } from "./derive";
 
 // ISS-1160 — `id` is the display key as often as the row uuid; `projectId` is
@@ -34,7 +34,7 @@ export function useIssue(id: string | undefined, projectId?: string) {
 
 export function useComments(id: string | undefined, projectId?: string) {
   return useQuery({
-    queryKey: ["comments", issueKeySegment(id, projectId)],
+    queryKey: issueKeys.comments(id, projectId),
     queryFn: () => issueDetailApi.listComments(id as string, projectId),
     enabled: !!id,
   });
@@ -42,7 +42,7 @@ export function useComments(id: string | undefined, projectId?: string) {
 
 export function useActivity(id: string | undefined, projectId?: string) {
   return useQuery({
-    queryKey: ["activities", issueKeySegment(id, projectId)],
+    queryKey: issueKeys.activities(id, projectId),
     queryFn: () => issueDetailApi.listActivity(id as string, 50, projectId),
     enabled: !!id,
   });
@@ -50,7 +50,7 @@ export function useActivity(id: string | undefined, projectId?: string) {
 
 export function useAttachments(id: string | undefined, projectId?: string) {
   return useQuery({
-    queryKey: ["issue", issueKeySegment(id, projectId), "attachments"],
+    queryKey: issueKeys.attachments(id, projectId),
     queryFn: () => issueDetailApi.listAttachments(id as string, projectId),
     enabled: !!id,
   });

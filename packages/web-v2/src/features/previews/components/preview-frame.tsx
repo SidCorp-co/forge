@@ -15,6 +15,7 @@ import { Button } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { previewsApi } from "../api";
+import { previewQueries } from "../queries";
 
 /**
  * What the frame may do: run scripts as its own origin, post forms, open popups, and ask the browser
@@ -53,13 +54,7 @@ export function PreviewFrame(props: FrameProps) {
 function FrameEntry({ preview, issueLabel, height = 520, frameRef, round, onReload }: FrameProps & { round: number; onReload: () => void }) {
   const t = useCopy();
   // a ticket is single-use: one per entry, read once and never cached past it
-  const ticket = useQuery({
-    queryKey: ["previews", "ticket", preview.id, round],
-    queryFn: () => previewsApi.ticketUrl(preview.id),
-    staleTime: Number.POSITIVE_INFINITY,
-    gcTime: 0,
-    retry: false,
-  });
+  const ticket = useQuery(previewQueries.ticket(preview.id, round));
   const src = ticket.data ?? null;
   const [failure, setFailure] = useState<unknown>(null);
   const [loaded, setLoaded] = useState(false);

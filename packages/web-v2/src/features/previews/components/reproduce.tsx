@@ -7,6 +7,7 @@
 // Core decides every move and binds the word to the patch it served; this draws the records and
 // says by name what core refused. The reproduce's id rides the URL, so a reload keeps it.
 
+import { previewKeys } from "../queries";
 import { PREVIEW_FAILURE_REASONS, type PreviewFailureReason, type PreviewRecord } from "@forge/contracts/preview";
 import type { FixConfirmation } from "@forge/contracts/reproduce";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -27,7 +28,7 @@ export const REPRODUCE_PARAM = "reproduce";
 const STARTING_POLL_MS = 3000;
 
 export const reproduceKey = (id: string | null) => ["preview", "reproduce", id] as const;
-export const recordingsKey = (projectId: string, fb: string) => ["recordings", projectId, fb] as const;
+export const recordingsKey = previewKeys.recordings;
 
 const REASONS = Object.fromEntries(
   PREVIEW_FAILURE_REASONS.map((r) => [r, { name: `previews.failed.reason.${r}`, fix: `previews.failed.fix.${r}` }]),

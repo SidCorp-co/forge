@@ -1,4 +1,5 @@
 import type { IssueChecksView } from "@forge/contracts/check-runs";
+import { issueKeys } from "./queries";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 
@@ -12,7 +13,7 @@ export const checksApi = {
 
 export function useIssueChecks(issueId: string | undefined) {
   return useQuery({
-    queryKey: ["issue", issueId, "checks"],
+    queryKey: issueKeys.checks(issueId),
     queryFn: () => checksApi.list(issueId as string),
     enabled: !!issueId,
   });

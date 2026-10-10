@@ -1,4 +1,5 @@
 import type { IssuePatternResponse, IssuePatterns, PatternDecision } from "@forge/contracts/patterns";
+import { issueKeys } from "./queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { issueKeySegment } from "@/lib/api/ref-bridge";
@@ -23,7 +24,7 @@ export const patternsApi = {
 
 export function useIssuePatterns(issueId: string | undefined, projectId?: string) {
   return useQuery({
-    queryKey: ["issue", issueKeySegment(issueId, projectId), "patterns"],
+    queryKey: issueKeys.patterns(issueId, projectId),
     queryFn: () => patternsApi.list(issueId as string, projectId),
     enabled: !!issueId,
   });
