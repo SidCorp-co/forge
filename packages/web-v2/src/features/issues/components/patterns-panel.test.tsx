@@ -38,15 +38,6 @@ const listed = (patterns: unknown[], decidable: string[]) => ({
   decidable,
 });
 
-/** Core answering the read from `patterns()` each time, and the decision with `decide`. */
-function fakeCoreWith(patterns: () => unknown[], decide: (c: Call) => { status?: number; body: unknown }) {
-  return fakeCore((c) => {
-    if (c.method === "GET" && c.path.startsWith("/issues/i1/patterns")) return { body: listed(patterns(), ["p1"]) };
-    if (c.method === "POST" && c.path === "/issues/i1/patterns/p1/decision") return decide(c);
-    return undefined;
-  });
-}
-
 function core(patterns: unknown[], decidable: string[], decided: (c: Call) => unknown = () => ({})) {
   return fakeCore((c) => {
     if (c.method === "GET" && c.path.startsWith("/issues/i1/patterns")) return { body: listed(patterns, decidable) };
@@ -137,29 +128,75 @@ describe("what the issue page says around a review (judge at 9988a9335, comment 
     expect(calls.some((c) => c.method === "POST")).toBe(false);
   });
 
-  it("after a decision refused as already taken, shows the decision that stands", async () => {
+  // Two reviewers decide the same pattern: Ana's approval lands first, so this reviewer's is refused
+  // 409. The line shows Ana's decision; the form says theirs was not recorded, by whom, and keeps
+  // what they typed (judge J1 on 0.4.0-dev.222: it unmounted and the reason went without a word).
+  const raced = (decidedBy: string, decidedSession: string | null = null) => {
     let decided = false;
-    fakeCoreWith(() => (decided ? [view({ decision: "approved", pending: false, decisionReason: "fits" })] : [view({})]), () => {
-      decided = true;
-      return {
-        status: 409,
-        body: {
-          error: {
-            code: "PATTERN_ALREADY_DECIDED",
-            message: "already decided",
-            refusals: [{ code: "PATTERN_ALREADY_DECIDED", path: "", detail: "`queue-door` on ISS-9 was already approved; a decision is taken once" }],
+    return fakeCore((c) => {
+      if (c.method === "GET" && c.path === "/projects/pr1/members") {
+        return {
+          body: [
+            { userId: "u-ana", email: "ana@example.com", displayName: "Ana", kind: "human", role: "admin", createdAt: "" },
+            { userId: "u-box", email: "box@example.com", displayName: null, kind: "agent", role: "member", createdAt: "" },
+          ],
+        };
+      }
+      if (c.method === "GET" && c.path.startsWith("/issues/i1/patterns")) {
+        const standing = view({ decision: "approved", pending: false, decisionReason: "fits", decidedBy, decidedSession });
+        return { body: listed([decided ? standing : view({})], ["p1"]) };
+      }
+      if (c.method === "POST" && c.path === "/issues/i1/patterns/p1/decision") {
+        decided = true;
+        return {
+          status: 409,
+          body: {
+            error: {
+              code: "PATTERN_ALREADY_DECIDED",
+              message: "already decided",
+              refusals: [{ code: "PATTERN_ALREADY_DECIDED", path: "", detail: "`queue-door` on ISS-9 was already approved; a decision is taken once" }],
+            },
           },
-        },
-      };
+        };
+      }
+      return undefined;
     });
+  };
+
+  const decideAndLose = async (typed: string) => {
     renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Review" }));
     const form = await screen.findByTestId("pattern-decide");
-    await user.type(within(form).getByRole("textbox"), "nothing catalogued consumes a queue");
+    await user.type(within(form).getByRole("textbox"), typed);
     await user.click(within(form).getByRole("button", { name: "Approve" }));
     await waitFor(() => expect(screen.getByTestId("pattern-queue-door")).toHaveTextContent("was approved: fits"));
-    expect(screen.queryByTestId("pattern-decide")).toBeNull();
+    return screen.getByTestId("pattern-decide");
+  };
+
+  it("after a decision refused as already taken, shows the decision that stands, says by whom, and keeps the reason", async () => {
+    raced("u-ana");
+    const form = await decideAndLose("nothing catalogued consumes a queue");
+    await waitFor(() =>
+      expect(within(form).getByRole("alert")).toHaveTextContent("Not recorded: Ana already approved it. Your reason is kept."),
+    );
+    expect(within(form).getByRole("textbox")).toHaveValue("nothing catalogued consumes a queue");
+    expect(within(form).queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(within(form).queryByRole("button", { name: "Return" })).toBeNull();
+  });
+
+  it("names a run that decided first as a run", async () => {
+    raced("u-box", "s-run");
+    const form = await decideAndLose("mine");
+    await waitFor(() => expect(within(form).getByRole("alert")).toHaveTextContent("Not recorded: A run already approved it."));
+  });
+
+  it("names a decider who is not a member as another reviewer", async () => {
+    raced("u-gone");
+    const form = await decideAndLose("mine");
+    await waitFor(() =>
+      expect(within(form).getByRole("alert")).toHaveTextContent("Not recorded: Another reviewer already approved it."),
+    );
   });
 
   it("says when the patterns could not be read, and reads them again on request", async () => {

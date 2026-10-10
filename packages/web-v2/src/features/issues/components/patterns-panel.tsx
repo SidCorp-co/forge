@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Banner, Button, Field, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
+import { useProjectMembers } from "../hooks";
 import { useDecidePattern, useIssuePatterns } from "../patterns-api";
 
 /**
@@ -93,8 +94,8 @@ function PatternRow({
         {state}
         {pattern.summary ? <span className="mt-1 block">{pattern.summary}</span> : null}
       </Banner>
-      {/* a decision taken elsewhere (a 409 here) reloads the line, and the form goes with the pending state */}
-      {open && pattern.pending ? (
+      {/* the form outlives the pending state: a decision taken first elsewhere is said there, the reason kept */}
+      {open ? (
         <DecideForm
           issueId={issueId}
           projectId={projectId}
@@ -126,11 +127,14 @@ function DecideForm({
   const limit = PATTERN_LIMITS.reason;
   const tooLong = length > limit;
   const blocked = decide.isPending || length === 0 || tooLong;
-  const error = tooLong
-    ? t("issues.patterns.reasonTooLong", { count: String(length), limit: String(limit) })
-    : decide.error
-      ? `${t("issues.patterns.failed")}: ${formatApiError(decide.error)}`
-      : undefined;
+  const decidedFirst = useDecidedFirst(pattern, projectId);
+  const error =
+    decidedFirst ??
+    (tooLong
+      ? t("issues.patterns.reasonTooLong", { count: String(length), limit: String(limit) })
+      : decide.error
+        ? `${t("issues.patterns.failed")}: ${formatApiError(decide.error)}`
+        : undefined);
   return (
     <div className="grid gap-2 rounded-lg border border-line px-4 py-3" data-testid="pattern-decide">
       <Field
@@ -142,16 +146,41 @@ function DecideForm({
         <Textarea value={reason} rows={3} onChange={(e) => setReason(e.target.value)} />
       </Field>
       <div className="flex gap-2">
-        <Button size="sm" variant="primary" disabled={blocked} onClick={() => send("approved")}>
-          {t("issues.patterns.approve")}
-        </Button>
-        <Button size="sm" variant="secondary" disabled={blocked} onClick={() => send("returned")}>
-          {t("issues.patterns.return")}
-        </Button>
+        {decidedFirst ? null : (
+          <>
+            <Button size="sm" variant="primary" disabled={blocked} onClick={() => send("approved")}>
+              {t("issues.patterns.approve")}
+            </Button>
+            <Button size="sm" variant="secondary" disabled={blocked} onClick={() => send("returned")}>
+              {t("issues.patterns.return")}
+            </Button>
+          </>
+        )}
         <Button size="sm" variant="ghost" disabled={decide.isPending} onClick={onClose}>
           {t("issues.patterns.cancel")}
         </Button>
       </div>
     </div>
   );
+}
+
+/**
+ * Once the pattern stands decided while this form is open (a 409 PATTERN_ALREADY_DECIDED, or a
+ * decision the event router brought in), the refusal said by name: who decided first, and that this
+ * reviewer's reason was not recorded but is kept. Undefined while the pattern still waits.
+ */
+function useDecidedFirst(pattern: IssuePatternView, projectId: string): string | undefined {
+  const t = useCopy();
+  const members = useProjectMembers(pattern.pending ? undefined : projectId);
+  if (pattern.pending || pattern.decision === null) return undefined;
+  const member = members.data?.find((m) => m.userId === pattern.decidedBy);
+  const who =
+    pattern.decidedSession !== null
+      ? t("issues.patterns.decidedByRun")
+      : member
+        ? (member.displayName ?? member.email)
+        : t("issues.patterns.decidedBySomeone");
+  return pattern.decision === "approved"
+    ? t("issues.patterns.decidedFirstApproved", { who })
+    : t("issues.patterns.decidedFirstReturned", { who });
 }
