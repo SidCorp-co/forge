@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.224] - 2026-10-10
+
+Pattern decisions, design refusals and malformed checks now explain themselves in plain words
+
+### Fixed
+
+- **Feedback the record cannot verify says so.** An item naming no criterion promises no verify date. Past its window it shows why the record could not verify it, and waits on whoever triages feedback.
+- **Intake drafts link only what they can quote.** Each link carries the words it rests on, a workflow the item touches is named or set aside, and a proposed decline rests only on a link that holds.
+- **Refusals around design and review now say what happened.** A pattern decision someone else took first says who and keeps your reason; a refused move names the design gaps and who records them; a malformed probe names every fault.
+
 ## [0.4.0-dev.223] - 2026-10-10
 
 Requirements start from a title; box tokens reach their projects over WebSocket
