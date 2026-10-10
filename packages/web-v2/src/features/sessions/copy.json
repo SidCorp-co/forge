@@ -26,6 +26,7 @@
     "sessions.detail.hideRail": "Hide context rail",
     "sessions.detail.loadFailed": "Couldn't load session",
     "sessions.detail.loading": "loading session…",
+    "sessions.loading": "loading sessions…",
     "sessions.detail.loadingTurns": "loading turns…",
     "sessions.detail.noMessages": "No messages",
     "sessions.detail.openIssue": "Open issue",

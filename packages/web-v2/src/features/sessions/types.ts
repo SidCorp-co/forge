@@ -89,7 +89,8 @@ export interface SessionRow {
   parentSessionId?: string | null;
   usage: SessionUsage | null;
   metadata: SessionMetadata | null;
-  failureReason: SessionFailureReason | string | null;
+  /** A SessionFailureReason, or a code newer than this client knows. */
+  failureReason: string | null;
   dispatchedAt: string | null;
   startedAt: string | null;
   lastHeartbeatAt: string | null;

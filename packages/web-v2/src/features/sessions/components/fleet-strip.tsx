@@ -10,7 +10,6 @@
 // Data: useProject(projectId).devicePool (project-scoped) ×
 // useQueueStats(projectId) (per-device queued/running). Liveness reads core's stuck runs
 // (runs/standing) through deriveLiveness so the strip, list, and detail never diverge.
-import { useMemo } from "react";
 import { Banner, enumLabel, ErrorState, HealthDot, Icon, MonoTag } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";

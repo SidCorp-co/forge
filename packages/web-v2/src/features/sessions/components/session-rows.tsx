@@ -66,7 +66,7 @@ export function SessionList({
           </THead>
           <TBody>
             {treeRows.map(({ row, depth, hasChildren }) => (
-              <SessionTableRow
+              <SessionTableEntry
                 key={row.id}
                 row={row}
                 depth={depth}
@@ -85,7 +85,7 @@ export function SessionList({
       {/* Mobile: a flush list — no horizontal page scroll. */}
       <div className="divide-y divide-line-subtle border-y border-line-subtle md:hidden">
         {treeRows.map(({ row, depth }) => (
-          <SessionMobileRow
+          <SessionMobileEntry
             key={row.id}
             row={row}
             depth={depth}
@@ -189,7 +189,7 @@ function RowActionsMenu({
   );
 }
 
-function SessionTableRow(props: RowProps & {
+function SessionTableEntry(props: RowProps & {
   /** Whether anything in this list is owned by it. */
   hasChildren: boolean;
 }) {
@@ -245,7 +245,7 @@ function SessionTableRow(props: RowProps & {
   );
 }
 
-function SessionMobileRow(props: RowProps) {
+function SessionMobileEntry(props: RowProps) {
   const { row, slug, deviceName, now, stuck, actions, depth } = props;
   const { display, duration, stage, open } = useRowView(props);
   const t = useCopy();
