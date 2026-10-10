@@ -57,7 +57,7 @@ export function Recordings({ projectId, f }: { projectId: string; f: FeedbackVie
     <section aria-label={t("previews.recordings.title")} data-testid="recordings" className="grid gap-3">
       <ViewHeading>{t("previews.recordings.title")}</ViewHeading>
       {q.isError ? (
-        <p role="alert" className="fg-body-sm" style={{ color: "var(--red-600)" }}>
+        <p role="alert" className="fg-body-sm text-danger-11">
           {t("previews.recordings.loadFailed")}: {formatApiError(q.error)}
         </p>
       ) : null}
@@ -88,7 +88,7 @@ export function Recordings({ projectId, f }: { projectId: string; f: FeedbackVie
                 <td className="py-1.5 pr-3">{by(r)}</td>
                 <td className="py-1.5 pr-3 font-mono max-md:hidden">{r.kind === "reproduce" ? (r.recording.build.release ?? r.recording.build.sha.slice(0, 12)) : null}</td>
                 <td className="py-1.5 pr-3">
-                  {r.kind === "upload" ? <UploadFacts file={r.file} /> : <ReproduceState recording={r.recording} />}
+                  {r.kind === "upload" ? <RecordingFile file={r.file} /> : <ReproduceState recording={r.recording} />}
                 </td>
                 <td className="py-1.5 text-right">
                   {open?.id === r.id ? null : (
@@ -102,7 +102,7 @@ export function Recordings({ projectId, f }: { projectId: string; f: FeedbackVie
           </tbody>
         </table>
       ) : null}
-      {open?.kind === "upload" ? <UploadedVideo file={open.file} alt={alt(open)} /> : null}
+      {open?.kind === "upload" ? <UploadedVideo key={open.file.id} file={open.file} alt={alt(open)} /> : null}
       {open?.kind === "reproduce" ? <RecordingDetail recording={open.recording} projectId={projectId} fbKey={f.key} /> : null}
     </section>
   );
@@ -147,7 +147,7 @@ function useVideoLength(src: string): number | null {
 }
 
 /** An attached video's row facts: its name, then its format, size and length. */
-function UploadFacts({ file }: { file: Attachment }) {
+function RecordingFile({ file }: { file: Attachment }) {
   const length = useVideoLength(coreFileUrl(file.url));
   const facts = [formatOf(file.mime), formatSize(file.size), ...(length === null ? [] : [clockOf(length)])];
   return (
@@ -165,8 +165,6 @@ function UploadFacts({ file }: { file: Attachment }) {
 function UploadedVideo({ file, alt }: { file: Attachment; alt: string }) {
   const t = useCopy();
   const [unplayable, setUnplayable] = useState(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a newly shown file is tried afresh
-  useEffect(() => setUnplayable(false), [file.id]);
   const src = coreFileUrl(file.url);
   return (
     <div className="grid gap-3" data-testid="recording-detail" data-recording={file.id}>
@@ -184,7 +182,7 @@ function UploadedVideo({ file, alt }: { file: Attachment; alt: string }) {
           controls
           preload="metadata"
           aria-label={alt}
-          className="max-h-[420px] w-full max-w-[720px] rounded-md border border-line bg-black"
+          className="max-h-105 w-full max-w-180 rounded-md border border-line bg-black"
           data-testid="recording-video"
           onError={() => setUnplayable(true)}
           onLoadedMetadata={(e) => {
@@ -218,7 +216,7 @@ function RecordingDetail({ recording, projectId, fbKey }: { recording: Recording
         ) : null}
       </div>
       {stop.error ? (
-        <p role="alert" className="fg-body-sm" style={{ color: "var(--red-600)" }}>
+        <p role="alert" className="fg-body-sm text-danger-11">
           {t("previews.recordings.stopFailed")}: {formatApiError(stop.error)}
         </p>
       ) : null}
@@ -284,7 +282,7 @@ function Replay({ recordingId, describedBy }: { recordingId: string; describedBy
   return (
     <div className="grid gap-2" data-testid="recording-player">
       {problem ? (
-        <p role="alert" className="fg-body-sm" style={{ color: "var(--red-600)" }}>
+        <p role="alert" className="fg-body-sm text-danger-11">
           {t("previews.recordings.replayFailed")}: {formatApiError(problem)}
         </p>
       ) : null}

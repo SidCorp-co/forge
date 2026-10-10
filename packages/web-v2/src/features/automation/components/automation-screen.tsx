@@ -12,7 +12,7 @@ import {
   SCHEDULE_GROUP_LABELS,
 } from "@forge/contracts/automation-standing";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Button,
   GroupedList,
@@ -80,28 +80,22 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
   const text = (params.get("q") ?? "").trim().toLowerCase();
   const fold = useGroupFold(`web-v2:automation-fold:${tab}`);
   const d = q.data;
-  const groups = useMemo(() => (d ? tabRows(d, tab, text, t) : []), [d, tab, text, t]);
+  const groups = (d ? tabRows(d, tab, text, t) : []);
   const noun = t(`schedules.noun.${tab}` as ProductCopyKey);
   const ctx: RowCtx = useMemo(() => ({ t, language, time }), [t, language, time]);
-  const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.id), [groups, fold]);
-  const allKeys = useMemo(() => groups.flatMap((g) => g.rows.map((r) => r.id)), [groups]);
+  const visible = visibleRows(groups, fold).map((r) => r.id);
+  const allKeys = groups.flatMap((g) => g.rows.map((r) => r.id));
   const peek = usePeek(visible, allKeys);
 
-  const hrefOf = useMemo(
-    () => ({
+  const hrefOf = ({
       schedules: (id: string) => scheduleHref(slug, id),
       fires: (id: string) => fireHref(slug, id),
       reports: (id: string) => reportHref(slug, id),
-    }),
-    [slug],
-  );
-  const openFull = useCallback(
-    (key: string) => {
+    });
+  const openFull = (key: string) => {
       rememberListOrigin(AUTOMATION_LIST);
       router.push(hrefOf[tab](key));
-    },
-    [router, hrefOf, tab],
-  );
+    };
   usePeekKeys(peek, openFull);
 
   const title = <PageTitle>{t("schedules.title")}</PageTitle>;

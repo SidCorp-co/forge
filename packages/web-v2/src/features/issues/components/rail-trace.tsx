@@ -74,7 +74,7 @@ export function RailTraceRows({
       ) : null}
       {req?.changedSincePlan ? (
         <Row label={t("issues.rail.planned")}>
-          <span className="fg-body-sm text-amber-700 dark:text-amber-300" data-testid="changed-since-plan">
+          <span className="fg-body-sm text-warn-11" data-testid="changed-since-plan">
             {t("issues.facts.plannedOnShort", { planned: req.plannedRevision ?? "", now: req.currentRevision ?? "" })}
           </span>
         </Row>

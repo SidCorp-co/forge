@@ -55,7 +55,7 @@ export function FeedbackPrimary({ f, onAct }: { f: FeedbackView; onAct: () => vo
 }
 
 function Heading({ children }: { children: ReactNode }) {
-  return <h2 className="mb-3 text-15 font-semibold leading-snug text-fg">{children}</h2>;
+  return <h2 className="mb-3 text-14 font-semibold leading-snug text-fg">{children}</h2>;
 }
 
 function Body({ projectId, f }: { projectId: string; f: FeedbackView }) {
@@ -66,7 +66,7 @@ function Body({ projectId, f }: { projectId: string; f: FeedbackView }) {
       {f.redacted ? (
         <p className="text-13 text-subtle">{t("feedback.body.redacted")}</p>
       ) : (
-        <p className="max-w-[80ch] whitespace-pre-wrap text-14 leading-relaxed" data-testid="feedback-body" lang={f.writtenLang ?? undefined}>
+        <p className="max-w-2xl whitespace-pre-wrap text-14 leading-relaxed" data-testid="feedback-body" lang={f.writtenLang ?? undefined}>
           {f.body?.trim() ? (
             <>
               {f.body}

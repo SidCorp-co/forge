@@ -91,10 +91,9 @@ function CorrectionLine({ correction }: { correction: Correction }) {
     <div
       role="alert"
       data-testid="thread-correction"
-      className="flex items-start gap-2 rounded-md border px-3 py-2"
-      style={{ borderColor: "var(--red-500)", background: "var(--red-50)" }}
+      className="flex items-start gap-2 border-l-2 border-danger-9 bg-danger-2 px-3 py-2"
     >
-      <Icon name="alert" size={15} className="mt-0.5 flex-none text-[color:var(--red-600)]" />
+      <Icon name="alert" size={15} className="mt-0.5 flex-none text-danger" />
       <p className="fg-body-sm text-fg">
         <span className="font-semibold">{t("shell.thread.correction")}</span> {t("shell.thread.refused", { what: correction.what })} (
         <span className="font-mono">{correction.code}</span>){t("shell.thread.writtenNothing")}
@@ -258,7 +257,7 @@ function Said({
     return (
       <div className="flex flex-col items-end">
         {message.content && (
-          <div className={`${USER_BUBBLE} rounded-lg rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent`}>
+          <div className={`${USER_BUBBLE} rounded-md rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent`}>
             <p className="fg-body whitespace-pre-wrap text-on-accent">{message.content}</p>
           </div>
         )}
@@ -287,7 +286,7 @@ function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string)
     <div className="flex flex-col items-end" data-testid={`thread-outbox-${item.state}`}>
       {item.content && (
         <div
-          className={`${USER_BUBBLE} rounded-lg rounded-br-sm px-3.5 py-2.5 ${
+          className={`${USER_BUBBLE} rounded-md rounded-br-sm px-3.5 py-2.5 ${
             failed
               ? "border border-danger bg-surface"
               : item.state === "sent"
@@ -512,11 +511,10 @@ function RoomLiveTurn({ progress }: { progress: ConversationProgressEntry }) {
               <Icon
                 name={tool.isError ? "alert" : "dot"}
                 size={12}
-                className="flex-none"
-                style={{ color: tool.isError ? "var(--red-600)" : "var(--fg-subtle)" }}
+                className={tool.isError ? "flex-none text-danger-11" : "flex-none text-subtle"}
               />
-              <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-12)" }}>{tool.name}</span>
-              <span className="flex-none font-mono text-subtle" style={{ fontSize: "var(--text-11)" }}>
+              <span className="flex-1 truncate font-mono text-12">{tool.name}</span>
+              <span className="flex-none font-mono text-12 text-subtle">
                 {!tool.done
                   ? t("conversations.live.toolRunning")
                   : typeof tool.durationMs === "number"

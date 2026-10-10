@@ -11,7 +11,7 @@
 import { decodeFilter, decodeNumber } from "@/lib/navigation/deep-link";
 import { notifyLocationChange, useLocationSearch } from "@/lib/utils/use-location-search";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { statusesFromParam } from "../../derive";
 import {
   type GroupBy,
@@ -29,7 +29,7 @@ const VALID_GROUP_BY: GroupBy[] = ["none", "status", "priority", "creator"];
 export function useIssueListParams(slug: string) {
   const pathname = usePathname() || `/projects/${slug}/issues`;
   const search = useLocationSearch();
-  const sp = useMemo(() => new URLSearchParams(search), [search]);
+  const sp = new URLSearchParams(search);
   const q = sp.get("q") ?? "";
   const rawFilter = decodeFilter<IssueFilter>(sp, "filter", DEFAULT_FILTER);
   const filter = VALID_FILTERS.includes(rawFilter) ? rawFilter : DEFAULT_FILTER;
@@ -42,7 +42,7 @@ export function useIssueListParams(slug: string) {
   const label = sp.get("label") ?? "";
   const moduleId = sp.get("module") ?? "";
   const rawStatus = sp.get("status");
-  const statusParam = useMemo(() => statusesFromParam(rawStatus), [rawStatus]);
+  const statusParam = statusesFromParam(rawStatus);
   const rawGroupBy = decodeFilter<GroupBy>(sp, "groupBy", "none");
   const groupBy = VALID_GROUP_BY.includes(rawGroupBy) ? rawGroupBy : "none";
   const sort = decodeFilter<IssueSort>(sp, "sort", "createdAt:desc");

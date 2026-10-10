@@ -22,7 +22,7 @@ import {
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { initials, workStepOf } from "../derive";
 import { useStatusTone } from "../release-approval";
 import {
@@ -57,11 +57,11 @@ import { WaitingOnPersonChip } from "./waiting-on-person-chip";
 function useOpenIssue(slug: string, id: string) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const open = useCallback(() => {
+  const open = () => {
     if (pending) return;
     setPending(true);
     router.push(`/projects/${slug}/issues/${id}`);
-  }, [pending, router, slug, id]);
+  };
   return { open, pending };
 }
 

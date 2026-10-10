@@ -63,7 +63,7 @@ function AddCommentBox({
       <div
         {...staged.dropZone}
         className={`rounded-md transition-colors ${
-          staged.dragOver ? "ring-2 ring-cobalt-400 ring-offset-1" : ""
+          staged.dragOver ? "ring-2 ring-info-8 ring-offset-1" : ""
         }`}
       >
         <BodyEditor
@@ -190,7 +190,7 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
         </fieldset>
       ) : null}
       {refused ? (
-        <p role="alert" className="fg-caption text-red">
+        <p role="alert" className="fg-caption text-danger">
           {refused}
         </p>
       ) : null}

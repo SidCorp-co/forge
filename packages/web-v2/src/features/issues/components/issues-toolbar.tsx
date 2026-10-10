@@ -98,7 +98,7 @@ export function IssuesToolbar({
           gap={6}
           role="dialog"
           aria-label={t("issues.toolbar.filterLabel")}
-          className="w-72 overflow-y-auto rounded-md border border-line bg-surface p-3"
+          className="w-72 overflow-y-auto rounded-md border border-line bg-surface p-3 shadow-overlay"
         >
           <div className="flex flex-col gap-3">
             {fields.map((f) => (

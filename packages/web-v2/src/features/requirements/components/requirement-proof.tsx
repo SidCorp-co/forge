@@ -34,7 +34,7 @@ function listDiff(label: string, before: string[] = [], after: string[] = []) {
   if (added.length === 0 && removed.length === 0) return null;
   return (
     <div key={label}>
-      <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">{label}</h4>
+      <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{label}</h4>
       <ul className="grid list-disc gap-0.5 pl-4.5 text-14">
         {kept.map((x) => (
           <li key={`k-${x}`}>{x}</li>
@@ -65,7 +65,7 @@ function criteriaDiff(label: string, before: RequirementCriterion[], after: Requ
     if (was && now && was.body === now.body) continue;
     rows.push(
       <div key={code} className="grid grid-cols-[48px_minmax(0,1fr)] gap-2.5 border-b border-line-subtle py-2 text-14 last:border-0">
-        <span className="font-mono text-11-5 font-semibold text-muted">{code}</span>
+        <span className="font-mono text-12 font-semibold text-muted">{code}</span>
         <span className="grid gap-1">
           {was ? <Del>{was.body}</Del> : null}
           {now ? <Ins>{now.body}</Ins> : null}
@@ -76,7 +76,7 @@ function criteriaDiff(label: string, before: RequirementCriterion[], after: Requ
   if (rows.length === 0) return null;
   return (
     <div key="criteria">
-      <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">{label}</h4>
+      <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{label}</h4>
       {rows}
     </div>
   );
@@ -90,7 +90,7 @@ export function RevisionDiff({ base, next }: { base: RequirementRevision | undef
   const parts = [
     a.goal !== b.goal ? (
       <div key="goal">
-        <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">{t("requirements.diff.goal")}</h4>
+        <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{t("requirements.diff.goal")}</h4>
         <p className="grid gap-1 text-14">
           {a.goal ? <Del>{a.goal}</Del> : null}
           {b.goal ? <Ins>{b.goal}</Ins> : null}
@@ -99,7 +99,7 @@ export function RevisionDiff({ base, next }: { base: RequirementRevision | undef
     ) : null,
     base?.kind !== next.kind ? (
       <div key="kind" data-testid="revision-diff-kind">
-        <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">{t("requirements.picture.edit.kind")}</h4>
+        <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{t("requirements.picture.edit.kind")}</h4>
         <p className="flex flex-wrap gap-2 text-14">
           <Del>{base?.kind ? t(`requirements.picture.kind.${base.kind}`) : t("requirements.picture.edit.kindNone")}</Del>
           <Ins>{next.kind ? t(`requirements.picture.kind.${next.kind}`) : t("requirements.picture.edit.kindNone")}</Ins>
@@ -111,7 +111,7 @@ export function RevisionDiff({ base, next }: { base: RequirementRevision | undef
     listDiff(t("requirements.overview.outOfScope"), a.scopeOut, b.scopeOut),
     criteriaDiff(t("requirements.criteria.heading"), base?.criteria ?? [], next.criteria),
   ].filter(Boolean);
-  if (parts.length === 0) return <p className="text-12-5 text-subtle">{t("requirements.diff.unchanged")}</p>;
+  if (parts.length === 0) return <p className="text-13 text-subtle">{t("requirements.diff.unchanged")}</p>;
   return <div data-testid="revision-diff">{parts}</div>;
 }
 
@@ -128,7 +128,7 @@ export function CriteriaChanges({ changes }: { changes: RequirementCriteriaChang
   ).filter(([, codes]) => codes.length > 0);
   if (groups.length === 0) return null;
   return (
-    <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-12-5 text-muted" data-testid="criteria-changes">
+    <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-13 text-muted" data-testid="criteria-changes">
       {groups.map(([kind, codes]) => (
         <span key={kind} data-change={kind}>
           {t(`label.artifactChange.${kind}`)} <span className="font-mono text-12 text-fg">{codes.join(", ")}</span>
@@ -180,26 +180,26 @@ export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: str
                 <VerdictWord verdict={c.verdict} />
               </div>
               {crit?.form === "scenario" ? (
-                <pre className="whitespace-pre-wrap font-mono text-12-5 leading-relaxed">{c.body}</pre>
+                <pre className="whitespace-pre-wrap font-mono text-13 leading-relaxed">{c.body}</pre>
               ) : (
                 <p className="text-14 leading-relaxed">{c.body}</p>
               )}
               {c.counts ? (
-                <p className="mt-1 text-12-5 text-muted" data-testid="criterion-counts">
+                <p className="mt-1 text-13 text-muted" data-testid="criterion-counts">
                   {t("requirements.criteria.counts", { verdict: t(VERDICT_WORD[c.counts.verdict]), issue: c.counts.displayId, n: c.counts.criterion })}
                   <span className="font-mono text-12"> · {c.counts.identity}</span>
                   <span title={time.dateTime(c.counts.at)}> · {time.relative(c.counts.at)}</span>
                 </p>
               ) : null}
               {c.why ? (
-                <p className="mt-1 text-12-5 text-muted" data-testid="criterion-why">
+                <p className="mt-1 text-13 text-muted" data-testid="criterion-why">
                   {c.why}
                 </p>
               ) : null}
               {crit && shown !== null && crit.sinceRevision === shown && shown > 1 ? (
                 <span className="mt-1 inline-block text-12 text-muted">{t("requirements.criteria.changedIn", { r: shown })}</span>
               ) : null}
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-12-5">
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-13">
                 {issues.length === 0 && c.uncoveredReason ? (
                   <span className="text-subtle" data-testid="criterion-uncovered">{t("requirements.criteria.leftUncovered", { reason: c.uncoveredReason })}</span>
                 ) : issues.length === 0 ? (
@@ -218,7 +218,7 @@ export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: str
                 )}
               </div>
               {c.issues.length > 0 ? (
-                <details className="mt-1.5 text-12-5" data-testid="criterion-evidence">
+                <details className="mt-1.5 text-13" data-testid="criterion-evidence">
                   <summary className="cursor-pointer select-none font-medium text-muted hover:text-fg">{t("requirements.criteria.evidence", { n: c.issues.length })}</summary>
                   <ul className="mt-1 grid gap-0.5 pl-3">
                     {issues.flatMap(({ i, links }) =>
@@ -315,9 +315,9 @@ export function RevisionList({ d }: { d: RequirementDetail }) {
                   <ActorChip name={r.authorName ?? t("standing.who.itsAuthor")} kind={r.authorKind} size={16} />
                 </span>
               </div>
-              <Written className="mt-1 block text-13-5" text={r.changeSummary ?? r.reason} lang={r.writtenLang} />
+              <Written className="mt-1 block text-14" text={r.changeSummary ?? r.reason} lang={r.writtenLang} />
               <CriteriaChanges changes={r.criteriaChanges} />
-              {r.returnReason ? <p className="mt-0.5 text-12-5 text-muted">{t("requirements.revision.returned", { reason: r.returnReason })}</p> : null}
+              {r.returnReason ? <p className="mt-0.5 text-13 text-muted">{t("requirements.revision.returned", { reason: r.returnReason })}</p> : null}
             </div>
             <span className="whitespace-nowrap pt-0.5 text-12 text-subtle" title={time.dateTime(at)}>
               {time.relative(at)}

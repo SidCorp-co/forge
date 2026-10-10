@@ -3,8 +3,9 @@
 import type { DecisionMaker } from "@forge/contracts/comments";
 import { WrittenMark } from "@/lib/i18n/written";
 import { type ReactNode, useState } from "react";
-import { ActorChip, BodyView, Button, ErrorState, Input, ProjectLoader, Textarea } from "@/design";
-import { formatApiError, isRetryableApiError } from "@/lib/api/error";
+import { ActorChip, BodyView, Button, Input, Textarea } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
+import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useEntityDecisions, usePostEntityComment } from "../hooks";
 import type { DecisionReadScope, EntityCommentScope, EntityCommentView } from "../types";
@@ -51,7 +52,7 @@ export function DecisionRow({ c, onTarget }: { c: EntityCommentView; onTarget?: 
         {c.edited ? <span title={t("common.decisions.editedAt", { at: time.dateTime(c.updatedAt) })}>· {t("common.decisions.edited")}</span> : null}
       </span>
       {c.datedAhead ? (
-        <p className="text-12 text-amber-700 dark:text-amber-300" data-testid="decision-dated-ahead">
+        <p className="text-12 text-warn-11" data-testid="decision-dated-ahead">
           {t("decisions.datedAhead", { at: time.dateTime(c.datedAhead) })}
         </p>
       ) : null}
@@ -121,11 +122,11 @@ export function DecisionComposer({ projectId, scope, targetRef }: { projectId: s
       <Input aria-label={t("common.decisions.optionsLabel")} placeholder={t("common.decisions.optionsPlaceholder")} value={options} onChange={(e) => setOptions(e.target.value)} />
       <Input aria-label={t("common.decisions.authorityLabel")} placeholder={t("common.decisions.authorityPlaceholder")} value={authority} onChange={(e) => setAuthority(e.target.value)} />
       <Input aria-label={t("common.decisions.reversedLabel")} placeholder={t("common.decisions.reversedLabel")} value={reversedWhen} onChange={(e) => setReversedWhen(e.target.value)} />
+      <RefusalLine error={post.error} testid="decision-refusal" />
       <span className="flex items-center gap-2">
-        <Button type="submit" size="sm" variant="primary" disabled={!ready || post.isPending}>
+        <Button type="submit" size="sm" variant="primary" loading={post.isPending} disabled={!ready}>
           {t("common.decisions.submit")}
         </Button>
-        {post.isError ? <span className="text-12 text-red">{formatApiError(post.error)}</span> : null}
       </span>
     </form>
   );
@@ -138,23 +139,22 @@ export function DecisionComposer({ projectId, scope, targetRef }: { projectId: s
 export function DecisionsPanel({ projectId, scope, targetRef }: { projectId: string; scope: DecisionReadScope; targetRef: string }) {
   const q = useEntityDecisions(projectId, scope, targetRef);
   const t = useCopy();
-  if (q.isLoading) return <ProjectLoader label={t("common.decisions.loading")} />;
-  if (q.isError || !q.data) {
-    return <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />;
-  }
-  const rows = [...q.data.comments].reverse();
   return (
-    <div className="grid gap-4" data-testid="decisions-panel">
-      {rows.length ? (
-        <ul className="grid">
-          {rows.map((c) => (
-            <DecisionRow key={c.id} c={c} />
-          ))}
-        </ul>
-      ) : (
-        <p className="text-13 text-subtle">{t("common.decisions.none")}</p>
+    <QueryBoundary query={q} loadingLabel={t("common.decisions.loading")} height="inline">
+      {(data) => (
+        <div className="grid gap-4" data-testid="decisions-panel">
+          {data.comments.length ? (
+            <ul className="grid">
+              {[...data.comments].reverse().map((c) => (
+                <DecisionRow key={c.id} c={c} />
+              ))}
+            </ul>
+          ) : (
+            <p className="text-13 text-subtle">{t("common.decisions.none")}</p>
+          )}
+          {scope === "issue" ? null : <DecisionComposer projectId={projectId} scope={scope} targetRef={targetRef} />}
+        </div>
       )}
-      {scope === "issue" ? null : <DecisionComposer projectId={projectId} scope={scope} targetRef={targetRef} />}
-    </div>
+    </QueryBoundary>
   );
 }

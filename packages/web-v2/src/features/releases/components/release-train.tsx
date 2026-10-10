@@ -61,7 +61,7 @@ function useMeta(): (r: ReleaseSummary) => string {
   };
 }
 
-const COLUMN = "grid w-[250px] flex-none content-start gap-1 py-1.5 pl-3 pr-3";
+const COLUMN = "grid w-62.5 flex-none content-start gap-1 py-1.5 pl-3 pr-3";
 
 function Cut({ r, slug, selected }: { r: ReleaseSummary; slug: string; selected: boolean }) {
   const meta = useMeta();
@@ -74,7 +74,7 @@ function Cut({ r, slug, selected }: { r: ReleaseSummary; slug: string; selected:
       data-testid="train-node"
       data-key={r.key}
     >
-      <span className="font-mono text-12-5 font-semibold text-link">{r.version}</span>
+      <span className="font-mono text-13 font-semibold text-link">{r.version}</span>
       <span className="text-12 text-muted">{meta(r)}</span>
       <Contents groups={r.contents} />
     </Link>
@@ -87,7 +87,7 @@ function Next({ draft, slug, selected }: { draft: ReleaseSummary | undefined; sl
   if (!draft) {
     return (
       <span className={COLUMN} style={edge} data-testid="train-next">
-        <b className="text-12-5 font-semibold text-fg">{t("releases.trainNext")}</b>
+        <b className="text-13 font-semibold text-fg">{t("releases.trainNext")}</b>
         <span className="text-12 text-muted">{t("releases.trainNonePlanned")}</span>
       </span>
     );
@@ -101,7 +101,7 @@ function Next({ draft, slug, selected }: { draft: ReleaseSummary | undefined; sl
       data-testid="train-next"
       data-key={draft.key}
     >
-      <b className="text-12-5 font-semibold text-fg">{t("releases.trainNext")}</b>
+      <b className="text-13 font-semibold text-fg">{t("releases.trainNext")}</b>
       <span className="text-12 text-muted">
         <span className="font-mono font-semibold text-link">{draft.version}</span> · {t("releases.trainNotCut", { n: draft.issueCount })}
       </span>

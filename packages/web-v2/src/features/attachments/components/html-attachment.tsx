@@ -19,7 +19,7 @@ async function fetchArtifact(url: string): Promise<string> {
   return await res.text();
 }
 
-export function HtmlAttachmentCard({
+export function HtmlAttachment({
   name,
   url,
   size,

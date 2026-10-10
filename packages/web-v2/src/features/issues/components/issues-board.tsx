@@ -18,7 +18,7 @@ import {
 } from "@forge/contracts/issue-standing";
 import { listFilterFromSearch, type UiWaitingFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   EmptyState,
   GroupedList,
@@ -380,31 +380,25 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
   };
   const key = `${n.q}|${[...n.quick].join()}|${n.statuses.join()}|${n.priority}|${n.createdBy}|${n.assignee}|${n.waiting}`;
   // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for every narrowing field
-  const rows = useMemo(() => narrow(q.data?.issues ?? [], n), [q.data, key]);
+  const rows = narrow(q.data?.issues ?? [], n);
   const forecastQ = useProjectForecast(project.projectId);
-  const forecasts = useMemo(() => new Map((forecastQ.data?.issues ?? []).map((i) => [i.key, i.forecast])), [forecastQ.data]);
+  const forecasts = new Map((forecastQ.data?.issues ?? []).map((i) => [i.key, i.forecast]));
   const clock = useEtaClock();
   const [etaSorted, toggleEtaSort] = useEtaSort();
-  const etaOf = useCallback((k: string) => issueEta(forecasts.get(k), clock), [forecasts, clock]);
-  const groups = useMemo(() => {
+  const etaOf = (k: string) => issueEta(forecasts.get(k), clock);
+  const groups = (() => {
     const plain = mode === "module" ? moduleGroups(rows, t) : attentionGroups(rows, t);
     return etaSorted ? sortGroupsBy(plain, (r) => etaSortValue(etaOf(r.key))) : plain;
-  }, [rows, mode, etaSorted, etaOf, t]);
+  })();
   const fold = useGroupFold(`web-v2:issues-fold:${mode}`);
-  const visible = useMemo(
-    () => (mode === "waves" ? rows.filter((r) => r.standing.wave !== null).map((r) => r.key) : visibleRows(groups, fold).map((r) => r.key)),
-    [mode, rows, groups, fold],
-  );
-  const allKeys = useMemo(() => (q.data?.issues ?? []).map((r) => r.key), [q.data]);
+  const visible = (mode === "waves" ? rows.filter((r) => r.standing.wave !== null).map((r) => r.key) : visibleRows(groups, fold).map((r) => r.key));
+  const allKeys = (q.data?.issues ?? []).map((r) => r.key);
   const peek = usePeek(visible, allKeys);
-  const row = useMemo(() => issueRowView(project.slug, words, { of: etaOf, clock }), [project.slug, words, etaOf, clock]);
-  const openFull = useCallback(
-    (k: string) => {
+  const row = issueRowView(project.slug, words, { of: etaOf, clock });
+  const openFull = (k: string) => {
       rememberListOrigin(ISSUES_LIST);
       router.push(issueHref(project.slug, k));
-    },
-    [router, project.slug],
-  );
+    };
   usePeekKeys(peek, openFull);
   const openRow = q.data?.issues.find((r) => r.key === peek.open) ?? null;
   const truncated = q.data && q.data.returned >= q.data.limit && q.data.counts[scope] > q.data.returned;

@@ -59,23 +59,23 @@ function Attempt({ c, release, slug }: { c: ReleaseCutView; release: string; slu
           </span>
         ) : null}
       </span>
-      <span className="text-12-5 text-muted" data-testid="cut-rule">
+      <span className="text-13 text-muted" data-testid="cut-rule">
         {ruleLine(c, t)}
       </span>
       {c.refusal ? (
-        <span className="text-12-5" data-testid="cut-refusal">
+        <span className="text-13" data-testid="cut-refusal">
           <span className="text-muted">{t("releases.attemptRefused")}</span> {said(c.refusal.says, language)}{" "}
           {c.refusal.code ? <code className="font-mono text-12">{c.refusal.code}</code> : null}
           <Written className="block text-12 text-muted" text={c.refusal.text} lang="en" />
         </span>
       ) : null}
       {c.abortReason ? (
-        <span className="text-12-5" data-testid="cut-abort-reason">
+        <span className="text-13" data-testid="cut-abort-reason">
           <span className="text-muted">{t("releases.attemptAbortReason")}</span> {c.abortReason}
         </span>
       ) : null}
       {carried ? (
-        <span className="text-12-5 text-muted" data-testid="cut-carried">
+        <span className="text-13 text-muted" data-testid="cut-carried">
           {carried}
         </span>
       ) : null}
@@ -84,7 +84,7 @@ function Attempt({ c, release, slug }: { c: ReleaseCutView; release: string; slu
 }
 
 /** Every attempt at this release, flat and first first: what each cut wore, how it ended, and who ended it. */
-export function AttemptsSection({ r, slug }: { r: ReleaseDetail; slug: string }) {
+export function ReleaseAttempts({ r, slug }: { r: ReleaseDetail; slug: string }) {
   const t = useCopy();
   if (r.cuts.length === 0) return null;
   return (
@@ -125,13 +125,13 @@ export function EndedAttempt({ r, slug }: { r: ReleaseDetail; slug: string }) {
   const carried = carriedLine(own, t);
   return (
     <section aria-label={t(`releases.ended.title.${r.state}`, { v: r.version })} data-testid="release-ended" className="grid gap-2 border-b border-line-subtle px-8 py-4 text-13 max-md:px-4">
-      <h2 className="fg-h3 text-[var(--accent-text)]">{t(`releases.ended.title.${r.state}`, { v: r.version })}</h2>
+      <h2 className="fg-h3 text-accent-text">{t(`releases.ended.title.${r.state}`, { v: r.version })}</h2>
       {own.refusal ? (
         <div data-testid="release-ended-refusal">
           <p>{said(own.refusal.says, language)}</p>
           <details className="mt-1">
-            <summary className="cursor-pointer text-12-5 text-link">{t("releases.ended.words")}</summary>
-            <p className="mt-1 text-12-5 text-muted">
+            <summary className="cursor-pointer text-13 text-link">{t("releases.ended.words")}</summary>
+            <p className="mt-1 text-13 text-muted">
               {own.refusal.code ? <code className="font-mono text-12">{own.refusal.code}</code> : null} <Written text={own.refusal.text} lang="en" />
             </p>
           </details>
@@ -143,9 +143,9 @@ export function EndedAttempt({ r, slug }: { r: ReleaseDetail; slug: string }) {
         </p>
       ) : null}
       {!own.refusal && !own.abortReason ? <p className="text-muted">{t("releases.ended.noReason")}</p> : null}
-      {carried ? <p className="text-12-5 text-muted">{carried}</p> : null}
+      {carried ? <p className="text-13 text-muted">{carried}</p> : null}
       <div data-testid="release-ended-roster">
-        <p className="text-12-5 text-muted">{t("releases.ended.roster", { n: own.roster.length })}</p>
+        <p className="text-13 text-muted">{t("releases.ended.roster", { n: own.roster.length })}</p>
         <ul className="mt-1 border-t border-line-subtle">
           {own.roster.map((i) => (
             <li key={i.key} className="flex gap-3 border-b border-line-subtle py-1.5">

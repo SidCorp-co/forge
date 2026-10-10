@@ -16,7 +16,7 @@
 import { markdown } from "@codemirror/lang-markdown";
 import { useQuery } from "@tanstack/react-query";
 import CodeMirror, { type EditorView } from "@uiw/react-codemirror";
-import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { BodyView, IconButton, PreviewPane, Spinner, useDebounced } from "@/design";
 import type { IconName } from "@/design/icons/icon";
 import { formatApiError } from "@/lib/api/error";
@@ -104,7 +104,7 @@ export function BodyEditor({
   const view = useRef<EditorView | null>(null);
   const debounced = useDebounced(value, PREVIEW_DEBOUNCE_MS);
 
-  const extensions = useMemo(() => [markdown()], []);
+  const extensions = [markdown()];
 
   const preview = useQuery({
     queryKey: ["body", "preview", debounced],
@@ -113,9 +113,9 @@ export function BodyEditor({
     retry: false,
   });
 
-  const run = useCallback((tool: Tool) => {
+  const run = (tool: Tool) => {
     if (view.current) applyTool(tool, view.current);
-  }, []);
+  };
 
   return (
     <div className="space-y-2">

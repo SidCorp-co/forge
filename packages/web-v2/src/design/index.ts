@@ -39,6 +39,8 @@ export { Textarea } from "./primitives/textarea";
 export { Checkbox } from "./primitives/checkbox";
 export { Radio, RadioGroup } from "./primitives/radio";
 export { Select, NativeSelect, type SelectOption } from "./primitives/select";
+export { ChipPicker, type ChipPickerProps } from "./primitives/chip-picker";
+export { MediaOverlay, type MediaOverlayProps } from "./primitives/media-overlay";
 export { IconButton } from "./primitives/icon-button";
 export { Badge, type BadgeProps } from "./primitives/badge";
 export { Divider } from "./primitives/divider";
@@ -116,3 +118,7 @@ export {
   ListPage, DetailPage, SettingsPage, BoardPage, ReportPage,
   type ListPageProps, type DetailPageProps, type SettingsPageProps, type BoardPageProps, type ReportPageProps,
 } from "./templates/page-templates";
+
+// Library parts features compose as their docs show, reached only through the design layer
+export { Combobox } from "@base-ui/react/combobox";
+export { ChartContainer, type ChartConfig } from "@/components/ui/chart";

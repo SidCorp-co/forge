@@ -42,7 +42,7 @@ export function ProposalCards({
       className="flex flex-none flex-col gap-2 border-t border-line bg-surface px-4 py-3"
     >
       {pending.map((p) => (
-        <ProposalCard
+        <HeldProposal
           key={p.id}
           proposal={p}
           deciding={decide.isPending && decide.variables?.proposalId === p.id}
@@ -58,7 +58,7 @@ export function ProposalCards({
   );
 }
 
-export function ProposalCard({
+export function HeldProposal({
   proposal,
   deciding,
   onDecide,

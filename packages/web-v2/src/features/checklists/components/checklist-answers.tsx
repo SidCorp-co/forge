@@ -141,7 +141,7 @@ export function ChecklistAnswers({
   );
   return (
     <section data-testid="checklist" data-checklist={read.id} data-standing={move ? "passed" : unrecorded ? "no_checklist" : read.now?.complete ? "complete" : "open"}>
-      <ViewHeading right={<span className="text-12-5 text-muted">{state}</span>}>{read.form.title}</ViewHeading>
+      <ViewHeading right={<span className="text-13 text-muted">{state}</span>}>{read.form.title}</ViewHeading>
       {unrecorded && rows.length > 0 ? (
         <p className="text-12 text-subtle" data-testid="checklist-unrecorded">
           {t("checklist.movedBefore")}

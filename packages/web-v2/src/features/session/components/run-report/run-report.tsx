@@ -10,7 +10,7 @@
 // Interactive chat sessions keep the Conversation thread; `SessionScreen`
 // picks between the two on `metadata.type`.
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, EmptyState } from "@/design";
 import { formatDurationMs, formatUsd } from "@/features/pipeline/derive";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -70,14 +70,14 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
   const runQ = useRun(session.pipelineRunId ?? undefined, !!session.pipelineRunId);
   const costQ = useSessionCost(session.id);
 
-  const groups = useMemo(() => deriveActivityGroups(items, t), [items, t]);
-  const rows = useMemo(() => deriveTranscriptRows(items, t), [items, t]);
-  const narration = useMemo(() => deriveNarration(items), [items]);
-  const files = useMemo(() => deriveFilesChanged(items), [items]);
-  const ticks = useMemo(() => deriveTape(items), [items]);
-  const blocker = useMemo(() => deriveBlocker(items, t), [items, t]);
-  const meta = useMemo(() => readTranscriptMeta(session.messages, items), [session.messages, items]);
-  const spend = useMemo(() => deriveTimeSpend(session, t), [session, t]);
+  const groups = deriveActivityGroups(items, t);
+  const rows = deriveTranscriptRows(items, t);
+  const narration = deriveNarration(items);
+  const files = deriveFilesChanged(items);
+  const ticks = deriveTape(items);
+  const blocker = deriveBlocker(items, t);
+  const meta = readTranscriptMeta(session.messages, items);
+  const spend = deriveTimeSpend(session, t);
 
   function openFile(path: string) {
     setSelectedPath(path);

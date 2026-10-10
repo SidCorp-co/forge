@@ -3,7 +3,7 @@
 import { Button, Input, Popover } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { usePinnedViews } from "@/lib/navigation/pinned-views";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 /** Pin the list as it is filtered now, under a name; a pinned view unpins in one click. */
 export function PinViewButton({
@@ -17,12 +17,12 @@ export function PinViewButton({
 }) {
   const pinnedViews = usePinnedViews();
   const t = useCopy();
-  const viewHref = useMemo(() => {
+  const viewHref = (() => {
     const p = new URLSearchParams(search);
     p.delete("new");
     const qs = p.toString();
     return `${pathname}${qs ? `?${qs}` : ""}`;
-  }, [pathname, search]);
+  })();
   const isPinned = pinnedViews.isPinned(viewHref);
   const [pinOpen, setPinOpen] = useState(false);
   const pinAnchor = useRef<HTMLDivElement>(null);
@@ -71,7 +71,7 @@ export function PinViewButton({
         takesFocus
         role="dialog"
         aria-label={t("issues.pin.dialog")}
-        className="w-72 overflow-y-auto rounded-md border border-line bg-surface p-3"
+        className="w-72 overflow-y-auto rounded-md border border-line bg-surface p-3 shadow-overlay"
       >
         <p className="fg-caption mb-2 text-muted">
           {t("issues.pin.lead")}

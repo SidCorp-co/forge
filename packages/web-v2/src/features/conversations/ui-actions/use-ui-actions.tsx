@@ -217,7 +217,7 @@ export function useUiActions(args: {
       return (
         <div className="mt-2 flex flex-col gap-2">
           {mine.map((r) => (
-            <UiActionCard key={r.callId} record={r} onUndo={() => undo(r.callId)} onClear={(f) => clearChip(r.callId, f)} />
+            <UiActionNotice key={r.callId} record={r} onUndo={() => undo(r.callId)} onClear={(f) => clearChip(r.callId, f)} />
           ))}
         </div>
       );
@@ -228,7 +228,7 @@ export function useUiActions(args: {
   return { cardsFor };
 }
 
-export function UiActionCard({
+export function UiActionNotice({
   record,
   onUndo,
   onClear,
@@ -247,10 +247,9 @@ export function UiActionCard({
       <div
         role="alert"
         data-testid="ui-action-refused"
-        className="flex items-start gap-2 rounded-md border px-3 py-2"
-        style={{ borderColor: "var(--red-500)", background: "var(--red-50)" }}
+        className="flex items-start gap-2 border-l-2 border-danger-9 bg-danger-2 px-3 py-2"
       >
-        <Icon name="alert" size={14} className="mt-0.5 flex-none text-[color:var(--red-600)]" />
+        <Icon name="alert" size={14} className="mt-0.5 flex-none text-danger" />
         <p className="fg-body-sm text-fg">
           <span className="font-mono font-semibold">{name}</span> {t("conversations.ui.refused", { message })}
         </p>
@@ -282,8 +281,7 @@ export function UiActionCard({
             <span
               key={c.field}
               data-testid="ui-filter-chip"
-              className="inline-flex items-center gap-1 rounded-pill border px-2 py-0.5 text-12-5 font-semibold"
-              style={{ borderColor: "var(--orange-500, #f97316)", color: "var(--orange-700, #c2410c)", background: "var(--orange-50, #fff7ed)" }}
+              className="inline-flex items-center gap-1 rounded-pill border border-warn-9 bg-warn-2 px-2 py-0.5 text-13 font-semibold text-warn-11"
             >
               {c.label}
               <button type="button" aria-label={t("conversations.ui.clear", { label: c.label })} onClick={() => onClear(c.field)} className="leading-none">

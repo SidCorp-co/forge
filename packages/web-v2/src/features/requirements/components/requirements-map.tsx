@@ -14,7 +14,7 @@ import { requirementHref } from "@/lib/routes/requirements";
 import { nameOf, StageDot } from "./requirement-line";
 
 const ORDER: Record<RequirementStage, number> = { decide: 0, check: 1, build: 2, prove: 3, agreed: 4, draft: 5, deferred: 6, done: 7 };
-const BAR: Record<RequirementStage, string> = { draft: "bg-line-strong", agreed: "bg-subtle", build: "bg-cobalt", decide: "bg-accent", prove: "bg-green opacity-60", check: "bg-amber", done: "bg-green", deferred: "bg-line-strong" };
+const BAR: Record<RequirementStage, string> = { draft: "bg-line-strong", agreed: "bg-subtle", build: "bg-info-9", decide: "bg-accent", prove: "bg-ok-9 opacity-60", check: "bg-warn-9", done: "bg-ok-9", deferred: "bg-line-strong" };
 
 export function RequirementsMap({ rows, areas, slug, onPeek }: { rows: RequirementSummary[]; areas: { id: string; name: string }[]; slug: string; onPeek: (key: string) => void }) {
   const t = useCopy();
@@ -47,7 +47,7 @@ export function RequirementsMap({ rows, areas, slug, onPeek }: { rows: Requireme
       <div className="grid grid-cols-[170px_repeat(3,minmax(0,1fr))] border-t border-line-subtle mt-4 max-md:grid-cols-1">
         <span className="hidden border-b border-line-subtle md:block" />
         {ROADMAP_HORIZONS.map((h) => (
-          <div key={h} className="hidden border-b border-line-subtle px-3 pb-1.5 pt-2.5 text-11 uppercase tracking-wider text-subtle md:block">
+          <div key={h} className="hidden border-b border-line-subtle px-3 pb-1.5 pt-2.5 text-12 uppercase tracking-wider text-subtle md:block">
             {t(`requirements.map.${h}`)}
           </div>
         ))}
@@ -71,7 +71,7 @@ function AreaLane({ name, own, slug, onPeek }: { name: string; own: { r: Require
         const cell = own.filter((x) => roadmapHorizonOf(x.r.standing) === h).sort((a, b) => ORDER[a.stage] - ORDER[b.stage]);
         return (
           <div key={h} className="flex min-w-0 flex-col gap-px border-b border-l border-line-subtle py-1.5 pl-3 pr-1 max-md:border-l-0 max-md:pl-0" data-horizon={h}>
-            <span className="text-11 uppercase tracking-wider text-subtle md:hidden">{t(`requirements.map.${h}`)}</span>
+            <span className="text-12 uppercase tracking-wider text-subtle md:hidden">{t(`requirements.map.${h}`)}</span>
             {cell.length === 0 ? <span className="text-subtle">—</span> : null}
             {cell.map(({ r, stage }) => (
               <Link

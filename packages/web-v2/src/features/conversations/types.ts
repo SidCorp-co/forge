@@ -55,7 +55,7 @@ export type ConversationWindowDecision =
   | "handed-off"
   | "stopped";
 
-export interface ConversationRow {
+export interface ConversationListItem {
   id: string;
   adapter: ConversationAdapter;
   externalId: string;
@@ -209,7 +209,7 @@ export interface ConversationCandidates {
   handles: HandleCandidate[];
 }
 
-export interface ConversationDetail extends ConversationRow, ConversationMembership {
+export interface ConversationDetail extends ConversationListItem, ConversationMembership {
   messages: ConversationMessage[];
   windows: ConversationWindow[];
   agentMode: AgentModeOffer;
@@ -398,7 +398,7 @@ export function threadEntries(
 
 /** A conversation's name, or the first thing said in it. */
 /** A room's name: its title, else its first words, else `untitled` (the caller's words for a room with neither). */
-export function conversationTitle(row: ConversationRow, firstSaid?: string | null, untitled = "New conversation"): string {
+export function conversationTitle(row: ConversationListItem, firstSaid?: string | null, untitled = "New conversation"): string {
   const named = row.title?.trim();
   if (named) return named;
   const said = firstSaid?.trim();

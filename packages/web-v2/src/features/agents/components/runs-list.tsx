@@ -7,7 +7,7 @@
 import { RUN_GROUP_LABELS, RUN_MASTER_GROUP, RUN_STANDING_SCOPES, type RunStandingScope } from "@forge/contracts/run-standing";
 import { needsViewer } from "@forge/contracts/standing";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import {
   FilterChip,
   GroupedList,
@@ -99,7 +99,7 @@ export function RunsList({ access }: { access: AgentsAccess }) {
   const [mode, setMode] = useUrlChoice<GroupMode>("group", GROUP_MODES, "attention");
   const [params, setParams] = useUrlParams();
   const text = (params.get("q") ?? "").trim().toLowerCase();
-  const on = useMemo(() => new Set((params.get("f") ?? "").split(",").filter((x): x is Filter => (FILTERS as readonly string[]).includes(x))), [params]);
+  const on = new Set((params.get("f") ?? "").split(",").filter((x): x is Filter => (FILTERS as readonly string[]).includes(x)));
   const toggle = (f: Filter) => {
     const next = new Set(on);
     if (next.has(f)) next.delete(f);
@@ -110,7 +110,7 @@ export function RunsList({ access }: { access: AgentsAccess }) {
   const d = q.data;
   const fold = useGroupFold(`web-v2:runs-fold:${mode}:${scope}`);
 
-  const groups = useMemo((): ListGroup<Item>[] => {
+  const groups = (() => {
     if (!d) return [];
     const rows = d.items.filter(
       (r) => matches(text, r) && (!on.has("you") || needsViewer(r)) && (!on.has("stuck") || r.state === "stuck"),
@@ -121,19 +121,16 @@ export function RunsList({ access }: { access: AgentsAccess }) {
       g.id === "finished" ? { ...g, collapsed: scope === "finished" ? false : RUN_GROUP_LABELS.finished.collapsed } : g,
     );
     return [master, ...(runs as ListGroup<Item>[])];
-  }, [d, text, on, scope, mode, language]);
+  })();
 
-  const visible = useMemo(() => visibleRows(groups, fold).map(keyOf), [groups, fold]);
-  const allKeys = useMemo(() => groups.flatMap((g) => g.rows.map(keyOf)), [groups]);
+  const visible = visibleRows(groups, fold).map(keyOf);
+  const allKeys = groups.flatMap((g) => g.rows.map(keyOf));
   const peek = usePeek(visible, allKeys);
-  const hrefOf = useCallback((key: string) => (key === MASTER_KEY ? masterHref(slug) : runHref(slug, key)), [slug]);
-  const openFull = useCallback(
-    (key: string) => {
+  const hrefOf = (key: string) => (key === MASTER_KEY ? masterHref(slug) : runHref(slug, key));
+  const openFull = (key: string) => {
       rememberListOrigin(AGENTS_LIST);
       router.push(hrefOf(key));
-    },
-    [router, hrefOf],
-  );
+    };
   usePeekKeys(peek, openFull);
   return (
     <QueryBoundary query={q} loadingLabel={t("agents.loadingRuns")} height="50vh" retry="always">

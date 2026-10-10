@@ -31,11 +31,11 @@ function Thread({ messages }: { messages: FeedbackMessageView[] }) {
           <li key={m.id} className="grid gap-0.5 border-b border-line-subtle py-2.5 text-13" data-testid={note ? "feedback-note" : "feedback-message"}>
             <span className="flex flex-wrap items-baseline gap-x-2">
               {note ? (
-                <span className="text-11 font-semibold uppercase tracking-wide" style={{ color: LEGEND.you.fg }}>
+                <span className="text-12 font-semibold uppercase tracking-wide" style={{ color: LEGEND.you.fg }}>
                   {t("feedback.messages.noteHead")}
                 </span>
               ) : (
-                <span className="text-11 font-semibold uppercase tracking-wide text-muted" data-testid={m.relayed ? "feedback-relayed" : undefined}>
+                <span className="text-12 font-semibold uppercase tracking-wide text-muted" data-testid={m.relayed ? "feedback-relayed" : undefined}>
                   {head}
                 </span>
               )}
@@ -44,7 +44,7 @@ function Thread({ messages }: { messages: FeedbackMessageView[] }) {
                 <span title={time.dateTime(m.sentAt)}>{time.relative(m.sentAt)}</span>
               </span>
             </span>
-            <Written className="max-w-[80ch] whitespace-pre-wrap" text={m.text} lang={m.writtenLang} />
+            <Written className="max-w-2xl whitespace-pre-wrap" text={m.text} lang={m.writtenLang} />
           </li>
         );
       })}
@@ -58,9 +58,9 @@ export function MessagePreview({ shown }: { shown: FeedbackMessagePreview }) {
   const someone = t("feedback.messages.aReporter");
   return (
     <div className="grid gap-1 border-l-2 border-line py-1 pl-3" data-testid="message-preview">
-      <span className="text-11 font-semibold uppercase tracking-wide text-muted">{t("feedback.messages.previewHead")}</span>
+      <span className="text-12 font-semibold uppercase tracking-wide text-muted">{t("feedback.messages.previewHead")}</span>
       <span className="text-13 font-semibold">{shown.title}</span>
-      <span className="max-w-[80ch] whitespace-pre-wrap text-13">{shown.body}</span>
+      <span className="max-w-2xl whitespace-pre-wrap text-13">{shown.body}</span>
       <span className="text-12 text-muted">{t("feedback.messages.to", { names: shown.recipients.map((r) => r.name ?? someone).join(", ") })}</span>
       {shown.notReached.map((r) => (
         <span key={r.id} className="text-12 text-muted">
@@ -145,7 +145,7 @@ export function Messages({ projectId, f }: { projectId: string; f: FeedbackView 
   if (f.messages.length === 0 && !f.can.message && !f.can.note) return null;
   return (
     <section className="grid gap-3" data-testid="feedback-messages">
-      <h2 className="text-15 font-semibold leading-snug text-fg">{t("feedback.messages.heading")}</h2>
+      <h2 className="text-14 font-semibold leading-snug text-fg">{t("feedback.messages.heading")}</h2>
       <Thread messages={f.messages} />
       {f.can.message || f.can.note ? <Composer projectId={projectId} f={f} /> : null}
     </section>

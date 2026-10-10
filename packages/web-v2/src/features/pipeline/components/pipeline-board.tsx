@@ -7,7 +7,7 @@
 // not a column: an in_progress card names it ("In progress · Test"). Live via WS (the project room
 // invalidates `['issues','search']` + `['pipeline-runs','list']`).
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   ErrorState,
   KanbanBoard,
@@ -56,19 +56,19 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
   const issuesQ = useProjectIssues(projectId);
   const runsQ = useProjectRuns(projectId);
 
-  const runIndex = useMemo(() => runsByIssue(runsQ.data?.items), [runsQ.data]);
+  const runIndex = runsByIssue(runsQ.data?.items);
   const t = useCopy();
   const language = useInterfaceLanguage();
-  const groups = useMemo(() => groupIssuesByColumn(issuesQ.data?.items, language), [issuesQ.data, language]);
+  const groups = groupIssuesByColumn(issuesQ.data?.items, language);
 
   // Keep the open drawer's issue snapshot in sync with the live list: editing
   // status/priority/assignee from the quick-action bar invalidates `['issues']`,
   // so re-derive the freshest row by id (falling back to the snapshot) — the
   // header chip + quick-bar selects then reflect the change without reopening.
-  const selectedIssue = useMemo(() => {
+  const selectedIssue = (() => {
     if (!selected) return null;
     return issuesQ.data?.items.find((i) => i.id === selected.issue.id) ?? selected.issue;
-  }, [selected, issuesQ.data]);
+  })();
 
   return (
     <div

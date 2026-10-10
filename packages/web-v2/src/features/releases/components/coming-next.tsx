@@ -19,7 +19,7 @@ import { requirementHref } from "@/lib/routes/requirements";
 import type { ReleaseSummary } from "../types";
 
 const GRID = "grid grid-cols-[104px_minmax(0,1fr)_minmax(0,300px)_128px] items-center gap-x-3.5 px-5 max-md:grid-cols-[auto_minmax(0,1fr)_auto] max-md:px-3";
-const ROW = `${GRID} min-h-[44px] border-b border-line-subtle py-1.5`;
+const ROW = `${GRID} min-h-11 border-b border-line-subtle py-1.5`;
 
 /** "Waiting on you: cut 0.1.0" — the draft's own turn, as the release read model gives it to this viewer. */
 function draftTurnText(draft: ReleaseSummary, t: Copy, language: string): string | null {
@@ -57,7 +57,7 @@ export function ComingNext({
       <div className="px-5 max-md:px-3">
         <ViewHeading>{t("releases.comingNext")}</ViewHeading>
       </div>
-      <div className={`${GRID} h-8 border-y border-line-subtle bg-sunken text-11-5 font-semibold text-subtle max-md:hidden`} data-testid="coming-next-header">
+      <div className={`${GRID} h-8 border-y border-line-subtle bg-sunken text-12 font-semibold text-subtle max-md:hidden`} data-testid="coming-next-header">
         <span>{t("list.col.key")}</span>
         <span>{t("list.col.title")}</span>
         <span className="text-right">{t("releases.colProgress")}</span>
@@ -66,7 +66,7 @@ export function ComingNext({
       <ul className="m-0 list-none p-0">
         {requirements.map((s) => (
           <li key={s.key} className={ROW} data-testid="coming-next-requirement" data-key={s.key}>
-            <Link className="font-mono text-12-5 font-semibold text-link hover:underline" href={requirementHref(slug, s.key)}>
+            <Link className="font-mono text-13 font-semibold text-link hover:underline" href={requirementHref(slug, s.key)}>
               {s.key}
             </Link>
             <span className="min-w-0 truncate text-13 text-fg max-md:order-3 max-md:col-span-3">{s.title}</span>
@@ -76,13 +76,13 @@ export function ComingNext({
         ))}
         {draft ? (
           <li className={ROW} data-testid="coming-next-draft" data-key={draft.key}>
-            <Link className="font-mono text-12-5 font-semibold text-link hover:underline" href={releaseHref(slug, draft.version)}>
+            <Link className="font-mono text-13 font-semibold text-link hover:underline" href={releaseHref(slug, draft.version)}>
               {draft.version}
             </Link>
             <span className="flex min-w-0 flex-col max-md:order-3 max-md:col-span-3">
               <span className="truncate text-13 text-fg">{t("releases.draftRelease", { n: draft.issueCount })}</span>
               {turn ? (
-                <span className="truncate text-12-5 font-semibold text-fg" title={said(draft.waitingOn.says.rule, language)} data-testid="coming-next-draft-turn">
+                <span className="truncate text-13 font-semibold text-fg" title={said(draft.waitingOn.says.rule, language)} data-testid="coming-next-draft-turn">
                   {turn}
                 </span>
               ) : null}

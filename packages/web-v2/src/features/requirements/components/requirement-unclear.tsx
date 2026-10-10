@@ -97,7 +97,7 @@ export function OpenQuestions({
   const t = useCopy();
   return (
     <section data-testid="requirement-unclear">
-      <ViewHeading right={<span className="text-12-5 text-muted">{t("requirements.unclear.count", { n: unclear })}</span>}>{t("requirements.unclear.heading")}</ViewHeading>
+      <ViewHeading right={<span className="text-13 text-muted">{t("requirements.unclear.count", { n: unclear })}</span>}>{t("requirements.unclear.heading")}</ViewHeading>
       {questions.length === 0 ? (
         <p className="text-13 text-subtle">{t("requirements.unclear.none")}</p>
       ) : (
@@ -116,7 +116,7 @@ export function Assumptions({ assumptions, revision, slug }: { assumptions: Requ
   const t = useCopy();
   return (
     <section data-testid="requirement-assumptions">
-      <ViewHeading right={revision !== null ? <span className="text-12-5 text-muted">{t("requirements.overview.fromR", { r: revision })}</span> : undefined}>{t("requirements.assumptions.heading")}</ViewHeading>
+      <ViewHeading right={revision !== null ? <span className="text-13 text-muted">{t("requirements.overview.fromR", { r: revision })}</span> : undefined}>{t("requirements.assumptions.heading")}</ViewHeading>
       {assumptions.length === 0 ? (
         <p className="text-13 text-subtle">{t("requirements.assumptions.none")}</p>
       ) : (

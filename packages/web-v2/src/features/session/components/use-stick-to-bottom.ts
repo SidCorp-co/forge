@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ConversationItem } from "../types";
 
 /**
@@ -51,12 +51,12 @@ export function useStickToBottom({
   };
 
   /** Take the reader to the newest output, because they asked for it. */
-  const toBottom = useCallback(() => {
+  const toBottom = () => {
     atBottomRef.current = true;
     setAtBottom(true);
     setNewOutput(false);
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, []);
+  };
 
   // Conversation switch: reset the one-shot guard and jump to bottom once the
   // freshly-resolved conversation's items have loaded.

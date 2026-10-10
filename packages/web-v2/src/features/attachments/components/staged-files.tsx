@@ -7,7 +7,8 @@
 import { ISSUE_CREATE_ATTACHMENTS_MAX } from "@forge/contracts/attachments";
 import { Banner, Icon, IconButton } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { type ClipboardEvent, type DragEvent, useCallback, useRef, useState } from "react";
+import { cn } from "@/lib/utils/cn";
+import { type ClipboardEvent, type DragEvent, useRef, useState } from "react";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const DOC_MIMES = [
@@ -157,11 +158,11 @@ export function useStagedFiles({
     }
   };
 
-  const reset = useCallback(() => {
+  const reset = () => {
     setFiles([]);
     setWarnings([]);
     setDragOver(false);
-  }, []);
+  };
 
   const input = (
     <input
@@ -218,7 +219,7 @@ export function StagedFileList({
     <>
       {spaced && banner ? <div className="mt-2">{banner}</div> : banner}
       {files.length > 0 && (
-        <ul className={`${spaced ? "mt-2.5 " : ""}flex flex-col divide-y divide-line-subtle`}>
+        <ul className={cn("flex flex-col divide-y divide-line-subtle", spaced && "mt-2.5")}>
           {files.map((f, i) => (
             <li
               key={keyOf(f)}
