@@ -80,6 +80,8 @@ export const notifications = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     pendingSince: timestamp('pending_since', { withTimezone: true }),
+    /** An ops alert's: when its level was last set, crossing out of ok or escalating (REQ-22 BC-1). */
+    levelChangedAt: timestamp('level_changed_at', { withTimezone: true }),
     groupKey: text('group_key'),
     /** The stored status report a `status_report` notice links to. */
     statusReportId: uuid('status_report_id').references(() => statusReports.id, {

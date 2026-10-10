@@ -16,6 +16,7 @@ import { schedules } from '../db/schema.js';
 import { buildBarrierFragments } from '../jobs/index.js';
 import { ADMIN_THRESHOLDS, type AdminThresholds } from '../lib/admin-thresholds.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
+import { type OpsAlertChange, opsAlertChanges } from '../notifications/index.js';
 import { tallyDeadDeliveries } from '../outbox/index.js';
 import { runnerMayTakeJob } from '../runners/index.js';
 import { readScheduleStreaks, type ScheduleStreak, streakFails } from '../schedules/index.js';
@@ -33,6 +34,9 @@ import {
   worstStatus,
 } from './alert-rules.js';
 import type { AdminAlert, AdminAlertId, AdminAlertStatus } from './types.js';
+
+/** An alert as its query reads it, before the recorded change time is joined on. */
+type AlertReading = Omit<AdminAlert, 'changedAt'>;
 
 export const ENTITY_LIMIT = 20;
 interface AlertQueryOptions {
@@ -54,7 +58,7 @@ type OrphanRow = {
 };
 
 /** A1 — ISS-258 invariant: a non-terminal job under a terminal pipeline_run. Any count > 0 is crit; the invariant is 0. */
-async function alertOrphanJobs(): Promise<AdminAlert> {
+async function alertOrphanJobs(): Promise<AlertReading> {
   const rows = await db.execute<OrphanRow & { total: number }>(sql`
     SELECT j.id, j.type AS job_type, p.slug AS project_slug, j.queued_at,
            count(*) OVER ()::int AS total
@@ -91,7 +95,7 @@ type StuckRow = {
 };
 
 /** A2 — jobs dispatched past staleSeconds (a job has no `running` state; its session does). */
-async function alertStuckJobs(staleSeconds: number): Promise<AdminAlert> {
+async function alertStuckJobs(staleSeconds: number): Promise<AlertReading> {
   const rows = await db.execute<StuckRow & { total: number }>(sql`
     SELECT j.id, j.type AS job_type, j.dispatched_at,
            extract(epoch FROM (now() - j.dispatched_at))::float8 AS age_seconds,
@@ -130,7 +134,7 @@ type StarvedProject = {
   oldest: PgTimestamp | null;
 };
 
-async function alertRunnerStarved(starvedGraceSeconds: number): Promise<AdminAlert> {
+async function alertRunnerStarved(starvedGraceSeconds: number): Promise<AlertReading> {
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
 
   const candidates = await db.execute<{ project_id: string; slug: string }>(sql`
@@ -221,7 +225,7 @@ async function alertRunnerStarved(starvedGraceSeconds: number): Promise<AdminAle
 type SpendRow = { project_id: string; slug: string; cur: number; base: number };
 
 /** A4 — current-window spend vs the preceding window of equal length, cross-tenant and per project. */
-async function alertSpendSpike(now: Date, thresholds: AdminThresholds): Promise<AdminAlert> {
+async function alertSpendSpike(now: Date, thresholds: AdminThresholds): Promise<AlertReading> {
   const w = SPEND_WINDOW_HOURS;
   const [[global], projectRows, [day]] = await Promise.all([
     db.execute<{ cur: number; base: number }>(sql`
@@ -353,7 +357,10 @@ function oldestIso(values: Array<PgTimestamp | null>): string | null {
 }
 
 /** A5 — two contributors combined into one alert: schedule fail-streaks and integration-delivery fail-rates. */
-async function alertAutomationFailing(thresholds: AdminThresholds, now: Date): Promise<AdminAlert> {
+async function alertAutomationFailing(
+  thresholds: AdminThresholds,
+  now: Date,
+): Promise<AlertReading> {
   const [streaks, deliveryRows] = await Promise.all([
     readScheduleStreaks({ minStreak: thresholds.scheduleFailStreak }),
     db.execute<DeliveryFailRow>(sql`
@@ -420,7 +427,7 @@ async function alertAutomationFailing(thresholds: AdminThresholds, now: Date): P
  * A6 — outbox deliveries that ran out of attempts. Any dead delivery is crit: a reaction that will
  * not happen until somebody replays it (`POST /api/admin/outbox/deliveries/:did/replay`).
  */
-async function alertDeadDeliveries(): Promise<AdminAlert> {
+async function alertDeadDeliveries(): Promise<AlertReading> {
   const { count, oldestDeadAt, sample } = await tallyDeadDeliveries(ENTITY_LIMIT);
   return {
     id: 'A6',
@@ -445,7 +452,7 @@ export async function computeAlerts(opts: AlertQueryOptions = {}): Promise<Admin
   const thresholds = opts.thresholds ?? ADMIN_THRESHOLDS;
   const staleSeconds = opts.staleSeconds ?? thresholds.stuckJobSeconds;
   const now = opts.now ?? new Date();
-  return Promise.all([
+  const read = await Promise.all([
     alertOrphanJobs(),
     alertStuckJobs(staleSeconds),
     alertRunnerStarved(thresholds.runnerStarvedSeconds),
@@ -453,4 +460,25 @@ export async function computeAlerts(opts: AlertQueryOptions = {}): Promise<Admin
     alertAutomationFailing(thresholds, now),
     alertDeadDeliveries(),
   ]);
+  const changes = await opsAlertChanges(read.map((a) => opsAlertResolutionKey(a.id)));
+  return read.map((a) => ({
+    ...a,
+    changedAt: changedAtOf(a.status, changes.get(opsAlertResolutionKey(a.id))),
+  }));
+}
+
+const SEVERITY_OF: Record<Exclude<AdminAlertStatus, 'ok'>, string> = {
+  warn: 'warning',
+  crit: 'error',
+};
+
+/**
+ * When the level shown last changed, read from the sweep's record (REQ-22 BC-1): the open record's
+ * change where its severity is the level shown, the last return to ok where the alert reads ok and
+ * nothing is open. Anything else is a level the five-minute sweep has not recorded yet: null.
+ */
+function changedAtOf(status: AdminAlertStatus, change: OpsAlertChange | undefined): string | null {
+  if (!change) return null;
+  if (status === 'ok') return change.open ? null : (change.resolvedAt?.toISOString() ?? null);
+  return change.open?.severity === SEVERITY_OF[status] ? change.open.changedAt.toISOString() : null;
 }
