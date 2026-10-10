@@ -282,7 +282,7 @@ function PermissionPicks({
   );
 }
 
-function SsoReauth({ providers, onStart }: { providers: string[]; onStart: (p: string) => void }) {
+export function SsoReauth({ providers, onStart }: { providers: string[]; onStart: (p: string) => void }) {
   const t = useCopy();
   return (
     <Field

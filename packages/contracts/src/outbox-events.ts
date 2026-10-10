@@ -533,11 +533,11 @@ export interface OutboxEventPayloads {
 		revision: number;
 		acceptedBy: string;
 	};
-	/** A personal access token of `userId` was minted, revoked, or used (at most once a minute). */
+	/** A personal access token of `userId` was minted, revoked, had its project list changed, or was used (at most once a minute). */
 	"credential.tokenChanged": {
 		userId: string;
 		tokenId: string;
-		change: "created" | "revoked" | "used";
+		change: "created" | "revoked" | "used" | "fenced";
 		ts: string;
 	};
 	/** A runner row changed; `data` is what its rooms are told, `runnerRoom` whether the runner's own room is too. */

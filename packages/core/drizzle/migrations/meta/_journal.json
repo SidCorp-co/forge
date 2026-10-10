@@ -3186,6 +3186,13 @@
       "when": 1825718400000,
       "tag": "0495_an_intake_draft_the_model_missed_is_tried_again",
       "breakpoints": true
+    },
+    {
+      "idx": 498,
+      "version": "7",
+      "when": 1825977600000,
+      "tag": "0498_a_tokens_project_list_change_is_recorded",
+      "breakpoints": true
     }
   ]
 }

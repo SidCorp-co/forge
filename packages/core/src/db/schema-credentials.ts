@@ -80,3 +80,25 @@ export const mcpAuditLog = pgTable(
     projectIdx: index('mcp_audit_project_idx').on(t.projectId, t.createdAt),
   }),
 );
+
+/**
+ * Every change to a personal token's project list (FB-48): who changed it, what it reached before
+ * and after. The token keeps its secret; only its fence moves, and each move is kept here. `before`
+ * is null where the token had no fence; a bound token reads as its one project.
+ */
+export const tokenFenceChanges = pgTable(
+  'token_fence_changes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tokenId: uuid('token_id')
+      .notNull()
+      .references(() => personalAccessTokens.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    beforeProjects: uuid('before_projects').array(),
+    afterProjects: uuid('after_projects').array().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tokenIdx: index('token_fence_changes_token_idx').on(t.tokenId, t.createdAt),
+  }),
+);

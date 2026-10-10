@@ -37,6 +37,15 @@ export function useRevokeToken() {
   });
 }
 
+/** A token's project list, changed in place (FB-48). The caller branches on FRESH_AUTH_REQUIRED. */
+export function useSetTokenProjects() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: settingsApi.setTokenProjects,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings", "tokens"] }),
+  });
+}
+
 export function useReauth() {
   return useMutation({ mutationFn: settingsApi.reauth });
 }
