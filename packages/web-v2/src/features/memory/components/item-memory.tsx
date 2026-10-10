@@ -10,7 +10,7 @@ import { Button, ErrorState, ProjectLoader, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useItemMemory, useMemoryActs } from "../hooks";
-import { MemoryEntryRow } from "./memory-entry";
+import { MemoryEntryItem } from "./memory-entry";
 
 /** How many memories name the item, for its tab; undefined until the read answers. */
 export function useItemMemoryCount(projectId: string, cites: string): number | undefined {
@@ -39,7 +39,7 @@ export function ItemMemory({ projectId, slug, cites }: { projectId: string; slug
       ) : (
         <ul className="-mx-5 border-t border-line-subtle max-md:-mx-3">
           {q.data.items.map((e) => (
-            <MemoryEntryRow
+            <MemoryEntryItem
               key={e.id}
               entry={e}
               slug={slug}
@@ -52,7 +52,7 @@ export function ItemMemory({ projectId, slug, cites }: { projectId: string; slug
         </ul>
       )}
       {q.data && (retired || hidden > 0) ? (
-        <p className="flex flex-wrap items-baseline gap-x-2 text-12-5 text-muted" data-testid="item-memory-retired">
+        <p className="flex flex-wrap items-baseline gap-x-2 text-13 text-muted" data-testid="item-memory-retired">
           <span>{retired ? t("memory.itemShowingRetired") : t("memory.itemRetired", { n: hidden })}</span>
           <Button size="sm" variant="ghost" onClick={() => setRetired((r) => !r)}>
             {retired ? t("memory.itemShowCurrent") : t("memory.itemShowRetired")}

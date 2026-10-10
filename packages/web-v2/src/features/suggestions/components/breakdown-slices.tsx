@@ -76,7 +76,7 @@ export function BreakdownSlices({ read }: { read: SuggestionBreakdownRead | unde
     return (
       <div data-testid="breakdown-slices" className="mt-1 grid gap-0.5">
         <p className="text-danger">{t("requirements.suggestion.unreadable")}</p>
-        <p className="font-mono text-11-5 text-subtle">{read.unreadable}</p>
+        <p className="font-mono text-12 text-subtle">{read.unreadable}</p>
       </div>
     );
   }

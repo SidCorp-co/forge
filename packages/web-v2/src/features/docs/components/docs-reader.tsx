@@ -169,7 +169,7 @@ export function DocsArticle({
     }
   });
   return (
-    <article ref={ref} style={{ maxWidth: "72ch" }} className="mx-auto">
+    <article ref={ref} className="mx-auto max-w-2xl">
       {children}
       <Markdown variant="prose" docBasePath={docBasePath} docRoute={docRoute}>
         {body}
@@ -177,6 +177,9 @@ export function DocsArticle({
     </article>
   );
 }
+
+/** A heading's indent in the table of contents, by its level. */
+const TOC_INDENT = ["pl-2", "pl-4.5", "pl-7"] as const;
 
 export function DocsToc({ toc }: { toc: TocEntry[] }) {
   function scrollToHeading(slug: string) {
@@ -194,8 +197,7 @@ export function DocsToc({ toc }: { toc: TocEntry[] }) {
           key={`${t.slug}-${t.level}`}
           type="button"
           onClick={() => scrollToHeading(t.slug)}
-          className="truncate rounded-md px-2 py-1 text-left text-12-5 text-muted hover:bg-hover hover:text-fg"
-          style={{ paddingLeft: 8 + (t.level - 1) * 10 }}
+          className={cn("truncate rounded-md px-2 py-1 text-left text-13 text-muted hover:bg-hover hover:text-fg", TOC_INDENT[t.level - 1])}
         >
           {t.text}
         </button>
