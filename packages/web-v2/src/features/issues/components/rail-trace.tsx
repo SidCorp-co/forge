@@ -25,7 +25,7 @@ export function Row({ label, children }: { label: string; children: React.ReactN
 }
 
 /** The workflow the issue builds, else the one it proposes a revision of. */
-function WorkflowRow({ issue, slug }: { issue: Pick<IssueDetail, "buildsWorkflow" | "proposesWorkflow">; slug: string }) {
+function WorkflowTrace({ issue, slug }: { issue: Pick<IssueDetail, "buildsWorkflow" | "proposesWorkflow">; slug: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const w = issue.buildsWorkflow ?? issue.proposesWorkflow;
@@ -79,7 +79,7 @@ export function RailTraceRows({
           </span>
         </Row>
       ) : null}
-      <WorkflowRow issue={issue} slug={slug} />
+      <WorkflowTrace issue={issue} slug={slug} />
       {standing?.feedback.length ? (
         <Row label={t("issues.facts.feedback")}>
           <span className="flex flex-wrap justify-end gap-x-2 gap-y-1" data-testid="rail-feedback">

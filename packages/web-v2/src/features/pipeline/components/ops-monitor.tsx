@@ -8,10 +8,6 @@
 // `['projects','health']` + `['pipeline-runs','list']`.
 import {
   Badge,
-  PageSection,
-  PageSectionBody,
-  PageSectionHeader,
-  PageSectionTitle,
   EmptyState,
   ErrorState,
   HealthDot,
@@ -32,6 +28,7 @@ import {
   TopBarActions,
   useUrlChoice,
   useUrlParams,
+  Section,
 } from "@/design";
 import { deriveHealth, type ProjectHealthRow, useOrgScopedProjects, useProjectHealth } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
@@ -187,14 +184,9 @@ function MonitorTab({
         <Tile label="Online runners" value={String(totalRunners)} />
       </div>
 
-      <PageSection>
-        <PageSectionHeader>
-          <PageSectionTitle>Live now</PageSectionTitle>
-          <Stat icon="activity" mono={false}>
+      <Section title="Live now" right={<><Stat icon="activity" mono={false}>
             {recent} steps · last 7d
-          </Stat>
-        </PageSectionHeader>
-        <PageSectionBody>
+          </Stat></>}>
           {live.length === 0 ? (
             <p className="fg-body-sm text-muted">No runs are active right now.</p>
           ) : (
@@ -210,20 +202,17 @@ function MonitorTab({
               ))}
             </div>
           )}
-        </PageSectionBody>
-      </PageSection>
+        </Section>
     </div>
   );
 }
 
 function Tile({ label, value }: { label: string; value: string }) {
   return (
-    <PageSection>
-      <PageSectionBody>
+    <Section>
         <p className="fg-caption">{label}</p>
         <p className="mt-1 font-mono text-2xl font-bold text-fg">{value}</p>
-      </PageSectionBody>
-    </PageSection>
+      </Section>
   );
 }
 
@@ -287,11 +276,7 @@ function ProgressTab({
         />
       </div>
 
-      <PageSection>
-        <PageSectionHeader>
-          <PageSectionTitle>Avg duration by stage · 7d</PageSectionTitle>
-        </PageSectionHeader>
-        <PageSectionBody>
+      <Section title="Avg duration by stage · 7d">
           {aggs.length === 0 ? (
             <p className="fg-body-sm text-muted">No completed steps in the window.</p>
           ) : (
@@ -310,8 +295,7 @@ function ProgressTab({
               ))}
             </div>
           )}
-        </PageSectionBody>
-      </PageSection>
+        </Section>
     </div>
   );
 }
@@ -325,12 +309,7 @@ function HealthTab({ health }: { health: ProjectHealthRow[] }) {
   return (
     <div className="grid gap-x-8 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
       {health.map((h) => (
-        <PageSection key={h.id}>
-          <PageSectionHeader>
-            <PageSectionTitle>{h.projectName}</PageSectionTitle>
-            <HealthDot health={deriveHealth(h)} />
-          </PageSectionHeader>
-          <PageSectionBody>
+        <Section title={h.projectName} right={<><HealthDot health={deriveHealth(h)} /></>} key={h.id}>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
               <Metric label="Active" value={String(h.totalActive)} />
               <Metric label="Live runs" value={String(h.liveRuns)} />
@@ -339,8 +318,7 @@ function HealthTab({ health }: { health: ProjectHealthRow[] }) {
               <Metric label="Blockers" value={String(h.blockers?.length ?? 0)} />
               <Metric label="Escalations" value={String(h.pendingEscalations)} />
             </div>
-          </PageSectionBody>
-        </PageSection>
+          </Section>
       ))}
     </div>
   );

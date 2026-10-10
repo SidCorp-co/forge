@@ -9,13 +9,13 @@ import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { agentsListHref, runHref } from "@/lib/routes/agents";
 import { useIssueChecks } from "../../checks-api";
 import type { IssueAgentSession } from "../../types";
-import { fmtDuration } from "../step-artifact-card";
+import { fmtDuration } from "../step-artifact";
 
 const took = (ms: number, t: Copy) => fmtDuration(ms / 1000, t);
 const kindLabel = (kind: string, t: Copy) => t(`issues.checks.kind.${kind}` as ProductCopyKey);
 
 /** One kind of check: how many ran, the time they took together, and the slowest. */
-function KindRow({ kind, t }: { kind: CheckKindTime; t: Copy }) {
+function CheckKind({ kind, t }: { kind: CheckKindTime; t: Copy }) {
   return (
     <li className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 py-2 text-13" data-testid="check-kind" data-kind={kind.kind}>
       <span className="w-40 flex-none fg-label">{kindLabel(kind.kind, t)}</span>
@@ -56,7 +56,7 @@ function RunOf({ check, sessions, slug, t }: { check: IssueCheckRunView; session
  * then its kind, run, time and commit, then its note. The name wraps and is never cut short — on
  * one line beside six columns it shrank to 1-3 characters at phone width, Failed row included.
  */
-function CheckRow({ check: c, sessions, slug, t }: { check: IssueCheckRunView; sessions: IssueAgentSession[]; slug: string; t: Copy }) {
+function CheckTime({ check: c, sessions, slug, t }: { check: IssueCheckRunView; sessions: IssueAgentSession[]; slug: string; t: Copy }) {
   const time = useTimeFormat();
   return (
     <li className="py-2 text-13" data-testid="check-run">
@@ -100,7 +100,7 @@ export function CheckTimes({ issueId, slug, sessions }: { issueId: string; slug:
       </ViewHeading>
       <ul className="divide-y divide-line-subtle border-y border-line-subtle">
         {view.kinds.map((kind) => (
-          <KindRow key={kind.kind} kind={kind} t={t} />
+          <CheckKind key={kind.kind} kind={kind} t={t} />
         ))}
       </ul>
       {view.checks.length === 0 ? (
@@ -108,7 +108,7 @@ export function CheckTimes({ issueId, slug, sessions }: { issueId: string; slug:
       ) : (
         <ul className="mt-3 divide-y divide-line-subtle" aria-label={t("issues.checks.each")}>
           {view.checks.map((c) => (
-            <CheckRow key={c.id} check={c} sessions={sessions} slug={slug} t={t} />
+            <CheckTime key={c.id} check={c} sessions={sessions} slug={slug} t={t} />
           ))}
         </ul>
       )}

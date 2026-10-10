@@ -5,7 +5,7 @@
 // anything derived from `rows` describes the page and never the project. Live via WS on
 // `['issues','search']`, the one key the event-router invalidates.
 
-import { BoardRowSkeleton, ErrorState, Pagination, type SegmentOption } from "@/design";
+import { LoadingState, ErrorState, Pagination, type SegmentOption } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
@@ -101,7 +101,8 @@ export function IssuesListView({
   useReportShown(rows.map((r) => r.displayId));
   // whom an issue waits on is the standing read's, which the grouped views draw; the paged search has none
   const waiting = listFilterFromSearch("issues", view.search).waitingOn;
-  const now = issuesQ.dataUpdatedAt || Date.now();
+  // the rows are as old as the read that brought them
+  const now = issuesQ.dataUpdatedAt;
   const total = issuesQ.data?.totalCount ?? 0;
   const buckets = issuesQ.data?.extra?.buckets;
   const segments = withCounts(segmentsOf(t), buckets);
@@ -164,14 +165,7 @@ export function IssuesListView({
         </div>
       )}
 
-      {issuesQ.isLoading && (
-        <div className="border-t border-line">
-          {Array.from({ length: 6 }).map((_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length placeholder list that never reorders
-            <BoardRowSkeleton key={i} />
-          ))}
-        </div>
-      )}
+      {issuesQ.isLoading && <LoadingState label={t("issues.board.loading")} rows={6} />}
 
       {issuesQ.isError && (
         <div className="px-4 sm:px-6">

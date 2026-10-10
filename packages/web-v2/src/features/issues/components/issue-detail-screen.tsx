@@ -41,7 +41,7 @@ import type { IssueAgentSession, IssueStatus } from "../types";
 import { ReleaseNowAct } from "./awaiting-release-banner";
 import { BlockerAct, } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
-import type { LiveAgentState, } from "./live-agent-panel";
+import type { LiveAgentState, } from "./live-agent";
 import { ModulePicker } from "./module-picker";
 import { PropertiesRail } from "./properties-rail";
 import { readStart } from "./start-issue-action";

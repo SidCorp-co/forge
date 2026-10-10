@@ -12,7 +12,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Button,
-  PageSectionTitle,
   Checkbox,
   EmptyState,
   ErrorState,
@@ -69,8 +68,8 @@ export function ModulePicker({
   }
 
   // each module named under its ancestors ("Execution › Runs"), so the list reads in tree order
-  const modules = modulesQ.modules
-        .map((m) => ({ ...m, label: [...ancestorsOf(modulesQ.modules, m.id).map((a) => a.name), m.name].join(" › ") }))
+  const modules = (modulesQ.data ?? [])
+        .map((m) => ({ ...m, label: [...ancestorsOf((modulesQ.data ?? []), m.id).map((a) => a.name), m.name].join(" › ") }))
         .sort((a, b) => a.label.localeCompare(b.label));
 
   function toggle(id: string, next: boolean) {
@@ -126,7 +125,7 @@ export function ModulePicker({
       ) : (
         <div className="flex h-full flex-col gap-6">
           <section>
-            <PageSectionTitle className="fg-overline mb-2">{t("issues.modules.primary")}</PageSectionTitle>
+            <h3 className="fg-overline mb-2">{t("issues.modules.primary")}</h3>
             <RadioGroup name="primary-module" value={primary} onChange={choosePrimary}>
               <Radio value={NO_PRIMARY} label={t("issues.modules.noPrimary")} disabled={save.isPending} />
               {modules.map((m) => (
@@ -136,7 +135,7 @@ export function ModulePicker({
           </section>
 
           <section>
-            <PageSectionTitle className="fg-overline mb-2">{t("issues.modules.also")}</PageSectionTitle>
+            <h3 className="fg-overline mb-2">{t("issues.modules.also")}</h3>
             <div className="flex flex-col gap-2.5">
               {modules
                 .filter((m) => m.id !== primary)

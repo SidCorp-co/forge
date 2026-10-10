@@ -5,7 +5,7 @@ import type { IssueStandingRow } from "@forge/contracts/issue-standing";
 import { PeekHead, PeekPanel, type PeekState } from "@/design";
 import type { EtaClock } from "@/features/forecast";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { IssueBanner, IssuePeekFacts, IssueStrip, issueBadge } from "./issue-standing-bits";
+import { IssueBanner, IssuePeekProperties, IssueStrip, issueBadge } from "./issue-standing-bits";
 import { Written } from "@/lib/i18n/written";
 
 export function IssuePeek({
@@ -32,7 +32,7 @@ export function IssuePeek({
       </div>
       <IssueBanner standing={row.standing} className="mx-4.5 rounded-md" />
       <div className="px-4.5 pb-4 pt-2">
-        <IssuePeekFacts row={row} slug={slug} forecast={forecast} clock={clock} />
+        <IssuePeekProperties row={row} slug={slug} forecast={forecast} clock={clock} />
       </div>
     </PeekPanel>
   );

@@ -65,7 +65,7 @@ function toListItems(value: unknown): ArtifactListItem[] {
   return items;
 }
 
-export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardProps) {
+export function StepArtifact({ outcome, open, onToggle }: StepArtifactCardProps) {
   const [showRaw, setShowRaw] = useState(false);
   const t = useCopy();
   const language = useInterfaceLanguage();
