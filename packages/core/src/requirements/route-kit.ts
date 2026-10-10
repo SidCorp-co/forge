@@ -75,7 +75,7 @@ export const revisionFields = {
  */
 export function draftPictureFits(onto: 'new' | 'head'): MiddlewareHandler<RequirementEnv> {
   return async (c, next) => {
-    const body = (c.req.valid as (target: 'json') => unknown)('json') as {
+    const body = c.req.valid('json' as never) as {
       kind?: RequirementKind | null;
       picture?: DraftPicture;
     };
