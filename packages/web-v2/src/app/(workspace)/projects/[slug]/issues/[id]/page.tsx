@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { IssueDetailScreen } from "@/features/issues/components/issue-detail-screen";
+import { IssueDetailScreen } from "@/features/issues";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { ProjectRefGate } from "@/features/projects/components/project-gate";
 

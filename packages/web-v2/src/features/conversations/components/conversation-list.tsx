@@ -13,7 +13,7 @@ import {
   type MenuItem,
   SessionRowSkeleton,
 } from "@/design";
-import { useProjects } from "@/features/projects/hooks";
+import { useProjects } from "@/features/projects";
 import { useProjectEcosystems } from "@/features/ecosystem/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";

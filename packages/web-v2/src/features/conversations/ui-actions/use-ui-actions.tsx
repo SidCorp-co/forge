@@ -10,7 +10,7 @@ import { useShownKeys } from "@/design/hooks/use-page-shown";
 import { enumLabel, statusReading } from "@/design/vocabulary";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import type { CanonicalBlock } from "@/features/session/types";
+import type { CanonicalBlock } from "@/features/session";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useAuth } from "@/providers/auth-provider";
 import type { ConversationMessage, ConversationProgressEntry } from "../types";
@@ -26,7 +26,7 @@ import {
   uiSnapshotOf,
 } from "./actions";
 import { issueSelectionBridge, useSelectedIssueKeys } from "@/features/chat-dock";
-import { useBoard } from "@/features/board/board-store";
+import { useBoard } from "@/features/board";
 
 export interface UiCallRecord {
   callId: string;

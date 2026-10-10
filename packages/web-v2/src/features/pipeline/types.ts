@@ -1,6 +1,6 @@
 import type { IssueMove } from "@forge/contracts/issue-machine";
 
-import type { IssueWorkStateRow, PipelineHealth } from "@/features/issues/types";
+import type { IssueWorkStateRow, PipelineHealth } from "@/features/issues";
 import {
   type REGISTRY_JOB_TYPES,
   REGISTRY_PIPELINE_RUN_KINDS,

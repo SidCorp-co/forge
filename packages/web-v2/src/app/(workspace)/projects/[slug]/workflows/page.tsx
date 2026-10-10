@@ -1,9 +1,9 @@
 "use client";
 
 import { WorkflowsScreen } from "@/features/workflows/components/workflows-screen";
-import { ProjectGate } from "@/features/projects/components/project-gate";
+import { ProjectGate } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { canManageProject } from "@/features/projects/write-access";
+import { canManageProject } from "@/features/projects";
 
 export default function ProjectWorkflowsPage() {
   const t = useCopy();

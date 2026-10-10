@@ -1,4 +1,4 @@
-import type { SessionRow } from "@/features/sessions/types";
+import type { SessionRow } from "@/features/sessions";
 import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 import type { ConversationItem, MessageEntry, RunTotals, ToolCallData, ToolKind } from "./types";
 import { getToolLabel, toolKind } from "./types";

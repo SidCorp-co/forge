@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { FeedbackItemScreen } from "@/features/feedback/components/feedback-item-screen";
+import { FeedbackItemScreen } from "@/features/feedback";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { ProjectRefGate } from "@/features/projects/components/project-gate";
 

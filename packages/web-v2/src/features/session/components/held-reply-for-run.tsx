@@ -2,7 +2,7 @@
 
 import { MonoTag, PageSectionTitle } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import type { SessionMetadata } from "@/features/sessions/types";
+import type { SessionMetadata } from "@/features/sessions";
 
 interface HeldRefusal {
   rule: string;

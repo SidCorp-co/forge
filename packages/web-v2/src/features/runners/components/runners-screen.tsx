@@ -23,7 +23,7 @@ import {
   TR,
 } from "@/design";
 import { useAuth } from "@/providers/auth-provider";
-import { useActiveOrg } from "@/features/orgs/active-org";
+import { useActiveOrg } from "@/features/orgs";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { userRoom } from "@/lib/ws/rooms";

@@ -1,9 +1,9 @@
 "use client";
 
-import { SESSION_ATTACHMENTS } from "@/features/chat/attachments";
-import { ChatComposer, ReadOnlyComposerNote } from "@/features/chat/components/chat-composer";
-import { useProjects } from "@/features/projects/hooks";
-import { canWriteProject } from "@/features/projects/write-access";
+import { SESSION_ATTACHMENTS } from "@/features/chat";
+import { ChatComposer, ReadOnlyComposerNote } from "@/features/chat";
+import { useProjects } from "@/features/projects";
+import { canWriteProject } from "@/features/projects";
 
 /** A reader gets no composer (the server 403s sends regardless); a writer sends into the session. */
 export function SessionComposer({

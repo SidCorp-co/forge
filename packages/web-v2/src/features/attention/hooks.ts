@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useDevices } from "@/features/runners/hooks";
+import { useDevices } from "@/features/runners";
 import { attentionApi } from "./api";
 import type { AttentionItem, AttentionView } from "./types";
 

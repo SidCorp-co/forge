@@ -6,7 +6,7 @@
 // screenshot is read by its place and the item it belongs to, never by its file name.
 
 import { useState } from "react";
-import { ImageLightbox, type LightboxImage } from "@/features/attachments/components/image-lightbox";
+import { ImageLightbox, type LightboxImage } from "@/features/attachments";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import { useItemRecordings } from "../hooks";

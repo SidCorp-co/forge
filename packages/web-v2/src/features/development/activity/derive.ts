@@ -1,17 +1,17 @@
 
 import { type StageKey, stageColor } from "@/design/stages";
 import { TONE_META, type SemanticTone } from "@/design/status";
-import { jobTypeToStage } from "@/features/pipeline/derive";
-import type { PipelineRunListItem, StepDurationRow } from "@/features/pipeline/types";
+import { jobTypeToStage } from "@/features/pipeline";
+import type { PipelineRunListItem, StepDurationRow } from "@/features/pipeline";
 import {
   type ActiveRunner,
   type ProjectRunner,
   type RunnerLimitDisplay,
   runnerLimitDisplay,
-} from "@/features/runners/types";
+} from "@/features/runners";
 import { LIVE_PIPELINE_RUN_STATUSES } from "@forge/contracts/run-machine";
 import { NON_OPEN_STATUSES as NON_OPEN_ISSUE_STATUSES } from "@forge/contracts/issue-machine";
-import type { QueueStats } from "@/features/sessions/types";
+import type { QueueStats } from "@/features/sessions";
 
 /* ------------------------------------------------------------------ *
  * Open-issues-by-status donut (AC#4)

@@ -20,7 +20,7 @@ import {
   useListOrigin,
   useUrlChoice,
 } from "@/design";
-import { useResumeRun } from "@/features/run-control/hooks";
+import { useResumeRun } from "@/features/run-control";
 import { focusIssueQuestions } from "@/features/questions";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useRecents } from "@/lib/navigation/recents";

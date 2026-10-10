@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import { IconButton, Input, ProjectMark, StatusBadge } from "@/design";
-import { projectGlyph, projectInitials } from "@/features/projects/glyph";
+import { projectGlyph, projectInitials } from "@/features/projects";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ListedConversation } from "../hooks";
 import { conversationTitle } from "../types";

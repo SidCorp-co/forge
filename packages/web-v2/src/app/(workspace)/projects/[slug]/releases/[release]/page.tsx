@@ -1,8 +1,8 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { ReleaseItemScreen } from "@/features/releases/components/release-item-screen";
-import { ProjectGate } from "@/features/projects/components/project-gate";
+import { ReleaseItemScreen } from "@/features/releases";
+import { ProjectGate } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
 
 export default function ProjectReleasePage() {

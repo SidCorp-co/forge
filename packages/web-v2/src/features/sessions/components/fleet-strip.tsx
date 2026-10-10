@@ -14,8 +14,8 @@ import { useMemo } from "react";
 import { Banner, enumLabel, ErrorState, HealthDot, Icon, MonoTag } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
-import { useProject } from "@/features/projects/hooks";
-import { deviceHealth } from "@/features/runners/types";
+import { useProject } from "@/features/projects";
+import { deviceHealth } from "@/features/runners";
 import { useQueueStats } from "../hooks";
 import {
   deriveLiveness,

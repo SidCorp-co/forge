@@ -1,6 +1,6 @@
 "use client";
 
-import { SharedReleaseView } from "@/features/releases/components/shared-release";
+import { SharedReleaseView } from "@/features/releases";
 import { SharedAnswer } from "@/features/shares";
 import { useAuth } from "@/providers/auth-provider";
 

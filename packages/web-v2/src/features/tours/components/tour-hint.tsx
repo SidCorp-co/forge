@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/design";
-import { useCurrentProject } from "@/features/projects/current-project";
+import { useCurrentProject } from "@/features/projects";
 import { formatRefusal } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useSaveTourState, useStartTour, useTourCopy, useTourStates } from "../hooks";

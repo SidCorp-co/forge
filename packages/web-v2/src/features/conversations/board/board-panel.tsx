@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Button, IconButton, Input } from "@/design";
 import { fileBase64, mockupsApi } from "@/features/mockups";
 import { formatApiError } from "@/lib/api/error";
-import { boardExporter, boardStore, useBoard } from "@/features/board/board-store";
+import { boardExporter, boardStore, useBoard } from "@/features/board";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { productCopy } from "@/lib/i18n/product-copy";
 import { describeBoard } from "../ui-actions/actions";

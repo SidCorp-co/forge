@@ -6,7 +6,7 @@
 
 import { Bar, BarChart, XAxis, YAxis } from "recharts";
 import { type ChartConfig, ChartContainer, Section } from "@/design";
-import { formatUsd } from "@/features/pipeline/derive";
+import { formatUsd } from "@/features/pipeline";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { ChartLegend } from "./chart-legend";
 import type { SpendByStageData } from "./derive";

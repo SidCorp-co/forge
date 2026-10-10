@@ -3,7 +3,7 @@
 import type { Forecast } from "@forge/contracts/forecast";
 import type { IssueStandingRow } from "@forge/contracts/issue-standing";
 import { PeekHead, PeekPanel, type PeekState } from "@/design";
-import type { EtaClock } from "@/features/forecast/eta";
+import type { EtaClock } from "@/features/forecast";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { IssueBanner, IssuePeekFacts, IssueStrip, issueBadge } from "./issue-standing-bits";
 import { Written } from "@/lib/i18n/written";

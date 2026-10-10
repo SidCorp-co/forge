@@ -7,7 +7,7 @@
 
 import { WrittenMark } from "@/lib/i18n/written";
 import { Avatar, Badge, BodyView, Button, EmptyState, Field, Icon, Textarea } from "@/design";
-import { type ComposerIntent, DecisionInThread, IntentPicker } from "@/features/comments/components/entity-comment-thread";
+import { type ComposerIntent, DecisionInThread, IntentPicker } from "@/features/comments";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -21,9 +21,9 @@ import {
 import { useIssueQuestions } from "@/features/questions";
 import { useCreateComment, useRecordDecision } from "../detail-hooks";
 import type { CommentNode, ProjectMember } from "../types";
-import { AttachmentList } from "@/features/attachments/components/attachment-list";
+import { AttachmentList } from "@/features/attachments";
 import { BodyEditor } from "./body-editor";
-import { StagedFileList, useStagedFiles } from "@/features/attachments/components/staged-files";
+import { StagedFileList, useStagedFiles } from "@/features/attachments";
 
 function AddCommentBox({
   issueId,

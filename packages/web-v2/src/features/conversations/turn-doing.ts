@@ -3,7 +3,7 @@
 
 import { CHAT_ACT_TOOL } from "@forge/contracts/chat-acts";
 import { IDEA_CHANGE_TOOL, IDEA_OFFER_TOOL } from "@forge/contracts/idea-offer";
-import { getToolLabel, type RenderBlock } from "@/features/session/types";
+import { getToolLabel, type RenderBlock } from "@/features/session";
 import type { Copy } from "@/lib/i18n/product-copy";
 
 const FILING_VERBS: ReadonlySet<string> = new Set(["new", "comment", "attach"]);

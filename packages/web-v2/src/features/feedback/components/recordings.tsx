@@ -14,7 +14,7 @@ import { Button, ViewHeading } from "@/design";
 import { reproduceApi } from "@/features/previews";
 import { recordingsKey } from "@/features/previews";
 import { Timeline } from "@/features/previews";
-import { formatSize } from "@/features/attachments/components/staged-files";
+import { formatSize } from "@/features/attachments";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { coreFileUrl } from "@/lib/utils/core-url";

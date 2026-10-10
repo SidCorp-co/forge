@@ -11,7 +11,7 @@ import { useState } from "react";
 import { BodyView, Button } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { AttachmentRow, IssueDetail } from "../types";
-import { AttachmentList } from "@/features/attachments/components/attachment-list";
+import { AttachmentList } from "@/features/attachments";
 import { BodyEditor } from "./body-editor";
 import { agentHoldsEdit, heldByAgent } from "../edit-lock";
 import { useSaveDescription } from "../hooks";

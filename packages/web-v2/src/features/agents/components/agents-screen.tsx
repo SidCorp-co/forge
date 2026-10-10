@@ -1,7 +1,7 @@
 "use client";
 
 import { PageTitle, Tabs, useUrlTab } from "@/design";
-import { SessionsScreen } from "@/features/sessions/components/sessions-screen";
+import { SessionsScreen } from "@/features/sessions";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { agentsListHref } from "@/lib/routes/agents";
 import { useLocationSearch } from "@/lib/utils/use-location-search";

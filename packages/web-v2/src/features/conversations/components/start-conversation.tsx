@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import { Button, Checkbox, ErrorState, Icon, Select, Spinner } from "@/design";
-import { useOrgScopedProjects } from "@/features/projects/hooks";
+import { useOrgScopedProjects } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useOpenConversation, useProjectCandidates } from "../hooks";

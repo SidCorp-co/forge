@@ -1,5 +1,5 @@
 import { Button, HelpButton, IconButton, Menu, type MenuItem } from "@/design";
-import { AskAboutThis } from "@/features/chat-dock/ask-about-this";
+import { AskAboutThis } from "@/features/chat-dock";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
 import { useRouter } from "next/navigation";

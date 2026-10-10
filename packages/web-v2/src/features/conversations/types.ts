@@ -2,7 +2,7 @@
 import type { ReplyVerdict } from "@forge/contracts/reply-check";
 import { isAssistantTurnFailureCode } from "@forge/contracts/conversations";
 import type { OnboardingStatus, QuestionnaireView } from "@forge/contracts/onboarding";
-import { type CanonicalBlock, type MessageEntry, parseMessages, type RenderBlock } from "@/features/session/types";
+import { type CanonicalBlock, type MessageEntry, parseMessages, type RenderBlock } from "@/features/session";
 import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 import { formatDateTime } from "@/lib/i18n/format";
 

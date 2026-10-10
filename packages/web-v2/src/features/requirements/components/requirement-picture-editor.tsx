@@ -14,7 +14,7 @@ import { parseWireframe, type WireframeDoc } from "@forge/contracts/wireframe";
 import dynamic from "next/dynamic";
 import { type ReactNode, useRef, useState } from "react";
 import { Button, Field, IconButton, Input, NativeSelect, Textarea } from "@/design";
-import { type SceneElement, sceneToWireframe } from "@/features/board/scene-to-wireframe";
+import { type SceneElement, sceneToWireframe } from "@/features/board";
 import { namedRefusals } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";

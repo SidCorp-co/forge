@@ -1,6 +1,6 @@
 
 import { apiClient, apiMultipart } from "@/lib/api/client";
-import type { SessionRow } from "@/features/sessions/types";
+import type { SessionRow } from "@/features/sessions";
 import type { SessionAttachment, TurnRow, TurnsResponse } from "./types";
 
 export interface GetTurnsOpts {

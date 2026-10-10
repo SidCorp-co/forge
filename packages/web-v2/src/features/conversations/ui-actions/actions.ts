@@ -34,7 +34,7 @@ import { withArticle } from "@forge/contracts/articles";
 import { ISSUE_STATUSES } from "@forge/contracts/issue-machine";
 import { REGISTRY_ISSUE_PRIORITIES } from "@forge/contracts/pipeline-registry";
 import { applyWireframePatch, type WireframeDoc } from "@forge/contracts/wireframe";
-import { boardStore } from "@/features/board/board-store";
+import { boardStore } from "@/features/board";
 import { toolOutputText } from "@/lib/tool-output";
 import { assistantFilters } from "@/features/chat-dock";
 import type { IssueSelectionBridge } from "@/features/chat-dock";

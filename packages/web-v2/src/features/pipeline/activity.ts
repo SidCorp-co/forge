@@ -7,7 +7,7 @@ import {
 } from "@forge/contracts/failure-causes";
 import { LIVE_JOB_STATUSES } from "@forge/contracts/job-machine";
 import { statusReading } from "@/design/vocabulary";
-import { failureReasonAction, failureReasonLabel } from "@/features/sessions/types";
+import { failureReasonAction, failureReasonLabel } from "@/features/sessions";
 import type { PipelineRunAttempt } from "./types";
 
 /** How an entry reads. `failure` is the only red; `open` is a live attempt. */
