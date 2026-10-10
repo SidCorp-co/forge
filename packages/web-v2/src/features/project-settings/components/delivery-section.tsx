@@ -7,7 +7,7 @@
 // right now is read underneath, from core's release readiness.
 import { withArticle } from "@forge/contracts/articles";
 import { useState } from "react";
-import { Button, IconButton, Input, SettingRow, SettingsGroup, Skeleton } from "@/design";
+import { Button, IconButton, Input, keyedRows, SettingRow, SettingsGroup, Skeleton, useListKeys } from "@/design";
 import { useBindingDocuments, usePolicyDocument, useWritePolicy } from "@/features/project-config";
 import { type DocumentDraft, sectionOf, useDocumentDraft } from "@/features/project-config";
 import { useProviderLabel } from "@/features/integrations";
@@ -133,6 +133,7 @@ function Probes({ draft, base, off }: { draft: DocumentDraft; base: string[]; of
 	const t = useCopy();
 	const path = [...base, "verification", "runtime"];
 	const probes = list(draft.get(path));
+	const rows = useListKeys(probes.length);
 	const setProbes = (next: unknown[]) => draft.set([...base, "verification"], next.length ? { runtime: next } : undefined);
 	return (
 		<SettingRow
@@ -140,12 +141,11 @@ function Probes({ draft, base, off }: { draft: DocumentDraft; base: string[]; of
 			error={refusalError(draft.refusedAt([...base, "verification"]))}
 			control={
 				<div className="space-y-2">
-					{probes.map((p, i) => {
+					{keyedRows(probes, rows.keys).map(({ key, row: p, index: i }) => {
 						const probe = obj(p);
 						const at = [...path, String(i)];
 						return (
-							// biome-ignore lint/suspicious/noArrayIndexKey: a probe is its position in the document's list; it has no identity of its own to key by
-							<div key={`probe-${i}`} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+							<div key={key} className="flex flex-col gap-2 sm:flex-row sm:items-center">
 								<Input aria-label={t("settings.project.delivery.probeUrl")} placeholder="https://example.com/version" value={str(probe.url)} disabled={off} className="font-mono" onChange={(e) => draft.set([...at, "url"], e.target.value)} />
 								<Input aria-label={t("settings.project.delivery.probePath")} placeholder="commit" value={str(probe.path)} disabled={off} className="font-mono sm:max-w-40" onChange={(e) => draft.set([...at, "path"], e.target.value)} />
 								<Picker
@@ -156,12 +156,18 @@ function Probes({ draft, base, off }: { draft: DocumentDraft; base: string[]; of
 									options={optionsOf(t, "settings.project.delivery.identifies", ["source", "artifact"])}
 									onChange={(e) => draft.set([...at, "identifies"], e.target.value)}
 								/>
-								{!off && <IconButton icon="trash" aria-label={t("settings.project.delivery.probeRemove")} onClick={() => setProbes(probes.filter((_, n) => n !== i))} />}
+								{!off && <IconButton icon="trash" aria-label={t("settings.project.delivery.probeRemove")} onClick={() => {
+									setProbes(probes.filter((_, n) => n !== i));
+									rows.removed(i);
+								}} />}
 							</div>
 						);
 					})}
 					{!off && probes.length < 3 && (
-						<Button variant="ghost" size="sm" icon="plus" onClick={() => setProbes([...probes, { type: "http", url: "", path: "", identifies: "source" }])}>
+						<Button variant="ghost" size="sm" icon="plus" onClick={() => {
+							setProbes([...probes, { type: "http", url: "", path: "", identifies: "source" }]);
+							rows.added();
+						}}>
 							{t("settings.project.delivery.probeAdd")}
 						</Button>
 					)}
@@ -231,7 +237,7 @@ function EnvironmentsGroup({ draft, projectId, off }: { draft: DocumentDraft; pr
 	const t = useCopy();
 	const providerLabel = useProviderLabel();
 	const bindings = useBindingDocuments(projectId);
-	const options = bindingOptions((bindings.data?.bindings ?? []) as { document: Obj }[], providerLabel, t);
+	const options = bindingOptions(bindings.data?.bindings ?? [], providerLabel, t);
 	const environments = obj(draft.get(["environments"]));
 	const names = Object.keys(environments);
 	const [adding, setAdding] = useState("");
@@ -286,6 +292,7 @@ function pathSentence(draft: DocumentDraft, t: Copy): string {
 function ReleasePathGroup({ draft, off }: { draft: DocumentDraft; off: boolean }) {
 	const t = useCopy();
 	const promotions = list(draft.get(["promotions"]));
+	const rows = useListKeys(promotions.length);
 	return (
 		<SettingsGroup id="release-path" title={t("settings.project.delivery.releasePath")} summary={pathSentence(draft, t)}>
 			<SettingRow
@@ -294,12 +301,11 @@ function ReleasePathGroup({ draft, off }: { draft: DocumentDraft; off: boolean }
 				control={
 					<div className="space-y-2">
 						{promotions.length === 0 && <p className="fg-body-sm text-muted">{t("settings.project.delivery.noPromotions")}</p>}
-						{promotions.map((p, i) => {
+						{keyedRows(promotions, rows.keys).map(({ key, row: p, index: i }) => {
 							const promotion = obj(p);
 							const at = ["promotions", String(i)];
 							return (
-								// biome-ignore lint/suspicious/noArrayIndexKey: a promotion is its position in the document's list; it has no identity of its own to key by
-								<div key={`promotion-${i}`} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+								<div key={key} className="flex flex-col gap-2 sm:flex-row sm:items-center">
 									<Input aria-label={t("settings.project.delivery.promotionFrom")} value={str(promotion.from)} disabled={off} className="font-mono" onChange={(e) => draft.set([...at, "from"], e.target.value)} />
 									<span aria-hidden className="hidden text-subtle sm:inline">→</span>
 									<Input aria-label={t("settings.project.delivery.promotionTo")} value={str(promotion.to)} disabled={off} className="font-mono" onChange={(e) => draft.set([...at, "to"], e.target.value)} />
@@ -312,13 +318,19 @@ function ReleasePathGroup({ draft, off }: { draft: DocumentDraft; off: boolean }
 										onChange={(e) => draft.set([...at, "via"], e.target.value)}
 									/>
 									{!off && (
-										<IconButton icon="trash" aria-label={t("settings.project.delivery.promotionRemove")} onClick={() => draft.set(["promotions"], promotions.filter((_, n) => n !== i))} />
+										<IconButton icon="trash" aria-label={t("settings.project.delivery.promotionRemove")} onClick={() => {
+											draft.set(["promotions"], promotions.filter((_, n) => n !== i));
+											rows.removed(i);
+										}} />
 									)}
 								</div>
 							);
 						})}
 						{!off && promotions.length < 5 && (
-							<Button variant="ghost" size="sm" icon="plus" onClick={() => draft.set(["promotions"], [...promotions, { from: "", to: "", via: "merge" }])}>
+							<Button variant="ghost" size="sm" icon="plus" onClick={() => {
+								draft.set(["promotions"], [...promotions, { from: "", to: "", via: "merge" }]);
+								rows.added();
+							}}>
 								{t("settings.project.delivery.promotionAdd")}
 							</Button>
 						)}

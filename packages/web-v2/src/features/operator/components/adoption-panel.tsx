@@ -40,7 +40,7 @@ export function AdoptionChart({ buckets }: { buckets: readonly AdminAdoptionBuck
     );
   }
 
-  const last = buckets[buckets.length - 1] as AdminAdoptionBucket;
+  const last = buckets[buckets.length - 1];
   const width = Math.max(buckets.length - 1, 1) * 40;
   const maxUsers = Math.max(...buckets.map((b) => b.cumulativeUsers), 1);
   const maxWorkspaces = Math.max(...buckets.map((b) => b.activeWorkspaces), 1);

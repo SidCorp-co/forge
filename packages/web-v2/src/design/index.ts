@@ -115,6 +115,7 @@ export { useElapsed } from "./hooks/use-elapsed";
 export { useNow } from "./hooks/use-now";
 export { useMediaQuery } from "./hooks/use-media-query";
 export { useBrowserValue } from "./hooks/use-browser-value";
+export { keyedByContent, keyedRows, useListKeys, type ListKeys } from "./hooks/use-list-keys";
 
 export {
   ListPage, DetailPage, SettingsPage, BoardPage, ReportPage,

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/design";
-import { bounceCause, clearBounce } from "../login-bounce";
+import { bounceCause, clearBounce, goToLogin } from "../login-bounce";
 import { AuthShell } from "./auth-shell";
 
 /**
@@ -12,7 +12,7 @@ export function SignInStopped() {
   const framed = bounceCause() === "frame-cookies";
   const again = () => {
     clearBounce();
-    window.location.assign("/login");
+    goToLogin();
   };
   return (
     <AuthShell

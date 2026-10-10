@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, lazy, useMemo, useState } from "react";
+import { Suspense, createElement, lazy, useState } from "react";
 import {
   PageSectionTitle,
   ErrorState,
@@ -32,6 +32,8 @@ import { StatusPill, scopeLabel } from "./status-pill";
  *  (the "Projects using this connection" payoff of the connection-sharing
  *  cutover). */
 
+// Each provider's project-tier section, made lazy once here at module scope: the drawer renders the
+// one its provider names, a type that is the same on every render.
 const SECTIONS = new Map(
   PROVIDER_MODULES.flatMap((m) => (m.section ? [[m.provider, lazy(m.section)] as const] : [])),
 );
@@ -39,9 +41,9 @@ const SECTIONS = new Map(
 // A provider with no section is not a provider whose section is empty — it is one this screen has
 // nothing to configure for, and saying so beats rendering a blank pane under its name.
 function ProviderDetails({ provider, projectId }: { provider: string; projectId: string }) {
-  const Section = SECTIONS.get(provider);
+  const section = SECTIONS.get(provider);
   const t = useCopy();
-  if (!Section) {
+  if (!section) {
     return (
       <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
         {t("integrations.detail.nothingToConfigure")}
@@ -50,7 +52,7 @@ function ProviderDetails({ provider, projectId }: { provider: string; projectId:
   }
   return (
     <Suspense fallback={<Skeleton className="h-40 w-full" />}>
-      <Section projectId={projectId} />
+      {createElement(section, { projectId })}
     </Suspense>
   );
 }
@@ -64,11 +66,8 @@ function useBindingForCard(
   bindingId: string | null,
 ): BindingSummary | undefined {
   const list = useIntegrationsList(projectId);
-  return useMemo(() => {
-    const rows = (list.data?.items ?? []).filter((i) => i.provider === provider);
-    if (bindingId) return rows.find((r) => r.id === bindingId);
-    return rows[0];
-  }, [list.data, provider, bindingId]);
+  const rows = (list.data?.items ?? []).filter((i) => i.provider === provider);
+  return bindingId ? rows.find((r) => r.id === bindingId) : rows[0];
 }
 
 function ConnectionBindings({
@@ -89,11 +88,7 @@ function ConnectionBindings({
 
   // Project-id -> display name for friendly rendering (falls back to the raw
   // id so a missing/archived project still reads correctly).
-  const projectNames = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const p of projectsQ.data ?? []) map.set(p.id, p.name);
-    return map;
-  }, [projectsQ.data]);
+  const projectNames = new Map((projectsQ.data ?? []).map((p) => [p.id, p.name] as const));
 
   return (
     <section className="mt-4 flex flex-col gap-2">

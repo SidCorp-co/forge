@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Field, Input, Textarea } from "@/design";
+import { Button, Field, Input, keyedRows, Textarea, useListKeys } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { SentryConfig, SentryTarget } from "../../types";
 
@@ -64,6 +64,7 @@ export function SentryTargetsField({
   disabled: boolean;
 }) {
   const t = useCopy();
+  const rows = useListKeys(targets.length);
   const setTarget = (index: number, key: keyof TargetItem, value: string) =>
     onChange(targets.map((row, i) => (i === index ? { ...row, [key]: value } : row)));
   const input = (i: number, key: keyof TargetItem, placeholder = t("integrations.sentry.optional")) => (
@@ -79,7 +80,10 @@ export function SentryTargetsField({
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <span className="fg-label text-muted">{t("integrations.sentry.projects")}</span>
-        <Button variant="secondary" icon="plus" onClick={() => onChange([...targets, emptyRow()])} disabled={disabled}>
+        <Button variant="secondary" icon="plus" onClick={() => {
+            onChange([...targets, emptyRow()]);
+            rows.added();
+          }} disabled={disabled}>
           {t("integrations.sentry.addProject")}
         </Button>
       </div>
@@ -88,15 +92,17 @@ export function SentryTargetsField({
           {t("integrations.sentry.noProjects")}
         </p>
       ) : (
-        targets.map((row, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: rows have no stable id; order is the identity
-          <div key={i} className="flex flex-col gap-3 border-t border-line-subtle pt-3">
+        keyedRows(targets, rows.keys).map(({ key, row, index: i }) => (
+          <div key={key} className="flex flex-col gap-3 border-t border-line-subtle pt-3">
             <div className="flex items-start justify-between gap-2">
               <span className="fg-label text-muted">{t("integrations.sentry.projectN", { n: i + 1 })}</span>
               <Button
                 variant="ghost"
                 icon="trash"
-                onClick={() => onChange(targets.filter((_, j) => j !== i))}
+                onClick={() => {
+                  onChange(targets.filter((_, j) => j !== i));
+                  rows.removed(i);
+                }}
                 disabled={disabled}
                 aria-label={t("integrations.sentry.removeProject", { n: i + 1 })}
               />

@@ -1,7 +1,6 @@
 "use client";
 
-import { Badge, Button, Input, NativeSelect } from "@/design";
-import { useMemo } from "react";
+import { Badge, Button, Input, keyedRows, NativeSelect, useListKeys } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useCoolifyApplications, useCoolifyTargets } from "../../hooks";
 import type { CoolifyApplication, CoolifyTargetInput } from "../../types";
@@ -36,14 +35,11 @@ export function CoolifyTargetsField({
   const apps = useCoolifyApplications(projectId, auth);
   const identities = useCoolifyTargets(projectId, integrationId);
 
-  const options = useMemo(
-    () =>
-      (apps.data?.applications ?? []).map((a: CoolifyApplication) => ({
-        value: a.uuid,
-        label: a.name ? `${a.name} — ${a.uuid.slice(0, 8)}` : a.uuid,
-      })),
-    [apps.data],
-  );
+  const options = (apps.data?.applications ?? []).map((a: CoolifyApplication) => ({
+    value: a.uuid,
+    label: a.name ? `${a.name} — ${a.uuid.slice(0, 8)}` : a.uuid,
+  }));
+  const rows = useListKeys(targets.length);
   const identityFor = (uuid: string) => (identities.data?.targets ?? []).find((row) => row.uuid === uuid);
   const t = useCopy();
 
@@ -56,15 +52,22 @@ export function CoolifyTargetsField({
       <legend className="fg-label px-1 text-subtle">{t("integrations.coolify.targets")}</legend>
       {inherited && <p className="fg-body-sm text-muted">{t("integrations.coolify.targetsInherited")}</p>}
       {apps.isError && <p className="fg-body-sm text-muted">{t("integrations.coolify.appsUnread")}</p>}
-      {targets.map((row, idx) => (
+      {keyedRows(targets, rows.keys).map(({ key, row, index: idx }) => (
         <TargetItem
-          key={row.id ?? idx}
+          key={row.id ?? key}
           target={row}
           first={idx === 0}
           options={options}
           identity={identityFor(row.resourceUuid)}
           onPatch={(patch) => updateTarget(idx, patch)}
-          onRemove={targets.length <= 1 ? undefined : () => onChange(targets.filter((_, i) => i !== idx))}
+          onRemove={
+            targets.length <= 1
+              ? undefined
+              : () => {
+                  onChange(targets.filter((_, i) => i !== idx));
+                  rows.removed(idx);
+                }
+          }
         />
       ))}
       <div>
@@ -72,7 +75,10 @@ export function CoolifyTargetsField({
           variant="secondary"
           size="sm"
           icon="plus"
-          onClick={() => onChange([...targets, { label: "", resourceUuid: "" }])}
+          onClick={() => {
+            onChange([...targets, { label: "", resourceUuid: "" }]);
+            rows.added();
+          }}
         >
           {t("integrations.coolify.addTarget")}
         </Button>

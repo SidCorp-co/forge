@@ -1,4 +1,5 @@
 import { PageTitle } from "@/design";
+import Image from 'next/image';
 import type { ReactNode } from 'react';
 import { assetPath } from '@/lib/asset';
 
@@ -16,8 +17,8 @@ export function AuthShell({ title, subtitle, children, footer }: AuthShellProps)
       <div className="w-95 max-w-full">
         {/* Brand */}
         <div className="mb-7 flex flex-col items-center gap-4">
-          {/* biome-ignore lint/performance/noImgElement: a fixed-size brand mark under the base path; next/image would lazy-load and wrap it */}
-          <img src={assetPath('/forge-mark-180.png')} alt="Forge" width={60} height={60} />
+          {/* preload: the mark is above the fold, so it is fetched at once rather than lazily */}
+          <Image src={assetPath('/forge-mark-180.png')} alt="Forge" width={60} height={60} preload unoptimized />
           <div className="text-center">
             <div className="fg-h2">Forge</div>
             <div className="fg-body-sm mt-0.5">Control plane for Claude Code</div>
@@ -31,7 +32,7 @@ export function AuthShell({ title, subtitle, children, footer }: AuthShellProps)
           {children}
         </div>
 
-        {footer && <p className="fg-body-sm mt-4 text-center">{footer}</p>}
+        {footer ? <p className="fg-body-sm mt-4 text-center">{footer}</p> : null}
       </div>
     </div>
   );

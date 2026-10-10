@@ -6,7 +6,7 @@ import type { ReportDocument, TemplateNarrativeSlot } from "@forge/contracts/rep
 import { isReleaseShare, type ShareReleaseSnapshot, type ShareSnapshot } from "@forge/contracts/shares";
 import type { BlockSource } from "@forge/contracts/visual-blocks";
 import { useQuery } from "@tanstack/react-query";
-import { Markdown, Skeleton } from "@/design";
+import { keyedByContent, Markdown, Skeleton } from "@/design";
 import { ApiError } from "@/lib/api/client";
 import { type SourceFacts, VisualBlockProvider, VisualBlockView } from "@/features/visual-blocks";
 import { useBlockInstants } from "@/features/visual-blocks";
@@ -79,9 +79,8 @@ export function ReportDocumentBody({ document, onTableCsv }: { document: ReportD
       ))}
       {/* No projectSlug: a viewer may not be a member, so a ref reads as its key and links nowhere. */}
       <VisualBlockProvider value={{ projectSlug: undefined, sourceFacts: factsOf(document) }}>
-        {document.blocks.map((block, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: the document's block order is fixed
-          <section key={i} className="border-b border-line py-5">
+        {keyedByContent(document.blocks).map(({ key, item: block, index: i }) => (
+          <section key={key} className="border-b border-line py-5">
             <VisualBlockView block={block} onCsv={onTableCsv ? () => onTableCsv(i) : undefined} />
           </section>
         ))}

@@ -22,7 +22,7 @@ export function ComputeSettings({ projectId, slug, canEdit }: { projectId: strin
   if (draft.loading || !draft.ready) return <Skeleton className="h-40 w-full rounded-md" />;
   const off = !canEdit || !draft.declared;
   const raw = draft.get(["compute"]);
-  const compute: Compute = raw !== null && typeof raw === "object" ? (raw as Compute) : {};
+  const compute: Compute = raw !== null && typeof raw === "object" ? raw : {};
   const enabled = compute.enabled === true;
   const setEnabled = (on: boolean) => {
     const { enabled: _was, ...choices } = compute;

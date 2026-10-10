@@ -1,7 +1,6 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
 import { useActiveOrg } from '@/features/orgs';
 import { projectApi } from './api';
 import { inActiveOrg, mergeProjects, workspaceTotals } from './derive';
@@ -18,12 +17,9 @@ export function useProjects() {
 export function useOrgScopedProjects() {
   const { activeOrgId } = useActiveOrg();
   const q = useProjects();
-  const projects = useMemo(
-    () => (q.data ?? []).filter((p) => inActiveOrg(p, activeOrgId)),
-    [q.data, activeOrgId],
-  );
-  const projectIds = useMemo(() => new Set(projects.map((p) => p.id)), [projects]);
-  const projectSlugs = useMemo(() => new Set(projects.map((p) => p.slug)), [projects]);
+  const projects = (q.data ?? []).filter((p) => inActiveOrg(p, activeOrgId));
+  const projectIds = new Set(projects.map((p) => p.id));
+  const projectSlugs = new Set(projects.map((p) => p.slug));
   return { projects, projectIds, projectSlugs, isLoading: q.isLoading, error: q.error };
 }
 
@@ -60,11 +56,8 @@ export function useProjectsConsole() {
   const health = useProjectHealth();
   const { pinnedIds, toggle } = usePinnedProjects();
 
-  const items = useMemo(
-    () => mergeProjects(projects.data ?? [], health.data, pinnedIds),
-    [projects.data, health.data, pinnedIds],
-  );
-  const totals = useMemo(() => workspaceTotals(items), [items]);
+  const items = mergeProjects(projects.data ?? [], health.data, pinnedIds);
+  const totals = workspaceTotals(items);
 
   return {
     items,

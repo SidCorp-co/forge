@@ -10,11 +10,7 @@ function StatusPill({ pill }: { pill: string }) {
   const note = `${pill.toUpperCase()} health checks aren't wired up yet`;
   return (
     <Tooltip label={note}>
-      <span
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: focusable so a keyboard reaches the tooltip saying the check is not wired
-        tabIndex={0}
-        className="inline-flex items-center gap-1.5 rounded-pill border border-line px-2 py-1 focus-visible:shadow-focus focus-visible:outline-none"
-      >
+      <span className="inline-flex items-center gap-1.5 rounded-pill border border-line px-2 py-1">
         <span className="fg-overline">{pill}</span>
         <HealthDot health="idle" />
         <span className="sr-only">{note}</span>
