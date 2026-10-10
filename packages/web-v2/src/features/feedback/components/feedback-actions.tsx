@@ -27,7 +27,7 @@ const OPTIONAL: readonly Choice[] = ["file_issue"];
 /** The issues a person picked, by key: one stays one, several become a list. */
 export function issueKeysOf(picked: readonly IssuePick[]): string | string[] {
   const keys = picked.map((p) => p.key);
-  return keys.length === 1 ? (keys[0] as string) : keys;
+  return keys.length === 1 ? (keys[0]) : keys;
 }
 
 function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {

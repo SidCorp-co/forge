@@ -167,7 +167,7 @@ export function useUiActions(args: {
 
   useEffect(() => {
     if (!args.ready) return;
-    const live = args.progress ? uiCallsOf(args.progress.entry.id ?? "live", args.progress.entry.blocks as CanonicalBlock[]) : [];
+    const live = args.progress ? uiCallsOf(args.progress.entry.id ?? "live", args.progress.entry.blocks) : [];
     const settled = args.messages.flatMap((m) => uiCallsOf(m.id, m.blocks));
     if (history.current === null) history.current = new Set(live.map((c) => c.callId));
     const seen = history.current;

@@ -59,10 +59,10 @@ export function useFeedbackChoices(projectId: string, type: "requirement" | "wor
 function useInvalidate(projectId: string) {
   const qc = useQueryClient();
   return () => {
-    qc.invalidateQueries({ queryKey: ["feedback", projectId] });
-    qc.invalidateQueries({ queryKey: ["feedback-item", projectId] });
-    qc.invalidateQueries({ queryKey: ["suggestions", projectId] });
-    qc.invalidateQueries({ queryKey: feedbackForecastKey(projectId) });
+    void qc.invalidateQueries({ queryKey: ["feedback", projectId] });
+    void qc.invalidateQueries({ queryKey: ["feedback-item", projectId] });
+    void qc.invalidateQueries({ queryKey: ["suggestions", projectId] });
+    void qc.invalidateQueries({ queryKey: feedbackForecastKey(projectId) });
   };
 }
 
@@ -94,7 +94,7 @@ export function usePromoteFeedback(projectId: string) {
     mutationFn: (body: PromoteAgentReportRequest) => feedbackApi.promote(projectId, body),
     onSettled: () => {
       invalidate();
-      qc.invalidateQueries({ queryKey: ["agent-reports", projectId] });
+      void qc.invalidateQueries({ queryKey: ["agent-reports", projectId] });
     },
   });
 }

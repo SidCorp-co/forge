@@ -142,7 +142,7 @@ function groupsOf(rows: FeedbackSummary[], by: Grouping, label: ReturnType<typeo
     const you = list.filter(needsViewer).length;
     return {
       id: `subject:${id}`,
-      label: aboutLine(list[0] as FeedbackSummary, t, language),
+      label: aboutLine(list[0], t, language),
       tone: you ? ("you" as const) : null,
       summary: you ? [{ label: label("feedbackAttention", "needs_you"), count: you, tone: "you" as const }] : undefined,
       rows: list,

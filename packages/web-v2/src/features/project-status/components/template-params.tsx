@@ -87,7 +87,7 @@ export function TemplateParamFields({
             <Input
               id={id}
               type={p?.type === "number" ? "number" : "text"}
-              value={typeof values[name] === "string" ? (values[name] as string) : ""}
+              value={typeof values[name] === "string" ? (values[name]) : ""}
               placeholder={p?.default !== undefined ? String(p.default) : undefined}
               onChange={(e) => onChange({ ...values, [name]: e.target.value })}
             />

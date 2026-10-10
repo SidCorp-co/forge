@@ -64,7 +64,7 @@ const ROUTE_BY_SUFFIX = Object.entries(UI_ROUTES) as [UiRoute, string][];
 
 function projectPath(pathname: string): { slug: string; rest: string } | null {
   const m = /^\/projects\/([^/]+)(\/.*)?$/.exec(pathname);
-  return m ? { slug: m[1] as string, rest: (m[2] ?? "").replace(/\/$/, "") } : null;
+  return m ? { slug: m[1], rest: (m[2] ?? "").replace(/\/$/, "") } : null;
 }
 
 /** The Issues filter a URL holds, in the registry's closed fields; "me" only where the id is the reader's. */
@@ -109,11 +109,11 @@ const ITEM_SEGMENT: Record<string, UiPageItem["kind"]> = {
 /** The record a project path is the page of (`/requirements/REQ-30`), or null: a key its kind does not take names none. */
 export function pageItemOf(rest: string): UiPageItem | null {
   const m = /^\/([a-z]+)\/([^/]+)$/.exec(rest);
-  const kind = m ? ITEM_SEGMENT[m[1] as string] : undefined;
+  const kind = m ? ITEM_SEGMENT[m[1]] : undefined;
   if (!m || !kind) return null;
   let key: string;
   try {
-    key = decodeURIComponent(m[2] as string);
+    key = decodeURIComponent(m[2]);
   } catch {
     return null;
   }
@@ -361,7 +361,7 @@ export function applyUiAction(action: UiAction, env: UiActionEnv): UiActionOutco
       if (set.text) next.set("q", set.text);
       const qs = next.toString();
       env.go(`${issuesPath(env.slug)}${qs ? `?${qs}` : ""}`);
-      markSet(set as Record<string, unknown>, next, mode);
+      markSet(set, next, mode);
       const fields = (Object.keys(set) as UiFilterField[]).filter((f) => (set as Record<string, unknown>)[f] !== undefined);
       const verb = env.t(mode === "replace" ? "conversations.ui.filtered" : "conversations.ui.narrowed");
       const what = fields.map((f) => chipLabel(f, set as Record<string, unknown>, env)).join(", ");

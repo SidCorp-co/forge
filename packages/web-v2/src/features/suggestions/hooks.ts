@@ -30,7 +30,7 @@ export function useSuggestionDecision(projectId: string, affected: readonly Quer
   return useMutation({
     mutationFn: (d: SuggestionDecision) => suggestionsApi.decide(projectId, d),
     onSettled: () => {
-      for (const queryKey of [["suggestions", projectId], ...affected]) qc.invalidateQueries({ queryKey });
+      for (const queryKey of [["suggestions", projectId], ...affected]) void qc.invalidateQueries({ queryKey });
     },
   });
 }

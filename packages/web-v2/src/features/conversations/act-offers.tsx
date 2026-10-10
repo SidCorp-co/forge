@@ -57,7 +57,7 @@ export function useActOffers(args: {
       if (acts.length + ideas.length > 0) map.set(id, { acts, ideas });
     };
     for (const m of args.messages) note(m.id, m.blocks);
-    if (args.progress) note(args.progress.entry.id ?? "live", args.progress.entry.blocks as CanonicalBlock[]);
+    if (args.progress) note(args.progress.entry.id ?? "live", args.progress.entry.blocks);
     return map;
   }, [args.messages, args.progress]);
 
@@ -89,9 +89,9 @@ function ActOfferNotice({ offer }: { offer: ChatActOffer }) {
   const press = useMutation({
     mutationFn: () => pressAct(offer),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["issues"] });
-      qc.invalidateQueries({ queryKey: ["issue", offer.issueId] });
-      qc.invalidateQueries({ queryKey: ["release-roster"] });
+      void qc.invalidateQueries({ queryKey: ["issues"] });
+      void qc.invalidateQueries({ queryKey: ["issue", offer.issueId] });
+      void qc.invalidateQueries({ queryKey: ["release-roster"] });
     },
   });
   const status = live.data?.status;

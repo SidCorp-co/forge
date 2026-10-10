@@ -149,7 +149,7 @@ const VERDICT_WORD: Record<NonNullable<CoverageIssue["verdict"]>, ProductCopyKey
 function byIssue(links: CoverageIssue[]) {
   const seen = new Map<string, CoverageIssue[]>();
   for (const l of links) seen.set(l.issueId, [...(seen.get(l.issueId) ?? []), l]);
-  return [...seen.values()].map((ls) => ({ i: ls[0] as CoverageIssue, links: ls, stale: ls.every((l) => l.stale) }));
+  return [...seen.values()].map((ls) => ({ i: ls[0], links: ls, stale: ls.every((l) => l.stale) }));
 }
 
 /** Each business criterion once, as a checklist: its verdict's glyph dot, its code and the verdict's word,

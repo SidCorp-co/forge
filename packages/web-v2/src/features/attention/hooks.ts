@@ -66,8 +66,8 @@ export function useAttention() {
     isError: attentionQ.isError,
     error: attentionQ.error,
     refetch: () => {
-      attentionQ.refetch();
-      devicesQ.refetch();
+      void attentionQ.refetch();
+      void devicesQ.refetch();
     },
   };
 }

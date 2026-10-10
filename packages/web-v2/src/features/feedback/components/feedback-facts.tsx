@@ -72,14 +72,14 @@ export function FeedbackBanner({ f, slug, className }: { f: FeedbackView; slug?:
         ) : approving ? (
           <>
             {t("feedback.banner.approveRelease")}{" "}
-            <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug as string, version as string)}>
+            <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug, version)}>
               {version}
             </Link>
           </>
         ) : verifying ? (
           <>
             {t("feedback.banner.verifyShippedIn")}{" "}
-            <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug as string, version as string)}>
+            <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug, version)}>
               {version}
             </Link>
           </>
