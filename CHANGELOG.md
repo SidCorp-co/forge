@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.226] - 2026-10-10
+
+Intake retries missed drafts; merges run the change's kept probes first
+
+### Fixed
+
+- **An assistant draft the model missed is tried again.** After a model timeout or outage, the item is drafted again shortly after, up to three tries. Its page says it is retrying, or that it gave up.
+- **Dev's merge check now runs the change's kept probes.** A merge that skipped one, or whose probe failed, is refused by name, and an observable criterion with no probe holds the merge.
+
 ## [0.4.0-dev.225] - 2026-10-10
 
 Report findings and roadmap forecasts read true; screened messages refused by name
