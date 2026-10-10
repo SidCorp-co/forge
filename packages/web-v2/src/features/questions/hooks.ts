@@ -2,12 +2,11 @@
 
 // Parked decisions: the queries live in `queries.ts`, the answers and their toasts here.
 
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError } from "@/lib/api/client";
-import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { useToast } from "@/providers/toast-provider";
+import { useToastWrite } from "@/providers/toast-write";
 import { questionsApi } from "./api";
 import { questionKeys, questionQueries } from "./queries";
 import type { AnswerInput } from "./types";
@@ -20,28 +19,20 @@ export function useIssueQuestions(issueId: string, projectId?: string) {
   return useQuery(questionQueries.issue(issueId, projectId));
 }
 
-export function useAnswerQuestion(issueId: string) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
+/** An answer: the reads in `touches` and the attention counts are read again, on a refusal too (the question may have moved). */
+function useAnswer(touches: readonly (readonly unknown[])[]) {
   const t = useCopy();
-  return useMutation({
-    mutationFn: questionsApi.answer,
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: questionKeys.issue(issueId) });
-      void qc.invalidateQueries({ queryKey: ["issue", issueId] });
-      void qc.invalidateQueries({ queryKey: ["attention"] });
-      toast({
-        title: t("agents.question.recorded"),
-        tone: "success",
-      });
-    },
-    onError: (err) => {
-      void qc.invalidateQueries({ queryKey: questionKeys.issue(issueId) });
-      toast({ title: t("agents.question.notRecorded"), description: formatApiError(err), tone: "error" });
-    },
+  return useToastWrite(questionsApi.answer, {
+    touches: [...touches, ["attention"]],
+    said: t("agents.question.recorded"),
+    failed: t("agents.question.notRecorded"),
+    touchesOnRefusal: true,
   });
 }
 
+export const useAnswerQuestion = (issueId: string) => useAnswer([questionKeys.issue(issueId), ["issue", issueId]]);
+
+export const useAnswerProjectQuestion = (projectId: string) => useAnswer([projectQuestionsKey(projectId)]);
 
 /** Every OPEN decision on one project that names no issue, for the Agents screen. */
 export function useProjectQuestions(projectId: string | undefined) {
@@ -74,27 +65,6 @@ function linkedVerdict(q: {
 export function useLinkedQuestion(questionId: string | undefined, enabled: boolean) {
   const query = useQuery(questionQueries.one(questionId, enabled));
   return { query, ...linkedVerdict(query) };
-}
-
-export function useAnswerProjectQuestion(projectId: string) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  const t = useCopy();
-  return useMutation({
-    mutationFn: questionsApi.answer,
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: projectQuestionsKey(projectId) });
-      void qc.invalidateQueries({ queryKey: ["attention"] });
-      toast({
-        title: t("agents.question.recorded"),
-        tone: "success",
-      });
-    },
-    onError: (err) => {
-      void qc.invalidateQueries({ queryKey: projectQuestionsKey(projectId) });
-      toast({ title: t("agents.question.notRecorded"), description: formatApiError(err), tone: "error" });
-    },
-  });
 }
 
 /**
