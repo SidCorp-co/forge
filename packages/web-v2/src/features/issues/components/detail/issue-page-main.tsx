@@ -14,10 +14,10 @@ import type { useIssueStandingOf, useProjectMembers } from "../../hooks";
 import type { IssueDetail, IssueStatus } from "../../types";
 import { AwaitingReleaseBanner } from "../awaiting-release-banner";
 import { BlockerBanner } from "../blocker-banner";
-import { ChangesRow } from "../changes-row";
-import { CriteriaSection } from "../criteria-section";
-import { type LiveAgentState, LiveAgentPanel } from "../live-agent-panel";
-import { PatternsPanel } from "../patterns-panel";
+import { IssueChanges } from "../issue-changes";
+import { IssueCriteria } from "../issue-criteria";
+import { type LiveAgentState, LiveAgent } from "../live-agent";
+import { IssuePatternList } from "../issue-pattern-list";
 import { IssueDetails } from "./issue-details";
 import { IssueStateHead } from "./issue-state-head";
 
@@ -79,7 +79,7 @@ export function IssuePageMain(props: {
                 threadQuestion={props.threadQuestion}
                 onAnswerInThread={props.onAnswerInThread}
               />
-              <PatternsPanel issueId={issue.id} projectId={issue.projectId} />
+              <IssuePatternList issueId={issue.id} projectId={issue.projectId} />
               {props.reasonDialog}
             </div>
             {developer && blocker ? (
@@ -95,9 +95,9 @@ export function IssuePageMain(props: {
               </div>
             ) : null}
             {developer ? <AwaitingReleaseBanner projectId={issue.projectId} issueId={issue.id} canWrite={canWrite} /> : null}
-            {developer && agentState ? <LiveAgentPanel state={agentState} step={liveStep ?? "—"} slug={slug} issueId={id} /> : null}
+            {developer && agentState ? <LiveAgent state={agentState} step={liveStep ?? "—"} slug={slug} issueId={id} /> : null}
             <div className="border-b border-line-subtle py-4">
-              <CriteriaSection
+              <IssueCriteria
                 issue={issue}
                 projectId={projectId}
                 checklist={props.checklist}
@@ -115,7 +115,7 @@ export function IssuePageMain(props: {
                 row={!developer}
               />
             </div>
-            <ChangesRow issue={issue} slug={slug} developer={developer} />
+            <IssueChanges issue={issue} slug={slug} developer={developer} />
             <div className="pt-4">
               <IssueDetails
                 key={view}

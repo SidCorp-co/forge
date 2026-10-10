@@ -9,7 +9,7 @@
 // the default view (AC8); legacy rows lacking metadata render without a badge
 // rather than erroring.
 import { useState } from "react";
-import { Badge, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, enumLabel, Icon, MonoTag, StatusBadge } from "@/design";
+import { Badge, enumLabel, Icon, MonoTag, Section, StatusBadge } from "@/design";
 import {
   deriveSessionTimeline,
   type SessionTimelineEntry,
@@ -31,16 +31,11 @@ export function SessionGroupTimeline({ sessions }: SessionGroupTimelineProps) {
   if (entries.length === 0 || !hasGroup) return null;
 
   return (
-    <PageSection>
-      <PageSectionHeader>
-        <PageSectionTitle>{t("issues.session.continuity")}</PageSectionTitle>
-      </PageSectionHeader>
-      <PageSectionBody>
+    <Section title={t("issues.session.continuity")}>
         {entries.map((entry, i) => (
-          <TimelineRow key={entry.id} entry={entry} isLast={i === entries.length - 1} />
+          <SessionGroupEntry key={entry.id} entry={entry} isLast={i === entries.length - 1} />
         ))}
-      </PageSectionBody>
-    </PageSection>
+      </Section>
   );
 }
 
@@ -50,7 +45,7 @@ const CONTINUITY_META: Record<"resumed" | "fresh", { glyph: string; tone: "neutr
 };
 const KNOWN_GROUPS = new Set(["build", "planning", "verify"]);
 
-function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: boolean }) {
+function SessionGroupEntry({ entry, isLast }: { entry: SessionTimelineEntry; isLast: boolean }) {
   const [showOps, setShowOps] = useState(false);
   const t = useCopy();
   const language = useInterfaceLanguage();

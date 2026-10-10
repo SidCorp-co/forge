@@ -19,7 +19,7 @@ export function firstLine(markdown: string): string {
     .trim();
 }
 
-export function ChangesRow({ issue, slug, developer }: { issue: Pick<IssueDetail, "status" | "releaseNotes" | "shippedIn">; slug: string; developer: boolean }) {
+export function IssueChanges({ issue, slug, developer }: { issue: Pick<IssueDetail, "status" | "releaseNotes" | "shippedIn">; slug: string; developer: boolean }) {
   const t = useCopy();
   const note = issue.releaseNotes;
   if (issue.status === "dropped" || (!note && !issue.shippedIn)) return null;

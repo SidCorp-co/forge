@@ -7,7 +7,7 @@ import type { IssueDetail } from "../types";
 import { TieCriteria } from "./criteria-acts";
 import { CriteriaList } from "./criteria-list";
 
-export function CriteriaSection({
+export function IssueCriteria({
   issue,
   projectId,
   checklist,
