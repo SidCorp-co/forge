@@ -14,7 +14,7 @@ export function AdoptionPanelSkeleton() {
         <PageSectionTitle>Adoption</PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody>
-        <Skeleton className="h-[120px] w-full" />
+        <Skeleton className="h-30 w-full" />
       </PageSectionBody>
     </PageSection>
   );
@@ -63,7 +63,7 @@ export function AdoptionPanel({ buckets }: { buckets: readonly AdminAdoptionBuck
       <PageSectionBody>
         <svg
           viewBox={`0 0 ${width} ${H}`}
-          className="h-[120px] w-full"
+          className="h-30 w-full"
           preserveAspectRatio="none"
           role="img"
           aria-label={`Signup curve over ${buckets.length} weeks, ending at ${last.cumulativeUsers} users and ${last.activeWorkspaces} active workspaces`}

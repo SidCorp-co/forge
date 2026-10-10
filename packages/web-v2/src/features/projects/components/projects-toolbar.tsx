@@ -41,14 +41,14 @@ export function ProjectsToolbar({
     <div className="mb-4 flex flex-wrap items-center gap-2.5">
       <Input
         icon="search"
-        className="min-w-[220px] max-w-[380px] flex-1"
+        className="min-w-55 max-w-95 flex-1"
         placeholder="Search projects…"
         aria-label="Search projects"
         value={query}
         onChange={(e) => onQuery(e.target.value)}
       />
       <Select
-        className="w-[188px]"
+        className="w-47"
         options={SORT_OPTIONS}
         value={sort}
         onChange={(v) => onSort(v as ProjectSort)}

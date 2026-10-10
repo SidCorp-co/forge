@@ -173,7 +173,7 @@ export function ConnectionRow({
           .filter(Boolean)
           .join(" ")}
         onClick={onOpen}
-        className="-mx-1 flex min-w-[220px] flex-1 cursor-pointer flex-col gap-0.5 rounded-md px-1 py-0.5 text-left hover:bg-sunken focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        className="-mx-1 flex min-w-55 flex-1 cursor-pointer flex-col gap-0.5 rounded-md px-1 py-0.5 text-left hover:bg-sunken focus-visible:outline-none focus-visible:shadow-focus"
       >
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <Icon

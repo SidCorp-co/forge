@@ -23,8 +23,8 @@ import {
   type SelectOption,
   Skeleton,
 } from "@/design";
-import { useOrgMembers } from "@/features/orgs/hooks";
-import { useProjectsIncludingArchived } from "@/features/projects/hooks";
+import { useOrgMembers } from "@/features/orgs";
+import { useProjectsIncludingArchived } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";

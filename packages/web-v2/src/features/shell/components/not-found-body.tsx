@@ -12,11 +12,11 @@ export function NotFoundBody() {
       <ForgeMascot size={120} mode="blink" ring={false} progress={0.4} />
       <div>
         <p className="fg-h2">{t("shell.notFound.title")}</p>
-        <p className="fg-body-sm mx-auto mt-1.5 max-w-[320px]">{t("shell.notFound.message")}</p>
+        <p className="fg-body-sm mx-auto mt-1.5 max-w-80">{t("shell.notFound.message")}</p>
       </div>
       <Link
         href="/"
-        className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-4 text-13-5 font-semibold text-[color:var(--fg-on-accent)] transition-colors hover:bg-[color:var(--accent-hover)]"
+        className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-4 text-13-5 font-semibold text-on-accent transition-colors hover:bg-accent-hover"
       >
         {t("shell.notFound.home")}
       </Link>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Badge, enumLabel, StatusBadge, statusReading } from "@/design";
-import { AskAboutThis } from "@/features/chat-dock/ask-about-this";
+import { AskAboutThis } from "@/features/chat-dock";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useDocument, useThread } from "../hooks";

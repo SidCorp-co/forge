@@ -107,7 +107,7 @@ function Decide({ d, v, projectId }: { d: ContractStandingDetail; v: ContractVer
         </Button>
       </div>
       {returning ? (
-        <div className="grid max-w-[560px] gap-2">
+        <div className="grid max-w-140 gap-2">
           <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("contracts.decide.reasonPlaceholder")} rows={3} />
           <div>
             <Button type="button" size="sm" disabled={m.isPending || reason.trim().length === 0} onClick={() => m.mutate({ version: v.version, decision: "return", reason: reason.trim() })}>

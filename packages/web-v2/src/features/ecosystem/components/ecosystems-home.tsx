@@ -36,7 +36,7 @@ function Invitation({ inv, read }: { inv: WorkspaceInvitation; read: WorkspaceRe
 function Requests({ read }: { read: WorkspaceRead }) {
   if (read.invitations.length === 0) return null;
   return (
-    <section aria-label="Requests to join" className="w-full max-w-[520px] rounded-[10px] border border-line-subtle bg-surface text-left">
+    <section aria-label="Requests to join" className="w-full max-w-130 rounded-sm border border-line-subtle bg-surface text-left">
       <h2 className="border-b border-line-subtle px-4 py-3 text-14 font-semibold">Requests to join</h2>
       <ul>
         {read.invitations.map((inv) => (
@@ -66,14 +66,14 @@ export function EcosystemsHome() {
   const joined = joinedEcosystems(read);
   if (joined.length === 0) {
     return (
-      <div className="grid justify-items-center gap-2.5 px-5 py-[60px] text-center">
-        <div className="grid h-[84px] w-[84px] place-items-center rounded-[20px]" style={{ background: "var(--cobalt-50)", color: "var(--cobalt-700)" }}>
+      <div className="grid justify-items-center gap-2.5 px-5 py-15 text-center">
+        <div className="grid h-21 w-21 place-items-center rounded-sm" style={{ background: "var(--cobalt-50)", color: "var(--cobalt-700)" }}>
           <Icon name="ecosystem" size={40} />
         </div>
         <h1 className="fg-h3">No ecosystem yet</h1>
         <p className="max-w-[44ch] text-muted">Projects from any organization that share contracts and documents.</p>
         <NewButton />
-        <div className="mt-2.5 w-full max-w-[520px]">
+        <div className="mt-2.5 w-full max-w-130">
           <Requests read={read} />
         </div>
       </div>
@@ -82,7 +82,7 @@ export function EcosystemsHome() {
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-[22px] font-bold">Ecosystems</h1>
+        <h1 className="text-20 font-bold">Ecosystems</h1>
         <span className="ml-auto">
           <NewButton />
         </span>

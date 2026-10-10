@@ -6,7 +6,7 @@ import { ecosystemApi } from "../api";
 import { useApiPage, useChannelWrite, useDocument, useProjectEcosystems } from "../hooks";
 import { type Refusal, readingOf, refusalsOf } from "@/lib/api/refusals";
 import { type DocumentType, type DocumentView, REPLY_TYPES, TYPE_LABEL } from "../types";
-import { canWriteProject } from "@/features/projects/write-access";
+import { canWriteProject } from "@/features/projects";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import type { Role } from "./document-actions";
 import { Loading, ReadOnlyNotice, RefusalNotice, UnreadNotice } from "./notices";

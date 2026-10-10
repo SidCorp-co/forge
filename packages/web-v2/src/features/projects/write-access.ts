@@ -1,4 +1,4 @@
-import type { OrgRole } from "@/features/orgs/types";
+import type { OrgRole } from "@/features/orgs";
 import type { ProjectListItem } from "./types";
 
 type ProjectRole = ProjectListItem["role"] | undefined;

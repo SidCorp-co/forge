@@ -4,9 +4,9 @@ import { createContext, useContext, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
-import { preferencesApi } from "@/features/preferences/api";
-import { PREFERENCES_KEY as PREFS_KEY, usePreferences } from "@/features/preferences/hooks";
-import type { Preferences } from "@/features/preferences/types";
+import { preferencesApi } from "@/features/preferences";
+import { PREFERENCES_KEY as PREFS_KEY, usePreferences } from "@/features/preferences";
+import type { Preferences } from "@/features/preferences";
 import { useOrgs } from "./hooks";
 import type { OrgListItem } from "./types";
 

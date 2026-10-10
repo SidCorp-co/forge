@@ -204,9 +204,9 @@ function ProjectSections({
           <button
             type="button"
             onClick={onNewProject}
-            className="group flex min-h-[156px] flex-col items-center justify-center gap-2.5 border-t border-dashed border-line-strong text-muted transition-colors hover:border-accent hover:bg-accent-tint hover:text-accent-text"
+            className="group flex min-h-39 flex-col items-center justify-center gap-2.5 border-t border-dashed border-line-strong text-muted transition-colors hover:border-accent hover:bg-accent-tint hover:text-accent-text"
           >
-            <span className="flex size-[38px] items-center justify-center rounded-md bg-sunken transition-colors group-hover:bg-surface">
+            <span className="flex size-9.5 items-center justify-center rounded-md bg-sunken transition-colors group-hover:bg-surface">
               <Icon name="plus" size={22} className="text-subtle group-hover:text-accent" />
             </span>
             <span className="text-sm font-semibold">New project</span>
@@ -247,7 +247,7 @@ function StatsBand({ totals }: { totals: WorkspaceTotals }) {
         className="inline-flex items-center gap-1.5 font-mono text-12-5 text-accent-text"
         title="Pipeline runs currently running or paused"
       >
-        <span className="forge-pulse inline-block size-[7px] rounded-pill bg-accent" aria-hidden />
+        <span className="forge-pulse inline-block size-1.75 rounded-pill bg-accent" aria-hidden />
         {totals.liveRuns} live runs
       </span>
       <Stat icon="inbox" title="In-flight issues (not closed)">

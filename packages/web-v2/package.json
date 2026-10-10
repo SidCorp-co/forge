@@ -9,7 +9,7 @@
     "build": "node scripts/no-dev-server-holding-next.mjs && pnpm gen:help && next build",
     "start": "next start --port 3100",
     "lint": "eslint --pass-on-unpruned-suppressions src",
-    "lint:inventory": "eslint -f json --suppressions-location .eslint-no-suppressions.json src | node scripts/lint-inventory.mjs",
+    "lint:inventory": "node scripts/lint-inventory.mjs",
     "test": "vitest run",
     "witness": "node witness/run.mjs"
   },

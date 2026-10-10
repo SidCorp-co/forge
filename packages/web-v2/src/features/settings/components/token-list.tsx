@@ -55,7 +55,7 @@ export function TokenList({
     return (
       <div className="space-y-2.5">
         {["a", "b", "c"].map((k) => (
-          <Skeleton key={k} className="h-14 w-full rounded-lg" />
+          <Skeleton key={k} className="h-14 w-full" />
         ))}
       </div>
     );

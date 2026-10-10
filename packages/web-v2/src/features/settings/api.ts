@@ -1,4 +1,4 @@
-import type { Preferences } from "@/features/preferences/types";
+import type { Preferences } from "@/features/preferences";
 import { apiClient, apiClientList } from "@/lib/api/client";
 import type {
   AssistantPreferences,

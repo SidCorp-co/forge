@@ -3,7 +3,7 @@
 // Settings → API Tokens. List + create (one-time plaintext reveal) + revoke.
 import { useState } from "react";
 import { Button, SectionTitle, SlideOver } from "@/design";
-import { useProjects } from "@/features/projects/hooks";
+import { useProjects } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { useRevokeToken, useTokens } from "../hooks";

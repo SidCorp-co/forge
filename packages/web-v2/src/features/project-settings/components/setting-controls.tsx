@@ -5,7 +5,7 @@
 import { type ComponentProps, type ReactNode, useId } from "react";
 import { Button, Input, NativeSelect, type SelectOption, Textarea, Toggle } from "@/design";
 import { cn } from "@/lib/utils/cn";
-import type { DocumentDraft, sectionOf } from "@/features/project-config/use-document-draft";
+import type { DocumentDraft, sectionOf } from "@/features/project-config";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { formatApiError } from "@/lib/api/error";
 import { readRefusal, type Refusal } from "@/lib/api/refusals";

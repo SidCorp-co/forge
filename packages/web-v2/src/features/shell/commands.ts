@@ -3,7 +3,7 @@
 // handlers/routes only (no fabricated endpoints).
 import type { Command, ToastView } from "@/design";
 import { copyOr, productCopy } from "@/lib/i18n/product-copy";
-import type { ProjectListItem } from "@/features/projects/types";
+import type { ProjectListItem } from "@/features/projects";
 import { PROJECT_ITEMS, SECONDARY_DESTINATIONS, WORKSPACE_ITEMS } from "./nav-model";
 import type { PinnedView } from "@/lib/navigation/pinned-views";
 import type { RecentEntry } from "@/lib/navigation/recents";

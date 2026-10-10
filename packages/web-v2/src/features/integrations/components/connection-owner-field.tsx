@@ -5,7 +5,7 @@
 // administers (org connections must stay inside their own org, and creating
 // one requires org admin — the server enforces both).
 import { Field, Select } from "@/design";
-import { useProjects } from "@/features/projects/hooks";
+import { useProjects } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
 
 export function ConnectionOwnerField({

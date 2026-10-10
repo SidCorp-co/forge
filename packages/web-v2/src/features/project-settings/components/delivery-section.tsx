@@ -8,10 +8,10 @@
 import { withArticle } from "@forge/contracts/articles";
 import { useState } from "react";
 import { Button, IconButton, Input, Skeleton } from "@/design";
-import { useBindingDocuments, usePolicyDocument, useWritePolicy } from "@/features/project-config/hooks";
-import { type DocumentDraft, sectionOf, useDocumentDraft } from "@/features/project-config/use-document-draft";
-import { useProviderLabel } from "@/features/integrations/providers/registry";
-import type { ProjectDetail } from "@/features/projects/types";
+import { useBindingDocuments, usePolicyDocument, useWritePolicy } from "@/features/project-config";
+import { type DocumentDraft, sectionOf, useDocumentDraft } from "@/features/project-config";
+import { useProviderLabel } from "@/features/integrations";
+import type { ProjectDetail } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { policyTemplate } from "../config-templates";

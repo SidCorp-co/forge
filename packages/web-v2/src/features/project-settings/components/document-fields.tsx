@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button, Field, IconButton, Input, MonoTag, Toggle } from "@/design";
 import { isPlainObject } from "@forge/contracts/document-patch";
 import { type Refusal, readRefusal } from "@/lib/api/refusals";
-import { pointerOf, REMOVE } from "@/features/project-config/document-edit";
+import { pointerOf, REMOVE } from "@/features/project-config";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 

@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
-import { inActiveOrg } from "@/features/projects/derive";
-import { useProjectsConsole } from "@/features/projects/hooks";
-import { projectGlyph, projectInitials } from "@/features/projects/glyph";
-import type { ProjectListItem } from "@/features/projects/types";
+import { inActiveOrg } from "@/features/projects";
+import { useProjectsConsole } from "@/features/projects";
+import { projectGlyph, projectInitials } from "@/features/projects";
+import type { ProjectListItem } from "@/features/projects";
 import type { RailProject, SwitcherProject } from "./components/project-switcher";
 
 /** The rail's project mark and the switcher's list, both from the projects console and scoped to the active org (ISS-480). */

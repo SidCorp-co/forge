@@ -85,7 +85,7 @@ export function DeliveryLogViewer({
     return (
       <div className="flex flex-col gap-2">
         {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-[44px] w-full" />
+          <Skeleton key={i} className="h-11 w-full" />
         ))}
       </div>
     );
