@@ -41,7 +41,7 @@ export function AwaitingRelease({ slug, projectId }: { slug: string; projectId: 
   const t = useCopy();
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const read = useIssues(projectId, { status: ["awaiting_release"], sort: "createdAt:asc", pageSize: READ_LIMIT });
   const issues = read.data?.items ?? [];

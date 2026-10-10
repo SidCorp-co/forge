@@ -37,7 +37,7 @@ function unmark() {
 
 export const highlightStore = {
   get: (): HighlightState | null => state,
-  subscribe(l: () => void) {
+  subscribe: (l: () => void) => {
     listeners.add(l);
     return () => {
       listeners.delete(l);

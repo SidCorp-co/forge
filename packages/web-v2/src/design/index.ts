@@ -54,8 +54,6 @@ export { ScreenTabs } from "./patterns/screen-tabs";
 export { PageContainer } from "./patterns/page-container";
 export { Pagination } from "./primitives/pagination";
 export { Disclosure } from "./primitives/disclosure";
-// Collapsible is Disclosure's old name, kept until the sweep renames its last callers.
-export { Disclosure as Collapsible } from "./primitives/disclosure";
 export { Dialog } from "./primitives/dialog";
 export { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "./primitives/resizable";
 export { Table, THead, TBody, TR, TH, TD, SortableTH, useReactTable, getCoreRowModel, type ColumnDef, type SortingState } from "./primitives/table";
@@ -118,7 +116,7 @@ export { useElapsed } from "./hooks/use-elapsed";
 export { useNow } from "./hooks/use-now";
 export { useMediaQuery } from "./hooks/use-media-query";
 export { useBrowserValue } from "./hooks/use-browser-value";
-export { keyedByContent, keyedRows, useListKeys, type ListKeys } from "./hooks/use-list-keys";
+export { keyedByContent, keyedNodes, keyedRows, useListKeys, type ListKeys } from "./hooks/use-list-keys";
 
 export {
   ListPage, DetailPage, SettingsPage, BoardPage, ReportPage,

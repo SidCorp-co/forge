@@ -11,7 +11,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useBrowserValue } from "../hooks/use-browser-value";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { PageTitle } from "../primitives/heading";
 import { TopBarActions } from "../primitives/top-bar-slot";
@@ -27,16 +27,14 @@ export function rememberListOrigin(list: string): void {
 
 /** Where "← List" goes: the remembered view of `listHref`, else `listHref` itself. */
 export function useListOrigin(list: string, listHref: string): string {
-  const [href, setHref] = useState(listHref);
-  useEffect(() => {
+  const saved = useBrowserValue(() => {
     try {
-      const saved = sessionStorage.getItem(originKey(list));
-      setHref(saved?.startsWith(listHref) ? saved : listHref);
+      return sessionStorage.getItem(originKey(list));
     } catch {
-      setHref(listHref);
+      return null;
     }
-  }, [list, listHref]);
-  return href;
+  }, null);
+  return saved?.startsWith(listHref) ? saved : listHref;
 }
 
 export interface DetailHeaderProps {

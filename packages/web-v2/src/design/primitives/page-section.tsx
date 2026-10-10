@@ -19,8 +19,12 @@ export function PageSectionHeader({ className, ...props }: HTMLAttributes<HTMLDi
 }
 
 /** An h3, one step below `SectionTitle`. */
-export function PageSectionTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className={rampOr("fg-h3", className)} {...props} />;
+export function PageSectionTitle({ className, children, ...props }: HTMLAttributes<HTMLHeadingElement>) {
+  return (
+    <h3 className={rampOr("fg-h3", className)} {...props}>
+      {children}
+    </h3>
+  );
 }
 
 export function PageSectionBody({ className, style, ...props }: HTMLAttributes<HTMLDivElement>) {

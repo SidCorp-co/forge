@@ -87,7 +87,6 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
         <div className="flex items-center gap-2.5 border-b border-line-subtle px-4 py-3">
           <Icon name="search" size={18} className="text-subtle" />
           <CommandPrimitive.Input
-            autoFocus
             value={query}
             onValueChange={setQuery}
             placeholder={t("shell.palette.placeholder")}

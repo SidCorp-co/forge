@@ -1,6 +1,7 @@
 "use client";
 
 
+import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { addressesAFile, type BodyHref, classifyBodyHref } from "@/lib/utils/body-href";
@@ -76,7 +77,8 @@ export function BodyImage({ src, alt }: { src?: string; alt?: string }): ReactNo
     );
   }
   return (
-    // biome-ignore lint/performance/noImgElement: a body image is an arbitrary attachment or external URL with no known intrinsic size, and `next/image` needs both a configured remote host and dimensions — the reason `body-view.tsx` carried this same comment before both renderers came here
-    <img src={target.href} alt={alt ?? ""} className={COMPACT_TAG_CLASS.img} />
+    // An attachment or external URL of no known size: unoptimized (no remote host to configure), and
+    // width/height 0 with auto CSS size, Next's documented form for an image of unknown dimensions.
+    <Image src={target.href} alt={alt ?? ""} width={0} height={0} sizes="100vw" unoptimized className={COMPACT_TAG_CLASS.img} style={{ width: "auto", height: "auto" }} />
   );
 }

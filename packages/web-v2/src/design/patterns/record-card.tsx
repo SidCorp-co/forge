@@ -51,7 +51,7 @@ function Field({ field, open }: { field: ForgeRecordFieldView; open: boolean }):
         <details
           className="min-w-0"
           open={shown}
-          onToggle={(e) => setShown((e.currentTarget as HTMLDetailsElement).open)}
+          onToggle={(e) => setShown(e.currentTarget.open)}
         >
           <summary className="fg-caption cursor-pointer text-muted">
             {shown ? "Fold" : `Show all — ${field.over} character(s) over budget`}

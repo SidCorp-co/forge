@@ -1,6 +1,6 @@
 "use client";
 
-import { Banner, Collapsible, EmptyState, ErrorState, enumLabel, Icon, type IconName, Skeleton, StatusBadge } from "@/design";
+import { Banner, Disclosure, EmptyState, ErrorState, enumLabel, Icon, type IconName, Skeleton, StatusBadge } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useIntegrationDeliveries } from "../hooks";
@@ -23,7 +23,7 @@ function DeliveryItem({ row }: { row: IntegrationDelivery }) {
   const time = useTimeFormat();
 
   return (
-    <Collapsible
+    <Disclosure
       title={
         <span className="flex w-full flex-wrap items-center gap-x-3 gap-y-1">
           <span className="inline-flex items-center gap-1.5 text-muted">
@@ -58,7 +58,7 @@ function DeliveryItem({ row }: { row: IntegrationDelivery }) {
           </div>
         )}
       </div>
-    </Collapsible>
+    </Disclosure>
   );
 }
 

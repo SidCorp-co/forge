@@ -35,7 +35,7 @@ export function ChoiceChips({ options, value, onChange, multiple = false, label,
       aria-label={label}
       multiple={multiple}
       value={value}
-      onValueChange={(next) => onChange(next as string[])}
+      onValueChange={(next) => onChange(next)}
       className={cn("flex flex-wrap gap-1.5", className)}
     >
       {options.map((o) => (

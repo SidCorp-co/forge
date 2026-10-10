@@ -19,7 +19,7 @@ export function useViewMode<T extends string>(modes: readonly ViewMode<T>[]): [T
   return useUrlChoice(
     "group",
     modes.map((m) => m.value),
-    modes[0]?.value as T,
+    modes[0]?.value,
   );
 }
 

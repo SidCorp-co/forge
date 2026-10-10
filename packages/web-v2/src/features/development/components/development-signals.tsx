@@ -1,7 +1,6 @@
 "use client";
 
 import type { Said } from "@forge/contracts/said";
-import type { ReactNode } from "react";
 import { HoverCard, Signal, SignalsStrip, Tooltip } from "@/design";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
