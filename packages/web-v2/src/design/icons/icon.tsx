@@ -7,6 +7,7 @@ import {
   History, Pencil, PenLine, Plus, Rocket, RotateCw, Rows3, Search, Server, Settings, Shield, Sparkles, Square,
   Star, Trash2, TriangleAlert, User, Users, Waypoints, Workflow, X,
   Bold, Code, Heading, Italic, ListOrdered, Quote, SquareCode,
+  ChevronUp, Expand, Map as MapIcon, Maximize, PanelRightClose, PanelRightOpen, Shrink,
 } from "lucide-react";
 
 /* Semantic icon names (carried over from the prototype's Icon.jsx) mapped to
@@ -76,6 +77,13 @@ const ICONS = {
   book: BookOpen,
   panelLeft: PanelLeftClose,
   chevronLeft: ChevronLeft,
+  chevronUp: ChevronUp,
+  expand: Expand,
+  shrink: Shrink,
+  maximize: Maximize,
+  map: MapIcon,
+  panelRightOpen: PanelRightOpen,
+  panelRightClose: PanelRightClose,
   keyboard: Keyboard,
   help: CircleHelp,
   info: Info,

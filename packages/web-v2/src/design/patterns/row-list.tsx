@@ -28,6 +28,7 @@ export interface RowItemProps {
   /** State, counts and acts at the row's right; they wrap under the title at phone width. */
   trailing?: ReactNode;
   href?: string;
+  /** With `href`, runs as the link is followed; without it, the row is a button. */
   onClick?: () => void;
   selected?: boolean;
   dim?: boolean;
@@ -70,7 +71,7 @@ export function RowItem({ title, lead, facts, note, trailing, href, onClick, sel
   return (
     <li className="border-b border-line-subtle" data-testid={testId ?? "row-item"} aria-current={selected || undefined}>
       {href ? (
-        <Link href={href} className={row}>
+        <Link href={href} onClick={onClick} className={row}>
           {body}
         </Link>
       ) : onClick ? (

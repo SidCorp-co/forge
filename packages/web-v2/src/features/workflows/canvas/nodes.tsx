@@ -3,10 +3,9 @@
 import type { NodeProvenance } from "@forge/contracts/workflow-health";
 import type { TemplateNodeType } from "@forge/contracts/workflow-templates";
 import { Handle, type NodeProps, Position } from "@xyflow/react";
-import { ChevronRight, Clock, User } from "lucide-react";
 import Link from "next/link";
 import { memo } from "react";
-import { Button, PageSectionTitle, TemplateIcon } from "@/design";
+import { Button, PageSectionTitle, TemplateIcon, Icon } from "@/design";
 import { HealthMark } from "../components/health-parts";
 import type { StepMark } from "../design-diff";
 import { type NodeHealthView, rewriteWords } from "../health";
@@ -98,7 +97,7 @@ function NodeHealth({ h, full, hrefOf }: { h: NodeHealthView; full: boolean; hre
   );
 }
 
-function StepCard({ data }: NodeProps & { data: StepNodeData }) {
+function StepNode({ data }: NodeProps & { data: StepNodeData }) {
   const t = useCopy();
   const { step, type, full, contract } = data;
   const n = step.node;
@@ -145,13 +144,13 @@ function StepCard({ data }: NodeProps & { data: StepNodeData }) {
             <div className="wfc-badges">
               {n.owner ? (
                 <span className="wfc-badge">
-                  <User size={12} aria-hidden />
+                  <Icon name="user" size={12} />
                   {n.owner}
                 </span>
               ) : null}
               {n.sla ? (
                 <span className="wfc-badge" data-tone="sla">
-                  <Clock size={12} aria-hidden />
+                  <Icon name="clock" size={12} />
                   {n.sla}
                 </span>
               ) : null}
@@ -168,7 +167,7 @@ function StepCard({ data }: NodeProps & { data: StepNodeData }) {
   );
 }
 
-function BandCard({ data }: NodeProps & { data: BandNodeData }) {
+function BandNode({ data }: NodeProps & { data: BandNodeData }) {
   const t = useCopy();
   const { summary } = data;
   return (
@@ -191,12 +190,12 @@ function BandCard({ data }: NodeProps & { data: BandNodeData }) {
       </div>
       <div className="wfc-badges">
         <span className="wfc-badge">
-          <User size={12} aria-hidden />
+          <Icon name="user" size={12} />
           {summary.owners === 0 ? t("workflows.node.noOwner") : t(summary.owners === 1 ? "workflows.count.owner.one" : "workflows.count.owner.many", { n: summary.owners })}
         </span>
         {summary.deadlines > 0 ? (
           <span className="wfc-badge" data-tone="sla">
-            <Clock size={12} aria-hidden />
+            <Icon name="clock" size={12} />
             {t(summary.deadlines === 1 ? "workflows.count.deadline.one" : "workflows.count.deadline.many", { n: summary.deadlines })}
           </span>
         ) : null}
@@ -210,7 +209,7 @@ function BandCard({ data }: NodeProps & { data: BandNodeData }) {
   );
 }
 
-function BandRow({ data }: NodeProps & { data: BandRowData }) {
+function BandLane({ data }: NodeProps & { data: BandRowData }) {
   const t = useCopy();
   return (
     <div className="wfc-row" style={{ background: tint(data.colour, data.odd ? 4 : 7) }}>
@@ -226,11 +225,11 @@ function BandRow({ data }: NodeProps & { data: BandRowData }) {
           data.onToggle();
         }}
       >
-        <ChevronRight size={12} aria-hidden />
+        <Icon name="chevronRight" size={12} />
         {data.label}
       </Button>
     </div>
   );
 }
 
-export const NODE_TYPES = { step: memo(StepCard), band: memo(BandCard), bandRow: memo(BandRow) };
+export const NODE_TYPES = { step: memo(StepNode), band: memo(BandNode), bandRow: memo(BandLane) };

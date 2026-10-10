@@ -1,7 +1,6 @@
 "use client";
 
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
-import { Pencil } from "lucide-react";
 import Link from "next/link";
 import { type FormEvent, useMemo, useState } from "react";
 import { Button, HoverCard, Icon, Input, rememberListOrigin } from "@/design";
@@ -47,7 +46,7 @@ function DescriptionEditor({ projectId, held, initial, onDone }: { projectId: st
   };
   const refusal = write.error ? (refusalsOf(write.error)[0]?.detail ?? formatApiError(write.error)) : null;
   return (
-    <form className="grid max-w-[86ch] gap-1.5" onSubmit={submit} data-testid="description-editor">
+    <form className="grid max-w-3xl gap-1.5" onSubmit={submit} data-testid="description-editor">
       <span className="flex items-center gap-2">
         <Input
           aria-label={t("workflows.overview.descLabel")}
@@ -65,7 +64,7 @@ function DescriptionEditor({ projectId, held, initial, onDone }: { projectId: st
         </Button>
       </span>
       {refusal ? (
-        <p role="alert" className="m-0 text-12 text-red">
+        <p role="alert" className="m-0 text-12 text-danger-11">
           {refusal}
         </p>
       ) : null}
@@ -88,14 +87,14 @@ function Description({ o, graph, projectId, projectDocument, canEdit }: { o: Sys
     if (!writable) return null;
     return (
       <Button type="button" variant="ghost" size="sm" className="-ml-2 h-7 w-fit gap-1.5 px-2 text-13 font-normal text-muted" onClick={() => setEditing(true)} data-testid="add-description">
-        <Pencil size={13} aria-hidden />
+        <Icon name="rename" size={13} />
         {t("workflows.overview.addDescription")}
       </Button>
     );
   }
   const summary = o.record.document.summary.trim();
   return (
-    <span className="flex min-w-0 max-w-[96ch] items-center gap-2">
+    <span className="flex min-w-0 max-w-3xl items-center gap-2">
       <HoverCard
         label={t("workflows.overview.aboutSystem")}
         className="block min-w-0 truncate text-14"
@@ -118,7 +117,7 @@ function Description({ o, graph, projectId, projectDocument, canEdit }: { o: Sys
       </HoverCard>
       {writable ? (
         <Button type="button" variant="ghost" size="sm" className="h-6 w-6 flex-none p-0 text-subtle" aria-label={t("workflows.overview.editDescription")} title={t("workflows.overview.editDescription")} onClick={() => setEditing(true)}>
-          <Pencil size={13} aria-hidden />
+          <Icon name="rename" size={13} />
         </Button>
       ) : null}
     </span>
@@ -128,12 +127,12 @@ function Description({ o, graph, projectId, projectDocument, canEdit }: { o: Sys
 function FactDetail({ f }: { f: OverviewFact }) {
   const t = useCopy();
   return (
-    <ul className="m-0 grid min-w-[240px] list-none p-0" data-testid="fact-detail">
+    <ul className="m-0 grid min-w-60 list-none p-0" data-testid="fact-detail">
       {f.rows.map((r) => (
         <li key={r.name} className="flex items-baseline gap-3 border-t border-line-subtle py-1.5 first:border-t-0 first:pt-0 last:pb-0">
           <span className="min-w-0 flex-1 text-13">{r.name}</span>
           {r.count !== undefined ? (
-            <span className="flex-none text-12-5 tabular-nums text-muted">
+            <span className="flex-none text-13 tabular-nums text-muted">
               {r.count}
               {r.unconfirmed ? <span className="text-subtle"> · {t("workflows.overview.unconfirmed", { n: r.unconfirmed })}</span> : null}
             </span>
@@ -152,8 +151,8 @@ function Facts({ o, graph, slug, projectDocument }: { o: SystemOverview; graph: 
     <dl className="m-0 flex flex-wrap items-center gap-x-7 gap-y-1.5" data-testid="overview-facts">
       {(graph ? overviewFacts(graph, t) : []).map((f) => (
         <div key={f.label} className="flex items-baseline gap-2">
-          <dt className="text-12-5 text-muted">{f.label}</dt>
-          <dd className="m-0 text-13-5 font-semibold">
+          <dt className="text-13 text-muted">{f.label}</dt>
+          <dd className="m-0 text-14 font-semibold">
             <HoverCard label={f.label} content={<FactDetail f={f} />} className="underline decoration-line decoration-dotted underline-offset-4" data-testid="overview-fact">
               {f.value}
             </HoverCard>
@@ -162,7 +161,7 @@ function Facts({ o, graph, slug, projectDocument }: { o: SystemOverview; graph: 
       ))}
       {sensitivity ? (
         <div className="flex items-center gap-2">
-          <dt className="text-12-5 text-muted">{t("workflows.overview.data")}</dt>
+          <dt className="text-13 text-muted">{t("workflows.overview.data")}</dt>
           <dd className="m-0">
             <SensitivityBadge level={sensitivity} />
           </dd>
@@ -170,8 +169,8 @@ function Facts({ o, graph, slug, projectDocument }: { o: SystemOverview; graph: 
       ) : null}
       {o.journey ? (
         <div className="flex min-w-0 items-baseline gap-2">
-          <dt className="text-12-5 text-muted">{t("workflows.overview.mainJourney")}</dt>
-          <dd className="m-0 min-w-0 truncate text-13-5 font-semibold">
+          <dt className="text-13 text-muted">{t("workflows.overview.mainJourney")}</dt>
+          <dd className="m-0 min-w-0 truncate text-14 font-semibold">
             <Link href={workflowHref(slug, o.journey.document.flow)} onClick={() => rememberListOrigin(WORKFLOWS_LIST)} className="text-link hover:underline">
               {o.journey.document.title}
             </Link>
@@ -195,7 +194,7 @@ function NoContext({ projectId, quiet }: { projectId: string; quiet: boolean }) 
   const action = hint?.action ?? "start";
   return (
     <section className="border-b border-line-subtle bg-surface px-7 py-4 max-md:px-4" aria-label={t("workflows.overview.title")} data-testid="system-overview" data-empty>
-      <p className="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-13-5">
+      <p className="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-14">
         <b className="font-semibold">{t("workflows.overview.noContext")}</b>
         {quiet ? null : (
           <>
@@ -203,7 +202,7 @@ function NoContext({ projectId, quiet }: { projectId: string; quiet: boolean }) 
               type="button"
               variant="ghost"
               size="sm"
-              className="h-auto p-0 text-13-5 font-semibold text-link hover:bg-transparent hover:underline"
+              className="h-auto p-0 text-14 font-semibold text-link hover:bg-transparent hover:underline"
               loading={pending}
               disabled={!state.data}
               onClick={() => ask(action)}
@@ -215,7 +214,7 @@ function NoContext({ projectId, quiet }: { projectId: string; quiet: boolean }) 
         )}
       </p>
       {error ? (
-        <p role="alert" className="mt-1 text-12 text-red">
+        <p role="alert" className="mt-1 text-12 text-danger-11">
           {error}
         </p>
       ) : null}
@@ -294,7 +293,7 @@ export function SystemOverviewRegion({ records, templates, projectId, slug, proj
         {graph.isPending ? null : <Description o={o} graph={graph.data ?? null} projectId={projectId} projectDocument={projectDocument} canEdit={canEdit} />}
         <Facts o={o} graph={graph.data ?? null} slug={slug} projectDocument={projectDocument} />
       </div>
-      <div className={cn("flex min-h-0 flex-1", compact ? "h-[620px] flex-none max-md:h-[64vh]" : "min-h-[420px] max-lg:h-[64vh] max-lg:flex-none")} data-testid="overview-diagram">
+      <div className={cn("flex min-h-0 flex-1", compact ? "h-155 flex-none max-md:h-[64vh]" : "min-h-105 max-lg:h-[64vh] max-lg:flex-none")} data-testid="overview-diagram">
         <WorkflowCanvas doc={design.document} template={template} graph={graphRef} health={overlay} compact />
       </div>
     </section>

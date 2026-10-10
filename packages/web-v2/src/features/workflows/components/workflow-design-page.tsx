@@ -1,7 +1,6 @@
 "use client";
 
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 import {
@@ -12,8 +11,7 @@ import {
   FactsRail,
   StatusBadge,
   useUrlTab,
-  ViewHeading,
-} from "@/design";
+  ViewHeading, Icon } from "@/design";
 import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
 import { ItemMemory, useItemMemoryCount } from "@/features/memory/components/item-memory";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -31,7 +29,7 @@ import type { WorkflowBody, WorkflowDesign, WorkflowRecord, WorkflowStep } from 
 import { DesignBanner } from "./design-banner";
 import { OrphanedTraces } from "./design-decision";
 import { useBannerOpen, useCanvasFocus, useDetailSqueezes, useRailCollapsed } from "./design-room";
-import { WorkflowDesignFacts } from "./workflow-design-facts";
+import { WorkflowDesignProperties } from "./workflow-design-facts";
 import { DesignPill } from "./workflow-parts";
 
 const DESIGN_TABS = ["design", "steps", "revisions", "decisions", "memory"] as const;
@@ -78,7 +76,7 @@ function StepsPane({ shown, template, diff, revision }: { shown: WorkflowBody; t
   return (
     <div data-testid="view-steps">
       <ViewHeading>{t("workflows.whoOwnsWhat")}</ViewHeading>
-      <div className="grid h-8 grid-cols-[36px_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-x-3 border-y border-line-subtle bg-sunken px-3 text-11-5 font-semibold text-subtle max-md:hidden" aria-hidden>
+      <div className="grid h-8 grid-cols-[36px_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-x-3 border-y border-line-subtle bg-sunken px-3 text-12 font-semibold text-subtle max-md:hidden" aria-hidden>
         <span>#</span>
         <span>{unit}</span>
         <span>{t("workflows.owner")}</span>
@@ -117,7 +115,7 @@ function RevisionsPane({ d }: { d: WorkflowDesign }) {
         <ul className="border-t border-line-subtle">
           {d.revisions.map((r) => (
             <li key={r.revision} className="grid grid-cols-[72px_150px_minmax(0,1fr)] items-baseline gap-x-3 border-b border-line-subtle px-3 py-2.5 text-13 max-md:grid-cols-[56px_minmax(0,1fr)]" data-testid="revision-row">
-              <span className="font-mono text-12-5 font-semibold">r{r.revision}</span>
+              <span className="font-mono text-13 font-semibold">r{r.revision}</span>
               <span>
                 <StatusBadge family="designRevision" value={r.state} />
               </span>
@@ -137,8 +135,8 @@ function RevisionsPane({ d }: { d: WorkflowDesign }) {
                 ) : null}
                 {r.reason ? (
                   <details className="mt-1">
-                    <summary className="cursor-pointer select-none text-12-5 font-medium text-muted hover:text-fg">{r.decision === "approve" ? t("workflows.approvalNote") : t("workflows.reason")}</summary>
-                    <p className="mt-1 whitespace-pre-wrap break-words text-12-5 text-fg">{revisionReason(r, language)}</p>
+                    <summary className="cursor-pointer select-none text-13 font-medium text-muted hover:text-fg">{r.decision === "approve" ? t("workflows.approvalNote") : t("workflows.reason")}</summary>
+                    <p className="mt-1 whitespace-pre-wrap break-words text-13 text-fg">{revisionReason(r, language)}</p>
                   </details>
                 ) : null}
               </span>
@@ -193,7 +191,7 @@ function RailEdge({ collapsed, onToggle }: { collapsed: boolean; onToggle: () =>
       )}
       data-testid="design-rail-toggle"
     >
-      {collapsed ? <PanelRightOpen size={14} aria-hidden /> : <PanelRightClose size={14} aria-hidden />}
+      {collapsed ? <Icon name="panelRightOpen" size={14} /> : <Icon name="panelRightClose" size={14} />}
     </button>
   );
 }
@@ -257,7 +255,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
       railCollapsed={tab === "design" && railCollapsed}
       rail={
         <FactsRail testId="design-rail">
-          <WorkflowDesignFacts d={d} record={record} shown={shown} shownRevision={shownRevision} template={template} slug={slug} health={health} projectId={projectId} />
+          <WorkflowDesignProperties d={d} record={record} shown={shown} shownRevision={shownRevision} template={template} slug={slug} health={health} projectId={projectId} />
         </FactsRail>
       }
     >

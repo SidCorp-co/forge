@@ -3,7 +3,7 @@
 import { type ReactNode, useMemo, useState } from "react";
 import { SearchBox, WalkBar } from "./controls";
 import { type Canvas, pathOf, searchSteps, walkOrder } from "./model";
-import { DetailPanel, type Selection } from "./panel";
+import { CanvasDetail, type Selection } from "./panel";
 import type { CanvasFocus, CanvasHealth, CanvasHighlight } from "./workflow-canvas";
 
 /** What both canvases share about attention: the selection and the path it lights, the search hits, and the walk through the design in reading order. */
@@ -137,7 +137,7 @@ export function focusChrome(
     search: full ? <SearchBox c={o.c} hits={[...f.hits]} query={f.query} onQuery={f.setQuery} onPick={o.reveal} /> : null,
     walkBar: full && f.walking && f.walk !== null ? <WalkBar at={f.walk} total={f.order.length} onWalk={walkTo} onStop={f.stopWalk} /> : null,
     panel: full ? (
-      <DetailPanel
+      <CanvasDetail
         canvas={o.c}
         selection={f.selection}
         walk={f.panelWalk}

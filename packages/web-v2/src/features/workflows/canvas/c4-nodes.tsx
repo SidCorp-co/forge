@@ -1,9 +1,8 @@
 "use client";
 
 import { BaseEdge, type EdgeProps, EdgeLabelRenderer, Handle, type NodeProps, Position } from "@xyflow/react";
-import { ChevronDown, ChevronUp } from "lucide-react";
 import { memo, useRef } from "react";
-import { Button, Popover, useHoverCard } from "@/design";
+import { Button, Popover, useHoverCard, Icon } from "@/design";
 import { type DBox, type DFrame, type DLine, FONT } from "../c4/layout";
 import { FOCAL } from "../c4/view";
 import { IntegrationBadge } from "../components/workflow-parts";
@@ -70,7 +69,7 @@ function Members({ box }: { box: DBox }) {
   return (
     <div className="grid gap-2" data-testid="c4-group-card">
       <div className="flex items-baseline gap-2">
-        <b className="text-13-5 font-semibold">{box.node.name}</b>
+        <b className="text-14 font-semibold">{box.node.name}</b>
         <span className="text-12 text-muted">{countWord(box, t)}</span>
       </div>
       <ul className="m-0 grid list-none p-0">
@@ -120,7 +119,7 @@ function C4Box({ data }: NodeProps & { data: C4BoxData }) {
         {b.node.count !== null ? (
           <span className="wfc-c4-chip" style={{ fontSize: FONT.chip }} title={countWord(b, t)} data-testid="c4-count">
             {b.node.count}
-            {group && data.canOpen ? <ChevronDown size={12} aria-hidden /> : null}
+            {group && data.canOpen ? <Icon name="chevronDown" size={12} /> : null}
           </span>
         ) : null}
         {b.lines.map((l) => (
@@ -145,7 +144,7 @@ function C4Box({ data }: NodeProps & { data: C4BoxData }) {
           role="dialog"
           aria-label={`${b.node.name}: ${countWord(b, t)}`}
           maxWidth={360}
-          className="w-[320px] rounded-lg border border-line bg-surface px-3.5 py-3 shadow-lg"
+          className="w-80 rounded-md border border-line bg-surface px-3.5 py-3 "
           {...card.card}
         >
           <Members box={b} />
@@ -178,7 +177,7 @@ function C4Frame({ data }: NodeProps & { data: C4FrameData }) {
             fold(f.frame.id);
           }}
         >
-          <ChevronUp size={12} aria-hidden />
+          <Icon name="chevronUp" size={12} />
           {label}
         </Button>
       ) : (
@@ -228,7 +227,7 @@ function C4Line({ id, data, markerEnd, markerStart }: EdgeProps & { data: C4Line
               </span>
             ) : null}
           </div>
-          <Popover open={card.open} anchor={anchor} onDismiss={card.close} placement="bottom-start" role="tooltip" maxWidth={420} className="rounded-lg border border-line bg-surface px-3 py-2 shadow-lg" {...card.card}>
+          <Popover open={card.open} anchor={anchor} onDismiss={card.close} placement="bottom-start" role="tooltip" maxWidth={420} className="rounded-md border border-line bg-surface px-3 py-2 " {...card.card}>
             <ul className="m-0 grid list-none gap-1 p-0" data-testid="c4-line-card">
               {data.rows.map((r) => (
                 <li key={r} className="text-13 leading-relaxed-1-6">
