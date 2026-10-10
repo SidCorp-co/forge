@@ -13,7 +13,7 @@ import { criteriaCoverageOf } from "@forge/contracts/requirements";
 import {
   ActorChip,
   AGENT_TINT,
-  Collapsible,
+  Disclosure,
   DetailLayout,
   DetailMobileTitle,
   DetailPane,
@@ -99,9 +99,9 @@ function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId:
         <CriteriaChanges changes={open.criteriaChanges} />
       </div>
       <div className="mt-3" data-testid="open-revision-diff">
-        <Collapsible title={t("requirements.revision.changesAgainst", { r: base?.revision ?? "—" })}>
+        <Disclosure title={t("requirements.revision.changesAgainst", { r: base?.revision ?? "—" })}>
           <RevisionDiff base={base} next={open} />
-        </Collapsible>
+        </Disclosure>
       </div>
       {proposed ? (
         <div className="mt-4">
@@ -124,9 +124,9 @@ function Revisions({ d, projectId }: { d: RequirementDetail; projectId: string }
             <ProposeChange projectId={projectId} reqKey={d.key} />
           </div>
         ) : null}
-        <Collapsible title={t("requirements.revision.all")} count={d.revisions.length}>
+        <Disclosure title={t("requirements.revision.all")} count={d.revisions.length}>
           <RevisionList d={d} />
-        </Collapsible>
+        </Disclosure>
       </section>
     </div>
   );
@@ -141,13 +141,13 @@ function RequirementActivity({ projectId, d }: { projectId: string; d: Requireme
   const t = useCopy();
   return (
     <section data-testid="view-activity" aria-label={t("requirements.tab.activity")}>
-      <Collapsible title={t("requirements.activity.comments")}>
+      <Disclosure title={t("requirements.activity.comments")}>
         <EntityCommentThread projectId={projectId} scope="requirement" targetRef={d.key} />
-      </Collapsible>
+      </Disclosure>
       <div className="-mt-px">
-        <Collapsible title={t("requirements.activity.history")} count={d.history.length}>
+        <Disclosure title={t("requirements.activity.history")} count={d.history.length}>
           <History entries={d.history} />
-        </Collapsible>
+        </Disclosure>
       </div>
     </section>
   );

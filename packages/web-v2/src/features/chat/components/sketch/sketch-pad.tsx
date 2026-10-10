@@ -65,7 +65,7 @@ export function SketchPad({
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" size="sm" loading={state.busy} onClick={attach}>
+          <Button type="button" variant="primary" size="sm" loading={state.busy} onClick={() => void attach()}>
             Attach
           </Button>
         </>

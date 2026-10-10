@@ -179,7 +179,7 @@ export function ConversationChat({
     return (
       <div className="flex h-full min-h-0 flex-col">
         {header}
-        <RoomUnreadable error={roomQ.error} onRetry={() => roomQ.refetch()} />
+        <RoomUnreadable error={roomQ.error} onRetry={() => void roomQ.refetch()} />
       </div>
     );
   }

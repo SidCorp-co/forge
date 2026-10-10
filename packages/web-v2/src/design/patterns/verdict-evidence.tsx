@@ -6,6 +6,7 @@
 // session, so a clip is fetched with the session's credentials and played from a local object URL.
 
 import { releaseMediaKindOf } from "@forge/contracts/release-page";
+import Image from "next/image";
 import { useState } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { coreFileUrl } from "@/lib/utils/core-url";
@@ -29,11 +30,11 @@ function Player({ file, kind }: { file: VerdictEvidenceFile; kind: "clip" | "pic
       </p>
     );
   return kind === "clip" ? (
-    // biome-ignore lint/a11y/useMediaCaption: a QA screen recording has no spoken track to caption
-    <video className="mt-1 aspect-video w-full max-w-xl rounded-md border border-line bg-sunken" src={src.src} controls preload="metadata" playsInline aria-label={file.name} data-testid="verdict-clip" />
+    // muted: a QA screen recording has no spoken track, so there is nothing to caption
+    <video className="mt-1 aspect-video w-full max-w-xl border border-line bg-sunken" src={src.src} controls muted preload="metadata" playsInline aria-label={file.name} data-testid="verdict-clip" />
   ) : (
-    // biome-ignore lint/performance/noImgElement: a blob address, which next/image cannot optimise
-    <img className="mt-1 max-h-96 w-auto max-w-full rounded-md border border-line" src={src.src} alt={file.name} data-testid="verdict-picture" />
+    // A blob address of no known size: unoptimized, with Next's documented form for unknown dimensions.
+    <Image className="mt-1 max-h-96 w-auto max-w-full border border-line" src={src.src} alt={file.name} width={0} height={0} sizes="100vw" unoptimized style={{ width: "auto", height: "auto" }} data-testid="verdict-picture" />
   );
 }
 

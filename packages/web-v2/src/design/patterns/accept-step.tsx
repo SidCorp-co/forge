@@ -51,7 +51,8 @@ export function AcceptStep({ confirmLabel, consequence, reasonLabel, loading = f
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           className="min-w-[16rem] flex-1"
-          autoFocus
+          // the step opens on the reader's own click, so focus moves to the field it revealed
+          ref={(el) => el?.focus()}
         />
         <Button type="submit" size="sm" variant="primary" disabled={reasonRequired && !reason.trim()} loading={loading}>
           {confirmLabel}

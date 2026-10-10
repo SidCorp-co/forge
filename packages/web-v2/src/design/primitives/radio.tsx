@@ -45,7 +45,7 @@ export function Radio({ value, label, disabled }: RadioProps) {
           "[&_[data-slot=radio-group-indicator]>span]:size-2.5 [&_[data-slot=radio-group-indicator]>span]:bg-accent",
         )}
       />
-      {label && <span className="fg-body-sm text-fg">{label}</span>}
+      {label ? <span className="fg-body-sm text-fg">{label}</span> : null}
     </label>
   );
 }

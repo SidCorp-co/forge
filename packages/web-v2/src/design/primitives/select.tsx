@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
+import { useFieldControl } from "./field";
 
 export interface SelectOption {
   value: string;
@@ -39,8 +40,9 @@ export function Select({
   options, value, onChange, placeholder = "Select…", disabled, id, invalid,
   className, quiet, ...aria
 }: SelectProps) {
+  const field = useFieldControl();
   const selected = options.find((o) => o.value === value);
-  const isInvalid = invalid || (aria as Record<string, unknown>)["aria-invalid"] === true;
+  const isInvalid = invalid || field["aria-invalid"] === true || (aria as Record<string, unknown>)["aria-invalid"] === true;
   return (
     <div className={cn("relative", className)}>
       <ShadcnSelect
@@ -52,9 +54,9 @@ export function Select({
         }}
       >
         <SelectTrigger
-          id={id}
+          id={id ?? field.id}
           aria-label={aria["aria-label"]}
-          aria-describedby={aria["aria-describedby"]}
+          aria-describedby={aria["aria-describedby"] ?? field["aria-describedby"]}
           aria-description={aria["aria-description"]}
           aria-invalid={isInvalid || undefined}
           className={cn(
@@ -104,6 +106,7 @@ export interface NativeSelectProps extends Omit<SelectHTMLAttributes<HTMLSelectE
 /** Plain OS-native select, styled to match Input — preferred where the native
     mobile picker / minimal JS is wanted. */
 export function NativeSelect({ options, className, ...props }: NativeSelectProps) {
+  const field = useFieldControl();
   return (
     <div className="relative inline-flex w-full items-center">
       <select
@@ -113,6 +116,7 @@ export function NativeSelect({ options, className, ...props }: NativeSelectProps
           "disabled:cursor-not-allowed disabled:opacity-50",
           className,
         )}
+        {...field}
         {...props}
       >
         {options.map((o) => (

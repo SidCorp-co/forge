@@ -6,6 +6,8 @@
 
 import Link from "next/link";
 import {
+  RowItem,
+  RowList,
   CoverageBar,
   DetailLayout,
   DetailMobileTitle,
@@ -146,27 +148,25 @@ function Code({ d, slug }: { d: ModuleDetail; slug: string }) {
   );
 }
 
-const LANDING_COLS = "grid grid-cols-[96px_minmax(0,1fr)_110px_96px_minmax(0,150px)] gap-x-3.5 px-3 max-md:grid-cols-[84px_minmax(0,1fr)_88px]";
-
 function LandingLine({ l, slug, here }: { l: ModuleLanding; slug: string; here: string }) {
   const t = useCopy();
   const where = [l.commitSha ? l.commitSha.slice(0, 7) : null, l.target ? t("modules.landing.on", { target: l.target }) : null, l.landing].filter(Boolean).join(" · ");
   return (
-    <li className={`${LANDING_COLS} items-baseline border-b border-line-subtle py-2.5 text-13`} data-testid="landing-row">
-      <Link href={issueHref(slug, l.issueKey)} className="font-mono text-12 font-semibold text-link hover:underline">
-        {l.issueKey}
-      </Link>
-      <span className="min-w-0 truncate" title={l.title}>
-        {l.title}
-      </span>
-      <span className="text-12 text-muted" title={`${formatStamp(l.landedAt)}${where ? ` · ${where}` : ""}`}>
-        {t("modules.landing.ago", { age: formatAge(l.landedAt) })}
-      </span>
-      <span className="font-mono text-12 max-md:hidden">{l.release ?? <span className="font-sans text-subtle" title={t("modules.landing.notReleasedTitle")}>{t("modules.landing.notYet")}</span>}</span>
-      <span className="truncate font-mono text-12 text-subtle max-md:hidden" title={l.modulePath}>
-        {l.modulePath === here ? "" : l.modulePath}
-      </span>
-    </li>
+    <RowItem
+      testId="landing-row"
+      href={issueHref(slug, l.issueKey)}
+      lead={l.issueKey}
+      title={<span title={l.title}>{l.title}</span>}
+      facts={[
+        <span key="landed" title={`${formatStamp(l.landedAt)}${where ? ` · ${where}` : ""}`}>
+          {t("modules.landing.ago", { age: formatAge(l.landedAt) })}
+        </span>,
+        ...(l.modulePath === here ? [] : [<span key="module" className="font-mono">{l.modulePath}</span>]),
+      ]}
+      trailing={
+        <span className="font-mono text-12">{l.release ?? <span className="font-sans text-subtle" title={t("modules.landing.notReleasedTitle")}>{t("modules.landing.notYet")}</span>}</span>
+      }
+    />
   );
 }
 
@@ -180,18 +180,11 @@ function Landings({ d, slug }: { d: ModuleDetail; slug: string }) {
         <p className="text-13 text-subtle">{t("modules.landings.none")}</p>
       ) : (
         <>
-          <div className={`${LANDING_COLS} h-8 items-center border-y border-line-subtle bg-sunken text-12 font-semibold text-subtle`} aria-hidden>
-            <span>{t("modules.landings.colIssue")}</span>
-            <span>{t("modules.landings.colTitle")}</span>
-            <span>{t("modules.landings.colLanded")}</span>
-            <span className="max-md:hidden">{t("modules.landings.colRelease")}</span>
-            <span className="max-md:hidden">{t("modules.landings.colModule")}</span>
-          </div>
-          <ul>
+          <RowList label={t("modules.landings.title")}>
             {l.recent.map((x) => (
               <LandingLine key={x.issueKey} l={x} slug={slug} here={d.module.path} />
             ))}
-          </ul>
+          </RowList>
           {l.total > l.recent.length ? <p className="mt-2 text-12 text-subtle">{t("modules.landings.latest", { n: l.recent.length, total: l.total })}</p> : null}
         </>
       )}

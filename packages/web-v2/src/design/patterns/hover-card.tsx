@@ -18,10 +18,10 @@ const CLOSE_AFTER_MS = 140;
 export function useHoverCard() {
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancel = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
   }, []);
   const show = useCallback(() => {
     cancel();
@@ -29,7 +29,7 @@ export function useHoverCard() {
   }, [cancel]);
   const hide = useCallback(() => {
     cancel();
-    timer.current = setTimeout(() => {
+    timerRef.current = setTimeout(() => {
       setOpen(false);
       setPinned(false);
     }, CLOSE_AFTER_MS);
@@ -79,8 +79,8 @@ export function HoverCard({ children, content, label, placement = "bottom-start"
       <HoverCardTrigger
         delay={200}
         closeDelay={CLOSE_AFTER_MS}
-        render={<span tabIndex={0} />}
-        className={cn("cursor-help rounded-xs outline-none focus-visible:shadow-focus", className)}
+        render={<button type="button" />}
+        className={cn("cursor-help rounded-xs text-left outline-none focus-visible:shadow-focus", className)}
         data-testid={testId}
       >
         {children}

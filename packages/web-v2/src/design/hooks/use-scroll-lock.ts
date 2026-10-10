@@ -65,11 +65,11 @@ export function useScrollLock(
   active: boolean,
   inside: ReadonlyArray<RefObject<HTMLElement | null>>,
 ): void {
-  const roots = useRef(inside);
-  roots.current = inside;
+  const rootsRef = useRef(inside);
+  rootsRef.current = inside;
   useEffect(() => {
     if (!active) return;
-    const entry: Roots = roots;
+    const entry: Roots = rootsRef;
     if (open.size === 0) {
       document.addEventListener("wheel", onWheel, OPTS);
       document.addEventListener("touchstart", onTouchStart, WATCH);

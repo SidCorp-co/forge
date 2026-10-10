@@ -395,7 +395,7 @@ export function ChatDock({ dock, page }: { dock: ChatDockApi; page: RefObject<HT
       data-dock-placement={over ? "over" : "beside"}
       className={
         over
-          ? "fixed inset-y-0 right-0 z-30 hidden flex-col border-l border-line bg-app shadow-overlay md:flex"
+          ? "fixed inset-y-0 right-0 z-30 hidden flex-col border-l border-line bg-app md:flex"
           : "relative hidden h-full flex-none flex-col border-l border-line bg-app md:flex"
       }
       style={{ width }}

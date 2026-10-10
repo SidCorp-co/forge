@@ -8,6 +8,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
+import { keyedNodes } from "../hooks/use-list-keys";
 
 export function RowList({ children, label, header, testId, className }: { children: ReactNode; label?: string; header?: ReactNode; testId?: string; className?: string }) {
   return (
@@ -40,9 +41,8 @@ export interface RowItemProps {
 function Facts({ facts }: { facts: ReactNode[] }) {
   return (
     <span className="block min-w-0 truncate text-12 text-subtle" data-testid="row-facts">
-      {facts.map((p, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: the facts line is positional
-        <span key={i} className="whitespace-nowrap">
+      {keyedNodes(facts).map(({ key, item: p, index: i }) => (
+        <span key={key} className="whitespace-nowrap">
           {i > 0 ? <span className="mx-1.5 text-neutral-8">·</span> : null}
           {p}
         </span>

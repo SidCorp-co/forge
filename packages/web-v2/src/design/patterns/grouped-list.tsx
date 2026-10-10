@@ -8,8 +8,10 @@
 
 import type { StandingGroup, StandingGroupLabels } from "@forge/contracts/standing";
 import type { MouseEvent, ReactNode } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/utils/cn";
+import { keyedNodes } from "../hooks/use-list-keys";
+import { useBrowserValue } from "../hooks/use-browser-value";
 import { Icon } from "../icons/icon";
 import { LEGEND, type LegendTone } from "../vocabulary";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -78,30 +80,40 @@ export type GroupFold = {
   toggle: (id: string, collapsedByDefault?: boolean) => void;
 };
 
+function readFold(storageKey: string): string | null {
+  try {
+    return sessionStorage.getItem(storageKey);
+  } catch {
+    return null;
+  }
+}
+
+function parseFold(raw: string | null): Record<string, boolean> {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed !== null && typeof parsed === "object" ? (parsed as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
+
 /** The fold state of one list's groups, kept per tab session under `storageKey`. */
 export function useGroupFold(storageKey: string): GroupFold {
-  const [folded, setFolded] = useState<Record<string, boolean>>({});
-  useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(storageKey);
-      setFolded(raw ? (JSON.parse(raw) as Record<string, boolean>) : {});
-    } catch {
-      setFolded({});
-    }
-  }, [storageKey]);
-  const isOpen = useCallback((id: string, collapsedByDefault = false) => !(folded[id] ?? collapsedByDefault), [folded]);
-  const toggle = useCallback(
-    (id: string, collapsedByDefault = false) =>
-      setFolded((f) => {
-        const next = { ...f, [id]: !(f[id] ?? collapsedByDefault) };
-        try {
-          sessionStorage.setItem(storageKey, JSON.stringify(next));
-        } catch {}
-        return next;
-      }),
-    [storageKey],
-  );
-  return { isOpen, toggle };
+  const stored = useBrowserValue(() => readFold(storageKey), null);
+  // This tab's own folds, over what session storage held for the key they were made under.
+  const [edit, setEdit] = useState<{ key: string; folded: Record<string, boolean> } | null>(null);
+  const folded = edit?.key === storageKey ? edit.folded : parseFold(stored);
+  return {
+    isOpen: (id, collapsedByDefault = false) => !(folded[id] ?? collapsedByDefault),
+    toggle: (id, collapsedByDefault = false) => {
+      const next = { ...folded, [id]: !(folded[id] ?? collapsedByDefault) };
+      try {
+        sessionStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {}
+      setEdit({ key: storageKey, folded: next });
+    },
+  };
 }
 
 /** The rows a reader can step through with j/k: every row of an open group, in order. */
@@ -165,9 +177,8 @@ function Row({ v, selected, onPeek, eta }: { v: ListRowView; selected: boolean; 
         {v.facts.length ? (
           // one line that ends in an ellipsis: inline parts never shrink into each other
           <span className="block min-w-0 truncate text-12 text-subtle" data-testid="row-facts">
-            {v.facts.map((p, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: the facts line is positional
-              <span key={i} className="whitespace-nowrap">
+            {keyedNodes(v.facts).map(({ key, item: p, index: i }) => (
+              <span key={key} className="whitespace-nowrap">
                 {i > 0 ? <span className="mx-1.5 text-neutral-8">·</span> : null}
                 {p}
               </span>

@@ -2,6 +2,7 @@ import type { InputHTMLAttributes, Ref } from "react";
 import { Input as ShadcnInput } from "@/components/ui/input";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
+import { useFieldControl } from "./field";
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   icon?: IconName;
@@ -17,6 +18,7 @@ const BARE =
 
 export function Input({ icon, variant = "default", className, ...props }: InputProps) {
   const bare = variant === "bare";
+  const field = useFieldControl();
   return (
     <div className={cn("relative flex items-center", className)}>
       {icon && (
@@ -26,7 +28,7 @@ export function Input({ icon, variant = "default", className, ...props }: InputP
           className={cn("pointer-events-none absolute text-subtle", bare ? "left-0" : "left-3")}
         />
       )}
-      <ShadcnInput className={cn(bare ? BARE : FIELD, icon && (bare ? "pl-7" : "pl-9"))} {...props} />
+      <ShadcnInput className={cn(bare ? BARE : FIELD, icon && (bare ? "pl-7" : "pl-9"))} {...field} {...props} />
     </div>
   );
 }
