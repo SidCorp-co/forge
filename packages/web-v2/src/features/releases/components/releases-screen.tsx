@@ -2,7 +2,7 @@
 
 import { RELEASE_ATTENTION_GROUPS, RELEASE_ATTENTION_LABELS } from "@forge/contracts/releases";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
-import { ListFilterBar, useListNarrowing } from "@/features/chat-dock/list-filter-bar";
+import { ListFilterBar, useListNarrowing } from "@/features/chat-dock";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo } from "react";
 import {
@@ -32,7 +32,7 @@ import { useReleases } from "../hooks";
 import { RELEASES_LIST, releaseHref } from "@/lib/routes/releases";
 import type { ReleaseSummary } from "../types";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
-import { useComingNext } from "@/features/forecast/hooks";
+import { useComingNext } from "@/features/forecast";
 import { ComingNext } from "./coming-next";
 import { ReleasePeek } from "./release-peek";
 import { ReleaseTrain } from "./release-train";

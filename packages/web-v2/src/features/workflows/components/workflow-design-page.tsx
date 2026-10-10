@@ -13,7 +13,7 @@ import {
   useUrlTab,
   ViewHeading, Icon } from "@/design";
 import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
-import { ItemMemory, useItemMemoryCount } from "@/features/memory/components/item-memory";
+import { ItemMemory, useItemMemoryCount } from "@/features/memory";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";

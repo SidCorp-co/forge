@@ -1,5 +1,5 @@
 
-import type { NeedsYouProjectItem } from "@/features/needs-you/types";
+import type { NeedsYouProjectItem } from "@/features/needs-you";
 
 export type AttentionKind = "mention" | "failed_job" | "runner_offline" | "channel_gate" | "status_report";
 

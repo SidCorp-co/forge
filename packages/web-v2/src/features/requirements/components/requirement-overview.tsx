@@ -5,10 +5,10 @@
 // its scope, and the suggestions waiting on it.
 
 import { FieldLabel, ViewHeading } from "@/design";
-import { RequirementChecklists } from "@/features/checklists/components/item-checklists";
-import { IntakeDraft } from "@/features/intake/components/intake-draft";
-import { RequirementSuggestions } from "@/features/suggestions/components/suggestion-list";
-import { useWaitingSuggestions } from "@/features/suggestions/hooks";
+import { RequirementChecklists } from "@/features/checklists";
+import { IntakeDraft } from "@/features/intake";
+import { RequirementSuggestions } from "@/features/suggestions";
+import { useWaitingSuggestions } from "@/features/suggestions";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { Written } from "@/lib/i18n/written";

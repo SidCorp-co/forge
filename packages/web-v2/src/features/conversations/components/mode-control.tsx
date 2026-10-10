@@ -14,7 +14,7 @@
 import { type RefObject, useContext, useRef, useState } from "react";
 import Link from "next/link";
 import { Icon, Menu, Popover } from "@/design";
-import { ComposerWidthContext } from "@/features/chat/components/chat-composer";
+import { ComposerWidthContext } from "@/features/chat";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { AgentModeOffer, ConversationMode } from "../types";

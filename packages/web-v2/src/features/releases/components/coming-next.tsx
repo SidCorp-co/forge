@@ -7,9 +7,9 @@
 import type { ComingNextForecast, ScopeForecast } from "@forge/contracts/forecast";
 import Link from "next/link";
 import { ViewHeading } from "@/design";
-import { EtaCell } from "@/features/forecast/components/eta-cell";
-import { IssueProgressText } from "@/features/forecast/components/issue-progress";
-import { type Eta, type EtaClock, etaOfScope } from "@/features/forecast/eta";
+import { EtaCell } from "@/features/forecast";
+import { IssueProgressText } from "@/features/forecast";
+import { type Eta, type EtaClock, etaOfScope } from "@/features/forecast";
 import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";

@@ -4,7 +4,7 @@
 // what is late is core's project status; the rows come from `derive.ts` and nothing is decided here.
 
 import { RowItem, RowList, WaitingOn } from "@/design";
-import { spanText } from "@/features/forecast/text";
+import { spanText } from "@/features/forecast";
 import { issueHref } from "@/lib/routes/issues";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";

@@ -11,7 +11,7 @@ import { ActorChip, AGENT_TINT, LEGEND, SegmentedControl, StatusBadge, VerdictEv
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
-import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
+import type { SuggestionView as Suggestion } from "@/features/suggestions";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
 import { issueHref } from "@/lib/routes/issues";
 import { agreedTitle, diffColours, VerdictDot, VerdictWord } from "./standing-bits";

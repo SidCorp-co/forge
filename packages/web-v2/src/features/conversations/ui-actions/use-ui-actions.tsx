@@ -25,7 +25,7 @@ import {
   shapesText,
   uiSnapshotOf,
 } from "./actions";
-import { issueSelectionBridge, useSelectedIssueKeys } from "@/features/chat-dock/selection-bridge";
+import { issueSelectionBridge, useSelectedIssueKeys } from "@/features/chat-dock";
 import { useBoard } from "@/features/board/board-store";
 
 export interface UiCallRecord {

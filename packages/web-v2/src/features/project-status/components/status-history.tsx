@@ -9,7 +9,7 @@
 import type { StatusReportMeta } from "@forge/contracts/status-reports";
 import { useEffect, useState } from "react";
 import { Button, ConfirmDialog, ErrorState, ProjectLoader, useUrlParams, ViewHeading } from "@/design";
-import type { EtaClock } from "@/features/forecast/eta";
+import type { EtaClock } from "@/features/forecast";
 import { formatApiError } from "@/lib/api/error";
 import { formatDateTime } from "@/lib/i18n/format";
 import { useCopy } from "@/lib/i18n/interface-language";

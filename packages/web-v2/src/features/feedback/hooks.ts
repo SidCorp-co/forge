@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { feedbackForecastKey } from "@/features/forecast/hooks";
+import { feedbackForecastKey } from "@/features/forecast";
 import { reproduceApi } from "@/features/previews/reproduce-api";
 import { recordingsKey } from "@/features/previews/reproduce-section";
 import { feedbackApi } from "./api";
