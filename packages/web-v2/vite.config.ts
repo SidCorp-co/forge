@@ -1,9 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
-import react, { reactCompilerPreset } from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 import { WEB_HOST_MANIFEST, readWebHostManifest } from "../contracts/src/web-host.ts";
 
@@ -44,9 +43,9 @@ export default defineConfig({
       routeFileIgnorePattern: "\\.test\\.",
     }),
     tailwindcss(),
-    react(),
-    // React Compiler, through Babel (the official setup): memoises components and hooks at build time
-    babel({ presets: [reactCompilerPreset()] }),
+    // React Compiler through oxc (oxc-transform-react): memoises components and hooks at build time,
+    // in Rust, in place of the Babel pass that took most of the build
+    react({ compiler: true }),
     webHostManifest(),
   ],
   // Workspace packages resolve to their sources, as the typecheck reads them: nothing is built first.
