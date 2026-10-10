@@ -36,6 +36,9 @@ export function useProjectOrgScopeSync(opts: {
     // slug handled, so the effect retries once orgs arrives. Otherwise a
     // cross-org deep-link would skip the re-scope permanently (ISS-476 review).
     if (orgs.length === 0) return;
+    // the active org is null until the stored preference is read: comparing against it then would
+    // write the project's org over the value already stored, a write made by viewing a page
+    if (!activeOrgId) return;
     if (slug === lastScopedSlugRef.current) return; // same project: don't fight a manual switch
     lastScopedSlugRef.current = slug;
     // Only re-scope to an org the caller actually belongs to (ISS-472: an org
