@@ -80,7 +80,9 @@
   --shadow-color:  oklch(0 0 0 / 0.5);
 }
 
-:root {
+/* also on every [data-theme] element, so a nested theme scope (/dev/design) re-resolves the aliases */
+:root,
+[data-theme] {
   /* ===== TYPE ===== */
   --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -274,7 +276,7 @@
 }
 
 @media (pointer: coarse) {
-  :root { --row-h: var(--row-h-touch); }
+  :root, [data-theme] { --row-h: var(--row-h-touch); }
 }
 
 /* The workflow canvas's hues in dark: the canvas reads only --wf-*. */

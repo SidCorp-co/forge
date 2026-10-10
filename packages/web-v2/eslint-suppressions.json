@@ -1,0 +1,4778 @@
+{
+  "src/app/(workspace)/layout.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/app/(workspace)/projects/[slug]/page.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
+  "src/app/(workspace)/projects/[slug]/status/page.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
+  "src/app/forge-config/route.ts": {
+    "@typescript-eslint/require-await": {
+      "count": 1
+    }
+  },
+  "src/app/invite/accept/page.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
+  "src/app/layout.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/app/link-chat/page.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 2
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "react-hooks/preserve-manual-memoization": {
+      "count": 2
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/app/page-waterfall.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/design/hooks/use-elapsed.ts": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/design/hooks/use-highlight.ts": {
+    "@typescript-eslint/unbound-method": {
+      "count": 1
+    }
+  },
+  "src/design/hooks/use-now.ts": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/design/hooks/use-page-shown.ts": {
+    "@typescript-eslint/unbound-method": {
+      "count": 1
+    }
+  },
+  "src/design/hooks/use-scroll-lock.ts": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    }
+  },
+  "src/design/patterns/accept-step.tsx": {
+    "jsx-a11y/no-autofocus": {
+      "count": 1
+    }
+  },
+  "src/design/patterns/body-link.tsx": {
+    "@next/next/no-img-element": {
+      "count": 1
+    }
+  },
+  "src/design/patterns/body-view.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/design/patterns/command-palette.tsx": {
+    "jsx-a11y/no-autofocus": {
+      "count": 1
+    }
+  },
+  "src/design/patterns/detail-header.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/design/patterns/detail-tabs.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/design/patterns/forge-mascot.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@next/next/no-img-element": {
+      "count": 3
+    }
+  },
+  "src/design/patterns/grouped-list.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/design/patterns/hover-card.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "jsx-a11y/no-noninteractive-tabindex": {
+      "count": 1
+    }
+  },
+  "src/design/patterns/markdown.tsx": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 2
+    }
+  },
+  "src/design/patterns/mascot-loaders.tsx": {
+    "@next/next/no-img-element": {
+      "count": 1
+    }
+  },
+  "src/design/patterns/mermaid.tsx": {
+    "@eslint-react/dom-no-dangerously-set-innerhtml": {
+      "count": 1
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 2
+    },
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "src/design/patterns/nav-rail.tsx": {
+    "@eslint-react/no-leaked-conditional-rendering": {
+      "count": 1
+    },
+    "@next/next/no-img-element": {
+      "count": 1
+    }
+  },
+  "src/design/patterns/notifications-menu.tsx": {
+    "@eslint-react/use-state": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/design/patterns/record-card.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/design/patterns/route-progress.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 4
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 3
+    },
+    "@typescript-eslint/no-base-to-string": {
+      "count": 1
+    },
+    "@typescript-eslint/unbound-method": {
+      "count": 2
+    }
+  },
+  "src/design/patterns/row-list.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    }
+  },
+  "src/design/patterns/verdict-evidence.tsx": {
+    "@next/next/no-img-element": {
+      "count": 1
+    },
+    "jsx-a11y/media-has-caption": {
+      "count": 1
+    }
+  },
+  "src/design/patterns/view-mode-switcher.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/design/primitives/button.tsx": {
+    "@eslint-react/naming-convention-context-name": {
+      "count": 1
+    },
+    "@eslint-react/no-use-context": {
+      "count": 1
+    }
+  },
+  "src/design/primitives/field.tsx": {
+    "@eslint-react/naming-convention-id-name": {
+      "count": 1
+    },
+    "@eslint-react/no-clone-element": {
+      "count": 1
+    },
+    "@eslint-react/no-leaked-conditional-rendering": {
+      "count": 1
+    }
+  },
+  "src/design/primitives/heading.tsx": {
+    "jsx-a11y/heading-has-content": {
+      "count": 1
+    }
+  },
+  "src/design/primitives/page-section.tsx": {
+    "jsx-a11y/heading-has-content": {
+      "count": 1
+    }
+  },
+  "src/design/primitives/popover.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    }
+  },
+  "src/design/primitives/radio.tsx": {
+    "@eslint-react/no-leaked-conditional-rendering": {
+      "count": 1
+    }
+  },
+  "src/design/primitives/top-bar-slot.tsx": {
+    "@eslint-react/no-context-provider": {
+      "count": 1
+    },
+    "@eslint-react/no-use-context": {
+      "count": 3
+    }
+  },
+  "src/design/skeletons/index.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    }
+  },
+  "src/design/vocabulary-common.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "src/features/agent-accounts/components/agent-self-editor.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
+  "src/features/agent-accounts/components/agents-tab.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 4
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "jsx-a11y/no-autofocus": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/features/agent-accounts/components/create-agent-form.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/agents/components/agents-screen.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/agents/components/master-views.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 3
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/agents/components/questions-pane.tsx": {
+    "@eslint-react/exhaustive-deps": {
+      "count": 1
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/agents/components/run-views.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "max-lines": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/agents/components/runs-list.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/agents/hooks.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/attachments/components/attachment-list.tsx": {
+    "@next/next/no-img-element": {
+      "count": 1
+    }
+  },
+  "src/features/attachments/components/html-attachment.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/attachments/components/image-lightbox.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 3
+    },
+    "@next/next/no-img-element": {
+      "count": 2
+    },
+    "jsx-a11y/no-static-element-interactions": {
+      "count": 1
+    }
+  },
+  "src/features/attention/components/attention-screen.tsx": {
+    "@typescript-eslint/unbound-method": {
+      "count": 5
+    },
+    "boundaries/dependencies": {
+      "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 5
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/attention/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/attention/types.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/auth/components/auth-shell.tsx": {
+    "@eslint-react/no-leaked-conditional-rendering": {
+      "count": 1
+    },
+    "@next/next/no-img-element": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "src/features/auth/components/password-meter.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    }
+  },
+  "src/features/auth/components/sign-in-stopped.tsx": {
+    "@next/next/no-location-assign-relative-destination": {
+      "count": 1
+    }
+  },
+  "src/features/auth/components/social-login.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/auth/login-bounce.ts": {
+    "@next/next/no-location-assign-relative-destination": {
+      "count": 1
+    }
+  },
+  "src/features/auth/login-form.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "jsx-a11y/no-autofocus": {
+      "count": 2
+    }
+  },
+  "src/features/auth/register-form.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "jsx-a11y/no-autofocus": {
+      "count": 1
+    }
+  },
+  "src/features/auth/use-login-redirect.ts": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/features/automation/components/automation-screen.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/automation/components/fire-views.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/automation/components/report-views.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "max-lines": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/automation/components/schedule-views.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/automation/report-feedback.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/automation/report-hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    }
+  },
+  "src/features/automation/schedule-hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    }
+  },
+  "src/features/board/board-canvas.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-call": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-member-access": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-return": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 5
+    },
+    "no-restricted-syntax": {
+      "count": 3
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/board/board-editor.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/board/board-store.ts": {
+    "@typescript-eslint/unbound-method": {
+      "count": 1
+    }
+  },
+  "src/features/chat-dock/ask-about-this.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/chat-dock/assistant-filters.ts": {
+    "@typescript-eslint/unbound-method": {
+      "count": 1
+    }
+  },
+  "src/features/chat-dock/dock.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@eslint-react/no-context-provider": {
+      "count": 1
+    },
+    "@eslint-react/no-use-context": {
+      "count": 1
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 2
+    },
+    "@eslint-react/use-state": {
+      "count": 1
+    }
+  },
+  "src/features/chat-dock/list-filter-bar.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 4
+    }
+  },
+  "src/features/chat-dock/selection-bridge.ts": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    }
+  },
+  "src/features/chat/components/chat-composer.tsx": {
+    "@eslint-react/no-context-provider": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "src/features/chat/components/sketch/sketch-canvas.tsx": {
+    "@typescript-eslint/no-unsafe-call": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-return": {
+      "count": 1
+    },
+    "@typescript-eslint/require-await": {
+      "count": 1
+    }
+  },
+  "src/features/chat/components/sketch/sketch-pad.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-imports": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/chat/components/use-staged-files.ts": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    }
+  },
+  "src/features/checklists/components/checklist-answers.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/comments/components/decisions-panel.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/comments/components/entity-comment-thread.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/comments/components/entity-comment-thread.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/comments/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    }
+  },
+  "src/features/contracts/components/contract-detail.tsx": {
+    "no-restricted-syntax": {
+      "count": 5
+    }
+  },
+  "src/features/contracts/components/contract-facts.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/contracts/components/contract-peek.tsx": {
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "src/features/contracts/components/contracts-screen.tsx": {
+    "@eslint-react/exhaustive-deps": {
+      "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/contracts/components/version-timeline.tsx": {
+    "@eslint-react/purity": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 6
+    }
+  },
+  "src/features/conversations/act-offers.test.ts": {
+    "@typescript-eslint/require-await": {
+      "count": 3
+    }
+  },
+  "src/features/conversations/act-offers.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/conversations/board/board-panel.test.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/board/board-panel.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "@typescript-eslint/unbound-method": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/conversations/components/add-member-dialog.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/components/block-hosts.test.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/components/chat-dock.test.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@eslint-react/use-state": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/require-await": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/conversations/components/chat-dock.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 6
+    },
+    "jsx-a11y/no-noninteractive-element-interactions": {
+      "count": 1
+    },
+    "jsx-a11y/no-noninteractive-tabindex": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/components/conversation-chat.tsx": {
+    "@eslint-react/exhaustive-deps": {
+      "count": 1
+    },
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 2
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "@typescript-eslint/require-await": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 8
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/components/conversation-list.tsx": {
+    "boundaries/dependencies": {
+      "count": 3
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/components/conversation-room-parts.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/components/conversation-row.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "jsx-a11y/no-autofocus": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/components/conversation-thread.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 7
+    },
+    "max-lines": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/components/dock-opening.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/components/dock-preview.test.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/components/dock-preview.tsx": {
+    "boundaries/dependencies": {
+      "count": 5
+    }
+  },
+  "src/features/conversations/components/idea-offers.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "@typescript-eslint/require-await": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/components/idea-offers.tsx": {
+    "boundaries/dependencies": {
+      "count": 6
+    }
+  },
+  "src/features/conversations/components/mode-control.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@eslint-react/no-use-context": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/components/save-report.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/components/share-answer.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/components/start-conversation.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/corrections.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/membership.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/membership.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "src/features/conversations/turn-decisions.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/conversations/turn-doing.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/types.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/ui-actions/actions.ts": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    },
+    "boundaries/dependencies": {
+      "count": 3
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/conversations/ui-actions/issues-waiting.test.tsx": {
+    "@typescript-eslint/require-await": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/conversations/ui-actions/page-actions.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-member-access": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unsafe-return": {
+      "count": 1
+    },
+    "@typescript-eslint/require-await": {
+      "count": 3
+    },
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/conversations/ui-actions/release-workflow-lists.test.tsx": {
+    "@typescript-eslint/no-unsafe-return": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/conversations/ui-actions/use-ui-actions.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 3
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/development/activity/awaiting-release-card.tsx": {
+    "@eslint-react/use-state": {
+      "count": 1
+    },
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/development/activity/derive.ts": {
+    "@typescript-eslint/no-duplicate-type-constituents": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/development/activity/development-activity.tsx": {
+    "@eslint-react/purity": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/development/activity/live-runs-card.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/development/activity/runners-card.test.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/development/activity/runners-card.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/development/activity/spend-card.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/development/components/development-overview-screen.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/development/components/lease-lanes.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/development/components/module-bars.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/docs/components/docs-reader.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/docs/help-content.generated.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/ecosystem/bus.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/ecosystem/components/api-page-screen.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/ecosystem/components/bus-detail-kit.tsx": {
+    "no-restricted-syntax": {
+      "count": 5
+    }
+  },
+  "src/features/ecosystem/components/bus-detail.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/ecosystem/components/bus-diagram.tsx": {
+    "no-restricted-syntax": {
+      "count": 12
+    }
+  },
+  "src/features/ecosystem/components/bus-link-detail.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/ecosystem/components/compose-screen.tsx": {
+    "@typescript-eslint/unbound-method": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/ecosystem/components/document-actions.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/ecosystem/components/document-body.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "@typescript-eslint/no-base-to-string": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    }
+  },
+  "src/features/ecosystem/components/document-screen.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/ecosystem/components/ecosystem-form.tsx": {
+    "boundaries/dependencies": {
+      "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 4
+    }
+  },
+  "src/features/ecosystem/components/ecosystem-page.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/ecosystem/components/ecosystem-screen.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 5
+    }
+  },
+  "src/features/ecosystem/components/ecosystems-home.tsx": {
+    "no-restricted-syntax": {
+      "count": 6
+    }
+  },
+  "src/features/ecosystem/components/gate-panel.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/ecosystem/components/people.tsx": {
+    "@eslint-react/naming-convention-context-name": {
+      "count": 1
+    },
+    "@eslint-react/no-use-context": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/ecosystem/components/threads-screen.tsx": {
+    "no-restricted-syntax": {
+      "count": 5
+    }
+  },
+  "src/features/ecosystem/hooks.ts": {
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/feedback/api.ts": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 1
+    }
+  },
+  "src/features/feedback/components/feedback-accept.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/feedback/components/feedback-actions.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/feedback/components/feedback-answer.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/feedback/components/feedback-attachments.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/feedback/components/feedback-detail.tsx": {
+    "boundaries/dependencies": {
+      "count": 6
+    }
+  },
+  "src/features/feedback/components/feedback-evidence.tsx": {
+    "@next/next/no-img-element": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/feedback/components/feedback-facts.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/feedback/components/feedback-follow.test.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/feedback/components/feedback-form.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    },
+    "@typescript-eslint/require-await": {
+      "count": 1
+    }
+  },
+  "src/features/feedback/components/feedback-form.tsx": {
+    "@typescript-eslint/unbound-method": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "jsx-a11y/no-autofocus": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/feedback/components/feedback-peek.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/feedback/components/feedback-picker.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/feedback/components/feedback-room.tsx": {
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/feedback/components/feedback-screen.tsx": {
+    "@eslint-react/exhaustive-deps": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/feedback/components/feedback-step.tsx": {
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/feedback/components/feedback-verbs.test.tsx": {
+    "@typescript-eslint/require-await": {
+      "count": 1
+    }
+  },
+  "src/features/feedback/components/recordings.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 8
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/feedback/components/recordings.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    },
+    "jsx-a11y/media-has-caption": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/feedback/components/target-picker.tsx": {
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/feedback/components/triage-answers.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/feedback/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 5
+    },
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/guides/api.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/guides/components/public-docs.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "src/features/guides/corpus.ts": {
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/integrations/bind-actions.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/binding-document.ts": {
+    "@next/next/no-assign-module-variable": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/components/agent-access-control.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/components/connection-detail-drawer.tsx": {
+    "@eslint-react/static-components": {
+      "count": 2
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/integrations/components/connection-edit-drawer.tsx": {
+    "@eslint-react/exhaustive-deps": {
+      "count": 2
+    },
+    "@eslint-react/static-components": {
+      "count": 2
+    },
+    "@next/next/no-assign-module-variable": {
+      "count": 2
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 3
+    }
+  },
+  "src/features/integrations/components/connection-group.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/components/connection-owner-field.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/components/connection-row.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/components/delivery-log-viewer.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/components/integrations-screen.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "src/features/integrations/components/integrations-screen.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 3
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 5
+    }
+  },
+  "src/features/integrations/components/mcp-servers-panel.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 4
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/integrations/components/project-integrations-panel.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 3
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/integrations/components/release-runner-field.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 6
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/integrations/providers/autoflow/add-form.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/providers/autoflow/section.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 3
+    }
+  },
+  "src/features/integrations/providers/coolify/gates.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/providers/coolify/section.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 3
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/integrations/providers/coolify/targets-field.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/providers/epodsystem/add-form.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/providers/epodsystem/section.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 3
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/integrations/providers/epodsystem/theme-panel.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/providers/github/create-app.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/providers/github/section.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/providers/gitlab/section.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/providers/gitlab/webhook-panel.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/providers/multi-binding.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/providers/rocketchat/add-form.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    }
+  },
+  "src/features/integrations/providers/rocketchat/rooms-field.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    }
+  },
+  "src/features/integrations/providers/rocketchat/section.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 3
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/integrations/providers/sentry/section.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/providers/sentry/targets-field.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/providers/shared.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/integrations/providers/single-binding.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
+  "src/features/issues/api.ts": {
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/issues/components/activity-feed.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/batch-release-dialog.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/body-editor.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/changes-row.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/comment-thread.test.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/comment-thread.tsx": {
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/issues/components/criteria-acts.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/criteria-acts.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/criteria-evidence-note.test.tsx": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 2
+    }
+  },
+  "src/features/issues/components/criteria-section.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/detail/check-times.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    }
+  },
+  "src/features/issues/components/detail/check-times.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/issues/components/detail/fold-row.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/detail/issue-actions.test.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/detail/issue-actions.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/detail/issue-details.tsx": {
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/issues/components/detail/issue-page-main.tsx": {
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/issues/components/detail/issue-record-tabs.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/issues/components/detail/issue-sections.tsx": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/detail/issue-state-head.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/issues/components/issue-description.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/issue-detail-screen.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/issue-peek.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/issue-row-actions.tsx": {
+    "jsx-a11y/click-events-have-key-events": {
+      "count": 1
+    },
+    "jsx-a11y/no-static-element-interactions": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/issue-standing-bits.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 5
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/issue-trace-truth.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/issues-board.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/issues-list-view.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "@eslint-react/purity": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/issues-screen.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/issues/components/issues-toolbar.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 4
+    }
+  },
+  "src/features/issues/components/list/pin-view-button.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "jsx-a11y/no-autofocus": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/list/use-filter-options.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/list/use-list-params.ts": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/list/use-page-selection.ts": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    },
+    "@eslint-react/use-state": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/live-agent-panel.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 3
+    }
+  },
+  "src/features/issues/components/merge-marker-control.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "src/features/issues/components/module-hover.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/module-picker.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 2
+    },
+    "@eslint-react/use-state": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/new-issue-dialog.test.tsx": {
+    "@typescript-eslint/unbound-method": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/new-issue-dialog.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 8
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "jsx-a11y/no-autofocus": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/patterns-panel.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/issues/components/properties-rail.tsx": {
+    "max-lines": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/rail-trace.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/session-group-timeline.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/start-issue-action.tsx": {
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/issues/components/step-artifact-card.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/transition-reason-dialog.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 5
+    }
+  },
+  "src/features/issues/components/use-guarded-transition.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/use-guarded-transition.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/features/issues/components/use-issue-project.ts": {
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/issues/components/use-issue-reads.ts": {
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/issues/criteria.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 5
+    }
+  },
+  "src/features/issues/detail-hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 9
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/issues/hooks.ts": {
+    "@tanstack/query/no-rest-destructuring": {
+      "count": 1
+    },
+    "@typescript-eslint/no-floating-promises": {
+      "count": 20
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "src/features/issues/identity-phrase.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    }
+  },
+  "src/features/issues/park.ts": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    }
+  },
+  "src/features/issues/patterns-api.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    }
+  },
+  "src/features/issues/release-approval.tsx": {
+    "@eslint-react/naming-convention-context-name": {
+      "count": 1
+    },
+    "@eslint-react/no-use-context": {
+      "count": 1
+    }
+  },
+  "src/features/issues/requirement-link.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    }
+  },
+  "src/features/issues/types.ts": {
+    "max-lines": {
+      "count": 1
+    }
+  },
+  "src/features/memory/components/item-memory.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/memory/components/memory-entry.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/memory/components/project-memory.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    }
+  },
+  "src/features/memory/hooks.ts": {
+    "@tanstack/query/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/features/mockups/api.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/mockups/components/mockups-panel.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/mockups/components/mockups-panel.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@next/next/no-img-element": {
+      "count": 1
+    },
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 4
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/mockups/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    }
+  },
+  "src/features/modules/components/module-bits.tsx": {
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "src/features/modules/components/module-detail.tsx": {
+    "no-restricted-syntax": {
+      "count": 4
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/modules/components/module-facts.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/modules/components/module-level.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/modules/components/module-map.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/modules/components/module-peek.tsx": {
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "src/features/needs-you/components/decision-list.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/needs-you/decision-list.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/notifications/components/notifications-bell.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/notifications/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    }
+  },
+  "src/features/notifications/use-notification-delivery.ts": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    }
+  },
+  "src/features/onboarding/components/ask-for-designs.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/onboarding/components/marks.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/features/onboarding/components/onboarding-hint.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/onboarding/components/questionnaire-card.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/onboarding/components/thread-blocks.tsx": {
+    "@eslint-react/no-context-provider": {
+      "count": 1
+    },
+    "@eslint-react/no-use-context": {
+      "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/onboarding/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 7
+    }
+  },
+  "src/features/operator/components/adoption-panel.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/operator/components/alert-feed.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/operator/components/glance-cards.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/operator/components/kpi-row.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/operator/components/operator-client-gate.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/operator/components/operator-section.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/operator/components/operator-shell.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/operator/components/operator-topbar.tsx": {
+    "jsx-a11y/no-noninteractive-tabindex": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/operator/components/overview-screen.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/operator/components/workspaces-table.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/operator/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "src/features/operator/server/operator-gate.test.ts": {
+    "@typescript-eslint/require-await": {
+      "count": 2
+    }
+  },
+  "src/features/operator/server/whoami-fetch.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/orgs/active-org.tsx": {
+    "@eslint-react/no-context-provider": {
+      "count": 1
+    },
+    "@eslint-react/no-use-context": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/orgs/components/org-home.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
+  "src/features/orgs/components/org-members-card.tsx": {
+    "jsx-a11y/no-autofocus": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/orgs/components/org-switcher.tsx": {
+    "no-restricted-syntax": {
+      "count": 8
+    }
+  },
+  "src/features/orgs/components/orgs-tab.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "@typescript-eslint/unbound-method": {
+      "count": 1
+    }
+  },
+  "src/features/orgs/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    }
+  },
+  "src/features/overview/components/action-queue.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/overview/components/flow-section.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/overview/components/liveness-band.tsx": {
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "src/features/overview/components/overview-screen.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/overview/components/quality-section.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/overview/components/record-panel.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/overview/components/work-sitting.tsx": {
+    "no-restricted-syntax": {
+      "count": 4
+    }
+  },
+  "src/features/pairing/components/pair-screen.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 4
+    }
+  },
+  "src/features/pipeline/activity.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/pipeline/components/activity-feed.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/pipeline/components/ops-monitor.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 2
+    },
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/pipeline/components/pipeline-board.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    }
+  },
+  "src/features/pipeline/components/run-detail.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 5
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/pipeline/derive.ts": {
+    "boundaries/dependencies": {
+      "count": 5
+    }
+  },
+  "src/features/pipeline/types.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/previews/idea-kept-picture.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/previews/idea-panel.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 5
+    },
+    "@typescript-eslint/require-await": {
+      "count": 1
+    }
+  },
+  "src/features/previews/idea-panel.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/previews/idea-snapshot.test.ts": {
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-member-access": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-return": {
+      "count": 1
+    }
+  },
+  "src/features/previews/preview-frame.tsx": {
+    "@eslint-react/dom-no-unsafe-iframe-sandbox": {
+      "count": 1
+    },
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 5
+    }
+  },
+  "src/features/previews/preview-panel.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    }
+  },
+  "src/features/previews/preview-panel.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/previews/reproduce-section.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/previews/reproduce-section.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/previews/reproduce-timeline.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/previews/room-screen.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 2
+    },
+    "@tanstack/query/no-unstable-deps": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/project-config/document-edit.ts": {
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    }
+  },
+  "src/features/project-config/hooks.ts": {
+    "@tanstack/query/exhaustive-deps": {
+      "count": 1
+    },
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    }
+  },
+  "src/features/project-dashboard/ba-derive.ts": {
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/project-dashboard/components/ba-figures.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "src/features/project-dashboard/components/health-panel.tsx": {
+    "no-restricted-syntax": {
+      "count": 3
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/project-dashboard/components/plan-sections.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/project-dashboard/components/project-orientation.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/project-home/components/home-chat.tsx": {
+    "boundaries/dependencies": {
+      "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/project-home/components/home-tables.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 4
+    }
+  },
+  "src/features/project-home/components/project-home.tsx": {
+    "boundaries/dependencies": {
+      "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/project-home/project-home.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/api.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/components/advanced-tab.tsx": {
+    "boundaries/dependencies": {
+      "count": 3
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 3
+    }
+  },
+  "src/features/project-settings/components/compute-section.test.tsx": {
+    "@typescript-eslint/require-await": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/components/compute-section.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/components/config-documents.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 4
+    }
+  },
+  "src/features/project-settings/components/config-readings.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 3
+    }
+  },
+  "src/features/project-settings/components/delivery-section.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/project-settings/components/document-editor.tsx": {
+    "@eslint-react/no-leaked-conditional-rendering": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/project-settings/components/document-fields.tsx": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/components/general-approvals.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/components/general-section.tsx": {
+    "boundaries/dependencies": {
+      "count": 3
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/components/integrations-tab.tsx": {
+    "boundaries/dependencies": {
+      "count": 9
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/components/labels-tab.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/components/members-tab.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/components/modules-tab.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/components/plugins-section.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/project-settings/components/preview-section.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/components/preview-section.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/components/project-settings-screen.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/components/release-section.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/project-settings/components/secrets-section.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/components/setting-controls.tsx": {
+    "@eslint-react/no-leaked-conditional-rendering": {
+      "count": 3
+    },
+    "@typescript-eslint/no-base-to-string": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/components/shares-section.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/config-templates.ts": {
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/project-settings/hooks.ts": {
+    "@tanstack/query/exhaustive-deps": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/project-settings/secret-refs.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/project-settings/settings-ux.test.tsx": {
+    "@tanstack/query/stable-query-client": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/require-await": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/project-status/components/report-schedule.tsx": {
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/project-status/components/shipped-recently.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/project-status/components/since-last-report.tsx": {
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/project-status/components/status-history.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/features/project-status/components/status-history.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/project-status/components/status-report.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 6
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/project-status/components/template-params.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/project-status/components/template-report.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/project-status/components/template-run.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
+  "src/features/project-status/report-markdown.ts": {
+    "boundaries/dependencies": {
+      "count": 6
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/projects/components/live-count.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/projects/components/member-stack.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/projects/components/new-project-dialog.tsx": {
+    "@eslint-react/exhaustive-deps": {
+      "count": 1
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 6
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 3
+    },
+    "jsx-a11y/no-autofocus": {
+      "count": 1
+    }
+  },
+  "src/features/projects/components/project-card.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/projects/components/project-gate.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/projects/components/projects-console.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 4
+    }
+  },
+  "src/features/projects/components/projects-toolbar.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/projects/current-project.tsx": {
+    "@eslint-react/no-context-provider": {
+      "count": 2
+    },
+    "@eslint-react/no-use-context": {
+      "count": 2
+    }
+  },
+  "src/features/projects/hooks.ts": {
+    "@tanstack/query/no-unstable-deps": {
+      "count": 2
+    },
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/projects/write-access.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/questions/components/decision-panel.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/questions/components/question-card.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "max-lines": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/questions/hooks.ts": {
+    "@tanstack/query/no-rest-destructuring": {
+      "count": 2
+    },
+    "@typescript-eslint/no-floating-promises": {
+      "count": 7
+    }
+  },
+  "src/features/releases/components/coming-next.test.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/releases/components/coming-next.tsx": {
+    "boundaries/dependencies": {
+      "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/releases/components/release-actions.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    }
+  },
+  "src/features/releases/components/release-changes.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/releases/components/release-facts.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/releases/components/release-feedback.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/releases/components/release-media.tsx": {
+    "@next/next/no-img-element": {
+      "count": 1
+    },
+    "jsx-a11y/media-has-caption": {
+      "count": 1
+    }
+  },
+  "src/features/releases/components/release-note-reads.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    }
+  },
+  "src/features/releases/components/release-page-actions.test.tsx": {
+    "@typescript-eslint/require-await": {
+      "count": 1
+    }
+  },
+  "src/features/releases/components/release-page.test.tsx": {
+    "@typescript-eslint/require-await": {
+      "count": 1
+    }
+  },
+  "src/features/releases/components/release-page.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/releases/components/release-peek.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/releases/components/release-reader.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/require-await": {
+      "count": 2
+    }
+  },
+  "src/features/releases/components/release-reader.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/releases/components/release-requirements.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 6
+    }
+  },
+  "src/features/releases/components/releases-screen.tsx": {
+    "@eslint-react/exhaustive-deps": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/releases/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    }
+  },
+  "src/features/requirements/components/criteria-evidence.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    },
+    "@typescript-eslint/require-await": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/link-issue.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/progress-vocabulary.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/promote-drafts.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    }
+  },
+  "src/features/requirements/components/readiness.test.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/requirement-actions.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "jsx-a11y/no-autofocus": {
+      "count": 4
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/requirement-checklists.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    }
+  },
+  "src/features/requirements/components/requirement-decisions.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/requirements/components/requirement-detail.tsx": {
+    "boundaries/dependencies": {
+      "count": 5
+    }
+  },
+  "src/features/requirements/components/requirement-draft-editor.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/requirement-facts.tsx": {
+    "boundaries/dependencies": {
+      "count": 3
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/requirement-inside.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/requirement-line.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/requirement-memory.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/requirement-overview.tsx": {
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/requirements/components/requirement-picture-editor.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@eslint-react/no-array-index-key": {
+      "count": 2
+    },
+    "@eslint-react/use-state": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/requirements/components/requirement-picture-guards.test.tsx": {
+    "@eslint-react/rules-of-hooks": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/requirement-picture.test.tsx": {
+    "@eslint-react/rules-of-hooks": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/requirement-picture.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 5
+    }
+  },
+  "src/features/requirements/components/requirement-proof.tsx": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 4
+    }
+  },
+  "src/features/requirements/components/requirement-revision-changes.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 5
+    }
+  },
+  "src/features/requirements/components/requirement-screen.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/requirement-strip-waits.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "src/features/requirements/components/requirement-unclear.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 5
+    }
+  },
+  "src/features/requirements/components/requirement-unclear.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/requirements/components/requirement-workflow-picture.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/requirements/components/requirements-map.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/requirements-screen.test.tsx": {
+    "@eslint-react/purity": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/requirements-screen.tsx": {
+    "@eslint-react/exhaustive-deps": {
+      "count": 3
+    },
+    "@typescript-eslint/unbound-method": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 7
+    },
+    "jsx-a11y/no-autofocus": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/components/standing-bits.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 21
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/requirements/picture-model.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "src/features/requirements/write-draft.test.ts": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 1
+    },
+    "@typescript-eslint/require-await": {
+      "count": 1
+    }
+  },
+  "src/features/run-control/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 4
+    }
+  },
+  "src/features/runners/components/device-detail.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/runners/components/project-runners-screen.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/runners/components/runner-row/runner-activity-panel.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/runners/components/runner-row/runner-row.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/runners/components/runners-screen.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/runners/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 11
+    }
+  },
+  "src/features/runners/types.ts": {
+    "max-lines": {
+      "count": 1
+    }
+  },
+  "src/features/session/api.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/session/components/context-rail.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 8
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/session/components/conversation.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/session/components/held-reply-for-run.tsx": {
+    "@typescript-eslint/no-unsafe-member-access": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/session/components/loaded-for-run.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/session/components/run-report/blocker-card.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/session/components/run-report/run-report.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/session/components/run-report/step-strip.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/session/components/run-report/story-lens.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/session/components/run-report/tape.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    }
+  },
+  "src/features/session/components/run-report/time-spend-bar.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/session/components/run-report/transcript-lens.tsx": {
+    "@eslint-react/use-state": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/session/components/session-composer.tsx": {
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/session/components/session-screen.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    },
+    "max-lines-per-function": {
+      "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/session/components/tool-card.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 5
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 3
+    }
+  },
+  "src/features/session/components/turn-stage.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/session/disclosure.tsx": {
+    "@eslint-react/naming-convention-context-name": {
+      "count": 1
+    },
+    "@eslint-react/no-use-context": {
+      "count": 1
+    }
+  },
+  "src/features/session/fold.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "src/features/session/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    }
+  },
+  "src/features/session/layout.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/session/result-summary.ts": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/session/run-report.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/session/types.ts": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/sessions/components/fleet-strip.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/sessions/components/session-cells.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/sessions/components/session-rows.tsx": {
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/sessions/components/sessions-screen.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "@eslint-react/purity": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/sessions/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    }
+  },
+  "src/features/sessions/types.ts": {
+    "@typescript-eslint/no-redundant-type-constituents": {
+      "count": 1
+    }
+  },
+  "src/features/settings/api.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/settings/components/account-tab.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/settings/components/assistant-preferences-card.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 2
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/settings/components/mcp-tab.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "@eslint-react/no-leaked-conditional-rendering": {
+      "count": 1
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/settings/components/notifications-tab.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 4
+    },
+    "@eslint-react/use-state": {
+      "count": 2
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 3
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/settings/components/settings-screen.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/settings/components/token-create-form.tsx": {
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/settings/components/token-list.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/settings/components/token-projects.tsx": {
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/features/settings/components/tokens-tab.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/settings/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 5
+    }
+  },
+  "src/features/settings/mcp.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/shares/components/share-dialog.tsx": {
+    "@eslint-react/purity": {
+      "count": 1
+    }
+  },
+  "src/features/shares/components/share-list.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/shares/components/share-refusal.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/shares/components/shared-answer.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/shares/shared-answer.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/shell/commands.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/shell/components/drawer-account.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/shell/components/mobile-nav-drawer.tsx": {
+    "@eslint-react/no-leaked-conditional-rendering": {
+      "count": 3
+    },
+    "boundaries/dependencies": {
+      "count": 4
+    },
+    "no-restricted-syntax": {
+      "count": 5
+    }
+  },
+  "src/features/shell/components/not-found-body.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/shell/components/project-switcher.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 9
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/shell/components/shell-top-bar.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/shell/components/sidebar-bell.tsx": {
+    "@eslint-react/no-forward-ref": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/shell/components/sidebar-search.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/shell/components/sidebar-version.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/shell/components/workspace-sidebar.tsx": {
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/shell/nav-model.ts": {
+    "boundaries/dependencies": {
+      "count": 5
+    }
+  },
+  "src/features/shell/sidebar-context.tsx": {
+    "@eslint-react/no-context-provider": {
+      "count": 1
+    },
+    "@eslint-react/no-use-context": {
+      "count": 1
+    }
+  },
+  "src/features/shell/use-project-org-scope-sync.ts": {
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/features/shell/use-rail-project-data.ts": {
+    "boundaries/dependencies": {
+      "count": 4
+    }
+  },
+  "src/features/suggestions/components/reject-step.tsx": {
+    "jsx-a11y/no-autofocus": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/suggestions/components/suggestion-list.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 5
+    }
+  },
+  "src/features/suggestions/components/suggestion-list.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/suggestions/hooks.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "src/features/tours/components/help-tours-button.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/tours/components/tour-hint.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/tours/components/tour-launcher.test.tsx": {
+    "@typescript-eslint/unbound-method": {
+      "count": 1
+    }
+  },
+  "src/features/tours/components/tour-launcher.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    }
+  },
+  "src/features/tours/components/tours-panel.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/tours/hooks.ts": {
+    "@tanstack/query/no-rest-destructuring": {
+      "count": 1
+    },
+    "@tanstack/query/no-unstable-deps": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/tours/release-context.tsx": {
+    "@eslint-react/no-use-context": {
+      "count": 1
+    }
+  },
+  "src/features/visual-blocks/chart-block.tsx": {
+    "@typescript-eslint/no-unsafe-member-access": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-return": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-imports": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "src/features/visual-blocks/chart-model.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/visual-blocks/context.tsx": {
+    "@eslint-react/no-context-provider": {
+      "count": 1
+    },
+    "@eslint-react/no-use-context": {
+      "count": 1
+    }
+  },
+  "src/features/visual-blocks/dates.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "src/features/visual-blocks/flow-block.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 5
+    }
+  },
+  "src/features/visual-blocks/kpi-block.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "src/features/visual-blocks/narrow.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 11
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "src/features/visual-blocks/registry.test.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "src/features/visual-blocks/renderers.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    }
+  },
+  "src/features/visual-blocks/source-note.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "@eslint-react/purity": {
+      "count": 1
+    },
+    "@typescript-eslint/unbound-method": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "src/features/visual-blocks/status-list-block.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 4
+    }
+  },
+  "src/features/visual-blocks/table-block.tsx": {
+    "@eslint-react/dom-no-flush-sync": {
+      "count": 1
+    },
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 8
+    }
+  },
+  "src/features/visual-blocks/timeline-block.tsx": {
+    "@eslint-react/no-array-index-key": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 7
+    }
+  },
+  "src/features/visual-blocks/timeline-model.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/visual-blocks/unsupported.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/visual-blocks/visual-block.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-imports": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 8
+    }
+  },
+  "src/features/whats-new/components/whats-new-button.tsx": {
+    "@eslint-react/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "src/features/whats-new/components/whats-new-panel.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/c4/layout.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "src/features/workflows/c4/view.ts": {
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/canvas/c4-canvas.tsx": {
+    "@eslint-react/exhaustive-deps": {
+      "count": 1
+    },
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 3
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 4
+    },
+    "@eslint-react/use-state": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "no-restricted-imports": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/canvas/c4-nodes.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-restricted-imports": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 5
+    }
+  },
+  "src/features/workflows/canvas/controls.tsx": {
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/canvas/flow-canvas.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@eslint-react/use-state": {
+      "count": 2
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/canvas/frame.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/canvas/nodes.tsx": {
+    "no-restricted-imports": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 3
+    }
+  },
+  "src/features/workflows/canvas/panel.tsx": {
+    "no-restricted-syntax": {
+      "count": 3
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 3
+    }
+  },
+  "src/features/workflows/canvas/step-focus.test.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    }
+  },
+  "src/features/workflows/canvas/step-focus.tsx": {
+    "@eslint-react/use-state": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/canvas/use-canvas-layout.ts": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 7
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/canvas/view.ts": {
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/canvas/wireframe-thumb.tsx": {
+    "@next/next/no-img-element": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/catalogue.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/components/design-banner.tsx": {
+    "@eslint-react/exhaustive-deps": {
+      "count": 1
+    },
+    "no-restricted-imports": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/components/design-decision.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/features/workflows/components/design-rail-revisions.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    }
+  },
+  "src/features/workflows/components/design-repins.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/components/design-repins.tsx": {
+    "no-restricted-syntax": {
+      "count": 2
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 2
+    }
+  },
+  "src/features/workflows/components/design-room.ts": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@eslint-react/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/components/health-parts.tsx": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/components/settle-marker.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/components/system-overview.tsx": {
+    "boundaries/dependencies": {
+      "count": 4
+    },
+    "jsx-a11y/no-autofocus": {
+      "count": 1
+    },
+    "no-restricted-imports": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 5
+    }
+  },
+  "src/features/workflows/components/workflow-design-facts.tsx": {
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/components/workflow-design-page.tsx": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    },
+    "no-restricted-imports": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 4
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/components/workflow-design-screen.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/components/workflows-screen.tsx": {
+    "boundaries/dependencies": {
+      "count": 4
+    },
+    "no-restricted-syntax": {
+      "count": 6
+    },
+    "ui-grammar/no-layout-name": {
+      "count": 1
+    }
+  },
+  "src/features/workflows/hooks.ts": {
+    "@tanstack/query/exhaustive-deps": {
+      "count": 1
+    },
+    "@typescript-eslint/no-floating-promises": {
+      "count": 11
+    }
+  },
+  "src/features/workflows/template-words.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    }
+  },
+  "src/lib/api/client.ts": {
+    "@typescript-eslint/no-redundant-type-constituents": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 5
+    },
+    "@typescript-eslint/no-unsafe-member-access": {
+      "count": 7
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 4
+    }
+  },
+  "src/lib/api/error.test.ts": {
+    "@typescript-eslint/require-await": {
+      "count": 2
+    }
+  },
+  "src/lib/api/ref-bridge.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/require-await": {
+      "count": 2
+    }
+  },
+  "src/lib/api/ref-bridge.ts": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 2
+    }
+  },
+  "src/lib/demo-signin.test.ts": {
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-member-access": {
+      "count": 5
+    },
+    "@typescript-eslint/require-await": {
+      "count": 7
+    }
+  },
+  "src/lib/graph/layout.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    }
+  },
+  "src/lib/i18n/copy-files.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/lib/i18n/copy-files.ts": {
+    "boundaries/dependencies": {
+      "count": 35
+    }
+  },
+  "src/lib/i18n/copy-readers.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "src/lib/i18n/eta-copy.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "src/lib/i18n/instants.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    }
+  },
+  "src/lib/i18n/interface-language.test.tsx": {
+    "boundaries/dependencies": {
+      "count": 3
+    }
+  },
+  "src/lib/i18n/interface-language.tsx": {
+    "@eslint-react/no-context-provider": {
+      "count": 1
+    },
+    "@eslint-react/no-use-context": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/lib/i18n/labels.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    }
+  },
+  "src/lib/i18n/product-copy.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/lib/i18n/said.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    }
+  },
+  "src/lib/navigation/use-copy-share-link.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/lib/utils/use-submit-guard.ts": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    }
+  },
+  "src/lib/ws/client.ts": {
+    "@typescript-eslint/no-unsafe-argument": {
+      "count": 1
+    }
+  },
+  "src/lib/ws/event-router.ts": {
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/lib/ws/invalidate-through-inflight.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "src/lib/ws/replaced-draft.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "boundaries/dependencies": {
+      "count": 2
+    }
+  },
+  "src/lib/ws/replay.test.tsx": {
+    "@typescript-eslint/no-unsafe-argument": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-member-access": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unsafe-return": {
+      "count": 5
+    },
+    "@typescript-eslint/require-await": {
+      "count": 1
+    }
+  },
+  "src/lib/ws/use-room.ts": {
+    "@eslint-react/naming-convention-ref-name": {
+      "count": 1
+    },
+    "@eslint-react/purity": {
+      "count": 1
+    }
+  },
+  "src/lib/ws/use-websocket.ts": {
+    "boundaries/dependencies": {
+      "count": 1
+    }
+  },
+  "src/providers/auth-provider.tsx": {
+    "@eslint-react/no-context-provider": {
+      "count": 1
+    },
+    "@eslint-react/no-use-context": {
+      "count": 1
+    }
+  },
+  "src/providers/toast-provider.tsx": {
+    "@eslint-react/no-unnecessary-use-prefix": {
+      "count": 1
+    }
+  },
+  "src/test/checklist-reads.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/test/render.tsx": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    }
+  },
+  "src/test/requirement-progress.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/test/vi-chrome-agents.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    }
+  },
+  "src/test/vi-chrome-automation.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 10
+    }
+  },
+  "src/test/vi-chrome-conversations.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/test/vi-chrome-dashboard.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/test/vi-chrome-feedback.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 8
+    }
+  },
+  "src/test/vi-chrome-integrations.fixture.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    }
+  },
+  "src/test/vi-chrome-issues.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    }
+  },
+  "src/test/vi-chrome-memory.tsx": {
+    "@eslint-react/dom-no-flush-sync": {
+      "count": 1
+    }
+  },
+  "src/test/vi-chrome-overview.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/test/vi-chrome-questions.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    },
+    "@typescript-eslint/require-await": {
+      "count": 1
+    }
+  },
+  "src/test/vi-chrome-requirements.tsx": {
+    "@tanstack/query/stable-query-client": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/test/vi-chrome-runners.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 5
+    }
+  },
+  "src/test/vi-chrome-sessions.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/test/vi-chrome-shell.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/test/vi-chrome.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    }
+  },
+  "src/test/waterfall.ts": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 1
+    }
+  },
+  "src/vitest.setup.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  }
+}

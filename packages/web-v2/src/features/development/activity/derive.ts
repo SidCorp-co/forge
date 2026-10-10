@@ -62,19 +62,6 @@ export function statusDonut(dist: Record<string, number> | undefined): StatusDon
   return { segments, total };
 }
 
-/** Build a CSS `conic-gradient(...)` from ordered segments. Returns a flat fill
- *  when there are no segments so the ring never renders empty/transparent. */
-export function conicGradient(segments: DonutSegment[]): string {
-  if (segments.length === 0) return "var(--paper-200)";
-  let acc = 0;
-  const stops: string[] = [];
-  for (const s of segments) {
-    const start = acc;
-    acc += s.pct;
-    stops.push(`${s.color} ${start.toFixed(3)}% ${acc.toFixed(3)}%`);
-  }
-  return `conic-gradient(${stops.join(", ")})`;
-}
 
 /* ------------------------------------------------------------------ *
  * 7-day spend by stage (AC#4)
