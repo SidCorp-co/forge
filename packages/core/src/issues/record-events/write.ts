@@ -25,7 +25,7 @@ export async function writeScreenedRecordEvent(
   assertRecordEventDraft(input);
   const record = recordOfFields(input.kind, input.contract, input.fields);
   const refusals = await recordRefusals(input.projectId, record, executor);
-  if (refusals.length > 0) throw new MessageRefusedError('record-event-write', refusals);
+  if (refusals.length > 0) throw new MessageRefusedError('record-event-write', refusals, '/fields');
   const { projectId: _project, ...write } = input;
   return writeRecordEvent({ ...write, fields: scrubSecretsDeep(write.fields) }, executor);
 }

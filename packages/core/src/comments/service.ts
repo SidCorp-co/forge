@@ -93,6 +93,8 @@ export type NewComment = {
    * its transaction. A notice Forge posts on its own act passes none and emits no event.
    */
   announce?: { actor: Actor; authored: 'human' | 'agent' } | undefined;
+  /** Where the body's text sat in the caller's request, named by a refusal of it; `/body` absent. */
+  screenedAt?: string | undefined;
 };
 
 /** A written comment, whatever the sanitizer removed on the way in, and who it mentioned. */
@@ -203,7 +205,7 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
   const byAnAgent = await writtenByAnAgent(input, tx);
   const { intent, warning } = resolveIntent(input.intent, byAnAgent, input.body);
   if (context && byAnAgent) {
-    await screenAgentComment(context.projectId, input.body, tx);
+    await screenAgentComment(context.projectId, input.body, tx, input.screenedAt);
   }
   const level = context ? await dataPolicyOf(context.projectId) : 'off';
 

@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { refused, refuser } from '../lib/refusal.js';
+import { MessageRefusedError } from '../messaging/contract.js';
 import { requireAuth } from './auth.js';
 import { errorHandler } from './error.js';
 import type { RequestIdVars } from './request-id.js';
@@ -27,6 +28,22 @@ function app() {
     c.json({}),
   );
   a.get('/auth', requireAuth(), (c) => c.json({}));
+  // a route that maps nothing itself: the transition reason answered 500 this way (J7, ISS-439)
+  a.post('/message', () => {
+    throw new MessageRefusedError(
+      'comment-write',
+      [
+        {
+          rule: 'no-redacted-secret',
+          why: 'text carries something the secret scrubber redacts',
+          shape: 'no token, key or connection string',
+          example: 'the deploy credential this project holds',
+          quote: null,
+        },
+      ],
+      '/reason',
+    );
+  });
   a.onError(errorHandler);
   return a;
 }
@@ -61,6 +78,7 @@ describe('one problem envelope at every door', () => {
     ['a thrown kernel RefusalError', 'POST', '/kernel', undefined, 'SESSION_CONTEXT_MISMATCH'],
     ['a zod schema refusal', 'POST', '/schema', { title: 1 }, 'BAD_REQUEST'],
     ['an auth refusal', 'GET', '/auth', undefined, 'UNAUTHENTICATED'],
+    ['a screened message no route mapped', 'POST', '/message', undefined, 'MESSAGE_REFUSED'],
   ] as const;
 
   for (const [door, method, path, sent, code] of doors) {
@@ -89,6 +107,13 @@ describe('one problem envelope at every door', () => {
     expect(res.status).toBe(400);
     expect(body.error.refusals[0]?.path).toBe('/title');
     expect(body.message).toContain('BAD_REQUEST at /title: ');
+  });
+
+  it('a screened message is a 422 naming its rule at the field the text came in', async () => {
+    const { res, body } = await answer('POST', '/message');
+    expect(res.status).toBe(422);
+    expect(body.error.refusals[0]?.path).toBe('/reason');
+    expect(body.detail).toContain('(rule no-redacted-secret;');
   });
 
   it('an auth refusal is one refusal at the request, its message the sentence', async () => {

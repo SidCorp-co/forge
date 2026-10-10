@@ -17,7 +17,7 @@ import type { SQL, SQLWrapper } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { portSlot } from '../lib/port-slot.js';
-import type { Refusal, RefusalError } from '../lib/refusal.js';
+import type { Refusal } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import type { Actor } from './activity.js';
 
@@ -175,10 +175,11 @@ interface IssuePorts {
       body: string;
       intent?: 'note' | 'question';
       authorsWords?: boolean;
+      /** Where the body's text sat in the caller's request, named by a refusal of it. */
+      screenedAt?: string;
     },
     tx?: Tx,
   ) => Promise<{ id: string; body: string; parentId: string | null }>;
-  messageRefusalHttp: (err: unknown) => RefusalError | null;
 
   readProjectDocument: (projectId: string) => Promise<{ document: IssueProjectDocument } | null>;
   changedTracedOf: (
@@ -354,7 +355,6 @@ export const openHumanQuestionIdsOn = port('openHumanQuestionIdsOn');
 export const answeredSince = port('answeredSince');
 export const answeredSinceSql = port('answeredSinceSql');
 export const postIssueNotice = port('postIssueNotice');
-export const messageRefusalHttp = port('messageRefusalHttp');
 
 export const readProjectDocument = port('readProjectDocument');
 export const changedTracedOf = port('changedTracedOf');

@@ -49,7 +49,6 @@ import {
   locateComment,
   parentCommentOf,
 } from './read.js';
-import { messageRefusalHttp } from './screen.js';
 import {
   decisionBody,
   deleteComment,
@@ -107,10 +106,10 @@ async function assertParentOnIssue(parentId: string, issueId: string): Promise<v
   }
 }
 
-/** A failed comment insert as the answer it owes: a body or message refusal, a reply nested too
- *  deep, a parent gone under it, or the error itself. */
+/** A failed comment insert as the answer it owes: a body refusal, a reply nested too deep, a parent
+ *  gone under it, or the error itself (a message refusal is answered by the shared error handler). */
 function commentWriteRefusal(err: unknown, parentId: string | undefined): unknown {
-  const refusal = bodyRefusalHttp(err) ?? messageRefusalHttp(err);
+  const refusal = bodyRefusalHttp(err);
   if (refusal) return refusal;
   const pgCode = pgErrorCode(err);
   if (pgCode === '23514') {
@@ -301,8 +300,6 @@ commentRoutes.patch(
         announce: { actor: restActor(c), projectId: comment.projectId, before: comment.body ?? '' },
       });
     } catch (err) {
-      const refusal = messageRefusalHttp(err);
-      if (refusal) throw refusal;
       rethrowBodyInvalid(err);
     }
     if (!written) throw notFound('comment not found');

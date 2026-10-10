@@ -21,6 +21,8 @@ type IssueNotice = {
    * author's language; absent, the body is Forge's own English and is stored as `'en'`.
    */
   authorsWords?: boolean | undefined;
+  /** Where the body's text sat in the caller's request, named by a refusal of it. */
+  screenedAt?: string | undefined;
 };
 
 /**
@@ -38,6 +40,7 @@ export async function postIssueNotice(notice: IssueNotice, tx: Tx = db): Promise
       intent: notice.intent ?? 'note',
       announce: notice.announce,
       writtenLang: notice.authorsWords ? undefined : 'en',
+      screenedAt: notice.screenedAt,
     },
     tx,
   );

@@ -24,7 +24,6 @@ import {
 import { publishToConversationReaders, WEB_CONVERSATION_EVENT } from './assistant/index.js';
 import { provideAutomationPorts } from './automation/index.js';
 import {
-  messageRefusalHttp,
   postIssueNotice,
   postIssueNoticeOnce,
   provideCommentPorts,
@@ -216,7 +215,6 @@ export function provideWorkPorts(): void {
     answeredSince,
     answeredSinceSql,
     postIssueNotice,
-    messageRefusalHttp,
     readProjectDocument,
     changedTracedOf,
     readLandingBranches,
