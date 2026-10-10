@@ -348,90 +348,28 @@ function entryRole(entry: MessageEntry): TurnRole {
   return "tool";
 }
 
+/** One entry as a thread item: a prompt with its text and files, or the agent's blocks; null when it carries nothing to draw. */
+function entryItem(entry: MessageEntry, role: TurnRole, at: { id: string; turnId: string; turnIndex: number; editedAt: string | null }): ConversationItem | null {
+  const prompt = role === "user";
+  const text = prompt ? entryText(entry.content) : "";
+  const attachments = prompt ? (entry.attachments ?? []) : [];
+  const blocks = prompt ? [] : assistantBlocks(entry);
+  if (prompt ? !text && attachments.length === 0 : blocks.length === 0) return null;
+  return { ...at, role, kind: prompt ? "prompt" : "agent", text, blocks, attachments, timestamp: entry.timestamp, thinkingCount: entry.thinkingCount ?? 0 };
+}
+
+const drawn = (items: (ConversationItem | null)[]) => items.filter((i): i is ConversationItem => i !== null);
+
 export function parseTurns(turns: TurnRow[]): ConversationItem[] {
-  const items: ConversationItem[] = [];
-  for (const turn of turns) {
-    const entry = unwrapEntry(turn.content);
-    const role = turn.role;
-    if (role === "user") {
-      const text = entryText(entry.content);
-      const attachments = entry.attachments ?? [];
-      if (!text && attachments.length === 0) continue;
-      items.push({
-        id: turn.id,
-        turnId: turn.id,
-        turnIndex: turn.turnIndex,
-        role,
-        kind: "prompt",
-        text,
-        blocks: [],
-        attachments,
-        timestamp: entry.timestamp,
-        editedAt: turn.editedAt,
-        thinkingCount: entry.thinkingCount ?? 0,
-      });
-    } else {
-      const blocks = assistantBlocks(entry);
-      if (blocks.length === 0) continue;
-      items.push({
-        id: turn.id,
-        turnId: turn.id,
-        turnIndex: turn.turnIndex,
-        role,
-        kind: "agent",
-        text: "",
-        blocks,
-        attachments: [],
-        timestamp: entry.timestamp,
-        editedAt: turn.editedAt,
-        thinkingCount: entry.thinkingCount ?? 0,
-      });
-    }
-  }
-  return items;
+  return drawn(turns.map((turn) => entryItem(unwrapEntry(turn.content), turn.role, { id: turn.id, turnId: turn.id, turnIndex: turn.turnIndex, editedAt: turn.editedAt })));
 }
 
 export function parseMessages(messages: unknown[]): ConversationItem[] {
-  const items: ConversationItem[] = [];
-  messages.forEach((raw, index) => {
-    if (!raw || typeof raw !== "object") return;
-    const entry = raw as MessageEntry;
-    const role = entryRole(entry);
-    const id = entry.id ?? `msg-${index}`;
-    if (role === "user") {
-      const text = entryText(entry.content);
-      const attachments = entry.attachments ?? [];
-      if (!text && attachments.length === 0) return;
-      items.push({
-        id,
-        turnId: "",
-        turnIndex: index,
-        role,
-        kind: "prompt",
-        text,
-        blocks: [],
-        attachments,
-        timestamp: entry.timestamp,
-        editedAt: null,
-        thinkingCount: entry.thinkingCount ?? 0,
-      });
-    } else {
-      const blocks = assistantBlocks(entry);
-      if (blocks.length === 0) return;
-      items.push({
-        id,
-        turnId: "",
-        turnIndex: index,
-        role,
-        kind: "agent",
-        text: "",
-        blocks,
-        attachments: [],
-        timestamp: entry.timestamp,
-        editedAt: null,
-        thinkingCount: entry.thinkingCount ?? 0,
-      });
-    }
-  });
-  return items;
+  return drawn(
+    messages.map((raw, index) => {
+      if (!raw || typeof raw !== "object") return null;
+      const entry = raw as MessageEntry;
+      return entryItem(entry, entryRole(entry), { id: entry.id ?? `msg-${index}`, turnId: "", turnIndex: index, editedAt: null });
+    }),
+  );
 }
