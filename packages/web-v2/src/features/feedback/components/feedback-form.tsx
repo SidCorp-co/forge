@@ -87,28 +87,34 @@ export function FeedbackForm({
       }}
     >
       <Field label={t("feedback.form.title")} error={refused.at("title")} required>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={FEEDBACK_LIMITS.title} autoFocus />
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={FEEDBACK_LIMITS.title} ref={(el) => el?.focus()} />
       </Field>
-      <div className="grid gap-3 sm:grid-cols-[10rem_10rem_minmax(0,1fr)]">
-        <Field label={t("feedback.form.kind")} error={refused.at("kind")}>
-          <NativeSelect
-            value={kind}
-            onChange={(e) => setKind(e.target.value as FeedbackKind)}
-            options={FEEDBACK_KINDS.filter((k) => k !== "contract_change").map((k) => ({ value: k, label: enumLabel("feedbackKind", k, language) }))}
-          />
-        </Field>
-        <Field label={t("feedback.form.severity")} error={refused.at("severity")}>
-          <NativeSelect
-            value={severity}
-            onChange={(e) => setSeverity(e.target.value as FeedbackSeverity)}
-            options={FEEDBACK_SEVERITIES.map((v) => ({ value: v, label: statusReading("severity", v, language).label }))}
-          />
-        </Field>
-        <Field label={t("feedback.form.about")} error={refused.at("about")}>
-          <TargetPicker projectId={projectId} type={targetType} onType={setTargetType} value={target} onValue={setTarget} />
-        </Field>
+      <div className="grid gap-3 sm:flex">
+        <div className="sm:w-40 sm:flex-none">
+          <Field label={t("feedback.form.kind")} error={refused.at("kind")}>
+            <NativeSelect
+              value={kind}
+              onChange={(e) => setKind(e.target.value as FeedbackKind)}
+              options={FEEDBACK_KINDS.filter((k) => k !== "contract_change").map((k) => ({ value: k, label: enumLabel("feedbackKind", k, language) }))}
+            />
+          </Field>
+        </div>
+        <div className="sm:w-40 sm:flex-none">
+          <Field label={t("feedback.form.severity")} error={refused.at("severity")}>
+            <NativeSelect
+              value={severity}
+              onChange={(e) => setSeverity(e.target.value as FeedbackSeverity)}
+              options={FEEDBACK_SEVERITIES.map((v) => ({ value: v, label: statusReading("severity", v, language).label }))}
+            />
+          </Field>
+        </div>
+        <div className="min-w-0 sm:flex-1">
+          <Field label={t("feedback.form.about")} error={refused.at("about")}>
+            <TargetPicker projectId={projectId} type={targetType} onType={setTargetType} value={target} onValue={setTarget} />
+          </Field>
+        </div>
       </div>
-      <div {...staged.dropZone} className={staged.dragOver ? "ring-2 ring-cobalt-400 ring-offset-1" : undefined}>
+      <div {...staged.dropZone} className={staged.dragOver ? "ring-2 ring-accent-8 ring-offset-1" : undefined}>
         <Field label={t("feedback.form.body")} error={refused.at("body")}>
           <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} />
         </Field>

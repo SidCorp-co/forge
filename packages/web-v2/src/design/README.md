@@ -46,7 +46,7 @@ A page that fits none of the five is a design question, not a sixth layout. Ask 
 | `EnumBadge` | a non-state enum (priority, kind), neutral |
 | `ResizablePanelGroup` / `ResizablePanel` / `ResizableHandle` | a split the reader drags |
 | `RailButton` | an act at the foot of the navigation rail: icon, name, a dot while something is owed |
-| `fixedHeight(size, at)` | a scrolling region's viewport height by name: `pane`, `page`, `sticky`, `sheet`, optionally from one width |
+| `fixedHeight(size, at)` | a scrolling region's viewport height by name: `pane`, `page`, `sticky`, `sheet`, `popup`, optionally from one width |
 
 ## Naming
 

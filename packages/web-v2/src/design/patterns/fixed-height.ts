@@ -10,6 +10,8 @@ const HEIGHTS = {
   sticky: { all: "max-h-[calc(100dvh-2rem)] overflow-y-auto", lg: "lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto" },
   /** A sheet dropped over the page: at most two fifths of the viewport, scrolled. */
   sheet: { all: "max-h-[40dvh] overflow-y-auto" },
+  /** An anchored popup's list: the room its positioner leaves, and never more than 20rem. */
+  popup: { all: "max-h-[min(var(--available-height),20rem)] overflow-y-auto" },
 } as const;
 
 type Heights = typeof HEIGHTS;
