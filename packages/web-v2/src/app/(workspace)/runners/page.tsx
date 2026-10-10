@@ -1,6 +1,6 @@
 "use client";
 
-import { RunnersScreen } from "@/features/runners/components/runners-screen";
+import { RunnersScreen } from "@/features/runners";
 
 export default function RunnersPage() {
   return <RunnersScreen />;

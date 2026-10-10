@@ -4,7 +4,7 @@ import type { IssueBlocker } from "@forge/contracts/issue-standing";
 import type { ParkThreadQuestion } from "@forge/contracts/park";
 import type { ComponentProps, ReactNode } from "react";
 import { SegmentedControl } from "@/design";
-import { useIssueForecast } from "@/features/forecast/hooks";
+import { useIssueForecast } from "@/features/forecast";
 import { IssuePreview } from "@/features/previews";
 import { settingsHref } from "@/features/project-settings/sections";
 import { IssueQuestions } from "@/features/questions";

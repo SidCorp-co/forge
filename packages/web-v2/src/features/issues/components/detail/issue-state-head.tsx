@@ -7,8 +7,8 @@
 import type { Forecast } from "@forge/contracts/forecast";
 import type { IssueStanding } from "@forge/contracts/issue-standing";
 import type { ReactNode } from "react";
-import { EtaInline } from "@/features/forecast/components/eta-cell";
-import { etaOfForecast } from "@/features/forecast/eta";
+import { EtaInline } from "@/features/forecast";
+import { etaOfForecast } from "@/features/forecast";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { saidView } from "@/lib/i18n/said";

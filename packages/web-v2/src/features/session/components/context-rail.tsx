@@ -33,16 +33,16 @@ import {
   sessionStep,
   statusToChip,
   type SessionRow,
-} from "@/features/sessions/types";
-import { useStuckRuns } from "@/features/agents/hooks";
-import { useSessionCost, useSessions } from "@/features/sessions/hooks";
-import { isJobDriven, sessionKind } from "@/features/sessions/types";
-import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/pipeline/derive";
+} from "@/features/sessions";
+import { useStuckRuns } from "@/features/agents";
+import { useSessionCost, useSessions } from "@/features/sessions";
+import { isJobDriven, sessionKind } from "@/features/sessions";
+import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/pipeline";
 import { formatRefusal } from "@/lib/api/error";
 import { useRailCopy, useRailLanguage, useRailTime } from "../chrome-language";
-import { useRun } from "@/features/pipeline/hooks";
-import { useDeviceVersionLabel, useDevices } from "@/features/runners/hooks";
-import { deviceHealth } from "@/features/runners/types";
+import { useRun } from "@/features/pipeline";
+import { useDeviceVersionLabel, useDevices } from "@/features/runners";
+import { deviceHealth } from "@/features/runners";
 import { deriveAgentTasks, deriveFilesChanged } from "../derive";
 import type { ConversationItem } from "../types";
 import { HeldReplyForRun } from "./held-reply-for-run";

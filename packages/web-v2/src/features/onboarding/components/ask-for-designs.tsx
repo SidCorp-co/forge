@@ -4,7 +4,7 @@ import type { OnboardingHint } from "@forge/contracts/onboarding";
 import { ONBOARDING_REQUEST_MAX } from "@forge/contracts/onboarding";
 import { type ReactNode, useId, useState } from "react";
 import { ConfirmDialog, Textarea } from "@/design";
-import { useChatDock } from "@/features/chat-dock/dock";
+import { useChatDock } from "@/features/chat-dock";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";

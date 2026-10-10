@@ -1,9 +1,9 @@
 "use client";
 
-import { AutomationScreen } from "@/features/automation/components/automation-screen";
-import { canManageProject, canWriteProject } from "@/features/projects/write-access";
+import { AutomationScreen } from "@/features/automation";
+import { canManageProject, canWriteProject } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { ProjectGate } from "@/features/projects/components/project-gate";
+import { ProjectGate } from "@/features/projects";
 
 export default function ProjectAutomationPage() {
   const t = useCopy();

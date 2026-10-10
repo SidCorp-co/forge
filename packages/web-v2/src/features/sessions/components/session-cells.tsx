@@ -2,7 +2,7 @@ import { useRouter } from "next/navigation";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { Badge, HealthDot, Icon, MonoTag, StatusBadge, Tooltip } from "@/design";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
-import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
+import { IssueRefBadge } from "@/features/issues";
 import {
   type StuckRuns,
   deriveLiveness,

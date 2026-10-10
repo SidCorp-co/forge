@@ -42,7 +42,7 @@ import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interfa
 import { formatAge, formatDateTime } from "@/lib/i18n/format";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { said, saidOrNull, saidView } from "@/lib/i18n/said";
-import { parkRefusalText, useCancelRun } from "@/features/run-control/hooks";
+import { parkRefusalText, useCancelRun } from "@/features/run-control";
 import { RUNS_STANDING_ROOT, useRunDetail } from "../hooks";
 import { masterHref, runHref } from "@/lib/routes/agents";
 import type { RunEvent, RunStanding, RunStandingDetail } from "../types";

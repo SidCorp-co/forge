@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { Badge, enumLabel, HealthDot, Icon, RowItem, RowList, Section } from "@/design";
-import { runnerLimitLine } from "@/features/runners/types";
+import { runnerLimitLine } from "@/features/runners";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { RunnersSummary } from "./derive";
 

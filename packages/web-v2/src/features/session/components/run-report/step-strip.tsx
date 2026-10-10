@@ -7,8 +7,8 @@
 // supplies the accent colour when a step happens to be one of them.
 
 import { enumLabel, STAGES } from "@/design";
-import { formatDurationMs } from "@/features/pipeline/derive";
-import type { PipelineRunSummary } from "@/features/pipeline/types";
+import { formatDurationMs } from "@/features/pipeline";
+import type { PipelineRunSummary } from "@/features/pipeline";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 
 const TICK: Record<string, { glyph: string; color: string }> = {

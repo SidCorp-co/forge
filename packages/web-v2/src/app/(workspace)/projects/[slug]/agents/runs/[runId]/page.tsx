@@ -1,10 +1,10 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { RunItemScreen } from "@/features/agents/components/agents-item-screens";
+import { RunItemScreen } from "@/features/agents";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { ProjectGate } from "@/features/projects/components/project-gate";
-import { canWriteProject } from "@/features/projects/write-access";
+import { ProjectGate } from "@/features/projects";
+import { canWriteProject } from "@/features/projects";
 
 export default function Page() {
   const t = useCopy();

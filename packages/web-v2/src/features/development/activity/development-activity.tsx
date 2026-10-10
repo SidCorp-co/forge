@@ -4,11 +4,11 @@
 // They sat on the project Dashboard until it became the BA's page; the data is the same reads.
 
 import { StatCell, StatRow, useNow } from "@/design";
-import { formatUsd } from "@/features/pipeline/derive";
-import { useProjectRuns, useStepDurations } from "@/features/pipeline/hooks";
+import { formatUsd } from "@/features/pipeline";
+import { useProjectRuns, useStepDurations } from "@/features/pipeline";
 import { useProjectHealth } from "@/features/projects/hooks";
-import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
-import { useQueueStats } from "@/features/sessions/hooks";
+import { useActiveRunners, useProjectRunners } from "@/features/runners";
+import { useQueueStats } from "@/features/sessions";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { AwaitingRelease } from "./awaiting-release";
 import { activeRuns, activeSpend, idleRuns, runnersSummary, spendByStage, statusDonut } from "./derive";

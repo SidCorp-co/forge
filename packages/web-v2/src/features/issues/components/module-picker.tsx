@@ -21,7 +21,7 @@ import {
   Skeleton,
   SlideOver,
 } from "@/design";
-import { ancestorsOf } from "@/features/modules/tree";
+import { ancestorsOf } from "@/features/modules";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useProjectModules, useSetIssueModules } from "../hooks";

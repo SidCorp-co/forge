@@ -13,15 +13,15 @@ import { useAuth } from "@/providers/auth-provider";
 import { SignInStopped } from "@/features/auth/components/sign-in-stopped";
 import { useLoginRedirect } from "@/features/auth/use-login-redirect";
 import { useToast } from "@/providers/toast-provider";
-import { inActiveOrg } from "@/features/projects/derive";
-import { useProjects } from "@/features/projects/hooks";
+import { inActiveOrg } from "@/features/projects";
+import { useProjects } from "@/features/projects";
 import { useProjectRef } from "@/features/projects/project-ref";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { ActiveOrgProvider } from "@/features/orgs/active-org";
 import { useAttention } from "@/features/attention/hooks";
-import { useUnblockCascadeToasts } from "@/features/issues/use-unblock-cascade";
-import { useOpenCount } from "@/features/notifications/hooks";
-import { NotificationsBell } from "@/features/notifications/components/notifications-bell";
+import { useUnblockCascadeToasts } from "@/features/issues";
+import { useOpenCount } from "@/features/notifications";
+import { NotificationsBell } from "@/features/notifications";
 import {
   useSidebarContext,
   SidebarProvider,
@@ -41,13 +41,13 @@ import {
 } from "@/features/shell";
 import { CurrentProjectProvider } from "@/features/projects/current-project";
 import { useCopy, useInterfaceLanguage, WorkspaceInterfaceLanguage } from "@/lib/i18n/interface-language";
-import type { ProjectListItem } from "@/features/projects/types";
-import type { ChatDockApi } from "@/features/chat-dock/dock";
+import type { ProjectListItem } from "@/features/projects";
+import type { ChatDockApi } from "@/features/chat-dock";
 import { useRecents } from "@/lib/navigation/recents";
 import { usePinnedViews } from "@/lib/navigation/pinned-views";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
-import { ChatDockProvider, useChatDockState } from "@/features/chat-dock/dock";
-import { useNeedsYou } from "@/features/needs-you/hooks";
+import { ChatDockProvider, useChatDockState } from "@/features/chat-dock";
+import { useNeedsYou } from "@/features/needs-you";
 import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar";
 import { SidebarSearch } from "@/features/shell/components/sidebar-search";
 import { SidebarBell } from "@/features/shell/components/sidebar-bell";
@@ -58,7 +58,7 @@ import { DrawerAccount } from "@/features/shell/components/drawer-account";
 import { WhatsNewButton } from "@/features/whats-new/components/whats-new-button";
 import { HelpToursButton } from "@/features/tours/components/help-tours-button";
 import { TourReleaseProvider } from "@/features/tours/release-context";
-import { useReleases } from "@/features/releases/hooks";
+import { useReleases } from "@/features/releases";
 import { TourLauncher } from "@/features/tours/components/tour-launcher";
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {

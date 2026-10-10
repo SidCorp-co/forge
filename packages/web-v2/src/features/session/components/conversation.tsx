@@ -7,9 +7,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, Icon, StreamingText, Textarea } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { AttachmentList } from "@/features/attachments/components/attachment-list";
+import { AttachmentList } from "@/features/attachments";
 import { UnsupportedBlock, VisualBlockView } from "@/features/visual-blocks";
-import { useBlockInstants } from "@/features/visual-blocks/instants";
+import { useBlockInstants } from "@/features/visual-blocks";
 import { readProseInstants } from "@/lib/i18n/instants";
 import { disclosureKeys, useThreadDisclosures } from "../disclosure";
 import { foldTurn } from "../fold";

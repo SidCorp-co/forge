@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { type StuckRuns, stuckRunsOf } from "@/features/sessions/types";
+import { type StuckRuns, stuckRunsOf } from "@/features/sessions";
 import { runsApi } from "./api";
 import type { RunStandingScope } from "./types";
 

@@ -2,7 +2,7 @@
 
 import { PageSectionTitle, MonoTag } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import type { SessionMetadata } from "@/features/sessions/types";
+import type { SessionMetadata } from "@/features/sessions";
 
 interface LoadedLink {
   link: string;

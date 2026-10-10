@@ -1,6 +1,6 @@
 "use client";
 
-import { FeedbackScreen } from "@/features/feedback/components/feedback-screen";
+import { FeedbackScreen } from "@/features/feedback";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { ProjectRefGate } from "@/features/projects/components/project-gate";
 
