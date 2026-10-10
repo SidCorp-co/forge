@@ -62,7 +62,7 @@ export function WorkflowPicture({ projectId, slug, traced }: { projectId: string
   return (
     <Figure alt={alt} kind="workflow" by={head}>
       {traced.length > 1 ? (
-        <div className="w-full max-w-[320px]">
+        <div className="w-full max-w-80">
           <NativeSelect
             aria-label={t("requirements.picture.workflow.choose")}
             value={w.workflowId}
@@ -71,7 +71,7 @@ export function WorkflowPicture({ projectId, slug, traced }: { projectId: string
           />
         </div>
       ) : null}
-      <div className="flex h-[460px] min-w-0 overflow-hidden border border-line-subtle max-md:h-[420px]" data-testid="picture-workflow" data-flow={w.flow}>
+      <div className="flex h-115 min-w-0 overflow-hidden border border-line-subtle max-md:h-105" data-testid="picture-workflow" data-flow={w.flow}>
         {canvas}
       </div>
     </Figure>

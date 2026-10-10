@@ -9,7 +9,7 @@ import { assetPath } from "@/lib/asset";
    Geometry is in the PNG's native 180×180 space, scaled to `size`. */
 
 const MASCOT_SRC = assetPath("/forge-mark-180.png");
-const STAGE_RING = ["#8A6BD1", "#2D5BD6", "#1F8FB0", "#F15A2B", "#E8920C", "#1F9D6B", "#5A616E"];
+const STAGE_RING = ["triage", "clarify", "plan", "code", "review", "test", "release"].map((s) => `var(--stage-${s})`);
 const LX = 61, RX = 119, EY = 112;
 
 function reducedMotion() {
@@ -118,7 +118,7 @@ export function ForgeMascot({
       <div
         style={{
           position: "absolute", inset: "-12%", borderRadius: "50%", pointerEvents: "none",
-          background: "radial-gradient(circle, rgba(241,90,43,0.16), rgba(241,90,43,0) 62%)",
+          background: "radial-gradient(circle, color-mix(in oklch, var(--accent) 16%, transparent), transparent 62%)",
           animation: "fm-glow 2.6s ease-in-out infinite",
         }}
       />

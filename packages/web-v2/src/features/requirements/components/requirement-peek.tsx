@@ -10,7 +10,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { useRequirement } from "../hooks";
 import { REQUIREMENTS_LIST } from "@/lib/routes/requirements";
 import { PrimaryActions } from "./requirement-actions";
-import { RequirementFacts } from "./requirement-facts";
+import { RequirementProperties } from "./requirement-facts";
 import { RequirementProgress } from "./standing-bits";
 
 export function RequirementPeek({
@@ -42,9 +42,9 @@ export function RequirementPeek({
                 title={d.title}
                 action={<PrimaryActions projectId={projectId} slug={slug} d={d} inPeek onReview={() => rememberListOrigin(REQUIREMENTS_LIST)} />}
               />
-              <RequirementProgress standing={s} slug={slug} inset="px-[18px]" />
-              <div className="px-[18px] pb-4 pt-4">
-                <RequirementFacts d={d} slug={slug} projectId={projectId} />
+              <RequirementProgress standing={s} slug={slug} inset="px-4.5" />
+              <div className="px-4.5 pb-4 pt-4">
+                <RequirementProperties d={d} slug={slug} projectId={projectId} />
               </div>
             </>
           );

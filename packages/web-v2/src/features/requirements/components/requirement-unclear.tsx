@@ -33,7 +33,7 @@ function AnswerForm({ q, projectId, reqKey }: { q: RequirementQuestionView; proj
   const ready = text.trim().length > 0;
   return (
     <form
-      className="mt-2 grid max-w-[72ch] gap-2"
+      className="mt-2 grid max-w-xl gap-2"
       data-testid="unclear-answer"
       onSubmit={(e) => {
         e.preventDefault();
@@ -51,7 +51,7 @@ function AnswerForm({ q, projectId, reqKey }: { q: RequirementQuestionView; proj
   );
 }
 
-function QuestionRow({ q, projectId, reqKey, slug }: { q: RequirementQuestionView; projectId: string; reqKey: string; slug: string }) {
+function OpenQuestion({ q, projectId, reqKey, slug }: { q: RequirementQuestionView; projectId: string; reqKey: string; slug: string }) {
   const t = useCopy();
   const time = useTimeFormat();
   const open = q.status === "open";
@@ -67,7 +67,7 @@ function QuestionRow({ q, projectId, reqKey, slug }: { q: RequirementQuestionVie
         <span title={time.dateTime(q.askedAt)}>{time.relative(q.askedAt)}</span>
       </span>
       {q.answer ? (
-        <p className="max-w-[80ch] text-13 leading-relaxed text-fg" data-testid="unclear-answered">
+        <p className="max-w-2xl text-13 leading-relaxed text-fg" data-testid="unclear-answered">
           <span className="font-medium">{t("requirements.unclear.answered")}</span> {q.answer.text}
           <span className="text-12 text-subtle">
             {" "}
@@ -81,7 +81,7 @@ function QuestionRow({ q, projectId, reqKey, slug }: { q: RequirementQuestionVie
 }
 
 /** "Still unclear · n": the questions standing on the requirement, open ones first. */
-export function UnclearSection({
+export function OpenQuestions({
   questions,
   unclear,
   projectId,
@@ -103,7 +103,7 @@ export function UnclearSection({
       ) : (
         <ul className="grid">
           {questions.map((q) => (
-            <QuestionRow key={q.id} q={q} projectId={projectId} reqKey={reqKey} slug={slug} />
+            <OpenQuestion key={q.id} q={q} projectId={projectId} reqKey={reqKey} slug={slug} />
           ))}
         </ul>
       )}
@@ -112,7 +112,7 @@ export function UnclearSection({
 }
 
 /** What the revision takes as true without proof: each with whose it is and how it will be confirmed. */
-export function AssumptionsSection({ assumptions, revision, slug }: { assumptions: RequirementAssumption[]; revision: number | null; slug?: string }) {
+export function Assumptions({ assumptions, revision, slug }: { assumptions: RequirementAssumption[]; revision: number | null; slug?: string }) {
   const t = useCopy();
   return (
     <section data-testid="requirement-assumptions">

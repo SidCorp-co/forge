@@ -33,7 +33,7 @@ import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useRequirement, useRequirementDecisions } from "../hooks";
 import type { RequirementDetail, RequirementRevision } from "../types";
 import { ProposalDecision, ProposeChange } from "./requirement-actions";
-import { RequirementFacts } from "./requirement-facts";
+import { RequirementProperties } from "./requirement-facts";
 import { CriteriaChanges, CriteriaChecklist, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
 import { RequirementDecisions } from "./requirement-decisions";
 import { RequirementMemory, useRequirementMemoryCount } from "./requirement-memory";
@@ -79,7 +79,7 @@ function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId:
   const proposed = open.state === "proposed";
   const at = open.proposedAt ?? open.createdAt;
   return (
-    <section id="proposal" className="border-l-[3px] py-1 pl-4" style={{ borderColor: AGENT_TINT.dot }} data-testid="open-revision">
+    <section id="proposal" className="border-l-3 py-1 pl-4" style={{ borderColor: AGENT_TINT.dot }} data-testid="open-revision">
       <ViewHeading
         right={
           <span className="inline-flex items-center gap-2 text-12-5 text-muted">
@@ -93,8 +93,8 @@ function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId:
           {proposed ? <PendingBadge /> : null}
         </span>
       </ViewHeading>
-      <Written className="block max-w-[80ch] text-14 leading-relaxed" text={open.changeSummary ?? open.reason} lang={open.writtenLang} />
-      {open.changeSummary && open.reason && open.reason !== open.changeSummary ? <p className="mt-1.5 max-w-[80ch] text-13 text-muted">{t("requirements.revision.why", { reason: open.reason })}</p> : null}
+      <Written className="block max-w-2xl text-14 leading-relaxed" text={open.changeSummary ?? open.reason} lang={open.writtenLang} />
+      {open.changeSummary && open.reason && open.reason !== open.changeSummary ? <p className="mt-1.5 max-w-2xl text-13 text-muted">{t("requirements.revision.why", { reason: open.reason })}</p> : null}
       <div className="mt-1.5">
         <CriteriaChanges changes={open.criteriaChanges} />
       </div>
@@ -197,7 +197,7 @@ export function RequirementPage({
             dataKey={d.key}
             rail={
               <FactsRail testId="relations-rail">
-                <RequirementFacts d={d} slug={slug} onOpenRevisions={() => onTab("revisions")} projectId={projectId} />
+                <RequirementProperties d={d} slug={slug} onOpenRevisions={() => onTab("revisions")} projectId={projectId} />
               </FactsRail>
             }
           >

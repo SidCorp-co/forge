@@ -15,7 +15,7 @@ import type { RequirementAnswerView } from "@forge/contracts/requirements";
 import { useState } from "react";
 import { useRequirementDecisions } from "../hooks";
 
-function AnswerRow({ a, slug }: { a: RequirementAnswerView; slug: string }) {
+function RecordedAnswer({ a, slug }: { a: RequirementAnswerView; slug: string }) {
   const t = useCopy();
   const time = useTimeFormat();
   return (
@@ -69,7 +69,7 @@ export function RequirementDecisions({ projectId, slug, reqKey }: { projectId: s
           {answers.length ? (
             <ul className="grid">
               {answers.map((a) => (
-                <AnswerRow key={a.questionId} a={a} slug={slug} />
+                <RecordedAnswer key={a.questionId} a={a} slug={slug} />
               ))}
             </ul>
           ) : (

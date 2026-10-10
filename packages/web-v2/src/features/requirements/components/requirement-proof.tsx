@@ -17,12 +17,12 @@ import { issueHref } from "@/lib/routes/issues";
 import { agreedTitle, diffColours, VerdictDot, VerdictWord } from "./standing-bits";
 
 const Ins = ({ children }: { children: ReactNode }) => (
-  <ins className="rounded-[3px] px-[3px] no-underline" style={{ background: diffColours.ins.bg, color: diffColours.ins.fg }}>
+  <ins className="rounded-3 px-0.75 no-underline" style={{ background: diffColours.ins.bg, color: diffColours.ins.fg }}>
     {children}
   </ins>
 );
 const Del = ({ children }: { children: ReactNode }) => (
-  <del className="rounded-[3px] px-[3px]" style={{ background: diffColours.del.bg, color: diffColours.del.fg }}>
+  <del className="rounded-3 px-0.75" style={{ background: diffColours.del.bg, color: diffColours.del.fg }}>
     {children}
   </del>
 );
@@ -35,7 +35,7 @@ function listDiff(label: string, before: string[] = [], after: string[] = []) {
   return (
     <div key={label}>
       <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">{label}</h4>
-      <ul className="grid list-disc gap-0.5 pl-[18px] text-14">
+      <ul className="grid list-disc gap-0.5 pl-4.5 text-14">
         {kept.map((x) => (
           <li key={`k-${x}`}>{x}</li>
         ))}
@@ -207,7 +207,7 @@ export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: str
                 ) : (
                   issues.map(({ i, stale }) => (
                     <span key={i.issueId} className="inline-flex min-w-0 items-center gap-1.5">
-                      <Link href={issueHref(slug, i.displayId)} className="max-w-[36ch] truncate text-link hover:underline" title={`${i.displayId} · ${i.title}`}>
+                      <Link href={issueHref(slug, i.displayId)} className="max-w-xs truncate text-link hover:underline" title={`${i.displayId} · ${i.title}`}>
                         {i.title}
                       </Link>
                       <span className="shrink-0 whitespace-nowrap font-mono text-12 text-subtle" data-testid="criterion-issue-key">{i.displayId}</span>
@@ -278,7 +278,7 @@ export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
           <span
             key={`${String(c.check)}-${String(c.detail)}`}
             title={`${String(c.check ?? "")}${typeof c.detail === "string" ? ` — ${c.detail}` : ""}`}
-            className="block h-2.5 w-4 rounded-[2px]"
+            className="block h-2.5 w-4 rounded-2"
             style={{ background: c.passed === true ? LEGEND.ready.dot : LEGEND.you.dot }}
           />
         ))}

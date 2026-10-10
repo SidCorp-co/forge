@@ -15,7 +15,6 @@ import {
   MonoTag,
   Spinner,
   StatusBadge,
-  StatusChip,
   TD,
   Tooltip,
   TR,
@@ -99,7 +98,7 @@ function AgentChip({
       : agentStatus === "queued"
         ? "queued"
         : "failed";
-  const chip = <StatusChip status={status} domain="session" size="sm" />;
+  const chip = <StatusBadge family="run" value={status} />;
   if (status !== "failed") return chip;
   return (
     <Tooltip label={failureTooltipLabel(t, failureInfo ? L("workStep", failureInfo.failedStep) : "", failureInfo ? time.relative(failureInfo.failedAt) : "", failureInfo)} multiline>
@@ -133,12 +132,7 @@ function QueuedChip({ step }: { step: QueuedStepView }) {
   const language = useInterfaceLanguage();
   const gate = useGateReading(step.gate);
   const chip = (
-    <StatusChip
-      status={queuedChipStatus(step)}
-      domain="session"
-      size="sm"
-      label={gate?.short ?? t("issues.queued")}
-    />
+    <StatusBadge family="run" value={queuedChipStatus(step)} label={gate?.short ?? t("issues.queued")} />
   );
   if (!gate) return chip;
   return (

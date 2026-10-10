@@ -32,7 +32,7 @@ export function VerdictDot({ verdict }: { verdict: BcVerdict }) {
   return (
     <span
       aria-hidden
-      className="grid size-4 flex-none place-items-center rounded-full border text-[10px] font-bold leading-none"
+      className="grid size-4 flex-none place-items-center rounded-pill border text-12 font-bold leading-none"
       style={{ background: c.bg, borderColor: c.dot, color: c.fg }}
       data-testid="verdict-dot"
       data-verdict={verdict}
@@ -151,7 +151,7 @@ export function RequirementProgress({ standing, slug, inset }: { standing: Requi
       {line || n > 0 ? (
         <div className={cn("flex flex-wrap items-start gap-x-8 gap-y-3 py-3", inset)}>
           {line ? (
-            <div className="min-w-[min(100%,300px)] max-w-[560px] flex-1">
+            <div className="min-w-[min(100%,300px)] max-w-140 flex-1">
               <Stepper state={standing.state} next={standing.next} />
             </div>
           ) : null}
