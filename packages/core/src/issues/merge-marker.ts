@@ -72,13 +72,18 @@ async function resolveRecordedCommit(issueId: string): Promise<string | null> {
   return latestHandoffCommit(issueId, await lastUnmarkedAt(issueId));
 }
 
+/** The mark's words on the thread; `screenedAt` is the caller's field a refusal points at. */
 async function writeAuditComment(
   issueId: string,
   authorId: string,
   body: string,
   tx: Tx = db,
+  screenedAt?: string,
 ): Promise<AuditComment> {
-  const row = await postIssueNotice({ issueId, authorId, body }, tx);
+  const row = await postIssueNotice(
+    { issueId, authorId, body, ...(screenedAt ? { screenedAt } : {}) },
+    tx,
+  );
   return { id: row.id, body: row.body, parentId: row.parentId };
 }
 
@@ -355,6 +360,7 @@ async function writeMarkTrail(
     args.actor.commentAuthorId,
     `${label}${args.note ? ` — ${args.note}` : ''}${unchanged}${marking ? `\n${markDetail}` : ''}`,
     tx,
+    args.note ? '/note' : undefined,
   );
   const actor = args.actor.hookActor;
   // The record the trail is read from (`mark-trail.ts`); the comment above is only its words.

@@ -11,6 +11,7 @@
  * @direct-test-of packages/core/src/comments/routes.ts
  * @direct-test-of packages/core/src/issues/record-events/routes.ts
  * @direct-test-of packages/core/src/issues/record-events/write.ts
+ * @direct-test-of packages/core/src/issues/merge-marker.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -25,9 +26,11 @@ import {
   rows,
   truncateAll,
 } from '../helpers/factories.js';
+import { seedProjectDocument } from '../helpers/release-world.js';
 
 /** Wording the secret scrubber redacts: `Bearer` and a word of eight letters or more. */
 const SCRUBBED = 'The door admits a Bearer credential through an aliased import.';
+const LANDED = 'e65b54a38943ea78135b2e1c61fab9dfa5881c8e';
 
 let projectId: string;
 let ownerId: string;
@@ -81,6 +84,30 @@ describe('a message the screen refuses', () => {
     expect(ruleOf(res)).toBe('no-redacted-secret');
     expect(pathOf(res)).toBe('/reason');
     expect(await statusOf(id)).toBe('in_progress');
+  });
+
+  it('is refused by name as a merge mark note, and no mark is written', async () => {
+    await seedProjectDocument(projectId, ownerId, { environments: {}, defaultBranch: 'dev' });
+    const id = await issueAt('in_progress');
+    // a branch is the work evidence an agent's mark needs before it reads the note
+    const worked = await api(token, 'PATCH', `/api/issues/${id}`, {
+      workState: { step: 'plan', branch: 'scrubbed-note', headSha: LANDED },
+    });
+    expect(worked.status, JSON.stringify(worked.body)).toBe(200);
+    const res = await api(token, 'POST', `/api/issues/${id}/merge`, {
+      target: 'dev',
+      commit: LANDED,
+      note: SCRUBBED,
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('MESSAGE_REFUSED');
+    expect(ruleOf(res)).toBe('no-redacted-secret');
+    expect(pathOf(res)).toBe('/note');
+    const [row] = await rows<{ marks: number }>(
+      sql`SELECT count(*)::int AS marks FROM issues WHERE id = ${id} AND merged_at IS NOT NULL`,
+    );
+    expect(row?.marks).toBe(0);
   });
 
   it('is refused under the same code and rule as a comment', async () => {

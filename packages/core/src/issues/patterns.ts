@@ -392,7 +392,10 @@ async function deciderOf(
 /** The return's reason, posted on the issue for the run that answers it (Issue lifecycle r14). */
 async function postReturn(tx: Tx, row: IssuePatternRow, actor: PatternActor, reason: string) {
   const body = `Pattern \`${row.pattern}\` was returned by its reviewer: ${reason}\n\nUntil this issue names a catalogued pattern instead, or names \`${row.pattern}\` again with a revised summary for a new review, its work does not move to build and it does not move to awaiting_release (PATTERN_RETURNED).`;
-  const notice = await postIssueNotice({ issueId: row.issueId, authorId: actor.userId, body }, tx);
+  const notice = await postIssueNotice(
+    { issueId: row.issueId, authorId: actor.userId, body, screenedAt: '/reason' },
+    tx,
+  );
   await emitEvents(tx, [
     {
       type: 'comment.created',

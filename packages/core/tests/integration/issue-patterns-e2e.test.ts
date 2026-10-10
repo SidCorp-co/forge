@@ -38,7 +38,7 @@ import {
 
 let readAdmissibleIssues: typeof import('../../src/devices/admissible.js').readAdmissibleIssues;
 
-const tokens = { reviewer: '', author: '', viewer: '' };
+const tokens = { reviewer: '', author: '', viewer: '', agentReviewer: '' };
 const call = callerFor(tokens);
 let reviewerId = '';
 let forge = '';
@@ -54,6 +54,7 @@ beforeAll(async () => {
   const reviewer = await createTestUser({ verified: true });
   const author = await createTestUser({ kind: 'agent' });
   const viewer = await createTestUser({ verified: true });
+  const agentReviewer = await createTestUser({ kind: 'agent' });
   reviewerId = reviewer.id;
   forge = await projectBuiltFrom(reviewer.id, THIS_REPOSITORY);
   other = await projectBuiltFrom(reviewer.id, 'github.com/acme/shop');
@@ -62,12 +63,14 @@ beforeAll(async () => {
     await addProjectMember(p, reviewer.id, 'admin');
     await addProjectMember(p, author.id, 'member');
     await addProjectMember(p, viewer.id, 'viewer');
+    await addProjectMember(p, agentReviewer.id, 'admin');
   }
   box = await createTestDevice(reviewer.id);
   await bindTestRunner(forge, box);
   tokens.reviewer = await userToken(reviewer.id);
   tokens.author = await userToken(author.id);
   tokens.viewer = await userToken(viewer.id);
+  tokens.agentReviewer = await userToken(agentReviewer.id);
 }, 120_000);
 
 afterAll(async () => {
@@ -419,6 +422,24 @@ describe('a returned pattern holds the work until the issue answers it', () => {
     expect(read.returned.code).toBe('PATTERN_RETURNED');
     expect(read.patterns[0]).toMatchObject({ decision: 'returned', unanswered: true });
     expect(await admitted()).toContain(issue);
+  });
+
+  it("refuses an agent reviewer's return whose reason the screen refuses, at the reason, and decides nothing", async () => {
+    const other = await issueAt(forge, 'open');
+    const made = ok(
+      await call('author', 'POST', patterns(other), { pattern: 'cache-door', summary: 'a door' }),
+      201,
+    );
+    const decision = `${patterns(other)}/${made.pattern.id}/decision`;
+    const res = await call('agentReviewer', 'POST', decision, {
+      decision: 'returned',
+      reason: 'it admits a Bearer credential through an aliased import',
+    });
+    expect(res.status).toBe(422);
+    expect(refused(res)).toEqual(['MESSAGE_REFUSED']);
+    expect(res.body.error.refusals[0].path).toBe('/reason');
+    const read = ok(await call('author', 'GET', patterns(other)));
+    expect(read.patterns[0]).toMatchObject({ decision: null });
   });
 
   it('holds the work step out of build and the issue out of awaiting_release, and refuses retracting it', async () => {
