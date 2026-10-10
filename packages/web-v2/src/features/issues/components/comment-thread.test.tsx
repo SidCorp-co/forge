@@ -142,7 +142,7 @@ describe("a decision that answers the issue's open question", () => {
   });
 
   // hop ISS-185 had two: the person names which one the decision answers, or none
-  it("with two open, asks which one it answers and answers only that one", async () => {
+  it("with two open, preselects none, holds the send until one is named, and answers only that one", async () => {
     const other: AgentQuestion = { ...issueRead, id: "q2", steps: [{ round: 1, prompt: "Does it show on a phone?", askedAt: "2026-10-09T03:00:00Z", answerShape: "free_text", needed: "yes or no" }], round: 1, prompt: "Does it show on a phone?" };
     const calls = fakeCore((c) =>
       c.method === "GET" && c.path.startsWith("/questions?") ? { body: { questions: [issueRead, other] } } : { status: 201, body: decided },
@@ -150,10 +150,12 @@ describe("a decision that answers the issue's open question", () => {
     renderWithQuery(<CommentThread issueId="i1" comments={[]} members={[]} />);
     const { user, box } = await openDecisionMode();
     const which = within(await within(box).findByTestId("settles-which"));
-    expect(which.getByRole("radio", { name: "Which flag guards it?" })).toBeChecked();
-    await user.click(which.getByRole("radio", { name: "Does it show on a phone?" }));
+    for (const radio of which.getAllByRole("radio")) expect(radio).not.toBeChecked();
     await user.type(within(box).getByRole("textbox", { name: "Decision" }), "yes");
     await user.type(within(box).getByRole("textbox", { name: "Reason" }), "reps use phones");
+    // written, but no question named yet: the decision cannot be sent
+    expect(within(box).getByRole("button", { name: "Record decision" })).toBeDisabled();
+    await user.click(which.getByRole("radio", { name: "Does it show on a phone?" }));
     await user.click(within(box).getByRole("button", { name: "Record decision" }));
     await waitFor(() => expect(calls).toContainEqual({ method: "POST", path: "/questions/q2/answer", body: { round: 1, text: "yes\n\nreps use phones" } }));
     expect(calls.filter((c) => c.path === "/questions/q1/answer")).toEqual([]);

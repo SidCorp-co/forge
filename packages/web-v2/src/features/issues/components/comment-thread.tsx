@@ -132,11 +132,13 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
   const open = (useIssueQuestions(issueId).data?.questions ?? []).filter(
     (q) => q.status === "open" && q.answerShape === "free_text" && q.round > 0,
   );
-  // the decision settles the newest open question unless the person picks another, or none
+  // one open question is settled unless the person unticks it; with several, nothing is chosen
+  // until the person names the one the decision answers, or none (FB-80)
   const [picked, setPicked] = useState<string | null | undefined>(undefined);
-  const settles = picked === undefined ? open[0] : open.find((q) => q.id === picked);
+  const several = open.length > 1;
+  const settles = picked === undefined ? (several ? undefined : open[0]) : open.find((q) => q.id === picked);
   useHoldPageWhile(record.isPending);
-  const ready = decision.trim().length > 0 && reason.trim().length > 0;
+  const ready = decision.trim().length > 0 && reason.trim().length > 0 && !(several && picked === undefined);
   const refused = record.error ? (refusalsOf(record.error)[0]?.detail ?? formatApiError(record.error)) : null;
   const submit = () => {
     if (!ready) return;
@@ -171,7 +173,7 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
             <span className="text-muted">{open[0].prompt}</span>
           </span>
         </label>
-      ) : open.length > 1 ? (
+      ) : several ? (
         // several open: the person names which one the decision answers, so none is settled by guess
         <fieldset className="grid gap-1.5 text-13" data-testid="settles-which">
           <legend className="mb-1 font-medium">{t("issues.thread.settlesWhich")}</legend>
@@ -182,7 +184,7 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
             </label>
           ))}
           <label className="flex items-start gap-2 text-muted">
-            <input type="radio" name="settles" className="mt-0.5" checked={!settles} onChange={() => setPicked(null)} disabled={record.isPending} />
+            <input type="radio" name="settles" className="mt-0.5" checked={picked === null} onChange={() => setPicked(null)} disabled={record.isPending} />
             {t("issues.thread.settlesNone")}
           </label>
         </fieldset>
