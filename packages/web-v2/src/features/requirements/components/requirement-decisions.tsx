@@ -6,7 +6,7 @@
 // opened (REQ-35 BC-7). Core rolls both up; the composer records a decision on the requirement itself.
 
 import { Collapsible, ErrorState, ProjectLoader } from "@/design";
-import { DecisionComposer, DecisionRow, FoldedDecisions } from "@/features/comments";
+import { DecisionComposer, Decision, FoldedDecisions } from "@/features/comments";
 import { DecisionTarget } from "@/features/comments";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -54,7 +54,7 @@ export function RequirementDecisions({ projectId, slug, reqKey }: { projectId: s
         {decisions.length ? (
           <ul className={busy ? "grid opacity-60" : "grid"} aria-busy={busy || undefined} data-testid="decision-rows">
             {decisions.map((c) => (
-              <DecisionRow key={c.id} c={c} onTarget={c.target.key === reqKey ? undefined : <DecisionTarget slug={slug} target={c.target} />} />
+              <Decision key={c.id} c={c} onTarget={c.target.key === reqKey ? undefined : <DecisionTarget slug={slug} target={c.target} />} />
             ))}
           </ul>
         ) : (

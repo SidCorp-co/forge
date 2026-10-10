@@ -13,7 +13,7 @@ import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { WrittenMark } from "@/lib/i18n/written";
 import { useEntityComments, usePostEntityComment } from "../hooks";
 import type { EntityCommentScope, EntityCommentView } from "../types";
-import { DecisionComposer, DecisionRow } from "./decisions-panel";
+import { DecisionComposer, Decision } from "./decisions";
 
 export type ComposerIntent = "question" | "note" | "decision";
 
@@ -42,7 +42,7 @@ export function DecisionInThread({ children }: { children: React.ReactNode }) {
   );
 }
 
-function CommentRow({ c }: { c: EntityCommentView }) {
+function EntityComment({ c }: { c: EntityCommentView }) {
   const t = useCopy();
   const time = useTimeFormat();
   if (c.intent === "decision") {
@@ -53,7 +53,7 @@ function CommentRow({ c }: { c: EntityCommentView }) {
             <Badge tone="green">{t("common.decisions.decision")}</Badge>
           </span>
           <ul className="grid">
-            <DecisionRow c={c} />
+            <Decision c={c} />
           </ul>
         </DecisionInThread>
       </li>
@@ -129,7 +129,7 @@ export function EntityCommentThread({ projectId, scope, targetRef }: { projectId
               {[...data.comments]
                 .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
                 .map((c) => (
-                  <CommentRow key={c.id} c={c} />
+                  <EntityComment key={c.id} c={c} />
                 ))}
             </ul>
           )
