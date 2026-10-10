@@ -1,13 +1,17 @@
 "use client";
 
-import { type HTMLAttributes, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { HoverCardContent, HoverCardTrigger, HoverCard as Root } from "@/components/ui/hover-card";
 import { cn } from "@/lib/utils/cn";
-import { Popover, type PopoverPlacement } from "../primitives/popover";
+import type { PopoverPlacement } from "../primitives/popover";
+
+type Side = "top" | "bottom" | "left" | "right";
+type Align = "start" | "center" | "end";
 
 const CLOSE_AFTER_MS = 140;
 
 /**
- * Detail that opens on hover or keyboard focus and stays while the pointer is on it; a click pins it
+ * For a canvas node that positions its own card (workflows' C4 nodes): detail that opens on hover or keyboard focus and stays while the pointer is on it; a click pins it
  * until a press outside or Escape. The trigger and the card share one timer, so moving from one to the
  * other does not close it.
  */
@@ -55,56 +59,35 @@ export function useHoverCard() {
   };
 }
 
-export interface HoverCardProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children" | "content"> {
+export interface HoverCardProps {
   /** What is always shown; it takes focus so the card opens from the keyboard too. */
   children: ReactNode;
   content: ReactNode;
   /** Names the card for assistive tech. */
   label: string;
   placement?: PopoverPlacement;
+  className?: string;
   cardClassName?: string;
+  "data-testid"?: string;
 }
 
-/** A trigger with a detail card on hover, focus or click: the facts stay on the page, their detail behind them. */
-export function HoverCard({ children, content, label, placement = "bottom-start", className, cardClassName, ...rest }: HoverCardProps) {
-  const anchor = useRef<HTMLSpanElement>(null);
-  const h = useHoverCard();
+/** A trigger with a detail card on hover or focus (Base UI PreviewCard): the facts stay on the page, their detail behind them. */
+export function HoverCard({ children, content, label, placement = "bottom-start", className, cardClassName, "data-testid": testId }: HoverCardProps) {
+  const [side, align = "center"] = placement.split("-") as [Side, Align?];
   return (
-    <>
-      {/* biome-ignore lint/a11y/useSemanticElements: the trigger wraps arbitrary content and only discloses detail; a <button> would nest interactive content */}
-      <span
-        ref={anchor}
-        role="button"
-        tabIndex={0}
-        aria-expanded={h.open}
-        aria-haspopup="dialog"
-        className={cn("cursor-help rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent", className)}
-        onClick={() => (h.pinned ? h.close() : h.pin())}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") h.close();
-          else if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            h.pinned ? h.close() : h.pin();
-          }
-        }}
-        {...h.trigger}
-        {...rest}
+    <Root>
+      <HoverCardTrigger
+        delay={200}
+        closeDelay={CLOSE_AFTER_MS}
+        render={<span tabIndex={0} />}
+        className={cn("cursor-help rounded-xs outline-none focus-visible:shadow-focus", className)}
+        data-testid={testId}
       >
         {children}
-      </span>
-      <Popover
-        open={h.open}
-        anchor={anchor}
-        onDismiss={h.close}
-        placement={placement}
-        role="dialog"
-        aria-label={label}
-        maxWidth={360}
-        className={cn("rounded-lg border border-line bg-surface px-3.5 py-3 text-13 shadow-overlay", cardClassName)}
-        {...h.card}
-      >
+      </HoverCardTrigger>
+      <HoverCardContent side={side} align={align} aria-label={label} className={cn("w-auto max-w-sm bg-surface px-3.5 py-3 text-13 text-fg", cardClassName)}>
         {content}
-      </Popover>
-    </>
+      </HoverCardContent>
+    </Root>
   );
 }

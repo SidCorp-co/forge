@@ -32,7 +32,7 @@ export function ColdBoot({ label = "booting control plane…" }: { label?: strin
         <div
           style={{
             position: "absolute", inset: "-30%", borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(241,90,43,0.16), rgba(241,90,43,0) 62%)",
+            background: "radial-gradient(circle, color-mix(in oklch, var(--accent) 16%, transparent), transparent 62%)",
             animation: "fm-glow 2.6s var(--ease-in-out) infinite",
           }}
         />
