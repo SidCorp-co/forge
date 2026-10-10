@@ -1,0 +1,1 @@
+**Requirements move on by themselves, and Forge says things briefly.** A ready draft is proposed, accepted and agreed where nobody must confirm. Reporters hear each step, replaced assumptions read Corrected, and every string is twelve words or fewer.

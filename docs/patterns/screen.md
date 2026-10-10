@@ -57,9 +57,9 @@ The same rule is project knowledge `ui-copy-rule`, which every agent run reads.
 7. Past and voided items go to Activity, not the top.
 8. Budget: the first screen at 1440x900 shows at most 300 words; a copy string is at most 12 words (refusals and confirmations 20). A longer string is a defect, not a style choice.
 
-Held by `scripts/check-copy-budget.mjs` (the `language` axis): a copy string over budget is refused
-naming its file, key and word count, and the strings frozen in `.forge/copy-budget-baseline.json`
-only shrink. A key is a refusal or confirmation when a segment of its path matches
+Held by `scripts/check-copy-budget.mjs` (the `language` axis): a copy string over budget, in the web
+copy files or in what core says (`packages/contracts/src/said-keys.ts`), is refused naming its file,
+key and word count. A key is a refusal or confirmation when a segment of its path matches
 `refusalSegments` in `.forge/conformance.json`. The first-screen budget is held for the issue page
 by `packages/web-v2/src/features/issues/components/issue-detail-screen.test.tsx`, whose page is the
 reference for rules 1, 3, 5, 6 and 7.

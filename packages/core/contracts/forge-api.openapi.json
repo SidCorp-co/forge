@@ -14079,6 +14079,11 @@
                     "maxLength": 200,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "startedAt": {
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -21788,6 +21793,11 @@
                               "minLength": 3,
                               "type": "string"
                             },
+                            "field": {
+                              "maxLength": 40,
+                              "minLength": 1,
+                              "type": "string"
+                            },
                             "owner": {
                               "maxLength": 200,
                               "minLength": 1,
@@ -21801,6 +21811,10 @@
                             "text": {
                               "maxLength": 2000,
                               "minLength": 5,
+                              "type": "string"
+                            },
+                            "value": {
+                              "maxLength": 2000,
                               "type": "string"
                             }
                           },
@@ -30624,6 +30638,11 @@
                               "minLength": 3,
                               "type": "string"
                             },
+                            "field": {
+                              "maxLength": 40,
+                              "minLength": 1,
+                              "type": "string"
+                            },
                             "owner": {
                               "maxLength": 200,
                               "minLength": 1,
@@ -30637,6 +30656,10 @@
                             "text": {
                               "maxLength": 2000,
                               "minLength": 5,
+                              "type": "string"
+                            },
+                            "value": {
+                              "maxLength": 2000,
                               "type": "string"
                             }
                           },
@@ -32855,6 +32878,11 @@
                               "minLength": 3,
                               "type": "string"
                             },
+                            "field": {
+                              "maxLength": 40,
+                              "minLength": 1,
+                              "type": "string"
+                            },
                             "owner": {
                               "maxLength": 200,
                               "minLength": 1,
@@ -32868,6 +32896,10 @@
                             "text": {
                               "maxLength": 2000,
                               "minLength": 5,
+                              "type": "string"
+                            },
+                            "value": {
+                              "maxLength": 2000,
                               "type": "string"
                             }
                           },
@@ -33434,6 +33466,11 @@
                               "minLength": 3,
                               "type": "string"
                             },
+                            "field": {
+                              "maxLength": 40,
+                              "minLength": 1,
+                              "type": "string"
+                            },
                             "owner": {
                               "maxLength": 200,
                               "minLength": 1,
@@ -33447,6 +33484,10 @@
                             "text": {
                               "maxLength": 2000,
                               "minLength": 5,
+                              "type": "string"
+                            },
+                            "value": {
+                              "maxLength": 2000,
                               "type": "string"
                             }
                           },

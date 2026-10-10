@@ -1104,18 +1104,17 @@ Exit codes: `0` clean, `1` violations found, `2` invalid invocation.
 
 CI cannot be bypassed — translate the offending strings or add an `i18n-allow:` directive with a reason.
 
-## check-copy-budget.mjs — web copy strings are short
+## check-copy-budget.mjs — copy strings are short
 
-Every English string in `packages/web-v2/src/**/copy*.json` and `lib/i18n/copy/**` is at most 12
-words, a placeholder counting as one; a refusal or confirmation at most 20 (REQ-43 BC-1, BC-2). A
-string is a refusal when a dot-separated segment of its key matches `refusalSegments` in
+Every English string in `packages/web-v2/src/**/copy*.json` and `lib/i18n/copy/**`, and every
+English template core says in `packages/contracts/src/said-keys.ts` (`saidKeys`), is at most 12
+words, a placeholder counting as one; a refusal or confirmation at most 20 (REQ-43 BC-1, BC-2,
+BC-11). A string is a refusal when a dot-separated segment of its key matches `refusalSegments` in
 `.forge/conformance.json` (`checkers.copy-budget`), never guessed from its sentence. Only English is
-read: the other languages translate it. The strings over budget when the gate landed are frozen in
-`.forge/copy-budget-baseline.json` by file and key with their word count, which the `language` axis
-declares `improves: down`: a new string over budget, one that grew, or a fixed one still listed is
-refused naming file, key, count and budget. `--trim` rewrites the baseline downward only and
-`--freeze` writes the first one. The copy-budget-baseline amnesty prices what it trades. The rule's
-text is the Copy rule in `docs/patterns/screen.md`.
+read: the other languages translate it. No string is frozen: every one over budget is refused naming
+file, key, count and budget. A registry line naming `en:` that the gate cannot read is refused too,
+so a reformat cannot drop the registry from the scan. The rule's text is the Copy rule in
+`docs/patterns/screen.md`.
 
 ## The web suite's language checks — Forge is not multilingual
 
