@@ -134,6 +134,7 @@ function FrameEntry({ preview, issueLabel, height = 520, frameRef, round, onRelo
           ref={setIframe}
           src={src}
           title={t("previews.frame.title", { issue: issueLabel })}
+          // eslint-disable-next-line @eslint-react/dom-no-unsafe-iframe-sandbox -- preview runs on a separate preview origin; allow-same-origin is required for its cookie and grants no access to the app origin
           sandbox={PREVIEW_SANDBOX}
           referrerPolicy="no-referrer"
           onLoad={() => setLoaded(true)}
