@@ -235,7 +235,6 @@ function ConfigSection({
   const module = providerModule(connection.provider);
   const Section = CONNECTION_SECTIONS.get(connection.provider);
   const t = useCopy();
-  const language = useInterfaceLanguage();
 
   if (!Section) {
     return (
@@ -244,7 +243,7 @@ function ConfigSection({
         <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
           {module?.connectionNote
             ? t(module.connectionNote)
-            : t("integrations.edit.noConfig", { provider: providerLabel(connection.provider, language) })}
+            : t("integrations.edit.noConfig")}
         </p>
       </section>
     );

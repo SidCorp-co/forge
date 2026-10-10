@@ -48,7 +48,7 @@ export function PoolReadBanner({
 			<Banner tone="danger">
 				<span className="font-semibold">{stale ? t("runners.poolRead.blindStale") : t("runners.poolRead.blind")}</span>{" "}
 				— {t("runners.poolRead.unreadSince", { since: ago(poolRead.unreadSince), n: poolRead.consecutive })}{" "}
-				<code className="font-mono text-12">{lastFailure.what}</code>. {t("runners.poolRead.noQueue")}
+				<code className="font-mono text-12">{lastFailure.what}</code>.
 				{asOf}
 			</Banner>
 		);

@@ -20,7 +20,7 @@ export const SENSITIVE_DATA_BADGES: Record<
 	no_egress: {
 		label: "No egress",
 		tone: "failure",
-		tip: "Content is scrubbed on write; product content (requirements, designs, issues, onboarding answers) reaches agents scrubbed, and operational content (feedback, attachments, conversations with people) never reaches a provider, which runs outside the data's residency",
+		tip: "Scrubbed on write; operational content never reaches a provider",
 	},
 };
 

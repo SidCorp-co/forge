@@ -57,7 +57,7 @@ describe("the inline first-visit hint", () => {
     const calls = serve([]);
     renderWithQuery(<TourHint tourId="integrations" projectRole="admin" />);
     const hint = await screen.findByTestId("tour-hint-integrations");
-    expect(hint).toHaveTextContent("A quick look in 3 steps?");
+    expect(hint).toHaveTextContent("New here: a quick look in 3 steps?");
     await userEvent.click(within(hint).getByRole("button", { name: "Later" }));
     const put = calls.find((c) => c.method === "PUT");
     expect(put?.path).toBe("/me/product-state/tour:integrations");

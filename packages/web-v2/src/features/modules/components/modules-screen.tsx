@@ -21,7 +21,7 @@ export function ModulesScreen({ projectId, slug }: { projectId: string; slug: st
           {title}
           {data.modules.length === 0 ? (
             <div className="px-5 py-10">
-              <EmptyState title={t("modules.empty.title")} message={t("modules.empty.message")} />
+              <EmptyState message={t("modules.empty.title")} />
             </div>
           ) : (
             <ModuleLevel

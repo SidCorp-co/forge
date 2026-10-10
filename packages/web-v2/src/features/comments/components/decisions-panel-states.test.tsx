@@ -45,7 +45,7 @@ describe("the decisions panel's states", () => {
   it("reads an empty list in words and keeps the composer", () => {
     q.data = { comments: [] };
     mount();
-    expect(screen.getByText("No decisions recorded yet.")).toBeTruthy();
+    expect(screen.getByText("No decisions")).toBeTruthy();
     expect(screen.getByTestId("decisions-panel")).toBeTruthy();
   });
 });

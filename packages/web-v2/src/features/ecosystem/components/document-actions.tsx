@@ -98,42 +98,42 @@ export function ReasonAction({
 }
 
 function DraftActions({ view, projectId, slug }: { view: DocumentView; projectId: string; slug: string }) {
+  const t = useCopy();
   return (
     <>
       <Link
         href={ecosystemRoutes.compose(slug, { draft: view.id })}
         className="inline-flex items-center rounded-md border border-line-strong px-[11px] py-[6px] text-13 hover:bg-hover"
       >
-        Edit draft
+        {t("ecosystem.doc.editDraft")}
       </Link>
+      {/* Core submits only a draft; an edit is what turns a returned document back into one. */}
       {view.document.state === "draft" ? (
         <ReasonAction
-          label="Submit"
-          confirmLabel="Submit"
+          label={t("ecosystem.doc.submit")}
+          confirmLabel={t("ecosystem.doc.submit")}
           reason="none"
           variant="primary"
           run={() => ecosystemApi.submit(projectId, view.id)}
         />
-      ) : (
-        // Core submits only a draft, and an edit is what turns a returned document back into one.
-        <p className="self-center text-13 text-muted">Edit it to submit it again.</p>
-      )}
+      ) : null}
     </>
   );
 }
 
 function HoldAction({ projectId, thread, held }: { projectId: string; thread: string; held: boolean }) {
+  const t = useCopy();
   return held ? (
     <ReasonAction
-      label="Release the conversation"
-      confirmLabel="Release"
+      label={t("ecosystem.doc.releaseConversation")}
+      confirmLabel={t("ecosystem.action.release")}
       reason="optional"
       run={(reason) => ecosystemApi.hold(projectId, thread, "release", reason || undefined)}
     />
   ) : (
     <ReasonAction
-      label="Hold the conversation"
-      confirmLabel="Hold"
+      label={t("ecosystem.doc.holdConversation")}
+      confirmLabel={t("ecosystem.action.hold")}
       reason="required"
       run={(reason) => ecosystemApi.hold(projectId, thread, "hold", reason)}
     />
@@ -141,9 +141,10 @@ function HoldAction({ projectId, thread, held }: { projectId: string; thread: st
 }
 
 export function DocumentActions({ view, projectId, slug, role }: { view: DocumentView; projectId: string; slug: string; role: Role }) {
+  const t = useCopy();
   const d = view.document;
   if (!canWriteProject(role)) {
-    return <ReadOnlyNotice role={role} slug={slug} writes="drafts, replies and holds" />;
+    return <ReadOnlyNotice role={role} slug={slug} />;
   }
   const sender = view.side === "sender";
   const editable = sender && (d.state === "draft" || d.state === "returned");
@@ -156,23 +157,23 @@ export function DocumentActions({ view, projectId, slug, role }: { view: Documen
           href={ecosystemRoutes.compose(slug, { inReplyTo: d.number, ecosystem: d.ecosystem })}
           className="inline-flex items-center rounded-md bg-accent px-[11px] py-[6px] text-13 text-on-accent"
         >
-          Reply
+          {t("ecosystem.doc.reply")}
         </Link>
       ) : null}
       {standing ? (
         <>
           <ReasonAction
-            label="Withdraw"
-            confirmLabel="Withdraw it"
+            label={t("ecosystem.doc.withdraw")}
+            confirmLabel={t("ecosystem.doc.withdrawIt")}
             reason="required"
             variant="danger"
             run={(reason) => ecosystemApi.withdraw(projectId, view.id, reason)}
           />
           <ReasonAction
-            label="Supersede"
-            confirmLabel="Supersede it"
+            label={t("ecosystem.doc.supersede")}
+            confirmLabel={t("ecosystem.doc.supersedeIt")}
             reason="required"
-            extra={{ label: "Replacement number", placeholder: "the published replacement, e.g. FP-ACK-3" }}
+            extra={{ label: t("ecosystem.doc.replacement"), placeholder: t("ecosystem.doc.replacementPlaceholder") }}
             run={(reason, by) => ecosystemApi.supersede(projectId, view.id, by, reason)}
           />
         </>

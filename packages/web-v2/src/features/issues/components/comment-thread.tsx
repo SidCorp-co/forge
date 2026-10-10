@@ -159,10 +159,10 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
   };
   return (
     <div className="grid gap-3" data-testid="record-decision">
-      <Field label={t("common.decisions.decision")} hint={t("issues.thread.decisionHint")}>
+      <Field label={t("common.decisions.decision")}>
         <Textarea rows={2} value={decision} onChange={(e) => setDecision(e.target.value)} maxLength={4000} disabled={record.isPending} />
       </Field>
-      <Field label={t("common.decisions.reason")} hint={t("issues.thread.reasonHint")}>
+      <Field label={t("common.decisions.reason")}>
         <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={4000} disabled={record.isPending} />
       </Field>
       {open.length === 1 && open[0] ? (
@@ -359,7 +359,6 @@ export function CommentThread({
       {!readOnly && <Composer issueId={issueId} />}
       {ordered.length === 0 ? (
         <EmptyState
-          title={t("issues.thread.emptyTitle")}
           message={t("issues.thread.empty")}
           mascot={false}
         />

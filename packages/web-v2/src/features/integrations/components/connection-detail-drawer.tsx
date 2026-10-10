@@ -41,11 +41,10 @@ const SECTIONS = new Map(
 function ProviderSection({ provider, projectId }: { provider: string; projectId: string }) {
   const Section = SECTIONS.get(provider);
   const t = useCopy();
-  const language = useInterfaceLanguage();
   if (!Section) {
     return (
       <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
-        {t("integrations.detail.nothingToConfigure", { provider: providerLabel(provider, language) })}
+        {t("integrations.detail.nothingToConfigure")}
       </p>
     );
   }

@@ -3,20 +3,15 @@
 import { EmptyState } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 
-/** What an empty page says: a module with nothing tagged, a filter that matched nothing, nothing waiting, or a new project. */
+/** What an empty list says, in a word or two (REQ-43 BC-6): a filter that matched nothing, nothing waiting on you, or no issues. */
 export function IssuesEmptyState({
-  moduleName,
   inModule,
-  creatorName,
   isFiltered,
   projectHasIssues,
   onClear,
   onNewIssue,
 }: {
-  moduleName: string | null;
   inModule: boolean;
-  /** Set when the list is filtered to one creator. */
-  creatorName: string | null;
   isFiltered: boolean;
   projectHasIssues: boolean;
   onClear: () => void;
@@ -26,25 +21,8 @@ export function IssuesEmptyState({
   return (
     <div className="border-t border-line px-4 py-6 sm:px-6">
       <EmptyState
-        title={
-          inModule
-            ? t("issues.empty.moduleTitle")
-            : isFiltered
-              ? t("issues.empty.filteredTitle")
-              : projectHasIssues
-                ? t("issues.empty.notYoursTitle")
-                : t("issues.empty.noneTitle")
-        }
         message={
-          inModule
-            ? t("issues.empty.module", { module: moduleName ?? t("issues.empty.thisModule") })
-            : creatorName !== null
-              ? t("issues.empty.creator", { name: creatorName })
-              : isFiltered
-                ? t("issues.empty.filtered")
-                : projectHasIssues
-                  ? t("issues.empty.notYours")
-                  : t("issues.empty.none")
+          isFiltered ? t("issues.empty.filtered") : projectHasIssues && !inModule ? t("issues.empty.notYours") : t("issues.empty.none")
         }
         mascot={!isFiltered}
         action={

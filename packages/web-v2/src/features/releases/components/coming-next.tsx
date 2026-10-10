@@ -55,7 +55,7 @@ export function ComingNext({
   return (
     <section aria-label={t("releases.comingNext")} className="pt-4" data-testid="coming-next">
       <div className="px-5 max-md:px-3">
-        <ViewHeading hint={t("releases.comingNextHint")}>{t("releases.comingNext")}</ViewHeading>
+        <ViewHeading>{t("releases.comingNext")}</ViewHeading>
       </div>
       <div className={`${GRID} h-8 border-y border-line-subtle bg-sunken text-11-5 font-semibold text-subtle max-md:hidden`} data-testid="coming-next-header">
         <span>{t("list.col.key")}</span>

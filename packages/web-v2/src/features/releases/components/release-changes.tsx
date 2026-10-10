@@ -153,7 +153,7 @@ export function WhatChanges({ changes, slug, headed = true }: { changes: Release
       <div>
         {headed ? (
           <>
-            <ViewHeading hint={t("releases.changes.hint")}>{t("releases.changes.title")}</ViewHeading>
+            <ViewHeading>{t("releases.changes.title")}</ViewHeading>
             <p className="text-13-5" data-testid="release-changes-sentence">
               {changesSentence(changes, t, label)}
             </p>

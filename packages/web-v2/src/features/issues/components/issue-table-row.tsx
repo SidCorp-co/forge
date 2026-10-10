@@ -219,7 +219,6 @@ export function LastWriteCell({
   const time = useTimeFormat();
   if (!written) return <span className="fg-caption">—</span>;
   const label = time.elapsed(written.ms);
-  const measures = t("issues.lastWrite.measures");
   return (
     <span
       className={
@@ -229,8 +228,8 @@ export function LastWriteCell({
       }
       title={
         written.stale
-          ? `${t("issues.lastWrite.stale", { age: label })} ${measures}`
-          : `${t("issues.lastWrite.fresh", { age: label })} ${measures}`
+          ? t("issues.lastWrite.stale", { age: label })
+          : t("issues.lastWrite.fresh", { age: label })
       }
     >
       {written.stale && <Icon name="clock" size={12} />}

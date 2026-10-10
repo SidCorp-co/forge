@@ -129,7 +129,7 @@ export function BulkActionBar({
                 <RefusedAction
                   labels={[t("issues.bulk.setStatus")]}
                   reasonId={statusReasonId}
-                  reason={t("issues.bulk.noCommonStatus")}
+                  reason={t("issues.bulk.statusRefused")}
                 />
               ) : (
                 <Menu
@@ -167,7 +167,7 @@ export function BulkActionBar({
             variant="secondary"
             size="sm"
             disabled={!batchRelease.enabled || bulk.isPending}
-            title={batchRelease.reason ?? t("issues.bulk.batchHint")}
+            title={batchRelease.reason ?? undefined}
             onClick={() => setBatchDialogOpen(true)}
           >
             {t("issues.bulk.batchRelease")}

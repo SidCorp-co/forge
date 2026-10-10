@@ -65,13 +65,9 @@ export function CreateApp({ projectId, onBack }: { projectId: string; onBack: ((
         <PageSectionTitle>{t("integrations.github.createTitle")}</PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody className="flex flex-col gap-4">
-        <p className="fg-body-sm text-muted">
-          {t("integrations.github.createIntro")}
-        </p>
-
         <AppOwner projectId={projectId} />
 
-        <Field label={t("integrations.github.org")} hint={t("integrations.github.orgHint")}>
+        <Field label={t("integrations.github.org")}>
           <Input
             value={org}
             onChange={(e) => setOrg(e.target.value)}

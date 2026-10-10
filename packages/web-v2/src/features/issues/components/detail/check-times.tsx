@@ -104,7 +104,7 @@ export function CheckTimes({ issueId, slug, sessions }: { issueId: string; slug:
         ))}
       </ul>
       {view.checks.length === 0 ? (
-        <p className="mt-2 text-12 text-subtle">{t("issues.checks.noneHint")}</p>
+        <p className="mt-2 text-12 text-subtle">{t("issues.checks.none")}</p>
       ) : (
         <ul className="mt-3 divide-y divide-line-subtle" aria-label={t("issues.checks.each")}>
           {view.checks.map((c) => (

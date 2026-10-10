@@ -111,13 +111,11 @@ export function AddBindingForm({
 
 /** The kebab-case label an extra binding of a provider needs. */
 export function LabelField({
-  hint,
   placeholder,
   value,
   onChange,
   error,
 }: {
-  hint: string;
   placeholder: string;
   value: string;
   onChange: (label: string) => void;
@@ -125,7 +123,7 @@ export function LabelField({
 }) {
   const t = useCopy();
   return (
-    <Field label={t("integrations.provider.label")} hint={hint} required>
+    <Field label={t("integrations.provider.label")} required>
       <Input placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value.toLowerCase())} />
       {error && <p className="fg-body-sm text-danger">{error}</p>}
     </Field>

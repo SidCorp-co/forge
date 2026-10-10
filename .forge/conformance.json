@@ -58,7 +58,7 @@
     "language": {
       "level": 3,
       "gate": "check-source-language + check-copy-budget",
-      "owns": "English-only source policy; how long a copy string may be, web copy and what core says (12 words, 20 for a refusal or confirmation)",
+      "owns": "English-only source policy; how long a copy string may be, in web copy and in what core says (12 words, 20 for a refusal or confirmation, 2 for an empty state) and that none explains",
       "baseline": null
     },
     "record": {
@@ -71,14 +71,17 @@
   },
   "checkers": {
     "copy-budget": {
-      "$comment": "REQ-43 BC-1, BC-2, BC-11 (ISS-496) \u2014 the copy rule's budget. Every English string in packages/web-v2/src/**/copy*.json and lib/i18n/copy/**, and every English template in `saidKeys` (BC-11: what core says), is at most `budget` words, each {placeholder} one word. A refusal or confirmation is at most `refusalBudget`: a string is one when any dot-separated segment of its key matches `refusalSegments`, a convention declared here and never guessed from the sentence. English only, because a key's other languages translate it (the owner ruled Forge not multilingual, 2026-10-08). No baseline: the strings frozen when the gate landed were all rewritten, so every string over budget is refused.",
+      "$comment": "REQ-43 BC-1, BC-2, BC-4, BC-6, BC-11 (ISS-496) — the copy rule's budget. Every English string in packages/web-v2/src/**/copy*.json and lib/i18n/copy/** is at most `budget` words, each {placeholder} one word, and so is every English template core says in `saidKeys` (BC-11), whose keys name sentences and so take only the refusal convention. What a key is comes from a convention declared here and never guessed from the sentence: a refusal or confirmation (any segment matching `refusalSegments`) holds at most `refusalBudget`; an empty state (last segment matching `emptySegments`) at most `emptyBudget`; an explanation of a section, a button or who can see something (last segment matching `explainSegments`) is refused at any length. English only, because a key's other languages translate it (the owner ruled Forge not multilingual, 2026-10-08). No baseline: every string holds the budget.",
       "scanRoot": "packages/web-v2/src",
       "copyDirs": [
         "packages/web-v2/src/lib/i18n/copy"
       ],
       "budget": 12,
       "refusalBudget": 20,
+      "emptyBudget": 2,
       "refusalSegments": "^(refusal|refused|authority-refused|denied\\w*|cannot\\w*|confirm\\w*|error|failed|revoked|declineMessage|moveConfirm|remove\\w*|delete\\w*(Message|Body)|\\w*(Refused|Refuse\\w*|Denied|Confirm|Confirmation|Error|Failed|Cannot\\w*))$",
+      "emptySegments": "^(empty|empty[A-Z]\\w*|\\w*Empty|none|none[A-Z]\\w*|nothing\\w*|no[A-Z]\\w*)$",
+      "explainSegments": "^(hint|\\w*Hint|intro|\\w*Intro|help|\\w*Help|explain\\w*|\\w*Explainer|lede|\\w*Lede|tagline|blurb|emptyMessage|emptyBody|noneBody)$",
       "saidKeys": "packages/contracts/src/said-keys.ts"
     },
     "pattern-catalog": {

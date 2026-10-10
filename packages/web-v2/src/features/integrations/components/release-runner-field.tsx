@@ -35,7 +35,6 @@ function Editor({
   inherited,
   canEdit,
   disabledReason,
-  hint,
   none,
   busy,
   failure,
@@ -48,7 +47,6 @@ function Editor({
   inherited?: string | null;
   canEdit: boolean;
   disabledReason: ProductCopyKey;
-  hint: ProductCopyKey;
   /** What this tier's silence means, which differs between a project and a shared credential. */
   none: ProductCopyKey;
   busy: boolean;
@@ -77,7 +75,7 @@ function Editor({
         )}
       </p>
       {canEdit ? (
-        <Field label={heading} hint={t(hint)}>
+        <Field label={heading}>
           <div className="flex items-center gap-2">
             <Input
               value={draft}
@@ -148,7 +146,6 @@ export function BindingReleaseRunnerField({
       inherited={declared === null ? effective : null}
       canEdit={canEdit}
       disabledReason="integrations.access.deniedProject"
-      hint="integrations.releaseRunner.bindingHint"
       none="integrations.releaseRunner.noneBinding"
       busy={update.isPending}
       failure={failure}
@@ -194,7 +191,6 @@ export function ConnectionReleaseRunnerField({
       declared={declared}
       canEdit={canManage}
       disabledReason="integrations.releaseRunner.deniedConnection"
-      hint="integrations.releaseRunner.connectionHint"
       none="integrations.releaseRunner.noneConnection"
       busy={update.isPending}
       failure={failure}

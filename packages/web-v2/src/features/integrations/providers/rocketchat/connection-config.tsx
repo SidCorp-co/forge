@@ -22,7 +22,7 @@ export const RocketchatConnectionConfig: ConnectionSection = ({ connection, canM
   return (
     <section className="flex flex-col gap-3">
       <PageSectionTitle>{t("integrations.detail.config")}</PageSectionTitle>
-      <Field label={t("integrations.rocket.server")} hint={t("integrations.rocket.serverHint")}>
+      <Field label={t("integrations.rocket.server")}>
         <Input
           value={serverUrl}
           onChange={(e) => setServerUrl(e.target.value)}

@@ -87,7 +87,7 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
   if (items.length === 0) {
     return (
       <div className="grid flex-1 place-items-center p-6">
-        <EmptyState title={t("runs.report.empty")} message={t("runs.report.emptyBody")} />
+        <EmptyState message={t("runs.report.empty")} />
       </div>
     );
   }

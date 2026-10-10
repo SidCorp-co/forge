@@ -42,13 +42,12 @@ export const PAIR_A_RUNNER = "/runners";
 interface ModeMeta {
   mode: ConversationMode;
   label: ProductCopyKey;
-  hint: ProductCopyKey;
 }
 
-/** What each mode is, in the words a person picking between them needs (the product copy's keys). */
+/** Each mode by its label (the product copy's keys). */
 export const MODES: ModeMeta[] = [
-  { mode: "assistant", label: "shell.mode.assistant", hint: "shell.mode.assistantHint" },
-  { mode: "agent", label: "shell.mode.agent", hint: "shell.mode.agentHint" },
+  { mode: "assistant", label: "shell.mode.assistant" },
+  { mode: "agent", label: "shell.mode.agent" },
 ];
 
 /** The box's own placeholder, so the mode is readable while typing too. */
@@ -158,7 +157,7 @@ function ModeTrack({
       data-testid="conversation-mode-toggle"
     >
       <legend className="sr-only">{t("shell.mode.legend")}</legend>
-      {MODES.map(({ mode, label, hint }) => {
+      {MODES.map(({ mode, label }) => {
         const isBlocked = mode === "agent" && blocked;
         const selected = value === mode;
         return (
@@ -180,7 +179,6 @@ function ModeTrack({
               checked={selected}
               disabled={disabled}
               aria-describedby={isBlocked ? describedBy : undefined}
-              title={isBlocked ? undefined : t(hint)}
               onChange={() => (isBlocked ? onBlockedPress() : onChange(mode))}
             />
             {t(label)}
@@ -279,7 +277,7 @@ function ModeMenu({
           }}
           className="absolute bottom-full left-0 z-20 mb-2 w-64 rounded-md border border-line bg-surface p-1 shadow-lg"
         >
-          {MODES.map(({ mode, label, hint }, index) => {
+          {MODES.map(({ mode, label }, index) => {
             const isBlocked = mode === "agent" && blocked;
             return (
               <button
@@ -299,7 +297,6 @@ function ModeMenu({
                 className="flex w-full flex-col items-start gap-0.5 rounded-sm px-2 py-1.5 text-left hover:bg-sunken"
               >
                 <span className="fg-body-sm font-semibold text-fg">{t(label)}</span>
-                <span className="fg-caption text-muted">{t(hint)}</span>
               </button>
             );
           })}

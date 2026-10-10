@@ -19,8 +19,7 @@ import type { LandingShape } from "../types";
 const LANDING_MAX = 2000;
 
 // ISS-1327 — on a project whose work lands outside git there is no branch to name: what landed is
-// a live page, a CMS entry, a storefront resource, and the close accepts a mark only if it says so
-// (`issues.merge.landingBlurb`, beside the git reading `issues.merge.blurb`).
+// a live page, a CMS entry, a storefront resource, and the close accepts a mark only if it says so.
 
 interface MergeMarkerControlProps {
   issueId: string;
@@ -78,7 +77,6 @@ export function MergeMarkerControl({
       {open && (
         <SlideOver open onClose={() => setOpen(false)} title={t("issues.merge.title")} width={480}>
           <div className="flex h-full flex-col gap-4">
-            <p className="fg-body-sm text-muted">{outsideGit ? t("issues.merge.landingBlurb") : t("issues.merge.blurb")}</p>
             <Field
               label={t("issues.merge.where")}
               required

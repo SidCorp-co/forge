@@ -28,7 +28,7 @@ import { Pill, scopeLabel } from "./status-pill";
 
 const REASON_META: Record<
   McpServerPreviewEntry["reason"],
-  { label: ProductCopyKey; fg: string; bg: string; icon: "check" | "dot" | "alert"; hint?: ProductCopyKey }
+  { label: ProductCopyKey; fg: string; bg: string; icon: "check" | "dot" | "alert"; why?: ProductCopyKey }
 > = {
   ok: { label: "integrations.mcp.ok", fg: "var(--green-600)", bg: "var(--green-50)", icon: "check" },
   not_configured: { label: "integrations.mcp.notConfigured", fg: "var(--fg-subtle)", bg: "var(--bg-sunken)", icon: "dot" },
@@ -39,21 +39,20 @@ const REASON_META: Record<
     fg: "var(--fg-subtle)",
     bg: "var(--bg-sunken)",
     icon: "dot",
-    hint: "integrations.mcp.shadowedHint",
+    why: "integrations.mcp.shadowedWhy",
   },
   not_granted: {
     label: "integrations.mcp.notGranted",
     fg: "var(--amberw-600)",
     bg: "var(--amberw-50)",
     icon: "alert",
-    hint: "integrations.mcp.notGrantedHint",
   },
   not_resolved: {
     label: "integrations.mcp.notResolved",
     fg: "var(--red-600)",
     bg: "var(--red-50)",
     icon: "alert",
-    hint: "integrations.mcp.notResolvedHint",
+    why: "integrations.mcp.notResolvedWhy",
   },
 };
 
@@ -110,7 +109,7 @@ function McpServerRow({
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
   const checked = time.relative(entry.lastHealthAt);
-  const hint = REASON_META[entry.reason].hint;
+  const why = REASON_META[entry.reason].why;
 
   return (
     <li className="flex flex-col gap-1.5 py-2.5">
@@ -142,11 +141,7 @@ function McpServerRow({
         </p>
       )}
 
-      {hint && (
-        <p className="fg-body-sm text-[var(--amberw-600)]">
-          {t(hint, { grant: t("integrations.access.grant") })}
-        </p>
-      )}
+      {why && <p className="fg-body-sm text-[var(--amberw-600)]">{t(why)}</p>}
 
       {binding && (
         <AgentAccessControl projectId={projectId} binding={binding} canEdit={canEdit} />
@@ -195,7 +190,6 @@ export function McpServersPanel({
     <PageSection>
       <PageSectionBody style={{ paddingTop: 0 }}>
         <PageSectionTitle className="mb-1">{t("integrations.mcp.title")}</PageSectionTitle>
-        <p className="fg-body-sm mb-3 max-w-[72ch] text-muted">{t("integrations.mcp.intro")}</p>
         {preview.isLoading ? (
           <div className="flex flex-col gap-2">
             <Skeleton className="h-16 w-full" />

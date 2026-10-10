@@ -32,7 +32,7 @@ describe("draft notes that need a rewrite", () => {
   it("says how many need attention, by cause, and links each", () => {
     renderWithQuery(<NotesAttention r={release} slug="hop" />);
     const line = screen.getByTestId("release-notes-attention");
-    expect(line.textContent).toContain("3 notes need attention before release: 2 not in Vietnamese, 2 carry technical references");
+    expect(line.textContent).toContain("3 notes to fix: 2 not in Vietnamese, 2 too technical");
     expect(within(line).getAllByRole("link").map((a) => a.textContent)).toEqual(["ISS-94", "ISS-98", "ISS-99"]);
   });
 

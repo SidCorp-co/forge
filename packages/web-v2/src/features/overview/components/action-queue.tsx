@@ -47,10 +47,7 @@ export function ActionQueue({ pulse }: ActionQueueProps) {
                   className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 rounded-md px-2 py-1.5 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
                 >
                   <span className="fg-h3 tabular-nums">{row.count}</span>
-                  <span className="fg-body-sm min-w-0 flex-1">
-                    <span className="block font-medium">{label}</span>
-                    <span className="block text-muted">{t(`overview.action.${row.key}.hint`)}</span>
-                  </span>
+                  <span className="fg-body-sm min-w-0 flex-1 font-medium">{label}</span>
                   <span className="fg-body-sm shrink-0 text-subtle">
                     {t(`overview.owner.${row.owner}`)}
                   </span>

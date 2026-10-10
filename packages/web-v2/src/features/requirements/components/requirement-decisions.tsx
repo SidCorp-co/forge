@@ -51,7 +51,6 @@ export function RequirementDecisions({ projectId, slug, reqKey }: { projectId: s
   return (
     <div data-testid="requirement-decisions">
       <Collapsible title={t("requirements.tab.decisions")} count={decisions.length}>
-        <p className="mb-3 text-12-5 text-muted">{t("requirements.decisions.rollupHint")}</p>
         {decisions.length ? (
           <ul className={busy ? "grid opacity-60" : "grid"} aria-busy={busy || undefined} data-testid="decision-rows">
             {decisions.map((c) => (

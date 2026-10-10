@@ -71,8 +71,7 @@ export function AssistantPreferencesCard() {
   return (
     <PageSection>
       <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-1">{t("shell.assistant.title")}</SectionTitle>
-        <p className="fg-body-sm mb-4 text-muted">{t("shell.assistant.lead")}</p>
+        <SectionTitle className="fg-h3 mb-4">{t("shell.assistant.title")}</SectionTitle>
         {prefsQ.isLoading ? (
           <div className="space-y-4">
             <Skeleton className="h-10 w-full rounded-md" />
@@ -87,10 +86,7 @@ export function AssistantPreferencesCard() {
                 onChange={(v) => setStyle(v as AnswerStyle)}
               />
             </Field>
-            <Field
-              label={t("shell.assistant.instructions")}
-              hint={t("shell.assistant.instructionsHint")}
-            >
+            <Field label={t("shell.assistant.instructions")}>
               <Textarea
                 value={instructions}
                 maxLength={2000}

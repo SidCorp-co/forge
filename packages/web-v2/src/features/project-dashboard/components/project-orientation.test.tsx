@@ -45,10 +45,10 @@ describe("a project home that orients", () => {
 
   it("says so plainly where a line has nothing to show", () => {
     render(<ProjectOrientation slug="hop" description={null} modules={[]} now={[]} next={[]} live={null} draft={null} />);
-    expect(screen.getByTestId("orient-description")).toHaveTextContent("No description yet");
-    expect(screen.getByTestId("orient-modules")).toHaveTextContent("No business modules are declared yet");
-    expect(screen.getByTestId("orient-now")).toHaveTextContent("Nothing is in delivery");
-    expect(screen.getByTestId("orient-release")).toHaveTextContent("No release yet");
-    expect(screen.getByTestId("orient-next")).toHaveTextContent("Nothing agreed is waiting");
+    expect(screen.getByTestId("orient-description")).toHaveTextContent("No description");
+    expect(screen.getByTestId("orient-modules")).toHaveTextContent("No modules");
+    expect(screen.getByTestId("orient-now")).toHaveTextContent("Nothing now");
+    expect(screen.getByTestId("orient-release")).toHaveTextContent("No release");
+    expect(screen.getByTestId("orient-next")).toHaveTextContent("Nothing next");
   });
 });

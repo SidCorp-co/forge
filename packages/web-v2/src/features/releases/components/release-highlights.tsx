@@ -53,7 +53,7 @@ export function ReleaseHighlightsSection({ highlights, slug, authed }: { highlig
                 <ReleaseMedia media={h.media} label={`${h.title}: ${h.media.name}`} authed={authed} />
               ) : (
                 <p className="text-12-5 text-muted" data-testid="page-highlight-gap">
-                  {t("releases.page.highlights.noMedia", { why: h.mediaGap ?? "" })}
+                  {t("releases.page.highlights.mediaGap", { why: h.mediaGap ?? "" })}
                 </p>
               )}
             </li>

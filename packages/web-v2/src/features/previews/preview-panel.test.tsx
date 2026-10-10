@@ -230,7 +230,7 @@ describe("BC-9: a closed preview says which way it closed", () => {
       [`POST ${PREVIEW}`]: () => ({ body: { preview: previewOf({ state: "starting", liveAt: null }) } }),
     });
     mount();
-    expect(await screen.findByText(/closed after 45 minutes with nobody viewing/)).toBeInTheDocument();
+    expect(await screen.findByText(/Closed after 45 idle minutes/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reopen" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === PREVIEW)).toBe(true));
     expect(screen.queryByTitle("Preview of ISS-491")).toBeNull();
@@ -381,7 +381,7 @@ describe("BC-6: asking for a change in the preview", () => {
     unmount();
     core({ [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf({ state: "idle_closed" }) } }) });
     mount();
-    await screen.findByText(/closed after/);
+    await screen.findByText(/Closed after/);
     expect(screen.queryByRole("textbox", { name: "Ask for a change" })).toBeNull();
   });
 });

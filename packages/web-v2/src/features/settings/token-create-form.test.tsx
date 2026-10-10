@@ -40,7 +40,7 @@ describe("the token screen says what Full means (REQ-27 BC-4)", () => {
     const calls = renderForm();
     fireEvent.change(screen.getByPlaceholderText("e.g. CI deploy token"), { target: { value: "approver" } });
     fireEvent.click(screen.getByRole("radio", { name: "Only the permissions I pick" }));
-    expect(screen.getByText("Approvals and other acts — a named token holds only those picked here")).toBeTruthy();
+    expect(screen.getByText("Approvals and other named acts")).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox", { name: "projects:write" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "suggestions.approve" }));
     fireEvent.click(screen.getByRole("button", { name: /Create token/ }));

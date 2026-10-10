@@ -57,11 +57,11 @@ describe("the requirement page opens on its picture", () => {
   it("shows an empty slot, not prose, where no kind or no picture is named, and nothing to change for a viewer", async () => {
     core("viewer");
     const none = picture(detail({}));
-    expect(within(none.container).getByTestId("picture-empty")).toHaveTextContent("does not say what it is");
+    expect(within(none.container).getByTestId("picture-empty")).toHaveTextContent("No picture");
     expect(screen.queryByRole("figure")).toBeNull();
     none.unmount();
     picture(detail({ kind: "screen" }));
-    expect(screen.getByTestId("picture-empty")).toHaveTextContent("No wireframe is drawn yet");
+    expect(screen.getByTestId("picture-empty")).toHaveTextContent("No wireframe");
     await screen.findByText("Screen");
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.queryByRole("button", { name: /Draw/ })).toBeNull();
@@ -126,10 +126,10 @@ describe("a project.write holder sets the kind and draws the picture on the page
   it("sets the kind, and the page then shows that kind's slot", async () => {
     const calls = core("member", (c) => ({ body: detail({ kind: (c.body as { kind: "rule" }).kind }) }));
     page(detail({}));
-    expect(await screen.findByTestId("picture-empty")).toHaveTextContent("does not say what it is");
+    expect(await screen.findByTestId("picture-empty")).toHaveTextContent("No picture");
     fireEvent.change(await screen.findByRole("combobox", { name: "What this requirement is" }), { target: { value: "rule" } });
     await waitFor(() => expect(calls.filter((c) => c.method === "PUT")).toEqual([{ method: "PUT", path: `/projects/${PROJECT}/requirements/REQ-1/revisions/1/kind`, body: { kind: "rule" } }]));
-    expect(await screen.findByText("No example table is drawn yet. Nothing waits on it: the requirement moves on without one.")).toBeInTheDocument();
+    expect(await screen.findByText("No example table")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Draw the example table" })).toBeInTheDocument();
   });
 

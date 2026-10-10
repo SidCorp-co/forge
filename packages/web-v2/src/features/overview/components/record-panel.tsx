@@ -44,7 +44,7 @@ export function RecordPanel({ title, total, records, onClose }: RecordPanelProps
       </div>
       {records.length === 0 ? (
         <p className="fg-body-sm mt-2 text-muted">
-          {t("overview.record.noneNamed", { n: total })}
+          {t("overview.record.noneNamed")}
         </p>
       ) : (
         <ul className="mt-2 flex flex-col gap-1">

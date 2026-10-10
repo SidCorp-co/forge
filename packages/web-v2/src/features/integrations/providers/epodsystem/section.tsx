@@ -8,7 +8,7 @@ import { AgentAccessControl, agentAccessDeniedReason } from "../../components/ag
 import { useIntegrationsList, useOrgConnectionLocked, useUpdateProviderIntegration } from "../../hooks";
 import type { IntegrationSummary } from "../../types";
 import { BindingRowHeader, MultiBindingSection } from "../multi-binding";
-import { BindingRowActions, healthBadge, OrgLockedNote, TestOutcome, Ticked, useBindingTest } from "../shared";
+import { BindingRowActions, healthBadge, OrgLockedNote, TestOutcome, useBindingTest } from "../shared";
 import { AddEpodsystemForm } from "./add-form";
 import type { EpodsystemReadConfig } from "./config";
 import { ThemePanel } from "./theme-panel";
@@ -21,7 +21,6 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
       projectId={projectId}
       provider="epodsystem"
       title={t("integrations.epod.title")}
-      intro={<Ticked text={t("integrations.epod.intro")} />}
       emptyText={t("integrations.epod.empty")}
       addLabel={t("integrations.epod.add")}
       renderRow={(binding, isDefault) => (
@@ -73,7 +72,7 @@ function EpodsystemBindingRow({
       <BindingRowHeader binding={binding} isDefault={isDefault} badge={badge} />
       <TestOutcome error={test.error} result={test.result} />
       {showKeyField && (
-        <Field label={t("integrations.epod.newKey")} hint={t("integrations.epod.newKeyHint")}>
+        <Field label={t("integrations.epod.newKey")}>
           <Input
             type="password"
             autoComplete="new-password"

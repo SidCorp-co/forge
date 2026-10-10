@@ -39,7 +39,7 @@ export function SinceLastReport({ detail, slug, clock }: { detail: StatusReportD
   const d = detail.diff;
   return (
     <section aria-label={t("status.since.title")} data-testid="status-since" className="grid gap-4">
-      <ViewHeading hint={d ? t("status.since.at", { at: when(d.since) }) : undefined}>{t("status.since.title")}</ViewHeading>
+      <ViewHeading right={d ? <span className="text-12-5 text-muted">{t("status.since.at", { at: when(d.since) })}</span> : undefined}>{t("status.since.title")}</ViewHeading>
       {d === null ? (
         <p className="text-13 text-muted">{t("status.since.first")}</p>
       ) : (

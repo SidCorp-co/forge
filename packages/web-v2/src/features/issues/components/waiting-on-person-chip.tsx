@@ -19,10 +19,7 @@ export function WaitingOnPersonChip({
   if (Number.isNaN(at)) return null;
   const age = time.elapsed(now - at);
   return (
-    <span
-      title={t("issues.waitingOnPerson.hint", { age })}
-      data-testid="waiting-on-person"
-    >
+    <span data-testid="waiting-on-person">
       <MonoTag hue="flame">{t("issues.waitingOnPerson.chip", { age })}</MonoTag>
     </span>
   );

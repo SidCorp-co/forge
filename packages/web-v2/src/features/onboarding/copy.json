@@ -1,19 +1,17 @@
 {
   "en": {
     "onboarding.first.lead": "First requirements",
-    "onboarding.first.none": "the BA assistant suggested none",
+    "onboarding.first.none": "None suggested",
     "onboarding.first.openQuestions": "Open questions {n}",
     "onboarding.first.openRoom": "Open the BA room",
     "onboarding.first.pending": "the BA assistant is drafting them from the approved designs",
     "onboarding.first.suggested": "{n} suggested from the approved designs, waiting on your review",
     "onboarding.first.waitingDays": "waiting {n} days",
     "onboarding.hint.master": "Master {name}",
-    "onboarding.hint.reanalyze": "Re-analyze",
-    "onboarding.hint.reanalyzeTitle": "Runs a new analysis; approved revisions are kept."
+    "onboarding.hint.reanalyze": "Re-analyze"
   },
   "vi": {
     "onboarding.first.lead": "Yêu cầu đầu tiên",
-    "onboarding.first.none": "trợ lý BA không đề xuất yêu cầu nào",
     "onboarding.first.openQuestions": "Câu hỏi đang mở {n}",
     "onboarding.first.openRoom": "Mở phòng BA",
     "onboarding.first.pending": "trợ lý BA đang soạn chúng từ các thiết kế đã duyệt",
@@ -45,7 +43,6 @@
     "onboarding.hint.readAndDrafted": "Agent đã đọc code và soạn {designs} · {tail}",
     "onboarding.hint.reading": "Làm quen project: đang đọc code.",
     "onboarding.hint.reanalyze": "Phân tích lại",
-    "onboarding.hint.reanalyzeTitle": "Chạy một job phân tích mới và thay mọi đợt câu hỏi đang mở; bản sửa đã duyệt không bao giờ bị ghi đè.",
     "onboarding.hint.toAct": " để {act}",
     "onboarding.hint.updating": "Làm quen project: đang cập nhật thiết kế.",
     "onboarding.hint.waitApproval": "{designs} đang chờ bạn duyệt.",

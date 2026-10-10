@@ -77,7 +77,7 @@ describe("the checklist form", () => {
     expect(onConfirm).toHaveBeenCalledWith({ hotfix: "Fixes FB-3" });
   });
 
-  it("reads in plain words: no field key in a hint, and an introduction that says what to do", () => {
+  it("reads in plain words: no field key in a hint, and no introduction", () => {
     const prompt = checklistPromptOf(refusals);
     if (!prompt) throw new Error("no prompt");
     renderWithQuery(<Dialog prompt={prompt} onConfirm={() => undefined} />);
@@ -85,9 +85,8 @@ describe("the checklist form", () => {
     for (const key of ["requirementId", "acceptanceCriteria", "buildsWorkflow"]) expect(text).not.toContain(key);
     expect(screen.getByText("Answered on the issue itself, from its acceptance criteria.")).toBeTruthy();
     expect(screen.getByText("Answered on the issue itself, from its workflow design.")).toBeTruthy();
-    // where what stops it is shown is said in words, never by its colour alone
-    expect(screen.getByText("Cannot move yet. What stops it is written under each question.")).toBeTruthy();
     expect(text).not.toMatch(/\bin red\b/);
+    expect(text).not.toContain("Cannot move yet");
   });
 
   it("is not opened for a refusal that names no checklist", () => {

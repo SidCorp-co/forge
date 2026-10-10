@@ -92,7 +92,7 @@ export function useStagedFiles({
     const errs: string[] = [];
     for (const f of Array.from(picked)) {
       if (f.size <= 0) {
-        errs.push(t("issues.files.empty", { name: f.name || t("issues.files.unnamed") }));
+        errs.push(t("issues.files.zeroBytes", { name: f.name || t("issues.files.unnamed") }));
       } else if (f.size > maxBytes) {
         errs.push(t("issues.files.tooLarge", { mb: +(maxBytes / 1024 / 1024).toFixed(1), name: f.name || t("issues.files.unnamed") }));
       } else if (!(allowed.has(f.type) || f.type === "" || f.type.startsWith("text/"))) {

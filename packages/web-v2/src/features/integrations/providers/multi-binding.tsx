@@ -12,7 +12,6 @@ export function MultiBindingSection({
   projectId,
   provider,
   title,
-  intro,
   emptyText,
   addLabel,
   renderRow,
@@ -21,7 +20,6 @@ export function MultiBindingSection({
   projectId: string;
   provider: string;
   title: string;
-  intro: ReactNode;
   emptyText: string;
   addLabel: string;
   renderRow: (binding: IntegrationSummary, isDefault: boolean) => ReactNode;
@@ -44,7 +42,6 @@ export function MultiBindingSection({
       title={title}
       badge={bindings.length > 0 ? { label: t("integrations.provider.nConnected", { n: bindings.length }), tone: "green" } : null}
     >
-      <p className="fg-body-sm text-muted">{intro}</p>
       {isLoading && <p className="fg-body-sm text-muted">{t("integrations.provider.loading")}</p>}
       {!isLoading && bindings.length === 0 && <p className="fg-body-sm text-muted italic">{emptyText}</p>}
       {bindings.map((binding, idx) => renderRow(binding, idx === 0))}

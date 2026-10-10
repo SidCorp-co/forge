@@ -65,7 +65,7 @@ function Funnel({ rows, untold }: { rows: FeedbackSummary[]; untold: FeedbackLis
   return (
     <div className="grid gap-2 border-b border-line-subtle bg-app px-5 py-3 max-md:px-3" data-testid="feedback-funnel">
       <p className="text-12 text-muted">
-        <span className="font-semibold text-fg">{t("feedback.funnel.title")}</span> {t("feedback.funnel.hint")}
+        <span className="font-semibold text-fg">{t("feedback.funnel.title")}</span>
       </p>
       <div className="grid grid-cols-5 gap-3">
         {FUNNEL.map((p) => {
@@ -255,7 +255,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
               </div>
               {all.length === 0 ? (
                 <div className="px-5 py-10">
-                  <EmptyState title={t("feedback.empty.title")} message={t("feedback.empty.message")} />
+                  <EmptyState message={t("feedback.empty.title")} />
                 </div>
               ) : (
                 <>

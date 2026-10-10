@@ -65,7 +65,7 @@ export function TokenList({
       />
     );
   if (tokens.length === 0)
-    return <EmptyState title={t("settings.tokens.none")} message={t("settings.tokens.noneBody")} />;
+    return <EmptyState message={t("settings.tokens.none")} />;
 
   const props = (token: PatToken): RowProps => ({
     token,

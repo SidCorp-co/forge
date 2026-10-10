@@ -33,7 +33,7 @@ describe("a reply another member asked for", () => {
   it("draws its tools by name and time, says they are the asker's, and offers no act", () => {
     renderWithQuery(<ConversationThread projectId="p1" messages={[reply]} windows={[window1]} />);
     expect(screen.getAllByText("Shown only to the person who asked").length).toBeGreaterThan(0);
-    expect(screen.queryByText("No output recorded")).toBeNull();
+    expect(screen.queryByText("No output")).toBeNull();
     expect(screen.getByText("REQ-4 has three of four criteria agreed.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /admit|open|release/i })).toBeNull();
   });

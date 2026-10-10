@@ -47,7 +47,7 @@ describe("the issue rail's requirement traces", () => {
     expect(req).toHaveTextContent("Traces to BC-1, BC-2");
     expect(req).not.toHaveTextContent("BC-1, BC-2, BC-4");
     expect(within(req).getByTestId("stale-traces")).toHaveTextContent(
-      "BC-4, BC-8 trace an earlier wording, which counts as stale: tie them again from the Criteria tab, then judge them",
+      "BC-4, BC-8 trace an earlier wording: tie them again, then judge them",
     );
   });
 });

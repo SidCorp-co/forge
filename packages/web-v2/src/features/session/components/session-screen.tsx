@@ -234,7 +234,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
                 turnsError
               ) : items.length === 0 ? (
                 live ? null : (
-                  <EmptyState title={t("sessions.detail.noMessages")} message={t("sessions.detail.noTurns")} />
+                  <EmptyState message={t("sessions.detail.noMessages")} />
                 )
               ) : (
                 <Conversation

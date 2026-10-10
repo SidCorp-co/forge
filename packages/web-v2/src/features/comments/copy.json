@@ -1,7 +1,7 @@
 {
   "en": {
     "decisions.datedAhead": "Its text is dated {at}, later than it was recorded.",
-    "decisions.folded": "{n} agent records, such as pass logs, folded away.",
+    "decisions.folded": "{n} agent records folded away",
     "decisions.onlyPeople": "Only what people decided",
     "decisions.showAgents": "Show them",
     "decisions.showingAll": "Showing what people decided and what agents recorded."

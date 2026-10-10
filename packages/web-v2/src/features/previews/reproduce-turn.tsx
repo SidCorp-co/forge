@@ -76,7 +76,7 @@ function ReproduceRead({ read, slug }: { read: RecordingToolResult; slug?: strin
       {shown.length > 0 ? (
         <TimelineTable entries={shown} compact testId="turn-timeline" />
       ) : (
-        <p className="fg-caption text-muted">{t("previews.turn.noRecording", { fb })}</p>
+        <p className="fg-caption text-muted">{t("previews.turn.noRecording")}</p>
       )}
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="secondary" loading={open.isPending} onClick={() => open.mutate()} data-testid="turn-reproduce-open">

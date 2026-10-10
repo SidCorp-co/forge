@@ -142,7 +142,7 @@ describe("a breakdown's details, before Accept", () => {
   it("says when a breakdown arrives without core's reading, rather than falling back to its titles", async () => {
     shown(breakdown({ breakdown: undefined }));
     const panel = await details();
-    expect(panel).toHaveTextContent("Core sent no reading of this breakdown's slices.");
+    expect(panel).toHaveTextContent("No slices");
     expect(panel).not.toHaveTextContent("Tour player");
   });
 
@@ -236,7 +236,7 @@ describe("a breakdown's details, read as a person", () => {
   it("says in plain words that an unreadable breakdown cannot be accepted as stored, keeping the code and path", async () => {
     shown(breakdown({ breakdown: { revision: 2, unreadable: "SUGGESTION_PAYLOAD_INVALID at /payload/issues/0/criteria: required", uncovered: [], slices: [] } }));
     const panel = await details();
-    expect(panel).toHaveTextContent("This breakdown can no longer be read, so it cannot be accepted as it is stored.");
+    expect(panel).toHaveTextContent("This breakdown can no longer be read, so it cannot be accepted.");
     expect(panel).not.toHaveTextContent("Core could not read");
     expect(panel).toHaveTextContent("SUGGESTION_PAYLOAD_INVALID at /payload/issues/0/criteria: required");
   });

@@ -193,12 +193,7 @@ export function SessionsScreen({
       )}
 
       {!sessionsQ.isLoading && !sessionsQ.isError && !issueQ.isError && rows.length === 0 && (
-        <EmptyState
-          title={issueFilter ? t("sessions.emptyIssueTitle") : t("sessions.emptyTitle")}
-          message={
-            issueFilter ? t("sessions.emptyIssueBody") : t("sessions.emptyBody")
-          }
-        />
+        <EmptyState message={issueFilter ? t("sessions.emptyIssueTitle") : t("sessions.emptyTitle")} />
       )}
 
       {!sessionsQ.isLoading && !sessionsQ.isError && rows.length > 0 && visibleRows.length === 0 && (
@@ -206,10 +201,7 @@ export function SessionsScreen({
         // filtered-empty ("nothing matches"): being empty here is a good
         // outcome (caught up), not a dead end.
         <EmptyState
-          title={filter === "waiting" ? t("sessions.caughtUpTitle") : t("sessions.noneHereTitle")}
-          message={
-            filter === "waiting" ? t("sessions.caughtUpBody") : t("sessions.noMatch")
-          }
+          message={filter === "waiting" ? t("sessions.caughtUpTitle") : t("sessions.noneHereTitle")}
           mascot={false}
         />
       )}

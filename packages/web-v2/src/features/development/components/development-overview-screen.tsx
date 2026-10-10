@@ -38,7 +38,7 @@ export function DevelopmentOverviewScreen({ scope }: { scope: { projectId: strin
   const t = useCopy();
   return (
     <>
-      <PageTitle hint={t("overview.dev.hint")}>{t("overview.dev.title")}</PageTitle>
+      <PageTitle>{t("overview.dev.title")}</PageTitle>
       <div className="flex min-h-full flex-col bg-app pb-8" data-testid="development-overview">
         <QueryBoundary query={q} loadingLabel={t("overview.dev.loading")} height="50vh" retry="always">
           {(d) => (
@@ -75,7 +75,7 @@ export function DevelopmentOverviewScreen({ scope }: { scope: { projectId: strin
                 </div>
               </div>
               {d.flow.total === 0 && needsYou.length === 0 && d.stuck.count === 0 && d.moving.count === 0 ? (
-                <EmptyState title={t("overview.dev.emptyTitle")} message={t("overview.dev.emptyBody")} />
+                <EmptyState message={t("overview.dev.emptyTitle")} />
               ) : null}
               <section id="needs-you" aria-label={t("issues.attention.needs_you")} className="scroll-mt-4" data-testid="needs-you">
                 <NeedsYouList

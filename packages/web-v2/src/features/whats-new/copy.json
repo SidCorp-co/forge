@@ -7,10 +7,10 @@
     "whatsNew.kind.new": "New",
     "whatsNew.loading": "Reading what's new…",
     "whatsNew.nav": "What's new",
-    "whatsNew.none": "This {environment} build is not a release yet.",
+    "whatsNew.none": "Nothing new",
     "whatsNew.release": "Release {version}",
     "whatsNew.title": "What's new",
-    "whatsNew.unreadHint": "a new release"
+    "whatsNew.unread": "a new release"
   },
   "vi": {
     "whatsNew.close": "Đóng",

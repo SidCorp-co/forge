@@ -266,8 +266,7 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
               {all.length === 0 ? (
                 <div className="px-5 py-10">
                   <EmptyState
-                    title={t("requirements.emptyTitle")}
-                    message={t("requirements.emptyMessage")}
+                    message={t("requirements.empty")}
                     action={
                       dock && approvedDesigns > 0
                         ? { label: t("requirements.draftFromDesigns", { n: approvedDesigns }), onClick: () => dock.show({ kind: "draft", projectId, draft: t("requirements.draftFromDesignsAsk") }) }

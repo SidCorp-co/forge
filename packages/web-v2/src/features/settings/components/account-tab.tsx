@@ -85,14 +85,14 @@ function PreferencesCard() {
           </div>
         ) : (
           <div className="space-y-4">
-            <Field label={t("shell.account.theme")} hint={t("shell.account.themeHint")}>
+            <Field label={t("shell.account.theme")}>
               <Select
                 options={themeOptions}
                 value={theme}
                 onChange={(v) => setTheme(v as ThemePref)}
               />
             </Field>
-            <Field label={t("language.label")} hint={t("language.hint")}>
+            <Field label={t("language.label")}>
               <Select
                 options={languageOptions}
                 value={language}

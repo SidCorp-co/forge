@@ -115,7 +115,6 @@ describe("a reporter no bell reaches is told by a person", () => {
     const calls = fakeCore(() => ({ body: { feedback: view() } }));
     renderWithQuery(<Messages projectId="p1" f={view()} />);
     expect(screen.getByRole("radio", { name: "I told them myself" })).toBeChecked();
-    expect(screen.getByTestId("feedback-composer")).toHaveTextContent("no notice is sent");
     expect(screen.queryByRole("button", { name: "Preview" })).toBeNull();
     fireEvent.change(screen.getByRole("textbox", { name: "I told them myself" }), { target: { value: "Told Ana on the support call." } });
     fireEvent.click(screen.getByTestId("feedback-record-relay"));

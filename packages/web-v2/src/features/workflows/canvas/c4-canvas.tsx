@@ -277,18 +277,18 @@ function C4Toolbar({
   return (
     <div className="wfc-float wfc-tl" role="toolbar" aria-label={t("workflows.canvas.view")} data-testid="c4-toolbar">
       {compact ? null : (
-        <SegmentedControl<Level> options={LEVELS.map((v) => ({ value: v, label: t(`workflows.c4.level.${v}`), title: t(`workflows.c4.level.${v}.hint`) }))} value={level} onChange={onLevel} />
+        <SegmentedControl<Level> options={LEVELS.map((v) => ({ value: v, label: t(`workflows.c4.level.${v}`) }))} value={level} onChange={onLevel} />
       )}
       {detail ? (
         <>
           {compact ? null : <span className="wfc-sep" />}
-          <SegmentedControl<Detail> options={DETAILS.map((v) => ({ value: v, label: t(`workflows.c4.detail.${v}`), title: t(`workflows.c4.detail.${v}.hint`) }))} value={detail} onChange={onDetail} />
+          <SegmentedControl<Detail> options={DETAILS.map((v) => ({ value: v, label: t(`workflows.c4.detail.${v}`) }))} value={detail} onChange={onDetail} />
         </>
       ) : null}
       {compact ? null : (
         <>
           <span className="wfc-sep" />
-          <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={onWalk} title={t("workflows.c4.walkHint")} data-testid="walk-start-bar">
+          <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={onWalk} data-testid="walk-start-bar">
             <Play size={16} />
             <span className="wfc-t">{t("workflows.canvas.walk")}</span>
           </Button>

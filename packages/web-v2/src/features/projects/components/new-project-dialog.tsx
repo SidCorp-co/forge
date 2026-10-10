@@ -133,7 +133,7 @@ function CreateProjectForm({
           maxLength={200}
         />
       </Field>
-      <Field label="Slug" required error={errors.slug} hint="Used in URLs. Lowercase letters, digits, and hyphens.">
+      <Field label="Slug" required error={errors.slug} hint="Lowercase letters, digits, and hyphens.">
         <Input
           value={slug}
           onChange={(e) => {
@@ -145,7 +145,7 @@ function CreateProjectForm({
         />
       </Field>
       {teamOrgs.length > 0 && (
-        <Field label="Organization" hint="Where this project lives. Org owners/admins manage all of its projects.">
+        <Field label="Organization">
           <Select
             value={orgId}
             onChange={setOrgId}
@@ -172,11 +172,7 @@ function SetupPipeline({ created, onFinish }: { created: CreatedProject; onFinis
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <p className="fg-body-sm text-subtle">
-        The repository, the branch work is cut from and where it lands are the project document&apos;s:
-        declare them under Settings → Configuration.
-      </p>
-      <div className="border-t border-line-subtle pt-4">
+      <div>
         <span className="fg-label">Connect a runner</span>
         <ol className="fg-body-sm mt-2 list-decimal space-y-1.5 pl-5 text-subtle">
           <li>
@@ -204,10 +200,6 @@ function SetupPipeline({ created, onFinish }: { created: CreatedProject; onFinis
             Ask for designs
           </Button>
           {onboarding.dialog}
-          <p className="fg-body-sm mt-1.5 text-subtle">
-            Analyses the repository on a runner bound to this project, then asks you a few rounds of questions in
-            the onboarding thread. Connect a runner above first.
-          </p>
         </div>
       </div>
       <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">

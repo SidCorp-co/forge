@@ -130,7 +130,7 @@ export function ChecklistAnswers({
   const open = rows.filter((r) => r.kind === "gap").length;
   // a move recorded before the checklist judged nothing, but the item's own reading still stands:
   // the heading says how it reads now, and the line under it why no move is shown
-  const hint = move ? (
+  const state = move ? (
     <span title={time.dateTime(move.at)}>{t("checklist.passed", { at: time.relative(move.at) })}</span>
   ) : rows.length === 0 ? (
     t("checklist.noChecklist")
@@ -141,7 +141,7 @@ export function ChecklistAnswers({
   );
   return (
     <section data-testid="checklist" data-checklist={read.id} data-standing={move ? "passed" : unrecorded ? "no_checklist" : read.now?.complete ? "complete" : "open"}>
-      <ViewHeading hint={hint}>{read.form.title}</ViewHeading>
+      <ViewHeading right={<span className="text-12-5 text-muted">{state}</span>}>{read.form.title}</ViewHeading>
       {unrecorded && rows.length > 0 ? (
         <p className="text-12 text-subtle" data-testid="checklist-unrecorded">
           {t("checklist.movedBefore")}

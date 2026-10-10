@@ -34,7 +34,7 @@ describe("the chat board proposes on an issue or a feedback item only", () => {
     const { calls, type } = board();
     type("req-8");
     expect(screen.getByRole("button", { name: /Propose on/ })).toBeDisabled();
-    expect(screen.getByRole("alert")).toHaveTextContent("REQ-8 is a requirement, and a mockup is no longer proposed on one: its picture is drawn on the requirement itself");
+    expect(screen.getByRole("alert")).toHaveTextContent("REQ-8 is a requirement; name an issue or a feedback item.");
     expect(calls).toEqual([]);
   });
 

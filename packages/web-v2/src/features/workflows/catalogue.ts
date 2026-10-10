@@ -8,7 +8,7 @@ import type { FactRow, SystemGraph, WorkflowRecord } from "./types";
 
 export type Purpose = "system" | "journeys" | "lifecycles" | "integrations" | "data" | "decisions" | "service" | "other";
 
-/** What a design is for, by the template it is drawn in. The order is the order the catalogue reads in; its words are `workflows.purpose.<id>` and `.hint`. */
+/** What a design is for, by the template it is drawn in. The order is the order the catalogue reads in; its words are `workflows.purpose.<id>`. */
 const PURPOSES: readonly { id: Purpose; templates: readonly string[] }[] = [
   { id: "system", templates: [SYSTEM_CONTEXT_TEMPLATE] },
   { id: "journeys", templates: ["operational-flow", "ux-flow"] },
@@ -45,7 +45,6 @@ export function templateTitle(id: string, templates: readonly WorkflowTemplate[]
 interface CatalogueGroup {
   id: Purpose;
   label: string;
-  hint: string;
   rows: WorkflowRecord[];
 }
 
@@ -54,7 +53,6 @@ export function catalogue(records: readonly WorkflowRecord[], t: Copy): Catalogu
   return PURPOSES.map((p) => ({
     id: p.id,
     label: t(`workflows.purpose.${p.id}` as ProductCopyKey),
-    hint: t(`workflows.purpose.${p.id}.hint` as ProductCopyKey),
     rows: records
       .filter((r) => purposeOf(r) === p.id)
       .sort((a, b) => b.document.updatedAt.localeCompare(a.document.updatedAt)),

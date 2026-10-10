@@ -68,7 +68,7 @@ function LanguageField({ draft, disabled }: { draft: DocumentDraft; disabled: bo
 			{choice === OTHER && (
 				<SettingRow
 					label={t("settings.project.general.languageTag")}
-					effect={problem ?? (tag ? contentLanguageName(tag) : t("settings.project.general.languageTagHint"))}
+					effect={problem ?? (tag ? contentLanguageName(tag) : undefined)}
 					control={
 						<Input
 							aria-label={t("settings.project.general.languageTag")}
@@ -155,14 +155,12 @@ export function GeneralSection({ project, canEdit }: { project: ProjectDetail; c
 					draft={draft}
 					path={["project", "description"]}
 					label={t("settings.project.general.description")}
-					effect={t("settings.project.general.descriptionEffect")}
 					placeholder={t("settings.project.general.descriptionPlaceholder")}
 					optional
 					disabled={off}
 				/>
 				<SettingRow
 					label={t("settings.project.general.address")}
-					effect={t("settings.project.general.addressEffect")}
 					control={
 						<p className="fg-body font-mono text-fg" translate="no">
 							/projects/{project.slug}
@@ -170,17 +168,16 @@ export function GeneralSection({ project, canEdit }: { project: ProjectDetail; c
 					}
 				/>
 			</SettingGroup>
-			<SettingGroup title={t("settings.project.general.languageGroup")} lead={t("settings.project.general.languageLead")}>
+			<SettingGroup title={t("settings.project.general.languageGroup")}>
 				<LanguageField draft={draft} disabled={off} />
 				<TermsField draft={draft} disabled={off} />
 			</SettingGroup>
-			<SettingGroup title={t("settings.project.general.rules")} lead={t("settings.project.general.rulesLead")}>
+			<SettingGroup title={t("settings.project.general.rules")}>
 				<SwitchSetting
 					draft={draft}
 					path={["plan", "approval", "required"]}
 					fallback={false}
 					label={t("settings.project.general.planApproval")}
-					effect={t("settings.project.general.planApprovalEffect")}
 					disabled={off}
 				/>
 				<SwitchSetting
@@ -208,7 +205,6 @@ export function GeneralSection({ project, canEdit }: { project: ProjectDetail; c
 					unset="off"
 					options={optionsOf(t, "settings.project.general.sensitive", SENSITIVE_DATA_LEVELS)}
 					label={t("settings.project.general.sensitiveData")}
-					effect={t("settings.project.general.sensitiveDataEffect")}
 					disabled={off}
 				/>
 			</SettingGroup>

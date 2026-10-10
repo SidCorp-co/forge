@@ -55,14 +55,13 @@ export function AddEpodsystemForm({
     >
       {hasDefault && (
         <LabelField
-          hint={t("integrations.epod.labelHint")}
           placeholder="partner-a"
           value={label}
           onChange={setLabel}
           error={badLabel}
         />
       )}
-      <Field label={t("integrations.edit.apiKey")} hint={t("integrations.epod.keyHint")} required>
+      <Field label={t("integrations.edit.apiKey")} required>
         <Input
           type="password"
           autoComplete="new-password"
@@ -71,11 +70,7 @@ export function AddEpodsystemForm({
           onChange={(e) => setApiKey(e.target.value)}
         />
       </Field>
-      <Field
-        label={t("integrations.form.role")}
-        hint={t("integrations.epod.roleHint")}
-        required
-      >
+      <Field label={t("integrations.form.role")} required>
         <Select
           options={roleOptions}
           value={role}

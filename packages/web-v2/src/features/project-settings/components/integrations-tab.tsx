@@ -79,7 +79,6 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
     <PageSection data-tour="int-share">
       <PageSectionBody style={{ paddingTop: 0 }}>
         <PageSectionTitle className="mb-1">{t("integrations.share.title")}</PageSectionTitle>
-        <p className="fg-body-sm mb-4 max-w-[72ch] text-muted">{t("integrations.share.intro")}</p>
         {!canEdit ? (
           <Banner tone="info">{t("integrations.share.ownerOnly")}</Banner>
         ) : !connectionsQ.isLoading && eligible.length === 0 ? (

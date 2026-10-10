@@ -107,7 +107,7 @@ export const REQUIREMENT_STATE_HINTS: Record<RequirementState, string> = {
 		"delivered: every linked issue is closed; an approver accepts the delivery",
 	accepted: "accepted: delivered and accepted",
 	deferred:
-		"deferred: out of the current release; nothing is planned or built against it until a person undefers it",
+		"deferred: out of this release; nothing is built until a person undefers it",
 	dropped: "dropped: no longer wanted",
 };
 
@@ -298,13 +298,13 @@ export const BC_VERDICT_TONES: Record<BcVerdict, StandingTone> = {
 
 export const BC_VERDICT_HINTS: Record<BcVerdict, string> = {
 	passing:
-		"passing: the newest verdict on an issue criterion tracing to this wording is a pass",
+		"passing: the newest verdict on a tracing criterion is a pass",
 	failing:
-		"failing: the newest verdict on an issue criterion tracing to this wording is a fail",
+		"failing: the newest verdict on a tracing criterion is a fail",
 	stale:
-		"stale: issue criteria trace only to an earlier wording of this criterion; tie it again from the issue's Criteria tab, then judge it",
+		"stale: traces only an earlier wording; tie it again, then judge it",
 	not_live:
-		"not_live: issue criteria tracing this wording were judged only at builds the live one does not hold; judge it again on the live build",
+		"not_live: judged only on builds the live one lacks; judge it on live",
 	not_judged:
 		"not_judged: no verdict on an issue criterion tracing to this wording counts yet",
 	gap: "gap: no issue criterion traces to this criterion",

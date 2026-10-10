@@ -40,7 +40,6 @@ export function PoolAdmission({
 				<p className="fg-caption text-muted">
 					{status === "disabled" ? t("runners.pool.retired") : withdrawn ? t("runners.pool.drained") : t("runners.pool.offered")}
 				</p>
-				<p className="fg-caption text-muted">{t("runners.pool.notMaster")}</p>
 			</div>
 		</div>
 	);
