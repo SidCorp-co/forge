@@ -16,6 +16,10 @@
     {
       "comment": "GitHub's advisory pages answer an unauthenticated CI request with no response at all — `Status: 0`, not 404 — so every CHANGELOG entry citing the GHSA it closed reads as a dead link. A GHSA id is an immutable identifier; the risk this mutes is a typo in one, which the advisory text beside it already makes visible.",
       "pattern": "^https://github\\.com/advisories/GHSA-"
+    },
+    {
+      "comment": "w3.org answers every unauthenticated client with 403 — its root, /TR/ and /WAI/ alike, with or without a browser user agent — so a W3C citation (the WAI-ARIA APG in packages/web-v2/CODE-STANDARD.md) reads as dead whether or not the page exists. Scoped to the host because the wall is the host's; what this mutes is a typo inside a w3.org URL, what it would otherwise block is every correct one.",
+      "pattern": "^https://www\\.w3\\.org/"
     }
   ],
   "replacementPatterns": [
