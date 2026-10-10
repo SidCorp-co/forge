@@ -2,7 +2,7 @@ import type { QueryKey } from "@tanstack/react-query";
 import { fireEvent } from "@testing-library/react";
 import { PoolReadBanner } from "@/features/runners/components/pool-read";
 import { ProjectRunnersScreen } from "@/features/runners/components/project-runners-screen";
-import { RunnerRow } from "@/features/runners/components/runner-row/runner-row";
+import { RunnerAssignment as RunnerRow } from "@/features/runners/components/assignment/runner-assignment";
 import { RunnersScreen } from "@/features/runners/components/runners-screen";
 import type { DeviceRow, ProjectRunner, RunnerPoolRead } from "@/features/runners/types";
 import { type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";

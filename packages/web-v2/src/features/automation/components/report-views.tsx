@@ -359,3 +359,6 @@ export function ReportPeek({
     </PeekPanel>
   );
 }
+
+// the page moved to report-page.tsx; re-exported from its original path
+export { ReportPage } from "./report-page";

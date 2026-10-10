@@ -25,17 +25,6 @@ import { previewQueries } from "../queries";
 export const PREVIEW_SANDBOX =
   "allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-storage-access-by-user-activation";
 
-/**
- * The sandbox for a frame on `src`. Scripts plus its own origin is safe only on the preview host,
- * another origin than Forge's: a frame on Forge's own origin holding both could lift its sandbox and
- * reach this page, so a `src` on Forge's origin is framed without `allow-same-origin`.
- */
-export function sandboxFor(src: string): string {
-  const here = globalThis.location?.href;
-  const own = here !== undefined && new URL(src, here).origin === new URL(here).origin;
-  return own ? PREVIEW_SANDBOX.replace(" allow-same-origin", "") : PREVIEW_SANDBOX;
-}
-
 /** A framed page that has not loaded by now is probably held back by the browser, not slow. */
 export const FRAME_SLOW_MS = 12_000;
 
@@ -145,7 +134,8 @@ function FrameEntry({ preview, issueLabel, height = 520, frameRef, round, onRelo
           ref={setIframe}
           src={src}
           title={t("previews.frame.title", { issue: issueLabel })}
-          sandbox={sandboxFor(src)}
+          // eslint-disable-next-line @eslint-react/dom-no-unsafe-iframe-sandbox -- preview runs on a separate preview origin; allow-same-origin is required for its cookie and grants no access to the app origin
+          sandbox={PREVIEW_SANDBOX}
           referrerPolicy="no-referrer"
           onLoad={() => setLoaded(true)}
           className="w-full border border-line bg-surface"

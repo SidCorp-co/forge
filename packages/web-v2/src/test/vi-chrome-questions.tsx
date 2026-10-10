@@ -2,7 +2,7 @@ import type { ParkThreadQuestion } from "@forge/contracts/park";
 import { fireEvent } from "@testing-library/react";
 import type { QueryKey } from "@tanstack/react-query";
 import { AgentsScreen } from "@/features/agents/components/agents-screen";
-import { DecisionPanel } from "@/features/questions/components/decision-panel";
+import { IssueQuestions as DecisionPanel } from "@/features/questions/components/issue-questions";
 import { projectQuestionsKey } from "@/features/questions/hooks";
 import type { AgentQuestion, QuestionOption, QuestionStep } from "@/features/questions/types";
 import { Seeded } from "./vi-chrome-requirements";
