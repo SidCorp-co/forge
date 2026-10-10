@@ -24,7 +24,7 @@ type Mode = "attention" | "module" | "waves" | "table";
 // do not carry
 function useModes(projectId: string): ViewMode<Mode>[] {
   const modules = useProjectModules(projectId);
-  const none = modules.data !== undefined && modules.modules.length === 0;
+  const none = modules.data !== undefined && modules.data.length === 0;
   const t = useCopy();
   return [
     { value: "attention", label: t("issues.mode.attention") },

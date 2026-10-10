@@ -52,9 +52,9 @@ export function useIssueFilterOptions(projectId: string, moduleId: string) {
     ];
   const moduleOptions: ToolbarOption[] = [
       { value: "", label: t("issues.filter.any") },
-      ...modulesQ.modules.map((m) => ({ value: m.id, label: m.name })),
+      ...(modulesQ.data ?? []).map((m) => ({ value: m.id, label: m.name })),
     ];
-  const activeModuleName = modulesQ.modules.find((m) => m.id === moduleId)?.name ?? null;
+  const activeModuleName = (modulesQ.data ?? []).find((m) => m.id === moduleId)?.name ?? null;
 
   return { creatorOptions, assigneeOptions, labelOptions, moduleOptions, memberNames, activeModuleName };
 }

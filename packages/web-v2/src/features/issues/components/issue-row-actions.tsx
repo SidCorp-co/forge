@@ -298,18 +298,13 @@ export function IssueTableLine({
     >
       {selection && (
         <TD className="w-9 pr-0">
-          {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: wrapper only blocks bubbling; the Checkbox button is the control. */}
-          <span
-            className="inline-flex"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Checkbox
-              checked={selection.selected}
-              onChange={selection.onToggle}
-              disabled={actions.isPending}
-              ariaLabel={t("issues.row.select", { key: row.displayId })}
-            />
-          </span>
+          {/* the row ignores a click that lands on a button, so the checkbox needs no wrapper */}
+          <Checkbox
+            checked={selection.selected}
+            onChange={selection.onToggle}
+            disabled={actions.isPending}
+            ariaLabel={t("issues.row.select", { key: row.displayId })}
+          />
         </TD>
       )}
       <TD className="w-px whitespace-nowrap" data-testid="issue-id-cell">

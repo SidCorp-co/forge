@@ -1,7 +1,7 @@
 "use client";
 
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, queryOptions } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { type Refusal, refusalFact, refusalsOf } from "@/lib/api/refusals";
@@ -94,13 +94,16 @@ export function useProjectMembers(projectId: string | undefined) {
 }
 
 /** Project labels (label filter options). Keyed `['project', projectId, 'labels']` (ISS-586). */
-export function useProjectLabels(projectId: string | undefined) {
-  return useQuery<IssueLabel[]>({
+const projectLabelsQuery = (projectId: string | undefined) =>
+  queryOptions<IssueLabel[]>({
     queryKey: ["project", projectId, "labels"],
     queryFn: () => issuesApi.labels(projectId as string),
     enabled: !!projectId,
     staleTime: 5 * 60_000,
   });
+
+export function useProjectLabels(projectId: string | undefined) {
+  return useQuery(projectLabelsQuery(projectId));
 }
 
 /**
@@ -111,9 +114,7 @@ export function useProjectLabels(projectId: string | undefined) {
  * and the picker off one cache entry.
  */
 export function useProjectModules(projectId: string | undefined) {
-  const q = useProjectLabels(projectId);
-  const modules = (q.data ?? []).filter((l) => l.kind === "module");
-  return { ...q, data: q.data ? modules : undefined, modules };
+  return useQuery({ ...projectLabelsQuery(projectId), select: (labels) => labels.filter((l) => l.kind === "module") });
 }
 
 /**
