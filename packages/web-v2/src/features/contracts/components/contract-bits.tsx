@@ -41,7 +41,7 @@ export function WindowText({ row }: { row: ContractStandingRow }) {
   }
   if (row.direction === "provided") {
     return (
-      <span className="text-12-5 text-muted" title={t("contracts.window.noticeTitle")}>
+      <span className="text-12-5 text-muted">
         {row.noticeDays === null ? t("contracts.window.noNotice") : t("contracts.window.notice", { d: row.noticeDays })}
       </span>
     );

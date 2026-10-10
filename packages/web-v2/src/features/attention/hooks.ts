@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDevices } from "@/features/runners/hooks";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { attentionApi } from "./api";
 import type { AttentionItem, AttentionView } from "./types";
 
@@ -19,6 +20,7 @@ export function useAttention() {
   // `['devices','me']` is already WS-invalidated on device.login/paired/revoked
   // and reconnect — reusing the runners hook keeps the offline bucket live.
   const devicesQ = useDevices();
+  const t = useCopy();
 
   const offlineRunners: AttentionItem[] = useMemo(() => {
     const rows = devicesQ.data ?? [];
@@ -26,12 +28,12 @@ export function useAttention() {
       .filter((d) => d.status === "offline")
       .map((d) => ({
         kind: "runner_offline" as const,
-        title: `${d.name} is offline`,
+        title: t("attention.runnerOffline", { name: d.name }),
         link: "/runners",
         since: d.lastSeenAt ?? d.createdAt,
         status: "offline",
       }));
-  }, [devicesQ.data]);
+  }, [devicesQ.data, t]);
 
   const view: AttentionView = useMemo(() => {
     const base = attentionQ.data;

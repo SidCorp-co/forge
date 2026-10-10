@@ -131,3 +131,88 @@ export function sentencesOf(source, file, symbol) {
     );
   return entries;
 }
+
+/**
+ * A plain word: two letters or more, an apostrophe allowed inside and punctuation around it. A token
+ * with `.`, `/`, `_`, `@`, `:` or `-` inside is a URL, an address, a path, a key or a
+ * format (`sat_…`, `you@studio.com`, `is:stuck`): data a person types or reads verbatim, not copy.
+ */
+const PLAIN_WORD = /^[("'“‘[]*[A-Za-z][A-Za-z'’]*[A-Za-z][)"'”’\].,;:!?…]*$/;
+
+/** A copy key a value names (`issues.title`, `hintIssueStatus`): a reference to copy, not copy. */
+const COPY_KEY = /^[a-z][a-z0-9]*(?:[A-Z][A-Za-z0-9]*|\.[A-Za-z0-9]+)+$/;
+
+/** Whether `text` holds a plain word, so `·`, `—`, `&times;`, a key and a lone identifier are not copy. */
+const readable = (text) =>
+  !COPY_KEY.test(text) && text.split(/\s+/).some((token) => PLAIN_WORD.test(token));
+
+/**
+ * The person-facing English a source file writes inline (REQ-43 BC-1, BC-2): copy the budget cannot
+ * read, because it sits in a `.tsx` or `.ts` file instead of a copy file. Four places, each read from
+ * the source's syntax: JSX text between tags; a string literal given to an attribute `attributes`
+ * matches whole (`title`, `placeholder`, `aria-label` and their kin); a string literal a JSX
+ * expression renders, through `?:`, `??`, `||`, `&&` and parentheses — the `{x || "Document"}`
+ * fallback; and an object property `attributes` names (`{ label: "Runs" }`, a nav entry or a sort
+ * option a component renders later). A literal passed to a call (`t("issues.title")`, `cn("text-sm")`)
+ * is an argument, not rendered copy, so it is never read, and a value naming a copy key is not copy.
+ * Each is `{file, line, where, text}`, `where` naming the attribute, `<name>:` for a property, or
+ * `text`.
+ */
+export function inlineCopyOf(source, file, attributes) {
+  const kind = file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, kind);
+  const found = [];
+  const add = (node, where, raw) => {
+    const text = raw.replace(/\s+/g, ' ').trim();
+    if (!readable(text)) return;
+    const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+    found.push({ file, line, where, text });
+  };
+  const rendered = (node, where) => {
+    if (!node) return;
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
+      return add(node, where, node.text);
+    if (ts.isTemplateExpression(node))
+      return add(node, where, [node.head.text, ...node.templateSpans.map((s) => s.literal.text)].join(' '));
+    if (ts.isParenthesizedExpression(node)) return rendered(node.expression, where);
+    if (ts.isConditionalExpression(node)) {
+      rendered(node.whenTrue, where);
+      return rendered(node.whenFalse, where);
+    }
+    if (ts.isBinaryExpression(node)) {
+      const op = node.operatorToken.kind;
+      if (op === ts.SyntaxKind.QuestionQuestionToken || op === ts.SyntaxKind.BarBarToken) {
+        rendered(node.left, where);
+        return rendered(node.right, where);
+      }
+      if (op === ts.SyntaxKind.AmpersandAmpersandToken) return rendered(node.right, where);
+    }
+  };
+  const visit = (node) => {
+    if (ts.isJsxText(node)) add(node, 'text', node.text);
+    else if (ts.isJsxExpression(node) && !ts.isJsxAttribute(node.parent)) rendered(node.expression, 'text');
+    else if (ts.isJsxAttribute(node)) {
+      const name = node.name.getText(sf);
+      if (attributes.test(name)) {
+        const init = node.initializer;
+        if (init && ts.isStringLiteral(init)) add(init, name, init.text);
+        else if (init && ts.isJsxExpression(init)) rendered(init.expression, name);
+      }
+    } else if (ts.isPropertyAssignment(node)) {
+      const name = ts.isStringLiteral(node.name) ? node.name.text : node.name.getText(sf);
+      if (attributes.test(name)) rendered(node.initializer, `${name}:`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return found;
+}
+
+/** One refusal line per string a component writes inline, naming file, line, where and the words. */
+export function inlineFaults(written) {
+  return written.map((w) => {
+    const what = w.where === 'text' ? 'JSX text' : w.where.endsWith(':') ? `property ${w.where}` : w.where;
+    const words = w.text.length > 60 ? `${w.text.slice(0, 57)}…` : w.text;
+    return `${w.file}:${w.line} · ${what} "${words}": copy written inline; move it to its feature's copy file, or delete it`;
+  });
+}

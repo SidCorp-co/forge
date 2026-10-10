@@ -10,9 +10,12 @@ import {
   MonoTag,
   PageTitle,
   ProjectLoader,
+  type RecordView,
+  RecordViewSwitch,
   SlideOver,
   StatusChip,
   useElapsed,
+  useRecordView,
 } from "@/design";
 import { isJobDriven } from "@/features/sessions/types";
 import {
@@ -68,11 +71,14 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   const sessionQ = useSession(sessionId);
   const { turnsQ, loadMoreTurns } = useSessionTurnPages(sessionId);
   const [railOpen, setRailOpen] = useState(false);
+  // REQ-43 BC-7: the person's view reads the session's state and what it produced; the agent's tool
+  // calls, task list, the context rail (box, paths, tokens) and ids are the developer's.
+  const [view, setView] = useRecordView();
+  const developer = view === "developer";
   // Desktop context-rail collapse (persisted). Below lg the rail is a SlideOver.
   const [railCollapsed, setRailCollapsed] = usePersistedState("web-v2:context-rail", false);
 
   const session = sessionQ.data;
-  const issueId = session?.metadata?.issueId;
 
   // Track this session as recently-viewed (surfaces in the ⌘K Recent group).
   const loadedId = session?.id;
@@ -197,7 +203,9 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
         session={session}
         display={display}
         live={live}
-        taskCount={taskCount}
+        taskCount={isRun && developer ? taskCount : 0}
+        developer={developer}
+        onView={setView}
         projectSlug={projectSlug}
         lastTurnId={lastTurnId}
         onFork={handleFork}
@@ -211,13 +219,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
         <>
           {turnsError}
           {!(turnsQ.isError && items.length === 0) && (
-            <RunReport
-              session={session}
-              items={items}
-              {...(issueId && projectSlug
-                ? { onOpenIssue: () => router.push(`/projects/${projectSlug}/issues/${issueId}`) }
-                : {})}
-            />
+            <RunReport session={session} items={items} developer={developer} />
           )}
           {turnsTruncated && <div className="px-4 pb-6 sm:px-6">{turnsTruncated}</div>}
         </>
@@ -239,6 +241,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
               ) : (
                 <Conversation
                   items={items}
+                  agentText={developer}
                   streaming={streaming}
                   busy={
                     live ||
@@ -278,7 +281,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
             widens. Pinned below the sticky header (parity with the issue
             Properties rail, ISS-351) so context stays visible while the thread
             scrolls; its own `overflow-y-auto` keeps a long rail usable. */}
-        {!railCollapsed && (
+        {developer && !railCollapsed && (
           <aside className="hidden w-80 shrink-0 self-start overflow-y-auto border-l border-line px-5 py-6 lg:sticky lg:top-16 lg:block lg:max-h-[calc(100dvh-4rem)]">
             <ContextRail
               session={session}
@@ -292,7 +295,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
 
       {/* Mobile rail */}
       <SlideOver
-        open={railOpen}
+        open={developer && railOpen}
         onClose={() => setRailOpen(false)}
         title={t("sessions.detail.context")}
         width={360}
@@ -312,6 +315,8 @@ function SessionHeader({
   display,
   live,
   taskCount,
+  developer,
+  onView,
   projectSlug,
   lastTurnId,
   onFork,
@@ -324,6 +329,8 @@ function SessionHeader({
   display: ReturnType<typeof deriveSessionDisplayStatus>;
   live: boolean;
   taskCount: number;
+  developer: boolean;
+  onView: (v: RecordView) => void;
   projectSlug: string | undefined;
   lastTurnId: string | undefined;
   onFork: (turnId: string) => void;
@@ -398,7 +405,7 @@ function SessionHeader({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <PageTitle className="fg-h3 truncate">{session.title ?? t("sessions.detail.session")}</PageTitle>
-            <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>
+            {developer && <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>}
           </div>
           <div className="mt-1 flex items-center gap-2">
             <StatusChip
@@ -415,6 +422,7 @@ function SessionHeader({
           </div>
         </div>
         <div className="flex items-center gap-1.5">
+          <RecordViewSwitch view={developer ? "developer" : "person"} onView={onView} />
           {live ? (
             <Button
               variant="danger"
@@ -466,13 +474,17 @@ function SessionHeader({
               />
             }
           />
-          <IconButton
-            icon="rows"
-            aria-label={t("sessions.detail.showContext")}
-            className="min-h-11 min-w-11 lg:hidden"
-            onClick={onOpenRail}
-          />
-          {railToggle}
+          {developer && (
+            <>
+              <IconButton
+                icon="rows"
+                aria-label={t("sessions.detail.showContext")}
+                className="min-h-11 min-w-11 lg:hidden"
+                onClick={onOpenRail}
+              />
+              {railToggle}
+            </>
+          )}
         </div>
       </div>
     </header>

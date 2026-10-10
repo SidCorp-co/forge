@@ -36,7 +36,7 @@ import {
 } from "@/features/sessions/types";
 import { useStuckRuns } from "@/features/agents/hooks";
 import { useSessionCost, useSessions } from "@/features/sessions/hooks";
-import { isJobDriven, sessionKind } from "@/features/sessions/types";
+import { sessionKind } from "@/features/sessions/types";
 import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/pipeline/derive";
 import { formatRefusal } from "@/lib/api/error";
 import { useRailCopy, useRailLanguage, useRailTime } from "../chrome-language";
@@ -91,7 +91,6 @@ export function ContextRail({
   const versionLabel = useDeviceVersionLabel();
   const stuck = useStuckRuns(session.projectId);
   const display = deriveSessionDisplayStatus(session, stuck);
-  const stage = sessionStep(session.metadata) ?? undefined;
   const live = display === "running" || display === "stalled";
   const startMs = session.startedAt ? new Date(session.startedAt).getTime() : undefined;
   const elapsed = useElapsed(startMs, live);
@@ -104,7 +103,6 @@ export function ContextRail({
   const usage = session.usage ?? {};
   const files = deriveFilesChanged(items);
   const agentTasks = useMemo(() => deriveAgentTasks(items), [items]);
-  const isPipeline = isJobDriven(session);
   // Only a run session's run is opened by the box with its gate condition (ISS-1192).
   const isRunSession = sessionKind(session) === "run_session";
   const runQ = useRun(session.pipelineRunId ?? undefined, isRunSession && !!session.pipelineRunId);
@@ -205,15 +203,8 @@ export function ContextRail({
         </Section>
       )}
 
-      {isPipeline && (
-        <Section title={t("sessions.rail.pipeline")}>
-          <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
-        </Section>
-      )}
-
       <Section title={t("sessions.rail.stats")}>
         <div className="flex flex-col gap-2.5">
-          {!isPipeline && <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />}
           <Stat icon="activity" title={t("sessions.rail.turnsTitle")}>{usage.turns != null ? t("sessions.rail.turns", { n: time.number(usage.turns) }) : "—"}</Stat>
           <Stat icon="clock" title={t("sessions.rail.durationTitle")}>{duration}</Stat>
           <Stat icon="cpu" title={t("sessions.rail.contextTitle")}>{t("sessions.rail.ctx", { n: fmtNum(usage.contextUsed, time.number) })}</Stat>

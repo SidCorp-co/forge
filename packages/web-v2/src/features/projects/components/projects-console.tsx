@@ -17,6 +17,7 @@ import {
 } from '@/design';
 import { useActiveOrg } from '@/features/orgs/active-org';
 import { formatApiError } from '@/lib/api/error';
+import { useCopy } from '@/lib/i18n/interface-language';
 import { filterProjects, formatSpend, isAttention, sortProjects } from '../derive';
 import { useProjectsConsole } from '../hooks';
 import type { ProjectConsoleItem, ProjectSort, ProjectView, WorkspaceTotals } from '../types';
@@ -29,6 +30,7 @@ const GRID = 'grid gap-x-8 gap-y-4 [grid-template-columns:repeat(auto-fill,minma
 const SKELETONS = ['a', 'b', 'c', 'd', 'e', 'f'];
 
 export function ProjectsConsole() {
+  const t = useCopy();
   const { items, totals, isLoading, isError, error, refetch, toggle } = useProjectsConsole();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -48,7 +50,7 @@ export function ProjectsConsole() {
   return (
     <PageContainer>
       {isError ? (
-        <ErrorState title="Couldn't load projects" message={formatApiError(error)} onRetry={() => refetch()} />
+        <ErrorState title={t('projects.loadFailed')} message={formatApiError(error)} onRetry={() => refetch()} />
       ) : isLoading ? (
         <div className={GRID}>
           {SKELETONS.map((k) => (
@@ -56,11 +58,7 @@ export function ProjectsConsole() {
           ))}
         </div>
       ) : items.length === 0 ? (
-        <EmptyState
-          title="No projects yet"
-          message="Projects you own or are a member of will appear here."
-          action={{ label: 'New project', onClick: onNewProject }}
-        />
+        <EmptyState message={t('projects.noProjects')} action={{ label: t('projects.new'), onClick: onNewProject }} />
       ) : (
         <ConsoleBody items={items} totals={totals} onTogglePin={toggle} onNewProject={onNewProject} />
       )}
@@ -80,6 +78,7 @@ function ConsoleBody({
   onTogglePin: (id: string) => void;
   onNewProject: () => void;
 }) {
+  const t = useCopy();
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<ProjectSort>('recent');
   const [view, setView] = useState<ProjectView>('cards');
@@ -88,7 +87,7 @@ function ConsoleBody({
   // local filter, so the chrome and the console cannot contradict. null only
   // while orgs load → show all for one tick (no flash of empty), then scope.
   const { activeOrg, activeOrgId } = useActiveOrg();
-  const scopeLabel = activeOrg ? (activeOrg.isPersonal ? 'Personal' : activeOrg.name) : null;
+  const scopeLabel = activeOrg ? (activeOrg.isPersonal ? t('projects.form.personal') : activeOrg.name) : null;
 
   // Relative timestamps: 0 on the server + first paint (renders "just now"),
   // then the real clock after mount — hydration-safe.
@@ -103,7 +102,7 @@ function ConsoleBody({
 
   return (
     <>
-      <PageTitle>{scopeLabel ? `${scopeLabel} · projects` : 'Projects'}</PageTitle>
+      <PageTitle>{scopeLabel ? t('projects.titleIn', { scope: scopeLabel }) : t('projects.title')}</PageTitle>
       <StatsBand totals={totals} />
       <ProjectsToolbar
         query={query}
@@ -120,14 +119,11 @@ function ConsoleBody({
             tone="attention"
             action={
               <Button variant="ghost" size="sm" onClick={() => setAttentionOnly((a) => !a)}>
-                {attentionOnly ? 'Show all' : 'Show only these'}
+                {attentionOnly ? t('projects.attention.showAll') : t('projects.attention.only')}
               </Button>
             }
           >
-            <strong className="font-semibold">
-              {attentionCount} {attentionCount === 1 ? 'project' : 'projects'}
-            </strong>{' '}
-            need attention — blocked runs or offline runners.
+            {t('projects.attention.count', { n: attentionCount })}
           </Banner>
         </div>
       )}
@@ -138,7 +134,6 @@ function ConsoleBody({
         view={view}
         now={now}
         onTogglePin={onTogglePin}
-        scopeLabel={scopeLabel}
         onNewProject={onNewProject}
       />
     </>
@@ -153,7 +148,6 @@ function ProjectSections({
   view,
   now,
   onTogglePin,
-  scopeLabel,
   onNewProject,
 }: {
   visible: ProjectConsoleItem[];
@@ -161,9 +155,9 @@ function ProjectSections({
   view: ProjectView;
   now: number;
   onTogglePin: (id: string) => void;
-  scopeLabel: string | null;
   onNewProject: () => void;
 }) {
+  const t = useCopy();
   const pinned = visible.filter((p) => p.pinned);
   const rest = searching ? visible : visible.filter((p) => !p.pinned);
   const group = (rows: ProjectConsoleItem[]) =>
@@ -182,21 +176,21 @@ function ProjectSections({
       {!searching && pinned.length > 0 && (
         <div className="mb-5">
           <SectionLabel icon="star" iconClassName="text-amber" count={pinned.length}>
-            Pinned
+            {t('projects.pinned')}
           </SectionLabel>
           {group(pinned)}
         </div>
       )}
       {!searching && (
         <SectionLabel icon="folder" count={rest.length}>
-          All projects
+          {t('projects.all')}
         </SectionLabel>
       )}
       {rest.length > 0 ? (
         group(rest)
       ) : (
         <div className="px-10 py-10 text-center text-13-5 text-subtle">
-          {searching ? 'No projects match your filters.' : `No projects in ${scopeLabel ?? 'this organization'} yet.`}
+          {searching ? t('projects.noMatches') : t('projects.noProjects')}
         </div>
       )}
       {view === 'cards' && !searching && (
@@ -209,7 +203,7 @@ function ProjectSections({
             <span className="flex size-[38px] items-center justify-center rounded-md bg-sunken transition-colors group-hover:bg-surface">
               <Icon name="plus" size={22} className="text-subtle group-hover:text-accent" />
             </span>
-            <span className="text-sm font-semibold">New project</span>
+            <span className="text-sm font-semibold">{t('projects.new')}</span>
           </button>
         </div>
       )}
@@ -238,24 +232,22 @@ function SectionLabel({
 }
 
 function StatsBand({ totals }: { totals: WorkspaceTotals }) {
+  const t = useCopy();
   return (
     <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line-subtle pb-3">
-      <span className="text-13-5 font-bold text-fg">Workspace</span>
+      <span className="text-13-5 font-bold text-fg">{t('projects.workspace')}</span>
       <span className="h-4 w-px bg-line" aria-hidden />
-      <Stat icon="folder">{totals.projects} projects</Stat>
-      <span
-        className="inline-flex items-center gap-1.5 font-mono text-12-5 text-accent-text"
-        title="Pipeline runs currently running or paused"
-      >
+      <Stat icon="folder">{t('projects.count', { n: totals.projects })}</Stat>
+      <span className="inline-flex items-center gap-1.5 font-mono text-12-5 text-accent-text">
         <span className="forge-pulse inline-block size-[7px] rounded-pill bg-accent" aria-hidden />
-        {totals.liveRuns} live runs
+        {t('projects.liveRuns', { n: totals.liveRuns })}
       </span>
-      <Stat icon="inbox" title="In-flight issues (not closed)">
-        {totals.openIssues} active
+      <Stat icon="inbox" title={t('projects.openIssues')}>
+        {t('projects.activeCount', { n: totals.openIssues })}
       </Stat>
-      <Stat icon="server">{totals.runners} runners</Stat>
-      <Stat icon="dollar" title="Trailing 24h spend">
-        {formatSpend(totals.spend24hUsd)} / 24h
+      <Stat icon="server">{t('projects.runnersCount', { n: totals.runners })}</Stat>
+      <Stat icon="dollar" title={t('projects.spend24h')}>
+        {t('projects.spendPerDay', { spend: formatSpend(totals.spend24hUsd) })}
       </Stat>
     </div>
   );

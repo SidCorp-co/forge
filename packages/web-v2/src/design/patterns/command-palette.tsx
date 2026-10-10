@@ -93,7 +93,7 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
             placeholder={t("shell.palette.placeholder")}
             className="w-full flex-1 border-0 bg-transparent p-0 text-base text-fg outline-none placeholder:text-disabled focus-visible:shadow-none md:text-15"
           />
-          <Kbd>esc</Kbd>
+          <Kbd>{t("common.key.esc")}</Kbd>
         </div>
         <CommandList label={t("shell.palette.list")} className="max-h-[360px] p-1.5">
           <CommandEmpty className="fg-body-sm px-3 py-6 text-center">{t("shell.palette.empty")}</CommandEmpty>

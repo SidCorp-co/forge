@@ -15,6 +15,7 @@ import { useState } from "react";
 import { Button } from "@/design";
 import { refusalsOf } from "@/lib/api/refusals";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useSubmitAnswers } from "../hooks";
 import type { DraftAnswers, QuestionnaireItemView, QuestionnaireView } from "../types";
 import { AiMark, HoverNote, ToneChip } from "./marks";
@@ -27,11 +28,12 @@ const answered = (a: DraftAnswers[string] | undefined) =>
     (a.choices !== undefined && a.choices.length > 0));
 
 function WhyWeAsk({ item, designTitle }: { item: QuestionnaireItemView; designTitle: (ref: string) => string }) {
+  const t = useCopy();
   return (
-    <HoverNote label="Why we ask" className="ml-1 text-[11px] font-normal text-subtle">
+    <HoverNote label={t("onboarding.q.whyAsk")} className="ml-1 text-[11px] font-normal text-subtle">
       <span>{item.why}</span>
       <br />
-      <span className="opacity-70">Evidence</span>{" "}
+      <span className="opacity-70">{t("onboarding.q.evidence")}</span>{" "}
       {item.evidence.map((e) => (
         <code key={e} className="mr-1 font-mono text-[10.5px]">
           {e}
@@ -40,7 +42,7 @@ function WhyWeAsk({ item, designTitle }: { item: QuestionnaireItemView; designTi
       {item.affects.length > 0 && (
         <>
           <br />
-          <span className="opacity-70">Shapes</span> {item.affects.map(designTitle).join(", ")}
+          <span className="opacity-70">{t("onboarding.q.shapes")}</span> {item.affects.map(designTitle).join(", ")}
         </>
       )}
     </HoverNote>
@@ -60,6 +62,7 @@ function Chip({
   multi?: boolean;
   onClick: () => void;
 }) {
+  const t = useCopy();
   return (
     <button
       type="button"
@@ -78,7 +81,7 @@ function Chip({
         {on && <span className={`size-[5px] bg-[color:var(--link)] ${multi ? "rounded-[1px]" : "rounded-full"}`} />}
       </span>
       <span className="min-w-0">{label}</span>
-      {inferred && <AiMark title="Inferred from the code; not chosen until you pick it">Inferred</AiMark>}
+      {inferred && <AiMark>{t("onboarding.q.inferred")}</AiMark>}
     </button>
   );
 }
@@ -92,6 +95,7 @@ function Control({
   value: DraftAnswers[string] | undefined;
   onChange: (v: DraftAnswers[string] | undefined) => void;
 }) {
+  const t = useCopy();
   if (item.control === "choice" || item.control === "multi") {
     const multi = item.control === "multi";
     const picked = new Set(multi ? (value?.choices ?? []) : value?.choice ? [value.choice] : []);
@@ -134,7 +138,7 @@ function Control({
               : "border-[color:color-mix(in_srgb,var(--ai-bar)_55%,transparent)] bg-surface text-[color:var(--ai-fg)]"
           }`}
         >
-          Accept
+          {t("onboarding.q.accept")}
         </button>
         <button
           type="button"
@@ -144,7 +148,7 @@ function Control({
             d === "reject" ? "border-line-strong bg-sunken" : "border-line bg-surface"
           }`}
         >
-          Reject
+          {t("onboarding.q.reject")}
         </button>
       </div>
     );
@@ -155,7 +159,7 @@ function Control({
         type="text"
         maxLength={280}
         aria-label={item.prompt}
-        placeholder={item.placeholder ?? "Your answer"}
+        placeholder={item.placeholder ?? t("onboarding.q.answerPlaceholder")}
         value={value?.text ?? ""}
         onChange={(e) => onChange(e.target.value ? { text: e.target.value } : undefined)}
         className="h-8 w-full rounded-sm border border-line bg-surface px-2.5 text-[12.5px] text-fg placeholder:text-subtle focus:border-[color:var(--link)] focus:outline-none"
@@ -165,12 +169,11 @@ function Control({
 }
 
 function Counter({ n, of, ids, done }: { n: number; of: number; ids: string[]; done: (id: string) => boolean }) {
+  const t = useCopy();
   return (
     <span className="inline-flex items-center gap-1.5 text-[12px] text-muted">
-        Answered{" "}
-        <b className="font-semibold tabular-nums text-fg">
-          {n} of {of}
-        </b>
+        {t("onboarding.q.answered")}{" "}
+        <b className="font-semibold tabular-nums text-fg">{t("onboarding.q.nOf", { n, of })}</b>
         <span aria-hidden className="inline-flex gap-[2px]">
           {ids.map((id) => (
             <i
@@ -192,6 +195,7 @@ export function QuestionnaireCard({
   batch: QuestionnaireView;
   designTitle?: (ref: string) => string;
 }) {
+  const t = useCopy();
   const [draft, setDraft] = useState<DraftAnswers>({});
   const [resumed, setResumed] = useState(false);
   const submit = useSubmitAnswers(projectId, batch.conversationId);
@@ -203,11 +207,11 @@ export function QuestionnaireCard({
     return (
       <div className="mt-1.5 border-l-[3px] border-line-strong bg-sunken" data-testid="questionnaire-skipped">
         <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5 py-2 pl-[11px] pr-3">
-          <span className="text-[13px] font-bold text-fg">Skipped for now</span>
-          <span className="text-[11.5px] text-subtle">Open {open.length}</span>
+          <span className="text-[13px] font-bold text-fg">{t("onboarding.q.skipped")}</span>
+          <span className="text-[11.5px] text-subtle">{t("onboarding.q.openCount", { n: open.length })}</span>
           <span className="flex-1" />
           <Button size="sm" variant="secondary" onClick={() => setResumed(true)}>
-            Answer now
+            {t("onboarding.q.answerNow")}
           </Button>
         </div>
       </div>
@@ -235,14 +239,14 @@ export function QuestionnaireCard({
       <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5 py-2 pl-[11px] pr-3">
         <span className="text-[13px] font-bold text-fg">{batch.title}</span>
         <span className="text-[11.5px] text-subtle">
-          Round {batch.round} of {batch.maxRounds}
+          {t("onboarding.q.round", { round: batch.round, max: batch.maxRounds })}
         </span>
       </div>
       {/* on a redact or no_egress project the answers reach the agent (scrubbed): the owner's
           2026-10-04 ruling holds them to product information, and the card says so where they are typed */}
       {scrubsOnWrite(batch.sensitiveData) && (
         <p data-testid="questionnaire-data-warning" className="border-t border-line-subtle py-1.5 pl-[11px] pr-3 text-[11.5px] text-muted">
-          Answers are product information. Do not include patient data.
+          {t("onboarding.q.dataWarning")}
         </p>
       )}
       {QUESTIONNAIRE_GROUPS.map((g) => {
@@ -262,7 +266,7 @@ export function QuestionnaireCard({
                     <span className="flex-none font-mono text-[10.5px] font-semibold text-subtle">{num}</span>
                     <span className="min-w-0">
                       {item.prompt}{" "}
-                      {item.isNew && <ToneChip tone="run" label="New" />}
+                      {item.isNew && <ToneChip tone="run" label={t("onboarding.q.new")} />}
                       <WhyWeAsk item={item} designTitle={designTitle} />
                     </span>
                   </div>
@@ -294,21 +298,22 @@ export function QuestionnaireCard({
         <span className="flex-1" />
         {batch.status === "open" && (
           <Button size="sm" variant="secondary" disabled={submit.isPending} onClick={() => send(true)}>
-            Skip for now
+            {t("onboarding.q.skip")}
           </Button>
         )}
         <Button size="sm" variant="primary" disabled={n === 0 || submit.isPending} onClick={() => send(false)}>
-          Send answers
+          {t("onboarding.q.send")}
         </Button>
       </div>
     </form>
   );
 }
 
-function answerLabel(item: QuestionnaireItemView) {
+function AnswerLabel({ item }: { item: QuestionnaireItemView }) {
+  const t = useCopy();
   const a = item.answer;
-  if (item.state !== "answered" || !a) return <ToneChip tone="you" label="Open" />;
-  if (a.decision) return <ToneChip tone="done" label={a.decision === "accept" ? "Accepted" : "Rejected"} />;
+  if (item.state !== "answered" || !a) return <ToneChip tone="you" label={t("onboarding.q.open")} />;
+  if (a.decision) return <ToneChip tone="done" label={a.decision === "accept" ? t("onboarding.q.accepted") : t("onboarding.q.rejected")} />;
   const label = (id: string) => item.options?.find((o) => o.id === id)?.label ?? id;
   if (a.text !== undefined)
     return <span className="min-w-0 truncate font-medium text-fg">“{a.text}”</span>;
@@ -317,7 +322,7 @@ function answerLabel(item: QuestionnaireItemView) {
     <>
       <span className="min-w-0 truncate font-medium text-fg">{text}</span>
       {a.choice && a.choice === item.inferredDefault && (
-        <span className="text-[11px] text-subtle" title="As inferred from the code">
+        <span className="text-[11px] text-subtle" title={t("onboarding.q.inferred")}>
           ✓
         </span>
       )}
@@ -327,21 +332,22 @@ function answerLabel(item: QuestionnaireItemView) {
 
 /** The answers message: the card, collapsed to what was sent and what stayed open. */
 export function QuestionnaireSummary({ batch }: { batch: QuestionnaireView }) {
+  const t = useCopy();
   const items = batch.items;
   const answeredHere = items.filter((i) => i.state === "answered").length;
   const openHere = items.length - answeredHere;
   return (
     <div className="mt-1" data-testid="questionnaire-summary">
       <div className="mb-0.5 text-[11.5px] text-subtle">
-        {batch.title} · Round {batch.round} · Answered {answeredHere} of {items.length}
-        {openHere ? ` · Open ${openHere}` : ""}
+        {t("onboarding.q.summary", { title: batch.title, round: batch.round, n: answeredHere, of: items.length })}
+        {openHere ? ` · ${t("onboarding.q.openCount", { n: openHere })}` : ""}
       </div>
       {items.map((i) => (
         <div key={i.id} className="flex min-w-0 items-center gap-2 border-t border-line-subtle py-[3px] text-[12.5px]">
           <span className="min-w-0 flex-1 truncate text-muted" title={i.prompt}>
             {i.prompt}
           </span>
-          <span className="flex min-w-0 max-w-[56%] flex-none items-center justify-end gap-[5px]">{answerLabel(i)}</span>
+          <span className="flex min-w-0 max-w-[56%] flex-none items-center justify-end gap-[5px]"><AnswerLabel item={i} /></span>
         </div>
       ))}
     </div>

@@ -5,22 +5,27 @@ import type { WorkspaceRead } from "@/features/ecosystem/types";
 import { needsYouHint } from "@/features/needs-you/hint";
 import type { NeedsYouAreaKey, NeedsYouResponse } from "@/features/needs-you/types";
 import { labelCopy } from "@/lib/i18n/labels";
+import { productCopy } from "@/lib/i18n/product-copy";
+
+// each entry's fallback label is its `nav.<key>` copy in English; the rail and drawer read the
+// interface language's through useNavLabel, and only a project's or ecosystem's own name is not copy
+const en = productCopy();
 
 export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   // Overview = the all-projects home; the Attention queue is folded in here
   // (its live count rides on this row's badge).
-  { key: "overview", label: "Overview", icon: "grid", href: "/" },
-  { key: "runners", label: "Runners", icon: "server", href: "/runners" },
-  { key: "integrations", label: "Integrations", icon: "link", href: "/integrations" },
+  { key: "overview", label: en("nav.overview"), icon: "grid", href: "/" },
+  { key: "runners", label: en("nav.runners"), icon: "server", href: "/runners" },
+  { key: "integrations", label: en("nav.integrations"), icon: "link", href: "/integrations" },
 ];
 
 /** Destinations dropped from the rail to keep it minimal — still reachable via
  *  ⌘K. Settings also lives in the rail's account menu; Attention is folded into
  *  Overview. They are NOT rendered as rail rows. */
 export const SECONDARY_DESTINATIONS: Array<NavItem & { href: string }> = [
-  { key: "attention", label: "Attention", icon: "inbox", href: "/attention" },
-  { key: "settings", label: "Settings", icon: "settings", href: "/settings" },
-  { key: "pipeline-ops", label: "Pipeline ops", icon: "pipeline", href: "/ops" },
+  { key: "attention", label: en("nav.attention"), icon: "inbox", href: "/attention" },
+  { key: "settings", label: en("nav.settings"), icon: "settings", href: "/settings" },
+  { key: "pipeline-ops", label: en("nav.pipeline-ops"), icon: "pipeline", href: "/ops" },
 ];
 
 /** A project-tier nav item. `sub` is appended to `/projects/[slug]`. The rail
@@ -42,30 +47,30 @@ const DELIVERY_GROUP_KEY = "delivery";
 // the machinery that builds it sits under Delivery (REQ-34 BC-23, after ISS-65 and FB-6). Decisions,
 // the roadmap and memory have no row of their own (REQ-33): each is read on the item it is about.
 const PROJECT_MENU: ProjEntry[] = [
-  { key: "proj-overview", label: "Dashboard", icon: "grid", sub: "" },
+  { key: "proj-overview", label: en("nav.proj-overview"), icon: "grid", sub: "" },
   {
     key: PRODUCT_GROUP_KEY,
-    label: "Product",
+    label: en("nav.product"),
     icon: "folder",
     defaultOpen: true,
     items: [
-      { key: "proj-requirements", label: "Requirements", icon: "book", sub: "/requirements" },
-      { key: "proj-workflows", label: "Workflows", icon: "flow", sub: "/workflows" },
-      { key: "proj-releases", label: "Releases", icon: "rocket", sub: "/releases" },
-      { key: "proj-feedback", label: "Feedback", icon: "chat", sub: "/feedback" },
+      { key: "proj-requirements", label: en("nav.proj-requirements"), icon: "book", sub: "/requirements" },
+      { key: "proj-workflows", label: en("nav.proj-workflows"), icon: "flow", sub: "/workflows" },
+      { key: "proj-releases", label: en("nav.proj-releases"), icon: "rocket", sub: "/releases" },
+      { key: "proj-feedback", label: en("nav.proj-feedback"), icon: "chat", sub: "/feedback" },
     ],
   },
   {
     key: DELIVERY_GROUP_KEY,
-    label: "Delivery",
+    label: en("nav.delivery"),
     icon: "code",
     items: [
-      { key: "proj-dev-overview", label: "Overview", icon: "activity", sub: "/overview" },
-      { key: "proj-issues", label: "Issues", icon: "list", sub: "/issues" },
-      { key: "proj-modules", label: "Modules", icon: "rows", sub: "/modules" },
-      { key: "proj-agents", label: "Agents / Runs", icon: "agent", sub: "/agents" },
-      { key: "proj-contracts", label: "Contracts", icon: "link", sub: "/contracts" },
-      { key: "proj-automation", label: "Automation", icon: "calendar", sub: "/automation" },
+      { key: "proj-dev-overview", label: en("nav.proj-dev-overview"), icon: "activity", sub: "/overview" },
+      { key: "proj-issues", label: en("nav.proj-issues"), icon: "list", sub: "/issues" },
+      { key: "proj-modules", label: en("nav.proj-modules"), icon: "rows", sub: "/modules" },
+      { key: "proj-agents", label: en("nav.proj-agents"), icon: "agent", sub: "/agents" },
+      { key: "proj-contracts", label: en("nav.proj-contracts"), icon: "link", sub: "/contracts" },
+      { key: "proj-automation", label: en("nav.proj-automation"), icon: "calendar", sub: "/automation" },
     ],
   },
 ];
@@ -111,7 +116,7 @@ const ECO_PREFIX = "eco:";
 // the Ecosystem group is the workspace's: Threads, one row per ecosystem the person belongs to, and New ecosystem — nothing project-scoped, so it shows whichever project is open
 export function ecosystemMenu(read: WorkspaceRead | undefined): NavItem[] {
   return [
-    { key: ECO_THREADS_KEY, label: "Threads", icon: "mail", badge: read ? needsMe(read) : undefined },
+    { key: ECO_THREADS_KEY, label: en("nav.eco-threads"), icon: "mail", badge: read ? needsMe(read) : undefined },
     ...(read ? joinedEcosystems(read) : []).map((e) => ({
       key: `${ECO_PREFIX}${e.id}`,
       label: e.name,
@@ -119,12 +124,12 @@ export function ecosystemMenu(read: WorkspaceRead | undefined): NavItem[] {
       mark: e.code,
       badge: needsMe(read as WorkspaceRead, e.id),
     })),
-    { key: ECO_NEW_KEY, label: "New ecosystem", icon: "plus" },
+    { key: ECO_NEW_KEY, label: en("nav.eco-new"), icon: "plus" },
   ];
 }
 
 function ecosystemGroup(read: WorkspaceRead | undefined): NavItemGroup {
-  return { key: "ecosystem", label: "Ecosystem", icon: "ecosystem", items: ecosystemMenu(read), badge: read ? needsMe(read) : undefined, defaultOpen: true };
+  return { key: "ecosystem", label: en("nav.ecosystem"), icon: "ecosystem", items: ecosystemMenu(read), badge: read ? needsMe(read) : undefined, defaultOpen: true };
 }
 
 /** Where an Ecosystem-group key leads, or null when the key is not one of the group's. */
@@ -213,9 +218,9 @@ export function workspaceNavItems(attentionCount: number, ecosystems: WorkspaceR
 
 export function bottomTabItems(attentionCount: number): BottomTabItem[] {
   return [
-    { key: "home", label: "Home", icon: "grid" },
-    { key: "chat", label: "Ask Agent", icon: "chat" },
-    { key: "attention", label: "Attention", icon: "inbox", badge: attentionCount },
-    { key: "more", label: "More", icon: "menu" },
+    { key: "home", label: en("nav.home"), icon: "grid" },
+    { key: "chat", label: en("nav.chat"), icon: "chat" },
+    { key: "attention", label: en("nav.attention"), icon: "inbox", badge: attentionCount },
+    { key: "more", label: en("nav.more"), icon: "menu" },
   ];
 }

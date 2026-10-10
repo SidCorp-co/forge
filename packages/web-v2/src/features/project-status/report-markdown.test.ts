@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { labelCopy } from "@/lib/i18n/labels";
 import { productCopy } from "@/lib/i18n/product-copy";
 import { statusMarkdown } from "./report-markdown";
-import { AT, STATUS, turn } from "./status-fixture";
+import { AT, STATUS, turn } from "@/test/project-status";
 
 // JU-4: no surface could be copied, printed or sent; the report copies as Markdown in the reader's
 // language, dated, every section stamped, and a row waiting on the viewer names them for its reader.

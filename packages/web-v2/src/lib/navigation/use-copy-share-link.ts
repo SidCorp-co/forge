@@ -1,6 +1,7 @@
 "use client";
 
 import { useToast } from "@/providers/toast-provider";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { buildShareLink } from "./deep-link";
 
 /**
@@ -9,15 +10,16 @@ import { buildShareLink } from "./deep-link";
  */
 export function useCopyShareLink(): (path: string) => void {
   const { toast } = useToast();
+  const t = useCopy();
   return (path) => {
     const url = buildShareLink(path);
-    const failed = () => toast({ title: "Couldn't copy link", description: url, tone: "error" });
+    const failed = () => toast({ title: t("common.link.copyFailed"), description: url, tone: "error" });
     if (!navigator.clipboard) {
       failed();
       return;
     }
     navigator.clipboard.writeText(url).then(
-      () => toast({ title: "Link copied", description: url, tone: "success" }),
+      () => toast({ title: t("common.link.copied"), description: url, tone: "success" }),
       failed,
     );
   };

@@ -12,6 +12,8 @@ import { Banner, Button, Skeleton } from "@/design";
 import { AuthShell } from "@/features/auth/components/auth-shell";
 import { ApiError, apiClient } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useAuth } from "@/providers/auth-provider";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -36,19 +38,16 @@ interface Proposal {
   youMayConfirm: boolean;
 }
 
-const ERROR_COPY: Record<string, string> = {
-  SPEAKER_SOURCE_UNKNOWN: "That chat channel is not one this Forge knows.",
-  SPEAKER_NOT_FOUND: "That chat account no longer exists on the channel.",
-  SPEAKER_ADDRESS_DIFFERS:
-    "The two addresses do not match. Make them the same on either side, then reopen this link.",
-  SPEAKER_NOT_THE_TARGET:
-    "This chat account reports a different address from the one you are signed in with.",
+const ERROR_COPY: Record<string, (t: Copy) => string> = {
+  SPEAKER_SOURCE_UNKNOWN: (t) => t("auth.linkChatRefused.sourceUnknown"),
+  SPEAKER_NOT_FOUND: (t) => t("auth.linkChatRefused.notFound"),
+  SPEAKER_ADDRESS_DIFFERS: (t) => t("auth.linkChatRefused.addressDiffers"),
+  SPEAKER_NOT_THE_TARGET: (t) => t("auth.linkChatRefused.notTheTarget"),
 };
 
-function copy(err: unknown): string {
-  if (err instanceof ApiError && err.code && ERROR_COPY[err.code])
-    return ERROR_COPY[err.code] as string;
-  return formatApiError(err);
+function copy(err: unknown, t: Copy): string {
+  const said = err instanceof ApiError && err.code ? ERROR_COPY[err.code] : undefined;
+  return said ? said(t) : formatApiError(err);
 }
 
 function speakerName(p: Proposal): string {
@@ -56,6 +55,7 @@ function speakerName(p: Proposal): string {
 }
 
 function LinkChat() {
+  const t = useCopy();
   const params = useSearchParams();
   const { user, isLoading: authLoading } = useAuth();
 
@@ -76,17 +76,17 @@ function LinkChat() {
   const load = useCallback(() => {
     apiClient<Proposal>(`${path}/proposals`, { method: "POST", body })
       .then(setProposal)
-      .catch((err) => setLoadError(copy(err)));
-  }, [path, body]);
+      .catch((err) => setLoadError(copy(err, t)));
+  }, [path, body, t]);
 
   useEffect(() => {
     if (!ready) {
-      setLoadError("This link is missing the chat account it is about.");
+      setLoadError(t("auth.linkChatRefused.missing"));
       return;
     }
     if (!user) return;
     load();
-  }, [ready, user, load]);
+  }, [ready, user, load, t]);
 
   async function confirm() {
     setConfirming(true);
@@ -95,7 +95,7 @@ function LinkChat() {
       await apiClient(path, { method: "POST", body });
       setLinked(true);
     } catch (err) {
-      setConfirmError(copy(err));
+      setConfirmError(copy(err, t));
     } finally {
       setConfirming(false);
     }
@@ -105,19 +105,9 @@ function LinkChat() {
 
   return (
     <AuthShell
-      title={linked ? "Chat account linked" : "Link your chat account"}
-      subtitle={
-        linked
-          ? "Answers you send from that account now count as yours."
-          : "Confirm that the chat account below is you, so Forge can record what you answer."
-      }
-      footer={
-        !user && !authLoading ? (
-          <>
-            Sign in with the email this chat account uses, then reopen this link.
-          </>
-        ) : undefined
-      }
+      title={linked ? t("auth.linkChat.titleLinked") : t("auth.linkChat.title")}
+      subtitle={linked ? t("auth.linkChat.linked") : undefined}
+      footer={!user && !authLoading ? t("auth.linkChat.signInThen") : undefined}
     >
       {loadError ? (
         <Banner tone="danger">{loadError}</Banner>
@@ -126,14 +116,11 @@ function LinkChat() {
       ) : !user ? (
         <Link href="/login" className="block">
           <Button variant="primary" className="w-full">
-            Sign in to continue
+            {t("auth.linkChat.signInToContinue")}
           </Button>
         </Link>
       ) : linked ? (
-        <Banner tone="success">
-          Linked. Go back to the chat thread and answer again — the reply will be
-          recorded as you.
-        </Banner>
+        <Banner tone="success">{t("auth.linkChat.answerAgain")}</Banner>
       ) : !proposal ? (
         <div className="space-y-2">
           <Skeleton className="h-9 w-full rounded-md" />
@@ -142,15 +129,13 @@ function LinkChat() {
       ) : (
         <div className="space-y-4">
           <div className="space-y-2 rounded-md border border-line bg-surface px-4 py-3">
-            <p className="text-fg">
-              <strong>{speakerName(proposal)}</strong> on{" "}
-              <strong>{proposal.speaker.namespace}</strong>
+            <p className="font-semibold text-fg">
+              {t("auth.linkChat.speakerOn", { name: speakerName(proposal), channel: proposal.speaker.namespace })}
             </p>
             <p className="fg-body-sm text-muted">
-              That channel reports{" "}
-              <strong>{proposal.speaker.emailOnChannel ?? "no address"}</strong>{" "}
-              for it. You are signed in as <strong>{user.email}</strong>.
+              {t("auth.linkChat.channelAddress", { address: proposal.speaker.emailOnChannel ?? t("auth.linkChat.noAddress") })}
             </p>
+            <p className="fg-body-sm text-muted">{t("auth.linkChat.signedInAs", { email: user.email })}</p>
           </div>
 
           {confirmError && <Banner tone="danger">{confirmError}</Banner>}
@@ -162,13 +147,11 @@ function LinkChat() {
               loading={confirming}
               onClick={confirm}
             >
-              This is me — link it
+              {t("auth.linkChat.confirm")}
             </Button>
           ) : (
             <Banner tone="attention">
-              {mine
-                ? "The local parts match but the domains do not, which proposes a link and cannot confirm one. Make the two addresses the same, on either side, then reopen this link."
-                : "This chat account reports an address no Forge account of yours holds. Change it on either side so the two match, then reopen this link — nobody can confirm this on your behalf."}
+              {mine ? t("auth.linkChat.domainsDiffer") : t("auth.linkChat.cannotConfirm")}
             </Banner>
           )}
         </div>

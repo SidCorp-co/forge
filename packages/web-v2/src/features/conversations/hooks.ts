@@ -3,6 +3,8 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useSyncExternalStore } from "react";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useToast } from "@/providers/toast-provider";
 import { conversationsApi } from "./api";
 import type {
@@ -221,21 +223,22 @@ export function useUploadAttachment() {
  */
 export function useStopConversation() {
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: conversationsApi.stop,
-    onError: (err) =>
-      toast({ title: "Couldn't stop this answer", description: formatApiError(err), tone: "error" }),
+    onError: (err) => toast({ title: t("conversations.refused.stop"), description: formatApiError(err), tone: "error" }),
   });
 }
 
 /** A write to one room from a list: refresh what it changed, and say so by toast where it fails. */
-function useRoomWrite<Args>(run: (args: Args) => Promise<unknown>, refresh: string[], failed: (args: Args) => string) {
+function useRoomWrite<Args>(run: (args: Args) => Promise<unknown>, refresh: string[], failed: (args: Args) => ProductCopyKey) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: run,
     onSuccess: () => qc.invalidateQueries({ queryKey: refresh }),
-    onError: (err, args) => toast({ title: failed(args), description: formatApiError(err), tone: "error" }),
+    onError: (err, args) => toast({ title: t(failed(args)), description: formatApiError(err), tone: "error" }),
   });
 }
 
@@ -243,7 +246,7 @@ export function useRenameConversation() {
   return useRoomWrite(
     (a: { id: string; title: string | null }) => conversationsApi.rename(a.id, a.title),
     ["conversations"],
-    () => "Couldn't rename",
+    () => "conversations.refused.rename",
   );
 }
 
@@ -251,19 +254,19 @@ export function usePinConversation() {
   return useRoomWrite(
     (a: { id: string; pinned: boolean }) => conversationsApi.setPinned(a.id, a.pinned),
     ["conversations", "list"],
-    (a) => (a.pinned ? "Couldn't pin" : "Couldn't unpin"),
+    (a) => (a.pinned ? "conversations.refused.pin" : "conversations.refused.unpin"),
   );
 }
 
 export function useDeleteConversation() {
-  return useRoomWrite((id: string) => conversationsApi.remove(id), ["conversations"], () => "Couldn't delete");
+  return useRoomWrite((id: string) => conversationsApi.remove(id), ["conversations"], () => "conversations.refused.delete");
 }
 
 export function useArchiveConversation() {
   return useRoomWrite(
     (a: { id: string; archived: boolean }) => conversationsApi.setArchived(a.id, a.archived),
     ["conversations"],
-    (a) => (a.archived ? "Couldn't archive" : "Couldn't unarchive"),
+    (a) => (a.archived ? "conversations.refused.archive" : "conversations.refused.unarchive"),
   );
 }
 

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { renderWithQuery } from "@/test/render";
 import { RULE, say, waitingOn } from "@/test/said";
-import { AT, STATUS } from "../status-fixture";
+import { AT, STATUS } from "@/test/project-status";
 import { StatusReport } from "./status-report";
 
 // The HOP journey walk (2026-10-08): a person reading /status could not tell what they owe, what was

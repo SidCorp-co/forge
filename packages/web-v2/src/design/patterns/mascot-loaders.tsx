@@ -1,6 +1,10 @@
 import type { ReactNode } from "react";
 import { ForgeMascot } from "./forge-mascot";
 import { assetPath } from "@/lib/asset";
+import { productCopy } from "@/lib/i18n/product-copy";
+
+// ColdBoot renders from a server loading boundary, where no interface language is known: English.
+const t = productCopy();
 
 /** Signature whole-view loader — the mascot with its pipeline ring + a live
     telemetry line. Use for cold project loads / reconnects. */
@@ -25,7 +29,7 @@ export function ProjectLoader({
 }
 
 /** Cold-boot splash — floating mascot + warm glow + booting line. */
-export function ColdBoot({ label = "booting control plane…" }: { label?: string }) {
+export function ColdBoot({ label = t("common.coldBoot") }: { label?: string }) {
   return (
     <div className="flex flex-col items-center gap-3.5">
       <div className="relative grid place-items-center">
@@ -37,9 +41,9 @@ export function ColdBoot({ label = "booting control plane…" }: { label?: strin
           }}
         />
         {/* biome-ignore lint/performance/noImgElement: a static brand PNG at a fixed size, its src prefixed by assetPath for the basePath; next/image would lazy-load the loader's own mark */}
-        <img className="fm-breathe" src={assetPath("/forge-mark-180.png")} width={72} height={72} alt="Forge" />
+        <img className="fm-breathe" src={assetPath("/forge-mark-180.png")} width={72} height={72} alt={t("common.brand")} />
       </div>
-      <div className="fg-h2" style={{ fontWeight: 800 }}>Forge</div>
+      <div className="fg-h2" style={{ fontWeight: 800 }}>{t("common.brand")}</div>
       <span className="inline-flex items-center gap-2 font-mono" style={{ fontSize: "var(--text-12-5)", color: "var(--fg-muted)" }}>
         <span className="forge-pulse" style={{ width: 7, height: 7, borderRadius: 999, background: "var(--accent)" }} />
         {label}

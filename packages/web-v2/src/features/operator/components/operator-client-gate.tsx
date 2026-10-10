@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { SignInStopped } from "@/features/auth/components/sign-in-stopped";
 import { useLoginRedirect } from "@/features/auth/use-login-redirect";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { ApiError } from "@/lib/api/client";
 import { useOperatorWhoami } from "../hooks";
 import { OperatorLoadError } from "./operator-load-error";
@@ -15,6 +16,7 @@ import { OperatorShell } from "./operator-shell";
  *  still refuses every /admin call that is not an admin's, so rendering this shell grants nothing. */
 export function OperatorClientGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const t = useCopy();
   const { data, error } = useOperatorWhoami();
   const signedOut = error instanceof ApiError && error.status === 401;
   const notAdmin = data?.isAdmin === false;
@@ -29,7 +31,7 @@ export function OperatorClientGate({ children }: { children: React.ReactNode }) 
   if (error && !signedOut) {
     return (
       <OperatorLoadError
-        message={error instanceof Error ? formatApiError(error) : "Couldn't reach the server."}
+        message={error instanceof Error ? formatApiError(error) : t("operator.gate.error")}
       />
     );
   }

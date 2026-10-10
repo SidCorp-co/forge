@@ -212,7 +212,7 @@ export function DocumentEditor({
 	const { held, text, invalid, dirty, moved, edit, editText, save, reseed } = useHeldDocument(read, template, write, onReload, fixed, t);
 	const modes = [
 		{ value: "fields", label: t("settings.project.raw.fields") },
-		{ value: "json", label: "JSON" },
+		{ value: "json", label: t("settings.project.raw.json") },
 	];
 	const placed = placeRefusals(held.draft, write.isError ? documentRefusals(write.error) : []);
 
@@ -257,7 +257,7 @@ export function DocumentEditor({
 				) : (
 					<>
 						<Textarea
-							aria-label={`${title} (JSON)`}
+							aria-label={t("settings.project.document.jsonLabel", { title })}
 							translate="no"
 							value={text ?? pretty(held.draft)}
 							rows={18}

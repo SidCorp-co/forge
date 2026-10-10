@@ -15,20 +15,18 @@ import {
   TR,
   Table,
 } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { formatCount, formatMinutes, formatUsd } from "../format";
 import type { AdminWorkspaceRow, OperatorWorkspaceSort } from "../types";
 
-const SORTS: { value: OperatorWorkspaceSort; label: string }[] = [
-  { value: "runs", label: "Runs" },
-  { value: "spend", label: "Spend" },
-  { value: "leadTime", label: "Lead time" },
-];
+const SORTS: OperatorWorkspaceSort[] = ["runs", "spend", "leadTime"];
 
 export function WorkspacesTableSkeleton() {
+  const t = useCopy();
   return (
     <PageSection>
       <PageSectionHeader>
-        <PageSectionTitle>Top workspaces</PageSectionTitle>
+        <PageSectionTitle>{t("operator.workspaces.title")}</PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody className="flex flex-col gap-2.5">
         {[0, 1, 2, 3, 4].map((i) => (
@@ -48,28 +46,25 @@ export function WorkspacesTable({
   sort: OperatorWorkspaceSort;
   onSortChange: (sort: OperatorWorkspaceSort) => void;
 }) {
+  const t = useCopy();
   return (
     <PageSection>
       <PageSectionHeader>
-        <PageSectionTitle>Top workspaces</PageSectionTitle>
-        <SegmentedControl options={SORTS} value={sort} onChange={onSortChange} />
+        <PageSectionTitle>{t("operator.workspaces.title")}</PageSectionTitle>
+        <SegmentedControl options={SORTS.map((value) => ({ value, label: t(`operator.workspaces.sort.${value}`) }))} value={sort} onChange={onSortChange} />
       </PageSectionHeader>
       <PageSectionBody>
         {rows.length === 0 ? (
-          <EmptyState
-            title="No workspace activity"
-            message="No project has run anything in this window. Widen the window to see more."
-            mascot={false}
-          />
+          <EmptyState message={t("operator.workspaces.empty")} mascot={false} />
         ) : (
           <Table className="min-w-[520px]">
             <THead>
               <TR>
-                <TH scope="col">Workspace</TH>
-                <TH scope="col" className="text-right">Runs</TH>
-                <TH scope="col" className="text-right">Spend</TH>
-                <TH scope="col" className="text-right">Median lead</TH>
-                <TH scope="col" className="text-right">Open</TH>
+                <TH scope="col">{t("operator.workspaces.col.workspace")}</TH>
+                <TH scope="col" className="text-right">{t("operator.workspaces.col.runs")}</TH>
+                <TH scope="col" className="text-right">{t("operator.workspaces.col.spend")}</TH>
+                <TH scope="col" className="text-right">{t("operator.workspaces.col.lead")}</TH>
+                <TH scope="col" className="text-right">{t("operator.workspaces.col.open")}</TH>
               </TR>
             </THead>
             <TBody>

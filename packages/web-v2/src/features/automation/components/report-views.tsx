@@ -22,7 +22,9 @@ import {
   PeekHead,
   PeekPanel,
   type PeekState,
+  RecordViewSwitch,
   StatusBadge,
+  useRecordView,
   useUrlTab,
   ViewHeading,
   WaitBanner,
@@ -139,42 +141,53 @@ function Outcome({ r, slug }: { r: ReportStanding; slug: string }) {
   return <span>—</span>;
 }
 
-export function ReportFacts({ r, slug }: { r: ReportStanding; slug: string }) {
+/**
+ * The rail: who triaged it, when, where it went and why once it is triaged (the header badge says the
+ * state, REQ-43 BC-5), what it is about, and where it came from. The target ref and the fire's id
+ * are agent text, drawn in the Developer view (BC-7).
+ */
+export function ReportFacts({ r, slug, developer = false }: { r: ReportStanding; slug: string; developer?: boolean }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
+  const went = Boolean(r.feedback || r.linkedIssueId || r.duplicateOf);
   return (
     <>
-      <FactsGroup title={t("schedules.report.triage")}>
-        <Fact label={t("schedules.report.state")}>
-          <StatusBadge family="reportTriage" value={r.triage} />
-        </Fact>
-        <Fact label={t("schedules.report.by")}>{r.triagedBy?.name ?? "—"}</Fact>
-        {r.triagedAt ? (
-          <Fact label={t("schedules.report.when")}>
-            <span title={time.dateTime(r.triagedAt)}>{t("schedules.ago", { age: time.age(r.triagedAt) })}</span>
-          </Fact>
-        ) : null}
-        <Fact label={t("schedules.report.wentTo")}>
-          <Outcome r={r} slug={slug} />
-        </Fact>
-        {r.triageReason ? <Fact label={t("schedules.report.reason")}>{r.triageReason}</Fact> : null}
-      </FactsGroup>
+      {r.triage !== "new" ? (
+        <FactsGroup title={t("schedules.report.triage")}>
+          {r.triagedBy?.name ? <Fact label={t("schedules.report.by")}>{r.triagedBy.name}</Fact> : null}
+          {r.triagedAt ? (
+            <Fact label={t("schedules.report.when")}>
+              <span title={time.dateTime(r.triagedAt)}>{t("schedules.ago", { age: time.age(r.triagedAt) })}</span>
+            </Fact>
+          ) : null}
+          {went ? (
+            <Fact label={t("schedules.report.wentTo")}>
+              <Outcome r={r} slug={slug} />
+            </Fact>
+          ) : null}
+          {r.triageReason ? <Fact label={t("schedules.report.reason")}>{r.triageReason}</Fact> : null}
+        </FactsGroup>
+      ) : null}
       <FactsGroup title={t("schedules.report.report")}>
         <Fact label={t("schedules.report.kind")}>
           <EnumBadge family="agentReportKind" value={r.kind} />
         </Fact>
         <Fact label={t("schedules.report.severityLabel")}>{statusReading("severity", r.severity, language).label}</Fact>
-        <Fact label={t("schedules.report.target")}>{aboutOf(r, language)}</Fact>
+        <Fact label={t("schedules.report.target")}>{developer ? aboutOf(r, language) : enumLabel("agentReportTarget", r.target, language)}</Fact>
       </FactsGroup>
       <FactsGroup title={t("schedules.report.source")}>
         <Fact label={t("schedules.report.fromLabel")}>
           {r.fire ? (
             <>
-              <Link href={fireHref(slug, r.fire.id)} className="font-mono text-12-5 text-link hover:underline">
-                #{shortId(r.fire.id)}
-              </Link>
-              <span className="text-muted">{t("schedules.report.of")}</span>
+              {developer ? (
+                <>
+                  <Link href={fireHref(slug, r.fire.id)} className="font-mono text-12-5 text-link hover:underline">
+                    #{shortId(r.fire.id)}
+                  </Link>
+                  <span className="text-muted">{t("schedules.report.of")}</span>
+                </>
+              ) : null}
               <Link href={scheduleHref(slug, r.fire.scheduleId)} className="text-link hover:underline">
                 {r.fire.scheduleName}
               </Link>
@@ -222,8 +235,12 @@ export function ReportPrimary({ r, projectId, canWrite }: { r: ReportStanding; p
 
 type Form = "dismiss" | "duplicate" | "promote" | null;
 
-/** Every triage act a writer may take, each posting to the triage door. */
-function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projectId: string; slug: string }) {
+/**
+ * The triage acts a writer may take on a new report beside the header's one primary act, each posting
+ * to the triage door. File and Reopen are the primary act's, and a triaged report's state, triager
+ * and outcome are the header's and the rail's, so none is said here a second time (REQ-43 BC-5).
+ */
+function ReportTriage({ r, projectId }: { r: ReportStanding; projectId: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const triage = useTriageAgentReport(projectId);
@@ -235,37 +252,21 @@ function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projectId: st
     .filter((o) => o.id !== r.id)
     .sort((a, b) => Number(b.signalKey === r.signalKey) - Number(a.signalKey === r.signalKey));
   const act = (a: Parameters<typeof triage.mutate>[0]["act"]) => triage.mutate({ id: r.id, act: a }, { onSuccess: () => setForm(null) });
+  if (r.triage !== "new") return null;
   return (
     <section id="report-act" data-testid="report-triage">
       <ViewHeading>{t("schedules.report.whatIs")}</ViewHeading>
-      {r.triage === "new" ? (
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" disabled={triage.isPending} onClick={() => act({ act: "file", createIssue: {} })}>
-            {t("schedules.report.fileIssue")}
-          </Button>
-          <Button type="button" size="sm" onClick={() => setForm("dismiss")} data-testid="report-dismiss-open">
-            {t("schedules.report.dismiss")}
-          </Button>
-          <Button type="button" size="sm" onClick={() => setForm("duplicate")} data-testid="report-duplicate-open">
-            {t("schedules.report.markDuplicate")}
-          </Button>
-          <Button type="button" size="sm" onClick={() => setForm("promote")}>
-            {t("schedules.report.promote")}
-          </Button>
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-13 text-muted">
-            {r.triagedBy?.name
-              ? t("schedules.report.triagedBy", { state: statusReading("reportTriage", r.triage, language).label, name: r.triagedBy.name })
-              : statusReading("reportTriage", r.triage, language).label}
-            .
-          </span>
-          <Button type="button" size="sm" disabled={triage.isPending} onClick={() => act({ act: "reopen" })}>
-            {t("schedules.report.reopen")}
-          </Button>
-        </div>
-      )}
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" onClick={() => setForm("dismiss")} data-testid="report-dismiss-open">
+          {t("schedules.report.dismiss")}
+        </Button>
+        <Button type="button" size="sm" onClick={() => setForm("duplicate")} data-testid="report-duplicate-open">
+          {t("schedules.report.markDuplicate")}
+        </Button>
+        <Button type="button" size="sm" onClick={() => setForm("promote")}>
+          {t("schedules.report.promote")}
+        </Button>
+      </div>
       {form === "dismiss" ? (
         <form
           className="mt-3 flex flex-wrap items-center gap-2"
@@ -322,14 +323,6 @@ function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projectId: st
         </div>
       ) : null}
       <Refusal error={triage.error} />
-      {r.feedback ? (
-        <p className="mt-2 text-12-5 text-muted">
-          {t("schedules.report.became")}{" "}
-          <Link href={feedbackHref(slug, r.feedback.key)} className="text-link hover:underline">
-            {r.feedback.key}
-          </Link>
-        </p>
-      ) : null}
     </section>
   );
 }
@@ -361,7 +354,7 @@ export function ReportPeek({
       />
       <ReportBanner r={r} className="px-[18px]" />
       <div className="grid gap-5 px-[18px] pb-4 pt-4">
-        {canWrite ? <ReportTriage r={r} projectId={projectId} slug={slug} /> : null}
+        {canWrite ? <ReportTriage r={r} projectId={projectId} /> : null}
         <ReportFacts r={r} slug={slug} />
       </div>
     </PeekPanel>
@@ -463,17 +456,24 @@ function History({ r }: { r: ReportStanding }) {
   );
 }
 
+/**
+ * A report's page. The person view is its state and its summary, which the header cuts to one line;
+ * the agent's detail and suggestion, its signal, ids and source sit in the Developer view (REQ-43 BC-7).
+ */
 export function ReportPage({ projectId, slug, reportId, canWrite }: { projectId: string; slug: string; reportId: string; canWrite: boolean }) {
   const t = useCopy();
   const q = useReportDetail(projectId, reportId);
-  const [tab, setTab] = useUrlTab(REPORT_TABS);
+  const [chosen, setTab] = useUrlTab(REPORT_TABS);
+  const [view, onView] = useRecordView();
+  const developer = view === "developer";
+  const tab = chosen === "source" && !developer ? "report" : chosen;
   return (
     <QueryBoundary query={q} loadingLabel={t("schedules.report.loading")}>
       {(data) => {
         const r = data.report;
         const tabs = [
           { value: "report" as const, label: t("schedules.report.tabReport") },
-          { value: "source" as const, label: t("schedules.report.tabSource") },
+          ...(developer ? [{ value: "source" as const, label: t("schedules.report.tabSource") }] : []),
           { value: "history" as const, label: t("schedules.report.tabHistory") },
         ];
         return (
@@ -482,20 +482,27 @@ export function ReportPage({ projectId, slug, reportId, canWrite }: { projectId:
             dataKey={r.id}
             rail={
               <FactsRail>
-                <ReportFacts r={r} slug={slug} />
+                <ReportFacts r={r} slug={slug} developer={developer} />
               </FactsRail>
             }
           >
-            <DetailMobileTitle itemKey={shortId(r.id)} title={<Written text={r.summary} lang={r.writtenLang} />} badge={<StatusBadge family="reportTriage" value={r.triage} />} />
+            <DetailMobileTitle itemKey={developer ? shortId(r.id) : undefined} title={<Written text={r.summary} lang={r.writtenLang} />} badge={<StatusBadge family="reportTriage" value={r.triage} />} />
             <ReportBanner r={r} className="px-8 py-2.5 max-md:px-4" />
+            <div className="flex justify-end px-8 pt-3 max-md:px-4" data-testid="report-view-bar">
+              <RecordViewSwitch view={view} onView={onView} />
+            </div>
             <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="report-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("schedules.report.tabReport")}>
               {tab === "report" ? (
                 <div className="grid gap-8" data-testid="view-report">
                   <Prose title={t("schedules.report.summary")} lang={r.writtenLang}>{r.summary}</Prose>
-                  <Prose title={t("schedules.report.detail")} lang={r.writtenLang}>{r.detail}</Prose>
-                  <Prose title={t("schedules.report.suggestion")} lang={r.writtenLang}>{r.suggestion}</Prose>
-                  {canWrite ? <ReportTriage r={r} projectId={projectId} slug={slug} /> : null}
+                  {canWrite ? <ReportTriage r={r} projectId={projectId} /> : null}
+                  {developer ? (
+                    <>
+                      <Prose title={t("schedules.report.detail")} lang={r.writtenLang}>{r.detail}</Prose>
+                      <Prose title={t("schedules.report.suggestion")} lang={r.writtenLang}>{r.suggestion}</Prose>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
               {tab === "source" ? <Source r={r} slug={slug} /> : null}

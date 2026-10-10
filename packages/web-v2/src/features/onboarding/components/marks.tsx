@@ -8,6 +8,7 @@ import type { IssueStatusTone } from "@forge/contracts/issue-vocabulary";
 import type { ReactNode } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { StatusBadge, ToneBadge } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 /** A dotted-underline word whose tooltip carries a sentence and its evidence. */
 export function HoverNote({ label, children, className }: { label: ReactNode; children: ReactNode; className?: string }) {
@@ -59,7 +60,8 @@ export function ThreadStatusChip({ status }: { status: OnboardingStatus }) {
 }
 
 export function DesignStatusChip({ status }: { status: string | null }) {
-  return status ? <StatusBadge family="design" value={status} /> : <ToneChip tone="neutral" label="Not a design" />;
+  const t = useCopy();
+  return status ? <StatusBadge family="design" value={status} /> : <ToneChip tone="neutral" label={t("onboarding.notDesign")} />;
 }
 
 /** The agent's own marks: Inferred beside a default it read from the code, New on a question it just raised. */

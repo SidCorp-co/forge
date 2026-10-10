@@ -26,4 +26,5 @@ export type OperatorWhoamiResult =
   | { kind: "unverified" }
   | { kind: "session-ended" }
   | { kind: "undetermined" }
-  | { kind: "error"; message: string };
+  /** core answered an error status, or (null) could not be reached; the layout words it */
+  | { kind: "error"; status: number | null };

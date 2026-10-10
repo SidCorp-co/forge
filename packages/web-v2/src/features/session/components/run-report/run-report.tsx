@@ -9,9 +9,14 @@
 //
 // Interactive chat sessions keep the Conversation thread; `SessionScreen`
 // picks between the two on `metadata.type`.
+//
+// A person reads where the run stands — its steps, what the agent concluded and
+// what it cost. The failing command and its output, the tool calls, files, tokens
+// and the box it ran on are the Developer view's (REQ-43 BC-7), and each fact is
+// said once on the page (BC-5): the issue opens from the header alone.
 
 import { useMemo, useState } from "react";
-import { Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, EmptyState } from "@/design";
+import { PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, EmptyState } from "@/design";
 import { formatDurationMs, formatUsd } from "@/features/pipeline/derive";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
@@ -58,10 +63,11 @@ const LENSES: { key: Lens; label: ProductCopyKey }[] = [
 export interface RunReportProps {
   session: SessionRow;
   items: ConversationItem[];
-  onOpenIssue?: () => void;
+  /** The Developer view (`?view=developer`): the whole report. Off, the person's summary. */
+  developer: boolean;
 }
 
-export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
+export function RunReport({ session, items, developer }: RunReportProps) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
@@ -103,14 +109,31 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
           }
         />
       )}
-      {blocker && <BlockerCard blocker={blocker} onOpenIssue={onOpenIssue} />}
+      {!developer && (
+        <PageSection data-testid="session-summary">
+          <PageSectionBody className="space-y-2 py-3">
+            {narration.closing && (
+              <>
+                <p className="fg-caption">{t("runs.story.concluded")}</p>
+                <p className="fg-body-sm whitespace-pre-wrap">{narration.closing}</p>
+              </>
+            )}
+            <Figure
+              label={t("session.report.cost")}
+              value={formatUsd(meta.totals?.totalCostUsd ?? costQ.data?.estimatedCost, language)}
+            />
+          </PageSectionBody>
+        </PageSection>
+      )}
+      {developer && (
+        <>
+      {blocker && <BlockerCard blocker={blocker} />}
 
       <div className="grid min-h-0 gap-4 lg:grid-cols-[240px_minmax(0,1fr)_280px]">
         <div className="flex flex-col gap-4">
           <PageSection>
             <PageSectionHeader>
               <PageSectionTitle>{t("runs.report.files")}</PageSectionTitle>
-              <span className="fg-caption">{time.number(files.length)}</span>
             </PageSectionHeader>
             <PageSectionBody className="py-2">
               {files.length === 0 ? (
@@ -169,7 +192,6 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
             </div>
             <span className="fg-caption">
               {t("runs.report.toolCalls", { n: time.number(rows.filter((r) => r.kind === "tool").length) })}
-              {blocker ? t("runs.report.errors", { n: time.number(blocker.errorCount) }) : ""}
             </span>
           </PageSectionHeader>
           <div className="flex min-h-0 flex-1 gap-2 p-2">
@@ -248,15 +270,12 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
             </PageSectionBody>
           </PageSection>
 
-          {onOpenIssue && (
-            <Button variant="secondary" size="sm" icon="list" onClick={onOpenIssue}>
-              {t("runs.report.openIssue")}
-            </Button>
-          )}
         </div>
       </div>
 
       {spend && <TimeSpendBar spend={spend} />}
+        </>
+      )}
     </div>
   );
 }

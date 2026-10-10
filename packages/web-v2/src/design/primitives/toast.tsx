@@ -3,6 +3,10 @@
 import { toast as sonner } from "sonner";
 import { Toaster as ShadcnToaster } from "@/components/ui/sonner";
 import { Icon } from "@/design/icons/icon";
+import { productCopy } from "@/lib/i18n/product-copy";
+
+// a toast is raised from a hook or a callback, outside the interface language: its act reads English
+const en = productCopy();
 
 export type ToastTone = "default" | "success" | "error" | "info";
 
@@ -26,7 +30,7 @@ export function showToast({ title, description, tone = "default", onClick, durat
     description,
     duration: duration > 0 ? duration : Number.POSITIVE_INFINITY,
     closeButton: true,
-    action: onClick ? { label: "Open", onClick } : undefined,
+    action: onClick ? { label: en("common.toast.open"), onClick } : undefined,
   };
   if (tone === "success") sonner.success(title, options);
   else if (tone === "error") sonner.error(title, options);

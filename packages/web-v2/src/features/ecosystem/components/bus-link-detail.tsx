@@ -2,17 +2,19 @@
 
 import { ProjectMark, StatusBadge, Tooltip } from "@/design";
 import { readingOf } from "@/lib/api/refusals";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { type Bus, callSiteAt, type LinkRecord, STATE_MEANING, shortSha, slugsOf, projectMarkProps } from "../bus";
+import { type Bus, callSiteAt, type LinkRecord, stateMeaning, shortSha, slugsOf, projectMarkProps } from "../bus";
 import { useLink } from "../hooks";
 import { Caption, Group, Head } from "./bus-detail-kit";
 import { Loading, UnreadNotice } from "./notices";
 
 export function LinkDetail({ bus, id }: { bus: Bus; id: string }) {
+  const t = useCopy();
   const l = bus.links.find((x) => x.id === id);
   const reading = readingOf(useLink(l?.consumer, l?.id));
-  if (!l) return <Caption>That link is no longer on this ecosystem&apos;s bus.</Caption>;
-  const consumer = slugsOf(bus).get(l.consumer) ?? "a member";
+  if (!l) return <Caption>{t("ecosystem.link.gone")}</Caption>;
+  const consumer = slugsOf(bus).get(l.consumer) ?? t("ecosystem.bus.aMember");
   return (
     <>
       <Head>
@@ -20,23 +22,23 @@ export function LinkDetail({ bus, id }: { bus: Bus; id: string }) {
         <h2 className="text-15 font-semibold">
           {consumer} <span className="text-subtle">→</span> <span className="font-mono">{l.contract.slug}</span>
         </h2>
-        <Tooltip label={STATE_MEANING[l.state]}>
+        <Tooltip label={stateMeaning(l.state, t)}>
           <StatusBadge family="link" value={l.state} />
         </Tooltip>
-        <Tooltip label={`Only ${consumer}'s master writes this link · updated ${new Date(l.updatedAt).toLocaleString()}`}>
+        <Tooltip label={t("ecosystem.link.updated", { when: new Date(l.updatedAt).toLocaleString() })}>
           <span className="fg-caption">
-            {l.module} · on {l.pinnedVersion} · {formatRelativeTime(l.updatedAt)}
+            {l.module} · {t("ecosystem.bus.onVersion", { version: l.pinnedVersion })} · {formatRelativeTime(l.updatedAt)}
           </span>
         </Tooltip>
       </Head>
       {reading.kind === "loading" ? (
         <div className="col-span-full px-4">
-          <Loading what="this link's guide" />
+          <Loading what={t("ecosystem.link.guideWhat", { consumer })} />
         </div>
       ) : null}
       {reading.kind === "unread" ? (
         <div className="col-span-full px-4 pb-3">
-          <UnreadNotice what={`${consumer}'s guide for this link`} refusals={reading.refusals} />
+          <UnreadNotice what={t("ecosystem.link.guideWhat", { consumer })} refusals={reading.refusals} />
         </div>
       ) : null}
       {reading.kind === "read" ? <Guide record={reading.value} /> : null}
@@ -45,10 +47,11 @@ export function LinkDetail({ bus, id }: { bus: Bus; id: string }) {
 }
 
 function UsesGroup({ d }: { d: LinkRecord["document"] }) {
+  const t = useCopy();
   return (
-    <Group title="Uses">
+    <Group title={t("ecosystem.link.uses")}>
       {d.fieldsUsed.length === 0 ? (
-        <Caption>No field is recorded.</Caption>
+        <Caption>{t("ecosystem.link.noFields")}</Caption>
       ) : (
         <div className="flex flex-wrap gap-1">
           {d.fieldsUsed.map((f) => (
@@ -61,7 +64,7 @@ function UsesGroup({ d }: { d: LinkRecord["document"] }) {
       {d.outsideContract.length > 0 ? (
         <>
           <h4 className="pt-2 text-11 font-semibold uppercase tracking-[0.07em]" style={{ color: "var(--amberw-600)" }}>
-            Outside the contract
+            {t("ecosystem.link.outside")}
           </h4>
           {d.outsideContract.map((o) => (
             <span key={o} className="font-mono text-11-5" style={{ color: "var(--amberw-600)" }}>
@@ -75,12 +78,13 @@ function UsesGroup({ d }: { d: LinkRecord["document"] }) {
 }
 
 function Guide({ record }: { record: LinkRecord }) {
+  const t = useCopy();
   const d = record.document;
   return (
     <>
-      <Group title="Call sites" aside={d.callSites.length || undefined}>
+      <Group title={t("ecosystem.link.callSites")} aside={d.callSites.length || undefined}>
         {d.callSites.length === 0 ? (
-          <Caption>No call site is recorded.</Caption>
+          <Caption>{t("ecosystem.link.noCallSites")}</Caption>
         ) : (
           d.callSites.map((s) => (
             <div key={`${callSiteAt(s)}:${s.operation}`} className="flex min-w-0 justify-between gap-2 font-mono text-11-5">
@@ -93,9 +97,9 @@ function Guide({ record }: { record: LinkRecord }) {
         )}
       </Group>
       <UsesGroup d={d} />
-      <Group title="Notes">
+      <Group title={t("ecosystem.link.notes")}>
         {d.notes.length === 0 ? (
-          <Caption>The guide holds no notes.</Caption>
+          <Caption>{t("ecosystem.link.notesNone")}</Caption>
         ) : (
           d.notes.map((n) => (
             <p key={n} className="break-words text-13">
@@ -104,21 +108,28 @@ function Guide({ record }: { record: LinkRecord }) {
           ))
         )}
       </Group>
-      <Group title="Written by">
-        <Tooltip label={`Run ${d.writtenBy.runId ?? "not recorded"} · session ${d.writtenBy.sessionId ?? "not recorded"} · revision ${record.revision}`} multiline>
+      <Group title={t("ecosystem.link.writtenBy")}>
+        <Tooltip
+          label={t("ecosystem.link.writtenIds", {
+            run: d.writtenBy.runId ?? t("ecosystem.link.unrecorded"),
+            session: d.writtenBy.sessionId ?? t("ecosystem.link.unrecorded"),
+            revision: record.revision,
+          })}
+          multiline
+        >
           <span className="text-13">
-            {d.writtenBy.runId ? "a master run" : "its master"} at <span className="font-mono">{shortSha(d.writtenBy.sha)}</span>
+            {d.writtenBy.runId ? t("ecosystem.link.byRun") : t("ecosystem.link.byMaster")}{" "}
+            <span className="font-mono">{shortSha(d.writtenBy.sha)}</span>
           </span>
         </Tooltip>
         <span className="text-13">
-          refreshed at <span className="font-mono">{shortSha(d.refreshedAtSha)}</span>
+          {t("ecosystem.link.refreshedAt")} <span className="font-mono">{shortSha(d.refreshedAtSha)}</span>
         </span>
-        <Tooltip label="The provider's current version of the contract, as it recorded it">
-          <span className="fg-caption">
-            pins {d.pinnedVersion}
-            {record.currentVersion && record.currentVersion !== d.pinnedVersion ? `, current ${record.currentVersion}` : ""}
-          </span>
-        </Tooltip>
+        <span className="fg-caption">
+          {record.currentVersion && record.currentVersion !== d.pinnedVersion
+            ? t("ecosystem.link.pinsCurrent", { pinned: d.pinnedVersion, current: record.currentVersion })
+            : t("ecosystem.link.pins", { pinned: d.pinnedVersion })}
+        </span>
       </Group>
     </>
   );

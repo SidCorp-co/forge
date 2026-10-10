@@ -34,15 +34,12 @@ import { versionLine, WindowText } from "./contract-bits";
 import { ContractPeek } from "./contract-peek";
 
 const GROUP_MODES = [
-  { value: "attention" as const, label: "Attention" },
-  { value: "direction" as const, label: "Direction" },
+  { value: "attention" as const, label: "contracts.mode.attention" as const },
+  { value: "direction" as const, label: "contracts.mode.direction" as const },
 ];
 type GroupMode = (typeof GROUP_MODES)[number]["value"];
 
-const modesIn = (t: Copy) => [
-  { value: "attention" as const, label: t("contracts.mode.attention") },
-  { value: "direction" as const, label: t("contracts.mode.direction") },
-];
+const modesIn = (t: Copy) => GROUP_MODES.map((m) => ({ value: m.value, label: t(m.label) }));
 
 const columnsIn = (t: Copy) => ({ key: t("contracts.col.key"), title: t("contracts.col.title"), state: t("contracts.col.state"), meta: t("contracts.col.meta") });
 

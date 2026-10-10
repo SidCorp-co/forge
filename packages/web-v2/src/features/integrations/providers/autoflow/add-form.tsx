@@ -60,14 +60,14 @@ export function AddAutoflowForm({
     >
       {hasDefault && (
         <LabelField
-          placeholder="staging"
+          placeholder={t("integrations.provider.labelPlaceholder")}
           value={label}
           onChange={setLabel}
           error={badLabel}
         />
       )}
       <Field label={t("integrations.autoflow.shop")} required>
-        <Input placeholder="hop" value={shop} onChange={(e) => setShop(e.target.value.toLowerCase())} />
+        <Input placeholder={t("integrations.autoflow.shopPlaceholder")} value={shop} onChange={(e) => setShop(e.target.value.toLowerCase())} />
         {shopError && <p className="fg-body-sm text-danger">{shopError}</p>}
       </Field>
       <Field label={t("integrations.autoflow.token")} required>

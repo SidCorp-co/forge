@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 
 interface MermaidDiagramProps {
@@ -26,6 +27,7 @@ export function MermaidDiagram({ code, className }: MermaidDiagramProps) {
   const rawId = useId();
   const id = `mermaid-${rawId.replace(/:/g, "")}`;
   const [svg, setSvg] = useState<string | null>(null);
+  const t = useCopy();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export function MermaidDiagram({ code, className }: MermaidDiagramProps) {
   if (error) {
     return (
       <div className={cn("rounded-md border border-line bg-sunken px-3 py-2", className)}>
-        <p className="fg-caption font-mono text-red-600">Mermaid parse error: {error}</p>
+        <p className="fg-caption font-mono text-red-600">{t("common.mermaid.parseError", { error })}</p>
         <pre className="mt-1 overflow-x-auto font-mono text-12 text-muted">{code}</pre>
       </div>
     );

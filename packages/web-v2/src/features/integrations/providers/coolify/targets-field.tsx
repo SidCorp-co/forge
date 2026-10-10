@@ -107,7 +107,7 @@ function TargetRow({
       <div className="flex flex-wrap items-end gap-2 sm:flex-nowrap">
         <div className="w-full shrink-0 sm:w-40">
           <Caption show={first}>{c("integrations.provider.label")}</Caption>
-          <Input value={t.label} onChange={(e) => onPatch({ label: e.target.value })} placeholder="Backend" />
+          <Input value={t.label} onChange={(e) => onPatch({ label: e.target.value })} placeholder={c("integrations.coolify.targetPlaceholder")} />
         </div>
         <div className="min-w-0 flex-1">
           <Caption show={first}>{c("integrations.coolify.app")}</Caption>

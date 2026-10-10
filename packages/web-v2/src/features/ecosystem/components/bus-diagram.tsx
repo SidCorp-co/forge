@@ -1,6 +1,8 @@
 "use client";
 
 import { ProjectMark, Tooltip } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import {
   type Bus,
@@ -12,7 +14,7 @@ import {
   impactLine,
   impactOf,
   projectMarkProps,
-  STATE_MEANING,
+  stateMeaning,
   STATE_TONE,
   slugsOf,
   triggerRef,
@@ -37,33 +39,42 @@ const VERDICT_LABEL: Record<Verdict, (l: BusLink) => string> = {
 };
 
 // the line under a member's name is its builder run while one is running or has failed; nothing else core serves says what that project's master is doing, so otherwise the line is left out rather than guessed
-function headerLine(p: BusProject) {
+function headerLine(p: BusProject, t: Copy) {
   const b = p.builder;
   if (!b) return null;
   const prog = builderProgress(b);
   if (prog.failed) {
     return {
-      text: "builder failed",
+      text: t("ecosystem.builder.failed"),
       tone: "bad" as const,
-      tip: `The ecosystem builder failed at ${prog.failed.name}${prog.failed.detail ? `: ${prog.failed.detail}` : ""}`,
+      tip: `${t("ecosystem.builder.failedAt", { step: prog.failed.name })}${prog.failed.detail ? `: ${prog.failed.detail}` : ""}`,
       progress: null,
     };
   }
   if (!builderActive(b)) return null;
   return {
-    text: `builder ${prog.done}/${prog.total}`,
+    text: t("ecosystem.builder.progress", { done: prog.done, total: prog.total }),
     tone: "active" as const,
     tip: prog.running
-      ? `The ecosystem builder is at ${prog.running.name}${prog.running.detail ? `: ${prog.running.detail}` : ""}`
-      : "The ecosystem builder has steps still to run",
+      ? `${t("ecosystem.builder.runningAt", { step: prog.running.name })}${prog.running.detail ? `: ${prog.running.detail}` : ""}`
+      : t("ecosystem.builder.stepsLeft"),
     progress: prog.total ? prog.done / prog.total : 0,
   };
 }
 
-function headerTip(p: BusProject, reader: boolean, linksOut: number, provides: number) {
-  const mapped = linksOut === 0 ? "no link mapped" : `${linksOut} link${linksOut === 1 ? "" : "s"} out`;
-  const built = p.builder ? ` · last built on ${p.builder.trigger.kind} ${triggerRef(p.builder.trigger)}${p.builder.stepsStale ? " (steps stale)" : ""}` : "";
-  return `${p.name}${reader ? " · one of your projects" : ""} · ${mapped}${provides ? ` · provides ${provides}` : ""}${built}`;
+function headerTip(p: BusProject, reader: boolean, linksOut: number, provides: number, t: Copy) {
+  const built = p.builder
+    ? `${t("ecosystem.header.lastBuilt", { kind: p.builder.trigger.kind, ref: triggerRef(p.builder.trigger, t) })}${p.builder.stepsStale ? ` ${t("ecosystem.header.stepsStale")}` : ""}`
+    : null;
+  return [
+    p.name,
+    reader ? t("ecosystem.header.yours") : null,
+    linksOut === 0 ? t("ecosystem.header.unmapped") : t("ecosystem.header.linksOut", { n: linksOut }),
+    provides ? t("ecosystem.header.provides", { n: provides }) : null,
+    built,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function Header({
@@ -83,7 +94,8 @@ function Header({
   selected: boolean;
   onSelect: (s: Selection) => void;
 }) {
-  const line = headerLine(p);
+  const t = useCopy();
+  const line = headerLine(p, t);
   return (
     <div
       className={cn(
@@ -92,7 +104,7 @@ function Header({
       )}
       style={{ gridRow: 1, gridColumn: col }}
     >
-      <Tooltip label={headerTip(p, reader, linksOut, provides)} multiline>
+      <Tooltip label={headerTip(p, reader, linksOut, provides, t)} multiline>
         <button
           type="button"
           onClick={() => onSelect({ kind: "project", id: p.id })}
@@ -165,19 +177,22 @@ function Chip({
   );
 }
 
-function linkTip(l: BusLink, names: Map<string, string>) {
-  const out = l.outsideContract
-    ? ` · uses ${l.outsideContract} operation${l.outsideContract === 1 ? "" : "s"} outside the contract`
-    : "";
-  return `${names.get(l.consumer) ?? "a member"} → ${l.contract.slug} from ${l.module} · on ${l.pinnedVersion} · ${l.state}: ${STATE_MEANING[l.state]}${out}`;
+function linkTip(l: BusLink, names: Map<string, string>, t: Copy) {
+  return [
+    t("ecosystem.link.tip", { consumer: names.get(l.consumer) ?? t("ecosystem.bus.aMember"), contract: l.contract.slug, module: l.module, version: l.pinnedVersion }),
+    stateMeaning(l.state, t),
+    l.outsideContract ? t("ecosystem.link.outside", { n: l.outsideContract }) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
-function rowTip(row: BusRow, names: Map<string, string>) {
+function rowTip(row: BusRow, names: Map<string, string>, t: Copy) {
   const c = row.contract;
-  const provider = names.get(row.ref.provider) ?? "its provider";
+  const provider = names.get(row.ref.provider) ?? t("ecosystem.row.itsProvider");
   return c
-    ? `${c.title} · ${c.type} · ${c.lifecycle} · by ${provider} · ${c.currentVersion ? `current ${c.currentVersion}` : "no version recorded"}`
-    : `${row.ref.slug} is not published to this ecosystem by ${provider}, yet a link points at it`;
+    ? [c.title, c.type, c.lifecycle, t("ecosystem.row.by", { provider }), c.currentVersion ? t("ecosystem.row.current", { version: c.currentVersion }) : t("ecosystem.row.unversioned")].join(" · ")
+    : t("ecosystem.row.unpublished", { slug: row.ref.slug, provider });
 }
 
 interface RowProps {
@@ -202,6 +217,7 @@ function ConsumerCells({
   isSel,
   fade,
 }: RowProps & { col: Map<string, number>; isSel: boolean; fade: boolean }) {
+  const t = useCopy();
   const byConsumer = new Map<string, BusLink[]>();
   for (const l of row.links) byConsumer.set(l.consumer, [...(byConsumer.get(l.consumer) ?? []), l]);
   const builders = new Map(bus.projects.map((p) => [p.id, builderActive(p.builder)]));
@@ -218,7 +234,7 @@ function ConsumerCells({
             key={l.id}
             label={verdict ? VERDICT_LABEL[verdict](l) : l.pinnedVersion}
             tone={verdict ? VERDICT_TONE[verdict] : STATE_TONE[l.state]}
-            tip={verdict ? `${linkTip(l, names)} · ${impactLine(l)}` : linkTip(l, names)}
+            tip={verdict ? `${linkTip(l, names, t)} · ${impactLine(l, t)}` : linkTip(l, names, t)}
             selected={sel.kind === "link" && sel.id === l.id}
             work={lens === "live" && builders.get(l.consumer)}
             outside={l.outsideContract}
@@ -231,6 +247,7 @@ function ConsumerCells({
 }
 
 function Row(props: RowProps) {
+  const t = useCopy();
   const { row, r, bus, lens, sel, names, onSelect } = props;
   const focused = lens === "impact" && sel.kind === "contract";
   const isSel = focused && sel.key === row.key;
@@ -240,7 +257,7 @@ function Row(props: RowProps) {
   const col = new Map(bus.projects.map((p, i) => [p.id, i + 2]));
   const providerCol = col.get(row.ref.provider);
   const c = row.contract;
-  const tip = rowTip(row, names);
+  const tip = rowTip(row, names, t);
   return (
     <>
       <div className={cn("relative z-[1] flex items-center", fade && "eco-fade")} style={{ gridRow: r, gridColumn: 1, height: ROW_H }}>
@@ -269,7 +286,7 @@ function Row(props: RowProps) {
       {providerCol ? (
         <div className={cn("relative z-[1] grid place-items-center", fade && "eco-fade")} style={{ gridRow: r, gridColumn: providerCol, height: ROW_H }}>
           <Chip
-            label={c?.currentVersion ?? (c ? "no version" : "unpublished")}
+            label={c?.currentVersion ?? (c ? t("ecosystem.bus.noVersion") : t("ecosystem.bus.unpublished"))}
             tone="own"
             tip={`Provided by ${names.get(row.ref.provider) ?? "its provider"} · ${tip}`}
             selected={sel.kind === "contract" && sel.key === row.key}
@@ -297,6 +314,7 @@ export function BusDiagram({
   readers: ReadonlySet<string>;
   onSelect: (s: Selection) => void;
 }) {
+  const t = useCopy();
   const names = slugsOf(bus);
   const R = Math.max(rows.length, 1);
   const selectedColumn =
@@ -337,7 +355,7 @@ export function BusDiagram({
             className="fg-caption self-center py-4"
             style={{ gridRow: 2, gridColumn: `1 / span ${bus.projects.length + 1}` }}
           >
-            No member publishes a contract to {bus.ecosystem.name}, and no member&apos;s master has mapped a link, so there is no line to draw yet.
+            {t("ecosystem.bus.noLines")}
           </p>
         ) : (
           rows.map((row, i) => (

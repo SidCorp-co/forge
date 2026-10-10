@@ -16,7 +16,6 @@ import {
   EmptyState,
   ErrorState,
   HealthDot,
-  HelpButton,
   MonoTag,
   PageContainer,
   PageTitle,
@@ -35,20 +34,15 @@ import { deriveHealth } from "@/features/projects/derive";
 import { useOrgScopedProjects, useProjectHealth } from "@/features/projects/hooks";
 import type { ProjectHealthRow } from "@/features/projects/types";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { formatDurationSec, formatUsd } from "../derive";
 import { useStepDurations, useThroughput } from "../hooks";
 import type { StepDurationRow, ThroughputRow } from "../types";
 import { RunDetail } from "./run-detail";
-import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
-const TABS = [
-  { value: "monitor", label: "Monitor" },
-  { value: "progress", label: "Progress" },
-  { value: "health", label: "Health" },
-  { value: "runs", label: "Runs" },
-];
+const TABS = ["monitor", "progress", "health", "runs"] as const;
 
 /** Subscribes to one WS room for its lifetime (renders nothing). Lets us fan
  *  out room subscriptions over a list without breaking the rules-of-hooks. */
@@ -58,6 +52,7 @@ function RoomSub({ room }: { room: string }) {
 }
 
 export function OpsMonitor() {
+  const t = useCopy();
   const [tab, setTab] = useState("monitor");
   const [runId, setRunId] = useState<string | null>(null);
 
@@ -105,7 +100,7 @@ export function OpsMonitor() {
   if (projectsLoading || healthQ.isLoading) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ProjectLoader label="loading ops…" />
+        <ProjectLoader label={t("pipeline.ops.loading")} />
       </div>
     );
   }
@@ -127,20 +122,10 @@ export function OpsMonitor() {
         <RoomSub key={p.id} room={projectRoom(p.id)} />
       ))}
 
-      <PageTitle>Ops</PageTitle>
-      <TopBarActions>
-        <HelpButton
-          summary="A live cross-project view of pipeline runs: real-time monitor, throughput and stage-duration progress, project health, and a recent-runs list."
-          actions={[
-            "Switch tabs: Monitor · Progress · Health · Runs",
-            "Open any run from the Runs tab to inspect its timeline and cost",
-          ]}
-          shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
-        />
-      </TopBarActions>
+      <PageTitle>{t("pipeline.ops.title")}</PageTitle>
 
       <div className="overflow-x-auto">
-        <Tabs tabs={TABS} value={tab} onChange={setTab} />
+        <Tabs tabs={TABS.map((value) => ({ value, label: t(`pipeline.ops.tab.${value}`) }))} value={tab} onChange={setTab} />
       </div>
 
       <div className="pt-5">
@@ -191,26 +176,27 @@ function MonitorTab({
   const recent = (durations ?? []).length;
 
   const live = health.filter((h) => h.liveRuns > 0);
+  const t = useCopy();
 
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Tile label="Live runs" value={String(totalLive)} />
-        <Tile label="Spend · 24h" value={formatUsd(totalSpend)} />
-        <Tile label="Active issues" value={String(totalActive)} />
-        <Tile label="Online runners" value={String(totalRunners)} />
+        <Tile label={t("pipeline.ops.liveRuns")} value={String(totalLive)} />
+        <Tile label={t("pipeline.ops.spend24h")} value={formatUsd(totalSpend)} />
+        <Tile label={t("pipeline.ops.activeIssues")} value={String(totalActive)} />
+        <Tile label={t("pipeline.ops.onlineRunners")} value={String(totalRunners)} />
       </div>
 
       <PageSection>
         <PageSectionHeader>
-          <PageSectionTitle>Live now</PageSectionTitle>
+          <PageSectionTitle>{t("pipeline.ops.liveNow")}</PageSectionTitle>
           <Stat icon="activity" mono={false}>
-            {recent} steps · last 7d
+            {t("pipeline.ops.steps7d", { n: recent })}
           </Stat>
         </PageSectionHeader>
         <PageSectionBody>
           {live.length === 0 ? (
-            <p className="fg-body-sm text-muted">No runs are active right now.</p>
+            <p className="fg-body-sm text-muted">{t("pipeline.ops.nothingLive")}</p>
           ) : (
             <div className="flex flex-col gap-2.5">
               {live.map((h) => (
@@ -218,7 +204,7 @@ function MonitorTab({
                   <span className="fg-body-sm flex-1 truncate font-medium text-fg">
                     {h.projectName}
                   </span>
-                  <Badge tone="accent">{h.liveRuns} live</Badge>
+                  <Badge tone="accent">{t("pipeline.ops.liveCount", { n: h.liveRuns })}</Badge>
                   <Stat icon="dollar">{formatUsd(h.spend24hUsd)}</Stat>
                 </div>
               ))}
@@ -280,34 +266,35 @@ function ProgressTab({
   const shipped = (throughput ?? []).reduce((a, r) => a + r.count, 0);
   const aggs = useMemo(() => aggregateByStep(durations), [durations]);
   const maxAvg = Math.max(1, ...aggs.map((a) => a.avgSec));
+  const t = useCopy();
 
   if (loading) {
     return (
       <div className="grid min-h-[30vh] place-items-center">
-        <ProjectLoader label="loading progress…" />
+        <ProjectLoader label={t("pipeline.ops.loadingProgress")} />
       </div>
     );
   }
-  if (isError) return <ErrorState message="Failed to load progress." onRetry={onRetry} />;
+  if (isError) return <ErrorState message={t("pipeline.ops.progressFailed")} onRetry={onRetry} />;
 
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <Tile label="Shipped · 30d" value={String(shipped)} />
-        <Tile label="Steps · 7d" value={String((durations ?? []).length)} />
+        <Tile label={t("pipeline.ops.shipped30d")} value={String(shipped)} />
+        <Tile label={t("pipeline.ops.stepsWeek")} value={String((durations ?? []).length)} />
         <Tile
-          label="Spend · 7d"
+          label={t("pipeline.ops.spend7d")}
           value={formatUsd((durations ?? []).reduce((a, r) => a + r.costUsd, 0))}
         />
       </div>
 
       <PageSection>
         <PageSectionHeader>
-          <PageSectionTitle>Avg duration by stage · 7d</PageSectionTitle>
+          <PageSectionTitle>{t("pipeline.ops.avgByStage")}</PageSectionTitle>
         </PageSectionHeader>
         <PageSectionBody>
           {aggs.length === 0 ? (
-            <p className="fg-body-sm text-muted">No completed steps in the window.</p>
+            <p className="fg-body-sm text-muted">{t("pipeline.ops.noSteps")}</p>
           ) : (
             <div className="flex flex-col gap-2.5">
               {aggs.map((a) => (
@@ -333,9 +320,8 @@ function ProgressTab({
 /* ── Health ───────────────────────────────────────────────────────────── */
 
 function HealthTab({ health }: { health: ProjectHealthRow[] }) {
-  if (health.length === 0) {
-    return <EmptyState title="No projects" message="No project health to report." />;
-  }
+  const t = useCopy();
+  if (health.length === 0) return <EmptyState message={t("pipeline.ops.noProjects")} />;
   return (
     <div className="grid gap-x-8 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
       {health.map((h) => (
@@ -346,12 +332,12 @@ function HealthTab({ health }: { health: ProjectHealthRow[] }) {
           </PageSectionHeader>
           <PageSectionBody>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
-              <Metric label="Active" value={String(h.totalActive)} />
-              <Metric label="Live runs" value={String(h.liveRuns)} />
-              <Metric label="Runners" value={String(h.runnerCount)} />
-              <Metric label="Spend · 24h" value={formatUsd(h.spend24hUsd)} />
-              <Metric label="Blockers" value={String(h.blockers?.length ?? 0)} />
-              <Metric label="Escalations" value={String(h.pendingEscalations)} />
+              <Metric label={t("pipeline.ops.active")} value={String(h.totalActive)} />
+              <Metric label={t("pipeline.ops.liveRuns")} value={String(h.liveRuns)} />
+              <Metric label={t("pipeline.ops.runners")} value={String(h.runnerCount)} />
+              <Metric label={t("pipeline.ops.spend24h")} value={formatUsd(h.spend24hUsd)} />
+              <Metric label={t("pipeline.ops.blockers")} value={String(h.blockers?.length ?? 0)} />
+              <Metric label={t("pipeline.ops.escalations")} value={String(h.pendingEscalations)} />
             </div>
           </PageSectionBody>
         </PageSection>
@@ -386,17 +372,18 @@ function RunsTab({
   nameById: Map<string, string>;
   onOpen: (runId: string) => void;
 }) {
+  const t = useCopy();
   if (loading) {
     return (
       <div className="grid min-h-[30vh] place-items-center">
-        <ProjectLoader label="loading runs…" />
+        <ProjectLoader label={t("pipeline.ops.loadingRuns")} />
       </div>
     );
   }
-  if (isError) return <ErrorState message="Failed to load runs." onRetry={onRetry} />;
+  if (isError) return <ErrorState message={t("pipeline.ops.runsFailed")} onRetry={onRetry} />;
   const rows = durations ?? [];
   if (rows.length === 0) {
-    return <EmptyState title="No recent runs" message="No pipeline steps in the last 7 days." />;
+    return <EmptyState message={t("pipeline.ops.noRuns")} />;
   }
 
   return (
@@ -429,10 +416,10 @@ function RunsTab({
         <Table>
           <THead>
             <TR>
-              <TH>Project</TH>
-              <TH>Step</TH>
-              <TH className="text-right">Duration</TH>
-              <TH className="text-right">Cost</TH>
+              <TH>{t("pipeline.ops.colProject")}</TH>
+              <TH>{t("pipeline.ops.colStep")}</TH>
+              <TH className="text-right">{t("pipeline.ops.colDuration")}</TH>
+              <TH className="text-right">{t("pipeline.ops.colCost")}</TH>
             </TR>
           </THead>
           <TBody>

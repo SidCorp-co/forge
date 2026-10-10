@@ -21,7 +21,6 @@ export type ConnectionSection = ComponentType<{
 
 export interface ProviderModule {
   provider: string;
-  label: string;
   icon: IconName;
   secretField: string | null;
   /** Shown in the replace-key box. Null exactly where `secretField` is. */
@@ -66,10 +65,9 @@ export function providerNames(): string[] {
   return PROVIDER_MODULES.map((m) => m.provider);
 }
 
-/** The label, falling back to the raw name — which is true, if bare; in `language` where the locale file words it. */
+/** The provider's name from its copy key `integrations.provider.<provider>`, in `language` (English when none); a provider this build has no key for reads as its raw name, which is true, if bare. */
 export function providerLabel(provider: string, language?: string): string {
-  const label = byName.get(provider)?.label ?? provider;
-  return language ? copyOr(language, `integrations.provider.${provider}`, label) : label;
+  return copyOr(language ?? "en", `integrations.provider.${provider}`, provider);
 }
 
 /** A provider's label in the interface language. */

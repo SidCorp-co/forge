@@ -244,7 +244,7 @@ function LightboxHeader({
           rel="noreferrer noopener"
           className="fg-caption ml-1 hidden rounded-md px-2 py-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:inline-flex"
         >
-          Open original
+          {t("attachments.openOriginal")}
         </a>
         <button
           type="button"

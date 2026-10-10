@@ -1,0 +1,9 @@
+{
+  "en": {
+    "chat.sketch.opening": "Opening the sketch pad…",
+    "chat.sketch.nothing": "Nothing drawn",
+    "chat.sketch.exportFailed": "The sketch could not be exported: {error}",
+    "chat.sketch.title": "Sketch",
+    "chat.sketch.attach": "Attach"
+  }
+}

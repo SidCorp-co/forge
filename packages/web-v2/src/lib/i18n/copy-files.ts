@@ -4,7 +4,11 @@
 
 import agentAccountsCopy from "@/features/agent-accounts/copy.json";
 import agentsCopy from "@/features/agents/copy.json";
+import attachmentsCopy from "@/features/attachments/copy.json";
+import attentionCopy from "@/features/attention/copy.json";
+import authCopy from "@/features/auth/copy.json";
 import automationCopy from "@/features/automation/copy.json";
+import chatCopy from "@/features/chat/copy.json";
 import checklistsCopy from "@/features/checklists/copy.json";
 import commentsCopy from "@/features/comments/copy.json";
 import contractsCopy from "@/features/contracts/copy.json";
@@ -19,22 +23,28 @@ import memoryCopy from "@/features/memory/copy.json";
 import modulesCopy from "@/features/modules/copy.json";
 import needsYouCopy from "@/features/needs-you/copy.json";
 import onboardingCopy from "@/features/onboarding/copy.json";
+import operatorCopy from "@/features/operator/copy.json";
 import orgsCopy from "@/features/orgs/copy.json";
 import overviewCopy from "@/features/overview/copy.json";
+import pairingCopy from "@/features/pairing/copy.json";
 import pipelineCopy from "@/features/pipeline/copy.json";
 import previewsCopy from "@/features/previews/copy.json";
 import projectDashboardCopy from "@/features/project-dashboard/copy.json";
 import projectHomeCopy from "@/features/project-home/copy.json";
 import projectSettingsCopy from "@/features/project-settings/copy.json";
 import projectStatusCopy from "@/features/project-status/copy.json";
+import projectsCopy from "@/features/projects/copy.json";
 import questionsCopy from "@/features/questions/copy.json";
 import releasesCopy from "@/features/releases/copy.json";
 import requirementsCopy from "@/features/requirements/copy.json";
 import runnersCopy from "@/features/runners/copy.json";
+import sessionCopy from "@/features/session/copy.json";
 import sessionsCopy from "@/features/sessions/copy.json";
 import settingsCopy from "@/features/settings/copy.json";
+import sharesCopy from "@/features/shares/copy.json";
 import shellCopy from "@/features/shell/copy.json";
 import toursCopy from "@/features/tours/copy.json";
+import visualBlocksCopy from "@/features/visual-blocks/copy.json";
 import whatsNewCopy from "@/features/whats-new/copy.json";
 import workflowsCopy from "@/features/workflows/copy.json";
 import commonCopy from "@/lib/i18n/copy/common.json";
@@ -52,7 +62,11 @@ import writtenCopy from "@/lib/i18n/copy/written.json";
 export const COPY_FILES = {
   "features/agent-accounts/copy.json": agentAccountsCopy,
   "features/agents/copy.json": agentsCopy,
+  "features/attachments/copy.json": attachmentsCopy,
+  "features/attention/copy.json": attentionCopy,
+  "features/auth/copy.json": authCopy,
   "features/automation/copy.json": automationCopy,
+  "features/chat/copy.json": chatCopy,
   "features/checklists/copy.json": checklistsCopy,
   "features/comments/copy.json": commentsCopy,
   "features/contracts/copy.json": contractsCopy,
@@ -67,22 +81,28 @@ export const COPY_FILES = {
   "features/modules/copy.json": modulesCopy,
   "features/needs-you/copy.json": needsYouCopy,
   "features/onboarding/copy.json": onboardingCopy,
+  "features/operator/copy.json": operatorCopy,
   "features/orgs/copy.json": orgsCopy,
   "features/overview/copy.json": overviewCopy,
+  "features/pairing/copy.json": pairingCopy,
   "features/pipeline/copy.json": pipelineCopy,
   "features/previews/copy.json": previewsCopy,
   "features/project-dashboard/copy.json": projectDashboardCopy,
   "features/project-home/copy.json": projectHomeCopy,
   "features/project-settings/copy.json": projectSettingsCopy,
   "features/project-status/copy.json": projectStatusCopy,
+  "features/projects/copy.json": projectsCopy,
   "features/questions/copy.json": questionsCopy,
   "features/releases/copy.json": releasesCopy,
   "features/requirements/copy.json": requirementsCopy,
   "features/runners/copy.json": runnersCopy,
+  "features/session/copy.json": sessionCopy,
   "features/sessions/copy.json": sessionsCopy,
   "features/settings/copy.json": settingsCopy,
+  "features/shares/copy.json": sharesCopy,
   "features/shell/copy.json": shellCopy,
   "features/tours/copy.json": toursCopy,
+  "features/visual-blocks/copy.json": visualBlocksCopy,
   "features/whats-new/copy.json": whatsNewCopy,
   "features/workflows/copy.json": workflowsCopy,
   "lib/i18n/copy/common.json": commonCopy,

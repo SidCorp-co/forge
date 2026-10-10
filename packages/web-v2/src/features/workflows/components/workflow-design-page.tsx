@@ -11,6 +11,7 @@ import {
   DetailTabs,
   FactsRail,
   StatusBadge,
+  useRecordView,
   useUrlTab,
   ViewHeading,
 } from "@/design";
@@ -43,6 +44,7 @@ const MARK: Record<string, ProductCopyKey> = { added: "workflows.mark.added", ch
 
 function StepRows({ steps, numbered, diff, revision }: { steps: WorkflowStep[]; numbered: Map<string, number>; diff: DesignDiff | null; revision: number }) {
   const t = useCopy();
+  const [view] = useRecordView();
   return (
     <ul>
       {steps.map((s) => {
@@ -56,7 +58,8 @@ function StepRows({ steps, numbered, diff, revision }: { steps: WorkflowStep[]; 
               </span>
               {mark ? (
                 <span className="ml-2 text-12 font-semibold text-accent-text">
-                  {t("workflows.markIn", { mark: MARK[mark] ? t(MARK[mark]) : mark, r: revision })}
+                  {/* the revision a step changed in is the Developer view's (REQ-43 BC-7) */}
+                  {view === "developer" ? t("workflows.markIn", { mark: MARK[mark] ? t(MARK[mark]) : mark, r: revision }) : MARK[mark] ? t(MARK[mark]) : mark}
                 </span>
               ) : null}
             </span>
@@ -108,6 +111,8 @@ function RevisionsPane({ d }: { d: WorkflowDesign }) {
   const t = useCopy();
   const time = useTimeFormat();
   const language = useInterfaceLanguage();
+  const [view] = useRecordView();
+  const developer = view === "developer";
   return (
     <div data-testid="view-revisions">
       <ViewHeading right={<span className="text-12 text-subtle">{t("workflows.newestFirst")}</span>}>{t("workflows.tab.revisions")}</ViewHeading>
@@ -116,12 +121,20 @@ function RevisionsPane({ d }: { d: WorkflowDesign }) {
       ) : (
         <ul className="border-t border-line-subtle">
           {d.revisions.map((r) => (
-            <li key={r.revision} className="grid grid-cols-[72px_150px_minmax(0,1fr)] items-baseline gap-x-3 border-b border-line-subtle px-3 py-2.5 text-13 max-md:grid-cols-[56px_minmax(0,1fr)]" data-testid="revision-row">
-              <span className="font-mono text-12-5 font-semibold">r{r.revision}</span>
+            <li
+              key={r.revision}
+              className={cn(
+                "grid items-baseline gap-x-3 border-b border-line-subtle px-3 py-2.5 text-13",
+                developer ? "grid-cols-[72px_150px_minmax(0,1fr)] max-md:grid-cols-[56px_minmax(0,1fr)]" : "grid-cols-[150px_minmax(0,1fr)] max-md:grid-cols-1",
+              )}
+              data-testid="revision-row"
+            >
+              {/* a revision's number is the Developer view's (REQ-43 BC-7) */}
+              {developer ? <span className="font-mono text-12-5 font-semibold">r{r.revision}</span> : null}
               <span>
                 <StatusBadge family="designRevision" value={r.state} />
               </span>
-              <span className="min-w-0 text-muted max-md:col-start-2">
+              <span className={cn("min-w-0 text-muted", developer && "max-md:col-start-2")}>
                 <RevisionSummary changes={r.changes} first={d.revisions[d.revisions.length - 1]?.revision === r.revision} />
                 <span title={time.dateTime(r.proposedAt)}>
                   {t("workflows.proposedBy", { who: r.proposedByName ?? r.proposedBy })} · {time.relative(r.proposedAt)}
@@ -200,6 +213,7 @@ function RailEdge({ collapsed, onToggle }: { collapsed: boolean; onToggle: () =>
 
 export function WorkflowDesignPage({ projectId, slug, d, record, template, decisionCount, tab, onTab, decision, walkDecision, repins }: DesignPageProps) {
   const t = useCopy();
+  const [view] = useRecordView();
   const [changes, setChanges] = useState(false);
   const [focusOn, setFocus] = useCanvasFocus();
   const focus = focusOn && tab === "design";
@@ -276,7 +290,12 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
               focus={{ on: focus, onToggle: () => setFocus(!focus) }}
               changes={
                 fullDiff
-                  ? { on: changes, onToggle: setChanges, label: t("workflows.canvas.changes", { r: d.approvedRevision ?? "" }), title: t("workflows.changesSince", { r: d.approvedRevision ?? "" }) }
+                  ? {
+                      on: changes,
+                      onToggle: setChanges,
+                      label: view === "developer" ? t("workflows.canvas.changes", { r: d.approvedRevision ?? "" }) : t("workflows.canvas.changesPlain"),
+                      title: t("workflows.changesSince", { r: d.approvedRevision ?? "" }),
+                    }
                   : null
               }
             />

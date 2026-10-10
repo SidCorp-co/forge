@@ -8,6 +8,7 @@
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 import Link from "next/link";
 import { Markdown } from "@/design/patterns/markdown";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useOnboardingState } from "../hooks";
 import { useAskForDesigns } from "./ask-for-designs";
 import type { OnboardingDesignView, QuestionnaireView } from "../types";
@@ -109,17 +110,18 @@ function useDesigns(projectId: string, enabled: boolean) {
 // The items that shaped a design and, once every round is sent, its open questions: both read by
 // core from the item records (designs, what-next).
 function LinkedItemsNote({ design }: { design: OnboardingDesignView }) {
+  const t = useCopy();
   const open = design.openQuestions.length;
   return (
     <HoverNote
       className="flex-none text-[11.5px] text-subtle"
-      label={open ? `${design.linkedItems.length} items · ${open} open` : `${design.linkedItems.length} items`}
+      label={open ? t("onboarding.items.open", { n: design.linkedItems.length, open }) : t("onboarding.items.count", { n: design.linkedItems.length })}
     >
       <span className="flex flex-col gap-0.5">
         {design.linkedItems.map((i) => (
           <span key={i.questionId}>
             {i.prompt} · {i.state}
-            {i.citedRevision !== null ? ` · rev ${i.citedRevision}` : ""}
+            {i.citedRevision !== null ? ` · ${t("onboarding.items.rev", { n: i.citedRevision })}` : ""}
           </span>
         ))}
       </span>
@@ -128,6 +130,7 @@ function LinkedItemsNote({ design }: { design: OnboardingDesignView }) {
 }
 
 function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["designs"]>; first: boolean }) {
+  const t = useCopy();
   const data = useContext(ThreadDataContext);
   const projectId = data?.projectId ?? "";
   const slug = data?.projectSlug;
@@ -150,14 +153,14 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
                 <Link
                   href={href}
                   className="min-w-0 flex-1 truncate font-semibold text-link hover:underline"
-                  title={design ? `${design.template ?? "design"} · rev ${design.revision}` : id}
+                  title={design ? t("onboarding.design.revTitle", { template: design.template ?? t("onboarding.design.fallback"), n: design.revision }) : id}
                 >
                   {design?.title ?? id}
                 </Link>
               ) : (
                 <span className="min-w-0 flex-1 truncate font-semibold text-muted">{design?.title ?? id}</span>
               )}
-              <ToneChip tone="neutral" glyph="⌂" label="Plan from code" title="The plan, drawn from the code: it holds no evidence, and nothing is observed while it is proposed" />
+              <ToneChip tone="neutral" glyph="⌂" label={t("onboarding.design.fromCode")} />
               {design && design.linkedItems.length > 0 && <LinkedItemsNote design={design} />}
               <DesignStatusChip status={design?.designStatus ?? null} />
               {block.approve && href && design?.designStatus === "proposed" && (
@@ -165,7 +168,7 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
                   href={`${href}?focus=approve`}
                   className="ml-1 inline-flex h-7 flex-none items-center rounded-md border border-line bg-surface px-2.5 text-[12px] font-semibold text-fg hover:bg-hover"
                 >
-                  Approve
+                  {t("onboarding.design.approve")}
                 </Link>
               )}
             </div>
@@ -174,16 +177,16 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
       </div>
       {first && data?.kind === "onboarding" && onboarding && (
         <div className="mt-1 grid grid-cols-[84px_minmax(0,1fr)] items-start gap-x-2.5 border-t border-line-subtle py-1.5">
-          <span className="pt-px text-[11.5px] text-subtle">Analysis</span>
+          <span className="pt-px text-[11.5px] text-subtle">{t("onboarding.analysis.label")}</span>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[12px] text-muted">Job {onboarding.job?.status ?? "none"}</span>
+            <span className="text-[12px] text-muted">{t("onboarding.analysis.job", { status: onboarding.job?.status ?? t("onboarding.analysis.none") })}</span>
             <button
               type="button"
               className="text-[12px] font-semibold text-link hover:underline disabled:opacity-60"
               disabled={reanalyze.pending}
               onClick={() => reanalyze.ask("reanalyze")}
             >
-              Re-analyze
+              {t("onboarding.hint.reanalyze")}
             </button>
             {reanalyze.dialog}
           </span>
@@ -201,18 +204,19 @@ export function StructuredMessage({
   message: { id: string; role: string; authorLabel: string | null; createdAt: string; blocks?: readonly ThreadBlock[] | null };
   firstDesigns: boolean;
 }) {
+  const t = useCopy();
   const data = useContext(ThreadDataContext);
   const blocks = message.blocks ?? [];
   const batchOf = (id?: string) => data?.questionnaires.find((q) => q.id === id);
   const { byId } = useDesigns(data?.projectId ?? "", data?.kind === "onboarding");
   const designTitle = (ref: string) => byId.get(ref)?.title ?? ref;
-  const name = message.authorLabel ?? (data?.kind === "requirement" || data?.kind === "first_requirements" ? "BA assistant" : "Agent");
+  const name = message.authorLabel ?? (data?.kind === "requirement" || data?.kind === "first_requirements" ? t("onboarding.who.ba") : t("onboarding.who.agent"));
   const answers = blocks.find((b) => b.type === "questionnaire_answers");
   if (message.role === "user" && answers) {
     const batch = batchOf(answers.batchId);
     return (
-      <ThreadMessage who="me" name="You" at={message.createdAt}>
-        {batch ? <QuestionnaireSummary batch={batch} /> : <p className="text-muted">Answers sent.</p>}
+      <ThreadMessage who="me" name={t("onboarding.who.you")} at={message.createdAt}>
+        {batch ? <QuestionnaireSummary batch={batch} /> : <p className="text-muted">{t("onboarding.answersSent")}</p>}
       </ThreadMessage>
     );
   }
@@ -226,7 +230,7 @@ export function StructuredMessage({
       return (
         <ThreadMessage who="agent" name={name} at={message.createdAt}>
           <p className="my-[3px] text-muted">
-            {batch.title} · Round {batch.round} · superseded by a re-analysis
+            {t("onboarding.q.superseded", { title: batch.title, round: batch.round })}
           </p>
         </ThreadMessage>
       );

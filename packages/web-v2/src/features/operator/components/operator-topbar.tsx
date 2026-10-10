@@ -1,7 +1,7 @@
 "use client";
 
 import { HealthDot, IconButton, Kicker, Menu, Tooltip } from "@/design";
-import { OPERATOR_SECTIONS } from "../nav-model";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { OperatorSectionKey } from "../types";
 
 const STATUS_PILLS = ["db", "queue", "ws"] as const;
@@ -24,14 +24,15 @@ function StatusPill({ pill }: { pill: string }) {
 }
 
 function AccountMenu({ onAccount, onSignOut }: { onAccount: () => void; onSignOut: () => void }) {
+  const t = useCopy();
   return (
     <Menu
       className="md:hidden"
       items={[
-        { label: "Account & Settings", icon: "settings", onSelect: onAccount },
-        { label: "Sign out", icon: "logOut", danger: true, onSelect: onSignOut },
+        { label: t("operator.topbar.account"), icon: "settings", onSelect: onAccount },
+        { label: t("operator.topbar.signOut"), icon: "logOut", danger: true, onSelect: onSignOut },
       ]}
-      trigger={<IconButton icon="more" size="sm" aria-label="Account menu" />}
+      trigger={<IconButton icon="more" size="sm" aria-label={t("operator.topbar.accountMenu")} />}
     />
   );
 }
@@ -48,10 +49,11 @@ export function OperatorTopbar({
   onAccount: () => void;
   onSignOut: () => void;
 }) {
-  const label = OPERATOR_SECTIONS.find((s) => s.key === section)?.label ?? "Overview";
+  const t = useCopy();
+  const label = t(`operator.section.${section}`);
   return (
     <header className="flex h-14 flex-none items-center gap-3 border-b border-line bg-surface px-5">
-      <Kicker>Operator</Kicker>
+      <Kicker>{t("operator.topbar.kicker")}</Kicker>
       <span className="fg-h3">{label}</span>
       <div className="ml-auto flex items-center gap-2">
         <div className="hidden items-center gap-2 sm:flex">

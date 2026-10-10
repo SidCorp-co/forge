@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { StatusKey, AvatarHue } from "@/design/status";
 import { MonoTag } from "@/design/primitives/mono-tag";
 import { Avatar } from "@/design/primitives/avatar";
@@ -41,11 +42,20 @@ export function KanbanCard({
   assignee,
   onClick,
 }: KanbanCardProps) {
+  const t = useCopy();
+  const label = [
+    t("common.kanban.open", { id, title }),
+    held ? t("common.kanban.held") : null,
+    waitingReason ? t("common.kanban.waiting", { reason: waitingReason }) : null,
+    note ?? null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`Open ${id} — ${title}${held ? " (on manual hold)" : ""}${waitingReason ? ` (waiting: ${waitingReason})` : ""}${note ? ` (${note})` : ""}`}
+      aria-label={label}
       className="flex w-full flex-col gap-2.5 rounded-md border border-line bg-surface p-3 text-left shadow-xs transition-colors duration-[120ms] hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
     >
       <div className="flex items-center justify-between gap-2">
@@ -55,9 +65,9 @@ export function KanbanCard({
             <span
               className="inline-flex items-center rounded-pill px-1.5 font-semibold"
               style={{ fontSize: "var(--text-11)", lineHeight: "16px", color: "var(--amberw-600)", background: "var(--amberw-50)" }}
-              title="On manual hold — dispatcher won't pick up new jobs"
+              title={t("common.kanban.held")}
             >
-              ⏸ Hold
+              ⏸ {t("common.kanban.hold")}
             </span>
           )}
         </span>

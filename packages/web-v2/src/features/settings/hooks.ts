@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { settingsApi } from "./api";
 
 export function useTokens() {
@@ -25,14 +26,15 @@ export function useCreateToken() {
 export function useRevokeToken() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: settingsApi.revokeToken,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["settings", "tokens"] });
-      toast({ title: "Token revoked", tone: "success" });
+      toast({ title: t("settings.token.revoked"), tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Couldn't revoke token", description: formatApiError(err), tone: "error" });
+      toast({ title: t("settings.token.revokeFailed"), description: formatApiError(err), tone: "error" });
     },
   });
 }
@@ -51,14 +53,15 @@ export function useNotifications(page: number) {
 export function useMarkAllRead() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: settingsApi.markAllRead,
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["settings", "notifications"] });
-      toast({ title: `Marked ${res.updated} read`, tone: "success" });
+      toast({ title: t("settings.notifications.markedRead", { n: res.updated }), tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Action failed", description: formatApiError(err), tone: "error" });
+      toast({ title: t("settings.notifications.markReadFailed"), description: formatApiError(err), tone: "error" });
     },
   });
 }
@@ -73,15 +76,16 @@ export function useAssistantPreferences() {
 export function useUpdateAssistantPreferences() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: settingsApi.updateAssistantPreferences,
     onSuccess: (data) => {
       qc.setQueryData(["settings", "assistant-preferences"], data);
       qc.invalidateQueries({ queryKey: ["settings", "preference-changes"] });
-      toast({ title: "Answer preferences saved", tone: "success" });
+      toast({ title: t("settings.answers.saved"), tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Couldn't save answer preferences", description: formatApiError(err), tone: "error" });
+      toast({ title: t("settings.answers.saveFailed"), description: formatApiError(err), tone: "error" });
     },
   });
 }

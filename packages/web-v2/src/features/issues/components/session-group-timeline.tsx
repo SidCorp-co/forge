@@ -101,7 +101,7 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
           )}
           {groupLabel && <Badge tone="cobalt">{groupLabel}</Badge>}
           {entry.jobType && (
-            <span className="text-12-5 font-bold text-fg" title={`step: ${entry.jobType}`}>
+            <span className="text-12-5 font-bold text-fg" title={t("issues.session.stepTitle", { step: entry.jobType })}>
               {enumLabel("jobType", entry.jobType, language)}
             </span>
           )}
@@ -127,11 +127,11 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
         </button>
         {showOps && (
           <div className="mt-2 flex flex-wrap gap-2 border-t border-line-subtle pt-2">
-            {entry.claudeShort && <OpsTag label="claude" value={entry.claudeShort} />}
+            {entry.claudeShort && <OpsTag label={t("issues.live.ops.claude")} value={entry.claudeShort} />}
             {(entry.deviceName ?? entry.deviceShort) && (
-              <OpsTag label="device" value={entry.deviceName ?? entry.deviceShort ?? ""} />
+              <OpsTag label={t("issues.live.ops.device")} value={entry.deviceName ?? entry.deviceShort ?? ""} />
             )}
-            <OpsTag label="status" value={entry.status} />
+            <OpsTag label={t("issues.live.ops.status")} value={entry.status} />
             {entry.continuity === "fresh" && entry.freshReason && (
               <span className="fg-caption text-muted">{t(`issues.session.freshReason.${entry.freshReason}`)}</span>
             )}

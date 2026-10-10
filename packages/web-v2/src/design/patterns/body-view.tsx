@@ -11,6 +11,7 @@
 import type { BodyNode } from "@forge/contracts/body-components";
 import type { ForgeRecordView, RecordLens } from "@forge/contracts/forge-record";
 import { createElement, type ReactNode } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { BodyImage, BodyLink } from "./body-link";
 import { CODE_BLOCK_CLASS, CODE_INLINE_CLASS, COMPACT_TAG_CLASS } from "./body-tags";
@@ -77,6 +78,16 @@ export interface BodyViewProps {
 
 interface RenderCtx {
   renderArtifact?: (id: string) => ReactNode;
+}
+
+function Unreadable({ body, className }: { body: string; className?: string }) {
+  const t = useCopy();
+  return (
+    <div className={cn("min-w-0 max-w-full", className)}>
+      <p className="fg-body-sm text-muted">{t("common.body.unreadable")}</p>
+      <pre className="mt-2 overflow-x-auto rounded-md bg-sunken p-3 font-mono text-12-5 text-fg">{body}</pre>
+    </div>
+  );
 }
 
 function renderNodes(nodes: BodyNode[], ctx: RenderCtx, path: string): ReactNode[] {
@@ -216,18 +227,7 @@ export function BodyView({
     );
   }
   if (format !== "html") return <Markdown className={className}>{body}</Markdown>;
-  if (!nodes) {
-    return (
-      <div className={cn("min-w-0 max-w-full", className)}>
-        <p className="fg-body-sm text-muted">
-          Couldn&apos;t read this body — showing its text.
-        </p>
-        <pre className="mt-2 overflow-x-auto rounded-md bg-sunken p-3 font-mono text-12-5 text-fg">
-          {body}
-        </pre>
-      </div>
-    );
-  }
+  if (!nodes) return <Unreadable body={body} className={className} />;
   return (
     <div className={cn("min-w-0 max-w-full break-words [overflow-wrap:anywhere]", className)}>
       {renderNodes(nodes, { renderArtifact }, "body")}

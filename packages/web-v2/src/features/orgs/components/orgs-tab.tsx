@@ -156,7 +156,7 @@ function CreateOrgForm() {
           <Input
             value={name}
             onChange={(e) => onNameChange(e.target.value)}
-            placeholder="Acme Inc"
+            placeholder={t("settings.orgs.newNamePlaceholder")}
           />
         </Field>
       </div>

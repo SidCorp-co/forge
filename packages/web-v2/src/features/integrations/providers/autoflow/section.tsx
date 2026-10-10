@@ -104,7 +104,7 @@ function AutoflowBindingRow({
         saveDisabled={!tokensValid(tokens)}
         onTest={() => test.run(binding.id)}
         testing={test.pending}
-        confirmDelete={t("integrations.autoflow.confirmDelete", { label: binding.label || "default" })}
+        confirmDelete={t("integrations.autoflow.confirmDelete", { label: binding.label || t("integrations.provider.defaultLabel") })}
       />
       <AgentAccessControl
         projectId={projectId}

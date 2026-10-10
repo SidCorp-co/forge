@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { enumLabel, Tooltip } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { type BusBuilder, builderProgress, triggerRef, type StepStatus } from "../bus";
 
 export function Group({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
@@ -81,14 +82,25 @@ export function Steps({ builder }: { builder: BusBuilder }) {
 }
 
 export function BuilderSummary({ builder }: { builder: BusBuilder }) {
+  const t = useCopy();
   const prog = builderProgress(builder);
   return (
     <>
       <Steps builder={builder} />
-      <Tooltip label={`Started ${new Date(builder.createdAt).toLocaleString()} · updated ${new Date(builder.updatedAt).toLocaleString()}`}>
+      <Tooltip
+        label={t("ecosystem.builder.startedUpdated", {
+          started: new Date(builder.createdAt).toLocaleString(),
+          updated: new Date(builder.updatedAt).toLocaleString(),
+        })}
+      >
         <span className="fg-caption">
-          {prog.done}/{prog.total} steps · on {enumLabel("trigger", builder.trigger.kind).toLowerCase()} at <span className="font-mono">{triggerRef(builder.trigger)}</span>
-          {builder.stepsStale ? " · steps stale for this source: supersede the run" : ""}
+          {t("ecosystem.builder.stepsOn", {
+            done: prog.done,
+            total: prog.total,
+            trigger: enumLabel("trigger", builder.trigger.kind).toLowerCase(),
+          })}{" "}
+          <span className="font-mono">{triggerRef(builder.trigger, t)}</span>
+          {builder.stepsStale ? t("ecosystem.builder.stale") : ""}
         </span>
       </Tooltip>
     </>

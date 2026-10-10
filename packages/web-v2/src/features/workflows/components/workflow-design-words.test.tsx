@@ -1,11 +1,10 @@
 // The design page's rail speaks to a BA: plain sentences first, the kernel's terms (Unrooted, Not
-// reconciled, Held, markers, permission strings) behind a collapsed Technical detail.
+// reconciled, Held, markers, permission strings) behind the Developer view (REQ-43 BC-7).
 
 import { say, sentence } from "@/test/said";
 import type { WorkflowHealth } from "@forge/contracts/workflow-health";
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { productCopy } from "@/lib/i18n/product-copy";
 import type { WorkflowDesign } from "../types";
 import { buildGateSentence, healthSentences, reconciliationSentence, WorkflowDesignFacts } from "./workflow-design-facts";
@@ -51,10 +50,10 @@ describe("the design rail's plain sentences", () => {
   });
 });
 
-describe("the rail keeps kernel terms behind Technical detail", () => {
-  it("shows no kernel term until the detail is opened", async () => {
-    const user = userEvent.setup();
-    const shown = { steps: [], kind: "flow", summary: null } as never;
+describe("the rail keeps kernel terms behind the Developer view", () => {
+  afterEach(() => window.history.replaceState(null, "", "/"));
+  const shown = { steps: [], kind: "flow", summary: null } as never;
+  const rail = () =>
     render(
       <WorkflowDesignFacts
         d={design}
@@ -66,11 +65,17 @@ describe("the rail keeps kernel terms behind Technical detail", () => {
         health={health()}
       />,
     );
-    const rail = screen.getByTestId("design-facts");
+
+  it("shows no kernel term in the person view", () => {
+    rail();
     expect(screen.getByTestId("plain-status")).toBeInTheDocument();
-    expect(rail.textContent).not.toMatch(KERNEL);
+    expect(screen.getByTestId("design-facts").textContent).not.toMatch(KERNEL);
     expect(screen.queryByTestId("facts-health")).toBeNull();
-    await user.click(screen.getByTestId("design-technical-toggle"));
+  });
+
+  it("draws the kernel's terms in the Developer view", () => {
+    window.history.replaceState(null, "", "/?view=developer");
+    rail();
     expect(screen.getByTestId("facts-health")).toBeInTheDocument();
     expect(screen.getByTestId("health-unrooted")).toHaveTextContent("Unrooted");
   });

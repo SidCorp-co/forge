@@ -103,7 +103,7 @@ export function PeekPanel({ peek, listLabel, noun, onOpenFull, children, testId 
       </div>
       <div className="flex flex-1 shrink-0 flex-col">{children}</div>
       <div className="mt-auto border-t border-line-subtle px-[18px] pb-4 pt-2.5 text-12 text-subtle max-lg:hidden">
-        <Kbd>j</Kbd> <Kbd>k</Kbd> {t("common.peekMove")} · <Kbd>Enter</Kbd> {t("common.peekFullPage")} · <Kbd>Esc</Kbd> {t("common.peekCloseWord")}
+        <Kbd>j</Kbd> <Kbd>k</Kbd> {t("common.peekMove")} · <Kbd>{t("common.key.enter")}</Kbd> {t("common.peekFullPage")} · <Kbd>{t("common.key.escape")}</Kbd> {t("common.peekCloseWord")}
       </div>
     </aside>
   );

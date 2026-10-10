@@ -7,31 +7,27 @@ import { ConfirmDialog, Textarea } from "@/design";
 import { useChatDock } from "@/features/chat-dock/dock";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useJoinOnboarding, useReanalyze, useStartOnboarding } from "../hooks";
 
 type Spend = "start" | "reanalyze";
 
-const COPY: Record<Spend, { title: string; does: string; field: string; placeholder: string; confirm: string }> = {
+// what each ask's confirm reads, by copy key
+const COPY = {
   start: {
-    title: "Ask for the first designs",
-    does:
-      "One analysis job reads the project's code on its default branch, writes a code map, and drafts the key designs: the system context, the main journey and the central entity's states, plus an integration or data-flow design where the code calls for one. Every design arrives proposed for your review; nothing is approved for you. Then it asks what the code cannot tell, in one questionnaire in the onboarding chat.",
-    field: "What should the drafts cover? (optional)",
-    placeholder: "For example: draw against REQ-1, and leave every design proposed for my review.",
-    confirm: "Start the analysis",
+    title: "onboarding.ask.start.title",
+    field: "onboarding.ask.start.field",
+    placeholder: "onboarding.ask.start.placeholder",
+    confirm: "onboarding.ask.start.confirm",
   },
   reanalyze: {
-    title: "Ask for a re-analysis",
-    does:
-      "One new analysis job reads the code again and proposes new revisions of the designs. An approved revision is never overwritten, and an open questionnaire is replaced by the new one.",
-    field: "Why, or what to look at again (optional)",
-    placeholder: "For example: the order module was rewritten last week.",
-    confirm: "Start the re-analysis",
+    title: "onboarding.ask.reanalyze.title",
+    field: "onboarding.ask.reanalyze.field",
+    placeholder: "onboarding.ask.reanalyze.placeholder",
+    confirm: "onboarding.ask.reanalyze.confirm",
   },
-};
-
-const COST =
-  "It runs one job on the project's runner box, up to an hour of an agent's time. Nothing starts until you confirm; you can keep writing to the job in the onboarding chat while it runs.";
+} as const satisfies Record<Spend, Record<string, ProductCopyKey>>;
 
 /** The refusal a start, join or re-analysis came back with, by name. */
 export function refusalLine(error: unknown): string | null {
@@ -44,6 +40,7 @@ export function refusalLine(error: unknown): string | null {
  * will do and the person's own request, which reaches the job as the first message of the thread.
  */
 export function useAskForDesigns(projectId: string, opts: { onOpened?: () => void; conversationId?: string } = {}) {
+  const t = useCopy();
   const dock = useChatDock();
   const start = useStartOnboarding(projectId);
   const join = useJoinOnboarding(projectId);
@@ -86,22 +83,21 @@ export function useAskForDesigns(projectId: string, opts: { onOpened?: () => voi
   const dialog: ReactNode = copy ? (
     <ConfirmDialog
       open
-      title={copy.title}
-      confirmLabel={copy.confirm}
+      title={t(copy.title)}
+      confirmLabel={t(copy.confirm)}
       loading={spend.isPending}
       onConfirm={confirm}
       onClose={() => setAsking(null)}
       message={
         <div className="grid gap-3" data-testid="ask-for-designs">
-          <p className="m-0">{copy.does}</p>
-          <p className="m-0 text-muted">{COST}</p>
+          <p className="m-0 text-muted">{t("onboarding.ask.confirmCost")}</p>
           <label htmlFor={fieldId} className="grid gap-1.5">
-            <span className="fg-label">{copy.field}</span>
+            <span className="fg-label">{t(copy.field)}</span>
             <Textarea
               id={fieldId}
               rows={4}
               maxLength={ONBOARDING_REQUEST_MAX}
-              placeholder={copy.placeholder}
+              placeholder={t(copy.placeholder)}
               value={text}
               onChange={(e) => setText(e.target.value)}
               data-testid="ask-for-designs-request"

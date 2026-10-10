@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Divider, Icon, type IconName } from '@/design';
+import { useCopy } from '@/lib/i18n/interface-language';
 import {
   fetchOAuthProviders,
   startUrl,
@@ -19,6 +20,7 @@ const PROVIDER_ICON: Record<string, IconName> = { github: 'github' };
  * full-page `<a>` to the core `/start` endpoint (a 302 dance, not an XHR).
  */
 export function SocialLogin({ redirectTo = '/' }: { redirectTo?: string }) {
+  const t = useCopy();
   const [providers, setProviders] = useState<OAuthProviderPublic[]>([]);
 
   useEffect(() => {
@@ -49,7 +51,7 @@ export function SocialLogin({ redirectTo = '/' }: { redirectTo?: string }) {
       </div>
       <div className="flex items-center gap-3">
         <Divider className="flex-1" />
-        <span className="fg-caption font-mono uppercase tracking-[0.08em]">or</span>
+        <span className="fg-caption font-mono uppercase tracking-[0.08em]">{t('auth.or')}</span>
         <Divider className="flex-1" />
       </div>
     </div>

@@ -4,6 +4,7 @@ import type { ReportField } from "@forge/contracts/report-queries";
 import { cellText, type VisualBlockOf, tableRows } from "@forge/contracts/visual-blocks";
 import { type ReactNode, useEffect, useState } from "react";
 import { flushSync } from "react-dom";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { Cell } from "./cells";
 import { useBlockInstants } from "./instants";
@@ -77,6 +78,7 @@ const STICKY = "sticky left-0 z-[1] bg-app";
  */
 export function TableBlockView({ block }: { block: VisualBlockOf<"table"> }) {
   const [all, setAll] = useState(false);
+  const t = useCopy();
   const instants = useBlockInstants();
   // a printed table holds every row it shows: paper has no "Show all"
   const printing = usePrinting();
@@ -127,7 +129,7 @@ export function TableBlockView({ block }: { block: VisualBlockOf<"table"> }) {
           </tbody>
         </table>
       </div>
-      {rows.length === 0 && <p className="py-1.5 text-[12px] text-subtle">No rows.</p>}
+      {rows.length === 0 && <p className="py-1.5 text-[12px] text-subtle">{t("visual.table.empty")}</p>}
       {rows.length > TABLE_ROW_CAP && (
         <button
           type="button"
@@ -136,12 +138,12 @@ export function TableBlockView({ block }: { block: VisualBlockOf<"table"> }) {
           onClick={() => setAll((a) => !a)}
           data-testid="table-show-all"
         >
-          {all ? `Show the first ${TABLE_ROW_CAP} rows` : `Show all ${rows.length} rows`}
+          {all ? t("visual.table.showFirst", { n: TABLE_ROW_CAP }) : t("visual.table.showAll", { n: rows.length })}
         </button>
       )}
       {hidden > 0 && (
         <p className="py-1 text-[11.5px] text-subtle">
-          Showing {rows.length} of {block.frame.rows.length} rows.
+          {t("visual.table.showing", { shown: rows.length, total: block.frame.rows.length })}
         </p>
       )}
     </div>

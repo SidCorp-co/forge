@@ -1,5 +1,5 @@
-// A record page's first screen (REQ-43 BC-3): the issue, requirement, feedback item and release pages,
-// each in the shell as app/(workspace)/layout.tsx draws it, at 1440 by 900. Every stage counts the
+// A record page's first screen (REQ-43 BC-3): the issue, requirement, feedback item, release, run,
+// session, workflow design, contract and agent report pages, each in the shell as app/(workspace)/layout.tsx draws it, at 1440 by 900. Every stage counts the
 // words a person sees before scrolling — the top bar the page puts its header in and the page under
 // it — and fails a page over 300.
 //
@@ -13,10 +13,14 @@ import { createRoot } from "react-dom/client";
 import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
 import { TopBarSlotProvider } from "@/design";
 import type { ChromeScreen } from "@/test/vi-chrome-screens";
+import { SCREENS as AGENT_SCREENS } from "@/test/vi-chrome-agents";
+import { SCREENS as AUTOMATION_SCREENS } from "@/test/vi-chrome-automation";
+import { SCREENS as CONTRACT_SCREENS } from "@/test/vi-chrome-contracts";
 import { SCREENS as FEEDBACK_SCREENS } from "@/test/vi-chrome-feedback";
 import { SCREENS as ISSUE_SCREENS } from "@/test/vi-chrome-issues";
 import { SCREENS as RELEASE_SCREENS } from "@/test/vi-chrome-rel-wf";
 import { SCREENS as REQUIREMENT_SCREENS } from "@/test/vi-chrome-requirements";
+import { SCREENS as SESSION_SCREENS } from "@/test/vi-chrome-sessions";
 import { firstScreenWords } from "./first-screen";
 import "./entry";
 
@@ -35,8 +39,8 @@ window.history.replaceState = (data, unused, url) => {
 // a read no fixture seeded stays in flight, as in the vi walking test
 window.fetch = () => new Promise<Response>(() => {});
 
-const named = (screens: ChromeScreen[], name: string): ChromeScreen => {
-  const hit = screens.find((s) => s.name === name);
+const named = (screens: ChromeScreen[], name: string | RegExp): ChromeScreen => {
+  const hit = screens.find((s) => (typeof name === "string" ? s.name === name : name.test(s.name)));
   if (!hit) throw new Error(`no fixture screen is named "${name}"`);
   return hit;
 };
@@ -46,6 +50,12 @@ const PAGES = [
   { name: "requirement", path: "/projects/hop/requirements/REQ-1", screen: named(REQUIREMENT_SCREENS, "Requirement detail · Overview") },
   { name: "feedback", path: "/projects/hop/feedback/FB-2", screen: named(FEEDBACK_SCREENS, "Feedback detail") },
   { name: "release", path: "/projects/hop/releases/0.0.9", screen: named(RELEASE_SCREENS, "Release detail") },
+  { name: "run", path: "/projects/hop/agents/runs/r5", screen: named(AGENT_SCREENS, /^Run page · \S+ 5$/) },
+  { name: "session-run", path: "/projects/hop/agents/s-run", screen: named(SESSION_SCREENS, "Session · run report") },
+  { name: "session-chat", path: "/projects/hop/agents/s-chat", screen: named(SESSION_SCREENS, "Session · chat") },
+  { name: "workflow", path: "/projects/hop/workflows/onboarding", screen: named(RELEASE_SCREENS, "Workflow design") },
+  { name: "contract", path: "/projects/hop/contracts/hop/orders", screen: named(CONTRACT_SCREENS, "Contract detail") },
+  { name: "report", path: "/projects/hop/automation/reports/a-report-0001", screen: named(AUTOMATION_SCREENS, "Automation · report page") },
 ] as const;
 
 const router = { push() {}, replace() {}, prefetch() {}, back() {}, forward() {}, refresh() {}, hmrRefresh() {} };

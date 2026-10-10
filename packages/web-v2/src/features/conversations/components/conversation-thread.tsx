@@ -521,8 +521,8 @@ function RoomLiveTurn({ progress }: { progress: ConversationProgressEntry }) {
                   ? t("conversations.live.toolRunning")
                   : typeof tool.durationMs === "number"
                     ? tool.durationMs >= 1000
-                      ? `${time.number(Number((tool.durationMs / 1000).toFixed(1)))}s`
-                      : `${tool.durationMs}ms`
+                      ? t("conversations.live.toolSeconds", { n: time.number(Number((tool.durationMs / 1000).toFixed(1))) })
+                      : t("conversations.live.toolMs", { n: tool.durationMs })
                     : null}
               </span>
             </li>

@@ -17,6 +17,7 @@ import {
 import "@xyflow/react/dist/base.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type Placed, labelBox, layoutGraph, rounded } from "@/lib/graph/layout";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { TextAlternative } from "./text-alternative";
 
 interface StepData extends Record<string, unknown> {
@@ -80,6 +81,7 @@ function FlowDiagram({ block }: { block: VisualBlockOf<"flow"> }) {
     [block],
   );
   const [laid, setLaid] = useState<Laid>(null);
+  const t = useCopy();
 
   useEffect(() => {
     let live = true;
@@ -145,11 +147,11 @@ function FlowDiagram({ block }: { block: VisualBlockOf<"flow"> }) {
   if (laid && "failed" in laid) {
     return (
       <p className="text-[12.5px] text-muted" data-testid="flow-failed">
-        This diagram could not be laid out, so its steps and links are listed below as text.
+        {t("visual.flow.failed")}
       </p>
     );
   }
-  if (!flow) return <p className="text-[12px] text-subtle">Laying out the diagram.</p>;
+  if (!flow) return <p className="text-[12px] text-subtle">{t("visual.flow.laying")}</p>;
   return (
     <div ref={scroller} className={`overflow-auto ${FLOW_BOX} print:max-h-none print:overflow-visible`} data-testid="flow-scroll">
     <div style={{ height: flow.height, minWidth: flow.width }} className="w-full" data-testid="flow-canvas">

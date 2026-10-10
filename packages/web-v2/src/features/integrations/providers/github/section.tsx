@@ -31,7 +31,7 @@ function ConnectedState({
   return (
     <PageSection>
       <PageSectionHeader>
-        <PageSectionTitle>GitHub App</PageSectionTitle>
+        <PageSectionTitle>{t("integrations.github.app")}</PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody className="flex flex-col gap-3">
         <div className="flex items-center gap-2">

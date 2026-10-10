@@ -66,6 +66,12 @@ conventions `checkers.copy-budget` in `.forge/conformance.json` declares: a refu
 confirmation when a segment matches `refusalSegments` (20 words); an empty state when its last
 segment matches `emptySegments` (2 words, rule 4); an explanation when its last segment matches
 `explainSegments` (`hint`, `intro`, `help` and the like), refused at any length (rule 2). A label
-is never keyed as a hint. `ViewHeading`, `ListGroup` and `PageTitle` take no explaining line. The first-screen budget is held for the issue page
-by `packages/web-v2/src/features/issues/components/issue-detail-screen.test.tsx`, whose page is the
-reference for rules 1, 3, 5, 6 and 7.
+is never keyed as a hint. `ViewHeading`, `ListGroup` and `PageTitle` take no explaining line. A
+person-facing English string written inline in source (JSX text, a `title`, `label` or
+`placeholder` literal, a `{x || "Document"}` fallback, a `{ label: "Runs" }` table entry) is refused naming its file and line, so every
+word a page shows passes through a copy file the budget reads. The first-screen budget is held for the
+nine record pages — issue, requirement, feedback item, release, run, session, workflow design,
+contract and agent report — by `packages/web-v2/witness/record-pages.witness.tsx`, each with the
+Developer view `packages/web-v2/src/design/patterns/record-view.tsx` draws, and for the issue page
+also by `packages/web-v2/src/features/issues/components/issue-detail-screen.test.tsx`. The issue page
+is the reference for rules 1, 3, 5, 6 and 7.

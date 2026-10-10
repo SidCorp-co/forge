@@ -2,6 +2,8 @@
 
 import { type QueryKey, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatRefusal } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useToast } from "@/providers/toast-provider";
 import { type CancelRunResult, runControlApi } from "./api";
 
@@ -9,12 +11,13 @@ import { type CancelRunResult, runControlApi } from "./api";
  *  calling screen names) on success, toast on success/error. */
 function useRunControl<T>(
   fn: (id: string) => Promise<T>,
-  successMessage: string,
-  followUp?: (data: T) => { title: string; description: string } | null,
+  success: ProductCopyKey,
+  followUp?: (data: T) => { title: ProductCopyKey; description: string } | null,
   alsoInvalidate: readonly QueryKey[] = [],
 ) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: (id: string) => fn(id),
     onSuccess: (data, id) => {
@@ -22,28 +25,28 @@ function useRunControl<T>(
       qc.invalidateQueries({ queryKey: ["pipeline-run", id] });
       qc.invalidateQueries({ queryKey: ["projects", "health"] });
       for (const queryKey of alsoInvalidate) qc.invalidateQueries({ queryKey });
-      toast({ title: successMessage, tone: "success" });
+      toast({ title: t(success), tone: "success" });
       const extra = followUp?.(data);
-      if (extra) toast({ ...extra, tone: "error" });
+      if (extra) toast({ title: t(extra.title), description: extra.description, tone: "error" });
     },
     onError: (err) => {
-      toast({ title: "Run control failed", description: formatRefusal(err), tone: "error" });
+      toast({ title: t("pipeline.control.failed"), description: formatRefusal(err), tone: "error" });
     },
   });
 }
 
 export function usePauseRun() {
-  return useRunControl((id) => runControlApi.pause(id), "Run paused");
+  return useRunControl((id) => runControlApi.pause(id), "pipeline.control.paused");
 }
 export function useResumeRun() {
-  return useRunControl((id) => runControlApi.resume(id), "Run resumed");
+  return useRunControl((id) => runControlApi.resume(id), "pipeline.control.resumed");
 }
 /** `alsoInvalidate` names the reads of the screen it runs on that a cancel moves. */
 export function useCancelRun(alsoInvalidate: readonly QueryKey[] = []) {
   return useRunControl(
     (id) => runControlApi.cancel(id),
-    "Run cancelled",
-    (r) => (r.parkRefused ? { title: "The issue was not put on hold", description: parkRefusalText(r) ?? "" } : null),
+    "pipeline.control.cancelled",
+    (r) => (r.parkRefused ? { title: "pipeline.control.parkRefused", description: parkRefusalText(r) ?? "" } : null),
     alsoInvalidate,
   );
 }

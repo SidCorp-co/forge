@@ -4,6 +4,7 @@ import { checkBlock, isVisualBlockKind, type VisualBlockKind } from "@forge/cont
 import { useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { readProseInstants } from "@/lib/i18n/instants";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useVisualBlockContext } from "./context";
 import { useBlockInstants } from "./instants";
 import { BLOCK_RENDERERS, type BlockRenderer } from "./registry";
@@ -17,11 +18,12 @@ function kindOf(raw: unknown): string {
   return kind === undefined ? "nameless" : JSON.stringify(kind);
 }
 
-function RefusedBlock({ kind, why = "does not match its shape", reasons }: { kind: string; why?: string; reasons: string[] }) {
+function RefusedBlock({ kind, untraced = false, reasons }: { kind: string; untraced?: boolean; reasons: string[] }) {
+  const t = useCopy();
   return (
     <div className="text-[12.5px] text-muted" data-testid="visual-block-refused" data-kind={kind}>
       <p>
-        This answer has a {kind} block that {why}, so it is not drawn.
+        {untraced ? t("visual.refused.untraced", { kind }) : t("visual.refused.shape", { kind })}
       </p>
       <ul className="mt-1 list-disc pl-5 font-mono text-[11px] text-subtle">
         {reasons.map((r) => (
@@ -50,9 +52,10 @@ const ACTION =
 
 /** A table's CSV, as the screen showing the block exports it: offered beside the table and again in its wide view. */
 function CsvAction({ onCsv, testId }: { onCsv: () => void; testId: string }) {
+  const t = useCopy();
   return (
     <button type="button" className={ACTION} onClick={onCsv} data-testid={testId}>
-      Download CSV
+      {t("visual.csv")}
     </button>
   );
 }
@@ -79,6 +82,7 @@ function Frame({
   children: React.ReactNode;
 }) {
   const [wide, setWide] = useState(false);
+  const t = useCopy();
   const instants = useBlockInstants();
   // A finding is prose the model wrote beside the rows: its instants read as the cells under it do.
   const said = finding ? readProseInstants(finding, instants) : undefined;
@@ -88,7 +92,7 @@ function Frame({
     ...(WIDENS.has(kind)
       ? [
           <button key="wide" type="button" className={ACTION} onClick={() => setWide(true)} data-testid="visual-block-open-wide">
-            Open wide
+            {t("visual.openWide")}
           </button>,
         ]
       : []),
@@ -109,7 +113,7 @@ function Frame({
             data-testid="visual-block-wide"
           >
             <div className="flex items-baseline gap-3 pr-8">
-              <DialogTitle className="min-w-0 flex-1 text-[13px] font-semibold text-fg">{title ?? "Answer"}</DialogTitle>
+              <DialogTitle className="min-w-0 flex-1 text-[13px] font-semibold text-fg">{title ?? t("visual.answer")}</DialogTitle>
               {csv && <CsvAction onCsv={csv} testId="visual-block-wide-csv" />}
             </div>
             {said && <p className="text-[12.5px] text-muted">{said}</p>}
@@ -129,6 +133,7 @@ function Frame({
  */
 export function VisualBlockView({ block: raw, onCsv }: { block: unknown; onCsv?: (() => void) | undefined }) {
   const { sourceFacts, executionFacts } = useVisualBlockContext();
+  const t = useCopy();
   const kind = kindOf(raw);
   if (!isVisualBlockKind(kind)) return <UnsupportedBlock kind={kind} />;
   const checked = checkBlock(raw);
@@ -140,8 +145,8 @@ export function VisualBlockView({ block: raw, onCsv }: { block: unknown; onCsv?:
     return (
       <RefusedBlock
         kind={kind}
-        why="names no read its figures came from"
-        reasons={[`report run ${block.source.runId}: its query and read time were not stored with this block, so its figures cannot be traced to a read`]}
+        untraced
+        reasons={[t("visual.refused.untraced.reason", { run: block.source.runId })]}
       />
     );
   }

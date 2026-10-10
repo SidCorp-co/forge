@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { ShareSubject } from "../subject";
 import { ShareDialog } from "./share-dialog";
 
@@ -17,6 +18,7 @@ export function ShareAction({
   subject: ShareSubject;
   manageHref?: string | undefined;
 }) {
+  const t = useCopy();
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -27,7 +29,7 @@ export function ShareAction({
         data-testid="message-share"
         data-subject-kind={subject.kind}
       >
-        Share
+        {t("shares.action")}
       </button>
       {open && (
         <ShareDialog projectId={projectId} subject={subject} manageHref={manageHref} onClose={() => setOpen(false)} />

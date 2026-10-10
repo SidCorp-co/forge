@@ -3,7 +3,6 @@ import { text } from "../config-read";
 
 export const sentry: ProviderModule = {
   provider: "sentry",
-  label: "Sentry",
   icon: "shield",
   secretField: "authToken",
   secretPlaceholder: "sntryu_…",

@@ -23,19 +23,17 @@ const NON_OPEN_STATUSES = new Set<string>(NON_OPEN_ISSUE_STATUSES);
 
 const STATUS_BUCKETS: ReadonlyArray<{
   key: StatusBucketKey;
-  label: string;
   tone: SemanticTone;
   statuses: readonly string[];
 }> = [
-  { key: "active", label: "In progress", tone: "active", statuses: ["in_progress", "reopen"] },
-  { key: "attention", label: "Awaiting input", tone: "attention", statuses: ["needs_info"] },
-  { key: "queued", label: "Queued", tone: "neutral", statuses: ["open", "approved"] },
-  { key: "blocked", label: "On hold", tone: "blocked", statuses: ["on_hold"] },
+  { key: "active", tone: "active", statuses: ["in_progress", "reopen"] },
+  { key: "attention", tone: "attention", statuses: ["needs_info"] },
+  { key: "queued", tone: "neutral", statuses: ["open", "approved"] },
+  { key: "blocked", tone: "blocked", statuses: ["on_hold"] },
 ];
 
 export interface DonutSegment {
   key: StatusBucketKey;
-  label: string;
   color: string;
   count: number;
   /** Share of the total, 0–100. */
@@ -56,7 +54,7 @@ export function statusDonut(dist: Record<string, number> | undefined): StatusDon
   }
   const segments = STATUS_BUCKETS.map((b) => {
     const count = b.statuses.reduce((n, s) => n + (d[s] ?? 0), 0);
-    return { key: b.key, label: b.label, color: TONE_META[b.tone].dot, count, pct: total > 0 ? (count / total) * 100 : 0 };
+    return { key: b.key, color: TONE_META[b.tone].dot, count, pct: total > 0 ? (count / total) * 100 : 0 };
   }).filter((s) => s.count > 0);
 
   return { segments, total };
@@ -82,11 +80,11 @@ export function conicGradient(segments: DonutSegment[]): string {
 
 export type SpendGroupKey = "test" | "code" | "plan" | "other";
 
-const SPEND_GROUPS: ReadonlyArray<{ key: SpendGroupKey; label: string; color: string }> = [
-  { key: "test", label: "test", color: stageColor("test") },
-  { key: "code", label: "code", color: stageColor("code") },
-  { key: "plan", label: "plan", color: stageColor("plan") },
-  { key: "other", label: "other", color: "var(--ink-400)" },
+const SPEND_GROUPS: ReadonlyArray<{ key: SpendGroupKey; color: string }> = [
+  { key: "test", color: stageColor("test") },
+  { key: "code", color: stageColor("code") },
+  { key: "plan", color: stageColor("plan") },
+  { key: "other", color: "var(--ink-400)" },
 ];
 
 /** Fold a pipeline stage into one of the four spend groups. `fix` already folds onto `code` via
@@ -101,7 +99,6 @@ function stageToSpendGroup(stage: StageKey | null): SpendGroupKey {
 
 export interface SpendSegment {
   key: SpendGroupKey;
-  label: string;
   color: string;
   cost: number;
   pct: number;
@@ -121,7 +118,7 @@ export function spendByStage(rows: StepDurationRow[] | undefined): SpendByStageD
   const total = [...byGroup.values()].reduce((a, b) => a + b, 0);
   const segments = SPEND_GROUPS.map((g) => {
     const cost = byGroup.get(g.key) ?? 0;
-    return { key: g.key, label: g.label, color: g.color, cost, pct: total > 0 ? (cost / total) * 100 : 0 };
+    return { key: g.key, color: g.color, cost, pct: total > 0 ? (cost / total) * 100 : 0 };
   }).filter((s) => s.cost > 0);
   return { segments, total };
 }

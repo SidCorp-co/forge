@@ -6,8 +6,11 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { Banner, Button, Field, Input, Select, SlideOver } from '@/design';
 import { useActiveOrg } from '@/features/orgs/active-org';
 import { useOrgs } from '@/features/orgs/hooks';
+import { RUNNER_SETUP } from '@/features/runners/commands';
 import { ApiError } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
+import { useCopy } from '@/lib/i18n/interface-language';
+import type { Copy } from '@/lib/i18n/product-copy';
 import { SLUG_RE, slugify } from '@/lib/slug';
 import { useSubmitGuard } from '@/lib/utils/use-submit-guard';
 import { useToast } from '@/providers/toast-provider';
@@ -15,7 +18,10 @@ import { useAskForDesigns } from '@/features/onboarding/components/ask-for-desig
 import { useCreateProject } from '../hooks';
 import type { CreatedProject } from '../types';
 
+/** The command a person runs on the job machine to pair it: typed verbatim, so it is not copy. */
+
 export function NewProjectDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const t = useCopy();
   const router = useRouter();
   // Step 2 — "Set up pipeline" (ISS-453). `created` non-null flips the wizard.
   const [created, setCreated] = useState<CreatedProject | null>(null);
@@ -34,7 +40,7 @@ export function NewProjectDialog({ open, onClose }: { open: boolean; onClose: ()
     <SlideOver
       open={open}
       onClose={created ? finish : onClose}
-      title={created ? 'Set up pipeline' : 'New project'}
+      title={created ? t('projects.setup.title') : t('projects.new')}
       width={460}
     >
       {created ? (
@@ -46,13 +52,13 @@ export function NewProjectDialog({ open, onClose }: { open: boolean; onClose: ()
   );
 }
 
-function validate(name: string, slug: string) {
+function validate(t: Copy, name: string, slug: string) {
   const next: { name?: string; slug?: string } = {};
-  if (name.length < 1) next.name = 'Name is required.';
-  else if (name.length > 200) next.name = 'Name must be 200 characters or fewer.';
-  if (slug.length < 3) next.slug = 'Slug must be at least 3 characters.';
-  else if (slug.length > 64) next.slug = 'Slug must be 64 characters or fewer.';
-  else if (!SLUG_RE.test(slug)) next.slug = 'Slug may use lowercase letters, digits, and hyphens only.';
+  if (name.length < 1) next.name = t('projects.form.nameRefused.missing');
+  else if (name.length > 200) next.name = t('projects.form.nameRefused.long');
+  if (slug.length < 3) next.slug = t('projects.form.slugRefused.short');
+  else if (slug.length > 64) next.slug = t('projects.form.slugRefused.long');
+  else if (!SLUG_RE.test(slug)) next.slug = t('projects.form.slugRefused.shape');
   return next;
 }
 
@@ -65,6 +71,7 @@ function CreateProjectForm({
   onCreated: (row: CreatedProject) => void;
   onClose: () => void;
 }) {
+  const t = useCopy();
   const { toast } = useToast();
   const create = useCreateProject();
   const submitting = useSubmitGuard();
@@ -98,12 +105,12 @@ function CreateProjectForm({
     e.preventDefault();
     const trimmedName = name.trim();
     const trimmedSlug = slug.trim();
-    const fieldErrors = validate(trimmedName, trimmedSlug);
+    const fieldErrors = validate(t, trimmedName, trimmedSlug);
     setErrors(fieldErrors);
     if (fieldErrors.name || fieldErrors.slug || !submitting.claim()) return;
     try {
       const row = await create.mutateAsync({ slug: trimmedSlug, name: trimmedName, ...(orgId ? { orgId } : {}) });
-      toast({ title: 'Project created', description: row.name, tone: 'success' });
+      toast({ title: t('projects.form.created'), description: row.name, tone: 'success' });
       // ISS-453 — don't navigate yet: advance to the "Set up pipeline" step.
       onCreated(row);
     } catch (err) {
@@ -111,7 +118,7 @@ function CreateProjectForm({
       // A taken slug is a field-level problem; everything else is a form banner.
       setErrors(
         err instanceof ApiError && err.code === 'SLUG_TAKEN'
-          ? { slug: 'That slug is already taken.' }
+          ? { slug: t('projects.form.slugRefused.taken') }
           : { form: formatApiError(err) },
       );
     }
@@ -120,7 +127,7 @@ function CreateProjectForm({
   return (
     <form onSubmit={onSubmit} className="flex h-full flex-col gap-4">
       {errors.form && <Banner tone="danger">{errors.form}</Banner>}
-      <Field label="Name" required error={errors.name}>
+      <Field label={t('projects.form.name')} required error={errors.name}>
         <Input
           value={name}
           onChange={(e) => {
@@ -128,12 +135,12 @@ function CreateProjectForm({
             // Mirror the name into the slug until the user takes manual control.
             if (!slugEdited) setSlug(slugify(e.target.value));
           }}
-          placeholder="Acme Platform"
+          placeholder={t('projects.form.namePlaceholder')}
           autoFocus
           maxLength={200}
         />
       </Field>
-      <Field label="Slug" required error={errors.slug} hint="Lowercase letters, digits, and hyphens.">
+      <Field label={t('projects.form.slug')} required error={errors.slug}>
         <Input
           value={slug}
           onChange={(e) => {
@@ -145,20 +152,20 @@ function CreateProjectForm({
         />
       </Field>
       {teamOrgs.length > 0 && (
-        <Field label="Organization">
+        <Field label={t('projects.form.org')}>
           <Select
             value={orgId}
             onChange={setOrgId}
-            options={[{ value: '', label: 'Personal' }, ...teamOrgs.map((o) => ({ value: o.id, label: o.name }))]}
+            options={[{ value: '', label: t('projects.form.personal') }, ...teamOrgs.map((o) => ({ value: o.id, label: o.name }))]}
           />
         </Field>
       )}
       <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
         <Button type="button" variant="ghost" onClick={onClose} disabled={create.isPending}>
-          Cancel
+          {t('common.cancel')}
         </Button>
         <Button type="submit" variant="primary" icon="plus" loading={create.isPending}>
-          Create project
+          {t('projects.form.create')}
         </Button>
       </div>
     </form>
@@ -169,27 +176,26 @@ function SetupPipeline({ created, onFinish }: { created: CreatedProject; onFinis
   /** The designed onboarding: confirm what its job does, start it, open its thread, land on the project. */
   const onboarding = useAskForDesigns(created.id, { onOpened: onFinish });
   const onboardError = onboarding.error;
+  const t = useCopy();
 
   return (
     <div className="flex h-full flex-col gap-4">
       <div>
-        <span className="fg-label">Connect a runner</span>
+        <span className="fg-label">{t('projects.setup.runner')}</span>
         <ol className="fg-body-sm mt-2 list-decimal space-y-1.5 pl-5 text-subtle">
           <li>
-            Run <code className="font-mono text-13 text-fg">forge-runner setup</code> on the machine that
-            will execute jobs: it pairs the device, then waits for step 2.
+            {t('projects.setup.pair')} <code className="font-mono text-13 text-fg">{RUNNER_SETUP}</code>
           </li>
           <li>
-            Assign the device to this project — assignments are per project, managed from the{' '}
+            {t('projects.setup.assign')}{' '}
             <Link href="/runners" className="text-accent hover:underline">
-              Runners
-            </Link>{' '}
-            page.
+              {t('projects.setup.runners')}
+            </Link>
           </li>
         </ol>
       </div>
       <div className="border-t border-line-subtle pt-4">
-        <span className="fg-label">Onboard the project</span>
+        <span className="fg-label">{t('projects.setup.onboard')}</span>
         {onboardError && (
           <div className="mt-2">
             <Banner tone="danger">{onboardError}</Banner>
@@ -197,14 +203,14 @@ function SetupPipeline({ created, onFinish }: { created: CreatedProject; onFinis
         )}
         <div className="mt-2">
           <Button variant="secondary" loading={onboarding.pending} onClick={() => onboarding.ask('start')} className="min-h-11">
-            Ask for designs
+            {t('projects.setup.askDesigns')}
           </Button>
           {onboarding.dialog}
         </div>
       </div>
       <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
         <Button type="button" variant="primary" onClick={onFinish}>
-          Go to project
+          {t('projects.setup.open')}
         </Button>
       </div>
     </div>

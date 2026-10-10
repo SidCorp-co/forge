@@ -60,7 +60,7 @@ export function GitlabSection({ projectId }: { projectId: string }) {
   }
 
   return (
-    <ProviderCard title="GitLab" badge={activeBadge(existing, t)}>
+    <ProviderCard title={t("integrations.provider.gitlab")} badge={activeBadge(existing, t)}>
       <Field
         label={t("integrations.autoflow.token")}
         hint={existing ? t("integrations.provider.tokenStored") : undefined}

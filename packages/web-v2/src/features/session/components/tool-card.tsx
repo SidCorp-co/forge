@@ -102,7 +102,9 @@ function SimpleCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boole
         <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-12)" }}>{getToolLabel(tool, t)}</span>
         {typeof tool.durationMs === "number" && (
           <span className="flex-none font-mono text-subtle" style={{ fontSize: "var(--text-11)" }}>
-            {tool.durationMs >= 1000 ? `${time.number(Number((tool.durationMs / 1000).toFixed(1)))}s` : `${tool.durationMs}ms`}
+            {tool.durationMs >= 1000
+              ? t("session.tool.seconds", { n: time.number(Number((tool.durationMs / 1000).toFixed(1))) })
+              : t("session.tool.ms", { n: tool.durationMs })}
           </span>
         )}
       </div>

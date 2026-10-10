@@ -85,7 +85,7 @@ export function Waffle({ categories, perCell, className }: WaffleProps) {
         })}
       </ul>
       {per > 1 ? (
-        <p className="fg-body-sm text-subtle">Each cell is {per} issues.</p>
+        <p className="fg-body-sm text-subtle">{t("common.waffle.perCell", { n: per })}</p>
       ) : null}
     </div>
   );

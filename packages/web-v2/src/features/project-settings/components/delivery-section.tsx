@@ -147,7 +147,7 @@ function Probes({ draft, base, off }: { draft: DocumentDraft; base: string[]; of
 							// biome-ignore lint/suspicious/noArrayIndexKey: a probe is its position in the document's list; it has no identity of its own to key by
 							<div key={`probe-${i}`} className="flex flex-col gap-2 sm:flex-row sm:items-center">
 								<Input aria-label={t("settings.project.delivery.probeUrl")} placeholder="https://example.com/version" value={str(probe.url)} disabled={off} className="font-mono" onChange={(e) => draft.set([...at, "url"], e.target.value)} />
-								<Input aria-label={t("settings.project.delivery.probePath")} placeholder="commit" value={str(probe.path)} disabled={off} className="font-mono sm:max-w-40" onChange={(e) => draft.set([...at, "path"], e.target.value)} />
+								<Input aria-label={t("settings.project.delivery.probePath")} placeholder={t("settings.project.delivery.probePathPlaceholder")} value={str(probe.path)} disabled={off} className="font-mono sm:max-w-40" onChange={(e) => draft.set([...at, "path"], e.target.value)} />
 								<Picker
 									aria-label={t("settings.project.delivery.probeIdentifies")}
 									value={str(probe.identifies) || "source"}
@@ -248,7 +248,7 @@ function EnvironmentsGroup({ draft, projectId, off }: { draft: DocumentDraft; pr
 						<SettingRow
 							label={t("settings.project.delivery.environmentNew")}
 							effect={adding && !valid ? t("settings.project.delivery.environmentNameRule") : undefined}
-							control={<Input aria-label={t("settings.project.delivery.environmentNew")} value={adding} placeholder="staging" className="font-mono" onChange={(e) => setAdding(e.target.value)} />}
+							control={<Input aria-label={t("settings.project.delivery.environmentNew")} value={adding} placeholder={t("settings.project.delivery.environmentPlaceholder")} className="font-mono" onChange={(e) => setAdding(e.target.value)} />}
 						/>
 					</div>
 					<Button

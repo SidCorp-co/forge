@@ -236,7 +236,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
               <Input
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                placeholder="bug"
+                placeholder={t("issues.category.placeholder")}
                 translate="no"
                 maxLength={100}
               />

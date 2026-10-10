@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "@/design/icons/icon";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { IconButton } from "./icon-button";
 
 type Tone = "info" | "attention" | "danger" | "success";
@@ -21,6 +22,7 @@ export interface BannerProps {
 /** Full-width contextual banner (e.g. needs-attention, live run, error). */
 export function Banner({ tone = "info", children, action, onDismiss }: BannerProps) {
   const t = TONE[tone];
+  const copy = useCopy();
   return (
     <div
       className="flex items-center gap-3 rounded-lg border px-4 py-3"
@@ -31,7 +33,7 @@ export function Banner({ tone = "info", children, action, onDismiss }: BannerPro
         {children}
       </div>
       {action}
-      {onDismiss && <IconButton icon="x" size="sm" aria-label="Dismiss" onClick={onDismiss} />}
+      {onDismiss && <IconButton icon="x" size="sm" aria-label={copy("common.dismiss")} onClick={onDismiss} />}
     </div>
   );
 }

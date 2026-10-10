@@ -67,21 +67,22 @@ function useGateDecision(projectId: string, questionId: string | null): GateDeci
 }
 
 export function GatePanel({ projectId, slug, questionId }: { projectId: string; slug: string; questionId: string | null }) {
+  const t = useCopy();
   const gate = useGateDecision(projectId, questionId);
   if (gate.kind === "notice") return gate.notice;
   const { question: q, note } = gate;
   return (
-    <section aria-label="Approve gate" className="space-y-2 rounded-md border border-line p-3">
-      <h2 className="fg-label text-fg">Waiting at the approve gate</h2>
+    <section aria-label={t("ecosystem.gate.label")} className="space-y-2 rounded-md border border-line p-3">
+      <h2 className="fg-label text-fg">{t("ecosystem.gate.waiting")}</h2>
       <p className="text-13-5 break-words">{gate.prompt}</p>
       {q.options.every((o) => o.locked) ? (
-        <p className="fg-caption">Your role on {slug} cannot decide this gate; an admin of {slug} approves or returns it.</p>
+        <p className="fg-caption">{t("ecosystem.gate.waitingOnAdmin", { slug })}</p>
       ) : (
         <>
           <Textarea
-            aria-label="Gate note"
+            aria-label={t("ecosystem.gate.note")}
             rows={2}
-            placeholder="Note to the writer (required when returning it)"
+            placeholder={t("ecosystem.gate.notePlaceholder")}
             value={note}
             onChange={(e) => gate.setNote(e.target.value)}
           />
@@ -92,7 +93,7 @@ export function GatePanel({ projectId, slug, questionId }: { projectId: string; 
                 variant={o.id === "approve" ? "primary" : "secondary"}
                 size="sm"
                 disabled={o.locked || (o.id === "return" && note.trim() === "")}
-                title={o.locked ? "Your role cannot choose this option" : o.label}
+                title={o.locked ? t("ecosystem.gate.roleCannot") : o.label}
                 loading={gate.pending(o.id)}
                 onClick={() => gate.decide(o.id)}
               >

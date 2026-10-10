@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   faults,
+  inlineCopyOf,
+  inlineFaults,
   keyEndsWith,
   keyHasSegment,
   kindOf,
@@ -161,5 +163,60 @@ describe('sentencesOf — the sentences core writes for pages (REQ-43 BC-11)', (
     );
     expect(() => sentencesOf(registry(''), FILE, 'OTHER')).toThrow(/declares no `const OTHER/);
     expect(() => sentencesOf(registry(''), FILE, 'SAID')).toThrow(/declares no sentence/);
+  });
+});
+
+describe('inlineCopyOf — copy a component writes inline (REQ-43 BC-1, BC-2)', () => {
+  const FILE = 'packages/web-v2/src/features/a/b.tsx';
+  const ATTRS = /^(title|label|placeholder|aria-label|\w+Label)$/;
+  const read = (source) => inlineCopyOf(source, FILE, ATTRS).map((w) => [w.line, w.where, w.text]);
+
+  it('reads JSX text between tags, whitespace folded, at the line its words start', () => {
+    expect(read('export const A = () => (\n  <p>\n    Why   we ask\n  </p>\n);')).toEqual([
+      [3, 'text', 'Why we ask'],
+    ]);
+  });
+  it('reads a copy attribute, and leaves an attribute that is not copy', () => {
+    expect(
+      read('const A = () => <input placeholder="Your answer" type="text" className="flex gap" confirmLabel="Reap job" />;'),
+    ).toEqual([
+      [1, 'placeholder', 'Your answer'],
+      [1, 'confirmLabel', 'Reap job'],
+    ]);
+  });
+  it('reads a literal a JSX expression renders: the || fallback, both arms of ?:, and &&', () => {
+    expect(
+      read('const A = ({ r, x }) => <Page title={r || "Document"}>{x ? "Collapse" : "Expand"}{x && "Shown"}</Page>;'),
+    ).toEqual([
+      [1, 'title', 'Document'],
+      [1, 'text', 'Collapse'],
+      [1, 'text', 'Expand'],
+      [1, 'text', 'Shown'],
+    ]);
+  });
+  it('leaves a literal passed to a call, since t("…") and cn("…") are arguments, not copy', () => {
+    expect(read('const A = ({ t }) => <p title={t("issues.title")}>{t("issues.open")}{cn("text sm")}</p>;')).toEqual([]);
+  });
+  it('leaves data and punctuation: a URL, an address, a key, a format, an entity, a dot', () => {
+    expect(
+      read(
+        'const A = () => <div><input placeholder="https://chat.example.com" /><input placeholder="you@studio.com" /><input placeholder="sat_…" /><code>is:stuck</code><span>&times;</span>{" · "}<b>x</b></div>;',
+      ),
+    ).toEqual([]);
+  });
+  it('reads a copy-named object property in a .ts table a component renders later, not a key it names', () => {
+    const TS = 'packages/web-v2/src/features/a/nav-model.ts';
+    const found = inlineCopyOf(
+      'export const NAV = [\n  { id: "runs", label: "Runs", href: "/runs" },\n  { id: "x", label: "nav.x", title: "hintIssueStatus" },\n];',
+      TS,
+      ATTRS,
+    );
+    expect(found.map((w) => [w.line, w.where, w.text])).toEqual([[2, 'label:', 'Runs']]);
+    expect(inlineFaults(found)[0]).toContain('property label: "Runs"');
+  });
+  it('names each by file and line, and says to move or delete it', () => {
+    expect(inlineFaults(inlineCopyOf('const A = () => <p>Skip for now</p>;', FILE, ATTRS))).toEqual([
+      `${FILE}:1 · JSX text "Skip for now": copy written inline; move it to its feature's copy file, or delete it`,
+    ]);
   });
 });

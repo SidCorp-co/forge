@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Banner, Button, Field, Input } from '@/design';
 import { formatApiError } from '@/lib/api/error';
+import { useCopy } from '@/lib/i18n/interface-language';
 import { SESSION_ENDED_LINE } from '@/lib/api/session-ended';
 import { useAuth } from '@/providers/auth-provider';
 import { extractFieldErrors } from './extract-field-errors';
@@ -19,6 +20,7 @@ export function LoginForm({
   /** A server-side gate (the /admin one) met a session core refused and sent the person here. */
   sessionEnded?: boolean;
 }) {
+  const t = useCopy();
   const { login, sessionEnded: ended } = useAuth();
   const sessionEnded = ended || sentHere;
   const router = useRouter();
@@ -67,7 +69,7 @@ export function LoginForm({
         )
       )}
 
-      <Field label="Email" error={fieldErrors.email}>
+      <Field label={t('auth.field.email')} error={fieldErrors.email}>
         <Input
           type="email"
           icon="mail"
@@ -84,7 +86,7 @@ export function LoginForm({
         />
       </Field>
 
-      <Field label="Password" error={fieldErrors.password}>
+      <Field label={t('auth.field.password')} error={fieldErrors.password}>
         <Input
           type="password"
           icon="lock"
@@ -100,7 +102,7 @@ export function LoginForm({
       </Field>
 
       <Button type="submit" variant="primary" loading={loading} className="mt-1 w-full">
-        Sign in
+        {t('auth.login.submit')}
       </Button>
     </form>
   );

@@ -2,11 +2,13 @@
 
 import { cellText, type VisualBlockOf } from "@forge/contracts/visual-blocks";
 import { Cell } from "./cells";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useBlockInstants } from "./instants";
 
 /** A status-list block: one hairline row per frame row, its ref a link to the issue, requirement or release it names. */
 export function StatusListBlockView({ block }: { block: VisualBlockOf<"status-list"> }) {
   const instants = useBlockInstants();
+  const t = useCopy();
   const field = (name: string) => block.frame.fields.find((f) => f.name === name);
   const ref = field(block.ref);
   const status = field(block.status);
@@ -26,12 +28,12 @@ export function StatusListBlockView({ block }: { block: VisualBlockOf<"status-li
               <Cell field={status} cell={row[status.name]} />
             </span>
             {waiting && on !== null && on !== undefined && (
-              <span className="text-[11.5px] text-subtle">waiting on {cellText(waiting, on, instants)}</span>
+              <span className="text-[11.5px] text-subtle">{t("visual.status.waitingOn", { who: cellText(waiting, on, instants) })}</span>
             )}
           </li>
         );
       })}
-      {block.frame.rows.length === 0 && <li className="py-1.5 text-[12px] text-subtle">No items.</li>}
+      {block.frame.rows.length === 0 && <li className="py-1.5 text-[12px] text-subtle">{t("visual.status.empty")}</li>}
     </ul>
   );
 }

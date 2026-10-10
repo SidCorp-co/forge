@@ -11,9 +11,7 @@ import {
   PageSectionTitle,
   EmptyState,
   Field,
-  HelpButton,
   Icon,
-  MonoTag,
   PageTitle,
   Select,
   enumLabel,
@@ -23,9 +21,9 @@ import { agentAddress, agentLabel } from "@/features/agent-accounts/label";
 import { useActiveOrg } from "@/features/orgs/active-org";
 import { isOrgAdmin } from "@/features/projects/write-access";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useAuth } from "@/providers/auth-provider";
 import { useApproveDevice } from "../hooks";
-import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
 /** The value the picker carries for "this box is mine", which is not an agent id. */
 const AS_MYSELF = "";
@@ -41,6 +39,7 @@ const AS_MYSELF = "";
  * that agent's projects, and everything the box files is filed as the agent.
  */
 export function PairScreen() {
+  const t = useCopy();
   const params = useSearchParams();
   const code = params.get("code")?.trim() ?? "";
   const approve = useApproveDevice();
@@ -67,51 +66,36 @@ export function PairScreen() {
 
   return (
     <div className="mx-auto flex w-full max-w-[560px] flex-col gap-4 px-6 py-8">
-      <PageTitle>Approve a device</PageTitle>
-      <TopBarActions>
-        <HelpButton
-          summary="A device running `forge-runner setup` (or `login`) is asking to pair with your account. Confirm the code matches what the CLI printed, then approve. Approving mints a device-scoped token the runner uses to accept jobs."
-          actions={[
-            "Approve — bind this pairing code to your account",
-            "Deny — ignore the request (the code expires on its own)",
-          ]}
-        />
-      </TopBarActions>
+      <PageTitle>{t("pairing.title")}</PageTitle>
 
       {!code ? (
         <PageSection>
           <PageSectionBody>
-            <EmptyState
-              title="No pairing code"
-              message="Open this page from the link printed by `forge-runner setup` or `forge-runner login`."
-            />
+            <EmptyState message={t("pairing.noCode")} />
           </PageSectionBody>
         </PageSection>
       ) : approved ? (
         <PageSection>
           <PageSectionHeader>
-            <PageSectionTitle>Device approved</PageSectionTitle>
+            <PageSectionTitle>{t("pairing.approved.title")}</PageSectionTitle>
           </PageSectionHeader>
           <PageSectionBody>
             <div className="flex flex-col gap-3">
-              <Banner tone="success">
-                Return to your terminal — the runner will finish pairing automatically.
-              </Banner>
+              <Banner tone="success">{t("pairing.approved.back")}</Banner>
               {chosen && (
                 <Banner tone="attention">
-                  Paired as {agentLabel(chosen)} ({agentAddress(chosen)}). Everything this box files
-                  is filed as that agent.
+                  {t("pairing.approved.as", { name: agentLabel(chosen), address: agentAddress(chosen) })}
                 </Banner>
               )}
               {approve.data?.device && (
                 <dl className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-1.5 text-13">
-                  <dt className="text-muted">Label</dt>
+                  <dt className="text-muted">{t("pairing.device.label")}</dt>
                   <dd className="text-fg">{approve.data.device.label}</dd>
-                  <dt className="text-muted">Platform</dt>
+                  <dt className="text-muted">{t("pairing.device.platform")}</dt>
                   <dd className="text-fg">{enumLabel("platform", approve.data.device.platform)}</dd>
                   {approve.data.device.hostname && (
                     <>
-                      <dt className="text-muted">Hostname</dt>
+                      <dt className="text-muted">{t("pairing.device.hostname")}</dt>
                       <dd className="text-fg">{approve.data.device.hostname}</dd>
                     </>
                   )}
@@ -123,23 +107,17 @@ export function PairScreen() {
       ) : denied ? (
         <PageSection>
           <PageSectionBody>
-            <EmptyState
-              title="Request denied"
-              message="The pairing code was not approved. It will expire on its own. You can close this tab."
-            />
+            <EmptyState message={t("pairing.denied")} />
           </PageSectionBody>
         </PageSection>
       ) : (
         <PageSection>
           <PageSectionHeader>
-            <PageSectionTitle>Pairing request</PageSectionTitle>
+            <PageSectionTitle>{t("pairing.request.title")}</PageSectionTitle>
           </PageSectionHeader>
           <PageSectionBody>
             <div className="flex flex-col gap-4">
-              <p className="fg-body-sm text-muted">
-                Confirm this code matches what <MonoTag>forge-runner setup</MonoTag> printed in
-                your terminal before approving.
-              </p>
+              <p className="fg-body-sm text-muted">{t("pairing.request.check")}</p>
               <div className="flex items-center justify-center rounded-lg border border-line bg-sunken py-5">
                 <span className="font-mono text-2xl font-semibold tracking-[0.25em] text-fg">
                   {code}
@@ -147,13 +125,13 @@ export function PairScreen() {
               </div>
 
               {orgAdmin && (
-                <Field label="Pair this device as">
+                <Field label={t("pairing.pairAs")}>
                   <Select
                     value={asAgent}
                     onChange={(v) => setPicked({ orgId: activeOrgId, agentUserId: v })}
                     disabled={agentsQ.isLoading}
                     options={[
-                      { value: AS_MYSELF, label: `Me — ${user?.email ?? "this account"}` },
+                      { value: AS_MYSELF, label: t("pairing.asMe", { email: user?.email ?? t("pairing.thisAccount") }) },
                       ...agents.map((a) => ({
                         value: a.userId,
                         label: `${agentLabel(a)} (${agentAddress(a)})`,
@@ -164,42 +142,35 @@ export function PairScreen() {
               )}
 
               {waiting && (
-                <Banner tone="info">
-                  Looking for the agents you could pair this box as — approving waits until the
-                  choice is on screen.
-                </Banner>
+                <Banner tone="info">{t("pairing.agentsLoading")}</Banner>
               )}
               {orgAdmin && agentsQ.isError && (
                 <Banner
                   tone="danger"
                   action={
                     <Button variant="secondary" onClick={() => agentsQ.refetch()}>
-                      Try again
+                      {t("pairing.retry")}
                     </Button>
                   }
                 >
-                  The agents of this organization could not be loaded, so there is nothing to pick
-                  from yet. Approving now pairs the box as you.
+                  {t("pairing.agentsFailed")}
                 </Banner>
               )}
               {orgAdmin && !agentsQ.isLoading && !agentsQ.isError && agents.length === 0 && (
-                <Banner tone="info">
-                  This organization has no agents yet. Make one in Settings → Agents to give a box
-                  an identity of its own.
-                </Banner>
+                <Banner tone="info">{t("pairing.noAgents")}</Banner>
               )}
 
               <Banner tone={chosen ? "attention" : "info"}>
                 {chosen
-                  ? `This box will act as ${agentLabel(chosen)} (${agentAddress(chosen)}) — not as you — and reach that agent's ${chosen.projects.length} project(s).`
-                  : "This box will act as you. Its credential reaches no project: it can run the daemon, not read or write a project's work."}
+                  ? t("pairing.actsAsAgent", { name: agentLabel(chosen), address: agentAddress(chosen), n: chosen.projects.length })
+                  : t("pairing.actsAsYou")}
               </Banner>
 
               {approve.isError && <Banner tone="danger">{formatApiError(approve.error)}</Banner>}
 
               <div className="flex items-center justify-end gap-2">
                 <Button variant="ghost" icon="x" onClick={() => setDenied(true)}>
-                  Deny
+                  {t("pairing.deny")}
                 </Button>
                 <Button
                   variant="primary"
@@ -210,7 +181,7 @@ export function PairScreen() {
                     approve.mutate({ pairingCode: code, agentUserId: identity })
                   }
                 >
-                  Approve device
+                  {t("pairing.approve")}
                 </Button>
               </div>
             </div>
@@ -220,7 +191,7 @@ export function PairScreen() {
 
       <p className="fg-body-sm flex items-center gap-1.5 text-subtle">
         <Icon name="lock" size={13} />
-        Only approve devices you started yourself.
+        {t("pairing.ownOnly")}
       </p>
     </div>
   );

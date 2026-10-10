@@ -268,7 +268,9 @@
     "releases.worthKnowing": "Worth knowing",
     "releases.page.requirements.all": "All",
     "releases.page.requirements.show": "Show",
-    "releases.page.requirements.proven": "Proven"
+    "releases.page.requirements.proven": "Proven",
+    "releases.page.shared.members": "Shared with the project's members",
+    "releases.page.shared.link": "Shared by link"
   },
   "vi": {
     "releases.aPerson": "Một người",

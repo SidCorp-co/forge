@@ -111,10 +111,10 @@ function LiveRow({
       </button>
       {showOps && (
         <div className="mt-2 flex flex-wrap gap-2 border-t border-line-subtle pt-2">
-          <OpsTag label="session" value={session.id} />
-          {session.pipelineRunId && <OpsTag label="run" value={session.pipelineRunId} />}
-          {session.claudeSessionId && <OpsTag label="claude" value={session.claudeSessionId} />}
-          {session.deviceId && <OpsTag label="device" value={session.deviceId} />}
+          <OpsTag label={t("issues.live.ops.session")} value={session.id} />
+          {session.pipelineRunId && <OpsTag label={t("issues.live.ops.run")} value={session.pipelineRunId} />}
+          {session.claudeSessionId && <OpsTag label={t("issues.live.ops.claude")} value={session.claudeSessionId} />}
+          {session.deviceId && <OpsTag label={t("issues.live.ops.device")} value={session.deviceId} />}
         </div>
       )}
     </>
@@ -174,8 +174,8 @@ function QueuedRow({
       </button>
       {showOps && (
         <div className="mt-2 flex flex-wrap gap-2 border-t border-line-subtle pt-2">
-          <OpsTag label="job" value={step.jobId} />
-          {step.gate && <OpsTag label="gate" value={step.gate.reason} />}
+          <OpsTag label={t("issues.live.ops.job")} value={step.jobId} />
+          {step.gate && <OpsTag label={t("issues.live.ops.gate")} value={step.gate.reason} />}
         </div>
       )}
     </>

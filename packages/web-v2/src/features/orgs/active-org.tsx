@@ -7,6 +7,7 @@ import { formatApiError } from "@/lib/api/error";
 import { preferencesApi } from "@/features/preferences/api";
 import { PREFERENCES_KEY as PREFS_KEY, usePreferences } from "@/features/preferences/hooks";
 import type { Preferences } from "@/features/preferences/types";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useOrgs } from "./hooks";
 import type { OrgListItem } from "./types";
 
@@ -35,6 +36,7 @@ const ActiveOrgContext = createContext<ActiveOrgContextValue | null>(null);
 export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   const { data: orgsData } = useOrgs();
   const { data: prefs } = usePreferences();
 
@@ -61,7 +63,7 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
     },
     onError: (err, _orgId, ctx) => {
       if (ctx?.prev) qc.setQueryData(PREFS_KEY, ctx.prev);
-      toast({ title: "Couldn't switch organization", description: formatApiError(err), tone: "error" });
+      toast({ title: t("settings.orgs.switchFailed"), description: formatApiError(err), tone: "error" });
     },
     onSuccess: (data) => {
       qc.setQueryData(PREFS_KEY, data);

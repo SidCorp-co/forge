@@ -11,23 +11,18 @@ import { ApiError } from "@/lib/api/client";
 import { type SourceFacts, VisualBlockProvider, VisualBlockView } from "@/features/visual-blocks";
 import { useBlockInstants } from "@/features/visual-blocks/instants";
 import { readProseInstants } from "@/lib/i18n/instants";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { openShare } from "../api";
 
-const NARRATIVE: readonly { slot: TemplateNarrativeSlot; label: string }[] = [
-  { slot: "summary", label: "Summary" },
-  { slot: "risks", label: "Risks" },
-  { slot: "recommendations", label: "Recommendations" },
-];
+const NARRATIVE: readonly TemplateNarrativeSlot[] = ["summary", "risks", "recommendations"];
 
-const REFUSED: Record<string, string> = {
-  SHARE_NOT_AVAILABLE:
-    "This link is not available. It may have expired or been revoked, or the person who shared it can no longer share from the project.",
-  SHARE_TOKEN_MALFORMED: "This is not a share link. Check that the whole link was copied.",
-  SHARE_SIGN_IN_REQUIRED:
-    "This answer is shared with the project's members only. Sign in, then open this link again.",
-  SHARE_AUDIENCE_FORBIDDEN:
-    "This answer is shared with the project's members only, and your account is not one of them.",
-  RATE_LIMITED: "This link is being opened too often. Try again in a minute.",
+/** What a refused open says, by core's refusal code; any other code reads the general failure. */
+const REFUSED: Record<string, ProductCopyKey> = {
+  SHARE_NOT_AVAILABLE: "shares.refused.notAvailable",
+  SHARE_TOKEN_MALFORMED: "shares.refused.malformed",
+  SHARE_SIGN_IN_REQUIRED: "shares.refused.signIn",
+  SHARE_AUDIENCE_FORBIDDEN: "shares.refused.forbidden",
 };
 
 /** The frozen query and read time of each run the answer holds, keyed the way a block names its source. */
@@ -47,11 +42,11 @@ const CHAT_ANSWER = "chat-answer";
  * template's title. Never a template id: a chat answer frozen before it carried its question is a
  * "Shared answer".
  */
-export function documentTitle(document: Pick<ReportDocument, "templateId" | "title">): string {
+export function documentTitle(document: Pick<ReportDocument, "templateId" | "title">, t: Copy): string {
   if (document.title?.trim()) return document.title;
   const template = builtinReportTemplate(document.templateId);
   if (template) return template.title;
-  return document.templateId === CHAT_ANSWER ? "Shared answer" : "Shared report";
+  return document.templateId === CHAT_ANSWER ? t("shares.title.answer") : t("shares.title.report");
 }
 
 /**
@@ -62,7 +57,8 @@ export function documentTitle(document: Pick<ReportDocument, "templateId" | "tit
  */
 export function ReportDocumentBody({ document, onTableCsv }: { document: ReportDocument; onTableCsv?: (blockIndex: number) => void }) {
   const instants = useBlockInstants();
-  const narrative = NARRATIVE.filter(({ slot }) => document.narrative[slot]?.trim());
+  const t = useCopy();
+  const narrative = NARRATIVE.filter((slot) => document.narrative[slot]?.trim());
   return (
     <>
       {document.reply?.trim() && (
@@ -71,9 +67,9 @@ export function ReportDocumentBody({ document, onTableCsv }: { document: ReportD
           <Markdown inert>{readProseInstants(document.reply, instants)}</Markdown>
         </section>
       )}
-      {narrative.map(({ slot, label }) => (
+      {narrative.map((slot) => (
         <section key={slot} className="border-b border-line py-5">
-          <h2 className="fg-body-sm font-semibold text-fg">{label}</h2>
+          <h2 className="fg-body-sm font-semibold text-fg">{t(`shares.narrative.${slot}`)}</h2>
           <p className="fg-body-sm mt-1 whitespace-pre-wrap text-fg">{readProseInstants(document.narrative[slot] ?? "", instants)}</p>
         </section>
       ))}
@@ -93,14 +89,15 @@ export function ReportDocumentBody({ document, onTableCsv }: { document: ReportD
 export function SharedAnswerView({ snapshot }: { snapshot: ShareSnapshot }) {
   const { document } = snapshot;
   const instants = useBlockInstants();
+  const t = useCopy();
   return (
     <article className="flex flex-col">
       <header className="border-b border-line pb-5">
-        <p className="fg-caption text-subtle">Shared answer · read-only snapshot</p>
-        <h1 className="fg-h3 mt-1 font-semibold text-fg">{documentTitle(document)}</h1>
+        <p className="fg-caption text-subtle">{t("shares.answer.kicker")}</p>
+        <h1 className="fg-h3 mt-1 font-semibold text-fg">{documentTitle(document, t)}</h1>
         <p className="fg-caption mt-1 text-subtle">
-          {snapshot.audience === "members" ? "Shared with the project's members" : "Shared by link"} ·
-          available until {instants.instant(snapshot.expiresAt)}
+          {snapshot.audience === "members" ? t("shares.answer.members") : t("shares.answer.link")} ·{" "}
+          {t("shares.answer.until", { at: instants.instant(snapshot.expiresAt) })}
         </p>
       </header>
       <ReportDocumentBody document={document} />
@@ -122,6 +119,7 @@ export function SharedAnswer({
   signedIn: boolean | null;
   release: (snapshot: ShareReleaseSnapshot) => ReactNode;
 }) {
+  const t = useCopy();
   const opened = useQuery({
     queryKey: ["share", token, signedIn],
     queryFn: () => openShare(token, signedIn === true),
@@ -134,7 +132,7 @@ export function SharedAnswer({
     const code = opened.error instanceof ApiError ? opened.error.code : undefined;
     return (
       <p role="alert" className="fg-body-sm text-fg">
-        {(code && REFUSED[code]) ?? "This shared answer could not be opened. Try again shortly."}
+        {t((code && REFUSED[code]) || "shares.answer.openFailed")}
       </p>
     );
   }

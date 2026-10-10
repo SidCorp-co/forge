@@ -4,6 +4,7 @@ import { Banner } from '@/design';
 import { AuthShell } from '@/features/auth/components/auth-shell';
 import { SocialLogin } from '@/features/auth/components/social-login';
 import { LoginForm } from '@/features/auth/login-form';
+import { type Copy, productCopy } from '@/lib/i18n/product-copy';
 
 interface LoginPageProps {
   searchParams: Promise<{
@@ -16,13 +17,15 @@ interface LoginPageProps {
 
 // Stable codes set by core's OAuth callback redirect. Anything else falls back
 // to a generic message so a stray query param can't break the banner.
-const OAUTH_ERROR_MESSAGES: Record<string, string> = {
-  denied: 'Sign-in cancelled. Try again or use email + password below.',
-  session_expired: 'OAuth session timed out. Please retry — the link is good for 10 minutes.',
-  email_unverified:
-    'Your provider did not return a verified email. Verify it on the provider side, then retry.',
-  provider_error: 'Could not complete sign-in. Try again or use email + password below.',
+const OAUTH_ERROR_MESSAGES: Record<string, (t: Copy) => string> = {
+  denied: (t) => t('auth.oauthRefused.denied'),
+  session_expired: (t) => t('auth.oauthRefused.sessionExpired'),
+  email_unverified: (t) => t('auth.oauthRefused.emailUnverified'),
+  provider_error: (t) => t('auth.oauthRefused.providerError'),
 };
+
+// a server page reads copy without a hook; the copy is English only
+const t = productCopy();
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const sp = await searchParams;
@@ -36,25 +39,24 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const presetEmail = typeof sp.email === 'string' ? sp.email : '';
   const oauthErrorCode = typeof sp.oauth_error === 'string' ? sp.oauth_error : null;
   const oauthError = oauthErrorCode
-    ? OAUTH_ERROR_MESSAGES[oauthErrorCode] ?? OAUTH_ERROR_MESSAGES.provider_error
+    ? (OAUTH_ERROR_MESSAGES[oauthErrorCode] ?? OAUTH_ERROR_MESSAGES.provider_error)?.(t)
     : null;
 
   return (
     <AuthShell
-      title="Sign in"
-      subtitle="Welcome back. Pick up where the pipeline left off."
+      title={t('auth.login.title')}
       footer={
         <>
-          New to Forge?{' '}
+          {t('auth.login.newHere')}{' '}
           <Link href="/register" className="text-link font-semibold">
-            Create an account
+            {t('auth.login.createAccount')}
           </Link>
         </>
       }
     >
       {justRegistered && (
         <div className="mb-4">
-          <Banner tone="success">Account created. You can sign in now.</Banner>
+          <Banner tone="success">{t('auth.login.registered')}</Banner>
         </div>
       )}
       {oauthError && (

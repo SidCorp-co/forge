@@ -26,11 +26,11 @@ import {
   StatusBadge,
   StatusChip,
   Tabs,
-  Tooltip,
   enumLabel,
   type MenuItem,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useRecents } from "@/lib/navigation/recents";
 import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
 import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
@@ -63,11 +63,7 @@ interface RunDetailProps {
   canWrite?: boolean;
 }
 
-const TABS = [
-  { value: "activity", label: "History" },
-  { value: "timeline", label: "Timeline" },
-  { value: "cost", label: "Cost" },
-];
+const TABS = ["activity", "timeline", "cost"] as const;
 
 const PRIORITY_TONE: Record<string, "red" | "amber" | "neutral"> = {
   critical: "red",
@@ -78,6 +74,7 @@ const PRIORITY_TONE: Record<string, "red" | "amber" | "neutral"> = {
 };
 
 export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }: RunDetailProps) {
+  const t = useCopy();
   const [tab, setTab] = useState("activity");
   const copyShareLink = useCopyShareLink();
   const router = useRouter();
@@ -96,11 +93,11 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
     pushRecent({
       kind: "run",
       id: runId,
-      label: issue?.displayId ? `${issue.displayId} · run` : `run ${runId.slice(0, 8)}`,
+      label: issue?.displayId ? t("pipeline.recent.issueRun", { issue: issue.displayId }) : t("pipeline.recent.run", { id: runId.slice(0, 8) }),
       href: `/ops?run=${runId}`,
       icon: "pipeline",
     });
-  }, [open, runId, issue?.displayId, pushRecent]);
+  }, [open, runId, issue?.displayId, pushRecent, t]);
 
   function copyLink() {
     if (!runId) return;
@@ -108,7 +105,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
   }
   const chipStep = run?.currentStep ?? undefined;
   const label = issue?.displayId ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
-  const title = issue?.title ?? "Pipeline run";
+  const title = issue?.title ?? t("pipeline.run.title");
   const branch = issue?.metadata?.branchConfig?.branch ?? null;
   // A session-styled chip is the run's; the issue's own status is never drawn in it.
   const issueRun = issue ? runStatusChip(issue) : null;
@@ -129,8 +126,8 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
   const [confirmStop, setConfirmStop] = useState(false);
   useEffect(() => {
     if (!confirmStop) return;
-    const t = setTimeout(() => setConfirmStop(false), 3000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setConfirmStop(false), 3000);
+    return () => clearTimeout(timer);
   }, [confirmStop]);
   function onStopClick() {
     if (!runId) return;
@@ -155,10 +152,10 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
   // (e.g. the Ops Runs tab, where there is no issue row + quick bar) — or for
   // read-only viewers, whose quick bar is hidden.
   if (slug && taskIssueId && (!issue || !canWrite)) {
-    menuItems.push({ label: "Open issue", icon: "list", onSelect: openIssue });
+    menuItems.push({ label: t("pipeline.run.openIssue"), icon: "list", onSelect: openIssue });
   }
   if (runId) {
-    menuItems.push({ label: "Copy link", icon: "link", onSelect: copyLink });
+    menuItems.push({ label: t("pipeline.run.copyLink"), icon: "link", onSelect: copyLink });
   }
   // NOTE: abort lives on the first-class "Stop now" control below (ISS-376), so
   // there is exactly one abort affordance — no duplicate "Cancel run" here.
@@ -184,7 +181,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
       }
     >
       {!issue && !runId ? (
-        <EmptyState title="No run selected" message="Pick a card to inspect its pipeline run." />
+        <EmptyState message={t("pipeline.run.noRun")} />
       ) : (
         <div className="flex flex-col gap-5">
           {/* Quick-action bar (ISS-390) — pinned at the top of the drawer so the
@@ -231,7 +228,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
                   {branch}
                 </MonoTag>
               )}
-              {run && <Stat icon="dollar">{formatUsd(run.cost.estimatedCost)} this run</Stat>}
+              {run && <Stat icon="dollar">{t("pipeline.run.costThisRun", { cost: formatUsd(run.cost.estimatedCost) })}</Stat>}
             </div>
           </div>
 
@@ -240,16 +237,14 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
           <div className="flex flex-col gap-2.5">
             <div className="flex flex-wrap items-center gap-2">
               {canWrite && run?.status === "running" && (
-                <Tooltip label="Finishes the in-flight step, then halts before the next step. Does NOT stop the running agent.">
-                  <Button
-                    variant="primary"
-                    icon="pause"
-                    loading={pause.isPending}
-                    onClick={() => runId && pause.mutate(runId)}
-                  >
-                    Pause run
-                  </Button>
-                </Tooltip>
+                <Button
+                  variant="primary"
+                  icon="pause"
+                  loading={pause.isPending}
+                  onClick={() => runId && pause.mutate(runId)}
+                >
+                  {t("pipeline.run.pause")}
+                </Button>
               )}
               {canWrite && run?.status === "paused" && (
                 <Button
@@ -258,27 +253,25 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
                   loading={resume.isPending}
                   onClick={() => runId && resume.mutate(runId)}
                 >
-                  Resume run
+                  {t("pipeline.run.resume")}
                 </Button>
               )}
               {/* Distinct destructive abort — present whenever an agent could
                   still be running (running, or the finishing step while pausing). */}
               {canWrite && runId && (run?.status === "running" || isPausing) && (
-                <Tooltip label="Aborts the running agent immediately (cancellationRequested + agent:abort). Terminal — the run cannot be resumed.">
-                  <Button
-                    variant="danger"
-                    icon="stop"
-                    loading={cancel.isPending}
-                    onClick={onStopClick}
-                  >
-                    {confirmStop ? "Confirm stop" : "Stop now"}
-                  </Button>
-                </Tooltip>
+                <Button
+                  variant="danger"
+                  icon="stop"
+                  loading={cancel.isPending}
+                  onClick={onStopClick}
+                >
+                  {confirmStop ? t("pipeline.run.stopConfirm") : t("pipeline.run.stop")}
+                </Button>
               )}
               <Menu
                 align="left"
                 trigger={
-                  <Button variant="ghost" icon="more" aria-label="More run actions" className="px-2.5" />
+                  <Button variant="ghost" icon="more" aria-label={t("pipeline.run.moreActions")} className="px-2.5" />
                 }
                 items={menuItems}
               />
@@ -295,17 +288,17 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
                   className="forge-pulse inline-block size-2 flex-none rounded-full"
                   style={{ background: "var(--amber-500)" }}
                 />
-                Pausing — finishing current step: {activeStep?.jobType ?? "the in-flight step"}…
+                {t("pipeline.run.pausing", { step: activeStep ? enumLabel("jobType", activeStep.jobType) : "…" })}
               </p>
             )}
             {isHalted && (
-              <p className="fg-body-sm text-muted">Run halted — no active session.</p>
+              <p className="fg-body-sm text-muted">{t("pipeline.run.halted")}</p>
             )}
           </div>
 
           {/* Tabs */}
           <div>
-            <Tabs tabs={TABS} value={tab} onChange={setTab} />
+            <Tabs tabs={TABS.map((value) => ({ value, label: t(`pipeline.run.tab.${value}`) }))} value={tab} onChange={setTab} />
             <div className="pt-4">
               {tab === "activity" ? (
                 <ActivityTab
@@ -349,13 +342,12 @@ const DOT_COLOR: Record<DotState, string> = {
 };
 
 function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; loading: boolean }) {
+  const t = useCopy();
   if (loading) return <PanelSpinner />;
-  if (!run || run.steps.length === 0) {
-    return <EmptyState title="No steps yet" message="This run hasn't recorded any agent handoffs." />;
-  }
+  if (!run || run.steps.length === 0) return <EmptyState message={t("pipeline.run.noSteps")} />;
   return (
     <div>
-      <p className="fg-overline mb-4">Agent handoffs</p>
+      <p className="fg-overline mb-4">{t("pipeline.run.handoffs")}</p>
       {run.steps.map((step, i) => {
         const state = stepDot(step.status);
         const isLast = i === run.steps.length - 1;
@@ -414,8 +406,9 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
 /* ── Cost ─────────────────────────────────────────────────────────────── */
 
 function CostTab({ run, loading }: { run: PipelineRunSummary | undefined; loading: boolean }) {
+  const t = useCopy();
   if (loading) return <PanelSpinner />;
-  if (!run) return <EmptyState title="No cost data" message="This issue hasn't run yet." />;
+  if (!run) return <EmptyState message={t("pipeline.run.noCost")} />;
 
   const steps = run.steps.filter((s) => s.durationMs != null);
   const maxDur = Math.max(1, ...steps.map((s) => s.durationMs ?? 0));
@@ -428,23 +421,23 @@ function CostTab({ run, loading }: { run: PipelineRunSummary | undefined; loadin
           {formatUsd(c.estimatedCost)}
         </span>
         <span className="fg-body-sm text-subtle">
-          this run · {c.requests} request{c.requests === 1 ? "" : "s"}
+          {t("pipeline.run.requests", { n: c.requests })}
         </span>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <TokenStat label="Input" value={c.inputTokens} />
-        <TokenStat label="Output" value={c.outputTokens} />
-        <TokenStat label="Cache read" value={c.cacheReadTokens} />
-        <TokenStat label="Cache write" value={c.cacheCreationTokens} />
+        <TokenStat label={t("pipeline.run.tokensIn")} value={c.inputTokens} />
+        <TokenStat label={t("pipeline.run.tokensOut")} value={c.outputTokens} />
+        <TokenStat label={t("pipeline.run.cacheRead")} value={c.cacheReadTokens} />
+        <TokenStat label={t("pipeline.run.cacheWrite")} value={c.cacheCreationTokens} />
       </div>
 
       {steps.length > 0 && (
         <div className="flex flex-col gap-2.5">
-          <p className="fg-overline">Step durations</p>
+          <p className="fg-overline">{t("pipeline.run.stepDurations")}</p>
           {steps.map((s) => (
             <div key={s.jobType} className="flex items-center gap-2.5">
-              <span className="w-14 flex-none text-12 text-muted" title={`step: ${s.jobType}`}>
+              <span className="w-14 flex-none text-12 text-muted" title={s.jobType}>
                 {enumLabel("jobType", s.jobType)}
               </span>
               <ProgressBar

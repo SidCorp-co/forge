@@ -1,5 +1,7 @@
 {
   "en": {
+    "workflows.act.approve": "Approve",
+    "workflows.act.return": "Return",
     "workflows.againstApproved": "Against approved r{r}",
     "workflows.all": "All",
     "workflows.approvalNote": "Approval note",
@@ -25,6 +27,7 @@
     "workflows.canvas.business": "Business",
     "workflows.canvas.canvas": "Canvas",
     "workflows.canvas.changes": "Changes since r{r}",
+    "workflows.canvas.changesPlain": "Changes",
     "workflows.canvas.detail": "Detail",
     "workflows.canvas.fit": "Fit",
     "workflows.canvas.fitShortcut": "Fit (Shift+F)",

@@ -1,6 +1,7 @@
 "use client";
 
 import { PageSection, Skeleton } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { formatCount, formatDelta, formatUsd } from "../format";
 import type { AdminOverview } from "../types";
 
@@ -28,6 +29,7 @@ export function KpiRowSkeleton() {
 }
 
 export function KpiRow({ overview }: { overview: AdminOverview }) {
+  const t = useCopy();
   const { counts, kpis } = overview;
   const spendDelta = formatDelta(
     kpis.spendBaselineUsd > 0
@@ -38,20 +40,20 @@ export function KpiRow({ overview }: { overview: AdminOverview }) {
   return (
     <div className="grid grid-cols-2 gap-x-8 gap-y-4 lg:grid-cols-4">
       <Tile
-        label="Open alerts"
+        label={t("operator.kpi.openAlerts")}
         value={formatCount(kpis.openAlerts)}
-        note={kpis.openAlerts === 0 ? "nothing needs you" : "needs an operator"}
+        note={kpis.openAlerts === 0 ? null : t("operator.kpi.needsOperator")}
       />
-      <Tile label="Jobs in flight" value={formatCount(kpis.inFlightJobs)} note="queued, dispatched or running" />
+      <Tile label={t("operator.kpi.jobsInFlight")} value={formatCount(kpis.inFlightJobs)} />
       <Tile
-        label="Active workspaces"
+        label={t("operator.kpi.activeWorkspaces")}
         value={formatCount(counts.activeWorkspaces)}
-        note={`of ${formatCount(counts.projects)} · ${formatCount(counts.devicesOnline)}/${formatCount(counts.devicesTotal)} runners online`}
+        note={t("operator.kpi.workspacesOf", { projects: formatCount(counts.projects), online: formatCount(counts.devicesOnline), total: formatCount(counts.devicesTotal) })}
       />
       <Tile
-        label="Spend this window"
+        label={t("operator.kpi.spend")}
         value={formatUsd(kpis.spendWindowUsd)}
-        note={spendDelta ? `${spendDelta} vs the window before` : "no baseline to compare"}
+        note={spendDelta ? t("operator.kpi.spendVs", { delta: spendDelta }) : t("operator.kpi.noBaseline")}
       />
     </div>
   );

@@ -31,6 +31,7 @@ import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useMemo, useState } from "react";
+import { RUNNER_SETUP } from "../commands";
 import { CopyButton } from "./runners-screen";
 import { RunnerRow } from "./runner-row/runner-row";
 import {
@@ -138,10 +139,8 @@ function AssignDevice({
 					<div className="rounded-lg border border-dashed border-line-strong p-3">
 						<span className="fg-label">{t("runners.assign.setUpDevice")}</span>
 						<div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
-							<code className="font-mono text-13 text-fg">
-								forge-runner setup
-							</code>
-							<CopyButton value="forge-runner setup" />
+							<code className="font-mono text-13 text-fg">{RUNNER_SETUP}</code>
+							<CopyButton value={RUNNER_SETUP} />
 						</div>
 						<p className="fg-body-sm mt-1.5 text-subtle">{t("runners.assign.setupBody")}</p>
 					</div>

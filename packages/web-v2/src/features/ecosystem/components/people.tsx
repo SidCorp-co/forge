@@ -4,6 +4,8 @@ import { createContext, type ReactNode, useContext, useMemo } from "react";
 import { Badge } from "@/design";
 import { useProjectMembers } from "@/features/issues/hooks";
 import { useProjects } from "@/features/projects/hooks";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useAuth } from "@/providers/auth-provider";
 import { useApiPage } from "../hooks";
 import type { Author, ThreadHold } from "../types";
@@ -36,43 +38,44 @@ export function PeopleNames({ projectId, children }: { projectId: string; childr
   return <People.Provider value={names}>{children}</People.Provider>;
 }
 
-const VIA: Record<Author["via"], string> = {
-  master: "by its master agent",
-  assistant: "through the assistant",
-  web: "on the web",
-  cli: "from the CLI",
-};
+const via = (author: Author, t: Copy): string => t(`ecosystem.people.via.${author.via}`);
 
-function who(author: Author, me: string | undefined, people: ReadonlyMap<string, string>, party?: string): string {
-  if (author.kind === "agent") return party ? `${party}'s master` : "an agent";
-  if (author.id === me) return "you";
-  return people.get(author.id) ?? `person ${author.id.slice(0, 8)}`;
+function who(author: Author, me: string | undefined, people: ReadonlyMap<string, string>, t: Copy, party?: string): string {
+  if (author.kind === "agent") return party ? t("ecosystem.people.partyMaster", { party }) : t("ecosystem.people.anAgent");
+  if (author.id === me) return t("ecosystem.people.you");
+  return people.get(author.id) ?? t("ecosystem.people.person", { id: author.id.slice(0, 8) });
 }
 
 /** Who wrote it and through what. A document written through the assistant says so plainly. */
-export function AuthorLine({ author, label = "Written", party }: { author: Author; label?: string; party?: string }) {
+export function AuthorLine({ author, label, party }: { author: Author; label?: string; party?: string }) {
+  const t = useCopy();
   const me = useAuth().user?.id;
   const people = useContext(People);
   const named = author.kind === "agent" && party !== undefined;
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
       <span>
-        {label} by {who(author, me, people, party)}
-        {named ? "" : ` ${VIA[author.via]}`}
+        {label === undefined
+          ? t("ecosystem.people.writtenBy", { who: who(author, me, people, t, party) })
+          : label
+            ? t("ecosystem.people.labelBy", { label, who: who(author, me, people, t, party) })
+            : t("ecosystem.people.by", { who: who(author, me, people, t, party) })}
+        {named ? "" : ` ${via(author, t)}`}
       </span>
-      {author.via === "assistant" ? <Badge tone="cobalt">via assistant</Badge> : null}
-      {author.kind === "agent" ? <Badge tone="neutral">agent</Badge> : null}
+      {author.via === "assistant" ? <Badge tone="cobalt">{t("ecosystem.people.viaAssistant")}</Badge> : null}
+      {author.kind === "agent" ? <Badge tone="neutral">{t("ecosystem.people.agent")}</Badge> : null}
     </span>
   );
 }
 
 export function HoldLine({ hold, names }: { hold: ThreadHold; names: Names }) {
+  const t = useCopy();
   const me = useAuth().user?.id;
   const people = useContext(People);
-  const placed = hold.action === "hold" ? "Held" : "Released";
+  const vars = { who: who(hold.by, me, people, t), via: via(hold.by, t), side: names(hold.side) };
   return (
     <span className="break-words">
-      {placed} by {who(hold.by, me, people)} {VIA[hold.by.via]} for {names(hold.side)}
+      {hold.action === "hold" ? t("ecosystem.people.heldBy", vars) : t("ecosystem.people.releasedBy", vars)}
       {hold.reason ? <>: “{hold.reason}”</> : null}
     </span>
   );

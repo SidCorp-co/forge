@@ -94,7 +94,7 @@ import { type ColorMeta, TONE_META } from "./status";
  *  ready, grey is done, red came back; neutral is not moving. */
 export type LegendTone = IssueStatusTone;
 
-export const LEGEND: Record<LegendTone, Omit<ColorMeta, "label">> = {
+export const LEGEND: Record<LegendTone, ColorMeta> = {
   neutral: TONE_META.neutral,
   ready: TONE_META.success,
   run: TONE_META.active,
@@ -192,27 +192,27 @@ export function statusLabels(family: StatusFamily): Readonly<Record<string, stri
 const hintOf = (h: string | undefined) => (h ? h.replace(/^[a-z_-]+: /, "") : null);
 
 /** The product copy's label group of a state family and of its hints; a family with none reads as the contract says it. */
-const STATUS_GROUP: Partial<Record<StatusFamily, { label: LabelGroup; hint?: LabelGroup }>> = {
-  issue: { label: "issueStatus", hint: "hintIssueStatus" },
-  requirement: { label: "requirementState", hint: "hintRequirementState" },
-  bcVerdict: { label: "bcVerdict", hint: "hintBcVerdict" },
-  criterion: { label: "criterionStanding", hint: "hintCriterionStanding" },
-  revision: { label: "revisionState", hint: "hintRevisionState" },
-  design: { label: "designStatus", hint: "hintDesignStatus" },
-  designRevision: { label: "designRevisionState", hint: "hintDesignRevisionState" },
-  releaseState: { label: "releaseState", hint: "hintReleaseState" },
-  feedbackPhase: { label: "feedbackPhase", hint: "hintFeedbackPhase" },
-  severity: { label: "feedbackSeverity" },
-  suggestion: { label: "suggestionStatus" },
-  release: { label: "releaseApproval" },
-  reconciliation: { label: "reconciliation" },
-  buildGate: { label: "buildGate" },
-  integration: { label: "integration" },
-  dataPolicy: { label: "dataPolicy", hint: "hintDataPolicy" },
-  thread: { label: "threadStatus", hint: "hintThreadStatus" },
-  onboarding: { label: "threadStatus" },
-  mockup: { label: "mockupStatus", hint: "hintMockupStatus" },
-  lease: { label: "leaseVerdict" },
+const STATUS_GROUP: Partial<Record<StatusFamily, { labels: LabelGroup; hints?: LabelGroup }>> = {
+  issue: { labels: "issueStatus", hints: "hintIssueStatus" },
+  requirement: { labels: "requirementState", hints: "hintRequirementState" },
+  bcVerdict: { labels: "bcVerdict", hints: "hintBcVerdict" },
+  criterion: { labels: "criterionStanding", hints: "hintCriterionStanding" },
+  revision: { labels: "revisionState", hints: "hintRevisionState" },
+  design: { labels: "designStatus", hints: "hintDesignStatus" },
+  designRevision: { labels: "designRevisionState", hints: "hintDesignRevisionState" },
+  releaseState: { labels: "releaseState", hints: "hintReleaseState" },
+  feedbackPhase: { labels: "feedbackPhase", hints: "hintFeedbackPhase" },
+  severity: { labels: "feedbackSeverity" },
+  suggestion: { labels: "suggestionStatus" },
+  release: { labels: "releaseApproval" },
+  reconciliation: { labels: "reconciliation" },
+  buildGate: { labels: "buildGate" },
+  integration: { labels: "integration" },
+  dataPolicy: { labels: "dataPolicy", hints: "hintDataPolicy" },
+  thread: { labels: "threadStatus", hints: "hintThreadStatus" },
+  onboarding: { labels: "threadStatus" },
+  mockup: { labels: "mockupStatus", hints: "hintMockupStatus" },
+  lease: { labels: "leaseVerdict" },
 };
 
 /** A state family with no label group of its own, read from the shared words under `common.state.<family>.*`. */
@@ -244,10 +244,10 @@ export function statusReading(family: StatusFamily, value: string, language?: st
   const g = STATUS_GROUP[family];
   const hint = hintOf(m.hints?.[value]);
   return {
-    label: g ? copyOr(language, labelKey(g.label, value), label) : STATUS_COMMON.has(family) ? copyOr(language, `common.state.${family}.${value}`, label) : label,
+    label: g ? copyOr(language, labelKey(g.labels, value), label) : STATUS_COMMON.has(family) ? copyOr(language, `common.state.${family}.${value}`, label) : label,
     tone: m.tones[value] ?? "neutral",
     glyph: m.glyphs?.[value] ?? null,
-    hint: g?.hint && hint ? copyOr(language, labelKey(g.hint, value), hint) : hint,
+    hint: g?.hints && hint ? copyOr(language, labelKey(g.hints, value), hint) : hint,
   };
 }
 

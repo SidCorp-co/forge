@@ -71,7 +71,7 @@ passed, because the external record of what shipped belonged to none of them.
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | selection | `check-whole-tree-gates` — `whole-tree`, after the merge | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case or failed to load, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
-| language | `check-source-language` — `lang-check`; `check-copy-budget` — `conformance` | English-only source policy; length of web copy strings and of the sentences core writes for pages, empty states, no explaining copy | everything else |
+| language | `check-source-language` — `lang-check`; `check-copy-budget` — `conformance` | English-only source policy; length of web copy strings and of the sentences core writes for pages, empty states, no explaining copy, no copy written inline in source | everything else |
 | record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, whether a published entry can leave without a declared reason, and what an added or corrected entry may spend | whether an entry is TRUE, or whether a change deserved one — that is review's |
 
 ### Why `core` lint prints every diagnostic
@@ -1124,6 +1124,20 @@ A convention the manifest does not declare stops the check with exit 2, and so d
 `baseline` and a missing `sentences`. Each string over budget is refused naming file, key, count and the budget for its
 kind. There is no baseline and no amnesty. Only English is read, since the other languages
 translate it. The rule's text is the Copy rule in `docs/patterns/screen.md`.
+
+Copy a source file writes inline is copy none of this can read, so none is allowed (ISS-496 part D,
+`scripts/lib/copy-budget.mjs:inlineCopyOf`, configured by `checkers.copy-budget.inline`). Every
+non-test `.tsx` and `.ts` under `scanRoot` is read from its syntax: JSX text, a string literal given
+to an attribute `inline.attributes` matches (`title`, `label`, `placeholder`, `aria-label`, `*Label`,
+…), a literal a JSX expression renders through `?:`, `??`, `||` or `&&` (`{ref || "Document"}`), and
+an object property those names match (`{ label: "Runs" }`, a nav entry or sort option rendered
+later). Each is refused naming file, line and the words. A literal with no plain word — a URL, an
+address, a path, a format such as `sat_…` — is data, and a value shaped like a copy key
+(`nav.runs`, `hintIssueStatus`) names copy; neither is copy. A literal passed to a call (`t("…")`,
+`cn("…")`) is never read, and neither is one held in a variable or a property of another name and
+rendered later: that is the check's limit. `inline.skip` names each directory that is not a page, with why: the test fixtures,
+and guides and docs, which REQ-43 scopes out. A skip naming a directory that no longer exists stops
+the check.
 
 ## The web suite's language checks — Forge is not multilingual
 

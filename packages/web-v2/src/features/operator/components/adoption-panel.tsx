@@ -1,6 +1,7 @@
 "use client";
 
 import { PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, EmptyState, Skeleton } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { formatCount, formatWeek } from "../format";
 import type { AdminAdoptionBucket } from "../types";
 
@@ -8,10 +9,11 @@ const H = 120;
 const PAD = 4;
 
 export function AdoptionPanelSkeleton() {
+  const t = useCopy();
   return (
     <PageSection>
       <PageSectionHeader>
-        <PageSectionTitle>Adoption</PageSectionTitle>
+        <PageSectionTitle>{t("operator.adoption.title")}</PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody>
         <Skeleton className="h-[120px] w-full" />
@@ -23,18 +25,15 @@ export function AdoptionPanelSkeleton() {
 /** Cumulative users as a line, active workspaces as bars behind it. Both are
     read off the same weekly buckets, so one x-axis serves both. */
 export function AdoptionPanel({ buckets }: { buckets: readonly AdminAdoptionBucket[] }) {
+  const t = useCopy();
   if (buckets.length === 0) {
     return (
       <PageSection>
         <PageSectionHeader>
-          <PageSectionTitle>Adoption</PageSectionTitle>
+          <PageSectionTitle>{t("operator.adoption.title")}</PageSectionTitle>
         </PageSectionHeader>
         <PageSectionBody>
-          <EmptyState
-            title="No adoption history yet"
-            message="Signups appear here once the first account is created."
-            mascot={false}
-          />
+          <EmptyState message={t("operator.adoption.empty")} mascot={false} />
         </PageSectionBody>
       </PageSection>
     );
@@ -55,9 +54,9 @@ export function AdoptionPanel({ buckets }: { buckets: readonly AdminAdoptionBuck
   return (
     <PageSection>
       <PageSectionHeader>
-        <PageSectionTitle>Adoption</PageSectionTitle>
+        <PageSectionTitle>{t("operator.adoption.title")}</PageSectionTitle>
         <span className="fg-caption">
-          {formatCount(last.cumulativeUsers)} users · {formatCount(last.activeWorkspaces)} active workspaces
+          {t("operator.adoption.totals", { users: formatCount(last.cumulativeUsers), workspaces: formatCount(last.activeWorkspaces) })}
         </span>
       </PageSectionHeader>
       <PageSectionBody>
@@ -66,7 +65,7 @@ export function AdoptionPanel({ buckets }: { buckets: readonly AdminAdoptionBuck
           className="h-[120px] w-full"
           preserveAspectRatio="none"
           role="img"
-          aria-label={`Signup curve over ${buckets.length} weeks, ending at ${last.cumulativeUsers} users and ${last.activeWorkspaces} active workspaces`}
+          aria-label={t("operator.adoption.chart", { weeks: buckets.length, users: last.cumulativeUsers, workspaces: last.activeWorkspaces })}
         >
           {buckets.map((b, i) => {
             const barTop = y(b.activeWorkspaces, maxWorkspaces);

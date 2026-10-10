@@ -14,7 +14,6 @@ export function gitlabHost(baseUrl: string | undefined): string {
 
 export const gitlab: ProviderModule = {
   provider: "gitlab",
-  label: "GitLab",
   icon: "branch",
   secretField: "token",
   secretPlaceholder: "glpat-…",

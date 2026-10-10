@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useRef } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { assetPath } from "@/lib/asset";
 
 /* A rigged, living Forge mascot. The PNG carries the helmet / flame horns / gem;
@@ -28,6 +29,7 @@ export interface ForgeMascotProps {
 export function ForgeMascot({
   size = 220, mode = "blink", progress = 0.35, flicker = true, ring = true,
 }: ForgeMascotProps) {
+  const t = useCopy();
   const lRef = useRef<SVGGElement>(null);
   const rRef = useRef<SVGGElement>(null);
   const live = useRef({ mode, progress });
@@ -125,7 +127,7 @@ export function ForgeMascot({
 
       <div className="fm-breathe" style={{ position: "absolute", inset: 0 }}>
         {/* biome-ignore lint/performance/noImgElement: the mascot PNG is layered three times with clip paths and blend modes; next/image would wrap each layer and lazy-load it */}
-        <img src={MASCOT_SRC} width={size} height={size} alt="Forge" draggable={false} style={{ position: "absolute", inset: 0, display: "block" }} />
+        <img src={MASCOT_SRC} width={size} height={size} alt={t("common.brand")} draggable={false} style={{ position: "absolute", inset: 0, display: "block" }} />
 
         {flicker && (
           <Fragment>

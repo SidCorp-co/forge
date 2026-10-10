@@ -5,18 +5,9 @@
 // so there is no standalone org filter or "Manage organizations" link; that
 // would contradict the global active-org selection.
 import { Button, Input, SegmentedControl, Select, type SegmentOption } from '@/design';
+import { useCopy } from '@/lib/i18n/interface-language';
 import type { ProjectSort, ProjectView } from '../types';
 
-const SORT_OPTIONS = [
-  { value: 'recent', label: 'Recently active', icon: 'clock' as const },
-  { value: 'name', label: 'Name (A–Z)', icon: 'list' as const },
-  { value: 'health', label: 'Health', icon: 'activity' as const },
-];
-
-const VIEW_OPTIONS: SegmentOption<ProjectView>[] = [
-  { value: 'cards', icon: 'grid', label: 'Cards' },
-  { value: 'list', icon: 'rows', label: 'List' },
-];
 
 interface ProjectsToolbarProps {
   query: string;
@@ -37,26 +28,36 @@ export function ProjectsToolbar({
   onView,
   onNewProject,
 }: ProjectsToolbarProps) {
+  const t = useCopy();
+  const sortOptions = [
+    { value: 'recent', label: t('projects.sort.recent'), icon: 'clock' as const },
+    { value: 'name', label: t('projects.sort.name'), icon: 'list' as const },
+    { value: 'health', label: t('projects.sort.health'), icon: 'activity' as const },
+  ];
+  const viewOptions: SegmentOption<ProjectView>[] = [
+    { value: 'cards', icon: 'grid', label: t('projects.view.cards') },
+    { value: 'list', icon: 'rows', label: t('projects.view.list') },
+  ];
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2.5">
       <Input
         icon="search"
         className="min-w-[220px] max-w-[380px] flex-1"
-        placeholder="Search projects…"
-        aria-label="Search projects"
+        placeholder={t('projects.searchPlaceholder')}
+        aria-label={t('projects.search')}
         value={query}
         onChange={(e) => onQuery(e.target.value)}
       />
       <Select
         className="w-[188px]"
-        options={SORT_OPTIONS}
+        options={sortOptions}
         value={sort}
         onChange={(v) => onSort(v as ProjectSort)}
-        aria-label="Sort projects"
+        aria-label={t('projects.sortLabel')}
       />
-      <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={onView} />
+      <SegmentedControl options={viewOptions} value={view} onChange={onView} />
       <Button variant="primary" icon="plus" className="ml-auto" onClick={onNewProject}>
-        New project
+        {t('projects.new')}
       </Button>
     </div>
   );

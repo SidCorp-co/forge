@@ -22,6 +22,7 @@ import {
 } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import {
   type ActivityEntry,
   type ActivityFilter,
@@ -47,35 +48,25 @@ const TONE_COLOR: Record<ActivityTone, { dot: string; fg: string }> = {
   open: { dot: "var(--pipeline-active)", fg: "var(--cobalt-700)" },
 };
 
-const FILTERS: { value: ActivityFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "failures", label: "Failures" },
-];
-
 export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) {
+  const t = useCopy();
   const [filter, setFilter] = useState<ActivityFilter>("all");
+  const filters: { value: ActivityFilter; label: string }[] = [
+    { value: "all", label: t("pipeline.activity.all") },
+    { value: "failures", label: t("pipeline.activity.failures") },
+  ];
 
   if (loading) return <ActivitySkeleton />;
   if (error) return <ErrorState message={formatApiError(error)} onRetry={onRetry} />;
 
   // This tab reads a pipeline run's attempts; a session that ran outside one is not "nothing".
   if (!run) {
-    return (
-      <EmptyState
-        title="No pipeline run"
-        message="This tab lists a pipeline run's attempts, and this issue has no pipeline run."
-      />
-    );
+    return <EmptyState message={t("pipeline.activity.noRun")} />;
   }
 
   const entries = deriveActivityFeed(run.attempts);
   if (entries.length === 0) {
-    return (
-      <EmptyState
-        title="Nothing has run yet"
-        message="Attempts appear here the moment a runner picks this up."
-      />
-    );
+    return <EmptyState message={t("pipeline.activity.nothing")} />;
   }
 
   const visible = filterActivity(entries, filter);
@@ -87,25 +78,24 @@ export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) 
       {run?.retrySummary && <RetryHeadline summary={run.retrySummary} />}
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <p className="fg-overline">Activity</p>
+        <p className="fg-overline">{t("pipeline.activity.title")}</p>
         {failures > 0 && (
           <span className="fg-caption text-muted">
             {causes === 1
-              ? "every failure here has one cause"
-              : `${causes} distinct causes across ${failures} failed line${failures === 1 ? "" : "s"}`}
+              ? t("pipeline.activity.oneCause")
+              : t("pipeline.activity.causes", { causes, failures })}
           </span>
         )}
         <span className="ml-auto">
-          <SegmentedControl options={FILTERS} value={filter} onChange={setFilter} />
+          <SegmentedControl options={filters} value={filter} onChange={setFilter} />
         </span>
       </div>
 
       {visible.length === 0 ? (
         <EmptyState
           mascot={false}
-          title="No failures"
-          message="Nothing on this run failed. Switch back to All to see every attempt."
-          action={{ label: "Show all", onClick: () => setFilter("all") }}
+          message={t("pipeline.activity.noFailures")}
+          action={{ label: t("pipeline.activity.showAll"), onClick: () => setFilter("all") }}
         />
       ) : (
         <ol className="flex list-none flex-col divide-y divide-line-subtle p-0">
@@ -119,25 +109,24 @@ export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) 
 }
 
 function RetryHeadline({ summary }: { summary: PipelineRunRetrySummary }) {
+  const t = useCopy();
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-line-subtle pb-2.5">
       <span
         className="rounded-full px-2 py-0.5 font-mono text-11 font-semibold"
         style={{ background: "var(--amberw-50)", color: "var(--amberw-600)" }}
       >
-        attempt {summary.attempt}/{summary.maxAttempts}
+        {t("pipeline.activity.attempt", { n: summary.attempt, max: summary.maxAttempts })}
       </span>
-      <span className="fg-caption ml-auto text-subtle">{summary.totalAttempts} attempts</span>
+      <span className="fg-caption ml-auto text-subtle">{t("pipeline.activity.attempts", { n: summary.totalAttempts })}</span>
     </div>
   );
 }
 
-/** The one sentence that says WHICH attempts a collapsed line stands for. */
-function repeatLabel(positions: number[]): string {
-  return `Attempts ${positions.join(", ")} were identical.`;
-}
-
 function ActivityRow({ entry }: { entry: ActivityEntry }) {
+  const t = useCopy();
+  // which attempts a collapsed line stands for
+  const repeats = t("pipeline.activity.repeats", { list: entry.positions.join(", ") });
   const color = TONE_COLOR[entry.tone];
   const when = formatRelativeTime(entry.at);
   return (
@@ -155,12 +144,12 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
             {entry.outcome}
           </span>
           {entry.repeats > 1 && (
-            <Tooltip label={repeatLabel(entry.positions)}>
+            <Tooltip label={repeats}>
               <span className="inline-flex">
                 <Badge tone={entry.tone === "failure" ? "red" : "neutral"}>
                   ×{entry.repeats}
                 </Badge>
-                <span className="sr-only">{repeatLabel(entry.positions)}</span>
+                <span className="sr-only">{repeats}</span>
               </span>
             </Tooltip>
           )}

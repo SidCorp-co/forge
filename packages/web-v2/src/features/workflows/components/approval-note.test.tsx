@@ -1,10 +1,11 @@
 // An approval's note is shown where the design is read (ISS-259): in the Properties rail's Approved fact,
-// and in the Revisions tab under a label that says which decision wrote it.
+// and in the Revisions tab under a label that says which decision wrote it. The rail's note and the
+// revision number are the Developer view's (REQ-43 BC-7).
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { say, sayEn, verbatim } from "@forge/contracts/said";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { revisionReason } from "../decision-words";
 import type { DesignRevision, WorkflowDesign, WorkflowRecord } from "../types";
 import { WorkflowDesignFacts } from "./workflow-design-facts";
@@ -55,7 +56,7 @@ const design = (r: DesignRevision): WorkflowDesign =>
     waitingOn: { kind: "none", who: "", act: "", rule: "", ref: null, dueAt: null },
     revisions: [r],
     builds: [],
-    gate: { open: r.decision === "approve", rule: "issues that build it may be dispatched" },
+    gate: { open: r.decision === "approve", rule: "issues that build it may be dispatched", says: { rule: verbatim("issues that build it may be dispatched") } },
     requirements: [],
   }) as unknown as WorkflowDesign;
 
@@ -65,6 +66,9 @@ const withQueries = (node: React.ReactNode) =>
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{node}</QueryClientProvider>);
 
 describe("an approval's note where the design is read", () => {
+  beforeEach(() => window.history.replaceState(null, "", "/?view=developer"));
+  afterEach(() => window.history.replaceState(null, "", "/"));
+
   it("shows the approved revision's note beneath who approved it", () => {
     withQueries(<WorkflowDesignFacts d={design(revision({}))} record={record} shown={record.document} shownRevision={1} template={null} slug="acme" health={undefined} />);
     const fact = screen.getByTestId("fact-approved");

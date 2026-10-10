@@ -31,6 +31,7 @@ function said(refusals: readonly Refusal[], at: string): string | undefined {
 }
 
 function RefusalLines({ refusals, at }: { refusals: readonly Refusal[]; at: string }) {
+	const t = useCopy();
 	if (refusals.length === 0) return null;
 	return (
 		<ul role="alert" className="fg-caption mt-1 space-y-0.5 text-red">
@@ -39,7 +40,7 @@ function RefusalLines({ refusals, at }: { refusals: readonly Refusal[]; at: stri
 				return (
 					<li key={`${r.code}:${r.path}`}>
 						<code>{read.code}</code>
-						{r.path === at ? "" : <> at <code>{read.where ?? "/"}</code></>}: {read.sentence}
+						{r.path === at ? "" : <> {t("settings.project.document.at")} <code>{read.where ?? "/"}</code></>}: {read.sentence}
 					</li>
 				);
 			})}
@@ -48,6 +49,7 @@ function RefusalLines({ refusals, at }: { refusals: readonly Refusal[]; at: stri
 }
 
 function Leaf({ name, value, path, ctx }: { name: string; value: unknown; path: string[]; ctx: Ctx }) {
+	const t = useCopy();
 	const at = pointerOf(path);
 	const error = said(ctx.placed.get(at) ?? [], at);
 	if (ctx.fixed.has(at)) {
@@ -83,7 +85,7 @@ function Leaf({ name, value, path, ctx }: { name: string; value: unknown; path: 
 			<div className="min-w-0 flex-1" translate="no">
 				<Field label={name} error={error}>
 					{value === null ? (
-						<MonoTag>null</MonoTag>
+						<MonoTag>{t("settings.project.document.null")}</MonoTag>
 					) : (
 						<Input
 							aria-label={at}

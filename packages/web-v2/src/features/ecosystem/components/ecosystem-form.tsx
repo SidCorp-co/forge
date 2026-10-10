@@ -8,6 +8,7 @@ import { useOrgs } from "@/features/orgs/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { isOrgAdmin } from "@/features/projects/write-access";
 import { readingOf, refusalsOf, type Refusal } from "@/lib/api/refusals";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { ecosystemApi } from "../api";
 import { useChannelWrite, useEcosystemDocument } from "../hooks";
 import { ecosystemRoutes } from "../routes";
@@ -17,7 +18,7 @@ import {
   type GateMode,
   type HeldEcosystem,
   type ReplyWindowType,
-  TYPE_LABEL,
+  typeLabel,
 } from "../types";
 import { Loading, RefusalNotice, UnreadNotice } from "./notices";
 
@@ -54,24 +55,25 @@ const Field = ({ label, hint, children }: { label: string; hint?: string; childr
 type Patch = (patch: (d: EcosystemDocument) => EcosystemDocument) => void;
 
 function ReplyWindowsField({ doc, set }: { doc: EcosystemDocument; set: Patch }) {
+  const t = useCopy();
   return (
-    <Field label="Reply windows">
+    <Field label={t("ecosystem.form.replyWindows")}>
       <span className="flex flex-wrap gap-3.5 rounded-md border border-line px-2.5 py-1.5 text-13">
-        {WINDOWS.map((t) => (
-          <span key={t} className="inline-flex items-center gap-1.5">
-            {TYPE_LABEL[t]}
+        {WINDOWS.map((type) => (
+          <span key={type} className="inline-flex items-center gap-1.5">
+            {typeLabel(type, t)}
             <input
               type="number"
               min={1}
               max={90}
-              aria-label={`${TYPE_LABEL[t]} reply window in days`}
+              aria-label={t("ecosystem.form.windowDays", { type: typeLabel(type, t) })}
               className="w-12 rounded border border-line bg-surface px-1 text-center font-semibold"
-              value={doc.channel.responseDays[t]}
+              value={doc.channel.responseDays[type]}
               onChange={(e) =>
-                set((d) => ({ ...d, channel: { ...d.channel, responseDays: { ...d.channel.responseDays, [t]: Number(e.target.value) } } }))
+                set((d) => ({ ...d, channel: { ...d.channel, responseDays: { ...d.channel.responseDays, [type]: Number(e.target.value) } } }))
               }
             />
-            days
+            {t("ecosystem.form.days")}
           </span>
         ))}
       </span>
@@ -80,20 +82,21 @@ function ReplyWindowsField({ doc, set }: { doc: EcosystemDocument; set: Patch })
 }
 
 function GateField({ doc, set }: { doc: EcosystemDocument; set: Patch }) {
+  const t = useCopy();
   return (
-    <Field label="Before a document is sent">
+    <Field label={t("ecosystem.form.beforeSent")}>
       <span className="grid gap-1 rounded-md border border-line px-2.5 py-1.5 text-13">
-        {DOCUMENT_TYPES.map((t) => (
-          <span key={t} className="flex items-center justify-between gap-2">
-            {TYPE_LABEL[t]}
+        {DOCUMENT_TYPES.map((type) => (
+          <span key={type} className="flex items-center justify-between gap-2">
+            {typeLabel(type, t)}
             <select
-              aria-label={`${TYPE_LABEL[t]}: before it is sent`}
+              aria-label={t("ecosystem.form.typeBeforeSent", { type: typeLabel(type, t) })}
               className="rounded border border-line bg-surface px-1 font-semibold"
-              value={doc.gate[t]}
-              onChange={(e) => set((d) => ({ ...d, gate: { ...d.gate, [t]: e.target.value as GateMode } }))}
+              value={doc.gate[type]}
+              onChange={(e) => set((d) => ({ ...d, gate: { ...d.gate, [type]: e.target.value as GateMode } }))}
             >
-              <option value="publish">send at once</option>
-              <option value="approve">an admin approves</option>
+              <option value="publish">{t("ecosystem.form.sendAtOnce")}</option>
+              <option value="approve">{t("ecosystem.form.adminApproves")}</option>
             </select>
           </span>
         ))}
@@ -113,6 +116,7 @@ function MembersField({
   setMembers: (patch: (m: string[]) => string[]) => void;
   projects: { id: string; slug: string }[];
 }) {
+  const t = useCopy();
   const addable = projects.filter((p) => !members.includes(p.id));
   return (
     <Field label={label}>
@@ -129,12 +133,12 @@ function MembersField({
           </button>
         ))}
         <select
-          aria-label="Add a project"
+          aria-label={t("ecosystem.form.addProject")}
           className="bg-transparent text-12 text-subtle"
           value=""
           onChange={(e) => e.target.value && setMembers((m) => [...m, e.target.value])}
         >
-          <option value="">add a project…</option>
+          <option value="">{t("ecosystem.form.addProjectOption")}</option>
           {addable.map((p) => (
             <option key={p.id} value={p.id}>
               {p.slug}
@@ -176,6 +180,7 @@ function useSave(held: HeldEcosystem | null, doc: EcosystemDocument, steward: st
 }
 
 function Form({ held }: { held: HeldEcosystem | null }) {
+  const t = useCopy();
   const [doc, setDoc] = useState<EcosystemDocument>(held?.document ?? BLANK);
   const [members, setMembers] = useState<string[]>([]);
   const orgs = useOrgs().data ?? [];
@@ -187,33 +192,33 @@ function Form({ held }: { held: HeldEcosystem | null }) {
   return (
     <div className="mx-auto grid w-full max-w-[520px] rounded-[14px] border border-line bg-surface shadow-lg">
       <div className="border-b border-line-subtle px-5 py-4">
-        <h1 className="text-16 font-semibold">{held ? `${held.document.ecosystem.name} settings` : "New ecosystem"}</h1>
+        <h1 className="text-16 font-semibold">{held ? t("ecosystem.form.settingsOf", { name: held.document.ecosystem.name }) : t("ecosystem.form.new")}</h1>
       </div>
       <div className="grid gap-3 px-5 py-4">
-        <Field label="Name">
+        <Field label={t("ecosystem.form.name")}>
           <Input value={doc.ecosystem.name} onChange={(e) => set((d) => ({ ...d, ecosystem: { ...d.ecosystem, name: e.target.value } }))} />
         </Field>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Document code" hint="Numbers every document, e.g. QE-RFI-1">
+          <Field label={t("ecosystem.form.code")}>
             <Input
               className="font-mono"
               value={doc.channel.code}
               onChange={(e) => set((d) => ({ ...d, channel: { ...d.channel, code: e.target.value.toUpperCase() } }))}
             />
           </Field>
-          <Field label="Visibility">
+          <Field label={t("ecosystem.form.visibility")}>
             <NativeSelect
               value={doc.visibility.members}
               onChange={(e) => set((d) => ({ ...d, visibility: { members: e.target.value as "counterparties" | "all" } }))}
               options={[
-                { value: "counterparties", label: "Members only" },
-                { value: "all", label: "Every member sees every member" },
+                { value: "counterparties", label: t("ecosystem.form.visibilityCounterparties") },
+                { value: "all", label: t("ecosystem.form.visibilityAll") },
               ]}
             />
           </Field>
         </div>
         {stewards.length > 1 && !held ? (
-          <Field label="Steward">
+          <Field label={t("ecosystem.form.steward")}>
             <NativeSelect
               value={steward}
               onChange={(e) => set((d) => ({ ...d, ecosystem: { ...d.ecosystem, steward: e.target.value } }))}
@@ -223,11 +228,11 @@ function Form({ held }: { held: HeldEcosystem | null }) {
         ) : null}
         <ReplyWindowsField doc={doc} set={set} />
         <GateField doc={doc} set={set} />
-        <MembersField label={held ? "Invite members" : "First members"} members={members} setMembers={setMembers} projects={projects} />
+        <MembersField label={held ? t("ecosystem.form.invite") : t("ecosystem.form.firstMembers")} members={members} setMembers={setMembers} projects={projects} />
         {save.isError ? <RefusalNotice refusals={refusalsOf(save.error)} /> : null}
-        {invited.length > 0 ? <RefusalNotice title="Saved, but an invitation was refused" refusals={invited} /> : null}
+        {invited.length > 0 ? <RefusalNotice title={t("ecosystem.form.inviteRefused")} refusals={invited} /> : null}
         {stewards.length === 0 && !held ? (
-          <p className="fg-caption">An ecosystem is stewarded by an organization; you are owner or admin of none, so you cannot create one.</p>
+          <p className="fg-caption">{t("ecosystem.form.cannotCreate")}</p>
         ) : null}
       </div>
       <div className="flex justify-end gap-2 border-t border-line-subtle px-5 py-3">
@@ -235,10 +240,10 @@ function Form({ held }: { held: HeldEcosystem | null }) {
           href={held ? ecosystemRoutes.ecosystem(held.id) : ecosystemRoutes.list()}
           className="inline-flex items-center rounded-md border border-line bg-surface px-3 py-1.5 text-13 font-semibold text-fg hover:bg-hover"
         >
-          Cancel
+          {t("ecosystem.form.cancel")}
         </Link>
         <Button variant="primary" loading={save.isPending} disabled={!held && !steward} onClick={submit}>
-          {held ? "Save" : "Create and add"}
+          {held ? t("ecosystem.form.save") : t("ecosystem.form.create")}
         </Button>
       </div>
     </div>
@@ -250,8 +255,9 @@ export function NewEcosystemScreen() {
 }
 
 export function EcosystemSettingsScreen({ ecosystemId }: { ecosystemId: string }) {
+  const t = useCopy();
   const reading = readingOf(useEcosystemDocument(ecosystemId));
-  if (reading.kind === "loading") return <Loading what="the ecosystem's settings" />;
-  if (reading.kind === "unread") return <UnreadNotice what="The ecosystem's settings" refusals={reading.refusals} />;
+  if (reading.kind === "loading") return <Loading what={t("ecosystem.form.settingsWhat")} />;
+  if (reading.kind === "unread") return <UnreadNotice what={t("ecosystem.form.settingsWhat")} refusals={reading.refusals} />;
   return <Form held={reading.value} />;
 }

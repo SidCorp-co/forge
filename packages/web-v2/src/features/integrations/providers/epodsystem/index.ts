@@ -3,7 +3,6 @@ import { text } from "../config-read";
 
 export const epodsystem: ProviderModule = {
   provider: "epodsystem",
-  label: "Epodsystem",
   icon: "command",
   secretField: "apiKey",
   secretPlaceholder: "crmk_…",

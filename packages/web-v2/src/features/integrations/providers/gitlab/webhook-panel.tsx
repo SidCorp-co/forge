@@ -37,12 +37,12 @@ export function GitlabWebhookPanel({ projectId, bindingId }: { projectId: string
 
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border p-3" data-testid="gitlab-webhook">
-      <span className="fg-label">Webhook</span>
+      <span className="fg-label">{t("integrations.gitlab.webhook")}</span>
       <p className="fg-body-sm text-muted">
         <Ticked text={t("integrations.gitlab.webhookHow")} />
       </p>
       <dl className="fg-body-sm grid grid-cols-1 gap-1 sm:grid-cols-[max-content_1fr] sm:gap-x-3">
-        <dt className="text-muted">URL</dt>
+        <dt className="text-muted">{t("integrations.gitlab.url")}</dt>
         <dd className="min-w-0 break-all font-mono">{webhookUrl(project.data?.slug)}</dd>
         <dt className="text-muted">{t("integrations.gitlab.secret")}</dt>
         <dd className="min-w-0">

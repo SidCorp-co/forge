@@ -343,7 +343,21 @@
     "integrations.toast.removeFailed": "Couldn't remove integration",
     "integrations.toast.removed": "Integration removed",
     "integrations.toast.saveFailed": "Couldn't save integration",
-    "integrations.toast.saved": "Integration saved"
+    "integrations.toast.saved": "Integration saved",
+    "integrations.releaseRunner.placeholder": "release",
+    "integrations.provider.labelPlaceholder": "staging",
+    "integrations.autoflow.shopPlaceholder": "hop",
+    "integrations.coolify.targetPlaceholder": "Backend",
+    "integrations.github.app": "GitHub App",
+    "integrations.gitlab.webhook": "Webhook",
+    "integrations.gitlab.url": "URL",
+    "integrations.provider.defaultLabel": "default",
+    "integrations.provider.autoflow": "Autoflow",
+    "integrations.provider.epodsystem": "Epodsystem",
+    "integrations.provider.github": "GitHub",
+    "integrations.provider.gitlab": "GitLab",
+    "integrations.provider.rocketchat": "Rocket.Chat",
+    "integrations.provider.sentry": "Sentry"
   },
   "vi": {
     "integrations.access.coreGranted": "Forge giữ thông tin xác thực và thay Agent thực hiện lệnh gọi.",

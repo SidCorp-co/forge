@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 // Language axis: no web copy string is long, explains, or pads an empty state (REQ-43 BC-1, BC-2,
-// BC-4, BC-6), and neither is a sentence core writes for a page (BC-11). Every English string in the
+// BC-4, BC-6), neither is a sentence core writes for a page (BC-11), and no component writes its
+// English inline, where none of this could read it. Every English string in the
 // copy files — packages/web-v2/src/**/copy*.json and lib/i18n/copy/** — and every English template
 // of the sentence registries `sentences` names is at most `budget` words, a refusal or confirmation
 // at most `refusalBudget`, an empty state at most `emptyBudget`, and a string whose key names an
@@ -13,7 +14,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { checkerConfig } from './lib/checker-config.mjs';
-import { faults, overBudget, sentencesOf } from './lib/copy-budget.mjs';
+import {
+  faults,
+  inlineCopyOf,
+  inlineFaults,
+  overBudget,
+  sentencesOf,
+} from './lib/copy-budget.mjs';
 import { dieAs, ROOT, walkFiles } from './lib/gate.mjs';
 
 const die = dieAs('copy-budget');
@@ -97,12 +104,39 @@ for (const [i, registry] of CFG.sentences.entries()) {
   sentences += read.length;
 }
 
-const found = faults(over);
+// Copy a component writes inline is copy the budget above cannot read, so none is allowed: a person-
+// facing English string in a `.tsx` or `.ts` under the scan root lives in its feature's copy file. A test file
+// and the test fixtures are not pages; `inline.skip` names the directories REQ-43 scopes out.
+const inline = CFG.inline;
+if (!inline || typeof inline !== 'object')
+  die('checkers.copy-budget declares no `inline`: copy written inside a component would go unread');
+const attributes = pattern('checkers.copy-budget.inline.attributes', inline.attributes);
+if (!Array.isArray(inline.skip))
+  die('checkers.copy-budget.inline.skip must be a list of { dir, why }');
+for (const [i, entry] of inline.skip.entries()) {
+  if (typeof entry?.dir !== 'string' || typeof entry?.why !== 'string' || entry.why === '')
+    die(`checkers.copy-budget.inline.skip[${i}] must name a \`dir\` and \`why\` it is not a page`);
+  if (!existsSync(join(ROOT, entry.dir)))
+    die(`checkers.copy-budget.inline.skip[${i}] names ${entry.dir}, which does not exist: drop it`);
+}
+const skipped = (path) =>
+  inline.skip.some(({ dir }) => path.startsWith(`${dir}/`)) || /\.test\.tsx?$/.test(path);
+const components = walkFiles(CFG.scanRoot, {
+  skipDirs: ['node_modules', '.next'],
+  keep: (path, name) => /\.tsx?$/.test(name) && !name.endsWith('.d.ts') && !skipped(path),
+}).sort();
+if (components.length === 0)
+  die(`no source file under ${CFG.scanRoot}: the inline scan read nothing, which is not a pass`);
+const written = components.flatMap((file) =>
+  inlineCopyOf(readFileSync(join(ROOT, file), 'utf8'), file, attributes),
+);
+
+const found = [...faults(over), ...inlineFaults(written)];
 console.log(
-  `copy-budget: ${entries.length} string(s) in ${files.length} file(s) and ${sentences} sentence(s) in ${CFG.sentences.length} registry file(s) read, ${found.length} over budget`,
+  `copy-budget: ${entries.length} string(s) in ${files.length} file(s), ${sentences} sentence(s) in ${CFG.sentences.length} registry file(s) and ${components.length} source file(s) read, ${over.size} over budget, ${written.length} written inline`,
 );
 if (found.length === 0) process.exit(0);
 console.error(
-  `\ncopy-budget: ${found.length} refusal(s) — at most ${CFG.budget} words, ${CFG.refusalBudget} for a refusal or confirmation, ${CFG.emptyBudget} for an empty state, none that explains:\n  ${found.slice(0, 40).join('\n  ')}${found.length > 40 ? `\n  (+${found.length - 40} more)` : ''}\n`,
+  `\ncopy-budget: ${found.length} refusal(s) — at most ${CFG.budget} words, ${CFG.refusalBudget} for a refusal or confirmation, ${CFG.emptyBudget} for an empty state, none that explains, none written inline:\n  ${found.slice(0, 40).join('\n  ')}${found.length > 40 ? `\n  (+${found.length - 40} more)` : ''}\n`,
 );
 process.exit(1);

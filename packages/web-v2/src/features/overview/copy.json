@@ -188,7 +188,8 @@
     "overview.spend.title": "7-day spend",
     "overview.spend.trendSoon": "Cost-over-time trend coming soon (ISS-380)",
     "overview.title": "Overview",
-    "overview.welcome": "Welcome to Forge"
+    "overview.welcome": "Welcome to Forge",
+    "overview.quality.reasonTitle": "reason: {reason}"
   },
   "vi": {
     "overview.action.abandonedIssues": "Issue đang làm mà không ai làm",

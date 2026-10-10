@@ -3,7 +3,6 @@ import { text } from "../config-read";
 
 export const autoflow: ProviderModule = {
   provider: "autoflow",
-  label: "Autoflow",
   icon: "flow",
   secretField: "accessToken",
   secretPlaceholder: "sat_…",

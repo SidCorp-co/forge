@@ -48,6 +48,7 @@ import {
   scopeName,
   UNKNOWN_COUNT,
 } from "../scope";
+import { RUNNER_SETUP } from "../commands";
 import { BuildChip, DeviceDetail } from "./device-detail";
 
 export function CopyButton({ value }: { value: string }) {
@@ -83,8 +84,8 @@ function PairPanel() {
           <div className="flex flex-col gap-1.5">
             <span className="fg-label">{t("runners.pair.runOn")}</span>
             <div className="flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
-              <code className="font-mono text-13 text-fg">forge-runner setup</code>
-              <CopyButton value="forge-runner setup" />
+              <code className="font-mono text-13 text-fg">{RUNNER_SETUP}</code>
+              <CopyButton value={RUNNER_SETUP} />
             </div>
           </div>
         </div>

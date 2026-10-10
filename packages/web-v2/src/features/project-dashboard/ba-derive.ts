@@ -106,7 +106,8 @@ export function planRows(i: PlanInputs, clock: EtaClock): PlanRow[] {
     rows.push({
       kind: "release",
       key: summary.version,
-      title: summary.headline || `Release ${summary.version}`,
+      // the version is the row's key; a release with no headline is named by its kind where it renders
+      title: summary.headline ?? "",
       href: releaseHref(i.slug, summary.version),
       eta: etaOfScope(scope, clock),
       late: worst(lateOfDelivery(scope.delivery), scope.next?.late ?? null),

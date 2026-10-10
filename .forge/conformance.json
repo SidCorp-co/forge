@@ -58,7 +58,7 @@
     "language": {
       "level": 3,
       "gate": "check-source-language + check-copy-budget",
-      "owns": "English-only source policy; how long a web copy string may be (12 words, 20 for a refusal or confirmation, 2 for an empty state) and that none explains",
+      "owns": "English-only source policy; how long a web copy string may be (12 words, 20 for a refusal or confirmation, 2 for an empty state), that none explains, and that none is written inline in a component",
       "baseline": null
     },
     "record": {
@@ -88,7 +88,17 @@
           "symbol": "SAID",
           "emptySegments": "^(empty|none|nothing)$"
         }
-      ]
+      ],
+      "inline": {
+        "$comment": "REQ-43 BC-1, BC-2 (ISS-496 part D): copy a component writes inline is copy the budget cannot read, so none is allowed. Every non-test .tsx and .ts under scanRoot is read: JSX text, a string literal given to an attribute `attributes` matches whole, a literal a JSX expression renders through ?:, ??, || or &&, and an object property `attributes` names ({ label: \"Runs\" }). A literal with no plain word (a URL, an address, a path, a format such as sat_…) is data, and a value shaped like a copy key names copy; neither is copy. A literal passed to a call, or held in a variable or a property of another name and rendered later, is not read: that is the check's limit.",
+        "attributes": "^(title|label|message|placeholder|alt|hint|lead|summary|subtitle|what|why|note|empty|body|description|heading|caption|tooltip|aria-label|aria-description|aria-valuetext|aria-roledescription|aria-placeholder|\\w+Label|\\w+Title|\\w+Text|\\w+Message)$",
+        "skip": [
+          { "dir": "packages/web-v2/src/test", "why": "the test fixtures and walking tests: data a test plants, not a page" },
+          { "dir": "packages/web-v2/src/features/guides", "why": "REQ-43 scopes guides and docs pages out" },
+          { "dir": "packages/web-v2/src/features/docs", "why": "REQ-43 scopes guides and docs pages out" },
+          { "dir": "packages/web-v2/src/app/guides", "why": "REQ-43 scopes guides and docs pages out" }
+        ]
+      }
     },
     "pattern-catalog": {
       "$comment": "ISS-466 (REQ-36 BC-3, BC-4) \u2014 the change kinds this repository builds, each of which must have a page under `dir`. A pattern is the reference a change copies, the test shape it is proven by and the checklist its review reads; a page missing one, or naming a file no tracked file carries, is refused by name, and so is a generated catalog (`generated`, which core reads to tell a catalogued pattern from a new one) that disagrees with the pages. Knowledge axis, because a catalog entry is a document naming this repository\u0027s files; module shape stays relations\u0027, and the core-module page points at its checkers instead of restating them.",

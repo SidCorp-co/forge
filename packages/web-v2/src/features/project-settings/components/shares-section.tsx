@@ -6,9 +6,11 @@
 
 import { PageSection, PageSectionBody, SectionTitle } from "@/design";
 import { ShareList } from "@/features/shares";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useMembers } from "../hooks";
 
 export function SharesSection({ projectId, isAdmin }: { projectId: string; isAdmin: boolean }) {
+	const t = useCopy();
 	const membersQ = useMembers(projectId);
 	const nameOf = (userId: string) => {
 		const m = membersQ.data?.find((row) => row.userId === userId);
@@ -17,11 +19,7 @@ export function SharesSection({ projectId, isAdmin }: { projectId: string; isAdm
 	return (
 		<PageSection>
 			<PageSectionBody>
-				<SectionTitle className="fg-h3 mb-1 text-accent-text!">Share links</SectionTitle>
-				<p className="fg-body-sm mb-4 max-w-[68ch] text-muted">
-					Each link opens one frozen answer, read-only, until it expires or is revoked. A link also stops
-					working once the person who made it leaves the project. Its creator or a project admin can revoke it.
-				</p>
+				<SectionTitle className="fg-h3 mb-4 text-accent-text!">{t("settings.project.people.shareLinks")}</SectionTitle>
 				<ShareList projectId={projectId} nameOf={nameOf} isAdmin={isAdmin} />
 			</PageSectionBody>
 		</PageSection>

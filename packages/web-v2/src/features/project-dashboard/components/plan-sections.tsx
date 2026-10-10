@@ -46,10 +46,11 @@ export function landBlocks(rows: readonly PlanRow[]): Block[] {
 }
 
 function PlanItem({ r, clock }: { r: PlanRow; clock: EtaClock }) {
+  const t = useCopy();
   return (
     <li className={ROW} data-testid="plan-row" data-key={r.key}>
       <Key row={r} />
-      <span className="min-w-0 truncate text-13 text-fg max-md:col-span-2 max-md:row-start-2">{r.title}</span>
+      <span className="min-w-0 truncate text-13 text-fg max-md:col-span-2 max-md:row-start-2">{r.title || t(KIND_KEY[r.kind])}</span>
       <EtaCell eta={r.eta} clock={clock} />
     </li>
   );
