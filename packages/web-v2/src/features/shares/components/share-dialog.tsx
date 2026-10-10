@@ -14,7 +14,7 @@ import {
 } from "@forge/contracts/shares";
 import Link from "next/link";
 import { useState } from "react";
-import { Button, EnumBadge, Field, Input, Radio, RadioGroup, SlideOver } from "@/design";
+import { Button, EnumBadge, Field, Input, Radio, RadioGroup, SlideOver, useNow } from "@/design";
 import { useTimeFormat } from "@/lib/i18n/interface-language";
 import { useCreateShare, useShareAudiences } from "../hooks";
 import type { ShareSubject } from "../subject";
@@ -67,6 +67,7 @@ export function ShareDialog({
   const [rawDays, setRawDays] = useState(String(SHARE_DEFAULT_EXPIRY_DAYS));
   const [created, setCreated] = useState<ShareCreated | null>(null);
   const time = useTimeFormat();
+  const now = useNow(60_000);
 
   const expiry = expiryOf(rawDays);
   const options = audiencesQ.data;
@@ -130,7 +131,7 @@ export function ShareDialog({
             error={"error" in expiry ? expiry.error : undefined}
             hint={
               "days" in expiry
-                ? `Expires ${time.date(Date.now() + expiry.days * DAY_MS)}. At most ${SHARE_MAX_EXPIRY_DAYS} days.`
+                ? `Expires ${time.date(now + expiry.days * DAY_MS)}. At most ${SHARE_MAX_EXPIRY_DAYS} days.`
                 : undefined
             }
           >

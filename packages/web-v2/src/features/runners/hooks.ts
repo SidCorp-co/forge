@@ -5,6 +5,7 @@ import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { runnersApi } from "./api";
+import { runnerKeys, runnerQueries } from "./queries";
 import { deviceVersionLabel } from "./types";
 
 /**
@@ -21,10 +22,7 @@ import { deviceVersionLabel } from "./types";
  * owner-scoped list here and the organisation's from `useOrgDevices`.
  */
 export function useDevices(orgId?: string | null) {
-	return useQuery({
-		queryKey: ["devices", "me", orgId ?? null],
-		queryFn: () => runnersApi.listDevices(orgId ?? undefined),
-	});
+	return useQuery(runnerQueries.myDevices(orgId ?? null));
 }
 
 /**
@@ -37,15 +35,10 @@ export function useDevices(orgId?: string | null) {
  * matches `useProjectRunners`, which carries the same kind of report.
  */
 export function useOrgDevices(orgId: string | null) {
-	return useQuery({
-		queryKey: ["devices", "org", orgId],
-		queryFn: () => runnersApi.listOrgDevices(orgId as string),
-		enabled: !!orgId,
-		refetchInterval: ORG_DEVICES_REFRESH_MS,
-	});
+	return useQuery(runnerQueries.orgDevices(orgId));
 }
 
-export const ORG_DEVICES_REFRESH_MS = 30_000;
+export { ORG_DEVICES_REFRESH_MS } from "./queries";
 
 export function useRevokeDevice() {
 	const qc = useQueryClient();
@@ -54,7 +47,7 @@ export function useRevokeDevice() {
 	return useMutation({
 		mutationFn: runnersApi.revokeDevice,
 		onSuccess: () => {
-			void qc.invalidateQueries({ queryKey: ["devices", "me"] });
+			void qc.invalidateQueries({ queryKey: runnerKeys.myDevicesAll() });
 			toast({ title: t("runners.toast.revoked"), tone: "success" });
 		},
 		onError: (err) =>
@@ -79,9 +72,9 @@ export function useSetDeviceDisabled() {
 		mutationFn: ({ id, disabled }: { id: string; disabled: boolean }) =>
 			runnersApi.setDeviceDisabled(id, disabled),
 		onSuccess: (_data, { disabled }) => {
-			void qc.invalidateQueries({ queryKey: ["devices", "me"] });
+			void qc.invalidateQueries({ queryKey: runnerKeys.myDevicesAll() });
 			void qc.invalidateQueries({ queryKey: ["projects"] });
-			void qc.invalidateQueries({ queryKey: ["runners"] });
+			void qc.invalidateQueries({ queryKey: runnerKeys.runners });
 			toast({
 				title: disabled ? t("runners.toast.turnedOff") : t("runners.toast.turnedOn"),
 				tone: "success",
@@ -104,7 +97,7 @@ export function useRenameDevice() {
 		mutationFn: ({ id, name }: { id: string; name: string }) =>
 			runnersApi.renameDevice(id, name),
 		onSuccess: () => {
-			void qc.invalidateQueries({ queryKey: ["devices", "me"] });
+			void qc.invalidateQueries({ queryKey: runnerKeys.myDevicesAll() });
 			toast({ title: t("runners.toast.renamed"), tone: "success" });
 		},
 		onError: (err) =>
@@ -122,11 +115,7 @@ export function useRenameDevice() {
  * `['devices','me']`) leaves it to its own window-focus/explicit refetch.
  */
 export function useDeviceRunners(deviceId: string | null) {
-	return useQuery({
-		queryKey: ["devices", deviceId, "runners"],
-		queryFn: () => runnersApi.listDeviceRunners(deviceId as string),
-		enabled: !!deviceId,
-	});
+	return useQuery(runnerQueries.deviceRunners(deviceId));
 }
 
 export function useSetRunnerAdmission(projectId: string) {
@@ -137,7 +126,7 @@ export function useSetRunnerAdmission(projectId: string) {
 		mutationFn: ({ runnerId, admit }: { runnerId: string; admit: boolean }) =>
 			runnersApi.patchRunnerStatus(runnerId, admit ? "online" : "draining"),
 		onSuccess: (_d, v) => {
-			void qc.invalidateQueries({ queryKey: ["projects", projectId, "runners"] });
+			void qc.invalidateQueries({ queryKey: runnerKeys.projectRunners(projectId) });
 			toast({
 				title: v.admit ? t("runners.toast.backInPool") : t("runners.toast.drained"),
 				description: v.admit ? undefined : t("runners.toast.drainedBody"),
@@ -161,7 +150,7 @@ export function useSetRunnerLabels(projectId: string) {
 		mutationFn: ({ runnerId, labels }: { runnerId: string; labels: string[] }) =>
 			runnersApi.patchRunner(projectId, runnerId, { labels }),
 		onSuccess: () => {
-			void qc.invalidateQueries({ queryKey: ["projects", projectId, "runners"] });
+			void qc.invalidateQueries({ queryKey: runnerKeys.projectRunners(projectId) });
 			toast({ title: t("runners.toast.labelsSaved"), tone: "success" });
 		},
 		onError: (err) =>
@@ -181,20 +170,11 @@ export function useSetRunnerLabels(projectId: string) {
  * the heartbeat's cadence: a report stays as current as core's copy of it.
  */
 export function useProjectRunners(projectId: string | null) {
-	return useQuery({
-		queryKey: ["projects", projectId, "runners"],
-		queryFn: () => runnersApi.listProjectRunners(projectId as string),
-		enabled: !!projectId,
-		refetchInterval: 30_000,
-	});
+	return useQuery(runnerQueries.projectRunners(projectId));
 }
 
 export function useRunnerActivity(runnerId: string, enabled: boolean) {
-	return useQuery({
-		queryKey: ["runners", runnerId, "activity"],
-		queryFn: () => runnersApi.getRunnerActivity(runnerId),
-		enabled,
-	});
+	return useQuery(runnerQueries.activity(runnerId, enabled));
 }
 
 /**
@@ -206,12 +186,7 @@ export function useRunnerActivity(runnerId: string, enabled: boolean) {
  * per-second tick itself is purely client-side).
  */
 export function useActiveRunners(projectId: string | null) {
-	return useQuery({
-		queryKey: ["projects", projectId, "active-runners"],
-		queryFn: () => runnersApi.listActiveRunners(projectId as string),
-		enabled: !!projectId,
-		refetchInterval: 10_000,
-	});
+	return useQuery(runnerQueries.activeRunners(projectId));
 }
 
 /**
@@ -232,7 +207,7 @@ function useBindRunner(
 		}: { deviceId: string; repoPath: string | null }) =>
 			runnersApi.bindRunner(projectId, deviceId, repoPath),
 		onSuccess: () => {
-			void qc.invalidateQueries({ queryKey: ["projects", projectId, "runners"] });
+			void qc.invalidateQueries({ queryKey: runnerKeys.projectRunners(projectId) });
 			toast({ title: t(copy.success), tone: "success" });
 		},
 		onError: (err) =>
@@ -259,7 +234,7 @@ export function useUnassignDeviceFromProject(projectId: string) {
 		mutationFn: (runnerId: string) =>
 			runnersApi.unbindRunner(projectId, runnerId),
 		onSuccess: () => {
-			void qc.invalidateQueries({ queryKey: ["projects", projectId, "runners"] });
+			void qc.invalidateQueries({ queryKey: runnerKeys.projectRunners(projectId) });
 			toast({ title: t("runners.toast.unassigned"), tone: "success" });
 		},
 		onError: (err) =>
@@ -284,8 +259,8 @@ export function useClearRunnerError(projectId: string) {
 		mutationFn: (runnerId: string) =>
 			runnersApi.clearRunnerError(projectId, runnerId),
 		onSuccess: ({ cleared }) => {
-			void qc.invalidateQueries({ queryKey: ["projects", projectId, "runners"] });
-			void qc.invalidateQueries({ queryKey: ["runners"] });
+			void qc.invalidateQueries({ queryKey: runnerKeys.projectRunners(projectId) });
+			void qc.invalidateQueries({ queryKey: runnerKeys.runners });
 			toast({
 				title: cleared ? t("runners.toast.cleared") : t("runners.toast.nothingToClear"),
 				tone: "success",

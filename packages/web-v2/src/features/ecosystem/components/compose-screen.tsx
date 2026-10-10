@@ -5,7 +5,7 @@ import { Button, Checkbox, Field, Input, NativeSelect, Textarea } from "@/design
 import { ecosystemApi } from "../api";
 import { useApiPage, useChannelWrite, useDocument, useProjectEcosystems } from "../hooks";
 import { type Refusal, readingOf, refusalsOf } from "@/lib/api/refusals";
-import { type DocumentType, type DocumentView, REPLY_TYPES, TYPE_LABEL } from "../types";
+import { type ApiPage, type DocumentType, type DocumentView, REPLY_TYPES, TYPE_LABEL } from "../types";
 import { canWriteProject } from "@/features/projects";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import type { Role } from "./document-actions";
@@ -202,6 +202,22 @@ function ComposeForm(props: ComposeProps) {
   );
 }
 
+/** Who a document in `ecosystem` can go to: the API page's providers and consumers there, the parent's sender, the draft's recipients. */
+function counterpartiesOf(
+  page: ApiPage,
+  ecosystem: string,
+  parent: DocumentView | undefined,
+  draft: DocumentView | undefined,
+): string[] {
+  const ids = new Set<string>();
+  for (const c of page.consumes) if (c.ecosystem === ecosystem && c.provider) ids.add(c.provider.id);
+  for (const p of page.publishes)
+    for (const c of p.consumers) if (c.ecosystem === ecosystem && c.project) ids.add(c.project.id);
+  if (parent) ids.add(parent.document.from);
+  for (const t of draft?.document.to ?? []) ids.add(t);
+  return [...ids];
+}
+
 export function ComposeScreen({
   projectId,
   slug,
@@ -257,14 +273,7 @@ export function ComposeScreen({
       />
     );
   }
-  const page = pageR.value;
-  const ids = new Set<string>();
-  for (const c of page.consumes) if (c.ecosystem === ecosystem && c.provider) ids.add(c.provider.id);
-  for (const p of page.publishes)
-    for (const c of p.consumers) if (c.ecosystem === ecosystem && c.project) ids.add(c.project.id);
-  if (parent) ids.add(parent.document.from);
-  for (const t of draft?.document.to ?? []) ids.add(t);
-  const counterparties = [...ids].map((id) => ({ id, name: names(id) }));
+  const counterparties = counterpartiesOf(pageR.value, ecosystem, parent, draft).map((id) => ({ id, name: names(id) }));
 
   return (
     <ComposeForm

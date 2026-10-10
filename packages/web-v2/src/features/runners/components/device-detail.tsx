@@ -13,6 +13,8 @@ import {
 	Skeleton,
 	SlideOver,
 	StatusBadge,
+	Property,
+	PropertyList,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -44,19 +46,6 @@ export function BuildChip({ chip, className = "" }: { chip: DeviceBuildChip; cla
 		>
 			{chip.label}
 		</span>
-	);
-}
-
-/** A label/value row in the device summary grid. */
-function MetaRow({
-	label,
-	children,
-}: { label: string; children: React.ReactNode }) {
-	return (
-		<div className="flex items-center justify-between gap-3 py-1.5">
-			<span className="fg-body-sm text-subtle">{label}</span>
-			<span className="fg-body-sm text-fg">{children}</span>
-		</div>
 	);
 }
 
@@ -186,30 +175,30 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 				</Button>
 			</div>
 
-			<div className="flex flex-col divide-y divide-line-subtle">
-				<MetaRow label={t("runners.col.status")}>
+			<PropertyList>
+				<Property label={t("runners.col.status")}>
 					<StatusBadge family="device" value={device.status} />
-				</MetaRow>
-				<MetaRow label={t("runners.col.platform")}>
+				</Property>
+				<Property label={t("runners.col.platform")}>
 					<EnumBadge family="platform" value={device.platform} />
-				</MetaRow>
-				<MetaRow label={t("runners.detail.agentVersion")}>
+				</Property>
+				<Property label={t("runners.detail.agentVersion")}>
 					<span className="inline-flex items-center gap-2">
 						{device.agentVersion ? `v${device.agentVersion}` : t("runners.detail.notReported")}
 						{buildChip && <BuildChip chip={buildChip} />}
 					</span>
-				</MetaRow>
+				</Property>
 				{buildChip && (
-					<MetaRow label={t("runners.detail.build")}>
+					<Property label={t("runners.detail.build")}>
 						{/* The sentence itself, not only a hover: with the commit in play two
 						    boxes can share a version and still differ, and a title nobody can
 						    reach says nothing to a keyboard or a screen reader (ISS-1165). */}
 						<span className="fg-body-sm text-subtle">{buildChip.title}</span>
-					</MetaRow>
+					</Property>
 				)}
-				<MetaRow label={t("runners.col.lastSeen")}>{time.relative(device.lastSeenAt) || t("overview.never")}</MetaRow>
-				<MetaRow label={t("runners.detail.paired")}>{time.relative(device.pairedAt) || t("overview.never")}</MetaRow>
-			</div>
+				<Property label={t("runners.col.lastSeen")}>{time.relative(device.lastSeenAt) || t("overview.never")}</Property>
+				<Property label={t("runners.detail.paired")}>{time.relative(device.pairedAt) || t("overview.never")}</Property>
+			</PropertyList>
 
 			<DeviceBinaries device={device} />
 			<DeviceDisk device={device} />
@@ -223,7 +212,7 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
  * tab (`/projects/<slug>/settings?tab=connections#runners`); this is the device-side roll-up
  * that links there.
  */
-function ProjectPoolRow({
+function ProjectPool({
 	assignment,
 }: { assignment: DeviceRunnerAssignment }) {
 	const router = useRouter();
@@ -297,7 +286,7 @@ export function DeviceDetail({
 						) : (
 							<div className="flex flex-col divide-y divide-line-subtle">
 								{rows.map((r) => (
-									<ProjectPoolRow key={r.runnerId} assignment={r} />
+									<ProjectPool key={r.runnerId} assignment={r} />
 								))}
 							</div>
 						)}

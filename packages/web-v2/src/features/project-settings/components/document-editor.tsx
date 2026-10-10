@@ -223,7 +223,7 @@ export function DocumentEditor({
 				<MonoTag>{read.declared ? t("settings.project.raw.revision", { revision: read.revision }) : t("settings.project.raw.notDeclared")}</MonoTag>
 				{actions}
 			</div>
-			{description && <div className="fg-body-sm mt-1 mb-3 text-muted">{description}</div>}
+			{description ? <div className="fg-body-sm mt-1 mb-3 text-muted">{description}</div> : null}
 			{!read.declared && (
 				<Banner tone="attention">{t("settings.project.raw.fromTemplate")}</Banner>
 			)}

@@ -88,15 +88,19 @@ function rowsOf(cards: StatusCard[], bindings: Map<string, BindingSummary>, word
   const connected = providers.filter((c) => c.configured);
   const open = providers.filter((c) => !c.configured);
   return [
-    ...repository.map((card) => ({
-      card,
-      icon: "branch" as IconName,
-      name: words.t("integrations.github.repository"),
-      sub: metaText(card, "provider") ? providerLabel(metaText(card, "provider") as string, words.language) : null,
-      target: metaText(card, "repository"),
-      targetHref: metaText(card, "remoteUrl")?.startsWith("https://") ? metaText(card, "remoteUrl") : null,
-      health: healthText(card, words),
-    })),
+    ...repository.map((card): Row => {
+      const provider = metaText(card, "provider");
+      const remoteUrl = metaText(card, "remoteUrl");
+      return {
+        card,
+        icon: "branch",
+        name: words.t("integrations.github.repository"),
+        sub: provider ? providerLabel(provider, words.language) : null,
+        target: metaText(card, "repository"),
+        targetHref: remoteUrl?.startsWith("https://") ? remoteUrl : null,
+        health: healthText(card, words),
+      };
+    }),
     ...[...connected, ...open].map((card) => {
       const provider = cardProvider(card.key);
       const bindingId = metaText(card, "bindingId");

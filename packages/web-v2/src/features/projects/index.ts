@@ -5,3 +5,6 @@ export { projectGlyph, projectInitials } from "./glyph";
 export { useOrgScopedProjects, useProject, useProjects, useProjectsConsole, useProjectsIncludingArchived } from "./hooks";
 export type { ProjectDetail, ProjectListItem } from "./types";
 export { canManageProject, canWriteProject, isOrgAdmin } from "./write-access";
+export { deriveHealth } from "./derive";
+export { useProjectHealth } from "./hooks";
+export type { ProjectHealthRow } from "./types";
