@@ -11,9 +11,9 @@
 // picture here (BC-10); a linked process's picture is its workflow, so nothing is drawn for it. A
 // keyboard user skips past the picture in one step, and the read-only board holds nothing to reach.
 
+import { BoardCanvas } from "@/features/board";
 import { type ExampleTableContent, type KeptPreviewContent, PICTURE_KIND_OF, type RequirementPictureView } from "@forge/contracts/requirement-pictures";
 import { parseWireframe } from "@forge/contracts/wireframe";
-import dynamic from "next/dynamic";
 import { type ReactNode, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/design";
 import { useProjects } from "@/features/projects";
@@ -31,7 +31,6 @@ import { KindField } from "./requirement-kind-field";
 import { PictureEditor } from "./requirement-picture-editor";
 import { WorkflowPicture } from "./requirement-workflow-picture";
 
-const BoardCanvas = dynamic(() => import("@/features/board/board-canvas"), { ssr: false });
 
 function DrawnBy({ p }: { p: RequirementPictureView }) {
   const t = useCopy();

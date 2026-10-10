@@ -1,5 +1,6 @@
 "use client";
 
+import { keyedByContent } from "@/design";
 import { cellText, type VisualBlockOf } from "@forge/contracts/visual-blocks";
 import { Cell } from "./cells";
 import { useBlockInstants } from "./instants";
@@ -14,11 +15,10 @@ export function StatusListBlockView({ block }: { block: VisualBlockOf<"status-li
   if (!ref || !status) return null;
   return (
     <ul className="m-0 flex list-none flex-col p-0">
-      {block.frame.rows.map((row, i) => {
+      {keyedByContent(block.frame.rows).map(({ key, item: row }) => {
         const on = waiting ? row[waiting.name] : null;
         return (
-          // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
-          <li key={i} className="flex min-w-0 flex-wrap items-center gap-x-3 border-b border-line-subtle py-1.5 text-13 last:border-b-0" data-testid="status-row">
+          <li key={key} className="flex min-w-0 flex-wrap items-center gap-x-3 border-b border-line-subtle py-1.5 text-13 last:border-b-0" data-testid="status-row">
             <span className="min-w-21">
               <Cell field={ref} cell={row[ref.name]} />
             </span>

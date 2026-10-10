@@ -5,6 +5,7 @@
 // shown only where the item has it; none is required, and an item with none opens on its text. A
 // screenshot is read by its place and the item it belongs to, never by its file name.
 
+import Image from "next/image";
 import { useState } from "react";
 import { ImageLightbox, type LightboxImage } from "@/features/attachments";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -51,16 +52,15 @@ function Screenshots({ images }: { images: LightboxImage[] }) {
   return (
     <div className="grid min-w-0 gap-2" data-testid="feedback-screenshots">
       <button type="button" onClick={() => setOpen(0)} className={`${frame} w-fit max-w-full`}>
-        {/* biome-ignore lint/performance/noImgElement: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
-        <img src={lead.href} alt={lead.alt} className="block max-h-90 max-w-full object-contain max-md:max-h-65" />
+        {/* unoptimized: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
+        <Image unoptimized src={lead.href} alt={lead.alt ?? lead.name} width={0} height={0} sizes="100vw" className="block h-auto max-h-90 w-auto max-w-full object-contain max-md:max-h-65" />
       </button>
       {rest.length > 0 ? (
         <ul className="flex flex-wrap gap-2">
           {rest.map((img, i) => (
             <li key={img.id}>
               <button type="button" onClick={() => setOpen(i + 1)} className={frame}>
-                {/* biome-ignore lint/performance/noImgElement: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
-                <img src={img.href} alt={img.alt} className="size-20 object-cover" loading="lazy" />
+                <Image unoptimized src={img.href} alt={img.alt ?? img.name} width={80} height={80} className="size-20 object-cover" />
               </button>
             </li>
           ))}
