@@ -27,7 +27,7 @@ export { DotStrip } from "./primitives/dot-strip";
 export { BulletBar } from "./primitives/bullet-bar";
 export { StreamBand } from "./primitives/stream-band";
 export { SankeyFlow } from "./primitives/sankey-flow";
-export { EmptyState, LoadingState, ErrorState } from "./primitives/states";
+export { EmptyState, ErrorState, LoadingState, RefusedLine } from "./primitives/states";
 export { EmptyPanelLine } from "./primitives/empty-panel-line";
 export { LiveDot } from "./primitives/live-dot";
 export { showToast, type ToastView } from "./primitives/toast";

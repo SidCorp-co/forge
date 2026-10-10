@@ -7,7 +7,7 @@
 
 import { PREVIEW_FAILURE_REASONS, PREVIEW_LIMITS, PREVIEW_SERVING_STATES, type PreviewFailureReason, type PreviewRecord } from "@forge/contracts/preview";
 import { useState } from "react";
-import { Banner, Button, LoadingState, Section, Textarea } from "@/design";
+import { Banner, Button, LoadingState, Section, Textarea, RefusedLine } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -73,17 +73,8 @@ export function IssuePreview(props: IssuePreviewProps) {
           </Button>
         </div>
       )}
-      <Refusal error={open.error} lead={t("previews.startFailed")} />
+      <RefusedLine label={t("previews.startFailed")} error={open.error} className="fg-body-sm text-danger-11" />
     </Section>
-  );
-}
-
-function Refusal({ error, lead }: { error: unknown; lead: string }) {
-  if (!error) return null;
-  return (
-    <p role="alert" className="fg-body-sm text-danger-11">
-      {lead}: {formatApiError(error)}
-    </p>
   );
 }
 
@@ -118,9 +109,9 @@ function PreviewActs({ preview, issueId, canWrite, className }: { preview: Previ
           </Button>
         ) : null}
       </div>
-      <Refusal error={opening} lead={t("previews.frame.ticketFailed")} />
-      <Refusal error={approve.error} lead={t("previews.approveFailed")} />
-      <Refusal error={abandon.error} lead={t("previews.abandonFailed")} />
+      <RefusedLine label={t("previews.frame.ticketFailed")} error={opening} className="fg-body-sm text-danger-11" />
+      <RefusedLine label={t("previews.approveFailed")} error={approve.error} className="fg-body-sm text-danger-11" />
+      <RefusedLine label={t("previews.abandonFailed")} error={abandon.error} className="fg-body-sm text-danger-11" />
     </section>
   );
 }
@@ -155,9 +146,9 @@ function PreviewBody({ preview, issueId, issueLabel, canWrite, hasLiveRun, compa
           </Button>
         ) : null}
       </div>
-      <Refusal error={approve.error} lead={t("previews.approveFailed")} />
-      <Refusal error={abandon.error} lead={t("previews.abandonFailed")} />
-      <Refusal error={open.error} lead={t("previews.reopenFailed")} />
+      <RefusedLine label={t("previews.approveFailed")} error={approve.error} className="fg-body-sm text-danger-11" />
+      <RefusedLine label={t("previews.abandonFailed")} error={abandon.error} className="fg-body-sm text-danger-11" />
+      <RefusedLine label={t("previews.reopenFailed")} error={open.error} className="fg-body-sm text-danger-11" />
 
       {preview.state === "starting" ? (
         <p role="status" className="fg-body-sm text-muted">
@@ -279,7 +270,7 @@ export function MessageBox({ preview, canWrite }: { preview: PreviewRecord; canW
           </span>
         ) : null}
       </div>
-      <Refusal error={send.error} lead={t("previews.message.failed")} />
+      <RefusedLine label={t("previews.message.failed")} error={send.error} className="fg-body-sm text-danger-11" />
     </form>
   );
 }

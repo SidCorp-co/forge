@@ -4,6 +4,7 @@
 // and could not read. One layout for all three, so a screen never invents its own.
 
 import type { ReactNode } from "react";
+import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { ForgeMascot } from "@/design/patterns/forge-mascot";
 import { Button } from "./button";
@@ -109,5 +110,16 @@ export function ErrorState({ title, message, onRetry, mascot = true }: ErrorStat
         ) : undefined
       }
     />
+  );
+}
+
+/** A write or read refused inline, where it happened: the act's name, then core's words for why. Nothing when there is no error. */
+export function RefusedLine({ label, error, className }: { label?: string; error: unknown; className?: string }) {
+  if (!error) return null;
+  const why = formatApiError(error);
+  return (
+    <p role="alert" className={className ?? "fg-caption text-danger-11"}>
+      {label ? `${label}: ${why}` : why}
+    </p>
   );
 }

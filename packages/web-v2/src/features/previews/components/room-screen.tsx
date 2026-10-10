@@ -11,7 +11,7 @@ import { ROOM_LIMITS } from "@forge/contracts/poc-room";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Button, Field, Input, Textarea } from "@/design";
+import { Button, Field, Input, RefusedLine, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
@@ -105,11 +105,7 @@ function AskBox({ room }: { room: Room }) {
           {t("previews.room.ask.send")}
         </Button>
       </div>
-      {ask.isError ? (
-        <p role="alert" className="fg-caption text-danger">
-          {t("previews.room.ask.failed")}: {formatApiError(ask.error)}
-        </p>
-      ) : null}
+      <RefusedLine label={t("previews.room.ask.failed")} error={ask.error} />
     </form>
   );
 }
@@ -159,11 +155,7 @@ function SettledList({ room, frame }: { room: Room; frame: React.RefObject<HTMLI
           </Button>
         </form>
       ) : null}
-      {settle.isError ? (
-        <p role="alert" className="fg-caption text-danger">
-          {t("previews.room.settle.failed")}: {settle.error instanceof SnapshotUnavailable ? settle.error.message : formatApiError(settle.error)}
-        </p>
-      ) : null}
+      <RefusedLine label={t("previews.room.settle.failed")} error={settle.error} />
     </section>
   );
 }
@@ -252,11 +244,7 @@ export function RoomScreen({ roomId, slug }: { roomId: string; slug: string | un
             <TurnEntry key={turn.id} room={room} turn={turn} settled={settledTurns.has(turn.id)} settling={settleItem.isPending && settleItem.variables === turn.id} onSettle={() => settleItem.mutate(turn.id)} />
           ))}
         </ol>
-        {settleItem.isError ? (
-          <p role="alert" className="fg-caption text-danger">
-            {formatApiError(settleItem.error)}
-          </p>
-        ) : null}
+        <RefusedLine error={settleItem.error} />
         {room.state === "open" ? <AskBox room={room} /> : null}
         <SettledList room={room} frame={frameRef} />
         <SettleOutcome room={room} slug={slug} />
@@ -265,11 +253,7 @@ export function RoomScreen({ roomId, slug }: { roomId: string; slug: string | un
             <Button size="sm" variant="ghost" loading={abandon.isPending} onClick={() => abandon.mutate(undefined)}>
               {t("previews.room.abandon")}
             </Button>
-            {abandon.isError ? (
-              <p role="alert" className="fg-caption text-danger">
-                {t("previews.room.abandonFailed")}: {formatApiError(abandon.error)}
-              </p>
-            ) : null}
+            <RefusedLine label={t("previews.room.abandonFailed")} error={abandon.error} />
           </div>
         ) : null}
       </section>
@@ -291,11 +275,7 @@ export function RoomScreen({ roomId, slug }: { roomId: string; slug: string | un
             {room.preview.reason} {room.preview.detail}
           </p>
         ) : null}
-        {joinRoom.isError ? (
-          <p role="alert" className="fg-caption text-danger">
-            {t("previews.room.joinFailed")}: {formatApiError(joinRoom.error)}
-          </p>
-        ) : null}
+        <RefusedLine label={t("previews.room.joinFailed")} error={joinRoom.error} />
       </section>
     </div>
   );

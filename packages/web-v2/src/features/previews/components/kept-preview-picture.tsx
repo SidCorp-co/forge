@@ -7,8 +7,7 @@
 
 import type { KeptPreviewContent } from "@forge/contracts/requirement-pictures";
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import { Button, RefusedLine } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useMutation } from "@tanstack/react-query";
 import { ideaApi } from "../idea-api";
@@ -82,11 +81,7 @@ export function KeptPreviewPicture({ content, alt, projectId, reqKey, slug, canW
           </Button>
         ) : null}
       </p>
-      {reopen.isError ? (
-        <p role="alert" className="text-13 text-danger-11">
-          {t("previews.idea.reopen.failed")}: {formatApiError(reopen.error)}
-        </p>
-      ) : null}
+      <RefusedLine label={t("previews.idea.reopen.failed")} error={reopen.error} className="text-13 text-danger-11" />
       {reopen.data ? <IdeaPreview preview={reopen.data} about={reqKey} canWrite={canWrite} slug={slug} /> : null}
     </div>
   );
