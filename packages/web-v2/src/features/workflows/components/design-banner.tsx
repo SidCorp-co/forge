@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, type RefObject, useId, useLayoutEffect, useState } from "react";
+import { type ReactNode, type RefObject, useId, useSyncExternalStore } from "react";
 import { type BannerTone, Button, bannerColours, Icon, fixedHeight } from "@/design";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { saidView } from "@/lib/i18n/said";
@@ -39,11 +39,18 @@ export function DesignBanner({ d, acts, detail, alert, open, onOpen, float, deta
   const time = useTimeFormat();
   const w = saidView(d.waitingOn, useInterfaceLanguage());
   const id = useId();
-  const [hasDetail, setHasDetail] = useState(false);
   // The detail's parts each decide for themselves whether they have anything to say, so the toggle reads the rendered detail
-  useLayoutEffect(() => {
-    setHasDetail((detailRef.current?.childElementCount ?? 0) > 0);
-  });
+  const hasDetail = useSyncExternalStore(
+    (onChange) => {
+      const el = detailRef.current;
+      if (!el) return () => {};
+      const watch = new MutationObserver(onChange);
+      watch.observe(el, { childList: true });
+      return () => watch.disconnect();
+    },
+    () => (detailRef.current?.childElementCount ?? 0) > 0,
+    () => false,
+  );
   if (w.kind === "none") return null;
   const c = bannerColours(TONE[w.kind]);
   const head = w.kind === "you" ? t("workflows.waitingOnYou") : t("workflows.waitingOn", { who: w.who });

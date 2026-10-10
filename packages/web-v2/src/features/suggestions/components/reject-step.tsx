@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Input } from "@/design";
+import { Button, Input, focusOnMount } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 
 /**
@@ -27,7 +27,7 @@ export function RejectStep({ loading = false, onConfirm, onCancel }: { loading?:
         value={reason}
         onChange={(e) => setReason(e.target.value)}
         className="min-w-64 flex-1"
-        autoFocus
+        ref={focusOnMount}
       />
       <Button type="submit" size="sm" disabled={!reason.trim()} loading={loading}>
         {t("requirements.act.reject")}

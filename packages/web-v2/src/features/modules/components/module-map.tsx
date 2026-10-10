@@ -5,7 +5,7 @@
 // level between them. Line width is the coupling's weight. The map is a fitted picture: nothing on it moves, pans or zooms.
 
 import "@xyflow/react/dist/base.css";
-import "@/features/workflows/canvas/canvas.css";
+import "@/design/patterns/graph-canvas.css";
 import { BaseEdge, type Edge, type EdgeProps, EdgeLabelRenderer, Handle, type Node, type NodeProps, Position, ReactFlow } from "@xyflow/react";
 import { type KeyboardEvent, memo, useEffect, useMemo, useRef, useState } from "react";
 import { layoutGraph, type Placed, rounded } from "@/lib/graph/layout";
