@@ -3,7 +3,6 @@ import { urlHost } from "../config-read";
 
 export const rocketchat: ProviderModule = {
   provider: "rocketchat",
-  label: "Rocket.Chat",
   icon: "inbox",
   secretField: "authToken",
   secretPlaceholder: "bot personal-access token",

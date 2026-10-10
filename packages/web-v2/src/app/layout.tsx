@@ -8,6 +8,7 @@ import { ToastProvider } from "@/providers/toast-provider";
 import { TooltipProvider } from "@/design";
 import { SentryInit } from "@/providers/sentry-init";
 import { RouteProgress } from "@/design/patterns/route-progress";
+import { productCopy } from "@/lib/i18n/product-copy";
 import "./globals.css";
 
 const jetbrainsMono = localFont({
@@ -18,9 +19,11 @@ const jetbrainsMono = localFont({
   display: "swap",
 });
 
+const en = productCopy();
+
 export const metadata: Metadata = {
-  title: "Forge",
-  description: "A calm, bright control plane for running Claude Code at scale.",
+  title: en("common.meta.title"),
+  description: en("common.meta.description"),
 };
 
 // `viewport-fit=cover` lets the UI extend under notches/home indicators so our

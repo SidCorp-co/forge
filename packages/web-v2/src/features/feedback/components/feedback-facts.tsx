@@ -1,11 +1,13 @@
 "use client";
 
-// The at-a-glance facts of one feedback item: its phase and whose turn, what it is about, what carries
-// it, and who sent it. The full page's sticky rail and the peek draw this one component, so the main
-// column holds only what the reporter said, the acts, and the history.
+// The at-a-glance facts of one feedback item: where it stands on the phases, what it is about, what
+// carries it, and who sent it. The full page's sticky rail and the peek draw this one component, so the
+// main column holds only what the reporter said, the acts, and the history. The phase is the header's
+// badge and whose turn it is the banner's, so neither is a row here (REQ-43 BC-5); the agent report an
+// item was filed from is the developer view's (BC-7).
 
 import Link from "next/link";
-import { ActorChip, EnumBadge, enumLabel, Fact, FactsEmpty, FactsGroup, StatusBadge, type StatusFamily, StepBar, WaitBanner, WaitingOn, keyedByContent } from "@/design";
+import { ActorChip, EnumBadge, enumLabel, Fact, FactsEmpty, FactsGroup, StatusBadge, type StatusFamily, StepBar, WaitBanner, keyedByContent } from "@/design";
 import { requirementHref } from "@/lib/routes/requirements";
 import { issueHref } from "@/lib/routes/issues";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -25,7 +27,7 @@ import { useEtaClock } from "@/lib/i18n/eta-clock";
 
 const STRIP: FeedbackPhase[] = ["new", "triaged", "planned", "resolved", "verified"];
 
-/** New → Triaged → Planned → Resolved → Verified; a declined or reopened item reads off the strip. */
+/** New → Triaged → Planned → Resolved → Verified as a bar naming no phase (the badge names it); a declined or reopened item reads off the strip. */
 function PhaseSteps({ f }: { f: FeedbackView }) {
   const label = useLabel();
   const at = STRIP.indexOf(f.phase);
@@ -38,6 +40,7 @@ function PhaseSteps({ f }: { f: FeedbackView }) {
         state: i < at || (i === at && p === "verified") ? "done" : i === at ? "now" : "next",
         tone: f.attentionGroup === "needs_you" ? "you" : "run",
       }))}
+      named={false}
     />
   );
 }
@@ -50,10 +53,9 @@ function answerOf(f: FeedbackView): { text: string; by: string | null } | null {
   return { text, by: given?.decidedByName ?? null };
 }
 
-/** One line at the top of the page and the peek: whom it waits on, from core's read model. */
+/** One line at the top of the page and the peek: whom it waits on, from core's read model; an ended one says only that nothing is owed. */
 export function FeedbackBanner({ f, slug, className }: { f: FeedbackView; slug?: string; className?: string }) {
   const t = useCopy();
-  const label = useLabel();
   const language = useInterfaceLanguage();
   const w = f.waitingOn;
   const g = f.attentionGroup;
@@ -65,11 +67,9 @@ export function FeedbackBanner({ f, slug, className }: { f: FeedbackView; slug?:
   return (
     <WaitBanner
       tone={g === "waiting" || g === "done" ? "calm" : tone}
-      head={g === "done" ? `${label("feedbackPhase", f.phase)}.` : t("feedback.banner.waitingOn", { who: w.kind === "you" ? t("feedback.banner.you") : said(w.says.who, language) })}
+      head={g === "done" ? t("feedback.banner.nothingOwed") : t("feedback.banner.waitingOn", { who: w.kind === "you" ? t("feedback.banner.you") : said(w.says.who, language) })}
       body={
-        g === "done" ? (
-          t("feedback.banner.nothingOwed")
-        ) : approving ? (
+        g === "done" ? null : approving ? (
           <>
             {t("feedback.banner.approveRelease")}{" "}
             <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug, version)}>
@@ -174,15 +174,8 @@ function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | 
     return (
       <Fact label={t("feedback.fact.reporterTold")} testId="facts-ship-notice">
         <span className="fg-body-sm" title={time.dateTime(notice.at)} data-testid="ship-notice-told">
+          {/* the release is the answer line's, at the top of the page */}
           {time.relative(notice.at)}
-          {notice.release ? (
-            <>
-              {" · "}
-              <Link href={releaseHref(slug, notice.release)} className="font-mono text-link hover:underline">
-                {notice.release}
-              </Link>
-            </>
-          ) : null}
           {notice.says.told ? (
             <span className="block text-13 text-muted" data-testid="ship-notice-how">
               {said(notice.says.told, language)}
@@ -284,12 +277,16 @@ export function LinkedFeedback({
   slug,
   forecast,
   clock,
+  developer = false,
 }: {
   f: FeedbackView;
   slug: string;
+  /** The peek's forecast; the page's is its answer line, so the page passes none. */
   forecast?: FeedbackForecast | undefined;
   /** Language and clock of the ETA row; without one the row is left out. */
   clock?: EtaClock | undefined;
+  /** The developer view: the agent report the item was filed from. */
+  developer?: boolean;
 }) {
   const tr = useCopy();
   const time = useTimeFormat();
@@ -299,14 +296,6 @@ export function LinkedFeedback({
   return (
     <div data-testid="feedback-facts">
       <FactsGroup title={tr("feedback.fact.status")}>
-        <Fact label={tr("feedback.fact.state")}>
-          <StatusBadge family="feedbackPhase" value={f.phase} />
-        </Fact>
-        {f.attentionGroup !== "done" ? (
-          <Fact label={tr("feedback.fact.waitingOn")}>
-            <WaitingOn w={f.waitingOn} />
-          </Fact>
-        ) : null}
         <ForecastFact forecast={forecast} slug={slug} clock={clock} />
         <ShipNoticeFact notice={f.shipNotice} slug={slug} />
         <VerifiedFact f={f} />
@@ -366,7 +355,7 @@ export function LinkedFeedback({
             </span>
           </Fact>
         ) : null}
-        {f.source ? (
+        {developer && f.source ? (
           <Fact label={tr("feedback.fact.from")} testId="facts-source">
             <Link
               href={`/projects/${encodeURIComponent(slug)}/automation?tab=reports`}

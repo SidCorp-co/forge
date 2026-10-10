@@ -1,11 +1,11 @@
 // R-22, R-23, R-24: the design rail reads each linked requirement by the state its own page shows,
 // marks a pin below the approved revision, and says which revision each build was linked against.
+// Pins and builds are revision numbers, so they are read in the Developer view (REQ-43 BC-7).
 
 import { say, sentence } from "@/test/said";
 import type { WorkflowHealth } from "@forge/contracts/workflow-health";
 import { render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { WorkflowDesign } from "../types";
 import { WorkflowDesignFacts } from "./workflow-design-facts";
 
@@ -41,6 +41,9 @@ function rail() {
 }
 
 describe("the design rail's revisions", () => {
+  beforeEach(() => window.history.replaceState(null, "", "/?view=developer"));
+  afterEach(() => window.history.replaceState(null, "", "/"));
+
   it("badges a linked requirement by its derived state, not its stored status (R-23)", () => {
     rail();
     const [first] = screen.getAllByTestId("rail-requirement");
@@ -57,9 +60,8 @@ describe("the design rail's revisions", () => {
     expect(pins[0]).toHaveAttribute("title", "REQ-25's agreed baseline pins revision 6, and revision 7 is approved now");
   });
 
-  it("says which revision each build was linked against, marking one behind (R-22)", async () => {
+  it("says which revision each build was linked against, marking one behind (R-22)", () => {
     rail();
-    await userEvent.click(screen.getByTestId("design-technical-toggle"));
     const builds = screen.getAllByTestId("rail-build");
     expect(within(builds[0] as HTMLElement).getByTestId("rail-build-revision")).toHaveAttribute("data-behind", "true");
     expect(within(builds[1] as HTMLElement).getByTestId("rail-build-revision")).toHaveTextContent("r7");

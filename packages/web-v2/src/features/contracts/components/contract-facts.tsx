@@ -6,7 +6,8 @@ import { formatStamp } from "@/lib/utils/format";
 import type { ContractStandingDetail } from "../types";
 import { WindowText } from "./contract-bits";
 
-export function ContractProperties({ d, slug }: { d: ContractStandingDetail; slug: string }) {
+/** The contract's rail; the code module behind it is agent text, drawn only in the Developer view (REQ-43 BC-7). */
+export function ContractProperties({ d, slug, developer = false }: { d: ContractStandingDetail; slug: string; developer?: boolean }) {
   const t = useCopy();
   const c = d.contract;
   return (
@@ -48,9 +49,11 @@ export function ContractProperties({ d, slug }: { d: ContractStandingDetail; slu
         <Fact label={t("contracts.facts.lifecycle")}>
           <EnumBadge family="lifecycle" value={c.lifecycle} />
         </Fact>
-        <Fact label={t("contracts.facts.module")}>
-          <NotAvailable reason={d.module.reason} />
-        </Fact>
+        {developer ? (
+          <Fact label={t("contracts.facts.module")}>
+            <NotAvailable reason={d.module.reason} />
+          </Fact>
+        ) : null}
       </FactsGroup>
     </div>
   );

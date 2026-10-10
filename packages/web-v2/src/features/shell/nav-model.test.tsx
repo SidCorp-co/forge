@@ -68,7 +68,7 @@ describe("the nav model", () => {
   });
 
   it("badges Workflows with the same designs rows the Dashboard draws", () => {
-    const needsYou = { areas: { designs: { you: 1, acts: [{ act: "approve or return revision 3", count: 1, says: { act: say("designs.act.approveOrReturn", { r: 3 }) } }] } } } as never;
+    const needsYou = { areas: { designs: { you: 1, acts: [{ act: "approve or return the design", count: 1, says: { act: say("designs.act.approveOrReturn") } }] } } } as never;
     const wf = projectMenu({ needsYou }).flatMap((e) => (isNavGroup(e) ? e.items : [e])).find((it) => it.key === "proj-workflows");
     expect(wf).toMatchObject({ badge: 1 });
   });

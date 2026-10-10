@@ -3,6 +3,7 @@
 import type { VisualBlockOf } from "@forge/contracts/visual-blocks";
 import { share, type TimelineItem, timelineModel } from "./timeline-model";
 import { useStateLabel } from "./cells";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useBlockInstants } from "./instants";
 import { TextAlternative } from "./text-alternative";
 
@@ -12,13 +13,14 @@ const pct = (x: number) => `${(x * 100).toFixed(3)}%`;
 
 function Marks({ item, axis }: { item: TimelineItem; axis: { min: number; max: number } }) {
   const { span, forecast } = item;
+  const t = useCopy();
   return (
     <>
       {span && (
         <span
           className="absolute top-1/2 h-2 min-w-0.75 -translate-y-1/2 rounded-2"
           data-testid="timeline-span"
-          title={span.toText ? `${span.fromText} to ${span.toText}` : span.fromText}
+          title={span.toText ? t("visual.timeline.span", { from: span.fromText, to: span.toText }) : span.fromText}
           style={{
             left: pct(share(axis, span.from)),
             width: pct(share(axis, span.to) - share(axis, span.from)),
@@ -61,6 +63,7 @@ export function TimelineBlockView({ block }: { block: VisualBlockOf<"timeline"> 
   const m = timelineModel(block, instants);
   const laneField = block.frame.fields.find((f) => f.name === block.lane);
   const words = useStateLabel();
+  const t = useCopy();
   return (
     <div className="min-w-0" data-testid="timeline-block">
       {(m.hasSpan || m.hasForecast) && (
@@ -68,13 +71,13 @@ export function TimelineBlockView({ block }: { block: VisualBlockOf<"timeline"> 
           {m.hasSpan && (
             <li className="flex items-center gap-1.5">
               <span aria-hidden className="inline-block h-2 w-3 rounded-2" style={{ background: PLAN }} />
-              Planned
+              {t("visual.timeline.planned")}
             </li>
           )}
           {m.hasForecast && (
             <li className="flex items-center gap-1.5">
               <span aria-hidden className="inline-block w-3 border-t-2 border-dashed" style={{ borderColor: FORECAST }} />
-              Forecast, p50 to p85
+              {t("visual.timeline.forecast")}
             </li>
           )}
         </ul>
@@ -109,7 +112,7 @@ export function TimelineBlockView({ block }: { block: VisualBlockOf<"timeline"> 
       </div>
       {m.undated.length > 0 && (
         <p className="mt-1.5 text-12 text-subtle" data-testid="timeline-undated">
-          No date in the data for: {m.undated.join(", ")}.
+          {t("visual.timeline.undated", { items: m.undated.join(", ") })}
         </p>
       )}
       <TextAlternative block={block} />

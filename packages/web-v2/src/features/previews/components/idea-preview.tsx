@@ -9,7 +9,8 @@ import type { PreviewFailureReason, PreviewRecord } from "@forge/contracts/previ
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { Button, Field, Input, RefusedLine } from "@/design";
+import { Button, Field, Input } from "@/design";
+import { RefusedLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
 import { ideaApi } from "../idea-api";

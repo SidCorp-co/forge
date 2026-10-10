@@ -368,6 +368,11 @@ async function main() {
     const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
     const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
     await cdp.send("Page.enable", {}, sessionId);
+    // what an entry logs is what it measured (a page's word count), so it reaches the run's output
+    cdp.on("Runtime.consoleAPICalled", (p, from) => {
+      if (from === sessionId && p.type === "log") console.log(`witness: page says ${p.args.map((a) => a.value ?? a.description ?? "").join(" ")}`);
+    });
+    await cdp.send("Runtime.enable", {}, sessionId);
     const loaded = cdp.next("Page.loadEventFired");
     await cdp.send("Page.navigate", { url }, sessionId);
     await loaded;

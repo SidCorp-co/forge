@@ -110,9 +110,6 @@ jobs:
         with:
           node-version: '22'
       - run: node scripts/check-source-language.mjs --all
-      # Copy budget (REQ-43): no English web copy string over 12 words (20 for a refusal or
-      # confirmation, 2 for an empty state) and none that explains. Reads JSON only, so it lives here.
-      - run: node scripts/check-copy-budget.mjs
       # The release record: CHANGELOG.md holds released sections only, an unreleased entry is a
       # changelog.d/ fragment, and an entry published in either is not removed without a declared reason.
       # 3df9a8e9 removed 1,034 lines of it inside a commit about docs pointers and all twelve
@@ -213,6 +210,11 @@ jobs:
       # three skipped cases and no test name. No type can hold it, so the rule is an AST walk.
       # Needs node_modules for the TypeScript parser, hence this job rather than lang-check.
       - run: node scripts/check-lazy-module-init.mjs --all
+      # Copy budget (REQ-43): no English web copy string over 12 words (20 for a refusal or
+      # confirmation, 2 for an empty state) and none that explains, and the same for the sentences
+      # core writes for pages (BC-11). It reads those from packages/contracts/src/said-keys.ts with the
+      # TypeScript parser, so it needs node_modules and belongs in this job rather than lang-check.
+      - run: node scripts/check-copy-budget.mjs
       # API contracts (ISS-18): packages/core/contracts/ publishes forge-api (OpenAPI 3.1, every
       # route index.ts mounts, inputs read off the zod validators) and forge-mcp (the tools
       # tools/list serves), and a differ reads those files, not the code. This regenerates both

@@ -10,7 +10,6 @@ import {
   Badge,
   EmptyState,
   HealthDot,
-  HelpButton,
   MonoTag,
   PageContainer,
   PageTitle,
@@ -23,7 +22,6 @@ import {
   TH,
   THead,
   TR,
-  TopBarActions,
   useUrlChoice,
   useUrlParams,
   Section,
@@ -32,6 +30,7 @@ import {
 } from "@/design";
 import { deriveHealth, type ProjectHealthRow, useOrgScopedProjects, useProjectHealth } from "@/features/projects";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useStepDurations, useThroughput } from "../hooks";
@@ -42,12 +41,6 @@ import { formatDurationSec, formatUsd } from "@/lib/i18n/format";
 
 const TAB_VALUES = ["monitor", "progress", "health", "runs"] as const;
 type OpsTab = (typeof TAB_VALUES)[number];
-const TABS: { value: OpsTab; label: string }[] = [
-  { value: "monitor", label: "Monitor" },
-  { value: "progress", label: "Progress" },
-  { value: "health", label: "Health" },
-  { value: "runs", label: "Runs" },
-];
 
 /** Subscribes to one WS room for its lifetime (renders nothing). Lets us fan
  *  out room subscriptions over a list without breaking the rules-of-hooks. */
@@ -57,6 +50,7 @@ function RoomSub({ room }: { room: string }) {
 }
 
 export function OpsMonitor() {
+  const t = useCopy();
   // The tab and the open run live in the URL, so `/ops?run=<id>` is a shareable deep link.
   const [tab, setTab] = useUrlChoice<OpsTab>("tab", TAB_VALUES, "monitor");
   const [params, setParams] = useUrlParams();
@@ -92,35 +86,25 @@ export function OpsMonitor() {
         <RoomSub key={p.id} room={projectRoom(p.id)} />
       ))}
 
-      <PageTitle>Ops</PageTitle>
-      <TopBarActions>
-        <HelpButton
-          summary="A live cross-project view of pipeline runs: real-time monitor, throughput and stage-duration progress, project health, and a recent-runs list."
-          actions={[
-            "Switch tabs: Monitor · Progress · Health · Runs",
-            "Open any run from the Runs tab to inspect its timeline and cost",
-          ]}
-          shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
-        />
-      </TopBarActions>
+      <PageTitle>{t("pipeline.ops.title")}</PageTitle>
 
       <div className="overflow-x-auto">
-        <Tabs tabs={TABS} value={tab} onChange={(v) => setTab(v as OpsTab)} />
+        <Tabs tabs={TAB_VALUES.map((value) => ({ value, label: t(`pipeline.ops.tab.${value}`) }))} value={tab} onChange={(v) => setTab(v as OpsTab)} />
       </div>
 
       <div className="pt-5">
-        <QueryBoundary query={scoped} loadingLabel="loading ops…" height="60vh">
+        <QueryBoundary query={scoped} loadingLabel={t("pipeline.ops.loading")} height="60vh">
           {() => (
             <>
               {tab === "monitor" && <MonitorTab health={health} durations={inOrg(durationsQ.data ?? [])} />}
               {tab === "health" && <HealthTab health={health} />}
               {tab === "progress" && (
-                <QueryBoundary query={durationsQ} loadingLabel="loading progress…" height="30vh">
+                <QueryBoundary query={durationsQ} loadingLabel={t("pipeline.ops.loadingProgress")} height="30vh">
                   {(d) => <ProgressTab throughput={inOrg(throughputQ.data ?? [])} durations={inOrg(d)} />}
                 </QueryBoundary>
               )}
               {tab === "runs" && (
-                <QueryBoundary query={durationsQ} loadingLabel="loading runs…" height="30vh">
+                <QueryBoundary query={durationsQ} loadingLabel={t("pipeline.ops.loadingRuns")} height="30vh">
                   {(d) => <RunsTab durations={inOrg(d)} nameById={nameById} onOpen={setRunId} />}
                 </QueryBoundary>
               )}
@@ -137,23 +121,24 @@ export function OpsMonitor() {
 function MonitorTab({ health, durations }: { health: ProjectHealthRow[]; durations: StepDurationRow[] }) {
   const sum = (of: (h: ProjectHealthRow) => number) => health.reduce((a, h) => a + of(h), 0);
   const live = health.filter((h) => h.liveRuns > 0);
+  const t = useCopy();
   return (
     <div className="flex flex-col gap-5">
       <StatRow>
-        <StatCell label="Live runs" value={sum((h) => h.liveRuns)} />
-        <StatCell label="Spend · 24h" value={formatUsd(sum((h) => h.spend24hUsd))} />
-        <StatCell label="Active issues" value={sum((h) => h.totalActive)} />
-        <StatCell label="Online runners" value={sum((h) => h.runnerCount)} />
+        <StatCell label={t("pipeline.ops.liveRuns")} value={sum((h) => h.liveRuns)} />
+        <StatCell label={t("pipeline.ops.spend24h")} value={formatUsd(sum((h) => h.spend24hUsd))} />
+        <StatCell label={t("pipeline.ops.activeIssues")} value={sum((h) => h.totalActive)} />
+        <StatCell label={t("pipeline.ops.onlineRunners")} value={sum((h) => h.runnerCount)} />
       </StatRow>
-      <Section title="Live now" right={<Stat icon="activity" mono={false}>{durations.length} steps · last 7d</Stat>}>
+      <Section title={t("pipeline.ops.liveNow")} right={<Stat icon="activity" mono={false}>{t("pipeline.ops.steps7d", { n: durations.length })}</Stat>}>
         {live.length === 0 ? (
-          <p className="fg-body-sm text-muted">No runs are active right now.</p>
+          <p className="fg-body-sm text-muted">{t("pipeline.ops.nothingLive")}</p>
         ) : (
           <div className="flex flex-col gap-2.5">
             {live.map((h) => (
               <div key={h.id} className="flex items-center gap-3">
                 <span className="fg-body-sm flex-1 truncate font-medium text-fg">{h.projectName}</span>
-                <Badge tone="accent">{h.liveRuns} live</Badge>
+                <Badge tone="accent">{t("pipeline.ops.liveCount", { n: h.liveRuns })}</Badge>
                 <Stat icon="dollar">{formatUsd(h.spend24hUsd)}</Stat>
               </div>
             ))}
@@ -176,16 +161,17 @@ function aggregateByStep(durations: StepDurationRow[]) {
 function ProgressTab({ throughput, durations }: { throughput: ThroughputRow[]; durations: StepDurationRow[] }) {
   const aggs = aggregateByStep(durations);
   const maxAvg = Math.max(1, ...aggs.map((a) => a.avgSec));
+  const t = useCopy();
   return (
     <div className="flex flex-col gap-5">
       <StatRow>
-        <StatCell label="Shipped · 30d" value={throughput.reduce((a, r) => a + r.count, 0)} />
-        <StatCell label="Steps · 7d" value={durations.length} />
-        <StatCell label="Spend · 7d" value={formatUsd(durations.reduce((a, r) => a + r.costUsd, 0))} />
+        <StatCell label={t("pipeline.ops.shipped30d")} value={throughput.reduce((a, r) => a + r.count, 0)} />
+        <StatCell label={t("pipeline.ops.stepsWeek")} value={durations.length} />
+        <StatCell label={t("pipeline.ops.spend7d")} value={formatUsd(durations.reduce((a, r) => a + r.costUsd, 0))} />
       </StatRow>
-      <Section title="Avg duration by stage · 7d">
+      <Section title={t("pipeline.ops.avgByStage")}>
         {aggs.length === 0 ? (
-          <p className="fg-body-sm text-muted">No completed steps in the window.</p>
+          <p className="fg-body-sm text-muted">{t("pipeline.ops.noSteps")}</p>
         ) : (
           <div className="flex flex-col gap-2.5">
             {aggs.map((a) => (
@@ -204,18 +190,19 @@ function ProgressTab({ throughput, durations }: { throughput: ThroughputRow[]; d
 }
 
 function HealthTab({ health }: { health: ProjectHealthRow[] }) {
-  if (health.length === 0) return <EmptyState title="No projects" message="No project health to report." />;
+  const t = useCopy();
+  if (health.length === 0) return <EmptyState message={t("pipeline.ops.noProjects")} />;
   return (
     <div className="flex flex-col gap-2">
       {health.map((h) => (
         <Section title={h.projectName} right={<HealthDot health={deriveHealth(h)} />} key={h.id}>
           <StatRow>
-            <StatCell label="Active" value={h.totalActive} />
-            <StatCell label="Live runs" value={h.liveRuns} />
-            <StatCell label="Runners" value={h.runnerCount} />
-            <StatCell label="Spend · 24h" value={formatUsd(h.spend24hUsd)} />
-            <StatCell label="Blockers" value={h.blockers?.length ?? 0} />
-            <StatCell label="Escalations" value={h.pendingEscalations} />
+            <StatCell label={t("pipeline.ops.active")} value={h.totalActive} />
+            <StatCell label={t("pipeline.ops.liveRuns")} value={h.liveRuns} />
+            <StatCell label={t("pipeline.ops.runners")} value={h.runnerCount} />
+            <StatCell label={t("pipeline.ops.spend24h")} value={formatUsd(h.spend24hUsd)} />
+            <StatCell label={t("pipeline.ops.blockers")} value={h.blockers?.length ?? 0} />
+            <StatCell label={t("pipeline.ops.escalations")} value={h.pendingEscalations} />
           </StatRow>
         </Section>
       ))}
@@ -224,15 +211,16 @@ function HealthTab({ health }: { health: ProjectHealthRow[] }) {
 }
 
 function RunsTab({ durations, nameById, onOpen }: { durations: StepDurationRow[]; nameById: Map<string, string>; onOpen: (runId: string) => void }) {
-  if (durations.length === 0) return <EmptyState title="No recent runs" message="No pipeline steps in the last 7 days." />;
+  const t = useCopy();
+  if (durations.length === 0) return <EmptyState message={t("pipeline.ops.noRuns")} />;
   return (
     <Table>
       <THead>
         <TR>
-          <TH>Project</TH>
-          <TH>Step</TH>
-          <TH className="text-right">Duration</TH>
-          <TH className="text-right">Cost</TH>
+          <TH>{t("pipeline.ops.colProject")}</TH>
+          <TH>{t("pipeline.ops.colStep")}</TH>
+          <TH className="text-right">{t("pipeline.ops.colDuration")}</TH>
+          <TH className="text-right">{t("pipeline.ops.colCost")}</TH>
         </TR>
       </THead>
       <TBody>

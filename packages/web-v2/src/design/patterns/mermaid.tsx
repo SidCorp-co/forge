@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useId } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 
 interface MermaidDiagramProps {
@@ -34,11 +35,12 @@ async function renderSvg(id: string, code: string): Promise<SVGElement> {
 export function MermaidDiagram({ code, className }: MermaidDiagramProps) {
   const id = `mermaid-${useId().replace(/:/g, "")}`;
   const diagram = useQuery({ queryKey: ["mermaid", id, code], queryFn: () => renderSvg(id, code), staleTime: Infinity, retry: false });
+  const t = useCopy();
 
   if (diagram.isError) {
     return (
       <div className={cn("border-l-2 border-danger-9 bg-sunken px-3 py-2", className)}>
-        <p className="fg-caption font-mono text-danger-11">Mermaid parse error: {diagram.error.message}</p>
+        <p className="fg-caption font-mono text-danger-11">{t("common.mermaid.parseError", { error: diagram.error.message })}</p>
         <pre className="mt-1 overflow-x-auto font-mono text-12 text-muted">{code}</pre>
       </div>
     );

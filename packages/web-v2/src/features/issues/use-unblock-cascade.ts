@@ -2,13 +2,15 @@
 
 import type { UnblockCascadeFrame } from "@forge/contracts/ws-frames";
 import { useEffect } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { wsClient } from "@/lib/ws/client";
 import { useToast } from "@/providers/toast-provider";
 
-function describeCascade(d: UnblockCascadeFrame): string {
+function describeCascade(d: UnblockCascadeFrame, t: Copy): string {
 	const names = d.dependents.map((x) => x.displayId);
 	const shown = names.join(", ");
-	return d.overflow > 0 ? `${shown} +${d.overflow} more` : shown;
+	return d.overflow > 0 ? t("issues.cascade.more", { shown, n: d.overflow }) : shown;
 }
 
 /**
@@ -18,18 +20,19 @@ function describeCascade(d: UnblockCascadeFrame): string {
  */
 export function useUnblockCascadeToasts(): void {
 	const { toast } = useToast();
+	const t = useCopy();
 
 	useEffect(() => {
 		return wsClient.on((env) => {
 			if (env.event !== "issue.unblockCascade") return;
 			const d = env.data;
 			if (!Array.isArray(d.dependents) || d.dependents.length === 0) return;
-			const blocker = d.blockerDisplayId ?? "A blocker";
+			const blocker = d.blockerDisplayId ?? t("issues.cascade.aBlocker");
 			toast({
-				title: `${blocker} released ${d.dependents.length} issue${d.dependents.length === 1 ? "" : "s"}`,
-				description: describeCascade(d),
+				title: d.dependents.length === 1 ? t("issues.cascade.releasedOne", { blocker }) : t("issues.cascade.releasedMany", { blocker, n: d.dependents.length }),
+				description: describeCascade(d, t),
 				tone: "info",
 			});
 		});
-	}, [toast]);
+	}, [toast, t]);
 }

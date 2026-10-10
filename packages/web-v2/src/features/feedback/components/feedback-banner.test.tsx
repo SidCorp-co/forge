@@ -36,11 +36,10 @@ describe("the feedback banner", () => {
     expect(screen.getByTestId("wait-banner")).toHaveTextContent("Waiting on Master: triage FB-9");
   });
 
-  it("says nothing is owed once it is done", () => {
+  it("says only that nothing is owed once it is done: the header's badge says the phase (REQ-43 BC-5)", () => {
     render(<FeedbackBanner f={view({ phase: "verified", attentionGroup: "done" })} />);
     const banner = screen.getByTestId("wait-banner");
-    expect(banner).toHaveTextContent("Verified.");
-    expect(banner).toHaveTextContent("Nothing owed");
+    expect(banner).toHaveTextContent(/^Nothing owed$/);
     expect(banner).not.toHaveTextContent("Waiting on");
   });
 

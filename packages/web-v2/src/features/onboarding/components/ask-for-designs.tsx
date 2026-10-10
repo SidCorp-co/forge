@@ -8,9 +8,26 @@ import { useChatDock } from "@/features/chat-dock";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useJoinOnboarding, useReanalyze, useStartOnboarding } from "../hooks";
 
 type Spend = "start" | "reanalyze";
+
+// what each ask's confirm reads, by copy key
+const COPY = {
+  start: {
+    title: "onboarding.ask.start.title",
+    field: "onboarding.ask.start.field",
+    placeholder: "onboarding.ask.start.placeholder",
+    confirm: "onboarding.ask.start.confirm",
+  },
+  reanalyze: {
+    title: "onboarding.ask.reanalyze.title",
+    field: "onboarding.ask.reanalyze.field",
+    placeholder: "onboarding.ask.reanalyze.placeholder",
+    confirm: "onboarding.ask.reanalyze.confirm",
+  },
+} as const satisfies Record<Spend, Record<string, ProductCopyKey>>;
 
 /** The refusal a start, join or re-analysis came back with, by name. */
 export function refusalLine(error: unknown): string | null {
@@ -23,6 +40,7 @@ export function refusalLine(error: unknown): string | null {
  * will do and the person's own request, which reaches the job as the first message of the thread.
  */
 export function useAskForDesigns(projectId: string, opts: { onOpened?: () => void; conversationId?: string } = {}) {
+  const t = useCopy();
   const dock = useChatDock();
   const start = useStartOnboarding(projectId);
   const join = useJoinOnboarding(projectId);
@@ -30,7 +48,6 @@ export function useAskForDesigns(projectId: string, opts: { onOpened?: () => voi
   const [asking, setAsking] = useState<Spend | null>(null);
   const [text, setText] = useState("");
   const fieldId = useId();
-  const t = useCopy();
 
   const show = (conversationId: string) => {
     dock?.show({ kind: "room", projectId, conversationId });
@@ -61,35 +78,26 @@ export function useAskForDesigns(projectId: string, opts: { onOpened?: () => voi
     });
   };
 
-  const copy = asking
-    ? {
-        title: t(`onboarding.ask.${asking}.title`),
-        does: t(`onboarding.ask.${asking}.does`),
-        field: t(`onboarding.ask.${asking}.field`),
-        placeholder: t(`onboarding.ask.${asking}.placeholder`),
-        confirm: t(`onboarding.ask.${asking}.confirm`),
-      }
-    : null;
+  const copy = asking ? COPY[asking] : null;
   const refused = refusalLine(spend.error);
   const dialog: ReactNode = copy ? (
     <ConfirmDialog
       open
-      title={copy.title}
-      confirmLabel={copy.confirm}
+      title={t(copy.title)}
+      confirmLabel={t(copy.confirm)}
       loading={spend.isPending}
       onConfirm={confirm}
       onClose={() => setAsking(null)}
       message={
         <div className="grid gap-3" data-testid="ask-for-designs">
-          <p className="m-0">{copy.does}</p>
-          <p className="m-0 text-muted">{t("onboarding.ask.cost")}</p>
+          <p className="m-0 text-muted">{t("onboarding.ask.confirmCost")}</p>
           <label htmlFor={fieldId} className="grid gap-1.5">
-            <span className="fg-label">{copy.field}</span>
+            <span className="fg-label">{t(copy.field)}</span>
             <Textarea
               id={fieldId}
               rows={4}
               maxLength={ONBOARDING_REQUEST_MAX}
-              placeholder={copy.placeholder}
+              placeholder={t(copy.placeholder)}
               value={text}
               onChange={(e) => setText(e.target.value)}
               data-testid="ask-for-designs-request"

@@ -181,8 +181,11 @@ function Stat({
   );
 }
 
+/** Which id an operator tag names: the last segment of its copy key, `issues.live.ops.<tag>`. */
+export type OperatorTag = "session" | "run" | "claude" | "device" | "job" | "gate" | "status";
+
 /** The ids an operator reads a run by, folded under one quiet toggle; an absent value is left out. */
-export function OperatorDetails({ tags, children }: { tags: [label: string, value: string | null | undefined][]; children?: ReactNode }) {
+export function OperatorDetails({ tags, children }: { tags: [tag: OperatorTag, value: string | null | undefined][]; children?: ReactNode }) {
   const t = useCopy();
   const [open, setOpen] = useState(false);
   return (
@@ -193,9 +196,9 @@ export function OperatorDetails({ tags, children }: { tags: [label: string, valu
       </button>
       {open ? (
         <div className="mt-2 flex flex-wrap gap-2 border-t border-line-subtle pt-2">
-          {tags.filter((tag): tag is [string, string] => !!tag[1]).map(([label, value]) => (
-            <span key={label} className="inline-flex items-center gap-1">
-              <span className="fg-caption text-muted">{label}</span>
+          {tags.filter((tag): tag is [OperatorTag, string] => !!tag[1]).map(([tag, value]) => (
+            <span key={tag} className="inline-flex items-center gap-1">
+              <span className="fg-caption text-muted">{t(`issues.live.ops.${tag}`)}</span>
               <MonoTag hue="neutral">{value}</MonoTag>
             </span>
           ))}

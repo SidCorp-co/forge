@@ -94,9 +94,7 @@ describe('a stale draft the assistant asked about', () => {
     const s = turn(base({ ...draft, revisions: [revision('draft', 1)], mergeOrDropAsked: true }));
     expect(s.attentionGroup).toBe('needs_you');
     expect(s.waitingOn.act).toBe('answer whether to merge, drop or keep this draft');
-    expect(s.waitingOn.rule).toBe(
-      'a draft untouched for 7 days; the assistant asked whether to merge, drop or keep it',
-    );
+    expect(s.waitingOn.rule).toBe('a draft untouched for 7 days: merge, drop or keep it');
   });
 
   it('is its author’s draft to propose while nothing was asked', () => {

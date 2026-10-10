@@ -1,0 +1,23 @@
+{
+  "en": {
+    "attention.decision": "Decision",
+    "attention.empty": "Inbox zero",
+    "attention.group.channelGates": "Channel gates",
+    "attention.group.failedJobs": "Failed jobs",
+    "attention.group.mentions": "Mentions",
+    "attention.group.offlineRunners": "Offline runners",
+    "attention.group.statusReports": "Status reports",
+    "attention.kind.channel_gate": "Approve gate",
+    "attention.kind.failed_job": "Failed",
+    "attention.kind.mention": "Mention",
+    "attention.kind.runner_offline": "Runner offline",
+    "attention.kind.status_report": "Status report",
+    "attention.loading": "loading attention…",
+    "attention.needsYou.empty": "Nothing",
+    "attention.needsYou.in": "Needs you in {name}",
+    "attention.needsYou.title": "Needs you · {name}",
+    "attention.runnerOffline": "{name} is offline",
+    "attention.shown": "{n} of {total} shown",
+    "attention.title": "Attention"
+  }
+}

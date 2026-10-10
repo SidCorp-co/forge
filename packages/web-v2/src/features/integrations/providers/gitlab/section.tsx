@@ -60,7 +60,7 @@ export function GitlabSettings({ projectId }: { projectId: string }) {
   }
 
   return (
-    <ProviderSummary title="GitLab" badge={activeBadge(existing, t)}>
+    <ProviderSummary title={t("integrations.provider.gitlab")} badge={activeBadge(existing, t)}>
       <Field
         label={t("integrations.autoflow.token")}
         hint={existing ? t("integrations.provider.tokenStored") : undefined}

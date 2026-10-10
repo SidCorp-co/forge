@@ -4,7 +4,7 @@ import type { ExecutionFacts } from "@forge/contracts/report-executions";
 import type { BlockSource } from "@forge/contracts/visual-blocks";
 import { useState } from "react";
 import { keyedByContent, useNow } from "@/design";
-import { useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useBlockInstants } from "./instants";
 import type { SourceFacts } from "./context";
 
@@ -60,13 +60,14 @@ function RunSource({ runId, facts }: { runId: string; facts: SourceFacts }) {
   const [open, setOpen] = useState(false);
   const read = useReadAt(facts.asOf);
   const instants = useBlockInstants();
+  const t = useCopy();
   const settings = Object.entries(facts.params ?? {}).filter(([, v]) => v !== undefined && v !== null);
   const settingsText =
     facts.params === undefined
       ? null
       : settings.length === 0
-        ? "Settings: none set, the report's defaults"
-        : `Settings: ${settings.map(([k, v]) => `${settingName(k)} ${settingValue(v, (iso) => instants.instant(iso))}`).join(" · ")}`;
+        ? t("visual.source.settings.none")
+        : t("visual.source.settings", { list: settings.map(([k, v]) => `${settingName(k)} ${settingValue(v, (iso) => instants.instant(iso))}`).join(" · ") });
   return (
     <div className={LINE} data-testid="visual-block-source">
       <button
@@ -77,14 +78,15 @@ function RunSource({ runId, facts }: { runId: string; facts: SourceFacts }) {
         data-testid="visual-block-source-toggle"
       >
         <span data-testid="visual-block-query">{facts.queryId}</span>
-        {" · read "}
+        {" · "}
+        {t("visual.source.read")}{" "}
         <time dateTime={facts.asOf} title={read.full}>
           {read.label}
         </time>
       </button>
       {open && (
         <p className="m-0 mt-0.5 font-mono" data-testid="visual-block-source-detail">
-          Report run {runId} · read {read.full}
+          {t("visual.source.run", { run: runId, at: read.full })}
         </p>
       )}
       {open && settingsText && (
@@ -99,9 +101,10 @@ function RunSource({ runId, facts }: { runId: string; facts: SourceFacts }) {
 /** A computed block's source: the execution, and behind the line who asked it and each read it made of Forge, a refused one named. */
 function ExecutionSource({ executionId, execution }: { executionId: string; execution: ExecutionFacts | undefined }) {
   const [open, setOpen] = useState(false);
+  const t = useCopy();
   const line = (
     <>
-      Computed by execution <span className="font-mono">{executionId}</span>
+      {t("visual.source.computed")} <span className="font-mono">{executionId}</span>
     </>
   );
   if (!execution?.askedBy || !execution.reads) {
@@ -125,7 +128,7 @@ function ExecutionSource({ executionId, execution }: { executionId: string; exec
       </button>
       {open && (
         <div className="mt-0.5" data-testid="visual-block-source-detail">
-          <p className="m-0">Ran as {askedBy.name ?? askedBy.id}</p>
+          <p className="m-0">{t("visual.source.ranAs", { name: askedBy.name ?? askedBy.id })}</p>
           {script !== undefined && (
             <pre className="m-0 mt-0.5 max-h-64 overflow-auto whitespace-pre-wrap font-mono" data-testid="visual-block-script">
               {script}
@@ -134,22 +137,22 @@ function ExecutionSource({ executionId, execution }: { executionId: string; exec
           {result && (
             <p className="m-0 mt-0.5" data-testid="visual-block-result">
               {result.error
-                ? `Failed: ${result.error.name}: ${result.error.message}`
+                ? t("visual.source.failed", { name: result.error.name, message: result.error.message })
                 : result.stopped
-                  ? `Stopped at the ${result.stopped} limit`
-                  : `Finished with exit ${result.exit}`}{" "}
-              in {result.durationMs} ms
-              {result.stdout.trim() ? ` · printed: ${result.stdout.trim()}` : ""}
+                  ? t("visual.source.stopped", { limit: result.stopped })
+                  : t("visual.source.finished", { exit: result.exit })}{" "}
+              {t("visual.source.duration", { ms: result.durationMs })}
+              {result.stdout.trim() ? ` ${t("visual.source.printed", { out: result.stdout.trim() })}` : ""}
             </p>
           )}
           {reads.length === 0 ? (
-            <p className="m-0">Read nothing from Forge</p>
+            <p className="m-0">{t("visual.source.readNothing")}</p>
           ) : (
             <ul className="m-0 list-none p-0 font-mono" data-testid="visual-block-reads">
               {keyedByContent(reads, (r) => `${r.method} ${r.path}`).map(({ key, item: r }) => (
                 // the same path can be read twice in one run: the nth read of it is what a read is
                 <li key={key}>
-                  {r.method} {r.path} {r.refused ? `refused: ${r.refused}` : r.status}
+                  {r.method} {r.path} {r.refused ? t("visual.source.readRefused", { code: r.refused }) : r.status}
                 </li>
               ))}
             </ul>

@@ -1,8 +1,9 @@
 "use client";
 
 // A requirement's Overview tab: its summary, its checklists' answers and gaps (REQ-34 r2 BC-5, BC-26),
-// what is still unclear, what it assumes and the intake assistant's draft of it, whom it serves and
-// its scope, and the suggestions waiting on it.
+// what is still unclear, what it assumes, whom it serves and its scope, and the suggestions waiting on
+// it. The revision each is read from, where an answer came from and the intake assistant's draft are
+// agent text, drawn in the developer view (REQ-43 BC-7).
 
 import { FieldLabel, ViewHeading } from "@/design";
 import { RequirementChecklists } from "@/features/checklists";
@@ -27,7 +28,19 @@ function Bullets({ items }: { items: string[] }) {
 
 const NoneNamed = ({ t }: { t: Copy }) => <p className="text-13 text-subtle">{t("requirements.overview.noneNamed")}</p>;
 
-export function RequirementOverview({ d, projectId, slug, onRevise }: { d: RequirementDetail; projectId: string; slug: string; onRevise?: (() => void) | undefined }) {
+export function RequirementOverview({
+  d,
+  projectId,
+  slug,
+  onRevise,
+  developer = false,
+}: {
+  d: RequirementDetail;
+  projectId: string;
+  slug: string;
+  onRevise?: (() => void) | undefined;
+  developer?: boolean;
+}) {
   const t = useCopy();
   const shown = d.revisions.find((r) => r.state === "current") ?? d.revisions[0];
   const spec = shown?.spec ?? {};
@@ -38,7 +51,7 @@ export function RequirementOverview({ d, projectId, slug, onRevise }: { d: Requi
   return (
     <div className="grid gap-8" data-testid="view-overview">
       <section>
-        <ViewHeading right={shown ? <span className="text-12 text-subtle">{t("requirements.overview.fromR", { r: shown.revision })}</span> : undefined}>
+        <ViewHeading right={developer && shown ? <span className="text-12 text-subtle">{t("requirements.overview.fromR", { r: shown.revision })}</span> : undefined}>
           {t("requirements.overview.summary")}
         </ViewHeading>
         {summary ? <Written className="block max-w-2xl text-14 leading-relaxed text-fg" text={summary} lang={shown?.writtenLang} /> : <p className="text-13 text-subtle">{t("requirements.overview.noSummary")}</p>}
@@ -49,10 +62,10 @@ export function RequirementOverview({ d, projectId, slug, onRevise }: { d: Requi
           </details>
         ) : null}
       </section>
-      <RequirementChecklists projectId={projectId} reqKey={d.key} onRevise={d.standing.attentionGroup !== "done" ? onRevise : undefined} />
+      <RequirementChecklists projectId={projectId} reqKey={d.key} onRevise={d.standing.attentionGroup !== "done" ? onRevise : undefined} developer={developer} />
       <OpenQuestions questions={d.questions} unclear={d.unclear} projectId={projectId} reqKey={d.key} slug={slug} />
-      {spec.assumptions?.length ? <Assumptions assumptions={spec.assumptions} revision={shown?.revision ?? null} slug={slug} /> : null}
-      <IntakeDraft projectId={projectId} slug={slug} itemKey={d.key} assumptions={false} />
+      {spec.assumptions?.length ? <Assumptions assumptions={spec.assumptions} revision={developer ? (shown?.revision ?? null) : null} slug={slug} /> : null}
+      {developer ? <IntakeDraft projectId={projectId} slug={slug} itemKey={d.key} assumptions={false} /> : null}
       {spec.personas?.length || spec.scopeIn?.length || spec.scopeOut?.length ? (
         <section>
           <ViewHeading>{t("requirements.overview.servesAndScope")}</ViewHeading>

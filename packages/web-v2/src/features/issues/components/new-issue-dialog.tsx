@@ -291,7 +291,7 @@ function StandardFields({
           <Input
             value={category}
             onChange={(e) => onCategory(e.target.value)}
-            placeholder="bug"
+            placeholder={t("issues.category.placeholder")}
             translate="no"
             maxLength={100}
           />

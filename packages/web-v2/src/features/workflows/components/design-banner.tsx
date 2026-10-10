@@ -2,7 +2,7 @@
 
 import { type ReactNode, type RefObject, useId, useSyncExternalStore } from "react";
 import { type BannerTone, Button, bannerColours, Icon, fixedHeight } from "@/design";
-import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { saidView } from "@/lib/i18n/said";
 import { cn } from "@/lib/utils/cn";
 import type { WorkflowDesign } from "../types";
@@ -30,13 +30,13 @@ export interface DesignBannerProps {
 }
 
 /**
- * Whom the design waits on, as one tinted line: what is owed, who proposed it and when, and the acts
- * that answer it inline. The longer reading (the return reason, why Approve is off, what approving
- * leaves stale) folds under "Show details", which appears only when there is something to show.
+ * Whom the design waits on, as one tinted line: what is owed, and the acts that answer it inline. Who
+ * drew it and when is the rail's Drawn by and Updated, said once (REQ-43 BC-5). The longer reading (the
+ * return reason, why Approve is off, what approving leaves stale) folds under "Show details", which
+ * appears only when there is something to show.
  */
 export function DesignBanner({ d, acts, detail, alert, open, onOpen, float, detailRef }: DesignBannerProps) {
   const t = useCopy();
-  const time = useTimeFormat();
   const w = saidView(d.waitingOn, useInterfaceLanguage());
   const id = useId();
   // The detail's parts each decide for themselves whether they have anything to say, so the toggle reads the rendered detail
@@ -65,12 +65,6 @@ export function DesignBanner({ d, acts, detail, alert, open, onOpen, float, deta
         <span aria-hidden className="size-2 flex-none rounded-pill" style={{ background: c.dot }} />
         <span className="min-w-0 flex-1 truncate" title={w.rule} data-testid="design-banner-line">
           <span className="font-bold">{head}</span> {w.act}
-          {latest && d.status === "proposed" ? (
-            <span className="text-13 text-muted" title={time.dateTime(latest.proposedAt)}>
-              {" · "}
-              {t("workflows.proposedBy", { who: latest.proposedByName ?? latest.proposedBy })} · {time.relative(latest.proposedAt)}
-            </span>
-          ) : null}
         </span>
         {acts ? <span className="contents">{acts}</span> : null}
         {hasDetail ? (

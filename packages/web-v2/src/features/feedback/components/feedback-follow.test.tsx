@@ -65,12 +65,13 @@ describe("feedback follows its work to the release", () => {
     expect(within(line).getByRole("link", { name: "0.1.0" }).getAttribute("href")).toBe("/projects/hop/releases/0.1.0");
   });
 
-  it("says when the reporter was told, and for which release", () => {
+  it("says when the reporter was told; the release is the answer line's, said once (REQ-43 BC-5)", () => {
     const f = view({ shipNotice: { state: "told", how: "notice", at: at(-5), release: "0.1.0", by: null, shipped: { at: at(-6), release: "0.1.0" }, told: null, says: { told: null } } });
     renderWithQuery(<FeedbackFacts f={f} slug="hop" />);
     const fact = screen.getByTestId("facts-ship-notice");
     expect(fact.textContent).toContain("Reporter told");
-    expect(within(fact).getByRole("link", { name: "0.1.0" })).toBeTruthy();
+    expect(within(fact).queryByRole("link", { name: "0.1.0" })).toBeNull();
+    expect(within(fact).getByTestId("ship-notice-told")).not.toBeEmptyDOMElement();
   });
 
   it("names a reporter nobody could reach instead of leaving the row out", () => {

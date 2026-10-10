@@ -3,12 +3,18 @@
 import dynamic from "next/dynamic";
 import { useCallback, useRef, useState } from "react";
 import { Button, Dialog } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { SketchExport } from "./sketch-canvas";
 
 const SketchCanvas = dynamic(() => import("./sketch-canvas"), {
   ssr: false,
-  loading: () => <p className="fg-body-sm p-4 text-muted">Opening the sketch pad…</p>,
+  loading: () => <Opening />,
 });
+
+function Opening() {
+  const t = useCopy();
+  return <p className="fg-body-sm p-4 text-muted">{t("chat.sketch.opening")}</p>;
+}
 
 const stamp = () => new Date().toISOString().replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-");
 
@@ -25,6 +31,7 @@ export function SketchPad({
   onClose: () => void;
   onAttach: (file: File) => void;
 }) {
+  const t = useCopy();
   const exporterRef = useRef<SketchExport | null>(null);
   const [state, setState] = useState<{ busy: boolean; said: string | null }>({ busy: false, said: null });
   const onReady = useCallback((fn: SketchExport | null) => {
@@ -37,14 +44,14 @@ export function SketchPad({
     try {
       const png = await exporterRef.current();
       if (!png) {
-        setState({ busy: false, said: "Nothing is drawn yet." });
+        setState({ busy: false, said: t("chat.sketch.nothing") });
         return;
       }
       onAttach(new File([png], `sketch-${stamp()}.png`, { type: "image/png" }));
       setState({ busy: false, said: null });
       onClose();
     } catch (err) {
-      setState({ busy: false, said: `The sketch could not be exported: ${err instanceof Error ? err.message : String(err)}` });
+      setState({ busy: false, said: t("chat.sketch.exportFailed", { error: err instanceof Error ? err.message : String(err) }) });
     }
   };
 
@@ -52,7 +59,7 @@ export function SketchPad({
     <Dialog
       open={open}
       onOpenChange={(next) => !next && onClose()}
-      title="Sketch"
+      title={t("chat.sketch.title")}
       width="lg"
       testId="sketch-pad"
       footer={
@@ -63,10 +70,10 @@ export function SketchPad({
             </p>
           ) : null}
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button type="button" variant="primary" size="sm" loading={state.busy} onClick={() => void attach()}>
-            Attach
+            {t("chat.sketch.attach")}
           </Button>
         </>
       }

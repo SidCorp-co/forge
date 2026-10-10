@@ -93,7 +93,7 @@ describe('delivery: in people’s hands, not merged', () => {
       const leg = releaseLegOf({ mode, nextVersion: '0.1.0', lags: [], holders: [] });
       expect(leg, mode).toMatchObject({ kind: 'person', who: 'Nobody', holders: [] });
       expect(leg.kind === 'person' && leg.act, mode).toContain(
-        `no person on this project holds ${permission} until it is granted under Settings → Members`,
+        `nobody holds ${permission}; grant it under Settings → Members`,
       );
     }
   });

@@ -13,12 +13,14 @@ describe("whom a design on the list waits on", () => {
   it("names the approver and the act of a proposed design", () => {
     render(
       <DesignWaits
-        r={record(waitingOn("person", { who: say("standing.who.holderOf", { perm: "workflow-designs.approve" }), act: say("designs.act.approveOrReturn", { r: 3 }), rule: RULE }))}
+        r={record(waitingOn("person", { who: say("standing.who.holderOf", { perm: "workflow-designs.approve" }), act: say("designs.act.approveOrReturn"), rule: RULE }))}
       />,
     );
     const cell = screen.getByTestId("waiting-on");
     expect(cell).toHaveAttribute("data-kind", "person");
-    expect(cell).toHaveTextContent("A holder of workflow-designs.approve · approve or return revision 3");
+    expect(cell).toHaveTextContent("A holder of workflow-designs.approve · approve or return the design");
+    // REQ-43 BC-7: a revision number is agent text, so the act a person reads names none
+    expect(cell.textContent, "the act names a revision number").not.toMatch(/revision|\d/);
   });
 
   it("says nothing for a design nobody owes a step on", () => {

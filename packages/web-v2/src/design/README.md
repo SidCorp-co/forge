@@ -49,6 +49,7 @@ A page that fits none of the five is a design question, not a sixth layout. Ask 
 | `fixedHeight(size, at)` | a scrolling region's viewport height by name: `pane`, `page`, `sticky`, `sheet`, `popup`, optionally from one width |
 | `focusOnMount` | the ref callback for a field an act opens ready to type in, in place of `autoFocus` |
 | `graph-canvas.css` | the skin every React Flow picture shares (the workflow canvas, the module map): import it beside the canvas |
+| `RecordViewSwitch` + `useRecordView` | a record page's two readings, the person's state and the developer's agent text, in `?view=` (REQ-43 BC-7) |
 
 ## Hooks
 

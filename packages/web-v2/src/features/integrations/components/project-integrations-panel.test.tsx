@@ -65,13 +65,13 @@ function serve(cards: StatusCard[]) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("ProjectIntegrationsPanel", () => {
-  it("shows a repository no source host binding reaches as not connected, naming the cost and the act", async () => {
+  it("shows a repository no source host binding reaches as not connected, naming the act", async () => {
     serve([UNREACHED_REPOSITORY, GITHUB_OPEN]);
     renderWithQuery(<ProjectIntegrationsPanel projectId="p1" />);
     const row = (await screen.findAllByText("Repository"))[0]?.closest("tr") as HTMLElement;
     expect(within(row).getAllByText("Not connected").length).toBeGreaterThan(0);
     expect(within(row).queryByText("Connected")).toBeNull();
-    expect(within(row).getAllByText(/cannot tell what already shipped/).length).toBeGreaterThan(0);
+    expect(within(row).getAllByText(/no source host binding reaches github\.com: connect GitHub/).length).toBeGreaterThan(0);
     const link = within(row).getByRole("link", { name: "Connect GitHub on its row below to reach github.com/SidCorp-co/forge" });
     expect(link.getAttribute("href")).toBe("#integration-github");
   });

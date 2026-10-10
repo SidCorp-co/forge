@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { HealthDot, Icon, ProjectMark, Stat } from '@/design';
+import { useCopy } from '@/lib/i18n/interface-language';
 import { cn } from '@/lib/utils/cn';
 import { formatRelativeTime, formatSpend } from '../derive';
 import { projectGlyph, projectInitials } from '../glyph';
@@ -11,10 +12,11 @@ import { MemberStack } from './member-stack';
 
 /** The pin toggle inside a row that navigates: it must not trigger the navigation. */
 export function PinStar({ pinned, size, onToggle }: { pinned: boolean; size: number; onToggle: () => void }) {
+  const t = useCopy();
   return (
     <button
       type="button"
-      aria-label={pinned ? 'Unpin project' : 'Pin project'}
+      aria-label={pinned ? t('projects.unpin') : t('projects.pin')}
       aria-pressed={pinned}
       className="flex-none rounded-sm p-0.5 text-subtle hover:text-amber"
       onClick={(e) => {
@@ -40,6 +42,7 @@ interface ProjectTileProps {
 }
 
 export function ProjectTile({ project, now, onTogglePin }: ProjectTileProps) {
+  const t = useCopy();
   const glyph = projectGlyph(project.id);
   return (
     <Link
@@ -71,13 +74,13 @@ export function ProjectTile({ project, now, onTogglePin }: ProjectTileProps) {
 
       <div className="flex items-center gap-3.5 border-t border-line-subtle pt-3">
         <LiveCount n={project.liveRuns} />
-        <Stat icon="inbox" title="In-flight issues (not closed)">
+        <Stat icon="inbox" title={t('projects.openIssues')}>
           {project.openIssues}
         </Stat>
-        <Stat icon="server" title="Online runners">
+        <Stat icon="server" title={t('projects.onlineRunners')}>
           {project.runnerCount}
         </Stat>
-        <Stat icon="dollar" title="Trailing 24h spend">
+        <Stat icon="dollar" title={t('projects.spend24h')}>
           {formatSpend(project.spend24hUsd)}
         </Stat>
         <span className="ml-auto flex items-center gap-2.5">

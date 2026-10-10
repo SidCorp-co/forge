@@ -2,17 +2,20 @@ import Link from 'next/link';
 import { AuthShell } from '@/features/auth/components/auth-shell';
 import { SocialLogin } from '@/features/auth/components/social-login';
 import { RegisterForm } from '@/features/auth/register-form';
+import { productCopy } from '@/lib/i18n/product-copy';
+
+// a server page reads copy without a hook; the copy is English only
+const t = productCopy();
 
 export default function RegisterPage() {
   return (
     <AuthShell
-      title="Create your account"
-      subtitle="One account drives every issue, agent, and chat across your projects."
+      title={t('auth.register.title')}
       footer={
         <>
-          Already have an account?{' '}
+          {t('auth.register.haveAccount')}{' '}
           <Link href="/login" className="text-link font-semibold">
-            Sign in
+            {t('auth.register.signIn')}
           </Link>
         </>
       }

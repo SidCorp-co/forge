@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { ErrorState, SegmentedControl } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import {
   useOperatorAdoption,
   useOperatorAlerts,
@@ -56,6 +57,7 @@ function Panel<T>({
 export function OperatorOverviewScreen() {
   const [window, setWindow] = useState<OperatorWindow>("24h");
   const [sort, setSort] = useState<OperatorWorkspaceSort>("runs");
+  const t = useCopy();
 
   const overview = useOperatorOverview(window);
   const alerts = useOperatorAlerts();
@@ -67,7 +69,7 @@ export function OperatorOverviewScreen() {
   return (
     <div className="mx-auto flex max-w-300 flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <PageTitle className="fg-h2">Deployment overview</PageTitle>
+        <PageTitle className="fg-h2">{t("operator.overview.title")}</PageTitle>
         <SegmentedControl options={WINDOWS} value={window} onChange={setWindow} />
       </div>
 
@@ -80,7 +82,7 @@ export function OperatorOverviewScreen() {
       </Panel>
 
       <section className="flex flex-col gap-3">
-        <SectionTitle className="fg-h3">Glance</SectionTitle>
+        <SectionTitle className="fg-h3">{t("operator.overview.glance")}</SectionTitle>
         <Panel query={overview} skeleton={<GlanceCardsSkeleton />}>
           {(data) => <GlanceCards glance={data.glance} />}
         </Panel>

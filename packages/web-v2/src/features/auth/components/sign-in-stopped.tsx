@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { bounceCause, clearBounce, goToLogin } from "../login-bounce";
 import { AuthShell } from "./auth-shell";
 
@@ -9,6 +10,7 @@ import { AuthShell } from "./auth-shell";
  * way out that is the person's own act. It never navigates by itself.
  */
 export function SignInStopped() {
+  const t = useCopy();
   const framed = bounceCause() === "frame-cookies";
   const again = () => {
     clearBounce();
@@ -16,19 +18,11 @@ export function SignInStopped() {
   };
   return (
     <AuthShell
-      title={framed ? "This frame cannot keep you signed in" : "You are not signed in"}
-      subtitle={
-        framed
-          ? "The browser blocks cookies in a frame on another site, so the session was dropped as soon as it was made. Forge stopped here instead of asking again."
-          : "Forge sent you to sign in a moment ago and you came back without a session, so it stopped here instead of sending you again."
-      }
+      title={framed ? t("auth.stopped.framedTitle") : t("auth.stopped.title")}
+      subtitle={framed ? t("auth.stopped.framed") : t("auth.stopped.sessionLost")}
     >
-      <p className="fg-body-sm mb-4">
-        {framed
-          ? "Open the page in its own tab, or allow cookies for this site and try again."
-          : "Sign in again from the sign-in page. If it brings you back here, the cause is on the server: tell whoever runs this Forge."}
-      </p>
-      <Button onClick={again}>Go to sign in</Button>
+      <p className="fg-body-sm mb-4">{framed ? t("auth.stopped.framedAct") : t("auth.stopped.sessionLostAct")}</p>
+      <Button onClick={again}>{t("auth.stopped.signIn")}</Button>
     </AuthShell>
   );
 }

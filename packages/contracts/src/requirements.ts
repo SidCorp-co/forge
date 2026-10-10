@@ -169,35 +169,30 @@ export const REQUIREMENT_ATTENTION_LABELS: StandingGroupLabels<RequirementAttent
 	{
 		needs_you: {
 			label: "Needs you",
-			hint: "Approve, accept or break down",
 			tone: "you",
 			collapsed: false,
 		},
 		moving: {
 			label: "Moving",
-			hint: "Issues are being worked",
 			tone: "run",
 			collapsed: false,
 		},
 		waiting: {
 			label: "Someone else’s turn",
-			hint: null,
 			tone: "neutral",
 			collapsed: false,
 		},
 		stuck: {
 			label: "Stuck",
-			hint: "No owner, or untouched for weeks",
 			tone: "neutral",
 			collapsed: false,
 		},
 		deferred: {
 			label: "Deferred",
-			hint: "Out of the current release",
 			tone: "neutral",
 			collapsed: true,
 		},
-		done: { label: "Done", hint: null, tone: "done", collapsed: true },
+		done: { label: "Done", tone: "done", collapsed: true },
 	};
 
 /** Whom a requirement waits on: the viewer, another person, an agent (the master, a draft's agent

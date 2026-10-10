@@ -14,14 +14,11 @@ import { ModulePage, useModuleTab } from "./module-detail";
 import { ModuleLevel } from "./module-level";
 
 const VIEWS = [
-  { value: "children" as const, label: "Modules" },
-  { value: "detail" as const, label: "Detail" },
+  { value: "children" as const, label: "modules.title" as const },
+  { value: "detail" as const, label: "modules.view.detail" as const },
 ];
 
-const viewsIn = (t: Copy) => [
-  { value: "children" as const, label: t("modules.title") },
-  { value: "detail" as const, label: t("modules.view.detail") },
-];
+const viewsIn = (t: Copy) => VIEWS.map((v) => ({ value: v.value, label: t(v.label) }));
 
 function ModuleDetailBody({ projectId, slug, moduleSlug }: { projectId: string; slug: string; moduleSlug: string }) {
   const t = useCopy();

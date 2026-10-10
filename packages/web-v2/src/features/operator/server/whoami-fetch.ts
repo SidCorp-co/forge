@@ -50,11 +50,11 @@ export async function fetchOperatorWhoami(
       const body = (await res.json().catch(() => null)) as { code?: string } | null;
       return body?.code === "EMAIL_NOT_VERIFIED" ? { kind: "unverified" } : { kind: "not-admin" };
     }
-    if (!res.ok) return { kind: "error", message: `Request failed (${res.status})` };
+    if (!res.ok) return { kind: "error", status: res.status };
 
     const body = (await res.json()) as { isAdmin: boolean; email: string };
     return body.isAdmin ? { kind: "admin", email: body.email } : { kind: "not-admin" };
   } catch {
-    return { kind: "error", message: "Couldn't reach the server. Check your connection and retry." };
+    return { kind: "error", status: null };
   }
 }

@@ -7,7 +7,8 @@
 
 import { PREVIEW_FAILURE_REASONS, PREVIEW_LIMITS, PREVIEW_SERVING_STATES, type PreviewFailureReason, type PreviewRecord } from "@forge/contracts/preview";
 import { useState } from "react";
-import { Banner, Button, LoadingState, Section, Textarea, RefusedLine } from "@/design";
+import { Banner, Button, LoadingState, Section, Textarea } from "@/design";
+import { RefusedLine } from "@/lib/api/refusal-line";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";

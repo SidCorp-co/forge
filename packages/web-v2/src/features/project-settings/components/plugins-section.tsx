@@ -179,7 +179,7 @@ function PluginItem({
           />
         </Field>
         <Field label={t("settings.project.plugins.name")}>
-          <Input value={p.name} onChange={(e) => onPatch({ name: e.target.value })} disabled={!canEdit} placeholder="forge" />
+          <Input value={p.name} onChange={(e) => onPatch({ name: e.target.value })} disabled={!canEdit} placeholder={t("settings.project.plugins.namePlaceholder")} />
         </Field>
         <Field label={t("settings.project.plugins.pinned")}>
           <Input

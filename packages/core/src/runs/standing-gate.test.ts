@@ -75,7 +75,7 @@ describe('agent-run-standing waiting_gate: a deploy lock this release was refuse
       kind: 'gate',
       gate: 'deploy_locked',
       resumesAt: minutes(5).toISOString(),
-      rule: expect.stringContaining('pipeline run run-holder holds the production environment'),
+      rule: expect.stringContaining('run run-holder holds production'),
       says: { rule: expect.objectContaining({ key: 'runs.rule.lockHeld' }) },
     });
   });

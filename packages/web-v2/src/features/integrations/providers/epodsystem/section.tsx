@@ -97,7 +97,7 @@ function EpodsystemBinding({
         saveDisabled={!apiKey.trim()}
         onTest={() => void test.run(binding.id)}
         testing={test.pending}
-        confirmDelete={t("integrations.epod.confirmDelete", { label: binding.label || "default" })}
+        confirmDelete={t("integrations.epod.confirmDelete", { label: binding.label || t("integrations.provider.defaultLabel") })}
       />
       <AgentAccessControl
         projectId={projectId}

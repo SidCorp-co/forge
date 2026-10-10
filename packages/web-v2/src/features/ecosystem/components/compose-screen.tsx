@@ -5,7 +5,8 @@ import { Button, Checkbox, Field, Input, NativeSelect, Textarea } from "@/design
 import { ecosystemApi } from "../api";
 import { useApiPage, useChannelWrite, useDocument, useProjectEcosystems } from "../hooks";
 import { type Refusal, readingOf, refusalsOf } from "@/lib/api/refusals";
-import { type ApiPage, type DocumentType, type DocumentView, REPLY_TYPES, TYPE_LABEL } from "../types";
+import { type ApiPage, type DocumentType, type DocumentView, REPLY_TYPES, typeLabel } from "../types";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { canWriteProject } from "@/features/projects";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import type { Role } from "./document-actions";
@@ -83,21 +84,20 @@ function parseBody(text: string): { ok: true; body: unknown } | { ok: false; ref
   }
 }
 
-function ToField({ slug, counterparties, to, onTo }: { slug: string; counterparties: { id: string; name: string }[]; to: string[]; onTo: (to: string[]) => void }) {
+function ToField({ counterparties, to, onTo }: { counterparties: { id: string; name: string }[]; to: string[]; onTo: (to: string[]) => void }) {
+  const t = useCopy();
   return (
     <fieldset className="space-y-1">
-      <legend className="fg-label text-fg">To</legend>
+      <legend className="fg-label text-fg">{t("ecosystem.compose.to")}</legend>
       {counterparties.length === 0 ? (
-        <p className="fg-caption">
-          {slug} has no counterparty in this ecosystem: a document goes only to a project it publishes to or consumes from.
-        </p>
+        <p className="fg-caption">{t("ecosystem.compose.noCounterparty")}</p>
       ) : (
         counterparties.map((p) => (
           <Checkbox
             key={p.id}
             label={p.name}
             checked={to.includes(p.id)}
-            onChange={(on) => onTo(on ? [...to, p.id] : to.filter((t) => t !== p.id))}
+            onChange={(on) => onTo(on ? [...to, p.id] : to.filter((x) => x !== p.id))}
           />
         ))
       )}
@@ -145,7 +145,8 @@ function useComposeSave({ projectId, ecosystem, draft, onSaved }: ComposeProps, 
 }
 
 function ComposeForm(props: ComposeProps) {
-  const { slug, draft, parent, counterparties } = props;
+  const t = useCopy();
+  const { draft, parent, counterparties } = props;
   const [form, setForm] = useState<Form>(() => initialForm({ draft, parent }));
   const types = parent ? (REPLY_TYPES[parent.document.type] ?? []) : draft ? [draft.document.type] : OPENERS;
   const inReplyTo = parent?.document.number ?? draft?.document.inReplyTo ?? undefined;
@@ -159,7 +160,7 @@ function ComposeForm(props: ComposeProps) {
         submit();
       }}
     >
-      <Field label="Type" htmlFor="doc-type">
+      <Field label={t("ecosystem.compose.type")} htmlFor="doc-type">
         <NativeSelect
           id="doc-type"
           value={form.type}
@@ -168,22 +169,22 @@ function ComposeForm(props: ComposeProps) {
             const type = e.target.value as DocumentType;
             set({ type, body: pretty(BODY_TEMPLATES[type]) });
           }}
-          options={types.map((t) => ({ value: t, label: TYPE_LABEL[t] ?? t }))}
+          options={types.map((type) => ({ value: type, label: typeLabel(type, t) }))}
         />
       </Field>
-      {inReplyTo ? <p className="fg-caption">In reply to {inReplyTo}</p> : null}
-      <ToField slug={slug} counterparties={counterparties} to={form.to} onTo={(to) => set({ to })} />
-      <Field label="Subject" htmlFor="doc-subject" hint="8 to 160 characters, in English: the other side may be another org.">
+      {inReplyTo ? <p className="fg-caption">{t("ecosystem.compose.inReplyTo", { ref: inReplyTo })}</p> : null}
+      <ToField counterparties={counterparties} to={form.to} onTo={(to) => set({ to })} />
+      <Field label={t("ecosystem.compose.subject")} htmlFor="doc-subject">
         <Input id="doc-subject" value={form.subject} onChange={(e) => set({ subject: e.target.value })} />
       </Field>
       <Field
-        label="Due by"
+        label={t("ecosystem.compose.dueBy")}
         htmlFor="doc-due"
-        hint={OWES_DUE.includes(form.type) ? "Required: the reply is owed by this date." : "Optional."}
+        hint={OWES_DUE.includes(form.type) ? t("ecosystem.compose.required") : t("ecosystem.compose.optional")}
       >
         <Input id="doc-due" type="date" value={form.dueBy} onChange={(e) => set({ dueBy: e.target.value })} />
       </Field>
-      <Field label="Body" htmlFor="doc-body" hint="JSON in the shape of this type; core's checks name anything that does not stand.">
+      <Field label={t("ecosystem.compose.body")} htmlFor="doc-body">
         <Textarea
           id="doc-body"
           rows={14}
@@ -195,9 +196,8 @@ function ComposeForm(props: ComposeProps) {
       {local ? <RefusalNotice refusals={[local]} /> : null}
       {save.isError ? <RefusalNotice refusals={refusalsOf(save.error)} /> : null}
       <Button type="submit" variant="primary" loading={save.isPending}>
-        {draft ? "Save the draft" : "Save as draft"}
+        {draft ? t("ecosystem.compose.saveDraft") : t("ecosystem.compose.saveAsDraft")}
       </Button>
-      <p className="fg-caption">Saving keeps it on this side; submit it from the document page to send it.</p>
     </form>
   );
 }
@@ -231,6 +231,7 @@ export function ComposeScreen({
   params: { ecosystem?: string; inReplyTo?: string; draft?: string };
   onSaved: (view: DocumentView) => void;
 }) {
+  const t = useCopy();
   const names = useProjectNames(projectId);
   const parentR = readingOf(useDocument(projectId, params.inReplyTo));
   const draftR = readingOf(useDocument(projectId, params.draft));
@@ -241,16 +242,16 @@ export function ComposeScreen({
     return <ReadOnlyNotice role={role} slug={slug} />;
   }
   for (const [what, r, wanted] of [
-    [`Document ${params.inReplyTo}`, parentR, params.inReplyTo],
-    [`Draft ${params.draft}`, draftR, params.draft],
+    [t("ecosystem.doc.unread", { ref: params.inReplyTo ?? "" }), parentR, params.inReplyTo],
+    [t("ecosystem.compose.draftWhat", { ref: params.draft ?? "" }), draftR, params.draft],
   ] as const) {
     if (!wanted) continue;
     if (r.kind === "loading") return <Loading what={what} />;
     if (r.kind === "unread") return <UnreadNotice what={what} refusals={r.refusals} />;
   }
-  if (ecosR.kind === "loading" || pageR.kind === "loading") return <Loading what="this project's counterparties" />;
-  if (ecosR.kind === "unread") return <UnreadNotice what="This project's ecosystems" refusals={ecosR.refusals} />;
-  if (pageR.kind === "unread") return <UnreadNotice what="This project's API page" refusals={pageR.refusals} />;
+  if (ecosR.kind === "loading" || pageR.kind === "loading") return <Loading what={t("ecosystem.compose.counterpartiesWhat")} />;
+  if (ecosR.kind === "unread") return <UnreadNotice what={t("ecosystem.compose.ecosystemsWhat")} refusals={ecosR.refusals} />;
+  if (pageR.kind === "unread") return <UnreadNotice what={t("ecosystem.api.what", { slug })} refusals={pageR.refusals} />;
 
   const parent = parentR.kind === "read" ? parentR.value : undefined;
   const draft = draftR.kind === "read" ? draftR.value : undefined;
@@ -260,14 +261,14 @@ export function ComposeScreen({
   if (!ecosystem || !active.some((m) => m.ecosystem?.id === ecosystem)) {
     return (
       <RefusalNotice
-        title="No channel to write in"
+        title={t("ecosystem.compose.writeRefused")}
         refusals={[
           {
             code: "ECOSYSTEM_NOT_MEMBER",
             path: "/ecosystem",
             detail: ecosystem
-              ? `${slug} is not an active member of ecosystem ${ecosystem}.`
-              : `${slug} is an active member of no ecosystem.`,
+              ? t("ecosystem.compose.notMemberOf", { slug, ecosystem })
+              : t("ecosystem.compose.notMemberAny", { slug }),
           },
         ]}
       />

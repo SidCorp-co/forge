@@ -209,7 +209,7 @@ describe('BC-23: a revision whose only change is its pins approves by itself', (
     });
     expect(latest.proposedBy, 'the proposer is the proposer, not the decider').toBe(ownerId);
     expect(latest.reason).toContain(`access r1 → r${r2}`);
-    expect(latest.reason).toContain('Approved by Forge itself');
+    expect(latest.reason).toContain('Forge approved it: only pins');
     expect(latest.says.reason.key).toBe('designs.reason.pinOnlyKernel');
     expect((await ledger(ids.get('ux') as string))[0]).toMatchObject({ actor_type: 'sweeper' });
     expect(await needsYouDesigns()).not.toContain('ux');

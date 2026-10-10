@@ -30,7 +30,6 @@ export const openSegments = (s: ModuleStanding, language = "en"): CoverageSegmen
     label: kindLabel(k, language),
     count: s.openByKind[k],
     tone: ISSUE_ATTENTION_LABELS[k].tone,
-    hint: copyOr(language, `issues.attention.${k}.hint`, ISSUE_ATTENTION_LABELS[k].hint ?? "") || undefined,
   }));
 
 function landingAge(l: ModuleLanding, now: number = Date.now()): number {

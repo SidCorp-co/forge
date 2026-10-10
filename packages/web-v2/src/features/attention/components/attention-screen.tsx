@@ -20,6 +20,7 @@ import { TONE_META, type SemanticTone } from "@/design/status";
 import { TYPE_LABEL } from "@/features/ecosystem";
 import { useOrgScopedProjects } from "@/features/projects";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { NeedsYouList } from "@/features/needs-you";
@@ -39,12 +40,12 @@ const KIND_TONE: Record<AttentionKind, SemanticTone> = {
   status_report: "neutral",
 };
 
-const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: string; bg: string }> = {
-  mention: { label: "Mention", icon: "mail", ...tone("mention") },
-  failed_job: { label: "Failed", icon: "alert", ...tone("failed_job") },
-  runner_offline: { label: "Runner offline", icon: "server", ...tone("runner_offline") },
-  channel_gate: { label: "Approve gate", icon: "check", ...tone("channel_gate") },
-  status_report: { label: "Status report", icon: "mail", ...tone("status_report") },
+const KIND_META: Record<AttentionKind, { icon: IconName; fg: string; bg: string }> = {
+  mention: { icon: "mail", ...tone("mention") },
+  failed_job: { icon: "alert", ...tone("failed_job") },
+  runner_offline: { icon: "server", ...tone("runner_offline") },
+  channel_gate: { icon: "check", ...tone("channel_gate") },
+  status_report: { icon: "mail", ...tone("status_report") },
 };
 
 function tone(kind: AttentionKind): { fg: string; bg: string } {
@@ -60,6 +61,7 @@ function RoomSub({ room }: { room: string }) {
 }
 
 function KindTag({ kind }: { kind: AttentionKind }) {
+  const t = useCopy();
   const m = KIND_META[kind];
   return (
     <span
@@ -67,12 +69,13 @@ function KindTag({ kind }: { kind: AttentionKind }) {
       style={{ color: m.fg, background: m.bg }}
     >
       <Icon name={m.icon} size={13} />
-      {m.label}
+      {t(`attention.kind.${kind}`)}
     </span>
   );
 }
 
 export function AttentionItemLine({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
+  const t = useCopy();
   return (
     <button
       type="button"
@@ -83,7 +86,7 @@ export function AttentionItemLine({ item, onOpen }: { item: AttentionItem; onOpe
       {item.kind === "channel_gate" ? (
         item.documentType && <MonoTag hue="flame">{TYPE_LABEL[item.documentType] ?? item.documentType}</MonoTag>
       ) : (
-        item.questionId && <MonoTag hue="flame">Decision</MonoTag>
+        item.questionId && <MonoTag hue="flame">{t("attention.decision")}</MonoTag>
       )}
       <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{item.title}</span>
       {item.issueRef && <MonoTag>{item.issueRef}</MonoTag>}
@@ -124,6 +127,7 @@ function Group({
   total?: number;
   collapsible?: boolean;
 }) {
+  const t = useCopy();
   const matched = total ?? items.length;
   const collapsible = mayCollapse && items.length > COLLAPSE_ABOVE;
   const [toggled, setToggled] = useState<boolean | null>(null);
@@ -161,7 +165,7 @@ function Group({
           ))}
           {matched > items.length && (
             <p className="fg-caption px-0.5 text-muted">
-              Showing {items.length} of {matched}, highest priority first.
+              {t("attention.shown", { n: items.length, total: matched })}
             </p>
           )}
         </div>
@@ -171,15 +175,17 @@ function Group({
 }
 
 export function AttentionScreen() {
+  const t = useCopy();
   const q = useAttention();
   return (
-    <QueryBoundary query={{ ...q, data: q.view }} loadingLabel="loading attention…" height="60vh" retry="always">
+    <QueryBoundary query={{ ...q, data: q.view }} loadingLabel={t("attention.loading")} height="60vh" retry="always">
       {(view) => <Inbox view={view} />}
     </QueryBoundary>
   );
 }
 
 function Inbox({ view }: { view: AttentionView }) {
+  const t = useCopy();
   const router = useRouter();
   // ISS-477 — scope the inbox to the active org's projects. Items carrying a
   // `projectSlug` outside the active org are dropped; items without one (e.g.
@@ -209,30 +215,30 @@ function Inbox({ view }: { view: AttentionView }) {
         <RoomSub key={p.id} room={projectRoom(p.id)} />
       ))}
 
-      <PageTitle>Attention</PageTitle>
+      <PageTitle>{t("attention.title")}</PageTitle>
 
       {total === 0 ? (
         <div className="grid min-h-72 place-items-center">
-          <EmptyState title="Inbox zero" message="Nothing needs your attention right now." />
+          <EmptyState message={t("attention.empty")} />
         </div>
       ) : (
         <div className="flex flex-col gap-6">
           {needsYouProjects.map((p) => (
-            <section key={p.id} className="flex flex-col gap-2" aria-label={`Needs you in ${p.name}`}>
-              <SectionTitle className="fg-label text-fg">Needs you · {p.name}</SectionTitle>
+            <section key={p.id} className="flex flex-col gap-2" aria-label={t("attention.needsYou.in", { name: p.name })}>
+              <SectionTitle className="fg-label text-fg">{t("attention.needsYou.title", { name: p.name })}</SectionTitle>
               <NeedsYouList
                 items={needsYou.filter((n) => n.projectSlug === p.slug)}
                 slug={p.slug}
                 foldKey={`web-v2:attention:${p.slug}`}
-                empty="Nothing waits on you here."
+                empty={t("attention.needsYou.empty")}
               />
             </section>
           ))}
-          <Group title="Channel gates" items={scoped.channelGates} onOpen={(href) => router.push(href)} />
-          <Group title="Mentions" items={scoped.mentions} onOpen={(href) => router.push(href)} />
-          <Group title="Failed jobs" items={scoped.failedJobs} onOpen={(href) => router.push(href)} />
-          <Group title="Status reports" items={scoped.statusReports} onOpen={(href) => router.push(href)} />
-          <Group title="Offline runners" items={scoped.offlineRunners} onOpen={(href) => router.push(href)} />
+          <Group title={t("attention.group.channelGates")} items={scoped.channelGates} onOpen={(href) => router.push(href)} />
+          <Group title={t("attention.group.mentions")} items={scoped.mentions} onOpen={(href) => router.push(href)} />
+          <Group title={t("attention.group.failedJobs")} items={scoped.failedJobs} onOpen={(href) => router.push(href)} />
+          <Group title={t("attention.group.statusReports")} items={scoped.statusReports} onOpen={(href) => router.push(href)} />
+          <Group title={t("attention.group.offlineRunners")} items={scoped.offlineRunners} onOpen={(href) => router.push(href)} />
         </div>
       )}
     </PageContainer>

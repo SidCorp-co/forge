@@ -11,6 +11,7 @@ export {
 export { provideKnowledgePorts } from './ports.js';
 export { searchKnowledge } from './search.js';
 export {
+  type AlwaysInjectFact,
   getKnowledgeEntry,
   selectAllSlugsFromKnowledge,
   selectAlwaysInjectFromKnowledge,

@@ -43,7 +43,7 @@ describe('a proposed design on an unapproved base', () => {
     expect(w.kind).toBe('agent');
     expect(w.says.rule).toMatchObject({ key: 'designs.rule.baseUnapprovedAt', vars: { r: 4 } });
     expect(w.rule).toBe(
-      'revision 4 builds on hop-auth r2, which is approved at r3 now; hop-cart r1, which is not approved; hop-gone, which is no workflow of this project; its approver cannot approve it until its writer writes it again with basedOn re-pinned',
+      'r4 builds on hop-auth r2, which is approved at r3 now; hop-cart r1, which is not approved; hop-gone, which is no workflow of this project: its writer re-pins basedOn before approval',
     );
     expect(saidDisagreements(w)).toEqual([]);
   });

@@ -5,7 +5,7 @@ import { type ReactNode, useState } from "react";
 import { type BannerTone, Icon, LEGEND, Tooltip, WaitBanner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { ApiError } from "@/lib/api/client";
-import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { said, saidView } from "@/lib/i18n/said";
 import { issueHref } from "@/lib/routes/issues";
 import { cn } from "@/lib/utils/cn";
@@ -112,25 +112,20 @@ export function GateLine({ gate, slug, tone }: { gate: ReleaseGateView; slug: st
 
 export function ReleaseBanner({ r, className }: { r: ReleaseDetail; className?: string }) {
   const t = useCopy();
-  const label = useLabel();
   const w = saidView(r.waitingOn, useInterfaceLanguage());
   const ended = r.attentionGroup === "done" || r.attentionGroup === "stopped";
   const stuck = r.attentionGroup === "stuck";
+  // an ended one says only that nothing is owed: the header's badge says how it ended, and the page's
+  // facts say where it runs and whether it is still served (REQ-43 BC-5)
   const head = ended
-    ? `${label("releaseState", r.state)}.`
+    ? t("releases.bannerNothingOwed")
     : stuck
       ? t("releases.bannerStuck")
       : w.kind === "you"
         ? t("releases.bannerWaitingYou")
         : t("releases.bannerWaitingOn", { who: w.who });
   const body = ended
-    ? r.state === "shipped"
-      ? r.current
-        ? r.production?.url
-          ? t("releases.bannerLiveAt", { where: r.production.url.replace(/^https?:\/\//, "").replace(/\/$/, "") })
-          : t("releases.bannerLive")
-        : t("releases.bannerSuperseded")
-      : t("releases.bannerNothingOwed")
+    ? null
     : stuck
       ? `${w.who}: ${w.act}`
       : w.act;

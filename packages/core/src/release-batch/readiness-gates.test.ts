@@ -1,6 +1,6 @@
 // Project settings reads a release's reasons the way a release's own page does: each blocker and
 // warning as a title, a sentence and who owes the act (`gateViews`), so an empty roster reads as
-// "Nothing at the gate" in words rather than as its code.
+// "Gate empty" in words rather than as its code.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -44,8 +44,8 @@ describe('release readiness carries each reason as a person reads it', () => {
       expect.objectContaining({
         code: 'RELEASE_ROSTER_EMPTY',
         kind: 'blocker',
-        title: 'Nothing at the gate',
-        sentence: 'No issue is waiting at the release gate, so there is nothing to cut.',
+        title: 'Gate empty',
+        sentence: 'Nothing waiting',
         owner: expect.objectContaining({ who: 'Master' }),
       }),
     ]);

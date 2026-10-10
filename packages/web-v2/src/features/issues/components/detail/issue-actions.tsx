@@ -40,7 +40,7 @@ export function IssueActions({
   const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
 
   function copyLink() {
-    copyShareLink(`/projects/${slug}/issues/${linkId}`);
+    copyShareLink(`/projects/${slug}/issues/${linkId}`, t);
   }
 
   const moreItems: MenuItem[] = [

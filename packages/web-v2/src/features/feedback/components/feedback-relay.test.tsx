@@ -95,7 +95,15 @@ describe("the page leads with the reporter's answer", () => {
 
   it("says when the forecast expects work that is still moving", () => {
     renderWithQuery(<FeedbackAnswer f={view({ phase: "planned", shipNotice: null })} slug="hop" forecast={forecast("2026-10-08T05:30:00.000Z")} clock={CLOCK} />);
-    expect(screen.getByTestId("feedback-answer-line")).toHaveTextContent("Being worked on, expected 05:30");
+    expect(screen.getByTestId("feedback-answer-line")).toHaveTextContent(/^Expected 05:30/);
+  });
+
+  it("says nothing where the phase badge already says it all (REQ-43 BC-5)", () => {
+    for (const phase of ["new", "triaged", "declined", "reopened", "planned"] as const) {
+      const { unmount } = renderWithQuery(<FeedbackAnswer f={view({ phase, shipNotice: null })} slug="hop" forecast={undefined} clock={CLOCK} />);
+      expect(screen.queryByTestId("feedback-answer-line"), phase).toBeNull();
+      unmount();
+    }
   });
 
   it("says it plainly with no forecast, and in the reader's language", () => {

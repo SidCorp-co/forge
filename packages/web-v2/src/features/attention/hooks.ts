@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useDevices } from "@/features/runners";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { attentionApi } from "./api";
 import type { AttentionItem, AttentionView } from "./types";
 
@@ -18,10 +19,11 @@ export function useAttention() {
   // `['devices','me']` is already WS-invalidated on device.login/paired/revoked
   // and reconnect — reusing the runners hook keeps the offline bucket live.
   const devicesQ = useDevices();
+  const t = useCopy();
 
   const offlineRunners: AttentionItem[] = (devicesQ.data ?? [])
     .filter((d) => d.status === "offline")
-    .map((d) => ({ kind: "runner_offline" as const, title: `${d.name} is offline`, link: "/runners", since: d.lastSeenAt ?? d.createdAt, status: "offline" }));
+    .map((d) => ({ kind: "runner_offline" as const, title: t("attention.runnerOffline", { name: d.name }), link: "/runners", since: d.lastSeenAt ?? d.createdAt, status: "offline" }));
   const base = attentionQ.data;
   const buckets = {
     needsYou: base?.needsYou ?? [],

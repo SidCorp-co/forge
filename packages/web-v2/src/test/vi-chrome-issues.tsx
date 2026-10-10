@@ -151,7 +151,7 @@ const ROWS: IssueRow[] = [
     pipelineHealth: {
       stage: "open",
       queuedStep: { jobId: "j1", jobType: "triage", stageStatus: null, queuedAt: AT, retryAfterAt: null },
-      waitingOn: { reason: "runner_stale", since: AT, details: {}, reading: { short: "No runner online", detail: "No runner is online for this project — every host is offline, stale, or rate-limited.", who: "Bring a runner back (check the Runners tab); the step dispatches on the next tick.", needsAction: true } },
+      waitingOn: { reason: "runner_stale", since: AT, details: {}, reading: { short: "No runner online", detail: "No runner is online for this project.", who: "Bring a runner back online.", needsAction: true } },
     },
   }),
   row(4, { status: "awaiting_release", agentStatus: "completed", releaseBatchRunId: null }),
@@ -188,7 +188,7 @@ const ISSUE: IssueDetail = {
   pipelineHealth: {
     stage: "needs_info",
     queuedStep: { jobId: "j2", jobType: "build", stageStatus: null, queuedAt: AT, retryAfterAt: "2026-10-07T09:00:00.000Z" },
-    waitingOn: { reason: "retry_cooldown", since: AT, details: {}, reading: { short: "Retry cooldown", detail: "The step failed and is waiting out a cooldown before its next attempt.", who: "No action — the retry fires itself. If the attempts keep failing, read the step's error rather than waiting.", needsAction: false } },
+    waitingOn: { reason: "retry_cooldown", since: AT, details: {}, reading: { short: "Retry cooldown", detail: "The step failed and waits out a cooldown before retrying.", who: "No action: the retry fires itself.", needsAction: false } },
   },
 } as unknown as IssueDetail;
 

@@ -11,7 +11,8 @@
 import { PREVIEW_FRAME_MESSAGES, type PreviewRecord } from "@forge/contracts/preview";
 import { useQuery } from "@tanstack/react-query";
 import { type Ref, useEffect, useRef, useState } from "react";
-import { Button, RefusedLine } from "@/design";
+import { Button } from "@/design";
+import { RefusedLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { previewsApi } from "../api";
 import { previewQueries } from "../queries";

@@ -1,5 +1,6 @@
 // contract -> packages/core/src/ecosystem/link-read.ts:readBus — the bus, link and builder-run shapes here are core's reads of link-v1 and builder-run-v1 (packages/core/src/ecosystem/link-schema.ts), so a field added or renamed there changes here in the same change
 
+import type { Copy } from "@/lib/i18n/product-copy";
 import { projectGlyph } from "@/features/projects";
 
 export type LinkState = "building" | "current" | "behind" | "breaking" | "unverified";
@@ -157,13 +158,8 @@ export const STATE_TONE: Record<LinkState, Tone> = {
   unverified: "pend",
 };
 
-export const STATE_MEANING: Record<LinkState, string> = {
-  current: "The version in use is the contract's current one",
-  behind: "A newer version of the contract exists",
-  breaking: "The version in use no longer works against the contract",
-  building: "The consumer's ecosystem builder found the call and is still writing its guide",
-  unverified: "The guide is written but nothing has checked it against the contract",
-};
+/** What a link state means, as its tooltip says it. */
+export const stateMeaning = (state: LinkState, t: Copy): string => t(`ecosystem.state.${state}`);
 
 const contractKey = (c: ContractRef) => `${c.provider}/${c.slug}`;
 
@@ -213,17 +209,17 @@ export const VERDICT_TONE: Record<Verdict, Tone> = {
   unchecked: "pend",
 };
 
-export function impactLine(link: BusLink): string {
+export function impactLine(link: BusLink, t: Copy): string {
   const i = link.impact;
-  if (!i) return "No recorded version to check this link against";
-  if (i.reason === "built-against") return `Built against ${i.version}, so it passes`;
-  if (i.reason === "unmeasured") return `${i.version} has no measured diff, so it is owed the notice`;
-  if (i.verdict === "passes") return `No breaking change in ${i.version} touches what it reads`;
+  if (!i) return t("ecosystem.impact.unversioned");
+  if (i.reason === "built-against") return t("ecosystem.impact.builtAgainst", { version: i.version });
+  if (i.reason === "unmeasured") return t("ecosystem.impact.unmeasured", { version: i.version });
+  if (i.verdict === "passes") return t("ecosystem.impact.passes", { version: i.version });
   return i.breaks
     .map((b) => {
-      const what = [...b.fields, ...b.outsideContract.map((o) => `${o} (outside the contract)`)];
+      const what = [...b.fields, ...b.outsideContract.map((o) => t("ecosystem.impact.outside", { operation: o }))];
       const at = b.callSites.map(callSiteAt);
-      return `${b.element}${what.length ? ` · ${what.join(", ")}` : ""}${at.length ? ` at ${at.join(", ")}` : ""}`;
+      return `${b.element}${what.length ? ` · ${what.join(", ")}` : ""}${at.length ? ` ${t("ecosystem.impact.atSites", { sites: at.join(", ") })}` : ""}`;
     })
     .join("; ");
 }
@@ -261,4 +257,5 @@ export const projectMarkProps = (slug: string) => ({ ...projectGlyph(slug), init
 export const shortSha = (sha: string) => sha.slice(0, 7);
 
 /** What a run reads: its commit, short, or the storefront where there is no commit. */
-export const triggerRef = (t: BuilderTrigger) => (t.sha === null ? "the storefront" : shortSha(t.sha));
+export const triggerRef = (trigger: BuilderTrigger, t: Copy) =>
+  trigger.sha === null ? t("ecosystem.trigger.storefront") : shortSha(trigger.sha);

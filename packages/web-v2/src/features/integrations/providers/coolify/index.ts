@@ -3,7 +3,6 @@ import { urlHost } from "../config-read";
 
 export const coolify: ProviderModule = {
   provider: "coolify",
-  label: "Coolify deploy",
   icon: "server",
   secretField: "apiToken",
   secretPlaceholder: "Coolify API token",

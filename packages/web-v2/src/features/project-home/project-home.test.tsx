@@ -5,7 +5,7 @@ import { needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
 import type { ProjectStatus } from "@forge/contracts/project-status";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { STATUS } from "@/features/project-status/status-fixture";
+import { STATUS } from "@/test/project-status";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { RULE, say, waitingOn } from "@/test/said";
 import { atRiskRows, runningRows } from "./derive";

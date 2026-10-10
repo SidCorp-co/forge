@@ -8,7 +8,7 @@
 import { shareStateOf, type ShareLinkView } from "@forge/contracts/shares";
 import { useState } from "react";
 import { Button, ConfirmDialog, EmptyState, EnumBadge, PersonChip, Skeleton, Table, TBody, TD, TH, THead, TR } from "@/design";
-import { useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useAuth } from "@/providers/auth-provider";
 import { useRevokeShare, useShares } from "../hooks";
 import { ShareRefusal } from "./share-refusal";
@@ -26,6 +26,7 @@ export function ShareList({ projectId, nameOf, isAdmin }: ShareListProps) {
   const revoke = useRevokeShare(projectId);
   const [pending, setPending] = useState<ShareLinkView | null>(null);
   const me = useAuth().user?.id ?? null;
+  const t = useCopy();
 
   if (sharesQ.isLoading) {
     return (
@@ -36,33 +37,29 @@ export function ShareList({ projectId, nameOf, isAdmin }: ShareListProps) {
     );
   }
   if (sharesQ.isError) {
-    return <ShareRefusal error={sharesQ.error} lead="Couldn't list this project's share links" />;
+    return <ShareRefusal error={sharesQ.error} lead={t("shares.list.error")} />;
   }
   const shares = sharesQ.data ?? [];
   if (shares.length === 0) {
     return (
-      <EmptyState
-        title="No share links yet"
-        message="Share an answer that holds a report block from its row in a conversation, then find the link here."
-        mascot={false}
-      />
+      <EmptyState message={t("shares.list.empty")} mascot={false} />
     );
   }
   return (
     <>
-      {revoke.isError && <ShareRefusal error={revoke.error} lead="Core refused to revoke the share" />}
-      <Table aria-label="Share links" data-testid="share-list">
+      {revoke.isError && <ShareRefusal error={revoke.error} lead={t("shares.list.revokeRefused")} />}
+      <Table aria-label={t("shares.list.title")} data-testid="share-list">
         <THead>
           <TR>
-            <TH>Shared</TH>
-            <TH>Who can open</TH>
-            <TH>Created by</TH>
-            <TH>Expires</TH>
-            <TH className="text-right">Views</TH>
-            <TH>Last viewed</TH>
-            <TH>State</TH>
+            <TH>{t("shares.list.col.shared")}</TH>
+            <TH>{t("shares.list.col.audience")}</TH>
+            <TH>{t("shares.list.col.createdBy")}</TH>
+            <TH>{t("shares.list.col.expires")}</TH>
+            <TH className="text-right">{t("shares.list.col.views")}</TH>
+            <TH>{t("shares.list.col.lastViewed")}</TH>
+            <TH>{t("shares.list.col.state")}</TH>
             <TH>
-              <span className="sr-only">Actions</span>
+              <span className="sr-only">{t("shares.list.col.actions")}</span>
             </TH>
           </TR>
         </THead>
@@ -85,9 +82,9 @@ export function ShareList({ projectId, nameOf, isAdmin }: ShareListProps) {
       </Table>
       <ConfirmDialog
         open={pending !== null}
-        title="Revoke this share link?"
-        message="Anyone who opens it will be told it is not available. A revocation cannot be undone."
-        confirmLabel="Revoke"
+        title={t("shares.list.revokeConfirm")}
+        message={t("shares.list.revokeConfirm.body")}
+        confirmLabel={t("shares.list.revoke")}
         tone="danger"
         loading={revoke.isPending}
         onConfirm={() => {
@@ -116,11 +113,12 @@ function ShareItem({
   onRevoke: () => void;
 }) {
   const time = useTimeFormat();
+  const t = useCopy();
   const state = shareStateOf(share);
   return (
     <TR data-testid="share-row" data-share-id={share.id} data-state={state}>
       <TD>
-        <span className="flex min-w-0 flex-col items-start gap-0.5" title={`Share ${share.id}, created ${time.dateTime(share.createdAt)}`}>
+        <span className="flex min-w-0 flex-col items-start gap-0.5" title={t("shares.list.created", { at: time.dateTime(share.createdAt) })}>
           {share.title && <span className="max-w-60 truncate text-fg" data-testid="share-title">{share.title}</span>}
           <EnumBadge family="shareSubject" value={share.subjectKind} />
         </span>
@@ -130,10 +128,10 @@ function ShareItem({
       </TD>
       <TD>
         {creator ? (
-          <PersonChip name={you ? `${creator} (you)` : creator} you={you} />
+          <PersonChip name={you ? t("shares.list.you", { name: creator }) : creator} you={you} />
         ) : (
           <span className="text-muted" title={share.createdBy}>
-            Former member
+            {t("shares.list.formerMember")}
           </span>
         )}
       </TD>
@@ -149,18 +147,18 @@ function ShareItem({
             {time.relative(share.lastViewedAt)}
           </time>
         ) : (
-          <span className="text-subtle">Never</span>
+          <span className="text-subtle">{t("shares.list.never")}</span>
         )}
       </TD>
       <TD>
-        <span title={share.revokedAt ? `Revoked ${time.dateTime(share.revokedAt)}` : undefined}>
+        <span title={share.revokedAt ? t("shares.list.revokedAt", { at: time.dateTime(share.revokedAt) }) : undefined}>
           <EnumBadge family="shareState" value={state} />
         </span>
       </TD>
       <TD className="text-right">
         {state === "active" && canRevoke && (
           <Button type="button" size="sm" variant="ghost" loading={revoking} onClick={onRevoke} data-testid="share-revoke">
-            Revoke
+            {t("shares.list.revoke")}
           </Button>
         )}
       </TD>

@@ -87,12 +87,12 @@ beforeEach(() => {
 });
 
 describe('the integrations status read: a card is connected only where something is', () => {
-  it('reads a github.com repository no binding reaches as not connected, naming the cost and GitHub as the fix', async () => {
+  it('reads a github.com repository no binding reaches as not connected, naming GitHub as the fix', async () => {
     repository = 'github.com/SidCorp-co/forge';
     const cards = await buildIntegrationsStatusCards(P);
     const repo = cards.find((c) => c.key === 'repository');
     expect(repo?.status).toBe('not_configured');
-    expect(repo?.detail).toContain('cannot tell what already shipped');
+    expect(repo?.detail).toBe('no source host binding reaches github.com: connect GitHub');
     expect(repo?.meta?.connectProvider).toBe('github');
   });
 

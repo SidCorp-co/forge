@@ -80,7 +80,7 @@ describe('readNeedsYou with a proposed design revision', () => {
     expect(rows[0]).toMatchObject({
       entity: 'workflow',
       key: 'needs-you-flow',
-      waitingOn: { kind: 'you', act: 'approve or return revision 1' },
+      waitingOn: { kind: 'you', act: 'approve or return the design' },
     });
     expect(rows[0]?.title).toMatch(/ · revision 1 proposed$/);
     expect(owner.areas.designs.you).toBe(1);

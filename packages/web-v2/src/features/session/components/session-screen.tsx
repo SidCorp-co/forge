@@ -3,6 +3,7 @@
 import {
   ErrorState,
   ProjectLoader,
+  useRecordView,
 } from "@/design";
 import { isJobDriven } from "@/features/sessions";
 import {
@@ -46,11 +47,14 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   const sessionQ = useSession(sessionId);
   const { turnsQ, loadMoreTurns } = useSessionTurnPages(sessionId);
   const [railOpen, setRailOpen] = useState(false);
+  // REQ-43 BC-7: the person's view reads the session's state and what it produced; the agent's tool
+  // calls, task list, the context rail (box, paths, tokens) and ids are the developer's.
+  const [view, setView] = useRecordView();
+  const developer = view === "developer";
   // Desktop context-rail collapse (persisted). Below lg the rail is a SlideOver.
   const [railCollapsed, setRailCollapsed] = usePersistedState("web-v2:context-rail", false);
 
   const session = sessionQ.data;
-  const issueId = session?.metadata?.issueId;
 
   // Track this session as recently-viewed (surfaces in the ⌘K Recent group).
   const loadedId = session?.id;
@@ -144,7 +148,9 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
         session={session}
         display={display}
         live={live}
-        taskCount={taskCount}
+        taskCount={isRun && developer ? taskCount : 0}
+        developer={developer}
+        onView={setView}
         projectSlug={projectSlug}
         lastTurnId={lastTurnId}
         onFork={handleFork}
@@ -158,13 +164,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
         <>
           {turnsError}
           {!(turnsQ.isError && items.length === 0) && (
-            <RunReport
-              session={session}
-              items={items}
-              {...(issueId && projectSlug
-                ? { onOpenIssue: () => router.push(`/projects/${projectSlug}/issues/${issueId}`) }
-                : {})}
-            />
+            <RunReport session={session} items={items} developer={developer} />
           )}
           {turnsTruncated && <div className="px-4 pb-6 sm:px-6">{turnsTruncated}</div>}
         </>
@@ -177,6 +177,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
             live={live}
             display={display}
             projectSlug={projectSlug}
+            developer={developer}
             railCollapsed={railCollapsed}
             railOpen={railOpen}
             onCloseRail={() => setRailOpen(false)}

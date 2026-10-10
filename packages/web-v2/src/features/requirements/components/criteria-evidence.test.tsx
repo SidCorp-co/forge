@@ -126,7 +126,13 @@ describe("a criterion's evidence", () => {
         ],
       },
     } as unknown as RequirementDetail;
-    render(<CriteriaChecklist d={two} slug="epod" />);
+    // the verdict that counts, its identity and build are agent text: the developer view's (REQ-43 BC-7)
+    const { unmount } = render(<CriteriaChecklist d={two} slug="epod" />);
+    expect(screen.queryByTestId("criterion-counts")).toBeNull();
+    expect(screen.queryByTestId("criterion-code")).toBeNull();
+    unmount();
+    render(<CriteriaChecklist d={two} slug="epod" developer />);
+    expect(screen.getByTestId("criterion-code")).toHaveTextContent("BC-1");
     const counts = screen.getByTestId("criterion-counts");
     expect(counts).toHaveTextContent("Counts: Short on ISS-31 criterion 4, the newest verdict");
     expect(counts).toHaveTextContent("runtime 0fecd0850aa1");
@@ -169,9 +175,9 @@ describe("a criterion's evidence", () => {
     } as unknown as RequirementDetail;
     render(<CriteriaChecklist d={two} slug="epod" />);
     const [earlier, other] = screen.getAllByTestId("criterion-row");
-    expect(within(earlier as HTMLElement).getByTestId("verdict-word")).toHaveTextContent("Stale");
+    expect(within(earlier as HTMLElement).getByTestId("verdict-dot")).toHaveAccessibleName("Stale");
     expect(within(earlier as HTMLElement).getByTestId("criterion-why")).toHaveTextContent("tie it again from the issue's Criteria tab");
-    expect(within(other as HTMLElement).getByTestId("verdict-word")).toHaveTextContent("Not live");
+    expect(within(other as HTMLElement).getByTestId("verdict-dot")).toHaveAccessibleName("Not live");
     expect(within(other as HTMLElement).getByTestId("criterion-why")).toHaveTextContent("judged only at builds the live one does not hold");
   });
 

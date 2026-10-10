@@ -41,7 +41,7 @@ describe("a healthcheck's sentence", () => {
     expect(said.key).toBe('integrations.health.coolify.forbidden');
     expect(describeCoolifyForbidden(err)).toBe(sayEn(said));
     expect(describeCoolifyForbidden(err)).toMatch(
-      /^Coolify recognised the API token but refused GET \/api\/v1\/deploy \(HTTP 403\): the token is missing /,
+      /^Coolify refused GET \/api\/v1\/deploy \(HTTP 403\): the token lacks /,
     );
   });
 });

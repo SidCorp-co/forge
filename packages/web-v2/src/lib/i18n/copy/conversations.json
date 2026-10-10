@@ -197,7 +197,16 @@
     "conversations.ui.selected": "Selected {keys}",
     "conversations.ui.step": "step",
     "conversations.ui.undo": "Undo",
-    "conversations.ui.undone": "Undone"
+    "conversations.ui.undone": "Undone",
+    "conversations.live.toolMs": "{n}ms",
+    "conversations.live.toolSeconds": "{n}s",
+    "conversations.refused.archive": "Couldn't archive",
+    "conversations.refused.delete": "Couldn't delete",
+    "conversations.refused.pin": "Couldn't pin",
+    "conversations.refused.rename": "Couldn't rename",
+    "conversations.refused.stop": "Couldn't stop this answer",
+    "conversations.refused.unarchive": "Couldn't unarchive",
+    "conversations.refused.unpin": "Couldn't unpin"
   },
   "vi": {
     "conversations.act.confirm": "Xác nhận",

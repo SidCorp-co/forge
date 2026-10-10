@@ -39,6 +39,21 @@ interface ConversationProps extends ConversationActions {
    */
   readOnly?: boolean;
   newestAgentId?: string;
+  /**
+   * Draw the agent's own working — tool calls, thinking lines, task lists (REQ-43 BC-7). Off, an agent
+   * turn reads only what it said and showed; a turn that said nothing is not drawn. On by default.
+   */
+  agentText?: boolean;
+}
+
+/** What an agent turn said and showed, with its tool calls, thinking and task lists left out. */
+const SAID_BLOCKS = new Set<RenderBlock["type"]>(["text", "visual", "unsupported"]);
+function saidOnly(items: ConversationItem[]): ConversationItem[] {
+  return items.flatMap((it) => {
+    if (it.kind !== "agent") return [it];
+    const blocks = it.blocks.filter((b) => SAID_BLOCKS.has(b.type));
+    return blocks.length ? [{ ...it, blocks }] : [];
+  });
 }
 
 const TODO_ICON: Record<AgentTodo["status"], { name: "check" | "play" | "dot"; tone: string }> = {
@@ -256,7 +271,8 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
   );
 }
 
-export function Conversation({ items, streaming, busy, readOnly, newestAgentId, onRegenerate, onFork, onEditTurn }: ConversationProps) {
+export function Conversation({ items: all, streaming, busy, readOnly, newestAgentId, agentText = true, onRegenerate, onFork, onEditTurn }: ConversationProps) {
+  const items = agentText ? all : saidOnly(all);
   let lastAgentIdx = -1;
   items.forEach((it, i) => {
     if (it.kind === "agent") lastAgentIdx = i;

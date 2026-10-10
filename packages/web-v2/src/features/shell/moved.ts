@@ -18,14 +18,14 @@ const withQuery = (href: string, query: Record<string, string>) => `${href}?${ne
 
 /**
  * Where an old link to a removed page lands: a decision-log link narrowed to one requirement,
- * workflow or issue opens that item's decisions (an issue's, in its developer view, where every fold is open), any other the Requirements list; the roadmap one
+ * workflow or issue opens that item's decisions (a requirement's under its Activity, an issue's in its developer view, where every fold is open), any other the Requirements list; the roadmap one
  * opens the list's Map, whose columns are Now, Next and Later; the memory one the Dashboard's Memory section,
  * where the memories naming no item are read (an item's own are on its Memory tab).
  */
 export function movedTarget(slug: string, page: MovedPage, params: URLSearchParams): string {
   if (page === "decisions") {
     const requirement = params.get("requirement");
-    if (requirement) return withQuery(requirementHref(slug, requirement), { tab: "decisions", moved: page });
+    if (requirement) return withQuery(requirementHref(slug, requirement), { tab: "activity", moved: page });
     const workflow = params.get("workflow");
     if (workflow) return withQuery(workflowHref(slug, workflow), { tab: "decisions", moved: page });
     const issue = params.get("issue");

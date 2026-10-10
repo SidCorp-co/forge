@@ -12,20 +12,17 @@ import {
   MonoTag,
   Skeleton,
 } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
 import { useReapJob } from "../hooks";
 import { formatSince } from "../format";
 import type { AdminAlert, AdminAlertStatus } from "../types";
 
-const ALERT_TITLE: Record<string, string> = {
-  A1: "Orphan jobs",
-  A2: "Stuck jobs",
-  A3: "Runner-starved projects",
-  A4: "Spend spike",
-  A5: "Automation failing",
-  A6: "Dead outbox deliveries",
-};
+/** The alerts core raises, each titled by `operator.alert.<id>`; an unknown one reads its key. */
+const ALERT_IDS = new Set(["A1", "A2", "A3", "A4", "A5", "A6"] as const);
+const isAlertId = (id: string): id is "A1" | "A2" | "A3" | "A4" | "A5" | "A6" => (ALERT_IDS as Set<string>).has(id);
 
 const STATUS_RANK: Record<AdminAlertStatus, number> = { crit: 0, warn: 1, ok: 2 };
 
@@ -36,10 +33,11 @@ function sortAlerts(alerts: readonly AdminAlert[]): AdminAlert[] {
 }
 
 export function AlertFeedSkeleton() {
+  const t = useCopy();
   return (
     <PageSection>
       <PageSectionHeader>
-        <PageSectionTitle>Alerts</PageSectionTitle>
+        <PageSectionTitle>{t("operator.alerts.title")}</PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody className="flex flex-col gap-3">
         {[0, 1, 2, 3, 4].map((i) => (
@@ -55,6 +53,7 @@ export function AlertFeedSkeleton() {
 }
 
 function ReapButton({ jobId, label }: { jobId: string; label: string }) {
+  const t = useCopy();
   const [confirming, setConfirming] = useState(false);
   const { toast } = useToast();
   const reap = useReapJob();
@@ -63,11 +62,11 @@ function ReapButton({ jobId, label }: { jobId: string; label: string }) {
     reap.mutate(jobId, {
       onSuccess: () => {
         setConfirming(false);
-        toast({ tone: "success", title: "Job reaped", description: label });
+        toast({ tone: "success", title: t("operator.alerts.reaped"), description: label });
       },
       onError: (err) => {
         setConfirming(false);
-        toast({ tone: "error", title: "Couldn't reap the job", description: formatApiError(err) });
+        toast({ tone: "error", title: t("operator.alerts.reapFailed"), description: formatApiError(err) });
       },
     });
   }
@@ -75,21 +74,19 @@ function ReapButton({ jobId, label }: { jobId: string; label: string }) {
   return (
     <>
       <Button size="sm" variant="ghost" icon="x" onClick={() => setConfirming(true)}>
-        Reap
+        {t("operator.alerts.reap")}
       </Button>
       <ConfirmDialog
         open={confirming}
         tone="danger"
-        title="Reap this job?"
+        title={t("operator.alerts.reapConfirm")}
         message={
           <>
             <span className="block">{label}</span>
-            <span className="mt-2 block">
-              The job is cancelled and its agent stops. Work it has not written back is lost.
-            </span>
+            <span className="mt-2 block">{t("operator.alerts.reapConfirm.lost")}</span>
           </>
         }
-        confirmLabel="Reap job"
+        confirmLabel={t("operator.alerts.reapJob")}
         loading={reap.isPending}
         onConfirm={confirm}
         onClose={() => setConfirming(false)}
@@ -99,23 +96,24 @@ function ReapButton({ jobId, label }: { jobId: string; label: string }) {
 }
 
 /** When the level shown was set, as the sweep recorded it; the five-minute sweep may not have seen it yet. */
-function changedLabel(alert: AdminAlert): string {
+function changedLabel(alert: AdminAlert, t: Copy): string {
   const changed = formatSince(alert.changedAt);
-  if (changed) return changed === "just now" ? `${alert.status} just now` : `${alert.status} for ${changed}`;
-  return alert.status === "ok" ? "no change recorded" : "not yet recorded";
+  if (changed) return changed === "just now" ? t("operator.alerts.changedNow") : t("operator.alerts.changedFor", { since: changed });
+  return alert.status === "ok" ? t("operator.alerts.unchanged") : t("operator.alerts.notRecorded");
 }
 
 function AlertItem({ alert }: { alert: AdminAlert }) {
+  const t = useCopy();
   const since = formatSince(alert.since);
   return (
     <li className="flex flex-col gap-2 border-b border-line-subtle py-3 last:border-0 first:pt-0">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="fg-label">{ALERT_TITLE[alert.id] ?? alert.key}</span>
+        <span className="fg-label">{isAlertId(alert.id) ? t(`operator.alert.${alert.id}`) : alert.key}</span>
         <StatusBadge family="alert" value={alert.status} />
         {alert.count > 0 && <span className="fg-caption font-mono">{alert.count}</span>}
         <span className="fg-caption ml-auto" title={alert.changedAt ?? undefined}>
-          {changedLabel(alert)}
-          {since ? ` · oldest ${since}` : ""}
+          {changedLabel(alert, t)}
+          {since ? ` · ${t("operator.alerts.oldest", { since })}` : ""}
         </span>
       </div>
       <p className="fg-body-sm pl-4">{alert.detail}</p>
@@ -140,11 +138,12 @@ function AlertItem({ alert }: { alert: AdminAlert }) {
 }
 
 export function AlertFeed({ alerts }: { alerts: readonly AdminAlert[] }) {
+  const t = useCopy();
   return (
     <PageSection>
       <PageSectionHeader>
-        <PageSectionTitle>Alerts</PageSectionTitle>
-        <span className="fg-caption">crit first</span>
+        <PageSectionTitle>{t("operator.alerts.title")}</PageSectionTitle>
+        <span className="fg-caption">{t("operator.alerts.critFirst")}</span>
       </PageSectionHeader>
       <PageSectionBody>
         <ul className="flex flex-col">

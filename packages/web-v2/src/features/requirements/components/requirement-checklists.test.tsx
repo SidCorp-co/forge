@@ -23,11 +23,16 @@ import { RequirementPage } from "./requirement-detail";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/projects/hop/requirements/REQ-1", useParams: () => ({ slug: "hop" }) }));
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  window.history.replaceState(null, "", "/");
+});
 
 const PROJECT = "7f1c1d1e-0000-4000-8000-000000000001";
 const READY_GIVEN = { problem: "Clinics lose the filter.", value: "They find a patient at once.", measured: "Fewer searches.", criteria: "1 criterion: BC-1", questions: "None open." };
-function requirementPage(reads: ChecklistRead[], revision: number | null, onTab = vi.fn()) {
+/** The page in a view: where an answer came from is agent text, drawn in the developer view (REQ-43 BC-7). */
+function requirementPage(reads: ChecklistRead[], revision: number | null, onTab = vi.fn(), view: "person" | "developer" = "developer") {
+  window.history.replaceState(null, "", view === "developer" ? "/?view=developer" : "/");
   fakeCore((c: Call) => {
     if (c.path === `/projects/${PROJECT}/requirements/REQ-1/checklist`) return { body: { requirementId: "r1", key: "REQ-1", revision, checklists: reads } };
     return HANG;
@@ -39,6 +44,13 @@ function requirementPage(reads: ChecklistRead[], revision: number | null, onTab 
 }
 
 describe("a requirement's checklists on its page", () => {
+  it("leaves where each answer came from to the developer view (REQ-43 BC-7)", async () => {
+    requirementPage([readOf(REQUIREMENT_READY_CHECKLIST, record(REQUIREMENT_READY_CHECKLIST, READY_GIVEN))], 1, vi.fn(), "person");
+    const section = await screen.findByTestId("checklist");
+    expect(row(section, "criteria")).toHaveTextContent("1 criterion: BC-1");
+    expect(within(section).queryByTestId("checklist-source")).toBeNull();
+  });
+
   it("shows each answer as a property with its source, each gap as a question beside where it is answered, and an unreached checklist not at all", async () => {
     const onTab = requirementPage([readOf(REQUIREMENT_READY_CHECKLIST, record(REQUIREMENT_READY_CHECKLIST, READY_GIVEN)), readOf(REQUIREMENT_ACCEPTANCE_CHECKLIST, null)], 1);
     const section = await screen.findByTestId("checklist");

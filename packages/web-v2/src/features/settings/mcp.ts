@@ -1,3 +1,4 @@
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { CORE_URL } from "@/lib/utils/core-url";
 
 // Two real capabilities, both backed by the live MCP endpoint — there is no
@@ -13,12 +14,12 @@ export type ClientKind = "claude-cli" | "cursor" | "cline" | "zed" | "generic";
 
 export const TOKEN_PLACEHOLDER = "<YOUR_TOKEN_HERE>";
 
-export const CLIENTS: { value: ClientKind; label: string }[] = [
-  { value: "claude-cli", label: "Claude CLI" },
-  { value: "cursor", label: "Cursor" },
-  { value: "cline", label: "Cline" },
-  { value: "zed", label: "Zed" },
-  { value: "generic", label: "Generic" },
+export const CLIENTS: { value: ClientKind; labelKey: ProductCopyKey }[] = [
+  { value: "claude-cli", labelKey: "settings.mcp.client.claudeCli" },
+  { value: "cursor", labelKey: "settings.mcp.client.cursor" },
+  { value: "cline", labelKey: "settings.mcp.client.cline" },
+  { value: "zed", labelKey: "settings.mcp.client.zed" },
+  { value: "generic", labelKey: "settings.mcp.generic" },
 ];
 
 interface SnippetInput {

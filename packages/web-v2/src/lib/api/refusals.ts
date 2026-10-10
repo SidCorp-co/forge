@@ -1,3 +1,4 @@
+import { productCopy } from "@/lib/i18n/product-copy";
 import { ApiError } from "./client";
 
 import type { Refusal } from "@forge/contracts/refusal";
@@ -65,19 +66,13 @@ export function refusalsOf(err: unknown): Refusal[] {
  * and a sentence pointing at the screen that fixes it. Keyed by code and path; a refusal with no
  * entry reads as core wrote it, under its path.
  */
+// a reading is read where no interface language reaches (a refusal line, a toast): English
+const en = productCopy();
+
 const READINGS: Record<string, { label?: string; sentence?: string }> = {
-  "HOLD_NOT_AUTHORISED /by": {
-    label: "Who holds",
-    sentence:
-      "Holding or releasing a conversation takes a member role or above on the side it is held for, and you do not hold one there.",
-  },
-  "HOLD_NOT_AUTHORISED /side": {
-    label: "Side",
-    sentence: "Only the sender or a recipient of the conversation holds it.",
-  },
-  SECRET_NOT_FOUND: {
-    sentence: "This secret is not stored in this project. Store it under Secrets in Advanced settings, then save again.",
-  },
+  "HOLD_NOT_AUTHORISED /by": { label: en("common.refusal.holdBy.label"), sentence: en("common.refusal.holdBy.sentence") },
+  "HOLD_NOT_AUTHORISED /side": { label: en("common.refusal.holdSide.label"), sentence: en("common.refusal.holdSide.sentence") },
+  SECRET_NOT_FOUND: { sentence: en("common.refusal.secretNotFound.sentence") },
 };
 
 export interface RefusalReading {

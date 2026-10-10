@@ -75,19 +75,24 @@ function core(entries: () => MemoryEntry[]) {
   });
 }
 
-function page(tab: "decisions" | "memory") {
+/** Memory is agent text, the developer view's (REQ-43 BC-7); the decisions are past items under Activity (BC-8). */
+function page(tab: "activity" | "memory") {
+  window.history.replaceState(null, "", tab === "memory" ? "/?view=developer" : "/");
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   client.setQueryData(["requirement", PROJECT, "REQ-1"], reqDetail);
   renderWithQuery(<RequirementPage projectId={PROJECT} slug="hop" reqKey="REQ-1" tab={tab} onTab={() => {}} />, client);
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  window.history.replaceState(null, "", "/");
+});
 
 describe("a requirement's own page", () => {
   it("lists its decisions and those on its issues, with who decided, when and why", async () => {
     core(() => []);
     const user = userEvent.setup();
-    page("decisions");
+    page("activity");
     await user.click(await screen.findByRole("button", { name: /Decisions/ }));
     const rows = await screen.findAllByTestId("decision-row");
     expect(rows.map((r) => within(r).getByText(/Keep the clinic name|Print it on the header/).textContent)).toEqual(["Keep the clinic name", "Print it on the header"]);

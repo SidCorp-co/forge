@@ -46,13 +46,14 @@ import {
   scopeName,
   UNKNOWN_COUNT,
 } from "../scope";
+import { RUNNER_SETUP } from "@/lib/utils/runner-commands";
 import { BuildChip, DeviceDetail } from "./device-detail";
 
 /** The one command a box runs to pair, with a copy button: it prints the code approved at /pair. */
 export function SetupCommand() {
   const [copied, setCopied] = useState(false);
   const t = useCopy();
-  const command = "forge-runner setup";
+  const command = RUNNER_SETUP;
   return (
     <div className="flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
       <code className="font-mono text-13 text-fg">{command}</code>

@@ -97,43 +97,36 @@ export const RELEASE_ATTENTION_LABELS: StandingGroupLabels<ReleaseAttentionGroup
 	{
 		needs_you: {
 			label: "Needs you",
-			hint: "Approve or return a release, or cut the next one",
 			tone: "you",
 			collapsed: false,
 		},
 		moving: {
 			label: "Moving",
-			hint: "A release run is working on production",
 			tone: "run",
 			collapsed: false,
 		},
 		waiting: {
 			label: "Someone else’s turn",
-			hint: "The master or another approver acts next",
 			tone: "neutral",
 			collapsed: false,
 		},
 		queued: {
 			label: "Queued",
-			hint: "Waits for the release already running to finish",
 			tone: "neutral",
 			collapsed: false,
 		},
 		stuck: {
 			label: "Stuck",
-			hint: "A gate holds the draft, or a run crossed a bound",
 			tone: "err",
 			collapsed: false,
 		},
 		done: {
 			label: "Shipped",
-			hint: "Live, or superseded by a later release",
 			tone: "done",
 			collapsed: false,
 		},
 		stopped: {
 			label: "Stopped",
-			hint: "Ended without shipping: failed, rolled back or aborted",
 			tone: "neutral",
 			collapsed: true,
 		},

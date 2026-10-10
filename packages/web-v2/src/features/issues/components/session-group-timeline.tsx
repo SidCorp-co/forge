@@ -95,7 +95,7 @@ function SessionGroupEntry({ entry, isLast }: { entry: SessionTimelineEntry; isL
           )}
           {groupLabel && <Badge tone="cobalt">{groupLabel}</Badge>}
           {entry.jobType && (
-            <span className="text-13 font-bold text-fg" title={`step: ${entry.jobType}`}>
+            <span className="text-13 font-bold text-fg" title={t("issues.session.stepTitle", { step: entry.jobType })}>
               {enumLabel("jobType", entry.jobType, language)}
             </span>
           )}

@@ -2,6 +2,7 @@
 
 import { enumLabel, ProjectMark, StatusBadge, Tooltip } from "@/design";
 import { readingOf } from "@/lib/api/refusals";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { type Bus, callSiteAt, triggerRef, projectMarkProps } from "../bus";
 import { useBuilderRun } from "../hooks";
@@ -9,32 +10,34 @@ import { Caption, Group, Head, Steps } from "./bus-detail-kit";
 import { Loading, UnreadNotice } from "./notices";
 
 export function BuilderDetail({ bus, id }: { bus: Bus; id: string }) {
+  const t = useCopy();
   const p = bus.projects.find((x) => x.id === id);
   const reading = readingOf(useBuilderRun(p?.id, p?.builder?.id));
-  if (!p?.builder) return <Caption>No builder run is recorded for that project in this ecosystem.</Caption>;
+  if (!p?.builder) return <Caption>{t("ecosystem.builder.noRun")}</Caption>;
   return (
     <>
       <Head>
         <ProjectMark {...projectMarkProps(p.slug)} size={22} />
-        <h2 className="text-15 font-semibold">{p.slug} ecosystem builder</h2>
-        <Tooltip label={`Run ${p.builder.id}`}>
+        <h2 className="text-15 font-semibold">{t("ecosystem.builder.title", { slug: p.slug })}</h2>
+        <Tooltip label={t("ecosystem.builder.run", { id: p.builder.id })}>
           <span className="fg-caption">
-            on {enumLabel("trigger", p.builder.trigger.kind).toLowerCase()} at <span className="font-mono">{triggerRef(p.builder.trigger)}</span> ·{" "}
+            {t("ecosystem.builder.onTrigger", { trigger: enumLabel("trigger", p.builder.trigger.kind).toLowerCase() })}{" "}
+            <span className="font-mono">{triggerRef(p.builder.trigger, t)}</span> ·{" "}
             {formatRelativeTime(p.builder.updatedAt)}
           </span>
         </Tooltip>
       </Head>
-      <Group title="Steps">
+      <Group title={t("ecosystem.builder.steps")}>
         <Steps builder={p.builder} />
       </Group>
-      <Group title="Found" aside={p.builder.findings || undefined}>
-        {reading.kind === "loading" ? <Loading what="what the builder found" /> : null}
+      <Group title={t("ecosystem.builder.found")} aside={p.builder.findings || undefined}>
+        {reading.kind === "loading" ? <Loading what={t("ecosystem.builder.findingsWhat", { slug: p.slug })} /> : null}
         {reading.kind === "unread" ? (
-          <UnreadNotice what={`${p.slug}'s builder findings`} refusals={reading.refusals} />
+          <UnreadNotice what={t("ecosystem.builder.findingsWhat", { slug: p.slug })} refusals={reading.refusals} />
         ) : null}
         {reading.kind === "read" ? (
           reading.value.document.findings.length === 0 ? (
-            <Caption>The builder has found no outbound call yet.</Caption>
+            <Caption>{t("ecosystem.builder.noCalls")}</Caption>
           ) : (
             reading.value.document.findings.map((f) => (
               <Tooltip
@@ -57,12 +60,8 @@ export function BuilderDetail({ bus, id }: { bus: Bus; id: string }) {
           )
         ) : null}
       </Group>
-      <Group title="Links written" aside={p.builder.links || undefined}>
-        <Caption>
-          {p.builder.links === 0
-            ? "None yet."
-            : `${p.builder.links} link${p.builder.links === 1 ? "" : "s"}, shown on the bus under ${p.slug}.`}
-        </Caption>
+      <Group title={t("ecosystem.builder.links")} aside={p.builder.links || undefined}>
+        {p.builder.links === 0 ? <Caption>{t("ecosystem.builder.linksNone")}</Caption> : null}
       </Group>
     </>
   );

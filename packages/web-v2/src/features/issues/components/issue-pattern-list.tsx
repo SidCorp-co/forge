@@ -8,17 +8,26 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { useProjectMembers } from "../hooks";
 import { useDecidePattern, useIssuePatterns } from "../patterns-api";
 
+/** A pattern that still asks something of the issue: a review pending, or a return no later pattern answered. */
+const stillOpen = (p: IssuePatternView) => p.pending || p.unanswered;
+
 /**
  * The issue's new patterns and their one review (REQ-36 BC-2; Issue lifecycle r14 `design-check`).
  * Each new pattern shows its summary and where its review stands. A pending one the reader may
  * decide (core says which, `decidable`) is approved or returned here with a reason. A catalogued
- * pattern needs no review and is not shown. A read that failed says so, since a held issue would
- * otherwise show no reason for the hold.
+ * pattern needs no review and is not shown. `show="open"` is the top of the page: the patterns that
+ * still ask something, and a read that failed, since a held issue would otherwise show no reason for
+ * the hold. `show="decided"` is Activity's: the decided ones, past items that do not sit at the top
+ * (REQ-43 BC-8). A pattern decided while the page is open stays where it was read, so a form open
+ * on it keeps the reason typed.
  */
-export function IssuePatternList({ issueId, projectId }: { issueId: string; projectId: string }) {
+export function IssuePatternList({ issueId, projectId, show }: { issueId: string; projectId: string; show: "open" | "decided" }) {
   const t = useCopy();
   const q = useIssuePatterns(issueId, projectId);
+  // the ids read open, kept so one decided while the page is open stays where it was read
+  const [readOpen, setReadOpen] = useState<ReadonlySet<string>>(() => new Set());
   if (q.isError) {
+    if (show === "decided") return null;
     return (
       <div data-testid="issue-patterns-failed">
         <Banner
@@ -34,11 +43,14 @@ export function IssuePatternList({ issueId, projectId }: { issueId: string; proj
       </div>
     );
   }
-  const shown = (q.data?.patterns ?? []).filter((p) => p.kind === "new" && p.retractedAt === null);
+  const named = (q.data?.patterns ?? []).filter((p) => p.kind === "new" && p.retractedAt === null);
+  const newlyOpen = show === "open" ? named.filter((p) => stillOpen(p) && !readOpen.has(p.id)) : [];
+  if (newlyOpen.length > 0) setReadOpen(new Set([...readOpen, ...newlyOpen.map((p) => p.id)]));
+  const shown = named.filter((p) => (show === "open" ? stillOpen(p) || readOpen.has(p.id) : !stillOpen(p)));
   if (shown.length === 0) return null;
   const decidable = new Set(q.data?.decidable ?? []);
   return (
-    <div className="grid gap-2" data-testid="issue-patterns">
+    <div className="grid gap-2" data-testid={show === "open" ? "issue-patterns" : "issue-patterns-decided"}>
       {shown.map((p) => (
         <PatternEntry
           key={p.id}

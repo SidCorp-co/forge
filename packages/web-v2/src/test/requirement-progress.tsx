@@ -53,7 +53,7 @@ export const client = (d: RequirementDetail = reqDetail) => {
   return c;
 };
 
-export function page(tab: "overview" | "criteria" | "revisions" | "decisions" | "activity" | "mockups" | "memory", d: RequirementDetail = reqDetail) {
+export function page(tab: "overview" | "criteria" | "revisions" | "activity" | "mockups" | "memory", d: RequirementDetail = reqDetail) {
   renderWithQuery(<RequirementPage projectId={PROJECT} slug="hop" reqKey="REQ-1" tab={tab} onTab={() => {}} />, client(d));
 }
 
@@ -151,10 +151,11 @@ const GLYPHS = new Set(BC_VERDICTS.map((v) => statusReading("bcVerdict", v, "en"
 /** What the banner may say, whole: one of its heads, then core's act or what an ended one says. */
 function bannerSentences(s: RequirementDetail["standing"]): Set<string> {
   const w = saidView(s.waitingOn, "en");
-  const heads = ["requirements.banner.accepted", "requirements.banner.dropped", "requirements.banner.stuck", "requirements.banner.waitingOnYou"].map((k) => t(k as Parameters<typeof t>[0]));
+  const heads = ["requirements.banner.stuck", "requirements.banner.waitingOnYou"].map((k) => t(k as Parameters<typeof t>[0]));
   heads.push(t("requirements.banner.waitingOn", { who: w.who }));
-  const bodies = [w.act, t("requirements.banner.nothingOwed"), t("requirements.banner.noOwner")];
-  return new Set(heads.flatMap((h) => bodies.map((b) => `${h} ${b}`.trim())));
+  const bodies = [w.act, t("requirements.banner.noOwner")];
+  // an ended one says only that nothing is owed: the header's badge says how it ended (REQ-43 BC-5)
+  return new Set([...heads.flatMap((h) => bodies.map((b) => `${h} ${b}`.trim())), t("requirements.banner.nothingOwed")]);
 }
 
 /** The first thing the banner says that core's wait did not, or null: its sentence, its effect, its rule and its one link. */
@@ -178,21 +179,21 @@ function bannerStray(banner: Element, s: RequirementDetail["standing"]): string 
   return null;
 }
 
-/** The line under the step bar: its place on the lifecycle and the next step core says (REQ-34 BC-19), "Step 2 of 5 · next In delivery". */
+/** The line under the step bar: the next step core says (REQ-34 BC-19), "Next: In delivery"; the bar draws its place. */
 function captionOf(state: RequirementState, next: RequirementState | null): string | null {
   const at = REQUIREMENT_LIFECYCLE.indexOf(state as (typeof REQUIREMENT_LIFECYCLE)[number]);
-  if (at < 0) return null;
-  const caption = t("requirements.step.caption", { at: at + 1, of: REQUIREMENT_LIFECYCLE.length });
-  return next ? t("requirements.step.next", { caption, state: REQUIREMENT_STATE_LABELS[next] }) : caption;
+  if (at < 0 || !next) return null;
+  return t("requirements.step.next", { state: REQUIREMENT_STATE_LABELS[next] });
 }
 
 /** The first thing in the one step bar that is not the lifecycle, in order, and its caption, or null. */
 function barStray(bar: Element, s: RequirementDetail["standing"]): string | null {
   const lists = bar.querySelectorAll("ol, ul, [role='list']");
   if (lists.length !== 1) return `a step bar holding ${lists.length} lists`;
-  const words = [...(lists[0] as Element).children].map((li) => li.querySelector("span:not([aria-hidden])")?.textContent ?? "");
+  // the header's badge says the state, so the bar's steps are named on its segments, not drawn (REQ-43 BC-5)
+  const words = [...(lists[0] as Element).children].map((li) => li.getAttribute("aria-label") ?? "");
   if (words.join("|") !== STEP_WORDS.join("|")) return `a step list that is not the lifecycle: "${words.join(", ")}"`;
-  const allowed = new Set([...STEP_WORDS, captionOf(s.state, s.next) ?? ""]);
+  const allowed = new Set([captionOf(s.state, s.next) ?? ""]);
   const walker = document.createTreeWalker(bar, NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     const text = (node.textContent ?? "").trim();
@@ -220,13 +221,6 @@ export function strayInStrip(strip: HTMLElement, s: RequirementDetail["standing"
   const own = (el: Element | null) => !!el?.closest('[data-testid="step-bar"], [data-testid="wait-banner"]');
   for (const list of strip.querySelectorAll("ol, ul, [role='list']")) {
     if (own(list)) continue;
-    if (list.matches('[data-testid="progress-verdicts"]')) {
-      for (const li of list.children) {
-        const word = li.querySelector('[data-testid="verdict-word"]')?.textContent ?? "";
-        if (!VERDICT_WORDS.has(word) || !BC_VERDICTS.includes(li.getAttribute("data-verdict") as BcVerdict)) return `a verdict count that is not a verdict's own: "${li.textContent}"`;
-      }
-      continue;
-    }
     return `a list of its own: "${[...list.children].map((li) => (li.textContent ?? "").trim()).join(", ")}"`;
   }
   const { passing: k, criteria: n } = criteriaCoverageOf(s.coverage);
@@ -306,7 +300,7 @@ export function railRepeats(rail: HTMLElement): string | null {
   const state = rail.querySelector('[data-testid="status-badge"][data-family="requirement"]');
   if (state) return `the requirement's state badge "${state.textContent}"`;
   const text = rail.textContent ?? "";
-  const caption = new RegExp(t("requirements.step.caption", { at: "\\d+", of: "\\d+" }));
+  const caption = new RegExp(`Step \\d+ of \\d+|${t("requirements.step.next", { state: "" }).trim()}`);
   for (const [what, re] of [["a step caption", caption], ...VERIFIED_COUNTS.map((r) => ["a verified count", r] as const), ["a waiting-on", WAITING_WORDS]] as const) {
     const m = text.match(re);
     if (m) return `${what}: "${m[0]}"`;

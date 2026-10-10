@@ -69,7 +69,7 @@ describe('Issues > Stuck names the refusal the admissible list withholds a row b
     const none = deriveIssueStanding({ ...input('open', gap), admins: [] }).waitingOn;
     expect(none).toMatchObject({ who: 'Nobody' });
     expect(none.act).toBe(
-      'declare the policy: no person on this project holds project.admin until it is granted under Settings → Members',
+      'declare the policy: nobody holds project.admin; grant it under Settings → Members',
     );
   });
 

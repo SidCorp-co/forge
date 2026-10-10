@@ -1,6 +1,6 @@
 
+/** A tone's colours; the word a chip shows is its copy (`common.statusKey.*`, `common.health.*`). */
 export interface ColorMeta {
-  label: string;
   fg: string;
   bg: string;
   dot: string;
@@ -18,25 +18,25 @@ export type SemanticTone =
   | "infra";
 
 export const TONE_META: Record<SemanticTone, ColorMeta> = {
-  success: { label: "Success", fg: "var(--green-600)", bg: "var(--green-50)", dot: "var(--green-500)" },
-  shipped: { label: "Shipped", fg: "var(--flame-700)", bg: "var(--flame-50)", dot: "var(--flame-600)" },
+  success: { fg: "var(--green-600)", bg: "var(--green-50)", dot: "var(--green-500)" },
+  shipped: { fg: "var(--flame-700)", bg: "var(--flame-50)", dot: "var(--flame-600)" },
   // `archived` = closed/filed-away. Heavier ink than `blocked` (ink-700/paper-200)
   // so a closed issue is distinct from a parked `on_hold`. ISS-511.
-  archived: { label: "Archived", fg: "var(--ink-900)", bg: "var(--paper-300)", dot: "var(--ink-600)" },
-  failure: { label: "Failure", fg: "var(--red-600)", bg: "var(--red-50)", dot: "var(--red-500)" },
-  active: { label: "Active", fg: "var(--cobalt-700)", bg: "var(--cobalt-50)", dot: "var(--cobalt-500)" },
-  attention: { label: "Attention", fg: "var(--amberw-600)", bg: "var(--amberw-50)", dot: "var(--amberw-500)" },
+  archived: { fg: "var(--ink-900)", bg: "var(--paper-300)", dot: "var(--ink-600)" },
+  failure: { fg: "var(--red-600)", bg: "var(--red-50)", dot: "var(--red-500)" },
+  active: { fg: "var(--cobalt-700)", bg: "var(--cobalt-50)", dot: "var(--cobalt-500)" },
+  attention: { fg: "var(--amberw-600)", bg: "var(--amberw-50)", dot: "var(--amberw-500)" },
   // `blocked` is a heavier ink than `neutral` so a parked issue reads as
   // "stopped", not "new" — but stays calm (no alarm-red).
-  blocked: { label: "Blocked", fg: "var(--ink-700)", bg: "var(--paper-200)", dot: "var(--ink-500)" },
-  neutral: { label: "Neutral", fg: "var(--ink-600)", bg: "var(--paper-100)", dot: "var(--ink-400)" },
+  blocked: { fg: "var(--ink-700)", bg: "var(--paper-200)", dot: "var(--ink-500)" },
+  neutral: { fg: "var(--ink-600)", bg: "var(--paper-100)", dot: "var(--ink-400)" },
   // `infra` = a cool slate ("dimmed / offline"), deliberately NOT red, so an
   // offline runner is never mistaken for a code failure (ISS-509 screenshot-1).
-  infra: { label: "Infra", fg: "var(--slate-600)", bg: "var(--slate-50)", dot: "var(--slate-500)" },
+  infra: { fg: "var(--slate-600)", bg: "var(--slate-50)", dot: "var(--slate-500)" },
 };
 
 /** What an agent's turn or proposal wears, so it is never read as a person's or a run's. */
-export const AGENT_TINT: Omit<ColorMeta, "label"> = {
+export const AGENT_TINT: ColorMeta = {
   fg: "var(--wf-violet)",
   bg: "color-mix(in srgb, var(--stage-triage) 10%, var(--bg-surface))",
   dot: "var(--stage-triage)",
@@ -82,26 +82,8 @@ export const STATUS_KEY_TONE: Record<StatusKey, SemanticTone> = {
 /** Resolve a StatusKey's colors through its tone — the single derivation. */
 export function statusKeyMeta(key: StatusKey): ColorMeta {
   const tone = TONE_META[STATUS_KEY_TONE[key]];
-  return { label: STATUS_KEY_LABEL[key], fg: tone.fg, bg: tone.bg, dot: tone.dot };
+  return { fg: tone.fg, bg: tone.bg, dot: tone.dot };
 }
-
-/** Chip labels for the StatusKey vocabulary (the tone carries the color; the
- *  label carries the precise meaning so color is never the only signal). */
-export const STATUS_KEY_LABEL: Record<StatusKey, string> = {
-  running: "Running",
-  queued: "Queued",
-  blocked: "Blocked",
-  waiting: "Waiting",
-  passed: "Passed",
-  failed: "Failed",
-  paused: "Paused",
-  done: "Done",
-  shipped: "Released",
-  archived: "Closed",
-  review: "In review",
-  zombie: "Zombie",
-  swept: "Swept",
-};
 
 export const STATUS_META: Record<StatusKey, ColorMeta> = {
   running: statusKeyMeta("running"),
@@ -129,18 +111,11 @@ export const HEALTH_KEY_TONE: Record<HealthKey, SemanticTone> = {
   idle: "neutral",
 };
 
-const HEALTH_KEY_LABEL: Record<HealthKey, string> = {
-  healthy: "Healthy",
-  attention: "Attention",
-  down: "Down",
-  idle: "Idle",
-};
-
 export const HEALTH_META: Record<HealthKey, ColorMeta> = {
-  healthy: { ...TONE_META[HEALTH_KEY_TONE.healthy], label: HEALTH_KEY_LABEL.healthy },
-  attention: { ...TONE_META[HEALTH_KEY_TONE.attention], label: HEALTH_KEY_LABEL.attention },
-  down: { ...TONE_META[HEALTH_KEY_TONE.down], label: HEALTH_KEY_LABEL.down },
-  idle: { ...TONE_META[HEALTH_KEY_TONE.idle], label: HEALTH_KEY_LABEL.idle },
+  healthy: TONE_META[HEALTH_KEY_TONE.healthy],
+  attention: TONE_META[HEALTH_KEY_TONE.attention],
+  down: TONE_META[HEALTH_KEY_TONE.down],
+  idle: TONE_META[HEALTH_KEY_TONE.idle],
 };
 
 export type AvatarHue = "cobalt" | "flame" | "green" | "amber" | "ink";

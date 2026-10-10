@@ -366,7 +366,7 @@ export function NavRail({
           unoptimized
           width={28}
           height={28}
-          alt="Forge"
+          alt={t("common.brand")}
           className="size-7 flex-none rounded-md"
           draggable={false}
         />

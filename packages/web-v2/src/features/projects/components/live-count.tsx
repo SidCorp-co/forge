@@ -1,6 +1,7 @@
 // A `N live` mono pill with an accent pulse dot when there are active runs.
 // (Kit `LiveDot` reflects WS-connection state, not run count — so this small
 // feature component is the right home for the per-project live-run indicator.)
+import { useCopy } from '@/lib/i18n/interface-language';
 import { cn } from '@/lib/utils/cn';
 
 interface LiveCountProps {
@@ -8,10 +9,10 @@ interface LiveCountProps {
 }
 
 export function LiveCount({ n }: LiveCountProps) {
+  const t = useCopy();
   const live = n > 0;
   return (
     <span
-      title="Pipeline runs currently running or paused"
       className={cn(
         'inline-flex items-center gap-1.5 font-mono text-12-5',
         live ? 'text-accent-text' : 'text-subtle',
@@ -20,7 +21,7 @@ export function LiveCount({ n }: LiveCountProps) {
       {live && (
         <span className="forge-pulse inline-block size-1.75 rounded-pill bg-accent" aria-hidden />
       )}
-      {n} live runs
+      {t('projects.liveRuns', { n })}
     </span>
   );
 }

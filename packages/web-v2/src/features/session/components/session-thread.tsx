@@ -26,6 +26,8 @@ export interface SessionThreadProps {
   live: boolean;
   display: Parameters<typeof sessionTurnStage>[0]["display"];
   projectSlug: string | undefined;
+  /** The developer view: the agent's tool calls and the context rail; a person reads what was said. */
+  developer: boolean;
   railCollapsed: boolean;
   railOpen: boolean;
   onCloseRail: () => void;
@@ -42,6 +44,7 @@ export function SessionThread({
   live,
   display,
   projectSlug,
+  developer,
   railCollapsed,
   railOpen,
   onCloseRail,
@@ -90,6 +93,7 @@ export function SessionThread({
               ) : (
                 <Conversation
                   items={items}
+                  agentText={developer}
                   streaming={streaming}
                   busy={
                     live ||
@@ -129,7 +133,7 @@ export function SessionThread({
             widens. Pinned below the sticky header (parity with the issue
             Properties rail, ISS-351) so context stays visible while the thread
             scrolls; its own `overflow-y-auto` keeps a long rail usable. */}
-        {!railCollapsed && (
+        {developer && !railCollapsed && (
           <FactsRail belowHeader className="hidden w-80 shrink-0 self-start lg:block" label={t("sessions.detail.context")}>
             <ContextRail session={session} items={items} projectSlug={projectSlug} />
           </FactsRail>
@@ -138,7 +142,7 @@ export function SessionThread({
       </DisclosureScope>
       {/* Mobile rail */}
       <SlideOver
-        open={railOpen}
+        open={developer && railOpen}
         onClose={onCloseRail}
         title={t("sessions.detail.context")}
         width={360}

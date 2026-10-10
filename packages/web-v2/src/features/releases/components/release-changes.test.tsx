@@ -38,7 +38,7 @@ const changes: ReleaseChanges = {
       surface: "data",
       ref: "table:hop_attention",
       issues: ["ISS-2"],
-      sentence: "table:hop_attention is removed: data it held does not come back with a rollback",
+      sentence: "table:hop_attention is removed: a rollback does not restore its data",
       says: { sentence: say("standing.risk.dataRemoved", { ref: "table:hop_attention" }) },
     },
   ],

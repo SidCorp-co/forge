@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Banner, Button, Field, Input } from '@/design';
 import { formatApiError } from '@/lib/api/error';
+import { useCopy } from '@/lib/i18n/interface-language';
 import { useAuth } from '@/providers/auth-provider';
 import { PasswordMeter } from './components/password-meter';
 import { extractFieldErrors } from './extract-field-errors';
@@ -13,6 +14,7 @@ import { validateRegister, type RegisterFieldErrors } from './validation';
 const SERVER_FIELD_KEYS = ['email', 'password'] as const;
 
 export function RegisterForm() {
+  const t = useCopy();
   const { register } = useAuth();
   const router = useRouter();
 
@@ -55,7 +57,7 @@ export function RegisterForm() {
     <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-4" noValidate>
       {topError && <Banner tone="danger">{topError}</Banner>}
 
-      <Field label="Email" error={fieldErrors.email}>
+      <Field label={t('auth.field.email')} error={fieldErrors.email}>
         <Input
           type="email"
           icon="mail"
@@ -71,7 +73,7 @@ export function RegisterForm() {
         />
       </Field>
 
-      <Field label="Password" error={fieldErrors.password} hint="8+ characters">
+      <Field label={t('auth.field.password')} error={fieldErrors.password} hint={t('auth.field.passwordRule')}>
         <Input
           type="password"
           icon="lock"
@@ -89,7 +91,7 @@ export function RegisterForm() {
       </Field>
       <PasswordMeter password={password} />
 
-      <Field label="Confirm password" error={fieldErrors.confirmPassword}>
+      <Field label={t('auth.field.confirmPassword')} error={fieldErrors.confirmPassword}>
         <Input
           type="password"
           icon="lock"
@@ -105,7 +107,7 @@ export function RegisterForm() {
       </Field>
 
       <Button type="submit" variant="primary" loading={loading} className="mt-1 w-full">
-        Create account
+        {t('auth.register.submit')}
       </Button>
     </form>
   );
