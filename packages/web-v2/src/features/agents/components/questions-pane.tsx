@@ -8,7 +8,7 @@
 // What stays is the case nothing else can show — a MASTER's question from the
 // device door, which carries `issueId: null`.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { EmptyState, ErrorState, Skeleton } from "@/design";
 import { QuestionView } from "@/features/questions";
@@ -23,6 +23,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 
 const EMPTY_TITLE_ID = "agents-questions-empty-title";
+const NO_QUESTIONS: AgentQuestion[] = [];
 
 interface AnsweredCard {
   id: string;
@@ -49,10 +50,11 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
   const mutation = useAnswerProjectQuestion(scope.projectId);
   const { answering, answer } = useAnsweringQuestions(mutation.mutateAsync);
   const router = useRouter();
-  const [answered, setAnswered] = useState<readonly AnsweredCard[]>([]);
+  // Answered cards waiting to hand focus on once core drops them from the list.
+  const answeredRef = useRef<AnsweredCard[]>([]);
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  const questions = data?.questions ?? [];
+  const questions = data?.questions ?? NO_QUESTIONS;
   const focusPresent = !!focusQuestionId && questions.some((q) => q.id === focusQuestionId);
   // A question on an issue is never on this list, so the one a run row linked is looked up
   // at once: if it names an issue, answered or not, that issue is where the link goes.
@@ -66,22 +68,21 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
   useEffect(() => {
     if (onIssue) router.replace(`/projects/${scope.slug}/issues/${onIssue}`);
   }, [onIssue, router, scope.slug]);
-  const questionsRef = useRef<AgentQuestion[]>(questions);
-  questionsRef.current = questions;
-
-  useEffect(() => {
-    if (isLoading || answered.length === 0) return;
-    const head = answered[0];
-    if (!head) return;
-    if (questions.some((q) => q.id === head.id)) return;
+  // The answered card has left the list: focus lands on the card now in its place, or the empty title.
+  const handFocusOn = (current: readonly AgentQuestion[]) => {
+    const head = answeredRef.current[0];
+    if (!head || current.some((q) => q.id === head.id)) return;
     const cards = listRef.current?.querySelectorAll<HTMLElement>("[data-question-id]") ?? [];
     const card = cards[Math.min(head.index, cards.length - 1)];
     const target =
       card?.querySelector<HTMLElement>('[data-first-option="true"]') ??
       card?.querySelector<HTMLElement>("[data-question-title]");
     (target ?? document.getElementById(EMPTY_TITLE_ID))?.focus();
-    setAnswered((rest) => rest.slice(1));
-  }, [answered, isLoading, questions]);
+    answeredRef.current = answeredRef.current.slice(1);
+  };
+  useEffect(() => {
+    if (!isLoading) handFocusOn(questions);
+  });
 
   useEffect(() => {
     if (!focusQuestionId || !focusPresent) return;
@@ -96,9 +97,11 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
   const onAnswer = (input: AnswerInput) => {
       const index = Math.max(
         0,
-        questionsRef.current.findIndex((q) => q.id === input.questionId),
+        questions.findIndex((q) => q.id === input.questionId),
       );
-      answer(input, () => setAnswered((rest) => [...rest, { id: input.questionId, index }]));
+      answer(input, () => {
+        answeredRef.current = [...answeredRef.current, { id: input.questionId, index }];
+      });
     };
 
   if (isLoading) {

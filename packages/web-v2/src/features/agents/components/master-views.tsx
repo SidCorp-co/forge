@@ -155,7 +155,7 @@ function SlotMarks({ m }: { m: MasterStanding }) {
   return <MarkStrip marks={marks} />;
 }
 
-export function MasterFacts({ m }: { m: MasterStanding }) {
+export function MasterProperties({ m }: { m: MasterStanding }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
@@ -227,7 +227,7 @@ export function MasterPeek({ m, peek, onOpenFull }: { m: MasterStanding; peek: P
       <PeekHead noun={t("agents.master.title")} itemKey={t("agents.master.word")} badge={<StatusBadge family="masterState" value={m.state} />} title={masterName(m, language)} />
       <MasterBanner m={m} className="px-4.5" />
       <div className="px-4.5 pb-4 pt-4">
-        <MasterFacts m={m} />
+        <MasterProperties m={m} />
       </div>
     </PeekPanel>
   );
@@ -442,7 +442,7 @@ export function MasterPage({ projectId, slug }: { projectId: string; slug: strin
             dataKey={m.sessionId ?? "none"}
             rail={
               <FactsRail>
-                <MasterFacts m={m} />
+                <MasterProperties m={m} />
               </FactsRail>
             }
           >

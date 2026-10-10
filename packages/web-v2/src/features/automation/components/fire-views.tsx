@@ -99,7 +99,7 @@ function FireBanner({ f, className }: { f: FireStanding; className?: string }) {
   );
 }
 
-export function FireFacts({ d, slug }: { d: Pick<FireDetailResponse, "fire" | "schedule">; slug: string }) {
+export function FireProperties({ d, slug }: { d: Pick<FireDetailResponse, "fire" | "schedule">; slug: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
@@ -164,12 +164,18 @@ export function FireFacts({ d, slug }: { d: Pick<FireDetailResponse, "fire" | "s
 function FireReads({ reads }: { reads: NonNullable<FireStanding["reads"]> }) {
   const t = useCopy();
   if (reads.length === 0) return <span className="text-13 text-subtle">{t("schedules.fire.readNothing")}</span>;
+  // the same path can be read twice in one run, so which time it was read is part of what a read is
+  const seen = new Map<string, number>();
+  const keyed = reads.map((r) => {
+    const base = `${r.method}:${r.path}`;
+    const nth = (seen.get(base) ?? 0) + 1;
+    seen.set(base, nth);
+    return { r, key: `${base}#${nth}` };
+  });
   return (
     <ul className="border-t border-line-subtle" data-testid="fire-reads">
-      {reads.map((r, i) => (
-        // the same path can be read twice in one run, so the position is part of what a read is
-        // biome-ignore lint/suspicious/noArrayIndexKey: a run's reads are fixed once recorded
-        <li key={`${i}:${r.method}:${r.path}`} className="flex flex-wrap items-baseline gap-x-2 border-b border-line-subtle py-1.5 text-13">
+      {keyed.map(({ r, key }) => (
+        <li key={key} className="flex flex-wrap items-baseline gap-x-2 border-b border-line-subtle py-1.5 text-13">
           <span className="font-mono font-semibold">{r.method}</span>
           <span className="min-w-0 break-all font-mono text-muted">{r.path}</span>
           {r.refused ? (
@@ -204,7 +210,7 @@ export function FirePeek({
       <PeekHead noun={t("schedules.noun.fire")} itemKey={`#${shortId(f.id)}`} badge={<StatusBadge family="scheduleRun" value={f.status} />} title={f.scheduleName} />
       <FireBanner f={f} className="px-4.5" />
       <div className="px-4.5 pb-4 pt-4">
-        {schedule ? <FireFacts d={{ fire: { ...f, output: null }, schedule }} slug={slug} /> : null}
+        {schedule ? <FireProperties d={{ fire: { ...f, output: null }, schedule }} slug={slug} /> : null}
       </div>
     </PeekPanel>
   );
@@ -319,7 +325,7 @@ export function FirePage({ projectId, slug, fireId }: { projectId: string; slug:
             dataKey={d.fire.id}
             rail={
               <FactsRail>
-                <FireFacts d={d} slug={slug} />
+                <FireProperties d={d} slug={slug} />
               </FactsRail>
             }
           >
