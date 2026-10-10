@@ -727,6 +727,7 @@
         "issueStepContexts",
         "issues",
         "jobs",
+        "jobEvents",
         "queueSnapshots",
         "runnerEvents",
         "usageRecords"

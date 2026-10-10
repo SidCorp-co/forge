@@ -6,7 +6,7 @@ import { useProject } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { useUpdatePlugins } from "../hooks";
+import { usePluginConflicts, useUpdatePlugins } from "../hooks";
 import type { PluginDesignation, ProjectAgentConfig } from "../types";
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -46,6 +46,7 @@ export function PluginsSection({ projectId, canEdit }: { projectId: string; canE
         <PageSectionTitle className="fg-label text-fg">{t("settings.project.plugins.title")}</PageSectionTitle>
         <p className="fg-caption mt-0.5 text-muted">{t("settings.project.plugins.lead")}</p>
       </div>
+      <PinConflicts projectId={projectId} />
       {projectQ.isError ? (
         <div className="mt-3">
           <ErrorState message={formatApiError(projectQ.error)} onRetry={() => projectQ.refetch()} />
@@ -58,6 +59,24 @@ export function PluginsSection({ projectId, canEdit }: { projectId: string; canE
           <Skeleton className="h-16 w-2/3 rounded-md" />
         </div>
       )}
+    </div>
+  );
+}
+
+/** Each pin this project cannot have on a box it shares: who pins what there, and what the box does. */
+function PinConflicts({ projectId }: { projectId: string }) {
+  const t = useCopy();
+  const q = usePluginConflicts(projectId);
+  const conflicts = q.data?.conflicts ?? [];
+  if (conflicts.length === 0) return null;
+  return (
+    <div className="mt-3 space-y-2" data-testid="plugin-pin-conflicts">
+      {conflicts.map((c) => (
+        <Banner key={`${c.device.id}-${c.marketplace}-${c.name}`} tone="attention">
+          <span className="font-semibold">{t("settings.project.plugins.conflict", { name: c.name, box: c.device.name })}</span>{" "}
+          {c.pins.map((p) => `${p.project} ${p.ref.slice(0, 7)}`).join(" · ")}. {t("settings.project.plugins.conflictSo")}
+        </Banner>
+      ))}
     </div>
   );
 }

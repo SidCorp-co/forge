@@ -52,6 +52,15 @@ export function useUnarchiveProject(id: string | undefined) {
 	});
 }
 
+/** The plugin pins this project shares a box with another project pinning differently (REQ-26 BC-2). */
+export function usePluginConflicts(id: string | undefined) {
+	return useQuery({
+		queryKey: [...project(id), "plugin-conflicts"],
+		queryFn: () => projectSettingsApi.getPluginConflicts(id as string),
+		enabled: Boolean(id),
+	});
+}
+
 export function useUpdatePlugins(id: string | undefined) {
 	const t = useCopy();
 	return useToastedMutation({

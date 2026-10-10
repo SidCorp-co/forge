@@ -31,6 +31,7 @@ import {
 } from './comments/routes.js';
 import { patRoutes } from './credentials/pat-routes.js';
 import { developmentOverviewRoutes, needsYouRoutes } from './development/routes.js';
+
 import {
   deviceAuthRoutes,
   deviceLoginRoutes,
@@ -39,6 +40,7 @@ import {
   deviceOwnerRoutes,
   devicePoolRoutes,
   installRoutes,
+  projectPluginConflictRoutes,
 } from './devices/routes.js';
 import { ecosystemJsonSchemas } from './ecosystem/index.js';
 import {
@@ -206,6 +208,7 @@ function mountAccountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/auth', oauthRoutes);
   app.route('/api/projects', projectHealthRoutes);
   app.route('/api/projects', projectMetricsRoutes);
+  app.route('/api/projects', projectPluginConflictRoutes);
   app.route('/api/projects', masterCharterRoutes);
 }
 

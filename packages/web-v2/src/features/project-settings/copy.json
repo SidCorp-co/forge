@@ -177,6 +177,8 @@
     "settings.project.people.roleOf": "Role of {email}",
     "settings.project.people.rolesLead": "A viewer reads, a member works issues, an admin also manages people, modules and labels. Owners and admins of the organization manage every project in it.",
     "settings.project.plugins.add": "Add a plugin",
+    "settings.project.plugins.conflict": "{name} has two pins on {box}:",
+    "settings.project.plugins.conflictSo": "The box follows latest until one pin is changed.",
     "settings.project.plugins.emptyBody": "Without the plugin that carries the issue skill, a dispatched session is told to use a skill it does not have.",
     "settings.project.plugins.emptyTitle": "No plugins yet",
     "settings.project.plugins.isPinned": "pinned",
