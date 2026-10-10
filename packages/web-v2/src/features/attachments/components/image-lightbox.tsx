@@ -2,14 +2,14 @@
 
 
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
-  useCallback,
-  useEffect,
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
+import { MediaOverlay } from "@/design";
+import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";
 
 export interface LightboxImage {
@@ -57,24 +57,26 @@ function useZoomPan(index: number, go: (delta: number) => void) {
     moved: boolean;
   } | null>(null);
 
-  const resetZoom = useCallback(() => {
+  // a new image opens at fit: the zoom is reset while rendering when the index moves
+  const [shownIndex, setShownIndex] = useState(index);
+  if (shownIndex !== index) {
+    setShownIndex(index);
     setScale(1);
     setOffset({ x: 0, y: 0 });
-  }, []);
+  }
 
-  const zoomBy = useCallback((delta: number) => {
+  const resetZoom = () => {
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+  };
+
+  const zoomBy = (delta: number) => {
     setScale((s) => {
       const next = clamp(s + delta, MIN_SCALE, MAX_SCALE);
       if (next === MIN_SCALE) setOffset({ x: 0, y: 0 });
       return next;
     });
-  }, []);
-
-  // Reset zoom when the shown image changes (navigation, thumbnail pick).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset is keyed on the image index, not the resetZoom identity
-  useEffect(() => {
-    resetZoom();
-  }, [index]);
+  };
 
   // ── Pointer gestures (mouse + touch unified): pan when zoomed, pinch with two
   // fingers, swipe-to-navigate when at fit scale, double-tap/click to toggle.
@@ -205,7 +207,7 @@ function LightboxHeader({
           onClick={() => zoomBy(-ZOOM_STEP)}
           disabled={scale <= MIN_SCALE}
           aria-label={t("issues.image.zoomOut")}
-          className={`${GLYPH} text-lg`}
+          className={cn(GLYPH, "text-lg")}
         >
           &minus;
         </button>
@@ -222,7 +224,7 @@ function LightboxHeader({
           onClick={() => zoomBy(ZOOM_STEP)}
           disabled={scale >= MAX_SCALE}
           aria-label={t("issues.image.zoomIn")}
-          className={`${GLYPH} text-lg`}
+          className={cn(GLYPH, "text-lg")}
         >
           +
         </button>
@@ -238,7 +240,7 @@ function LightboxHeader({
           type="button"
           onClick={onClose}
           aria-label={t("common.close")}
-          className={`${GLYPH} text-xl`}
+          className={cn(GLYPH, "text-xl")}
         >
           &times;
         </button>
@@ -258,11 +260,7 @@ function Thumbnails({ images, index, onPick }: { images: LightboxImage[]; index:
           onClick={() => onPick(i)}
           aria-label={t("issues.image.view", { name: img.name })}
           aria-current={i === index}
-          className={`flex-none overflow-hidden rounded-md border-2 transition-colors ${
-            i === index
-              ? "border-info-9-400"
-              : "border-transparent opacity-60 hover:opacity-100"
-          }`}
+          className={cn("flex-none overflow-hidden rounded-md border-2 transition-colors", i === index ? "border-info-8" : "border-transparent opacity-60 hover:opacity-100")}
         >
           {/* biome-ignore lint/performance/noImgElement: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
           <img
@@ -291,58 +289,32 @@ export function ImageLightbox({
   const t = useCopy();
   const count = images.length;
   const current = images[index];
-  const restoreRef = useRef<HTMLElement | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  const go = useCallback(
-    (delta: number) => {
-      if (count <= 1) return;
-      onIndexChange((index + delta + count) % count);
-    },
-    [count, index, onIndexChange],
-  );
+  const go = (delta: number) => {
+    if (count <= 1) return;
+    onIndexChange((index + delta + count) % count);
+  };
   const { scale, offset, zoomed, moving, zoomBy, resetZoom, ...gesture } = useZoomPan(index, go);
-
-  useEffect(() => {
-    restoreRef.current = document.activeElement as HTMLElement;
-    panelRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowRight") go(1);
-      else if (e.key === "ArrowLeft") go(-1);
-      else if (e.key === "+" || e.key === "=") zoomBy(ZOOM_STEP);
-      else if (e.key === "-") zoomBy(-ZOOM_STEP);
-      else if (e.key === "0") resetZoom();
-    };
-    document.addEventListener("keydown", onKey);
-    // Lock background scroll while the gallery is open.
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-      restoreRef.current?.focus?.();
-    };
-  }, [onClose, go, zoomBy, resetZoom]);
+  const onKey = (e: ReactKeyboardEvent) => {
+    if (e.key === "ArrowRight") go(1);
+    else if (e.key === "ArrowLeft") go(-1);
+    else if (e.key === "+" || e.key === "=") zoomBy(ZOOM_STEP);
+    else if (e.key === "-") zoomBy(-ZOOM_STEP);
+    else if (e.key === "0") resetZoom();
+  };
 
   if (!current) return null;
 
-  return createPortal(
-    // biome-ignore lint/a11y/useKeyWithClickEvents: Escape closes through the document keydown listener above
-    <div
-      ref={panelRef}
-      role="dialog"
-      aria-modal="true"
-      aria-label={t("issues.image.position", { at: index + 1, of: count, name: current.name })}
-      tabIndex={-1}
-      className="fixed inset-0 z-60 flex flex-col outline-none"
-      style={{ background: "var(--scrim-media)", backdropFilter: "blur(6px)" }}
-      // A click on the backdrop itself closes; a click inside the content goes no further.
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-        else e.stopPropagation();
-      }}
-    >
+  return (
+    <MediaOverlay open onOpenChange={(open) => !open && onClose()} label={t("issues.image.position", { at: index + 1, of: count, name: current.name })}>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: the gallery's keys (arrows, zoom); Escape is the dialog's own */}
+      <div
+        className="flex min-h-0 flex-1 flex-col"
+        onKeyDown={onKey}
+        // A press on the backdrop itself closes; a press inside the content goes no further.
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
       <LightboxHeader image={current} index={index} count={count} scale={scale} zoomBy={zoomBy} resetZoom={resetZoom} onClose={onClose} />
 
       {/* Stage. */}
@@ -393,7 +365,7 @@ export function ImageLightbox({
       </div>
 
       {count > 1 && <Thumbnails images={images} index={index} onPick={onIndexChange} />}
-    </div>,
-    document.body,
+      </div>
+    </MediaOverlay>
   );
 }

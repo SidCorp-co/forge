@@ -40,6 +40,7 @@ export { Checkbox } from "./primitives/checkbox";
 export { Radio, RadioGroup } from "./primitives/radio";
 export { Select, NativeSelect, type SelectOption } from "./primitives/select";
 export { ChipPicker, type ChipPickerProps } from "./primitives/chip-picker";
+export { MediaOverlay, type MediaOverlayProps } from "./primitives/media-overlay";
 export { IconButton } from "./primitives/icon-button";
 export { Badge, type BadgeProps } from "./primitives/badge";
 export { Divider } from "./primitives/divider";

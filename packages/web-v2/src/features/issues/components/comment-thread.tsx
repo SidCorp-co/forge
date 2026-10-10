@@ -63,7 +63,7 @@ function AddCommentBox({
       <div
         {...staged.dropZone}
         className={`rounded-md transition-colors ${
-          staged.dragOver ? "ring-2 ring-info-9-400 ring-offset-1" : ""
+          staged.dragOver ? "ring-2 ring-info-8 ring-offset-1" : ""
         }`}
       >
         <BodyEditor
