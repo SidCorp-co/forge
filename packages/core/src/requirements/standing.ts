@@ -27,6 +27,7 @@ import { type Said, say } from '@forge/contracts/said';
 import { DRAFT_STALE_DAYS } from '@forge/contracts/stale-drafts';
 import { type WaitingSays, waitingOn } from '@forge/contracts/standing';
 import type { RequirementStatus } from '../db/schema-requirements.js';
+import { stateSinceOf, touchedAt } from './standing-age.js';
 import {
   coverageOf,
   type LiveBuildHolds,
@@ -68,6 +69,8 @@ export interface StandingIssue {
   updatedAt: Date;
   /** When it last moved to closed; null while it is not closed. */
   closedAt: Date | null;
+  /** When it first moved past draft and open; null while it has not, or where the reader does not say. */
+  startedAt?: Date | null;
   /** Its plan was written against another revision than the current one. */
   changedSincePlan: boolean;
   /** Where it is parked (`PARK_STATUSES`), what it waits on by its own standing; null otherwise. */
@@ -134,6 +137,11 @@ export interface StandingInput {
    */
   release: ReleaseLeg | null;
   updatedAt: Date;
+  /**
+   * When its status last moved (its kernel transitions), else when it was filed. Never `updatedAt`:
+   * a placement or short-name edit moves that and must not restart AGE (live dev.227).
+   */
+  statusSince: Date;
   now: Date;
 }
 
@@ -390,15 +398,6 @@ function turnOf(
   return workTurn(live, input.release);
 }
 
-function touchedAt(input: StandingInput): Date {
-  const times = [
-    input.updatedAt,
-    ...input.revisions.flatMap((r) => [r.createdAt, r.proposedAt, r.decidedAt]),
-    ...input.issues.map((i) => i.updatedAt),
-  ].filter((t): t is Date => t !== null);
-  return new Date(Math.max(...times.map((t) => t.getTime())));
-}
-
 // workflow requirement-to-delivery step `rollup`, the one computation of the delivery phase: only an
 // agreed or accepted requirement has one; no live issue → agreed; every live issue closed AND every
 // current BC covered by a passing verdict → delivered, a closed set with an unproven BC → in_delivery;
@@ -512,5 +511,6 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
     coverage,
     owner: input.owner,
     touchedAt: touched.toISOString(),
+    stateSince: stateSinceOf(input, state, live).toISOString(),
   };
 }

@@ -493,6 +493,9 @@ export interface RequirementStanding
 	owner: { id: string; name: string | null; kind: "human" | "agent" } | null;
 	/** The newest write to the requirement, its revisions or its issues. */
 	touchedAt: string;
+	/** When it came to stand in `state`: its last status move, or its delivery phase's start; what the
+	 *  list's age reads, which an edit moving no state (an area, a short name) never restarts. */
+	stateSince: string;
 }
 
 export const REQUIREMENT_READINESS_GATES = ["off", "warn", "block"] as const;

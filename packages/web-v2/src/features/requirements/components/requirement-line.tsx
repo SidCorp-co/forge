@@ -94,7 +94,7 @@ export function RequirementLine({ r, slug, now, selected, onPeek }: { r: Require
       <span className="flex min-w-0 [grid-area:w] md:[grid-area:auto]">
         <WaitsText r={r} />
       </span>
-      <span className="text-right font-mono text-12 text-subtle [grid-area:a] md:[grid-area:auto]">{ageShort(r.standing.touchedAt, now)}</span>
+      <span className="text-right font-mono text-12 text-subtle [grid-area:a] md:[grid-area:auto]">{ageShort(r.standing.stateSince, now)}</span>
     </Link>
   );
 }

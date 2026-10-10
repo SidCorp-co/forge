@@ -42,6 +42,7 @@ const base = (over: Partial<StandingInput> = {}): StandingInput => ({
   agreedAt: null,
   release: null,
   updatedAt: at('2026-10-02T00:00:00Z'),
+  statusSince: at('2026-10-02T00:00:00Z'),
   now: at('2026-10-03T00:00:00Z'),
   ...over,
 });
