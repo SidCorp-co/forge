@@ -19,6 +19,7 @@ const draft = (over: Partial<IntakeDraftView> = {}): IntakeDraftView => ({
   at: "2026-10-10T08:00:00.000Z",
   model: "stub",
   attempts: 1,
+  retrying: false,
   read: { requirements: 3, workflows: 2, feedback: 4, releases: 1 },
   links: [
     { relation: "duplicate", ref: { kind: "feedback", key: "FB-3", title: "Wrong patient" }, why: "Same referral." },
@@ -105,5 +106,16 @@ describe("the intake draft on an item's page", () => {
     const none = shown(null);
     await waitFor(() => expect(none.calls).toHaveLength(1));
     expect(none.container.querySelector("[data-testid=intake-draft]")).toBeNull();
+  });
+
+  it("says a missed draft is being tried again, and when it gave up (J8 FB-123)", async () => {
+    const miss: Partial<IntakeDraftView> = { outcome: "failed", code: "INTAKE_MODEL_FAILED", links: [], questions: [], assumptions: [] };
+    shown(draft({ ...miss, attempts: 1, retrying: true }));
+    expect((await screen.findByTestId("intake-failed")).textContent).toBe("Model failed; retrying, try 2 of 3");
+    vi.unstubAllGlobals();
+    const gaveUp = shown(draft({ ...miss, attempts: 3, retrying: false }));
+    expect((await within(gaveUp.container).findByTestId("intake-failed")).textContent).toBe(
+      "Not drafted: model failed · Gave up after 3 tries",
+    );
   });
 });

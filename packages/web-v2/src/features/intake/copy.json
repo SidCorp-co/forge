@@ -18,6 +18,8 @@
     "intake.failed.INTAKE_WITHHELD": "Not drafted: data policy",
     "intake.failed.INTAKE_MODEL_FAILED": "Not drafted: model failed",
     "intake.failed.INTAKE_SHAPE": "Not drafted: answer refused",
+    "intake.retrying": "Model failed; retrying, try {next} of {max}",
+    "intake.gaveUp": "Gave up after {attempts} tries",
     "intake.applied.revision": "Filled r{revision}",
     "intake.applied.suggestion": "Triage proposed",
     "intake.applied.none": "Not written",

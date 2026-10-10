@@ -54,6 +54,7 @@ export function viewOf(
     at: row.draftedAt.toISOString(),
     model: row.model,
     attempts: row.attempts,
+    retrying: row.retryOwed,
     read: row.read as Record<IntakeRead, number>,
     links: body?.links ?? [],
     notAffected: body?.notAffected ?? [],

@@ -169,6 +169,16 @@ export type IntakeDraftCode = (typeof INTAKE_DRAFT_CODES)[number];
 export const INTAKE_DRAFT_OUTCOMES = ["drafted", "failed"] as const;
 export type IntakeDraftOutcome = (typeof INTAKE_DRAFT_OUTCOMES)[number];
 
+/**
+ * The misses tried again, by the outbox delivering the item's event once more with its backoff, up
+ * to `INTAKE_DRAFT_ATTEMPTS` tries in all; every other miss is final on its first try.
+ */
+export const INTAKE_RETRYABLE_CODES: readonly IntakeDraftCode[] = [
+	"INTAKE_MODEL_FAILED",
+	"INTAKE_MODEL_UNCONFIGURED",
+];
+export const INTAKE_DRAFT_ATTEMPTS = 3;
+
 /** One record a draft names: its kind, its key (REQ-n, FB-n, a workflow's flow, a release's version) and title. */
 export interface IntakeDraftRef {
 	kind: IntakeRefKind;
@@ -223,6 +233,8 @@ export interface IntakeDraftView {
 	at: string;
 	model: string | null;
 	attempts: number;
+	/** Set on a `failed` draft another try is owed for: the outbox delivers it again. */
+	retrying: boolean;
 	/** How many records of each kind it read; no other kind is read. */
 	read: Record<IntakeRead, number>;
 	links: IntakeDraftLink[];

@@ -2,8 +2,8 @@
  * One intake draft (REQ-34 BC-10..BC-16), the pattern of `questions/suggest-answer.ts`: the four
  * reads, one tool-less completion through the deployment's provider under the project's data policy,
  * the answer judged against what was read, one retry carrying the refusal. A miss is returned by
- * code, never thrown, so a delivery is not retried into a storm of calls. Everything it touches comes
- * in through `deps`, so a test can see every read it makes.
+ * code, never thrown; whether it is tried again is the service's call (`service.ts`). Everything it
+ * touches comes in through `deps`, so a test can see every read it makes.
  */
 
 import type { ContentLanguageView } from '@forge/contracts/content-language';

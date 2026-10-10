@@ -6,7 +6,8 @@
 // feedback, each linked; it fills the requirement's empty draft with each answer stated as an
 // assumption naming its source, or proposes the feedback item's triage checklist; and it asks at
 // most three questions, each with a recommended answer and what each choice changes, or says it has
-// nothing to ask.
+// nothing to ask. A miss the model makes, and the retry that follows it, are
+// intake-draft-retry-e2e.test.ts's.
 
 import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
@@ -24,7 +25,7 @@ import {
   rows,
 } from '../helpers/factories.js';
 
-type Mode = 'requirement' | 'feedback' | 'unchecked' | 'nothing' | 'four' | 'down';
+type Mode = 'requirement' | 'feedback' | 'unchecked' | 'nothing' | 'four';
 let mode: Mode = 'requirement';
 const seen: { system: string; user: string }[] = [];
 let gateway: Server;
@@ -145,11 +146,6 @@ function startGateway(): Promise<string> {
       const system = text('system');
       const intake = system.includes('business analyst assistant');
       if (intake) seen.push({ system, user: text('user') });
-      if (intake && mode === 'down') {
-        res.writeHead(500, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ error: { message: 'gateway is down' } }));
-        return;
-      }
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       const chunk = (delta: object, finish: string | null, extra: object = {}) =>
         `data: ${JSON.stringify({ id: 'c1', object: 'chat.completion.chunk', created: 1, model: 'stub-gateway', choices: [{ index: 0, delta, finish_reason: finish }], ...extra })}\n\n`;
@@ -365,14 +361,6 @@ describe('a requirement written in one sentence is drafted on create, with no ch
     expect([draft?.outcome, draft?.code]).toEqual(['failed', 'INTAKE_SHAPE']);
     const r1 = (await requirementOf(key)).revisions.find((r) => r.revision === 1);
     expect(r1?.tldr ?? null).toBeNull();
-  });
-
-  it('keeps a gateway that is down as a named miss', async () => {
-    mode = 'down';
-    const key = await createRequirement('Archive matched referrals');
-    await settleOutbox();
-    const draft = await draftOf(key);
-    expect([draft?.outcome, draft?.code]).toEqual(['failed', 'INTAKE_MODEL_FAILED']);
   });
 });
 

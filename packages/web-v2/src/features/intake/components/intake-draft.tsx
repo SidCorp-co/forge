@@ -13,7 +13,7 @@ import { feedbackHref } from "@/lib/routes/feedback";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
 import { workflowHref } from "@/lib/routes/workflows";
-import { intakeRefParse } from "@forge/contracts/intake-drafts";
+import { INTAKE_DRAFT_ATTEMPTS, intakeRefParse } from "@forge/contracts/intake-drafts";
 import { useIntakeDraft } from "../hooks";
 import type { IntakeDraftRef, IntakeDraftView, IntakeQuestion } from "../types";
 
@@ -87,7 +87,12 @@ export function IntakeDraftBody({ draft, slug, assumptions }: { draft: IntakeDra
   if (draft.outcome === "failed") {
     return (
       <p className="text-13 text-subtle" data-testid="intake-failed" title={draft.detail ?? undefined}>
-        {draft.code ? t(`intake.failed.${draft.code}`) : t("intake.applied.none")}
+        {draft.retrying
+          ? t("intake.retrying", { next: draft.attempts + 1, max: INTAKE_DRAFT_ATTEMPTS })
+          : draft.code
+            ? t(`intake.failed.${draft.code}`)
+            : t("intake.applied.none")}
+        {!draft.retrying && draft.attempts > 1 ? ` · ${t("intake.gaveUp", { attempts: draft.attempts })}` : null}
       </p>
     );
   }
