@@ -21,6 +21,8 @@
     "feedback.evidence.title": "Evidence",
     "feedback.evidence.shotAlt": "Screenshot {n} of {of} for {key}: {title}",
     "feedback.evidence.recordingAlt": "Recording {n} of {of} for {key}: {title}",
+    "feedback.evidence.unplayable": "This browser cannot play this {format} file.",
+    "feedback.evidence.download": "Download {name}",
     "feedback.evidence.link": "{from} to {to}",
     "feedback.evidence.stepAlt": "{workflow} workflow with {step} highlighted",
     "feedback.evidence.stepGone": "{step} is no longer in {workflow}",

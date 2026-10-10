@@ -529,6 +529,9 @@ export interface FeedbackTargetView {
 	title: string | null;
 	/** On a workflow target, the step or edge the item names; absent, it is about the whole workflow. */
 	node?: NodeRef;
+	/** The words the design gives each step `node` names, by step id; a step the design no longer has
+	 *  is left out, and is read by its id. */
+	stepNames?: Record<string, string>;
 }
 
 /** One route or tool a project serves, as `GET …/feedback/endpoints` lists it for the About picker. */

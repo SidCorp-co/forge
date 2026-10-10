@@ -148,7 +148,8 @@ describe("a feedback item opens on its evidence", () => {
 });
 
 describe("the workflow step a report hits", () => {
-  const onWorkflow = (node: unknown) => view({ target: { type: "workflow", key: "checkout", title: "Checkout", node } as FeedbackView["target"] });
+  const onWorkflow = (node: unknown, stepNames?: Record<string, string>) =>
+    view({ target: { type: "workflow", key: "checkout", title: "Checkout", node, ...(stepNames ? { stepNames } : {}) } as FeedbackView["target"] });
 
   it("lights the step on that workflow, named by its text alternative", async () => {
     core();
@@ -180,13 +181,18 @@ describe("the workflow step a report hits", () => {
     expect(screen.queryByRole("figure")).toBeNull();
   });
 
-  it("names the step in the item's About fact", () => {
-    renderWithQuery(<FeedbackFacts f={onWorkflow({ step: "pay" })} slug="hop" />);
-    expect(screen.getByTestId("facts-about")).toHaveTextContent("Step: pay");
+  it("names the step in the item's About fact by the words its design gives it", () => {
+    renderWithQuery(<FeedbackFacts f={onWorkflow({ step: "pay" }, { pay: "Pay" })} slug="hop" />);
+    expect(screen.getByTestId("facts-about")).toHaveTextContent("Step: Pay");
   });
 
-  it("names the link in the item's About fact", () => {
-    renderWithQuery(<FeedbackFacts f={onWorkflow({ edge: { from: "cart", to: "pay" } })} slug="hop" />);
-    expect(screen.getByTestId("facts-about")).toHaveTextContent("Link: cart to pay");
+  it("names the link in the item's About fact by its steps' words", () => {
+    renderWithQuery(<FeedbackFacts f={onWorkflow({ edge: { from: "cart", to: "pay" } }, { cart: "Cart", pay: "Pay" })} slug="hop" />);
+    expect(screen.getByTestId("facts-about")).toHaveTextContent("Link: Cart to Pay");
+  });
+
+  it("reads a step the design no longer names by its id", () => {
+    renderWithQuery(<FeedbackFacts f={onWorkflow({ step: "pay" }, {})} slug="hop" />);
+    expect(screen.getByTestId("facts-about")).toHaveTextContent("Step: pay");
   });
 });
