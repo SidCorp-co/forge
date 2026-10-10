@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, use, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 interface TopBarSlots {
@@ -17,23 +17,23 @@ export function TopBarSlotProvider({ children }: { children: ReactNode }) {
   const [title, setTitle] = useState<HTMLElement | null>(null);
   const [actions, setActions] = useState<HTMLElement | null>(null);
   return (
-    <TopBarSlotContext.Provider value={{ title, actions, setTitle, setActions }}>{children}</TopBarSlotContext.Provider>
+    <TopBarSlotContext value={{ title, actions, setTitle, setActions }}>{children}</TopBarSlotContext>
   );
 }
 
 /** The shell's side: refs for the two places in the bar a page can fill. */
 export function useTopBarSlotTargets() {
-  const ctx = useContext(TopBarSlotContext);
+  const ctx = use(TopBarSlotContext);
   return { titleRef: ctx?.setTitle, actionsRef: ctx?.setActions };
 }
 
 export function useInTopBar(): boolean {
-  return useContext(TopBarSlotContext) !== null;
+  return use(TopBarSlotContext) !== null;
 }
 
 /** In place outside a shell; inside one, nothing until the bar mounts, so a title never flashes. */
 export function useTopBarPortal(slot: "title" | "actions", node: ReactNode): ReactNode {
-  const ctx = useContext(TopBarSlotContext);
+  const ctx = use(TopBarSlotContext);
   if (!ctx) return node;
   const target = ctx[slot];
   return target ? createPortal(node, target) : null;
@@ -42,4 +42,9 @@ export function useTopBarPortal(slot: "title" | "actions", node: ReactNode): Rea
 /** A page's primary actions, shown in the top bar beside its title. */
 export function TopBarActions({ children }: { children: ReactNode }) {
   return <>{useTopBarPortal("actions", children)}</>;
+}
+
+/** Titles and acts under it render in place, not in the shell's bar: a page sample inside a page (/dev/design). */
+export function InPlaceTopBar({ children }: { children: ReactNode }) {
+  return <TopBarSlotContext value={null}>{children}</TopBarSlotContext>;
 }

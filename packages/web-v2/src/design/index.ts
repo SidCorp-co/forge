@@ -14,7 +14,7 @@ export { HealthDot } from "./primitives/health-dot";
 export { Stat } from "./primitives/stat";
 export { PageSection, PageSectionHeader, PageSectionTitle, PageSectionBody } from "./primitives/page-section";
 export { PageTitle, SectionTitle } from "./primitives/heading";
-export { TopBarActions, TopBarSlotProvider, useTopBarSlotTargets } from "./primitives/top-bar-slot";
+export { InPlaceTopBar, TopBarActions, TopBarSlotProvider, useTopBarSlotTargets } from "./primitives/top-bar-slot";
 export { Kicker } from "./primitives/kicker";
 export { Kbd } from "./primitives/kbd";
 export { Spinner } from "./primitives/spinner";
