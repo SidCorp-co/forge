@@ -1,4 +1,3 @@
-"use client";
 
 // A feedback item reproduced and its fix confirmed, on the item's own page (REQ-41 BC-17, BC-20):
 // Reproduce opens a preview of the build its reporter used (core picks it, or refuses naming what

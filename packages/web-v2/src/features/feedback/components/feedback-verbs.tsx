@@ -1,4 +1,3 @@
-"use client";
 
 // The triage verbs on a new item, flat and inline (Feedback triage r16 `decide`): Decline, Duplicate
 // of, Snooze. Each opens one short form that says what the act tells the reporter; a refusal names why

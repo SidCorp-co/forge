@@ -1,4 +1,3 @@
-"use client";
 
 // The decisions a turn read with `forge_needs_you` (REQ-41 BC-2), drawn under its reply from the
 // tool's own result: the model names no button, so none can be invented, and each one posts to the

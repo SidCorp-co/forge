@@ -1,4 +1,3 @@
-"use client";
 
 import { toast as sonner } from "sonner";
 import { Toaster as ShadcnToaster } from "@/components/ui/sonner";

@@ -1,4 +1,3 @@
-"use client";
 
 import { FEEDBACK_KINDS, FEEDBACK_LIMITS, FEEDBACK_SEVERITIES } from "@forge/contracts/feedback";
 import { useState } from "react";

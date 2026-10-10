@@ -1,4 +1,3 @@
-"use client";
 
 import type { ReactNode } from "react";
 import { builtinReportTemplate } from "@forge/contracts/report-template-builtins";

@@ -1,4 +1,3 @@
-"use client";
 
 import { type RefObject, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { breakpointWidth } from "@/lib/utils/breakpoint-width";

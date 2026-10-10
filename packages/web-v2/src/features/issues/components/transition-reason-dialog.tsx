@@ -4,8 +4,6 @@
 // WAITING_KIND_REQUIRED for `needs_info`), so every surface that offers these
 // routes through here rather than firing the mutation and surfacing a 422 toast.
 
-"use client";
-
 import type { REASON_REQUIRED_STATUSES } from "@forge/contracts/issue-machine";
 import { useState } from "react";
 import { Button, Field, Radio, RadioGroup, Textarea } from "@/design";

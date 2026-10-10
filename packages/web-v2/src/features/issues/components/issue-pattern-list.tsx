@@ -1,4 +1,3 @@
-"use client";
 
 import { type IssuePatternView, PATTERN_LIMITS, type PatternDecision } from "@forge/contracts/patterns";
 import { useState } from "react";

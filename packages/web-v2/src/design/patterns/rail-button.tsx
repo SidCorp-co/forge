@@ -1,4 +1,3 @@
-"use client";
 
 // An act at the foot of the navigation rail: an icon and its name, the name under the icon on the
 // collapsed rail, and a dot while something there is owed to the reader.

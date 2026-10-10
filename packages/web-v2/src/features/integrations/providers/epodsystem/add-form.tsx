@@ -1,4 +1,3 @@
-"use client";
 
 import { Banner, Field, Input, Select, type SelectOption } from "@/design";
 import { providerCanDeploy } from "@forge/contracts/deploy-capability";

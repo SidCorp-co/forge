@@ -1,8 +1,7 @@
-"use client";
 
 import { highlightTargetOf, type UiSnapshot } from "@forge/contracts/ui-actions";
 import { describeListFilter } from "@forge/contracts/ui-list-filters";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter } from "@/lib/navigation/router";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "@/design";
 import { useHighlight } from "@/design/hooks/use-highlight";

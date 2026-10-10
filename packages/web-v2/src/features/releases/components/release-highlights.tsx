@@ -1,7 +1,6 @@
-"use client";
 
 import type { ReleaseHighlights } from "@forge/contracts/release-page";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { ViewHeading } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";

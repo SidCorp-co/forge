@@ -1,4 +1,3 @@
-"use client";
 
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { HoverCardContent, HoverCardTrigger, HoverCard as Root } from "@/components/ui/hover-card";

@@ -1,4 +1,3 @@
-"use client";
 
 import { Badge, Button, Input, keyedRows, NativeSelect, useListKeys } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";

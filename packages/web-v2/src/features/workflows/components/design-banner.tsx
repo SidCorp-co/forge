@@ -1,4 +1,3 @@
-"use client";
 
 import { type ReactNode, type RefObject, useId, useSyncExternalStore } from "react";
 import { type BannerTone, Button, bannerColours, Icon, fixedHeight } from "@/design";

@@ -1,4 +1,3 @@
-"use client";
 
 // The box a comment or a description is written in: CodeMirror with markdown
 // highlighting, a formatting toolbar, and a pane showing what the kernel would

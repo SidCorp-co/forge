@@ -1,7 +1,5 @@
-"use client";
 
 import { BoardCanvas } from "@/features/board";
-import Image from "next/image";
 import { mockupKindOfFile } from "@forge/contracts/mockups";
 import { parseWireframe } from "@forge/contracts/wireframe";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -48,7 +46,7 @@ function Preview({ m }: { m: MockupView }) {
   if (m.kind === "image" || m.kind === "sketch") {
     if (!url) return <p className="text-13 text-muted">{t("common.mockups.loading")}</p>;
     // unoptimized: a blob URL of a stored mockup, which the Next image optimizer cannot fetch; its size is its own
-    return <Image unoptimized src={url} alt={m.caption ?? m.name} width={0} height={0} sizes="100vw" className="h-auto max-h-105 w-auto max-w-full border border-line-subtle object-contain" data-testid="mockup-image" />;
+    return <img src={url} alt={m.caption ?? m.name} width={0} height={0} sizes="100vw" className="h-auto max-h-105 w-auto max-w-full border border-line-subtle object-contain" data-testid="mockup-image" />;
   }
   if (text === null) return <p className="text-13 text-muted">{t("common.mockups.loading")}</p>;
   if (m.kind === "wireframe") {

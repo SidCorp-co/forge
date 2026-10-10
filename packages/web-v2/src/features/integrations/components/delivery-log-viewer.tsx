@@ -1,4 +1,3 @@
-"use client";
 
 import { Banner, Disclosure, EmptyState, ErrorState, enumLabel, Icon, type IconName, Skeleton, StatusBadge } from "@/design";
 import { formatApiError } from "@/lib/api/error";

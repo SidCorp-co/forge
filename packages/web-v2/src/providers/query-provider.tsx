@@ -1,4 +1,3 @@
-"use client";
 
 import { useState } from "react";
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";

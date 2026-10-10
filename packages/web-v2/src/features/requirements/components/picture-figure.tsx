@@ -1,4 +1,3 @@
-"use client";
 
 // The frame every requirement picture is drawn in (REQ-35 BC-11, BC-12): its rough-sketch label,
 // what else the reader is told about it, and its text alternative as its accessible name.

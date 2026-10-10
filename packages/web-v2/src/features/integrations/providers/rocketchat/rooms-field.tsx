@@ -1,4 +1,3 @@
-"use client";
 
 import { Button, Field, Input } from "@/design";
 import { useMemo, useState } from "react";

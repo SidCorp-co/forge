@@ -1,4 +1,3 @@
-"use client";
 
 import { ApiError } from "./client";
 import { formatApiError } from "./error";

@@ -1,4 +1,3 @@
-"use client";
 
 // The open decisions on this project that name no issue, answerable here.
 //
@@ -9,7 +8,7 @@
 // device door, which carries `issueId: null`.
 
 import { useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import { EmptyState, ErrorState, Skeleton } from "@/design";
 import { QuestionView } from "@/features/questions";
 import {

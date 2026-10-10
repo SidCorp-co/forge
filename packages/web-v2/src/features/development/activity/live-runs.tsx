@@ -1,10 +1,9 @@
-"use client";
 
 // The runs working now: each row its stage colour, state, issue and spend, opening the issue (or the
 // pipeline for a run without one). Runs still open with no live job show as a count under the list
 // (ISS-789), never hidden.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { enumLabel, Icon, LiveDot, RowItem, RowList, Section, StatusBadge } from "@/design";
 import { stageColor } from "@/design/stages";
 import type { PipelineRunKind, PipelineRunListItem } from "@/features/pipeline";

@@ -1,4 +1,3 @@
-"use client";
 
 // Creating a share link for one answer: who may open it, for how long, then the link, shown once.
 // Which audience the person may pick is core's answer (`GET /api/projects/:id/shares/audiences`),
@@ -12,7 +11,7 @@ import {
   type ShareAudienceOption,
   type ShareCreated,
 } from "@forge/contracts/shares";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useState } from "react";
 import { Button, EnumBadge, Field, Input, Radio, RadioGroup, SlideOver, useNow } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";

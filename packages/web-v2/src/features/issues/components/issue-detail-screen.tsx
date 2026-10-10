@@ -1,4 +1,3 @@
-"use client";
 
 // web-v2 Issue detail (`/projects/[slug]/issues/[id]`, ISS-294; REQ-43): the page reads as state, not
 // prose. The shared DetailHeader in the top bar (back to the list view it came from, key, title, the

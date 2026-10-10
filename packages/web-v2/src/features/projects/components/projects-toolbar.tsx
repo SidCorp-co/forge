@@ -1,4 +1,3 @@
-'use client';
 
 // Console toolbar: search · sort · Cards⇄List · New project.
 // Org scope lives in the global org switcher (app chrome, ISS-469) — not here —

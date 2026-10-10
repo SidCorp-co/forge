@@ -1,4 +1,3 @@
-"use client";
 
 // The run report — the body of a PIPELINE session's detail page.
 //

@@ -1,4 +1,3 @@
-"use client";
 
 // Answer chips: one pick or several from a short list, each a pill that reads pressed. Base UI
 // ToggleGroup and Toggle as documented, so the roving focus, arrow keys and pressed state are the

@@ -1,6 +1,5 @@
-"use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { MonoTag } from "@/design";
 import { STATUS_META } from "@/design/status";
 import { useCopy } from "@/lib/i18n/interface-language";

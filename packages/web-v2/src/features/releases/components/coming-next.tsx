@@ -1,11 +1,10 @@
-"use client";
 
 // What comes next, on top of Releases: each requirement with work still to land and when it is in
 // people's hands (core's `forecast/scope.ts:readComingNext`), then the draft and the act it waits on
 // (core's release read model). Flush rows on hairlines; the reasons sit in the tooltips.
 
 import type { ComingNextForecast, ScopeForecast } from "@forge/contracts/forecast";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { ViewHeading } from "@/design";
 import { EtaCell } from "@/features/forecast";
 import { IssueProgressText } from "@/features/forecast";

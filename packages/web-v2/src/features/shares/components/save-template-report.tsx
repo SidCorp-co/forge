@@ -1,11 +1,10 @@
-"use client";
 
 // "Save report" on a chat answer that ran a template: keeps the template's runs in order, with the
 // narrative the turn wrote, as a status report (`POST .../status/reports`), then links where it is
 // kept. Core reads each run back as the saver and judges the narrative against the runs; a refusal
 // reads as core's sentence in the answer's own row, and nothing is kept.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";

@@ -1,4 +1,3 @@
-"use client";
 
 // The questionnaire: one structured message answered inline and sent once (workflow
 // project-onboarding, BC-6 / BC-7). The same form serves the onboarding thread and a BA requirement

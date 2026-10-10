@@ -1,4 +1,3 @@
-"use client";
 
 // Files staged on a comment or a new issue before they are sent: picked, dropped or pasted,
 // checked against the attachment allow-list (size/mime caps, and an issue's create count) so the

@@ -2,13 +2,13 @@ import { CORE_URL } from '@/lib/utils/core-url';
 import { announceSessionEnded, isSessionEndedAnswer } from './session-ended';
 import { reportTransportFailure } from './transport-failure';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 
 /** WebSocket URL. Prefer `NEXT_PUBLIC_WS_URL`; otherwise derive from the API
  *  URL. With the relative default this resolves to `/ws` (same-origin). */
 export const WS_URL =
-  process.env.NEXT_PUBLIC_WS_URL || `${CORE_URL.replace(/^http/, 'ws')}/ws`;
+  import.meta.env.VITE_WS_URL || `${CORE_URL.replace(/^http/, 'ws')}/ws`;
 
 export class ApiError extends Error {
   readonly status: number;

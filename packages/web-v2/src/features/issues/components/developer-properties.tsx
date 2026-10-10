@@ -1,9 +1,8 @@
-"use client";
 
 // The issue's properties only a developer reads: modules, labels, branch, merge mark, carriage,
 // production reach, cost, tokens and reopens, with the acts that set a missing module or merge mark.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { Button, MonoTag, Stat, StatusBadge } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";

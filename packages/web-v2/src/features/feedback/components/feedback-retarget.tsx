@@ -1,4 +1,3 @@
-"use client";
 
 import { useState } from "react";
 import { Button, enumLabel, Field, Input } from "@/design";

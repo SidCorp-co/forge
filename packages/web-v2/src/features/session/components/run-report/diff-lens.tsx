@@ -1,4 +1,3 @@
-"use client";
 
 // The Diff lens — what the run actually changed, one file at a time.
 //

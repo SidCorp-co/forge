@@ -1,4 +1,3 @@
-"use client";
 
 // Drawing or replacing a requirement's picture on its page (REQ-35 BC-10, BC-12; Requirement
 // lifecycle r14 edge `picture.drawn or replaced`): one editor per kind, each with the text

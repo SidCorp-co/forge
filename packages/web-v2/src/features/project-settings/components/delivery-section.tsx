@@ -1,4 +1,3 @@
-"use client";
 
 // Settings → Delivery: where work is made and how it ships. The repository and its branches, the
 // environments it goes live in, the release path between them and who runs the work are fields of

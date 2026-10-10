@@ -1,4 +1,3 @@
-"use client";
 
 // ISS-435 — workspace connection EDIT drawer, opened from a directory card at
 // `/integrations`. Connection-scoped management lives HERE (rename, replace
@@ -10,7 +9,7 @@
 // (the list is owner-scoped); org-owned → org owner/admin edits, every other
 // org member gets a read-only drawer that can still drill into projects.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { Suspense, createElement, lazy, useState } from "react";
 import {
   Banner,

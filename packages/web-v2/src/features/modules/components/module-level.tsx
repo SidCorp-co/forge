@@ -1,4 +1,3 @@
-"use client";
 
 // One level of the module tree: the business modules (the roots) on the Modules screen, or one
 // module's children on its page. A map of the level's modules and the couplings core rolled up to

@@ -1,4 +1,3 @@
-"use client";
 
 // Whose turn it is, said the same way on every list and page: a mark for who, their name in bold,
 // and what they owe; the rule that put it there rides the tooltip. The banner is the same fact as

@@ -1,4 +1,3 @@
-"use client";
 
 // The status report (JU-4): the project status read as a dated report a person prints, or copies as
 // Markdown to send. Flat: one heading per section over hairline lists, each section dated by the
@@ -6,7 +5,7 @@
 
 import type { ProjectStatus, RoadmapItem } from "@forge/contracts/project-status";
 import { ROADMAP_HORIZONS } from "@forge/contracts/project-status";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { type ReactNode, useMemo, useState } from "react";
 import { Button, MonoTag, SegmentedControl, StatusBadge, ViewHeading, WaitingOn } from "@/design";
 import { IssueProgressText } from "@/features/forecast";

@@ -1,4 +1,3 @@
-"use client";
 
 import { type QueryKey, useQuery } from "@tanstack/react-query";
 import { readOf, useWrite } from "@/lib/api/query-kit";

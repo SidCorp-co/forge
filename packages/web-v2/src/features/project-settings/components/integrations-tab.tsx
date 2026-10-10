@@ -1,4 +1,3 @@
-"use client";
 
 // Project settings → Integrations — the FULL per-project management surface
 // (ISS-429): the integrations table with config/Test/Rotate/Disconnect drill-in,

@@ -1,4 +1,3 @@
-"use client";
 
 import { Badge, EnumBadge, enumLabel } from "@/design";
 import { useApiPage } from "../hooks";

@@ -1,4 +1,3 @@
-"use client";
 
 import { BaseEdge, type EdgeProps, EdgeLabelRenderer, Handle, type NodeProps, Position } from "@xyflow/react";
 import { memo, useRef } from "react";

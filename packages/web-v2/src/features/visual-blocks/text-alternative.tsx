@@ -1,4 +1,3 @@
-"use client";
 
 import { blockToText, type VisualBlock } from "@forge/contracts/visual-blocks";
 import { useBlockInstants } from "./instants";

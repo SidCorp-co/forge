@@ -1,4 +1,3 @@
-"use client";
 
 import { Tabs as ShadcnTabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "./badge";

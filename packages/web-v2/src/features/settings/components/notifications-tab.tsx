@@ -1,4 +1,3 @@
-"use client";
 
 // Settings → Notifications. Delivery preferences (the `@mention` opt-out, the
 // only user-initiated notification type produced) persist via

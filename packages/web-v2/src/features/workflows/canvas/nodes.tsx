@@ -1,9 +1,8 @@
-"use client";
 
 import type { NodeProvenance } from "@forge/contracts/workflow-health";
 import type { TemplateNodeType } from "@forge/contracts/workflow-templates";
 import { Handle, type NodeProps, Position } from "@xyflow/react";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { memo } from "react";
 import { Button, PageSectionTitle, TemplateIcon, Icon } from "@/design";
 import { HealthMark } from "../components/health-parts";

@@ -1,4 +1,3 @@
-"use client";
 
 // The two ways to read a record page (REQ-43 BC-7): a person's, and a developer's. A person's view
 // is the record's state; a developer's adds the agent text behind it — plans, criterion codes, shas,

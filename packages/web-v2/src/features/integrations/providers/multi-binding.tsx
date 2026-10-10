@@ -1,4 +1,3 @@
-"use client";
 
 import { Badge, Button } from "@/design";
 import { type ReactNode, useMemo, useState } from "react";

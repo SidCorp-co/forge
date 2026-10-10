@@ -1,6 +1,5 @@
-"use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { HoverCard, LEGEND, statusReading, ToneBadge, Tooltip, WaitingOn } from "@/design";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";

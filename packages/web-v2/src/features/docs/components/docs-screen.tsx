@@ -1,4 +1,3 @@
-"use client";
 
 // Forge end-user docs (`/docs`). Content is authored in
 // `packages/web-v2/content/help/*.md` and bundled at build time into
@@ -6,7 +5,7 @@
 // no filesystem read, no API. Internal engineering docs (repo `docs/`) are NOT
 // here and are never served to users.
 import { useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams } from "@/lib/navigation/router";
 import {
   PageSection,
   PageSectionBody,

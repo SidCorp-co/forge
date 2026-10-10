@@ -1,7 +1,5 @@
-"use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useRouter } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
 import { type BannerTone, Button, LEGEND, MarkStrip, statusReading, WaitBanner } from "@/design";
 import { feedbackHref } from "@/lib/routes/feedback";

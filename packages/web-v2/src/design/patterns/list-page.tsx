@@ -1,4 +1,3 @@
-"use client";
 
 // The list page's two blocks under its header (the title, view switch and primary action live in the
 // top bar through PageTitle and TopBarActions): the filter bar, and the split that sets a peek beside

@@ -1,4 +1,3 @@
-"use client";
 
 // A recording's timeline as a flat table (REQ-41 BC-18, BC-19): when, what kind of thing, and what
 // it was, in the words `@forge/contracts/reproduce:timelineOf` wrote. The feedback page draws it

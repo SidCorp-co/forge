@@ -1,4 +1,3 @@
-"use client";
 
 // A marker on a design's step or edge, settled where it is read: keep it, rewrite it, or delete it,
 // recorded as the workflow decision that carries the node (REQ-17 BC-26). Core checks the approver.

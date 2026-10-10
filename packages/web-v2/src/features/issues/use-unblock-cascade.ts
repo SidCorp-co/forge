@@ -1,4 +1,3 @@
-"use client";
 
 import type { UnblockCascadeFrame } from "@forge/contracts/ws-frames";
 import { useEffect } from "react";

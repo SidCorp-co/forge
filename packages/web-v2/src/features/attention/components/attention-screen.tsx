@@ -1,4 +1,3 @@
-"use client";
 
 // Attention / Inbox (ISS-307): a cross-project list of what needs the caller. Each project's
 // needs-you rows come from core's one needs-you read model; beside them @-mentions, failed jobs
@@ -7,7 +6,7 @@
 // `['attention']` invalidations in `lib/ws/event-router.ts` refetch.
 
 import { type ReactNode, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import { formatRelativeTime } from "@/lib/utils/format";
 import {
   EmptyState,

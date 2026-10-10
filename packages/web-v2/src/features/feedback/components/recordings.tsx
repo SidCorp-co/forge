@@ -1,4 +1,3 @@
-"use client";
 
 // An item's recordings as one list (REQ-35 BC-8, REQ-41 BC-18, BC-21; Feedback lifecycle step
 // `evidence`): a video someone attached and a recording a reproduce made are rows of the same table,

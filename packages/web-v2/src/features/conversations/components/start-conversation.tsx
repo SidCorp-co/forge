@@ -1,4 +1,3 @@
-"use client";
 
 // Starting a room, with whoever it starts with (ISS-1011).
 //

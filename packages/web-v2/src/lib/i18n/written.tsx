@@ -1,4 +1,3 @@
-"use client";
 
 // Text a person or a model wrote, shown as it was written: never translated, marked with the
 // language it was written in where that is not the reader's, so a vi reader meeting an English

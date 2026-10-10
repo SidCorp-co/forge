@@ -1,4 +1,3 @@
-"use client";
 
 import { useIssueForecast } from "@/features/forecast";
 import { useMockups } from "@/features/mockups";

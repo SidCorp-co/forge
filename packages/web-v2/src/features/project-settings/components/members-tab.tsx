@@ -1,4 +1,3 @@
-"use client";
 
 // Project settings → Members. List (email + role) + direct-add from the org +
 // invite by email + remove + inline role change, plus a pending-invitations

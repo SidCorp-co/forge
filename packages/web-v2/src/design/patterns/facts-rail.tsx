@@ -1,4 +1,3 @@
-"use client";
 
 // The at-a-glance facts of one item: a sticky rail beside the full page's main column, and the body
 // of its peek. Groups are headed in the primary colour one step above their labels, with a

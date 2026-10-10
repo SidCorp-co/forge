@@ -1,4 +1,3 @@
-"use client";
 
 // The dashboard's one line about onboarding (workflow project-onboarding, BC-1): never a blocker,
 // derived by core from the onboarding's own rows, gone once every onboarding design is approved.

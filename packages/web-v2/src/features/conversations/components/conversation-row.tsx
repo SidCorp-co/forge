@@ -1,4 +1,3 @@
-"use client";
 
 // One row of the conversation list, fitting both a 360px list column and a 375px phone; the project
 // glyph carries the "which project" signal a bare title cannot (ISS-698). Rename, archive and delete

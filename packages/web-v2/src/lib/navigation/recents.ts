@@ -1,4 +1,3 @@
-'use client';
 
 // Recently-viewed entities (project / issue / session / run), MRU-ordered and
 // capped. Detail screens call `push()` from an effect; the command palette

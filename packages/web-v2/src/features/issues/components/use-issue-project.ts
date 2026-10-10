@@ -1,4 +1,3 @@
-"use client";
 
 import { usePolicyDocument } from "@/features/project-config";
 import { useProjects } from "@/features/projects";

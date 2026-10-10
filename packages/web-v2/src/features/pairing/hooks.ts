@@ -1,4 +1,3 @@
-"use client";
 
 import { useMutation } from "@tanstack/react-query";
 import { useAgentAccounts } from "@/features/agent-accounts";

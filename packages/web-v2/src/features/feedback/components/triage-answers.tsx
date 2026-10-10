@@ -1,4 +1,3 @@
-"use client";
 
 // The triage checklist's questions a triager answers (Feedback lifecycle r14 triage-check), drawn from
 // the one definition core judges them by (`@forge/contracts/checklists:checklistFormOf`), so the form

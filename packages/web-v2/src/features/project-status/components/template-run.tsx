@@ -1,4 +1,3 @@
-"use client";
 
 // The status page's Templates tab: run one of the build's report templates as the reader and read
 // what it draws, then keep it. Run calls core's template door (`POST .../report-templates/:id/runs`),
@@ -10,7 +9,7 @@
 
 import type { ReportDocument } from "@forge/contracts/report-templates";
 import { narrativeOutcomeLine, type StatusReportNarrative } from "@forge/contracts/status-reports";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useId, useState } from "react";
 import { Button, ErrorState, ProjectLoader, ViewHeading } from "@/design";
 import { ReportDocumentBody, useSaveTemplateReport } from "@/features/shares";

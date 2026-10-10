@@ -1,12 +1,9 @@
 // The two readers the public documentation serves, and the door each one comes in by.
 // The value is the `audience` a page declares; the words are the reader's own.
 
-export const AUDIENCES = ["user", "agent"] as const;
-export type Audience = (typeof AUDIENCES)[number];
+import { type Audience, DOOR_LABELS } from "@forge/contracts/guide-addresses";
 
-export function isAudience(value: string): value is Audience {
-  return (AUDIENCES as readonly string[]).includes(value);
-}
+export { AUDIENCES, type Audience, isAudience } from "@forge/contracts/guide-addresses";
 
 interface Door {
   label: string;
@@ -17,12 +14,12 @@ interface Door {
 
 export const DOORS: Record<Audience, Door> = {
   user: {
-    label: "I use Forge",
+    label: DOOR_LABELS.user,
     blurb: "Ask for a change, read where it stands, and tell when it is done.",
     notice: "Written for people using Forge.",
   },
   agent: {
-    label: "I'm an agent or a script",
+    label: DOOR_LABELS.agent,
     blurb: "The rules Forge's agents are held to, each also served as plain markdown with no credential.",
     notice:
       "Written for agents: a rule Forge's agents are held to, not a how-to for using Forge.",

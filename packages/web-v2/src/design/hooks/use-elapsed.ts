@@ -1,4 +1,3 @@
-"use client";
 
 import { useNow } from "./use-now";
 import { useCopy } from "@/lib/i18n/interface-language";

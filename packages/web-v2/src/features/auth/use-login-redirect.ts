@@ -1,4 +1,3 @@
-"use client";
 
 import { useEffect, useSyncExternalStore } from "react";
 import { bounceOutcome, clearBounce, leaveForLogin, subscribeBounce } from "./login-bounce";

@@ -1,4 +1,3 @@
-"use client";
 
 // Awaiting release: the issues standing at `awaiting_release`, counted by core's issue list as
 // the issue flow beside it counts them, and the draft release's turn read from the same draft
@@ -6,7 +5,7 @@
 // that says 72. Folded to five by default so a large backlog cannot push Runners below the fold.
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { Button, Checkbox, Icon, Section, StatusBadge, useIdSet } from "@/design";
 import { useDraftReleaseForecast } from "@/features/forecast";
 import { spanText } from "@/features/forecast";

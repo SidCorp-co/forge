@@ -1,4 +1,3 @@
-"use client";
 
 import { createContext, use } from "react";
 import { Toaster, showToast, type ToastInput } from "@/design/primitives/toast";

@@ -1,7 +1,6 @@
-"use client";
 
 import { type RefObject, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import { keptReportHref } from "@/lib/routes/status";
 import { NotificationsMenu, Popover } from "@/design";
 import { useProjects } from "@/features/projects";

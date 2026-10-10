@@ -1,10 +1,9 @@
-"use client";
 
 // What lands this week, as flush rows on hairlines. Times are core's forecast read in the viewer's
 // timezone. A row waiting on a person names who and not a time.
 
 import type { Said } from "@forge/contracts/said";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { SectionTitle } from "@/design/primitives/heading";
 import { EtaCell } from "@/features/forecast";
 import type { EtaClock } from "@/features/forecast";

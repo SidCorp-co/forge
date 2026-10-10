@@ -1,4 +1,3 @@
-"use client";
 
 // A process requirement's picture where it links a workflow (REQ-35 BC-3; Requirement lifecycle r14
 // step `picture`): that workflow on the canvas, the steps and links its live criteria trace lit and
@@ -6,7 +5,7 @@
 // workflow's current design no longer has lights nothing and is named, so a trace left behind by a
 // design change never reads as a lit picture with nothing lit.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { type ReactNode, useMemo, useState } from "react";
 import { NativeSelect } from "@/design";
 import { templateFor } from "@/features/workflows";

@@ -1,4 +1,3 @@
-"use client";
 
 
 import {
@@ -8,7 +7,6 @@ import {
   useRef,
   useState,
 } from "react";
-import Image from "next/image";
 import { MediaOverlay } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -264,7 +262,7 @@ function Thumbnails({ images, index, onPick }: { images: LightboxImage[]; index:
           className={cn("flex-none overflow-hidden rounded-md border-2 transition-colors", i === index ? "border-info-8" : "border-transparent opacity-60 hover:opacity-100")}
         >
           {/* unoptimized: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
-          <Image unoptimized src={img.href} alt={img.alt ?? img.name} width={56} height={56} className="size-11 object-cover sm:size-14" />
+          <img src={img.href} alt={img.alt ?? img.name} width={56} height={56} className="size-11 object-cover sm:size-14" />
         </button>
       ))}
     </div>
@@ -327,15 +325,12 @@ export function ImageLightbox({
           onWheel={gesture.onWheel}
           onDoubleClick={gesture.toggleZoom}
         >
-          {/* unoptimized: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
-          <Image
-            unoptimized
-            fill
+          <img
             sizes="100vw"
             src={current.href}
             alt={current.alt ?? current.name}
             draggable={false}
-            className="object-contain will-change-transform"
+            className="absolute inset-0 size-full object-contain will-change-transform"
             style={{
               transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
               transition: moving ? "none" : "transform 120ms ease-out",

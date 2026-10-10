@@ -1,4 +1,3 @@
-"use client";
 
 // A frozen release page a share link opens (BC-11): the user view as it was when it was shared,
 // drawn by the same reader the app uses, read-only and with no link into the project. Each clip and

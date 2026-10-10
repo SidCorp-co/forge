@@ -1,4 +1,3 @@
-"use client";
 
 // The pieces every settings section is built from: a group heading, a field bound to one place in a
 // document the section holds, and the one save bar a section has.

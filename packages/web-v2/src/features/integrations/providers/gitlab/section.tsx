@@ -1,4 +1,3 @@
-"use client";
 
 import { Banner, Field, Input } from "@/design";
 import { useState } from "react";

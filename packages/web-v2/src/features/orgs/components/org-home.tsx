@@ -1,4 +1,3 @@
-"use client";
 
 // Org home (ISS-470) — the "something changed" screen for the active org. Shows
 // the org name, its projects, and (for team orgs) its members, all bound to the
@@ -7,8 +6,7 @@
 // delete behave identically to Settings → Organizations. For a personal org we
 // suppress the team-member panel (there is no team to manage) and show a
 // projects-only view so single-org users never hit an empty dead-end.
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useRouter } from "@/lib/navigation/router";
 import { Badge, PageSection, PageSectionBody, EmptyState, ErrorState, PageContainer, Skeleton, EnumBadge } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";

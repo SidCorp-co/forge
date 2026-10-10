@@ -1,8 +1,7 @@
-"use client";
 
 // A project's Sessions index under the Agents shell (ISS-291). Rows link to the
 // session detail (`/projects/:slug/agents/:id`) and back to their issue (ISS-331).
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useState } from "react";
 import {
   EmptyState,

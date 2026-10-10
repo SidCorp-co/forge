@@ -1,4 +1,3 @@
-"use client";
 
 // A project's share links, as core lists them (`GET /api/projects/:id/shares`): what each froze, who
 // may open it, who made it, until when, how often it was opened, and where it stands. A row never

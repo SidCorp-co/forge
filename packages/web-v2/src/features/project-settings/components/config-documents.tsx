@@ -1,4 +1,3 @@
-"use client";
 
 import { useState, type ReactNode } from "react";
 import { Banner, Button, PageSectionTitle, ErrorState, Field, Input, Skeleton, enumLabel } from "@/design";

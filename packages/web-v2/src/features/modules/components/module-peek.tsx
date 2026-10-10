@@ -1,4 +1,3 @@
-"use client";
 
 // The peek (`?peek=outreach`) beside the list: the shared PeekPanel holding the page's header, the
 // one line whom the module waits on, its open issues by state and activity, then the same facts the

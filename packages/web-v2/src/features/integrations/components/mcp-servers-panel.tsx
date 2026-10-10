@@ -1,4 +1,3 @@
-"use client";
 
 // Agent MCP servers panel (ISS-429, ISS-1191). `GET .../integrations/mcp-preview`
 // composes its answer from the one resolver the dispatch itself uses, so neither

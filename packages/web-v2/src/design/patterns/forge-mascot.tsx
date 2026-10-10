@@ -1,6 +1,4 @@
-"use client";
 
-import Image from "next/image";
 import { Fragment, useEffect, useRef } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { assetPath } from "@/lib/asset";
@@ -127,12 +125,12 @@ export function ForgeMascot({
       />
 
       <div className="fm-breathe" style={{ position: "absolute", inset: 0 }}>
-        <Image src={MASCOT_SRC} unoptimized loading="eager" width={size} height={size} alt={t("common.brand")} draggable={false} style={{ position: "absolute", inset: 0, display: "block" }} />
+        <img src={MASCOT_SRC} loading="eager" width={size} height={size} alt={t("common.brand")} draggable={false} style={{ position: "absolute", inset: 0, display: "block" }} />
 
         {flicker && (
           <Fragment>
-            <Image src={MASCOT_SRC} unoptimized loading="eager" width={size} height={size} alt="" draggable={false} className="fm-flameA" style={{ position: "absolute", inset: 0, clipPath: leftHorn, mixBlendMode: "screen", pointerEvents: "none" }} />
-            <Image src={MASCOT_SRC} unoptimized loading="eager" width={size} height={size} alt="" draggable={false} className="fm-flameB" style={{ position: "absolute", inset: 0, clipPath: rightHorn, mixBlendMode: "screen", pointerEvents: "none" }} />
+            <img src={MASCOT_SRC} loading="eager" width={size} height={size} alt="" draggable={false} className="fm-flameA" style={{ position: "absolute", inset: 0, clipPath: leftHorn, mixBlendMode: "screen", pointerEvents: "none" }} />
+            <img src={MASCOT_SRC} loading="eager" width={size} height={size} alt="" draggable={false} className="fm-flameB" style={{ position: "absolute", inset: 0, clipPath: rightHorn, mixBlendMode: "screen", pointerEvents: "none" }} />
           </Fragment>
         )}
 

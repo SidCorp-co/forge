@@ -1,4 +1,3 @@
-"use client";
 
 import type { WorkflowHealth } from "@forge/contracts/workflow-health";
 import { useQuery } from "@tanstack/react-query";

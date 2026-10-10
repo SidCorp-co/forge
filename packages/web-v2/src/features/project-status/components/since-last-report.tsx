@@ -1,11 +1,10 @@
-"use client";
 
 // "Since last report": what changed between a kept report and the one before it, every line core
 // derived from the two stored reports (`@forge/contracts/status-reports:statusReportDiff`). Flat:
 // one heading per kind of change over hairline lists, an empty part said in one quiet line.
 
 import type { StatusReportDetail } from "@forge/contracts/status-reports";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
 import { MonoTag, ViewHeading } from "@/design";
 import type { EtaClock } from "@/features/forecast";

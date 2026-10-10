@@ -1,4 +1,3 @@
-"use client";
 
 import { PageSection, Skeleton, Sparkline } from "@/design";
 import { TONE_META } from "@/design/status";

@@ -1,4 +1,3 @@
-"use client";
 
 // One renderer for both body formats. `markdown` goes to `<Markdown>`; `html`
 // is a `forge-*` component body, and core hands the node tree over the wire

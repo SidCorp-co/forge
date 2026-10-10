@@ -1,4 +1,3 @@
-"use client";
 
 // A multi-pick search field: the picks as chips inside the input, the matches in a popup list. Built
 // on Base UI Combobox parts as documented (Root, InputGroup, Chips, Input, Portal, Positioner, Popup,

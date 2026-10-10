@@ -1,4 +1,3 @@
-"use client";
 
 import { useOrgs } from "@/features/orgs";
 import { invalidateBindingChange } from "@/features/project-config";

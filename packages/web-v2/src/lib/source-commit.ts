@@ -1,3 +1,3 @@
 import { parseSourceCommit } from "@forge/observability";
 
-export const sourceCommit: string | null = parseSourceCommit(process.env.NEXT_PUBLIC_SOURCE_COMMIT);
+export const sourceCommit: string | null = parseSourceCommit(import.meta.env.VITE_SOURCE_COMMIT);

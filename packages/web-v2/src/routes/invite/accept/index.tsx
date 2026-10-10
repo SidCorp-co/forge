@@ -1,0 +1,156 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { Banner, Button, EnumBadge, Skeleton } from "@/design";
+import { AuthShell } from "@/features/auth/components/auth-shell";
+import { ApiError, apiClient } from "@/lib/api/client";
+import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
+import { useAuth } from "@/providers/auth-provider";
+// Invitation accept landing — the target of every invitation email
+// (`/invite/accept?token=…[&kind=org]`). Lives OUTSIDE the (auth) group (its
+// layout bounces signed-in users to /) and outside (workspace) (no shell):
+// the page must serve both auth states — show the invite, then either accept
+// (signed in) or hand off to login/register (signed out).
+import { Link, useRouter, useSearchParams } from "@/lib/navigation/router";
+import { useQuery } from "@tanstack/react-query";
+import { Suspense, useState } from "react";
+
+interface InviteInfo {
+  /** Project invites carry projectName; org invites carry orgName. */
+  projectName?: string;
+  orgName?: string;
+  inviterEmail: string;
+  role: string;
+  email: string;
+  expiresAt: string;
+}
+
+const ERROR_COPY: Record<string, (t: Copy) => string> = {
+  INVALID_TOKEN: (t) => t("auth.inviteRefused.invalid"),
+  EXPIRED_TOKEN: (t) => t("auth.inviteRefused.expired"),
+  ALREADY_ACCEPTED: (t) => t("auth.inviteRefused.alreadyAccepted"),
+  INVITATION_EMAIL_MISMATCH: (t) => t("auth.inviteRefused.emailMismatch"),
+};
+
+function inviteCopy(err: unknown, t: Copy): string {
+  const said = err instanceof ApiError && err.code ? ERROR_COPY[err.code] : undefined;
+  return said ? said(t) : formatApiError(err);
+}
+
+function AcceptInvite() {
+  const t = useCopy();
+  const params = useSearchParams();
+  const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
+
+  const token = params.get("token") ?? "";
+  const isOrg = params.get("kind") === "org";
+  const base = isOrg ? "/org-invitations" : "/invitations";
+
+  const infoQ = useQuery({
+    queryKey: ["invitation", base, token],
+    queryFn: () => apiClient<InviteInfo>(`${base}/${encodeURIComponent(token)}`),
+    enabled: token !== "",
+    retry: false,
+  });
+  const info = infoQ.data ?? null;
+  const loadError = !token ? t("auth.inviteRefused.invalid") : infoQ.isError ? inviteCopy(infoQ.error, t) : null;
+  const [acceptError, setAcceptError] = useState<string | null>(null);
+  const [accepting, setAccepting] = useState(false);
+
+  async function accept() {
+    setAccepting(true);
+    setAcceptError(null);
+    try {
+      await apiClient(`${base}/${encodeURIComponent(token)}/accept`, {
+        method: "POST",
+      });
+      router.push(isOrg ? "/settings?tab=orgs" : "/projects");
+    } catch (err) {
+      setAcceptError(inviteCopy(err, t));
+      setAccepting(false);
+    }
+  }
+
+  const targetName = info?.orgName ?? info?.projectName ?? "";
+
+  return (
+    <AuthShell
+      title={t("auth.invite.title")}
+      subtitle={
+        info
+          ? t(isOrg ? "auth.invite.joinOrg" : "auth.invite.joinProject", { name: targetName })
+          : t("auth.invite.checking")
+      }
+      footer={
+        !user ? (
+          <>
+            {t("auth.login.newHere")}{" "}
+            <Link
+              href={`/register${info ? `?email=${encodeURIComponent(info.email)}` : ""}`}
+              className="text-link font-semibold"
+            >
+              {t("auth.login.createAccount")}
+            </Link>{" "}
+            {t("auth.invite.registerThen")}
+          </>
+        ) : undefined
+      }
+    >
+      {loadError ? (
+        <Banner tone="danger">{loadError}</Banner>
+      ) : !info ? (
+        <div className="space-y-2">
+          <Skeleton className="h-9 w-full rounded-md" />
+          <Skeleton className="h-9 w-3/4 rounded-md" />
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="space-y-2 rounded-md border border-line bg-surface px-4 py-3">
+            <p className="text-fg">
+              {t("auth.invite.line", { inviter: info.inviterEmail, email: info.email, name: targetName })}{" "}
+              <EnumBadge family="role" value={info.role} />
+            </p>
+            <p className="fg-body-sm text-muted">
+              {t("auth.invite.validUntil", { date: new Date(info.expiresAt).toLocaleDateString() })}
+            </p>
+          </div>
+
+          {acceptError && <Banner tone="danger">{acceptError}</Banner>}
+
+          {authLoading ? (
+            <Skeleton className="h-9 w-full rounded-md" />
+          ) : user ? (
+            <Button
+              variant="primary"
+              className="w-full"
+              loading={accepting}
+              onClick={() => void accept()}
+            >
+              {t("auth.invite.accept")}
+            </Button>
+          ) : (
+            <Link
+              href={`/login?email=${encodeURIComponent(info.email)}`}
+              className="block"
+            >
+              <Button variant="primary" className="w-full">
+                {t("auth.invite.signInToAccept")}
+              </Button>
+            </Link>
+          )}
+        </div>
+      )}
+    </AuthShell>
+  );
+}
+
+function AcceptInvitePage() {
+  return (
+    <Suspense fallback={null}>
+      <AcceptInvite />
+    </Suspense>
+  );
+}
+
+export const Route = createFileRoute("/invite/accept/")({ component: AcceptInvitePage });

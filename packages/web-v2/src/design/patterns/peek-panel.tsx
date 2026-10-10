@@ -1,4 +1,3 @@
-"use client";
 
 // The peek beside a list (`?peek=KEY`): a summary of one row — its header, whose turn it is and the
 // facts that decide it — with "Open full page ↗", ↑/↓ and j/k through the visible rows, Esc to close.

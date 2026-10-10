@@ -1,4 +1,3 @@
-"use client";
 
 // What a run was given when it opened (REQ-1 BC-3, REQ-4 BC-12): per carried issue, the requirement
 // revision it was planned on and the one current then, the pinned design revisions and contract
@@ -6,7 +5,7 @@
 // per block; a run opened before core recorded it says so.
 
 import type { RunGiven, RunGivenIssue } from "@forge/contracts/run-standing";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { FactsEmpty, ViewHeading } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";

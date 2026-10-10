@@ -1,4 +1,3 @@
-"use client";
 
 // An assistant's turn as the thread draws it: its prose and blocks, the corrections it took, and the note where a reply replaced its draft.
 

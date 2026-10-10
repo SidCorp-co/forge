@@ -1,4 +1,3 @@
-"use client";
 
 // Workspace `/integrations` — the OWNER CONNECTION DIRECTORY (ISS-429).
 //
@@ -9,7 +8,7 @@
 // the operator comes looking for an app before a credential. What a row holds,
 // and what it deliberately does not: `connection-row.tsx`.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useRef, useState } from "react";
 import {
   Button,

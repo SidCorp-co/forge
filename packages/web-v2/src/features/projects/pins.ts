@@ -1,4 +1,3 @@
-'use client';
 
 import { useCallback } from 'react';
 import { usePersistedState, WEB_V2_NS } from '@/lib/utils/use-persisted-state';

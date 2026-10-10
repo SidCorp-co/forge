@@ -1,4 +1,3 @@
-"use client";
 
 // Reads of a release's notes that are the operator's, not the reader's: which draft notes need
 // rewriting before the cut, the designs it records apart (an approval changes nothing people use),
@@ -7,7 +6,7 @@
 
 import { contentLanguageName } from "@forge/contracts/content-language";
 import { notesCallingItDemo } from "@forge/contracts/customer-notes";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useCopy, useCopyLocale } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";
 import type { ReleaseDetail } from "../types";

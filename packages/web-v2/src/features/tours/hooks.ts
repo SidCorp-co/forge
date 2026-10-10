@@ -1,4 +1,3 @@
-"use client";
 
 import type { TourStateValue } from "@forge/contracts/product-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

@@ -1,4 +1,3 @@
-"use client";
 
 // The decisions only the viewer can make (REQ-41 BC-1, BC-2), as core's needs-me read answers them:
 // each with its question, the recommended answer and why, and the buttons that answer it. A button
@@ -14,7 +13,7 @@ import {
   type NeedsYouDecisions,
 } from "@forge/contracts/needs-you-decisions";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useState } from "react";
 import { Button, Icon, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";

@@ -1,4 +1,3 @@
-"use client";
 
 import type { Query, QueryClient, QueryFilters } from "@tanstack/react-query";
 

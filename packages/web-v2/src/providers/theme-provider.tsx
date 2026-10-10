@@ -1,4 +1,3 @@
-"use client";
 
 import { ThemeProvider as NextThemes, useTheme } from "next-themes";
 import { useEffect } from "react";

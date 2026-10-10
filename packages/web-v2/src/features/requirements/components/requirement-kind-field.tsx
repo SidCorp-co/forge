@@ -1,4 +1,3 @@
-"use client";
 
 // What a requirement is, set or corrected on its page by a project.write holder (REQ-35 BC-2;
 // Requirement lifecycle r14 edge `kind.corrected`). Core keeps a drawn picture only while it fits the

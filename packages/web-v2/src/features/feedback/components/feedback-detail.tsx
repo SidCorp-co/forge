@@ -1,4 +1,3 @@
-"use client";
 
 // A feedback item's full page: its screenshots, recordings and the step it hits, then, while it waits
 // on triage, its triage checklist's answers and gaps (REQ-34 r2 BC-5), the acts a person can take and

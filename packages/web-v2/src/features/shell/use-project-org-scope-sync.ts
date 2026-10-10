@@ -1,11 +1,10 @@
-"use client";
 
 // web-v2 shell feature module — keeps the active-org scope and the open
 // project consistent (ISS-470 / ISS-476 / ISS-480). Owns the "last project
 // visited" persisted slug too, since the ISS-480 leave-project path must drop
 // it. The layout calls this once and consumes { activeOrgId, lastSlug }.
 import { useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import { useActiveOrg } from "@/features/orgs";
 import { inActiveOrg } from "@/features/projects";
 import type { ProjectListItem } from "@/features/projects";

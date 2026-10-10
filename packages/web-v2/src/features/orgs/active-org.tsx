@@ -1,4 +1,3 @@
-"use client";
 
 import { createContext, use } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";

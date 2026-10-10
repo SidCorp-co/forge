@@ -1,4 +1,3 @@
-"use client";
 
 // One memory on the record it names (MJ-1, MJ-3, REQ-33 BC-4): what it says, who wrote it and when, whether anyone
 // checked it, why it needs a check (core's reasons: unchecked too long, a cited record changed since),
@@ -8,7 +7,7 @@
 // "Still true" stamps the row checked by the person; "Not true anymore" leads to Correct or Retire, which each take a reason before they send; a mirror of an issue, comment or job offers neither.
 
 import { MEMORY_CHECK_AFTER_DAYS, MEMORY_MIRROR_SOURCES, type MemoryActor, type MemoryArchiveCause, type MemoryCite, type MemoryEntry, type MemoryStaleRef } from "@forge/contracts/memory";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { Fragment, type ReactNode, useState } from "react";
 import { Button, Field, Input, Textarea } from "@/design";
 import { formatDate } from "@/lib/i18n/format";

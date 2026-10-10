@@ -1,4 +1,3 @@
-"use client";
 
 import type { QueryClient } from "@tanstack/react-query";
 import { noteInvalidated } from "@/lib/api/ref-bridge";

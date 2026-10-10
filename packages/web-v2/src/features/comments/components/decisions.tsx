@@ -1,4 +1,3 @@
-"use client";
 
 import type { DecisionMaker } from "@forge/contracts/comments";
 import { WrittenMark } from "@/lib/i18n/written";

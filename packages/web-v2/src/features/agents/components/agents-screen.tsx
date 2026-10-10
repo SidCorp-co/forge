@@ -1,4 +1,3 @@
-"use client";
 
 import { PageTitle, Tabs, useUrlTab } from "@/design";
 import { SessionsScreen } from "@/features/sessions";

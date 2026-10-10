@@ -1,4 +1,3 @@
-"use client";
 
 // The project home's first screen (REQ-41 BC-13): the conversation, and beside it, or below it on a
 // phone, what needs you, what is running and what is at risk. Flat tables on hairlines, no cards.

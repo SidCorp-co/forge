@@ -1,4 +1,3 @@
-"use client";
 
 // The peek (`?peek=REQ-12`) beside the list: the shared PeekPanel holding the full page's header —
 // key, state, title, the one primary act — and the page's progress strip, over the same facts its

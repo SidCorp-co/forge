@@ -1,4 +1,3 @@
-"use client";
 
 import { checkBlock, isVisualBlockKind, type VisualBlockKind } from "@forge/contracts/visual-blocks";
 import { useState } from "react";

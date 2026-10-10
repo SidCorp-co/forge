@@ -1,4 +1,3 @@
-"use client";
 
 // A file behind the session, played from where a person can reach it: fetched with the session's
 // credentials into a local object URL (the pattern of `features/workflows/canvas/wireframe-thumb.tsx`),

@@ -1,4 +1,3 @@
-"use client";
 
 import { Select } from "@/design";
 import type { ReactNode } from "react";

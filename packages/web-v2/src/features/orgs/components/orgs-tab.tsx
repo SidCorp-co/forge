@@ -1,4 +1,3 @@
-"use client";
 
 import { Badge, Button, PageSection, PageSectionBody, ErrorState, Field, Input, SectionTitle, Skeleton, EnumBadge } from "@/design";
 import { formatApiError } from "@/lib/api/error";

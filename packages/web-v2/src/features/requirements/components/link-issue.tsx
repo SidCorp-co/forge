@@ -1,4 +1,3 @@
-"use client";
 
 // A person links an issue that already exists to the requirement it delivers: picked by key or
 // title, optionally adopting its written plan for the current revision. Core decides; a refusal

@@ -1,4 +1,3 @@
-"use client";
 
 import { createContext, type ReactNode, use } from "react";
 import { Badge } from "@/design";

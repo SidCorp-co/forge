@@ -1,4 +1,3 @@
-"use client";
 
 // The intake assistant's draft of a requirement or feedback item (REQ-34 BC-12..BC-16), as core keeps
 // it: what the item duplicates, conflicts with, affects and relates to, each a link, and each workflow it
@@ -7,7 +6,7 @@
 // nothing to ask and why. Rows, not prose; nothing shows before a
 // draft exists.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { FieldLabel, ViewHeading } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { feedbackHref } from "@/lib/routes/feedback";

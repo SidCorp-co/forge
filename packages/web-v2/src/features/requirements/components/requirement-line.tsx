@@ -1,4 +1,3 @@
-"use client";
 
 // The cells a requirement fills in the shared list and its map: a short name, how many of its
 // criteria pass, the stage it stands at, and its wait. The stage and the wait come from contracts, once.

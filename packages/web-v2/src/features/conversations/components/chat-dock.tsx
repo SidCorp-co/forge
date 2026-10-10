@@ -1,6 +1,5 @@
-"use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname } from "@/lib/navigation/router";
 import { type RefObject, useCallback, useRef, useState } from "react";
 import { Icon, IconButton, SecondaryRegion, SlideOver, useMediaQuery } from "@/design";
 import { useProjectEcosystems } from "@/features/ecosystem";

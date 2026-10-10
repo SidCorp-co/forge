@@ -1,4 +1,3 @@
-"use client";
 
 import { useState } from "react";
 import { Button, IconButton, Input } from "@/design";

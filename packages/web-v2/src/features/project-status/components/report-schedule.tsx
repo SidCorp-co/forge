@@ -1,4 +1,3 @@
-"use client";
 
 // Sending the status report on a schedule: a person picks what is sent (the project status, or one
 // of the build's report templates with its params), the day, the time and the recipients among

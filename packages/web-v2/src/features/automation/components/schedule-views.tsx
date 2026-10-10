@@ -1,10 +1,8 @@
-"use client";
 
 // a schedule as the automation read model serves it (ISS-116, design automation rev 1, step
 // screen): its row, its facts rail, its peek and its full page read one ScheduleStanding, so the state,
 // next fire, owner and last result are never derived here
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useRouter } from "@/lib/navigation/router";
 import { useState } from "react";
 import {
   Button,

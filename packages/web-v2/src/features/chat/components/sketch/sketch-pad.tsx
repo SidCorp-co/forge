@@ -1,15 +1,10 @@
-"use client";
 
-import dynamic from "next/dynamic";
-import { useCallback, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useRef, useState } from "react";
 import { Button, Dialog } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { SketchExport } from "./sketch-canvas";
 
-const SketchCanvas = dynamic(() => import("./sketch-canvas"), {
-  ssr: false,
-  loading: () => <Opening />,
-});
+const SketchCanvas = lazy(() => import("./sketch-canvas"));
 
 function Opening() {
   const t = useCopy();
@@ -78,7 +73,11 @@ export function SketchPad({
         </>
       }
     >
-      <div className="h-120 min-h-0 overflow-hidden border border-line">{open && <SketchCanvas onReady={onReady} />}</div>
+      <div className="h-120 min-h-0 overflow-hidden border border-line">{open && (
+          <Suspense fallback={<Opening />}>
+            <SketchCanvas onReady={onReady} />
+          </Suspense>
+        )}</div>
     </Dialog>
   );
 }

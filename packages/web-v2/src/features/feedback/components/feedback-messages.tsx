@@ -1,4 +1,3 @@
-"use client";
 
 // Messages from a feedback item: the thread of what was sent to reporters and the internal notes kept
 // for members, and a composer. A message to reporters picks its audience, previews the exact notice,

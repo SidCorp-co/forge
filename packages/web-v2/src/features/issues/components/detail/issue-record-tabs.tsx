@@ -1,4 +1,3 @@
-"use client";
 
 // REQ-33 BC-2, BC-4: an issue's Decisions and Memory tabs, the decisions recorded on it and the
 // memories naming it, read on the issue itself through the one entity decisions read and the one

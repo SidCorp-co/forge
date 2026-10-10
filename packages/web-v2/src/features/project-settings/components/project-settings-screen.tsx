@@ -1,4 +1,3 @@
-"use client";
 
 // Per-project settings (ISS-316), grouped by what a person comes to change rather than by the
 // document each value is stored in: General, People, Work, Delivery, Connections, and Advanced for

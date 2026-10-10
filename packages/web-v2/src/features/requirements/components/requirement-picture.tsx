@@ -1,4 +1,3 @@
-"use client";
 
 // A requirement's picture, the first thing its page shows under the progress strip and above every
 // text view (REQ-35 BC-1; Requirement lifecycle r14 steps picture, picture_none, picture_shown;

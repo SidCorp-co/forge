@@ -1,4 +1,3 @@
-"use client";
 
 // ISS-609 — One binding per project: the org-shared bot credential (server URL + bot PAT + bot user
 // id) lives on the connection; the rooms this project listens on (`rids`, 1..20) are binding-tier.

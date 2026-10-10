@@ -1,4 +1,3 @@
-"use client";
 
 // The sections of the org members card: members (lens, role, remove), the org's projects, pending
 // invitations (revoke) and the add-member form.

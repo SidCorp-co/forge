@@ -1,4 +1,3 @@
-"use client";
 
 import { ISSUE_ATTENTION_GROUPS, ISSUE_ATTENTION_LABELS } from "@forge/contracts/issue-standing";
 import { Fragment } from "react";

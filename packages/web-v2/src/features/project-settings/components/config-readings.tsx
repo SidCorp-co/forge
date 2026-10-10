@@ -1,4 +1,3 @@
-"use client";
 
 import { Badge, Banner, PageSectionTitle, enumLabel, ErrorState, MonoTag, StatusBadge, Skeleton, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { canonicalJson } from "@forge/contracts/document-patch";

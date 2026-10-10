@@ -1,4 +1,3 @@
-"use client";
 
 import { Icon } from "@/design";
 import { cn } from "@/lib/utils/cn";

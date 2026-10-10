@@ -1,4 +1,3 @@
-"use client";
 
 // A fold: its label, a count or one short summary, and a chevron; the body opens under it. Base UI's
 // Collapsible gives the button, aria-expanded/controls and the open state (controlled or not).

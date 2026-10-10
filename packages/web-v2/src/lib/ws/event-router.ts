@@ -1,4 +1,3 @@
-"use client";
 
 import type { WsFrame } from "@forge/contracts/ws-frames";
 import type { QueryClient } from "@tanstack/react-query";
@@ -24,7 +23,7 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 	}
 	if (routeIssueFrame(env, qc) || routeRunFrame(env, qc) || routeAccountFrame(env, qc)) return;
 	// A frame no router names: logged in dev to surface missing wiring.
-	if (process.env.NODE_ENV !== "production") {
+	if (import.meta.env.MODE !== "production") {
 		console.debug("[ws] unhandled event", env.event, env.data);
 	}
 }

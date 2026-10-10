@@ -1,4 +1,3 @@
-"use client";
 
 
 import { Icon, type IconName } from "@/design";

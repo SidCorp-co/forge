@@ -1,4 +1,3 @@
-"use client";
 
 import { Badge, enumLabel, ProjectMark, StatusBadge, Tooltip } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";

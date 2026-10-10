@@ -1,6 +1,5 @@
-'use client';
 
-const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+const BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 /** Absolute, shareable URL for a basePath-relative `pathname + ?query`. */
 export function buildShareLink(pathWithQuery: string): string {

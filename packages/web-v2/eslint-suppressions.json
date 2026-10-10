@@ -1,5 +1,5 @@
 {
-  "src/app/(workspace)/layout.tsx": {
+  "src/routes/_workspace/route.tsx": {
     "@eslint-react/naming-convention-ref-name": {
       "count": 1
     },
@@ -13,12 +13,12 @@
       "count": 1
     }
   },
-  "src/app/(workspace)/projects/[slug]/page.tsx": {
+  "src/routes/_workspace/projects/$slug/index.tsx": {
     "@typescript-eslint/no-misused-promises": {
       "count": 1
     }
   },
-  "src/app/(workspace)/projects/[slug]/status/page.tsx": {
+  "src/routes/_workspace/projects/$slug/status/index.tsx": {
     "@typescript-eslint/no-misused-promises": {
       "count": 1
     }
@@ -28,7 +28,7 @@
       "count": 1
     }
   },
-  "src/app/invite/accept/page.tsx": {
+  "src/routes/invite/accept/index.tsx": {
     "@eslint-react/set-state-in-effect": {
       "count": 1
     },
@@ -36,12 +36,12 @@
       "count": 1
     }
   },
-  "src/app/layout.tsx": {
+  "src/routes/-root-layout.tsx": {
     "boundaries/dependencies": {
       "count": 1
     }
   },
-  "src/app/link-chat/page.tsx": {
+  "src/routes/link-chat/index.tsx": {
     "@eslint-react/set-state-in-effect": {
       "count": 2
     },
@@ -58,7 +58,7 @@
       "count": 1
     }
   },
-  "src/app/page-waterfall.test.tsx": {
+  "src/routes/page-waterfall.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     }
@@ -314,11 +314,6 @@
   "src/features/feedback/components/feedback-accept.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
-    }
-  },
-  "src/features/feedback/components/feedback-evidence.tsx": {
-    "@next/next/no-img-element": {
-      "count": 2
     }
   },
   "src/features/feedback/components/feedback-facts.tsx": {
@@ -675,9 +670,6 @@
     }
   },
   "src/features/mockups/components/mockups-panel.tsx": {
-    "@next/next/no-img-element": {
-      "count": 1
-    },
     "boundaries/dependencies": {
       "count": 1
     }
@@ -841,9 +833,6 @@
     }
   },
   "src/features/releases/components/release-media.tsx": {
-    "@next/next/no-img-element": {
-      "count": 1
-    },
     "jsx-a11y/media-has-caption": {
       "count": 1
     }
@@ -1116,11 +1105,6 @@
   },
   "src/features/workflows/canvas/view.ts": {
     "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/features/workflows/canvas/wireframe-thumb.tsx": {
-    "@next/next/no-img-element": {
       "count": 1
     }
   },

@@ -1,4 +1,3 @@
-"use client";
 
 // Issue-detail properties rail (REQ-43): Properties (the requirement it delivers, priority, size,
 // kind, owner, when it was opened), then what it Waits for and what it Holds up. The developer view

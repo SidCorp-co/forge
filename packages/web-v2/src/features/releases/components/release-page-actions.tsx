@@ -1,4 +1,3 @@
-"use client";
 
 // What a person does with a release page they can read (BC-11): share it by Forge link, or take it
 // out as Markdown or as an email file to send from their own mail. Forge sends no mail. Both exports

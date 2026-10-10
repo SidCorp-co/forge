@@ -1,7 +1,6 @@
-"use client";
 
 import { LANDING_SURFACES, type LandingSurface } from "@forge/contracts/landing-artifacts";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useMemo, useState } from "react";
 import {
   CoverageBar,

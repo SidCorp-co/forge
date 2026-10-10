@@ -1,4 +1,3 @@
-"use client";
 
 import type { HealthMarkerKind } from "@forge/contracts/workflow-health";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";

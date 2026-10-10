@@ -1,10 +1,9 @@
-"use client";
 
 // The run's full page: its tabs (overview, what it was given, attempts, events, lease) beside the
 // properties rail, all from core's run detail read. A person's view says each fact once and reads as
 // state; the developer view adds core's own sentences, codes, ids, what the run was given and the
 // lease's clocks (REQ-43 BC-5, BC-7).
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import {
   DetailLayout,
   DetailMobileTitle,

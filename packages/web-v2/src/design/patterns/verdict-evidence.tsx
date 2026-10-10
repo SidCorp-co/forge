@@ -1,4 +1,3 @@
-"use client";
 
 // What a verdict was written with, where a person reads a criterion's verdict (REQ-40 BC-4): its own
 // evidence note, and each clip or picture it names, reachable from the criterion and played in place.
@@ -6,7 +5,6 @@
 // session, so a clip is fetched with the session's credentials and played from a local object URL.
 
 import { releaseMediaKindOf } from "@forge/contracts/release-page";
-import Image from "next/image";
 import { useState } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { coreFileUrl } from "@/lib/utils/core-url";
@@ -34,7 +32,7 @@ function Player({ file, kind }: { file: VerdictEvidenceFile; kind: "clip" | "pic
     <video className="mt-1 aspect-video w-full max-w-xl border border-line bg-sunken" src={src.src} controls muted preload="metadata" playsInline aria-label={file.name} data-testid="verdict-clip" />
   ) : (
     // A blob address of no known size: unoptimized, with Next's documented form for unknown dimensions.
-    <Image className="mt-1 max-h-96 w-auto max-w-full border border-line" src={src.src} alt={file.name} width={0} height={0} sizes="100vw" unoptimized style={{ width: "auto", height: "auto" }} data-testid="verdict-picture" />
+    <img className="mt-1 max-h-96 w-auto max-w-full border border-line" src={src.src} alt={file.name} width={0} height={0} sizes="100vw" style={{ width: "auto", height: "auto" }} data-testid="verdict-picture" />
   );
 }
 

@@ -1,4 +1,3 @@
-"use client";
 
 // GitHub connect surface. Unlike every other provider here, there is no
 // credential to paste: GitHub mints the App, and Forge only ever sees what the

@@ -1,4 +1,3 @@
-"use client";
 
 // The issue's live preview (REQ-39): what state it is in, the page itself while it serves, why it
 // failed where it did (BC-10), who may approve or abandon it, and the box that asks the run for a

@@ -1,4 +1,3 @@
-"use client";
 
 // The shared conversation thread — renders flattened `ConversationItem[]`.
 // Reused by the run thread (session-screen) and the /agent Chat surface.

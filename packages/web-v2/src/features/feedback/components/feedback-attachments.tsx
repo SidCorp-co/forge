@@ -1,4 +1,3 @@
-"use client";
 
 // A feedback item's attachments: every file the evidence above does not draw (a screenshot or a
 // recording is shown there, once) as a link, the way an issue comment shows its files; and, to whoever

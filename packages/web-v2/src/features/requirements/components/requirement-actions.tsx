@@ -1,4 +1,3 @@
-"use client";
 
 // The acts a requirement offers where it stands — review a proposal, propose a draft, agree the
 // head, accept a delivery, defer or drop it — and the BA assistant door (ISS-58) that "Propose change" and the top
@@ -7,7 +6,7 @@
 // (accept, agree, re-pin, accept a delivery) opens a confirm step taking the signer's reason (ISS-281); while
 // it is open the button that opened it is off, so a second press cannot close it and drop the typed reason.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useCallback, useState } from "react";
 import { AcceptStep, Button, Input, showToast, Tooltip, focusOnMount } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";

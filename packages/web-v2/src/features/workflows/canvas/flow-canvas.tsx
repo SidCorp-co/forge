@@ -1,4 +1,3 @@
-"use client";
 
 import type { Node, Viewport } from "@xyflow/react";
 import { useReactFlow } from "@xyflow/react";

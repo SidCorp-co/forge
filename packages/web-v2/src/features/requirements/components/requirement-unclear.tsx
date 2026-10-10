@@ -1,4 +1,3 @@
-"use client";
 
 // What a requirement still leaves unclear (JU-6): the questions standing on it, open first, each with
 // who answers it and whether the agree waits for it, and the assumptions its revision takes as true.

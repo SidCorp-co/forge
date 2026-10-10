@@ -1,4 +1,3 @@
-"use client";
 
 // One level of the module tree as a map on the workflow canvas's React Flow and ELK layout: a card per
 // module in rollup order, wrapped into rows the width allows, and the couplings core rolled up to this

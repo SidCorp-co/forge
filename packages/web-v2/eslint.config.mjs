@@ -4,7 +4,6 @@
 // drains it; at zero the suppressions file is deleted and every rule blocks outright.
 // Inventory: `pnpm --filter web-v2 lint:inventory`.
 
-import nextPlugin from "@next/eslint-plugin-next";
 import eslintReact from "@eslint-react/eslint-plugin";
 import pluginQuery from "@tanstack/eslint-plugin-query";
 import boundaries from "eslint-plugin-boundaries";
@@ -68,7 +67,7 @@ const NO_FETCH = { selector: "CallExpression[callee.name='fetch']", message: "No
 
 const configs = tseslint.config(
   {
-    ignores: [".next/**", "coverage/**", "node_modules/**", "public/**", "next-env.d.ts", "src/components/ui/**", "witness/**", "scripts/**", "eslint/**", "*.config.*"],
+    ignores: ["dist/**", "coverage/**", "node_modules/**", "public/**", "src/routeTree.gen.ts", "src/components/ui/**", "witness/**", "scripts/**", "eslint/**", "*.config.*"],
   },
   ...tseslint.configs.recommendedTypeChecked,
   {
@@ -82,7 +81,6 @@ const configs = tseslint.config(
   eslintReact.configs["recommended-type-checked"],
   // react-hooks owns the hooks and compiler rules; @eslint-react keeps the rest
   eslintReact.configs["disable-conflict-eslint-plugin-react-hooks"],
-  nextPlugin.configs["core-web-vitals"],
   ...pluginQuery.configs["flat/recommended"],
   jsxA11y.flatConfigs.recommended,
   {

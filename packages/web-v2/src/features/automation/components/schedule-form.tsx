@@ -1,4 +1,3 @@
-"use client";
 
 import { type FormEvent, useState } from "react";
 import { Button, Field, Input, NativeSelect, Textarea } from "@/design";

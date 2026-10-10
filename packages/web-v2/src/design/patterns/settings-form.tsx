@@ -1,4 +1,3 @@
-"use client";
 
 // The settings page's blocks: groups headed in type, each holding labelled controls. A control's
 // label sits above it (beside it with `inline`, for a toggle), a hint under it, and a refusal core

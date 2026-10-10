@@ -1,7 +1,6 @@
-"use client";
 
 import { CONTRACT_ATTENTION_GROUPS, CONTRACT_ATTENTION_LABELS } from "@forge/contracts/contract-standing";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import { type ReactNode } from "react";
 import {
   EmptyState,

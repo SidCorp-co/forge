@@ -1,4 +1,5 @@
-const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+// the base Vite builds under (WEB_V2_BASE_PATH), without its trailing slash
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export function assetPath(path: string): string {
   return `${BASE}${path}`;

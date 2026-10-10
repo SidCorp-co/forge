@@ -1,4 +1,3 @@
-"use client";
 
 import { Badge, Button, ChoiceChips, Icon, Input, ListToolbar, Popover, SegmentedControl, type SegmentOption } from "@/design";
 import { useAssistantSetFilter } from "@/features/chat-dock";

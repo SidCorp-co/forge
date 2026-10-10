@@ -1,4 +1,3 @@
-"use client";
 
 // One checklist as an item's page reads it (REQ-34 r2 BC-5, BC-9, BC-26), drawn from core's read and
 // never restating a question: each answer is a property under its question, with where it came from

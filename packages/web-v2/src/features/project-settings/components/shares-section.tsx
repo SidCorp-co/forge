@@ -1,4 +1,3 @@
-"use client";
 
 // Project settings → People → Share links. Who can read this project's answers is the People
 // section's question, and a share link is the one way an answer reaches someone the members list

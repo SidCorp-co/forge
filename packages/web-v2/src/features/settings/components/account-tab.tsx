@@ -1,4 +1,3 @@
-"use client";
 
 // Settings → Account. Identity is read from the hydrated auth session; theme +
 // language preferences save against `/api/auth/me/preferences`.

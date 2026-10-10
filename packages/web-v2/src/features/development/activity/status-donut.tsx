@@ -1,4 +1,3 @@
-"use client";
 
 // Open issues by status (ISS-379, AC#4): a Recharts ring in the shared ChartContainer, its legend
 // beside it. The colours are the legend tones the segments carry.

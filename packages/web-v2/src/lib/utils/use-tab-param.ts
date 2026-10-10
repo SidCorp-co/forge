@@ -1,7 +1,6 @@
-'use client';
 
 import { useCallback } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname } from "@/lib/navigation/router";
 import { notifyLocationChange, useLocationSearch } from './use-location-search';
 
 export function useTabParam<T extends string>(valid: readonly T[], fallback: T): [T, (t: T) => void] {

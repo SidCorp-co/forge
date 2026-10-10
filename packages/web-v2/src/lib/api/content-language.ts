@@ -1,4 +1,3 @@
-"use client";
 
 import type { ContentLanguageView } from "@forge/contracts/content-language";
 import { useQuery } from "@tanstack/react-query";

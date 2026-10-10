@@ -1,4 +1,3 @@
-"use client";
 
 // The acts the assistant offers in a thread (`offer_act`): a button the person presses, which runs as
 // them through the issue page's own routes. A card whose issue has moved since the offer offers

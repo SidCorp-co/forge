@@ -1,4 +1,3 @@
-"use client";
 
 import { Button, Field, Input, keyedRows, Textarea, useListKeys } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";

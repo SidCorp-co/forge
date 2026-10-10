@@ -1,10 +1,9 @@
-"use client";
 
 // The project's runners and what each is doing: online, busy on which issue and stage, limited and
 // why (ISS-276: never a countdown to the reset its account printed).
 
 import { cn } from "@/lib/utils/cn";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { Badge, enumLabel, HealthDot, Icon, RowItem, RowList, Section } from "@/design";
 import { runnerLimitLine } from "@/features/runners";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";

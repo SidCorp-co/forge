@@ -1,4 +1,3 @@
-"use client";
 
 // The map (REQ-29 BC-6 to BC-9): a strip of how many requirements stand at each stage, then areas as
 // rows and Now, Next and Later as columns, one line per requirement. It shows no date: a date belongs
@@ -6,7 +5,7 @@
 
 import { REQUIREMENT_STAGE_LABELS, REQUIREMENT_STAGES, ROADMAP_HORIZONS, type RequirementStage, requirementStageOf, roadmapHorizonOf } from "@forge/contracts/requirement-roadmap";
 import type { RequirementSummary } from "@forge/contracts/requirements";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useReportShown } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";

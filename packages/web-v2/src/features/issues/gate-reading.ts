@@ -1,4 +1,3 @@
-"use client";
 
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";

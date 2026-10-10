@@ -1,4 +1,3 @@
-"use client";
 
 // Project settings → Integrations: one flush table of what this project is connected to — the
 // declared repository first, then one row per binding of every provider core presents, then the
@@ -6,7 +5,7 @@
 // Disconnect + delivery log); connecting the repository is its provider row's act alone. Core health (runners, database, MCP mount) is not listed: nothing
 // here can connect it, and the screens that own it already show it.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useMemo, useState } from "react";
 import {
   Button,

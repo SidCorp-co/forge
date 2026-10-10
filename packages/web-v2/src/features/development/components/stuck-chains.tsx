@@ -1,6 +1,5 @@
-"use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { Fragment } from "react";
 import { StatusBadge } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";

@@ -1,4 +1,3 @@
-"use client";
 
 import { RELEASE_PAGE_VIEWS, type ReleasePageViewKind } from "@forge/contracts/release-page";
 import {

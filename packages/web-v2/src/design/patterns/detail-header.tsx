@@ -1,4 +1,3 @@
-"use client";
 
 // A full page's sticky header is the shell's top bar: a back control named after where it goes
 // ("← Issues"), the key, the title and the state badge, and exactly one primary action that changes
@@ -9,7 +8,7 @@
 // the bar is too narrow for the title, so it heads the main column instead, and the back control is
 // its arrow alone, so the page's actions never cover it.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
 import { useBrowserValue } from "../hooks/use-browser-value";
 import { useCopy } from "@/lib/i18n/interface-language";

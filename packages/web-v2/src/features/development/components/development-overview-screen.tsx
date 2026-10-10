@@ -1,4 +1,3 @@
-"use client";
 
 import { EmptyState, PageTitle, Section, WaitBanner } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";

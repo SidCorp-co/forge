@@ -1,4 +1,3 @@
-"use client";
 
 import { useMemo, useState } from "react";
 import { Combobox, fixedHeight, Icon } from "@/design";

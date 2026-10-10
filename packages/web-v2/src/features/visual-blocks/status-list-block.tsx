@@ -1,4 +1,3 @@
-"use client";
 
 import { keyedByContent } from "@/design";
 import { cellText, type VisualBlockOf } from "@forge/contracts/visual-blocks";

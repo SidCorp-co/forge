@@ -1,4 +1,3 @@
-"use client";
 
 // An interactive session's body: the conversation thread with its composer, beside the context rail
 // (a sticky rail from 1024px, a slide-over below it).

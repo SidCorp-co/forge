@@ -1,4 +1,3 @@
-"use client";
 
 import type { ConnectionSection } from "../registry";
 import { text } from "../config-read";

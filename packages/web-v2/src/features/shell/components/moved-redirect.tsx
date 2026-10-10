@@ -1,6 +1,5 @@
-"use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter } from "@/lib/navigation/router";
 import { useEffect } from "react";
 import { type MovedPage, movedTarget } from "../moved";
 

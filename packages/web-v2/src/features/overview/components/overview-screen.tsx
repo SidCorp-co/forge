@@ -1,5 +1,4 @@
-'use client';
-import { useRouter } from 'next/navigation';
+import { useRouter } from "@/lib/navigation/router";
 import { EmptyState, ErrorState, PageContainer, PageTitle, Skeleton, useNow } from '@/design';
 import { useActiveOrg } from "@/features/orgs";
 import { useProjectsConsole } from "@/features/projects";

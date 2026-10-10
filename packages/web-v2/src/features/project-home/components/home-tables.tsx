@@ -1,4 +1,3 @@
-"use client";
 
 // Running and At risk on the project home: flush rows on hairlines, no cards. What is running and
 // what is late is core's project status; the rows come from `derive.ts` and nothing is decided here.

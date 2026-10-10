@@ -1,9 +1,8 @@
-"use client";
 
 // Settings → General: what the project is called, the language its prose is written in, and the
 // rules its work follows. Every value is a field of the project document, held as one draft and
 // saved by one write at the revision read (`PUT /projects/:id/config`, the raw editor's own write).
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useId } from "react";
 import { CONTENT_LANGUAGE_CHOICES, contentLanguageName, contentLanguageProblem } from "@forge/contracts/content-language";
 import { SENSITIVE_DATA_LEVELS } from "@forge/contracts/data-policy";

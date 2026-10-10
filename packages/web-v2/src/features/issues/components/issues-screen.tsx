@@ -1,9 +1,8 @@
-"use client";
 
 import { Button, PageTitle, TopBarActions, useViewMode, type ViewMode, ViewModeSwitcher } from "@/design";
 import { useProjects } from "@/features/projects";
 import { canWriteProject } from "@/features/projects";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "@/lib/navigation/router";
 import { useState } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useProjectModules } from "../hooks";

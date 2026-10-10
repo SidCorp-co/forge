@@ -1,4 +1,3 @@
-"use client";
 
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { TURN_PAGE_CAP, TURN_PAGE_SIZE } from "../hooks";

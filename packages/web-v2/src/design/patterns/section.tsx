@@ -1,4 +1,3 @@
-"use client";
 
 // A flush section of any page: its heading in type with an optional act at its right, its body under
 // it, a hairline between it and the section before. No frame, no fill, no shadow: the heading and the

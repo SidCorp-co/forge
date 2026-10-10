@@ -1,4 +1,3 @@
-"use client";
 
 // One app's section of the connections directory (ISS-1035).
 //

@@ -1,4 +1,3 @@
-"use client";
 
 // Agents / Runs (ISS-111, prototype #/dev/runs, design agent-run-standing rev 1): the signals line,
 // the project master row and every run grouped by core's attentionGroup (or by lane or box), a peek and a

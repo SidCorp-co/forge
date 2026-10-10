@@ -1,6 +1,5 @@
-"use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
 import { PageContainer, PageTitle } from "@/design";
 import { ProjectGate } from "@/features/projects";

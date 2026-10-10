@@ -1,4 +1,3 @@
-"use client";
 
 // The self an org admin writes for one agent: who it is (soul, greeting,
 // glyph), what it always does (standing instructions), and when it speaks

@@ -1,4 +1,3 @@
-'use client';
 
 import { type RefObject, useEffect, useLayoutEffect, useRef } from 'react';
 import { isUuid } from '@/lib/api/ref-bridge';

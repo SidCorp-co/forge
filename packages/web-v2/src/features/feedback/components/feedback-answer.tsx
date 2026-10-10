@@ -1,4 +1,3 @@
-"use client";
 
 // The reporter's answer, first on the item's page: what the header's phase badge does not say — when
 // the forecast expects it while the work is planned, and the release that shipped it once it has. A
@@ -7,7 +6,7 @@
 // notice); this only says it as one sentence.
 
 import type { FeedbackForecast } from "@forge/contracts/forecast";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
 import { type EtaClock, etaOfFeedback, whenText } from "@/features/forecast";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";

@@ -1,4 +1,3 @@
-"use client";
 
 import type { ReportField } from "@forge/contracts/report-queries";
 import { cellText, type VisualBlockOf, tableRows } from "@forge/contracts/visual-blocks";

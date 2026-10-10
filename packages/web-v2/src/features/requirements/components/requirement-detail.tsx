@@ -1,4 +1,3 @@
-"use client";
 
 // A requirement's full page: a main column for reading and acting, beside a sticky rail of the
 // at-a-glance facts. The column opens on one strip (whose turn, where it stands on the lifecycle and

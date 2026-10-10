@@ -1,4 +1,3 @@
-"use client";
 
 import { createContext, type ReactNode, use, useId } from "react";
 

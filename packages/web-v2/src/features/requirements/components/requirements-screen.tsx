@@ -1,4 +1,3 @@
-"use client";
 
 // The Requirements list (REQ-29): the view in the top header, a search, the BA assistant's open
 // suggestions, then one line per requirement by whose turn it is or by business area, or the Map of

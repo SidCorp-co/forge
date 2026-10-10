@@ -1,4 +1,3 @@
-"use client";
 
 import { SlideOver } from "@/design";
 import { ReleaseHighlightList } from "@/features/releases";

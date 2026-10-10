@@ -1,9 +1,7 @@
-"use client";
 
 import { HEALTH_MARKER_KINDS, type WorkflowHealth } from "@forge/contracts/workflow-health";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useRouter } from "@/lib/navigation/router";
 import { Button, Fact, FactsEmpty, FactsGroup, StatusBadge, useRecordView } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";

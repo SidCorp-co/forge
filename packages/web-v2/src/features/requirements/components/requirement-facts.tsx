@@ -1,4 +1,3 @@
-"use client";
 
 // The at-a-glance facts of one requirement: owner, revision, issues, feedback, designs, needs and
 // dates. Its state, whose turn it is and the verified count ride the strip above the main column
@@ -6,7 +5,7 @@
 // source, the standing. The full page's sticky rail and the peek draw this one component through the
 // shared FactsGroup/Fact rows, so the main column never repeats a fact and both surfaces read the same.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { ActorChip, Fact, FactsEmpty, FactsGroup, LEGEND, StatusBadge, Tooltip } from "@/design";
 import { FeedbackRailItem } from "@/features/feedback";
 import { feedbackHref } from "@/lib/routes/feedback";

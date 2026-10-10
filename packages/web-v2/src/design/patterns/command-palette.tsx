@@ -1,4 +1,3 @@
-"use client";
 
 import { useMemo, useState } from "react";
 import { Command as CommandPrimitive } from "cmdk";

@@ -1,4 +1,3 @@
-"use client";
 
 // A requirement's Decisions tab (JU-5): the decisions a person recorded on it and on the issues that
 // deliver it, newest first, each naming what it sits on, with what agents kept folded away and

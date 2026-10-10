@@ -1,4 +1,3 @@
-"use client";
 
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";

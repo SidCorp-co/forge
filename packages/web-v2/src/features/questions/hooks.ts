@@ -1,4 +1,3 @@
-"use client";
 
 // Parked decisions: the queries live in `queries.ts`, the answers and their toasts here.
 

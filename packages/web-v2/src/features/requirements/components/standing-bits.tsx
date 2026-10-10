@@ -1,4 +1,3 @@
-"use client";
 
 // What a requirement's standing (core `requirements/standing.ts`) says, put into the shared design
 // pieces: its whose-turn as the shared banner, the issue or release the wait is about linked inside its
@@ -7,7 +6,7 @@
 // step or a verdict word of its own. The header's badge says the state, so neither the banner nor the
 // bar says it again (REQ-43 BC-5).
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import {
   type BcVerdict,
   criteriaCoverageOf,

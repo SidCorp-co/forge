@@ -1,5 +1,4 @@
 import { PageTitle } from "@/design";
-import Image from 'next/image';
 import type { ReactNode } from 'react';
 import { assetPath } from '@/lib/asset';
 import { productCopy } from "@/lib/i18n/product-copy";
@@ -23,8 +22,8 @@ export function AuthShell({ title, subtitle, children, footer }: AuthShellProps)
       <div className="w-95 max-w-full">
         {/* Brand */}
         <div className="mb-7 flex flex-col items-center gap-4">
-          {/* preload: the mark is above the fold, so it is fetched at once rather than lazily */}
-          <Image src={assetPath('/forge-mark-180.png')} alt={t("auth.brand")} width={60} height={60} preload unoptimized />
+          {/* above the fold, so it is fetched first rather than queued */}
+          <img src={assetPath('/forge-mark-180.png')} alt={t("auth.brand")} width={60} height={60} fetchPriority="high" />
           <div className="fg-h2 text-center">{t("auth.brand")}</div>
         </div>
 

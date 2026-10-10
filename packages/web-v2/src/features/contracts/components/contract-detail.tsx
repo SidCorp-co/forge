@@ -1,4 +1,3 @@
-"use client";
 
 import { useState } from "react";
 import { Button, DetailLayout, DetailMobileTitle, DetailPane, DetailTabs, EnumBadge, FactsRail, RecordViewSwitch, RowItem, RowList, StatusBadge, Textarea, useRecordView, ViewHeading } from "@/design";
