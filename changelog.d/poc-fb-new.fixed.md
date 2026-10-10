@@ -1,0 +1,1 @@
+**Ten feedback items from the dev judges are fixed.** Recordings seek and say when unplayable, titles refuse in plain words, checklists and the intake draft read whole, review time counts, runs are found by box id, report prose reads plainly.
