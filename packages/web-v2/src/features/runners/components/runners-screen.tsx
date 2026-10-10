@@ -3,10 +3,6 @@
 import { useState } from "react";
 import {
   Button,
-  PageSection,
-  PageSectionBody,
-  PageSectionHeader,
-  PageSectionTitle,
   EmptyState,
   ErrorState,
   HealthDot,
@@ -21,6 +17,7 @@ import {
   TH,
   THead,
   TR,
+  Section,
 } from "@/design";
 import { useAuth } from "@/providers/auth-provider";
 import { useActiveOrg } from "@/features/orgs";
@@ -71,14 +68,10 @@ export function CopyButton({ value }: { value: string }) {
 }
 
 /** Pairing panel — the CLI command the runner machine runs; it prints the code approved at /pair. */
-function PairPanel() {
+function Pairing() {
   const t = useCopy();
   return (
-    <PageSection>
-      <PageSectionHeader>
-        <PageSectionTitle>{t("runners.pair.title")}</PageSectionTitle>
-      </PageSectionHeader>
-      <PageSectionBody>
+    <Section title={t("runners.pair.title")}>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <span className="fg-label">{t("runners.pair.runOn")}</span>
@@ -88,8 +81,7 @@ function PairPanel() {
             </div>
           </div>
         </div>
-      </PageSectionBody>
-    </PageSection>
+      </Section>
   );
 }
 
@@ -200,14 +192,9 @@ export function RunnersScreen() {
     <PageContainer className="flex flex-col gap-5">
       <PageTitle>{t("runners.screen.title")}</PageTitle>
 
-      <PairPanel />
+      <Pairing />
 
-      <PageSection>
-        <PageSectionHeader>
-          <PageSectionTitle>{t("runners.screen.devices")}</PageSectionTitle>
-          <ScopeTabs scope={scope} counts={counts} onChange={setScope} />
-        </PageSectionHeader>
-        <PageSectionBody>
+      <Section title={t("runners.screen.devices")} right={<ScopeTabs scope={scope} counts={counts} onChange={setScope} />}>
           {active.isError ? (
             <ErrorState message={formatApiError(active.error)} onRetry={() => void active.refetch()} />
           ) : /* Not `isLoading`: with no active org yet the org query is disabled,
@@ -314,8 +301,7 @@ export function RunnersScreen() {
               </TBody>
             </Table>
           )}
-        </PageSectionBody>
-      </PageSection>
+        </Section>
 
       <DeviceDetail device={detailDevice} onClose={() => setDetailId(null)} />
     </PageContainer>

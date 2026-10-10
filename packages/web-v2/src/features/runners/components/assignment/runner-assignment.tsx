@@ -26,11 +26,11 @@ import { PoolReadBanner } from "../pool-read";
 import { ResidentMaster } from "../resident-master";
 import { RunnerLabels } from "../runner-labels";
 import { ProvisionStepper } from "./provision-stepper";
-import { RunnerActivityPanel } from "./runner-activity-panel";
+import { RunnerActivity } from "./runner-activity";
 import { RunnerRowActions } from "./runner-row-actions";
 
 /** One assigned device row + its provision stepper + actions. */
-export function RunnerRow({
+export function RunnerAssignment({
 	runner,
 	current,
 	projectId,
@@ -110,7 +110,7 @@ export function RunnerRow({
 					{showActivity ? t("runners.row.hideActivity") : t("runners.row.activity")}
 				</Button>
 			</div>
-			{showActivity && <RunnerActivityPanel runnerId={runner.runnerId} />}
+			{showActivity && <RunnerActivity runnerId={runner.runnerId} />}
 		</div>
 	);
 }
