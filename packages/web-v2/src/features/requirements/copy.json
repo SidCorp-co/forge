@@ -376,7 +376,9 @@
     "requirements.verdict.short": "Short",
     "requirements.verdict.skipped": "Skipped",
     "requirements.verified": "{a}/{b} verified",
-    "requirements.assumptions.corrected": "Corrected"
+    "requirements.assumptions.corrected": "Corrected",
+    "requirements.line.openDraft": "draft r{r}",
+    "requirements.line.openProposed": "proposed r{r}"
   },
   "vi": {
     "requirements.act.accept": "Chấp nhận",

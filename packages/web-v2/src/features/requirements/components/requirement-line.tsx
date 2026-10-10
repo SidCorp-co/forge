@@ -3,7 +3,7 @@
 // One requirement as the Requirements list and its map draw it: a short name, how many of its
 // criteria pass, and the stage it stands at. The stage and the wait come from contracts, once.
 
-import { failingOf, REQUIREMENT_STAGE_LABELS, type RequirementStage, waitsLineOf } from "@forge/contracts/requirement-roadmap";
+import { failingOf, REQUIREMENT_STAGE_LABELS, type RequirementStage, requirementStageOf, waitsLineOf } from "@forge/contracts/requirement-roadmap";
 import type { RequirementSummary } from "@forge/contracts/requirements";
 import Link from "next/link";
 import { cn } from "@/lib/utils/cn";
@@ -54,6 +54,36 @@ export function WaitsText({ r }: { r: RequirementSummary }) {
   return <span className={cn("min-w-0 break-words text-13 leading-snug", w.kind === "you" ? "font-medium text-accent-text" : "text-muted")} data-testid="req-waits">{w.text}</span>;
 }
 
+/**
+ * Where the row stands in a word or two (REQ-4 BC-13): its stage, which folds status and delivery
+ * phase into the one reading the map uses (REQ-29), and the newer revision open over the current one.
+ * A draft says Draft in Passing already, so it carries no stage word here; at phone width the dot
+ * stands for the word, so the name keeps its room.
+ */
+export function RowState({ r }: { r: RequirementSummary }) {
+  const t = useCopy();
+  const stage = requirementStageOf(r.standing);
+  const word = stage && stage !== "draft" ? REQUIREMENT_STAGE_LABELS[stage] : null;
+  const open = r.latestRevision;
+  const newer = r.currentRevision !== null && open && open.revision > r.currentRevision && (open.state === "draft" || open.state === "proposed") ? open : null;
+  if (!word && !newer) return null;
+  return (
+    <span className="inline-flex flex-none items-center gap-1.5 text-12 text-subtle" data-testid="req-row-state">
+      {word ? (
+        <>
+          <StageDot stage={stage} />
+          <span className="hidden md:inline">{word}</span>
+        </>
+      ) : null}
+      {newer ? (
+        <span className="rounded-sm bg-sunken px-1 font-mono text-11-5 text-muted" data-testid="req-open-revision">
+          {t(newer.state === "draft" ? "requirements.line.openDraft" : "requirements.line.openProposed", { r: newer.revision })}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 /** The name a person reads: the short one when set, else the title. The full title is the tooltip. */
 export const nameOf = (r: RequirementSummary) => r.shortName ?? r.title;
 
@@ -87,7 +117,10 @@ export function RequirementLine({ r, slug, now, selected, onPeek }: { r: Require
       )}
     >
       <span className="font-mono text-12 text-subtle [grid-area:k] md:[grid-area:auto]">{r.key}</span>
-      <span className="truncate [grid-area:t] md:[grid-area:auto]">{nameOf(r)}</span>
+      <span className="flex min-w-0 items-center gap-2.5 [grid-area:t] md:[grid-area:auto]">
+        <span className="truncate">{nameOf(r)}</span>
+        <RowState r={r} />
+      </span>
       <span className="text-12-5 [grid-area:p] md:[grid-area:auto]">
         <Passing r={r} />
       </span>
