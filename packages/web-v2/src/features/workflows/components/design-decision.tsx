@@ -55,7 +55,7 @@ export function ApprovalReading({ revision, block, leavesStale }: { revision: nu
   const stale = revision !== null && leavesStale ? leavesStaleWords(revision, leavesStale, t, language) : null;
   if (revision === null || (!blocked && !stale)) return null;
   return (
-    <span className="grid basis-full gap-1 text-12-5">
+    <span className="grid basis-full gap-1 text-13">
       {blocked ? (
         <span className="font-medium" style={{ color: LEGEND.err.fg }} data-testid="design-approve-blocked">
           {blocked}
@@ -104,7 +104,7 @@ export function DecisionNoteControl({ revision, decide, approveBlocked = false }
             key={m}
             size="sm"
             variant="ghost"
-            className="h-auto w-fit p-0 text-12-5 font-semibold text-link hover:bg-transparent hover:underline"
+            className="h-auto w-fit p-0 text-13 font-semibold text-link hover:bg-transparent hover:underline"
             onClick={() => setMode(m)}
             data-testid={`${NOTE_MODES[m].testid}-open`}
           >
@@ -119,7 +119,7 @@ export function DecisionNoteControl({ revision, decide, approveBlocked = false }
   const reason = text.trim();
   const body: DesignDecisionBody = mode === "approve" ? { revision, decision: "approve", reason } : { revision, decision: "return", reason };
   return (
-    <span className="grid w-full max-w-[560px] basis-full gap-2" data-testid={m.testid}>
+    <span className="grid w-full max-w-140 basis-full gap-2" data-testid={m.testid}>
       <Textarea aria-label={t(m.label)} placeholder={t(m.placeholder)} value={text} onChange={(e) => setDrafts((d) => ({ ...d, [mode]: e.target.value }))} rows={2} />
       <span className="flex gap-1.5">
         <Button size="sm" variant="secondary" onClick={() => setMode(null)}>
@@ -164,12 +164,12 @@ export function OrphanedTraces({ traces, revision }: { traces: readonly Orphaned
   const t = useCopy();
   if (traces.length === 0) return null;
   return (
-    <details className="basis-full text-12-5" data-testid="orphaned-traces">
+    <details className="basis-full text-13" data-testid="orphaned-traces">
       <summary className="cursor-pointer select-none font-semibold text-fg">
         {t(traces.length === 1 ? "workflows.trace.headOne" : "workflows.trace.headMany", { n: traces.length })}
         {revision !== null ? t("workflows.trace.onceApproved", { r: revision }) : ""}
       </summary>
-      <ul className="mt-1 grid max-w-[640px]">
+      <ul className="mt-1 grid max-w-160">
         {traces.map((x) => (
           <li key={`${x.recordType}:${x.key}:${traceKey(x.target)}`} className="flex min-w-0 items-baseline gap-2 border-t border-line-subtle py-1 first:border-t-0" data-testid="orphaned-trace">
             <span className="flex-none text-subtle">{t(RECORD_WORDS[x.recordType])}</span>

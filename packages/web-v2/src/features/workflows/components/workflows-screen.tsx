@@ -4,11 +4,10 @@ import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
 import { useReportShown } from "@/design/hooks/use-page-shown";
 import { ListFilterBar, useListFilter } from "@/features/chat-dock/list-filter-bar";
-import Link from "next/link";
-import { Button, EmptyState, PageTitle, rememberListOrigin } from "@/design";
+import { Button, EmptyState, PageTitle, RowItem, rememberListOrigin } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { useAskForDesigns } from "@/features/onboarding/components/ask-for-designs";
-import { useOnboardingState } from "@/features/onboarding/hooks";
+import { useAskForDesigns } from "@/features/onboarding";
+import { useOnboardingState } from "@/features/onboarding";
 import { useProjectDocument } from "@/features/project-config/hooks";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
@@ -22,9 +21,6 @@ import { SystemOverviewRegion } from "./system-overview";
 import { HealthSummaryChips } from "./health-parts";
 import { DesignPill, DesignWaits, ProposedMarker } from "./workflow-parts";
 
-// One grid template for the header and every row, so the columns line up without a table
-const COLS = "grid grid-cols-[minmax(0,1fr)_170px_84px_230px_minmax(0,220px)_92px] gap-x-3.5 px-7 max-lg:grid-cols-[minmax(0,1fr)_150px_76px_210px_minmax(0,180px)]";
-
 function size(r: WorkflowRecord, t: Copy): string {
   const n = r.document.steps.length;
   return r.document.kind === "state"
@@ -32,78 +28,29 @@ function size(r: WorkflowRecord, t: Copy): string {
     : t(n === 1 ? "workflows.count.step.one" : "workflows.count.step.many", { n });
 }
 
-function Row({ r, slug, templates }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[] }) {
+/** A design in the list: its title, what it is drawn in, its size and age, then its state and health. */
+function DesignItem({ r, slug, templates }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[] }) {
   const t = useCopy();
   const label = useLabel();
   const time = useTimeFormat();
   const w = r.document;
   const status = r.design.shown;
   return (
-    <Link
+    <RowItem
       href={workflowHref(slug, w.flow)}
       onClick={() => rememberListOrigin(WORKFLOWS_LIST)}
-      className={cn(
-        COLS,
-        "min-h-[50px] items-center border-b border-line-subtle py-2 text-left hover:bg-hover",
-        "max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-y-1 max-md:px-4 max-md:py-2.5",
-      )}
-      data-testid="workflow-row"
-      data-flow={w.flow}
-    >
-      <span className="min-w-0 truncate text-13-5 font-semibold max-md:col-span-2 max-md:whitespace-normal" title={w.summary}>
-        {w.title}
-      </span>
-      <span className="truncate text-12-5 text-muted max-md:order-3" data-testid="workflow-template">
-        {templateTitle(templateIdOf(r), templates, label)}
-      </span>
-      <span className="text-12-5 tabular-nums text-muted max-md:hidden">{size(r, t)}</span>
-      <span className="flex min-w-0 flex-wrap items-center gap-2 max-md:order-2 max-md:justify-end">
-        {status ? <DesignPill status={status} reason={r.design.returnReason ?? null} /> : null}
-        <ProposedMarker r={r} />
-        <DesignWaits r={r} />
-      </span>
-      <span className="min-w-0 max-md:order-4 max-md:col-span-2">
-        <HealthSummaryChips health={r.health} />
-      </span>
-      <span className="text-right text-12-5 text-subtle max-lg:hidden" title={`${time.dateTime(w.updatedAt)} · ${r.writerName}`}>
-        {time.relative(w.updatedAt)}
-      </span>
-    </Link>
-  );
-}
-
-/** A design in the narrow list beside the overview: its title and state, then what it is drawn in, its size and age. */
-function NarrowRow({ r, slug, templates }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[] }) {
-  const t = useCopy();
-  const label = useLabel();
-  const time = useTimeFormat();
-  const w = r.document;
-  const status = r.design.shown;
-  return (
-    <Link
-      href={workflowHref(slug, w.flow)}
-      onClick={() => rememberListOrigin(WORKFLOWS_LIST)}
-      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-b border-line-subtle px-5 py-2.5 text-left hover:bg-hover max-md:px-4"
-      data-testid="workflow-row"
-      data-flow={w.flow}
-    >
-      <span className="min-w-0 truncate text-13-5 font-semibold" title={w.summary}>
-        {w.title}
-      </span>
-      <span className="flex items-center gap-2 justify-self-end">
-        {status ? <DesignPill status={status} reason={r.design.returnReason ?? null} /> : null}
-        <ProposedMarker r={r} />
-      </span>
-      <span className="col-span-2 min-w-0 empty:hidden">
-        <DesignWaits r={r} />
-      </span>
-      <span className="col-span-2 truncate text-12 text-muted" title={`${time.dateTime(w.updatedAt)} · ${r.writerName}`}>
-        <span data-testid="workflow-template">{templateTitle(templateIdOf(r), templates, label)}</span> · {size(r, t)} · {time.relative(w.updatedAt)}
-      </span>
-      <span className="col-span-2 min-w-0 empty:hidden">
-        <HealthSummaryChips health={r.health} />
-      </span>
-    </Link>
+      testId="workflow-row"
+      title={<span title={w.summary}>{w.title}</span>}
+      facts={[<span key="t" data-testid="workflow-template">{templateTitle(templateIdOf(r), templates, label)}</span>, size(r, t), <span key="u" title={`${time.dateTime(w.updatedAt)} · ${r.writerName}`}>{time.relative(w.updatedAt)}</span>]}
+      trailing={
+        <>
+          {status ? <DesignPill status={status} reason={r.design.returnReason ?? null} /> : null}
+          <ProposedMarker r={r} />
+          <DesignWaits r={r} />
+          <HealthSummaryChips health={r.health} />
+        </>
+      }
+    />
   );
 }
 
@@ -166,24 +113,18 @@ function Designs({
           <ListFilterBar list="workflows" />
         </span>
       </header>
-      {narrow ? null : (
-        <div aria-hidden className={cn(COLS, "h-8 items-center border-y border-line-subtle text-11-5 font-semibold text-subtle max-md:hidden")}>
-          <span>{t("workflows.col.design")}</span>
-          <span>{t("workflows.col.diagram")}</span>
-          <span>{t("workflows.col.size")}</span>
-          <span>{t("list.col.state")}</span>
-          <span>{t("workflows.col.health")}</span>
-          <span className="text-right max-lg:hidden">{t("workflows.col.updated")}</span>
-        </div>
-      )}
-      <div className={cn("bg-surface", narrow && "border-t border-line-subtle")} data-testid="workflow-list">
+      <div className="border-t border-line-subtle" data-testid="workflow-list">
         {groups.map((g) => (
           <div key={g.id} data-testid="workflow-group" data-group={g.id}>
-            <div className={cn("flex min-h-[34px] items-center gap-2 bg-sunken py-[5px] text-13", pad)}>
+            <div className={cn("flex min-h-8.5 items-center gap-2 bg-sunken py-1.25 text-13", pad)}>
               <span className="font-bold">{g.label}</span>
               <span className="font-mono text-12 font-bold text-muted">{g.rows.length}</span>
             </div>
-            {g.rows.map((r) => (narrow ? <NarrowRow key={r.document.id} r={r} slug={slug} templates={templates} /> : <Row key={r.document.id} r={r} slug={slug} templates={templates} />))}
+            <ul>
+              {g.rows.map((r) => (
+                <DesignItem key={r.document.id} r={r} slug={slug} templates={templates} />
+              ))}
+            </ul>
           </div>
         ))}
       </div>
@@ -207,7 +148,7 @@ function NoWorkflows({ projectId }: { projectId: string }) {
         action={state.data ? { label: action === "start" ? t("workflows.askForDesigns") : (hint?.actionLabel ?? t("workflows.openOnboarding")), onClick: () => ask(action) } : undefined}
       />
       {error ? (
-        <p role="alert" className="text-center text-12 text-red">
+        <p role="alert" className="text-center text-12 text-danger-11">
           {error}
         </p>
       ) : null}
@@ -250,7 +191,7 @@ export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false 
               <PageTitle>{t("workflows.title")}</PageTitle>
               <div className="flex min-h-0 flex-1 max-lg:flex-col lg:[contain:size]" data-testid="workflows-split">
                 {overview}
-                <aside className="w-[400px] flex-none overflow-y-auto border-l border-line-subtle bg-surface max-lg:w-full max-lg:overflow-visible max-lg:border-l-0 max-lg:border-t" data-testid="workflows-list-pane">
+                <aside className="w-100 flex-none overflow-y-auto border-l border-line-subtle bg-surface max-lg:w-full max-lg:overflow-visible max-lg:border-l-0 max-lg:border-t" data-testid="workflows-list-pane">
                   <Designs all={all} slug={slug} templates={templates} narrow />
                 </aside>
               </div>

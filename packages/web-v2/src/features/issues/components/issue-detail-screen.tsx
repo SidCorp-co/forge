@@ -21,7 +21,7 @@ import {
   useUrlChoice,
 } from "@/design";
 import { useResumeRun } from "@/features/run-control/hooks";
-import { focusDecisionPanel } from "@/features/questions/components/decision-panel";
+import { focusIssueQuestions } from "@/features/questions";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useRecents } from "@/lib/navigation/recents";
 import { useIssueProject } from "./use-issue-project";
@@ -112,7 +112,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
 
   const focusDecisions = () => {
     if (typeof window !== "undefined") {
-      requestAnimationFrame(() => focusDecisionPanel(stickyHeader.current));
+      requestAnimationFrame(() => focusIssueQuestions(stickyHeader.current));
     }
   };
 

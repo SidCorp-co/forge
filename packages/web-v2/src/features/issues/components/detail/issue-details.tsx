@@ -7,8 +7,8 @@
 import { type ReactNode, useState } from "react";
 import { Markdown, ViewHeading } from "@/design";
 import { AttachmentList } from "@/features/attachments/components/attachment-list";
-import { DecisionPanel } from "@/features/questions/components/decision-panel";
-import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
+import { IssueQuestions } from "@/features/questions";
+import { MockupList } from "@/features/mockups/components/mockups-panel";
 import type { MockupTarget } from "@/features/mockups/types";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { useActivity, useAttachments, useComments } from "../../detail-hooks";
@@ -99,7 +99,7 @@ export function IssueDetails({
             canWrite={canWrite}
             past={
               <>
-                <DecisionPanel issueId={issue.id} show="past" />
+                <IssueQuestions issueId={issue.id} show="past" />
                 <IssueDecisionsTab projectId={projectId} issueKey={issue.displayId} />
                 <IssueRetiredCriteria issueId={issue.id} />
               </>
@@ -122,7 +122,7 @@ export function IssueDetails({
               />,
             )
           : null}
-        {developer ? row("mockups", t("common.mockups.title"), mockupCount ?? null, <MockupsPanel projectId={projectId} target={mockupTarget} />) : null}
+        {developer ? row("mockups", t("common.mockups.title"), mockupCount ?? null, <MockupList projectId={projectId} target={mockupTarget} />) : null}
         {developer ? row("memory", t("memory.title"), null, <IssueMemoryTab projectId={projectId} slug={slug} issueKey={issue.displayId} />) : null}
       </div>
     </section>

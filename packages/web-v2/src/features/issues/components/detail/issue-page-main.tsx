@@ -7,7 +7,7 @@ import { SegmentedControl } from "@/design";
 import { useIssueForecast } from "@/features/forecast/hooks";
 import { PreviewPanel } from "@/features/previews/preview-panel";
 import { settingsHref } from "@/features/project-settings/sections";
-import { DecisionPanel } from "@/features/questions/components/decision-panel";
+import { IssueQuestions } from "@/features/questions";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { useActivity, useAttachments, useComments } from "../../detail-hooks";
 import type { useIssueStandingOf, useProjectMembers } from "../../hooks";
@@ -72,7 +72,7 @@ export function IssuePageMain(props: {
               {standing ? <IssueStateHead standing={standing} forecast={forecast} act={props.needsYouAct} /> : null}
             </div>
             <div className="grid gap-3 empty:hidden" data-testid="issue-needs-you-panels">
-              <DecisionPanel
+              <IssueQuestions
                 show="now"
                 issueId={issue.id}
                 parkedForInfo={issue.status === "needs_info"}

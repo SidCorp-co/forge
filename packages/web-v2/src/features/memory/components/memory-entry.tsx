@@ -61,7 +61,7 @@ function archivedLine(t: Copy, cause: MemoryArchiveCause | null, date: string): 
 
 const sourceLabel = (t: Copy, source: string) => t(`memory.source.${source}` as ProductCopyKey);
 
-const LINK = "rounded-sm text-link hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
+const LINK = "rounded-sm text-link hover:underline focus-visible:outline-none focus-visible:shadow-focus";
 
 /** A key as the reader reads it: bare in this project, with its project's slug in another. */
 const keyLabel = (ref: string, project: string | null | undefined, slug: string) => (project && project !== slug ? `${project} ${ref}` : ref);
@@ -105,7 +105,7 @@ function needsCheckText(t: Copy, entry: MemoryEntry, slug: string): string | nul
   return parts.length > 0 ? t("memory.check.lead", { why: parts.join("; ") }) : null;
 }
 
-export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, onCorrect, onRetire }: MemoryEntryRowProps) {
+export function MemoryEntryItem({ entry, slug, timeZone, busy, onVerify, onCorrect, onRetire }: MemoryEntryRowProps) {
   const t = useCopy();
   const lang = useInterfaceLanguage();
   const day = (iso: string) => formatDate(iso, lang, timeZone);
@@ -126,7 +126,7 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, onCorrec
   return (
     <li className="grid gap-1.5 border-b border-line-subtle px-5 py-3 max-md:px-3" data-testid="memory-entry">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="font-mono text-12-5 text-fg" translate="no">
+        <span className="font-mono text-13 text-fg" translate="no">
           {entry.sourceRef}
         </span>
         <span className="text-12 text-subtle">{sourceLabel(t, entry.source)}</span>
@@ -143,7 +143,7 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, onCorrec
         </span>
       </p>
       {needsCheck ? (
-        <p className="text-12-5 text-amber-700 dark:text-amber-300" data-testid="memory-needs-check">
+        <p className="text-13 text-amber-700 dark:text-amber-300" data-testid="memory-needs-check">
           {needsCheck}
         </p>
       ) : null}
@@ -162,12 +162,12 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, onCorrec
         </p>
       ) : null}
       {entry.staleRefs.length > 0 ? (
-        <p className="text-12-5 font-semibold text-danger" data-testid="memory-stale-refs">
+        <p className="text-13 font-semibold text-danger" data-testid="memory-stale-refs">
           {t("memory.staleRefs", { refs: entry.staleRefs.map((r) => `${keyLabel(r.ref, r.project, slug)} (${staleWhy(t, r)})`).join(", ") })}
         </p>
       ) : null}
       {entry.flagged ? (
-        <p className="text-12-5 text-amber-700 dark:text-amber-300" data-testid="memory-flagged">
+        <p className="text-13 text-amber-700 dark:text-amber-300" data-testid="memory-flagged">
           {entry.flagged.reason !== null ? (
             <>
               {t("memory.flaggedBecause", { by: entry.flagged.by ?? "—", date: day(entry.flagged.since) })} <Written text={entry.flagged.reason} lang={null} />
@@ -194,14 +194,14 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, onCorrec
             {entry.revisions.map((r) => (
               <li key={r.replacedAt} className="grid gap-0.5" data-testid="memory-revision">
                 <span>{t("memory.replaced", { date: day(r.replacedAt), name: actorName(t, r.writtenBy) })}</span>
-                <p className="whitespace-pre-wrap text-12-5 text-fg">{r.text}</p>
+                <p className="whitespace-pre-wrap text-13 text-fg">{r.text}</p>
               </li>
             ))}
           </ol>
         </details>
       ) : null}
       {gone ? (
-        <p className="text-12-5 text-muted" data-testid="memory-retired">
+        <p className="text-13 text-muted" data-testid="memory-retired">
           {entry.retired
             ? t("memory.retiredBy", { name: actorName(t, entry.retired.by), date: day(entry.retired.at), reason: entry.retired.reason })
             : archivedLine(t, entry.archivedBy, day(entry.archivedAt as string))}
@@ -240,7 +240,7 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, onCorrec
 
       {canAct && (mode === "correct" || mode === "retire") ? (
         <form
-          className="grid max-w-[760px] gap-2"
+          className="grid max-w-190 gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             if (!reasonOk || busy) return;

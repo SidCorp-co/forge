@@ -35,7 +35,7 @@ const END = "pointer-events-none! opacity-0!";
 function Step({ data }: NodeProps<Node<StepData>>) {
   return (
     <div
-      className="flex size-full items-center justify-center rounded-[6px] border border-line-strong bg-surface px-2 text-center text-[12px] leading-tight text-fg"
+      className="flex size-full items-center justify-center rounded-md border border-line-strong bg-surface px-2 text-center text-12 leading-tight text-fg"
       data-testid="flow-node"
     >
       <Handle type="target" position={Position.Top} isConnectable={false} className={END} />
@@ -53,7 +53,7 @@ function Line({ id, data, markerEnd }: EdgeProps<Edge<LineData>>) {
       {data.label && data.labelAt && (
         <EdgeLabelRenderer>
           <div
-            className="pointer-events-none absolute bg-app px-1 text-[11px] text-muted"
+            className="pointer-events-none absolute bg-app px-1 text-12 text-muted"
             data-testid="flow-edge-label"
             style={{ transform: `translate(-50%, -50%) translate(${data.labelAt.x}px, ${data.labelAt.y}px)` }}
           >
@@ -69,7 +69,7 @@ const NODE_TYPES = { step: Step };
 const EDGE_TYPES = { line: Line };
 const NODE_H_MIN = 36;
 /** The tallest box a diagram is drawn in; a taller diagram scrolls inside it at its own size. */
-const FLOW_BOX = "max-h-[520px]";
+const FLOW_BOX = "max-h-130";
 
 type Laid = { placed: Placed } | { failed: string } | null;
 
@@ -144,12 +144,12 @@ function FlowDiagram({ block }: { block: VisualBlockOf<"flow"> }) {
 
   if (laid && "failed" in laid) {
     return (
-      <p className="text-[12.5px] text-muted" data-testid="flow-failed">
+      <p className="text-13 text-muted" data-testid="flow-failed">
         This diagram could not be laid out, so its steps and links are listed below as text.
       </p>
     );
   }
-  if (!flow) return <p className="text-[12px] text-subtle">Laying out the diagram.</p>;
+  if (!flow) return <p className="text-12 text-subtle">Laying out the diagram.</p>;
   return (
     <div ref={scroller} className={`overflow-auto ${FLOW_BOX} print:max-h-none print:overflow-visible`} data-testid="flow-scroll">
     <div style={{ height: flow.height, minWidth: flow.width }} className="w-full" data-testid="flow-canvas">

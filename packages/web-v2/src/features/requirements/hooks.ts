@@ -3,7 +3,7 @@
 import type { DecisionMaker } from "@forge/contracts/comments";
 import type { RequirementKind, WritePictureRequest } from "@forge/contracts/requirement-pictures";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { questionsApi } from "@/features/questions/api";
+import { questionsApi } from "@/features/questions";
 import { requirementsApi } from "./api";
 import type { CreateRequirementBody, RequirementAction, RequirementDetail } from "./types";
 

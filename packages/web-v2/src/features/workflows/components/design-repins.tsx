@@ -20,7 +20,7 @@ export function PinOnlyReading({ change, approvedRevision }: { change: PinOnlyCh
   const t = useCopy();
   if (!change || approvedRevision === null) return null;
   return (
-    <span className="grid basis-full gap-0.5 text-12-5" data-testid="design-pin-only">
+    <span className="grid basis-full gap-0.5 text-13" data-testid="design-pin-only">
       <span>
         <span className="font-semibold text-fg">{t("workflows.pinOnly.head")}</span>
         <span className="text-muted"> · {t("workflows.pinOnly.pins", { pins: pinsWords(change.pins, t) })}</span>
@@ -51,7 +51,7 @@ const refusedWords = (r: RepinRefused, t: Copy) => {
   return isRefusalCode(code) ? t(REFUSAL_WORDS[code], { flow: r.flow }) : t("workflows.repins.refusal.other", { flow: r.flow, code });
 };
 
-function ReadyRow({ item, slug }: { item: RepinItem; slug: string }) {
+function ReadyRepin({ item, slug }: { item: RepinItem; slug: string }) {
   const t = useCopy();
   return (
     <li className="grid min-w-0 gap-0.5 border-t border-line-subtle py-1.5 first:border-t-0" data-testid="repin-ready" data-flow={item.flow}>
@@ -73,7 +73,7 @@ function ReadyRow({ item, slug }: { item: RepinItem; slug: string }) {
  * The base's pin-only dependents, cleared by one act: what it takes, in the order core approves them,
  * each with its pins and the proof nothing else changed, and what it will not take, each named.
  */
-export function RepinPanel({ projectId, workflowId, slug }: { projectId: string; workflowId: string; slug: string }) {
+export function DesignRepins({ projectId, workflowId, slug }: { projectId: string; workflowId: string; slug: string }) {
   const t = useCopy();
   const plan = useRepinPlan(projectId, workflowId).data;
   const act = useRepinAct(projectId, workflowId);
@@ -82,13 +82,13 @@ export function RepinPanel({ projectId, workflowId, slug }: { projectId: string;
   const r = plan.base.approvedRevision;
   const take = () => act.mutate({ revision: r, designs: plan.ready.map((i) => ({ workflowId: i.workflowId, revision: i.revision })) });
   return (
-    <section className="grid gap-2 border-b border-line-subtle px-6 py-2.5 text-12-5 max-md:px-4" data-testid="design-repins">
+    <section className="grid gap-2 border-b border-line-subtle px-6 py-2.5 text-13 max-md:px-4" data-testid="design-repins">
       {n > 0 ? (
         <>
           <span className="text-13 font-semibold text-fg">{t(n === 1 ? "workflows.repins.headOne" : "workflows.repins.headMany", { n, r })}</span>
-          <ul className="grid max-w-[720px]">
+          <ul className="grid max-w-180">
             {plan.ready.map((item) => (
-              <ReadyRow key={item.workflowId} item={item} slug={slug} />
+              <ReadyRepin key={item.workflowId} item={item} slug={slug} />
             ))}
           </ul>
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -108,7 +108,7 @@ export function RepinPanel({ projectId, workflowId, slug }: { projectId: string;
       {plan.refused.length > 0 ? (
         <span className="grid gap-0.5">
           <span className="font-semibold text-fg">{t("workflows.repins.notTaken")}</span>
-          <ul className="grid max-w-[720px]">
+          <ul className="grid max-w-180">
             {plan.refused.map((x) => (
               <li key={x.workflowId} className="border-t border-line-subtle py-1 text-muted first:border-t-0" data-testid="repin-refused" data-code={x.refusal.code}>
                 {refusedWords(x, t)}

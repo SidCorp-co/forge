@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { questionsApi } from "@/features/questions/api";
-import { gateQuestionKey, projectQuestionsKey } from "@/features/questions/hooks";
+import { questionsApi } from "@/features/questions";
+import { gateQuestionKey, projectQuestionsKey } from "@/features/questions";
 import { ecosystemApi } from "./api";
 
 const KEY = ["ecosystem"] as const;

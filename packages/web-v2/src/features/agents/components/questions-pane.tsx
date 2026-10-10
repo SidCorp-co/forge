@@ -11,14 +11,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { EmptyState, ErrorState, Skeleton } from "@/design";
-import { QuestionCard } from "@/features/questions/components/question-card";
+import { QuestionView } from "@/features/questions";
 import {
   useAnsweringQuestions,
   useAnswerProjectQuestion,
   useLinkedQuestion,
   useProjectQuestions,
-} from "@/features/questions/hooks";
-import type { AgentQuestion, AnswerInput } from "@/features/questions/types";
+} from "@/features/questions";
+import type { AgentQuestion, AnswerInput } from "@/features/questions";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 
@@ -142,7 +142,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
   return (
     <div ref={listRef} className="flex flex-col gap-3 p-4">
       {questions.map((question) => (
-        <QuestionCard
+        <QuestionView
           key={question.id}
           question={question}
           onAnswer={onAnswer}

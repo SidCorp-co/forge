@@ -1,7 +1,7 @@
 "use client";
 
 
-import { questionsApi } from "@/features/questions/api";
+import { questionsApi } from "@/features/questions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";

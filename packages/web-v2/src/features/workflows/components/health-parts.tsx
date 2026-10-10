@@ -11,17 +11,17 @@ export function HealthMark({ kind, count, dot = false, title }: { kind: HealthMa
   const word = label("healthMarker", kind);
   const tip = title ?? `${kind} · ${word}`;
   if (dot) {
-    return <span role="img" aria-label={word} title={tip} className="inline-block size-2 flex-none rounded-full" style={{ background: HEALTH_HUE[kind] }} data-testid="health-dot" data-kind={kind} />;
+    return <span role="img" aria-label={word} title={tip} className="inline-block size-2 flex-none rounded-pill" style={{ background: HEALTH_HUE[kind] }} data-testid="health-dot" data-kind={kind} />;
   }
   return (
     <span
-      className="inline-flex max-w-full cursor-default items-center gap-1.5 whitespace-nowrap rounded-pill px-2 py-[2px] text-11-5 font-semibold text-fg"
+      className="inline-flex max-w-full cursor-default items-center gap-1.5 whitespace-nowrap rounded-pill px-2 py-0.5 text-12 font-semibold text-fg"
       style={{ background: `color-mix(in srgb, ${HEALTH_HUE[kind]} 16%, var(--bg-surface))` }}
       title={tip}
       data-testid="health-chip"
       data-kind={kind}
     >
-      <span aria-hidden className="size-1.5 flex-none rounded-full" style={{ background: HEALTH_HUE[kind] }} />
+      <span aria-hidden className="size-1.5 flex-none rounded-pill" style={{ background: HEALTH_HUE[kind] }} />
       <span className="truncate">{word}</span>
       {count !== undefined ? <span className="font-mono tabular-nums">{count}</span> : null}
     </span>
@@ -43,7 +43,7 @@ export function HealthSummaryChips({ health }: { health: WorkflowHealthSummary |
           <HealthMark key={k} kind={k} count={health.counts[k]} title={`${k} · ${label("healthMarker", k)} ${health.counts[k]}`} />
         ))}
         {health.needsYou > 0 ? (
-          <span className="whitespace-nowrap text-11-5 font-semibold text-accent-text" data-testid="health-needs-you">
+          <span className="whitespace-nowrap text-12 font-semibold text-accent-text" data-testid="health-needs-you">
             {t("workflows.health.needsYou", { n: health.needsYou })}
           </span>
         ) : null}

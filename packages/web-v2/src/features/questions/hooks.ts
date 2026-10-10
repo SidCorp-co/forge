@@ -1,10 +1,6 @@
 "use client";
 
-// web-v2 feature module: parked decisions — react-query surface.
-//
-// A question's ask, answer, void and expiry reach the project room as `question.changed`
-// (`lib/ws/event-router.ts`), which refetches `["questions"]`; the polls below stay as the
-// fallback for a dropped socket.
+// Parked decisions: the queries live in `queries.ts`, the answers and their toasts here.
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -13,29 +9,15 @@ import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { questionsApi } from "./api";
+import { questionKeys, questionQueries } from "./queries";
 import type { AnswerInput } from "./types";
-import { isUuid } from "@/lib/api/ref-bridge";
 
-const issueQuestionsKey = (issueId: string) => ["questions", issueId];
-export const projectQuestionsKey = (projectId: string) => ["questions", "project", projectId];
-/** Under the project's key, so answering from either surface refreshes the other. */
-export const gateQuestionKey = (projectId: string, documentId: string) => [
-  ...projectQuestionsKey(projectId),
-  "gate",
-  documentId,
-];
+/** Kept for the screens that invalidate a project's questions by key. */
+export const projectQuestionsKey = questionKeys.project;
+export const gateQuestionKey = questionKeys.gate;
 
-const FOLLOW_UP_POLL_MS = 30_000;
-
-/** `issueId` is the uuid, or the display key with the `projectId` it is scoped by. */
 export function useIssueQuestions(issueId: string, projectId?: string) {
-  return useQuery({
-    queryKey: issueId && !isUuid(issueId) ? ["questions", { issue: issueId, project: projectId ?? null }] : issueQuestionsKey(issueId),
-    queryFn: () => questionsApi.listForIssue(issueId, projectId),
-    enabled: Boolean(issueId),
-    refetchInterval: (query) =>
-      (query.state.data?.questions.length ?? 0) > 0 ? FOLLOW_UP_POLL_MS : false,
-  });
+  return useQuery(questionQueries.issue(issueId, projectId));
 }
 
 export function useAnswerQuestion(issueId: string) {
@@ -45,7 +27,7 @@ export function useAnswerQuestion(issueId: string) {
   return useMutation({
     mutationFn: questionsApi.answer,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: issueQuestionsKey(issueId) });
+      qc.invalidateQueries({ queryKey: questionKeys.issue(issueId) });
       qc.invalidateQueries({ queryKey: ["issue", issueId] });
       qc.invalidateQueries({ queryKey: ["attention"] });
       toast({
@@ -54,7 +36,7 @@ export function useAnswerQuestion(issueId: string) {
       });
     },
     onError: (err) => {
-      qc.invalidateQueries({ queryKey: issueQuestionsKey(issueId) });
+      qc.invalidateQueries({ queryKey: questionKeys.issue(issueId) });
       toast({ title: t("agents.question.notRecorded"), description: formatApiError(err), tone: "error" });
     },
   });
@@ -62,18 +44,8 @@ export function useAnswerQuestion(issueId: string) {
 
 
 /** Every OPEN decision on one project that names no issue, for the Agents screen. */
-const PROJECT_QUEUE_POLL_MS = 30_000;
-
 export function useProjectQuestions(projectId: string | undefined) {
-  const query = useInfiniteQuery({
-    queryKey: projectQuestionsKey(projectId ?? ""),
-    queryFn: ({ pageParam }) =>
-      questionsApi.listOpenWithoutIssue(projectId as string, pageParam ?? undefined),
-    initialPageParam: null as string | null,
-    getNextPageParam: (last) => (last.hasMore ? (last.nextCursor ?? undefined) : undefined),
-    enabled: Boolean(projectId),
-    refetchInterval: PROJECT_QUEUE_POLL_MS,
-  });
+  const query = useInfiniteQuery(questionQueries.project(projectId));
   const pages = query.data?.pages ?? [];
   return {
     ...query,
@@ -103,12 +75,7 @@ function linkedVerdict(q: {
 }
 
 export function useLinkedQuestion(questionId: string | undefined, enabled: boolean) {
-  const query = useQuery({
-    queryKey: ["questions", "one", questionId ?? ""],
-    queryFn: () => questionsApi.get(questionId as string),
-    enabled: Boolean(questionId) && enabled,
-    retry: false,
-  });
+  const query = useQuery(questionQueries.one(questionId, enabled));
   return { ...query, ...linkedVerdict(query) };
 }
 

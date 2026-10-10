@@ -36,7 +36,7 @@ function HealthGroup({ health, slug, projectId, canDecide }: { health: WorkflowH
   return (
     <FactsGroup title={t("workflows.col.health")} count={total ? t("workflows.facts.markers", { n: total }) : undefined} testId="facts-health">
       {!health.rooted.rooted ? (
-        <p className="mb-2 text-12-5 text-muted" data-testid="health-unrooted">
+        <p className="mb-2 text-13 text-muted" data-testid="health-unrooted">
           {t("workflows.facts.unrooted", {
             why: health.rooted.missing
               .map((m) => (m === "approved_revision" ? t("workflows.facts.noApproved") : t("workflows.facts.noRequirement")))
@@ -44,25 +44,25 @@ function HealthGroup({ health, slug, projectId, canDecide }: { health: WorkflowH
           })}
         </p>
       ) : health.observation === null ? (
-        <p className="mb-2 text-12-5 text-muted" data-testid="health-not-observed">
+        <p className="mb-2 text-13 text-muted" data-testid="health-not-observed">
           {t("workflows.facts.notObserved")}
         </p>
       ) : (
-        <p className="mb-2 text-12-5 text-muted" title={time.dateTime(health.observation.createdAt)} data-testid="health-observed">
+        <p className="mb-2 text-13 text-muted" title={time.dateTime(health.observation.createdAt)} data-testid="health-observed">
           {t("workflows.facts.observedAt")} <span className="font-mono">{health.observation.atSha.slice(0, 8)}</span>{" "}
           {t("workflows.facts.againstR", { r: health.observation.revision })} · {time.relative(health.observation.createdAt)}
         </p>
       )}
       <ul className="grid grid-cols-2 gap-x-3 gap-y-1" data-testid="health-counts">
         {HEALTH_MARKER_KINDS.map((k) => (
-          <li key={k} className="flex min-w-0 items-center justify-between gap-2 text-12-5" data-kind={k} title={k}>
+          <li key={k} className="flex min-w-0 items-center justify-between gap-2 text-13" data-kind={k} title={k}>
             <span className={health.counts[k] ? "text-fg" : "text-subtle"}>{label("healthMarker", k)}</span>
             <span className={`font-mono tabular-nums ${health.counts[k] ? "font-semibold" : "text-subtle"}`}>{health.counts[k]}</span>
           </li>
         ))}
       </ul>
       {health.needsYou > 0 ? (
-        <p className="mt-2 text-12-5 font-semibold text-accent-text" data-testid="health-needs-you">
+        <p className="mt-2 text-13 font-semibold text-accent-text" data-testid="health-needs-you">
           {t("workflows.facts.needsPerson", { n: health.needsYou })}
         </p>
       ) : null}
@@ -70,14 +70,14 @@ function HealthGroup({ health, slug, projectId, canDecide }: { health: WorkflowH
         <div className="mt-2.5 border-t border-line-subtle" data-testid="health-markers">
           {groups.map((g) => (
             <details key={g.kind} className="border-b border-line-subtle py-1.5" data-kind={g.kind}>
-              <summary className="flex cursor-pointer select-none items-center gap-2 text-12-5">
+              <summary className="flex cursor-pointer select-none items-center gap-2 text-13">
                 <HealthMark kind={g.kind} />
               </summary>
               <ul className="mt-1 grid">
                 {g.markers.map((m) => {
                   const href = sourceHref(slug, health.flow, m.source);
                   return (
-                    <li key={`${m.rule}:${m.source.type}:${m.source.key}:${targetWords(m.target, t)}`} className="grid gap-0.5 border-t border-line-subtle py-1.5 text-12-5 first:border-t-0" data-testid="health-marker">
+                    <li key={`${m.rule}:${m.source.type}:${m.source.key}:${targetWords(m.target, t)}`} className="grid gap-0.5 border-t border-line-subtle py-1.5 text-13 first:border-t-0" data-testid="health-marker">
                       <span className="flex min-w-0 items-center gap-1.5">
                         {href ? (
                           <Link href={href} className="flex-none font-mono text-12 font-semibold text-link hover:underline" title={`${m.source.type} · ${m.rule}`}>
@@ -112,7 +112,7 @@ function ReconciliationGroup({ health, slug }: { health: WorkflowHealth; slug: s
   const r = health.reconciliation;
   return (
     <FactsGroup title={t("workflows.facts.reconciliation")} testId="facts-reconciliation">
-      <p className="mb-2 flex min-w-0 items-start gap-2 text-12-5 text-muted" data-testid="reconciliation-state" data-state={r.state}>
+      <p className="mb-2 flex min-w-0 items-start gap-2 text-13 text-muted" data-testid="reconciliation-state" data-state={r.state}>
         <span className="flex-none">
           <StatusBadge family="reconciliation" value={r.state} />
         </span>
@@ -120,7 +120,7 @@ function ReconciliationGroup({ health, slug }: { health: WorkflowHealth; slug: s
       </p>
       <Fact label={t("workflows.facts.version")} testId="reconciliation-version">
         {r.version ? (
-          <span className="font-mono text-12-5" title={r.version.releasedAt ? t("workflows.facts.releasedAt", { at: time.dateTime(r.version.releasedAt) }) : undefined}>
+          <span className="font-mono text-13" title={r.version.releasedAt ? t("workflows.facts.releasedAt", { at: time.dateTime(r.version.releasedAt) }) : undefined}>
             {r.version.version}
           </span>
         ) : (
@@ -131,7 +131,7 @@ function ReconciliationGroup({ health, slug }: { health: WorkflowHealth; slug: s
         {r.criteria.total === 0 ? (
           <span className="text-muted">{t("workflows.facts.noBc")}</span>
         ) : (
-          <span className="font-mono tabular-nums text-12-5">
+          <span className="font-mono tabular-nums text-13">
             {t("workflows.facts.of", { a: r.criteria.proven, b: r.criteria.total })}
           </span>
         )}
@@ -164,7 +164,7 @@ function DraftFromDesign({ projectId, slug, workflowId, flow, title }: { project
         {t("workflows.facts.draftRequirement")}
       </Button>
       {refused ? (
-        <p role="alert" className="text-12-5 text-red">
+        <p role="alert" className="text-13 text-danger-11">
           {refused}
         </p>
       ) : null}
@@ -211,7 +211,7 @@ function Pin({ r, approved }: { r: WorkflowDesign["requirements"][number]; appro
   const lags = approved !== null && pinned < approved;
   return (
     <span
-      className="flex-none font-mono text-11-5"
+      className="flex-none font-mono text-12"
       style={lags ? { color: TONE_META.attention.fg } : undefined}
       title={lags ? t("workflows.facts.pinLags", { key: r.key, r: pinned, approved }) : t("workflows.facts.pinned", { key: r.key, r: pinned })}
       data-testid="rail-requirement-pin"
@@ -229,7 +229,7 @@ function BuiltAgainst({ b, approved }: { b: WorkflowDesign["builds"][number]; ap
   const behind = approved !== null && b.builtAgainst < approved;
   return (
     <span
-      className="flex-none font-mono text-11-5"
+      className="flex-none font-mono text-12"
       style={behind ? { color: TONE_META.attention.fg } : undefined}
       title={behind ? t("workflows.facts.builtBehind", { r: b.builtAgainst, approved }) : t("workflows.facts.builtAgainst", { r: b.builtAgainst })}
       data-testid="rail-build-revision"
@@ -245,7 +245,7 @@ function BuildGate({ d, slug }: { d: WorkflowDesign; slug: string }) {
   const language = useInterfaceLanguage();
   return (
     <FactsGroup title={t("workflows.facts.buildGate")} count={d.builds.length ? t("workflows.facts.issues", { n: d.builds.length }) : undefined} testId="facts-build-gate">
-      <p className="mb-2 flex min-w-0 items-start gap-2 text-12-5 text-muted" data-testid="build-gate" data-open={d.gate.open}>
+      <p className="mb-2 flex min-w-0 items-start gap-2 text-13 text-muted" data-testid="build-gate" data-open={d.gate.open}>
         <span className="flex-none">
           <StatusBadge family="buildGate" value={d.gate.open ? "open" : "held"} />
         </span>
@@ -347,7 +347,7 @@ interface DesignFactsProps {
   projectId?: string | undefined;
 }
 
-export function WorkflowDesignFacts({ d, record, shown, shownRevision, template, slug, health, projectId }: DesignFactsProps) {
+export function WorkflowDesignProperties({ d, record, shown, shownRevision, template, slug, health, projectId }: DesignFactsProps) {
   const t = useCopy();
   const time = useTimeFormat();
   const language = useInterfaceLanguage();
@@ -371,7 +371,7 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
       <Requirements d={d} slug={slug} projectId={projectId} title={shown.title} />
       <FactsGroup title={t("workflows.facts.properties")} testId="facts-properties">
         <Fact label={t("workflows.facts.revision")} testId="fact-revision">
-          <span className="font-mono text-12-5">r{shownRevision}</span>
+          <span className="font-mono text-13">r{shownRevision}</span>
           {shownState ? <StatusBadge family="designRevision" value={shownState} /> : null}
         </Fact>
         <Fact label={t("workflows.facts.approved")} testId="fact-approved">
@@ -381,7 +381,7 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
                 {approved.decidedByName ? t("workflows.facts.revBy", { r: approved.revision, who: approved.decidedByName }) : t("workflows.facts.rev", { r: approved.revision })}
               </span>
               {approvedReason ? (
-                <span className="line-clamp-4 whitespace-pre-wrap break-words text-12-5 text-muted" title={approvedReason} data-testid="fact-approved-note">
+                <span className="line-clamp-4 whitespace-pre-wrap break-words text-13 text-muted" title={approvedReason} data-testid="fact-approved-note">
                   {approvedReason}
                 </span>
               ) : null}

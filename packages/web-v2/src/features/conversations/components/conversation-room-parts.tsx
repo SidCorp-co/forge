@@ -2,7 +2,7 @@
 
 import type { ComponentProps, ReactNode } from "react";
 import { EmptyState, ErrorState, IconButton, ProjectLoader } from "@/design";
-import { ThreadSub } from "@/features/onboarding/components/thread-sub";
+import { ThreadSub } from "@/features/onboarding";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { type ConversationMode, type ConversationListItem, conversationTitle } from "../types";

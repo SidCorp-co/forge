@@ -12,21 +12,19 @@ import type { AnswerHold, AnswerResume } from "@forge/contracts/questions";
 import { useState } from "react";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
-import { statusReading } from "@/design/vocabulary";
+import { cn } from "@/lib/utils/cn";
 import {
   Badge,
   Button,
   Checkbox,
-  PageSection,
-  PageSectionBody,
-  PageSectionHeader,
-  PageSectionTitle,
+  Section,
   Field,
   EnumBadge,
   StatusBadge,
+  statusReading,
   Textarea,
 } from "@/design";
-import { type IssuePick, IssuePicker } from "@/features/issue-picker/issue-picker";
+import { type IssuePick, IssuePicker } from "@/features/issue-picker";
 import {
   type AgentQuestion,
   type AnswerInput,
@@ -69,7 +67,7 @@ function OptionMeaning({ option, id }: { option: VisibleOption; id: string }) {
   );
 }
 
-function OptionRow({
+function QuestionOption({
   option,
   recommended,
   suggested,
@@ -364,7 +362,7 @@ function StillWaitsFields({
   );
 }
 
-interface QuestionCardProps {
+interface QuestionViewProps {
   question: AgentQuestion;
   /** Send one answer. The card builds the whole input; the caller only transports it. */
   onAnswer: (input: AnswerInput) => void;
@@ -379,13 +377,13 @@ interface QuestionCardProps {
 /**
  * One decision, with its earlier rounds above it and its current round below.
  */
-export function QuestionCard({
+export function QuestionView({
   question,
   onAnswer,
   pending,
   context,
   highlighted,
-}: QuestionCardProps) {
+}: QuestionViewProps) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const current = currentRoundOf(question);
@@ -420,23 +418,22 @@ export function QuestionCard({
   };
 
   return (
-    <PageSection
+    <Section
       data-question-id={question.id}
-      className={highlighted ? "shadow-focus" : undefined}
-    >
-      <PageSectionHeader className="flex flex-wrap items-center gap-2">
-        <PageSectionTitle
-          data-question-title="true"
-          tabIndex={-1}
-          className="focus-visible:outline-none focus-visible:shadow-focus"
-        >
+      className={cn("space-y-3", highlighted && "shadow-focus")}
+      title={
+        <span data-question-title="true" tabIndex={-1} className="focus-visible:outline-none focus-visible:shadow-focus">
           {answerable ? t("agents.question.waiting") : t("agents.question.decision")}
-        </PageSectionTitle>
-        <EnumBadge family="blockerKind" value={question.blockerKind} />
-        <StatusBadge family="question" value={question.status} />
-        {context}
-      </PageSectionHeader>
-      <PageSectionBody className="space-y-3">
+        </span>
+      }
+      right={
+        <>
+          <EnumBadge family="blockerKind" value={question.blockerKind} />
+          <StatusBadge family="question" value={question.status} />
+          {context}
+        </>
+      }
+    >
         {earlier.length > 0 && (
           <div className="space-y-2">
             {earlier.map((step) => (
@@ -467,7 +464,7 @@ export function QuestionCard({
             {holds && <StillWaitsFields projectId={question.projectId} draft={wait} fault={waitFault} onChange={setWait} />}
             {question.answerShape === "choice" ? (
               question.options.map((option) => (
-                <OptionRow
+                <QuestionOption
                   key={option.id}
                   option={option}
                   recommended={option.id === (askedOption ?? suggested?.optionId)}
@@ -501,7 +498,6 @@ export function QuestionCard({
             {resume}
           </p>
         )}
-      </PageSectionBody>
-    </PageSection>
+    </Section>
   );
 }

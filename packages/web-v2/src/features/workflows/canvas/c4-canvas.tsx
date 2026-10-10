@@ -1,9 +1,8 @@
 "use client";
 
 import { type Edge, MarkerType, type Node, useReactFlow } from "@xyflow/react";
-import { Play } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, SegmentedControl } from "@/design";
+import { Button, SegmentedControl, Icon } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -171,7 +170,7 @@ export function C4Canvas(props: WorkflowCanvasProps) {
 
   if (read.error) {
     return (
-      <p role="alert" className="m-auto max-w-[72ch] p-6 text-13 text-red" data-testid="system-graph-error">
+      <p role="alert" className="m-auto max-w-xl p-6 text-13 text-danger-11" data-testid="system-graph-error">
         {refusalsOf(read.error)[0]?.detail ?? formatApiError(read.error)}
       </p>
     );
@@ -289,7 +288,7 @@ function C4Toolbar({
         <>
           <span className="wfc-sep" />
           <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={onWalk} data-testid="walk-start-bar">
-            <Play size={16} />
+            <Icon name="play" size={16} />
             <span className="wfc-t">{t("workflows.canvas.walk")}</span>
           </Button>
         </>

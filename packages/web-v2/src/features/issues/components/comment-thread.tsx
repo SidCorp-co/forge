@@ -18,7 +18,7 @@ import {
   initials,
   memberLabel,
 } from "../derive";
-import { useIssueQuestions } from "@/features/questions/hooks";
+import { useIssueQuestions } from "@/features/questions";
 import { useCreateComment, useRecordDecision } from "../detail-hooks";
 import type { CommentNode, ProjectMember } from "../types";
 import { AttachmentList } from "@/features/attachments/components/attachment-list";

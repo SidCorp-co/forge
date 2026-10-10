@@ -2,8 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useRef, useState } from "react";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/design";
+import { Button, Dialog } from "@/design";
 import type { SketchExport } from "./sketch-canvas";
 
 const SketchCanvas = dynamic(() => import("./sketch-canvas"), {
@@ -50,29 +49,29 @@ export function SketchPad({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent
-        data-testid="sketch-pad"
-        className="flex h-[min(80vh,640px)] w-[min(92vw,880px)] max-w-none flex-col gap-2 p-3 sm:max-w-none"
-      >
-        <DialogTitle className="fg-body-sm font-semibold text-fg">Sketch</DialogTitle>
-        <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-line">
-          {open && <SketchCanvas onReady={onReady} />}
-        </div>
-        <div className="flex flex-none items-center justify-end gap-2">
-          {state.said && (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => !next && onClose()}
+      title="Sketch"
+      width="lg"
+      testId="sketch-pad"
+      footer={
+        <>
+          {state.said ? (
             <p role="status" className="fg-caption mr-auto text-muted">
               {state.said}
             </p>
-          )}
+          ) : null}
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button type="button" variant="primary" size="sm" loading={state.busy} onClick={attach}>
             Attach
           </Button>
-        </div>
-      </DialogContent>
+        </>
+      }
+    >
+      <div className="h-120 min-h-0 overflow-hidden border border-line">{open && <SketchCanvas onReady={onReady} />}</div>
     </Dialog>
   );
 }

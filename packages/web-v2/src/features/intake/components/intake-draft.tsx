@@ -28,7 +28,7 @@ function hrefOf(slug: string, ref: Pick<IntakeDraftRef, "kind" | "key">): string
 /** One record a draft names, linked to its page. */
 export function IntakeRefLink({ slug, target: r }: { slug: string; target: Pick<IntakeDraftRef, "kind" | "key"> }) {
   return (
-    <Link href={hrefOf(slug, r)} className="font-mono text-12-5 text-accent-text hover:underline" data-testid="intake-ref">
+    <Link href={hrefOf(slug, r)} className="font-mono text-13 text-accent-text hover:underline" data-testid="intake-ref">
       {r.key}
     </Link>
   );
