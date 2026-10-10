@@ -1,10 +1,9 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { automationKeys, automationQueries } from "./queries";
+import { automationQueries } from "./queries";
 
 /** Every key the automation read model answers under; a write that moves a schedule, a fire or a report invalidates it. */
-export const automationKey = automationKeys.project;
 
 export function useAutomationStanding(projectId: string | undefined) {
   return useQuery(automationQueries.standing(projectId));

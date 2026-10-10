@@ -14,6 +14,7 @@ import {
   COMPLEXITY_LABELS,
   PRIORITY_LABELS,
   liveDependencies,
+  otherEnd,
 } from "../derive";
 import type {
   IssueDependencies,
@@ -71,25 +72,11 @@ export function useComplexityOptions(): SelectOption[] {
 const isParentEdge = (k: IssueDependencyEdge["kind"]) =>
   k === "decomposes" || k === "parent";
 
-/** Build a Menu item for the OTHER endpoint of a relation edge. `dir` says which
- *  endpoint is "the other one": for an INCOMING edge it's the `from`, for an
- *  OUTGOING edge the `to`. Falls back to a short id + bare "Issue" label when the
- *  edge wasn't enriched (mirrors the rail's `DepList`). */
-function edgeToMenuItem(
-  e: IssueDependencyEdge,
-  dir: "in" | "out",
-  navigate: (id: string) => void,
-): MenuItem {
-  const isIncoming = dir === "in";
-  const otherId = isIncoming ? e.fromIssueId : e.toIssueId;
-  const displayId =
-    (isIncoming ? e.fromDisplayId : e.toDisplayId) ?? `#${otherId.slice(0, 6)}`;
-  const title = isIncoming ? e.fromTitle : e.toTitle;
-  return {
-    label: title ? `${displayId} · ${title}` : displayId,
-    icon: "arrowRight",
-    onSelect: () => navigate(otherId),
-  };
+/** A Menu item for the issue at the other end of an incoming or outgoing edge; a short id and no title where it was not enriched. */
+function edgeToMenuItem(e: IssueDependencyEdge, dir: "in" | "out", navigate: (id: string) => void): MenuItem {
+  const other = otherEnd(e, dir === "in" ? e.toIssueId : e.fromIssueId);
+  const displayId = other.displayId ?? `#${other.id.slice(0, 6)}`;
+  return { label: other.title ? `${displayId} · ${other.title}` : displayId, icon: "arrowRight", onSelect: () => navigate(other.id) };
 }
 
 /** A single readable relation chip that reveals its related issues on click.
