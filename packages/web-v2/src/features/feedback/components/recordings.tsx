@@ -57,7 +57,7 @@ export function Recordings({ projectId, f }: { projectId: string; f: FeedbackVie
     <section aria-label={t("previews.recordings.title")} data-testid="recordings" className="grid gap-3">
       <ViewHeading>{t("previews.recordings.title")}</ViewHeading>
       {q.isError ? (
-        <p role="alert" className="fg-body-sm" style={{ color: "var(--red-600)" }}>
+        <p role="alert" className="fg-body-sm text-danger-11">
           {t("previews.recordings.loadFailed")}: {formatApiError(q.error)}
         </p>
       ) : null}
@@ -216,7 +216,7 @@ function RecordingDetail({ recording, projectId, fbKey }: { recording: Recording
         ) : null}
       </div>
       {stop.error ? (
-        <p role="alert" className="fg-body-sm" style={{ color: "var(--red-600)" }}>
+        <p role="alert" className="fg-body-sm text-danger-11">
           {t("previews.recordings.stopFailed")}: {formatApiError(stop.error)}
         </p>
       ) : null}
@@ -282,7 +282,7 @@ function Replay({ recordingId, describedBy }: { recordingId: string; describedBy
   return (
     <div className="grid gap-2" data-testid="recording-player">
       {problem ? (
-        <p role="alert" className="fg-body-sm" style={{ color: "var(--red-600)" }}>
+        <p role="alert" className="fg-body-sm text-danger-11">
           {t("previews.recordings.replayFailed")}: {formatApiError(problem)}
         </p>
       ) : null}

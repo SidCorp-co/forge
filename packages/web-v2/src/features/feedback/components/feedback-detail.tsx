@@ -55,7 +55,7 @@ export function FeedbackPrimary({ f, onAct }: { f: FeedbackView; onAct: () => vo
 }
 
 function Heading({ children }: { children: ReactNode }) {
-  return <h2 className="mb-3 text-15 font-semibold leading-snug text-fg">{children}</h2>;
+  return <h2 className="mb-3 text-14 font-semibold leading-snug text-fg">{children}</h2>;
 }
 
 function Body({ projectId, f }: { projectId: string; f: FeedbackView }) {

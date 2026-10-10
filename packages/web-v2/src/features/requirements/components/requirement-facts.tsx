@@ -85,7 +85,7 @@ function LinkedFeedback({ items, slug }: { items: RequirementFeedbackItem[]; slu
           )}
           {closed.length ? (
             <details className="mt-2" data-testid="rail-feedback-closed">
-              <summary className="cursor-pointer select-none text-12-5 font-medium text-muted hover:text-fg">{t("requirements.facts.closedN", { n: closed.length })}</summary>
+              <summary className="cursor-pointer select-none text-13 font-medium text-muted hover:text-fg">{t("requirements.facts.closedN", { n: closed.length })}</summary>
               <ul className="mt-1.5 grid gap-1.5">
                 {closed.map((f) => (
                   <LinkedFeedbackItem key={f.id} f={f} slug={slug} />
@@ -128,7 +128,7 @@ export function IssueShippedLink({ shippedIn, slug }: { shippedIn: Shipped; slug
       href={releaseHref(slug, shippedIn.version)}
       aria-label={`${t("issues.shippedIn")} ${shippedIn.version}`}
       title={`${t("issues.shippedIn")} ${shippedIn.version}`}
-      className="flex-none font-mono text-11 text-link hover:underline"
+      className="flex-none font-mono text-12 text-link hover:underline"
     >
       {shippedIn.version}
     </Link>

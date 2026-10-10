@@ -11,11 +11,11 @@ import { useCopy } from "@/lib/i18n/interface-language";
 const STAGE_DOT: Record<RequirementStage, string> = {
   draft: "border-[1.5px] border-subtle bg-transparent",
   agreed: "bg-subtle",
-  build: "bg-cobalt",
+  build: "bg-info-9",
   decide: "bg-accent",
-  prove: "bg-green opacity-60",
-  check: "bg-amber",
-  done: "bg-green",
+  prove: "bg-ok-9 opacity-60",
+  check: "bg-warn-9",
+  done: "bg-ok-9",
   deferred: "bg-line-strong",
 };
 
@@ -36,7 +36,7 @@ export function Passing({ r, wide = true }: { r: RequirementSummary; wide?: bool
   return (
     <span className="inline-flex items-center gap-2 tabular-nums" data-testid="req-passing">
       <span className={cn("flex h-1.25 flex-none overflow-hidden rounded-sm bg-sunken", wide ? "w-21" : "w-12")}>
-        <i className="block h-full bg-green" style={{ width: `${(100 * passing) / criteria}%` }} />
+        <i className="block h-full bg-ok-9" style={{ width: `${(100 * passing) / criteria}%` }} />
         <i className="block h-full bg-danger" style={{ width: `${(100 * failing) / criteria}%` }} />
       </span>
       <span className="min-w-9 text-muted">{`${passing}/${criteria}`}</span>
@@ -74,7 +74,7 @@ export function RowState({ r }: { r: RequirementSummary }) {
         </>
       ) : null}
       {newer ? (
-        <span className="rounded-sm bg-sunken px-1 font-mono text-11-5 text-muted" data-testid="req-open-revision">
+        <span className="rounded-sm bg-sunken px-1 font-mono text-12 text-muted" data-testid="req-open-revision">
           {t(newer.state === "draft" ? "requirements.line.openDraft" : "requirements.line.openProposed", { r: newer.revision })}
         </span>
       ) : null}
