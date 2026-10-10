@@ -55,6 +55,7 @@ const byKey = (all: readonly NeedsYouDecision[], key: string) => all.find((d) =>
 
 async function seedRequirement(
   seq: number,
+  owner: string,
   revisions: { n: number; state: string; author: string }[],
 ) {
   const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
@@ -63,8 +64,8 @@ async function seedRequirement(
   const current = revisions.find((r) => r.state === 'current')?.n ?? null;
   await withKernelMarker(db, async (tx) => {
     await tx.execute(sql`
-      INSERT INTO requirements (id, project_id, req_seq, title, status)
-      VALUES (${id}, ${projectId}, ${seq}, ${`requirement ${seq}`}, 'draft')
+      INSERT INTO requirements (id, project_id, req_seq, title, status, owner_id)
+      VALUES (${id}, ${projectId}, ${seq}, ${`requirement ${seq}`}, 'draft', ${owner})
     `);
     for (const r of revisions) {
       await tx.execute(sql`
@@ -156,15 +157,16 @@ beforeAll(async () => {
       recommendedOptionId: 'later',
     },
   });
-  // a revision another member proposed, which the owner signs off
-  await seedRequirement(1, [
-    { n: 1, state: 'current', author: authorId },
+  // the owner's requirement, whose revision 2 another member proposed: with approvals.revisions off
+  // (the default) its accept is asked of the requirement's owner alone (REQ-34 BC-22)
+  await seedRequirement(1, ownerId, [
+    { n: 1, state: 'current', author: ownerId },
     { n: 2, state: 'proposed', author: authorId },
   ]);
   // its proposed revision 2 links a workflow design, the last answer the accept's ready checklist reads
   await makeAgreeReady(projectId, 1, ownerId);
   // the owner's own draft: their work to finish, not a decision
-  await seedRequirement(2, [{ n: 1, state: 'draft', author: ownerId }]);
+  await seedRequirement(2, ownerId, [{ n: 1, state: 'draft', author: ownerId }]);
 }, 120_000);
 
 afterAll(closeWorld);
