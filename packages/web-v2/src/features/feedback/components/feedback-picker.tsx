@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Combobox, Icon } from "@/design";
+import { Combobox, fixedHeight, Icon } from "@/design";
+import { cn } from "@/lib/utils/cn";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useFeedbackList } from "../hooks";
@@ -98,7 +99,7 @@ export function FeedbackPicker({
       </Combobox.InputGroup>
       <Combobox.Portal>
         <Combobox.Positioner className="z-50 outline-none" sideOffset={4}>
-          <Combobox.Popup className="max-h-[min(var(--available-height),20rem)] w-(--anchor-width) max-w-(--available-width) overflow-y-auto rounded-md border border-line bg-surface py-1 text-fg ">
+          <Combobox.Popup className={cn("w-(--anchor-width) max-w-(--available-width) rounded-md border border-line bg-surface py-1 text-fg", fixedHeight("popup"))}>
             <Combobox.Status className="block px-3 py-1.5 text-12 text-subtle">{status}</Combobox.Status>
             {list.isError ? <RefusalLine error={list.error} testid="feedback-picker-refusal" /> : null}
             <Combobox.List className="divide-y divide-line-subtle">

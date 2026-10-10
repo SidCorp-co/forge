@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";
 
 const STAGE_DOT: Record<RequirementStage, string> = {
-  draft: "border-[1.5px] border-subtle bg-transparent",
+  draft: "border-2 border-subtle bg-transparent",
   agreed: "bg-subtle",
   build: "bg-info-9",
   decide: "bg-accent",
