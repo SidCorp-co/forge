@@ -6,7 +6,7 @@
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useOnboardingState } from "../hooks";
 import type { OnboardingStatus } from "../types";
-import { ThreadStatusChip } from "./marks";
+import { StatusBadge } from "@/design";
 
 export function ThreadSub({
   kind,
@@ -46,7 +46,7 @@ function ThreadSubLine({ ba, status }: { ba: boolean; status: OnboardingStatus |
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-12 text-subtle">
       <span>{ba ? t("conversations.sub.withBa") : t("conversations.sub.withAgent")}</span>
-      {status && <ThreadStatusChip status={status} />}
+      {status && <StatusBadge family="thread" value={status} />}
     </div>
   );
 }

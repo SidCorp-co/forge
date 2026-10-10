@@ -1,31 +1,24 @@
 "use client";
 
 // The small marks the onboarding thread and the questionnaire share: a hover note with rich
-// content (the evidence behind "Why we ask"), the thread status chip, and the design chips.
+// content (the evidence behind "Why we ask") and the design status.
 
-import type { OnboardingStatus } from "@forge/contracts/onboarding";
 import type { IssueStatusTone } from "@forge/contracts/issue-vocabulary";
 import type { ReactNode } from "react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { StatusBadge, ToneBadge } from "@/design";
+import { HoverCard, StatusBadge, ToneBadge } from "@/design";
+import { cn } from "@/lib/utils/cn";
 
-/** A dotted-underline word whose tooltip carries a sentence and its evidence. */
+/** A dotted-underline word whose hover card carries a sentence and its evidence. */
 export function HoverNote({ label, children, className }: { label: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            className={`cursor-help whitespace-nowrap underline decoration-dotted decoration-line-strong underline-offset-3 ${className ?? ""}`}
-          />
-        }
-      >
-        {label}
-      </TooltipTrigger>
-      <TooltipContent side="top" className="block max-w-70 whitespace-normal text-left text-12 leading-normal">
-        {children}
-      </TooltipContent>
-    </Tooltip>
+    <HoverCard
+      label={typeof label === "string" ? label : "Details"}
+      content={<span className="block max-w-70 text-12 leading-normal">{children}</span>}
+      placement="top"
+      className={cn("whitespace-nowrap underline decoration-dotted decoration-line-strong underline-offset-3", className)}
+    >
+      {label}
+    </HoverCard>
   );
 }
 
@@ -54,11 +47,7 @@ export function ToneChip({
   return <ToneBadge tone={tone} label={label} glyph={glyph ?? TONE_GLYPH[tone]} title={title ?? label} />;
 }
 
-export function ThreadStatusChip({ status }: { status: OnboardingStatus }) {
-  return <StatusBadge family="thread" value={status} />;
-}
-
-export function DesignStatusChip({ status }: { status: string | null }) {
+export function DesignStatus({ status }: { status: string | null }) {
   return status ? <StatusBadge family="design" value={status} /> : <ToneChip tone="neutral" label="Not a design" />;
 }
 

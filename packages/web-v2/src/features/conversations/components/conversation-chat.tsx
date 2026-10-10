@@ -11,7 +11,7 @@
 // run-shaped verb it had.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ThreadDataProvider } from "@/features/onboarding/components/thread-blocks";
+import { ThreadDataProvider } from "@/features/onboarding";
 import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
 import { CONVERSATION_ATTACHMENTS } from "@/features/chat/attachments";

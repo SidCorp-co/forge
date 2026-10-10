@@ -5,14 +5,16 @@
 // from the thread's own data (the batches on the conversation detail, the designs on the onboarding
 // read), never from the message, so a card says what is true now.
 
-import { createContext, type ReactNode, useContext, useMemo } from "react";
+import { createContext, type ReactNode, useContext } from "react";
 import Link from "next/link";
-import { Markdown } from "@/design/patterns/markdown";
+import { Markdown } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
+import { cn } from "@/lib/utils/cn";
 import { useOnboardingState } from "../hooks";
 import { useAskForDesigns } from "./ask-for-designs";
 import type { OnboardingDesignView, QuestionnaireView } from "../types";
-import { DesignStatusChip, HoverNote, ToneChip } from "./marks";
-import { QuestionnaireCard, QuestionnaireSummary } from "./questionnaire-card";
+import { DesignStatus, HoverNote, ToneChip } from "./marks";
+import { Questionnaire, QuestionnaireSummary } from "./questionnaire";
 
 export interface ThreadBlock {
   type: string;
@@ -68,9 +70,7 @@ export function ThreadMessage({
   const avatar = (
     <span
       aria-hidden
-      className={`grid size-5.5 flex-none place-items-center rounded-full text-12 font-bold ${
-        who === "me" ? "bg-warn-9 text-white" : "bg-ai-bg text-ai"
-      }`}
+      className={cn("grid size-5.5 flex-none place-items-center rounded-full text-12 font-bold", who === "me" ? "bg-warn-9 text-on-accent" : "bg-ai-bg text-ai")}
     >
       {who === "me" ? "Y" : name.startsWith("BA") ? "B" : "A"}
     </span>
@@ -78,7 +78,7 @@ export function ThreadMessage({
   const header = (
     <div className="flex flex-wrap items-baseline gap-2">
       {wide && avatar}
-      <span className={`font-semibold ${who === "agent" ? "text-ai" : "text-fg"}`}>{name}</span>
+      <span className={cn("font-semibold", who === "agent" ? "text-ai" : "text-fg")}>{name}</span>
       {when.label && (
         <time dateTime={at} title={when.title} className="font-mono text-12 text-subtle">
           {when.label}
@@ -87,9 +87,9 @@ export function ThreadMessage({
     </div>
   );
   return (
-    <div className={`grid items-start gap-2 text-13 ${wide ? "grid-cols-1" : "grid-cols-[22px_minmax(0,1fr)]"}`}>
+    <div className="flex items-start gap-2 text-13">
       {!wide && avatar}
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         {header}
         {children}
       </div>
@@ -99,21 +99,19 @@ export function ThreadMessage({
 
 function useDesigns(projectId: string, enabled: boolean) {
   const q = useOnboardingState(enabled ? projectId : undefined);
-  return useMemo(() => {
-    const m = new Map<string, OnboardingDesignView>();
-    for (const d of q.data?.onboarding?.designs ?? []) m.set(d.workflowId, d);
-    return { byId: m, onboarding: q.data?.onboarding ?? null };
-  }, [q.data]);
+  const byId = new Map<string, OnboardingDesignView>((q.data?.onboarding?.designs ?? []).map((d) => [d.workflowId, d]));
+  return { byId, onboarding: q.data?.onboarding ?? null };
 }
 
 // The items that shaped a design and, once every round is sent, its open questions: both read by
 // core from the item records (designs, what-next).
 function LinkedItemsNote({ design }: { design: OnboardingDesignView }) {
+  const t = useCopy();
   const open = design.openQuestions.length;
   return (
     <HoverNote
       className="flex-none text-12 text-subtle"
-      label={open ? `${design.linkedItems.length} items · ${open} open` : `${design.linkedItems.length} items`}
+      label={open ? t("onboarding.thread.itemsOpen", { n: design.linkedItems.length, open }) : t("onboarding.thread.items", { n: design.linkedItems.length })}
     >
       <span className="flex flex-col gap-0.5">
         {design.linkedItems.map((i) => (
@@ -128,6 +126,7 @@ function LinkedItemsNote({ design }: { design: OnboardingDesignView }) {
 }
 
 function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["designs"]>; first: boolean }) {
+  const t = useCopy();
   const data = useContext(ThreadDataContext);
   const projectId = data?.projectId ?? "";
   const slug = data?.projectSlug;
@@ -157,15 +156,15 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
               ) : (
                 <span className="min-w-0 flex-1 truncate font-semibold text-muted">{design?.title ?? id}</span>
               )}
-              <ToneChip tone="neutral" glyph="⌂" label="Plan from code" title="The plan, drawn from the code: it holds no evidence, and nothing is observed while it is proposed" />
+              <ToneChip tone="neutral" glyph="⌂" label={t("onboarding.thread.planFromCode")} title={t("onboarding.thread.planFromCodeTitle")} />
               {design && design.linkedItems.length > 0 && <LinkedItemsNote design={design} />}
-              <DesignStatusChip status={design?.designStatus ?? null} />
+              <DesignStatus status={design?.designStatus ?? null} />
               {block.approve && href && design?.designStatus === "proposed" && (
                 <Link
                   href={`${href}?focus=approve`}
                   className="ml-1 inline-flex h-7 flex-none items-center rounded-md border border-line bg-surface px-2.5 text-12 font-semibold text-fg hover:bg-hover"
                 >
-                  Approve
+                  {t("onboarding.thread.approve")}
                 </Link>
               )}
             </div>
@@ -173,12 +172,12 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
         })}
       </div>
       {first && data?.kind === "onboarding" && onboarding && (
-        <div className="mt-1 grid grid-cols-[84px_minmax(0,1fr)] items-start gap-x-2.5 border-t border-line-subtle py-1.5">
-          <span className="pt-px text-12 text-subtle">Analysis</span>
+        <div className="mt-1 flex items-start gap-x-2.5 border-t border-line-subtle py-1.5">
+          <span className="w-21 flex-none pt-px text-12 text-subtle">{t("onboarding.thread.analysis")}</span>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-12 text-muted">
-              Job {onboarding.job?.status ?? "none"}
-              {onboarding.job && onboarding.job.attempt > 1 ? ` · attempt ${onboarding.job.attempt}` : ""}
+              {t("onboarding.thread.job", { status: onboarding.job?.status ?? "none" })}
+              {onboarding.job && onboarding.job.attempt > 1 ? ` · ${t("onboarding.thread.attempt", { n: onboarding.job.attempt })}` : ""}
             </span>
             {onboarding.job?.endedWith ? (
               <span className="min-w-0 text-12 text-muted" data-testid="onboarding-ended-with">
@@ -191,7 +190,7 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
               disabled={reanalyze.pending}
               onClick={() => reanalyze.ask("reanalyze")}
             >
-              Re-analyze
+              {t("onboarding.hint.reanalyze")}
             </button>
             {reanalyze.dialog}
           </span>
@@ -214,13 +213,14 @@ export function StructuredMessage({
   const batchOf = (id?: string) => data?.questionnaires.find((q) => q.id === id);
   const { byId } = useDesigns(data?.projectId ?? "", data?.kind === "onboarding");
   const designTitle = (ref: string) => byId.get(ref)?.title ?? ref;
-  const name = message.authorLabel ?? (data?.kind === "requirement" || data?.kind === "first_requirements" ? "BA assistant" : "Agent");
+  const t = useCopy();
+  const name = message.authorLabel ?? (data?.kind === "requirement" || data?.kind === "first_requirements" ? t("onboarding.thread.ba") : t("onboarding.thread.agent"));
   const answers = blocks.find((b) => b.type === "questionnaire_answers");
   if (message.role === "user" && answers) {
     const batch = batchOf(answers.batchId);
     return (
-      <ThreadMessage who="me" name="You" at={message.createdAt}>
-        {batch ? <QuestionnaireSummary batch={batch} /> : <p className="text-muted">Answers sent.</p>}
+      <ThreadMessage who="me" name={t("onboarding.thread.you")} at={message.createdAt}>
+        {batch ? <QuestionnaireSummary batch={batch} /> : <p className="text-muted">{t("onboarding.thread.answersSent")}</p>}
       </ThreadMessage>
     );
   }
@@ -234,7 +234,7 @@ export function StructuredMessage({
       return (
         <ThreadMessage who="agent" name={name} at={message.createdAt}>
           <p className="my-0.75 text-muted">
-            {batch.title} · Round {batch.round} · superseded by a re-analysis
+            {t("onboarding.thread.superseded", { title: batch.title, round: batch.round })}
           </p>
         </ThreadMessage>
       );
@@ -242,7 +242,7 @@ export function StructuredMessage({
     return (
       <ThreadMessage who="agent" name={name} at={message.createdAt} wide>
         {batch.intro && <p className="my-0.75 mb-1.5">{batch.intro}</p>}
-        <QuestionnaireCard projectId={data?.projectId ?? ""} batch={batch} designTitle={designTitle} />
+        <Questionnaire projectId={data?.projectId ?? ""} batch={batch} designTitle={designTitle} />
       </ThreadMessage>
     );
   }
