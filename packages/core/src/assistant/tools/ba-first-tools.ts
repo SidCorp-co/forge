@@ -95,7 +95,6 @@ const suggestRequirement =
         producerId: ctx.turn?.handleUserId ?? null,
         kind: 'requirement_draft',
         target: { workflow: journey },
-        baseRevision: null,
         payload,
       });
       if (!outcome.ok) return refusedAnswer(outcome.refusals, 'ASSISTANT_REFUSED');

@@ -75,6 +75,21 @@ export function baseStaleRefusal(
   };
 }
 
+// A suggestion records the revision it was made against (REQ-8 BC-1): on a target that holds
+// revisions, a write naming none is refused by name rather than stored against nothing
+export function baseRequiredRefusal(
+  base: number | null,
+  head: number | null,
+  target: string,
+): SuggestionRefusal | null {
+  if (base !== null || head === null) return null;
+  return {
+    code: 'SUGGESTION_BASE_REQUIRED',
+    path: '/baseRevision',
+    detail: `a suggestion records the revision it was made against, and this ${target} is at revision ${head}; read it and send baseRevision: ${head}.`,
+  };
+}
+
 export function duplicateRefusal(twinId: string | null): SuggestionRefusal | null {
   if (!twinId) return null;
   return {

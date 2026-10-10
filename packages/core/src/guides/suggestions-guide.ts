@@ -38,8 +38,9 @@ A payload that does not parse for its kind is \`SUGGESTION_PAYLOAD_INVALID\`, na
 the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
 
 ### The base revision is checked twice
-- On a requirement, \`baseRevision\` is the head you read; on an issue or a feedback item, and on a
-  requirement with no current revision yet, it is \`null\`. A \`revision_diff\` on a requirement with an
+- On a requirement, \`baseRevision\` is the head you read; on a workflow, the design \`revision\` you
+  read; on an issue or a feedback item, and on a requirement with no current revision yet, it is
+  \`null\`. A \`null\` on a target that holds a revision is \`SUGGESTION_BASE_REQUIRED\`, naming it. A \`revision_diff\` on a requirement with an
   open (draft or proposed) revision is based on that open revision instead, and its accept rewrites
   that revision in place, landing it proposed: a new requirement's draft can be improved before it is
   ever agreed (REQ-30 BC-3).
