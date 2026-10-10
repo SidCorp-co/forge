@@ -9,7 +9,6 @@ import {
   ActorChip,
   EmptyState,
   GroupedList,
-  Icon,
   type ListGroup,
   standingGroups,
   type ListRowView,
@@ -22,11 +21,13 @@ import {
   useUrlParams,
   visibleRows,
   WaitingOn,
+  ListLayout,
+  ListSearch,
+  ListToolbar,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { cn } from "@/lib/utils/cn";
 import { useReleases } from "../hooks";
 import { RELEASES_LIST, releaseHref } from "@/lib/routes/releases";
 import type { ReleaseSummary } from "../types";
@@ -117,8 +118,7 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
         return (
           <div className="grid min-h-full content-start bg-app" data-testid="releases-screen">
             {title}
-            <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
-              <div className="min-w-0">
+            <ListLayout peek={peek.open ? <ReleasePeek key={peek.open} projectId={projectId} version={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} /> : null}>
                 <SearchBar
                   text={text}
                   onText={(q) => setParams({ q: q || null })}
@@ -144,9 +144,7 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
                     />
                   </>
                 )}
-              </div>
-              {peek.open ? <ReleasePeek key={peek.open} projectId={projectId} version={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} /> : null}
-            </div>
+            </ListLayout>
           </div>
         );
       }}
@@ -166,24 +164,14 @@ function SearchBar({
 }) {
   const t = useCopy();
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
-      <label className="flex h-[30px] min-w-[150px] max-w-[260px] flex-1 items-center gap-1.5 rounded-sm border border-line bg-surface px-2.5 text-12-5 text-subtle max-md:h-10 max-md:max-w-none max-md:basis-full">
-        <Icon name="search" size={14} />
-        <input
-          type="search"
-          aria-label={t("releases.searchLabel")}
-          placeholder={t("releases.searchPlaceholder")}
-          defaultValue={text}
-          onChange={(e) => onText(e.target.value)}
-          className="w-full min-w-0 border-0 bg-transparent text-fg outline-none"
-        />
-      </label>
+    <ListToolbar>
+      <ListSearch noun={t("releases.searchNoun")} value={text} onChange={onText} />
       <ListFilterBar list="releases" />
       {productionUnreadable === null ? null : (
         <span className="text-12 text-muted" title={productionUnreadable} data-testid="production-unreadable">
           {t("releases.productionUnreadable")}
         </span>
       )}
-    </div>
+    </ListToolbar>
   );
 }

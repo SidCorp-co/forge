@@ -8,7 +8,7 @@ import { useRelease } from "../hooks";
 import { ReleaseActions } from "./release-actions";
 import { ReleaseBanner } from "./release-bits";
 import { WhatChanges } from "./release-changes";
-import { ReleaseFacts } from "./release-facts";
+import { ReleaseProperties } from "./release-facts";
 
 export function ReleasePeek({
   projectId,
@@ -46,12 +46,12 @@ export function ReleasePeek({
                 }
                 action={<ReleaseActions projectId={projectId} r={r} />}
               />
-              <ReleaseBanner r={r} className="px-[18px]" />
-              <div className="px-[18px] pt-4">
+              <ReleaseBanner r={r} className="px-4.5" />
+              <div className="px-4.5 pt-4">
                 <WhatChanges changes={r.changes} />
               </div>
-              <div className="px-[18px] pb-4 pt-4">
-                <ReleaseFacts r={r} forecast={forecastQ.data} />
+              <div className="px-4.5 pb-4 pt-4">
+                <ReleaseProperties r={r} forecast={forecastQ.data} />
               </div>
             </>
           );

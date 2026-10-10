@@ -15,7 +15,7 @@ import { requirementHref } from "@/lib/routes/requirements";
 import { verifiedSentence } from "../verified";
 import { DisclosureToggle, shortSha } from "./release-bits";
 import { changesSentence, WhatChanges } from "./release-changes";
-import { ReleaseHighlightsSection } from "./release-highlights";
+import { ReleaseHighlightList } from "./release-highlights";
 
 const RULED = "border-b border-line-subtle pb-6";
 
@@ -44,7 +44,7 @@ function ReleaseHeader({ page }: { page: ReleasePage }) {
         {rows.map(([key, label, value]) => (
           <div key={key} className="contents" data-testid={`page-header-${key}`}>
             <dt className="text-muted">{label}</dt>
-            <dd className={key === "build" ? "font-mono text-12-5" : undefined} data-level={key === "verified" ? h.verified.level : undefined} data-state={key === "approval" ? a.state : undefined}>
+            <dd className={key === "build" ? "font-mono text-13" : undefined} data-level={key === "verified" ? h.verified.level : undefined} data-state={key === "approval" ? a.state : undefined}>
               {value}
             </dd>
           </div>
@@ -57,7 +57,7 @@ function ReleaseHeader({ page }: { page: ReleasePage }) {
 const rowKey = (p: ReleasePageProven) => `${p.issueKey ?? ""}:${p.n ?? p.statement}:${p.code ?? ""}`;
 
 /** One proven row: the criterion's own wording, named by its issue and number where it carries them, a short marked. */
-function ProvenRow({ p, label }: { p: ReleasePageProven; label: string | null }) {
+function ProvenClaim({ p, label }: { p: ReleasePageProven; label: string | null }) {
   const t = useCopy();
   return (
     <li data-testid="page-proven-row">
@@ -80,16 +80,16 @@ function Criteria({ group }: { group: ReleasePageCriteria }) {
   return (
     <>
       {group.proven.length > 0 ? (
-        <ul className="grid gap-0.5 text-12-5" data-testid="page-proven">
+        <ul className="grid gap-0.5 text-13" data-testid="page-proven">
           {group.proven.map((p) => (
-            <ProvenRow key={rowKey(p)} p={p} label={nameOf(p)} />
+            <ProvenClaim key={rowKey(p)} p={p} label={nameOf(p)} />
           ))}
         </ul>
       ) : (
-        <span className="text-12-5 text-muted">{t("releases.page.requirements.noneProven")}</span>
+        <span className="text-13 text-muted">{t("releases.page.requirements.noneProven")}</span>
       )}
       {group.unproven > 0 ? (
-        <span className="text-12-5 text-muted" data-testid="page-unproven" data-n={group.unproven}>
+        <span className="text-13 text-muted" data-testid="page-unproven" data-n={group.unproven}>
           {t("releases.page.requirements.unproven", { n: group.unproven })}
         </span>
       ) : null}
@@ -108,11 +108,11 @@ function RequirementCriteria({ r }: { r: ReleasePageRequirement }) {
   const rest = r.proven.filter((p) => p.code === null || !codes.has(p.code));
   return (
     <>
-      <span className="text-12-5 text-muted" data-testid="page-requirement-count" data-proven={r.business.proven.length} data-total={r.business.total}>
+      <span className="text-13 text-muted" data-testid="page-requirement-count" data-proven={r.business.proven.length} data-total={r.business.total}>
         {t("releases.page.requirements.count", { proven: r.business.proven.length, total: r.business.total })}
       </span>
       {r.business.proven.length + rest.length > 0 ? (
-        <ul className="grid gap-1.5 text-12-5" data-testid="page-proven">
+        <ul className="grid gap-1.5 text-13" data-testid="page-proven">
           {r.business.proven.map((c) => (
             <li key={c.code} data-testid="page-proven-code" data-code={c.code}>
               <span className="mr-2 font-mono text-12 text-subtle">{c.code}</span>
@@ -121,13 +121,13 @@ function RequirementCriteria({ r }: { r: ReleasePageRequirement }) {
                 {r.proven
                   .filter((p) => p.code === c.code)
                   .map((p) => (
-                    <ProvenRow key={rowKey(p)} p={p} label={p.issueKey && p.n !== null ? `${p.issueKey} #${p.n}` : null} />
+                    <ProvenClaim key={rowKey(p)} p={p} label={p.issueKey && p.n !== null ? `${p.issueKey} #${p.n}` : null} />
                   ))}
               </ul>
             </li>
           ))}
           {rest.map((p) => (
-            <ProvenRow key={rowKey(p)} p={p} label={nameOf(p)} />
+            <ProvenClaim key={rowKey(p)} p={p} label={nameOf(p)} />
           ))}
         </ul>
       ) : null}
@@ -180,7 +180,7 @@ function Changes({ title, lines, testId, markNew }: { title: string; lines: Rele
       <h3 className="mb-1 text-12 font-semibold uppercase tracking-wide text-subtle">{title}</h3>
       <ul className="divide-y divide-line-subtle border-y border-line-subtle">
         {lines.map((c) => (
-          <li key={`${c.issueKey}:${c.line}`} className="py-2.5 text-13-5" data-testid="page-change" data-kind={c.kind}>
+          <li key={`${c.issueKey}:${c.line}`} className="py-2.5 text-14" data-testid="page-change" data-kind={c.kind}>
             {markNew && c.kind === "new" ? <span className="mr-2 text-12 font-semibold text-accent-text">{t("releases.page.improvements.new")}</span> : null}
             {c.line}
           </li>
@@ -197,7 +197,7 @@ function Unnoted({ page, slug }: { page: ReleasePage; slug?: string | undefined 
   if (n === 0) return null;
   return (
     <div data-testid="page-unnoted">
-      <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-12-5" testId="page-unnoted-toggle">
+      <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-13" testId="page-unnoted-toggle">
         {t(n === 1 ? "releases.page.unnoted.one" : "releases.page.unnoted.many", { n })}
       </DisclosureToggle>
       {open ? (
@@ -208,11 +208,11 @@ function Unnoted({ page, slug }: { page: ReleasePage; slug?: string | undefined 
                 {w.title} <span className="text-12 text-subtle">({t(`releases.page.unnoted.${w.why}`)})</span>
               </span>
               {slug ? (
-                <Link href={issueHref(slug, w.issueKey)} className="font-mono text-11-5 text-subtle hover:text-link hover:underline">
+                <Link href={issueHref(slug, w.issueKey)} className="font-mono text-12 text-subtle hover:text-link hover:underline">
                   {w.issueKey}
                 </Link>
               ) : (
-                <span className="font-mono text-11-5 text-subtle">{w.issueKey}</span>
+                <span className="font-mono text-12 text-subtle">{w.issueKey}</span>
               )}
             </li>
           ))}
@@ -235,7 +235,7 @@ function ActionRequired({ page }: { page: ReleasePage }) {
         <ul className="divide-y divide-line-subtle border-y border-line-subtle">
           {page.actionRequired.map((a) => (
             <li key={`${a.kind}:${a.ref}`} className="grid gap-0.5 py-2.5 text-13" data-testid="page-action" data-kind={a.kind}>
-              <span className="text-13-5">{a.sentence}</span>
+              <span className="text-14">{a.sentence}</span>
               {actionSaysRef(a) ? null : <span className="font-mono text-12 text-muted">{a.ref}</span>}
             </li>
           ))}
@@ -257,17 +257,17 @@ function KnownIssues({ page }: { page: ReleasePage }) {
           {page.knownIssues.map((k) => (
             <li key={`${k.issueKey}:${k.statement}`} className="grid gap-0.5 py-2.5 text-13" data-testid="page-known-issue" data-standing={k.standing}>
               <span className="flex flex-wrap items-baseline gap-2">
-                <span className="min-w-0 flex-1 text-13-5">{k.statement}</span>
+                <span className="min-w-0 flex-1 text-14">{k.statement}</span>
                 <span className="text-12 font-semibold">{t(`releases.page.known.${k.standing}`)}</span>
               </span>
-              {page.view === "developer" && k.reason ? <span className="text-12-5 text-muted">{k.reason}</span> : null}
+              {page.view === "developer" && k.reason ? <span className="text-13 text-muted">{k.reason}</span> : null}
               {page.view === "developer" && k.elsewhere ? (
-                <span className="text-12-5 text-muted">
+                <span className="text-13 text-muted">
                   {t("releases.page.known.elsewhere", { verdict: k.elsewhere.verdict, build: k.elsewhere.commitSha ? shortSha(k.elsewhere.commitSha) : "-" })}
                 </span>
               ) : null}
               {k.requirementKey ? (
-                <span className="font-mono text-11-5 text-subtle">
+                <span className="font-mono text-12 text-subtle">
                   {k.requirementKey}
                   {k.bc ? ` ${k.bc}` : ""}
                 </span>
@@ -290,7 +290,7 @@ function List({ title, items, testId }: { title: string; items: string[]; testId
       ) : (
         <ul className="divide-y divide-line-subtle border-y border-line-subtle">
           {items.map((i) => (
-            <li key={i} className="break-all py-1.5 font-mono text-12-5">
+            <li key={i} className="break-all py-1.5 font-mono text-13">
               {i}
             </li>
           ))}
@@ -328,13 +328,13 @@ function Technical({ page, slug }: { page: ReleasePage; slug?: string | undefine
                   )}
                   <span className="font-semibold">{n.title}</span>
                 </span>
-                <span className="text-12-5 text-muted">{n.technical}</span>
+                <span className="text-13 text-muted">{n.technical}</span>
               </li>
             ))}
           </ul>
         )}
       </div>
-      <p className="text-12-5 text-muted" data-testid="page-technical-range" data-read={page.shipped.state}>
+      <p className="text-13 text-muted" data-testid="page-technical-range" data-read={page.shipped.state}>
         {page.shipped.state === "read"
           ? t("releases.page.technical.range", { base: shortSha(page.shipped.base), head: shortSha(page.shipped.head) })
           : t("releases.page.technical.unread", { why: page.shipped.why })}
@@ -347,7 +347,7 @@ function Technical({ page, slug }: { page: ReleasePage; slug?: string | undefine
         <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-13" testId="release-technical-toggle">
           {t("releases.page.technical.changes")}
         </DisclosureToggle>
-        <span className="ml-2 text-12-5 text-muted">{changesSentence(tech.changes, t, label)}</span>
+        <span className="ml-2 text-13 text-muted">{changesSentence(tech.changes, t, label)}</span>
         {open ? (
           <div className="mt-3">
             <WhatChanges changes={tech.changes} headed={false} {...(slug ? { slug } : {})} />
@@ -367,7 +367,7 @@ export function ReleaseReader({ page, slug, authed }: { page: ReleasePage; slug?
   return (
     <div className="grid gap-6" data-testid="release-reader" data-view={page.view} data-tour="rel-users">
       <ReleaseHeader page={page} />
-      <ReleaseHighlightsSection highlights={page.highlights} slug={slug} authed={authed} />
+      <ReleaseHighlightList highlights={page.highlights} slug={slug} authed={authed} />
       <Requirements page={page} slug={slug} />
       {page.improvements.length + page.fixes.length + page.withoutNotes.length > 0 ? (
         <div className="grid gap-5" data-testid="page-changes">

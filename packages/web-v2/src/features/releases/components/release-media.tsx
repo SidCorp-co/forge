@@ -16,7 +16,7 @@ export function ReleaseMedia({ media, label, authed }: { media: ReleaseMediaRef;
   if (src.state === "loading") return <Skeleton className="aspect-video w-full max-w-xl" />;
   if (src.state === "lost")
     return (
-      <p className="text-12-5 text-muted" data-testid="release-media-lost">
+      <p className="text-13 text-muted" data-testid="release-media-lost">
         {t("releases.page.highlights.mediaLost")}
       </p>
     );

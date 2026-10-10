@@ -82,11 +82,11 @@ export function GateLine({ gate, slug, tone }: { gate: ReleaseGateView; slug: st
   const read = tone ?? (gate.kind === "blocker" ? "problem" : "warning");
   return (
     <li className="flex items-start gap-2 py-2 text-13" data-testid="release-gate" data-code={gate.code} data-tone={read}>
-      <span aria-hidden className="mt-[7px] size-1.5 flex-none rounded-full" style={{ background: GATE_DOT[read] }} />
+      <span aria-hidden className="mt-1.75 size-1.5 flex-none rounded-pill" style={{ background: GATE_DOT[read] }} />
       <span className="min-w-0 flex-1">
         <b className="font-semibold">{title}.</b> {said(gate.says.sentence, language)}
         {owner.kind === "system" ? null : (
-          <span className="mt-0.5 block text-12-5 text-muted" data-testid="gate-owner">
+          <span className="mt-0.5 block text-13 text-muted" data-testid="gate-owner">
             {t("releases.gateOwes", { who: said(owner.says.who, language), act: said(owner.says.act, language) })}
           </span>
         )}
@@ -94,7 +94,7 @@ export function GateLine({ gate, slug, tone }: { gate: ReleaseGateView; slug: st
         {more ? (
           <>
             {" "}
-            <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-12-5" testId="gate-issues-toggle">
+            <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-13" testId="gate-issues-toggle">
               {open ? t("releases.gateHideIssues") : t("releases.gateAllIssues", { n: gate.issues.length })}
             </DisclosureToggle>
             {open ? <GateIssues issues={gate.issues} slug={slug} /> : null}
@@ -141,7 +141,7 @@ export function RefusalText({ error }: { error: unknown }) {
   if (!error) return null;
   const code = error instanceof ApiError ? error.code : null;
   return (
-    <p role="alert" className="text-12" style={{ color: "var(--red-600)" }} title={code ?? undefined} data-testid="release-refusal">
+    <p role="alert" className="text-12 text-danger-11" title={code ?? undefined} data-testid="release-refusal">
       {formatApiError(error)}
     </p>
   );
