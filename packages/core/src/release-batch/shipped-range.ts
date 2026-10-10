@@ -13,7 +13,8 @@
  *
  * The run that cut the release has the range in its checkout, so it reports it (`forge-runner
  * release range`): which files changed, then the two ends of each file this reader reads
- * (`rangeReads`). The reading is kept on the release run (`metadata.range`) and the page reads it
+ * (`rangeReads`). The reading is kept on the release run (`metadata.range`) with the changed files
+ * themselves, which the developer view sorts into what the release changes, and the page reads it
  * from there; no source host is called, so a project with no repository binding reads the same way
  * as one with one. A range not reported is `unread` with why, never an empty answer.
  */
@@ -368,11 +369,31 @@ export async function recordRange(args: {
     );
   }
   const read = await shippedBetween(reportedHost(report), report.base, report.head);
+  const changed = read.state === 'read' ? { changed: report.changes } : {};
   await writeRunMetadata(args.runId, {
-    merge: { [KEY]: { ...read, reportedAt: new Date().toISOString() } },
+    merge: { [KEY]: { ...read, ...changed, reportedAt: new Date().toISOString() } },
     touch: true,
   });
   return read;
+}
+
+const CHANGES: ReadonlySet<string> = new Set(['added', 'changed', 'removed']);
+
+/**
+ * The files a kept reading says its range changed, or null where it was kept before the files were
+ * (or holds one that is not a changed file, which says the same: the list cannot be trusted whole).
+ */
+function changedOf(value: unknown): RangeChange[] | null {
+  const raw = (value as { changed?: unknown } | null)?.changed;
+  if (!Array.isArray(raw)) return null;
+  const out: RangeChange[] = [];
+  for (const c of raw) {
+    const path = (c as { path?: unknown })?.path;
+    const change = (c as { change?: unknown })?.change;
+    if (typeof path !== 'string' || typeof change !== 'string' || !CHANGES.has(change)) return null;
+    out.push({ path, change: change as RangeChange['change'] });
+  }
+  return out;
 }
 
 function storedOf(value: unknown): ReleaseShipped | null {
@@ -396,22 +417,28 @@ function storedOf(value: unknown): ReleaseShipped | null {
   };
 }
 
+/** What a range ships, and the files it changed: null where the range is unread or was kept without them. */
+export interface RangeReading {
+  shipped: ReleaseShipped;
+  changed: RangeChange[] | null;
+}
+
 /**
- * What the release `version`, deploying `head`, ships, as its run reported it: `unread` with why
- * where there is no cut build, no earlier release to compare with, no report, or a report of a range
- * other than the one from the release before it to `head`.
+ * What the release `version`, deploying `head`, ships, as its run reported it, with the files the
+ * range changed where the reading kept them: `unread` with why where there is no cut build, no earlier
+ * release to compare with, no report, or a report of a range other than the one from the release
+ * before it to `head`.
  */
-export async function readShipped(
+export async function readRange(
   projectId: string,
   version: string,
   head: string | null,
   runId: string | null,
-): Promise<ReleaseShipped> {
-  if (head === null) {
-    return { state: 'unread', why: 'the release has no cut build to read a range up to' };
-  }
+): Promise<RangeReading> {
+  const unread = (why: string): RangeReading => ({ shipped: { state: 'unread', why }, changed: null });
+  if (head === null) return unread('the release has no cut build to read a range up to');
   const start = await rangeBaseOf(projectId, version);
-  if (start.base === null) return { state: 'unread', why: start.why };
+  if (start.base === null) return unread(start.why);
   const [row] = runId
     ? await db
         .select({ range: sql<unknown>`${pipelineRuns.metadata} -> ${KEY}` })
@@ -421,17 +448,15 @@ export async function readShipped(
   const stored = storedOf(row?.range);
   const range = `${short(start.base)}..${short(head)}`;
   if (!stored) {
-    return {
-      state: 'unread',
-      why: `the release run did not report what its range ${range} ships: the run that cuts a release reports it with \`forge-runner release range\` from its checkout, before \`finish\``,
-    };
+    return unread(
+      `the release run did not report what its range ${range} ships: the run that cuts a release reports it with \`forge-runner release range\` from its checkout, before \`finish\``,
+    );
   }
-  if (stored.state === 'unread') return stored;
+  if (stored.state === 'unread') return { shipped: stored, changed: null };
   if (stored.head !== head || stored.base !== start.base) {
-    return {
-      state: 'unread',
-      why: `the release run reported the range ${short(stored.base)}..${short(stored.head)}, not ${range}, the range from the release before this one to the build this page describes`,
-    };
+    return unread(
+      `the release run reported the range ${short(stored.base)}..${short(stored.head)}, not ${range}, the range from the release before this one to the build this page describes`,
+    );
   }
-  return stored;
+  return { shipped: stored, changed: changedOf(row?.range) };
 }

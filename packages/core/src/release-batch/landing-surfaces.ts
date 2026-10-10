@@ -37,7 +37,7 @@ import {
 import { type ProjectDocument, readProjectDocument } from '../project-config/index.js';
 import { changedFilesOf } from './carriage.js';
 
-type SurfaceMap = NonNullable<ProjectDocument['surfaces']>;
+export type SurfaceMap = NonNullable<ProjectDocument['surfaces']>;
 
 /** The map a project's git landings are classified by: its document's own, or none. */
 export function surfaceMapOf(document: ProjectDocument | null): SurfaceMap | null {
@@ -265,7 +265,14 @@ export function surfacesOf(reading: IssueLandingReading): LandingSurface[] {
   );
 }
 
-function riskOf(surface: LandingSurface, change: LandingArtifact['change']) {
+// a migrator's bookkeeping beside its migrations (drizzle's journal and snapshots): never a schema change
+const MIGRATION_META = /(^|\/)migrations?\/(.*\/)?meta\//i;
+
+/** True for a migrator's journal or snapshot: it records migrations, it is not one. */
+export const isMigratorBookkeeping = (ref: string): boolean => MIGRATION_META.test(ref);
+
+function riskOf(surface: LandingSurface, change: LandingArtifact['change'], ref: string) {
+  if (surface === 'data' && isMigratorBookkeeping(ref)) return null;
   if (surface === 'data' && change === 'removed') return 'data_removed' as const;
   if (surface === 'data' && change === 'changed') return 'data_changed' as const;
   if (surface === 'api' && change === 'removed') return 'api_removed' as const;
@@ -278,68 +285,61 @@ const RISK_SENTENCE: Record<ReleaseChangeRiskView['risk'], (ref: string) => Said
   api_removed: (ref) => say('standing.risk.apiRemoved', { ref }),
 };
 
-/** What a release's landings change together, per surface, with the risks the data names. */
-export function releaseChangesOf(
-  issues: ReadonlyArray<{ key: string; reading: IssueLandingReading }>,
-): ReleaseChanges {
-  const bySurface = new Map<
-    LandingSurface,
-    Map<
-      string,
-      {
-        ref: string;
-        change: LandingArtifact['change'];
-        carriedBy: string | null;
-        issues: Set<string>;
-      }
-    >
-  >();
-  const gaps: ReleaseChanges['unclassified'] = [];
-  const boxRead: string[] = [];
-  for (const { key, reading } of issues) {
-    if (reading.source === 'box') boxRead.push(key);
-    const gap = gapOf(reading);
-    if (gap) gaps.push({ key, ...gap });
-    if (reading.kind === 'unclassified') continue;
-    for (const a of reading.artifacts) {
-      const held = bySurface.get(a.surface) ?? new Map();
-      const carriedBy = a.carriedBy ?? null;
-      const id = `${a.change}\u0000${a.ref}\u0000${carriedBy ?? ''}`;
-      const entry = held.get(id) ?? {
-        ref: a.ref,
-        change: a.change,
-        carriedBy,
-        issues: new Set<string>(),
-      };
-      entry.issues.add(key);
-      held.set(id, entry);
-      bySurface.set(a.surface, held);
-    }
+interface Entry {
+  ref: string;
+  change: LandingArtifact['change'];
+  carriedBy: string | null;
+  issues: Set<string>;
+}
+
+/** Artifacts gathered per surface, one entry per change of a ref and who carries it. */
+class Gathered {
+  private readonly bySurface = new Map<LandingSurface, Map<string, Entry>>();
+
+  add(surface: LandingSurface, a: Omit<Entry, 'issues'>, issues: Iterable<string>): void {
+    const held = this.bySurface.get(surface) ?? new Map<string, Entry>();
+    const id = `${a.change}\u0000${a.ref}\u0000${a.carriedBy ?? ''}`;
+    const entry = held.get(id) ?? { ...a, issues: new Set<string>() };
+    for (const key of issues) entry.issues.add(key);
+    held.set(id, entry);
+    this.bySurface.set(surface, held);
   }
-  const surfaces: ReleaseSurfaceChanges[] = LANDING_SURFACES.flatMap((surface) => {
-    const held = bySurface.get(surface);
-    if (!held) return [];
-    const artifacts = [...held.values()]
-      .map((e) => ({
-        ref: e.ref,
-        change: e.change,
-        issues: [...e.issues],
-        carriedBy: e.carriedBy,
-      }))
-      .sort((a, b) => a.ref.localeCompare(b.ref, 'en') || a.change.localeCompare(b.change));
-    return [
-      {
-        surface,
-        count: artifacts.length,
-        shipsNothing: SHIPS_NOTHING.includes(surface),
-        issues: [...new Set(artifacts.flatMap((a) => a.issues))],
-        artifacts,
-      },
-    ];
-  });
+
+  surfaces(): ReleaseSurfaceChanges[] {
+    return LANDING_SURFACES.flatMap((surface) => {
+      const held = this.bySurface.get(surface);
+      if (!held) return [];
+      const artifacts = [...held.values()]
+        .map((e) => ({
+          ref: e.ref,
+          change: e.change,
+          issues: [...e.issues],
+          carriedBy: e.carriedBy,
+        }))
+        .sort((a, b) => a.ref.localeCompare(b.ref, 'en') || a.change.localeCompare(b.change));
+      return [
+        {
+          surface,
+          count: artifacts.length,
+          shipsNothing: SHIPS_NOTHING.includes(surface),
+          issues: [...new Set(artifacts.flatMap((a) => a.issues))],
+          artifacts,
+        },
+      ];
+    });
+  }
+}
+
+/** The surfaces with the risks the data names, and whether the whole ships nothing. */
+function assembled(
+  gathered: Gathered,
+  unclassified: ReleaseChanges['unclassified'],
+  boxRead: string[],
+): ReleaseChanges {
+  const surfaces = gathered.surfaces();
   const risks: ReleaseChangeRiskView[] = surfaces.flatMap((s) =>
     s.artifacts.flatMap((a) => {
-      const risk = riskOf(s.surface, a.change);
+      const risk = riskOf(s.surface, a.change, a.ref);
       return risk
         ? [
             {
@@ -357,8 +357,83 @@ export function releaseChangesOf(
   return {
     surfaces,
     risks,
-    unclassified: gaps,
+    unclassified,
     boxRead,
-    shipsNothing: gaps.length === 0 && surfaces.length > 0 && surfaces.every((s) => s.shipsNothing),
+    shipsNothing:
+      unclassified.length === 0 && surfaces.length > 0 && surfaces.every((s) => s.shipsNothing),
   };
+}
+
+/** What a release's landings change together, per surface, with the risks the data names. */
+export function releaseChangesOf(
+  issues: ReadonlyArray<{ key: string; reading: IssueLandingReading }>,
+): ReleaseChanges {
+  const gathered = new Gathered();
+  const gaps: ReleaseChanges['unclassified'] = [];
+  const boxRead: string[] = [];
+  for (const { key, reading } of issues) {
+    if (reading.source === 'box') boxRead.push(key);
+    const gap = gapOf(reading);
+    if (gap) gaps.push({ key, ...gap });
+    if (reading.kind === 'unclassified') continue;
+    for (const a of reading.artifacts) {
+      gathered.add(
+        a.surface,
+        { ref: a.ref, change: a.change, carriedBy: a.carriedBy ?? null },
+        [key],
+      );
+    }
+  }
+  return assembled(gathered, gaps, boxRead);
+}
+
+const RANGE_UNMAPPED =
+  'no rule of `surfaces` claims these paths the range changes, so they are shown as they are';
+const RANGE_NO_MAP =
+  "the project document declares no `surfaces`, so the range's changed paths are shown as they are and not sorted by surface";
+
+/**
+ * What a release's own commit range changes (REQ-40 BC-9): every file the range changed, sorted by
+ * the project's map, each naming the issues whose landing names that path. A landing's other paths
+ * are another release's: an issue carried again names all it ever landed, and a later round's mark
+ * replaces the commit an earlier release shipped. Design revisions, which no commit range carries
+ * and which ship nothing, are kept as the landings name them. Paths no rule claims are shown under no
+ * issue, never dropped.
+ */
+export function rangeChangesOf(
+  changed: readonly HostFileChange[],
+  map: SurfaceMap | null,
+  landed: ReleaseChanges,
+): ReleaseChanges {
+  const named = new Map<string, Set<string>>();
+  const name = (ref: string, keys: Iterable<string>) => {
+    const held = named.get(ref) ?? new Set<string>();
+    for (const k of keys) held.add(k);
+    named.set(ref, held);
+  };
+  for (const s of landed.surfaces) for (const a of s.artifacts) name(a.ref, a.issues);
+  for (const u of landed.unclassified) if (u.key !== null) for (const p of u.paths) name(p, [u.key]);
+
+  const gathered = new Gathered();
+  for (const s of landed.surfaces) {
+    if (!s.shipsNothing) continue;
+    for (const a of s.artifacts) {
+      gathered.add(s.surface, { ref: a.ref, change: a.change, carriedBy: a.carriedBy }, a.issues);
+    }
+  }
+  if (!map) {
+    const paths = [...new Set(changed.map((c) => c.path))].sort();
+    return assembled(gathered, paths.length ? [{ key: null, why: RANGE_NO_MAP, paths }] : [], []);
+  }
+  const { artifacts, unmapped } = classifyChanges(map, changed);
+  for (const a of artifacts) {
+    gathered.add(a.surface, { ref: a.ref, change: a.change, carriedBy: null }, named.get(a.ref) ?? []);
+  }
+  const gaps = unmapped.length > 0 ? [{ key: null, why: RANGE_UNMAPPED, paths: unmapped }] : [];
+  return assembled(gathered, gaps, []);
+}
+
+/** The surface map the project's document declares, or none. */
+export async function readSurfaceMap(projectId: string): Promise<SurfaceMap | null> {
+  return surfaceMapOf(await readDocument(projectId));
 }

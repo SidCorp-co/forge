@@ -24,6 +24,12 @@ export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job
 export { abortBlockedIssues } from './hold.js';
 export { judgedBuildOf, liveBuildHolds } from './judged-build.js';
 export {
+  isMigratorBookkeeping,
+  rangeChangesOf,
+  readSurfaceMap,
+  type SurfaceMap,
+} from './landing-surfaces.js';
+export {
   provideReleaseBatchPorts,
   servedCarries,
   servedProductionCommit,
@@ -41,6 +47,6 @@ export { nextDraftVersion, readRelease } from './release-read.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export type { ViewerFacts } from './release-view.js';
 export { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-earlier.js';
-export { readShipped } from './shipped-range.js';
+export { type RangeChange, type RangeReading, readRange } from './shipped-range.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';
 export { deploymentConfirms } from './verify.js';

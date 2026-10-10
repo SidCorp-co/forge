@@ -11,7 +11,11 @@ import { issueHref } from "@/lib/routes/issues";
 import { DisclosureToggle } from "./release-bits";
 
 /** `1 issue` / `2 issues`: the key's `.one` reading for one, its `.many` reading otherwise. */
-const plural = (t: Copy, n: number, key: "releases.count.issue" | "releases.count.artifact" | "releases.count.designRevision") =>
+const plural = (
+  t: Copy,
+  n: number,
+  key: "releases.count.issue" | "releases.count.artifact" | "releases.count.designRevision" | "releases.changes.unmapped",
+) =>
   t(`${key}.${n === 1 ? "one" : "many"}` as ProductCopyKey, { n });
 
 function IssueKeys({ keys, slug }: { keys: string[]; slug?: string }) {
@@ -43,8 +47,12 @@ export function changesSentence(c: ReleaseChanges, t: Copy, label: ReturnType<ty
     parts.push(t("releases.changes.deploys", { list: list ?? "" }));
   } else if (c.surfaces.length === 0 && c.unclassified.length === 0) parts.push(t("releases.changes.noneNamed"));
   if (design && !c.shipsNothing) parts.push(t(design.count === 1 ? "releases.changes.designShipsNothing.one" : "releases.changes.designShipsNothing.many", { n: design.count }));
-  const n = c.unclassified.length;
+  // an entry with no issue is paths the release's range changed that no surface claims
+  const n = c.unclassified.filter((u) => u.key !== null).length;
   if (n > 0) parts.push(t(n === 1 ? "releases.changes.unstructured.one" : "releases.changes.unstructured.many", { n }));
+  const paths = c.unclassified.filter((u) => u.key === null).reduce((sum, u) => sum + u.paths.length, 0);
+  if (paths > 0) parts.push(plural(t, paths, "releases.changes.unmapped"));
+  if (c.unclassified.some((u) => u.key === null && u.paths.length === 0)) parts.push(t("releases.changes.notRead"));
   return parts.join(" ");
 }
 
@@ -102,19 +110,25 @@ function Unclassified({ items, slug }: { items: ReleaseChanges["unclassified"]; 
 function UnclassifiedReason({ why, group, slug }: { why: string; group: ReleaseChanges["unclassified"]; slug?: string }) {
   const t = useCopy();
   const [open, setOpen] = useState(false);
+  const issues = group.filter((u) => u.key !== null).length;
+  const paths = group.reduce((sum, u) => sum + u.paths.length, 0);
+  // a reason naming no issue and no path (a range kept without its files) is said alone
+  const count = issues > 0 ? plural(t, issues, "releases.count.issue") : paths > 0 ? plural(t, paths, "releases.count.artifact") : null;
   return (
     <li className="grid gap-1 border-b border-line-subtle py-2 text-13" data-testid="release-unclassified">
       <span className="flex flex-wrap items-baseline gap-x-2">
-        <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-12-5" testId="release-unclassified-toggle">
-          {plural(t, group.length, "releases.count.issue")}
-        </DisclosureToggle>
+        {count !== null ? (
+          <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-12-5" testId="release-unclassified-toggle">
+            {count}
+          </DisclosureToggle>
+        ) : null}
         <span className="min-w-0 flex-1 text-12-5 text-muted">{why}</span>
       </span>
       {open ? (
         <ul className="grid gap-1 pl-4">
           {group.map((u) => (
-            <li key={u.key} className="grid gap-0.5">
-              <IssueKeys keys={[u.key]} slug={slug} />
+            <li key={u.key ?? ""} className="grid gap-0.5">
+              {u.key !== null ? <IssueKeys keys={[u.key]} slug={slug} /> : null}
               {u.paths.length > 0 ? <span className="break-all font-mono text-11-5 text-subtle">{u.paths.join(" · ")}</span> : null}
             </li>
           ))}

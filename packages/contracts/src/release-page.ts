@@ -535,12 +535,15 @@ export interface ReleaseTechnicalNotes {
 
 /**
  * An issue the release carries whose user-facing line the page does not show, named rather than
- * invented: `no_note` where it has none, `held` where its line names what a reader cannot follow.
+ * invented: `no_note` where it has none, `held` where its line names what a reader cannot follow,
+ * `reworked` where it was reopened after this release claimed it and its line now says a later round.
  */
+export const RELEASE_PAGE_UNNOTED_WHYS = ["no_note", "held", "reworked"] as const;
+
 export interface ReleasePageUnnoted {
 	issueKey: string;
 	title: string;
-	why: "no_note" | "held";
+	why: (typeof RELEASE_PAGE_UNNOTED_WHYS)[number];
 }
 
 export interface ReleasePage {
@@ -646,7 +649,7 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 		z.strictObject({
 			issueKey: z.string().min(1),
 			title: z.string(),
-			why: z.enum(["no_note", "held"]),
+			why: z.enum(RELEASE_PAGE_UNNOTED_WHYS),
 		}),
 	),
 	actionRequired: z.array(

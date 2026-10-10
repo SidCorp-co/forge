@@ -15,7 +15,12 @@ import {
 import type { ReleaseDetail } from '@forge/contracts/releases';
 import { HTTPException } from 'hono/http-exception';
 import { refuser } from '../lib/refusal.js';
-import { readRelease, readShipped, type ViewerFacts } from '../release-batch/index.js';
+import {
+  readRange,
+  readRelease,
+  readSurfaceMap,
+  type ViewerFacts,
+} from '../release-batch/index.js';
 import {
   type ClaimReading,
   knownIssuesOf,
@@ -129,7 +134,9 @@ export async function readReleasePage(args: {
   const shown = shownHighlights(row, page.facts, page.digest, page.build);
   if (shown.owed && detail.runId) args.onOwed?.({ projectId, runId: detail.runId });
   const changes = changesOf(detail.notes);
-  const shipped = await readShipped(projectId, detail.version, page.build, detail.runId);
+  const range = await readRange(projectId, detail.version, page.build, detail.runId);
+  const { shipped } = range;
+  const map = view === 'developer' && range.changed ? await readSurfaceMap(projectId) : null;
   return {
     view,
     projectId,
@@ -143,7 +150,7 @@ export async function readReleasePage(args: {
     actionRequired: actionsOf(detail.changes, shipped),
     shipped,
     knownIssues: userKnownIssues(knownIssuesOf(page.claims), view),
-    technical: view === 'developer' ? technicalOf(detail, shipped) : null,
+    technical: view === 'developer' ? technicalOf(detail, range, map) : null,
     can: { share: viewer?.mayShare ?? false, export: true, approve: detail.can.decide },
   };
 }

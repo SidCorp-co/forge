@@ -37,6 +37,8 @@ export interface IssueFact {
   criteria: ReleaseCriterionView[];
   /** Every verdict each live criterion earned since the issue's last reopen, by its number. */
   verdicts: ReadonlyMap<number, readonly CarriedVerdict[]>;
+  /** The issue's last move to `reopen`: its note and mark after it are a later round's. */
+  reopenedAt: Date | null;
   /** The merged mark's columns, which `landing-surfaces.ts` reads what the landing changed from. */
   merged: {
     at: Date | null;
@@ -266,6 +268,7 @@ export async function loadReleaseFacts(
         requirementId: r.requirementId,
         criteria: (criteria.get(r.id) ?? []).map((c) => criterionView(c, reopened.get(r.id))),
         verdicts: judged(r.id),
+        reopenedAt: reopened.get(r.id) ?? null,
         merged: {
           at: r.mergedAt,
           landing: r.mergedLanding,

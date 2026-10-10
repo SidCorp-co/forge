@@ -475,8 +475,11 @@ export interface ReleaseChangeRiskView {
 export interface ReleaseChanges {
 	surfaces: ReleaseSurfaceChanges[];
 	risks: ReleaseChangeRiskView[];
-	/** Issues whose landing leaves something unnamed — all of it, or paths no surface claims — with why. */
-	unclassified: { key: string; why: string; paths: string[] }[];
+	/**
+	 * Issues whose landing leaves something unnamed — all of it, or paths no surface claims — with why.
+	 * `key` is null for paths a release's commit range changed that no rule claims and no issue names.
+	 */
+	unclassified: { key: string | null; why: string; paths: string[] }[];
 	/** Issues whose paths a box read from its checkout rather than Forge observing the merge. */
 	boxRead: string[];
 	/** True where every classified artifact ships nothing and nothing is unclassified. */
@@ -634,6 +637,11 @@ export interface ReleaseDetail extends ReleaseSummary {
 		/** Issues whose landing touched only a design: approved designs, which users do not get as a change. */
 		designs: ReleaseNoteEntry[];
 		withoutNotes: { key: string; title: string }[];
+		/**
+		 * Issues reopened after this release claimed them: their note and landing now say a later
+		 * round, which this release did not ship, so neither is read as this release's.
+		 */
+		reworked: { key: string; title: string }[];
 		/** The language the project's notes are written in (BCP-47). */
 		language: string;
 		/** Notes whose user-facing line is not in `language` or carries an engineer's reference. A reader aid, not a gate. */

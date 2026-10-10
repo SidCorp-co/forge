@@ -115,6 +115,7 @@ export function releaseToolView(r: ReleaseDetail) {
     whatUsersGet: r.notes.sections,
     designsApproved: r.notes.designs,
     withoutNotes: r.notes.withoutNotes,
+    reworked: r.notes.reworked,
     requirements: r.requirementsCompleted,
     issues: r.issues.map((i) => ({
       key: i.key,

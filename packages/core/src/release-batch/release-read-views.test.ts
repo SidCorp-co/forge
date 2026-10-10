@@ -43,6 +43,7 @@ function facts(n: number): ReleaseFacts {
       releaseNotes: null,
       requirementId: null,
       criteria: [],
+      reopenedAt: null,
       merged: {
         at: new Date(T0 + i * DAY),
         landing: null,
@@ -253,5 +254,48 @@ describe('what a release says it verified', () => {
     const d = detailOf(shippedPart(2, 'probed'), s, null, landings, [], null);
     expect(d.notes.designs.map((e) => e.key)).toEqual(['ISS-1']);
     expect(d.notes.sections.flatMap((x) => x.entries.map((e) => e.key))).toEqual(['ISS-2']);
+  });
+});
+
+describe('an issue reopened after the release claimed it (BC-6, J9 on 0.4.0-dev.224)', () => {
+  // dev.224 claimed ISS-455 at 01:19; a judge reopened it at 02:21 and its next round rewrote the
+  // note ("tried again … up to three tries") for dev.225. dev.224's Fixes then read that line.
+  const OPENED = T0 + 10 * DAY;
+  const claimed = (state: Part['state'], openedAt: number | null): Part => ({
+    ...part(2, [], state),
+    runId: 'r1',
+    openedAt: openedAt === null ? null : new Date(openedAt),
+  });
+  const reworked = () => {
+    const s = shared(2);
+    const later = s.facts.issues.get('i1');
+    const earlier = s.facts.issues.get('i2');
+    if (later) {
+      later.releaseNotes = { section: 'Fixed', userFacing: 'Drafts are tried again.', technical: 'retry' };
+      later.reopenedAt = new Date(OPENED + DAY);
+    }
+    if (earlier) {
+      earlier.releaseNotes = { section: 'Fixed', userFacing: 'Feedback says why.', technical: null };
+      earlier.reopenedAt = new Date(OPENED - DAY);
+    }
+    return s;
+  };
+
+  it("reads it as reworked on that release, with neither its later note nor its later mark's section", () => {
+    const d = detailOf(claimed('shipped', OPENED), reworked(), null, new Map(), [], null);
+    expect(d.notes.sections.flatMap((x) => x.entries.map((e) => e.key))).toEqual(['ISS-2']);
+    expect(d.notes.reworked).toEqual([{ key: 'ISS-1', title: 'Issue 1' }]);
+    expect(d.notes.withoutNotes).toEqual([]);
+    expect(d.issues.find((i) => i.key === 'ISS-1')?.section).toBeNull();
+    expect(JSON.stringify(d.headline)).not.toContain('tried again');
+  });
+
+  it('keeps a reopen from before the claim, and claims nothing for a draft', () => {
+    const draft = detailOf(claimed('draft', null), reworked(), null, new Map(), [], null);
+    expect(draft.notes.reworked).toEqual([]);
+    expect(draft.notes.sections.flatMap((x) => x.entries.map((e) => e.key)).sort()).toEqual([
+      'ISS-1',
+      'ISS-2',
+    ]);
   });
 });

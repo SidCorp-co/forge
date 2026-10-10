@@ -5,6 +5,7 @@ import type { ProjectDocument } from '../project-config/index.js';
 import { surfacesSchema } from '../project-config/surfaces-schema.js';
 import {
   classifyChanges,
+  rangeChangesOf,
   readLandingReadings,
   releaseChangesOf,
   surfaceMapOf,
@@ -254,6 +255,130 @@ describe('what a release changes together', () => {
     expect(changes.surfaces.map((s) => s.surface)).toEqual(['ui']);
     expect(changes.unclassified).toEqual([
       { key: 'ISS-2', why: expect.stringMatching(/claimed by no rule/), paths: ['db/schema.sql'] },
+    ]);
+  });
+});
+
+describe("a migrator's bookkeeping is never a data-shape risk", () => {
+  // J9 on 0.4.0-dev.224 and dev.225: both pages warned that `migrations/meta/_journal.json changes
+  // shape: rows written before it are read by the new shape`. The journal lists migrations; it holds
+  // no rows.
+  it('flags a changed migration but not the journal or a snapshot beside it', () => {
+    const changes = releaseChangesOf([
+      {
+        key: 'ISS-452',
+        reading: {
+          kind: 'named',
+          unmappedPaths: [],
+          unread: null,
+          source: 'box',
+          artifacts: [
+            { surface: 'data', ref: 'packages/core/drizzle/migrations/meta/_journal.json', change: 'changed' },
+            { surface: 'data', ref: 'packages/core/drizzle/migrations/meta/0494_snapshot.json', change: 'removed' },
+            { surface: 'data', ref: 'packages/core/drizzle/migrations/0490_x.sql', change: 'changed' },
+          ],
+        },
+      },
+    ]);
+    expect(changes.risks.map((r) => [r.risk, r.ref])).toEqual([
+      ['data_changed', 'packages/core/drizzle/migrations/0490_x.sql'],
+    ]);
+  });
+});
+
+describe("what a release's own commit range changes (BC-9)", () => {
+  // J9 on 0.4.0-dev.225: the dev.224 developer view (range 3b5e47c..852dcfb) listed migration 0495
+  // and ISS-455's intake files under What it changes. They are d729b27be, ISS-455's next round, which
+  // shipped in dev.225: the page read each claimed issue's latest landing whole. It also left out
+  // files the range does ship that no landing named.
+  const J = 'packages/core/drizzle/migrations/meta/_journal.json';
+  const M494 = 'packages/core/drizzle/migrations/0494_a_feedback_item_the_record_cannot_verify_says_why.sql';
+  const M495 = 'packages/core/drizzle/migrations/0495_an_intake_draft_the_model_missed_is_tried_again.sql';
+  const INTAKE = 'packages/web-v2/src/features/intake/components/intake-draft.tsx';
+  const VISUAL = 'packages/web-v2/src/features/releases/components/visual-block.tsx';
+  const landed = releaseChangesOf([
+    {
+      key: 'ISS-452',
+      reading: {
+        kind: 'named',
+        unmappedPaths: [],
+        unread: null,
+        source: 'box',
+        artifacts: [
+          { surface: 'data', ref: M494, change: 'added' },
+          { surface: 'data', ref: J, change: 'changed' },
+        ],
+      },
+    },
+    {
+      key: 'ISS-455',
+      reading: {
+        kind: 'named',
+        unmappedPaths: ['packages/core/tsconfig.json'],
+        unread: null,
+        source: 'box',
+        artifacts: [
+          { surface: 'data', ref: M495, change: 'added' },
+          { surface: 'data', ref: J, change: 'changed' },
+          { surface: 'ui', ref: INTAKE, change: 'changed' },
+        ],
+      },
+    },
+    {
+      key: 'ISS-470',
+      reading: {
+        kind: 'named',
+        unmappedPaths: [],
+        unread: null,
+        source: 'mark',
+        artifacts: [{ surface: 'design', ref: 'WF-3 r2', change: 'changed' }],
+      },
+    },
+  ]);
+  const range = [
+    { path: M494, change: 'added' },
+    { path: J, change: 'changed' },
+    { path: 'packages/core/drizzle/migrations/meta/0494_snapshot.json', change: 'added' },
+    { path: VISUAL, change: 'changed' },
+    { path: 'packages/core/tsconfig.json', change: 'changed' },
+    { path: 'CHANGELOG.md', change: 'changed' },
+    { path: 'biome.json', change: 'changed' },
+  ] as const;
+
+  it('lists only the files the range changed, never a later round its issues landed', () => {
+    const out = rangeChangesOf(range, FORGE_CORE_SURFACES, landed);
+    const refs = out.surfaces.flatMap((s) => s.artifacts.map((a) => a.ref));
+    expect(refs).not.toContain(M495);
+    expect(refs).not.toContain(INTAKE);
+    expect(out.surfaces.find((s) => s.surface === 'data')?.artifacts.map((a) => [a.ref, a.issues])).toEqual([
+      [M494, ['ISS-452']],
+      [J, ['ISS-452', 'ISS-455']],
+      ['packages/core/drizzle/migrations/meta/0494_snapshot.json', []],
+    ]);
+  });
+
+  it('lists a file the range ships that no landing names, and paths no rule claims under no issue', () => {
+    const out = rangeChangesOf(range, FORGE_CORE_SURFACES, landed);
+    expect(out.surfaces.find((s) => s.surface === 'ui')?.artifacts).toEqual([
+      { ref: VISUAL, change: 'changed', issues: [], carriedBy: null },
+    ]);
+    expect(out.unclassified).toEqual([
+      { key: null, why: expect.stringMatching(/no rule of `surfaces`/), paths: ['biome.json', 'packages/core/tsconfig.json'] },
+    ]);
+    expect(out.boxRead).toEqual([]);
+  });
+
+  it('raises no data-shape risk for the journal, and keeps the design revisions that ship nothing', () => {
+    const out = rangeChangesOf(range, FORGE_CORE_SURFACES, landed);
+    expect(out.risks).toEqual([]);
+    expect(out.surfaces.find((s) => s.surface === 'design')?.artifacts.map((a) => a.ref)).toEqual(['WF-3 r2']);
+  });
+
+  it('shows every changed path as it is where the project declares no map', () => {
+    const out = rangeChangesOf(range, null, landed);
+    expect(out.surfaces.map((s) => s.surface)).toEqual(['design']);
+    expect(out.unclassified).toEqual([
+      { key: null, why: expect.stringMatching(/declares no `surfaces`/), paths: [...range.map((c) => c.path)].sort() },
     ]);
   });
 });

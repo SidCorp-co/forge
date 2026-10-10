@@ -106,6 +106,18 @@ describe("the sections the release page reads (BC-5..8)", () => {
     return waitFor(() => expect(within(unnoted).getByText(/Rename a helper/)).toBeTruthy());
   });
 
+  it("names an issue reworked in a later release instead of showing its later line", () => {
+    const page = releasePage();
+    renderWithQuery(
+      <ReleaseReader
+        page={{ ...page, withoutNotes: [{ issueKey: "ISS-455", title: "Intake drafts", why: "reworked" }] }}
+        authed={false}
+      />,
+    );
+    screen.getByTestId("page-unnoted-toggle").click();
+    return waitFor(() => expect(screen.getByTestId("page-unnoted")).toHaveTextContent("Intake drafts (reworked in a later release)"));
+  });
+
   it("says what an admin must do, naming the artifact that owes it, or that nothing is required", () => {
     const { unmount } = renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
     expect(screen.getByTestId("page-action")).toHaveTextContent("Run the database migration before opening the app.");

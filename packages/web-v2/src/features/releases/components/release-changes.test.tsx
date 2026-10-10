@@ -96,6 +96,35 @@ describe("What changes", () => {
     expect(productCopy("vi")("releases.changes.carriedBy", { issue: "ISS-110" })).toBe("phát hành cùng ISS-110"); // i18n-allow: asserts the vi carriage copy
   });
 
+  it("counts paths a release's range changed that no surface claims as paths, under no issue", () => {
+    const range: ReleaseChanges = {
+      surfaces: [],
+      risks: [],
+      unclassified: [{ key: null, why: "no rule of `surfaces` claims these paths the range changes", paths: ["biome.json", "packages/core/tsconfig.json"] }],
+      boxRead: [],
+      shipsNothing: false,
+    };
+    expect(changesSentence(range, productCopy("en"), labelCopy("en"))).toBe("2 paths no surface claims.");
+    render(<WhatChanges changes={range} slug="hop" />);
+    expect(screen.getByTestId("release-unclassified-toggle").textContent).toBe("2 artifacts");
+    fireEvent.click(screen.getByTestId("release-unclassified-toggle"));
+    expect(screen.getByTestId("release-unclassified").textContent).toContain("biome.json");
+  });
+
+  it("says a range kept without its files was not read, with its reason and nothing to open", () => {
+    const kept: ReleaseChanges = {
+      surfaces: [],
+      risks: [],
+      unclassified: [{ key: null, why: "the range was kept before its changed files were: report it again to list them", paths: [] }],
+      boxRead: [],
+      shipsNothing: false,
+    };
+    expect(changesSentence(kept, productCopy("en"), labelCopy("en"))).toBe("Not read.");
+    render(<WhatChanges changes={kept} slug="hop" />);
+    expect(screen.queryByTestId("release-unclassified-toggle")).toBeNull();
+    expect(screen.getByTestId("release-unclassified").textContent).toContain("report it again");
+  });
+
   it("says a release of design revisions alone ships nothing", () => {
     const design = changes.surfaces[2];
     if (!design) throw new Error("fixture lost its design surface");

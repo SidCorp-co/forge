@@ -1,10 +1,18 @@
+import { readFileSync } from 'node:fs';
 import type { ReleaseShipped } from '@forge/contracts/release-page';
 import type { ReleaseApprovalView, ReleaseDetail } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
+import { surfacesSchema } from '../project-config/surfaces-schema.js';
+import type { RangeChange } from '../release-batch/index.js';
 import { actionsOf, approvalOf, buildOf, changesOf, technicalOf } from './sections.js';
 
 const HEAD = 'c'.repeat(40);
 const UNREAD: ReleaseShipped = { state: 'unread', why: 'planted' };
+/** A range reading kept without its changed files, unless they are given. */
+const kept = (shipped: ReleaseShipped, changed: RangeChange[] | null = null) => ({
+  shipped,
+  changed,
+});
 const OWNER = { id: 'u-1', name: 'Linh', kind: 'human' as const };
 
 function detail(over: Partial<ReleaseDetail> = {}): ReleaseDetail {
@@ -14,7 +22,14 @@ function detail(over: Partial<ReleaseDetail> = {}): ReleaseDetail {
     head: HEAD,
     approval: null,
     approvalRequired: false,
-    notes: { sections: [], designs: [], withoutNotes: [], language: 'en', attention: [] },
+    notes: {
+      sections: [],
+      designs: [],
+      withoutNotes: [],
+      reworked: [],
+      language: 'en',
+      attention: [],
+    },
     changes: {
       surfaces: [],
       risks: [],
@@ -98,6 +113,7 @@ describe('improvements and fixes in user terms (BC-6)', () => {
     ],
     designs: [],
     withoutNotes: [{ key: 'ISS-6', title: 'Untold change' }],
+    reworked: [],
     language: 'en',
     attention: [],
   };
@@ -216,11 +232,13 @@ describe('what an admin must do (BC-7) and the technical notes (BC-9)', () => {
           ],
           designs: [],
           withoutNotes: [],
+          reworked: [],
           language: 'en',
           attention: [],
         },
       }),
-      UNREAD,
+      kept(UNREAD),
+      null,
     );
     expect(t.notes).toEqual([{ issueKey: 'ISS-1', title: 'Page', technical: 'New table.' }]);
     expect(t.migrations).toEqual(['packages/core/drizzle/migrations/0478_highlights.sql']);
@@ -291,7 +309,7 @@ describe('what the commit range ships adds to what the issues named (BC-7, BC-9)
   });
 
   it('lists the derived migrations, contracts, dependencies and every new setting in the developer notes', () => {
-    const t = technicalOf(detail({ changes: none }), shipped);
+    const t = technicalOf(detail({ changes: none }), kept(shipped), null);
     expect(t.migrations).toHaveLength(2);
     expect(t.contracts).toEqual(['added GET /api/previews']);
     expect(t.dependencies).toEqual(['packages/core: added zod 4.6.5']);
@@ -300,7 +318,7 @@ describe('what the commit range ships adds to what the issues named (BC-7, BC-9)
 
   it('claims nothing from a range it did not read', () => {
     expect(actionsOf(none, UNREAD)).toEqual([]);
-    expect(technicalOf(detail({ changes: none }), UNREAD).migrations).toEqual([]);
+    expect(technicalOf(detail({ changes: none }), kept(UNREAD), null).migrations).toEqual([]);
   });
 });
 
@@ -346,7 +364,7 @@ describe('a read range is what the release ships, whatever its issues landed bef
   };
 
   it('lists no migration, contract or dependency the range does not change', () => {
-    const t = technicalOf(detail({ changes: earlier }), quiet);
+    const t = technicalOf(detail({ changes: earlier }), kept(quiet), null);
     expect(t.migrations).toEqual([]);
     expect(t.contracts).toEqual([]);
     expect(t.dependencies).toEqual([]);
@@ -358,16 +376,140 @@ describe('a read range is what the release ships, whatever its issues landed bef
 
   it('keeps an issue on an item the range ships and its landing names', () => {
     const ships = { ...quiet, migrations: [MIG] };
-    expect(technicalOf(detail({ changes: earlier }), ships).migrations).toEqual([MIG]);
+    expect(technicalOf(detail({ changes: earlier }), kept(ships), null).migrations).toEqual([MIG]);
     expect(actionsOf(earlier, ships)).toEqual([
       expect.objectContaining({ kind: 'migration', ref: MIG, issues: ['ISS-488'] }),
     ]);
   });
 
   it('never reads the journal or a snapshot as a migration, where the range is unread too', () => {
-    expect(technicalOf(detail({ changes: earlier }), UNREAD).migrations).toEqual([MIG]);
+    expect(technicalOf(detail({ changes: earlier }), kept(UNREAD), null).migrations).toEqual([MIG]);
     expect(actionsOf(earlier, UNREAD).filter((a) => a.kind === 'migration')).toEqual([
       expect.objectContaining({ ref: MIG }),
+    ]);
+  });
+});
+
+describe("the developer view's What it changes is the range's own (BC-9, J9 on 0.4.0-dev.225)", () => {
+  // dev.224 (3b5e47c..852dcfb) claimed ISS-455; ISS-455's next round, d729b27be, landed after it and
+  // shipped in dev.225. The page read ISS-455's latest landing whole: migration 0495 under Data, the
+  // intake files, and the journal as a data-shape risk, two lines below a Migrations list naming 0494.
+  const MAP = surfacesSchema.parse(
+    JSON.parse(
+      readFileSync(
+        new URL('../../tests/fixtures/forge-core-surfaces.json', import.meta.url),
+        'utf8',
+      ),
+    ),
+  );
+  const J = 'packages/core/drizzle/migrations/meta/_journal.json';
+  const M494 = 'packages/core/drizzle/migrations/0494_feedback_says_why.sql';
+  const M495 = 'packages/core/drizzle/migrations/0495_intake_retry.sql';
+  const INTAKE = 'packages/web-v2/src/features/intake/components/intake-draft.tsx';
+  const art = (ref: string, issue: string, change: 'added' | 'changed' = 'added') => ({
+    ref,
+    change,
+    issues: [issue],
+    carriedBy: null,
+  });
+  const landings: ReleaseDetail['changes'] = {
+    surfaces: [
+      {
+        surface: 'data',
+        count: 3,
+        shipsNothing: false,
+        issues: ['ISS-452', 'ISS-455'],
+        artifacts: [art(M494, 'ISS-452'), art(M495, 'ISS-455'), art(J, 'ISS-455', 'changed')],
+      },
+      {
+        surface: 'ui',
+        count: 1,
+        shipsNothing: false,
+        issues: ['ISS-455'],
+        artifacts: [art(INTAKE, 'ISS-455', 'changed')],
+      },
+    ],
+    risks: [
+      {
+        risk: 'data_changed',
+        surface: 'data',
+        ref: J,
+        issues: ['ISS-455'],
+        sentence: `${J} changes shape`,
+        says: { sentence: { key: 'standing.risk.dataChanged', vars: { ref: J } } as never },
+      },
+    ],
+    unclassified: [],
+    boxRead: ['ISS-455'],
+    shipsNothing: false,
+  };
+  const dev224: ReleaseShipped = {
+    state: 'read',
+    base: '3b5e47c'.padEnd(40, '0'),
+    head: '852dcfb'.padEnd(40, '0'),
+    migrations: [M494],
+    contracts: [],
+    dependencies: [],
+    settings: [],
+  };
+  const files: RangeChange[] = [
+    { path: M494, change: 'added' },
+    { path: J, change: 'changed' },
+    { path: 'packages/core/src/feedback/verify.ts', change: 'changed' },
+  ];
+
+  it('lists only what the range ships: no later round of a claimed issue', () => {
+    const t = technicalOf(detail({ changes: landings }), kept(dev224, files), MAP);
+    const refs = t.changes.surfaces.flatMap((s) => s.artifacts.map((a) => a.ref));
+    expect(refs.sort()).toEqual([M494, J, 'packages/core/src/feedback/verify.ts'].sort());
+    expect(t.migrations).toEqual([M494]);
+    expect(t.changes.risks).toEqual([]);
+    const data = t.changes.surfaces.find((s) => s.surface === 'data');
+    expect(data?.artifacts.map((a) => [a.ref, a.issues])).toEqual([
+      [M494, ['ISS-452']],
+      [J, ['ISS-455']],
+    ]);
+  });
+
+  it('says a range kept without its files was not listed, and guesses nothing from the landings', () => {
+    const t = technicalOf(detail({ changes: landings }), kept(dev224), MAP);
+    expect(t.changes.surfaces).toEqual([]);
+    expect(t.changes.risks).toEqual([]);
+    expect(t.changes.unclassified).toEqual([
+      { key: null, why: expect.stringMatching(/report it again/), paths: [] },
+    ]);
+  });
+
+  it('reads the landings as they say only where the range is unread', () => {
+    expect(technicalOf(detail({ changes: landings }), kept(UNREAD), MAP).changes).toBe(landings);
+  });
+
+  it('asks an admin only for the migration the range adds, on dev.224, dev.225 and dev.226 (BC-7)', () => {
+    expect(actionsOf(landings, dev224).map((a) => `${a.kind}:${a.ref}:${a.issues}`)).toEqual([
+      `migration:${M494}:ISS-452`,
+    ]);
+    const dev225 = { ...dev224, migrations: [M495] };
+    expect(actionsOf(landings, dev225).map((a) => `${a.kind}:${a.ref}:${a.issues}`)).toEqual([
+      `migration:${M495}:ISS-455`,
+    ]);
+    const dev226 = { ...dev224, migrations: [] };
+    expect(actionsOf(landings, dev226)).toEqual([]);
+  });
+});
+
+describe('an issue reworked after the release claimed it (BC-6, J9 on 0.4.0-dev.224)', () => {
+  it('is named as reworked, never shown with the line its later round wrote', () => {
+    const out = changesOf({
+      sections: [],
+      designs: [],
+      withoutNotes: [],
+      reworked: [{ key: 'ISS-455', title: 'Intake drafts' }],
+      language: 'en',
+      attention: [],
+    });
+    expect(out.fixes).toEqual([]);
+    expect(out.withoutNotes).toEqual([
+      { issueKey: 'ISS-455', title: 'Intake drafts', why: 'reworked' },
     ]);
   });
 });

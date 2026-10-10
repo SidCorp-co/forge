@@ -1,4 +1,5 @@
 import type {
+  IssueLandingReading,
   ReleaseDetail,
   ReleaseListResponse,
   ReleaseProduction,
@@ -26,7 +27,13 @@ import { refuseRelease } from './refuse.js';
 import { continuationOf, fillCuts, type ReleaseLines, releaseLinesOf } from './release-cuts.js';
 import { loadReleaseFacts } from './release-facts.js';
 import { gateViews } from './release-gates.js';
-import { detailOf, type Part, type Shared, summaryOf } from './release-read-views.js';
+import {
+  detailOf,
+  type Part,
+  reworkedSince,
+  type Shared,
+  summaryOf,
+} from './release-read-views.js';
 import type { ViewerFacts } from './release-view.js';
 import { formatReleaseVersion, parseReleaseVersion, RELEASE_VERSION_SHAPE } from './version.js';
 import type { LineageRun, VersionDecision } from './version-rule.js';
@@ -248,6 +255,13 @@ export async function listReleases(
   return { releases, counts, approvalRequired: required, production };
 }
 
+const REWORKED: IssueLandingReading = {
+  kind: 'unclassified',
+  why: 'it was reopened after this release claimed it, so its mark now names a later round',
+  paths: [],
+  source: null,
+};
+
 export async function readRelease(
   projectId: string,
   version: string,
@@ -289,11 +303,15 @@ export async function readRelease(
     readReleasePath(projectId),
   ]);
   await fillCuts(projectId, [part], placed.groupOf, shared.facts.cutters);
+  const reworked = part.issueIds.filter((id) => {
+    const i = shared.facts.issues.get(id);
+    return i !== undefined && reworkedSince(part, i);
+  });
   const landings = await readLandingReadings(
     projectId,
     part.issueIds.flatMap((id) => {
       const i = shared.facts.issues.get(id);
-      return i
+      return i && !reworked.includes(id)
         ? [
             {
               id,
@@ -307,6 +325,7 @@ export async function readRelease(
         : [];
     }),
   );
+  for (const id of reworked) landings.set(id, REWORKED);
   const prod = read.ok ? read.path.production : null;
   const verifiedBy = await releaseVerifiedBy(projectId, part.verification);
   const feedbackAnswered = await feedbackAnsweredBy(

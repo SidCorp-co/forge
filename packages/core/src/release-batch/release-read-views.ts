@@ -78,6 +78,15 @@ export interface Shared {
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
+/**
+ * True where the issue was reopened after this release claimed it: its note and its mark now say a
+ * later round, which this release did not ship (J9 on 0.4.0-dev.224: ISS-455's dev.225 retry fix read
+ * as a dev.224 fix). A draft has claimed nothing yet.
+ */
+export function reworkedSince(p: Pick<Part, 'openedAt'>, i: Pick<IssueFact, 'reopenedAt'>): boolean {
+  return p.openedAt !== null && i.reopenedAt !== null && i.reopenedAt > p.openedAt;
+}
+
 function inFlightStage(attempts: readonly ReleaseAttemptRow[]) {
   return [...attempts].reverse().find((a) => a.settledAt === null)?.stage ?? null;
 }
@@ -214,11 +223,13 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
     current: s.current === p.version,
     ...turn,
     headline: headlineOf(
-      facts.map((i) => ({
-        section: i.releaseNotes?.section ?? null,
-        text:
-          i.releaseNotes && i.releaseNotes.section !== 'Skip' ? i.releaseNotes.userFacing : i.title,
-      })),
+      facts.map((i) => {
+        const notes = reworkedSince(p, i) ? null : i.releaseNotes;
+        return {
+          section: notes?.section ?? null,
+          text: notes && notes.section !== 'Skip' ? notes.userFacing : i.title,
+        };
+      }),
     ),
     issueCount: p.issueIds.length,
     requirements: reqs,
@@ -284,7 +295,9 @@ const designOnly = (reading: IssueLandingReading | undefined): boolean => {
 // what users get leaves out an issue whose landing only touched a design: it lists under the
 // approved designs instead (JU-11), so a design review is never read as a change people use
 function noteSections(p: Part, s: Shared, landings: ReadonlyMap<string, IssueLandingReading>) {
-  const all = p.issueIds.flatMap((id) => s.facts.issues.get(id) ?? []);
+  const claimed = p.issueIds.flatMap((id) => s.facts.issues.get(id) ?? []);
+  const reworked = claimed.filter((i) => reworkedSince(p, i));
+  const all = claimed.filter((i) => !reworked.includes(i));
   const designs = all.filter((i) => designOnly(landings.get(i.id)));
   const facts = all.filter((i) => !designs.includes(i));
   const sections: ReleaseNoteSection[] = CHANGELOG_SECTIONS.map((section) => ({
@@ -303,6 +316,7 @@ function noteSections(p: Part, s: Shared, landings: ReadonlyMap<string, IssueLan
     sections,
     designs: designs.map(noteEntry),
     withoutNotes: facts.filter((i) => !i.releaseNotes).map((i) => ({ key: i.key, title: i.title })),
+    reworked: reworked.map((i) => ({ key: i.key, title: i.title })),
     language: s.contentLanguage,
     attention,
   };
@@ -332,7 +346,7 @@ function issueViews(
         key: i.key,
         title: i.title,
         status: i.status,
-        section: i.releaseNotes?.section ?? null,
+        section: reworkedSince(p, i) ? null : (i.releaseNotes?.section ?? null),
         requirement: i.requirementId
           ? (s.facts.requirements.get(i.requirementId)?.key ?? null)
           : null,

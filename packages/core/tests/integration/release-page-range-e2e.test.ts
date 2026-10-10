@@ -90,6 +90,11 @@ type Page = {
     contracts: string[];
     dependencies: string[];
     settings: string[];
+    changes: {
+      surfaces: Array<{ surface: string; artifacts: Array<{ ref: string }> }>;
+      risks: Array<{ ref: string }>;
+      unclassified: Array<{ key: string | null; why: string; paths: string[] }>;
+    };
   } | null;
 };
 
@@ -198,6 +203,31 @@ describe('what a release requires is read from the range its run reports, with n
       'packages/core: hono 4.1.0 -> 4.2.0',
     ]);
     expect(dev.technical?.settings).toEqual(['VAULT_KEY (required)']);
+    // J9 on 0.4.0-dev.225: What it changes listed a claimed issue's landing whole (0999 here, and a
+    // later round's files), and the journal as a data-shape risk. It is the range's own files: this
+    // project declares no surface map, so they are shown as they are, under no issue.
+    const changes = dev.technical?.changes;
+    expect(JSON.stringify(changes)).not.toContain('0999_reminders');
+    expect(changes?.risks).toEqual([]);
+    expect(changes?.unclassified).toEqual([
+      {
+        key: null,
+        why: expect.stringMatching(/declares no `surfaces`/),
+        paths: CHANGES.map((c) => c.path).sort(),
+      },
+    ]);
+    // a reading kept before its files were says so, and guesses nothing from the landings
+    await db.execute(sql`
+      UPDATE pipeline_runs SET metadata = jsonb_set(metadata, '{range}', (metadata -> 'range') - 'changed')
+       WHERE id = ${w.runId}
+    `);
+    const keptBefore = (await page('developer')).technical?.changes;
+    expect(keptBefore?.surfaces.flatMap((x) => x.artifacts.map((a) => a.ref))).not.toContain(
+      'packages/core/drizzle/migrations/0999_reminders.sql',
+    );
+    expect(keptBefore?.unclassified).toEqual([
+      { key: null, why: expect.stringMatching(/report it again/), paths: [] },
+    ]);
     // the doors the run used answer as the run reads them
     expect(base.status, JSON.stringify(base.body)).toBe(200);
     expect(base.body).toMatchObject({ base: PREVIOUS });

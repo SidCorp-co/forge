@@ -23,6 +23,12 @@ import {
   WHATS_NEW_SECTIONS,
   type WhatsNewSection,
 } from '@forge/contracts/whats-new';
+import {
+  isMigratorBookkeeping,
+  type RangeReading,
+  rangeChangesOf,
+  type SurfaceMap,
+} from '../release-batch/index.js';
 
 /** Who approved it, or that nobody was asked: an approval given anyway still shows (BC-12). */
 export function approvalOf(detail: ReleaseDetail): ReleasePageApproval {
@@ -59,7 +65,8 @@ const isWhatsNewSection = (s: string): s is WhatsNewSection =>
 /**
  * Each issue's user-facing line as a customer reads it (`customer-notes.ts:customerNotes`), kept
  * with the issue it came from and the kind its section reads as. A line another already says is
- * left out; an issue whose line is held back, or that has none, is named rather than invented.
+ * left out; an issue whose line is held back, that has none, or whose line now says a later round
+ * (`notes.reworked`), is named rather than invented.
  */
 export function changesOf(notes: ReleaseDetail['notes']): {
   improvements: ReleasePageChange[];
@@ -94,6 +101,11 @@ export function changesOf(notes: ReleaseDetail['notes']): {
         why: 'no_note' as const,
       })),
       ...view.held.map((h) => ({ issueKey: h.key, title: titleOf(h.key), why: 'held' as const })),
+      ...notes.reworked.map((n) => ({
+        issueKey: n.key,
+        title: n.title,
+        why: 'reworked' as const,
+      })),
     ],
   };
 }
@@ -115,15 +127,13 @@ function shippedArtifacts(changes: ReleaseDetail['changes']): ShippedArtifact[] 
 }
 
 const MIGRATION = /(^|\/)migrations?\/|\.sql$/i;
-// a migrator's bookkeeping beside its migrations (drizzle's journal and snapshots): no schema change
-const MIGRATION_META = /(^|\/)migrations?\/(.*\/)?meta\//i;
 const DEPENDENCY =
   /(^|\/)(package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\.lock|Cargo\.toml|Cargo\.lock|go\.mod|go\.sum|requirements\.txt|pyproject\.toml)$/;
 const CONTRACT = /(^|\/)contracts?\//;
 const PERMISSIONS: ReadonlySet<string> = new Set(PROJECT_PERMISSIONS);
 
 const isMigration = (a: ShippedArtifact) =>
-  a.surface === 'data' && MIGRATION.test(a.ref) && !MIGRATION_META.test(a.ref);
+  a.surface === 'data' && MIGRATION.test(a.ref) && !isMigratorBookkeeping(a.ref);
 const permissionOf = (a: ShippedArtifact) => {
   const ref = a.ref.replace(/^`|`$/g, '').trim();
   return PERMISSIONS.has(ref) ? ref : null;
@@ -214,12 +224,41 @@ export function actionsOf(
 
 const uniq = (refs: readonly string[]) => [...new Set(refs)].sort();
 
+const KEPT_WITHOUT_FILES =
+  'the range was kept before its changed files were: report it again to list them';
+
 /**
- * The developer view's addition: each issue's technical note, and the migrations, contracts and
- * dependencies the release ships (BC-9) — the range's own, where it is read and named above them;
- * what the issues' landings name only where it is unread.
+ * What the release changes, as the developer view says it: where the range is read, the range's own
+ * files (`rangeChangesOf`), never a landing's other paths, which another release shipped; where it
+ * was kept without its files, that, and nothing guessed in their place; where it is unread, what the
+ * issues' landings name, as they say.
  */
-export function technicalOf(detail: ReleaseDetail, shipped: ReleaseShipped): ReleaseTechnicalNotes {
+function changesOfRange(
+  detail: ReleaseDetail,
+  range: RangeReading,
+  map: SurfaceMap | null,
+): ReleaseDetail['changes'] {
+  if (range.shipped.state !== 'read') return detail.changes;
+  if (range.changed) return rangeChangesOf(range.changed, map, detail.changes);
+  return {
+    surfaces: [],
+    risks: [],
+    unclassified: [{ key: null, why: KEPT_WITHOUT_FILES, paths: [] }],
+    boxRead: [],
+    shipsNothing: false,
+  };
+}
+
+/**
+ * The developer view's addition: each issue's technical note, and what the release changes and the
+ * migrations, contracts and dependencies it ships (BC-9) — the range's own, where it is read and named
+ * above them; what the issues' landings name only where it is unread.
+ */
+export function technicalOf(
+  detail: ReleaseDetail,
+  range: RangeReading,
+  map: SurfaceMap | null,
+): ReleaseTechnicalNotes {
   const entries = [
     ...detail.notes.sections.flatMap((s: ReleaseNoteSection) => s.entries),
     ...detail.notes.designs,
@@ -227,6 +266,8 @@ export function technicalOf(detail: ReleaseDetail, shipped: ReleaseShipped): Rel
   const notes = entries.flatMap((e) =>
     e.technical?.trim() ? [{ issueKey: e.key, title: e.title, technical: e.technical }] : [],
   );
+  const changes = changesOfRange(detail, range, map);
+  const { shipped } = range;
   if (shipped.state === 'read') {
     return {
       notes,
@@ -236,7 +277,7 @@ export function technicalOf(detail: ReleaseDetail, shipped: ReleaseShipped): Rel
       settings: uniq(
         shipped.settings.map((s) => `${s.name} (${s.required ? 'required' : 'optional'})`),
       ),
-      changes: detail.changes,
+      changes,
     };
   }
   const landed = shippedArtifacts(detail.changes);
@@ -248,6 +289,6 @@ export function technicalOf(detail: ReleaseDetail, shipped: ReleaseShipped): Rel
     ),
     dependencies: uniq(landed.filter((a) => DEPENDENCY.test(a.ref)).map((a) => a.ref)),
     settings: [],
-    changes: detail.changes,
+    changes,
   };
 }

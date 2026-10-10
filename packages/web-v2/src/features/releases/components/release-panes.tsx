@@ -329,8 +329,8 @@ function NoteLine({ e }: { e: ReleaseNoteEntry }) {
 
 export function NotesPane({ r, slug }: { r: ReleaseDetail; slug: string }) {
   const t = useCopy();
-  const { sections, withoutNotes } = r.notes;
-  if (sections.length === 0 && withoutNotes.length === 0) return <p className="text-13 text-subtle">{t("releases.notesEmpty")}</p>;
+  const { sections, withoutNotes, reworked } = r.notes;
+  if (sections.length === 0 && withoutNotes.length === 0 && reworked.length === 0) return <p className="text-13 text-subtle">{t("releases.notesEmpty")}</p>;
   return (
     <div className="grid gap-6" data-testid="view-notes">
       <DemoNotesWarning r={r} />
@@ -349,6 +349,21 @@ export function NotesPane({ r, slug }: { r: ReleaseDetail; slug: string }) {
           <ViewHeading hint={t("releases.withoutNoteHint")}>{t("releases.withoutNote")}</ViewHeading>
           <ul className="grid gap-1 text-13 text-muted">
             {withoutNotes.map((w) => (
+              <li key={w.key}>
+                <Link className="font-mono text-12 text-link hover:underline" href={issueHref(slug, w.key)}>
+                  {w.key}
+                </Link>{" "}
+                {w.title}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {reworked.length > 0 ? (
+        <section data-testid="notes-reworked">
+          <ViewHeading>{t("releases.reworked")}</ViewHeading>
+          <ul className="grid gap-1 text-13 text-muted">
+            {reworked.map((w) => (
               <li key={w.key}>
                 <Link className="font-mono text-12 text-link hover:underline" href={issueHref(slug, w.key)}>
                   {w.key}
