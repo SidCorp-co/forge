@@ -6,7 +6,7 @@
 
 import { useState } from "react";
 import { Button, Checkbox } from "@/design";
-import { type IssuePick, IssuePicker } from "@/features/issue-picker/issue-picker";
+import { type IssuePick, IssuePicker } from "@/features/issue-picker";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useLinkRequirementIssue } from "../hooks";

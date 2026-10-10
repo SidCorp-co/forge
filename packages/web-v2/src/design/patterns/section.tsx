@@ -4,12 +4,20 @@
 // it, a hairline between it and the section before. No frame, no fill, no shadow: the heading and the
 // whitespace set it off. `PropertyList` is the label-and-value body a section holds most often.
 
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
 
-export function Section({ title, right, children, id, testId, className }: { title?: ReactNode; right?: ReactNode; children: ReactNode; id?: string; testId?: string; className?: string }) {
+export function Section({
+  title,
+  right,
+  children,
+  id,
+  testId,
+  className,
+  ...rest
+}: { title?: ReactNode; right?: ReactNode; children?: ReactNode; id?: string; testId?: string; className?: string } & Omit<HTMLAttributes<HTMLElement>, "title" | "children">) {
   return (
-    <section id={id} className={cn("scroll-mt-24 border-t border-line-subtle py-5 first:border-t-0 first:pt-0", className)} data-testid={testId}>
+    <section {...rest} id={id} className={cn("scroll-mt-24 border-t border-line-subtle py-5 first:border-t-0 first:pt-0", className)} data-testid={testId}>
       {title || right ? (
         <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
           {title ? <h2 className="text-15 font-bold leading-snug text-accent-text">{title}</h2> : null}

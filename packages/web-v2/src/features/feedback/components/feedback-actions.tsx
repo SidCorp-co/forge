@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AcceptStep, Button, enumLabel, Input, LEGEND, Radio, RadioGroup, Textarea } from "@/design";
-import { type IssuePick, IssuePicker } from "@/features/issue-picker/issue-picker";
+import { type IssuePick, IssuePicker } from "@/features/issue-picker";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";

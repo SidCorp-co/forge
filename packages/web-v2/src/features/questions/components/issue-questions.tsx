@@ -2,23 +2,13 @@
 
 import type { ParkThreadQuestion } from "@forge/contracts/park";
 import { useState } from "react";
-import {
-  Button,
-  PageSection,
-  PageSectionBody,
-  PageSectionHeader,
-  PageSectionTitle,
-  ErrorState,
-  Field,
-  Skeleton,
-  Textarea,
-} from "@/design";
+import { Button, ErrorState, Field, LoadingState, Section, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useAnsweringQuestions, useAnswerQuestion, useIssueQuestions } from "../hooks";
-import { QuestionCard } from "./question-card";
+import { QuestionView } from "./question-view";
 
-const DECISION_PANEL_ANCHOR = "issue-decisions";
+const QUESTIONS_ANCHOR = "issue-decisions";
 
 /** The gap left between a sticky header and the question it would otherwise cover. */
 const BELOW_HEADER_PX = 12;
@@ -27,8 +17,8 @@ const BELOW_HEADER_PX = 12;
  * Bring the questions into view with their first line below `stickyHeader`, which a plain
  * `scrollIntoView` scrolls them under — on a phone the header wraps and covers the prompt.
  */
-export function focusDecisionPanel(stickyHeader: HTMLElement | null): void {
-  const panel = document.getElementById(DECISION_PANEL_ANCHOR);
+export function focusIssueQuestions(stickyHeader: HTMLElement | null): void {
+  const panel = document.getElementById(QUESTIONS_ANCHOR);
   if (!panel) return;
   panel.style.scrollMarginTop = `${(stickyHeader?.offsetHeight ?? 0) + BELOW_HEADER_PX}px`;
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -47,11 +37,7 @@ export function focusDecisionPanel(stickyHeader: HTMLElement | null): void {
 function NothingToAnswer() {
   const t = useCopy();
   return (
-    <PageSection>
-      <PageSectionHeader>
-        <PageSectionTitle>{t("agents.decision.none")}</PageSectionTitle>
-      </PageSectionHeader>
-    </PageSection>
+    <Section title={t("agents.decision.none")} />
   );
 }
 
@@ -60,7 +46,7 @@ function NothingToAnswer() {
  * person's comment posted after it stopped as the answer, so the answer goes up as that comment,
  * and once one is there the card shows it and asks nothing more.
  */
-function ThreadQuestionCard({
+function ThreadQuestion({
   question,
   onAnswer,
 }: {
@@ -86,13 +72,7 @@ function ThreadQuestionCard({
   };
   const answer = question.answer;
   return (
-    <PageSection>
-      <PageSectionHeader>
-        <PageSectionTitle>
-          {answer ? t("agents.decision.asked") : t("agents.decision.waitingOn")}
-        </PageSectionTitle>
-      </PageSectionHeader>
-      <PageSectionBody className="space-y-3">
+    <Section title={answer ? t("agents.decision.asked") : t("agents.decision.waitingOn")} className="space-y-3">
         <p className="fg-caption text-muted">{t("agents.decision.inComments")}</p>
         {question.prompt && <p className="fg-body-sm whitespace-pre-wrap text-fg">{question.prompt}</p>}
         {question.why && (
@@ -111,7 +91,7 @@ function ThreadQuestionCard({
           </ul>
         )}
         {answer ? (
-          <div role="status" className="space-y-1 rounded-md border border-line-subtle p-3">
+          <div role="status" className="space-y-1 border-l-2 border-line pl-3">
             <p className="fg-caption text-muted">{t("agents.decision.answeredIn")}</p>
             <p className="fg-body-sm whitespace-pre-wrap text-fg">{answer.text}</p>
           </div>
@@ -137,8 +117,7 @@ function ThreadQuestionCard({
             </div>
           </>
         )}
-      </PageSectionBody>
-    </PageSection>
+    </Section>
   );
 }
 
@@ -147,7 +126,7 @@ function ThreadQuestionCard({
  * the question its park asked in the thread, or what was looked for and where else
  * the asking may have gone.
  */
-export function DecisionPanel({
+export function IssueQuestions({
   issueId,
   parkedForInfo = false,
   threadQuestion = null,
@@ -173,7 +152,7 @@ export function DecisionPanel({
     return (
       <div className="space-y-3" data-testid="past-questions">
         {questions.map((question) => (
-          <QuestionCard key={question.id} question={question} onAnswer={answer} pending={answering.has(question.id)} />
+          <QuestionView key={question.id} question={question} onAnswer={answer} pending={answering.has(question.id)} />
         ))}
       </div>
     );
@@ -181,9 +160,9 @@ export function DecisionPanel({
   if (!parkedForInfo && !isLoading && !isError && questions.length === 0) return null;
 
   return (
-    <div id={DECISION_PANEL_ANCHOR} className="space-y-3">
+    <div id={QUESTIONS_ANCHOR} className="space-y-3">
       {isLoading ? (
-        <Skeleton variant="rect" className="h-24 w-full" />
+        <LoadingState rows={3} />
       ) : isError ? (
         <ErrorState
           title={t("agents.decision.loadFailed")}
@@ -191,12 +170,12 @@ export function DecisionPanel({
           onRetry={() => refetch()}
         />
       ) : questions.length === 0 && threadQuestion ? (
-        <ThreadQuestionCard question={threadQuestion} onAnswer={onAnswerInThread} />
+        <ThreadQuestion question={threadQuestion} onAnswer={onAnswerInThread} />
       ) : questions.length === 0 ? (
         <NothingToAnswer />
       ) : (
         questions.map((question) => (
-          <QuestionCard
+          <QuestionView
             key={question.id}
             question={question}
             onAnswer={answer}

@@ -7,7 +7,7 @@
 import { type ReactNode, useState } from "react";
 import { Markdown, ViewHeading } from "@/design";
 import { AttachmentList } from "@/features/attachments/components/attachment-list";
-import { DecisionPanel } from "@/features/questions/components/decision-panel";
+import { IssueQuestions } from "@/features/questions";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import type { MockupTarget } from "@/features/mockups/types";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -99,7 +99,7 @@ export function IssueDetails({
             canWrite={canWrite}
             past={
               <>
-                <DecisionPanel issueId={issue.id} show="past" />
+                <IssueQuestions issueId={issue.id} show="past" />
                 <IssueDecisionsTab projectId={projectId} issueKey={issue.displayId} />
                 <IssueRetiredCriteria issueId={issue.id} />
               </>

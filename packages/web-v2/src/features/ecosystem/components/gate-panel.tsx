@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button, Input, Textarea } from "@/design";
-import { type AgentQuestion, currentRoundOf } from "@/features/questions/types";
+import { type AgentQuestion, currentRoundOf } from "@/features/questions";
 import { readingOf, refusalsOf } from "@/lib/api/refusals";
 import { useAnswerGate, useGateQuestion } from "../hooks";
 import { Loading, RefusalNotice, UnreadNotice } from "./notices";
