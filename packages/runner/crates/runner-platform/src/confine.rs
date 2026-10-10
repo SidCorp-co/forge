@@ -39,6 +39,40 @@ pub enum Mount {
     Hide(PathBuf),
 }
 
+/// The ceilings every process in a sandbox runs under (REQ-30 BC-11, ADR 0012), inherited across
+/// bubblewrap's exec by each command a session runs: CPU seconds per process (`SIGXCPU`, then
+/// `SIGKILL`, past it), the data segment a process may grow to, and the largest file it may write.
+/// Generous on purpose: they stop a runaway command from taking the box, never a real session's
+/// work. Time on the wall is bounded by core's turn timeouts, and the network by [`egress`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    pub cpu_seconds: u64,
+    pub data_bytes: u64,
+    pub file_bytes: u64,
+}
+
+pub const LIMITS: Limits = Limits {
+    cpu_seconds: 2 * 60 * 60,
+    data_bytes: 16 * 1024 * 1024 * 1024,
+    file_bytes: 4 * 1024 * 1024 * 1024,
+};
+
+impl Limits {
+    /// Sets each ceiling on the calling process, soft and hard alike, so nothing inside raises it.
+    #[cfg(target_os = "linux")]
+    pub fn apply(&self) -> std::io::Result<()> {
+        use nix::sys::resource::{setrlimit, Resource};
+        for (resource, value) in [
+            (Resource::RLIMIT_CPU, self.cpu_seconds),
+            (Resource::RLIMIT_DATA, self.data_bytes),
+            (Resource::RLIMIT_FSIZE, self.file_bytes),
+        ] {
+            setrlimit(resource, value, value).map_err(std::io::Error::other)?;
+        }
+        Ok(())
+    }
+}
+
 /// What a confined process sees: everything on the box read-only, then `mounts` in order, run
 /// in `cwd` with exactly `env`. With `egress`, it has no network but its proxy.
 #[derive(Debug, Clone, Default)]
@@ -237,6 +271,11 @@ impl Sandbox {
             }
             cmd.env_clear().envs(env);
             cmd.current_dir(&self.cwd);
+            // SAFETY: `apply` only calls setrlimit(2), which is async-signal-safe, between fork
+            // and exec; it allocates nothing and takes no lock.
+            unsafe {
+                cmd.pre_exec(|| LIMITS.apply());
+            }
             Ok(cmd)
         }
         #[cfg(not(target_os = "linux"))]
@@ -252,6 +291,33 @@ impl Sandbox {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn limits_bound_cpu_data_and_file_size_and_take_effect_in_a_child() {
+        let mut cmd = std::process::Command::new("sh");
+        cmd.args(["-c", "ulimit -t; ulimit -f"]);
+        // SAFETY: as in `Sandbox::command`, only setrlimit(2) runs between fork and exec.
+        unsafe {
+            std::os::unix::process::CommandExt::pre_exec(&mut cmd, || LIMITS.apply());
+        }
+        let out = cmd.output().expect("sh runs");
+        let said = String::from_utf8_lossy(&out.stdout);
+        let mut lines = said.lines();
+        assert_eq!(
+            lines.next(),
+            Some(LIMITS.cpu_seconds.to_string().as_str()),
+            "{said}"
+        );
+        // `ulimit -f` counts 512-byte blocks in POSIX sh
+        let blocks: u64 = lines
+            .next()
+            .and_then(|l| l.trim().parse().ok())
+            .expect("a number");
+        assert!(
+            blocks * 512 == LIMITS.file_bytes || blocks * 1024 == LIMITS.file_bytes,
+            "{said}"
+        );
+    }
 
     #[test]
     fn mounts_are_applied_in_the_order_named_after_the_read_only_root() {
