@@ -201,7 +201,7 @@ function CandidateList<T>({
         <ErrorState
           title={t(kind.failed)}
           message={formatApiError(query.error)}
-          onRetry={() => query.refetch()}
+          onRetry={() => void query.refetch()}
         />
       </div>
     );

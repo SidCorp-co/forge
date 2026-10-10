@@ -33,7 +33,7 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
   let body: React.ReactNode;
   if (list.isLoading || templates.isLoading || (record && design.isLoading)) body = centred(<ProjectLoader label={t("workflows.loadingOne")} />);
   else if (failed) {
-    const retry = () => (list.isError ? list.refetch() : templates.isError ? templates.refetch() : design.refetch());
+    const retry = () => void (list.isError ? list.refetch() : templates.isError ? templates.refetch() : design.refetch());
     body = centred(<ErrorState message={formatApiError(failed)} onRetry={isRetryableApiError(failed) ? retry : undefined} />);
   } else if (!record || !d || !shown) body = centred(<ErrorState title={t("workflows.notFound")} message={t("workflows.notFoundMessage", { flow })} />);
   else {

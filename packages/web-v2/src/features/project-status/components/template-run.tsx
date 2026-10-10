@@ -84,7 +84,7 @@ export function TemplateRun({ projectId, slug }: { projectId: string; slug: stri
   const run = useRunTemplate(projectId);
   const [chosen, setChosen] = useState<string | null>(null);
   const [values, setValues] = useState<TemplateParamValues>({});
-  if (listing.isError) return <ErrorState title={t("status.template.listFailed")} message={formatApiError(listing.error)} onRetry={() => listing.refetch()} />;
+  if (listing.isError) return <ErrorState title={t("status.template.listFailed")} message={formatApiError(listing.error)} onRetry={() => void listing.refetch()} />;
   if (!listing.data) return <ProjectLoader label={t("status.loading")} />;
   const templates = listing.data.templates;
   const template = templates.find((x) => x.id === chosen) ?? templates[0];

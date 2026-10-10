@@ -3,7 +3,9 @@
 import type { ExecutionFacts } from "@forge/contracts/report-executions";
 import type { BlockSource } from "@forge/contracts/visual-blocks";
 import { useState } from "react";
+import { useNow } from "@/design";
 import { useTimeFormat } from "@/lib/i18n/interface-language";
+import { keyed } from "@/lib/utils/keyed";
 import { useBlockInstants } from "./instants";
 import type { SourceFacts } from "./context";
 
@@ -11,8 +13,9 @@ import type { SourceFacts } from "./context";
  * The read time as the thread says a turn's time: the clock alone for a read today, the date and
  * clock for an older one, the full date and time on hover.
  */
-function useReadAt(iso: string, now: Date = new Date()): { label: string; full: string } {
+function useReadAt(iso: string): { label: string; full: string } {
   const time = useTimeFormat();
+  const now = new Date(useNow(60_000));
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return { label: iso, full: iso };
   const today = time.date(at) === time.date(now);
@@ -64,7 +67,7 @@ function RunSource({ runId, facts }: { runId: string; facts: SourceFacts }) {
       ? null
       : settings.length === 0
         ? "Settings: none set, the report's defaults"
-        : `Settings: ${settings.map(([k, v]) => `${settingName(k)} ${settingValue(v, instants.instant)}`).join(" · ")}`;
+        : `Settings: ${settings.map(([k, v]) => `${settingName(k)} ${settingValue(v, (iso) => instants.instant(iso))}`).join(" · ")}`;
   return (
     <div className={LINE} data-testid="visual-block-source">
       <button
@@ -144,10 +147,9 @@ function ExecutionSource({ executionId, execution }: { executionId: string; exec
             <p className="m-0">Read nothing from Forge</p>
           ) : (
             <ul className="m-0 list-none p-0 font-mono" data-testid="visual-block-reads">
-              {reads.map((r, i) => (
-                // the same path can be read twice in one run, so the position is part of what a read is
-                // biome-ignore lint/suspicious/noArrayIndexKey: a run's reads are fixed once recorded
-                <li key={i}>
+              {keyed(reads, (r) => `${r.method} ${r.path}`).map(([key, r]) => (
+                // the same path can be read twice in one run: the nth read of it is what a read is
+                <li key={key}>
                   {r.method} {r.path} {r.refused ? `refused: ${r.refused}` : r.status}
                 </li>
               ))}

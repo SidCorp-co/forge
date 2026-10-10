@@ -31,7 +31,7 @@ export function attachmentBody(file: File): Promise<{ name: string; mime: string
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error ?? new Error(`${file.name} could not be read`));
     reader.onload = () => {
-      const url = String(reader.result);
+      const url = typeof reader.result === "string" ? reader.result : "";
       resolve({ name: file.name, mime: file.type || "application/octet-stream", contentBase64: url.slice(url.indexOf(",") + 1) });
     };
     reader.readAsDataURL(file);
