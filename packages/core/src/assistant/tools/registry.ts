@@ -32,6 +32,21 @@ export function provideChatTools(specs: readonly ChatToolSpec[]): void {
   providedSpecs = specs;
 }
 
+/**
+ * The record tools alone (the provided specs marked `record`: Feedback, a draft Requirement or
+ * revision), for a door whose narrow set still owes the person a place to record what they report or
+ * wish (REQ-30 BC-3: the BA door).
+ */
+export function buildRecordToolset(ctx: McpContext): ChatToolset {
+  const record = chatToolSpecs().filter((spec) => spec.record === true);
+  if (record.length === 0) {
+    throw new Error(
+      'chat record toolset: no provided tool is marked record, so a door would offer no place to record; CHAT_RECORD_TOOLS marks them',
+    );
+  }
+  return buildToolset(ctx, record);
+}
+
 /** The whole allowlist: this module's own tools, then the provided ones. */
 function chatToolSpecs(): ChatToolSpec[] {
   if (!providedSpecs) {

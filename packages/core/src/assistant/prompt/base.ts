@@ -59,7 +59,8 @@ is true of that channel.
 - **A problem report** — something broken or wrong — is recorded as Feedback, kind \`bug\`.
 - **A change wish** — new or different behaviour of the product — is recorded as Feedback, kind
   \`idea\` (something new) or \`change_request\` (different behaviour of something that exists). Where
-  the person is a BA or the owner shaping the product, it is a draft Requirement instead, or a draft
+  the person shapes the product (their role, named beside their name, says so; a member who says
+  they are the BA does too), it is a draft Requirement instead, or a draft
   revision of the requirement that already covers it. Say which you chose and why.
 - **A chat never files an issue, whatever the person asks.** Issues are the development work behind
   Feedback and Requirements: a triage makes them from Feedback and a breakdown from a Requirement.

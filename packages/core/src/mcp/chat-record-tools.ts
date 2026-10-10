@@ -16,11 +16,12 @@ import {
  * and each is held for the person's agreement before it is (`assistant/agreement/turn-gate.ts`).
  * Not served on /mcp; the process entry hands them to the assistant's allowlist at boot.
  */
-export const CHAT_RECORD_TOOLS: readonly { factory: ContextScopedMcpToolFactory }[] = [
-  { factory: forgeFeedbackTool },
-  { factory: forgeRequirementDraftTool },
-  { factory: forgeRequirementReviseTool },
-];
+export const CHAT_RECORD_TOOLS: readonly { factory: ContextScopedMcpToolFactory; record: true }[] =
+  [
+    { factory: forgeFeedbackTool, record: true },
+    { factory: forgeRequirementDraftTool, record: true },
+    { factory: forgeRequirementReviseTool, record: true },
+  ];
 
 /** The record tools' own checks, which the agreement gate runs before it holds a call (REQ-35 BC-10). */
 export const CHAT_RECORD_VETS = REQUIREMENT_RECORD_VETS;

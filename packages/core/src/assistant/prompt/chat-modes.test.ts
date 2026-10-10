@@ -72,3 +72,18 @@ describe('every door that states a figure is told to name its read', () => {
     expect(ba).toContain('names the read it came from');
   });
 });
+
+describe('the BA door records what is not its requirement, and names the other mode (REQ-30 BC-2, BC-3)', () => {
+  const ba = baDoorPersona(PROJECT.name, 'REQ-30', 'Ann (project member)');
+  it('sends a problem to Feedback and a new wish to a requirement suggestion, never an issue', () => {
+    expect(ba).toContain('`forge_feedback`');
+    expect(ba).toContain('`ba_suggest_requirement`');
+    expect(ba).toContain('You file no issue.');
+  });
+  it('says a code question needs Agent mode, and why', () => {
+    expect(ba).toMatch(/needs Agent mode \(a paired device with the repository\)/);
+  });
+  it('carries the asker with their role', () => {
+    expect(ba).toContain('Ann (project member)');
+  });
+});
