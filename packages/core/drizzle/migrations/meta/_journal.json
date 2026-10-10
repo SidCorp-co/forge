@@ -3186,6 +3186,13 @@
       "when": 1825718400000,
       "tag": "0495_an_intake_draft_the_model_missed_is_tried_again",
       "breakpoints": true
+    },
+    {
+      "idx": 497,
+      "version": "7",
+      "when": 1825891200000,
+      "tag": "0497_session_failure_reasons_written_as_prose_move_to_their_detail",
+      "breakpoints": true
     }
   ]
 }
