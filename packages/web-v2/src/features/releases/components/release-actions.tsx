@@ -30,7 +30,7 @@ function DecideWithReason({ projectId, runId, approvalId, decision }: { projectI
           {t(c.opens)}
         </Button>
       </span>
-      <Popover open={open} anchor={anchor} onDismiss={() => setOpen(false)} placement="bottom-end" takesFocus className="w-[320px] bg-surface p-3 shadow-md">
+      <Popover open={open} anchor={anchor} onDismiss={() => setOpen(false)} placement="bottom-end" takesFocus className="w-80 bg-surface p-3 ">
         <form
           className="grid gap-2"
           onSubmit={(e) => {

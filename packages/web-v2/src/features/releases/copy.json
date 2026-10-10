@@ -214,8 +214,6 @@
     "releases.rule.reused": "A re-cut of the same issues: it keeps {v}.",
     "releases.rule.unrecorded": "Cut before Forge recorded how each version was chosen.",
     "releases.run": "Run",
-    "releases.searchLabel": "Search releases",
-    "releases.searchPlaceholder": "Search releases…",
     "releases.serving": "Serving",
     "releases.servingProduction": "Serving production",
     "releases.split": "Cut the oldest {n} as {version}",
@@ -268,7 +266,8 @@
     "releases.whyNotCut": "Why it cannot be cut",
     "releases.withoutNote": "Without a note",
     "releases.reworked": "Reworked in a later release",
-    "releases.worthKnowing": "Worth knowing"
+    "releases.worthKnowing": "Worth knowing",
+    "releases.searchNoun": "releases"
   },
   "vi": {
     "releases.aPerson": "Một người",
@@ -413,8 +412,6 @@
     "releases.rule.returnedWhy": "một admin đã trả lại: {why}; master trả lời trước khi yêu cầu lại",
     "releases.rule.unrecorded": "Đã cắt trước khi Forge ghi lại cách chọn từng phiên bản.",
     "releases.run": "Lượt chạy",
-    "releases.searchLabel": "Tìm release",
-    "releases.searchPlaceholder": "Tìm release…",
     "releases.serving": "Đang chạy",
     "releases.servingProduction": "Đang chạy trên production",
     "releases.split": "Cắt {n} issue cũ nhất thành {version}",

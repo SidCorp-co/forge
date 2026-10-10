@@ -42,7 +42,7 @@ export function NotesAttention({ r, slug }: { r: ReleaseDetail; slug: string }) 
           <Link
             href={issueHref(slug, a.key)}
             title={[...(a.notInLanguage ? [t("releases.notInLanguage", { language: name })] : []), ...a.references].join("; ")}
-            className="font-mono text-12-5 text-link hover:underline"
+            className="font-mono text-13 text-link hover:underline"
           >
             {a.key}
           </Link>
@@ -64,7 +64,7 @@ export function ApprovedDesigns({ r, slug }: { r: ReleaseDetail; slug: string })
         {r.notes.designs.map((e) => (
           <li key={e.key} className="flex flex-wrap items-baseline gap-x-2 border-b border-line-subtle py-2 text-13 text-muted">
             <span className="min-w-0 flex-1">{e.title}</span>
-            <Link href={issueHref(slug, e.key)} className="font-mono text-11-5 text-subtle hover:text-link hover:underline">
+            <Link href={issueHref(slug, e.key)} className="font-mono text-12 text-subtle hover:text-link hover:underline">
               {e.key}
             </Link>
           </li>
@@ -82,7 +82,7 @@ export function DemoNotesWarning({ r }: { r: ReleaseDetail }) {
   if (demo.length === 0) return null;
   const where = r.production?.url ? hostOf(r.production.url) : (r.production?.name ?? "");
   return (
-    <p className="text-12-5 text-amber-700 dark:text-amber-300" data-testid="release-customer-demo">
+    <p className="text-13 text-amber-700 dark:text-amber-300" data-testid="release-customer-demo">
       {t("releases.customer.demo", { n: demo.length, keys: demo.join(", "), where })}
     </p>
   );

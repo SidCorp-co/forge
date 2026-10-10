@@ -24,12 +24,12 @@ function Decision({ a }: { a: ReleaseApprovalView }) {
         <StatusBadge family="release" value={a.decision} />
         {a.decidedBy ? <ActorChip name={a.decidedBy.name} kind={a.decidedBy.kind} /> : null}
       </span>
-      {a.reason ? <span className="text-12-5 text-muted">{a.reason}</span> : null}
+      {a.reason ? <span className="text-13 text-muted">{a.reason}</span> : null}
     </span>
   );
 }
 
-export function ApprovalFacts({ r }: { r: ReleaseDetail }) {
+export function ApprovalRecord({ r }: { r: ReleaseDetail }) {
   const t = useCopy();
   const time = useTimeFormat();
   const a = r.approval;
@@ -85,12 +85,12 @@ export function ReleasePhoneStanding({ r, forecast }: { r: ReleaseDetail; foreca
           </Fact>
         </FactsGroup>
       ) : null}
-      {showApproval ? <ApprovalFacts r={r} /> : null}
+      {showApproval ? <ApprovalRecord r={r} /> : null}
     </div>
   );
 }
 
-export function ReleaseFacts({ r, forecast }: { r: ReleaseDetail; forecast?: ScopeForecast | undefined }) {
+export function ReleaseProperties({ r, forecast }: { r: ReleaseDetail; forecast?: ScopeForecast | undefined }) {
   const t = useCopy();
   const label = useLabel();
   const time = useTimeFormat();
@@ -120,7 +120,7 @@ export function ReleaseFacts({ r, forecast }: { r: ReleaseDetail; forecast?: Sco
 
       {r.approvalRequired || a ? (
         <div className="max-sm:hidden">
-          <ApprovalFacts r={r} />
+          <ApprovalRecord r={r} />
         </div>
       ) : null}
 

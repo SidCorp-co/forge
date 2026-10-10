@@ -83,7 +83,7 @@ function Requirements({ r, slug }: { r: ReleaseDetail; slug: string }) {
             </span>
           </span>
           <CriteriaBar coverage={q.coverage} />
-          <span className="text-12-5 text-muted">
+          <span className="text-13 text-muted">
             {q.advances.length > 0 ? `${t("releases.moves", { codes: q.advances.map((a) => a.code).join(", ") })} ` : ""}
             {q.completes
               ? t("releases.nothingElse")
@@ -112,7 +112,7 @@ export function FeedbackAnswered({ r, slug }: { r: ReleaseDetail; slug: string }
   return (
     <section aria-label={t("releases.feedbackAnswered")} data-testid="release-feedback">
       <ViewHeading>{t("releases.feedbackAnswered")}</ViewHeading>
-      <p className="mb-2 text-12-5 text-muted" data-testid="release-feedback-counts">
+      <p className="mb-2 text-13 text-muted" data-testid="release-feedback-counts">
         {(["told", "not_told", "before_notices", "on_ship"] as const)
           .filter((k) => r.feedbackToldCounts[k] > 0)
           .map((k) => t(`releases.toldCount.${k}`, { n: r.feedbackToldCounts[k] }))
@@ -127,7 +127,7 @@ export function FeedbackAnswered({ r, slug }: { r: ReleaseDetail; slug: string }
               </Link>
               <span className="min-w-0 flex-1 truncate">{f.title}</span>
             </span>
-            <span className="text-12-5 text-muted">
+            <span className="text-13 text-muted">
               {f.reporter} · {TOLD[f.told](f, t, time.dateTime)}
             </span>
           </li>
@@ -140,7 +140,7 @@ export function FeedbackAnswered({ r, slug }: { r: ReleaseDetail; slug: string }
 export function OverviewPane({ r, slug, all }: { r: ReleaseDetail; slug: string; all: ReleaseSummary[] }) {
   const t = useCopy();
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-8" data-testid="view-overview">
+    <div className="grid grid-cols-1 gap-8" data-testid="view-overview">
       <NotesAttention r={r} slug={slug} />
       <ApprovedDesigns r={r} slug={slug} />
       <FeedbackAnswered r={r} slug={slug} />
@@ -301,7 +301,7 @@ function NoteLine({ e }: { e: ReleaseNoteEntry }) {
   const [open, setOpen] = useState(false);
   return (
     <li className="flex gap-2" data-testid="release-note">
-      <span className="w-[72px] flex-none font-mono text-12 text-link">{e.key}</span>
+      <span className="w-18 flex-none font-mono text-12 text-link">{e.key}</span>
       <span className="min-w-0 flex-1">
         {e.userFacing}
         {e.technical ? (
@@ -316,7 +316,7 @@ function NoteLine({ e }: { e: ReleaseNoteEntry }) {
               {t("releases.technicalNote")}
             </DisclosureToggle>
             {open ? (
-              <span className="mt-1 block text-12-5 text-muted" data-testid="release-note-technical">
+              <span className="mt-1 block text-13 text-muted" data-testid="release-note-technical">
                 {e.technical}
               </span>
             ) : null}
@@ -337,7 +337,7 @@ export function NotesPane({ r, slug }: { r: ReleaseDetail; slug: string }) {
       {sections.map((s) => (
         <section key={s.section}>
           <ViewHeading>{s.section}</ViewHeading>
-          <ul className="grid gap-2.5 text-13-5">
+          <ul className="grid gap-2.5 text-14">
             {s.entries.map((e) => (
               <NoteLine key={e.key} e={e} />
             ))}

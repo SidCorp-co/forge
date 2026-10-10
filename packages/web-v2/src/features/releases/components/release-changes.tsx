@@ -56,16 +56,16 @@ export function changesSentence(c: ReleaseChanges, t: Copy, label: ReturnType<ty
   return parts.join(" ");
 }
 
-function SurfaceRow({ s, slug }: { s: ReleaseSurfaceChanges; slug?: string }) {
+function SurfaceChanges({ s, slug }: { s: ReleaseSurfaceChanges; slug?: string }) {
   const t = useCopy();
   const [open, setOpen] = useState(false);
   return (
     <li className="border-b border-line-subtle py-2 text-13" data-testid="release-surface" data-surface={s.surface}>
       <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="w-[72px] flex-none">
+        <span className="w-18 flex-none">
           <EnumBadge family="landingSurface" value={s.surface} />
         </span>
-        <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-12-5" testId="release-surface-toggle">
+        <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-13" testId="release-surface-toggle">
           {plural(t, s.count, "releases.count.artifact")}
         </DisclosureToggle>
         <span className="ml-auto">
@@ -73,9 +73,9 @@ function SurfaceRow({ s, slug }: { s: ReleaseSurfaceChanges; slug?: string }) {
         </span>
       </span>
       {open ? (
-        <ul className="mt-1.5 grid gap-1 pl-[84px] max-md:pl-0" data-testid="release-artifacts">
+        <ul className="mt-1.5 grid gap-1 pl-21 max-md:pl-0" data-testid="release-artifacts">
           {s.artifacts.map((a) => (
-            <li key={`${a.change}:${a.ref}`} className="flex flex-wrap items-center gap-x-2 text-12-5" data-testid="release-artifact">
+            <li key={`${a.change}:${a.ref}`} className="flex flex-wrap items-center gap-x-2 text-13" data-testid="release-artifact">
               <EnumBadge family="artifactChange" value={a.change} />
               <span className="min-w-0 break-all font-mono text-12">{a.ref}</span>
               {a.carriedBy ? (
@@ -118,18 +118,18 @@ function UnclassifiedReason({ why, group, slug }: { why: string; group: ReleaseC
     <li className="grid gap-1 border-b border-line-subtle py-2 text-13" data-testid="release-unclassified">
       <span className="flex flex-wrap items-baseline gap-x-2">
         {count !== null ? (
-          <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-12-5" testId="release-unclassified-toggle">
+          <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-13" testId="release-unclassified-toggle">
             {count}
           </DisclosureToggle>
         ) : null}
-        <span className="min-w-0 flex-1 text-12-5 text-muted">{why}</span>
+        <span className="min-w-0 flex-1 text-13 text-muted">{why}</span>
       </span>
       {open ? (
         <ul className="grid gap-1 pl-4">
           {group.map((u) => (
             <li key={u.key ?? ""} className="grid gap-0.5">
               {u.key !== null ? <IssueKeys keys={[u.key]} slug={slug} /> : null}
-              {u.paths.length > 0 ? <span className="break-all font-mono text-11-5 text-subtle">{u.paths.join(" · ")}</span> : null}
+              {u.paths.length > 0 ? <span className="break-all font-mono text-12 text-subtle">{u.paths.join(" · ")}</span> : null}
             </li>
           ))}
         </ul>
@@ -154,13 +154,13 @@ export function WhatChanges({ changes, slug, headed = true }: { changes: Release
         {headed ? (
           <>
             <ViewHeading>{t("releases.changes.title")}</ViewHeading>
-            <p className="text-13-5" data-testid="release-changes-sentence">
+            <p className="text-14" data-testid="release-changes-sentence">
               {changesSentence(changes, t, label)}
             </p>
           </>
         ) : null}
         {changes.boxRead.length > 0 ? (
-          <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-12-5 text-muted" data-testid="release-box-read">
+          <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-13 text-muted" data-testid="release-box-read">
             <span>{t("releases.changes.boxRead")}</span>
             <IssueKeys keys={changes.boxRead} slug={slug} />
           </p>
@@ -170,7 +170,7 @@ export function WhatChanges({ changes, slug, headed = true }: { changes: Release
         <ul className="divide-y divide-line-subtle border-y border-line-subtle" aria-label={t("releases.changes.risks")}>
           {changes.risks.map((k) => (
             <li key={`${k.risk}:${k.ref}`} className="flex items-start gap-2 py-2 text-13" data-testid="release-risk" data-risk={k.risk}>
-              <span aria-hidden className="mt-[7px] size-1.5 flex-none rounded-full" style={{ background: LEGEND.err.dot }} />
+              <span aria-hidden className="mt-1.75 size-1.5 flex-none rounded-pill" style={{ background: LEGEND.err.dot }} />
               <span className="min-w-0 flex-1">{said(k.says.sentence, language)}</span>
               <IssueKeys keys={k.issues} slug={slug} />
             </li>
@@ -180,7 +180,7 @@ export function WhatChanges({ changes, slug, headed = true }: { changes: Release
       {deploys.length > 0 ? (
         <ul className="border-t border-line-subtle" aria-label={t("releases.changes.surfaces")}>
           {deploys.map((s) => (
-            <SurfaceRow key={s.surface} s={s} slug={slug} />
+            <SurfaceChanges key={s.surface} s={s} slug={slug} />
           ))}
         </ul>
       ) : null}
@@ -189,7 +189,7 @@ export function WhatChanges({ changes, slug, headed = true }: { changes: Release
           <FieldLabel>{t("releases.changes.designNothing")}</FieldLabel>
           <ul className="border-t border-line-subtle">
             {design.map((s) => (
-              <SurfaceRow key={s.surface} s={s} slug={slug} />
+              <SurfaceChanges key={s.surface} s={s} slug={slug} />
             ))}
           </ul>
         </div>
