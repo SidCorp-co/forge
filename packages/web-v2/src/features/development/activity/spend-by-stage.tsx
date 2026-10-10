@@ -6,10 +6,10 @@
 
 import { Bar, BarChart, XAxis, YAxis } from "recharts";
 import { type ChartConfig, ChartContainer, Section } from "@/design";
-import { formatUsd } from "@/features/pipeline";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { ChartLegend } from "./chart-legend";
 import type { SpendByStageData } from "./derive";
+import { formatUsd } from "@/lib/i18n/format";
 
 export function SpendByStage({ data, inFlightUsd }: { data: SpendByStageData; inFlightUsd: number }) {
   const { segments, total } = data;

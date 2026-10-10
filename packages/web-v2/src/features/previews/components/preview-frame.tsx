@@ -11,8 +11,7 @@
 import { PREVIEW_FRAME_MESSAGES, type PreviewRecord } from "@forge/contracts/preview";
 import { useQuery } from "@tanstack/react-query";
 import { type Ref, useEffect, useRef, useState } from "react";
-import { Button } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import { Button, RefusedLine } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { previewsApi } from "../api";
 import { previewQueries } from "../queries";
@@ -114,11 +113,7 @@ function FrameEntry({ preview, issueLabel, height = 520, frameRef, round, onRelo
           {t("previews.reload")}
         </Button>
       </div>
-      {problem ? (
-        <p role="alert" className="pb-2 text-13 text-danger-11">
-          {t("previews.frame.ticketFailed")}: {formatApiError(problem)}
-        </p>
-      ) : null}
+      <RefusedLine label={t("previews.frame.ticketFailed")} error={problem} className="pb-2 text-13 text-danger-11" />
       {cookieRefused ? (
         <p role="status" data-testid="preview-frame-cookie-refused" className="pb-2 text-13 text-muted">
           {t("previews.frame.cookieRefused")}

@@ -10,7 +10,8 @@ import {
   EnumBadge,
   PageContainer,
   PageTitle,
-  Skeleton,
+  LoadingState,
+  SegmentedControl,
   Table,
   TBody,
   TD,
@@ -47,72 +48,25 @@ import {
 } from "../scope";
 import { BuildChip, DeviceDetail } from "./device-detail";
 
-export function CopyButton({ value }: { value: string }) {
+/** The one command a box runs to pair, with a copy button: it prints the code approved at /pair. */
+export function SetupCommand() {
   const [copied, setCopied] = useState(false);
   const t = useCopy();
+  const command = "forge-runner setup";
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      icon={copied ? "check" : "link"}
-      onClick={() => {
-        void navigator.clipboard?.writeText(value).then(() => {
+    <div className="flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
+      <code className="font-mono text-13 text-fg">{command}</code>
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={copied ? "check" : "link"}
+        onClick={() => void navigator.clipboard?.writeText(command).then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
-        });
-      }}
-    >
-      {copied ? t("runners.copied") : t("runners.copy")}
-    </Button>
-  );
-}
-
-/** Pairing panel — the CLI command the runner machine runs; it prints the code approved at /pair. */
-function Pairing() {
-  const t = useCopy();
-  return (
-    <Section title={t("runners.pair.title")}>
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <span className="fg-label">{t("runners.pair.runOn")}</span>
-            <div className="flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
-              <code className="font-mono text-13 text-fg">forge-runner setup</code>
-              <CopyButton value="forge-runner setup" />
-            </div>
-          </div>
-        </div>
-      </Section>
-  );
-}
-
-/** Both populations and both counts, visible at once, so a zero in one of them reads as a fact. */
-function ScopeTabs({
-  scope,
-  counts,
-  onChange,
-}: {
-  scope: DeviceScope;
-  counts: Record<DeviceScope, DeviceCount>;
-  onChange: (next: DeviceScope) => void;
-}) {
-  const t = useCopy();
-  return (
-    <div className="inline-flex rounded-md border border-line bg-sunken p-0.5">
-      {SCOPES.map((s) => (
-        <button
-          key={s}
-          type="button"
-          aria-pressed={scope === s}
-          onClick={() => onChange(s)}
-          className={
-            scope === s
-              ? "rounded px-3 py-1 text-13 font-medium text-fg bg-surface"
-              : "rounded px-3 py-1 text-13 text-muted hover:text-fg"
-          }
-        >
-          {scopeName(s, t)} · {scopeCountLabel(counts[s], t)}
-        </button>
-      ))}
+        })}
+      >
+        {copied ? t("runners.copied") : t("runners.copy")}
+      </Button>
     </div>
   );
 }
@@ -170,7 +124,6 @@ export function RunnersScreen() {
   const [scope, setScope] = useState<DeviceScope>("mine");
   const toggleDisabled = useSetDeviceDisabled();
   const [confirmId, setConfirmId] = useState<string | null>(null);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const t = useCopy();
   const time = useTimeFormat();
@@ -192,20 +145,21 @@ export function RunnersScreen() {
     <PageContainer className="flex flex-col gap-5">
       <PageTitle>{t("runners.screen.title")}</PageTitle>
 
-      <Pairing />
+      <Section title={t("runners.pair.title")}>
+        <span className="fg-label">{t("runners.pair.runOn")}</span>
+        <div className="mt-1.5">
+          <SetupCommand />
+        </div>
+      </Section>
 
-      <Section title={t("runners.screen.devices")} right={<ScopeTabs scope={scope} counts={counts} onChange={setScope} />}>
+      <Section title={t("runners.screen.devices")} right={<SegmentedControl options={SCOPES.map((s) => ({ value: s, label: `${scopeName(s, t)} · ${scopeCountLabel(counts[s], t)}` }))} value={scope} onChange={setScope} />}>
           {active.isError ? (
             <ErrorState message={formatApiError(active.error)} onRetry={() => void active.refetch()} />
           ) : /* Not `isLoading`: with no active org yet the org query is disabled,
                 which is pending and NOT loading, and an empty-state sentence
                 reached that way claims a population nothing asked for. */
           !active.isSuccess ? (
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
+            <LoadingState label={t("runners.screen.devices")} rows={3} />
           ) : rows.length === 0 ? (
             <EmptyState message={emptyTitle(scope, t)} mascot={false} />
           ) : (
@@ -273,12 +227,9 @@ export function RunnersScreen() {
                                   variant="ghost"
                                   size="sm"
                                   icon={disabled ? "play" : "pause"}
-                                  loading={toggleDisabled.isPending && togglingId === d.id}
+                                  loading={toggleDisabled.isPending && toggleDisabled.variables?.id === d.id}
                                   title={disabled ? t("runners.device.turnOnTitle") : t("runners.device.turnOffTitle")}
-                                  onClick={() => {
-                                    setTogglingId(d.id);
-                                    toggleDisabled.mutate({ id: d.id, disabled: !disabled });
-                                  }}
+                                  onClick={() => toggleDisabled.mutate({ id: d.id, disabled: !disabled })}
                                 >
                                   {disabled ? t("runners.device.turnOn") : t("runners.device.turnOff")}
                                 </Button>

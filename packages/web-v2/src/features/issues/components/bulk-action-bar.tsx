@@ -34,33 +34,6 @@ function commonMoves(rows: readonly IssueRow[]): IssueStatus[] {
     .map((m) => m.to);
 }
 
-/** A bulk action the bar will not run, with the reason rendered beside it. */
-function RefusedAction({
-  labels,
-  reason,
-  reasonId,
-}: { labels: string[]; reason: string; reasonId: string }) {
-  return (
-    <span className="flex flex-wrap items-center gap-2">
-      {labels.map((label) => (
-        <Button
-          key={label}
-          variant="secondary"
-          size="sm"
-          icon="chevronDown"
-          disabled
-          aria-describedby={reasonId}
-        >
-          {label}
-        </Button>
-      ))}
-      <span id={reasonId} role="status" className="fg-body-sm text-subtle">
-        {reason}
-      </span>
-    </span>
-  );
-}
-
 function canBatchRelease(rows: IssueRow[], t: Copy): { enabled: boolean; reason?: string } {
   if (rows.length === 0) return { enabled: false };
   const notAtGate = rows.filter((r) => r.status !== BATCH_RELEASE_GATE);
@@ -103,81 +76,36 @@ export function BulkActionBar({
   const run = (update: BulkUpdate) =>
     bulk.mutate({ issues, update }, { onSuccess: onCleared });
 
-  const statusItems: MenuItem[] = statusTargets.map((s) => ({
-    label: L("issueStatus", s),
-    onSelect: () => run({ kind: "status", toStatus: s }),
-  }));
-  const priorityItems: MenuItem[] = ISSUE_PRIORITIES.map((p) => ({
-    label: L("issuePriority", p),
-    onSelect: () => run({ kind: "priority", priority: p }),
-  }));
+  // each field's menu, or the reason it is refused rendered beside its disabled button
+  const fields: { label: string; items: MenuItem[]; refused: string | null }[] = [
+    { label: t("issues.bulk.setStatus"), items: statusTargets.map((s) => ({ label: L("issueStatus", s), onSelect: () => run({ kind: "status", toStatus: s }) })), refused: heldReason ?? (noCommonStatus ? t("issues.bulk.statusRefused") : null) },
+    { label: t("issues.bulk.setPriority"), items: ISSUE_PRIORITIES.map((p) => ({ label: L("issuePriority", p), onSelect: () => run({ kind: "priority", priority: p }) })), refused: heldReason },
+  ];
+  const reasons = [...new Set(fields.map((f) => f.refused).filter((r): r is string => !!r))];
 
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2">
         <span className="fg-body-sm font-medium text-fg">{t("issues.bulk.selected", { n: count })}</span>
         <span className="ml-auto flex flex-wrap items-center gap-2">
-          {heldReason ? (
-            <RefusedAction
-              labels={[t("issues.bulk.setStatus"), t("issues.bulk.setPriority")]}
-              reasonId={statusReasonId}
-              reason={heldReason}
-            />
-          ) : (
-            <>
-              {noCommonStatus ? (
-                <RefusedAction
-                  labels={[t("issues.bulk.setStatus")]}
-                  reasonId={statusReasonId}
-                  reason={t("issues.bulk.statusRefused")}
-                />
-              ) : (
-                <Menu
-                  align="right"
-                  items={statusItems}
-                  trigger={
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      icon="chevronDown"
-                      disabled={bulk.isPending}
-                    >
-                      {t("issues.bulk.setStatus")}
-                    </Button>
-                  }
-                />
-              )}
-              <Menu
-                align="right"
-                items={priorityItems}
-                trigger={
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    icon="chevronDown"
-                    disabled={bulk.isPending}
-                  >
-                    {t("issues.bulk.setPriority")}
-                  </Button>
-                }
-              />
-            </>
+          {fields.map((f) =>
+            f.refused ? (
+              <Button key={f.label} variant="secondary" size="sm" icon="chevronDown" disabled aria-describedby={statusReasonId}>
+                {f.label}
+              </Button>
+            ) : (
+              <Menu key={f.label} align="right" items={f.items} trigger={<Button variant="secondary" size="sm" icon="chevronDown" disabled={bulk.isPending}>{f.label}</Button>} />
+            ),
           )}
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!batchRelease.enabled || bulk.isPending}
-            title={batchRelease.reason ?? undefined}
-            onClick={() => setBatchDialogOpen(true)}
-          >
+          {reasons.length > 0 ? (
+            <span id={statusReasonId} role="status" className="fg-body-sm text-subtle">
+              {reasons.join(" ")}
+            </span>
+          ) : null}
+          <Button variant="secondary" size="sm" disabled={!batchRelease.enabled || bulk.isPending} title={batchRelease.reason ?? undefined} onClick={() => setBatchDialogOpen(true)}>
             {t("issues.bulk.batchRelease")}
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onCleared}
-            disabled={bulk.isPending}
-          >
+          <Button variant="ghost" size="sm" onClick={onCleared} disabled={bulk.isPending}>
             {t("issues.bulk.clearSelection")}
           </Button>
         </span>

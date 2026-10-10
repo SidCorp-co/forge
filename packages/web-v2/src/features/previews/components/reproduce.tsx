@@ -12,8 +12,7 @@ import { PREVIEW_FAILURE_REASONS, type PreviewFailureReason, type PreviewRecord 
 import type { FixConfirmation } from "@forge/contracts/reproduce";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Banner, Button, Textarea, useUrlParams, ViewHeading } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import { Banner, Button, Textarea, useUrlParams, ViewHeading, RefusedLine } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { usePreview } from "../hooks";
 import { PreviewFrame } from "./preview-frame";
@@ -33,15 +32,6 @@ export const recordingsKey = previewKeys.recordings;
 const REASONS = Object.fromEntries(
   PREVIEW_FAILURE_REASONS.map((r) => [r, { name: `previews.failed.reason.${r}`, fix: `previews.failed.fix.${r}` }]),
 ) as Record<PreviewFailureReason, { name: Parameters<Copy>[0]; fix: Parameters<Copy>[0] }>;
-
-function Refusal({ error, lead }: { error: unknown; lead: string }) {
-  if (!error) return null;
-  return (
-    <p role="alert" className="fg-body-sm text-danger-11">
-      {lead}: {formatApiError(error)}
-    </p>
-  );
-}
 
 const shortSha = (sha: string) => sha.slice(0, 12);
 const isServing = (p: PreviewRecord | null) => p?.state === "starting" || p?.state === "live";
@@ -93,8 +83,8 @@ export function Reproduction({ projectId, fbKey, carriers, redacted }: Reproduct
               </Button>
             )}
           </div>
-          <Refusal error={open.error} lead={t("previews.reproduce.openFailed")} />
-          <Refusal error={previewQ.error} lead={t("previews.reproduce.loadFailed")} />
+          <RefusedLine label={t("previews.reproduce.openFailed")} error={open.error} className="fg-body-sm text-danger-11" />
+          <RefusedLine label={t("previews.reproduce.loadFailed")} error={previewQ.error} className="fg-body-sm text-danger-11" />
           {preview ? <ReproduceBody preview={preview} fbKey={fbKey} t={t} /> : null}
         </>
       )}
@@ -192,7 +182,7 @@ function FixConfirm({ projectId, issueKey, fbKey }: { projectId: string; issueKe
           </div>
         </form>
       ) : null}
-      <Refusal error={confirm.error} lead={t("previews.fix.failed")} />
+      <RefusedLine label={t("previews.fix.failed")} error={confirm.error} className="fg-body-sm text-danger-11" />
     </div>
   );
 }

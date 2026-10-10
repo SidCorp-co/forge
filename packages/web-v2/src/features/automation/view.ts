@@ -2,7 +2,6 @@ import type { StandingGroup, StandingGroupLabels } from "@forge/contracts/standi
 import type { ListGroup } from "@/design";
 import { enumLabel } from "@/design/vocabulary";
 import type { useTimeFormat } from "@/lib/i18n/interface-language";
-import { formatDateTime } from "@/lib/i18n/format";
 import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 import type { FireProduced, FireStanding } from "./types";
 
@@ -13,11 +12,6 @@ export function fireWhy(f: Pick<FireStanding, "refusal" | "error" | "reason">, l
   return f.reason ? enumLabel("fireSkipReason", f.reason, language) : null;
 }
 
-export function fmtDuration(seconds: number | null, t: Copy = productCopy()): string {
-  if (seconds == null) return "—";
-  if (seconds < 60) return t("common.age.seconds", { n: seconds });
-  return t("common.elapsed.minutes", { m: Math.floor(seconds / 60), s: String(seconds % 60).padStart(2, "0") });
-}
 
 const PRODUCED: Array<keyof Omit<FireProduced, "newReports">> = ["reports", "proposals", "issues", "runs", "notifications"];
 
@@ -29,11 +23,6 @@ export function producedLine(p: FireProduced, t: Copy = productCopy()): string {
 
 export const shortId = (id: string) => id.slice(0, 8);
 
-export function fmtTime(iso: string | null, language = "en"): string {
-  if (!iso) return "—";
-  if (Number.isNaN(new Date(iso).getTime())) return "—";
-  return formatDateTime(iso, language);
-}
 
 /** The reader's copy, language and time formats, for the pure builders of a list row. */
 export interface RowCtx {

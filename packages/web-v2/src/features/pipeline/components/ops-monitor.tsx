@@ -9,14 +9,12 @@
 import {
   Badge,
   EmptyState,
-  ErrorState,
   HealthDot,
   HelpButton,
   MonoTag,
   PageContainer,
   PageTitle,
   ProgressBar,
-  ProjectLoader,
   Stat,
   Table,
   Tabs,
@@ -29,15 +27,17 @@ import {
   useUrlChoice,
   useUrlParams,
   Section,
+  StatCell,
+  StatRow,
 } from "@/design";
 import { deriveHealth, type ProjectHealthRow, useOrgScopedProjects, useProjectHealth } from "@/features/projects";
-import { formatApiError } from "@/lib/api/error";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { formatDurationSec, formatUsd } from "../derive";
 import { useStepDurations, useThroughput } from "../hooks";
 import type { StepDurationRow, ThroughputRow } from "../types";
 import { RunDetail } from "./run-detail";
+import { formatDurationSec, formatUsd } from "@/lib/i18n/format";
 
 
 const TAB_VALUES = ["monitor", "progress", "health", "runs"] as const;
@@ -76,32 +76,14 @@ export function OpsMonitor() {
   const throughputQ = useThroughput({ days: 30 });
 
   const health = (healthQ.data ?? []).filter((h) => projectIds.has(h.id));
-  const durations = (durationsQ.data ?? []).filter((r) => projectIds.has(r.projectId));
-  const throughput = (throughputQ.data ?? []).filter((r) => projectIds.has(r.projectId));
+  const inOrg = <R extends { projectId: string }>(rows: R[]) => rows.filter((r) => projectIds.has(r.projectId));
+  const scoped = { isLoading: projectsLoading || healthQ.isLoading, isError: !!projectsError || healthQ.isError, error: projectsError ?? healthQ.error, data: healthQ.data, refetch: healthQ.refetch };
   const nameById = (() => {
     const m = new Map<string, string>();
     for (const p of projects) m.set(p.id, p.name);
     for (const h of health) if (!m.has(h.id)) m.set(h.id, h.projectName);
     return m;
   })();
-
-  if (projectsLoading || healthQ.isLoading) {
-    return (
-      <div className="grid min-h-128 place-items-center">
-        <ProjectLoader label="loading ops…" />
-      </div>
-    );
-  }
-  if (projectsError || healthQ.isError) {
-    return (
-      <div className="grid min-h-128 place-items-center">
-        <ErrorState
-          message={formatApiError(projectsError ?? healthQ.error)}
-          onRetry={() => void healthQ.refetch()}
-        />
-      </div>
-    );
-  }
 
   return (
     <PageContainer className="flex min-h-dvh flex-col">
@@ -127,30 +109,24 @@ export function OpsMonitor() {
       </div>
 
       <div className="pt-5">
-        {tab === "monitor" && <MonitorTab health={health} durations={durations} />}
-        {tab === "progress" && (
-          <ProgressTab
-            throughput={throughput}
-            durations={durations}
-            loading={throughputQ.isLoading || durationsQ.isLoading}
-            isError={throughputQ.isError || durationsQ.isError}
-            onRetry={() => {
-              if (throughputQ.isError) void throughputQ.refetch();
-              if (durationsQ.isError) void durationsQ.refetch();
-            }}
-          />
-        )}
-        {tab === "health" && <HealthTab health={health} />}
-        {tab === "runs" && (
-          <RunsTab
-            durations={durations}
-            loading={durationsQ.isLoading}
-            isError={durationsQ.isError}
-            onRetry={() => void durationsQ.refetch()}
-            nameById={nameById}
-            onOpen={setRunId}
-          />
-        )}
+        <QueryBoundary query={scoped} loadingLabel="loading ops…" height="60vh">
+          {() => (
+            <>
+              {tab === "monitor" && <MonitorTab health={health} durations={inOrg(durationsQ.data ?? [])} />}
+              {tab === "health" && <HealthTab health={health} />}
+              {tab === "progress" && (
+                <QueryBoundary query={durationsQ} loadingLabel="loading progress…" height="30vh">
+                  {(d) => <ProgressTab throughput={inOrg(throughputQ.data ?? [])} durations={inOrg(d)} />}
+                </QueryBoundary>
+              )}
+              {tab === "runs" && (
+                <QueryBoundary query={durationsQ} loadingLabel="loading runs…" height="30vh">
+                  {(d) => <RunsTab durations={inOrg(d)} nameById={nameById} onOpen={setRunId} />}
+                </QueryBoundary>
+              )}
+            </>
+          )}
+        </QueryBoundary>
       </div>
 
       <RunDetail open={!!runId} onClose={() => setRunId(null)} issue={null} runId={runId} />
@@ -158,265 +134,119 @@ export function OpsMonitor() {
   );
 }
 
-/* ── Monitor ──────────────────────────────────────────────────────────── */
-
-function MonitorTab({
-  health,
-  durations,
-}: {
-  health: ProjectHealthRow[];
-  durations: StepDurationRow[] | undefined;
-}) {
-  const totalLive = health.reduce((a, h) => a + h.liveRuns, 0);
-  const totalSpend = health.reduce((a, h) => a + h.spend24hUsd, 0);
-  const totalActive = health.reduce((a, h) => a + h.totalActive, 0);
-  const totalRunners = health.reduce((a, h) => a + h.runnerCount, 0);
-  const recent = (durations ?? []).length;
-
+function MonitorTab({ health, durations }: { health: ProjectHealthRow[]; durations: StepDurationRow[] }) {
+  const sum = (of: (h: ProjectHealthRow) => number) => health.reduce((a, h) => a + of(h), 0);
   const live = health.filter((h) => h.liveRuns > 0);
-
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Tile label="Live runs" value={String(totalLive)} />
-        <Tile label="Spend · 24h" value={formatUsd(totalSpend)} />
-        <Tile label="Active issues" value={String(totalActive)} />
-        <Tile label="Online runners" value={String(totalRunners)} />
-      </div>
-
-      <Section title="Live now" right={<><Stat icon="activity" mono={false}>
-            {recent} steps · last 7d
-          </Stat></>}>
-          {live.length === 0 ? (
-            <p className="fg-body-sm text-muted">No runs are active right now.</p>
-          ) : (
-            <div className="flex flex-col gap-2.5">
-              {live.map((h) => (
-                <div key={h.id} className="flex items-center gap-3">
-                  <span className="fg-body-sm flex-1 truncate font-medium text-fg">
-                    {h.projectName}
-                  </span>
-                  <Badge tone="accent">{h.liveRuns} live</Badge>
-                  <Stat icon="dollar">{formatUsd(h.spend24hUsd)}</Stat>
-                </div>
-              ))}
-            </div>
-          )}
-        </Section>
+      <StatRow>
+        <StatCell label="Live runs" value={sum((h) => h.liveRuns)} />
+        <StatCell label="Spend · 24h" value={formatUsd(sum((h) => h.spend24hUsd))} />
+        <StatCell label="Active issues" value={sum((h) => h.totalActive)} />
+        <StatCell label="Online runners" value={sum((h) => h.runnerCount)} />
+      </StatRow>
+      <Section title="Live now" right={<Stat icon="activity" mono={false}>{durations.length} steps · last 7d</Stat>}>
+        {live.length === 0 ? (
+          <p className="fg-body-sm text-muted">No runs are active right now.</p>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {live.map((h) => (
+              <div key={h.id} className="flex items-center gap-3">
+                <span className="fg-body-sm flex-1 truncate font-medium text-fg">{h.projectName}</span>
+                <Badge tone="accent">{h.liveRuns} live</Badge>
+                <Stat icon="dollar">{formatUsd(h.spend24hUsd)}</Stat>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
     </div>
   );
 }
 
-function Tile({ label, value }: { label: string; value: string }) {
-  return (
-    <Section>
-        <p className="fg-caption">{label}</p>
-        <p className="mt-1 font-mono text-2xl font-bold text-fg">{value}</p>
-      </Section>
-  );
-}
-
-/* ── Progress ─────────────────────────────────────────────────────────── */
-
-interface StepAgg {
-  step: string;
-  count: number;
-  avgSec: number;
-  cost: number;
-}
-
-function aggregateByStep(durations: StepDurationRow[] | undefined): StepAgg[] {
+function aggregateByStep(durations: StepDurationRow[]) {
   const m = new Map<string, { totalSec: number; count: number; cost: number }>();
-  for (const r of durations ?? []) {
+  for (const r of durations) {
     const cur = m.get(r.step) ?? { totalSec: 0, count: 0, cost: 0 };
-    cur.totalSec += r.durationSeconds;
-    cur.count += 1;
-    cur.cost += r.costUsd;
-    m.set(r.step, cur);
+    m.set(r.step, { totalSec: cur.totalSec + r.durationSeconds, count: cur.count + 1, cost: cur.cost + r.costUsd });
   }
-  return [...m.entries()]
-    .map(([step, v]) => ({ step, count: v.count, avgSec: v.totalSec / v.count, cost: v.cost }))
-    .sort((a, b) => b.avgSec - a.avgSec);
+  return [...m.entries()].map(([step, v]) => ({ step, avgSec: v.totalSec / v.count, cost: v.cost })).sort((a, b) => b.avgSec - a.avgSec);
 }
 
-function ProgressTab({
-  throughput,
-  durations,
-  loading,
-  isError,
-  onRetry,
-}: {
-  throughput: ThroughputRow[] | undefined;
-  durations: StepDurationRow[] | undefined;
-  loading: boolean;
-  isError: boolean;
-  onRetry: () => void;
-}) {
-  const shipped = (throughput ?? []).reduce((a, r) => a + r.count, 0);
+function ProgressTab({ throughput, durations }: { throughput: ThroughputRow[]; durations: StepDurationRow[] }) {
   const aggs = aggregateByStep(durations);
   const maxAvg = Math.max(1, ...aggs.map((a) => a.avgSec));
-
-  if (loading) {
-    return (
-      <div className="grid min-h-64 place-items-center">
-        <ProjectLoader label="loading progress…" />
-      </div>
-    );
-  }
-  if (isError) return <ErrorState message="Failed to load progress." onRetry={onRetry} />;
-
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <Tile label="Shipped · 30d" value={String(shipped)} />
-        <Tile label="Steps · 7d" value={String((durations ?? []).length)} />
-        <Tile
-          label="Spend · 7d"
-          value={formatUsd((durations ?? []).reduce((a, r) => a + r.costUsd, 0))}
-        />
-      </div>
-
+      <StatRow>
+        <StatCell label="Shipped · 30d" value={throughput.reduce((a, r) => a + r.count, 0)} />
+        <StatCell label="Steps · 7d" value={durations.length} />
+        <StatCell label="Spend · 7d" value={formatUsd(durations.reduce((a, r) => a + r.costUsd, 0))} />
+      </StatRow>
       <Section title="Avg duration by stage · 7d">
-          {aggs.length === 0 ? (
-            <p className="fg-body-sm text-muted">No completed steps in the window.</p>
-          ) : (
-            <div className="flex flex-col gap-2.5">
-              {aggs.map((a) => (
-                <div key={a.step} className="flex items-center gap-2.5">
-                  <span className="w-16 flex-none font-mono text-12 text-muted">{a.step}</span>
-                  <ProgressBar className="flex-1" value={(a.avgSec / maxAvg) * 100} />
-                  <span className="w-20 flex-none text-right font-mono text-12 text-fg">
-                    {formatDurationSec(a.avgSec)}
-                  </span>
-                  <span className="hidden w-14 flex-none text-right font-mono text-12 text-subtle sm:block">
-                    {formatUsd(a.cost)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </Section>
+        {aggs.length === 0 ? (
+          <p className="fg-body-sm text-muted">No completed steps in the window.</p>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {aggs.map((a) => (
+              <div key={a.step} className="flex items-center gap-2.5">
+                <span className="w-16 flex-none font-mono text-12 text-muted">{a.step}</span>
+                <ProgressBar className="flex-1" value={(a.avgSec / maxAvg) * 100} />
+                <span className="w-20 flex-none text-right font-mono text-12 text-fg">{formatDurationSec(a.avgSec)}</span>
+                <span className="hidden w-14 flex-none text-right font-mono text-12 text-subtle sm:block">{formatUsd(a.cost)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
     </div>
   );
 }
 
-/* ── Health ───────────────────────────────────────────────────────────── */
-
 function HealthTab({ health }: { health: ProjectHealthRow[] }) {
-  if (health.length === 0) {
-    return <EmptyState title="No projects" message="No project health to report." />;
-  }
+  if (health.length === 0) return <EmptyState title="No projects" message="No project health to report." />;
   return (
-    <div className="grid gap-x-8 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="flex flex-col gap-2">
       {health.map((h) => (
-        <Section title={h.projectName} right={<><HealthDot health={deriveHealth(h)} /></>} key={h.id}>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
-              <Metric label="Active" value={String(h.totalActive)} />
-              <Metric label="Live runs" value={String(h.liveRuns)} />
-              <Metric label="Runners" value={String(h.runnerCount)} />
-              <Metric label="Spend · 24h" value={formatUsd(h.spend24hUsd)} />
-              <Metric label="Blockers" value={String(h.blockers?.length ?? 0)} />
-              <Metric label="Escalations" value={String(h.pendingEscalations)} />
-            </div>
-          </Section>
+        <Section title={h.projectName} right={<HealthDot health={deriveHealth(h)} />} key={h.id}>
+          <StatRow>
+            <StatCell label="Active" value={h.totalActive} />
+            <StatCell label="Live runs" value={h.liveRuns} />
+            <StatCell label="Runners" value={h.runnerCount} />
+            <StatCell label="Spend · 24h" value={formatUsd(h.spend24hUsd)} />
+            <StatCell label="Blockers" value={h.blockers?.length ?? 0} />
+            <StatCell label="Escalations" value={h.pendingEscalations} />
+          </StatRow>
+        </Section>
       ))}
     </div>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function RunsTab({ durations, nameById, onOpen }: { durations: StepDurationRow[]; nameById: Map<string, string>; onOpen: (runId: string) => void }) {
+  if (durations.length === 0) return <EmptyState title="No recent runs" message="No pipeline steps in the last 7 days." />;
   return (
-    <div>
-      <p className="fg-caption">{label}</p>
-      <p className="mt-0.5 font-mono text-sm font-semibold text-fg">{value}</p>
-    </div>
-  );
-}
-
-/* ── Runs ─────────────────────────────────────────────────────────────── */
-
-function RunsTab({
-  durations,
-  loading,
-  isError,
-  onRetry,
-  nameById,
-  onOpen,
-}: {
-  durations: StepDurationRow[] | undefined;
-  loading: boolean;
-  isError: boolean;
-  onRetry: () => void;
-  nameById: Map<string, string>;
-  onOpen: (runId: string) => void;
-}) {
-  if (loading) {
-    return (
-      <div className="grid min-h-64 place-items-center">
-        <ProjectLoader label="loading runs…" />
-      </div>
-    );
-  }
-  if (isError) return <ErrorState message="Failed to load runs." onRetry={onRetry} />;
-  const rows = durations ?? [];
-  if (rows.length === 0) {
-    return <EmptyState title="No recent runs" message="No pipeline steps in the last 7 days." />;
-  }
-
-  return (
-    <>
-      {/* Mobile: a flush list */}
-      <div className="flex flex-col divide-y divide-line-subtle sm:hidden">
-        {rows.map((r) => (
-          <button
-            type="button"
-            key={`${r.runId}-${r.step}-${r.startedAt}`}
-            onClick={() => onOpen(r.runId)}
-            className="flex flex-col gap-1.5 py-3 text-left hover:bg-hover"
-          >
-            <div className="flex items-center gap-2">
+    <Table>
+      <THead>
+        <TR>
+          <TH>Project</TH>
+          <TH>Step</TH>
+          <TH className="text-right">Duration</TH>
+          <TH className="text-right">Cost</TH>
+        </TR>
+      </THead>
+      <TBody>
+        {durations.map((r) => (
+          <TR key={`${r.runId}-${r.step}-${r.startedAt}`} className="cursor-pointer" onClick={() => onOpen(r.runId)}>
+            <TD className="truncate">{nameById.get(r.projectId) ?? r.projectId.slice(0, 8)}</TD>
+            <TD>
               <MonoTag>{r.step}</MonoTag>
-              <span className="fg-body-sm truncate text-fg">
-                {nameById.get(r.projectId) ?? r.projectId.slice(0, 8)}
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <Stat icon="clock">{formatDurationSec(r.durationSeconds)}</Stat>
-              <Stat icon="dollar">{formatUsd(r.costUsd)}</Stat>
-            </div>
-          </button>
+            </TD>
+            <TD className="text-right font-mono">{formatDurationSec(r.durationSeconds)}</TD>
+            <TD className="text-right font-mono">{formatUsd(r.costUsd)}</TD>
+          </TR>
         ))}
-      </div>
-
-      {/* Desktop: table */}
-      <div className="hidden sm:block">
-        <Table>
-          <THead>
-            <TR>
-              <TH>Project</TH>
-              <TH>Step</TH>
-              <TH className="text-right">Duration</TH>
-              <TH className="text-right">Cost</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {rows.map((r) => (
-              <TR
-                key={`${r.runId}-${r.step}-${r.startedAt}`}
-                className="cursor-pointer"
-                onClick={() => onOpen(r.runId)}
-              >
-                <TD className="truncate">{nameById.get(r.projectId) ?? r.projectId.slice(0, 8)}</TD>
-                <TD>
-                  <MonoTag>{r.step}</MonoTag>
-                </TD>
-                <TD className="text-right font-mono">{formatDurationSec(r.durationSeconds)}</TD>
-                <TD className="text-right font-mono">{formatUsd(r.costUsd)}</TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
-      </div>
-    </>
+      </TBody>
+    </Table>
   );
 }

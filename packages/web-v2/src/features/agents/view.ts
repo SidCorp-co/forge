@@ -1,7 +1,7 @@
 import { RUN_GROUP_LABELS, RUN_GROUPS, RUN_LANES, type RunActor, type RunLane, type RunNone } from "@forge/contracts/run-standing";
 import type { BannerTone, ListGroup, WaitingOnView } from "@/design";
 import { enumLabel, statusReading } from "@/design/vocabulary";
-import { formatCountdown, formatDateTime, formatRelative } from "@/lib/i18n/format";
+import { formatCountdown, formatRelative } from "@/lib/i18n/format";
 import { copyOr, productCopy } from "@/lib/i18n/product-copy";
 import { said, saidView } from "@/lib/i18n/said";
 import type { RunStanding } from "./types";
@@ -111,6 +111,3 @@ export function runGroups(rows: readonly RunStanding[], mode: GroupMode, languag
   return RUN_GROUPS.map((g) => ({ id: g, ...attentionGroupText(g, language), tone: RUN_GROUP_LABELS[g].tone, collapsed: RUN_GROUP_LABELS[g].collapsed, rows: rows.filter((r) => r.attentionGroup === g) }));
 }
 
-export const stamp = (iso: string | null, language = "en") => (iso ? formatDateTime(iso, language) : "—");
-
-export const fmtTime = (iso: string | null, language = "en") => (iso ? formatDateTime(iso, language) : "—");

@@ -18,7 +18,7 @@ import { DeveloperProperties } from "./developer-properties";
 import { RailTraceRows, Row } from "./rail-trace";
 import { IssueRequirementProperty } from "./requirement-property";
 import { type EditRefusal, InlineSelect } from "./inline-edit-cell";
-import { creatorLabelOf, initials, liveDependencies } from "../derive";
+import { creatorLabelOf, initials, liveDependencies, otherEnd } from "../derive";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { agentHoldsEdit, heldByAgent } from "../edit-lock";
 import type {
@@ -42,69 +42,6 @@ function categoryOptions(current: string | null, language: string, notSet: strin
     { value: "", label: notSet },
     ...values.map((value) => ({ value, label: enumLabel("category", value, language) })),
   ];
-}
-
-/** Total tokens an issue consumed across every session, compacted for the rail
- * (`2.4M`, `340K`). Sums input + output + cache (read/creation) — the full
- * usage rollup from `cost-summary`. Cache tokens are real consumption, so they
- * count toward the total. */
-function DepList({
-  edges,
-  self,
-  slug,
-  label,
-  expired = false,
-}: {
-  edges: IssueDependencyEdge[];
-  self: string;
-  slug: string;
-  label: string;
-  /** Retracted edges: greyed, each naming its kind and "expired", so none reads as in force. */
-  expired?: boolean;
-}) {
-  if (edges.length === 0) return null;
-  return (
-    <div className={expired ? "py-2 opacity-60" : "py-2"} data-expired={expired || undefined}>
-      <p className="fg-caption mb-1">{label}</p>
-      <div className="flex flex-col items-end gap-1.5">
-        {edges.map((e) => {
-          if (expired) return <ExpiredEdge key={e.id} edge={e} self={self} />;
-          const isFromSelf = e.fromIssueId === self;
-          const other = isFromSelf ? e.toIssueId : e.fromIssueId;
-          const otherDisplayId = isFromSelf ? e.toDisplayId : e.fromDisplayId;
-          const otherTitle = isFromSelf ? e.toTitle : e.fromTitle;
-          const otherStatus = isFromSelf ? e.toStatus : e.fromStatus;
-          return otherDisplayId ? (
-            <IssueRefBadge
-              key={e.id}
-              id={other}
-              slug={slug}
-              displayId={otherDisplayId}
-              title={otherTitle}
-              status={otherStatus}
-              showTitle
-            />
-          ) : (
-            <MonoTag key={e.id} hue={e.kind === "blocks" ? "flame" : "neutral"}>
-              {other.slice(0, 8)}
-            </MonoTag>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ExpiredEdge({ edge, self }: { edge: IssueDependencyEdge; self: string }) {
-  const t = useCopy();
-  const isFromSelf = edge.fromIssueId === self;
-  const other = isFromSelf ? edge.toIssueId : edge.fromIssueId;
-  const otherDisplayId = (isFromSelf ? edge.toDisplayId : edge.fromDisplayId) ?? other.slice(0, 8);
-  return (
-    <span className="fg-caption text-muted line-through decoration-1">
-      {t(`issues.relation.${edge.kind}`)} {otherDisplayId} · {t("issues.relation.expired")}
-    </span>
-  );
 }
 
 interface PropertiesRailProps {
@@ -178,28 +115,28 @@ function AddBlocker({ edit }: { edit: BlockerEdit }) {
 /** Edges shown before "N more": the rail is a glance, and the issue's own page lists the rest. */
 const EDGES_SHOWN = 2;
 
-/** One kind of relation as rows of key and title; more than two show the first two and a count that opens the rest. */
-function EdgeRows({ edges, self, slug, label, testId, edit }: { edges: IssueDependencyEdge[]; self: string; slug: string; label: string; testId: string; edit?: BlockerEdit }) {
+/** One kind of relation as rows of key and title; more than two show the first two and a count that opens the rest. A retracted edge is greyed and says so, never reading as in force. */
+function EdgeRows({ edges, self, slug, label, testId, edit, expired = false }: { edges: IssueDependencyEdge[]; self: string; slug: string; label: string; testId?: string; edit?: BlockerEdit; expired?: boolean }) {
   const t = useCopy();
   const [all, setAll] = useState(false);
   if (edges.length === 0 && !edit) return null;
   const shown = all ? edges : edges.slice(0, EDGES_SHOWN);
   return (
-    <section className="pt-4" data-testid={testId}>
+    <section className={expired ? "pt-4 opacity-60" : "pt-4"} data-testid={testId} data-expired={expired || undefined}>
       <h3 className="mb-1 text-13 font-semibold text-muted">{label}</h3>
       <ul className="divide-y divide-line-subtle">
         {shown.map((e) => {
-          const isFromSelf = e.fromIssueId === self;
-          const other = isFromSelf ? e.toIssueId : e.fromIssueId;
-          const displayId = isFromSelf ? e.toDisplayId : e.fromDisplayId;
-          const title = isFromSelf ? e.toTitle : e.fromTitle;
-          const status = isFromSelf ? e.toStatus : e.fromStatus;
+          const other = otherEnd(e, self);
           return (
             <li key={e.id} className="min-w-0 py-1.5">
-              {displayId ? (
-                <IssueRefBadge id={other} slug={slug} displayId={displayId} title={title} status={status} showTitle />
+              {expired ? (
+                <span className="fg-caption text-muted line-through decoration-1">
+                  {t(`issues.relation.${e.kind}`)} {other.displayId ?? other.id.slice(0, 8)} · {t("issues.relation.expired")}
+                </span>
+              ) : other.displayId ? (
+                <IssueRefBadge id={other.id} slug={slug} displayId={other.displayId} title={other.title} status={other.status} showTitle />
               ) : (
-                <MonoTag>{other.slice(0, 8)}</MonoTag>
+                <MonoTag>{other.id.slice(0, 8)}</MonoTag>
               )}
               {edit ? (
                 <button type="button" disabled={edit.busy} onClick={() => edit.remove(e.id)} className="ml-2 text-12 text-muted hover:text-fg">
@@ -267,6 +204,11 @@ export function PropertiesRail({
       ? { text: t("issues.edit.readOnly") }
       : null;
   const ownerName = owner ? (owner.name ?? t("issues.facts.unknown")) : creatorLabelOf(issue);
+  const selects = [
+    { label: t("issues.field.priority"), value: issue.priority as string, options: priorityOptions, commit: (p: string) => onPatch({ priority: p as IssuePriority }) },
+    { label: t("issues.field.size"), value: issue.complexity ?? "", options: complexityOptions, commit: (c: string) => onPatch({ complexity: c === "" ? null : (c as IssueComplexity) }) },
+    { label: t("issues.field.kind"), value: issue.category ?? "", options: categoryOptions(issue.category ?? null, language, t("issues.category.notSet")), commit: (c: string) => onPatch({ category: c === "" ? null : c }) },
+  ];
   return (
     <div data-testid="issue-properties">
       <FactsGroup title={t("issues.rail.properties")} testId="facts-properties">
@@ -277,39 +219,11 @@ export function PropertiesRail({
             </Row>
           ) : null}
           <RailTraceRows issue={issue} slug={slug} standing={standing} />
-          <Row label={t("issues.field.priority")}>
-            <InlineSelect
-              ariaLabel={t("issues.field.priority")}
-              value={issue.priority}
-              options={priorityOptions}
-              disabled={pending}
-              refusal={refusal}
-              onCommit={(p) => onPatch({ priority: p as IssuePriority })}
-              className="w-36"
-            />
-          </Row>
-          <Row label={t("issues.field.size")}>
-            <InlineSelect
-              ariaLabel={t("issues.field.size")}
-              value={issue.complexity ?? ""}
-              options={complexityOptions}
-              disabled={pending}
-              refusal={refusal}
-              onCommit={(c) => onPatch({ complexity: c === "" ? null : (c as IssueComplexity) })}
-              className="w-36"
-            />
-          </Row>
-          <Row label={t("issues.field.kind")}>
-            <InlineSelect
-              ariaLabel={t("issues.field.kind")}
-              value={issue.category ?? ""}
-              options={categoryOptions(issue.category ?? null, language, t("issues.category.notSet"))}
-              disabled={pending}
-              refusal={refusal}
-              onCommit={(c) => onPatch({ category: c === "" ? null : c })}
-              className="w-36"
-            />
-          </Row>
+          {selects.map((f) => (
+            <Row key={f.label} label={f.label}>
+              <InlineSelect ariaLabel={f.label} value={f.value} options={f.options} disabled={pending} refusal={refusal} onCommit={f.commit} className="w-36" />
+            </Row>
+          ))}
           <Row label={t("issues.facts.owner")}>
             <div className="flex min-w-0 items-center justify-end gap-2">
               <Avatar initials={initials(ownerName)} size={22} />
@@ -330,11 +244,11 @@ export function PropertiesRail({
       <EdgeRows edges={blocks} self={issue.id} slug={slug} label={t("issues.rail.holdsUp")} testId="rail-holds-up" />
       {developer ? (
         <>
-          <DepList edges={parents} self={issue.id} slug={slug} label={t("issues.rail.parent")} />
-          <DepList edges={subtasks} self={issue.id} slug={slug} label={t("issues.rail.subtasks")} />
-          <DepList edges={duplicates} self={issue.id} slug={slug} label={t("issues.rail.duplicates")} />
-          <DepList edges={related} self={issue.id} slug={slug} label={t("issues.rail.related")} />
-          <DepList edges={expired} self={issue.id} slug={slug} label={t("issues.rail.expired")} expired />
+          <EdgeRows edges={parents} self={issue.id} slug={slug} label={t("issues.rail.parent")} />
+          <EdgeRows edges={subtasks} self={issue.id} slug={slug} label={t("issues.rail.subtasks")} />
+          <EdgeRows edges={duplicates} self={issue.id} slug={slug} label={t("issues.rail.duplicates")} />
+          <EdgeRows edges={related} self={issue.id} slug={slug} label={t("issues.rail.related")} />
+          <EdgeRows edges={expired} self={issue.id} slug={slug} label={t("issues.rail.expired")} expired />
         </>
       ) : null}
     </div>

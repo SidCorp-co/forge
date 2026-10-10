@@ -11,7 +11,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Badge,
   Button,
   EmptyState,
   enumLabel,
@@ -28,15 +27,16 @@ import {
   StatusBadge,
   Tabs,
   Tooltip,
+  EnumBadge,
 } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { formatApiError } from "@/lib/api/error";
 import { useRecents } from "@/lib/navigation/recents";
 import { copyShareLink } from "@/lib/navigation/copy-share-link";
 import { IssueQuickActions } from "@/features/issues";
-import { priorityLabel, runStatusChip, workStepOf } from "@/features/issues";
+import { runStatusChip, workStepOf } from "@/features/issues";
 import type { IssuePriority, IssueStatus } from "@/features/issues";
-import { drawerRunChip, formatDurationMs, formatUsd } from "../derive";
+import { drawerRunChip } from "../derive";
 import { useCancelRun, usePauseRun, useResumeRun } from "@/features/run-control";
 import { useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
@@ -46,6 +46,7 @@ import type {
   PipelineRunStepSummary,
   PipelineRunSummary,
 } from "../types";
+import { formatDuration, formatUsd } from "@/lib/i18n/format";
 
 interface RunDetailProps {
   open: boolean;
@@ -68,14 +69,6 @@ const TABS = [
   { value: "timeline", label: "Timeline" },
   { value: "cost", label: "Cost" },
 ];
-
-const PRIORITY_TONE: Record<string, "red" | "amber" | "neutral"> = {
-  critical: "red",
-  high: "amber",
-  medium: "neutral",
-  low: "neutral",
-  none: "neutral",
-};
 
 export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }: RunDetailProps) {
   const [tab, setTab] = useState("activity");
@@ -257,7 +250,7 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
                 <StatusBadge family="runStep" value={step.status} />
                 {step.durationMs != null && (
                   <span className="ml-auto">
-                    <Stat icon="clock">{formatDurationMs(step.durationMs)}</Stat>
+                    <Stat icon="clock">{formatDuration(step.durationMs)}</Stat>
                   </span>
                 )}
               </div>
@@ -311,7 +304,7 @@ function CostTab({ run, loading }: { run: PipelineRunSummary | undefined; loadin
                 tone="cobalt"
               />
               <span className="w-16 flex-none text-right font-mono text-12 text-fg">
-                {formatDurationMs(s.durationMs)}
+                {formatDuration(s.durationMs)}
               </span>
             </div>
           ))}
@@ -352,9 +345,7 @@ function RunHeading({ issue, run, runId, slug }: { issue: PipelineIssueRow | nul
       )}
       <div className="flex flex-wrap items-center gap-2.5">
         {issue && issue.priority !== "none" && (
-          <Badge tone={PRIORITY_TONE[issue.priority] ?? "neutral"}>
-            {priorityLabel(issue.priority as IssuePriority)}
-          </Badge>
+          <EnumBadge family="priority" value={issue.priority} />
         )}
         {branch && (
           <MonoTag>

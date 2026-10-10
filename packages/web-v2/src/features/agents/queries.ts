@@ -1,6 +1,6 @@
 // The agents feature's reads: the runs read model's key factory and its queryOptions. Every key sits
 // under `runs-standing`, so a write that moves a run invalidates them all (lib/ws/event-router.ts).
-import { queryOptions } from "@tanstack/react-query";
+import { readOf } from "@/lib/api/query-kit";
 import { runsApi } from "./api";
 import type { RunStandingScope } from "./types";
 
@@ -18,25 +18,13 @@ export const runKeys = {
   charter: (projectId: string | undefined) => [...runKeys.project(projectId), "charter"] as const,
 };
 
+/** A runs read, polled: the read model moves without a frame for every change. */
+const polled = <T>(key: readonly unknown[], fn: () => Promise<T>) => ({ ...readOf(key, fn), refetchInterval: RUNS_POLL_MS });
+
 export const runQueries = {
-  standing: (projectId: string | undefined, scope: RunStandingScope) =>
-    queryOptions({
-      queryKey: runKeys.standing(projectId, scope),
-      queryFn: () => runsApi.standing(projectId as string, scope),
-      enabled: !!projectId,
-      refetchInterval: RUNS_POLL_MS,
-    }),
-  run: (projectId: string | undefined, runId: string) =>
-    queryOptions({
-      queryKey: runKeys.run(projectId, runId),
-      queryFn: () => runsApi.run(projectId as string, runId),
-      enabled: !!projectId && !!runId,
-      refetchInterval: RUNS_POLL_MS,
-    }),
-  master: (projectId: string | undefined) =>
-    queryOptions({ queryKey: runKeys.master(projectId), queryFn: () => runsApi.master(projectId as string), enabled: !!projectId, refetchInterval: RUNS_POLL_MS }),
-  passes: (projectId: string | undefined) =>
-    queryOptions({ queryKey: runKeys.passes(projectId), queryFn: () => runsApi.passes(projectId as string), enabled: !!projectId, refetchInterval: RUNS_POLL_MS }),
-  charter: (projectId: string | undefined, enabled: boolean) =>
-    queryOptions({ queryKey: runKeys.charter(projectId), queryFn: () => runsApi.charter(projectId as string), enabled: enabled && !!projectId }),
+  standing: (projectId: string | undefined, scope: RunStandingScope) => polled(runKeys.standing(projectId, scope), () => runsApi.standing(projectId as string, scope)),
+  run: (projectId: string | undefined, runId: string) => polled(runKeys.run(projectId, runId), () => runsApi.run(projectId as string, runId)),
+  master: (projectId: string | undefined) => polled(runKeys.master(projectId), () => runsApi.master(projectId as string)),
+  passes: (projectId: string | undefined) => polled(runKeys.passes(projectId), () => runsApi.passes(projectId as string)),
+  charter: (projectId: string | undefined, enabled: boolean) => ({ ...readOf(runKeys.charter(projectId), () => runsApi.charter(projectId as string)), enabled: enabled && !!projectId }),
 };

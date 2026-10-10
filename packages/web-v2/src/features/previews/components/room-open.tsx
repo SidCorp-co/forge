@@ -8,8 +8,7 @@ import { PREVIEW_IDEA_LIMITS } from "@forge/contracts/preview";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button, Textarea } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import { Button, Textarea, RefusedLine } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { roomHref } from "@/lib/routes/rooms";
 import { roomApi } from "../room-api";
@@ -42,11 +41,7 @@ export function OpenRoom({ projectId, slug, about, brief: initial = "", canWrite
           {t("previews.room.open")}
         </Button>
       </div>
-      {open.isError ? (
-        <p role="alert" className="fg-caption text-danger">
-          {t("previews.room.openFailed")}: {formatApiError(open.error)}
-        </p>
-      ) : null}
+      <RefusedLine label={t("previews.room.openFailed")} error={open.error} />
     </form>
   );
 }

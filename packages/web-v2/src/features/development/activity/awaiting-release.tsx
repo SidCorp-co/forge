@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Button, Checkbox, Icon, Section, StatusBadge } from "@/design";
+import { Button, Checkbox, Icon, Section, StatusBadge, useIdSet } from "@/design";
 import { useDraftReleaseForecast } from "@/features/forecast";
 import { spanText } from "@/features/forecast";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues";
@@ -41,7 +41,7 @@ export function AwaitingRelease({ slug, projectId }: { slug: string; projectId: 
   const t = useCopy();
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const selected = useIdSet();
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const read = useIssues(projectId, { status: ["awaiting_release"], sort: "createdAt:asc", pageSize: READ_LIMIT });
   const issues = read.data?.items ?? [];
@@ -49,32 +49,9 @@ export function AwaitingRelease({ slug, projectId }: { slug: string; projectId: 
   const visible = expanded ? issues : issues.slice(0, COLLAPSED_LIMIT);
   const hiddenCount = issues.length - visible.length;
   const unread = total - issues.length;
-  const selectedCount = selected.size;
+  const selectedCount = selected.ids.size;
   const allVisibleSelected = visible.length > 0 && visible.every((i) => selected.has(i.id));
-
-  const selectedIssues: BatchReleaseIssue[] = issues
-    .filter((i) => selected.has(i.id))
-    .map((i) => ({ id: i.id, displayId: i.displayId, title: i.title }));
-
-  const toggle = (issueId: string, checked: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(issueId);
-      else next.delete(issueId);
-      return next;
-    });
-  };
-
-  const toggleAllVisible = (checked: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      for (const i of visible) {
-        if (checked) next.add(i.id);
-        else next.delete(i.id);
-      }
-      return next;
-    });
-  };
+  const selectedIssues: BatchReleaseIssue[] = issues.filter((i) => selected.has(i.id)).map((i) => ({ id: i.id, displayId: i.displayId, title: i.title }));
 
   return (
     <>
@@ -92,7 +69,7 @@ export function AwaitingRelease({ slug, projectId }: { slug: string; projectId: 
                 <Checkbox
                   checked={allVisibleSelected}
                   indeterminate={selectedCount > 0 && !allVisibleSelected}
-                  onChange={toggleAllVisible}
+                  onChange={(on) => selected.turn(visible.map((i) => i.id), on)}
                   ariaLabel={allVisibleSelected ? t("issues.bulk.clearSelection") : t("overview.awaiting.selectAll")}
                   label={allVisibleSelected ? t("overview.awaiting.clear") : t("overview.awaiting.selectAll")}
                 />
@@ -112,7 +89,7 @@ export function AwaitingRelease({ slug, projectId }: { slug: string; projectId: 
                 <li key={i.id} className="flex items-center gap-2.5 py-2 transition-colors hover:bg-hover" data-testid="awaiting-release-issue">
                   <Checkbox
                     checked={selected.has(i.id)}
-                    onChange={(checked) => toggle(i.id, checked)}
+                    onChange={(checked) => selected.toggle(i.id, checked)}
                     ariaLabel={t("overview.awaiting.select", { what: i.displayId })}
                   />
                   <Link href={issueHref(slug, i.displayId)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
@@ -152,7 +129,7 @@ export function AwaitingRelease({ slug, projectId }: { slug: string; projectId: 
       open={batchDialogOpen}
       onClose={() => setBatchDialogOpen(false)}
       onSuccess={() => {
-        setSelected(new Set());
+        selected.reset();
         void qc.invalidateQueries({ queryKey: ["issues"] });
       }}
     />

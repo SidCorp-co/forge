@@ -7,6 +7,7 @@ import { formatApiError } from "@/lib/api/error";
 import { type Refusal, refusalFact, refusalsOf } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
+import { useToastWrite } from "@/providers/toast-write";
 import { issueKeys, issueQueries } from "./queries";
 import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, releaseBatchApi } from "./api";
 import type { IssueStandingScope } from "@forge/contracts/issue-standing";
@@ -102,51 +103,25 @@ function buildModuleLabelWrite(
 
 /** Replace an issue's module attributions, preserving its plain labels. */
 export function useSetIssueModules(issueId: string | undefined) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
   const t = useCopy();
-  return useMutation({
-    mutationFn: (args: {
-      current: IssueLabel[];
-      moduleIds: string[];
-      primaryId: string | null;
-    }) =>
-      issuesApi.setLabels(
-        issueId as string,
-        buildModuleLabelWrite(args.current, args.moduleIds, args.primaryId),
-      ),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["issue", issueId] });
-      void qc.invalidateQueries({ queryKey: issueKeys.all });
-      toast({ title: t("issues.toast.modulesUpdated"), tone: "success" });
-    },
-    onError: (err) =>
-      toast({
-        title: t("issues.toast.modulesFailed"),
-        description: formatApiError(err),
-        tone: "error",
-      }),
-  });
+  return useIssueMutation(
+    (args: { current: IssueLabel[]; moduleIds: string[]; primaryId: string | null }) =>
+      issuesApi.setLabels(issueId as string, buildModuleLabelWrite(args.current, args.moduleIds, args.primaryId)),
+    { success: t("issues.toast.modulesUpdated"), failure: t("issues.toast.modulesFailed"), touches: () => [["issue", issueId]] },
+  );
 }
 
-/** Shared mutation factory: invalidate `['issues']` on success, toast on error
- *  (ILLEGAL_TRANSITION / ASSIGNEE_NOT_MEMBER map to friendly copy by code). */
+/** The issue write every hook below shares: `['issues']` and the reads in `touches` are read again on success, a
+ *  `success` line is toasted, and a refusal is toasted in core's words under `failure` (an update failure by default). */
 function useIssueMutation<TArgs, TData>(
   fn: (args: TArgs) => Promise<TData>,
-  opts: { successMessage?: string } = {},
+  opts: { success?: string; failure?: string; touches?: (args: TArgs) => readonly unknown[][] } = {},
 ) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
   const t = useCopy();
-  return useMutation({
-    mutationFn: fn,
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: issueKeys.all });
-      if (opts.successMessage) toast({ title: opts.successMessage, tone: "success" });
-    },
-    onError: (err) => {
-      toast({ title: t("issues.toast.updateFailed"), description: formatApiError(err), tone: "error" });
-    },
+  return useToastWrite(fn, {
+    touches: (args) => [issueKeys.all, ...(opts.touches?.(args) ?? [])],
+    said: opts.success,
+    failed: opts.failure ?? t("issues.toast.updateFailed"),
   });
 }
 
@@ -156,29 +131,13 @@ export function usePatchIssue() {
   );
 }
 
-/**
- * A description write, which differs from `usePatchIssue` in the one way that
- * matters on the detail screen: it invalidates `['issue', id]`, so the saved
- * body comes back rendered without a reload.
- */
+/** A description write: unlike `usePatchIssue` it re-reads `['issue', id]`, so the saved body comes back rendered without a reload. */
 export function useSaveDescription(id: string) {
-  const qc = useQueryClient();
   const t = useCopy();
-  const mut = useIssueMutation(
-    (args: { id: string; body: PatchIssueInput }) => issuesApi.patch(args.id, args.body),
-    { successMessage: t("issues.toast.descriptionSaved") },
-  );
-  return {
-    ...mut,
-    mutate: (args: { id: string; body: PatchIssueInput }, options?: { onSuccess?: () => void }) =>
-      mut.mutate(args, {
-        onSuccess: () => {
-          void qc.invalidateQueries({ queryKey: ["issue", id] });
-          void qc.invalidateQueries({ queryKey: ["activities", id] });
-          options?.onSuccess?.();
-        },
-      }),
-  };
+  return useIssueMutation((args: { id: string; body: PatchIssueInput }) => issuesApi.patch(args.id, args.body), {
+    success: t("issues.toast.descriptionSaved"),
+    touches: () => [["issue", id], ["activities", id]],
+  });
 }
 
 type TransitionArgs = {
@@ -290,10 +249,7 @@ export function useMergeMarker(issueId: string) {
       }
     },
   });
-  const unmark = useIssueMutation(
-    (args: { note?: string } = {}) => issuesApi.unmarkMerged(issueId, args),
-    { successMessage: t("issues.toast.unmarked") },
-  );
+  const unmark = useIssueMutation((args: { note?: string } = {}) => issuesApi.unmarkMerged(issueId, args), { success: t("issues.toast.unmarked") });
   return {
     isPending: mark.isPending || unmark.isPending,
     /** Refused marks go to `onError` so the form that sent them can keep what was typed. */
@@ -305,8 +261,7 @@ export function useMergeMarker(issueId: string) {
 
 export function useRunPipelineStep() {
   const t = useCopy();
-  return useIssueMutation((args: { id: string }) =>
-    issuesApi.runPipelineStep(args.id), { successMessage: t("issues.toast.started") });
+  return useIssueMutation((args: { id: string }) => issuesApi.runPipelineStep(args.id), { success: t("issues.toast.started") });
 }
 
 

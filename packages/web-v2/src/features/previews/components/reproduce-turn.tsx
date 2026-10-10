@@ -15,8 +15,7 @@ import {
 } from "@forge/contracts/reproduce";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { Button } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import { Button, RefusedLine } from "@/design";
 import { toolOutputText } from "@/lib/tool-output";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { feedbackHref } from "@/lib/routes/feedback";
@@ -88,11 +87,7 @@ function ReproduceRead({ read, slug }: { read: RecordingToolResult; slug?: strin
           </a>
         ) : null}
       </div>
-      {open.error ? (
-        <p role="alert" className="fg-caption text-danger">
-          {t("previews.reproduce.openFailed")}: {formatApiError(open.error)}
-        </p>
-      ) : null}
+      <RefusedLine label={t("previews.reproduce.openFailed")} error={open.error} />
       {proposal ? <Diagnosis read={read} proposal={proposal} slug={slug} /> : null}
     </section>
   );
@@ -141,11 +136,7 @@ function Diagnosis({ read, proposal, slug }: { read: RecordingToolResult; propos
         </div>
       )}
       {!proposal.pressable && proposal.why ? <p className="fg-caption text-muted">{proposal.why}</p> : null}
-      {press.error ? (
-        <p role="alert" className="fg-caption text-danger">
-          {t("previews.diagnosis.failed", { fb })}: {formatApiError(press.error)}
-        </p>
-      ) : null}
+      <RefusedLine label={t("previews.diagnosis.failed", { fb })} error={press.error} />
     </div>
   );
 }

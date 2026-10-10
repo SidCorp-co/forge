@@ -2,9 +2,10 @@
 
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
+import { useToastWrite } from "@/providers/toast-write";
 import { formatRefusal } from "@/lib/api/error";
 import { type EditTurnOpts, type ForkOpts, type SendOpts, sessionApi } from "./api";
 import { sessionsKeys } from "@/features/sessions";
@@ -35,21 +36,8 @@ export function useSessionTurnPages(id: string) {
   return { turnsQ, loadMoreTurns: () => setLoaded({ id, pages: pages + TURN_PAGE_CAP }) };
 }
 
-/** Invalidate the whole `['agent-session', id]` family after a mutation. */
-function useInvalidateSession(id: string) {
-  const qc = useQueryClient();
-  return () => {
-    void qc.invalidateQueries({ queryKey: sessionKeys.detail(id) });
-    void qc.invalidateQueries({ queryKey: sessionsKeys.all });
-  };
-}
-
-function useToastError() {
-  const { toast } = useToast();
-  const t = useCopy();
-  return (err: unknown) =>
-    toast({ title: t("sessions.toast.failed"), description: formatRefusal(err), tone: "error" });
-}
+/** The whole `['agent-session', id]` family and the sessions list, stale after a write to the session. */
+const sessionTouches = (id: string) => [sessionKeys.detail(id), sessionsKeys.all];
 
 /**
  * Send a chat turn, optionally with staged files (ISS-499). Files are uploaded
@@ -59,61 +47,39 @@ function useToastError() {
  * attachment flow). `opts.sessionId` is the resolved session id.
  */
 export function useSendMessage(id: string) {
-  const invalidate = useInvalidateSession(id);
-  const onError = useToastError();
   const { toast } = useToast();
   const t = useCopy();
-  return useMutation({
-    mutationFn: async ({ files, ...opts }: SendOpts & { files?: File[] }) => {
+  return useToastWrite(
+    async ({ files, ...opts }: SendOpts & { files?: File[] }) => {
       const ids: string[] = [...(opts.attachmentIds ?? [])];
       for (const file of files ?? []) {
         try {
-          const att = await sessionApi.uploadAttachment(opts.sessionId, file);
-          ids.push(att.id);
+          ids.push((await sessionApi.uploadAttachment(opts.sessionId, file)).id);
         } catch (err) {
-          toast({
-            title: t("sessions.toast.attachmentFailed"),
-            description: `${file.name}: ${formatRefusal(err)}`,
-            tone: "error",
-          });
+          toast({ title: t("sessions.toast.attachmentFailed"), description: `${file.name}: ${formatRefusal(err)}`, tone: "error" });
         }
       }
       return sessionApi.send({ ...opts, attachmentIds: ids.length ? ids : undefined });
     },
-    onSuccess: invalidate,
-    onError,
-  });
+    { touches: sessionTouches(id), failed: t("sessions.toast.failed"), describe: formatRefusal },
+  );
 }
 
 export function useRegenerateTurn(id: string) {
-  const invalidate = useInvalidateSession(id);
-  const onError = useToastError();
-  return useMutation({
-    mutationFn: (turnId: string) => sessionApi.regenerate(id, turnId),
-    onSuccess: invalidate,
-    onError,
-  });
+  const t = useCopy();
+  return useToastWrite((turnId: string) => sessionApi.regenerate(id, turnId), { touches: sessionTouches(id), failed: t("sessions.toast.failed"), describe: formatRefusal });
 }
 
 export function useEditTurn(id: string) {
-  const invalidate = useInvalidateSession(id);
-  const onError = useToastError();
-  return useMutation({
-    mutationFn: ({ turnId, ...opts }: EditTurnOpts & { turnId: string }) =>
-      sessionApi.editTurn(id, turnId, opts),
-    onSuccess: invalidate,
-    onError,
+  const t = useCopy();
+  return useToastWrite(({ turnId, ...opts }: EditTurnOpts & { turnId: string }) => sessionApi.editTurn(id, turnId, opts), {
+    touches: sessionTouches(id),
+    failed: t("sessions.toast.failed"),
+    describe: formatRefusal,
   });
 }
 
 export function useForkSession(id: string) {
-  const { toast } = useToast();
   const t = useCopy();
-  const onError = useToastError();
-  return useMutation({
-    mutationFn: (opts: ForkOpts) => sessionApi.fork(id, opts),
-    onSuccess: () => toast({ title: t("sessions.toast.forked"), tone: "success" }),
-    onError,
-  });
+  return useToastWrite((opts: ForkOpts) => sessionApi.fork(id, opts), { said: t("sessions.toast.forked"), failed: t("sessions.toast.failed"), describe: formatRefusal });
 }
-

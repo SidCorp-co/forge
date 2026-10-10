@@ -9,8 +9,7 @@ import type { PreviewFailureReason, PreviewRecord } from "@forge/contracts/previ
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { Button, Field, Input } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import { Button, Field, Input, RefusedLine } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
 import { ideaApi } from "../idea-api";
@@ -95,11 +94,7 @@ export function IdeaPreview({ preview: initial, about, canWrite, slug }: { previ
           </Button>
         </form>
       ) : null}
-      {keep.isError ? (
-        <p role="alert" className="fg-body-sm text-danger-11">
-          {t("previews.idea.keep.failed")}: {keep.error instanceof SnapshotUnavailable ? keep.error.message : formatApiError(keep.error)}
-        </p>
-      ) : null}
+      <RefusedLine label={t("previews.idea.keep.failed")} error={keep.error} className="fg-body-sm text-danger-11" />
       {kept ? (
         <div role="status" data-testid="idea-kept" className="grid gap-1">
           <p className="fg-body-sm text-fg">

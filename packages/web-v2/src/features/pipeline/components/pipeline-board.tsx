@@ -22,23 +22,15 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { boardColumns, cardStatus, formatUsd, groupIssuesByColumn, runsByIssue } from "../derive";
+import { boardColumns, cardStatus, groupIssuesByColumn, runsByIssue } from "../derive";
 import { useProjectIssues, useProjectRuns } from "../hooks";
 import type { PipelineIssueRow } from "../types";
 import { RunDetail } from "./run-detail";
 import { TopBarActions } from "@/design/primitives/top-bar-slot";
+import { formatUsd } from "@/lib/i18n/format";
 
 interface PipelineBoardProps {
   scope: { projectId: string; slug: string };
-  /** When embedded inside another screen (the Issues Board tab, ISS-364) the
-   *  host renders the page header + view switcher, so the board hides its own
-   *  `<header>` and trims its top padding. */
-  embedded?: boolean;
-  /** False for project viewers (read-only). The board itself has no
-   *  drag-and-drop (cards are click-to-open), so this gates the mutation
-   *  affordances in the RunDetail drawer (quick actions + run controls).
-   *  Optional, defaults true so other callers keep their behaviour. */
-  canWrite?: boolean;
 }
 
 interface Selection {
@@ -46,7 +38,7 @@ interface Selection {
   runId: string | null;
 }
 
-export function PipelineBoard({ scope, embedded = false, canWrite = true }: PipelineBoardProps) {
+export function PipelineBoard({ scope }: PipelineBoardProps) {
   const { projectId, slug } = scope;
   const [selected, setSelected] = useState<Selection | null>(null);
 
@@ -71,21 +63,11 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
   })();
 
   return (
-    <div
-      className={
-        embedded
-          ? "flex h-full min-h-0 flex-col px-4 pb-4 sm:px-6"
-          : "flex h-full min-h-0 flex-col px-4 pb-4 pt-5 sm:px-6"
-      }
-    >
-      {!embedded && (
-        <>
-        <PageTitle>{t("pipeline.board.title")}</PageTitle>
-        <TopBarActions>
-          <LiveDot state="live" />
-        </TopBarActions>
-        </>
-      )}
+    <div className="flex h-full min-h-0 flex-col px-4 pb-4 pt-5 sm:px-6">
+      <PageTitle>{t("pipeline.board.title")}</PageTitle>
+      <TopBarActions>
+        <LiveDot state="live" />
+      </TopBarActions>
 
       {issuesQ.isError || runsQ.isError ? (
         <ErrorState
@@ -151,7 +133,6 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
         issue={selectedIssue}
         runId={selected?.runId ?? null}
         slug={slug}
-        canWrite={canWrite}
       />
     </div>
   );

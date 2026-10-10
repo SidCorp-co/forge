@@ -12,7 +12,7 @@ import {
 } from "@forge/contracts/run-standing";
 import type { AgentSessionStatus } from "@forge/contracts/session-machine";
 import type { StatusKey } from "@/design/status";
-import { type Copy, copyLocale, copyOr, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
+import { copyOr, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 
 export type { AgentSessionStatus };
 
@@ -355,26 +355,3 @@ export function isRetryable(row: SessionRow): boolean {
   return isJobDriven(row) && !!row.metadata?.issueId;
 }
 
-/** `useElapsed`'s format, for a duration that has stopped. */
-export function formatDuration(ms: number, t: Copy): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  if (h > 0) return t("common.elapsed.hours", { h, m: String(m % 60).padStart(2, "0") });
-  if (m > 0) return t("common.elapsed.minutes", { m, s: String(s % 60).padStart(2, "0") });
-  return t("common.age.seconds", { n: s });
-}
-
-/** The absolute time of a stamp in the interface language (`useTimeFormat().dateTime`), or "—" when absent or invalid (older rows). */
-export function formatShortTime(iso: string | null | undefined, dateTime: (at: number) => string): string {
-  const ms = iso ? new Date(iso).getTime() : Number.NaN;
-  return Number.isNaN(ms) ? "—" : dateTime(ms);
-}
-
-/** USD cost in the interface language's digits: sub-cent precision for tiny sessions, 2 decimals otherwise; "—" when absent. */
-export function formatCost(usd: number | undefined, language = "en"): string {
-  if (usd == null) return "—";
-  const digits = (n: number) => new Intl.NumberFormat(copyLocale(language), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
-  if (usd > 0 && usd < 0.01) return `<$${digits(0.01)}`;
-  return `$${digits(usd)}`;
-}

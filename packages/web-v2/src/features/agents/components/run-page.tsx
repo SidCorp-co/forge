@@ -25,13 +25,13 @@ import {
 } from "@/design";
 import { enumLabel, type StatusFamily, statusReading } from "@/design/vocabulary";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { formatDateTime } from "@/lib/i18n/format";
+import { formatDateTime, formatWhen } from "@/lib/i18n/format";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said, saidOrNull } from "@/lib/i18n/said";
 import { runHref } from "@/lib/routes/agents";
 import { useRunDetail } from "../hooks";
 import type { RunEvent, RunStanding, RunStandingDetail } from "../types";
-import { fmtTime, leaseLeft, runKey, runName, stamp } from "../view";
+import { leaseLeft, runKey, runName } from "../view";
 import { RunGivenView } from "./run-given";
 import { RunBanner, RunPath, RunProperties } from "./run-views";
 
@@ -55,8 +55,8 @@ function Overview({ r }: { r: RunStanding }) {
         <PropertyList>
           {walked.map(([label, at, src]) => (
             <Property key={label} label={label}>
-              <span title={`${stamp(at, language)} — ${src}`} translate="no">
-                {fmtTime(at, language)}
+              <span title={`${formatWhen(at, language)} — ${src}`} translate="no">
+                {formatWhen(at, language)}
               </span>
             </Property>
           ))}
@@ -68,7 +68,7 @@ function Overview({ r }: { r: RunStanding }) {
           <p className="mt-1 text-13 text-muted">{said(stuck.says.failsBy, language)}</p>
           <p className="mt-2 font-mono text-12 text-subtle" title={stuck.evidence.value ?? undefined} translate="no">
             {stuck.evidence.table}.{stuck.evidence.column} · {stuck.evidence.id.slice(0, 8)}
-            {stuck.evidence.at ? ` · ${fmtTime(stuck.evidence.at, language)}` : ""}
+            {stuck.evidence.at ? ` · ${formatWhen(stuck.evidence.at, language)}` : ""}
           </p>
         </Section>
       ) : null}
@@ -120,9 +120,9 @@ function Attempts({ d, slug }: { d: RunStandingDetail; slug: string }) {
                 <StatusBadge family="runStanding" value={a.state} />
               </TD>
               <TD>
-                <span title={formatDateTime(a.startedAt, language)}>{fmtTime(a.startedAt, language)}</span>
+                <span title={formatDateTime(a.startedAt, language)}>{formatWhen(a.startedAt, language)}</span>
               </TD>
-              <TD>{fmtTime(a.finishedAt, language)}</TD>
+              <TD>{formatWhen(a.finishedAt, language)}</TD>
             </TR>
           ))}
         </TBody>
@@ -153,7 +153,7 @@ function Events({ d }: { d: RunStandingDetail }) {
           {d.events.map((e) => (
             <TR key={e.id}>
               <TD>
-                <span title={formatDateTime(e.at, language)}>{fmtTime(e.at, language)}</span>
+                <span title={formatDateTime(e.at, language)}>{formatWhen(e.at, language)}</span>
               </TD>
               <TD>
                 <span className="inline-flex flex-wrap items-center gap-1.5" title={`${enumLabel("runEventEntity", e.entity, language)}: ${e.from ? statusReading(EVENT_FAMILY[e.entity], e.from, language).label : "∅"} → ${statusReading(EVENT_FAMILY[e.entity], e.to, language).label} (${e.source})`}>
@@ -183,8 +183,8 @@ function Lease({ r }: { r: RunStanding }) {
       <Section title={t("runs.fact.lease")}>
         <PropertyList>
           <Property label={t("runs.fact.holder")}>{said(h.says.name, language)} <span className="text-muted">({t(`runs.holder.${h.kind}`)})</span></Property>
-          <Property label={t("runs.lease.acquired")}><span title={stamp(h.acquiredAt, language)}>{fmtTime(h.acquiredAt, language)}</span></Property>
-          <Property label={t("runs.lease.expires")}><span title={saidOrNull(h.says.expiryDetail, language) ?? stamp(h.expiresAt, language)}>{h.expiresAt ? `${fmtTime(h.expiresAt, language)} · ${leaseLeft(r, language)}` : (saidOrNull(h.says.expiryDetail, language) ?? "—")}</span></Property>
+          <Property label={t("runs.lease.acquired")}><span title={formatWhen(h.acquiredAt, language)}>{formatWhen(h.acquiredAt, language)}</span></Property>
+          <Property label={t("runs.lease.expires")}><span title={saidOrNull(h.says.expiryDetail, language) ?? formatWhen(h.expiresAt, language)}>{h.expiresAt ? `${formatWhen(h.expiresAt, language)} · ${leaseLeft(r, language)}` : (saidOrNull(h.says.expiryDetail, language) ?? "—")}</span></Property>
           <Property label={t("runs.lease.source")}>{h.expirySource ? <EnumBadge family="runExpirySource" value={h.expirySource} /> : "—"}</Property>
           <Property label={t("runs.lease.verdict")}>{h.verdict ? <StatusBadge family="lease" value={h.verdict} /> : "—"}</Property>
         </PropertyList>
@@ -195,7 +195,7 @@ function Lease({ r }: { r: RunStanding }) {
             {h.expiries.map((x) => (
               <li key={`${x.source}:${x.at}`} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
                 <EnumBadge family="runExpirySource" value={x.source} />
-                <span title={formatDateTime(x.at, language)}>{fmtTime(x.at, language)}</span>
+                <span title={formatDateTime(x.at, language)}>{formatWhen(x.at, language)}</span>
                 <StatusBadge family="lease" value={x.verdict} />
                 <span className="text-13 text-muted">{said(x.says.rule, language)}</span>
               </li>

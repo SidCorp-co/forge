@@ -4,7 +4,6 @@
 // They sat on the project Dashboard until it became the BA's page; the data is the same reads.
 
 import { StatCell, StatRow, useNow } from "@/design";
-import { formatUsd } from "@/features/pipeline";
 import { useProjectRuns, useStepDurations } from "@/features/pipeline";
 import { useProjectHealth } from "@/features/projects";
 import { useActiveRunners, useProjectRunners } from "@/features/runners";
@@ -16,6 +15,7 @@ import { LiveRuns } from "./live-runs";
 import { RunnerLoad } from "./runner-load";
 import { SpendByStage } from "./spend-by-stage";
 import { StatusDonut } from "./status-donut";
+import { formatUsd } from "@/lib/i18n/format";
 
 export function DevelopmentActivity({ projectId, slug }: { projectId: string; slug: string }) {
   const healthQ = useProjectHealth();

@@ -9,7 +9,7 @@
 // discriminated union rather than two components, which makes "renders nothing
 // when there is neither" the caller's obligation and the type's to enforce.
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import Link from "next/link";
 import { Icon, MonoTag, Section } from "@/design";
 import { useElapsed } from "@/design/hooks/use-elapsed";
@@ -63,7 +63,6 @@ function LiveSession({
   slug: string;
   issueId: string;
 }) {
-  const [showOps, setShowOps] = useState(false);
   const t = useCopy();
   const language = useInterfaceLanguage();
 
@@ -98,23 +97,7 @@ function LiveSession({
         <TimelineLink slug={slug} issueId={issueId} />
       </div>
 
-      <button
-        type="button"
-        onClick={() => setShowOps((v) => !v)}
-        className="fg-caption mt-3 inline-flex items-center gap-1 text-muted transition-colors hover:text-fg"
-        aria-expanded={showOps}
-      >
-        <Icon name={showOps ? "chevronDown" : "chevronRight"} size={13} />
-        {t("issues.live.operatorDetails")}
-      </button>
-      {showOps && (
-        <div className="mt-2 flex flex-wrap gap-2 border-t border-line-subtle pt-2">
-          <OpsTag label="session" value={session.id} />
-          {session.pipelineRunId && <OpsTag label="run" value={session.pipelineRunId} />}
-          {session.claudeSessionId && <OpsTag label="claude" value={session.claudeSessionId} />}
-          {session.deviceId && <OpsTag label="device" value={session.deviceId} />}
-        </div>
-      )}
+      <OperatorDetails tags={[["session", session.id], ["run", session.pipelineRunId], ["claude", session.claudeSessionId], ["device", session.deviceId]]} />
     </>
   );
 }
@@ -132,7 +115,6 @@ function QueuedStep({
   slug: string;
   issueId: string;
 }) {
-  const [showOps, setShowOps] = useState(false);
   const t = useCopy();
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
@@ -161,21 +143,7 @@ function QueuedStep({
       </p>
       {gate && <p className="fg-caption mt-1 text-muted">{gate.who}</p>}
 
-      <button
-        type="button"
-        onClick={() => setShowOps((v) => !v)}
-        className="fg-caption mt-3 inline-flex items-center gap-1 text-muted transition-colors hover:text-fg"
-        aria-expanded={showOps}
-      >
-        <Icon name={showOps ? "chevronDown" : "chevronRight"} size={13} />
-        {t("issues.live.operatorDetails")}
-      </button>
-      {showOps && (
-        <div className="mt-2 flex flex-wrap gap-2 border-t border-line-subtle pt-2">
-          <OpsTag label="job" value={step.jobId} />
-          {step.gate && <OpsTag label="gate" value={step.gate.reason} />}
-        </div>
-      )}
+      <OperatorDetails tags={[["job", step.jobId], ["gate", step.gate?.reason]]} />
     </>
   );
 }
@@ -213,11 +181,27 @@ function Stat({
   );
 }
 
-function OpsTag({ label, value }: { label: string; value: string }) {
+/** The ids an operator reads a run by, folded under one quiet toggle; an absent value is left out. */
+export function OperatorDetails({ tags, children }: { tags: [label: string, value: string | null | undefined][]; children?: ReactNode }) {
+  const t = useCopy();
+  const [open, setOpen] = useState(false);
   return (
-    <span className="inline-flex items-center gap-1">
-      <span className="fg-caption text-muted">{label}</span>
-      <MonoTag hue="neutral">{value}</MonoTag>
-    </span>
+    <>
+      <button type="button" onClick={() => setOpen((v) => !v)} className="fg-caption mt-2 inline-flex items-center gap-1 text-muted transition-colors hover:text-fg" aria-expanded={open}>
+        <Icon name={open ? "chevronDown" : "chevronRight"} size={12} />
+        {t("issues.live.operatorDetails")}
+      </button>
+      {open ? (
+        <div className="mt-2 flex flex-wrap gap-2 border-t border-line-subtle pt-2">
+          {tags.filter((tag): tag is [string, string] => !!tag[1]).map(([label, value]) => (
+            <span key={label} className="inline-flex items-center gap-1">
+              <span className="fg-caption text-muted">{label}</span>
+              <MonoTag hue="neutral">{value}</MonoTag>
+            </span>
+          ))}
+          {children}
+        </div>
+      ) : null}
+    </>
   );
 }

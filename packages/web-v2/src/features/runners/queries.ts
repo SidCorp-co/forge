@@ -1,7 +1,7 @@
 // The runners feature's reads: one key factory and its queryOptions. `['devices','me']`,
 // `['devices','org']` and the project runner keys are the prefixes the WebSocket router invalidates
 // (lib/ws/event-router.ts), so their shapes stay as they are; why each list also polls is on its hook.
-import { queryOptions } from "@tanstack/react-query";
+import { readOf } from "@/lib/api/query-kit";
 import { runnersApi } from "./api";
 
 export const ORG_DEVICES_REFRESH_MS = 30_000;
@@ -19,35 +19,10 @@ export const runnerKeys = {
 };
 
 export const runnerQueries = {
-	myDevices: (orgId: string | null) =>
-		queryOptions({ queryKey: runnerKeys.myDevices(orgId), queryFn: () => runnersApi.listDevices(orgId ?? undefined) }),
-	orgDevices: (orgId: string | null) =>
-		queryOptions({
-			queryKey: runnerKeys.orgDevices(orgId),
-			queryFn: () => runnersApi.listOrgDevices(orgId as string),
-			enabled: !!orgId,
-			refetchInterval: ORG_DEVICES_REFRESH_MS,
-		}),
-	deviceRunners: (deviceId: string | null) =>
-		queryOptions({
-			queryKey: runnerKeys.deviceRunners(deviceId),
-			queryFn: () => runnersApi.listDeviceRunners(deviceId as string),
-			enabled: !!deviceId,
-		}),
-	projectRunners: (projectId: string | null) =>
-		queryOptions({
-			queryKey: runnerKeys.projectRunners(projectId),
-			queryFn: () => runnersApi.listProjectRunners(projectId as string),
-			enabled: !!projectId,
-			refetchInterval: 30_000,
-		}),
-	activity: (runnerId: string, enabled: boolean) =>
-		queryOptions({ queryKey: runnerKeys.activity(runnerId), queryFn: () => runnersApi.getRunnerActivity(runnerId), enabled }),
-	activeRunners: (projectId: string | null) =>
-		queryOptions({
-			queryKey: runnerKeys.activeRunners(projectId),
-			queryFn: () => runnersApi.listActiveRunners(projectId as string),
-			enabled: !!projectId,
-			refetchInterval: 10_000,
-		}),
+	myDevices: (orgId: string | null) => ({ ...readOf(runnerKeys.myDevices(orgId), () => runnersApi.listDevices(orgId ?? undefined), 0), enabled: true }),
+	orgDevices: (orgId: string | null) => ({ ...readOf(runnerKeys.orgDevices(orgId), () => runnersApi.listOrgDevices(orgId as string), 0), refetchInterval: ORG_DEVICES_REFRESH_MS }),
+	deviceRunners: (deviceId: string | null) => readOf(runnerKeys.deviceRunners(deviceId), () => runnersApi.listDeviceRunners(deviceId as string), 0),
+	projectRunners: (projectId: string | null) => ({ ...readOf(runnerKeys.projectRunners(projectId), () => runnersApi.listProjectRunners(projectId as string), 0), refetchInterval: 30_000 }),
+	activity: (runnerId: string, enabled: boolean) => ({ ...readOf(runnerKeys.activity(runnerId), () => runnersApi.getRunnerActivity(runnerId), 0), enabled }),
+	activeRunners: (projectId: string | null) => ({ ...readOf(runnerKeys.activeRunners(projectId), () => runnersApi.listActiveRunners(projectId as string), 0), refetchInterval: 10_000 }),
 };

@@ -4,7 +4,6 @@
 
 import {
   Avatar,
-  Badge,
   Checkbox,
   EnumBadge,
   enumLabel,
@@ -38,7 +37,6 @@ import {
   ISSUE_COMPLEXITIES,
   ISSUE_PRIORITIES,
   type IssueFailureInfo,
-  type IssuePriority,
   type IssueRow,
 } from "../types";
 import {
@@ -139,24 +137,6 @@ function QueuedChip({ step }: { step: QueuedStepView }) {
     <Tooltip label={`${enumLabel("jobType", step.jobType, language)} · ${gate.detail}`} multiline>
       {chip}
     </Tooltip>
-  );
-}
-
-const PRIORITY_TONE: Record<IssuePriority, "red" | "amber" | "neutral"> = {
-  critical: "red",
-  high: "amber",
-  medium: "neutral",
-  low: "neutral",
-  none: "neutral",
-};
-
-/** Read-only priority pill. `none` collapses to a muted dash. */
-function PriorityCell({ priority }: { priority: IssuePriority }) {
-  const L = useLabel();
-  if (priority === "none")
-    return <span className="fg-caption text-subtle">—</span>;
-  return (
-    <Badge tone={PRIORITY_TONE[priority]}>{L("issuePriority", priority)}</Badge>
   );
 }
 
@@ -321,18 +301,18 @@ export function IssueTableLine({
         </span>
       </TD>
       <TD className="min-w-70 max-w-140">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <button
             type="button"
             onClick={open}
             aria-label={t("issues.row.openTitled", { key: row.displayId, title: row.title })}
-            className="group/title min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-focus"
+            className="group/title min-w-0 max-w-full cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-focus"
           >
             <span className="fg-body-sm block truncate text-fg group-hover/title:text-accent-text group-hover/title:underline">
               {row.title}
             </span>
           </button>
-          <span className="flex flex-none items-center gap-1.5">
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
             {row.category && <EnumBadge family="category" value={row.category} />}
             <WaitingOnPersonChip since={row.waitingOnPersonSince} now={now} />
             <DepBadges deps={row.dependencies} slug={slug} />
@@ -343,7 +323,7 @@ export function IssueTableLine({
         <StatusCell row={row} />
       </TD>
       <TD className="whitespace-nowrap">
-        <PriorityCell priority={row.priority} />
+        {row.priority === "none" ? <span className="fg-caption text-subtle">—</span> : <EnumBadge family="priority" value={row.priority} />}
       </TD>
       <TD className="max-w-50">
         <AssigneeCell assignee={assignee} />

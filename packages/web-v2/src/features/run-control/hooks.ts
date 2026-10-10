@@ -1,8 +1,9 @@
 "use client";
 
-import { type QueryKey, useMutation, useQueryClient } from "@tanstack/react-query";
+import { type QueryKey } from "@tanstack/react-query";
 import { formatRefusal } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
+import { useToastWrite } from "@/providers/toast-write";
 import { type CancelRunResult, runControlApi } from "./api";
 
 /** Shared run-control mutation factory: invalidate the run list + the run detail (and whatever read the
@@ -13,22 +14,16 @@ function useRunControl<T>(
   followUp?: (data: T) => { title: string; description: string } | null,
   alsoInvalidate: readonly QueryKey[] = [],
 ) {
-  const qc = useQueryClient();
   const { toast } = useToast();
-  return useMutation({
-    mutationFn: (id: string) => fn(id),
-    onSuccess: (data, id) => {
-      void qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
-      void qc.invalidateQueries({ queryKey: ["pipeline-run", id] });
-      void qc.invalidateQueries({ queryKey: ["projects", "health"] });
-      for (const queryKey of alsoInvalidate) void qc.invalidateQueries({ queryKey });
-      toast({ title: successMessage, tone: "success" });
+  return useToastWrite(fn, {
+    touches: (id) => [["pipeline-runs"], ["pipeline-run", id], ["projects", "health"], ...alsoInvalidate],
+    said: (data) => {
       const extra = followUp?.(data);
       if (extra) toast({ ...extra, tone: "error" });
+      return successMessage;
     },
-    onError: (err) => {
-      toast({ title: "Run control failed", description: formatRefusal(err), tone: "error" });
-    },
+    failed: "Run control failed",
+    describe: formatRefusal,
   });
 }
 

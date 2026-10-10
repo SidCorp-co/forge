@@ -4,18 +4,18 @@ import Link from "next/link";
 import type { CheckKindTime, IssueCheckRunView } from "@forge/contracts/check-runs";
 import { EmptyPanelLine, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { agentsListHref, runHref } from "@/lib/routes/agents";
 import { useIssueChecks } from "../../checks-api";
 import type { IssueAgentSession } from "../../types";
-import { fmtDuration } from "../step-artifact";
+import { formatDuration } from "@/lib/i18n/format";
 
-const took = (ms: number, t: Copy) => fmtDuration(ms / 1000, t);
 const kindLabel = (kind: string, t: Copy) => t(`issues.checks.kind.${kind}` as ProductCopyKey);
 
 /** One kind of check: how many ran, the time they took together, and the slowest. */
 function CheckKind({ kind, t }: { kind: CheckKindTime; t: Copy }) {
+  const language = useInterfaceLanguage();
   return (
     <li className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 py-2 text-13" data-testid="check-kind" data-kind={kind.kind}>
       <span className="w-40 flex-none fg-label">{kindLabel(kind.kind, t)}</span>
@@ -23,13 +23,13 @@ function CheckKind({ kind, t }: { kind: CheckKindTime; t: Copy }) {
         <span className="text-subtle">{t("issues.checks.noneOfKind")}</span>
       ) : (
         <>
-          <span className="tabular-nums">{took(kind.totalMs, t)}</span>
+          <span className="tabular-nums">{formatDuration(kind.totalMs, language)}</span>
           <span className="text-12 text-muted">{kind.checks === 1 ? t("issues.checks.count.one") : t("issues.checks.count.many", { n: kind.checks })}</span>
           {kind.slowest ? (
             <span className="min-w-0 break-words text-12 text-muted">
               {t("issues.checks.slowest", {
                 name: kind.slowest.scope ? `${kind.slowest.name} (${kind.slowest.scope})` : kind.slowest.name,
-                took: took(kind.slowest.durationMs, t),
+                took: formatDuration(kind.slowest.durationMs, language),
               })}
             </span>
           ) : null}
@@ -65,7 +65,7 @@ function CheckTime({ check: c, sessions, slug, t }: { check: IssueCheckRunView; 
           {c.scope ? `${c.name} (${c.scope})` : c.name}
         </span>
         <span className={c.result === "fail" ? "flex-none text-12 text-danger" : "flex-none text-12 text-muted"}>{t(`issues.checks.result.${c.result}` as ProductCopyKey)}</span>
-        <span className="flex-none tabular-nums">{took(c.durationMs, t)}</span>
+        <span className="flex-none tabular-nums">{time.duration(c.durationMs)}</span>
       </div>
       <div className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-12 text-muted">
         <span>{kindLabel(c.kind, t)}</span>
@@ -88,6 +88,7 @@ function CheckTime({ check: c, sessions, slug, t }: { check: IssueCheckRunView; 
  */
 export function CheckTimes({ issueId, slug, sessions }: { issueId: string; slug: string; sessions: IssueAgentSession[] }) {
   const t = useCopy();
+  const language = useInterfaceLanguage();
   const q = useIssueChecks(issueId);
   if (q.isLoading) return <EmptyPanelLine title={t("issues.checks.title")} status={t("issues.steps.loading")} />;
   if (q.isError) return <EmptyPanelLine title={t("issues.checks.title")} status={t("common.couldNotLoad")} detail={formatApiError(q.error)} />;
@@ -95,7 +96,7 @@ export function CheckTimes({ issueId, slug, sessions }: { issueId: string; slug:
   if (!view) return null;
   return (
     <section aria-label={t("issues.checks.title")} data-testid="issue-checks">
-      <ViewHeading right={view.checks.length ? <span className="text-12 text-muted tabular-nums">{t("issues.checks.total", { took: took(view.totalMs, t) })}</span> : undefined}>
+      <ViewHeading right={view.checks.length ? <span className="text-12 text-muted tabular-nums">{t("issues.checks.total", { took: formatDuration(view.totalMs, language) })}</span> : undefined}>
         {t("issues.checks.title")}
       </ViewHeading>
       <ul className="divide-y divide-line-subtle border-y border-line-subtle">
