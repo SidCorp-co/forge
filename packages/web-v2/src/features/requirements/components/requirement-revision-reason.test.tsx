@@ -8,7 +8,7 @@ import { core, page } from "@/test/requirement-progress";
 import { reqDetail } from "@/test/vi-chrome-requirements";
 import type { RequirementDetail } from "../types";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/projects/hop/requirements/REQ-1", useParams: () => ({ slug: "hop" }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/projects/hop/requirements/REQ-1", useParams: () => ({ slug: "hop" }) }));
 
 afterEach(() => vi.unstubAllGlobals());
 

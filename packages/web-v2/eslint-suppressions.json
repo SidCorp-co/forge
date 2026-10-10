@@ -19,16 +19,6 @@
       "count": 1
     }
   },
-  "src/features/conversations/components/save-report.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/features/conversations/components/share-answer.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
   "src/features/conversations/membership.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
@@ -70,11 +60,6 @@
       "count": 1
     }
   },
-  "src/features/issues/components/detail/check-times.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 4
-    }
-  },
   "src/features/issues/components/detail/issue-actions.test.tsx": {
     "boundaries/dependencies": {
       "count": 1
@@ -98,11 +83,6 @@
   "src/features/needs-you/decision-list.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
-    }
-  },
-  "src/features/operator/server/operator-gate.test.ts": {
-    "@typescript-eslint/require-await": {
-      "count": 2
     }
   },
   "src/features/previews/idea-snapshot.test.ts": {
@@ -280,17 +260,6 @@
       "count": 2
     }
   },
-  "src/lib/demo-signin.test.ts": {
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 5
-    },
-    "@typescript-eslint/require-await": {
-      "count": 7
-    }
-  },
   "src/lib/i18n/copy-readers.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 2
@@ -337,11 +306,6 @@
   },
   "src/test/waterfall.ts": {
     "@typescript-eslint/no-base-to-string": {
-      "count": 1
-    }
-  },
-  "src/vitest.setup.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     }
   }

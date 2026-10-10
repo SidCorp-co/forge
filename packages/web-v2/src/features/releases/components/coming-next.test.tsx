@@ -4,10 +4,12 @@
 import { forecastWait, RULE, say, waitingOn } from "@/test/said";
 import type { ComingNextForecast, DeliveryForecast, Forecast, ScopeForecast } from "@forge/contracts/forecast";
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { EtaClock } from "@/features/forecast/eta";
 import type { ReleaseSummary } from "../types";
 import { ComingNext } from "./coming-next";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const NOW = Date.parse("2026-10-07T12:00:00Z");
 const clock: EtaClock = { lang: "vi", now: NOW, timeZone: "UTC" };

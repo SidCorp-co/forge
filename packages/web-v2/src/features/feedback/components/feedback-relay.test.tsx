@@ -14,6 +14,8 @@ import { FeedbackAnswer } from "./feedback-answer";
 import { LinkedFeedback } from "./feedback-facts";
 import { Messages } from "./feedback-messages";
 
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
+
 afterEach(() => vi.unstubAllGlobals());
 
 const NOW = Date.parse("2026-10-08T03:00:00.000Z");

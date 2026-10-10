@@ -13,7 +13,7 @@ import type { IssueDetail } from "../types";
 import { IssueQuickActions } from "./issue-quick-actions";
 import { PropertiesRail } from "./properties-rail";
 
-vi.mock("next/navigation", () => ({
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/",
   useSearchParams: () => new URLSearchParams(),

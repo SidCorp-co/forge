@@ -32,5 +32,9 @@ if (typeof globalThis.ResizeObserver !== 'function') {
     observe() {}
     unobserve() {}
     disconnect() {}
-  } as unknown as typeof ResizeObserver;
+  };
 }
+
+// cm:why jsdom implements no scrolling, and the router resets the scroll on every navigation a
+// route test makes
+window.scrollTo = () => {};

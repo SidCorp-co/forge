@@ -19,7 +19,7 @@ const OAUTH_ERROR_MESSAGES: Record<string, (t: Copy) => string> = {
 const t = productCopy();
 
 // A demo core (`pnpm preview:demo`) answers the API as its seeded member and sends this page home
-// itself unless a sign-out asked for it (core web-host/spa.ts), so the page has no demo branch.
+// itself unless a sign-out asked for it (core web-host/host.ts), so the page has no demo branch.
 function LoginPage() {
   const params = useSearchParams();
   const justRegistered = params.get('registered') === '1';

@@ -6,7 +6,7 @@ import { CHROME_SCREENS, type ChromeScreen } from "./vi-chrome-screens";
 import { renderWithQuery } from "./render";
 import { unreadIn } from "./unread";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useParams: () => ({ slug: "hop" }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useParams: () => ({ slug: "hop" }) }));
 // The bell's live delivery and a room's socket reach for a connection the walking test has none of.
 vi.mock("@/features/notifications/use-notification-delivery", () => ({ useNotificationDelivery: () => undefined }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));

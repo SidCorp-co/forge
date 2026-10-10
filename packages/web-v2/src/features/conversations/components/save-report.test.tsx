@@ -4,6 +4,8 @@ import { fakeCore, renderWithQuery } from "@/test/render";
 import type { ConversationMessage, ConversationWindow } from "../types";
 import { ConversationThread } from "./conversation-thread";
 
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
+
 // The live QA of ISS-422 (2026-10-08): nothing in the web saved a template run the Assistant made,
 // so a person could keep the report only over REST. An answer that ran a template now offers Save
 // report beside Copy and Share; it keeps the template's runs in order with the narrative the turn
@@ -49,7 +51,7 @@ describe("Save report on a chat answer", () => {
     thread([said("m1", null, "user"), said("m2", [{ type: "text", text: "Plain words." }]), said("m3", [templateCall()])]);
     const rows = screen.getAllByTestId("message-actions");
     expect(screen.getAllByTestId("message-save-report")).toHaveLength(1);
-    expect(within(rows[2] as HTMLElement).getByTestId("message-save-report")).toBeInTheDocument();
+    expect(within(rows[2]).getByTestId("message-save-report")).toBeInTheDocument();
   });
 
   it("keeps the template's runs in order with the slots the turn wrote, and links the kept report", async () => {

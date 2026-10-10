@@ -8,7 +8,7 @@ import { aboutDraft } from "./ask-about";
 import { AskAboutThis } from "./ask-about-this";
 import { type ChatDockApi, ChatDockProvider, useChatDockState } from "./dock";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/projects/forge/issues/ISS-441" }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ usePathname: () => "/projects/forge/issues/ISS-441" }));
 
 describe("Ask about this", () => {
   it("opens the issue page's draft empty, the issue being the page's record", () => {

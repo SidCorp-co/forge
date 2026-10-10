@@ -2,10 +2,12 @@
 // of feedback.approve, the releaser), never deriving it here.
 
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RULE, say, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
 import { FeedbackBanner } from "./feedback-facts";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const view = (over: Partial<FeedbackView>): FeedbackView =>
   ({

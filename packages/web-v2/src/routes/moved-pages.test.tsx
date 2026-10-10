@@ -6,13 +6,18 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { movedTarget } from "@/features/shell/moved";
 import { MovedNotice } from "@/features/shell/components/moved-notice";
+import { componentOf } from "@/test/route-tree";
 
 const replace = vi.hoisted(() => vi.fn());
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace }), useParams: () => ({ slug: "hop" }), usePathname: () => "/projects/hop" }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace }), useParams: () => ({ slug: "hop" }), usePathname: () => "/projects/hop" }));
 
-import DecisionsPage from "./(workspace)/projects/[slug]/decisions/page";
-import MemoryPage from "./(workspace)/projects/[slug]/memory/page";
-import RoadmapPage from "./(workspace)/projects/[slug]/roadmap/page";
+import { Route as DecisionsRoute } from "./_workspace/projects/$slug/decisions/index";
+import { Route as MemoryRoute } from "./_workspace/projects/$slug/memory/index";
+import { Route as RoadmapRoute } from "./_workspace/projects/$slug/roadmap/index";
+
+const DecisionsPage = componentOf(DecisionsRoute, "routes/_workspace/projects/$slug/decisions/index.tsx");
+const MemoryPage = componentOf(MemoryRoute, "routes/_workspace/projects/$slug/memory/index.tsx");
+const RoadmapPage = componentOf(RoadmapRoute, "routes/_workspace/projects/$slug/roadmap/index.tsx");
 
 afterEach(() => {
   window.history.replaceState(null, "", "/");

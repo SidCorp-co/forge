@@ -1,8 +1,10 @@
 import { say } from "@/test/said";
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { PlanRow } from "../ba-derive";
 import { LandsThisWeek } from "./plan-sections";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const clock = { lang: "en" as const, now: Date.parse("2026-10-07T12:00:00Z"), timeZone: "UTC" };
 const row = (over: Partial<PlanRow>): PlanRow => ({ kind: "requirement", key: "REQ-1", title: "Agree the checkout", release: null, href: "/projects/hop/requirements/REQ-1", eta: null, late: null, ...over });

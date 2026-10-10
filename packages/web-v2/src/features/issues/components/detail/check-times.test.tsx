@@ -8,6 +8,8 @@ import { fakeCore, renderWithQuery } from "@/test/render";
 import type { IssueAgentSession } from "../../types";
 import { CheckTimes } from "./check-times";
 
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
+
 afterEach(() => vi.unstubAllGlobals());
 
 const SESSION = "5e55a0b1-0000-4000-8000-000000000001";
@@ -65,7 +67,7 @@ describe("the checks an issue's runs made", () => {
         check({ id: "c3", kind: "typecheck", name: "typecheck", scope: "typescript", durationMs: 12000 }),
       ]),
     );
-    const row = (await screen.findAllByTestId("check-kind"))[0] as HTMLElement;
+    const row = (await screen.findAllByTestId("check-kind"))[0];
     expect(row).toHaveTextContent("Tests");
     expect(row).toHaveTextContent("1m 39s");
     expect(row).toHaveTextContent("2 checks");
@@ -78,7 +80,7 @@ describe("the checks an issue's runs made", () => {
     await screen.findAllByTestId("check-kind");
     const kinds = screen.getAllByTestId("check-kind").map((r) => r.getAttribute("data-kind"));
     expect(kinds).toEqual(["tests", "typecheck", "probes", "review", "conformance", "base"]);
-    const probes = screen.getAllByTestId("check-kind")[2] as HTMLElement;
+    const probes = screen.getAllByTestId("check-kind")[2];
     expect(probes).toHaveTextContent("Probes");
     expect(probes).toHaveTextContent("None recorded");
   });
@@ -90,7 +92,7 @@ describe("the checks an issue's runs made", () => {
     expect(rows[0]).toHaveTextContent("direct-tests (@forge/core)");
     expect(rows[0]).toHaveTextContent("Failed");
     expect(rows[0]).toHaveTextContent("7s");
-    expect(within(rows[0] as HTMLElement).getByRole("link", { name: "ISS-474 build" }).getAttribute("href")).toBe(
+    expect(within(rows[0]).getByRole("link", { name: "ISS-474 build" }).getAttribute("href")).toBe(
       "/projects/forge/agents/runs/run-9",
     );
     expect(rows[1]).toHaveTextContent("No run");
@@ -106,7 +108,7 @@ describe("the checks an issue's runs made", () => {
     );
     const rows = await screen.findAllByTestId("check-run");
     expect(rows[0]).toHaveTextContent("ran with uncommitted changes in packages/core");
-    expect(within(rows[0] as HTMLElement).getByTitle(`Ran on commit ${head}`)).toHaveTextContent("4c1f0e9");
+    expect(within(rows[0]).getByTitle(`Ran on commit ${head}`)).toHaveTextContent("4c1f0e9");
     expect(rows[1]).toHaveTextContent("Up to date with base");
     expect(rows[1]).not.toHaveTextContent("uncommitted");
   });

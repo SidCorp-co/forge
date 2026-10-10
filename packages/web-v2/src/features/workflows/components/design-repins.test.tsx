@@ -8,6 +8,8 @@ import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import type { RepinPlan } from "../types";
 import { PinOnlyReading, DesignRepins } from "./design-repins";
 
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
+
 const mutate = vi.hoisted(() => vi.fn());
 const state = vi.hoisted(() => ({ plan: null as RepinPlan | null }));
 vi.mock("../hooks", () => ({

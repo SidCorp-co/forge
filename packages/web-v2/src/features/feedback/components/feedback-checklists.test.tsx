@@ -13,7 +13,7 @@ import { optionLabel, passed, readOf, record, row } from "@/test/checklist-reads
 import { type Call, fakeCore, HANG, renderWithQuery } from "@/test/render";
 import { feedbackDetail } from "@/test/vi-chrome-feedback";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/projects/hop/feedback/FB-2", useParams: () => ({ slug: "hop" }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/projects/hop/feedback/FB-2", useParams: () => ({ slug: "hop" }) }));
 
 afterEach(() => {
   vi.unstubAllGlobals();

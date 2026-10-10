@@ -5,16 +5,11 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeCore, renderWithQuery } from "@/test/render";
+import { fakeCore } from "@/test/render";
+import { componentOf, renderRoute } from "@/test/route-tree";
 
-const nav = vi.hoisted(() => ({ pathname: "/projects/forge/settings", search: "tab=connections", replace: vi.fn(), push: vi.fn() }));
+const nav = vi.hoisted(() => ({ search: "tab=connections" }));
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: nav.push, replace: nav.replace, prefetch: vi.fn() }),
-  usePathname: () => nav.pathname,
-  useParams: () => ({ slug: "forge" }),
-  useSearchParams: () => new URLSearchParams(nav.search),
-}));
 vi.mock("@/lib/utils/use-location-search", () => ({ useLocationSearch: () => nav.search }));
 const started = vi.hoisted(() => ({ tours: [] as string[] }));
 vi.mock("@/features/tours/run-tour", async (actual) => {
@@ -28,7 +23,9 @@ vi.mock("@/features/tours/run-tour", async (actual) => {
   };
 });
 
-import WorkspaceLayout from "./(workspace)/layout";
+import { Route as WorkspaceRoute } from "./_workspace/route";
+
+const WorkspaceLayout = componentOf(WorkspaceRoute, "routes/_workspace/route.tsx");
 
 const project = { id: "p1", slug: "forge", name: "Forge", role: "admin", orgId: null };
 
@@ -47,30 +44,31 @@ beforeEach(() => {
   // jsdom lays nothing out, so an element would read as undrawn
   Element.prototype.getClientRects = () => [{}] as unknown as DOMRectList;
   started.tours.length = 0;
-  nav.replace.mockClear();
-  nav.push.mockClear();
 });
 
 describe("tours in the workspace layout", () => {
   it("Help → Tours on another page of the project takes each tour to its page", async () => {
-    nav.pathname = "/projects/forge/releases";
     nav.search = "";
     serve();
-    renderWithQuery(<WorkspaceLayout><div /></WorkspaceLayout>);
+    const { router } = await renderRoute({ at: "/projects/forge/releases", pattern: "/projects/$slug/releases", page: () => <div />, layout: WorkspaceLayout });
     await userEvent.click((await screen.findAllByRole("button", { name: /Help/ }))[0]);
     const integrations = await screen.findByTestId("tour-row-integrations");
     const release = screen.getByTestId("tour-row-release-what-changes");
     await waitFor(() => expect(within(release).getByRole("button", { name: "Show" })).toBeEnabled());
     expect(integrations).not.toHaveTextContent("Open a project first");
     await userEvent.click(within(integrations).getByRole("button", { name: "Show" }));
-    expect(nav.push).toHaveBeenCalledWith("/projects/forge/settings?tab=connections&tour=integrations");
+    await waitFor(() => expect(router.state.location.href).toBe("/projects/forge/settings?tab=connections&tour=integrations"));
   });
 
   it("?tour= on the tour's page starts it at step 1", async () => {
-    nav.pathname = "/projects/forge/settings";
     nav.search = "tab=connections&tour=integrations";
     serve();
-    renderWithQuery(<WorkspaceLayout><div data-tour="int-status" style={{ width: 10, height: 10 }} /></WorkspaceLayout>);
+    await renderRoute({
+      at: "/projects/forge/settings?tab=connections&tour=integrations",
+      pattern: "/projects/$slug/settings",
+      page: () => <div data-tour="int-status" style={{ width: 10, height: 10 }} />,
+      layout: WorkspaceLayout,
+    });
     await waitFor(() => expect(started.tours).toEqual(["integrations"]));
   });
 });

@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Seeded } from "@/test/vi-chrome-requirements";
 import { AwaitingRelease } from "./awaiting-release";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/" }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/" }));
 vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
 
 const AT = "2026-10-07T08:00:00.000Z";

@@ -6,23 +6,17 @@
 import { act, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "@/providers/query-provider";
-import { renderWithQuery } from "@/test/render";
+import { componentOf, renderRoute } from "@/test/route-tree";
 import { depthOf, samePlace, type Sent, slowCore } from "@/test/waterfall";
 
-const nav = vi.hoisted((): { pathname: string; params: Record<string, string> } => ({ pathname: "/projects/forge", params: { slug: "forge" } }));
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
-  usePathname: () => nav.pathname,
-  useParams: () => nav.params,
-  useSearchParams: () => new URLSearchParams(),
-}));
 vi.mock("@/lib/utils/use-location-search", () => ({ useLocationSearch: () => "" }));
 
-import WorkspaceLayout from "./(workspace)/layout";
-import ProjectOverviewPage from "./(workspace)/projects/[slug]/page";
-import ProjectIssueDetailPage from "./(workspace)/projects/[slug]/issues/[id]/page";
-import ProjectRequirementsPage from "./(workspace)/projects/[slug]/requirements/page";
+import { Route as WorkspaceRoute } from "./_workspace/route";
+import { Route as OverviewRoute } from "./_workspace/projects/$slug/index";
+import { Route as IssueRoute } from "./_workspace/projects/$slug/issues/$id/index";
+import { Route as RequirementsRoute } from "./_workspace/projects/$slug/requirements/index";
+
+const WorkspaceLayout = componentOf(WorkspaceRoute, "routes/_workspace/route.tsx");
 
 const PROJECT = "3f0c2a9e-6a51-4f7e-9d3c-0b6f1e2a7c11";
 const ISSUE = "8b1d4e2f-2c7a-4b9e-a1f0-5d6e7c8b9a01";
@@ -59,11 +53,9 @@ function reply(method: string, path: string): unknown {
  *  fake core does not serve fails and is fairly read again; one it answered must never be sent twice. */
 const scoped = (s: Sent) => s.method === "GET" && /^\/(projects\/[^/?]+\/|issues\/|questions\?)/.test(s.path);
 
-async function load(page: React.ReactElement, pathname: string, params: Record<string, string>) {
-  nav.pathname = pathname;
-  nav.params = params;
+async function load(route: { options: { component?: unknown } }, pathname: string, pattern: string) {
   const sent = slowCore(reply);
-  renderWithQuery(<WorkspaceLayout>{page}</WorkspaceLayout>, createQueryClient());
+  await renderRoute({ at: pathname, pattern, page: componentOf(route, pattern), layout: WorkspaceLayout }, createQueryClient());
   await act(async () => {
     await new Promise((r) => setTimeout(r, 600));
   });
@@ -92,14 +84,14 @@ afterEach(() => {
 
 describe("a project page's first reads", () => {
   it("leave with the page on the project dashboard, and none goes twice", async () => {
-    const { waterfall } = await load(<ProjectOverviewPage />, "/projects/forge", { slug: "forge" });
+    const { waterfall } = await load(OverviewRoute, "/projects/forge", "/projects/$slug");
     expect(waterfall.sentBeforeTheList).toBeGreaterThanOrEqual(8);
     expect(waterfall.serialDepth).toBe(1);
     expect(waterfall.sentTwice).toEqual([]);
   });
 
   it("leave with the page on Requirements, and none goes twice", async () => {
-    const { reads, waterfall } = await load(<ProjectRequirementsPage />, "/projects/forge/requirements", { slug: "forge" });
+    const { reads, waterfall } = await load(RequirementsRoute, "/projects/forge/requirements", "/projects/$slug/requirements");
     expect(reads.map((s) => s.path)).toEqual(
       expect.arrayContaining(["/projects/forge/requirements", "/projects/forge/requirement-areas"]),
     );
@@ -108,7 +100,7 @@ describe("a project page's first reads", () => {
   });
 
   it("leave with the page on an issue, the issue's own reads included, and none goes twice", async () => {
-    const { reads, waterfall } = await load(<ProjectIssueDetailPage />, "/projects/forge/issues/ISS-7", { slug: "forge", id: "ISS-7" });
+    const { reads, waterfall } = await load(IssueRoute, "/projects/forge/issues/ISS-7", "/projects/$slug/issues/$id");
     const firstWave = reads.filter((s) => depthOf(reads, s) === 1).map((s) => s.path.split("?")[0]);
     expect(waterfall.sentBeforeTheList).toBeGreaterThanOrEqual(15);
     expect(firstWave).toEqual(

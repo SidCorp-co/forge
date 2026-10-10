@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CriteriaChecklist } from "./requirement-proof";
 import type { RequirementDetail } from "../types";
 
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
+
 /** jsdom has no object URLs: hand out a stable one per file. */
 function stubObjectUrls() {
   let n = 0;

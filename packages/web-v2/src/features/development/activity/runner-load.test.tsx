@@ -9,7 +9,7 @@ import { formatElapsed } from "@/lib/utils/format";
 import { runnersSummary } from "./derive";
 import { RunnerLoad } from "./runner-load";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
 
 const NOW = Date.parse("2026-10-06T16:20:00Z");
 const PRINTED = "2026-10-06T19:30:00Z";

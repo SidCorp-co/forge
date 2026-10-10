@@ -70,12 +70,16 @@ export function useRouter() {
   const router = useAppRouter();
   return useMemo(
     () => ({
-      push: (href: string, options?: NavigateOptions) =>
-        void navigate({ href, resetScroll: options?.scroll !== false }),
-      replace: (href: string, options?: NavigateOptions) =>
-        void navigate({ href, replace: true, resetScroll: options?.scroll !== false }),
-      back: () => window.history.back(),
-      refresh: () => void router.invalidate(),
+      push: (href: string, options?: NavigateOptions): void => {
+        void navigate({ href, resetScroll: options?.scroll !== false });
+      },
+      replace: (href: string, options?: NavigateOptions): void => {
+        void navigate({ href, replace: true, resetScroll: options?.scroll !== false });
+      },
+      back: (): void => window.history.back(),
+      refresh: (): void => {
+        void router.invalidate();
+      },
     }),
     [navigate, router],
   );

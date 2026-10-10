@@ -1,12 +1,14 @@
 import type { StatusReportDetail } from "@forge/contracts/status-reports";
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { PRODUCT_STRINGS as copy } from "@/lib/i18n/product-copy";
 import { renderWithQuery } from "@/test/render";
 import { AT, STATUS } from "@/test/project-status";
 import { weeklyCron, weeklyOf } from "./report-schedule";
 import { SinceLastReport } from "./since-last-report";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 // "Since last report" lays out what core derived from two kept reports: an issue newly shipped and
 // the next release's date moved, old to new, in the reader's language; an empty part says so.

@@ -1,5 +1,5 @@
 // A kept report and a share page print as the report alone (REQ-32 B4). The print stylesheet in
-// `globals.css` drops what a page marks as chrome and lets the shell's one-screen frame run onto
+// `styles/globals.css` drops what a page marks as chrome and lets the shell's one-screen frame run onto
 // as many sheets as it needs; the workspace layout marks its chrome and its frame. The report's own
 // actions carry `print:hidden` (asserted where they render, `status-history.test.tsx`).
 
@@ -7,8 +7,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const css = readFileSync(join(__dirname, "globals.css"), "utf8");
-const layout = readFileSync(join(__dirname, "(workspace)/layout.tsx"), "utf8");
+const css = readFileSync(join(import.meta.dirname, "../styles/globals.css"), "utf8");
+const layout = readFileSync(join(import.meta.dirname, "_workspace/route.tsx"), "utf8");
 
 /** The body of the one `@media print` block, braces balanced. */
 function printBlock(): string {

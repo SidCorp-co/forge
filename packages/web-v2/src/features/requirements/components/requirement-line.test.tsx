@@ -4,9 +4,11 @@
 
 import { render, screen } from "@testing-library/react";
 import type { RequirementSummary } from "@forge/contracts/requirements";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RequirementsList } from "./requirements-list";
 import { RequirementsMap } from "./requirements-map";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const NOW = Date.parse("2026-10-10T12:00:00.000Z");
 

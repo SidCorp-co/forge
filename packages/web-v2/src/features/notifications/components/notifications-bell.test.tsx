@@ -9,7 +9,7 @@ import type { NotificationRow } from "../types";
 import { NotificationsBell } from "./notifications-bell";
 
 const push = vi.hoisted(() => vi.fn());
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push }) }));
 vi.mock("../use-notification-delivery", () => ({ useNotificationDelivery: () => undefined }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 

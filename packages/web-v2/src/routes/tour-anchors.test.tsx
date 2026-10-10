@@ -17,7 +17,7 @@ import { fakeCore, renderWithQuery } from "@/test/render";
 import { TOURS } from "@/features/tours/registry";
 import { cardDetail, say } from "@/test/said";
 
-vi.mock("next/navigation", () => ({
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/projects/forge/settings",
   useSearchParams: () => new URLSearchParams("tab=connections"),

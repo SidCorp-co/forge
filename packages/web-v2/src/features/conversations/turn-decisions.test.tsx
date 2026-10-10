@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/render";
 import { decisionsIn, TurnDecisions } from "./turn-decisions";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
 
 const Q = "8d2a3f5e-21c4-4b8e-9d62-6a4e3c1f0b77";
 const READ = needsYouDecisionsSchema.parse({

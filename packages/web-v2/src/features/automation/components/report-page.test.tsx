@@ -14,7 +14,7 @@ import { Seeded } from "@/test/vi-chrome-requirements";
 import type { ReportStanding } from "../types";
 import { ReportItemScreen } from "./automation-item-screens";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useParams: () => ({ slug: "hop" }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useParams: () => ({ slug: "hop" }) }));
 
 afterEach(() => window.history.replaceState(null, "", "/"));
 

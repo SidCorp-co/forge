@@ -11,7 +11,7 @@ import { PRODUCT_STRINGS as product } from "@/lib/i18n/product-copy";
 import { REQ_PROJECT, reqQueries, Seeded } from "@/test/vi-chrome-requirements";
 import { RequirementsScreen } from "./requirements-screen";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/" }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/" }));
 vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
 
 const stamp = { label: "forecast" as const, asOf: "2026-10-07T12:00:00Z" };

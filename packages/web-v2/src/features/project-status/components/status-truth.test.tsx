@@ -1,12 +1,14 @@
 import type { ProjectStatus } from "@forge/contracts/project-status";
 import { verbatim } from "@forge/contracts/said";
 import { screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { renderWithQuery } from "@/test/render";
 import { RULE, say, waitingOn } from "@/test/said";
 import { AT, STATUS } from "@/test/project-status";
 import { StatusReport } from "./status-report";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 // The HOP journey walk (2026-10-08): a person reading /status could not tell what they owe, what was
 // proven or why a date moved. Each is core's; the page says it in the reader's language.

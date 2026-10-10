@@ -7,7 +7,7 @@ import { fakeCore, renderWithQuery } from "@/test/render";
 import { PRODUCT_STRINGS as product } from "@/lib/i18n/product-copy";
 import { WorkspaceInterfaceLanguage } from "./interface-language-provider";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
 
 const project = { id: "p1", slug: "hop" } as ProjectListItem;
 const clock = { lang: "en" as const, now: Date.parse("2026-10-07T12:00:00Z") };

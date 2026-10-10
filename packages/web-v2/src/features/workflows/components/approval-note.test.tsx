@@ -12,7 +12,7 @@ import { WorkflowDesignProperties } from "./workflow-design-facts";
 import { WorkflowDesignPage } from "./workflow-design-page";
 
 // a design no requirement roots offers to draft one, which navigates on success
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/" }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/" }));
 
 const NOTE = "Approved as drawn.\nThe SLA step is owed in rev 2.";
 

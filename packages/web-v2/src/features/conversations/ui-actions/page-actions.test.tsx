@@ -21,7 +21,7 @@ const go = (href: string) => {
   window.history.pushState(null, "", href);
   notifyLocationChange();
 };
-vi.mock("next/navigation", () => ({
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push: go, replace: go }),
   usePathname: () => window.location.pathname,
   useSearchParams: () => new URLSearchParams(window.location.search),

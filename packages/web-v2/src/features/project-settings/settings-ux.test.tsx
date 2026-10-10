@@ -12,7 +12,7 @@ import { ProjectSettingsScreen } from "./components/project-settings-screen";
 import { ReleaseSettings } from "./components/release-section";
 import type { ReleaseReadiness } from "./types";
 
-vi.mock("next/navigation", () => ({
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/projects/hop/settings",
   useParams: () => ({ slug: "hop" }),

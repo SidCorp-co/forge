@@ -8,6 +8,8 @@ import { releasePage, TECHNICAL } from "@/test/release-page";
 import { renderWithQuery } from "@/test/render";
 import { ReleaseReader } from "./release-reader";
 
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
+
 const URLS: Blob[] = [];
 function stubObjectUrls() {
   URL.createObjectURL = vi.fn((b: Blob) => {

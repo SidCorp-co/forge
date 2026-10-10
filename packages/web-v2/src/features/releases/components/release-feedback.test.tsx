@@ -1,9 +1,11 @@
 // The release page lists the feedback it answers, each with who asked and whether the release told them.
 
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ReleaseDetail, ReleaseFeedbackView } from "../types";
 import { FeedbackAnswered } from "./release-panes";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const item = (over: Partial<ReleaseFeedbackView>): ReleaseFeedbackView => ({
   key: "FB-91",

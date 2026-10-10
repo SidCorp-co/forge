@@ -10,7 +10,7 @@ import type { IssueAgentSession, IssueDetail } from "../types";
 import { RunsTab, runsTabCount } from "./detail/issue-sections";
 import { IssueChanges } from "./issue-changes";
 
-vi.mock("next/navigation", () => ({
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/",
   useSearchParams: () => new URLSearchParams(),

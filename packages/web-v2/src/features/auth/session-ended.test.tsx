@@ -9,7 +9,7 @@ import { AuthProvider, useAuth } from "@/providers/auth-provider";
 import { fakeCore } from "@/test/render";
 import { LoginForm } from "./login-form";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
 
 afterEach(() => vi.unstubAllGlobals());
 

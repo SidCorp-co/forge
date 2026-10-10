@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { DecisionList } from "./components/decision-list";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
 
 const PROJECT = "6f0ee160-8432-4b84-98cf-956b6cd65a29";
 const Q = "8d2a3f5e-21c4-4b8e-9d62-6a4e3c1f0b77";

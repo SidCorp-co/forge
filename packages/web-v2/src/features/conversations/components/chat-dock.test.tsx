@@ -12,7 +12,7 @@ import type { ChatDockApi, ChatTarget, DockSize } from "@/features/chat-dock";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { ChatDock, ChatDockBody } from "./chat-dock";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/projects/epod/requirements" }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ usePathname: () => "/projects/epod/requirements" }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 vi.mock("../board/board-panel", () => ({ BOARD_DOCK_WIDTH: 880, DockBoard: () => <div data-testid="board" /> }));
 vi.mock("./conversation-chat", () => ({

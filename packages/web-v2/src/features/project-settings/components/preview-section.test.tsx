@@ -9,6 +9,8 @@ import type { V1Read } from "@/features/project-config";
 import { type Call, fakeCore } from "@/test/render";
 import { PreviewSettings } from "./preview-section";
 
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
+
 const P = "11111111-1111-4111-8111-111111111111";
 const doc = (extra: Record<string, unknown> = {}) => ({
   $schema: "https://forge.sidcorp.co/schemas/project-v1.json",

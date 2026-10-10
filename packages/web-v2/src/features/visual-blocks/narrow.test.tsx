@@ -13,6 +13,8 @@ import { formatClock, formatDateTime } from "@/lib/i18n/format";
 import { VisualBlockProvider, VisualBlockView } from ".";
 import { TABLE_ROW_CAP } from "./table-block";
 
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
+
 const AS_OF = "2026-10-08T09:21:44.000Z";
 
 beforeEach(() => {

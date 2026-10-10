@@ -13,7 +13,7 @@ import { type Call, fakeCore, HANG, renderWithQuery } from "@/test/render";
 import { reqDetail } from "@/test/vi-chrome-requirements";
 import { RequirementPage } from "./requirement-detail";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/projects/hop/requirements/REQ-1", useParams: () => ({ slug: "hop" }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/projects/hop/requirements/REQ-1", useParams: () => ({ slug: "hop" }) }));
 
 const PROJECT = "7f1c1d1e-0000-4000-8000-000000000001";
 

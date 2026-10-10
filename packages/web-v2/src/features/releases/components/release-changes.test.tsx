@@ -3,10 +3,12 @@
 import { say } from "@/test/said";
 import type { ReleaseChanges } from "@forge/contracts/releases";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { labelCopy } from "@/lib/i18n/labels";
 import { productCopy } from "@/lib/i18n/product-copy";
 import { changesSentence, WhatChanges } from "./release-changes";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const changes: ReleaseChanges = {
   surfaces: [

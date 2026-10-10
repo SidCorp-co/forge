@@ -13,7 +13,7 @@ import { NewIssueDialog } from "./new-issue-dialog";
 
 const push = vi.hoisted(() => vi.fn());
 const toast = vi.hoisted(() => vi.fn());
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push }) }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
 
 const scope = { projectId: "p1", slug: "hop" };

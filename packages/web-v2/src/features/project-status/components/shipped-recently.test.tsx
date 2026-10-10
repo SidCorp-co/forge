@@ -1,8 +1,10 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/render";
 import { AT, STATUS } from "@/test/project-status";
 import { ShippedRecently } from "./shipped-recently";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 // JU-3: after hop 0.2.0 shipped 50 issues the dashboard still led with "Next release 0.3.0"; it now
 // leads with what last reached people, and says so plainly when nothing ever has.

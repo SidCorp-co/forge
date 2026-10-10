@@ -7,7 +7,7 @@ import { type Call, fakeCore, renderWithQuery } from "@/test/render";
 import { TourLauncher } from "./tour-launcher";
 
 const replace = vi.fn();
-vi.mock("next/navigation", () => ({
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push: vi.fn(), replace }),
   usePathname: () => "/projects/forge/releases/0.4.0-dev.87",
 }));

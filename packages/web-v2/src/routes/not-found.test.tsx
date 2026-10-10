@@ -1,14 +1,14 @@
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
-import NotFound from "./not-found";
+import { RootNotFound as NotFound } from "./-root-not-found";
 
 // A URL under a project that names no page (a stale link such as the retired /skill-updates, ISS-220)
 // reads its 404 in the person's own interface language, else English: the project's content language
 // never turns Forge's chrome (owner, 2026-10-08; REQ-13 BC-2).
 
 const path = vi.hoisted(() => ({ current: "/projects/hop/skill-updates" }));
-vi.mock("next/navigation", () => ({ usePathname: () => path.current, useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ usePathname: () => path.current, useRouter: () => ({ push: vi.fn() }) }));
 
 function missing(at: string, choice: "en" | "vi" | null) {
   path.current = at;

@@ -1,11 +1,13 @@
 import { verbatim } from "@forge/contracts/said";
 import { screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { renderWithQuery } from "@/test/render";
 import { RULE, say, waitingOn } from "@/test/said";
 import { AT, STATUS } from "@/test/project-status";
 import { StatusReport } from "./status-report";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 // hop /status in vi, 2026-10-08: 25 of its English lines were harness reports agents wrote in English,
 // quoted with nothing saying so. A quoted text now carries its language where it is not the reader's.

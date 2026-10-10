@@ -3,12 +3,14 @@
 
 import type { FeedbackForecast } from "@forge/contracts/forecast";
 import { screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { EtaClock } from "@/features/forecast";
 import { renderWithQuery } from "@/test/render";
 import { forecastWait, RULE, say, sentence, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
 import { LinkedFeedback } from "./feedback-facts";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const NOW = Date.parse("2026-10-07T12:00:00Z");
 const at = (min: number) => new Date(NOW + min * 60_000).toISOString();

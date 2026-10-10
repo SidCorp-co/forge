@@ -9,6 +9,8 @@ import { fakeCore, renderWithQuery } from "@/test/render";
 import type { IntakeDraftView } from "../types";
 import { IntakeDraft } from "./intake-draft";
 
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
+
 afterEach(() => vi.unstubAllGlobals());
 
 const draft = (over: Partial<IntakeDraftView> = {}): IntakeDraftView => ({

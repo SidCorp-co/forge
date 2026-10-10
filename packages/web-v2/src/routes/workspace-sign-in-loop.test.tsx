@@ -5,25 +5,23 @@
 import { screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/providers/auth-provider";
-import { fakeCore, renderWithQuery } from "@/test/render";
+import { fakeCore } from "@/test/render";
+import { componentOf, renderRoute } from "@/test/route-tree";
 
-const nav = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }));
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: nav.push, replace: nav.replace, prefetch: vi.fn() }),
-  usePathname: () => "/",
-  useParams: () => ({}),
-  useSearchParams: () => new URLSearchParams(""),
-}));
 vi.mock("@/lib/utils/use-location-search", () => ({ useLocationSearch: () => "" }));
 
-import WorkspaceLayout from "./(workspace)/layout";
+import { Route as WorkspaceRoute } from "./_workspace/route";
+
+const WorkspaceLayout = componentOf(WorkspaceRoute, "routes/_workspace/route.tsx");
+/** The workspace at its home, drawing `page`, under the session the test serves. */
+const workspace = (page: () => React.ReactNode) =>
+  renderRoute({ at: "/", pattern: "/", page, layout: () => <AuthProvider><WorkspaceLayout /></AuthProvider> });
 
 const assign = vi.fn();
 
 beforeEach(() => {
   window.sessionStorage.clear();
   assign.mockClear();
-  nav.replace.mockClear();
   vi.stubGlobal("location", { ...window.location, assign });
   fakeCore((c) =>
     c.path === "/auth/me"
@@ -35,15 +33,15 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("a workspace page with no session", () => {
   it("goes to /login once, by a hard navigation, never by the client router", async () => {
-    renderWithQuery(<AuthProvider><WorkspaceLayout><div /></WorkspaceLayout></AuthProvider>);
+    const { router } = await workspace(() => <div />);
     await waitFor(() => expect(assign).toHaveBeenCalledWith(new URL("/login", window.location.origin)));
     expect(assign).toHaveBeenCalledTimes(1);
-    expect(nav.replace).not.toHaveBeenCalledWith(new URL("/login", window.location.origin));
+    expect(router.state.location.pathname).toBe("/");
   });
 
   it("stops on a page naming the cause when the previous navigation already bounced", async () => {
     window.sessionStorage.setItem("forge.loginBounce", String(Date.now()));
-    renderWithQuery(<AuthProvider><WorkspaceLayout><div data-testid="page" /></WorkspaceLayout></AuthProvider>);
+    await workspace(() => <div data-testid="page" />);
     expect(await screen.findByRole("button", { name: "Go to sign in" })).toBeTruthy();
     expect(screen.getByText("You are not signed in")).toBeTruthy();
     expect(assign).not.toHaveBeenCalled();
@@ -52,7 +50,7 @@ describe("a workspace page with no session", () => {
 
   it("a person who comes back after the window is bounced once more, not stopped", async () => {
     window.sessionStorage.setItem("forge.loginBounce", String(Date.now() - 31_000));
-    renderWithQuery(<AuthProvider><WorkspaceLayout><div /></WorkspaceLayout></AuthProvider>);
+    await workspace(() => <div />);
     await waitFor(() => expect(assign).toHaveBeenCalledWith(new URL("/login", window.location.origin)));
   });
 });
