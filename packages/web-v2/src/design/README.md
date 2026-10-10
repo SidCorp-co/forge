@@ -45,6 +45,7 @@ A page that fits none of the five is a design question, not a sixth layout. Ask 
 | `StatusBadge` | a state family's value in its legend tone (`family="run"` for an agent run) |
 | `EnumBadge` | a non-state enum (priority, kind), neutral |
 | `ResizablePanelGroup` / `ResizablePanel` / `ResizableHandle` | a split the reader drags |
+| `RailButton` | an act at the foot of the navigation rail: icon, name, a dot while something is owed |
 
 ## Naming
 

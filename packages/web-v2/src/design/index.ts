@@ -65,6 +65,7 @@ export { KanbanCard } from "./patterns/kanban-card";
 export { KanbanBoard } from "./patterns/kanban-board";
 export { KanbanColumn } from "./patterns/kanban-column";
 export { NavRail, isNavGroup, type NavEntry, type NavItem, type NavItemGroup } from "./patterns/nav-rail";
+export { RailButton } from "./patterns/rail-button";
 export { BottomTabBar, type BottomTabItem } from "./patterns/bottom-tab-bar";
 export { CommandPalette, type Command } from "./patterns/command-palette";
 export { PinnedTabBar } from "./patterns/pinned-tab-bar";

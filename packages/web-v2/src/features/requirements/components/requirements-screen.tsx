@@ -8,16 +8,14 @@
 // The URL carries the view (`?group=…&q=…&peek=REQ-n`), so back from the full page restores it.
 
 import { useMemo, useState } from "react";
-import { AcceptStep, Button, EmptyState, Field, Input, ListPage, ListSearch, PageTitle, StatusBadge, ToolbarSelect, useListPage, useViewMode, ViewModeSwitcher } from "@/design";
+import { Button, EmptyState, Field, Input, ListPage, ListSearch, PageTitle, StatusBadge, ToolbarSelect, useListPage, useViewMode, ViewModeSwitcher } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { placeRefusals } from "@/lib/api/field-refusals";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage, } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
-import { RejectStep } from "@/features/suggestions";
-import { acceptConsequence, PendingBadge, summaryOf } from "@/features/suggestions";
-import { requirementAffected, useProjectWaitingSuggestions, useSuggestionDecision } from "@/features/suggestions";
+import { acceptConsequence, PendingBadge, requirementAffected, SuggestionDecider, summaryOf, useProjectWaitingSuggestions } from "@/features/suggestions";
 import type { SuggestionView as Suggestion } from "@/features/suggestions";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useCreateRequirement, useRequirementAreas, useRequirements } from "../hooks";
@@ -126,8 +124,6 @@ function AssistantStrip({
 function WaitingSuggestion({ s, r, projectId, onPeek }: { s: Suggestion; r: RequirementSummary; projectId: string; onPeek: (k: string) => void }) {
   const t = useCopy();
   const lang = useInterfaceLanguage();
-  const decide = useSuggestionDecision(projectId, requirementAffected(projectId, r.key));
-  const [step, setStep] = useState<"accept" | "reject" | null>(null);
   return (
     <div className="flex flex-wrap items-center gap-2 py-0.75" data-testid="assistant-strip-row">
       <span className="font-mono text-12 font-semibold text-link">{r.key}</span>
@@ -135,41 +131,11 @@ function WaitingSuggestion({ s, r, projectId, onPeek }: { s: Suggestion; r: Requ
       <span className="min-w-0 truncate">{summaryOf(s, lang)}</span>
       <span className="flex-1" />
       <PendingBadge />
-      {/* while a step is open its openers are off: a second press would close it and drop the typed reason */}
-      <Button type="button" size="sm" disabled={decide.isPending || step !== null} onClick={() => setStep("accept")} aria-expanded={step === "accept"}>
-        {t("requirements.assistant.accept")}
-      </Button>
-      <Button type="button" size="sm" variant="ghost" disabled={decide.isPending || step !== null} onClick={() => setStep("reject")} aria-expanded={step === "reject"}>
-        {t("requirements.act.reject")}
-      </Button>
-      <Button type="button" size="sm" variant="ghost" onClick={() => onPeek(r.key)}>
-        {t("requirements.assistant.review")}
-      </Button>
-      {step === "accept" ? (
-        <div className="basis-full">
-          <AcceptStep
-            confirmLabel={t("requirements.assistant.accept")}
-            consequence={acceptConsequence(s, lang)}
-            loading={decide.isPending}
-            onCancel={() => setStep(null)}
-            onConfirm={(why) => decide.mutate({ kind: "accept", id: s.id, reason: why }, { onSuccess: () => setStep(null) })}
-          />
-        </div>
-      ) : null}
-      {step === "reject" ? (
-        <div className="basis-full">
-          <RejectStep
-            loading={decide.isPending}
-            onCancel={() => setStep(null)}
-            onConfirm={(why) => decide.mutate({ kind: "reject", id: s.id, reason: why }, { onSuccess: () => setStep(null) })}
-          />
-        </div>
-      ) : null}
-      {decide.error ? (
-        <span className="basis-full">
-          <RefusalLine error={decide.error} />
-        </span>
-      ) : null}
+      <SuggestionDecider projectId={projectId} s={s} affected={requirementAffected(projectId, r.key)} consequence={acceptConsequence(s, lang)}>
+        <Button type="button" size="sm" variant="ghost" onClick={() => onPeek(r.key)}>
+          {t("requirements.assistant.review")}
+        </Button>
+      </SuggestionDecider>
     </div>
   );
 }
