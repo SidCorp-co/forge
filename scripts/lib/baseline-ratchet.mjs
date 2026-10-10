@@ -129,7 +129,8 @@ function readAt(root, rev, path) {
   }
 }
 
-/** `{files: {path: {rule: n}}}`, `{files: {path: n}}` and a bare `{path: n}` all flatten the same. */
+/** `{files: {path: {rule: n}}}`, `{files: {path: n}}`, a bare `{path: n}` and ESLint's bulk
+ *  suppressions `{path: {rule: {count: n}}}` all flatten the same. */
 function counts(doc) {
   const files = doc?.files ?? doc;
   const out = new Map();
@@ -139,6 +140,7 @@ function counts(doc) {
     else if (v && typeof v === 'object' && !Array.isArray(v)) {
       for (const [rule, n] of Object.entries(v)) {
         if (typeof n === 'number') out.set(`${path}::${rule}`, n);
+        else if (typeof n?.count === 'number') out.set(`${path}::${rule}`, n.count);
       }
     }
   }
