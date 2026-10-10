@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.225] - 2026-10-10
+
+Report findings and roadmap forecasts read true; screened messages refused by name
+
+### Fixed
+
+- **A status move whose reason is refused now says why.** It answers a named refusal pointing at the reason, as a comment does, instead of a server error.
+- **Roadmap reports state each requirement's own forecast time, in your timezone.** A summary that puts a requirement at another's time, or cuts a time short, is rewritten; block findings read dates as the table does.
+- **Release pages tell proven criteria apart and list only what shipped.** Each requirement counts in its own criteria. The developer view and Action required list only what the release's range changes. QA records a clip of each observable criterion.
+
 ## [0.4.0-dev.224] - 2026-10-10
 
 Pattern decisions, design refusals and malformed checks now explain themselves in plain words
