@@ -79,13 +79,23 @@ const criterionDesignSchema = z.strictObject({
 	/** A catalog slug, or a new pattern approved on the issue; null only where the project reads no catalog. */
 	pattern: z.string().trim().regex(PATTERN_SLUG_PATTERN).nullable(),
 	/** How it will be proven: the probe for an observable criterion, the review line for a code property. */
-	proof: z.string().trim().min(1).max(DESIGN_LIMITS.proof),
+	proof: z
+		.string()
+		.trim()
+		.min(1, "The proof is blank: name the probe or the review line that will prove this criterion.")
+		.max(DESIGN_LIMITS.proof),
 });
 
 export const recordDesignRequestSchema = z.strictObject({
-	criteria: z.array(criterionDesignSchema).min(1).max(DESIGN_LIMITS.criteria),
+	criteria: z
+		.array(criterionDesignSchema)
+		.min(1, "No criterion is designed: send one line per live criterion.")
+		.max(DESIGN_LIMITS.criteria),
 	/** Module names (or label ids) of the project the change touches; at least one. */
-	modules: z.array(z.string().trim().min(1).max(200)).min(1).max(DESIGN_LIMITS.modules),
+	modules: z
+		.array(z.string().trim().min(1, "A module name is blank: name a module of the project.").max(200))
+		.min(1, "No module is named: name at least one module of the project the change touches.")
+		.max(DESIGN_LIMITS.modules),
 	/** `<project>/<contract>` the change touches; empty where it touches none. */
 	contracts: z.array(z.string().trim().min(1).max(200)).max(DESIGN_LIMITS.contracts),
 });
