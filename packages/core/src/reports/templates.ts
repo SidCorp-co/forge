@@ -284,7 +284,8 @@ export async function runTemplate(args: {
   return { document, narrative, slots, notDrawn: drawn.notDrawn, text: documentText(document) };
 }
 
-const NUMBER = /\d[\d,]*(?:\.\d+)?/g;
+// a numeral glued to a letter is part of a name (p50, p85, v2), not a figure the narrative states
+const NUMBER = /(?<![\p{L}\d.,])\d[\d,]*(?:\.\d+)?/gu;
 const numeralsIn = (text: string): string[] =>
   (text.match(NUMBER) ?? []).map((n) => n.replaceAll(',', ''));
 

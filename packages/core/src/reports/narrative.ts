@@ -11,7 +11,7 @@
 // slot in silence (REQ-32 BC-7).
 
 import { contentLanguageBlock } from '@forge/contracts/content-language';
-import type { ReportFrame } from '@forge/contracts/report-queries';
+import { type ReportFrame, stateLabel } from '@forge/contracts/report-queries';
 import {
   FINDING_MAX_WORDS,
   type ReportDocument,
@@ -113,21 +113,21 @@ export function narrativeInput(document: ReportDocument, slots: readonly Slot[])
   return parts.join('\n');
 }
 
-/** A row with each date cell, and each instant inside a text cell, as its UTC words. */
+/** A row with each date cell, and each instant inside a text cell, as its UTC words, and each state as its label, never the stored token. */
 function inUtcWords(
   frame: ReportFrame,
   row: ReportFrame['rows'][number],
 ): ReportFrame['rows'][number] {
-  const types = new Map(frame.fields.map((f) => [f.name, f.type]));
+  const fields = new Map(frame.fields.map((f) => [f.name, f]));
   return Object.fromEntries(
     Object.entries(row).map(([name, cell]) => {
-      const type = types.get(name);
-      return [
-        name,
-        typeof cell === 'string' && (type === 'date' || type === 'string')
-          ? readInstantsIn(cell, UTC_READING)
-          : cell,
-      ];
+      const field = fields.get(name);
+      if (typeof cell !== 'string' || !field) return [name, cell];
+      if (field.type === 'status') return [name, stateLabel(field, cell)];
+      if (field.type === 'date' || field.type === 'string') {
+        return [name, readInstantsIn(cell, UTC_READING)];
+      }
+      return [name, cell];
     }),
   );
 }
@@ -191,10 +191,15 @@ async function judged(
     };
   }
   try {
-    return {
-      ok: true,
-      document: await args.judge({ narrative: parsed.narrative, findings: parsed.findings }),
-    };
+    const document = await args.judge({ narrative: parsed.narrative, findings: parsed.findings });
+    const blank = parsed.findings.flatMap((f, i) => (f.trim() === '' ? [i + 1] : []));
+    if (blank.length > 0) {
+      return {
+        ok: false,
+        why: `finding ${blank.join(', ')} is empty; every visual carries one line drawn from its own figures (REQ-32 BC-15), even "no rows in this period"`,
+      };
+    }
+    return { ok: true, document };
   } catch (err) {
     if (isRefusal(err)) return { ok: false, why: err.message };
     throw err;

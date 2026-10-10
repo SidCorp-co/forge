@@ -13,7 +13,11 @@ import {
   type ReportFrame,
 } from '@forge/contracts/report-queries';
 import { ROADMAP_HORIZONS, roadmapHorizonOf } from '@forge/contracts/requirement-roadmap';
-import { REQUIREMENT_STATES, type RequirementSummary } from '@forge/contracts/requirements';
+import {
+  REQUIREMENT_STATE_LABELS,
+  REQUIREMENT_STATES,
+  type RequirementSummary,
+} from '@forge/contracts/requirements';
 import { z } from 'zod';
 import { readRequirementForecasts } from '../forecast/index.js';
 import { listRequirementsAs } from '../requirements/index.js';
@@ -82,7 +86,11 @@ export function progressRows(
       const lane = roadmapHorizonOf(r.standing);
       const eta = scope
         ? etaOf(scope.delivery)
-        : { p50At: null, p85At: null, basis: `no forecast: ${r.standing.state}` };
+        : {
+            p50At: null,
+            p85At: null,
+            basis: `no forecast: ${(REQUIREMENT_STATE_LABELS[r.standing.state] ?? r.standing.state).toLowerCase()}`,
+          };
       return {
         key: r.key,
         title: r.title,

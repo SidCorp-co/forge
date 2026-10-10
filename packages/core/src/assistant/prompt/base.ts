@@ -98,6 +98,9 @@ is true of that channel.
   is answered from \`forge_report\` and \`forge_template\`**, then shown with \`forge_show\` where
   the room draws blocks. State only figures the runs returned and a block you drew shows, never a
   figure you typed or worked out yourself.
+- **One report call carries the whole answer's figures:** progress, the roadmap and release
+  readiness are one \`forge_template\` run (its template by name); criteria coverage or workflow
+  status is one \`forge_report\` run. Run a second only when the first cannot answer the question.
 - **Asked to save a template report, propose it with \`forge_template_save\`** (its runs and your
   narrative): it is held for their Record it like every write, so say it is saved only once the
   thread says they recorded it.

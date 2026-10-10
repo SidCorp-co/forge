@@ -483,6 +483,20 @@ export function readInstantsIn(text: string, reading: InstantReading | undefined
   return reading ? text.replace(ISO_INSTANT, (found) => reading.instant(asIso(found))) : text;
 }
 
+const UNIT_FORMS: Readonly<Record<string, readonly [one: string, many: string]>> = {
+  criteria: ["criterion", "criteria"],
+  criterion: ["criterion", "criteria"],
+};
+
+/** A count's unit agreeing with it: "1 issue", "3 issues", "1 day", "2 days"; a symbol such as "%" or "h" as it is. */
+export function unitAgreeing(n: number, unit: string): string {
+  if (!/^[a-z]{2,}$/i.test(unit)) return unit;
+  const forms = UNIT_FORMS[unit.toLowerCase()];
+  if (forms) return n === 1 ? forms[0] : forms[1];
+  const one = unit.endsWith("s") ? unit.slice(0, -1) : unit;
+  return n === 1 ? one : `${one}s`;
+}
+
 /**
  * One cell as text: null is an em dash, a duration is spoken, a date is read by the screen's
  * `reading` (without one a midnight date loses its time and any other keeps its ISO form), a
@@ -495,7 +509,7 @@ export function cellText(field: ReportField, cell: ReportCell | undefined, readi
   if (field.type === "duration" && typeof cell === "number") return duration(cell);
   if (field.type === "date" && typeof cell === "string") return reading ? readInstantsIn(cell, reading) : cell.replace(/T00:00:00(\.0+)?Z$/, "");
   if (field.type === "string" && typeof cell === "string") return readInstantsIn(cell, reading);
-  if (typeof cell === "number") return field.unit ? `${cell} ${field.unit}` : String(cell);
+  if (typeof cell === "number") return field.unit ? `${cell} ${unitAgreeing(cell, field.unit)}` : String(cell);
   return cell;
 }
 
