@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.228] - 2026-10-10
+
+Release pages place reopened fixes on their shipping release and name admin asks once
+
+### Changed
+
+- **Forge's check of where a secret is presented now refuses what it cannot read.** Share links, upload tickets, invitations, pairing codes and verification links join sign-in, tokens and boxes on its list.
+
+### Fixed
+
+- **A fix round is no longer refused for probes on criteria it did not touch.** The merge check runs the probes of the criteria a change claims. A criterion already passed on a landed build owes none.
+- **A release page shows a reworked fix on the release that shipped it.** An issue reopened while that release was running no longer reads as reworked there, and the developer view says what it deploys once.
+
 ## [0.4.0-dev.227] - 2026-10-10
 
 Release pages list only what each release shipped; bearer tokens and secrets handled safely
