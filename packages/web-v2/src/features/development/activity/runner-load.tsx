@@ -3,11 +3,12 @@
 // The project's runners and what each is doing: online, busy on which issue and stage, limited and
 // why (ISS-276: never a countdown to the reset its account printed).
 
+import { cn } from "@/lib/utils/cn";
 import Link from "next/link";
 import { Badge, enumLabel, HealthDot, Icon, RowItem, RowList, Section } from "@/design";
 import { runnerLimitLine } from "@/features/runners";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import type { RunnersSummary } from "./derive";
+import type { RunnerLine, RunnersSummary } from "./derive";
 
 export function RunnerLoad({ summary, slug }: { summary: RunnersSummary; slug: string }) {
   const t = useCopy();
@@ -31,25 +32,7 @@ export function RunnerLoad({ summary, slug }: { summary: RunnersSummary; slug: s
               title={r.name}
               facts={[enumLabel("platform", r.platform, language)]}
               note={r.limit?.printedText}
-              trailing={
-                r.limit ? (
-                  <Badge tone={r.limit.health === "down" ? "red" : "amber"}>
-                    <span className="inline-flex items-center gap-1">
-                      <Icon name="alert" size={10} />
-                      {runnerLimitLine(r.limit)}
-                    </span>
-                  </Badge>
-                ) : r.activeIssueRef ? (
-                  <span className="text-12 font-semibold tabular-nums text-info-11">
-                    {r.activeIssueRef}
-                    {r.activeStage ? ` · ${enumLabel("jobType", r.activeStage, language)}` : ""}
-                  </span>
-                ) : (
-                  <span className={r.busy ? "text-12 font-semibold text-info-11" : "text-12 font-semibold text-subtle"}>
-                    {t(`overview.runners.state.${r.draining ? "draining" : r.online ? (r.busy ? "busy" : "idle") : "offline"}`)}
-                  </span>
-                )
-              }
+              trailing={<RunnerState line={r} />}
             />
           ))}
         </RowList>
@@ -66,4 +49,30 @@ export function RunnerLoad({ summary, slug }: { summary: RunnersSummary; slug: s
       </div>
     </Section>
   );
+}
+
+/** What a runner is doing at the right of its line: its limit, the issue it works, or its state. */
+function RunnerState({ line: r }: { line: RunnerLine }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  if (r.limit) {
+    return (
+      <Badge tone={r.limit.health === "down" ? "red" : "amber"}>
+        <span className="inline-flex items-center gap-1">
+          <Icon name="alert" size={10} />
+          {runnerLimitLine(r.limit)}
+        </span>
+      </Badge>
+    );
+  }
+  if (r.activeIssueRef) {
+    return (
+      <span className="text-12 font-semibold tabular-nums text-info-11">
+        {r.activeIssueRef}
+        {r.activeStage ? ` · ${enumLabel("jobType", r.activeStage, language)}` : ""}
+      </span>
+    );
+  }
+  const state = r.draining ? "draining" : r.online ? (r.busy ? "busy" : "idle") : "offline";
+  return <span className={cn("text-12 font-semibold", r.busy ? "text-info-11" : "text-subtle")}>{t(`overview.runners.state.${state}`)}</span>;
 }

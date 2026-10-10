@@ -45,18 +45,14 @@ export function useAnswerQuestion(issueId: string) {
 
 /** Every OPEN decision on one project that names no issue, for the Agents screen. */
 export function useProjectQuestions(projectId: string | undefined) {
-  const query = useInfiniteQuery(questionQueries.project(projectId));
-  const pages = query.data?.pages ?? [];
-  return {
-    ...query,
-    data: pages.length
-      ? {
-          questions: pages.flatMap((p) => p.questions),
-          total: pages[pages.length - 1]?.total,
-          hasMore: pages[pages.length - 1]?.hasMore,
-        }
-      : undefined,
-  };
+  return useInfiniteQuery({
+    ...questionQueries.project(projectId),
+    // the pages read as one list: every question, and the newest page's total and whether more remain
+    select: (data) => {
+      const last = data.pages[data.pages.length - 1];
+      return { questions: data.pages.flatMap((p) => p.questions), total: last?.total, hasMore: last?.hasMore };
+    },
+  });
 }
 
 function linkedVerdict(q: {
@@ -74,9 +70,10 @@ function linkedVerdict(q: {
   };
 }
 
+/** The linked question's read and what it says about the row: `{ query, gone, unreachable }`. */
 export function useLinkedQuestion(questionId: string | undefined, enabled: boolean) {
   const query = useQuery(questionQueries.one(questionId, enabled));
-  return { ...query, ...linkedVerdict(query) };
+  return { query, ...linkedVerdict(query) };
 }
 
 export function useAnswerProjectQuestion(projectId: string) {

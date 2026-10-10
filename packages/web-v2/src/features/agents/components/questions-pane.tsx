@@ -60,7 +60,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
   // at once: if it names an issue, answered or not, that issue is where the link goes.
   const linked = useLinkedQuestion(focusQuestionId ?? undefined, !!focusQuestionId && !focusPresent);
   const walkedOut = !!focusQuestionId && !focusPresent && !hasNextPage;
-  const onIssue = linked.data?.issueId ?? null;
+  const onIssue = linked.query.data?.issueId ?? null;
   useEffect(() => {
     if (!focusQuestionId || focusPresent || onIssue || !hasNextPage || isFetchingNextPage) return;
     void fetchNextPage();
@@ -187,7 +187,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
           <button
             type="button"
             className="underline focus-visible:outline-none focus-visible:shadow-focus"
-            onClick={() => void linked.refetch()}
+            onClick={() => void linked.query.refetch()}
           >
             {t("agents.questions.tryAgain")}
           </button>
