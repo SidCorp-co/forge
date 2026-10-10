@@ -1,1 +1,1 @@
-**Review time now counts with an issue's checks, and passing has one definition.** A review carries its start, so the Checks tab times it; every gate reads passing from one predicate.
+**An issue's rail shows its traces, plan revision, workflow, feedback, release and lease again; review time counts with its checks; passing has one definition.**

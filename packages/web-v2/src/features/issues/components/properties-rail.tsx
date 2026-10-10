@@ -6,6 +6,7 @@
 // merge or only recorded somebody's claim of it — ISS-1126), what it carries, production, cost, and
 // every other kind of relation.
 
+import type { IssueStanding } from "@forge/contracts/issue-standing";
 import { ISSUE_CATEGORY_LABELS } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
 import { useState } from "react";
@@ -17,6 +18,7 @@ import { IssueRefBadge } from "./issue-ref-badge";
 import { LiveReachValue } from "./live-reach-row";
 import { ModuleHover } from "./module-hover";
 import { MergeMarkerControl } from "./merge-marker-control";
+import { RailTraceRows, Row } from "./rail-trace";
 import { IssueRequirementProperty } from "./requirement-property";
 import { type EditRefusal, InlineSelect } from "./inline-edit-cell";
 import { creatorLabelOf, initials, liveDependencies } from "../derive";
@@ -63,14 +65,6 @@ function fmtTokens(n: number): string {
   return String(n);
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-3 py-2">
-      <span className="fg-caption flex-none">{label}</span>
-      <div className="min-w-0 text-right">{children}</div>
-    </div>
-  );
-}
 
 /** Artifacts carried between issues: the other issue's key, linked, and the artifact as marked. */
 function CarriageList({ items, slug, from = false }: { items: Array<{ ref: string; key: string }>; slug: string; from?: boolean }) {
@@ -236,6 +230,8 @@ interface PropertiesRailProps {
   requirementKey?: string | null | undefined;
   /** Who owns the issue now (`IssueStanding.owner`); the creator where the standing names none. */
   owner?: { name: string | null; kind: "human" | "agent" } | null | undefined;
+  /** The issue's standing, for the trace rows (`rail-trace.tsx`); undefined until it is read. */
+  standing?: IssueStanding | undefined;
   /** The developer view: every row the person's view leaves out. */
   developer?: boolean;
 }
@@ -337,6 +333,7 @@ export function PropertiesRail({
   canMarkMerged,
   requirementKey,
   owner,
+  standing,
   developer = false,
 }: PropertiesRailProps) {
   const language = useInterfaceLanguage();
@@ -388,6 +385,7 @@ export function PropertiesRail({
               <IssueRequirementProperty projectId={issue.projectId} slug={slug} issueKey={issue.displayId} current={requirementKey} disabled={readOnly} />
             </Row>
           ) : null}
+          <RailTraceRows issue={issue} slug={slug} standing={standing} />
           <Row label={t("issues.field.priority")}>
             <InlineSelect
               ariaLabel={t("issues.field.priority")}

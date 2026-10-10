@@ -199,6 +199,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
                 canMarkMerged={canWrite}
                 requirementKey={standingQ.data ? (standingQ.data.standing.requirement?.key ?? null) : undefined}
                 owner={standingQ.data?.standing.owner ?? null}
+                standing={standingQ.data?.standing}
                 developer={developer}
               />
             </FactsRail>

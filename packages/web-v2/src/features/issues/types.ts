@@ -1,3 +1,4 @@
+import type { DesignStatus } from "@forge/contracts/design-status";
 import type { IssueMove } from "@forge/contracts/issue-machine";
 
 import type { BodyNode } from "@forge/contracts/body-components";
@@ -292,6 +293,10 @@ export interface IssueDetail extends IssueRow {
   workState?: IssueWorkState | null;
   /** The release that shipped it (FB-102); null while none has, absent from an older core. */
   shippedIn?: { version: string; at: string } | null;
+  /** The workflow this issue builds (`workflows/build-gate.ts:buildsWorkflowOf`); null where none. */
+  buildsWorkflow?: { workflowId: string; flow: string; title: string; designStatus: DesignStatus | null; dispatchable: boolean } | null;
+  /** The workflow this issue proposes a revision of; null where none. */
+  proposesWorkflow?: { workflowId: string; flow: string; title: string; designStatus: DesignStatus | null; revision: number } | null;
 }
 
 /** Why the dispatcher hasn't picked up the issue's next step. Mirrors core
