@@ -174,7 +174,7 @@ export function SessionsScreen({
         <ErrorState
           title={t("sessions.issueReadFailed")}
           message={formatRefusal(issueQ.error)}
-          onRetry={() => issueQ.refetch()}
+          onRetry={() => void issueQ.refetch()}
         />
       )}
 
@@ -182,7 +182,7 @@ export function SessionsScreen({
         <ErrorState
           title={t("sessions.loadFailed")}
           message={formatRefusal(sessionsQ.error)}
-          onRetry={() => sessionsQ.refetch()}
+          onRetry={() => void sessionsQ.refetch()}
         />
       )}
 

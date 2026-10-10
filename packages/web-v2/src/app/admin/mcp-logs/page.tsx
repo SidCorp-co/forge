@@ -1,5 +1,5 @@
-import { OperatorSection } from "@/features/operator";
+import { OperatorGroup } from "@/features/operator";
 
 export default function AdminMcpLogsPage() {
-  return <OperatorSection section="mcp-logs" />;
+  return <OperatorGroup section="mcp-logs" />;
 }

@@ -7,16 +7,16 @@
 
 import { PREVIEW_FAILURE_REASONS, PREVIEW_LIMITS, PREVIEW_SERVING_STATES, type PreviewFailureReason, type PreviewRecord } from "@forge/contracts/preview";
 import { useState } from "react";
-import { Banner, Button, Skeleton, Textarea, ViewHeading } from "@/design";
+import { Banner, Button, LoadingState, Section, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { useAbandonPreview, useApprovePreview, useIssueLane, useOpenPreview, usePreview, useSendPreviewMessage } from "./hooks";
+import { useAbandonPreview, useApprovePreview, useIssueLane, useOpenPreview, usePreview, useSendPreviewMessage } from "../hooks";
 import { openPreviewInTab, PreviewFrame } from "./preview-frame";
 
 type Copy = ReturnType<typeof useCopy>;
 
-/** Each failure reason's two copy keys, built from the contract's list; preview-panel.test.tsx fails a reason whose copy is missing. */
+/** Each failure reason's two copy keys, built from the contract's list; a test fails a reason whose copy is missing. */
 const REASON_KEYS = Object.fromEntries(
   PREVIEW_FAILURE_REASONS.map((r) => [r, { name: `previews.failed.reason.${r}`, fix: `previews.failed.fix.${r}` }]),
 ) as Record<PreviewFailureReason, { name: Parameters<Copy>[0]; fix: Parameters<Copy>[0] }>;
@@ -25,7 +25,7 @@ const reasonLines = (t: Copy, reason: PreviewFailureReason) => ({ name: t(REASON
 
 const SETTINGS_REASONS: readonly PreviewFailureReason[] = ["NO_START_COMMAND", "PORT_UNDECLARED", "PORT_IN_USE", "PRODUCTION_ENVIRONMENT"];
 
-export interface PreviewPanelProps {
+export interface IssuePreviewProps {
   issueId: string;
   /** The issue's key, for the frame's title. */
   issueLabel: string;
@@ -33,22 +33,22 @@ export interface PreviewPanelProps {
   /** A run holds a worktree to serve now; without one nothing can be started. */
   hasLiveRun: boolean;
   compact?: boolean;
-  /** One row: the state and the acts, with no frame, message box or hint; the whole panel is the developer view's. */
+  /** One line: the state and the acts, with no frame, message box or hint; the whole preview is the developer view's. */
   row?: boolean;
-  /** Classes for the section itself, so a wrapper never stands empty where the panel draws nothing. */
+  /** Classes for the section itself, so a wrapper never stands empty where the preview draws nothing. */
   className?: string;
-  /** Where the project's preview settings are, from the page that mounts the panel; no link is drawn without it. */
+  /** Where the project's preview settings are, from the page that mounts it; no link is drawn without it. */
   settingsHref?: string;
 }
 
-export function PreviewPanel(props: PreviewPanelProps) {
+export function IssuePreview(props: IssuePreviewProps) {
   const { issueId, canWrite, hasLiveRun, compact = false, row = false, className } = props;
   const t = useCopy();
   const previewQ = usePreview(issueId);
   const open = useOpenPreview(issueId);
   const preview = previewQ.data ?? null;
 
-  if (previewQ.isLoading) return compact ? null : <Skeleton className="h-24 w-full rounded-md" />;
+  if (previewQ.isLoading) return compact ? null : <LoadingState rows={2} />;
   if (previewQ.isError) {
     return (
       <div data-testid="preview-load-failed">
@@ -60,11 +60,10 @@ export function PreviewPanel(props: PreviewPanelProps) {
   }
   // nothing to show and nothing a reader could start (beside the chat, nothing is started): the section stays out of the way
   if (!preview && (compact || !(hasLiveRun && canWrite))) return null;
-  if (row && preview) return <PreviewRow preview={preview} issueId={issueId} canWrite={canWrite} className={className} />;
+  if (row && preview) return <PreviewActs preview={preview} issueId={issueId} canWrite={canWrite} className={className} />;
 
   return (
-    <section aria-label={t("previews.title")} data-testid="preview-panel" data-state={preview?.state ?? "none"} className={cn("grid gap-3", className)}>
-      {compact ? null : <ViewHeading>{t("previews.title")}</ViewHeading>}
+    <Section aria-label={t("previews.title")} testId="preview-panel" data-state={preview?.state ?? "none"} className={cn("grid gap-3", className)} title={compact ? undefined : t("previews.title")}>
       {preview ? (
         <PreviewBody {...props} preview={preview} />
       ) : (
@@ -75,7 +74,7 @@ export function PreviewPanel(props: PreviewPanelProps) {
         </div>
       )}
       <Refusal error={open.error} lead={t("previews.startFailed")} />
-    </section>
+    </Section>
   );
 }
 
@@ -89,7 +88,7 @@ function Refusal({ error, lead }: { error: unknown; lead: string }) {
 }
 
 /** The preview as one row of the issue page: its state in a word, then Open, Abandon and Approve where they apply. */
-function PreviewRow({ preview, issueId, canWrite, className }: { preview: PreviewRecord; issueId: string; canWrite: boolean; className: string | undefined }) {
+function PreviewActs({ preview, issueId, canWrite, className }: { preview: PreviewRecord; issueId: string; canWrite: boolean; className: string | undefined }) {
   const t = useCopy();
   const approve = useApprovePreview(issueId);
   const abandon = useAbandonPreview(issueId);
@@ -104,7 +103,7 @@ function PreviewRow({ preview, issueId, canWrite, className }: { preview: Previe
         </span>
         <span className="min-w-0 flex-1" />
         {preview.state === "live" ? (
-          <Button size="sm" variant="secondary" onClick={() => openPreviewInTab(preview.id).then(() => setOpening(null), setOpening)}>
+          <Button size="sm" variant="secondary" onClick={() => void openPreviewInTab(preview.id).then(() => setOpening(null), setOpening)}>
             {t("previews.open")}
           </Button>
         ) : null}
@@ -126,7 +125,7 @@ function PreviewRow({ preview, issueId, canWrite, className }: { preview: Previe
   );
 }
 
-function PreviewBody({ preview, issueId, issueLabel, canWrite, hasLiveRun, compact, settingsHref }: PreviewPanelProps & { preview: PreviewRecord }) {
+function PreviewBody({ preview, issueId, issueLabel, canWrite, hasLiveRun, compact, settingsHref }: IssuePreviewProps & { preview: PreviewRecord }) {
   const t = useCopy();
   const open = useOpenPreview(issueId);
   const approve = useApprovePreview(issueId);
@@ -206,7 +205,7 @@ function FailureNote({ preview, settingsHref }: { preview: PreviewRecord; settin
         <span className="font-medium">{name}.</span> {fix}
       </Banner>
       {preview.detail ? (
-        <pre data-testid="preview-failure-detail" className="fg-caption max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-sunken p-3 font-mono text-fg">
+        <pre data-testid="preview-failure-detail" className="max-h-64 overflow-auto whitespace-pre-wrap bg-sunken p-3 font-mono text-12 text-fg">
           {preview.detail}
         </pre>
       ) : null}

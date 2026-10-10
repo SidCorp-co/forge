@@ -187,7 +187,7 @@ export function AgentSelfEditor({
         </Field>
       </div>
       <div>
-        <Button variant="primary" loading={save.isPending} onClick={onSave} className="min-h-11">
+        <Button variant="primary" loading={save.isPending} onClick={() => void onSave()} className="min-h-11">
           {t("settings.agents.self.save")}
         </Button>
       </div>

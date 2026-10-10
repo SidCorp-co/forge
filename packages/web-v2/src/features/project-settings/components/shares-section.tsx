@@ -8,7 +8,7 @@ import { PageSection, PageSectionBody, SectionTitle } from "@/design";
 import { ShareList } from "@/features/shares";
 import { useMembers } from "../hooks";
 
-export function SharesSection({ projectId, isAdmin }: { projectId: string; isAdmin: boolean }) {
+export function ShareSettings({ projectId, isAdmin }: { projectId: string; isAdmin: boolean }) {
 	const membersQ = useMembers(projectId);
 	const nameOf = (userId: string) => {
 		const m = membersQ.data?.find((row) => row.userId === userId);

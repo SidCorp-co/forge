@@ -209,7 +209,7 @@ export function RunnersScreen() {
         </PageSectionHeader>
         <PageSectionBody>
           {active.isError ? (
-            <ErrorState message={formatApiError(active.error)} onRetry={() => active.refetch()} />
+            <ErrorState message={formatApiError(active.error)} onRetry={() => void active.refetch()} />
           ) : /* Not `isLoading`: with no active org yet the org query is disabled,
                 which is pending and NOT loading, and an empty-state sentence
                 reached that way claims a population nothing asked for. */

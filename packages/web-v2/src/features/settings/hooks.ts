@@ -28,7 +28,7 @@ export function useRevokeToken() {
   return useMutation({
     mutationFn: settingsApi.revokeToken,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["settings", "tokens"] });
+      void qc.invalidateQueries({ queryKey: ["settings", "tokens"] });
       toast({ title: "Token revoked", tone: "success" });
     },
     onError: (err) => {
@@ -63,7 +63,7 @@ export function useMarkAllRead() {
   return useMutation({
     mutationFn: settingsApi.markAllRead,
     onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["settings", "notifications"] });
+      void qc.invalidateQueries({ queryKey: ["settings", "notifications"] });
       toast({ title: `Marked ${res.updated} read`, tone: "success" });
     },
     onError: (err) => {
@@ -86,7 +86,7 @@ export function useUpdateAssistantPreferences() {
     mutationFn: settingsApi.updateAssistantPreferences,
     onSuccess: (data) => {
       qc.setQueryData(["settings", "assistant-preferences"], data);
-      qc.invalidateQueries({ queryKey: ["settings", "preference-changes"] });
+      void qc.invalidateQueries({ queryKey: ["settings", "preference-changes"] });
       toast({ title: "Answer preferences saved", tone: "success" });
     },
     onError: (err) => {
@@ -107,8 +107,8 @@ export function useRestorePreferenceChange() {
   return useMutation({
     mutationFn: settingsApi.restorePreferenceChange,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["settings", "assistant-preferences"] });
-      qc.invalidateQueries({ queryKey: ["settings", "preference-changes"] });
+      void qc.invalidateQueries({ queryKey: ["settings", "assistant-preferences"] });
+      void qc.invalidateQueries({ queryKey: ["settings", "preference-changes"] });
     },
   });
 }

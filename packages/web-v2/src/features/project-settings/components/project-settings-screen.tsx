@@ -15,15 +15,15 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { LEGACY_TABS, SETTINGS_SECTIONS, type SettingsSection } from "../sections";
-import { AdvancedSection } from "./advanced-tab";
-import { DeliverySection } from "./delivery-section";
-import { GeneralSection } from "./general-section";
+import { AdvancedSettings } from "./advanced-tab";
+import { DeliverySettings } from "./delivery-section";
+import { GeneralSettings } from "./general-section";
 import { IntegrationsTab } from "./integrations-tab";
 import { LabelsTab } from "./labels-tab";
 import { MembersTab } from "./members-tab";
 import { ModulesTab } from "./modules-tab";
-import { PreviewSection } from "./preview-section";
-import { SharesSection } from "./shares-section";
+import { PreviewSettings } from "./preview-section";
+import { ShareSettings } from "./shares-section";
 
 const LABEL: Record<SettingsSection, ProductCopyKey> = {
 	general: "settings.project.section.general",
@@ -71,11 +71,11 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 		projectsQ.isLoading || (listItem && detailQ.isLoading) ? (
 			<ProjectLoader label={t("settings.project.loading")} />
 		) : projectsQ.isError ? (
-			<ErrorState message={formatApiError(projectsQ.error)} onRetry={() => projectsQ.refetch()} />
+			<ErrorState message={formatApiError(projectsQ.error)} onRetry={() => void projectsQ.refetch()} />
 		) : !listItem ? (
 			<EmptyState title={t("settings.project.notFoundTitle")} message={t("settings.project.notFoundBody")} mascot />
 		) : detailQ.isError ? (
-			<ErrorState message={formatApiError(detailQ.error)} onRetry={() => detailQ.refetch()} />
+			<ErrorState message={formatApiError(detailQ.error)} onRetry={() => void detailQ.refetch()} />
 		) : null;
 	if (unready) return <div className="grid min-h-[60vh] place-items-center">{unready}</div>;
 
@@ -96,12 +96,12 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 			/>
 			<PageContainer>
 				<div className={tab === "connections" ? undefined : "max-w-4xl"}>
-					{tab === "general" && <GeneralSection project={project} canEdit={canEdit} />}
+					{tab === "general" && <GeneralSettings project={project} canEdit={canEdit} />}
 					{tab === "people" && (
 						<>
 							<MembersTab projectId={project.id} canEdit={canManage} />
 							<div id="shares" className="scroll-mt-24 border-t border-line">
-								<SharesSection projectId={project.id} isAdmin={canManage} />
+								<ShareSettings projectId={project.id} isAdmin={canManage} />
 							</div>
 						</>
 					)}
@@ -115,8 +115,8 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 							</div>
 						</>
 					)}
-					{tab === "delivery" && <DeliverySection project={project} canEdit={canEdit} />}
-					{tab === "preview" && <PreviewSection projectId={project.id} slug={project.slug} canEdit={canEdit} />}
+					{tab === "delivery" && <DeliverySettings project={project} canEdit={canEdit} />}
+					{tab === "preview" && <PreviewSettings projectId={project.id} slug={project.slug} canEdit={canEdit} />}
 					{tab === "connections" && (
 						<>
 							<div id="integrations" className="scroll-mt-24">
@@ -128,7 +128,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 							</div>
 						</>
 					)}
-					{tab === "advanced" && <AdvancedSection project={project} canEdit={canEdit} />}
+					{tab === "advanced" && <AdvancedSettings project={project} canEdit={canEdit} />}
 				</div>
 			</PageContainer>
 		</div>

@@ -104,7 +104,7 @@ function AddProject({ compact, onClick }: { compact: boolean; onClick: () => voi
   );
 }
 
-function SwitcherRow({
+function SwitcherItem({
   project: p,
   active,
   onSelect,
@@ -220,7 +220,7 @@ export function ProjectSwitcher(props: ProjectSwitcherProps) {
         </div>
         <div className="max-h-75 min-h-0 overflow-y-auto p-1.5">
           {rows.map((p) => (
-            <SwitcherRow
+            <SwitcherItem
               key={p.id}
               project={p}
               active={p.slug === activeSlug}

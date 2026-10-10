@@ -24,7 +24,7 @@ function Waiting({ label, notFound, projectsQ }: { label: string; notFound?: { t
       {isLoading ? (
         <ProjectLoader label={label} />
       ) : isError ? (
-        <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
+        <ErrorState message={formatApiError(error)} onRetry={() => void refetch()} />
       ) : (
         <ErrorState title={missing.title} message={missing.message} />
       )}

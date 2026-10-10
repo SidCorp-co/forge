@@ -165,7 +165,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
           <ErrorState
             title={t("sessions.detail.loadFailed")}
             message={formatRefusal(sessionQ.error)}
-            onRetry={() => sessionQ.refetch()}
+            onRetry={() => void sessionQ.refetch()}
           />
         </div>
       </div>
@@ -176,7 +176,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
     <ErrorState
       title={items.length ? t("sessions.detail.turnsRefreshFailed") : t("sessions.detail.turnsLoadFailed")}
       message={formatRefusal(turnsQ.error)}
-      onRetry={() => turnsQ.refetch()}
+      onRetry={() => void turnsQ.refetch()}
       mascot={items.length === 0}
     />
   ) : null;

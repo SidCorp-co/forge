@@ -44,7 +44,7 @@ export function RoomsField({
               icon="trash"
               loading={saving}
               disabled={savedRids.length === 1}
-              onClick={() => save(savedRids.filter((x) => x !== r))}
+              onClick={() => void save(savedRids.filter((x) => x !== r))}
             >
               {t("integrations.provider.remove")}
             </Button>
@@ -68,7 +68,7 @@ export function RoomsField({
             size="sm"
             loading={saving}
             disabled={!newRid.trim() || savedRids.includes(newRid.trim())}
-            onClick={() => save([...savedRids, newRid.trim()])}
+            onClick={() => void save([...savedRids, newRid.trim()])}
           >
             {t("integrations.rocket.addRoom")}
           </Button>

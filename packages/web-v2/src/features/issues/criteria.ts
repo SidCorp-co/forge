@@ -158,8 +158,8 @@ export function useRecordVerdict(issueId: string) {
       });
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["issue", issueId] });
-      qc.invalidateQueries({ queryKey: ["issues", "standing"] });
+      void qc.invalidateQueries({ queryKey: ["issue", issueId] });
+      void qc.invalidateQueries({ queryKey: ["issues", "standing"] });
     },
   });
 }
@@ -174,9 +174,9 @@ export function useTraceCriteria(issueId: string, projectId: string, requirement
     mutationFn: (codes: string[]) =>
       apiClient<{ criteria: CriterionRow[] }>(`/issues/${issueId}/criteria/traces`, { method: "POST", body: JSON.stringify({ codes }) }),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["issue", issueId] });
-      qc.invalidateQueries({ queryKey: ["issues", "standing"] });
-      if (requirementKey) qc.invalidateQueries({ queryKey: ["requirement", projectId, requirementKey] });
+      void qc.invalidateQueries({ queryKey: ["issue", issueId] });
+      void qc.invalidateQueries({ queryKey: ["issues", "standing"] });
+      if (requirementKey) void qc.invalidateQueries({ queryKey: ["requirement", projectId, requirementKey] });
     },
   });
 }

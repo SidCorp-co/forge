@@ -17,7 +17,7 @@ interface Node {
 }
 
 function describe(item: ActivityItem, t: Copy): Node {
-  const p = (item.payload ?? {}) as Record<string, unknown>;
+  const p = (item.payload ?? {});
   const from = typeof p.from === "string" ? p.from : undefined;
   const to = typeof p.to === "string" ? p.to : undefined;
   switch (item.action) {

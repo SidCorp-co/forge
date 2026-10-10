@@ -91,8 +91,8 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
         <ErrorState
           message={formatApiError(issuesQ.error ?? runsQ.error)}
           onRetry={() => {
-            issuesQ.refetch();
-            runsQ.refetch();
+            void issuesQ.refetch();
+            void runsQ.refetch();
           }}
         />
       ) : issuesQ.isLoading ? (

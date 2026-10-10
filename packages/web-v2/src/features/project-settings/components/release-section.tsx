@@ -105,7 +105,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 	);
 }
 
-function ChannelFacts({ r }: { r: ReleaseReadiness }) {
+function ChannelDetails({ r }: { r: ReleaseReadiness }) {
 	const t = useCopy();
 	if (!r.hasReleaseGate) return null;
 	const unread = t("settings.project.release.fact.unread");
@@ -124,12 +124,12 @@ function ChannelFacts({ r }: { r: ReleaseReadiness }) {
 	);
 }
 
-export function ReleaseSection({ projectId, slug }: { projectId: string; slug: string }) {
+export function ReleaseSettings({ projectId, slug }: { projectId: string; slug: string }) {
 	const t = useCopy();
 	const q = useReleaseReadiness(projectId);
 	const heading = <h3 className="fg-h3 text-accent-text!">{t("settings.project.release.title")}</h3>;
 	if (q.isLoading) return <div>{heading}<Skeleton className="mt-3 h-16 w-full rounded-md" /></div>;
-	if (q.isError || !q.data) return <div>{heading}<ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} /></div>;
+	if (q.isError || !q.data) return <div>{heading}<ErrorState message={formatApiError(q.error)} onRetry={() => void q.refetch()} /></div>;
 	const r = q.data;
 	const knowledge = r.gaps.filter((g) => KNOWLEDGE_GAPS[g]);
 	const fields = r.gaps.filter((g) => FIELD_GAPS[g]);
@@ -137,7 +137,7 @@ export function ReleaseSection({ projectId, slug }: { projectId: string; slug: s
 		<section aria-label={t("settings.project.release.title")}>
 			{heading}
 			<p className="fg-body-sm mt-1 max-w-[68ch] text-muted">{stateLine(r, t)}</p>
-			{r.declarationRead && <ChannelFacts r={r} />}
+			{r.declarationRead && <ChannelDetails r={r} />}
 			{r.gates.length > 0 && (
 				<>
 					<h4 className="fg-label mt-5 text-fg">{t("settings.project.release.now")}</h4>

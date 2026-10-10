@@ -9,7 +9,7 @@ import { useIssue } from "@/features/issues";
 import { settingsHref } from "@/features/project-settings";
 import { useProjects } from "@/features/projects";
 import { canWriteProject } from "@/features/projects";
-import { PreviewPanel } from "@/features/previews";
+import { IssuePreview as LivePreview } from "@/features/previews";
 
 const ISSUE_PAGE = /^\/projects\/[^/]+\/issues\/([^/?#]+)/;
 
@@ -33,7 +33,7 @@ function IssuePreview({ id, projectId }: { id: string; projectId: string }) {
   const project = projectsQ.data?.find((p) => p.id === projectId);
   const role = project?.role;
   return (
-    <PreviewPanel
+    <LivePreview
       compact
       className="max-h-3/5 flex-none overflow-y-auto border-b border-line px-3 py-3"
       issueId={issue.id}

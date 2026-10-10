@@ -59,7 +59,7 @@ function ConnectedState({
  * One App per organization, one binding per project. An existing App is offered
  * first; creating another is the deliberate path, not the default.
  */
-export function GitHubSection({ projectId }: { projectId: string }) {
+export function GitHubSettings({ projectId }: { projectId: string }) {
   const list = useIntegrationsList(projectId);
   const connections = useConnections();
   const [forceCreate, setForceCreate] = useState(false);

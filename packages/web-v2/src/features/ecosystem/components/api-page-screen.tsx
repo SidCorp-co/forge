@@ -6,7 +6,7 @@ import { type ApiPage, TYPE_LABEL } from "../types";
 import { readingOf } from "@/lib/api/refusals";
 import { Loading, UnreadNotice } from "./notices";
 
-function PublishesSection({ page, slug, ecoName }: { page: ApiPage; slug: string; ecoName: Map<string, string> }) {
+function PublishedApis({ page, slug, ecoName }: { page: ApiPage; slug: string; ecoName: Map<string, string> }) {
   return (
     <section aria-label="Publishes" className="space-y-2">
       <h2 className="fg-label text-fg">Publishes</h2>
@@ -42,7 +42,7 @@ function PublishesSection({ page, slug, ecoName }: { page: ApiPage; slug: string
   );
 }
 
-function CommitmentsSection({ page, slug }: { page: ApiPage; slug: string }) {
+function ApiCommitments({ page, slug }: { page: ApiPage; slug: string }) {
   return (
     <section aria-label="Commitments" className="space-y-2">
       <h2 className="fg-label text-fg">Commitments</h2>
@@ -98,7 +98,7 @@ export function ApiPageScreen({ projectId, slug }: { projectId: string; slug: st
         )}
       </section>
 
-      <PublishesSection page={page} slug={slug} ecoName={ecoName} />
+      <PublishedApis page={page} slug={slug} ecoName={ecoName} />
 
       <section aria-label="Consumes" className="space-y-2">
         <h2 className="fg-label text-fg">Consumes</h2>
@@ -116,7 +116,7 @@ export function ApiPageScreen({ projectId, slug }: { projectId: string; slug: st
         )}
       </section>
 
-      <CommitmentsSection page={page} slug={slug} />
+      <ApiCommitments page={page} slug={slug} />
 
       {page.reader.access === "party" ? (
         <p className="fg-caption">

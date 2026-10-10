@@ -11,10 +11,10 @@ import type { RecordingRecord } from "@forge/contracts/reproduce";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, ViewHeading, Table, THead, TBody, TR, TH, TD } from "@/design";
+import { formatSize } from "@/features/attachments";
 import { reproduceApi } from "@/features/previews";
 import { recordingsKey } from "@/features/previews";
-import { TimelineTable } from "@/features/previews";
-import { formatSize } from "@/features/attachments";
+import { Timeline } from "@/features/previews";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { coreFileUrl } from "@/lib/utils/core-url";
@@ -162,6 +162,11 @@ function RecordingFile({ file }: { file: Attachment }) {
  * A video attached to the item, played in the page and read by its text alternative. One this browser
  * cannot decode, or decodes with no picture, is said so with a way to download it, never a black box.
  */
+/** A recording attached with no captions file carries its text alternative as one caption over its whole length. */
+function captionsOf(alt: string): string {
+  return `data:text/vtt;charset=utf-8,${encodeURIComponent(`WEBVTT\n\n00:00:00.000 --> 99:59:59.000\n${alt}\n`)}`;
+}
+
 function UploadedVideo({ file, alt }: { file: Attachment; alt: string }) {
   const t = useCopy();
   const [unplayable, setUnplayable] = useState(false);
@@ -176,7 +181,6 @@ function UploadedVideo({ file, alt }: { file: Attachment; alt: string }) {
           </a>
         </p>
       ) : (
-        // biome-ignore lint/a11y/useMediaCaption: a screen recording someone attached comes with no captions file; its text alternative is its label
         <video
           src={src}
           controls
@@ -189,7 +193,9 @@ function UploadedVideo({ file, alt }: { file: Attachment; alt: string }) {
             const v = e.currentTarget;
             if (v.videoWidth === 0 && v.videoHeight === 0) setUnplayable(true);
           }}
-        />
+        >
+          <track kind="captions" src={captionsOf(alt)} label={alt} />
+        </video>
       )}
     </div>
   );
@@ -224,7 +230,7 @@ function RecordingDetail({ recording, projectId, fbKey }: { recording: Recording
         {recording.timeline.length === 0 ? (
           <p className="fg-body-sm text-muted">{t("previews.recordings.timelineEmpty")}</p>
         ) : (
-          <TimelineTable entries={recording.timeline} />
+          <Timeline entries={recording.timeline} />
         )}
       </div>
       {recording.state === "expired" ? <p className="fg-caption text-muted">{t("previews.recordings.expired")}</p> : null}

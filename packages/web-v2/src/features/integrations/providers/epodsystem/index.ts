@@ -11,7 +11,7 @@ export const epodsystem: ProviderModule = {
   agentPathKind: "direct-mcp",
   bindingKeys: [],
   target: (config) => text(config, "storeSlug") ?? text(config, "storeName"),
-  section: () => import("./section").then((m) => ({ default: m.EpodsystemSection })),
+  section: () => import("./section").then((m) => ({ default: m.EpodsystemSettings })),
   connectionSection: () =>
     import("./connection-config").then((m) => ({ default: m.EpodsystemConnectionConfig })),
 };

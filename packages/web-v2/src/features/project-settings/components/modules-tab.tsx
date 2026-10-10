@@ -169,7 +169,7 @@ function ModuleName({ module: m, onPatch }: { module: ProjectLabel; onPatch: (pa
   );
 }
 
-function ModuleRow({
+function ModuleItem({
   node,
   modules,
   canEdit,
@@ -285,7 +285,7 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
           <ErrorState
             title={t("settings.project.work.modulesUnread")}
             message={formatApiError(labelsQ.error)}
-            onRetry={() => labelsQ.refetch()}
+            onRetry={() => void labelsQ.refetch()}
           />
         ) : modules.length === 0 ? (
           <EmptyState
@@ -295,7 +295,7 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
         ) : (
           <ul className="border-t border-line-subtle">
             {tree.map((node) => (
-              <ModuleRow
+              <ModuleItem
                 key={node.module.id}
                 node={node}
                 modules={modules}

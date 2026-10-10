@@ -1,9 +1,9 @@
 import type { QueryKey } from "@tanstack/react-query";
 import { fireEvent } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { AdvancedSection } from "@/features/project-settings/components/advanced-tab";
-import { DeliverySection } from "@/features/project-settings/components/delivery-section";
-import { GeneralSection } from "@/features/project-settings/components/general-section";
+import { AdvancedSettings } from "@/features/project-settings/components/advanced-tab";
+import { DeliverySettings } from "@/features/project-settings/components/delivery-section";
+import { GeneralSettings } from "@/features/project-settings/components/general-section";
 import { LabelsTab } from "@/features/project-settings/components/labels-tab";
 import { MembersTab } from "@/features/project-settings/components/members-tab";
 import { ModulesTab } from "@/features/project-settings/components/modules-tab";
@@ -141,11 +141,11 @@ export const SCREENS = [
       return seeded(<ProjectSettingsScreen slug="hop" />);
     },
   },
-  { name: "Project settings · General", render: () => seeded(<GeneralSection project={DETAIL} canEdit />) },
+  { name: "Project settings · General", render: () => seeded(<GeneralSettings project={DETAIL} canEdit />) },
   { name: "Project settings · People", render: () => seeded(<MembersTab projectId={P} canEdit />) },
   { name: "Project settings · Work, modules", render: () => seeded(<ModulesTab projectId={P} canEdit />) },
   { name: "Project settings · Work, labels", render: () => seeded(<LabelsTab projectId={P} canEdit />) },
-  { name: "Project settings · Delivery", render: () => seeded(<DeliverySection project={DETAIL} canEdit />), act: clickKey("settings.project.release.gap.write") },
-  { name: "Project settings · Advanced", render: () => seeded(<AdvancedSection project={DETAIL} canEdit />) },
-  { name: "Project settings · read only", render: () => seeded(<DeliverySection project={DETAIL} canEdit={false} />) },
+  { name: "Project settings · Delivery", render: () => seeded(<DeliverySettings project={DETAIL} canEdit />), act: clickKey("settings.project.release.gap.write") },
+  { name: "Project settings · Advanced", render: () => seeded(<AdvancedSettings project={DETAIL} canEdit />) },
+  { name: "Project settings · read only", render: () => seeded(<DeliverySettings project={DETAIL} canEdit={false} />) },
 ];

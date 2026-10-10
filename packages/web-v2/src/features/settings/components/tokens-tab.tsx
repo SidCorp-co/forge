@@ -96,7 +96,7 @@ function TokenReveal({
         <code className="block break-all font-mono text-13 text-fg">{token.plaintext}</code>
       </div>
       <div className="flex gap-3">
-        <Button variant="primary" icon="check" onClick={copyPlaintext} className="min-h-11">
+        <Button variant="primary" icon="check" onClick={() => void copyPlaintext()} className="min-h-11">
           {t("settings.tokens.copyToClipboard")}
         </Button>
         <Button variant="secondary" onClick={onDone} className="min-h-11">

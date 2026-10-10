@@ -173,7 +173,7 @@ export function PairScreen() {
                 <Banner
                   tone="danger"
                   action={
-                    <Button variant="secondary" onClick={() => agentsQ.refetch()}>
+                    <Button variant="secondary" onClick={() => void agentsQ.refetch()}>
                       Try again
                     </Button>
                   }

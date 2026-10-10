@@ -5,10 +5,10 @@ import { type ReactNode, useMemo, useState } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useIntegrationsList } from "../hooks";
 import type { IntegrationSummary } from "../types";
-import { type BadgeView, ProviderCard } from "./shared";
+import { type BadgeView, ProviderSummary } from "./shared";
 
 /** A section listing several labelled bindings of one provider, with an Add form below them. */
-export function MultiBindingSection({
+export function MultiBindingSettings({
   projectId,
   provider,
   title,
@@ -38,7 +38,7 @@ export function MultiBindingSection({
   const [adding, setAdding] = useState(false);
   const t = useCopy();
   return (
-    <ProviderCard
+    <ProviderSummary
       title={title}
       badge={bindings.length > 0 ? { label: t("integrations.provider.nConnected", { n: bindings.length }), tone: "green" } : null}
     >
@@ -52,7 +52,7 @@ export function MultiBindingSection({
           {addLabel}
         </Button>
       )}
-    </ProviderCard>
+    </ProviderSummary>
   );
 }
 

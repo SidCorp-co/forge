@@ -37,7 +37,7 @@ const stripKey = (r: PluginDesignation): PluginDesignation => ({
 const sameList = (a: DraftRow[], b: PluginDesignation[]) =>
   JSON.stringify(a.map(stripKey)) === JSON.stringify(b.map(stripKey));
 
-export function PluginsSection({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+export function PluginSettings({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const t = useCopy();
   const projectQ = useProject(projectId);
   return (
@@ -48,7 +48,7 @@ export function PluginsSection({ projectId, canEdit }: { projectId: string; canE
       <PinConflicts projectId={projectId} />
       {projectQ.isError ? (
         <div className="mt-3">
-          <ErrorState message={formatApiError(projectQ.error)} onRetry={() => projectQ.refetch()} />
+          <ErrorState message={formatApiError(projectQ.error)} onRetry={() => void projectQ.refetch()} />
         </div>
       ) : projectQ.data ? (
         <PluginsEditor projectId={projectId} agentConfig={projectQ.data.agentConfig} canEdit={canEdit} />
@@ -109,7 +109,7 @@ function PluginsEditor({ projectId, agentConfig, canEdit }: { projectId: string;
       ) : (
         <ul className="mt-3 divide-y divide-line-subtle">
           {draft.map((p, i) => (
-            <PluginRow
+            <PluginItem
               key={p.rowKey}
               row={p}
               error={errors[i] ?? null}
@@ -155,7 +155,7 @@ function PluginsEditor({ projectId, agentConfig, canEdit }: { projectId: string;
   );
 }
 
-function PluginRow({
+function PluginItem({
   row: p,
   error,
   canEdit,

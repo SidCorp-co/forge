@@ -118,8 +118,8 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
           loading={notificationsQuery.isLoading || invitations.query.isLoading}
           error={notificationsQuery.isError || invitations.query.isError}
           onRetry={() => {
-            notificationsQuery.refetch();
-            invitations.query.refetch();
+            void notificationsQuery.refetch();
+            void invitations.query.refetch();
           }}
           onSelect={(id) => {
             const row = rows.find((n) => n.id === id);

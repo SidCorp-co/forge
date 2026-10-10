@@ -57,7 +57,7 @@ export function CoolifyTargetsField({
       {inherited && <p className="fg-body-sm text-muted">{t("integrations.coolify.targetsInherited")}</p>}
       {apps.isError && <p className="fg-body-sm text-muted">{t("integrations.coolify.appsUnread")}</p>}
       {targets.map((row, idx) => (
-        <TargetRow
+        <TargetItem
           key={row.id ?? idx}
           target={row}
           first={idx === 0}
@@ -86,7 +86,7 @@ function Caption({ show, children }: { show: boolean; children: string }) {
   return show ? <span className="fg-label mb-1 block text-subtle">{children}</span> : null;
 }
 
-function TargetRow({
+function TargetItem({
   target: t,
   first,
   options,

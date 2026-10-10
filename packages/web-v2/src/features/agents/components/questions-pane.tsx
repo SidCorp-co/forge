@@ -117,7 +117,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
         <ErrorState
           title={t("agents.questions.loadFailed")}
           message={formatApiError(error)}
-          onRetry={() => refetch()}
+          onRetry={() => void refetch()}
         />
       </div>
     );

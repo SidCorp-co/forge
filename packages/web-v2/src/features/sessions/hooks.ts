@@ -45,10 +45,10 @@ function useSessionMutation<TArgs, TData>(
   return useMutation({
     mutationFn: fn,
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["agent-sessions"] });
-      qc.invalidateQueries({ queryKey: ["agent-session"] });
+      void qc.invalidateQueries({ queryKey: ["agent-sessions"] });
+      void qc.invalidateQueries({ queryKey: ["agent-session"] });
       if (opts.alsoInvalidateQueueStats) {
-        qc.invalidateQueries({ queryKey: ["agent-sessions", "queue-stats"] });
+        void qc.invalidateQueries({ queryKey: ["agent-sessions", "queue-stats"] });
       }
       if (opts.successMessage) {
         toast({ title: opts.successMessage(data, t), tone: "success" });

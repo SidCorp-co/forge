@@ -31,7 +31,7 @@ function Loading({ query }: { query: { isLoading: boolean; isError: boolean; err
 	return <ErrorState message={formatApiError(query.error)} onRetry={() => query.refetch()} />;
 }
 
-export function ProjectDocumentSection({
+export function ProjectDocumentEditor({
 	project,
 	canEdit,
 }: {
@@ -55,7 +55,7 @@ export function ProjectDocumentSection({
 	);
 }
 
-export function PolicyDocumentSection({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+export function PolicyDocumentEditor({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
 	const t = useCopy();
 	const q = usePolicyDocument(projectId);
 	const write = useWritePolicy(projectId);
@@ -113,7 +113,7 @@ function RefusedBanner({ err }: { err: unknown }) {
 	);
 }
 
-export function TestingProfilesSection({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+export function TestingProfiles({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
 	const t = useCopy();
 	const q = useTestingProfiles(projectId);
 	const remove = useDeleteTestingProfile(projectId);
@@ -190,7 +190,7 @@ function BindingEditor(props: { projectId: string; bindingId: string; read: V1Re
 	);
 }
 
-export function BindingsSection({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+export function BindingDocuments({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
 	const t = useCopy();
 	const q = useBindingDocuments(projectId);
 	const [adding, setAdding] = useState<string[]>([]);

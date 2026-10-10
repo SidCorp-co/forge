@@ -67,18 +67,18 @@ export function useRecordDecision(id: string) {
       // the same act settles the open question it answers (FB-80)
       if (settles) {
         await questionsApi.answer({ questionId: settles.questionId, round: settles.round, text: `${fields.decision}\n\n${fields.reason}` });
-        qc.invalidateQueries({ queryKey: ["questions"] });
-        qc.invalidateQueries({ queryKey: ["issue"] });
-        qc.invalidateQueries({ queryKey: ["attention"] });
+        void qc.invalidateQueries({ queryKey: ["questions"] });
+        void qc.invalidateQueries({ queryKey: ["issue"] });
+        void qc.invalidateQueries({ queryKey: ["attention"] });
       }
       return recorded;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["comments", id] });
-      qc.invalidateQueries({ queryKey: ["activities", id] });
+      void qc.invalidateQueries({ queryKey: ["comments", id] });
+      void qc.invalidateQueries({ queryKey: ["activities", id] });
       // the issue's Decisions tab, and a requirement's that rolls this issue's up
-      qc.invalidateQueries({ queryKey: ["entity-decisions"] });
-      qc.invalidateQueries({ queryKey: ["requirement-decisions"] });
+      void qc.invalidateQueries({ queryKey: ["entity-decisions"] });
+      void qc.invalidateQueries({ queryKey: ["requirement-decisions"] });
     },
   });
 }
@@ -110,8 +110,8 @@ export function useCreateComment(id: string) {
       return created;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["comments", id] });
-      qc.invalidateQueries({ queryKey: ["activities", id] });
+      void qc.invalidateQueries({ queryKey: ["comments", id] });
+      void qc.invalidateQueries({ queryKey: ["activities", id] });
     },
     onError: (err) => {
       toast({ title: t("issues.toast.commentFailed"), description: formatApiError(err), tone: "error" });

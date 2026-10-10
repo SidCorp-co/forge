@@ -15,9 +15,9 @@ import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { type ConnectionGroup, groupSummary } from "../connection-groups";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { providerIcon } from "../providers/registry";
-import { ConnectionRow } from "./connection-row";
+import { ConnectionItem } from "./connection-row";
 
-export function ConnectionGroupSection({
+export function ConnectionGroupList({
   group,
   open,
   onToggle,
@@ -67,7 +67,7 @@ export function ConnectionGroupSection({
       <div id={rowsId} hidden={!open} className={open ? "forge-fade" : undefined}>
         {open &&
           group.connections.map((c) => (
-            <ConnectionRow
+            <ConnectionItem
               key={c.id}
               connection={c}
               ownerLabel={ownerLabel(c)}

@@ -25,6 +25,6 @@ export const gitlab: ProviderModule = {
     const path = text(config, "projectPath");
     return path ? `${gitlabHost(text(config, "baseUrl") ?? undefined)}/${path}` : null;
   },
-  section: () => import("./section").then((m) => ({ default: m.GitlabSection })),
+  section: () => import("./section").then((m) => ({ default: m.GitlabSettings })),
   connectionSection: null,
 };

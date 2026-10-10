@@ -12,10 +12,10 @@ import {
   useOperatorWorkspaces,
 } from "../hooks";
 import type { OperatorWindow, OperatorWorkspaceSort } from "../types";
-import { AdoptionPanel, AdoptionPanelSkeleton } from "./adoption-panel";
+import { AdoptionChart, AdoptionPanelSkeleton } from "./adoption-panel";
 import { AlertFeed, AlertFeedSkeleton } from "./alert-feed";
 import { GlanceCards, GlanceCardsSkeleton } from "./glance-cards";
-import { KpiRow, KpiRowSkeleton } from "./kpi-row";
+import { Kpis, KpiRowSkeleton } from "./kpi-row";
 import { WorkspacesTable, WorkspacesTableSkeleton } from "./workspaces-table";
 import { SectionTitle, PageTitle } from "@/design/primitives/heading";
 
@@ -72,7 +72,7 @@ export function OperatorOverviewScreen() {
       </div>
 
       <Panel query={overview} skeleton={<KpiRowSkeleton />}>
-        {(data) => <KpiRow overview={data} />}
+        {(data) => <Kpis overview={data} />}
       </Panel>
 
       <Panel query={alerts} skeleton={<AlertFeedSkeleton />}>
@@ -88,7 +88,7 @@ export function OperatorOverviewScreen() {
 
       <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
         <Panel query={adoption} skeleton={<AdoptionPanelSkeleton />}>
-          {(data) => <AdoptionPanel buckets={data} />}
+          {(data) => <AdoptionChart buckets={data} />}
         </Panel>
         <Panel query={workspaces} skeleton={<WorkspacesTableSkeleton />}>
           {(data) => <WorkspacesTable rows={data.items} sort={sort} onSortChange={setSort} />}

@@ -77,7 +77,7 @@ export function summarizeResult(
     return { label: n === 1 ? t("sessions.result.textOne") : t("sessions.result.textMany", { n }), hasBody: true, pending: false };
   }
   if (typeof result === "object") {
-    const n = Object.keys(result as Record<string, unknown>).length;
+    const n = Object.keys(result).length;
     return { label: n === 1 ? t("sessions.result.objectOne") : t("sessions.result.objectMany", { n }), hasBody: true, pending: false };
   }
   return { label: String(result), hasBody: false, pending: false };

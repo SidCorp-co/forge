@@ -18,10 +18,10 @@ function useRunControl<T>(
   return useMutation({
     mutationFn: (id: string) => fn(id),
     onSuccess: (data, id) => {
-      qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
-      qc.invalidateQueries({ queryKey: ["pipeline-run", id] });
-      qc.invalidateQueries({ queryKey: ["projects", "health"] });
-      for (const queryKey of alsoInvalidate) qc.invalidateQueries({ queryKey });
+      void qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
+      void qc.invalidateQueries({ queryKey: ["pipeline-run", id] });
+      void qc.invalidateQueries({ queryKey: ["projects", "health"] });
+      for (const queryKey of alsoInvalidate) void qc.invalidateQueries({ queryKey });
       toast({ title: successMessage, tone: "success" });
       const extra = followUp?.(data);
       if (extra) toast({ ...extra, tone: "error" });

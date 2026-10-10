@@ -14,7 +14,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { useProjects } from "@/features/projects";
 import { canWriteProject } from "@/features/projects";
 import { ideaApi } from "@/features/previews";
-import { IdeaPanel } from "@/features/previews";
+import { IdeaPreview } from "@/features/previews";
 import { OpenRoom } from "@/features/previews";
 import { toolOutputText } from "@/lib/tool-output";
 
@@ -42,7 +42,7 @@ export function IdeaOfferNotice({ offer }: { offer: IdeaOffer }) {
       </p>
       <p className="fg-caption text-subtle">“{offer.brief}”</p>
       {open.data ? (
-        <IdeaPanel preview={open.data} about={offer.about} canWrite={canWriteProject(project?.role)} slug={project?.slug} />
+        <IdeaPreview preview={open.data} about={offer.about} canWrite={canWriteProject(project?.role)} slug={project?.slug} />
       ) : (
         <>
           <p className="fg-caption text-muted">{t("previews.idea.offer.what")}</p>

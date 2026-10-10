@@ -110,7 +110,7 @@ function ThreadQuestion({
                 size="sm"
                 loading={sending}
                 disabled={trimmed.length === 0 || sending}
-                onClick={send}
+                onClick={() => void send()}
               >
                 {t("agents.decision.post")}
               </Button>
@@ -167,7 +167,7 @@ export function IssueQuestions({
         <ErrorState
           title={t("agents.decision.loadFailed")}
           message={formatApiError(error)}
-          onRetry={() => refetch()}
+          onRetry={() => void refetch()}
         />
       ) : questions.length === 0 && threadQuestion ? (
         <ThreadQuestion question={threadQuestion} onAnswer={onAnswerInThread} />

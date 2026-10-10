@@ -30,7 +30,7 @@ export function useCreateIssue(projectId: string) {
   return useMutation<CreatedIssue, unknown, CreateIssueInput>({
     mutationFn: (body) => issuesApi.create(projectId, body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["issues"] });
+      void qc.invalidateQueries({ queryKey: ["issues"] });
     },
   });
 }
@@ -152,8 +152,8 @@ export function useSetIssueModules(issueId: string | undefined) {
         buildModuleLabelWrite(args.current, args.moduleIds, args.primaryId),
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["issue", issueId] });
-      qc.invalidateQueries({ queryKey: ["issues"] });
+      void qc.invalidateQueries({ queryKey: ["issue", issueId] });
+      void qc.invalidateQueries({ queryKey: ["issues"] });
       toast({ title: t("issues.toast.modulesUpdated"), tone: "success" });
     },
     onError: (err) =>
@@ -177,7 +177,7 @@ function useIssueMutation<TArgs, TData>(
   return useMutation({
     mutationFn: fn,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["issues"] });
+      void qc.invalidateQueries({ queryKey: ["issues"] });
       if (opts.successMessage) toast({ title: opts.successMessage, tone: "success" });
     },
     onError: (err) => {
@@ -209,8 +209,8 @@ export function useSaveDescription(id: string) {
     mutate: (args: { id: string; body: PatchIssueInput }, options?: { onSuccess?: () => void }) =>
       mut.mutate(args, {
         onSuccess: () => {
-          qc.invalidateQueries({ queryKey: ["issue", id] });
-          qc.invalidateQueries({ queryKey: ["activities", id] });
+          void qc.invalidateQueries({ queryKey: ["issue", id] });
+          void qc.invalidateQueries({ queryKey: ["activities", id] });
           options?.onSuccess?.();
         },
       }),
@@ -256,7 +256,7 @@ export function useTransitionIssue() {
         answers: args.answers,
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["issues"] });
+      void qc.invalidateQueries({ queryKey: ["issues"] });
     },
   });
   return {
@@ -271,9 +271,9 @@ export function useTransitionIssue() {
     ) =>
       mut.mutate(args, {
         onSuccess: () => {
-          qc.invalidateQueries({ queryKey: ["issue", args.id] });
-          qc.invalidateQueries({ queryKey: ["activities", args.id] });
-          qc.invalidateQueries({ queryKey: ["questions", args.id] });
+          void qc.invalidateQueries({ queryKey: ["issue", args.id] });
+          void qc.invalidateQueries({ queryKey: ["activities", args.id] });
+          void qc.invalidateQueries({ queryKey: ["questions", args.id] });
           options?.onSuccess?.();
         },
         onError: (err) => {
@@ -306,9 +306,9 @@ export function useMergeMarker(issueId: string) {
   const { toast } = useToast();
   const t = useCopy();
   const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["issue", issueId] });
-    qc.invalidateQueries({ queryKey: ["activities", issueId] });
-    qc.invalidateQueries({ queryKey: ["issues"] });
+    void qc.invalidateQueries({ queryKey: ["issue", issueId] });
+    void qc.invalidateQueries({ queryKey: ["activities", issueId] });
+    void qc.invalidateQueries({ queryKey: ["issues"] });
   };
   // ISS-1327 — the answer says whether this call moved the row; a toast that ignores it tells a
   // person their landing was recorded when the mark that stood was kept.
@@ -374,9 +374,9 @@ export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefu
   return useMutation<CreateReleaseBatchResult, unknown, { issueIds: string[] }>({
     mutationFn: ({ issueIds }) => releaseBatchApi.create(projectId, issueIds),
     onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: ["issues"] });
-      qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
-      qc.invalidateQueries({ queryKey: ["release-roster"] });
+      void qc.invalidateQueries({ queryKey: ["issues"] });
+      void qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
+      void qc.invalidateQueries({ queryKey: ["release-roster"] });
       toast({
         title: result.issueIds.length === 1 ? t("issues.toast.batchStartedOne") : t("issues.toast.batchStarted", { n: result.issueIds.length }),
         tone: "success",
@@ -439,8 +439,8 @@ export function useBulkUpdateIssues() {
       return summary;
     },
     onSuccess: (summary, { issues }) => {
-      qc.invalidateQueries({ queryKey: ["issues"] });
-      for (const { id } of issues) qc.invalidateQueries({ queryKey: ["issue", id] });
+      void qc.invalidateQueries({ queryKey: ["issues"] });
+      for (const { id } of issues) void qc.invalidateQueries({ queryKey: ["issue", id] });
       const parts = [t("issues.toast.bulkUpdated", { n: summary.updated })];
       if (summary.skipped) parts.push(t("issues.toast.bulkSkipped", { n: summary.skipped }));
       if (summary.failed) parts.push(t("issues.toast.bulkFailedN", { n: summary.failed }));
@@ -461,8 +461,8 @@ export function useBulkUpdateIssues() {
 export function useBlockerEdit(issueId: string, projectId: string) {
   const qc = useQueryClient();
   const done = () => {
-    qc.invalidateQueries({ queryKey: ["issue"] });
-    qc.invalidateQueries({ queryKey: ["issues"] });
+    void qc.invalidateQueries({ queryKey: ["issue"] });
+    void qc.invalidateQueries({ queryKey: ["issues"] });
   };
   const add = useMutation({ mutationFn: (key: string) => issuesApi.addBlocker(issueId, projectId, key), onSuccess: done });
   const remove = useMutation({ mutationFn: (edgeId: string) => issuesApi.removeEdge(issueId, edgeId), onSuccess: done });
