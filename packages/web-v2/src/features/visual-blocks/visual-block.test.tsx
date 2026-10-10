@@ -52,6 +52,42 @@ describe("a block's finding (REQ-32 BC-15)", () => {
     show({ ...base, kind: "table", columns: ["key"] });
     expect(screen.queryByTestId("visual-block-finding")).toBeNull();
   });
+
+  // J7 on 0.4.0-dev.223: the roadmap's finding drew "2026-10-10T16:00:20.860Z" verbatim above a table
+  // reading the same moment in the viewer's zone (ISS-488 c5, REQ-32 BC-17).
+  it("reads an instant it names as the table under it reads that cell, here and in the wide view, with no ISO left", () => {
+    const at = "2026-10-10T16:00:20.860Z";
+    const forecast = {
+      fields: [
+        { name: "key", type: "ref", label: "Requirement" },
+        { name: "p85At", type: "date", label: "Almost surely by (p85)" },
+      ],
+      rows: [{ key: "REQ-30", p85At: at }],
+    };
+    show({
+      v: 1,
+      source: { runId: "run-7" },
+      frame: forecast,
+      kind: "table",
+      title: "Forecast",
+      finding: `REQ-30 has the latest forecast endpoint, ${at}.`,
+      columns: ["key", "p85At"],
+    });
+    const cell = within(screen.getByRole("table")).getAllByRole("cell")[1]?.textContent ?? "";
+    expect(cell).not.toContain("2026");
+    const finding = screen.getByTestId("visual-block-finding").textContent;
+    expect(finding).toBe(`REQ-30 has the latest forecast endpoint, ${cell}.`);
+    fireEvent.click(screen.getByTestId("visual-block-open-wide"));
+    expect(screen.getByTestId("visual-block-wide").textContent).toContain(`endpoint, ${cell}.`);
+    expect(screen.getByTestId("visual-block-wide").textContent).not.toContain("2026-10-10");
+  });
+
+  it("reads an instant cut off after its day as that day, never as 'Oct 10T.'", () => {
+    show({ ...base, kind: "table", finding: "REQ-34 and REQ-30 follow on 2026-10-10T.", columns: ["key"] });
+    const finding = screen.getByTestId("visual-block-finding").textContent ?? "";
+    expect(finding).toMatch(/^REQ-34 and REQ-30 follow on [^T]*\.$/);
+    expect(finding).not.toContain("2026");
+  });
 });
 
 describe("table block", () => {

@@ -2,7 +2,8 @@
 // slots from the template's guidance and a one-line finding for each block, from what this run's
 // blocks show of its own runs and nothing else from the project. The answer is judged by
 // `checkTemplateNarrative` (word caps, declared slots only, no number its blocks do not show, a
-// finding holding no number its own block does not show); a refused answer gets one retry that
+// finding holding no number its own block does not show, no date or time but the instants its rows
+// hold, each beside its own requirement); a refused answer gets one retry that
 // carries the refusal. The call goes through `completeOnce`, so the deployment's provider and the
 // project's data policy apply exactly as they do to a chat turn. Every door a template is run
 // through (the REST route, the chat's forge_template, a schedule's fire) gets the narrative this
@@ -16,7 +17,8 @@ import {
   type TemplateNarrativeSlot,
 } from '@forge/contracts/report-templates';
 import type { StatusReportNarrative } from '@forge/contracts/status-reports';
-import { shownFrame } from '@forge/contracts/visual-blocks';
+import type { ReportFrame } from '@forge/contracts/report-queries';
+import { readInstantsIn, shownFrame, UTC_READING } from '@forge/contracts/visual-blocks';
 import { recordModelCallUsage } from '../agent-sessions/index.js';
 import {
   type ChatMessage,
@@ -76,6 +78,7 @@ export function narrativeSystemPrompt(
     ...slots.map((s) => `- "${s.slot}" is at most ${s.maxWords} words.`),
     `- A finding is one line of at most ${FINDING_MAX_WORDS} words saying what that block's own rows show: a change, a peak, an outlier, not a restatement of its title. Every number in it appears in that block's rows.`,
     '- Every number you write appears in a row below, as it appears there. Write no dates, ids, versions, sums or percentages you worked out yourself.',
+    '- Write a date or time exactly as its row shows it ("Oct 10, 04:33 UTC"), and put a time beside a requirement only where that requirement\'s own row holds it.',
     '- Where the rows do not say enough for a slot or a finding, say so in words.',
     '',
     contentLanguageBlock(language, 'artifact'),
@@ -85,7 +88,9 @@ export function narrativeSystemPrompt(
 /**
  * The input: each slot's guidance, then each block's fields and rows as it shows them, numbered as
  * the findings are, since the narrative is read beside the blocks and is held to them. No run id,
- * time or param, which are not figures.
+ * time or param, which are not figures. An instant in a row is given as its UTC words ("Oct 10, 04:33
+ * UTC"), never its ISO: a model handed ISO repeats it, or cuts it off after its day (J7 on
+ * 0.4.0-dev.223, ISS-488), and the judge keeps what it writes as the ISO of the instant it matched.
  */
 export function narrativeInput(document: ReportDocument, slots: readonly Slot[]): string {
   const parts = ['## Slots', ...slots.map((s) => `- ${s.slot}: ${s.guidance}`), '', '## Blocks'];
@@ -100,12 +105,28 @@ export function narrativeInput(document: ReportDocument, slots: readonly Slot[])
       ...(frame
         ? [
             `Fields: ${frame.fields.map((f) => `${f.name} (${f.type})`).join(', ')}`,
-            `Rows: ${JSON.stringify(frame.rows)}`,
+            `Rows: ${JSON.stringify(frame.rows.map((row) => inUtcWords(frame, row)))}`,
           ]
         : ['It shows no rows.']),
     );
   }
   return parts.join('\n');
+}
+
+/** A row with each date cell, and each instant inside a text cell, as its UTC words. */
+function inUtcWords(frame: ReportFrame, row: ReportFrame['rows'][number]): ReportFrame['rows'][number] {
+  const types = new Map(frame.fields.map((f) => [f.name, f.type]));
+  return Object.fromEntries(
+    Object.entries(row).map(([name, cell]) => {
+      const type = types.get(name);
+      return [
+        name,
+        typeof cell === 'string' && (type === 'date' || type === 'string')
+          ? readInstantsIn(cell, UTC_READING)
+          : cell,
+      ];
+    }),
+  );
 }
 
 type Parsed =

@@ -328,3 +328,118 @@ describe('a narrative cites only the template runs', () => {
     expect((short as Error).message).toContain('runs 2 queries');
   });
 });
+
+// J7 on 0.4.0-dev.223 ran the roadmap three times (ISS-490 c2, ISS-488 c5). Run 1's summary said the
+// requirements "follow on 2026-10-10T." and run 2's put REQ-34, REQ-30 and REQ-31 "at
+// 2026-10-10T10:46:33.076Z" beside a table giving them 04:33, 05:14 and 06:49; the number check read
+// each instant as loose digits and kept both.
+describe("a narrative's dates and times are the ones its rows hold", () => {
+  const T = (hhmm: string) => `2026-10-10T${hhmm}:33.076Z`;
+  const FORECAST = [
+    ['REQ-40', T('02:19'), T('07:17')],
+    ['REQ-34', T('04:33'), T('09:58')],
+    ['REQ-30', T('05:14'), T('16:01')],
+    ['REQ-31', T('06:49'), T('12:30')],
+    ['REQ-43', T('10:46'), T('14:47')],
+  ] as const;
+  const roadmap = async () => {
+    const out = await go('roadmap');
+    const ids = out.document.runs.map((r) => r.runId);
+    const run = stored.get(ids[0] as string) as ReportRun;
+    run.frame.rows = FORECAST.map(([key, p50At, p85At]) => ({
+      lane: 'open',
+      key,
+      title: 'text',
+      state: 'open',
+      p50At,
+      p85At,
+      basis: 'read from 19 issues landed in the last 60 days',
+    }));
+    return ids;
+  };
+  const judge = async (narrative: Record<string, string>, findings: string[] = []) =>
+    checkTemplateNarrative({
+      projectId: 'p1',
+      templateId: 'roadmap',
+      runIds: await roadmap(),
+      narrative,
+      findings,
+      userId: 'asker',
+      agency: 'human' as never,
+    });
+  const refusal = async (narrative: Record<string, string>, findings: string[] = []) => {
+    const err = (await judge(narrative, findings).catch((e: unknown) => e)) as Error;
+    expect(isRefusal(err, 'REPORT_NARRATIVE_REFUSED')).toBe(true);
+    return err.message;
+  };
+
+  it("refuses run 2's summary, which puts REQ-34, REQ-30 and REQ-31 at REQ-43's time, naming REQ-34 and the times its row holds", async () => {
+    const message = await refusal({
+      summary:
+        'Forecasts place REQ-40 at 2026-10-10T02:19:33.076Z, followed by REQ-34, REQ-30, REQ-31, and REQ-43 at 2026-10-10T10:46:33.076Z. Other requirements have no forecast date.',
+    });
+    expect(message).toContain(
+      'slot "summary" puts REQ-34, REQ-30, REQ-31 at 2026-10-10T10:46:33.076Z, which is not a time their rows hold (REQ-34: Oct 10, 04:33 UTC, Oct 10, 09:58 UTC;',
+    );
+    expect(message).not.toContain('REQ-40 at');
+  });
+
+  it("refuses run 1's instant cut off after its day, by name", async () => {
+    const message = await refusal({
+      summary:
+        'REQ-40 is forecast first at 2026-10-10T02:19:33.076Z. REQ-34, REQ-30, REQ-31, and REQ-43 follow on 2026-10-10T. No forecast is shown for the remaining requirements.',
+    });
+    expect(message).toContain('slot "summary" states "2026-10-10T", an instant cut off after its day');
+  });
+
+  it('refuses an instant with no zone, and a time no block shows', async () => {
+    const message = await refusal({
+      summary: 'REQ-40 lands at 2026-10-10T02:19:33. REQ-43 lands at Oct 11, 09:00 UTC.',
+    });
+    expect(message).toContain('states "2026-10-10T02:19:33", an instant with no zone');
+    expect(message).toContain('states Oct 11, 09:00 UTC, which no block of template "roadmap" shows');
+  });
+
+  it("keeps run 3's summary written in the UTC words it was handed, as the ISO each time matched", async () => {
+    const doc = await judge({
+      summary:
+        'Forecast windows begin with REQ-40 at Oct 10, 02:19 UTC, REQ-34 at Oct 10, 04:33 UTC, and REQ-30 at Oct 10, 05:14 UTC. REQ-30 is almost surely done by 16:01 UTC on Oct 10.',
+      risks: 'REQ-30 runs from Oct 10, 05:14 UTC to Oct 10, 16:01 UTC, the widest range.',
+    });
+    expect(doc.narrative.summary).toBe(
+      `Forecast windows begin with REQ-40 at ${T('02:19')}, REQ-34 at ${T('04:33')}, and REQ-30 at ${T('05:14')}. REQ-30 is almost surely done by ${T('16:01')} on 2026-10-10.`,
+    );
+    expect(doc.narrative.risks).toBe(
+      `REQ-30 runs from ${T('05:14')} to ${T('16:01')}, the widest range.`,
+    );
+    const again = await judge(doc.narrative);
+    expect(again.narrative).toEqual(doc.narrative);
+  });
+
+  it("holds a finding to its own block's times, and keeps the one J7 saw as the instant it names", async () => {
+    const doc = await judge({}, [
+      'Only REQ-40, REQ-30, REQ-43, REQ-31, and REQ-34 show forecast dates.',
+      `REQ-30 has the latest forecast endpoint, ${T('16:01')}.`,
+    ]);
+    expect(doc.blocks[1]?.finding).toBe(`REQ-30 has the latest forecast endpoint, ${T('16:01')}.`);
+    const message = await refusal({}, ['', 'REQ-34 has the latest forecast endpoint, Oct 10, 16:01 UTC.']);
+    expect(message).toContain(
+      'finding 2 (table "Forecast") puts REQ-34 at Oct 10, 16:01 UTC, which is not a time its row holds (REQ-34: Oct 10, 04:33 UTC, Oct 10, 09:58 UTC)',
+    );
+  });
+
+  it('writes the kept narrative into the run text in UTC words, with no ISO left', async () => {
+    writeNarrative.mockImplementation(async (a: { judge: (x: unknown) => unknown }) => ({
+      document: await a.judge({
+        narrative: { summary: 'REQ-12 is first, at Oct 8.' },
+        findings: ['REQ-12 is forecast by Oct 8.'],
+      }),
+      narrative: { path: 'written', reason: null, model: 'm', calls: 1 },
+    }));
+    const out = await go('roadmap');
+    expect(out.document.narrative.summary).toBe('REQ-12 is first, at 2026-10-08.');
+    expect(out.text).toContain('Summary: REQ-12 is first, at Oct 8.');
+    expect(out.text).toContain('REQ-12 is forecast by Oct 8.');
+    expect(out.text).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+});

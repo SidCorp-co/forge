@@ -26,6 +26,7 @@ import {
   BLOCK_FINDING_MAX,
   blockToText,
   checkBlock,
+  readInstantsIn,
   shownFrame,
   UTC_READING,
   VISUAL_BLOCK_VERSION,
@@ -33,6 +34,7 @@ import {
 } from '@forge/contracts/visual-blocks';
 import { refuser } from '../lib/refusal.js';
 import { type NarrativeOutcome, writeTemplateNarrative } from './narrative.js';
+import { instantsShown, judgeInstants } from './narrative-instants.js';
 import { type ReportAsker, reportsPorts } from './ports.js';
 import { readReportRun, runReport } from './runs.js';
 
@@ -227,11 +229,11 @@ const SLOT_HEADINGS: Record<TemplateNarrativeSlot, string> = {
   recommendations: 'Recommendations',
 };
 
-/** A document as plain text: its narrative slot by slot, then each block with its finding. */
+/** A document as plain text: its narrative slot by slot, then each block with its finding, every instant in UTC words. */
 export function documentText(document: ReportDocument): string {
   const slots = TEMPLATE_NARRATIVE_SLOTS.flatMap((slot) => {
     const said = document.narrative[slot]?.trim();
-    return said ? [`${SLOT_HEADINGS[slot]}: ${said}`] : [];
+    return said ? [`${SLOT_HEADINGS[slot]}: ${readInstantsIn(said, UTC_READING)}`] : [];
   });
   return [...slots, ...document.blocks.map((b) => blockToText(b, UTC_READING))].join('\n\n');
 }
@@ -321,8 +323,10 @@ const wordsIn = (text: string): number => text.trim().split(/\s+/).filter(Boolea
  * Judges a narrative and the findings beside it against what the template's blocks show of its own
  * `runs`: a slot the template does not declare, one over its word cap, or a number no block shows is
  * refused by name, and so is a finding that is not one line within its cap, that names a block the
- * report does not draw, or that states a number its own block does not show. Answers the document
- * with the narrative set and each finding on its block; an empty finding leaves its block without one.
+ * report does not draw, or that states a number its own block does not show. A date or time is held
+ * to the instants the blocks show (`narrative-instants.ts:judgeInstants`). Answers the document with
+ * the narrative set and each finding on its block, every date and time kept as the ISO it matched;
+ * an empty finding leaves its block without one.
  */
 export function judgeNarrative(
   t: ReportTemplate,
@@ -333,6 +337,7 @@ export function judgeNarrative(
   const declared = new Map(t.narrative.map((n) => [n.slot, n]));
   const { blocks } = documentOf(t, runs, emptyNarrative()).document;
   const figures = figuresShown(blocks);
+  const instants = instantsShown(blocks);
   const refusals: string[] = [];
   const narrative = emptyNarrative();
   for (const [slot, given] of Object.entries(said)) {
@@ -346,13 +351,21 @@ export function judgeNarrative(
       continue;
     }
     const spec = declared.get(slot as TemplateNarrativeSlot) as TemplateSlot;
-    const text = given ?? '';
-    if (wordsIn(text) > spec.maxWords) {
+    const written = given ?? '';
+    if (wordsIn(written) > spec.maxWords) {
       refusals.push(
-        `slot "${slot}" is ${wordsIn(text)} words and the template allows ${spec.maxWords}`,
+        `slot "${slot}" is ${wordsIn(written)} words and the template allows ${spec.maxWords}`,
       );
     }
-    const stray = [...new Set(numeralsIn(text))].filter((n) => !figures.has(n));
+    const dated = judgeInstants(
+      written,
+      instants,
+      `slot "${slot}"`,
+      `no block of template "${t.id}" shows`,
+    );
+    refusals.push(...dated.refusals);
+    const text = dated.text;
+    const stray = [...new Set(numeralsIn(dated.rest))].filter((n) => !figures.has(n));
     if (stray.length > 0) {
       refusals.push(
         `slot "${slot}" states ${stray.join(', ')}, which no block of template "${t.id}" shows; state only figures its blocks show of its runs (${blocksNamed(blocks)}; runs ${runs.map((r) => `${r.queryId} ${r.runId}`).join(', ')})`,
@@ -379,13 +392,15 @@ export function judgeNarrative(
       );
     }
     const own = figuresShown([block]);
-    const stray = [...new Set(numeralsIn(text))].filter((n) => !own.has(n));
+    const dated = judgeInstants(text, instantsShown([block]), name, 'its own block does not show');
+    refusals.push(...dated.refusals);
+    const stray = [...new Set(numeralsIn(dated.rest))].filter((n) => !own.has(n));
     if (stray.length > 0) {
       refusals.push(
         `${name} states ${stray.join(', ')}, which its own block does not show; a finding states only figures of the block it sits on`,
       );
     }
-    return { ...block, finding: text };
+    return { ...block, finding: dated.text };
   });
   if (refusals.length > 0) {
     throw refuse('REPORT_NARRATIVE_REFUSED', refusals.join('; '), '/narrative');

@@ -458,13 +458,22 @@ export const UTC_READING: InstantReading = {
 /**
  * An ISO-8601 instant or calendar date, wherever it stands inside a sentence, and the same moment
  * written the way a model writes it: a space for the T and "UTC" for the Z ("2026-10-09 01:03 UTC").
- * Read as parts, that one would leave "01:03 UTC" behind the day and read in the wrong zone.
+ * Read as parts, that one would leave "01:03 UTC" behind the day and read in the wrong zone. A day
+ * whose time was cut off ("2026-10-10T.", "2026-10-10T10") is matched whole too, so its stray "T" is
+ * never left behind the day it reads as ("Oct 10T.").
  */
 const ISO_INSTANT =
-  /\d{4}-\d{2}-\d{2}(?:(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)|(?: \d{2}:\d{2}(?::\d{2})? UTC))?/g;
+  /\d{4}-\d{2}-\d{2}(?:(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)|(?: \d{2}:\d{2}(?::\d{2})? UTC)|(?:T(?![A-Za-z])[\d:]*))?/g;
 
-/** The ISO form of a matched instant: the model's spaced UTC form is taken as the instant it names. */
+/** A day followed by a "T" and no whole time: an instant cut off, which says only its day. */
+const HALF_INSTANT = /^\d{4}-\d{2}-\d{2}T(?!\d{2}:\d{2})[\d:]*$/;
+
+/**
+ * The ISO form of a matched instant: the model's spaced UTC form is taken as the instant it names,
+ * and an instant cut off after its day as that day alone, the only part of it that was written.
+ */
 const asIso = (found: string): string => {
+  if (HALF_INSTANT.test(found)) return found.slice(0, 10);
   const spaced = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}(?::\d{2})?) UTC$/.exec(found);
   return spaced ? `${spaced[1]}T${spaced[2]}Z` : found;
 };
@@ -492,8 +501,13 @@ export function cellText(field: ReportField, cell: ReportCell | undefined, readi
 
 const md = (s: string): string => s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ");
 
-function titled(block: { title?: string | undefined; finding?: string | undefined }, body: string): string {
-  const withFinding = block.finding === undefined ? body : `${md(block.finding)}\n\n${body}`;
+/** A block's title and finding above its body; the finding's instants read as its cells are, so no ISO is left in it. */
+function titled(
+  block: { title?: string | undefined; finding?: string | undefined },
+  body: string,
+  reading: InstantReading | undefined,
+): string {
+  const withFinding = block.finding === undefined ? body : `${md(readInstantsIn(block.finding, reading))}\n\n${body}`;
   return block.title === undefined ? withFinding : `**${md(block.title)}**\n\n${withFinding}`;
 }
 
@@ -529,7 +543,7 @@ export function tableRows(b: VisualBlockOf<"table">): ReportFrame["rows"] {
 }
 
 function tableText(b: VisualBlockOf<"table">, reading?: InstantReading): string {
-  return titled(b, markdownTable(b.frame, b.columns, tableRows(b), reading));
+  return titled(b, markdownTable(b.frame, b.columns, tableRows(b), reading), reading);
 }
 
 /** A cell a spreadsheet would run as a formula; it is written with a leading apostrophe so it reads as text. */
@@ -576,17 +590,17 @@ function chartText(b: VisualBlockOf<"chart">, reading?: InstantReading): string 
   const what = `${b.variant === "burndown" ? "Burndown" : b.variant === "line" ? "Line chart" : "Bar chart"} of ${b.y
     .map(label)
     .join(", ")} by ${label(b.x)}`;
-  return titled(b, `${what}\n\n${markdownTable(b.frame, columns, b.frame.rows, reading)}`);
+  return titled(b, `${what}\n\n${markdownTable(b.frame, columns, b.frame.rows, reading)}`, reading);
 }
 
-function flowText(b: VisualBlockOf<"flow">): string {
+function flowText(b: VisualBlockOf<"flow">, reading?: InstantReading): string {
   const name = new Map(b.nodes.map((n) => [n.id, n.label]));
   const linked = new Set(b.edges.flatMap((e) => [e.from, e.to]));
   const lines = b.edges.map(
     (e) => `- ${md(name.get(e.from) ?? e.from)} -> ${md(name.get(e.to) ?? e.to)}${e.label ? ` (${md(e.label)})` : ""}`,
   );
   const alone = b.nodes.filter((n) => !linked.has(n.id)).map((n) => `- ${md(n.label)}`);
-  return titled(b, [...lines, ...alone].join("\n"));
+  return titled(b, [...lines, ...alone].join("\n"), reading);
 }
 
 function timelineText(b: VisualBlockOf<"timeline">, reading?: InstantReading): string {
@@ -605,7 +619,7 @@ function timelineText(b: VisualBlockOf<"timeline">, reading?: InstantReading): s
         : `p50 ${at(r, b.p50)}, p85 ${at(r, b.p85)}`;
     return `- ${md(at(r, b.label))}${lane}: ${when}`;
   });
-  return titled(b, lines.join("\n"));
+  return titled(b, lines.join("\n"), reading);
 }
 
 /** One figure of a kpi block as it is shown: its label, its value as text, and its signed delta where it has one. */
@@ -632,7 +646,7 @@ export function kpiFigures(b: VisualBlockOf<"kpi">, reading?: InstantReading): K
 
 function kpiText(b: VisualBlockOf<"kpi">, reading?: InstantReading): string {
   const lines = kpiFigures(b, reading).map((f) => `- ${md(f.label)}: ${md(f.value)}${f.delta === undefined ? "" : ` (${f.delta})`}`);
-  return titled(b, lines.join("\n"));
+  return titled(b, lines.join("\n"), reading);
 }
 
 function statusListText(b: VisualBlockOf<"status-list">, reading?: InstantReading): string {
@@ -644,7 +658,7 @@ function statusListText(b: VisualBlockOf<"status-list">, reading?: InstantReadin
     const waiting = b.waitingOn !== undefined && r[b.waitingOn] != null ? ` (waiting on ${md(get(b.waitingOn))})` : "";
     return `- ${md(get(b.ref))}: ${md(get(b.status))}${waiting}`;
   });
-  return titled(b, lines.join("\n"));
+  return titled(b, lines.join("\n"), reading);
 }
 
 /** The one table: a kind is added by adding its entry here and its renderer in web, together. */

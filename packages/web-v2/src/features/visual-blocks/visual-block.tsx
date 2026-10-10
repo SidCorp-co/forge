@@ -3,7 +3,9 @@
 import { checkBlock, isVisualBlockKind, type VisualBlockKind } from "@forge/contracts/visual-blocks";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { readProseInstants } from "@/lib/i18n/instants";
 import { useVisualBlockContext } from "./context";
+import { useBlockInstants } from "./instants";
 import { BLOCK_RENDERERS, type BlockRenderer } from "./registry";
 import { SourceNote } from "./source-note";
 import { UnsupportedBlock } from "./unsupported";
@@ -77,6 +79,9 @@ function Frame({
   children: React.ReactNode;
 }) {
   const [wide, setWide] = useState(false);
+  const instants = useBlockInstants();
+  // A finding is prose the model wrote beside the rows: its instants read as the cells under it do.
+  const said = finding ? readProseInstants(finding, instants) : undefined;
   const csv = kind === "table" ? onCsv : undefined;
   const actions = [
     ...(csv ? [<CsvAction key="csv" onCsv={csv} testId="visual-block-csv" />] : []),
@@ -91,9 +96,9 @@ function Frame({
   return (
     <figure className="m-0 my-1 min-w-0 max-w-full" data-testid="visual-block" data-kind={kind}>
       <Caption title={title} actions={actions} />
-      {finding && (
+      {said && (
         <p className="mb-1.5 text-[12.5px] text-muted" data-testid="visual-block-finding">
-          {finding}
+          {said}
         </p>
       )}
       {children}
@@ -107,7 +112,7 @@ function Frame({
               <DialogTitle className="min-w-0 flex-1 text-[13px] font-semibold text-fg">{title ?? "Answer"}</DialogTitle>
               {csv && <CsvAction onCsv={csv} testId="visual-block-wide-csv" />}
             </div>
-            {finding && <p className="text-[12.5px] text-muted">{finding}</p>}
+            {said && <p className="text-[12.5px] text-muted">{said}</p>}
             <div className="min-w-0">{children}</div>
           </DialogContent>
         </Dialog>

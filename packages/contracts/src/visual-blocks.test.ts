@@ -486,6 +486,13 @@ describe("a text no viewer is behind reads its instants in UTC (REQ-32 BC-17)", 
   it("keeps ISO when no reading is handed in", () => {
     expect(tableCsv(table())).toContain("2026-10-06T07:05:00.000Z");
   });
+
+  // ISS-488 c5: a finding was written into the text above its table with its ISO as the model wrote it
+  it("reads the instant a block's finding names, as its cells are read", () => {
+    const text = blockToText({ ...table(), finding: "REQ-1 lands latest, 2026-10-06T07:05:00.000Z." }, UTC_READING);
+    expect(text).toContain("REQ-1 lands latest, Oct 6, 07:05 UTC.");
+    expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
 });
 
 describe("readInstantsIn takes the model's spaced UTC form as one instant (REQ-32 BC-17)", () => {
@@ -496,6 +503,10 @@ describe("readInstantsIn takes the model's spaced UTC form as one instant (REQ-3
     ["2026-10-09T01:03:00.000Z", "<2026-10-09T01:03:00.000Z>"],
     ["2026-10-09", "<2026-10-09>"],
     ["2026-10-09 and 01:03 UTC", "<2026-10-09> and 01:03 UTC"],
+    // J7 on 0.4.0-dev.223: "follow on 2026-10-10T." drew as "follow on Oct 10T." (ISS-488 c5)
+    ["2026-10-10T", "<2026-10-10>"],
+    ["2026-10-10T10", "<2026-10-10>"],
+    ["2026-10-10T10:4", "<2026-10-10>"],
   ])("%s", (input, want) => {
     expect(readInstantsIn(`at ${input}.`, reading)).toBe(`at ${want}.`);
   });
