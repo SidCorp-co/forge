@@ -89,7 +89,7 @@ const roadmapRun = (): ReportRun => {
   };
 };
 
-const answer = (summary: string, findings = ['', '']) =>
+const answer = (summary: string, findings = ['REQ-40 lands first.', 'REQ-30 has the widest range.']) =>
   JSON.stringify({
     summary,
     risks: 'REQ-30 has the widest forecast range.',
@@ -167,7 +167,7 @@ describe("the roadmap narrative's dates and times", () => {
     'REQ-40 is likely by Oct 10, 02:19 UTC. REQ-30 is almost surely done by Oct 10, 16:01 UTC, the latest.',
     'REQ-40, then REQ-34, REQ-30 and REQ-31 land on Oct 10; REQ-43 is last at Oct 10, 10:46 UTC.',
   ])('holds over several runs: %s', async (summary) => {
-    answers.push(answer(summary, ['', `REQ-30 has the latest forecast end, Oct 10, 16:01 UTC.`]));
+    answers.push(answer(summary, ['REQ-40 lands first.', `REQ-30 has the latest forecast end, Oct 10, 16:01 UTC.`]));
     const out = await run();
     expect(out.narrative).toMatchObject({ path: 'written', calls: 1 });
     expect(out.document.blocks[1]?.finding).toBe(
@@ -186,7 +186,7 @@ describe('what the narrative is handed and held to', () => {
         summary: 'REQ-40 lands first, at Oct 10, 02:19 UTC.',
         risks: "REQ-30's p85 date is far behind its p50.",
         recommendations: 'Keep REQ-40 first.',
-        findings: ['', ''],
+        findings: ['REQ-40 lands first.', 'REQ-30 has the widest range.'],
       }),
     );
     const out = await run();
@@ -206,5 +206,18 @@ describe('what the narrative is handed and held to', () => {
     expect(input).toContain('"state":"In delivery"');
     expect(input).not.toContain('in_delivery');
     expect(input).toContain('p50At "Likely by (p50)" (date)');
+  });
+});
+
+describe('every visual carries a finding (REQ-32 BC-15)', () => {
+  it('refuses an empty finding by its block number and keeps the retry that gives one', async () => {
+    answers.push(
+      answer('REQ-40 is forecast first.', ['', 'REQ-30 has the widest range.']),
+      answer('REQ-40 is forecast first.'),
+    );
+    const out = await run();
+    expect(out.narrative).toMatchObject({ path: 'retried', calls: 2 });
+    expect(asked.at(-1)?.at(-1)?.content).toContain('finding 1 is empty');
+    expect(out.document.blocks[0]?.finding).toBe('REQ-40 lands first.');
   });
 });

@@ -380,6 +380,16 @@ describe('a review is timed with the issue checks (FB-121)', () => {
     expect(await reviewRecords(id)).toEqual([]);
   });
 
+  it('refuses a start over a day back by name, recording nothing', async () => {
+    const { id } = await builtIssue(projects.catalog);
+    const reviewer = await runOnBox(projects.catalog);
+    const stale = new Date(Date.now() - 25 * 3_600_000).toISOString();
+    const res = await post(boxToken, id, review({ run: reviewer, startedAt: stale }));
+    expect([res.status, res.body.error.refusals[0].path]).toEqual([422, '/startedAt']);
+    expect(res.body.error.refusals[0].detail).toMatch(/over a day back/);
+    expect(await reviewRecords(id)).toEqual([]);
+  });
+
   it('keeps the reviewer a reviewer: its timed review does not make it the building run', async () => {
     const { id } = await builtIssue(projects.catalog);
     const reviewer = await runOnBox(projects.catalog);
