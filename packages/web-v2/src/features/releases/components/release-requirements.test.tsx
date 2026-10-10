@@ -30,7 +30,7 @@ const release = (requirementsCompleted: ReleaseRequirementView[]) =>
     gates: [],
     requirementsCompleted,
     feedbackAnswered: [],
-    notes: { sections: [], designs: [], withoutNotes: [], language: "en", attention: [] },
+    notes: { sections: [], designs: [], withoutNotes: [], reworked: [], language: "en", attention: [] },
     changes: { surfaces: [], risks: [], unclassified: [], boxRead: [], shipsNothing: false },
   }) as unknown as ReleaseDetail;
 

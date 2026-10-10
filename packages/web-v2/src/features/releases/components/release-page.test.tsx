@@ -30,7 +30,7 @@ const DETAIL = {
   requirementsCompleted: [],
   feedbackAnswered: [],
   feedbackToldCounts: { told: 0, not_told: 0, before_notices: 0, on_ship: 0 },
-  notes: { sections: [], designs: [], withoutNotes: [], language: "en", attention: [] },
+  notes: { sections: [], designs: [], withoutNotes: [], reworked: [], language: "en", attention: [] },
   changes: TECHNICAL.changes,
   production: null,
   continuedAs: null,

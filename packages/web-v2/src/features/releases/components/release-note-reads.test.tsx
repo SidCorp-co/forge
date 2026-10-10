@@ -18,6 +18,7 @@ const release = {
     sections: [],
     designs: [],
     withoutNotes: [],
+    reworked: [],
     language: "vi",
     attention: [
       { key: "ISS-94", title: "Saved boards keep every card", notInLanguage: true, references: [] },
@@ -71,6 +72,7 @@ const r050 = {
     ],
     designs: [],
     withoutNotes: [],
+    reworked: [],
     language: "en",
     attention: [],
   },

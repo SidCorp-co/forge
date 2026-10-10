@@ -52,7 +52,7 @@ const RELEASE = {
   issueCriteria: [],
   requirementsCompleted: [],
   feedbackAnswered: [],
-  notes: { designs: [], sections: [], withoutNotes: [], language: "en", attention: [] },
+  notes: { designs: [], sections: [], withoutNotes: [], reworked: [], language: "en", attention: [] },
   changes: CHANGES,
   production: null,
   continuedAs: null,

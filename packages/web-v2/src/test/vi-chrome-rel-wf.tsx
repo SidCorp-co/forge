@@ -107,6 +107,7 @@ const detail = {
     designs: [],
     sections: [{ section: "Muc moi", entries: [{ key: "ISS-1", title: "Muc", userFacing: "Noi dung", technical: "ky thuat" }] }],
     withoutNotes: [{ key: "ISS-2", title: "Muc" }, { key: "ISS-3", title: "Muc" }],
+    reworked: [],
     language: "vi",
     attention: [{ key: "ISS-1", title: "Muc", notInLanguage: true, references: ["src/a.ts"] }],
   },

@@ -433,7 +433,7 @@ describe('a returned pattern holds the work until the issue answers it', () => {
     const decision = `${patterns(other)}/${made.pattern.id}/decision`;
     const res = await call('agentReviewer', 'POST', decision, {
       decision: 'returned',
-      reason: 'it admits a Bearer credential through an aliased import',
+      reason: 'it admits Bearer s3cretvalue through an aliased import',
     });
     expect(res.status).toBe(422);
     expect(refused(res)).toEqual(['MESSAGE_REFUSED']);
