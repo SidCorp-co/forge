@@ -267,7 +267,7 @@ function AttachmentsField({ staged }: { staged: ReturnType<typeof useStagedFiles
       <div
         {...staged.dropZone}
         className={`flex flex-col items-center justify-center gap-1.5 rounded-md border border-dashed px-4 py-5 text-center transition-colors ${
-          staged.dragOver ? "border-info-9-400 bg-info-9-50/50" : "border-line-strong bg-sunken"
+          staged.dragOver ? "border-info-8 bg-info-2/50" : "border-line-strong bg-sunken"
         }`}
       >
         <Icon name="plus" size={18} className="text-subtle" />

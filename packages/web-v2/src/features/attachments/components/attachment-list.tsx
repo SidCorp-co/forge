@@ -4,7 +4,7 @@
 import { Icon } from "@/design";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import { useState } from "react";
-import { HtmlAttachmentCard } from "./html-attachment-card";
+import { HtmlAttachment } from "./html-attachment";
 import { ImageLightbox, type LightboxImage } from "./image-lightbox";
 import { formatSize } from "./staged-files";
 
@@ -34,7 +34,7 @@ export function AttachmentList({ rows }: { rows: AttachmentListItem[] }) {
           if (a.mime === "text/html") {
             return (
               <li key={a.id} className="w-full">
-                <HtmlAttachmentCard name={a.name} url={a.url} size={a.size} />
+                <HtmlAttachment name={a.name} url={a.url} size={a.size} />
               </li>
             );
           }
