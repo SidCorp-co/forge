@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Button, Icon, Input, Popover, SegmentedControl, type SegmentOption } from "@/design";
+import { Badge, Button, ChoiceChips, Icon, Input, ListToolbar, Popover, SegmentedControl, type SegmentOption } from "@/design";
 import { useAssistantSetFilter } from "@/features/chat-dock";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
@@ -63,7 +63,7 @@ export function IssuesToolbar({
   ];
 
   return (
-    <div className="flex flex-wrap items-center gap-2 px-4 py-2 sm:px-6">
+    <ListToolbar testId="issues-table-toolbar">
       <SegmentedControl options={segments} value={segment} onChange={onSegment} />
       <Input
         icon="search"
@@ -99,25 +99,13 @@ export function IssuesToolbar({
             {fields.map((f) => (
               <fieldset key={f.param} className="m-0 border-0 p-0">
                 <legend className="fg-caption mb-1.5 font-semibold text-muted">{f.title}</legend>
-                <div className="flex max-h-32 flex-wrap gap-1 overflow-y-auto">
-                  {f.options.map((o) => {
-                    const on = o.value === f.value;
-                    return (
-                      <button
-                        key={o.value || "any"}
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() => onParam(f.param, o.value)}
-                        className={cn(
-                          "rounded-pill border px-2 py-0.5 text-13 font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-focus",
-                          on ? "border-fg bg-fg text-surface" : "border-line bg-surface text-muted hover:text-fg",
-                        )}
-                      >
-                        {o.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                <ChoiceChips
+                  label={f.title}
+                  options={f.options.map((o) => ({ value: o.value, label: o.label }))}
+                  value={[f.value]}
+                  onChange={(next) => onParam(f.param, next[0] ?? "")}
+                  className="max-h-32 overflow-y-auto"
+                />
               </fieldset>
             ))}
           </div>
@@ -150,6 +138,6 @@ export function IssuesToolbar({
         </button>
       )}
       {trailing ? <div className="ml-auto">{trailing}</div> : null}
-    </div>
+    </ListToolbar>
   );
 }
