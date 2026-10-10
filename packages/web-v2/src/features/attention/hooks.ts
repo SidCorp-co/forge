@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDevices } from "@/features/runners";
 import { attentionApi } from "./api";
@@ -20,42 +19,19 @@ export function useAttention() {
   // and reconnect — reusing the runners hook keeps the offline bucket live.
   const devicesQ = useDevices();
 
-  const offlineRunners: AttentionItem[] = useMemo(() => {
-    const rows = devicesQ.data ?? [];
-    return rows
-      .filter((d) => d.status === "offline")
-      .map((d) => ({
-        kind: "runner_offline" as const,
-        title: `${d.name} is offline`,
-        link: "/runners",
-        since: d.lastSeenAt ?? d.createdAt,
-        status: "offline",
-      }));
-  }, [devicesQ.data]);
-
-  const view: AttentionView = useMemo(() => {
-    const base = attentionQ.data;
-    const needsYou = base?.needsYou ?? [];
-    const mentions = base?.mentions ?? [];
-    const failedJobs = base?.failedJobs ?? [];
-    const channelGates = base?.channelGates ?? [];
-    const statusReports = base?.statusReports ?? [];
-    return {
-      needsYou,
-      mentions,
-      failedJobs,
-      channelGates,
-      statusReports,
-      offlineRunners,
-      total:
-        needsYou.length +
-        mentions.length +
-        failedJobs.length +
-        channelGates.length +
-        statusReports.length +
-        offlineRunners.length,
-    };
-  }, [attentionQ.data, offlineRunners]);
+  const offlineRunners: AttentionItem[] = (devicesQ.data ?? [])
+    .filter((d) => d.status === "offline")
+    .map((d) => ({ kind: "runner_offline" as const, title: `${d.name} is offline`, link: "/runners", since: d.lastSeenAt ?? d.createdAt, status: "offline" }));
+  const base = attentionQ.data;
+  const buckets = {
+    needsYou: base?.needsYou ?? [],
+    mentions: base?.mentions ?? [],
+    failedJobs: base?.failedJobs ?? [],
+    channelGates: base?.channelGates ?? [],
+    statusReports: base?.statusReports ?? [],
+    offlineRunners,
+  };
+  const view: AttentionView = { ...buckets, total: Object.values(buckets).reduce((n, b) => n + b.length, 0) };
 
   return {
     view,
