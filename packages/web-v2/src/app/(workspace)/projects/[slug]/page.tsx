@@ -15,7 +15,7 @@ import {
 } from "@/design";
 import { feedbackFigures, landsThisWeek, planRows, requirementsByState } from "@/features/project-dashboard/ba-derive";
 import { BaFigures } from "@/features/project-dashboard/components/ba-figures";
-import { HealthPanel } from "@/features/project-dashboard/components/health-panel";
+import { ProjectHealthFigures } from "@/features/project-dashboard/components/health-panel";
 import { LandsThisWeek } from "@/features/project-dashboard/components/plan-sections";
 import { ProjectMemory } from "@/features/memory/components/project-memory";
 import { ProjectOrientation } from "@/features/project-dashboard/components/project-orientation";
@@ -175,7 +175,7 @@ export default function ProjectOverviewPage() {
           clock={clock}
         />
 
-        <HealthPanel projectId={project.id} />
+        <ProjectHealthFigures projectId={project.id} />
 
         <LandsThisWeek rows={landsThisWeek(rows, clock)} clock={clock} slug={project.slug} />
 

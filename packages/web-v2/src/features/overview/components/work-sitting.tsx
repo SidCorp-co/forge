@@ -7,8 +7,7 @@ import {
   PageSectionTitle,
   DotStrip,
   SectionTitle,
-  Waffle,
-} from "@/design";
+  Waffle, Table, THead, TBody, TR, TH, TD } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { bucketHref, formatElapsed, projectSilenceRows, waffleCells } from "../derive";
 import { BUCKET_ORDER } from "../derive";
@@ -71,51 +70,51 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
             <p className="fg-body-sm text-muted">{t("overview.sitting.noProjects")}</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[32rem]">
-                <thead>
-                  <tr className="fg-body-sm text-subtle">
-                    <th scope="col" className="py-1 text-left font-normal">{t("overview.sitting.project")}</th>
+              <Table className="w-full min-w-128">
+                <THead>
+                  <TR className="fg-body-sm text-subtle">
+                    <TH scope="col" className="py-1 text-left font-normal">{t("overview.sitting.project")}</TH>
                     {BUCKET_ORDER.map((b) => (
-                      <th key={b} scope="col" className="py-1 text-right font-normal">
+                      <TH key={b} scope="col" className="py-1 text-right font-normal">
                         {t(`overview.bucket.${b}`)}
-                      </th>
+                      </TH>
                     ))}
-                    <th scope="col" className="py-1 text-right font-normal">{t("overview.sitting.lastRun")}</th>
-                  </tr>
-                </thead>
-                <tbody>
+                    <TH scope="col" className="py-1 text-right font-normal">{t("overview.sitting.lastRun")}</TH>
+                  </TR>
+                </THead>
+                <TBody>
                   {rows.map((r) => (
-                    <tr key={r.id} className="fg-body-sm border-t border-line-subtle">
-                      <td className="py-1 text-left">
+                    <TR key={r.id} className="fg-body-sm border-t border-line-subtle">
+                      <TD className="py-1 text-left">
                         <Link
                           href={`/projects/${r.slug}`}
-                          className="rounded-sm px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                          className="rounded-sm px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
                         >
                           {r.name}
                         </Link>
-                      </td>
+                      </TD>
                       {BUCKET_ORDER.map((b) => (
-                        <td key={b} className="py-1 text-right tabular-nums">
+                        <TD key={b} className="py-1 text-right tabular-nums">
                           {r.buckets[b] === 0 ? (
                             <span className="text-disabled">0</span>
                           ) : (
                             <Link
                               href={bucketHref(r.slug, b)}
                               aria-label={t("overview.sitting.cellAria", { name: r.name, n: r.buckets[b], bucket: t(`overview.bucket.${b}`) })}
-                              className="rounded-sm px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                              className="rounded-sm px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
                             >
                               {r.buckets[b]}
                             </Link>
                           )}
-                        </td>
+                        </TD>
                       ))}
-                      <td className="py-1 text-right tabular-nums text-muted">
+                      <TD className="py-1 text-right tabular-nums text-muted">
                         {r.neverRan ? t("overview.neverRan") : formatElapsed(r.silenceSeconds, t)}
-                      </td>
-                    </tr>
+                      </TD>
+                    </TR>
                   ))}
-                </tbody>
-              </table>
+                </TBody>
+              </Table>
             </div>
           )}
         </div>

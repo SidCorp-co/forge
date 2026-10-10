@@ -13,7 +13,7 @@ import { requirementsHref } from "@/lib/routes/requirements";
 import type { FeedbackFigures, requirementsByState } from "../ba-derive";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 
-const LINK = "rounded-sm hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
+const LINK = "rounded-sm hover:underline focus-visible:outline-none focus-visible:shadow-focus";
 
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -26,7 +26,7 @@ function Group({ label, children }: { label: string; children: React.ReactNode }
 
 const Figure = ({ href, label, value, accent }: { href: string; label: string; value: number | string; accent?: boolean }) => (
   <Link href={href} className={`inline-flex items-baseline gap-1.5 ${LINK}`}>
-    <span className={`text-20 font-semibold tabular-nums ${accent ? "text-[var(--accent-text)]" : "text-fg"}`}>{value}</span>
+    <span className={`text-20 font-semibold tabular-nums ${accent ? "text-accent-text" : "text-fg"}`}>{value}</span>
     <span className="text-13 text-muted">{label}</span>
   </Link>
 );

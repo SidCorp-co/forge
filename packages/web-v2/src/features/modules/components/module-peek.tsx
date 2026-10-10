@@ -9,7 +9,7 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useModuleDetail } from "../hooks";
 import { ActivityBars, AttentionBadge, ModuleAction, ModuleBanner, openSegments } from "./module-bits";
-import { ModuleFacts } from "./module-facts";
+import { ModuleProperties } from "./module-facts";
 
 export function ModulePeek({
   projectId,
@@ -33,16 +33,16 @@ export function ModulePeek({
         {(d) => (
           <>
             <PeekHead noun={t("modules.noun")} itemKey={d.module.path} badge={<AttentionBadge group={d.standing.attentionGroup} />} title={d.module.name} action={<ModuleAction standing={d.standing} slug={slug} />} />
-            {d.standing.attentionGroup !== "quiet" ? <ModuleBanner standing={d.standing} slug={slug} className="px-[18px]" /> : null}
-            <div className="grid gap-4 px-[18px] pb-2 pt-4">
-              {d.standing.open > 0 ? <CoverageBar segments={openSegments(d.standing, language)} /> : <p className="text-12-5 text-subtle">{t("modules.nothingOpen")}</p>}
+            {d.standing.attentionGroup !== "quiet" ? <ModuleBanner standing={d.standing} slug={slug} className="px-4.5" /> : null}
+            <div className="grid gap-4 px-4.5 pb-2 pt-4">
+              {d.standing.open > 0 ? <CoverageBar segments={openSegments(d.standing, language)} /> : <p className="text-13 text-subtle">{t("modules.nothingOpen")}</p>}
               <div className="flex items-end justify-between gap-3">
-                <span className="text-12-5 font-medium text-muted">{t("modules.lastDays", { n: d.activity.days.length })}</span>
+                <span className="text-13 font-medium text-muted">{t("modules.lastDays", { n: d.activity.days.length })}</span>
                 <ActivityBars days={d.activity.days} height={24} barWidth={7} />
               </div>
             </div>
-            <div className="px-[18px] pb-4 pt-3">
-              <ModuleFacts d={d} slug={slug} />
+            <div className="px-4.5 pb-4 pt-3">
+              <ModuleProperties d={d} slug={slug} />
             </div>
           </>
         )}

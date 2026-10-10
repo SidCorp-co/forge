@@ -25,7 +25,7 @@ export interface RecordPanelProps {
 /**
  * The records behind one figure, listed.
  */
-export function RecordPanel({ title, total, records, onClose }: RecordPanelProps) {
+export function RecordList({ title, total, records, onClose }: RecordPanelProps) {
   const capped = records.length < total;
   const t = useCopy();
   return (
@@ -37,7 +37,7 @@ export function RecordPanel({ title, total, records, onClose }: RecordPanelProps
         <button
           type="button"
           onClick={onClose}
-          className="fg-body-sm rounded-sm px-1.5 py-0.5 text-muted hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          className="fg-body-sm rounded-sm px-1.5 py-0.5 text-muted hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
         >
           {t("common.close")}
         </button>
@@ -52,7 +52,7 @@ export function RecordPanel({ title, total, records, onClose }: RecordPanelProps
             <li key={r.key}>
               <Link
                 href={r.href}
-                className="fg-body-sm flex flex-wrap items-baseline gap-x-2 rounded-sm px-1 py-0.5 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                className="fg-body-sm flex flex-wrap items-baseline gap-x-2 rounded-sm px-1 py-0.5 hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
               >
                 <span className="font-medium">{r.label === "Run" ? t("overview.awaiting.runTitle") : r.label}</span>
                 <span className="truncate text-muted">{r.detail}</span>

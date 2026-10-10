@@ -1,10 +1,9 @@
 "use client";
 
-// Running and At risk on the project home: flat tables on hairlines, no cards. What is running and
+// Running and At risk on the project home: flush rows on hairlines, no cards. What is running and
 // what is late is core's project status; the rows come from `derive.ts` and nothing is decided here.
 
-import Link from "next/link";
-import { WaitingOn } from "@/design";
+import { RowItem, RowList, WaitingOn } from "@/design";
 import { spanText } from "@/features/forecast/text";
 import { issueHref } from "@/lib/routes/issues";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
@@ -12,9 +11,6 @@ import type { Copy } from "@/lib/i18n/product-copy";
 import type { AtRiskReason, AtRiskRow } from "../derive";
 import type { StatusInFlightIssue } from "@forge/contracts/project-status";
 
-const TH = "fg-caption border-b border-line px-0 py-1.5 pr-3 text-left font-medium text-muted";
-const TD = "border-b border-line-subtle py-2 pr-3 align-top text-13";
-const KEY = "font-mono text-12-5 font-semibold text-link hover:underline whitespace-nowrap";
 
 export function HomeSectionTitle({ children, count }: { children: React.ReactNode; count?: number | undefined }) {
   return (
@@ -33,30 +29,11 @@ export function RunningTable({ rows, total, slug }: { rows: StatusInFlightIssue[
       {rows.length === 0 ? (
         <p className="text-13 text-muted">{t("home.runningEmpty")}</p>
       ) : (
-        <table className="w-full border-collapse">
-          <thead>
-            <tr>
-              <th className={TH}>{t("home.col.key")}</th>
-              <th className={TH}>{t("home.col.title")}</th>
-              <th className={`${TH} max-sm:hidden`}>{t("home.col.waiting")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.key} data-testid="home-running-row" data-key={r.key}>
-                <td className={TD}>
-                  <Link className={KEY} href={issueHref(slug, r.key)}>
-                    {r.key}
-                  </Link>
-                </td>
-                <td className={`${TD} min-w-0 break-words`}>{r.title}</td>
-                <td className={`${TD} max-sm:hidden`}>
-                  <WaitingOn w={r.waitingOn} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <RowList label={t("home.running")}>
+          {rows.map((r) => (
+            <RowItem key={r.key} testId="home-running-row" href={issueHref(slug, r.key)} lead={r.key} title={r.title} trailing={<WaitingOn w={r.waitingOn} />} />
+          ))}
+        </RowList>
       )}
       {total > rows.length && <p className="fg-caption mt-1 text-subtle">{t("home.runningMore", { shown: rows.length, total })}</p>}
     </section>
@@ -78,33 +55,18 @@ export function AtRiskTable({ rows }: { rows: AtRiskRow[] }) {
       {rows.length === 0 ? (
         <p className="text-13 text-muted">{t("home.atRiskEmpty")}</p>
       ) : (
-        <table className="w-full border-collapse">
-          <thead>
-            <tr>
-              <th className={TH}>{t("home.col.key")}</th>
-              <th className={TH}>{t("home.col.title")}</th>
-              <th className={`${TH} max-sm:hidden`}>{t("home.col.why")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={`${r.entity}:${r.key}`} data-testid="home-at-risk-row" data-key={r.key}>
-                <td className={TD}>
-                  <Link className={KEY} href={r.href}>
-                    {r.key}
-                  </Link>
-                </td>
-                <td className={`${TD} min-w-0 break-words`}>
-                  {r.title}
-                  <span className="mt-0.5 hidden text-12-5 text-[var(--accent-text)] max-sm:block">{r.reasons.map((x) => whyText(x, t, lang)).join(" · ")}</span>
-                </td>
-                <td className={`${TD} text-12-5 text-[var(--accent-text)] max-sm:hidden`} data-testid="home-at-risk-why">
-                  {r.reasons.map((x) => whyText(x, t, lang)).join(" · ")}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <RowList label={t("home.atRisk")}>
+          {rows.map((r) => (
+            <RowItem
+              key={`${r.entity}:${r.key}`}
+              testId="home-at-risk-row"
+              href={r.href}
+              lead={r.key}
+              title={r.title}
+              note={<span className="text-accent-text" data-testid="home-at-risk-why">{r.reasons.map((x) => whyText(x, t, lang)).join(" · ")}</span>}
+            />
+          ))}
+        </RowList>
       )}
     </section>
   );

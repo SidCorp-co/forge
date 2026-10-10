@@ -12,12 +12,12 @@ import {
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { formatElapsed, silenceMark } from "../derive";
 import type { PulseLiveness, PulseThresholds } from "../types";
-import { RecordPanel } from "./record-panel";
+import { RecordList } from "./record-panel";
 
 const MARK_TEXT: Record<string, string> = {
   calm: "text-muted",
-  warn: "text-amber",
-  alarm: "text-red",
+  warn: "text-warn-11",
+  alarm: "text-danger-11",
 };
 
 export interface LivenessBandProps {
@@ -53,7 +53,7 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
             type="button"
             onClick={() => setPanel(panel === "liveJobs" ? null : "liveJobs")}
             aria-label={t("overview.live2.liveJobsAria", { n: live })}
-            className="rounded-sm px-1 py-0.5 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="rounded-sm px-1 py-0.5 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
           >
             <span className="fg-h2 block tabular-nums">{live}</span>
             <span className="fg-body-sm text-muted">
@@ -65,7 +65,7 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
             type="button"
             onClick={() => setPanel(panel === "stuckRuns" ? null : "stuckRuns")}
             aria-label={t("overview.live2.stuckAria", { n: liveness.stuckRuns.total })}
-            className="rounded-sm px-1 py-0.5 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="rounded-sm px-1 py-0.5 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
           >
             <span className="fg-h2 block tabular-nums">{liveness.stuckRuns.total}</span>
             <span className="fg-body-sm text-muted">{t("overview.live2.stuck")}</span>
@@ -74,7 +74,7 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
           <Link
             href="/runners"
             aria-label={t("overview.live2.runnersAria", { online: liveness.devices.online, total: liveness.devices.total })}
-            className="rounded-sm px-1 py-0.5 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="rounded-sm px-1 py-0.5 hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
           >
             <span className="fg-h2 block tabular-nums">
               {liveness.devices.online}/{liveness.devices.total}
@@ -102,7 +102,7 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
         )}
 
         {panel === "liveJobs" ? (
-          <RecordPanel
+          <RecordList
             title={t("overview.live2.liveJobsTitle")}
             total={liveness.liveJobs.total}
             records={liveness.liveJobs.shown.map((j) => ({
@@ -118,7 +118,7 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
           />
         ) : null}
         {panel === "stuckRuns" ? (
-          <RecordPanel
+          <RecordList
             title={t("overview.action.stuckRuns")}
             total={liveness.stuckRuns.total}
             records={liveness.stuckRuns.shown.map((r) => ({

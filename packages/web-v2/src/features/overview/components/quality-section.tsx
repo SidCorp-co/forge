@@ -22,7 +22,7 @@ export interface QualitySectionProps {
 }
 
 /** Section 5 — is the output any good? */
-export function QualitySection({ quality }: QualitySectionProps) {
+export function QualityFigures({ quality }: QualitySectionProps) {
   const rates = qualityRates(quality);
   const t = useCopy();
   const language = useInterfaceLanguage();

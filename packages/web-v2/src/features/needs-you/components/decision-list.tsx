@@ -54,7 +54,7 @@ export function pressBody(answer: DecisionAnswer, typed: string | null): Record<
   return body;
 }
 
-function DecisionRow({ d, slug }: { d: NeedsYouDecision; slug: string | undefined }) {
+function OwedDecision({ d, slug }: { d: NeedsYouDecision; slug: string | undefined }) {
   const t = useCopy();
   const qc = useQueryClient();
   const [typing, setTyping] = useState<DecisionAnswer | null>(null);
@@ -183,7 +183,7 @@ export function DecisionList({ read, slug }: { read: NeedsYouDecisions; slug?: s
           </h3>
           <ul className="flex flex-col divide-y divide-line-subtle">
             {rows.map((d) => (
-              <DecisionRow key={`${d.group}:${d.key}`} d={d} slug={slug} />
+              <OwedDecision key={`${d.group}:${d.key}`} d={d} slug={slug} />
             ))}
           </ul>
         </div>

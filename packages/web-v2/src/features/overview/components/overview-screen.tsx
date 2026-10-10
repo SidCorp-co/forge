@@ -10,9 +10,9 @@ import { formatApiError } from '@/lib/api/error';
 import { useCopy } from '@/lib/i18n/interface-language';
 import { usePulse } from '../hooks';
 import { ActionQueue } from './action-queue';
-import { FlowSection } from './flow-section';
+import { FlowFigures } from './flow-section';
 import { LivenessBand } from './liveness-band';
-import { QualitySection } from './quality-section';
+import { QualityFigures } from './quality-section';
 import { WorkSitting } from './work-sitting';
 
 export function OverviewScreen() {
@@ -46,7 +46,7 @@ export function OverviewScreen() {
       <PageContainer className="flex flex-col gap-4">
         {Array.from({ length: 5 }).map((_, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length placeholder list that never reorders
-          <Skeleton key={i} className="h-40 w-full rounded-lg" />
+          <Skeleton key={i} className="h-40 w-full rounded-md" />
         ))}
       </PageContainer>
     );
@@ -55,7 +55,7 @@ export function OverviewScreen() {
   if (!hasProjects) {
     const hasAnyProjects = allItems.length > 0;
     return (
-      <PageContainer className="grid min-h-[60vh] place-items-center">
+      <PageContainer className="grid min-h-96 place-items-center">
         <EmptyState
           message={hasAnyProjects ? t('overview.noProjectsIn') : t('overview.welcome')}
           action={{ label: t('overview.newProject'), onClick: () => router.push('/projects?new=1') }}
@@ -73,8 +73,8 @@ export function OverviewScreen() {
       <LivenessBand liveness={data.liveness} thresholds={data.thresholds} />
       <WorkSitting pulse={data} nowMs={nowMs} />
       <ActionQueue pulse={data} />
-      <FlowSection flow={data.flow} />
-      <QualitySection quality={data.quality} />
+      <FlowFigures flow={data.flow} />
+      <QualityFigures quality={data.quality} />
     </PageContainer>
   );
 }

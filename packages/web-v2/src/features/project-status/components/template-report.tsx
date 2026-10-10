@@ -37,7 +37,7 @@ export function TemplateReport({
     <div className="grid gap-3" data-testid="template-report">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h2 className="text-14 font-semibold text-fg">{meta.template?.title ?? document.templateId}</h2>
-        <span className="text-12-5 text-muted">{t("status.asOf", { at: formatDateTime(meta.asOf, clock.lang, clock.timeZone) })}</span>
+        <span className="text-13 text-muted">{t("status.asOf", { at: formatDateTime(meta.asOf, clock.lang, clock.timeZone) })}</span>
         <span className="flex-1" />
         <div className="flex items-center gap-1 print:hidden" data-testid="template-report-actions">
           <Button size="sm" variant="ghost" onClick={() => exporting.mutate(undefined)} disabled={exporting.isPending} data-testid="template-report-export">
