@@ -6,6 +6,7 @@ import type {
 } from '@forge/contracts/requirements';
 import { type Said, say } from '@forge/contracts/said';
 import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
+import { verdictExercised } from '@forge/contracts/verdict-identity';
 
 interface Turn {
   group: RequirementAttentionGroup;
@@ -22,7 +23,6 @@ const JUDGE_WHO: Record<PolicyQaMode, Said> = {
 
 const MASTER = say('standing.who.master');
 
-const JUDGED = new Set(['pass', 'short', 'fail']);
 const keysOf = (keys: readonly string[]) => [...new Set(keys)].join(', ');
 /** The issues a verdict can still count on: those tracing the current wording that hold no
  *  judgement, or only one that does not count (on another build, or at an identity nothing checks). */
@@ -30,7 +30,7 @@ const unjudgedKeys = (rows: readonly RequirementCoverage[]) =>
   keysOf(
     rows.flatMap((c) =>
       c.issues
-        .filter((l) => !l.stale && (!JUDGED.has(l.verdict ?? '') || l.notCounted !== null))
+        .filter((l) => !l.stale && (!verdictExercised(l.verdict) || l.notCounted !== null))
         .map((l) => l.displayId),
     ),
   );

@@ -4,6 +4,7 @@
  * where whoever wrote it is still there to attach the file instead.
  */
 
+import { verdictExercised } from '@forge/contracts/verdict-identity';
 import type { MessageRefusal } from './contract.js';
 import type { ForgeRecord } from './forge-record.js';
 import { type CriterionBlock, criterionBlocksIn, EVIDENCE_FIELD } from './verdict-identity.js';
@@ -11,7 +12,6 @@ import { type CriterionBlock, criterionBlocksIn, EVIDENCE_FIELD } from './verdic
 type CitationForm = 'url' | 'machine-path' | 'identity' | 'in-tree' | 'attachment';
 
 /** The verdicts taken by looking, which owe what they were taken from. `skipped` owes nothing. */
-const EXERCISED_VERDICTS: ReadonlySet<string> = new Set(['pass', 'fail', 'short']);
 
 const URL = /^https?:\/\//iu;
 const MACHINE_PATH = /^(?:\/|~\/|file:\/\/)/u;
@@ -51,7 +51,7 @@ function refusal(why: string, quote: string): MessageRefusal {
 }
 
 function citesNothing(block: CriterionBlock): MessageRefusal | null {
-  if (block.verdict === null || !EXERCISED_VERDICTS.has(block.verdict)) return null;
+  if (block.verdict === null || !verdictExercised(block.verdict)) return null;
   if (block.cited.length > 0) return null;
   return refusal(
     `criterion ${block.criterion} records \`${block.verdict}\` and cites nothing it was taken from — a verdict taken by looking names what was looked at, and one citing nothing cannot be told afterwards from one whose evidence was lost before it was written`,

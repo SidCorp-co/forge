@@ -4,6 +4,7 @@
 
 import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import type { ServingReading } from '@forge/contracts/releases';
+import { verdictEarns } from '@forge/contracts/verdict-identity';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issueAttachments, issues } from '../db/schema.js';
@@ -28,9 +29,6 @@ import {
   type VerdictStanding,
 } from './verdict-standing.js';
 import { type RuntimeReading, UNWEIGHED, type Weighing } from './weighing.js';
-
-// `short` is the CLI's own "met short of its wording, judged not to block" — a real judgement.
-const EARNED_VERDICTS: ReadonlySet<string> = new Set(['pass', 'short']);
 
 export interface CriterionVerdict {
   readonly criterion: number;
@@ -151,7 +149,7 @@ function reasonsAgainst(
 ): string[] {
   const out: string[] = [];
   const { standing, serving, runtime, beside } = weighed;
-  if (!EARNED_VERDICTS.has(pair.verdict)) {
+  if (!verdictEarns(pair.verdict)) {
     out.push(`its verdict is \`${pair.verdict}\`, which is not earned`);
   } else if (!EARNED_STANDINGS.has(standing) || unconfirmedDraft(pair, standing)) {
     const said = standingSentence(standing, pair.at, serving, identities, runtime);

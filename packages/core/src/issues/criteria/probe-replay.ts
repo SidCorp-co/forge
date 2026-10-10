@@ -7,6 +7,7 @@
 // the deploy serves. A criterion QA passed with no probe kept is not replayed.
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
+import { EARNING_VERDICTS } from '@forge/contracts/verdict-identity';
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import { isRefusal } from '../../lib/refusal.js';
@@ -62,7 +63,10 @@ export async function replayTargetsOf(projectId: string, runId: string): Promise
      WHERE i.project_id = ${projectId}
        AND i.archived_at IS NULL
        AND (i.status = 'closed' OR i.release_batch_run_id = ${runId}::uuid)
-       AND v.verdict IN ('pass', 'short')
+       AND v.verdict IN (${sql.join(
+         EARNING_VERDICTS.map((v) => sql`${v}`),
+         sql`, `,
+       )})
        AND v.probe_id IS NOT NULL
      ORDER BY i.iss_seq, c.n
   `)) as unknown as TargetRow[];

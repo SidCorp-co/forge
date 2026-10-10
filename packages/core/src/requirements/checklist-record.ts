@@ -11,6 +11,7 @@
 
 import type { RecordAnswer, RecordAnswers } from '@forge/contracts/checklists';
 import type { RequirementSpec } from '@forge/contracts/requirements';
+import { EARNING_VERDICTS } from '@forge/contracts/verdict-identity';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import {
@@ -266,7 +267,10 @@ export async function uncitedVerdictsIn(
       ) latest ON true
      WHERE i.requirement_id = ${requirementId}
        AND i.status <> 'dropped'
-       AND latest.verdict IN ('pass', 'short')
+       AND latest.verdict IN (${sql.join(
+         EARNING_VERDICTS.map((v) => sql`${v}`),
+         sql`, `,
+       )})
        AND cardinality(latest.evidence) = 0
      ORDER BY i.iss_seq, c.n
   `)) as unknown as Array<{ iss_seq: number; n: number }>;

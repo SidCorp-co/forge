@@ -19,6 +19,7 @@ import {
   type RequiredMergeCheck,
   requiredMergeChecksOf,
 } from '@forge/contracts/merge-check';
+import { verdictEarns } from '@forge/contracts/verdict-identity';
 
 /** Not run by the check: what owns it is named in every record. */
 export const NOT_YET_CHECKED =
@@ -102,7 +103,6 @@ export interface MergeCriterion {
 }
 
 /** The verdicts a criterion stands on (`short` counts as a pass, contracts `criterionCountsAsPass`). */
-const STANDING_VERDICTS = ['pass', 'short'];
 
 /**
  * Why core does not hold the report's reading that criterion `n` stands on `verdict`, or null where
@@ -121,8 +121,7 @@ function standingFault(
   if (!latest) return `${lead}, and it has no verdict`;
   if (latest.id !== verdict)
     return `${lead} on verdict ${verdict}, and its latest verdict is ${latest.id}`;
-  if (!STANDING_VERDICTS.includes(latest.verdict))
-    return `${lead}, and its latest verdict is ${latest.verdict}`;
+  if (!verdictEarns(latest.verdict)) return `${lead}, and its latest verdict is ${latest.verdict}`;
   if (latest.identityKind !== 'commit' || !latest.commitSha)
     return `${lead}, and its latest verdict names no commit a base could carry`;
   if (head.toLowerCase().startsWith(latest.commitSha.toLowerCase()))
