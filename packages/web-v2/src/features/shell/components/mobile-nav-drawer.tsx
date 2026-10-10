@@ -1,8 +1,7 @@
 "use client";
 
 // below md this drawer, opened from the More tab, is the whole of the sidebar: the project tier, the workspace destinations, the project switcher, the bell beside the org picker as the sidebar has it at its top, and the search, account and version the sidebar carries above md
-import { useEffect } from "react";
-import { Icon, type IconName, ProjectMark, isNavGroup } from "@/design";
+import { Icon, type IconName, isNavGroup, ProjectMark, SlideOver } from "@/design";
 import { OrgSwitcher } from "@/features/orgs";
 import { projectGlyph, projectInitials } from "@/features/projects";
 import type { ProjectListItem } from "@/features/projects";
@@ -113,16 +112,6 @@ export function MobileNavDrawer({
   const t = useCopy();
   const language = useInterfaceLanguage();
   const navLabel = useNavLabel();
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
 
   const navRow = (it: NavRow, active = it.key === activeKey, badge = it.badge) => (
     <DrawerNavButton
@@ -176,20 +165,8 @@ export function MobileNavDrawer({
   );
 
   return (
-    <div className="md:hidden">
-      <button
-        type="button"
-        aria-label={t("shell.drawer.close")}
-        className="fixed inset-0 z-40 cursor-default"
-        style={{ background: "var(--scrim-strong)" }}
-        onClick={onClose}
-      />
-      <div
-        className="forge-slide fixed inset-y-0 left-0 z-50 flex w-68 max-w-[82vw] flex-col gap-1 border-r border-line bg-surface p-3 pb-[env(safe-area-inset-bottom)] pt-[max(env(safe-area-inset-top),0.75rem)]"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("shell.drawer.label")}
-      >
+    <SlideOver open={open} onClose={onClose} side="left" width={272} hideHeader fitBody title={t("shell.drawer.label")}>
+      <div className="flex min-h-0 flex-1 flex-col gap-1 px-3 pt-safe pb-safe md:hidden">
         {/* Org context + switcher (ISS-469) — the rail is hidden below md,
             so the drawer carries the current-org control on mobile. */}
         <div className="flex items-center gap-1.5 px-1.5 pb-3">
@@ -199,7 +176,7 @@ export function MobileNavDrawer({
           {bell}
         </div>
 
-        {search && <div className="px-1.5 pb-2">{search}</div>}
+        {search ? <div className="px-1.5 pb-2">{search}</div> : null}
 
         <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
           {thisProjectSection}
@@ -213,10 +190,10 @@ export function MobileNavDrawer({
           />
         </div>
 
-        {footer && <div className="flex flex-col gap-1 border-t border-line-subtle pt-2">{footer}</div>}
-        {version && <div className="px-1.5 pt-2">{version}</div>}
+        {footer ? <div className="flex flex-col gap-1 border-t border-line-subtle pt-2">{footer}</div> : null}
+        {version ? <div className="px-1.5 pt-2">{version}</div> : null}
       </div>
-    </div>
+    </SlideOver>
   );
 }
 

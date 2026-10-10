@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button, Input, NativeSelect } from "@/design";
+import { Button, Input, NativeSelect, Select } from "@/design";
 import { useOrgs } from "@/features/orgs";
 import { useProjects } from "@/features/projects";
 import { isOrgAdmin } from "@/features/projects";
@@ -82,19 +82,20 @@ function ReplyWindowsField({ doc, set }: { doc: EcosystemDocument; set: Patch })
 function GateField({ doc, set }: { doc: EcosystemDocument; set: Patch }) {
   return (
     <Field label="Before a document is sent">
-      <span className="grid gap-1 rounded-md border border-line px-2.5 py-1.5 text-13">
+      <span className="grid gap-1 border-y border-line py-1.5 text-13">
         {DOCUMENT_TYPES.map((t) => (
           <span key={t} className="flex items-center justify-between gap-2">
             {TYPE_LABEL[t]}
-            <select
+            <Select
               aria-label={`${TYPE_LABEL[t]}: before it is sent`}
-              className="rounded border border-line bg-surface px-1 font-semibold"
+              className="w-48"
               value={doc.gate[t]}
-              onChange={(e) => set((d) => ({ ...d, gate: { ...d.gate, [t]: e.target.value as GateMode } }))}
-            >
-              <option value="publish">send at once</option>
-              <option value="approve">an admin approves</option>
-            </select>
+              onChange={(v) => set((d) => ({ ...d, gate: { ...d.gate, [t]: v as GateMode } }))}
+              options={[
+                { value: "publish", label: "send at once" },
+                { value: "approve", label: "an admin approves" },
+              ]}
+            />
           </span>
         ))}
       </span>
@@ -116,31 +117,25 @@ function MembersField({
   const addable = projects.filter((p) => !members.includes(p.id));
   return (
     <Field label={label}>
-      <span className="flex flex-wrap items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5">
+      <span className="flex flex-wrap items-center gap-1.5 border-y border-line py-1.5">
         {members.map((id) => (
           <button
             key={id}
             type="button"
             onClick={() => setMembers((m) => m.filter((x) => x !== id))}
-            className="rounded-pill px-2 py-px text-11-5 font-semibold"
-            style={{ background: "var(--cobalt-50)", color: "var(--cobalt-700)" }}
+            className="rounded-pill bg-info-3 px-2 py-px text-12 font-semibold text-info-11"
           >
             {projects.find((p) => p.id === id)?.slug ?? id} ✕
           </button>
         ))}
-        <select
+        <Select
           aria-label="Add a project"
-          className="bg-transparent text-12 text-subtle"
+          className="w-48"
           value=""
-          onChange={(e) => e.target.value && setMembers((m) => [...m, e.target.value])}
-        >
-          <option value="">add a project…</option>
-          {addable.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.slug}
-            </option>
-          ))}
-        </select>
+          placeholder="add a project…"
+          onChange={(v) => v && setMembers((m) => [...m, v])}
+          options={addable.map((p) => ({ value: p.id, label: p.slug }))}
+        />
       </span>
     </Field>
   );

@@ -328,7 +328,7 @@ export function BusDiagram({
           <div
             key={`col-${p.id}`}
             aria-hidden
-            className="pointer-events-none ml-[50%] border-l border-dashed border-line"
+            className="pointer-events-none mx-auto w-0 border-l border-dashed border-line"
             style={{ gridRow: `2 / span ${R}`, gridColumn: i + 2 }}
           />
         ))}

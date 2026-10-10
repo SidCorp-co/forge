@@ -71,7 +71,7 @@ export function EcosystemsHome() {
           <Icon name="ecosystem" size={40} />
         </div>
         <h1 className="fg-h3">No ecosystem yet</h1>
-        <p className="max-w-[44ch] text-muted">Projects from any organization that share contracts and documents.</p>
+        <p className="max-w-prose text-muted">Projects from any organization that share contracts and documents.</p>
         <NewButton />
         <div className="mt-2.5 w-full max-w-130">
           <Requests read={read} />

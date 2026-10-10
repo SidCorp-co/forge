@@ -77,7 +77,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 		) : detailQ.isError ? (
 			<ErrorState message={formatApiError(detailQ.error)} onRetry={() => void detailQ.refetch()} />
 		) : null;
-	if (unready) return <div className="grid min-h-[60vh] place-items-center">{unready}</div>;
+	if (unready) return <div className="grid min-h-96 place-items-center">{unready}</div>;
 
 	const project = detailQ.data;
 	if (!listItem || !project) return null;

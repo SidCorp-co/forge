@@ -59,7 +59,7 @@ export function OperatorShell({
         <OperatorTopbar section={active} {...account} />
 
         {!lostAdmin && (
-          <div className="md:hidden [mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]">
+          <div className="md:hidden">
             <ScreenTabs tabs={TAB_ITEMS} value={active} onChange={navigate} />
           </div>
         )}

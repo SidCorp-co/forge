@@ -156,11 +156,11 @@ function Row({ row, ctx }: { row: InboxRow; ctx: Ctx }) {
   return (
     <li
       className={cn(
-        "grid grid-cols-1 items-center gap-x-3.5 gap-y-1.5 border-b border-line-subtle py-2.75 last:border-b-0 sm:grid-cols-[110px_minmax(0,1fr)_auto]",
+        "flex flex-col gap-1.5 border-b border-line-subtle py-2.75 last:border-b-0 sm:flex-row sm:items-center sm:gap-3.5",
         row.hold?.action === "hold" && "opacity-75",
       )}
     >
-      <span className="grid gap-0.5">
+      <span className="grid gap-0.5 sm:w-28 sm:flex-none">
         <b className="text-12-5">{typeLabel(row.type, ctx.t)}</b>
         {party ? (
           <Link href={ecosystemRoutes.document(ctx.slug(party), row.number)} className="font-mono text-11 text-subtle hover:underline">
@@ -170,7 +170,7 @@ function Row({ row, ctx }: { row: InboxRow; ctx: Ctx }) {
           <span className="font-mono text-11 text-subtle">{row.number}</span>
         )}
       </span>
-      <span className="grid min-w-0 gap-0.75">
+      <span className="grid min-w-0 gap-0.75 sm:flex-1">
         <b className="truncate text-13-5 font-semibold">{row.subject}</b>
         <span className="fg-caption truncate">
           {ctx.slug(row.from)} → {row.to.map(ctx.slug).join(", ")}

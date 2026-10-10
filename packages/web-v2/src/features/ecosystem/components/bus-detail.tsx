@@ -176,9 +176,9 @@ function ContractDetail({ bus, rows, k, mine, onSelect }: { bus: Bus; rows: BusR
               <button
                 type="button"
                 onClick={() => onSelect({ kind: "link", id: l.id })}
-                className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 text-left text-13"
+                className="flex w-full items-center gap-2 text-left text-13"
               >
-                <b className="truncate">{names.get(l.consumer) ?? "a member"}</b>
+                <b className="min-w-0 flex-1 truncate">{names.get(l.consumer) ?? "a member"}</b>
                 <span className="fg-caption font-mono">on {l.pinnedVersion}</span>
                 <StatusBadge family="check" value={impactOf(l)} />
               </button>
@@ -208,7 +208,7 @@ export function BusDetail({
   return (
     <section
       aria-label="Detail"
-      className="grid min-h-0 min-w-0 flex-1 content-start border-t border-line-subtle bg-app sm:grid-cols-[repeat(auto-fit,minmax(200px,1fr))]"
+      className="grid min-h-0 min-w-0 flex-1 content-start border-t border-line-subtle bg-app sm:grid-cols-2 lg:grid-cols-3"
     >
       {sel.kind === "project" ? <ProjectDetail bus={bus} id={sel.id} mine={mine} onSelect={onSelect} /> : null}
       {sel.kind === "link" ? <LinkDetail bus={bus} id={sel.id} /> : null}

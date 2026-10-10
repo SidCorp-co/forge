@@ -181,7 +181,7 @@ export function ConnectionItem({
             size={16}
             className="shrink-0 text-muted"
           />
-          <span className="fg-label min-w-0 [overflow-wrap:anywhere]">{title}</span>
+          <span className="fg-label min-w-0 wrap-anywhere">{title}</span>
           {title !== providerLabel && (
             <span className="fg-body-sm shrink-0 rounded-pill bg-sunken px-2 py-0.5 text-subtle">
               {providerLabel}
