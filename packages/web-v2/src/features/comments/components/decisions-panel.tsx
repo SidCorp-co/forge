@@ -68,7 +68,7 @@ export function FoldedDecisions({ by, folded, onBy, busy = false }: { by: Decisi
   const t = useCopy();
   if (by === "people" && folded === 0) return null;
   return (
-    <p className="flex flex-wrap items-baseline gap-x-2 text-12-5 text-muted" data-testid="decisions-folded">
+    <p className="flex flex-wrap items-baseline gap-x-2 text-13 text-muted" data-testid="decisions-folded">
       <span>{by === "people" ? t("decisions.folded", { n: folded }) : t("decisions.showingAll")}</span>
       <Button size="sm" variant="ghost" loading={busy} onClick={() => onBy(by === "people" ? "all" : "people")}>
         {by === "people" ? t("decisions.showAgents") : t("decisions.onlyPeople")}

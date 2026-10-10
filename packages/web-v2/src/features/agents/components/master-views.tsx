@@ -119,7 +119,7 @@ export const masterRow =
     title: `${masterName(m, language)} · ${doing(m, language)}`,
     facts: [t("agents.master.slotsFact", { slots: slotsText(m, language) }), lastPassText(m, language), m.pass?.issueKey ? t("agents.master.onIssue", { key: m.pass.issueKey }) : null].filter((x): x is string => !!x),
     state: <StatusBadge family="masterState" value={m.state} />,
-    waitingOn: <span className="text-12-5 text-subtle">—</span>,
+    waitingOn: <span className="text-13 text-subtle">—</span>,
     owner: m.device?.name ?? t("agents.master.noBox"),
     age: m.lastBeatAt ? { text: formatAge(m.lastBeatAt, language), title: t("agents.master.lastBeatAt", { at: formatDateTime(m.lastBeatAt, language) }) } : null,
   });
@@ -198,7 +198,7 @@ export function MasterFacts({ m }: { m: MasterStanding }) {
       </FactsGroup>
       <FactsGroup title={t("runs.fact.box")}>
         <Fact label={t("runs.report.device")}>
-          <span className="font-mono text-12-5">{m.device?.name ?? "—"}</span>
+          <span className="font-mono text-13">{m.device?.name ?? "—"}</span>
         </Fact>
         <Fact label={t("agents.master.lastBeat")}>{m.lastBeatAt ? <span title={time.dateTime(m.lastBeatAt)}>{formatRelative(m.lastBeatAt, language)}</span> : "—"}</Fact>
         <Fact label={t("runs.fact.since")}>{fmtTime(m.since, language)}</Fact>
@@ -207,7 +207,7 @@ export function MasterFacts({ m }: { m: MasterStanding }) {
       <FactsGroup title={t("runs.fact.properties")}>
         <Fact label={t("runs.fact.session")}>
           {m.sessionId ? (
-            <span className="font-mono text-12-5" title={m.sessionId}>
+            <span className="font-mono text-13" title={m.sessionId}>
               {m.sessionId.slice(0, 8)}
             </span>
           ) : (
@@ -225,8 +225,8 @@ export function MasterPeek({ m, peek, onOpenFull }: { m: MasterStanding; peek: P
   return (
     <PeekPanel peek={peek} listLabel={t("agents.title")} noun={t("agents.master.title")} onOpenFull={onOpenFull} testId="master-peek">
       <PeekHead noun={t("agents.master.title")} itemKey={t("agents.master.word")} badge={<StatusBadge family="masterState" value={m.state} />} title={masterName(m, language)} />
-      <MasterBanner m={m} className="px-[18px]" />
-      <div className="px-[18px] pb-4 pt-4">
+      <MasterBanner m={m} className="px-4.5" />
+      <div className="px-4.5 pb-4 pt-4">
         <MasterFacts m={m} />
       </div>
     </PeekPanel>
@@ -237,7 +237,7 @@ export const MASTER_TABS = ["passes", "runs", "charter"] as const;
 
 const keyLink = (slug: string, k: string) =>
   /^[A-Z]+-\d+$/.test(k) ? (
-    <Link href={issueHref(slug, k)} className="font-mono text-12-5 font-semibold text-link hover:underline">
+    <Link href={issueHref(slug, k)} className="font-mono text-13 font-semibold text-link hover:underline">
       {k}
     </Link>
   ) : (
@@ -272,7 +272,7 @@ export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPa
   const closed = (p: MasterPassView) => ("endedAt" in p ? p : null);
   return (
     <section>
-      <ViewHeading right={<span className="text-12-5 text-muted">{hasMore ? t("agents.master.newestN", { n: time.number(items.length) }) : time.number(items.length)}</span>}>{t("agents.master.tab.passes")}</ViewHeading>
+      <ViewHeading right={<span className="text-13 text-muted">{hasMore ? t("agents.master.newestN", { n: time.number(items.length) }) : time.number(items.length)}</span>}>{t("agents.master.tab.passes")}</ViewHeading>
       <Table aria-label={t("agents.master.tab.passes")}>
         <THead className="bg-sunken">
           <TR>
@@ -294,7 +294,7 @@ export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPa
                 </TD>
                 <TD>
                   <EnumBadge family="masterVerb" value={p.verb} />
-                  {p.trigger === "unprompted" ? <span className="ml-1.5 text-12-5 text-muted">{t("agents.master.unprompted")}</span> : null}
+                  {p.trigger === "unprompted" ? <span className="ml-1.5 text-13 text-muted">{t("agents.master.unprompted")}</span> : null}
                   {c?.recovers ? (
                     <>
                       <span className="ml-1.5 text-12 font-semibold text-link">{t("agents.master.recovered")}</span>
@@ -304,7 +304,7 @@ export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPa
                 </TD>
                 <TD>
                   {c?.refused ? (
-                    <span className="grid gap-0.5 text-12-5 text-muted">
+                    <span className="grid gap-0.5 text-13 text-muted">
                       <span>{t("agents.master.refusedBefore", { why: refusalLabel(c.refused, language) })}</span>
                       <span className="text-12 break-words">{t("agents.master.accountSaid", { said: c.refused.detail })}</span>
                     </span>
@@ -321,7 +321,7 @@ export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPa
                     <ul className="grid gap-0.5">
                       {c.skipped.map((s) => (
                         <li key={s.issueKey}>
-                          {keyLink(slug, s.issueKey)} <span className="text-12-5 text-muted">{s.refusal}</span>
+                          {keyLink(slug, s.issueKey)} <span className="text-13 text-muted">{s.refusal}</span>
                         </li>
                       ))}
                     </ul>
@@ -352,7 +352,7 @@ function Leased({ m, projectId, slug }: { m: MasterStanding; projectId: string; 
   if (rows.length === 0) return <FactsEmpty>{t("agents.master.noLeased")}</FactsEmpty>;
   return (
     <section>
-      <ViewHeading right={<span className="text-12-5 text-muted">{time.number(rows.length)}</span>}>{t("agents.master.leasedHeading")}</ViewHeading>
+      <ViewHeading right={<span className="text-13 text-muted">{time.number(rows.length)}</span>}>{t("agents.master.leasedHeading")}</ViewHeading>
       <Table aria-label={t("agents.master.tab.runs")}>
         <THead className="bg-sunken">
           <TR>
@@ -406,8 +406,8 @@ function Charter({ projectId }: { projectId: string }) {
   if (!c.declared) return <FactsEmpty>{t("agents.master.noCharter")}</FactsEmpty>;
   return (
     <section>
-      <ViewHeading right={c.declaredAt ? <span className="text-12-5 text-muted">{t("agents.master.declared", { at: fmtTime(c.declaredAt, language) })}</span> : undefined}>{t("agents.master.charterV", { v: c.version ?? "" })}</ViewHeading>
-      {c.goal ? <p className="text-13-5">{c.goal}</p> : null}
+      <ViewHeading right={c.declaredAt ? <span className="text-13 text-muted">{t("agents.master.declared", { at: fmtTime(c.declaredAt, language) })}</span> : undefined}>{t("agents.master.charterV", { v: c.version ?? "" })}</ViewHeading>
+      {c.goal ? <p className="text-14">{c.goal}</p> : null}
       {c.rules.length > 0 ? (
         <ul className="mt-3 border-t border-line-subtle">
           {c.rules.map((rule) => (

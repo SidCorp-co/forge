@@ -136,7 +136,7 @@ export function BodyEditor({
         ))}
       </div>
 
-      <div className="overflow-hidden rounded-md border border-line-strong bg-surface focus-within:border-[color:var(--link)] focus-within:shadow-[var(--shadow-focus)]">
+      <div className="overflow-hidden rounded-md border border-line-strong bg-surface focus-within:border-link focus-within:shadow-focus">
         <CodeMirror
           value={value}
           onChange={onChange}
@@ -169,7 +169,7 @@ export function BodyEditor({
                 <Spinner size={12} /> {t("issues.editor.checking")}
               </p>
             ) : preview.isError ? (
-              <p className="fg-body-sm text-[color:var(--red-600)]">
+              <p className="fg-body-sm text-danger-11">
                 {formatApiError(preview.error)}
               </p>
             ) : null

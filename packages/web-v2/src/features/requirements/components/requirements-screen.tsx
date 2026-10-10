@@ -9,13 +9,12 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { AcceptStep, AGENT_TINT, Button, EmptyState, Field, Input, ListSearch, PageTitle, rememberListOrigin, StatusBadge, TopBarActions, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, } from "@/design";
+import { AcceptStep, Button, EmptyState, Field, Input, ListLayout, ListSearch, ListToolbar, PageTitle, rememberListOrigin, StatusBadge, ToolbarSelect, TopBarActions, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { placeRefusals } from "@/lib/api/field-refusals";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage, } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { cn } from "@/lib/utils/cn";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import { RejectStep } from "@/features/suggestions/components/reject-step";
 import { acceptConsequence, PendingBadge, summaryOf } from "@/features/suggestions/components/suggestion-list";
@@ -99,7 +98,7 @@ function AssistantStrip({
   if (!shown) {
     return (
       <button type="button" onClick={() => setShown(true)} className="flex w-full items-center gap-2.5 border-b border-line-subtle px-5 py-2.5 text-left text-13 text-muted max-md:px-3" data-testid="assistant-strip-collapsed">
-        <span className="size-1.5 rounded-full bg-accent" />
+        <span className="size-1.5 rounded-pill bg-accent" />
         {t("requirements.assistant.count", { n: open.length })}
         <span className="font-medium text-accent-text">{t("requirements.assistant.show")}</span>
       </button>
@@ -107,32 +106,31 @@ function AssistantStrip({
   }
   return (
     <section
-      className="border-l-[3px] py-2 pl-[17px] pr-5 text-12-5"
-      style={{ background: AGENT_TINT.bg, borderColor: AGENT_TINT.dot }}
+      className="border-l-3 border-ai-9 bg-ai-bg py-2 pl-4.25 pr-5 text-12-5"
       aria-label={t("requirements.assistant.label")}
       data-testid="assistant-strip"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold" style={{ color: AGENT_TINT.fg }}>
+        <span className="font-semibold text-ai">
           {t("requirements.assistant.name")}
         </span>
         <span className="text-subtle">{t("requirements.assistant.count", { n: open.length })}</span>
       </div>
       {open.map((s) => {
         const r = byId.get(s.target.id) as RequirementSummary;
-        return <StripRow key={s.id} s={s} r={r} projectId={projectId} onPeek={onPeek} />;
+        return <WaitingSuggestion key={s.id} s={s} r={r} projectId={projectId} onPeek={onPeek} />;
       })}
     </section>
   );
 }
 
-function StripRow({ s, r, projectId, onPeek }: { s: Suggestion; r: RequirementSummary; projectId: string; onPeek: (k: string) => void }) {
+function WaitingSuggestion({ s, r, projectId, onPeek }: { s: Suggestion; r: RequirementSummary; projectId: string; onPeek: (k: string) => void }) {
   const t = useCopy();
   const lang = useInterfaceLanguage();
   const decide = useSuggestionDecision(projectId, requirementAffected(projectId, r.key));
   const [step, setStep] = useState<"accept" | "reject" | null>(null);
   return (
-    <div className="flex flex-wrap items-center gap-2 py-[3px]" data-testid="assistant-strip-row">
+    <div className="flex flex-wrap items-center gap-2 py-0.75" data-testid="assistant-strip-row">
       <span className="font-mono text-11-5 font-semibold text-link">{r.key}</span>
       <StatusBadge family="requirement" value={r.standing.state} />
       <span className="min-w-0 truncate">{summaryOf(s, lang)}</span>
@@ -244,23 +242,25 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
               }}
             />
           ) : null}
-          <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
+          <ListLayout
+            peek={
+              peek.open ? (
+                <RequirementPeek key={peek.open} projectId={projectId} slug={slug} reqKey={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} />
+              ) : null
+            }
+          >
+              <ListToolbar>
                 <ViewModeSwitcher modes={modes} value={mode} onChange={setMode} placement="toolbar" />
                 <ListSearch noun={t("requirements.searchNoun")} value={text} onChange={(v) => setParams({ q: v || null })} />
-                <select aria-label={t("requirements.filter.area")} value={areaFilter} onChange={(e) => setParams({ area: e.target.value || null })} className="h-8 rounded-md border border-line bg-surface px-2 text-13 text-muted">
-                  <option value="">{t("requirements.filter.anyArea")}</option>
-                  {areas.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                  <option value="none">{t("requirements.noArea")}</option>
-                </select>
+                <ToolbarSelect
+                  label={t("requirements.filter.area")}
+                  value={areaFilter}
+                  onChange={(v) => setParams({ area: v || null })}
+                  options={[{ value: "", label: t("requirements.filter.anyArea") }, ...areas.map((a) => ({ value: a.id, label: a.name })), { value: "none", label: t("requirements.noArea") }]}
+                />
                 <ListFilterBar list="requirements" />
                 <AreasEditor projectId={projectId} areas={areas} />
-              </div>
+              </ListToolbar>
               <AssistantStrip projectId={projectId} rows={all} onPeek={(k) => peek.set(k)} />
               <PlacementBanner projectId={projectId} rows={all} hasAreas={areas.length > 0} />
               {all.length === 0 ? (
@@ -279,11 +279,7 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
               ) : (
                 <RequirementsList groups={groups} slug={slug} now={clock.now} selected={peek.open} onPeek={(k) => peek.set(k === peek.open ? null : k)} />
               )}
-            </div>
-            {peek.open ? (
-              <RequirementPeek key={peek.open} projectId={projectId} slug={slug} reqKey={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} />
-            ) : null}
-          </div>
+          </ListLayout>
         </div>
       )}
     </QueryBoundary>

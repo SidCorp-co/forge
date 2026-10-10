@@ -122,7 +122,7 @@ function RetryHeadline({ summary }: { summary: PipelineRunRetrySummary }) {
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-line-subtle pb-2.5">
       <span
-        className="rounded-full px-2 py-0.5 font-mono text-11 font-semibold"
+        className="rounded-full px-2 py-0.5 font-mono text-12 font-semibold"
         style={{ background: "var(--amberw-50)", color: "var(--amberw-600)" }}
       >
         attempt {summary.attempt}/{summary.maxAttempts}
@@ -150,7 +150,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="fg-body-sm font-semibold text-fg">{entry.verb}</span>
-          <span className="font-mono text-12-5 font-bold text-muted">{entry.object}</span>
+          <span className="font-mono text-13 font-bold text-muted">{entry.object}</span>
           <span className="fg-body-sm font-semibold" style={{ color: color.fg }}>
             {entry.outcome}
           </span>
@@ -170,14 +170,14 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
           <p className="fg-caption break-words text-muted">{entry.detail}</p>
         )}
         {entry.action && (
-          <p className="fg-caption break-words" style={{ color: "var(--amberw-600)" }}>
+          <p className="fg-caption break-words text-warn-11">
             {entry.action}
           </p>
         )}
 
         <div className="fg-caption flex flex-wrap items-center gap-x-3 gap-y-1 text-subtle">
           <span className="inline-flex min-w-0 items-center gap-1">
-            <Icon name="server" size={11} className="flex-none align-[-1px]" />
+            <Icon name="server" size={11} className="flex-none" />
             <span className="truncate">{entry.device}</span>
           </span>
           {when && <span>{when}</span>}
@@ -190,10 +190,10 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
 function ActivitySkeleton() {
   return (
     <div className="flex flex-col gap-2.5">
-      <Skeleton variant="text" className="w-[120px]" />
-      <Skeleton className="h-[78px]" />
-      <Skeleton className="h-[78px]" />
-      <Skeleton className="h-[78px]" />
+      <Skeleton variant="text" className="w-30" />
+      <Skeleton className="h-19.5" />
+      <Skeleton className="h-19.5" />
+      <Skeleton className="h-19.5" />
     </div>
   );
 }

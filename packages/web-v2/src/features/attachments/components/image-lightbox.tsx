@@ -178,7 +178,7 @@ function useZoomPan(index: number, go: (delta: number) => void) {
 }
 
 const GLYPH =
-  "flex size-9 items-center justify-center rounded-md leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] disabled:opacity-30 sm:size-8";
+  "flex size-9 items-center justify-center rounded-md leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-focus disabled:opacity-30 sm:size-8";
 
 function LightboxHeader({
   image,
@@ -225,7 +225,7 @@ function LightboxHeader({
           type="button"
           onClick={resetZoom}
           aria-label={t("issues.image.resetZoom")}
-          className="fg-caption min-w-11 rounded-md px-1 py-1.5 tabular-nums text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          className="fg-caption min-w-11 rounded-md px-1 py-1.5 tabular-nums text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-focus"
         >
           {Math.round(scale * 100)}%
         </button>
@@ -347,7 +347,7 @@ export function ImageLightbox({
       aria-modal="true"
       aria-label={t("issues.image.position", { at: index + 1, of: count, name: current.name })}
       tabIndex={-1}
-      className="fixed inset-0 z-[60] flex flex-col outline-none"
+      className="fixed inset-0 z-60 flex flex-col outline-none"
       style={{ background: "var(--scrim-media)", backdropFilter: "blur(6px)" }}
       // A click on the backdrop itself closes; a click inside the content goes no further.
       onClick={(e) => {
@@ -364,7 +364,7 @@ export function ImageLightbox({
             type="button"
             onClick={() => go(-1)}
             aria-label={t("issues.image.previous")}
-            className="absolute left-2 z-10 flex size-11 items-center justify-center rounded-pill bg-white/10 text-2xl leading-none text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] sm:left-3 sm:size-10"
+            className="absolute left-2 z-10 flex size-11 items-center justify-center rounded-pill bg-white/10 text-2xl leading-none text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:shadow-focus sm:left-3 sm:size-10"
           >
             &lsaquo;
           </button>
@@ -397,7 +397,7 @@ export function ImageLightbox({
             type="button"
             onClick={() => go(1)}
             aria-label={t("issues.image.next")}
-            className="absolute right-2 z-10 flex size-11 items-center justify-center rounded-pill bg-white/10 text-2xl leading-none text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] sm:right-3 sm:size-10"
+            className="absolute right-2 z-10 flex size-11 items-center justify-center rounded-pill bg-white/10 text-2xl leading-none text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:shadow-focus sm:right-3 sm:size-10"
           >
             &rsaquo;
           </button>

@@ -13,11 +13,11 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { Written } from "@/lib/i18n/written";
 import type { RequirementDetail } from "../types";
-import { AssumptionsSection, UnclearSection } from "./requirement-unclear";
+import { Assumptions, OpenQuestions } from "./requirement-unclear";
 
 function Bullets({ items }: { items: string[] }) {
   return (
-    <ul className="grid list-disc gap-1 pl-[18px] text-14 leading-relaxed marker:text-[var(--paper-400)]">
+    <ul className="grid list-disc gap-1 pl-4.5 text-14 leading-relaxed marker:text-[var(--paper-400)]">
       {items.map((x) => (
         <li key={x}>{x}</li>
       ))}
@@ -41,17 +41,17 @@ export function RequirementOverview({ d, projectId, slug, onRevise }: { d: Requi
         <ViewHeading right={shown ? <span className="text-12 text-subtle">{t("requirements.overview.fromR", { r: shown.revision })}</span> : undefined}>
           {t("requirements.overview.summary")}
         </ViewHeading>
-        {summary ? <Written className="block max-w-[80ch] text-15 leading-relaxed text-fg" text={summary} lang={shown?.writtenLang} /> : <p className="text-13 text-subtle">{t("requirements.overview.noSummary")}</p>}
+        {summary ? <Written className="block max-w-2xl text-15 leading-relaxed text-fg" text={summary} lang={shown?.writtenLang} /> : <p className="text-13 text-subtle">{t("requirements.overview.noSummary")}</p>}
         {goalBeyond ? (
-          <details className="mt-2 max-w-[72ch]">
+          <details className="mt-2 max-w-xl">
             <summary className="cursor-pointer select-none text-13 font-medium text-muted hover:text-fg">{t("requirements.overview.fullGoal")}</summary>
             <p className="mt-1.5 text-14 leading-relaxed">{goalBeyond}</p>
           </details>
         ) : null}
       </section>
       <RequirementChecklists projectId={projectId} reqKey={d.key} onRevise={d.standing.attentionGroup !== "done" ? onRevise : undefined} />
-      <UnclearSection questions={d.questions} unclear={d.unclear} projectId={projectId} reqKey={d.key} slug={slug} />
-      {spec.assumptions?.length ? <AssumptionsSection assumptions={spec.assumptions} revision={shown?.revision ?? null} slug={slug} /> : null}
+      <OpenQuestions questions={d.questions} unclear={d.unclear} projectId={projectId} reqKey={d.key} slug={slug} />
+      {spec.assumptions?.length ? <Assumptions assumptions={spec.assumptions} revision={shown?.revision ?? null} slug={slug} /> : null}
       <IntakeDraft projectId={projectId} slug={slug} itemKey={d.key} assumptions={false} />
       {spec.personas?.length || spec.scopeIn?.length || spec.scopeOut?.length ? (
         <section>

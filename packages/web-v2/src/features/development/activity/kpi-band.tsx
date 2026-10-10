@@ -60,7 +60,7 @@ export function KpiBand(props: KpiBandProps) {
         <PageSection key={k.label}>
           <PageSectionBody>
             <div className="flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-[5px] text-subtle" style={{ fontSize: "var(--text-12-5)" }}>
+              <span className="inline-flex items-center gap-1.25 text-subtle text-13">
                 <Icon name={k.icon} size={14} style={{ color: "var(--fg-subtle)" }} />
                 {k.label}
               </span>

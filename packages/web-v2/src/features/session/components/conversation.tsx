@@ -98,7 +98,7 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
 
   return (
     <div className="group flex flex-col items-end">
-      <div className={`${USER_BUBBLE} rounded-lg rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent`}>
+      <div className={`${USER_BUBBLE} rounded-md rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent`}>
         {editing ? (
           <div className="flex w-full flex-col gap-2" style={{ minWidth: 240 }}>
             <Textarea

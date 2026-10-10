@@ -98,7 +98,7 @@ export function IssuesToolbar({
           gap={6}
           role="dialog"
           aria-label={t("issues.toolbar.filterLabel")}
-          className="w-72 overflow-y-auto rounded-lg border border-line bg-surface p-3 shadow-lg"
+          className="w-72 overflow-y-auto rounded-md border border-line bg-surface p-3"
         >
           <div className="flex flex-col gap-3">
             {fields.map((f) => (
@@ -114,7 +114,7 @@ export function IssuesToolbar({
                         aria-pressed={on}
                         onClick={() => onParam(f.param, o.value)}
                         className={cn(
-                          "rounded-pill border px-2 py-0.5 text-12-5 font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+                          "rounded-pill border px-2 py-0.5 text-13 font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-focus",
                           on ? "border-fg bg-fg text-surface" : "border-line bg-surface text-muted hover:text-fg",
                         )}
                       >
@@ -132,7 +132,7 @@ export function IssuesToolbar({
         <span
           key={c.param}
           data-testid="issues-filter-chip"
-          className="inline-flex items-center gap-1 rounded-pill border border-line bg-sunken px-2 py-0.5 text-12-5 font-semibold text-fg"
+          className="inline-flex items-center gap-1 rounded-pill border border-line bg-sunken px-2 py-0.5 text-13 font-semibold text-fg"
           style={assistantSet(c.param, c.value) ? ASSISTANT_CHIP : undefined}
         >
           {c.label}

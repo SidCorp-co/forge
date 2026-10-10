@@ -104,7 +104,7 @@ export function IssuesTable({
 
   return (
     // One table runs edge to edge from the sidebar, scrolling sideways inside itself at phone width; a grouping is a header row in it, not a box per group (ISS-49)
-    <Table aria-label={t("issues.screen.title")} className="min-w-[860px]">
+    <Table aria-label={t("issues.screen.title")} className="min-w-215">
       <THead>
         <TR>
           {selection && (

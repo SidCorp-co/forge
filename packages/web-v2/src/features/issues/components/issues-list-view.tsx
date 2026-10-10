@@ -151,7 +151,7 @@ export function IssuesListView({
       />
 
       {waiting ? (
-        <p className="flex flex-wrap items-center gap-2 border-y border-line-subtle bg-app px-4 py-1.5 text-12-5 text-muted sm:px-6" data-testid="issues-table-no-waiting">
+        <p className="flex flex-wrap items-center gap-2 border-y border-line-subtle bg-app px-4 py-1.5 text-13 text-muted sm:px-6" data-testid="issues-table-no-waiting">
           {t("conversations.list.tableNoWaiting")}
           <button type="button" className="font-semibold text-link hover:underline" onClick={() => writeUrlParams({ group: null })}>
             {t("conversations.list.showGrouped")}

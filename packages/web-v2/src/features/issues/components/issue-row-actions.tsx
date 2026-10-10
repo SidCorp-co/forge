@@ -254,7 +254,7 @@ function AssigneeCell({ assignee }: { assignee: RowAssignee | null }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-2" title={assignee.label}>
       {assignee.agent ? (
-        <span className="inline-flex size-[22px] flex-none items-center justify-center rounded-pill bg-accent-tint text-accent-text">
+        <span className="inline-flex size-5.5 flex-none items-center justify-center rounded-pill bg-accent-tint text-accent-text">
           <Icon name="agent" size={13} />
         </span>
       ) : (
@@ -318,20 +318,20 @@ export function IssueTableRow({
             type="button"
             onClick={open}
             aria-label={t("issues.row.openKey", { key: row.displayId })}
-            className="cursor-pointer rounded-sm hover:opacity-80 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="cursor-pointer rounded-sm hover:opacity-80 focus-visible:outline-none focus-visible:shadow-focus"
           >
             <MonoTag hue="cobalt">{row.displayId}</MonoTag>
           </button>
           {pending && <Spinner size={14} />}
         </span>
       </TD>
-      <TD className="min-w-[280px] max-w-[560px]">
+      <TD className="min-w-70 max-w-140">
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
             onClick={open}
             aria-label={t("issues.row.openTitled", { key: row.displayId, title: row.title })}
-            className="group/title min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="group/title min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-focus"
           >
             <span className="fg-body-sm block truncate text-fg group-hover/title:text-accent-text group-hover/title:underline">
               {row.title}
@@ -350,7 +350,7 @@ export function IssueTableRow({
       <TD className="whitespace-nowrap">
         <PriorityCell priority={row.priority} />
       </TD>
-      <TD className="max-w-[200px]">
+      <TD className="max-w-50">
         <AssigneeCell assignee={assignee} />
       </TD>
       <TD className="whitespace-nowrap">

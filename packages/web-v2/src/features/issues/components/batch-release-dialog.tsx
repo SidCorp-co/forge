@@ -74,7 +74,7 @@ export function BatchReleaseDialog({
           {selectedIssues.length === 1 ? t("issues.batch.leadOne") : t("issues.batch.leadMany", { n: selectedIssues.length })}
         </p>
 
-        <ul className="flex flex-col gap-1.5 rounded-lg border border-line bg-canvas p-3">
+        <ul className="flex flex-col gap-1.5 rounded-md border border-line bg-canvas p-3">
           {selectedIssues.map((issue) => (
             <li key={issue.id} className="fg-body-sm flex min-w-0 items-baseline gap-2">
               <span className="font-mono text-xs font-semibold text-fg shrink-0">{issue.displayId}</span>

@@ -104,14 +104,14 @@ export function OpsMonitor() {
 
   if (projectsLoading || healthQ.isLoading) {
     return (
-      <div className="grid min-h-[60vh] place-items-center">
+      <div className="grid min-h-128 place-items-center">
         <ProjectLoader label="loading ops…" />
       </div>
     );
   }
   if (projectsError || healthQ.isError) {
     return (
-      <div className="grid min-h-[60vh] place-items-center">
+      <div className="grid min-h-128 place-items-center">
         <ErrorState
           message={formatApiError(projectsError ?? healthQ.error)}
           onRetry={() => healthQ.refetch()}
@@ -283,7 +283,7 @@ function ProgressTab({
 
   if (loading) {
     return (
-      <div className="grid min-h-[30vh] place-items-center">
+      <div className="grid min-h-64 place-items-center">
         <ProjectLoader label="loading progress…" />
       </div>
     );
@@ -388,7 +388,7 @@ function RunsTab({
 }) {
   if (loading) {
     return (
-      <div className="grid min-h-[30vh] place-items-center">
+      <div className="grid min-h-64 place-items-center">
         <ProjectLoader label="loading runs…" />
       </div>
     );

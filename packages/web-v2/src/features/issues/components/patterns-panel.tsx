@@ -146,7 +146,7 @@ function DecideForm({
         ? `${t("issues.patterns.failed")}: ${formatApiError(decide.error)}`
         : undefined);
   return (
-    <div className="grid gap-2 rounded-lg border border-line px-4 py-3" data-testid="pattern-decide">
+    <div className="grid gap-2 rounded-md border border-line px-4 py-3" data-testid="pattern-decide">
       <Field
         label={t("issues.patterns.reason")}
         error={error}

@@ -30,7 +30,7 @@ function Track({ lane, from, to, now }: { lane: OverviewLane; from: number; to: 
       : [];
   const leaseEnd = lane.lease?.expiresAt ? new Date(lane.lease.expiresAt).getTime() : null;
   return (
-    <div className="relative h-5 rounded-[3px] bg-sunken" role="img" aria-label={t("overview.lane.aria", { key: lane.key })}>
+    <div className="relative h-5 rounded-xs bg-sunken" role="img" aria-label={t("overview.lane.aria", { key: lane.key })}>
       {segs
         .filter((s) => s.b > from)
         .map((s) => (
@@ -41,7 +41,7 @@ function Track({ lane, from, to, now }: { lane: OverviewLane; from: number; to: 
           >
             <Tooltip label={t("overview.lane.span", { step: s.label, from: time.clock(s.a), to: s.open ? t("overview.lane.now") : time.clock(s.b) })}>
               <span
-                className="items-center overflow-hidden whitespace-nowrap rounded-[3px] px-1.5 text-10 font-semibold text-on-accent"
+                className="items-center overflow-hidden whitespace-nowrap rounded-xs px-1.5 text-12 font-semibold text-on-accent"
                 style={{ background: s.open ? LEGEND.run.dot : "var(--ink-600)" }}
               >
                 {(s.b - s.a) / (to - from) >= LABEL_FROM_SHARE ? s.label : null}
@@ -51,12 +51,12 @@ function Track({ lane, from, to, now }: { lane: OverviewLane; from: number; to: 
         ))}
       {leaseEnd !== null && leaseEnd > now ? (
         <div
-          className="absolute top-[5px] h-2.5 rounded-[3px] border border-dashed"
+          className="absolute top-1.25 h-2.5 rounded-xs border border-dashed"
           style={{ left: pct(now), width: `calc(${pct(leaseEnd)} - ${pct(now)})`, borderColor: LEGEND.run.dot }}
           title={t("overview.lane.leaseUntil", { at: time.dateTime(lane.lease?.expiresAt as string) })}
         />
       ) : null}
-      <div aria-hidden className="absolute -bottom-1 -top-1 w-0 border-l-[1.5px] border-fg" style={{ left: pct(now) }} />
+      <div aria-hidden className="absolute -bottom-1 -top-1 w-0 border-l-2 border-fg" style={{ left: pct(now) }} />
     </div>
   );
 }
@@ -65,7 +65,7 @@ function LaneDetail({ lane }: { lane: OverviewLane }) {
   const t = useCopy();
   const time = useTimeFormat();
   return (
-    <dl className="grid grid-cols-[84px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-12-5">
+    <dl className="grid grid-cols-[84px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-13">
       <dt className="text-muted">{t("overview.lane.holder")}</dt>
       <dd className="min-w-0 break-all font-mono text-12">{lane.holder ?? t("overview.lane.noneRecorded")}</dd>
       {lane.box ? (
@@ -113,7 +113,7 @@ export function LeaseLanes({ moving, slug }: { moving: OverviewMoving; slug: str
         {moving.lanes.map((lane) => (
           <div key={lane.key} className="contents" data-testid="lane" data-key={lane.key}>
             <div className="flex min-w-0 flex-col gap-0.5">
-              <Link href={issueHref(slug, lane.key)} className="truncate font-mono text-11-5 font-semibold text-link no-underline hover:underline" title={lane.title}>
+              <Link href={issueHref(slug, lane.key)} className="truncate font-mono text-12 font-semibold text-link no-underline hover:underline" title={lane.title}>
                 {lane.key}
               </Link>
               <HoverCard label={t("overview.lane.runOn", { key: lane.key })} content={<LaneDetail lane={lane} />} placement="bottom-start">
@@ -124,7 +124,7 @@ export function LeaseLanes({ moving, slug }: { moving: OverviewMoving; slug: str
           </div>
         ))}
         <div />
-        <div className="relative h-4 text-11 text-muted" aria-hidden>
+        <div className="relative h-4 text-12 text-muted" aria-hidden>
           {ticksOf(from, to).map((tick) => (
             <span key={tick} className="absolute -translate-x-1/2 font-mono tabular-nums" style={{ left: `${(((tick - from) / (to - from)) * 100).toFixed(2)}%` }}>
               {time.clock(tick)}

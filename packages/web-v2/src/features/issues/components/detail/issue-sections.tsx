@@ -170,10 +170,10 @@ function TabLoading() {
     <div className="space-y-3" aria-busy>
       {[0, 1, 2].map((i) => (
         <div key={i} className="flex items-start gap-2.5">
-          <Skeleton variant="circle" className="size-[26px] flex-none" />
+          <Skeleton variant="circle" className="size-6.5 flex-none" />
           <div className="min-w-0 flex-1 space-y-1.5">
             <Skeleton variant="text" className="w-32" />
-            <Skeleton variant="text" className="w-full max-w-[24rem]" />
+            <Skeleton variant="text" className="w-full max-w-96" />
           </div>
         </div>
       ))}

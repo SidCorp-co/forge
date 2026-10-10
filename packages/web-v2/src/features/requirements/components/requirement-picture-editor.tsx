@@ -139,7 +139,7 @@ export function PictureEditor({
   };
 
   return (
-    <div className="mt-4 grid max-w-[880px] gap-4 border-t border-line-subtle pt-4" data-testid="picture-editor" data-picture={kind}>
+    <div className="mt-4 grid max-w-220 gap-4 border-t border-line-subtle pt-4" data-testid="picture-editor" data-picture={kind}>
       <Field label={t("requirements.picture.edit.title")}>
         <Input value={title} onChange={(e) => setTitle(e.target.value)} />
       </Field>
@@ -148,7 +148,7 @@ export function PictureEditor({
       {kind === "chart" ? <ChartFields chart={chart} onChart={setChart} at={at} other={own?.kind === "chart" && !storedChart} t={t} /> : null}
       {kind === "wireframe" ? (
         <Field label={t("requirements.picture.edit.board")} hint={waiting ? t("requirements.picture.edit.boardLoading") : undefined} error={at("board")}>
-          <div className="h-[420px] border border-line-subtle max-md:h-[360px]" data-testid="picture-board-editor">
+          <div className="h-105 border border-line-subtle max-md:h-90" data-testid="picture-board-editor">
             <BoardEditor
               doc={startBoard}
               onScene={(els) => {
@@ -162,14 +162,14 @@ export function PictureEditor({
       <Field label={t("requirements.picture.edit.alt")} error={at("alt")} required>
         <Textarea rows={2} value={alt} onChange={(e) => setAlt(e.target.value)} />
       </Field>
-      {local?.field === "content" ? <p role="alert" className="fg-caption text-[color:var(--red-600)]">{local.text}</p> : null}
+      {local?.field === "content" ? <p role="alert" className="fg-caption text-danger">{local.text}</p> : null}
       {unplaced.map((r) => (
-        <p key={`${r.code}:${r.path}`} role="alert" className="fg-caption text-[color:var(--red-600)]" data-testid="refusal">
+        <p key={`${r.code}:${r.path}`} role="alert" className="fg-caption text-danger" data-testid="refusal">
           {r.detail}
         </p>
       ))}
       {save.error && refusals.length === 0 ? (
-        <p role="alert" className="fg-caption text-[color:var(--red-600)]" data-testid="refusal">
+        <p role="alert" className="fg-caption text-danger" data-testid="refusal">
           {plainRefusal(save.error)}
         </p>
       ) : null}
@@ -208,7 +208,7 @@ function Pair({ children, error, onRemove, removeLabel }: { children: ReactNode;
         <IconButton icon="x" size="sm" aria-label={removeLabel} onClick={onRemove} />
       </div>
       {error ? (
-        <p role="alert" className="fg-caption text-[color:var(--red-600)]">
+        <p role="alert" className="fg-caption text-danger">
           {error}
         </p>
       ) : null}

@@ -42,7 +42,7 @@ function keyed(entries: readonly TimelineEntry[]): { key: string; entry: Timelin
 export function TimelineTable({ entries, compact = false, testId = "recording-timeline" }: { entries: readonly TimelineEntry[]; compact?: boolean; testId?: string }) {
   const t = useCopy();
   return (
-    <table className={`w-full border-collapse ${compact ? "text-12-5" : "text-13"}`} data-testid={testId}>
+    <table className={`w-full border-collapse ${compact ? "text-13" : "text-13"}`} data-testid={testId}>
       <tbody>
         {keyed(entries).map(({ key, entry: e }) => (
           <tr key={key} className="border-b border-line-subtle align-top" data-kind={e.kind}>

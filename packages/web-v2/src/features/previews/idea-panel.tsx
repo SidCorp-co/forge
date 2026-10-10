@@ -72,7 +72,7 @@ export function IdeaPanel({ preview: initial, about, canWrite, slug }: { preview
         </p>
       ) : null}
       {preview.state === "failed" ? (
-        <p role="alert" data-testid="idea-failed" className="fg-body-sm" style={{ color: "var(--red-600)" }}>
+        <p role="alert" data-testid="idea-failed" className="fg-body-sm text-danger-11">
           {preview.reason ? `${t(reasonKeys(preview.reason).name)}. ${t(reasonKeys(preview.reason).fix)}` : t("previews.failed.lead")}
           {preview.detail ? ` ${preview.detail}` : ""}
         </p>
@@ -101,7 +101,7 @@ export function IdeaPanel({ preview: initial, about, canWrite, slug }: { preview
         </form>
       ) : null}
       {keep.isError ? (
-        <p role="alert" className="fg-body-sm" style={{ color: "var(--red-600)" }}>
+        <p role="alert" className="fg-body-sm text-danger-11">
           {t("previews.idea.keep.failed")}: {keep.error instanceof SnapshotUnavailable ? keep.error.message : formatApiError(keep.error)}
         </p>
       ) : null}

@@ -29,7 +29,7 @@ export function SpendCard({ data, inFlightUsd }: { data: SpendByStageData; inFli
           <p className="fg-body-sm py-6 text-center text-muted">{t("overview.spend.empty")}</p>
         ) : (
           <>
-            <div className="flex h-2.5 w-full overflow-hidden rounded-pill bg-[var(--paper-200)]">
+            <div className="flex h-2.5 w-full overflow-hidden rounded-pill bg-neutral-5">
               {segments.map((s) => (
                 <span
                   key={s.key}

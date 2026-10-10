@@ -64,7 +64,7 @@ function Source({ answer, field }: { answer: ChecklistAnswer; field: ChecklistFo
   );
 }
 
-function AnswerRow({ row, revision }: { row: Extract<Row, { kind: "answer" }>; revision: number | null }) {
+function RecordedAnswer({ row, revision }: { row: Extract<Row, { kind: "answer" }>; revision: number | null }) {
   const t = useCopy();
   const { field, answer } = row;
   const corrected = correctedBy(answer, row.now);
@@ -147,7 +147,7 @@ export function ChecklistAnswers({
           {t("checklist.movedBefore")}
         </p>
       ) : null}
-      {rows.length > 0 ? <dl className="grid">{rows.map((r) => (r.kind === "answer" ? <AnswerRow key={r.field.name} row={r} revision={revision} /> : <GapRow key={r.field.name} row={r} answerAt={answerAt} />))}</dl> : null}
+      {rows.length > 0 ? <dl className="grid">{rows.map((r) => (r.kind === "answer" ? <RecordedAnswer key={r.field.name} row={r} revision={revision} /> : <GapRow key={r.field.name} row={r} answerAt={answerAt} />))}</dl> : null}
     </section>
   );
 }

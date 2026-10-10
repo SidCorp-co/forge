@@ -114,7 +114,7 @@ export function BulkActionBar({
 
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 shadow-sm">
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface px-3 py-2">
         <span className="fg-body-sm font-medium text-fg">{t("issues.bulk.selected", { n: count })}</span>
         <span className="ml-auto flex flex-wrap items-center gap-2">
           {heldReason ? (

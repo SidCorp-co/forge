@@ -64,7 +64,7 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
     <div className="flex gap-3">
       {/* Left rail: dot + connector. Solid when the prior step shares this
           session (one continuous chain); muted when it's a fresh boundary. */}
-      <div className="flex w-[18px] flex-none flex-col items-center">
+      <div className="flex w-4.5 flex-none flex-col items-center">
         <span
           className="mt-0.5 size-3.5 flex-none rounded-full"
           style={{
@@ -74,7 +74,7 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
         />
         {!isLast && (
           <span
-            className="mt-1 min-h-[26px] w-0.5 flex-1"
+            className="mt-1 min-h-6.5 w-0.5 flex-1"
             style={{
               background: "var(--border-default)",
               opacity: 1,
@@ -101,7 +101,7 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
           )}
           {groupLabel && <Badge tone="cobalt">{groupLabel}</Badge>}
           {entry.jobType && (
-            <span className="text-12-5 font-bold text-fg" title={`step: ${entry.jobType}`}>
+            <span className="text-13 font-bold text-fg" title={`step: ${entry.jobType}`}>
               {enumLabel("jobType", entry.jobType, language)}
             </span>
           )}
@@ -110,7 +110,7 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
               deviceId UUID). Falls back to the short id on a pre-411 server. */}
           {(entry.deviceName ?? entry.deviceShort) && (
             <span className="fg-caption inline-flex items-center gap-1 text-muted">
-              <Icon name="server" size={11} className="align-[-1px]" />
+              <Icon name="server" size={11} className="" />
               {entry.deviceName ?? entry.deviceShort}
             </span>
           )}

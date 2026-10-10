@@ -65,7 +65,7 @@ export function KeptPreviewPicture({ content, alt, projectId, reqKey, slug, canW
         aria-hidden
         data-testid="kept-preview-still"
         data-drawn={drawn}
-        className="max-h-[420px] min-h-[160px] overflow-auto border border-line-subtle bg-surface [&_.replayer-mouse]:hidden"
+        className="max-h-105 min-h-40 overflow-auto border border-line-subtle bg-surface [&_.replayer-mouse]:hidden"
         style={meta?.width ? { aspectRatio: `${meta.width} / ${Math.min(meta.height ?? meta.width, meta.width)}` } : undefined}
       />
       {drawn === "failed" ? (
@@ -83,7 +83,7 @@ export function KeptPreviewPicture({ content, alt, projectId, reqKey, slug, canW
         ) : null}
       </p>
       {reopen.isError ? (
-        <p role="alert" className="text-13" style={{ color: "var(--red-600)" }}>
+        <p role="alert" className="text-13 text-danger-11">
           {t("previews.idea.reopen.failed")}: {formatApiError(reopen.error)}
         </p>
       ) : null}

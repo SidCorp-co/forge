@@ -133,7 +133,7 @@ export function AwaitingReleaseCard({ slug, projectId }: { slug: string; project
                   <button
                     type="button"
                     onClick={() => router.push(issueHref(slug, i.displayId))}
-                    className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                    className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus-visible:outline-none focus-visible:shadow-focus"
                   >
                     <StatusBadge family="run" value="passed" />
                     <span className="fg-body-sm min-w-0 flex-1 truncate text-muted">

@@ -11,7 +11,7 @@ import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useFeedbackForecasts } from "@/features/forecast/hooks";
 import { useFeedbackItem } from "../hooks";
 import { FeedbackPrimary } from "./feedback-detail";
-import { FeedbackBanner, FeedbackFacts } from "./feedback-facts";
+import { FeedbackBanner, LinkedFeedback } from "./feedback-facts";
 import { TriageVerbs } from "./feedback-verbs";
 
 export function FeedbackPeek({
@@ -50,7 +50,7 @@ export function FeedbackPeek({
                 <TriageVerbs projectId={projectId} f={f} />
               </div>
               <div className="px-[18px] pb-4 pt-4">
-                <FeedbackFacts f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} />
+                <LinkedFeedback f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} />
               </div>
             </>
           );

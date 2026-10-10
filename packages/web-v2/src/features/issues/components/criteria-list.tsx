@@ -44,8 +44,8 @@ type Filter = "all" | "fail" | "unjudged" | "pass" | "skipped";
 
 const MARK: Record<CriterionStanding, string> = { pass: "✓", short: "✓", fail: "✕", skipped: "↷", unresolved: "–", unjudged: "–" };
 const MARK_TONE: Record<CriterionStanding, string> = {
-  pass: "text-[var(--wf-green)]",
-  short: "text-[var(--wf-green)]",
+  pass: "text-ok-11",
+  short: "text-ok-11",
   fail: "text-danger",
   skipped: "text-subtle",
   unresolved: "text-subtle",
@@ -78,7 +78,7 @@ function Pill({ pressed, onClick, children }: { pressed: boolean; onClick: () =>
       aria-pressed={pressed}
       onClick={onClick}
       className={cn(
-        "rounded-pill border px-2.5 py-0.5 text-12-5 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+        "rounded-pill border px-2.5 py-0.5 text-13 focus-visible:outline-none focus-visible:shadow-focus",
         pressed ? "border-fg text-fg" : "border-line-subtle text-muted hover:text-fg",
       )}
     >
@@ -100,7 +100,7 @@ function CriterionItem({ line, issueId, judge, kept }: { line: CriterionLine; is
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full min-w-0 items-baseline gap-3 py-2 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        className="flex w-full min-w-0 items-baseline gap-3 py-2 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
       >
         <span className="w-8 flex-none tabular-nums text-subtle">{line.n}</span>
         <span className="min-w-0 flex-1 truncate">{clipWords(line.statement, ROW_WORDS)}</span>
@@ -115,7 +115,7 @@ function CriterionItem({ line, issueId, judge, kept }: { line: CriterionLine; is
             <>
               <p className="whitespace-pre-wrap">{tooltipOf(row, t, language, time.dateTime)}</p>
               <VerdictEvidence
-                className="grid gap-1 text-12-5"
+                className="grid gap-1 text-13"
                 note={row.latest?.reason?.trim() ? row.latest.reason : null}
                 files={(row.latest?.evidence ?? []).flatMap((name) => {
                   const file = (kept ?? []).find((a) => a.name === name);
@@ -219,7 +219,7 @@ function RetiredCriteria({ rows }: { rows: RetiredCriterionRow[] }) {
         {rows.map((row) => (
           <li key={row.id} className="py-2" data-testid="retired-criterion">
             <div className="flex items-start gap-3">
-              <span className="w-6 shrink-0 tabular-nums" style={{ color: "var(--fg-muted)" }}>
+              <span className="w-6 shrink-0 tabular-nums text-muted">
                 {row.n}.
               </span>
               <span className="min-w-0 flex-1 whitespace-pre-wrap text-muted">{row.statement}</span>
@@ -228,11 +228,11 @@ function RetiredCriteria({ rows }: { rows: RetiredCriterionRow[] }) {
               </span>
             </div>
             {row.verdicts.length === 0 ? (
-              <p className="mt-1 pl-9 text-12-5 text-subtle">{t("issues.verdict.none")}</p>
+              <p className="mt-1 pl-9 text-13 text-subtle">{t("issues.verdict.none")}</p>
             ) : (
               <ul className="mt-1 grid gap-1 pl-9">
                 {row.verdicts.map((v) => (
-                  <li key={`${row.id}-${v.createdAt}`} className="flex items-start gap-2 text-12-5" data-testid="retired-verdict">
+                  <li key={`${row.id}-${v.createdAt}`} className="flex items-start gap-2 text-13" data-testid="retired-verdict">
                     <StatusBadge family="criterion" value={criterionStandingOf(v)} />
                     <span className="min-w-0 flex-1 whitespace-pre-wrap text-muted">{verdictLines(v, t, language, time.dateTime)}</span>
                   </li>

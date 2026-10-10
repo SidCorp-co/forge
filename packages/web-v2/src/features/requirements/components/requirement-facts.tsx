@@ -21,8 +21,8 @@ import { progressText } from "@/features/forecast/progress";
 import { useRequirementForecast } from "@/features/forecast/hooks";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { LinkIssueControl } from "./link-issue";
-import { PromoteDraftRow } from "./promote-drafts";
-import { PlacementFacts } from "./requirement-placement";
+import { PromotableDraft } from "./promote-drafts";
+import { Placement } from "./requirement-placement";
 import { agreedTitle } from "./standing-bits";
 
 /** "On ISS-4", "On design checkout": where a feedback item reached the requirement from; one about it, or carried by its route, says nothing. */
@@ -39,7 +39,7 @@ function carrierHrefOf(route: FeedbackRoute, slug: string, key: string): string 
   return route === "duplicate" ? feedbackHref(slug, key) : null;
 }
 
-function FeedbackRow({ f, slug }: { f: RequirementFeedbackItem; slug: string }) {
+function LinkedFeedbackItem({ f, slug }: { f: RequirementFeedbackItem; slug: string }) {
   const t = useCopy();
   const label = useLabel();
   const r = f.route;
@@ -64,7 +64,7 @@ function FeedbackRow({ f, slug }: { f: RequirementFeedbackItem; slug: string }) 
   );
 }
 
-function FeedbackFacts({ items, slug }: { items: RequirementFeedbackItem[]; slug: string }) {
+function LinkedFeedback({ items, slug }: { items: RequirementFeedbackItem[]; slug: string }) {
   const t = useCopy();
   const open = items.filter((f) => f.open);
   const closed = items.filter((f) => !f.open);
@@ -77,7 +77,7 @@ function FeedbackFacts({ items, slug }: { items: RequirementFeedbackItem[]; slug
           {open.length ? (
             <ul className="grid gap-1.5">
               {open.map((f) => (
-                <FeedbackRow key={f.id} f={f} slug={slug} />
+                <LinkedFeedbackItem key={f.id} f={f} slug={slug} />
               ))}
             </ul>
           ) : (
@@ -88,7 +88,7 @@ function FeedbackFacts({ items, slug }: { items: RequirementFeedbackItem[]; slug
               <summary className="cursor-pointer select-none text-12-5 font-medium text-muted hover:text-fg">{t("requirements.facts.closedN", { n: closed.length })}</summary>
               <ul className="mt-1.5 grid gap-1.5">
                 {closed.map((f) => (
-                  <FeedbackRow key={f.id} f={f} slug={slug} />
+                  <LinkedFeedbackItem key={f.id} f={f} slug={slug} />
                 ))}
               </ul>
             </details>
@@ -135,7 +135,7 @@ export function IssueShippedLink({ shippedIn, slug }: { shippedIn: Shipped; slug
   );
 }
 
-export function RequirementFacts({
+export function RequirementProperties({
   d,
   slug,
   onOpenRevisions,
@@ -163,7 +163,7 @@ export function RequirementFacts({
         <Fact label={t("requirements.facts.owner")}>
           {s.owner ? <ActorChip name={s.owner.name ?? t("requirements.unknown")} kind={s.owner.kind} /> : <span className="text-subtle">{t("requirements.noOwner")}</span>}
         </Fact>
-        <PlacementFacts projectId={projectId} d={d} />
+        <Placement projectId={projectId} d={d} />
         <RequirementShipped releases={d.releases} slug={slug} />
         <Fact label={t("requirements.facts.current")}>
           <span>{d.currentRevision !== null ? `r${d.currentRevision}` : t("requirements.facts.noneAccepted")}</span>
@@ -200,11 +200,11 @@ export function RequirementFacts({
                   {i.title}
                 </span>
                 {i.changedSincePlan ? (
-                  <span role="img" aria-label={t("requirements.facts.changedSincePlan")} title={t("requirements.facts.changedSincePlan")} className="size-1.5 flex-none rounded-full" style={{ background: LEGEND.you.dot }} />
+                  <span role="img" aria-label={t("requirements.facts.changedSincePlan")} title={t("requirements.facts.changedSincePlan")} className="size-1.5 flex-none rounded-pill" style={{ background: LEGEND.you.dot }} />
                 ) : null}
                 <StatusBadge family="issue" value={i.status} tone={i.tone} />
                 {i.shippedIn ? <IssueShippedLink shippedIn={i.shippedIn} slug={slug} /> : null}
-                <PromoteDraftRow projectId={projectId} d={d} issue={i} />
+                <PromotableDraft projectId={projectId} d={d} issue={i} />
               </li>
             ))}
           </ul>
@@ -212,7 +212,7 @@ export function RequirementFacts({
         {s.attentionGroup !== "done" ? <LinkIssueControl projectId={projectId} reqKey={d.key} /> : null}
       </FactsGroup>
 
-      <FeedbackFacts items={d.feedback} slug={slug} />
+      <LinkedFeedback items={d.feedback} slug={slug} />
 
       <FactsGroup title={t("requirements.facts.design")} testId="facts-design">
         {d.workflows.length === 0 ? (
