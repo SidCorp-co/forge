@@ -2,7 +2,6 @@ import { useRouter } from "next/navigation";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import {
-  Badge,
   IconButton,
   Menu,
   MonoTag,
@@ -19,7 +18,7 @@ import { type StuckRuns, deriveSessionDisplayStatus, sessionStep, isRetryable, t
 import { RunnerCell, SessionIdentity, SessionKindTag, StatusCell } from "./session-cells";
 import { OWNER_INDENT_PX, type TreeRow } from "./session-tree";
 
-/** The filtered page as a dense table from tablet up, and as stacked cards on a phone. */
+/** The filtered page as one dense table; at phone width it scrolls sideways inside itself. */
 export function SessionList({
   treeRows,
   slug,
@@ -37,48 +36,27 @@ export function SessionList({
 }) {
   const t = useCopy();
   return (
-    <>
-      {/* Desktop / tablet: dense table. */}
-      <div className="hidden md:block">
-        <Table>
-          <THead>
-            <TR>
-              <TH>{t("sessions.col.session")}</TH>
-              <TH>{t("sessions.col.issueAgent")}</TH>
-              <TH>{t("sessions.col.runner")}</TH>
-              <TH>{t("sessions.col.started")}</TH>
-              <TH className="text-right">{t("sessions.col.turns")}</TH>
-              <TH className="text-right">{t("sessions.col.duration")}</TH>
-              <TH className="text-right">{t("sessions.col.cost")}</TH>
-              <TH>{t("sessions.col.status")}</TH>
-              <TH className="text-right">{t("sessions.col.actions")}</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {treeRows.map(({ row, depth, hasChildren }) => (
-              <SessionTableEntry
-                key={row.id}
-                row={row}
-                depth={depth}
-                hasChildren={hasChildren}
-                slug={slug}
-                deviceName={row.deviceId ? deviceNameById.get(row.deviceId) : undefined}
-                now={now}
-                stuck={stuck}
-                actions={actions}
-              />
-            ))}
-          </TBody>
-        </Table>
-      </div>
-
-      {/* Mobile: a flush list — no horizontal page scroll. */}
-      <div className="divide-y divide-line-subtle border-y border-line-subtle md:hidden">
-        {treeRows.map(({ row, depth }) => (
-          <SessionMobileEntry
+    <Table>
+      <THead>
+        <TR>
+          <TH>{t("sessions.col.session")}</TH>
+          <TH>{t("sessions.col.issueAgent")}</TH>
+          <TH>{t("sessions.col.runner")}</TH>
+          <TH>{t("sessions.col.started")}</TH>
+          <TH className="text-right">{t("sessions.col.turns")}</TH>
+          <TH className="text-right">{t("sessions.col.duration")}</TH>
+          <TH className="text-right">{t("sessions.col.cost")}</TH>
+          <TH>{t("sessions.col.status")}</TH>
+          <TH className="text-right">{t("sessions.col.actions")}</TH>
+        </TR>
+      </THead>
+      <TBody>
+        {treeRows.map(({ row, depth, hasChildren }) => (
+          <SessionTableEntry
             key={row.id}
             row={row}
             depth={depth}
+            hasChildren={hasChildren}
             slug={slug}
             deviceName={row.deviceId ? deviceNameById.get(row.deviceId) : undefined}
             now={now}
@@ -86,38 +64,9 @@ export function SessionList({
             actions={actions}
           />
         ))}
-      </div>
-    </>
+      </TBody>
+    </Table>
   );
-}
-
-interface RowProps {
-  row: SessionRow;
-  slug?: string;
-  deviceName?: string;
-  now: number;
-  stuck: StuckRuns;
-  actions: RowActions;
-  /** How far under its owner this row sits, in the list as filtered. */
-  depth: number;
-}
-
-/** A row's display state, its duration and the route it opens. */
-function useRowView({ row, slug, stuck }: RowProps) {
-  const router = useRouter();
-  const time = useTimeFormat();
-  const display = deriveSessionDisplayStatus(row, stuck);
-  const live = display === "running" || display === "stalled";
-  const startMs = row.startedAt ? new Date(row.startedAt).getTime() : undefined;
-  const elapsed = useElapsed(startMs, live);
-  const duration = !startMs
-    ? "—"
-    : live
-      ? elapsed
-      : time.duration(new Date(row.updatedAt).getTime() - startMs);
-  const stage = sessionStep(row.metadata) ?? undefined;
-  const open = slug ? () => router.push(`/projects/${slug}/agents/${row.id}`) : undefined;
-  return { display, duration, stage, open };
 }
 
 interface MutationLike {
@@ -179,14 +128,28 @@ function RowActionsMenu({
   );
 }
 
-function SessionTableEntry(props: RowProps & {
+function SessionTableEntry({ row, slug, deviceName, now, stuck, actions, depth, hasChildren }: {
+  row: SessionRow;
+  slug?: string;
+  deviceName?: string;
+  now: number;
+  stuck: StuckRuns;
+  actions: RowActions;
+  /** How far under its owner this row sits, in the list as filtered. */
+  depth: number;
   /** Whether anything in this list is owned by it. */
   hasChildren: boolean;
 }) {
-  const { row, slug, deviceName, now, stuck, actions, depth, hasChildren } = props;
-  const { display, duration, stage, open } = useRowView(props);
+  const router = useRouter();
   const time = useTimeFormat();
   const t = useCopy();
+  const display = deriveSessionDisplayStatus(row, stuck);
+  const live = display === "running" || display === "stalled";
+  const startMs = row.startedAt ? new Date(row.startedAt).getTime() : undefined;
+  const elapsed = useElapsed(startMs, live);
+  const duration = !startMs ? "—" : live ? elapsed : time.duration(new Date(row.updatedAt).getTime() - startMs);
+  const stage = sessionStep(row.metadata) ?? undefined;
+  const open = slug ? () => router.push(`/projects/${slug}/agents/${row.id}`) : undefined;
   return (
     <TR>
       <TD>
@@ -231,49 +194,5 @@ function SessionTableEntry(props: RowProps & {
         <RowActionsMenu row={row} display={display} actions={actions} />
       </TD>
     </TR>
-  );
-}
-
-function SessionMobileEntry(props: RowProps) {
-  const { row, slug, deviceName, now, stuck, actions, depth } = props;
-  const { display, duration, stage, open } = useRowView(props);
-  const t = useCopy();
-  const time = useTimeFormat();
-  return (
-    // The same edge the table shows, at a width a phone can carry: the nesting
-    // has to survive the narrow layout or the tree is a desktop-only claim.
-    <div className="py-3">
-      <div
-        className="flex items-start justify-between gap-3"
-        style={depth > 0 ? { paddingLeft: depth * OWNER_INDENT_PX } : undefined}
-      >
-        <div className="min-w-0">
-          <div className="mb-1 flex items-center gap-1.5">
-            {depth > 0 && (
-              <span aria-hidden className="text-muted select-none">
-                &#8735;
-              </span>
-            )}
-            <SessionKindTag row={row} />
-          </div>
-          <SessionIdentity row={row} slug={slug} onOpen={open} />
-        </div>
-        <RowActionsMenu row={row} display={display} actions={actions} />
-      </div>
-      <div className="mt-3 flex items-center justify-between gap-3">
-        <StatusCell row={row} display={display} stage={stage} now={now} stuck={stuck} />
-        <div className="flex items-center gap-3">
-          <Badge tone="neutral">{t("sessions.turnsCount", { n: time.number(row.usage?.turns ?? 0) })}</Badge>
-          <span className="fg-mono text-muted">{duration}</span>
-          <span className="fg-mono text-muted">{time.usd(row.estimatedCost)}</span>
-        </div>
-      </div>
-      <div className="fg-caption mt-1.5 text-subtle">{t("sessions.startedAt", { at: time.when(row.startedAt ?? row.dispatchedAt) })}</div>
-      {row.deviceId && (
-        <div className="mt-2.5">
-          <RunnerCell row={row} deviceName={deviceName} display={display} now={now} stuck={stuck} />
-        </div>
-      )}
-    </div>
   );
 }

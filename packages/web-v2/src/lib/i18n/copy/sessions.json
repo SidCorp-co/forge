@@ -246,7 +246,6 @@
     "sessions.stage.failed": "Failed",
     "sessions.stage.responding": "Responding…",
     "sessions.stage.working": "Working…",
-    "sessions.startedAt": "Started {at}",
     "sessions.stat.active": "Active",
     "sessions.stat.medianWait": "Median wait",
     "sessions.stat.queued": "Queued",
@@ -290,7 +289,6 @@
     "sessions.truncatedLive": "Still running; newer activity is past the loaded range.",
     "sessions.truncatedLoad": "Load the next {n}",
     "sessions.truncatedLoading": "Loading…",
-    "sessions.turnsCount": "{n} turns",
     "sessions.untitled": "Untitled session"
   },
   "vi": {
@@ -503,7 +501,6 @@
     "sessions.stage.failed": "Thất bại",
     "sessions.stage.responding": "Đang trả lời…",
     "sessions.stage.working": "Đang làm việc…",
-    "sessions.startedAt": "Bắt đầu {at}",
     "sessions.stat.active": "Đang chạy",
     "sessions.stat.medianWait": "Chờ trung vị",
     "sessions.stat.queued": "Trong hàng đợi",
@@ -546,7 +543,6 @@
     "sessions.truncated": "Đang hiện {n} mục đầu — các mục sau chưa được tải.",
     "sessions.truncatedLoad": "Tải {n} mục tiếp theo",
     "sessions.truncatedLoading": "Đang tải…",
-    "sessions.turnsCount": "{n} lượt",
     "sessions.untitled": "Phiên chưa đặt tên"
   }
 }
