@@ -101,6 +101,12 @@ export const feedback = pgTable(
     snoozeReason: text('snooze_reason'),
     /** When a sweep first read the item resolved: the verify window counts from it; cleared when it stops reading resolved. */
     resolvedSeenAt: timestamp('resolved_seen_at', { withTimezone: true }),
+    /**
+     * Past its window, the record could not say the problem is gone (`loop-close.ts:goneByRecord`):
+     * when a sweep found that, and why. It counts only while it is no older than `resolvedSeenAt`.
+     */
+    verifyHeldAt: timestamp('verify_held_at', { withTimezone: true }),
+    verifyHeldWhy: text('verify_held_why'),
     status: text('status', { enum: FEEDBACK_STATUSES }).notNull().default('new'),
     route: text('route', { enum: FEEDBACK_ROUTES }),
     // an issue route's carriers are rows of `feedback_route_issues`, one or more (ISS-265)
@@ -163,6 +169,10 @@ export const feedback = pgTable(
       ],
     }),
     dueChk: check('feedback_due_chk', sql`${t.dueAt} IS NULL OR ${t.contractVersion} IS NOT NULL`),
+    verifyHeldChk: check(
+      'feedback_verify_held_chk',
+      sql`(${t.verifyHeldAt} IS NULL) = (${t.verifyHeldWhy} IS NULL)`,
+    ),
     contractFk: foreignKey({
       name: 'feedback_contract_version_fk',
       columns: [t.contractProviderProjectId, t.contractSlug, t.contractVersion],

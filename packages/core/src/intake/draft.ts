@@ -10,7 +10,6 @@ import type { ContentLanguageView } from '@forge/contracts/content-language';
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import {
   type IntakeDraftCode,
-  type IntakeDraftRef,
   type IntakeRead,
   intakeAnswerSchema,
 } from '@forge/contracts/intake-drafts';
@@ -23,7 +22,7 @@ import type {
 import { withheldAt } from '../lib/data-egress.js';
 import { intakeSystemPrompt, intakeUserMessage } from './prompt.js';
 import type { IntakeItem, IntakeReads, IntakeRecord } from './reads.js';
-import { type JudgedDraft, judgeDraft } from './rules.js';
+import { type JudgedDraft, judgeDraft, type ShownRecord, workflowsTouched } from './rules.js';
 
 /** A hung provider cannot hold a delivery longer than this per call. */
 const CALL_TIMEOUT_MS = 60_000;
@@ -94,17 +93,15 @@ export async function draftIntake(item: IntakeItem, deps: DraftDeps): Promise<Dr
     feedback: feedback.length,
     releases: releases.length,
   };
-  const known = new Map<string, IntakeDraftRef>(
-    [...requirements, ...workflows, ...feedback, ...releases].map((r: IntakeRecord) => [
-      r.ref,
-      { kind: r.kind, key: r.key, title: r.title },
-    ]),
+  const known = new Map<string, ShownRecord>(
+    [...requirements, ...workflows, ...feedback, ...releases].map((r: IntakeRecord) => [r.ref, r]),
   );
+  const touched = workflowsTouched(item, workflows);
   const messages: ChatMessage[] = [
     { role: 'system', content: intakeSystemPrompt(item.kind, deps.language) },
     {
       role: 'user',
-      content: intakeUserMessage(item, { requirements, workflows, feedback, releases }),
+      content: intakeUserMessage(item, { requirements, workflows, feedback, releases }, touched),
     },
   ];
   // a feedback item is what people send in: the policy reads it as operational, a requirement as product
@@ -139,7 +136,12 @@ export async function draftIntake(item: IntakeItem, deps: DraftDeps): Promise<Dr
     else if (!parsed.success) {
       refused = parsed.error.issues.map((i) => `${i.path.join('.') || 'answer'}: ${i.message}`);
     } else {
-      const judged = judgeDraft(parsed.data, { item, known, triageFault: deps.triageFault });
+      const judged = judgeDraft(parsed.data, {
+        item,
+        known,
+        touched,
+        triageFault: deps.triageFault,
+      });
       if (judged.ok) return { outcome: 'drafted', draft: judged.draft, read, model, spent };
       refused = judged.faults;
     }

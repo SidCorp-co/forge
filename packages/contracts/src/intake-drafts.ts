@@ -81,6 +81,7 @@ export const INTAKE_LIMITS = {
 	links: 12,
 	value: 1000,
 	why: 200,
+	quote: 300,
 	prompt: 300,
 	optionLabel: 120,
 	effect: 200,
@@ -112,8 +113,12 @@ export type IntakeQuestion = z.infer<typeof intakeQuestionSchema>;
 
 /**
  * What the model answers with. A `source` and a link's `ref` name a record by the ref the draft was
- * shown it under; core judges them against what it read (`core/src/intake/rules.ts`). `triage` is a
- * feedback draft's checklist as a `feedback_triage` suggestion payload, and absent on a requirement.
+ * shown it under; core judges them against what it read (`core/src/intake/rules.ts`). A link carries
+ * its basis, both quoted word for word from what was shown: `basis`, the linked record's own words
+ * (a conflict's contradicted criterion, an affected workflow's step, the words a duplicate or related
+ * item shares), and `itemQuote`, the item's words it rests on. `notAffected` says why a workflow core
+ * offered as touched is not affected. `triage` is a feedback draft's checklist as a
+ * `feedback_triage` suggestion payload, and absent on a requirement.
  */
 export const intakeAnswerSchema = z.strictObject({
 	fills: z
@@ -131,9 +136,20 @@ export const intakeAnswerSchema = z.strictObject({
 				relation: z.enum(INTAKE_LINK_RELATIONS),
 				ref: z.string().trim().min(1).max(200),
 				why: z.string().trim().min(1).max(INTAKE_LIMITS.why),
+				basis: z.string().trim().min(1).max(INTAKE_LIMITS.quote),
+				itemQuote: z.string().trim().min(1).max(INTAKE_LIMITS.quote),
 			}),
 		)
 		.max(INTAKE_LIMITS.links),
+	notAffected: z
+		.array(
+			z.strictObject({
+				ref: z.string().trim().min(1).max(200),
+				why: z.string().trim().min(1).max(INTAKE_LIMITS.why),
+			}),
+		)
+		.max(INTAKE_LIMITS.links)
+		.default([]),
 	questions: z.array(intakeQuestionSchema).max(INTAKE_QUESTIONS_MAX),
 	/** Said, in one line, exactly when `questions` is empty (BC-16). */
 	nothingToAsk: z.string().trim().min(1).max(INTAKE_LIMITS.nothingToAsk).nullable(),
@@ -160,8 +176,26 @@ export interface IntakeDraftRef {
 	title: string;
 }
 
+/** What a link rests on, as read: the record's words and the item's, and the criterion or step they are. */
+export interface IntakeLinkBasis {
+	quote: string;
+	itemQuote: string;
+	/** A conflict's contradicted criterion (BC-n of the linked requirement). */
+	criterion?: string;
+	/** An affected workflow's step, by its label. */
+	step?: string;
+}
+
 export interface IntakeDraftLink {
 	relation: IntakeLinkRelation;
+	ref: IntakeDraftRef;
+	why: string;
+	/** Absent on a draft kept before a link carried its basis. */
+	basis?: IntakeLinkBasis;
+}
+
+/** A workflow core offered as touched by the item's words, and why the draft says it is not affected. */
+export interface IntakeDraftUnaffected {
 	ref: IntakeDraftRef;
 	why: string;
 }
@@ -192,6 +226,8 @@ export interface IntakeDraftView {
 	/** How many records of each kind it read; no other kind is read. */
 	read: Record<IntakeRead, number>;
 	links: IntakeDraftLink[];
+	/** Workflows the item's words touch that the draft says it does not affect, each with why. */
+	notAffected: IntakeDraftUnaffected[];
 	assumptions: IntakeDraftAssumption[];
 	questions: IntakeQuestion[];
 	/** Set exactly when it asks nothing (BC-16). */

@@ -174,6 +174,29 @@ describe("evaluateChecklist", () => {
 		});
 	});
 
+	it("records an answer a rule derived as that rule's, never the mover's, and lets a given answer stand over it", () => {
+		const derived = { risk: { value: "low", rule: "small-change" } };
+		const judged = evaluateChecklist(c, { given: {}, record: { owner: { value: "Ana" } }, derived });
+		expect(judged.answers.find((a) => a.question === "risk")).toEqual({
+			question: "risk",
+			value: "low",
+			provenance: "given",
+			source: "derived:small-change",
+		});
+		const over = evaluateChecklist(c, { given: { risk: "high" }, record: { owner: { value: "Ana" } }, derived });
+		expect(over.answers.find((a) => a.question === "risk")).toMatchObject({ value: "high", source: "mover" });
+	});
+
+	it("throws where a rule derived an answer the question does not take", () => {
+		expect(() =>
+			evaluateChecklist(c, {
+				given: {},
+				record: { owner: { value: "Ana" } },
+				derived: { risk: { value: "medium", rule: "small-change" } },
+			}),
+		).toThrow(/rule `small-change` derived an answer to `risk` it does not take/);
+	});
+
 	it("throws where the record reader answered nothing for a record question", () => {
 		expect(() => evaluateChecklist(c, { given: {}, record: {} })).toThrow(
 			/record reader answered nothing for `owner`/,
@@ -230,7 +253,7 @@ describe("parseAnswers refuses a wrong answer by name, never widening it", () =>
 
 	it("a value of the wrong kind, an empty one, and answers that are not an object", () => {
 		expect(refused({ risk: "medium" })[0]?.detail).toBe(
-			'"medium" is not an answer "How risky is it?" offers. Send one of "low" (Low), "high" (High).',
+			'"How risky is it?" does not take "medium". Send one of "low" (Low), "high" (High).',
 		);
 		expect(refused({ risk: "  " })[0]).toMatchObject({
 			path: "/answers/risk",

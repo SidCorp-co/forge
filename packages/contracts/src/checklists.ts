@@ -192,7 +192,7 @@ function answerFault(q: ChecklistQuestion, value: unknown): string | null {
 	}
 	return q.answer.options.some((o) => o.value === value)
 		? null
-		: `"${value}" is not an answer "${q.prompt}" offers. Send one of ${optionsOf(q.answer.options)}.`;
+		: `"${q.prompt}" does not take "${value}". Send one of ${optionsOf(q.answer.options)}.`;
 }
 
 function describe(q: ChecklistQuestion): string {
@@ -437,7 +437,10 @@ export interface ChecklistAnswer {
 	readonly question: string;
 	readonly value: string;
 	readonly provenance: ChecklistProvenance;
-	/** `mover`, `record:<field>`, or `recommended` for an assumed answer. */
+	/**
+	 * `mover`, `record:<field>`, `derived:<rule>` for an answer a rule gave from the mover's other
+	 * answers (the triage short form's route), or `recommended` for an assumed answer.
+	 */
 	readonly source: string;
 	/** The owner question an assumed answer's reading still waits on. */
 	readonly open?: string;
@@ -460,8 +463,15 @@ export interface ChecklistEvaluation {
 	readonly notAsked: readonly string[];
 }
 
+/** An answer a rule gives from the mover's other answers, recorded as derived by that rule, never as the mover's. */
+export interface DerivedAnswer {
+	readonly value: string;
+	readonly rule: string;
+}
+
 /**
- * Reads every question in order: a given answer stands; a record question takes what the record
+ * Reads every question in order: a given answer stands, then one a rule derived (`derived:<rule>`),
+ * which must be one the question takes; a record question takes what the record
  * holds; a gap on a non-blocking question takes its recommended answer, recorded as assumed; a gap
  * on a blocking one is named. A record question the reader did not answer, or a gap whose words show
  * a record field's key, is a defect of the reader, not a gap, and throws.
@@ -471,6 +481,7 @@ export function evaluateChecklist(
 	input: {
 		readonly given: Readonly<Record<string, string>>;
 		readonly record: RecordAnswers;
+		readonly derived?: Readonly<Record<string, DerivedAnswer>>;
 	},
 ): ChecklistEvaluation {
 	const answers: ChecklistAnswer[] = [];
@@ -504,10 +515,21 @@ export function evaluateChecklist(
 			found = "value" in held ? { value: held.value, source: `record:${q.answeredBy.field}` } : held;
 		} else {
 			const given = input.given[q.id];
+			const derived = input.derived?.[q.id];
+			if (given === undefined && derived !== undefined) {
+				const wrong = answerFault(q, derived.value);
+				if (wrong) {
+					throw new Error(
+						`checklist \`${checklist.id}\`: rule \`${derived.rule}\` derived an answer to \`${q.id}\` it does not take: ${wrong}`,
+					);
+				}
+			}
 			found =
 				given !== undefined
 					? { value: given, source: "mover" }
-					: { gap: "It has no answer yet.", fix: q.fix };
+					: derived !== undefined
+						? { value: derived.value, source: `derived:${derived.rule}` }
+						: { gap: "It has no answer yet.", fix: q.fix };
 		}
 		if ("value" in found) {
 			answers.push({ question: q.id, value: found.value, provenance: "given", source: found.source });

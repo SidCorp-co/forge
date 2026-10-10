@@ -56,11 +56,12 @@ export function intakeSystemPrompt(
     '',
     'Answer with one JSON object and nothing else, with these keys:',
     `- "fills": each answer the item leaves open that the record lets you fill, as {"field", "value", "source"}. "source" is the ref of the record it rests on, or the item's own key where its own words say it. Fields:\n${fields}`,
-    '- "links": {"relation", "ref", "why"} for each record the item duplicates ("duplicate", a record of its own kind), contradicts ("conflict", a requirement), changes ("affected_workflow", a workflow) or shares a problem with ("related_feedback", a feedback item). "ref" is a ref shown below, never the item itself; "why" is one line.',
+    `- "links": {"relation", "ref", "why", "basis", "itemQuote"} for each record the item duplicates ("duplicate", a record of its own kind), contradicts ("conflict", a requirement), changes ("affected_workflow", a workflow) or shares a problem with ("related_feedback", a feedback item). "ref" is a ref shown below, never the item itself; "why" is one line. Both quotes are copied word for word from what is shown below, at least three words each: "itemQuote" is the item's own words the link rests on; "basis" is the linked record's words: for a conflict, the text of the one criterion the item contradicts (and "why" names no other criterion); for an affected workflow, the step it changes, by its label; for a duplicate or related item, the words it shares with the item. Name no link the record does not show; a link with no such basis is refused.`,
+    '- "notAffected": [{"ref", "why"}] for each workflow listed as touched below that the item does not change, with why in one line. Every touched workflow is either linked as "affected_workflow" or named here.',
     `- "questions": at most ${INTAKE_QUESTIONS_MAX}, and only questions whose answer changes the scope or the outcome. Each is {"prompt", "changes": "scope" | "outcome", "options": [${INTAKE_LIMITS.optionsMin}-${INTAKE_LIMITS.optionsMax} of {"id", "label", "effect": what choosing it changes}], "recommended": the id of the option you recommend}. A question the record answers is a fill, not a question.`,
     '- "nothingToAsk": when no question is worth asking, one line saying so, with "questions": []. Otherwise null.',
     kind === 'feedback'
-      ? `- "triage": the triage checklist as a triage suggestion takes it: ${FEEDBACK_TRIAGE_SHAPE}. Leave out "dedup"; core adds it.`
+      ? `- "triage": the triage checklist as a triage suggestion takes it: ${FEEDBACK_TRIAGE_SHAPE}. Leave out "dedup"; core adds it. A decline or a duplicate rests only on a link above: a decline's note names no record that no link names.`
       : '- Leave out "triage".',
     '',
     contentLanguageBlock(language, context),
@@ -75,6 +76,7 @@ export function intakeUserMessage(
     feedback: IntakeRecord[];
     releases: IntakeRecord[];
   },
+  touched: readonly string[] = [],
 ): string {
   const section = (title: string, rows: IntakeRecord[]) => [
     `${title}:`,
@@ -91,5 +93,7 @@ export function intakeUserMessage(
     ...section('Feedback', record.feedback),
     '',
     ...section('Releases', record.releases),
+    '',
+    `Workflows the item's words touch (link each as affected_workflow, or name it in notAffected): ${touched.length ? touched.join(', ') : '(none)'}`,
   ].join('\n');
 }

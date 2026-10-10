@@ -110,6 +110,7 @@ async function keep(
         out.outcome === 'drafted'
           ? {
               links: out.draft.links,
+              notAffected: out.draft.notAffected,
               assumptions: out.draft.assumptions,
               questions: out.draft.questions,
               nothingToAsk: out.draft.nothingToAsk,

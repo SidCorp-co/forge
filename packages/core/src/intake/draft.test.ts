@@ -22,12 +22,18 @@ const item: IntakeItem = {
   authorAgency: 'human',
 };
 
-const record = (ref: string, kind: IntakeRecord['kind'], line: string): IntakeRecord => ({
+const record = (
+  ref: string,
+  kind: IntakeRecord['kind'],
+  line: string,
+  extra: Pick<IntakeRecord, 'criteria' | 'steps'> = {},
+): IntakeRecord => ({
   ref,
   kind,
   key: ref.replace(/^(workflow|release):/, ''),
   title: line,
   lines: [`${ref}: ${line}`],
+  ...extra,
 });
 
 function readsSeen() {
@@ -44,7 +50,11 @@ function readsSeen() {
     },
     workflows: async () => {
       calls.push('workflows');
-      return [record('workflow:referral', 'workflow', 'Referral intake')];
+      return [
+        record('workflow:referral', 'workflow', 'Referral intake', {
+          steps: ['Match the referral'],
+        }),
+      ];
     },
     feedback: async (_item, opts) => {
       calls.push('feedback');
@@ -73,9 +83,27 @@ const answerWith = (over: Record<string, unknown> = {}) =>
   JSON.stringify({
     fills: [{ field: 'summary', value: 'Referrals match by clinic code.', source: 'REQ-1' }],
     links: [
-      { relation: 'duplicate', ref: 'REQ-1', why: 'Both match referrals.' },
-      { relation: 'affected_workflow', ref: 'workflow:referral', why: 'Its match step.' },
-      { relation: 'related_feedback', ref: 'FB-3', why: 'The lost code.' },
+      {
+        relation: 'duplicate',
+        ref: 'REQ-1',
+        why: 'Both match referrals.',
+        basis: 'REQ-1: Referral import',
+        itemQuote: 'Match referrals by clinic code',
+      },
+      {
+        relation: 'affected_workflow',
+        ref: 'workflow:referral',
+        why: 'Its match step.',
+        basis: 'Match the referral',
+        itemQuote: 'Match referrals by clinic code',
+      },
+      {
+        relation: 'related_feedback',
+        ref: 'FB-3',
+        why: 'The lost code.',
+        basis: 'Import drops the clinic code',
+        itemQuote: 'referrals by clinic code',
+      },
     ],
     questions: [question(1)],
     nothingToAsk: null,
@@ -237,5 +265,157 @@ describe('an intake draft asks at most three questions, or says it has nothing t
     const out = await draftIntake(item, depsOf(reads, complete));
     expect(out.outcome === 'failed' && out.code).toBe('INTAKE_MODEL_FAILED');
     expect(sent).toHaveLength(1);
+  });
+});
+
+// FB-111 on forge-dev 0.4.0-dev.222 (ISS-455 judge J2): filed on REQ-34, it restates BC-6 and says
+// nothing about questions. The model drafted one link, a conflict with REQ-34 "because BC-14 permits
+// scope-changing questions", no affected workflow though the item changes feedback-triage, and a
+// triage declining it on that conflict. The stub below answers exactly that.
+describe('a draft link rests on what was read, or it is refused (BC-12, FB-111)', () => {
+  const fb111: IntakeItem = {
+    ...item,
+    kind: 'feedback',
+    key: 'FB-111',
+    title:
+      'Triaging a bug against a named criterion should need only the criterion, the evidence and the severity',
+    lines: [
+      'Title: Triaging a bug against a named criterion should need only the criterion, the evidence and the severity',
+      'Kind given: change; severity given: medium',
+      'About: REQ-34',
+    ],
+  };
+  const req34 = record('REQ-34', 'requirement', 'Every lifecycle step is a checklist contract', {
+    criteria: [
+      { code: 'BC-6', text: 'A bug against an existing criterion needs only three answers.' },
+      {
+        code: 'BC-14',
+        text: 'It asks at most three questions, only ones that change scope or outcome.',
+      },
+    ],
+  });
+  req34.lines.push(...(req34.criteria ?? []).map((c) => `  ${c.code}: ${c.text}`));
+  const reads: IntakeReads = {
+    item: async () => fb111,
+    requirements: async () => [req34],
+    workflows: async () => [
+      record('workflow:feedback-triage', 'workflow', 'Feedback triage', {
+        steps: ['Draft the triage checklist', 'Decide the route'],
+      }),
+      record('workflow:project-onboarding', 'workflow', 'Project onboarding', {
+        steps: ['Connect'],
+      }),
+    ],
+    feedback: async () => [],
+    releases: async () => [],
+  };
+  const invented = JSON.stringify({
+    fills: [{ field: 'kind', value: 'change', source: 'FB-111' }],
+    links: [
+      {
+        relation: 'conflict',
+        ref: 'REQ-34',
+        why: 'The requested rule would prohibit scope- or outcome-changing questions that REQ-34 BC-14 permits.',
+      },
+    ],
+    questions: [],
+    nothingToAsk: 'The record settles the triage.',
+    triage: {
+      route: 'decline',
+      note: 'Conflicts with REQ-34: BC-14 permits scope- or outcome-changing questions.',
+    },
+  });
+  const grounded = JSON.stringify({
+    fills: [{ field: 'kind', value: 'change', source: 'FB-111' }],
+    links: [
+      {
+        relation: 'affected_workflow',
+        ref: 'workflow:feedback-triage',
+        why: 'It changes what a short-form triage asks.',
+        basis: 'Draft the triage checklist',
+        itemQuote: 'need only the criterion, the evidence and the severity',
+      },
+    ],
+    notAffected: [],
+    questions: [],
+    nothingToAsk: 'The record settles the triage.',
+    triage: { route: 'revision' },
+  });
+
+  it('refuses the invented conflict, the decline resting on it and the unnamed workflow, by name, and drafts the grounded retry', async () => {
+    const { complete, sent } = modelSaying(invented, grounded);
+    const out = await draftIntake(fb111, depsOf(reads, complete));
+    expect(sent, 'the invented draft is refused and asked again').toHaveLength(2);
+    const refusal = sent[1]?.at(-1)?.content as string;
+    expect(refusal).toMatch(/^That was refused: /);
+    expect(refusal).toContain('links.0.basis');
+    expect(refusal).toContain('links.0.itemQuote');
+    expect(out.outcome).toBe('drafted');
+    if (out.outcome !== 'drafted') return;
+    expect(out.draft.links.map((l) => [l.relation, l.ref.key, l.basis?.step])).toEqual([
+      ['affected_workflow', 'feedback-triage', 'Draft the triage checklist'],
+    ]);
+    expect(out.draft.triage).toEqual({ route: 'revision' });
+  });
+
+  it('offers the model the workflow the item touches, and names no other', async () => {
+    const { complete, sent } = modelSaying(grounded);
+    await draftIntake(fb111, depsOf(reads, complete));
+    const user = sent[0]?.find((m) => m.role === 'user')?.content as string;
+    expect(user).toContain(
+      "Workflows the item's words touch (link each as affected_workflow, or name it in notAffected): workflow:feedback-triage",
+    );
+    expect(user).not.toMatch(/touch[^\n]*project-onboarding/);
+  });
+
+  it('refuses, by name, a conflict whose basis is a criterion the why does not name, a decline resting on it, and the touched workflow left unnamed', async () => {
+    const quoted = JSON.stringify({
+      ...JSON.parse(invented),
+      links: [
+        {
+          relation: 'conflict',
+          ref: 'REQ-34',
+          why: 'The requested rule would prohibit questions that REQ-34 BC-14 permits.',
+          basis: 'A bug against an existing criterion needs only three answers',
+          itemQuote: 'should need only the criterion',
+        },
+      ],
+    });
+    const { complete, sent } = modelSaying(quoted, quoted);
+    const out = await draftIntake(fb111, depsOf(reads, complete));
+    expect(out.outcome === 'failed' && out.code).toBe('INTAKE_SHAPE');
+    const refusal = sent[1]?.at(-1)?.content as string;
+    expect(refusal).toContain(
+      'links[0].why names BC-14, but the criterion it quotes is REQ-34 BC-6: a conflict rests on the criterion it quotes',
+    );
+    expect(refusal).toContain(
+      'triage declines citing REQ-34, which no link that stands names (its link was refused): decline only on a link that holds',
+    );
+    expect(refusal).toContain("workflow:feedback-triage is a workflow FB-111's words touch");
+  });
+
+  it('refuses a conflict quoting words the item never says, and an unnamed touched workflow', async () => {
+    const unsaid = JSON.stringify({
+      ...JSON.parse(invented),
+      triage: { route: 'revision' },
+      links: [
+        {
+          relation: 'conflict',
+          ref: 'REQ-34',
+          why: 'It would forbid what REQ-34 BC-14 permits.',
+          basis: 'only ones that change scope or outcome',
+          itemQuote: 'no question may change the scope',
+        },
+      ],
+    });
+    const { complete, sent } = modelSaying(unsaid, grounded);
+    await draftIntake(fb111, depsOf(reads, complete));
+    const refusal = sent[1]?.at(-1)?.content as string;
+    expect(refusal).toContain(
+      'links[0].itemQuote "no question may change the scope" is not FB-111' + "'s own words",
+    );
+    expect(refusal).toContain(
+      "workflow:feedback-triage is a workflow FB-111's words touch: link it as affected_workflow with the step it changes, or say in notAffected why it is not affected",
+    );
   });
 });

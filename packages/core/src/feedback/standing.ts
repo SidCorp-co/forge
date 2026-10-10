@@ -140,8 +140,12 @@ export interface StandingFacts {
   releaseHolders?: readonly string[];
   /** Set while a snooze has not run out: the item is parked out of New until then. */
   snoozedUntil?: string | null;
-  /** While it reads resolved and a sweep has dated it: when Forge verifies it if nobody has. */
+  /** While it reads resolved, names a criterion and a sweep has dated it: when the record is read if nobody has answered. */
   autoVerifyAt?: string | null;
+  /** It names a violated criterion, so the record can answer "is the problem gone?" after the window. */
+  recordCanVerify?: boolean;
+  /** Past its window the record could not answer, and why, as the sweep wrote it on the item. */
+  verifyHeld?: string | null;
   /** It reads resolved and nothing told its reporter the work shipped (`ship-notice.ts`): a person relays it. */
   relayOwed?: boolean;
   /** Who holds feedback.approve, by name: those who owe the relay. */
@@ -237,6 +241,20 @@ function waitingOf(
         };
       }
       if (facts.relayOwed) return relayWait(reporter, viewer, facts);
+      // Feedback lifecycle r14 loop-check: past the window, where the record cannot answer, the item
+      // waits on a holder of feedback.approve, naming the question and why the record could not
+      if (facts.verifyHeld) {
+        return {
+          wait: wait(
+            'person',
+            TRIAGER,
+            say('standing.act.sayIfGone'),
+            say('feedback.rule.verifyHeld', { why: facts.verifyHeld }),
+            { ref: facts.carrierVersion ?? null },
+          ),
+          yours: viewer.canTriage,
+        };
+      }
       return {
         wait: wait(
           'person',
@@ -244,7 +262,9 @@ function waitingOf(
           facts.carrierVersion
             ? say('standing.act.verifyFixIn', { v: facts.carrierVersion })
             : say('standing.act.verifyFix'),
-          say('feedback.rule.verify'),
+          say(
+            facts.recordCanVerify ? 'feedback.rule.verifyByRecord' : 'feedback.rule.verifyByPerson',
+          ),
           { ref: facts.carrierVersion ?? null, dueAt: facts.autoVerifyAt ?? null },
         ),
         // owner, 2026-10-07: nobody is owed this act, so it is on no one's Needs you; any member may take it

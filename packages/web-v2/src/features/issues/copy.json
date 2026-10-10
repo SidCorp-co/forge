@@ -85,7 +85,7 @@
     "issues.category.notSet": "Not set",
     "issues.changes.title": "Changes",
     "issues.checklist.assumed": "Left blank, it is assumed: {answer}",
-    "issues.checklist.blurb": "This issue cannot move yet. Each thing stopping it is shown in red under its question: fix those on the issue itself. Answer the questions you can here, then press Answer and move.",
+    "issues.checklist.blurb": "Cannot move yet. What stops it is written under each question.",
     "issues.checklist.confirm": "Answer and move",
     "issues.checklist.fromRecord": "Answered on the issue itself, from its {field}.",
     "issues.checklist.title": "{name} checklist",

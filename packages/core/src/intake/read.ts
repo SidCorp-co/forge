@@ -9,6 +9,7 @@ import {
   type IntakeDraftApplied,
   type IntakeDraftAssumption,
   type IntakeDraftLink,
+  type IntakeDraftUnaffected,
   type IntakeDraftView,
   type IntakeItemKind,
   type IntakeQuestion,
@@ -33,6 +34,8 @@ export type IntakeReadOutcome =
 
 interface Body {
   links: IntakeDraftLink[];
+  /** Absent on a draft kept before core offered the workflows an item touches. */
+  notAffected?: IntakeDraftUnaffected[];
   assumptions: IntakeDraftAssumption[];
   questions: IntakeQuestion[];
   nothingToAsk: string | null;
@@ -53,6 +56,7 @@ export function viewOf(
     attempts: row.attempts,
     read: row.read as Record<IntakeRead, number>,
     links: body?.links ?? [],
+    notAffected: body?.notAffected ?? [],
     assumptions: body?.assumptions ?? [],
     questions: body?.questions ?? [],
     nothingToAsk: body?.nothingToAsk ?? null,

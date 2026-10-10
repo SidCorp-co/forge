@@ -11,6 +11,7 @@ import { CHECKLISTS, type ChecklistId, isChecklistId } from '@forge/contracts/ch
 import {
   type ChecklistEvaluation,
   checklistRefusals,
+  type DerivedAnswer,
   evaluateChecklist,
   parseAnswers,
   type RecordAnswers,
@@ -31,6 +32,8 @@ import type { MoverColumns, PriorRow, Tx } from './transition.js';
  */
 export interface MoveChecklist<E extends MachineEntity> {
   answers?: unknown;
+  /** Answers a rule gave from the mover's others, recorded as derived by it (`checklists.ts:DerivedAnswer`). */
+  derived?: Readonly<Record<string, DerivedAnswer>>;
   record: (input: { tx: Tx; row: PriorRow<E>; checklist: ChecklistId }) => Promise<RecordAnswers>;
 }
 
@@ -94,7 +97,11 @@ export async function judgeChecklist<E extends MachineEntity>(
   const parsed = parseAnswers(checklist, move.checklist.answers);
   if (!parsed.ok) return { refusals: parsed.refusals };
   const record = await move.checklist.record({ tx, row, checklist: id });
-  const evaluation = evaluateChecklist(checklist, { given: parsed.answers, record });
+  const evaluation = evaluateChecklist(checklist, {
+    given: parsed.answers,
+    record,
+    ...(move.checklist.derived ? { derived: move.checklist.derived } : {}),
+  });
   if (!evaluation.complete) return { refusals: checklistRefusals(evaluation) };
   return { evaluation };
 }

@@ -1,25 +1,72 @@
 // The intake draft judged against what it read (REQ-34 BC-12..BC-16): each rule is planted wrong and
 // read back by the fault that names it.
 
-import {
-  type IntakeAnswer,
-  type IntakeDraftRef,
-  intakeAnswerSchema,
-} from '@forge/contracts/intake-drafts';
+import { type IntakeAnswer, intakeAnswerSchema } from '@forge/contracts/intake-drafts';
 import { describe, expect, it } from 'vitest';
-import { type JudgeInput, judgeDraft } from './rules.js';
+import { type JudgeInput, judgeDraft, type ShownRecord, workflowsTouched } from './rules.js';
 
-const known = new Map<string, IntakeDraftRef>([
-  ['REQ-1', { kind: 'requirement', key: 'REQ-1', title: 'Referral import' }],
-  ['REQ-2', { kind: 'requirement', key: 'REQ-2', title: 'Referral by name' }],
-  ['FB-3', { kind: 'feedback', key: 'FB-3', title: 'Import drops the clinic code' }],
-  ['workflow:referral', { kind: 'workflow', key: 'referral', title: 'Referral intake' }],
-  ['release:1.2.0', { kind: 'release', key: '1.2.0', title: '1.2.0' }],
-]);
+const shown: ShownRecord[] = [
+  {
+    kind: 'requirement',
+    key: 'REQ-1',
+    title: 'Referral import',
+    lines: ['REQ-1 (agreed): Referral import', '  In short: Referrals are matched by clinic code.'],
+    criteria: [{ code: 'BC-1', text: 'A referral is matched by its clinic code.' }],
+  },
+  {
+    kind: 'requirement',
+    key: 'REQ-2',
+    title: 'Referral by name',
+    lines: [
+      'REQ-2 (agreed): Referral by name',
+      '  BC-1: A referral is matched by the patient name.',
+    ],
+    criteria: [{ code: 'BC-1', text: 'A referral is matched by the patient name.' }],
+  },
+  {
+    kind: 'feedback',
+    key: 'FB-3',
+    title: 'Import drops the clinic code',
+    lines: ['FB-3 (bug, high, new): Import drops the clinic code'],
+  },
+  {
+    kind: 'workflow',
+    key: 'referral',
+    title: 'Referral intake',
+    lines: [
+      'workflow:referral (Referral intake, approved r2)',
+      '  Steps: Match the referral; Book it',
+    ],
+    steps: ['Match the referral', 'Book it'],
+  },
+  { kind: 'release', key: '1.2.0', title: '1.2.0', lines: ['release:1.2.0'] },
+];
+const known = new Map<string, ShownRecord>(
+  shown.map((r) => [
+    r.kind === 'workflow' || r.kind === 'release' ? `${r.kind}:${r.key}` : r.key,
+    r,
+  ]),
+);
 
 type Item = JudgeInput['item'];
-const requirement: Item = { kind: 'requirement', key: 'REQ-9', title: 'Match referrals' };
-const feedbackItem: Item = { kind: 'feedback', key: 'FB-9', title: 'Wrong patient matched' };
+const requirement: Item = {
+  kind: 'requirement',
+  key: 'REQ-9',
+  title: 'Match referrals',
+  lines: ['Title: Match referrals', 'Goal: Match each referral to its patient by clinic code.'],
+};
+const feedbackItem: Item = {
+  kind: 'feedback',
+  key: 'FB-9',
+  title: 'Wrong patient matched',
+  lines: [
+    'Title: Wrong patient matched',
+    'Kind given: bug; severity given: high',
+    'About: REQ-1',
+    'Body: The import matched the wrong patient because the clinic code was dropped.',
+  ],
+};
+const said = 'Match each referral to its patient';
 
 const question = {
   prompt: 'Does a referral with no clinic code wait or get rejected?',
@@ -37,11 +84,36 @@ const base: IntakeAnswer = {
     { field: 'criterion', value: 'A referral is matched by clinic code.', source: 'REQ-9' },
   ],
   links: [
-    { relation: 'duplicate', ref: 'REQ-1', why: 'Both match referrals by code.' },
-    { relation: 'conflict', ref: 'REQ-2', why: 'REQ-2 matches by name.' },
-    { relation: 'affected_workflow', ref: 'workflow:referral', why: 'Its match step changes.' },
-    { relation: 'related_feedback', ref: 'FB-3', why: 'The same lost code.' },
+    {
+      relation: 'duplicate',
+      ref: 'REQ-1',
+      why: 'Both match referrals by code.',
+      basis: 'Referrals are matched by clinic code',
+      itemQuote: said,
+    },
+    {
+      relation: 'conflict',
+      ref: 'REQ-2',
+      why: 'REQ-2 BC-1 matches by name.',
+      basis: 'matched by the patient name',
+      itemQuote: 'its patient by clinic code',
+    },
+    {
+      relation: 'affected_workflow',
+      ref: 'workflow:referral',
+      why: 'Its match step changes.',
+      basis: 'Match the referral',
+      itemQuote: said,
+    },
+    {
+      relation: 'related_feedback',
+      ref: 'FB-3',
+      why: 'The same lost code.',
+      basis: 'drops the clinic code',
+      itemQuote: 'its patient by clinic code',
+    },
   ],
+  notAffected: [],
   questions: [question],
   nothingToAsk: null,
 };
@@ -50,12 +122,21 @@ const judge = (
   answer: IntakeAnswer,
   item = requirement,
   triageFault: JudgeInput['triageFault'] = () => null,
-) => judgeDraft(answer, { item, known, triageFault });
+  touched: readonly string[] = [],
+) => judgeDraft(answer, { item, known, touched, triageFault });
 
-const faultsOf = (answer: IntakeAnswer, item = requirement) => {
-  const out = judge(answer, item);
+const faultsOf = (answer: IntakeAnswer, item = requirement, touched: readonly string[] = []) => {
+  const out = judge(answer, item, () => null, touched);
   return out.ok ? [] : out.faults;
 };
+
+const link = (
+  relation: IntakeAnswer['links'][number]['relation'],
+  ref: string,
+  why = 'a line',
+  basis = 'Referrals are matched by clinic code',
+  itemQuote = said,
+) => ({ relation, ref, why, basis, itemQuote });
 
 describe('an intake draft judged against what it read', () => {
   it('passes a draft whose links, sources and questions all hold, each link and source resolved to its record', () => {
@@ -79,11 +160,11 @@ describe('an intake draft judged against what it read', () => {
     const faults = faultsOf({
       ...base,
       links: [
-        { relation: 'related_feedback', ref: 'FB-77', why: 'invented' },
-        { relation: 'duplicate', ref: 'REQ-9', why: 'itself' },
-        { relation: 'conflict', ref: 'FB-3', why: 'a feedback item is no conflict' },
-        { relation: 'duplicate', ref: 'FB-3', why: 'a requirement duplicates a requirement' },
-        { relation: 'affected_workflow', ref: 'REQ-1', why: 'not a workflow' },
+        link('related_feedback', 'FB-77', 'invented'),
+        link('duplicate', 'REQ-9', 'itself'),
+        link('conflict', 'FB-3', 'a feedback item is no conflict'),
+        link('duplicate', 'FB-3', 'a requirement duplicates a requirement'),
+        link('affected_workflow', 'REQ-1', 'not a workflow'),
       ],
     });
     expect(faults).toEqual([
@@ -135,7 +216,15 @@ describe('an intake draft judged against what it read', () => {
     const fb: IntakeAnswer = {
       ...base,
       fills: [{ field: 'severity', value: 'high', source: 'FB-9' }],
-      links: [{ relation: 'duplicate', ref: 'FB-3', why: 'Same lost code.' }],
+      links: [
+        link(
+          'duplicate',
+          'FB-3',
+          'Same lost code.',
+          'drops the clinic code',
+          'the clinic code was dropped',
+        ),
+      ],
     };
     expect(faultsOf(fb, feedbackItem)).toEqual([
       'triage is missing: a feedback draft carries its triage checklist',
@@ -179,5 +268,31 @@ describe('the answer shape the model is held to', () => {
     expect(intakeAnswerSchema.safeParse({ ...base, questions: [noEffect] }).success).toBe(false);
     const one = { ...question, options: [question.options[0]] };
     expect(intakeAnswerSchema.safeParse({ ...base, questions: [one] }).success).toBe(false);
+  });
+});
+
+describe('the workflows an item touches, which the draft must name or set aside', () => {
+  const workflows = [
+    { ref: 'workflow:feedback-triage', title: 'Feedback triage' },
+    { ref: 'workflow:feedback-lifecycle', title: 'Feedback lifecycle' },
+    { ref: 'workflow:onboarding', title: 'Project onboarding' },
+  ];
+
+  it('offers the one it was filed against first, then those whose title shares the item’s words', () => {
+    const item = {
+      lines: ['Title: Triaging a bug should need three answers', 'About: workflow:onboarding'],
+      workflowRef: 'workflow:onboarding',
+    };
+    expect(workflowsTouched(item, workflows)).toEqual([
+      'workflow:onboarding',
+      'workflow:feedback-triage',
+    ]);
+  });
+
+  it('reads no subject from a generic word, nor from the kind and target core wrote beside the item', () => {
+    const item = {
+      lines: ['Title: The lifecycle view is slow', 'Kind given: bug; severity given: feedback'],
+    };
+    expect(workflowsTouched(item, workflows)).toEqual([]);
   });
 });

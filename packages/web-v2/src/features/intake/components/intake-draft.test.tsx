@@ -39,6 +39,7 @@ const draft = (over: Partial<IntakeDraftView> = {}): IntakeDraftView => ({
     },
   ],
   nothingToAsk: null,
+  notAffected: [],
   applied: { as: "suggestion", suggestionId: "s1" },
   ...over,
 });

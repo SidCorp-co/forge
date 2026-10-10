@@ -5,8 +5,10 @@
  * that date, the record answers "is the problem gone?" (`loop-close.ts:goneByRecord`): where the
  * violated criterion passes on the running build and nothing was filed against it since, the item is
  * verified by the system with those sources as its reason, and its reporter told once; otherwise it
- * stays resolved for a person to answer. An item that stops reading resolved loses its date, so a
- * reopen or a re-route starts the count again; a reporter who says "not fixed" reopens it as before.
+ * stays resolved for a holder of feedback.approve to answer, and the sweep writes on the item when it
+ * found that and why (`verifyHeldAt`, `verifyHeldWhy`), so it is never held in silence. An item that
+ * stops reading resolved loses its date and that reason, so a reopen or a re-route starts the count
+ * again; a reporter who says "not fixed" reopens it as before.
  *
  * A word said ahead comes first (REQ-41 BC-20): where the reporter, or a member for them, confirmed
  * the fix in its preview, and the change that shipped is the one they confirmed, that word is the
@@ -47,7 +49,11 @@ export interface AutoVerifySweepResult {
   reopened: number;
   /** Past their window, left resolved for a person: the record could not say the problem is gone. */
   held: number;
+  /** Of those, the ones whose reason was written on the item this sweep (new, or changed since). */
+  noted: number;
 }
+
+const NOT_HELD = { verifyHeldAt: null, verifyHeldWhy: null } as const;
 
 /** The latest confirm, when the change that shipped is the one it was said of; null asks as today. */
 async function confirmedClose(row: Row): Promise<{
@@ -175,6 +181,31 @@ async function verifyIn(
   return verified;
 }
 
+/**
+ * Writes on the item why the record could not verify it, once per reason: a sweep that finds the
+ * same reason again writes nothing, and one that finds another writes it with its own time.
+ */
+async function noteHeld(row: Row, why: string, now: Date): Promise<boolean> {
+  const current =
+    row.verifyHeldAt !== null &&
+    row.resolvedSeenAt !== null &&
+    row.verifyHeldAt.getTime() >= row.resolvedSeenAt.getTime() &&
+    row.verifyHeldWhy === why;
+  if (current) return false;
+  const written = await db
+    .update(feedback)
+    .set({ verifyHeldAt: now, verifyHeldWhy: why })
+    .where(and(eq(feedback.id, row.id), eq(feedback.status, 'triaged')))
+    .returning({ id: feedback.id });
+  if (written.length > 0) {
+    logger.info(
+      { feedback: row.id, why },
+      'feedback: past its verify window, the record could not verify it; a person answers',
+    );
+  }
+  return written.length > 0;
+}
+
 export async function sweepResolvedFeedback(
   now: Date = new Date(),
 ): Promise<AutoVerifySweepResult> {
@@ -185,6 +216,7 @@ export async function sweepResolvedFeedback(
     confirmed: 0,
     reopened: 0,
     held: 0,
+    noted: 0,
   };
   const open = await db.select().from(feedback).where(eq(feedback.status, 'triaged'));
   const byProject = new Map<string, Row[]>();
@@ -198,7 +230,7 @@ export async function sweepResolvedFeedback(
         if (row.resolvedSeenAt) {
           await db
             .update(feedback)
-            .set({ resolvedSeenAt: null })
+            .set({ resolvedSeenAt: null, ...NOT_HELD })
             .where(and(eq(feedback.id, row.id), eq(feedback.status, 'triaged')));
           result.cleared += 1;
         }
@@ -222,7 +254,10 @@ export async function sweepResolvedFeedback(
         );
       }
       if (!row.resolvedSeenAt) {
-        await db.update(feedback).set({ resolvedSeenAt: now }).where(eq(feedback.id, row.id));
+        await db
+          .update(feedback)
+          .set({ resolvedSeenAt: now, ...NOT_HELD })
+          .where(eq(feedback.id, row.id));
         result.dated += 1;
         continue;
       }
@@ -233,6 +268,7 @@ export async function sweepResolvedFeedback(
         );
         if (!record.gone) {
           result.held += 1;
+          if (await noteHeld(row, record.why, now)) result.noted += 1;
           continue;
         }
         if (await verifyIn(row.id, projectId, days, record.reason)) result.verified += 1;

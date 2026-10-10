@@ -202,7 +202,7 @@ function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | 
   );
 }
 
-/** Who confirmed the fix and when, or the day Forge will if nobody does: the record behind "Reporter told". */
+/** Who confirmed the fix and when; else when the record is read, or why it could not verify it. */
 function VerifiedFact({ f }: { f: FeedbackView }) {
   const t = useCopy();
   const time = useTimeFormat();
@@ -222,11 +222,20 @@ function VerifiedFact({ f }: { f: FeedbackView }) {
       </Fact>
     );
   }
+  if (f.verifyHeld) {
+    return (
+      <Fact label={t("feedback.fact.recordCheck")} testId="facts-verify-held">
+        <span className="fg-body-sm text-muted" title={time.dateTime(f.verifyHeld.at)}>
+          {t("feedback.fact.recordHeld", { why: f.verifyHeld.why })}
+        </span>
+      </Fact>
+    );
+  }
   if (!f.autoVerify) return null;
   return (
-    <Fact label={t("feedback.fact.verifiesItself")} testId="facts-auto-verify">
+    <Fact label={t("feedback.fact.recordCheck")} testId="facts-auto-verify">
       <span className="fg-body-sm text-muted" title={time.dateTime(f.autoVerify.at)}>
-        {t("feedback.fact.verifiesAt", { at: time.dateTime(f.autoVerify.at), n: f.autoVerify.windowDays })}
+        {t("feedback.fact.recordCheckAt", { at: time.dateTime(f.autoVerify.at), n: f.autoVerify.windowDays })}
       </span>
     </Fact>
   );

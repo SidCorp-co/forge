@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 import { FEEDBACK_TRIAGE_CHECKLIST, NO_CRITERION } from "./checklist-registry.js";
-import { answersSchemaOf } from "./checklists.js";
+import { answersSchemaOf, type DerivedAnswer } from "./checklists.js";
 import type { FeedbackKind, FeedbackRoute } from "./feedback-terms.js";
 
 /** The one question a triage answers outside `answers`: its `route`. */
@@ -74,17 +74,31 @@ export function triageRouteOf(input: {
 	return isShortForm(input.kind, input.answers) ? "issue" : undefined;
 }
 
+/** The rule a short-form triage's route is recorded as derived by. */
+export const SHORT_FORM_RULE = "short-form";
+
 /**
- * The answers a triage hands the checklist: the triager's own with the route it takes. Answers that
+ * The answers a triage hands the checklist: the triager's own with the route it sent. Answers that
  * are not an object are handed on as sent, so the check refuses them by name.
  */
 export function triageAnswersOf(input: {
-	kind: FeedbackKind;
 	route: FeedbackRoute | undefined;
 	answers: unknown;
 }): unknown {
-	const route = triageRouteOf(input);
 	const given = input.answers === undefined ? {} : objectOf(input.answers);
 	if (given === null) return input.answers;
-	return route === undefined ? given : { ...given, [TRIAGE_ROUTE_QUESTION]: route };
+	return input.route === undefined ? given : { ...given, [TRIAGE_ROUTE_QUESTION]: input.route };
+}
+
+/**
+ * What the checklist takes from a rule rather than from the triager: the issue route the short form
+ * gives a bug naming its criterion when no route was sent, recorded as derived by that rule.
+ */
+export function triageDerivedOf(input: {
+	kind: FeedbackKind;
+	route: FeedbackRoute | undefined;
+	answers: unknown;
+}): Record<string, DerivedAnswer> {
+	if (input.route !== undefined || !isShortForm(input.kind, input.answers)) return {};
+	return { [TRIAGE_ROUTE_QUESTION]: { value: "issue", rule: SHORT_FORM_RULE } };
 }

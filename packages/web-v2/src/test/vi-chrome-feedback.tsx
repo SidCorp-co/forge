@@ -68,6 +68,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     target: { type: "screen", key: "Bang dieu khien", title: null },
     verified: null,
     autoVerify: { at: "2026-10-20T08:00:00.000Z", windowDays: 14 },
+    verifyHeld: null,
     shipNotice: null,
     body: "Noi dung",
     whereSeen: "/du-an",

@@ -8,6 +8,7 @@
     "checklist.corrected": "Corrected",
     "checklist.source.record": "From its {field}",
     "checklist.source.mover": "Given in the move",
+    "checklist.source.derived": "Derived by the {rule} rule",
     "checklist.source.recommended": "Recommended answer",
     "checklist.source.open": "Waits on an owner question",
     "checklist.nowIn": "Now, from r{r}",

@@ -45,7 +45,7 @@ import {
   type StandingViewer,
 } from './standing.js';
 import { targetView } from './target-view.js';
-import { autoVerifyAt, verifyWindowDays } from './verify-window.js';
+import { autoVerifyOf, verifyHeldOf, verifyWindowDays } from './verify-window.js';
 
 /** Everything the rows point at, loaded once for a page of rows. */
 export interface Linked {
@@ -358,12 +358,6 @@ function owedCarriers(route: FeedbackRouteView | null): FeedbackCarrierView[] {
   return route.carriers.filter((c) => !finished.includes(c.status));
 }
 
-/** When Forge verifies an item that reads resolved and has been dated by a sweep; else null. */
-export function autoVerifyOf(r: Row, phase: FeedbackPhase, l: Linked): Date | null {
-  if (phase !== 'resolved' || !r.resolvedSeenAt) return null;
-  return autoVerifyAt(r.resolvedSeenAt, l.verifyWindowDays);
-}
-
 /** The snooze an item is still parked under: one that has run out reads as no snooze, so it is New again with nothing to clear. */
 export function snoozeOf(
   r: Pick<Row, 'snoozedUntil' | 'snoozeReason'>,
@@ -399,7 +393,9 @@ export function summaryOf(
     {
       masterOwesTriage: l.masterOwed.has(r.id),
       snoozedUntil: snoozed?.until ?? null,
-      autoVerifyAt: autoVerifyOf(r, phase, l)?.toISOString() ?? null,
+      autoVerifyAt: autoVerifyOf(r, phase, l.verifyWindowDays)?.toISOString() ?? null,
+      recordCanVerify: r.violatedCriterionId !== null,
+      verifyHeld: verifyHeldOf(r, phase)?.why ?? null,
       carrierRelease:
         phase === 'planned' &&
         r.route === 'issue' &&

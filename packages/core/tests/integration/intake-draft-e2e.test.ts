@@ -41,7 +41,12 @@ const question = (n: number) => ({
   recommended: 'wait',
 });
 
-function reply(m: Mode): string {
+/** The item's own title, as the intake call was sent it: what each link's itemQuote quotes. */
+const titleIn = (user: string) =>
+  /^The (?:requirement|feedback) \S+:\n\s+Title: (.+)$/m.exec(user)?.[1] ?? '';
+
+function reply(m: Mode, user: string): string {
+  const itemQuote = titleIn(user).replace(/\.$/, '');
   const requirementDraft = {
     fills: [
       { field: 'summary', value: 'Clinic referrals reach the right patient.', source: 'REQ-1' },
@@ -50,8 +55,20 @@ function reply(m: Mode): string {
       { field: 'criterion', value: 'A referral is matched by its clinic code.', source: 'REQ-1' },
     ],
     links: [
-      { relation: 'duplicate', ref: 'REQ-1', why: 'Both match referrals by clinic code.' },
-      { relation: 'affected_workflow', ref: 'workflow:referral', why: 'Its match step changes.' },
+      {
+        relation: 'duplicate',
+        ref: 'REQ-1',
+        why: 'Both match referrals by clinic code.',
+        basis: 'Referrals are matched by clinic code',
+        itemQuote,
+      },
+      {
+        relation: 'affected_workflow',
+        ref: 'workflow:referral',
+        why: 'Its match step changes.',
+        basis: 'Match the referral',
+        itemQuote,
+      },
     ],
     questions: [question(1)],
     nothingToAsk: null,
@@ -88,8 +105,20 @@ function reply(m: Mode): string {
       { field: 'route', value: 'issue', source: 'REQ-1' },
     ],
     links: [
-      { relation: 'conflict', ref: 'REQ-1', why: 'REQ-1 BC-1 says the code decides.' },
-      { relation: 'affected_workflow', ref: 'workflow:referral', why: 'The match step.' },
+      {
+        relation: 'conflict',
+        ref: 'REQ-1',
+        why: 'REQ-1 BC-1 says the code decides.',
+        basis: 'A referral is matched by its clinic code',
+        itemQuote,
+      },
+      {
+        relation: 'affected_workflow',
+        ref: 'workflow:referral',
+        why: 'The match step.',
+        basis: 'Match the referral',
+        itemQuote,
+      },
     ],
     questions: [],
     nothingToAsk: 'The record settles the triage.',
@@ -124,7 +153,9 @@ function startGateway(): Promise<string> {
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       const chunk = (delta: object, finish: string | null, extra: object = {}) =>
         `data: ${JSON.stringify({ id: 'c1', object: 'chat.completion.chunk', created: 1, model: 'stub-gateway', choices: [{ index: 0, delta, finish_reason: finish }], ...extra })}\n\n`;
-      res.write(chunk({ role: 'assistant', content: intake ? reply(mode) : '{}' }, null));
+      res.write(
+        chunk({ role: 'assistant', content: intake ? reply(mode, text('user')) : '{}' }, null),
+      );
       res.write(
         chunk({}, 'stop', {
           usage: { prompt_tokens: 50, completion_tokens: 20, total_tokens: 70 },

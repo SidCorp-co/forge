@@ -1,7 +1,7 @@
 /**
  * Everything the intake assistant reads for a draft (REQ-34 BC-11): the item it drafts, and the
  * project's requirements, workflow designs, feedback and releases. Nothing else: no issue, no
- * comment, no code, no knowledge entry. `reads.test.ts` holds this file and the drafter to that, by
+ * comment, no code, no knowledge entry. `draft.test.ts` holds this file and the drafter to that, by
  * what they import and by what a draft calls.
  *
  * Each record is shown to the model under a ref (REQ-n, FB-n, workflow:<flow>, release:<version>),
@@ -51,6 +51,8 @@ export interface IntakeItem {
   key: string;
   title: string;
   lines: string[];
+  /** The workflow a feedback item was filed against (`workflow:<flow>`): always one the draft must name or set aside. */
+  workflowRef?: string;
   authorId: string;
   authorAgency: ActorAgency;
 }
@@ -62,6 +64,10 @@ export interface IntakeRecord {
   key: string;
   title: string;
   lines: string[];
+  /** A requirement's criteria as shown: what a conflict quotes (`rules.ts`). */
+  criteria?: { code: string; text: string }[];
+  /** A workflow's step labels as shown: what an affected-workflow link names. */
+  steps?: string[];
 }
 
 /** Whether a feedback item's own text may be shown, or only its key, kind and status (no_egress). */
@@ -179,10 +185,11 @@ async function aboutOf(row: typeof feedback.$inferSelect): Promise<string> {
 async function feedbackItem(id: string): Promise<IntakeItem | null> {
   const [row] = await db.select().from(feedback).where(eq(feedback.id, id)).limit(1);
   if (!row) return null;
+  const about = await aboutOf(row);
   const lines = [
     `Title: ${row.title}`,
     `Kind given: ${row.kind}; severity given: ${row.severity}`,
-    `About: ${await aboutOf(row)}`,
+    `About: ${about}`,
   ];
   if (row.body?.trim()) lines.push(`Body: ${clip(oneLine(row.body), 1500)}`);
   if (row.whereSeen?.trim()) lines.push(`Where seen: ${clip(oneLine(row.whereSeen), 200)}`);
@@ -193,6 +200,7 @@ async function feedbackItem(id: string): Promise<IntakeItem | null> {
     key: feedbackKey(row.fbSeq),
     title: row.title,
     lines,
+    ...(about.startsWith('workflow:') ? { workflowRef: about.split(' ')[0] } : {}),
     authorId: row.reportedBy,
     authorAgency: row.reporterAgency,
   };
@@ -273,10 +281,12 @@ async function requirementRecords(item: IntakeItem): Promise<IntakeRecord[]> {
     const lines = [`${key} (${r.status}): ${r.title}`];
     const tldr = tldrOf.get(r.id);
     if (tldr?.trim()) lines.push(`  In short: ${clip(oneLine(tldr), 240)}`);
-    for (const c of criteria.filter((c) => c.requirementId === r.id).slice(0, CRITERIA_MAX)) {
-      lines.push(`  ${c.code}: ${clip(oneLine(c.body), 160)}`);
-    }
-    return { ref: key, kind: 'requirement', key, title: r.title, lines };
+    const shown = criteria
+      .filter((c) => c.requirementId === r.id)
+      .slice(0, CRITERIA_MAX)
+      .map((c) => ({ code: c.code, text: clip(oneLine(c.body), 160) }));
+    for (const c of shown) lines.push(`  ${c.code}: ${c.text}`);
+    return { ref: key, kind: 'requirement', key, title: r.title, lines, criteria: shown };
   });
 }
 
@@ -310,8 +320,16 @@ async function workflowRecords(item: IntakeItem): Promise<IntakeRecord[]> {
     const nodes = [...(doc.steps ?? []), ...(doc.states ?? [])]
       .map((s) => s.node?.label ?? s.id)
       .filter((l): l is string => typeof l === 'string' && l.trim() !== '');
-    if (nodes.length) lines.push(`  Steps: ${clip(nodes.join('; '), 400)}`);
-    return { ref: workflowRef(w.flow), kind: 'workflow', key: w.flow, title, lines };
+    const steps = clip(nodes.join('; '), 400);
+    if (nodes.length) lines.push(`  Steps: ${steps}`);
+    return {
+      ref: workflowRef(w.flow),
+      kind: 'workflow',
+      key: w.flow,
+      title,
+      lines,
+      steps: nodes.filter((n) => steps.includes(n)),
+    };
   });
 }
 

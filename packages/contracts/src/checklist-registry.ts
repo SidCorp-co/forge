@@ -73,7 +73,7 @@ export const NO_CRITERION = "none";
  * answers before it is triaged. Kind and requirement are the item's own; a triage corrects the kind
  * with `kind`, and the requirement by retargeting the item or naming a criterion. Short form (BC-6):
  * a bug naming a criterion needs only that criterion, the reproduction and the severity, since the
- * requirement is the criterion's and the route is an issue (`feedback-triage.ts:triageAnswersOf`).
+ * requirement is the criterion's and the route is an issue, recorded as derived (`feedback-triage.ts:triageDerivedOf`).
  */
 export const FEEDBACK_TRIAGE_CHECKLIST = defineChecklist({
 	id: "feedback_triage",

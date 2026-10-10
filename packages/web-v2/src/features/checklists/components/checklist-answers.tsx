@@ -53,7 +53,9 @@ function Source({ answer, field }: { answer: ChecklistAnswer; field: ChecklistFo
       ? t("checklist.source.recommended")
       : answer.source === "mover"
         ? t("checklist.source.mover")
-        : t("checklist.source.record", { field: field.recordLabel ?? answer.source.replace(/^record:/, "") });
+        : answer.source.startsWith("derived:")
+          ? t("checklist.source.derived", { rule: answer.source.slice("derived:".length) })
+          : t("checklist.source.record", { field: field.recordLabel ?? answer.source.replace(/^record:/, "") });
   return (
     <span className="text-12 text-subtle" data-testid="checklist-source">
       {said}

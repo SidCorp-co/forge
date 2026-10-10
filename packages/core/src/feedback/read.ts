@@ -28,10 +28,11 @@ import { notFound } from '../middleware/route-errors.js';
 import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
 import { rowIn as requirementRowIn } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
-import { autoVerifyOf, linkedOf, summaryOf, viewerCanOf } from './list-read.js';
+import { linkedOf, summaryOf, viewerCanOf } from './list-read.js';
 import { sourceOf } from './relations.js';
 import { reportersOf } from './reporters.js';
 import { shipNoticeOf } from './ship-notice.js';
+import { autoVerifyOf, verifyHeldOf } from './verify-window.js';
 
 export interface FeedbackActor {
   userId: string;
@@ -303,8 +304,12 @@ export async function detailAs(
       ...summary,
       verified: verifiedViewOf(row, decisions, deciders, withhold),
       autoVerify: (() => {
-        const at = autoVerifyOf(row, phase, linked);
+        const at = autoVerifyOf(row, phase, linked.verifyWindowDays);
         return at ? { at: at.toISOString(), windowDays: linked.verifyWindowDays } : null;
+      })(),
+      verifyHeld: (() => {
+        const held = verifyHeldOf(row, phase);
+        return held ? { at: held.at.toISOString(), why: held.why } : null;
       })(),
       body: withhold ? null : row.body,
       whereSeen: withhold ? null : row.whereSeen,

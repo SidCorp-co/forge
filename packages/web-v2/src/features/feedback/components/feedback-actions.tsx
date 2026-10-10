@@ -116,7 +116,11 @@ function VerifyBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
       <h3 className="text-12 font-semibold text-muted">{t("feedback.act.confirmFix")}</h3>
       <p className="text-12 text-muted" data-testid="verify-copy">
         {t("feedback.verify.copy")}
-        {f.autoVerify ? t("feedback.verify.byDate", { at: time.dateTime(f.autoVerify.at), n: f.autoVerify.windowDays }) : t("feedback.verify.byWindow")}
+        {f.verifyHeld
+          ? t("feedback.verify.held")
+          : f.autoVerify
+            ? t("feedback.verify.byDate", { at: time.dateTime(f.autoVerify.at), n: f.autoVerify.windowDays })
+            : t("feedback.verify.byPerson")}
       </p>
       {f.can.askVerify ? <p className="text-12 text-muted">{t("feedback.verify.asking")}</p> : null}
       {!reopening && f.can.verify ? (

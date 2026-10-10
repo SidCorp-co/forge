@@ -7,7 +7,7 @@
 
 import { FEEDBACK_TRIAGE_CHECKLIST } from '@forge/contracts/checklist-registry';
 import { evaluateChecklist, parseAnswers } from '@forge/contracts/checklists';
-import type { FeedbackKind, FeedbackRefusalCode } from '@forge/contracts/feedback';
+import type { FeedbackRefusalCode } from '@forge/contracts/feedback';
 import { recordingDiagnosisSchema } from '@forge/contracts/feedback';
 import { triageAnswersOf, triageAnswersSchema } from '@forge/contracts/feedback-triage';
 import {
@@ -42,14 +42,10 @@ const input = z.strictObject({
  * will judge it, so a proposal the person could only be refused for is refused here, naming each
  * question, and the assistant drafts the missing answers instead (REQ-34 BC-2).
  */
-async function proposalGaps(
-  feedbackId: string,
-  kind: FeedbackKind,
-  answers: unknown,
-): Promise<string[]> {
+async function proposalGaps(feedbackId: string, answers: unknown): Promise<string[]> {
   const parsed = parseAnswers(
     FEEDBACK_TRIAGE_CHECKLIST,
-    triageAnswersOf({ kind, route: 'issue', answers }),
+    triageAnswersOf({ route: 'issue', answers }),
   );
   if (!parsed.ok) return parsed.refusals.map((r) => r.detail);
   const record = await feedbackTriageRecord(db, feedbackId);
@@ -97,7 +93,7 @@ export const forgeRecordingTool: ContextScopedMcpToolFactory = (ctx) => ({
       );
     }
     if (diagnosis) {
-      const gaps = await proposalGaps(item.id, item.kind, answers);
+      const gaps = await proposalGaps(item.id, answers);
       if (gaps.length > 0) {
         throw refuse(
           'CHECKLIST_INCOMPLETE',

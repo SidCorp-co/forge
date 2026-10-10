@@ -46,7 +46,7 @@ describe("a feedback item's triage checklist on its page", () => {
       { question: "criterion", value: "REQ-1 BC-2", provenance: "given", source: "mover" },
       { question: "severity", value: "high", provenance: "given", source: "mover" },
       { question: "reproduced", value: "Twice on the staging board.", provenance: "given", source: "mover" },
-      { question: "route", value: "issue", provenance: "given", source: "mover" },
+      { question: "route", value: "issue", provenance: "given", source: "derived:short-form" },
     ];
     feedbackPage(readOf(FEEDBACK_TRIAGE_CHECKLIST, record(FEEDBACK_TRIAGE_CHECKLIST, { kind: "bug", requirement: "REQ-1" }), [{ ...passed(answers), from: "new", to: "triaged", gate: "feedback_triage" }]));
     const section = await screen.findByTestId("checklist");
@@ -55,5 +55,8 @@ describe("a feedback item's triage checklist on its page", () => {
     expect(row(section, "severity")).toHaveTextContent(optionLabel(FEEDBACK_TRIAGE_CHECKLIST, "severity", "high"));
     expect(row(section, "severity")).toHaveTextContent("Given in the move");
     expect(row(section, "reproduced")).toHaveTextContent("Twice on the staging board.");
+    // the short form gave the route; the triager sent none, so it is not read as theirs
+    expect(row(section, "route")).toHaveTextContent("Derived by the short-form rule");
+    expect(row(section, "route")).not.toHaveTextContent("Given in the move");
   });
 });

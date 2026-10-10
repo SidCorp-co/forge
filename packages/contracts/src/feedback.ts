@@ -736,8 +736,14 @@ export interface FeedbackVerifiedView {
 export interface FeedbackView extends FeedbackSummary {
 	/** Set once the item is verified. */
 	verified: FeedbackVerifiedView | null;
-	/** While it reads resolved: when Forge verifies it if nobody has, and the window that dates it. */
+	/**
+	 * While it reads resolved and names a violated criterion: when the record is read to answer "is
+	 * the problem gone?" if nobody has, and the window that dates it. Null where no criterion is
+	 * named, since then no record can verify it and a person answers.
+	 */
 	autoVerify: { at: string; windowDays: number } | null;
+	/** Past its window, the record could not say the problem is gone: why, as the sweep wrote it. */
+	verifyHeld: { at: string; why: string } | null;
 	/** Null until the work that carries the item has shipped (phase resolved or verified on an issue route). */
 	shipNotice: FeedbackShipNotice | null;
 	body: string | null;

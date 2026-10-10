@@ -215,6 +215,20 @@ describe('a bug against an existing criterion is triaged with only its three ans
        WHERE f.project_id = ${projectId} AND f.fb_seq = ${Number(fb.slice(3))}
     `)) as unknown as Doc[];
     expect(named?.code).toBe('BC-1');
+    const [move] = (await db.execute(sql`
+      SELECT t.checklist_answers FROM kernel_transitions t JOIN feedback f ON f.id = t.entity_id
+       WHERE t.entity = 'feedback' AND t.to_status = 'triaged'
+         AND f.project_id = ${projectId} AND f.fb_seq = ${Number(fb.slice(3))}
+    `)) as unknown as Doc[];
+    expect(
+      ((move?.checklist_answers ?? []) as Doc[]).find((a) => a.question === 'route'),
+      'the triager sent no route: the short form gave it, and it is recorded as derived by that rule',
+    ).toEqual({
+      question: 'route',
+      value: 'issue',
+      provenance: 'given',
+      source: 'derived:short-form',
+    });
   });
 
   it('refuses another route for it by name, and a criterion of another requirement', async () => {

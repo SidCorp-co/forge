@@ -49,6 +49,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     messages: [],
     verified: null,
     autoVerify: null,
+    verifyHeld: null,
     snoozed: null,
     shipNotice: null,
     ...over,

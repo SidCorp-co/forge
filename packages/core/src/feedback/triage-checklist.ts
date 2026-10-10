@@ -10,6 +10,7 @@ import { FEEDBACK_TRIAGE_CHECKLIST, NO_CRITERION } from '@forge/contracts/checkl
 import {
   type ChecklistEvaluation,
   checklistRefusals,
+  type DerivedAnswer,
   evaluateChecklist,
   parseAnswers,
   type RecordAnswers,
@@ -125,12 +126,14 @@ export function shortFormRouteRefusal(
 export function judgeRetriage(
   answers: unknown,
   record: RecordAnswers,
+  derived: Readonly<Record<string, DerivedAnswer>> = {},
 ): { evaluation: ChecklistEvaluation } | { refusals: Refusal[] } {
   const parsed = parseAnswers(FEEDBACK_TRIAGE_CHECKLIST, answers);
   if (!parsed.ok) return { refusals: parsed.refusals };
   const evaluation = evaluateChecklist(FEEDBACK_TRIAGE_CHECKLIST, {
     given: parsed.answers,
     record,
+    derived,
   });
   return evaluation.complete ? { evaluation } : { refusals: checklistRefusals(evaluation) };
 }

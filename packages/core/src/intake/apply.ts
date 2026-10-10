@@ -12,6 +12,7 @@ import {
   criterionAnswerOf,
   TRIAGE_ROUTE_QUESTION,
   triageAnswersOf,
+  triageDerivedOf,
 } from '@forge/contracts/feedback-triage';
 import {
   INTAKE_FIELDS,
@@ -61,12 +62,14 @@ export function triageFaultOver(record: RecordAnswers) {
       return `answers.criterion: "${criterion.slice(0, 80)}" is not REQ-n BC-m or none`;
     }
     const recorded = record.kind && 'value' in record.kind ? record.kind.value : undefined;
-    const sent = parseAnswers(
-      FEEDBACK_TRIAGE_CHECKLIST,
-      triageAnswersOf({ kind: (kind ?? recorded) as FeedbackKind, route, answers }),
-    );
+    const sent = parseAnswers(FEEDBACK_TRIAGE_CHECKLIST, triageAnswersOf({ route, answers }));
     if (!sent.ok) return faultsOf(sent.refusals.map((r) => `answers: ${r.detail}`));
-    const { gaps } = evaluateChecklist(FEEDBACK_TRIAGE_CHECKLIST, { given: sent.answers, record });
+    const derived = triageDerivedOf({ kind: (kind ?? recorded) as FeedbackKind, route, answers });
+    const { gaps } = evaluateChecklist(FEEDBACK_TRIAGE_CHECKLIST, {
+      given: sent.answers,
+      record,
+      derived,
+    });
     return faultsOf(gaps.map((g) => `answers: ${g.detail}`));
   };
 }

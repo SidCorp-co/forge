@@ -8,8 +8,10 @@ import { checklistRefusals, evaluateChecklist, parseAnswers, type RecordAnswers 
 import {
 	criterionAnswerOf,
 	isShortForm,
+	SHORT_FORM_RULE,
 	triageAnswersOf,
 	triageAnswersSchema,
+	triageDerivedOf,
 	triageRouteOf,
 } from "./feedback-triage.js";
 import { FEEDBACK_MACHINE } from "./feedback-machine.js";
@@ -22,9 +24,13 @@ const record = (kind: string): RecordAnswers => ({
 
 /** The checklist judged as the kernel judges it: the answers parsed, then evaluated with the record. */
 function judge(kind: "bug" | "idea", route: "issue" | "new_requirement" | undefined, answers: unknown) {
-	const parsed = parseAnswers(FEEDBACK_TRIAGE_CHECKLIST, triageAnswersOf({ kind, route, answers }));
+	const parsed = parseAnswers(FEEDBACK_TRIAGE_CHECKLIST, triageAnswersOf({ route, answers }));
 	if (!parsed.ok) return { refusals: parsed.refusals, evaluation: null };
-	const evaluation = evaluateChecklist(FEEDBACK_TRIAGE_CHECKLIST, { given: parsed.answers, record: record(kind) });
+	const evaluation = evaluateChecklist(FEEDBACK_TRIAGE_CHECKLIST, {
+		given: parsed.answers,
+		record: record(kind),
+		derived: triageDerivedOf({ kind, route, answers }),
+	});
 	return { refusals: checklistRefusals(evaluation), evaluation };
 }
 
@@ -96,6 +102,18 @@ describe("the short form (BC-6)", () => {
 		expect(evaluation?.complete).toBe(true);
 	});
 
+	it("records the route it gives as derived by the short form, and a route the triager sent as theirs", () => {
+		const route = (e: ReturnType<typeof judge>["evaluation"]) => e?.answers.find((a) => a.question === "route");
+		expect(route(judge("bug", undefined, three).evaluation)).toEqual({
+			question: "route",
+			value: "issue",
+			provenance: "given",
+			source: `derived:${SHORT_FORM_RULE}`,
+		});
+		expect(route(judge("bug", "issue", three).evaluation)).toMatchObject({ value: "issue", source: "mover" });
+		expect(triageDerivedOf({ kind: "idea", route: undefined, answers: three })).toEqual({});
+	});
+
 	it("is not taken by an idea, nor by a bug that names no criterion", () => {
 		expect(isShortForm("idea", three)).toBe(false);
 		expect(isShortForm("bug", { ...three, criterion: "none" })).toBe(false);
@@ -122,7 +140,7 @@ describe("the answers a triage sends", () => {
 	});
 
 	it("hand answers that are not an object on as sent, for the check to refuse by name", () => {
-		expect(triageAnswersOf({ kind: "bug", route: "issue", answers: "all good" })).toBe("all good");
+		expect(triageAnswersOf({ route: "issue", answers: "all good" })).toBe("all good");
 		const { refusals } = judge("bug", "issue", "all good");
 		expect(refusals[0]).toMatchObject({ code: "CHECKLIST_ANSWER_INVALID", path: "/answers" });
 	});

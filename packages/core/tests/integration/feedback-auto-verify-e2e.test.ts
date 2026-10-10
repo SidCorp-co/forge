@@ -3,7 +3,9 @@
  * names them; a sweep dates the first time an item reads resolved, and once the project's window has
  * run it is verified only where the record says the problem is gone (Feedback lifecycle r14
  * loop-check; `feedback-triage-checklist-e2e.test.ts` proves that case), never assumed gone; an item
- * still inside its window is left alone; the BA's Needs you holds no verify row.
+ * still inside its window is left alone; the BA's Needs you holds no verify row. An item the record
+ * cannot verify promises no date, and past its window the sweep writes why on it and it waits on a
+ * holder of feedback.approve, never held in silence.
  */
 
 import { sql } from 'drizzle-orm';
@@ -129,7 +131,7 @@ describe('Forge answers for an item nobody confirmed only from the record, once 
     expect(first.dated).toBeGreaterThanOrEqual(1);
     const dated = await read(fb);
     expect(dated.status).toBe('triaged');
-    expect(dated.autoVerify).toMatchObject({ windowDays: 7 });
+    expect(dated.autoVerify, 'its triage named no criterion: no date is promised').toBeNull();
 
     await seen(fb, 8);
     const before = (await bell('ann')).length;
@@ -142,6 +144,7 @@ describe('Forge answers for an item nobody confirmed only from the record, once 
     );
     expect(out.phase).toBe('resolved');
     expect(out.can).toMatchObject({ verify: true });
+    expect(out.verifyHeld).toMatchObject({ why: expect.stringContaining('named no criterion') });
     expect((await bell('ann')).slice(before)).toEqual([]);
   });
 
@@ -170,5 +173,65 @@ describe('Forge answers for an item nobody confirmed only from the record, once 
       stamp[0]?.resolved_seen_at,
       'a reopen clears the date the window counts from',
     ).toBeNull();
+  });
+});
+
+describe('an item triaged before a criterion could be named (FB-19, 31, 36, 48, 51, 102, 110 on forge-dev)', () => {
+  it('promises no date, and past its window the sweep writes why on it and asks a holder of feedback.approve', async () => {
+    const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
+    const w = await world();
+    const carrier = await issue(w, { status: 'closed', createdAt: ago(30), mergedAt: ago(2) });
+    const fb = await feedback(w, [carrier.id]);
+    const get = async () =>
+      (await api(w.token, 'GET', `/api/projects/${w.projectId}/feedback/${fb}`)).body
+        .feedback as Doc;
+    const heldAt = async () =>
+      (
+        (await db.execute(
+          sql`SELECT verify_held_at FROM feedback WHERE project_id = ${w.projectId} AND fb_seq = ${seq(fb)}`,
+        )) as unknown as { verify_held_at: Date | null }[]
+      )[0]?.verify_held_at ?? null;
+
+    // its reporter was told it shipped, so loop close question one is settled and two is what is owed
+    const told = await api(
+      w.token,
+      'POST',
+      `/api/projects/${w.projectId}/feedback/${fb}/tell-shipped`,
+      {},
+    );
+    expect(told.status, JSON.stringify(told.body)).toBeLessThan(300);
+    await sweepResolvedFeedback();
+    const inside = await get();
+    expect(inside.phase).toBe('resolved');
+    expect(inside.autoVerify, 'no criterion: the record can never verify it').toBeNull();
+    expect(inside.verifyHeld).toBeNull();
+    expect(inside.waitingOn).toMatchObject({
+      says: { rule: { key: 'feedback.rule.verifyByPerson' } },
+    });
+
+    await db.execute(sql`
+      UPDATE feedback SET resolved_seen_at = now() - make_interval(days => 8)
+       WHERE project_id = ${w.projectId} AND fb_seq = ${seq(fb)}
+    `);
+    const past = await sweepResolvedFeedback();
+    expect(past.noted, 'the sweep wrote why on the item it held').toBeGreaterThanOrEqual(1);
+    const held = await get();
+    expect(held.status).toBe('triaged');
+    expect(held.verifyHeld).toMatchObject({
+      why: 'its triage named no criterion, so no verdict can say the problem is gone',
+    });
+    expect(held.waitingOn).toMatchObject({
+      kind: 'you',
+      says: {
+        act: { key: 'standing.act.sayIfGone' },
+        rule: { key: 'feedback.rule.verifyHeld' },
+      },
+    });
+    expect(held.attentionGroup, 'a holder of feedback.approve owes the answer').toBe('needs_you');
+
+    const first = await heldAt();
+    expect(first).not.toBeNull();
+    await sweepResolvedFeedback();
+    expect(await heldAt(), 'the same reason is written once').toEqual(first);
   });
 });

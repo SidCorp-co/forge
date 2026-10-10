@@ -85,11 +85,9 @@ describe("the checklist form", () => {
     for (const key of ["requirementId", "acceptanceCriteria", "buildsWorkflow"]) expect(text).not.toContain(key);
     expect(screen.getByText("Answered on the issue itself, from its acceptance criteria.")).toBeTruthy();
     expect(screen.getByText("Answered on the issue itself, from its workflow design.")).toBeTruthy();
-    expect(
-      screen.getByText(
-        "This issue cannot move yet. Each thing stopping it is shown in red under its question: fix those on the issue itself. Answer the questions you can here, then press Answer and move.",
-      ),
-    ).toBeTruthy();
+    // where what stops it is shown is said in words, never by its colour alone
+    expect(screen.getByText("Cannot move yet. What stops it is written under each question.")).toBeTruthy();
+    expect(text).not.toMatch(/\bin red\b/);
   });
 
   it("is not opened for a refusal that names no checklist", () => {

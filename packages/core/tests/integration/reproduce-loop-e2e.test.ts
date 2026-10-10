@@ -339,12 +339,15 @@ describe("the reporter's confirm in the fix preview is the item's loop close (BC
     const out = await read(fb);
     expect(out.status).toBe('triaged');
     expect(out.phase).toBe('resolved');
+    const [dated] = (await db.execute(
+      sql`SELECT resolved_seen_at FROM feedback WHERE project_id = ${projectId} AND fb_seq = ${Number(fb.slice(3))}`,
+    )) as unknown as { resolved_seen_at: Date | null }[];
     expect(
-      out.autoVerify,
+      dated?.resolved_seen_at,
       'dated: the window counts, the reporter is asked as today',
-    ).toMatchObject({
-      windowDays: 7,
-    });
+    ).not.toBeNull();
+    // it names no criterion, so the record promises no date: a person answers (Feedback lifecycle r14)
+    expect(out.autoVerify).toBeNull();
   });
 
   it('asks again when the merge check record that shipped it names no patch (an old-shape full-lane report: the absent marker)', async () => {

@@ -40,6 +40,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     messages: [],
     verified: null,
     autoVerify: null,
+    verifyHeld: null,
     snoozed: null,
     shipNotice: null,
     attachments: [],
@@ -254,8 +255,28 @@ describe("the confirmation of the fix", () => {
     expect(screen.getByTestId("verified-line")).toHaveTextContent("after 7 days with no reply");
   });
 
-  it("says when Forge will verify a resolved item nobody has confirmed", () => {
+  it("dates the record check of a resolved item that names a criterion, and says what it verifies on", () => {
     renderWithQuery(<FeedbackFacts f={view({ phase: "resolved", autoVerify: { at: "2026-10-14T01:00:00.000Z", windowDays: 7 } })} slug="hop" />);
-    expect(screen.getByTestId("facts-auto-verify")).toHaveTextContent("7-day window");
+    expect(screen.getByTestId("facts-auto-verify")).toHaveTextContent("verified if its criterion passes (7-day window)");
+  });
+
+  it("says why the record could not verify an item past its window, and dates nothing", () => {
+    const held = { at: "2026-10-14T01:00:00.000Z", why: "its triage named no criterion, so no verdict can say the problem is gone" };
+    renderWithQuery(<FeedbackFacts f={view({ phase: "resolved", verifyHeld: held })} slug="hop" />);
+    expect(screen.getByTestId("facts-verify-held")).toHaveTextContent("Not verified: its triage named no criterion");
+    expect(screen.queryByTestId("facts-auto-verify")).toBeNull();
+  });
+
+  it("tells whoever confirms the fix who verifies it: the record, a person, or a person after the record could not", () => {
+    core();
+    const resolved = { phase: "resolved", status: "triaged", can: { ...CAN, triage: false, verify: true } } as const;
+    const { unmount } = renderWithQuery(<FeedbackActions projectId="p1" f={view(resolved)} />);
+    expect(screen.getByTestId("verify-copy")).toHaveTextContent("It names no criterion, so a person verifies it.");
+    unmount();
+    const dated = renderWithQuery(<FeedbackActions projectId="p1" f={view({ ...resolved, autoVerify: { at: "2026-10-14T01:00:00.000Z", windowDays: 7 } })} />);
+    expect(screen.getByTestId("verify-copy")).toHaveTextContent("Forge checks the record: a passing criterion verifies it.");
+    dated.unmount();
+    renderWithQuery(<FeedbackActions projectId="p1" f={view({ ...resolved, verifyHeld: { at: "2026-10-14T01:00:00.000Z", why: "REQ-1 BC-2 reads failing on the running build" } })} />);
+    expect(screen.getByTestId("verify-copy")).toHaveTextContent("The record could not verify it, so a person answers.");
   });
 });

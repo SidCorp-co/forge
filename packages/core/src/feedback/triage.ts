@@ -16,7 +16,12 @@ import {
   feedbackKey,
 } from '@forge/contracts/feedback';
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
-import { namedCriterionOf, triageAnswersOf, triageRouteOf } from '@forge/contracts/feedback-triage';
+import {
+  namedCriterionOf,
+  triageAnswersOf,
+  triageDerivedOf,
+  triageRouteOf,
+} from '@forge/contracts/feedback-triage';
 import { requirementKey } from '@forge/contracts/requirements';
 import { eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -291,7 +296,10 @@ export async function triageIn(
     })
     .where(eq(feedback.id, row.id));
   await tx.delete(feedbackRouteIssues).where(eq(feedbackRouteIssues.feedbackId, row.id));
-  const answers = triageAnswersOf({ kind, route, answers: t.answers });
+  // the route the triager sent is theirs; the one the short form gives is recorded as derived
+  const sent = t.route === 'decline' ? undefined : t.route;
+  const answers = triageAnswersOf({ route: sent, answers: t.answers });
+  const derived = triageDerivedOf({ kind, route: sent, answers: t.answers });
   if (row.status !== 'triaged') {
     const moved = await transition(tx, FEEDBACK_MACHINE, {
       to: 'triaged',
@@ -299,12 +307,16 @@ export async function triageIn(
       where: eq(feedback.id, row.id),
       actor: feedbackKernelActor(actor),
       source: 'feedback-triage',
-      checklist: { answers, record: ({ tx: lockTx }) => feedbackTriageRecord(lockTx, row.id) },
+      checklist: {
+        answers,
+        derived,
+        record: ({ tx: lockTx }) => feedbackTriageRecord(lockTx, row.id),
+      },
       returning: ['id'],
     });
     movedRow(moved);
   } else {
-    const judged = judgeRetriage(answers, await feedbackTriageRecord(tx, row.id));
+    const judged = judgeRetriage(answers, await feedbackTriageRecord(tx, row.id), derived);
     if ('refusals' in judged) return { refusals: judged.refusals };
   }
   // the checklist asks the route, so a triage that reaches here has one
