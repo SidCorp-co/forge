@@ -20,7 +20,7 @@ function sortOrgs(orgs: OrgListItem[]): OrgListItem[] {
 interface ActiveOrgContextValue {
   /** All orgs the caller belongs to, personal-first then alphabetical. */
   orgs: OrgListItem[];
-  /** The resolved active org (null only while orgs are still loading). */
+  /** The resolved active org (null only while orgs or the stored preference are still loading). */
   activeOrg: OrgListItem | null;
   /** Convenience: `activeOrg?.id ?? null`. Drives the projects-console scope. */
   activeOrgId: string | null;
@@ -37,13 +37,17 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
   const t = useCopy();
   const { data: orgsData } = useOrgs();
-  const { data: prefs } = usePreferences();
+  const { data: prefs, isSuccess: prefsRead, isError: prefsFailed } = usePreferences();
 
   const orgs = sortOrgs(orgsData ?? []);
 
+  // The stored choice is known only once preferences answer. Resolving before that read the personal
+  // org as active for a tick: the project page then wrote its own org back over the same stored value
+  // (a write on view) and the dashboard asked /me/pulse for an org holding none of the projects (404).
+  const prefsKnown = prefsRead || prefsFailed;
   const stored = prefs?.activeOrgId ?? null;
   const activeOrg =
-    orgs.length === 0
+    orgs.length === 0 || !prefsKnown
       ? null
       : ((stored ? orgs.find((o) => o.id === stored) : undefined) ?? orgs.find((o) => o.isPersonal) ?? orgs[0]);
 
@@ -70,8 +74,9 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
     orgs,
     activeOrg,
     activeOrgId: activeOrg?.id ?? null,
+    // writes only a real change against a preference already read, never a guess made before it
     setActiveOrg: (orgId: string) => {
-      if (orgId !== activeOrg?.id) mutate(orgId);
+      if (prefsKnown && orgId !== activeOrg?.id) mutate(orgId);
     },
     isSingle: orgs.length <= 1,
   };

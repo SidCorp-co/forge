@@ -195,7 +195,7 @@ export function FeedbackPage({
                 </div>
               ) : null}
               {tab === "activity" ? (
-                <section className="grid gap-8" aria-label={t("feedback.tab.activity")} data-testid="view-activity">
+                <section className="grid grid-cols-1 gap-8" aria-label={t("feedback.tab.activity")} data-testid="view-activity">
                   <FeedbackHistory f={f} />
                   {f.can.triage ? null : checklists}
                 </section>

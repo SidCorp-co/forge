@@ -4,9 +4,10 @@
 // with the state. An entity that nests (a module under its parent) adds its ancestors between the back
 // control and the title as a trail, "← Modules › Execution › Runs"; nothing else does. Back lands on the list view the page was opened from — its mode,
 // filters and open peek — kept in session storage per list; a page reached by a link goes to the
-// plain list. Below 768px of page column (the window less the sidebar, `column-md` in globals.css)
-// the bar is too narrow for the title, so it heads the main column instead, and the back control is
-// its arrow alone, so the page's actions never cover it.
+// plain list. Below 1152px of page column (the window less the sidebar, `column-wide` in globals.css)
+// the bar's acts leave the title too little room, so the key, badge and title head the main column
+// instead; below 768px (`column-md`) the back control is its arrow alone too, so the page's actions
+// never cover it.
 
 import { Link } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
@@ -92,27 +93,30 @@ export function DetailHeader({ back, itemKey, title, badge, action, keyTitle, tr
         }
         after={
           <span className="flex flex-none items-center gap-2 max-column-md:hidden">
-            {itemKey ? (
-              <span className="font-mono text-12 font-semibold text-muted" title={keyTitle}>
-                {itemKey}
-              </span>
-            ) : null}
-            {badge}
+            {/* the key and badge travel with the title: below column-wide all three head the main column */}
+            <span className="contents max-column-wide:hidden">
+              {itemKey ? (
+                <span className="font-mono text-12 font-semibold text-muted" title={keyTitle}>
+                  {itemKey}
+                </span>
+              ) : null}
+              {badge}
+            </span>
             {views}
           </span>
         }
       >
-        <span className="max-column-md:hidden">{title}</span>
+        <span className="max-column-wide:hidden">{title}</span>
       </PageTitle>
       {action ? <TopBarActions>{action}</TopBarActions> : null}
     </>
   );
 }
 
-/** The title block heading the main column below 768px of page column, where the top bar only holds the back control. */
+/** The title block heading the main column below 1152px of page column, where the top bar's acts leave the title no room. */
 export function DetailMobileTitle({ itemKey, title, badge }: { itemKey?: string; title: ReactNode; badge?: ReactNode }) {
   return (
-    <div className="px-4 pb-1 pt-4 column-md:hidden" data-testid="detail-mobile-title">
+    <div className="px-4 pb-1 pt-4 md:px-8 column-wide:hidden" data-testid="detail-mobile-title">
       <div className="flex flex-wrap items-center gap-2">
         {itemKey ? <span className="font-mono text-12 font-semibold text-muted">{itemKey}</span> : null}
         {badge}

@@ -17,7 +17,7 @@ const PLACEHOLDERS = ["work", "flow", "quality", "liveness", "sitting"] as const
 export function OverviewScreen() {
   const router = useRouter();
   const { activeOrg, activeOrgId } = useActiveOrg();
-  const pulse = usePulse(activeOrgId ?? undefined);
+  const pulse = usePulse(activeOrgId);
   const { items: allItems } = useProjectsConsole();
   const t = useCopy();
 

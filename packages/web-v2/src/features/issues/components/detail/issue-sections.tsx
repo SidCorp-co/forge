@@ -130,8 +130,10 @@ export function ActivityTab({
   past?: ReactNode;
 }) {
   const t = useCopy();
+  // one column of minmax(0, 1fr), never the implicit auto track: an auto track grows to the widest
+  // min-content inside it, so one comment's table or code line widened every row under the rail
   return (
-    <section id="issue-comments" aria-label={t("issues.tab.activity")} data-testid="view-activity" className="grid gap-4">
+    <section id="issue-comments" aria-label={t("issues.tab.activity")} data-testid="view-activity" className="grid grid-cols-1 gap-4">
       {past}
       <SegmentedControl
         options={[

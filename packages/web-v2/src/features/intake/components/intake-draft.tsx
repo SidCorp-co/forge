@@ -143,8 +143,9 @@ function IntakeDraftBody({ draft, slug, assumptions }: { draft: IntakeDraftView;
       <div>
         <FieldLabel>{t("intake.questions")}</FieldLabel>
         {draft.questions.length === 0 ? (
-          <p className="text-13 text-subtle" data-testid="intake-nothing-to-ask">
-            {t("intake.nothingToAsk")}
+          <p className="text-13 leading-snug" data-testid="intake-nothing-to-ask">
+            <span className="font-medium text-fg">{t("intake.nothingToAsk")}</span>
+            {draft.nothingToAsk ? <span className="text-subtle"> · {draft.nothingToAsk}</span> : null}
           </p>
         ) : (
           <ul className="grid">
