@@ -4,7 +4,6 @@
 
 import {
   Avatar,
-  Badge,
   Checkbox,
   EnumBadge,
   enumLabel,
@@ -38,7 +37,6 @@ import {
   ISSUE_COMPLEXITIES,
   ISSUE_PRIORITIES,
   type IssueFailureInfo,
-  type IssuePriority,
   type IssueRow,
 } from "../types";
 import {
@@ -139,24 +137,6 @@ function QueuedChip({ step }: { step: QueuedStepView }) {
     <Tooltip label={`${enumLabel("jobType", step.jobType, language)} · ${gate.detail}`} multiline>
       {chip}
     </Tooltip>
-  );
-}
-
-const PRIORITY_TONE: Record<IssuePriority, "red" | "amber" | "neutral"> = {
-  critical: "red",
-  high: "amber",
-  medium: "neutral",
-  low: "neutral",
-  none: "neutral",
-};
-
-/** Read-only priority pill. `none` collapses to a muted dash. */
-function PriorityCell({ priority }: { priority: IssuePriority }) {
-  const L = useLabel();
-  if (priority === "none")
-    return <span className="fg-caption text-subtle">—</span>;
-  return (
-    <Badge tone={PRIORITY_TONE[priority]}>{L("issuePriority", priority)}</Badge>
   );
 }
 
@@ -343,7 +323,7 @@ export function IssueTableLine({
         <StatusCell row={row} />
       </TD>
       <TD className="whitespace-nowrap">
-        <PriorityCell priority={row.priority} />
+        {row.priority === "none" ? <span className="fg-caption text-subtle">—</span> : <EnumBadge family="priority" value={row.priority} />}
       </TD>
       <TD className="max-w-50">
         <AssigneeCell assignee={assignee} />
