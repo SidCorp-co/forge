@@ -3,9 +3,8 @@
 import type { ExecutionFacts } from "@forge/contracts/report-executions";
 import type { BlockSource } from "@forge/contracts/visual-blocks";
 import { useState } from "react";
-import { useNow } from "@/design";
+import { keyedByContent, useNow } from "@/design";
 import { useTimeFormat } from "@/lib/i18n/interface-language";
-import { keyed } from "@/lib/utils/keyed";
 import { useBlockInstants } from "./instants";
 import type { SourceFacts } from "./context";
 
@@ -147,7 +146,7 @@ function ExecutionSource({ executionId, execution }: { executionId: string; exec
             <p className="m-0">Read nothing from Forge</p>
           ) : (
             <ul className="m-0 list-none p-0 font-mono" data-testid="visual-block-reads">
-              {keyed(reads, (r) => `${r.method} ${r.path}`).map(([key, r]) => (
+              {keyedByContent(reads, (r) => `${r.method} ${r.path}`).map(({ key, item: r }) => (
                 // the same path can be read twice in one run: the nth read of it is what a read is
                 <li key={key}>
                   {r.method} {r.path} {r.refused ? `refused: ${r.refused}` : r.status}

@@ -10,7 +10,7 @@ import type { CanvasFocus, CanvasHealth, CanvasHighlight } from "./workflow-canv
 export function useStepFocus(c: Canvas) {
   const [selection, setSelection] = useState<Selection>(null);
   const [walk, setWalk] = useState<number | null>(null);
-  const [visited, setVisited] = useState<ReadonlySet<string>>(new Set());
+  const [visited, setVisited] = useState<ReadonlySet<string>>(() => new Set());
   const [query, setQuery] = useState("");
   const order = useMemo(() => walkOrder(c), [c]);
   const hits = useMemo(() => new Set(searchSteps(c, query)), [c, query]);

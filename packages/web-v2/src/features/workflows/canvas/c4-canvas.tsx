@@ -1,6 +1,6 @@
 "use client";
 
-import { type Edge, MarkerType, type Node, useReactFlow } from "@xyflow/react";
+import { type Edge, MarkerType, type Node, useReactFlow, useViewport } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, SegmentedControl, Icon } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -38,7 +38,16 @@ const nodeStroke = (n: Node) => (n.type === "c4box" && (n.data as C4BoxData).on 
  * `GET …/system-graph`) → view (`viewOf`, by level and detail) → layout (`layoutView`, ELK) → nodes and
  * edges here. It opens on Every system when that reads at 12px in the view, else on Boundaries.
  */
+/** A level or a graph of its own starts over: a new choice of detail, nothing opened, and a fresh fit. */
 export function C4Canvas(props: WorkflowCanvasProps) {
+  const [param] = useQueryParam("level");
+  const g = props.graph;
+  return <C4View key={`${levelOf(param, props.compact)}|${g?.workflowId ?? ""}|${g?.revision ?? ""}|${g?.against ?? ""}`} {...props} />;
+}
+
+const levelOf = (param: string | null, compact = false): Level => (!compact && param === "containers" ? "containers" : "context");
+
+function C4View(props: WorkflowCanvasProps) {
   const { doc, template, diff = null, compact = false, health = null, highlight = null } = props;
   const rf = useReactFlow();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -50,14 +59,14 @@ export function C4Canvas(props: WorkflowCanvasProps) {
   const focus = useMemo(() => litOf(f.focus, highlight), [f.focus, highlight]);
   const canFold = useMemo(() => (graph ? foldable(graph) : false), [graph]);
   const [param, setParam] = useQueryParam("level");
-  const level: Level = !compact && param === "containers" ? "containers" : "context";
+  const level = levelOf(param, compact);
   const pendingFitRef = useRef(true);
   const viewBox = useCallback(() => {
     const el = wrapRef.current;
     return el && el.clientWidth > 0 ? { width: el.clientWidth - 2 * PAD, height: el.clientHeight - 2 * PAD } : null;
   }, []);
-  const { detail, setDetail, setOpen, diagram } = useC4Diagram(graph, level, canFold, viewBox, pendingFitRef);
-  const [zoom, setZoom] = useState(1);
+  const { detail, setDetail, setOpen, diagram } = useC4Diagram(graph, level, canFold, viewBox);
+  const { zoom } = useViewport();
   const [ready, setReady] = useState(false);
   const centreOnRef = useRef<string | null>(null);
 
@@ -76,7 +85,6 @@ export function C4Canvas(props: WorkflowCanvasProps) {
       const x = PAD + offset(d.width, box.width, core ? core.x + core.w / 2 : d.width / 2);
       const y = PAD + offset(d.height, box.height, core ? core.y + core.h / 2 : d.height / 2);
       void rf.setViewport({ x, y, zoom: k });
-      setZoom(k);
       return true;
     },
     [rf, viewBox],
@@ -186,12 +194,10 @@ export function C4Canvas(props: WorkflowCanvasProps) {
       nodeTypes={C4_NODE_TYPES}
       edgeTypes={C4_EDGE_TYPES}
       ready={ready && diagram !== null}
-      zoom={zoom}
       minZoom={MIN_READABLE_ZOOM}
       maxZoom={MAX_ZOOM}
       onNodeClick={onNodeClick}
       onEdgePick={pickEdge}
-      onMove={(vp) => setZoom(vp.zoom)}
       onFit={() => {
         if (diagram) fitTo(diagram);
       }}
@@ -305,37 +311,26 @@ function useC4Diagram(
   level: Level,
   canFold: boolean,
   viewBox: () => { width: number; height: number } | null,
-  pendingFit: { current: boolean },
 ) {
-  /** Null until the fit has chosen it for this level. */
-  const [detail, setDetail] = useState<Detail | null>(null);
-  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  /** Null until the fit has chosen it; a graph with nothing to fold shows its systems at once. */
+  const [measured, setMeasured] = useState<Detail | null>(null);
+  const detail = canFold ? measured : graph && viewOf(graph, level, "systems") ? "systems" : null;
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const [diagram, setDiagram] = useState<Diagram | null>(null);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new level owes a new choice of detail and a fit
   useEffect(() => {
-    setDetail(null);
-    setOpen(new Set());
-    pendingFit.current = true;
-  }, [level, graph]);
-
-  useEffect(() => {
-    if (detail !== null || !graph) return;
+    if (!canFold || measured !== null || !graph) return;
     const all = viewOf(graph, level, "systems");
     if (!all) return;
-    if (!canFold) {
-      setDetail("systems");
-      return;
-    }
     let live = true;
     void layoutView(all).then((d) => {
       const box = viewBox();
-      if (live) setDetail(box && fitZoom(d, box, FIT_MAX) >= MIN_READABLE_ZOOM ? "systems" : "boundaries");
+      if (live) setMeasured(box && fitZoom(d, box, FIT_MAX) >= MIN_READABLE_ZOOM ? "systems" : "boundaries");
     });
     return () => {
       live = false;
     };
-  }, [detail, graph, level, canFold, viewBox]);
+  }, [measured, graph, level, canFold, viewBox]);
 
   const view = useMemo(() => (detail && graph ? viewOf(graph, level, detail, open) : null), [graph, level, detail, open]);
   useEffect(() => {
@@ -349,5 +344,5 @@ function useC4Diagram(
     };
   }, [view]);
 
-  return { detail, setDetail, setOpen, diagram };
+  return { detail, setDetail: setMeasured, setOpen, diagram };
 }
