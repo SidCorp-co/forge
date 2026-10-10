@@ -6,8 +6,8 @@
 // record, or a decision with its reason. Core refuses a wrong comment by name.
 
 import { useState } from "react";
-import { ActorChip, Badge, BodyView, Button, ErrorState, ProjectLoader, SegmentedControl, Textarea } from "@/design";
-import { formatApiError, isRetryableApiError } from "@/lib/api/error";
+import { ActorChip, Badge, BodyView, Button, SegmentedControl, Textarea } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { WrittenMark } from "@/lib/i18n/written";
@@ -36,7 +36,7 @@ export function IntentPicker({ value, onChange }: { value: ComposerIntent; onCha
 /** A decision in a thread: the same row the decision logs draw, behind an accent bar so it reads apart. */
 export function DecisionInThread({ children }: { children: React.ReactNode }) {
   return (
-    <div className="border-l-3 pl-3 border-ok-9" data-testid="thread-decision">
+    <div className="border-l-3 border-ok-9 pl-3" data-testid="thread-decision">
       {children}
     </div>
   );
@@ -110,7 +110,6 @@ export function EntityCommentThread({ projectId, scope, targetRef }: { projectId
   const t = useCopy();
   const q = useEntityComments(projectId, scope, targetRef);
   const [intent, setIntent] = useState<ComposerIntent>("note");
-  const rows = [...(q.data?.comments ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return (
     <div className="grid gap-5" data-testid="entity-comment-thread">
       <div className="grid gap-2">
@@ -121,19 +120,21 @@ export function EntityCommentThread({ projectId, scope, targetRef }: { projectId
           <TalkComposer projectId={projectId} scope={scope} targetRef={targetRef} intent={intent} />
         )}
       </div>
-      {q.isLoading ? (
-        <ProjectLoader label={t("common.intent.loading")} />
-      ) : q.isError ? (
-        <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />
-      ) : rows.length === 0 ? (
-        <p className="text-13 text-subtle">{t("common.intent.none")}</p>
-      ) : (
-        <ul className="grid">
-          {rows.map((c) => (
-            <CommentRow key={c.id} c={c} />
-          ))}
-        </ul>
-      )}
+      <QueryBoundary query={q} loadingLabel={t("common.intent.loading")} height="inline">
+        {(data) =>
+          data.comments.length === 0 ? (
+            <p className="text-13 text-subtle">{t("common.intent.none")}</p>
+          ) : (
+            <ul className="grid">
+              {[...data.comments]
+                .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+                .map((c) => (
+                  <CommentRow key={c.id} c={c} />
+                ))}
+            </ul>
+          )
+        }
+      </QueryBoundary>
     </div>
   );
 }

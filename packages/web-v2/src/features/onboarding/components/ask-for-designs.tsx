@@ -108,7 +108,7 @@ export function useAskForDesigns(projectId: string, opts: { onOpened?: () => voi
             />
           </label>
           {refused ? (
-            <p role="alert" className="m-0 text-12 text-red">
+            <p role="alert" className="m-0 text-12 text-danger">
               {refused}
             </p>
           ) : null}

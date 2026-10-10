@@ -35,7 +35,7 @@ import {
 export function BuildChip({ chip, className = "" }: { chip: DeviceBuildChip; className?: string }) {
 	const tone =
 		chip.tone === "warning"
-			? "text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
+			? "text-warn-11 bg-warn-3"
 			: "text-muted bg-sunken";
 	return (
 		<span
@@ -78,7 +78,7 @@ function DeviceBinaries({ device }: { device: DeviceRow }) {
 						<div key={m.name} className="flex flex-col gap-0.5 py-2">
 							<span className="inline-flex items-center gap-2">
 								<code className="fg-body-sm font-semibold text-fg">{m.name}</code>
-								<span className="fg-caption text-amber-700 dark:text-amber-300">
+								<span className="fg-caption text-warn-11">
 									{t("runners.detail.missing")}
 								</span>
 							</span>
@@ -119,7 +119,7 @@ function DeviceDisk({ device }: { device: DeviceRow }) {
 											? "fg-caption text-danger"
 											: r.verdict === "clear"
 												? "fg-caption text-subtle"
-												: "fg-caption text-amber-700 dark:text-amber-300"
+												: "fg-caption text-warn-11"
 									}
 								>
 									{t(`runners.disk.verdict.${r.verdict}`)}
