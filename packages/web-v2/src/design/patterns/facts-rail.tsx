@@ -30,7 +30,7 @@ export function FactsRail({
 }) {
   const t = useCopy();
   return (
-    <aside className={cn("min-w-0 border-line-subtle bg-surface max-lg:border-t lg:border-l", className)} aria-label={label ?? t("common.facts")} data-testid={testId ?? "facts-rail"}>
+    <aside className={cn("min-w-0 border-line-subtle max-lg:border-t lg:border-l", className)} aria-label={label ?? t("common.facts")} data-testid={testId ?? "facts-rail"}>
       <div
         className={cn(
           "px-5 py-5 max-md:px-4 lg:sticky lg:overflow-y-auto",

@@ -1,7 +1,6 @@
 "use client";
 
-import { createContext, type ReactNode, useContext, useMemo } from "react";
-import { usePreferences } from "@/features/preferences/hooks";
+import { createContext, type ReactNode, use, useMemo } from "react";
 import { formatAge, formatClock, formatClockSeconds, formatCompact, formatCountdown, formatDate, formatDateTime, formatElapsed, formatNumber, formatRelative } from "./format";
 import { labelCopy } from "./labels";
 import { baseOf, copyOr, type Copy, copyLocale, productCopy } from "./product-copy";
@@ -29,18 +28,12 @@ const InterfaceLanguageContext = createContext<InterfaceLanguage>("en");
 
 /** Pins the language for a subtree; the workspace shell and tests use it. */
 export function InterfaceLanguageScope({ language, children }: { language: InterfaceLanguage; children: ReactNode }) {
-  return <InterfaceLanguageContext.Provider value={language}>{children}</InterfaceLanguageContext.Provider>;
-}
-
-/** Resolves the workspace's chrome language from the person's preference alone. */
-export function WorkspaceInterfaceLanguage({ children }: { children: ReactNode }) {
-  const language = resolveInterfaceLanguage(usePreferences().data?.language);
-  return <InterfaceLanguageScope language={language}>{children}</InterfaceLanguageScope>;
+  return <InterfaceLanguageContext value={language}>{children}</InterfaceLanguageContext>;
 }
 
 /** The language chrome is written in on this screen. */
 export function useInterfaceLanguage(): InterfaceLanguage {
-  return useContext(InterfaceLanguageContext);
+  return use(InterfaceLanguageContext);
 }
 
 /** A reader of the chrome in the interface language. */

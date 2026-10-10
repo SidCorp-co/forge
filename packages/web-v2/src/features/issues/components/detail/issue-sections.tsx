@@ -46,7 +46,7 @@ function RunList({ slug, sessions }: { slug: string; sessions: IssueAgentSession
               href={s.pipelineRunId ? runHref(slug, s.pipelineRunId) : `${agentsListHref(slug)}/${encodeURIComponent(s.id)}`}
               className="min-w-0 flex-1 truncate text-link hover:underline"
             >
-              {s.title ?? (s.metadata?.jobType ? enumLabel("jobType", String(s.metadata.jobType)) : s.id.slice(0, 8))}
+              {s.title ?? (typeof s.metadata?.jobType === "string" ? enumLabel("jobType", s.metadata.jobType) : s.id.slice(0, 8))}
             </Link>
             <StatusBadge family="session" value={s.status} />
             {s.deviceName ? <span className="text-12 text-muted">{s.deviceName}</span> : null}

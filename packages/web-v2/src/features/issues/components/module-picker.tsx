@@ -68,8 +68,8 @@ export function ModulePicker({
   }
 
   // each module named under its ancestors ("Execution › Runs"), so the list reads in tree order
-  const modules = modulesQ.modules
-        .map((m) => ({ ...m, label: [...ancestorsOf(modulesQ.modules, m.id).map((a) => a.name), m.name].join(" › ") }))
+  const modules = (modulesQ.data ?? [])
+        .map((m) => ({ ...m, label: [...ancestorsOf((modulesQ.data ?? []), m.id).map((a) => a.name), m.name].join(" › ") }))
         .sort((a, b) => a.label.localeCompare(b.label));
 
   function toggle(id: string, next: boolean) {

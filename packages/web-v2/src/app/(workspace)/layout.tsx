@@ -40,7 +40,8 @@ import {
   useRailProjectData,
 } from "@/features/shell";
 import { CurrentProjectProvider } from "@/features/projects/current-project";
-import { useCopy, useInterfaceLanguage, WorkspaceInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { WorkspaceInterfaceLanguage } from "@/providers/interface-language-provider";
 import type { ProjectListItem } from "@/features/projects";
 import type { ChatDockApi } from "@/features/chat-dock";
 import { useRecents } from "@/lib/navigation/recents";

@@ -3,9 +3,9 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useAuth } from '@/providers/auth-provider';
-import { wsClient } from './client';
-import { replayEverything, routeEvent } from './event-router';
-import { userRoom } from './rooms';
+import { wsClient } from '@/lib/ws/client';
+import { replayEverything, routeEvent } from '@/lib/ws/event-router';
+import { userRoom } from '@/lib/ws/rooms';
 
 export function useWebSocket(): void {
   const qc = useQueryClient();

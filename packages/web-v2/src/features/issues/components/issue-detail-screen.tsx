@@ -30,7 +30,7 @@ import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { isLiveRun, issueQueryKey, parseChecklist, runStatusChip, workStepOf } from "../derive";
 import { deriveQueuedStep } from "../waiting";
 import { useActivity, useAttachments, type useIssue, useCreateComment } from "../detail-hooks";
@@ -59,7 +59,6 @@ interface IssueDetailScreenProps {
 export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProps) {
   const [view, setView] = useUrlChoice<IssuePageView>("view", ISSUE_PAGE_VIEWS, "person");
   const developer = view === "developer";
-  const t = useCopy();
   const back = useListOrigin(ISSUES_LIST, issuesHref(slug));
 
   useRoom(projectRoom(projectId));
@@ -71,21 +70,9 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
     useIssueReads(id, projectId);
 
   const patch = usePatchIssue();
-  const {
-    requestTransition,
-    requestParkLeave,
-    dialog: reasonDialog,
-    isPending: transitionPending,
-  } = useGuardedTransition();
-  const qc = useQueryClient();
+  const { requestTransition, requestParkLeave, dialog: reasonDialog, isPending: transitionPending } = useGuardedTransition();
   const resumeRun = useResumeRun();
-  // ISS-1160 — a display-key load keys `useIssue` on `id`+`projectId` (never
-  // globally unique on `id` alone), so an invalidation naming only the
-  // canonical uuid this mutation reports misses that entry; name both.
-  const refreshIssue = () => {
-    void qc.invalidateQueries({ queryKey: ["issue", issue?.id ?? id] });
-    void qc.invalidateQueries({ queryKey: issueQueryKey(id, projectId) });
-  };
+  const refreshIssue = useRefreshIssue(id, projectId, issueQ.data?.id);
   const onResumeRun = (runId: string) => resumeRun.mutate(runId, { onSuccess: refreshIssue });
   const pending = patch.isPending || transitionPending || resumeRun.isPending;
 
@@ -101,8 +88,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   if (issueQ.isLoading || issueQ.isError || !issue) return <IssueUnread query={issueQ} />;
   if (switching) return <IssueUnread query={issueQ} switching />;
 
-  const onTransition = (toStatus: IssueStatus) =>
-    requestTransition(issue, toStatus, { onSuccess: refreshIssue });
+  const onTransition = (toStatus: IssueStatus) => requestTransition(issue, toStatus, { onSuccess: refreshIssue });
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
     patch.mutate({ id: issue.id, body }, { onSuccess: refreshIssue });
 
@@ -128,13 +114,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   // The moves the issue machine draws from this status.
   const moves = standingQ.data?.standing.moves ?? [];
   const isRunActive = isLiveRun(runStatusChip(issue)) || issue.status === "in_progress" || issue.status === "reopen";
-  const start = readStart({
-    status: issue.status,
-    policy: policyQ.data,
-    policyError: policyQ.error,
-    role: projectRole,
-    sessionContext: issue.sessionContext,
-  });
+  const start = readStart({ status: issue.status, policy: policyQ.data, policyError: policyQ.error, role: projectRole, sessionContext: issue.sessionContext });
 
   // The status, once, in the top bar, as the control that moves it: the run is not a second chip.
   const badge = (
@@ -161,48 +141,36 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   return (
     <ReleaseApprovalProvider value={standingQ.data?.releaseApproval}>
       <div className="min-h-full bg-app" ref={stickyHeaderRef} data-testid="issue-detail" data-view={view}>
-        <DetailHeader
-          back={{ href: back, label: t("issues.screen.title") }}
-          itemKey={issue.displayId}
-          keyTitle={issue.id}
-          title={<Written text={issue.title} lang={issue.writtenLang} />}
+        <IssueHeader
+          issue={issue}
+          slug={slug}
+          linkId={id}
+          back={back}
           badge={badge}
-          action={
-            <IssueActions
-              issue={issue}
-              slug={slug}
-              linkId={id}
-              canWrite={canWrite}
-              pending={pending}
-              start={start}
-              isRunActive={isRunActive}
-              exitsHere={moves.map((m) => m.to)}
-              onTransition={onTransition}
-              onStarted={refreshIssue}
-            />
-          }
+          canWrite={canWrite}
+          pending={pending}
+          start={start}
+          isRunActive={isRunActive}
+          exitsHere={moves.map((m) => m.to)}
+          onTransition={onTransition}
+          onStarted={refreshIssue}
         />
         <DetailLayout
           testId="issue-detail-layout"
           dataKey={issue.displayId}
           rail={
-            <FactsRail>
-              <PropertiesRail
-                issue={issue}
-                slug={slug}
-                cost={costQ.data}
-                deps={depsQ.data}
-                pending={pending}
-                readOnly={!canWrite}
-                onPatch={onPatch}
-                onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
-                canMarkMerged={canWrite}
-                requirementKey={standingQ.data ? (standingQ.data.standing.requirement?.key ?? null) : undefined}
-                owner={standingQ.data?.standing.owner ?? null}
-                standing={standingQ.data?.standing}
-                developer={developer}
-              />
-            </FactsRail>
+            <IssueRail
+              issue={issue}
+              slug={slug}
+              costQ={costQ}
+              depsQ={depsQ}
+              standingQ={standingQ}
+              pending={pending}
+              canWrite={canWrite}
+              developer={developer}
+              onPatch={onPatch}
+              onEditModules={() => setModulePickerOpen(true)}
+            />
           }
         >
           <DetailMobileTitle itemKey={issue.displayId} title={<Written className="break-words" text={issue.title} lang={issue.writtenLang} />} badge={badge} />
@@ -304,4 +272,97 @@ function pickActiveSession(
     sessions.find((s) => s.status === "queued") ??
     null
   );
+}
+
+/** The properties rail beside the page: the issue's fields, edges and, for a developer, its engineering facts. */
+function IssueRail({
+  issue,
+  slug,
+  costQ,
+  depsQ,
+  standingQ,
+  pending,
+  canWrite,
+  developer,
+  onPatch,
+  onEditModules,
+}: {
+  issue: NonNullable<ReturnType<typeof useIssueReads>["issueQ"]["data"]>;
+  slug: string;
+  costQ: ReturnType<typeof useIssueReads>["costQ"];
+  depsQ: ReturnType<typeof useIssueReads>["depsQ"];
+  standingQ: ReturnType<typeof useIssueReads>["standingQ"];
+  pending: boolean;
+  canWrite: boolean;
+  developer: boolean;
+  onPatch: ComponentProps<typeof PropertiesRail>["onPatch"];
+  onEditModules: () => void;
+}) {
+  const standing = standingQ.data;
+  return (
+    <FactsRail>
+      <PropertiesRail
+        issue={issue}
+        slug={slug}
+        cost={costQ.data}
+        deps={depsQ.data}
+        pending={pending}
+        readOnly={!canWrite}
+        onPatch={onPatch}
+        onEditModules={canWrite ? onEditModules : undefined}
+        canMarkMerged={canWrite}
+        requirementKey={standing ? (standing.standing.requirement?.key ?? null) : undefined}
+        owner={standing?.standing.owner ?? null}
+        standing={standing?.standing}
+        developer={developer}
+      />
+    </FactsRail>
+  );
+}
+
+/** The page's header: back to the list, key and title, the status control and the issue's acts. */
+function IssueHeader({
+  issue,
+  back,
+  badge,
+  ...acts
+}: ComponentProps<typeof IssueActions> & { back: string; badge: ReactNode }) {
+  const t = useCopy();
+  const { slug, linkId, canWrite, pending, start, isRunActive, exitsHere, onTransition, onStarted } = acts;
+  return (
+    <DetailHeader
+      back={{ href: back, label: t("issues.screen.title") }}
+      itemKey={issue.displayId}
+      keyTitle={issue.id}
+      title={<Written text={issue.title} lang={issue.writtenLang} />}
+      badge={badge}
+      action={
+        <IssueActions
+          issue={issue}
+          slug={slug}
+          linkId={linkId}
+          canWrite={canWrite}
+          pending={pending}
+          start={start}
+          isRunActive={isRunActive}
+          exitsHere={exitsHere}
+          onTransition={onTransition}
+          onStarted={onStarted}
+        />
+      }
+    />
+  );
+}
+
+/**
+ * Refresh the issue after a write. ISS-1160 — a display-key load keys `useIssue` on `id`+`projectId`
+ * (never globally unique on `id` alone), so an invalidation naming only the canonical uuid a mutation
+ * reports misses that entry; name both.
+ */
+function useRefreshIssue(id: string, projectId: string, canonicalId: string | undefined) {
+  const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: ["issue", canonicalId ?? id] });
+    void qc.invalidateQueries({ queryKey: issueQueryKey(id, projectId) });
+  };
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useWebSocket } from '@/lib/ws/use-websocket';
+import { useWebSocket } from './use-websocket';
 
 export function WsMount() {
   useWebSocket();
