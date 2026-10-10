@@ -59,7 +59,10 @@ export interface Linked {
   requirements: Map<string, { key: string; title: string; status: string; delivered: boolean }>;
   releases: Map<string, string>;
   /** Each workflow's flow, title, and the words its design gives each step, by step id. */
-  workflows: Map<string, { flow: string; title: string | null; steps: Map<string, string | null> }>;
+  workflows: Map<
+    string,
+    { flow: string; title: string | null; steps: ReadonlyMap<string, string | null> }
+  >;
   providers: Map<string, string>;
   suggestions: Map<
     string,
@@ -244,7 +247,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
         {
           flow: w.flow,
           title: ((w.document as { title?: unknown }).title as string | undefined) ?? null,
-          steps: nodesOfDesign(w.document)?.steps ?? new Map(),
+          steps: nodesOfDesign(w.document)?.steps ?? new Map<string, string | null>(),
         },
       ]),
     ),
