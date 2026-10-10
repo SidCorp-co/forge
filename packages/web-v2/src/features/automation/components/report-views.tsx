@@ -104,7 +104,7 @@ function ReportBanner({ r, className }: { r: ReportStanding; className?: string 
     <WaitBanner
       tone={w.kind === "you" ? "you" : "blocked"}
       head={w.kind === "you" ? t("schedules.waitingOnYou") : t("schedules.waitingOnWho", { who: said(w.says.who, language) })}
-      body={t("schedules.report.bannerBody")}
+      body={null}
       rule={said(w.says.rule, language)}
       className={className}
       testId="report-banner"

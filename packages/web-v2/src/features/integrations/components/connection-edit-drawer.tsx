@@ -168,9 +168,7 @@ function CredentialSection({
       <PageSectionTitle>{t("integrations.edit.credential")}</PageSectionTitle>
       {canManage && secretField === null && (
         <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
-          {module?.connectionNote
-            ? t(module.connectionNote)
-            : t("integrations.edit.notByHand", { provider: providerLabel(connection.provider, language) })}
+          {t("integrations.edit.notByHand", { provider: providerLabel(connection.provider, language) })}
         </p>
       )}
       {canManage && secretField !== null && (
@@ -241,9 +239,7 @@ function ConfigSection({
       <section className="flex flex-col gap-2">
         <PageSectionTitle>{t("integrations.detail.config")}</PageSectionTitle>
         <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
-          {module?.connectionNote
-            ? t(module.connectionNote)
-            : t("integrations.edit.noConfig")}
+          {t("integrations.edit.noConfig")}
         </p>
       </section>
     );
@@ -342,11 +338,6 @@ function ProjectsSection({
             );
           })}
         </ul>
-      )}
-      {connection.ownerType === "org" && (
-        <p className="fg-body-sm text-muted">
-          {t("integrations.edit.orgSharedNote")}
-        </p>
       )}
     </section>
   );

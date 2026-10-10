@@ -50,7 +50,6 @@ function LanguageField({ draft, disabled }: { draft: DocumentDraft; disabled: bo
 		<>
 			<SettingRow
 				label={t("settings.project.general.language")}
-				effect={t("settings.project.general.languageEffect")}
 				htmlFor={id}
 				refusals={draft.refusedAt(["contentLanguage"])}
 				control={
@@ -93,7 +92,6 @@ function TermsField({ draft, disabled }: { draft: DocumentDraft; disabled: boole
 	return (
 		<SettingRow
 			label={t("settings.project.general.keepTerms")}
-			effect={t("settings.project.general.keepTermsEffect")}
 			refusals={draft.refusedAt(["keepTermsInEnglish"])}
 			control={
 				<Input
@@ -119,7 +117,6 @@ function DaysField({ draft, disabled }: { draft: DocumentDraft; disabled: boolea
 	return (
 		<SettingRow
 			label={t("settings.project.general.verifyWindow")}
-			effect={t("settings.project.general.verifyWindowEffect", { days: FEEDBACK_VERIFY_WINDOW.defaultDays, min: FEEDBACK_VERIFY_WINDOW.minDays, max: FEEDBACK_VERIFY_WINDOW.maxDays })}
 			refusals={draft.refusedAt(path)}
 			control={
 				<Input
@@ -150,7 +147,7 @@ export function GeneralSection({ project, canEdit }: { project: ProjectDetail; c
 		<div>
 			{!draft.declared && <UndeclaredNotice slug={project.slug} />}
 			<SettingGroup title={t("settings.project.general.identity")}>
-				<TextSetting draft={draft} path={["project", "name"]} label={t("settings.project.general.name")} effect={t("settings.project.general.nameEffect")} disabled={off} />
+				<TextSetting draft={draft} path={["project", "name"]} label={t("settings.project.general.name")} disabled={off} />
 				<TextSetting
 					draft={draft}
 					path={["project", "description"]}
@@ -185,7 +182,6 @@ export function GeneralSection({ project, canEdit }: { project: ProjectDetail; c
 					path={["delivery", "verdictsRequired"]}
 					fallback={true}
 					label={t("settings.project.general.verdicts")}
-					effect={t("settings.project.general.verdictsEffect")}
 					disabled={off}
 				/>
 				{PERSON_GATES.map((gate) => (

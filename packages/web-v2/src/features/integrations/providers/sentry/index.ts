@@ -13,5 +13,4 @@ export const sentry: ProviderModule = {
   target: (config) => text(config, "host"),
   section: () => import("./section").then((m) => ({ default: m.SentrySection })),
   connectionSection: null,
-  connectionNote: "integrations.note.sentry",
 };

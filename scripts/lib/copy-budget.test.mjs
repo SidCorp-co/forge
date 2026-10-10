@@ -7,7 +7,7 @@ const CFG = {
   emptyBudget: 2,
   refusalSegments: /^(refusal|\w*Refused|deleteMessage)$/,
   emptySegments: /^(empty|empty[A-Z]\w*|none|no[A-Z]\w*)$/,
-  explainSegments: /^(hint|\w*Hint|intro|emptyMessage)$/,
+  explainSegments: /^(hint|\w*Hint|intro|\w*Effect|emptyMessage)$/,
 };
 const words = (n) => Array.from({ length: n }, (_, i) => `w${i}`).join(' ');
 const entry = (key, text, file = 'a/copy.json') => ({ file, key, text });
@@ -75,6 +75,11 @@ describe('overBudget', () => {
         entry('x.blankHint', ''),
       ),
     ).toEqual(['a/copy.json::x.intro', 'a/copy.json::x.views.hint']);
+  });
+  it('refuses a line saying what a setting does, however short', () => {
+    expect(refusedKeys(entry('x.nameEffect', 'Shown everywhere'))).toEqual([
+      'a/copy.json::x.nameEffect',
+    ]);
   });
 });
 

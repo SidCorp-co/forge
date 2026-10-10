@@ -3,7 +3,7 @@ import type { AgentPathKind } from "@forge/contracts/integrations";
 import type { ComponentType } from "react";
 import type { IconName } from "@/design";
 import { useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { copyOr, type ProductCopyKey } from "@/lib/i18n/product-copy";
+import { copyOr } from "@/lib/i18n/product-copy";
 import { agent } from "./agent";
 import { autoflow } from "./autoflow";
 import { coolify } from "./coolify";
@@ -41,8 +41,6 @@ export interface ProviderModule {
   section: (() => Promise<{ default: ProjectSection }>) | null;
   /** The connection-tier config form, or null where this provider has nothing to edit there. */
   connectionSection: (() => Promise<{ default: ConnectionSection }>) | null;
-  /** Where this provider's credential or config is kept instead, as a copy key. */
-  connectionNote: ProductCopyKey | null;
 }
 
 /** Every provider this build knows, in the order a list renders them. */

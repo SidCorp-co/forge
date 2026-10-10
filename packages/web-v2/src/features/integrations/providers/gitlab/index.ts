@@ -27,5 +27,4 @@ export const gitlab: ProviderModule = {
   },
   section: () => import("./section").then((m) => ({ default: m.GitlabSection })),
   connectionSection: null,
-  connectionNote: null,
 };

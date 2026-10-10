@@ -18,7 +18,7 @@ import type { CoolifyTargetInput, IntegrationSummary } from "../../types";
 import { providerLabel } from "../registry";
 import { healthBadge, OrgLockedNote, ProviderCard, TestOutcome, useBindingTest } from "../shared";
 import type { CoolifyReadConfig } from "./config";
-import { DeployConfirmationHint, ProdGateSection } from "./gates";
+import { ProdGateSection } from "./gates";
 import { CoolifyTargetsField } from "./targets-field";
 
 const NEW_BINDING = "new";
@@ -281,7 +281,6 @@ function PanelActions({
           </>
         )}
       </div>
-      {existing && <DeployConfirmationHint />}
       {existing && (
         <ProdGateSection
           integrationId={existing.id}

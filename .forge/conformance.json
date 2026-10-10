@@ -81,7 +81,7 @@
       "emptyBudget": 2,
       "refusalSegments": "^(refusal|refused|authority-refused|denied\\w*|cannot\\w*|confirm\\w*|error|failed|revoked|declineMessage|moveConfirm|remove\\w*|delete\\w*(Message|Body)|\\w*(Refused|Refuse\\w*|Denied|Confirm|Confirmation|Error|Failed|Cannot\\w*))$",
       "emptySegments": "^(empty|empty[A-Z]\\w*|\\w*Empty|none|none[A-Z]\\w*|nothing\\w*|no[A-Z]\\w*)$",
-      "explainSegments": "^(hint|\\w*Hint|intro|\\w*Intro|help|\\w*Help|explain\\w*|\\w*Explainer|lede|\\w*Lede|tagline|blurb|emptyMessage|emptyBody|noneBody)$",
+      "explainSegments": "^(hint|\\w*Hint|intro|\\w*Intro|help|\\w*Help|explain\\w*|\\w*Explainer|lede|\\w*Lede|tagline|blurb|effect|\\w*Effect|emptyMessage|emptyBody|noneBody)$",
       "saidKeys": "packages/contracts/src/said-keys.ts"
     },
     "pattern-catalog": {
