@@ -4,7 +4,7 @@ import { Button, PageTitle, TopBarActions, useViewMode, type ViewMode, ViewModeS
 import { useProjects } from "@/features/projects";
 import { canWriteProject } from "@/features/projects";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useProjectModules } from "../hooks";
 import { IssuesBoard } from "./issues-board";
@@ -26,20 +26,17 @@ function useModes(projectId: string): ViewMode<Mode>[] {
   const modules = useProjectModules(projectId);
   const none = modules.data !== undefined && modules.modules.length === 0;
   const t = useCopy();
-  return useMemo(
-    () => [
-      { value: "attention", label: t("issues.mode.attention") },
-      {
-        value: "module",
-        label: t("issues.mode.module"),
-        title: none ? t("issues.mode.moduleNone") : undefined,
-        disabled: none,
-      },
-      { value: "waves", label: t("issues.mode.waves") },
-      { value: "table", label: t("issues.mode.table") },
-    ],
-    [none, t],
-  );
+  return [
+    { value: "attention", label: t("issues.mode.attention") },
+    {
+      value: "module",
+      label: t("issues.mode.module"),
+      title: none ? t("issues.mode.moduleNone") : undefined,
+      disabled: none,
+    },
+    { value: "waves", label: t("issues.mode.waves") },
+    { value: "table", label: t("issues.mode.table") },
+  ];
 }
 
 export function IssuesScreen({ scope }: IssuesScreenProps) {
@@ -55,9 +52,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   const pathname = usePathname() || "";
   const wantsNew = searchParams.get("new") === "1";
 
-  useEffect(() => {
-    if (wantsNew) setNewOpen(true);
-  }, [wantsNew]);
+  const showNew = newOpen || wantsNew;
 
   // Closing drops `new` from this entry and keeps the rest, so Back and reload stay shut. The state
   // is `null` because Next skips syncing `useSearchParams` for a state carrying its `__NA` mark.
@@ -108,7 +103,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
         )}
       </div>
 
-      <NewIssueDialog open={newOpen && canWrite} onClose={closeNew} scope={scope} />
+      <NewIssueDialog open={showNew && canWrite} onClose={closeNew} scope={scope} />
     </>
   );
 }

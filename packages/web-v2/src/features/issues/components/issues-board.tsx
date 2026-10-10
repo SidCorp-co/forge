@@ -34,6 +34,7 @@ import {
   usePeekKeys,
   useUrlParams,
   visibleRows,
+  ListLayout,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
@@ -163,8 +164,11 @@ function useEdgePaths(edges: readonly { from: string; to: string }[]) {
       }
       setPaths(next);
     };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
+    // a ResizeObserver reports every observed box once on observe, which is the first measure
+    if (typeof ResizeObserver === "undefined") {
+      const frame = requestAnimationFrame(measure);
+      return () => cancelAnimationFrame(frame);
+    }
     const ro = new ResizeObserver(measure);
     ro.observe(box);
     for (const el of box.querySelectorAll('[data-testid="wave-card"]')) ro.observe(el);
@@ -378,8 +382,6 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
     assignee: params.get("assignee") ?? "",
     waiting: listFilterFromSearch("issues", params).waitingOn ?? null,
   };
-  const key = `${n.q}|${[...n.quick].join()}|${n.statuses.join()}|${n.priority}|${n.createdBy}|${n.assignee}|${n.waiting}`;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for every narrowing field
   const rows = narrow(q.data?.issues ?? [], n);
   const forecastQ = useProjectForecast(project.projectId);
   const forecasts = new Map((forecastQ.data?.issues ?? []).map((i) => [i.key, i.forecast]));
@@ -405,8 +407,13 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
 
   return (
     <div className="grid min-h-full content-start bg-app" data-testid="issues-board" data-mode={mode}>
-      <div className={cn("grid min-h-128 items-start", openRow && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
-        <div className="min-w-0">
+      <ListLayout
+        peek={
+          openRow ? (
+            <IssuePeek key={openRow.key} slug={project.slug} row={openRow} forecast={forecasts.get(openRow.key)} clock={clock} peek={peek} onOpenFull={() => openFull(openRow.key)} />
+          ) : undefined
+        }
+      >
           <Toolbar data={q.data} scope={scope} n={n}>
             {toolbarLead}
           </Toolbar>
@@ -441,9 +448,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
               )
             }
           </QueryBoundary>
-        </div>
-        {openRow ? <IssuePeek key={openRow.key} slug={project.slug} row={openRow} forecast={forecasts.get(openRow.key)} clock={clock} peek={peek} onOpenFull={() => openFull(openRow.key)} /> : null}
-      </div>
+      </ListLayout>
     </div>
   );
 }

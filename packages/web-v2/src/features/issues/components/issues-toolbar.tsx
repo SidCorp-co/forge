@@ -34,11 +34,6 @@ interface IssuesToolbarProps {
   trailing?: ReactNode;
 }
 
-const ASSISTANT_CHIP = {
-  borderColor: "var(--orange-500, #f97316)",
-  color: "var(--orange-700, #c2410c)",
-  background: "var(--orange-50, #fff7ed)",
-};
 
 // one row (owner, 2026-10-02): status segment · search · Filter popover · the active filters as removable chips · Clear, with no stacked rows or wrappers above the flush table
 export function IssuesToolbar({
@@ -54,7 +49,7 @@ export function IssuesToolbar({
   trailing,
 }: IssuesToolbarProps) {
   const [open, setOpen] = useState(false);
-  const anchor = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const assistantSet = useAssistantSetFilter();
   const t = useCopy();
   const active = fields.filter((f) => f.value !== "");
@@ -78,7 +73,7 @@ export function IssuesToolbar({
         onChange={(e) => onQuery(e.target.value)}
         className="w-full sm:w-56"
       />
-      <div ref={anchor} className="relative">
+      <div ref={anchorRef} className="relative">
         <Button
           type="button"
           variant="secondary"
@@ -92,13 +87,13 @@ export function IssuesToolbar({
         </Button>
         <Popover
           open={open}
-          anchor={anchor}
+          anchor={anchorRef}
           onDismiss={() => setOpen(false)}
           placement="bottom-start"
           gap={6}
           role="dialog"
           aria-label={t("issues.toolbar.filterLabel")}
-          className="w-72 overflow-y-auto rounded-md border border-line bg-surface p-3 shadow-overlay"
+          className="w-72 overflow-y-auto rounded-md p-3"
         >
           <div className="flex flex-col gap-3">
             {fields.map((f) => (
@@ -132,8 +127,11 @@ export function IssuesToolbar({
         <span
           key={c.param}
           data-testid="issues-filter-chip"
-          className="inline-flex items-center gap-1 rounded-pill border border-line bg-sunken px-2 py-0.5 text-13 font-semibold text-fg"
-          style={assistantSet(c.param, c.value) ? ASSISTANT_CHIP : undefined}
+          // a filter the assistant set reads as the agent's
+          className={cn(
+            "inline-flex items-center gap-1 rounded-pill border px-2 py-0.5 text-13 font-semibold",
+            assistantSet(c.param, c.value) ? "border-ai-9 bg-ai-bg text-ai" : "border-line bg-sunken text-fg",
+          )}
         >
           {c.label}
           <button

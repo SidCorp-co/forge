@@ -199,9 +199,9 @@ function chipLabel(field: UiFilterField, f: Record<string, unknown>, env: Pick<U
   const { t, language } = env;
   if (field === "createdBy") return t("conversations.ui.chipCreatedBy");
   if (field === "assignee") return t("conversations.ui.chipAssignee");
-  if (field === "priority") return t("conversations.ui.chipPriority", { value: enumLabel("priority", String(f.priority ?? ""), language) });
+  if (field === "priority") return t("conversations.ui.chipPriority", { value: enumLabel("priority", typeof f.priority === "string" ? f.priority : "", language) });
   if (field === "status") return t("conversations.ui.chipStatus", { value: ((f.status as string[] | undefined) ?? []).map((s) => statusReading("issue", s, language).label).join(", ") });
-  if (field === "text") return t("conversations.ui.chipSearch", { text: String(f.text ?? "") });
+  if (field === "text") return t("conversations.ui.chipSearch", { text: typeof f.text === "string" ? f.text : "" });
   const [words] = describeListFilter({ [field]: f[field] });
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : field;
 }

@@ -25,7 +25,7 @@ export function PinViewButton({
   })();
   const isPinned = pinnedViews.isPinned(viewHref);
   const [pinOpen, setPinOpen] = useState(false);
-  const pinAnchor = useRef<HTMLDivElement>(null);
+  const pinAnchorRef = useRef<HTMLDivElement>(null);
   const [pinName, setPinName] = useState("");
 
   function onPinClick() {
@@ -51,7 +51,7 @@ export function PinViewButton({
   }
 
   return (
-    <div ref={pinAnchor} className="relative">
+    <div ref={pinAnchorRef} className="relative">
       <Button
         variant={isPinned ? "secondary" : "ghost"}
         size="sm"
@@ -64,14 +64,14 @@ export function PinViewButton({
       </Button>
       <Popover
         open={pinOpen}
-        anchor={pinAnchor}
+        anchor={pinAnchorRef}
         onDismiss={() => setPinOpen(false)}
         placement="bottom-end"
         gap={8}
         takesFocus
         role="dialog"
         aria-label={t("issues.pin.dialog")}
-        className="w-72 overflow-y-auto rounded-md border border-line bg-surface p-3 shadow-overlay"
+        className="w-72 overflow-y-auto rounded-md p-3"
       >
         <p className="fg-caption mb-2 text-muted">
           {t("issues.pin.lead")}
@@ -81,7 +81,6 @@ export function PinViewButton({
           onChange={(e) => setPinName(e.target.value)}
           placeholder={defaultLabel}
           aria-label={t("issues.pin.name")}
-          autoFocus
           onKeyDown={(e) => {
             if (e.key === "Enter") confirmPin();
             if (e.key === "Escape") setPinOpen(false);

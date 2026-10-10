@@ -159,7 +159,7 @@ function Extras({
         <ErrorState
           title={t("shell.start.lookFailed")}
           message={formatApiError(query.error)}
-          onRetry={() => query.refetch()}
+          onRetry={() => void query.refetch()}
         />
       </div>
     );

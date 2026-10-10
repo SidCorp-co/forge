@@ -93,11 +93,11 @@ export function DockBoard({ projectId, issueKey }: { projectId: string; issueKey
           size="sm"
           variant="primary"
           disabled={!validKey || state.busy || !board.doc}
-          onClick={attach}
+          onClick={() => void attach()}
         >
           {state.busy ? t("conversations.board.proposing") : t("conversations.board.proposeOn", { key: validKey ? key.trim() : "…" })}
         </Button>
-        <IconButton icon="x" size="sm" aria-label={t("conversations.board.close")} onClick={boardStore.close} />
+        <IconButton icon="x" size="sm" aria-label={t("conversations.board.close")} onClick={() => boardStore.close()} />
       </header>
       {requirementKey && (
         <p role="alert" className="fg-caption flex-none px-3 pb-2 text-danger">

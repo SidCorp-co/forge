@@ -11,15 +11,19 @@ import { useEffect, useState } from "react";
 /** What the pad asks of the canvas: the sketch as a PNG, or null while nothing is drawn. */
 export type SketchExport = () => Promise<Blob | null>;
 
+/** `exportToBlob`'s own declaration names types its package does not ship, so it is read through the shape it is called with. */
+type ToBlob = (opts: { elements: unknown; appState: unknown; files: unknown; mimeType: string }) => Promise<Blob>;
+const toBlob = exportToBlob as unknown as ToBlob;
+
 export default function SketchCanvas({ onReady }: { onReady: (exportPng: SketchExport | null) => void }) {
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
 
   useEffect(() => {
     if (!api) return;
-    onReady(async () => {
+    onReady(() => {
       const elements = api.getSceneElements();
-      if (elements.length === 0) return null;
-      return exportToBlob({
+      if (elements.length === 0) return Promise.resolve(null);
+      return toBlob({
         elements,
         appState: { ...api.getAppState(), exportBackground: true },
         files: api.getFiles(),

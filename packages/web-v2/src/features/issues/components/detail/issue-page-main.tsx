@@ -6,7 +6,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { SegmentedControl } from "@/design";
 import { useIssueForecast } from "@/features/forecast";
 import { IssuePreview } from "@/features/previews";
-import { settingsHref } from "@/features/project-settings/sections";
+import { settingsHref } from "@/features/project-settings";
 import { IssueQuestions } from "@/features/questions";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { useActivity, useAttachments, useComments } from "../../detail-hooks";

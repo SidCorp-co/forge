@@ -31,7 +31,7 @@ export function ItemMemory({ projectId, slug, cites }: { projectId: string; slug
       <ViewHeading>{t("memory.title")}</ViewHeading>
       {actError ? <p className="text-13 text-danger">{formatApiError(actError)}</p> : null}
       {q.isError ? (
-        <ErrorState title={t("memory.loadFailed")} message={formatApiError(q.error)} onRetry={() => q.refetch()} />
+        <ErrorState title={t("memory.loadFailed")} message={formatApiError(q.error)} onRetry={() => void q.refetch()} />
       ) : !q.data ? (
         <ProjectLoader label={t("memory.loading")} />
       ) : q.data.items.length === 0 ? (

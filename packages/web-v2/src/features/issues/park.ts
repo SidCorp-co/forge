@@ -34,10 +34,10 @@ export function useIssuePark(
 		queryFn: () => issueDetailApi.getPark(issueId as string, projectId),
 		enabled: Boolean(issueId),
 	});
-	const readAt = useRef<{ key: readonly unknown[]; status: IssueStatus | undefined }>({ key, status });
+	const readAtRef = useRef<{ key: readonly unknown[]; status: IssueStatus | undefined }>({ key, status });
 	useEffect(() => {
-		const prior = readAt.current;
-		readAt.current = { key, status };
+		const prior = readAtRef.current;
+		readAtRef.current = { key, status };
 		if (prior.key === key && prior.status !== undefined && status !== undefined && prior.status !== status) {
 			void qc.invalidateQueries({ queryKey: key, exact: true });
 		}

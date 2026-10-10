@@ -228,11 +228,11 @@ function Inbox({ view }: { view: AttentionView }) {
               />
             </section>
           ))}
-          <Group title="Channel gates" items={scoped.channelGates} onOpen={router.push} />
-          <Group title="Mentions" items={scoped.mentions} onOpen={router.push} />
-          <Group title="Failed jobs" items={scoped.failedJobs} onOpen={router.push} />
-          <Group title="Status reports" items={scoped.statusReports} onOpen={router.push} />
-          <Group title="Offline runners" items={scoped.offlineRunners} onOpen={router.push} />
+          <Group title="Channel gates" items={scoped.channelGates} onOpen={(href) => router.push(href)} />
+          <Group title="Mentions" items={scoped.mentions} onOpen={(href) => router.push(href)} />
+          <Group title="Failed jobs" items={scoped.failedJobs} onOpen={(href) => router.push(href)} />
+          <Group title="Status reports" items={scoped.statusReports} onOpen={(href) => router.push(href)} />
+          <Group title="Offline runners" items={scoped.offlineRunners} onOpen={(href) => router.push(href)} />
         </div>
       )}
     </PageContainer>
