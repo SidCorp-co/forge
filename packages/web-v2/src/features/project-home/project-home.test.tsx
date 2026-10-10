@@ -1,4 +1,4 @@
-// REQ-41 BC-13: the project home opens on chat, and beside it are three flat tables: what needs you
+// REQ-41 BC-13: the project home opens on chat, and beside it are three flat lists: what needs you
 // (the decisions read, with the buttons that answer them), what is running, and what is at risk.
 
 import { needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
@@ -67,7 +67,7 @@ const status = (over: Partial<ProjectStatus> = {}): ProjectStatus => ({
   late: { asOf: STATUS.asOf, items: [{ kind: "requirement", key: "REQ-4", title: "Referrals", late: { reason: "p85_passed", since: "2026-10-07T08:00:00.000Z", byMinutes: 120 } }] },
   requirements: {
     ...STATUS.requirements,
-    items: [{ ...(STATUS.requirements.items[0] as never as ProjectStatus["requirements"]["items"][number]), key: "REQ-7", title: "Checkout", state: "delivered", criteria: { proven: 3, total: 5 } }],
+    items: [{ ...(STATUS.requirements.items[0]), key: "REQ-7", title: "Checkout", state: "delivered", criteria: { proven: 3, total: 5 } }],
   },
   ...over,
 });
@@ -88,7 +88,7 @@ function core(s: ProjectStatus = status()) {
 }
 
 describe("the project home (REQ-41 BC-13)", () => {
-  it("leads with the composer, then three flat tables: 3 decisions, 2 running, 1 at risk beside 1 short", async () => {
+  it("leads with the composer, then three flat lists: 3 decisions, 2 running, 1 at risk beside 1 short", async () => {
     core();
     renderWithQuery(<ProjectHome projectId={PROJECT} slug="hop" />);
     const home = await screen.findByTestId("project-home");
@@ -98,31 +98,34 @@ describe("the project home (REQ-41 BC-13)", () => {
     expect(home.querySelector("textarea, button, a, input")).toBe(screen.getByLabelText("Composer"));
     expect(screen.getByTestId("chat")).toHaveAttribute("data-conversation", "c-1");
     expect(within(screen.getByTestId("home-needs-you")).getAllByTestId("needs-you-decision")).toHaveLength(3);
-    expect(screen.getAllByTestId("home-running-row").map((r) => r.getAttribute("data-key"))).toEqual(["ISS-20", "ISS-21"]);
-    expect(screen.getAllByTestId("home-at-risk-row").map((r) => r.getAttribute("data-key"))).toEqual(["REQ-4", "REQ-7"]);
+    expect(screen.getAllByTestId("home-running-row").map((r) => r.getAttribute("data-row-key"))).toEqual(["ISS-20", "ISS-21"]);
+    expect(screen.getAllByTestId("home-at-risk-row").map((r) => r.getAttribute("data-row-key"))).toEqual(["REQ-4", "REQ-7"]);
     expect(screen.getAllByTestId("home-at-risk-why").map((n) => n.textContent)).toEqual([
       "2.0 h past the latest similar work took",
       "3 of 5 criteria proven on the running build",
     ]);
-    // flat: tables and hairlines, no card or shadow
+    // flat: row lists on hairlines, no card or shadow
     const surfaces = [...home.querySelectorAll("section, table, ul, li, div")].map((n) => n.className).join(" ");
     expect(surfaces).not.toMatch(/shadow|rounded|\bcard\b|bg-surface-raised/);
-    expect(screen.getAllByRole("table")).toHaveLength(2);
+    expect(screen.getByRole("list", { name: "Running" })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "At risk" })).toBeInTheDocument();
   });
 
   it("stacks on one column below lg and puts the chat column first", async () => {
     core();
     renderWithQuery(<ProjectHome projectId={PROJECT} slug="hop" />);
     const home = await screen.findByTestId("project-home");
-    expect(home.className).toContain("grid-cols-1");
-    expect(home.className).toContain("lg:grid-cols-[minmax(0,1fr)_26rem]");
+    // one column (chat, then the side), side by side from lg with a 26rem side column
+    expect(home.className).toMatch(/\bflex-col\b/);
+    expect(home.className).toContain("lg:flex-row");
     expect(home.firstElementChild).toBe(screen.getByTestId("home-chat"));
+    expect(home.lastElementChild?.className).toContain("lg:w-104");
   });
 
   it("posts a decision button's filled path as the person, and the row's request is the one the page sends", async () => {
     const calls = core();
     renderWithQuery(<ProjectHome projectId={PROJECT} slug="hop" />);
-    const first = (await screen.findAllByTestId("needs-you-decision"))[0] as HTMLElement;
+    const first = (await screen.findAllByTestId("needs-you-decision"))[0];
     fireEvent.click(within(first).getByRole("button", { name: "Yes" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
     expect(calls.filter((c) => c.method === "POST")).toEqual([{ method: "POST", path: `/questions/${Q}/answer`, body: { round: 1, optionId: "yes" } }]);
@@ -152,7 +155,7 @@ describe("the project home (REQ-41 BC-13)", () => {
 
   it("refuses to call a requirement at risk that core did not call late or that holds every criterion", () => {
     const s = status({ late: { asOf: STATUS.asOf, items: [] } });
-    const item = s.requirements.items[0] as ProjectStatus["requirements"]["items"][number];
+    const item = s.requirements.items[0];
     const held = { ...s, requirements: { ...s.requirements, items: [{ ...item, criteria: { proven: 5, total: 5 } }, { ...item, key: "REQ-8", state: "in_delivery" as const }] } };
     expect(atRiskRows(held, "hop")).toEqual([]);
     expect(runningRows(undefined)).toEqual([]);
@@ -160,7 +163,7 @@ describe("the project home (REQ-41 BC-13)", () => {
 
   it("names a requirement once where it is both late and short", () => {
     const s = status();
-    const item = s.requirements.items[0] as ProjectStatus["requirements"]["items"][number];
+    const item = s.requirements.items[0];
     const both = { ...s, requirements: { ...s.requirements, items: [{ ...item, key: "REQ-4" }] } };
     const rows = atRiskRows(both, "hop");
     expect(rows).toHaveLength(1);

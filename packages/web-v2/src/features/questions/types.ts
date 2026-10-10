@@ -6,8 +6,8 @@ export type OptionAuthority = "writer" | "admin";
 export type OptionBinding = "this_call" | "session" | "project";
 export type OptionExecutor = "agent" | "core" | "human";
 
-export type QuestionStatus = "open" | "answered" | "void" | "expired" | "needs_info";
-export type BlockerKind = "machine" | "master_or_peer" | "human";
+type QuestionStatus = "open" | "answered" | "void" | "expired" | "needs_info";
+type BlockerKind = "machine" | "master_or_peer" | "human";
 
 export interface QuestionOption {
   id: string;
@@ -22,7 +22,7 @@ export interface VisibleOption extends QuestionOption {
   locked: boolean;
 }
 
-export type AnswerShape = "choice" | "free_text";
+type AnswerShape = "choice" | "free_text";
 
 interface StepCommon {
   round: number;
@@ -36,14 +36,14 @@ interface StepCommon {
   resume?: AnswerResume;
 }
 
-export interface ChoiceStep extends StepCommon {
+interface ChoiceStep extends StepCommon {
   answerShape: "choice";
   options: QuestionOption[];
   recommendedOptionId: string;
   chosenOptionId?: string;
 }
 
-export interface FreeTextStep extends StepCommon {
+interface FreeTextStep extends StepCommon {
   answerShape: "free_text";
   needed: string;
   /** The answer the asker recommends, which a person may send as it stands. */
@@ -107,7 +107,7 @@ export function roundCountOf(question: AgentQuestion): number {
 export type GivenAnswer = { optionId: string; text?: never } | { text: string; optionId?: never };
 
 /** The answer does not release its issue: what it still waits on, and the issue key that blocks it. */
-export interface StillWaits {
+interface StillWaits {
   reason: string;
   blockedBy?: string;
 }

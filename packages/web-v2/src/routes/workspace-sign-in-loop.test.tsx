@@ -36,9 +36,9 @@ afterEach(() => vi.unstubAllGlobals());
 describe("a workspace page with no session", () => {
   it("goes to /login once, by a hard navigation, never by the client router", async () => {
     renderWithQuery(<AuthProvider><WorkspaceLayout><div /></WorkspaceLayout></AuthProvider>);
-    await waitFor(() => expect(assign).toHaveBeenCalledWith("/login"));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(new URL("/login", window.location.origin)));
     expect(assign).toHaveBeenCalledTimes(1);
-    expect(nav.replace).not.toHaveBeenCalledWith("/login");
+    expect(nav.replace).not.toHaveBeenCalledWith(new URL("/login", window.location.origin));
   });
 
   it("stops on a page naming the cause when the previous navigation already bounced", async () => {
@@ -53,6 +53,6 @@ describe("a workspace page with no session", () => {
   it("a person who comes back after the window is bounced once more, not stopped", async () => {
     window.sessionStorage.setItem("forge.loginBounce", String(Date.now() - 31_000));
     renderWithQuery(<AuthProvider><WorkspaceLayout><div /></WorkspaceLayout></AuthProvider>);
-    await waitFor(() => expect(assign).toHaveBeenCalledWith("/login"));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(new URL("/login", window.location.origin)));
   });
 });

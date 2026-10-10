@@ -17,7 +17,7 @@ export interface ChecklistPrompt {
   refusals: Refusal[];
 }
 
-export interface ChecklistField extends ChecklistFormField {
+interface ChecklistField extends ChecklistFormField {
   /** The plain-words refusal on this field, or null. */
   error: string | null;
 }

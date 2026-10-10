@@ -7,7 +7,7 @@ export function rampOr(step: string, className?: string) {
   return /\bfg-h[1-4]\b/.test(className ?? "") ? className : cn(step, className);
 }
 
-export interface PageTitleProps extends HTMLAttributes<HTMLHeadingElement> {
+interface PageTitleProps extends HTMLAttributes<HTMLHeadingElement> {
   back?: ReactNode;
   /** What names the record beside its title — its key, its state — after the heading. */
   after?: ReactNode;

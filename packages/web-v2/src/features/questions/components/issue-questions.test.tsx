@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { AgentQuestion, QuestionStep } from "../types";
-import { DecisionPanel } from "./decision-panel";
+import { IssueQuestions } from "@/features/questions/components/issue-questions";
 
 const asked: AgentQuestion = {
   id: "q1",
@@ -66,7 +66,7 @@ describe("answering a question on an issue", () => {
           ? { body: { questions: [asked] } }
           : { body: { ...answered } },
     );
-    renderWithQuery(<DecisionPanel issueId="i1" />);
+    renderWithQuery(<IssueQuestions issueId="i1" />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("checkbox", { name: "The issue still waits after this answer" }));
     await user.type(screen.getByRole("textbox", { name: /Your answer/ }), "intake");
@@ -89,7 +89,7 @@ describe("answering a question on an issue", () => {
 
   it("will not send a still-waits answer that does not say what it waits on", async () => {
     const calls = fakeCore(() => ({ body: { questions: [asked] } }));
-    renderWithQuery(<DecisionPanel issueId="i1" />);
+    renderWithQuery(<IssueQuestions issueId="i1" />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("checkbox", { name: "The issue still waits after this answer" }));
     await user.type(screen.getByRole("textbox", { name: /Your answer/ }), "intake");
@@ -102,7 +102,7 @@ describe("answering a question on an issue", () => {
     const calls = fakeCore((call) =>
       call.method === "GET" ? { body: { questions: [asked] } } : { body: { ...answered } },
     );
-    renderWithQuery(<DecisionPanel issueId="i1" />);
+    renderWithQuery(<IssueQuestions issueId="i1" />);
     const user = userEvent.setup();
     await user.type(await screen.findByRole("textbox", { name: /Your answer/ }), "intake");
     await user.click(screen.getByRole("button", { name: "Send answer" }));
@@ -117,7 +117,7 @@ describe("answering a question on an issue", () => {
 
   it("shows on an answered card what the issue still waits on and what the answer did", async () => {
     fakeCore(() => ({ body: { questions: [answered] } }));
-    renderWithQuery(<DecisionPanel issueId="i1" />);
+    renderWithQuery(<IssueQuestions issueId="i1" />);
     expect(await screen.findByText("Still waits on ISS-12: the intake design lands first")).toBeTruthy();
     expect(screen.getByTestId("answer-resume").textContent).toBe(
       "The issue stays parked, as this answer said.",
@@ -134,7 +134,7 @@ describe("answering a question on an issue", () => {
         ],
       },
     }));
-    renderWithQuery(<DecisionPanel issueId="i1" />);
+    renderWithQuery(<IssueQuestions issueId="i1" />);
     expect(await screen.findByText("Waiting on: merge mark of ISS-5")).toBeTruthy();
     expect(screen.getAllByTestId("waits-on-mark")).toHaveLength(1);
   });
@@ -157,7 +157,7 @@ describe("the assistant's suggested answer on an issue's question (REQ-41 BC-2)"
     const calls = fakeCore((call) =>
       call.method === "GET" ? { body: { questions: [{ ...asked, suggestion }] } } : { body: { ...answered } },
     );
-    renderWithQuery(<DecisionPanel issueId="i1" />);
+    renderWithQuery(<IssueQuestions issueId="i1" />);
     const line = await screen.findByTestId("question-offered-answer");
     expect(line).toHaveTextContent("Suggested by the assistant: intake first REQ-1 puts intake before billing. (read ISS-1, REQ-1)");
     await userEvent.setup().click(screen.getByRole("button", { name: "Send the suggested answer" }));
@@ -176,7 +176,7 @@ describe("the assistant's suggested answer on an issue's question (REQ-41 BC-2)"
         ],
       },
     }));
-    renderWithQuery(<DecisionPanel issueId="i1" />);
+    renderWithQuery(<IssueQuestions issueId="i1" />);
     const lines = await screen.findAllByTestId("question-offered-answer");
     expect(lines).toHaveLength(1);
     expect(lines[0]).toHaveAttribute("data-by", "asker");
@@ -195,7 +195,7 @@ describe("the assistant's suggested answer on an issue's question (REQ-41 BC-2)"
       suggestion: { ...suggestion, text: "Move", optionId: "move" },
     };
     fakeCore(() => ({ body: { questions: [choice] } }));
-    renderWithQuery(<DecisionPanel issueId="i1" />);
+    renderWithQuery(<IssueQuestions issueId="i1" />);
     expect(await screen.findByText("Suggested by the assistant")).toBeTruthy();
     expect(screen.queryByText("Recommended")).toBeNull();
   });

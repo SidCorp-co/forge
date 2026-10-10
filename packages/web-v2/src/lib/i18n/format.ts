@@ -15,11 +15,6 @@ export function formatDate(at: string | number | Date, language: string, timeZon
   return new Intl.DateTimeFormat(copyLocale(language), { year: "numeric", month: "2-digit", day: "2-digit", timeZone }).format(new Date(at));
 }
 
-/** `03/10`: day and month. */
-export function formatDayMonth(at: string | number | Date, language: string, timeZone?: string): string {
-  return new Intl.DateTimeFormat(copyLocale(language), { day: "2-digit", month: "2-digit", timeZone }).format(new Date(at));
-}
-
 /** `14:05`: the clock time of an instant. */
 export function formatClock(at: string | number | Date, language: string, timeZone?: string): string {
   return new Intl.DateTimeFormat(copyLocale(language), { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }).format(new Date(at));

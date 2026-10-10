@@ -28,7 +28,7 @@ function Decision({ a }: { a: ReleaseApprovalView }) {
   );
 }
 
-export function ApprovalRecord({ r }: { r: ReleaseDetail }) {
+function ApprovalRecord({ r }: { r: ReleaseDetail }) {
   const t = useCopy();
   const time = useTimeFormat();
   const a = r.approval;

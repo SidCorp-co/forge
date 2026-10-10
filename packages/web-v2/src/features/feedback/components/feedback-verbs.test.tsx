@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { RULE, say, sentence, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
-import { FeedbackFacts } from "./feedback-facts";
+import { LinkedFeedback } from "./feedback-facts";
 import { Messages } from "./feedback-messages";
 import { FeedbackActions } from "./feedback-actions";
 import { TriageVerbs, snoozeUntil } from "./feedback-verbs";
@@ -109,7 +109,7 @@ describe("the triage verbs", () => {
     expect(document.getElementById(field.getAttribute("aria-describedby") as string)?.textContent).toContain(detail);
   });
 
-  it("sends a duplicate with its answers, and a decline with none", async () => {
+  it("sends a duplicate with its answers, and a decline with none", () => {
     const calls = core();
     renderWithQuery(<TriageVerbs projectId="p1" f={view()} />);
     fireEvent.click(screen.getByRole("button", { name: "Duplicate of…" }));
@@ -168,7 +168,7 @@ describe("the triage verbs", () => {
   });
 
   it("shows a snoozed item as snoozed until its date", () => {
-    renderWithQuery(<FeedbackFacts f={view({ snoozed: { until: "2099-01-05T02:00:00.000Z", reason: "Wait for 0.5" } })} slug="hop" />);
+    renderWithQuery(<LinkedFeedback f={view({ snoozed: { until: "2099-01-05T02:00:00.000Z", reason: "Wait for 0.5" } })} slug="hop" />);
     expect(screen.getByTestId("snoozed-until")).toHaveTextContent("Snoozed until");
     expect(screen.getByTestId("snoozed-until")).toHaveTextContent("Wait for 0.5");
   });
@@ -241,11 +241,11 @@ describe("messages to reporters", () => {
 
 describe("the confirmation of the fix", () => {
   it("names who verified it and when, or that Forge did after the window", () => {
-    const { unmount } = renderWithQuery(<FeedbackFacts f={view({ phase: "verified", status: "verified", attentionGroup: "done", verified: { at: "2026-10-07T01:00:00.000Z", how: "person", by: "u5", byName: "Chi", byReporter: false, reason: null, says: { reason: null } } })} slug="hop" />);
+    const { unmount } = renderWithQuery(<LinkedFeedback f={view({ phase: "verified", status: "verified", attentionGroup: "done", verified: { at: "2026-10-07T01:00:00.000Z", how: "person", by: "u5", byName: "Chi", byReporter: false, reason: null, says: { reason: null } } })} slug="hop" />);
     expect(screen.getByTestId("verified-line")).toHaveTextContent("Verified by Chi");
     unmount();
     renderWithQuery(
-      <FeedbackFacts
+      <LinkedFeedback
         f={view({ phase: "verified", status: "verified", attentionGroup: "done", verified: { at: "2026-10-07T01:00:00.000Z", how: "automatic", by: null, byName: null, byReporter: false, reason: sentence(say("feedback.notice.autoVerified", { n: 7 })), says: { reason: say("feedback.notice.autoVerified", { n: 7 }) } } })}
         slug="hop"
       />,
@@ -255,13 +255,13 @@ describe("the confirmation of the fix", () => {
   });
 
   it("dates the record check of a resolved item that names a criterion, and says what it verifies on", () => {
-    renderWithQuery(<FeedbackFacts f={view({ phase: "resolved", autoVerify: { at: "2026-10-14T01:00:00.000Z", windowDays: 7 } })} slug="hop" />);
+    renderWithQuery(<LinkedFeedback f={view({ phase: "resolved", autoVerify: { at: "2026-10-14T01:00:00.000Z", windowDays: 7 } })} slug="hop" />);
     expect(screen.getByTestId("facts-auto-verify")).toHaveTextContent("verified if its criterion passes (7-day window)");
   });
 
   it("says why the record could not verify an item past its window, and dates nothing", () => {
     const held = { at: "2026-10-14T01:00:00.000Z", why: "its triage named no criterion, so no verdict can say the problem is gone" };
-    renderWithQuery(<FeedbackFacts f={view({ phase: "resolved", verifyHeld: held })} slug="hop" />);
+    renderWithQuery(<LinkedFeedback f={view({ phase: "resolved", verifyHeld: held })} slug="hop" />);
     expect(screen.getByTestId("facts-verify-held")).toHaveTextContent("Not verified: its triage named no criterion");
     expect(screen.queryByTestId("facts-auto-verify")).toBeNull();
   });

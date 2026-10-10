@@ -58,7 +58,7 @@ async function agreedRequirement(): Promise<string> {
   for (const [path, body] of [
     [`/requirements/${key}/revisions/1/propose`, {}],
     [`/requirements/${key}/revisions/1/accept`, {}],
-    [`/requirements/${key}/agree`, { revision: 1 }],
+    [`/requirements/${key}/agree`, { revision: 1, reason: 'Agreed with the owner for this test.' }],
   ] as const) {
     const r = await onProject('POST', path, body);
     expect(r.status, `${path} ${JSON.stringify(r.body)}`).toBe(200);

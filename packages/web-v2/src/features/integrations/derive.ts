@@ -7,11 +7,11 @@ import type { StatusCard } from "./types";
 export type DirectoryStatus = ConnectionDirectoryStatus;
 
 /** The part of a declaration that survives the wire onto a status card. */
-export type CardCapabilities = Omit<IntegrationCapabilities, "agentPath">;
+type CardCapabilities = Omit<IntegrationCapabilities, "agentPath">;
 
 /** Conservative default, so an absent `meta.capabilities` renders the most restrictive archetype
  *  (no delivery log, no environment split) rather than a fabricated one. */
-export const DEFAULT_CAPABILITIES: CardCapabilities = {
+const DEFAULT_CAPABILITIES: CardCapabilities = {
   canDispatch: false,
   canReceiveWebhook: false,
   inboundUnprompted: false,
@@ -109,7 +109,7 @@ export function getCapabilities(
  *  case-insensitively against object keys when redacting free-form payloads. */
 const SECRET_KEY_RE = /(api[-_]?key|api[-_]?token|private[-_]?key|service[-_]?account|secret|webhook[-_]?secret|password|authorization|token|bearer|credential)/i;
 
-export const REDACTED = "[redacted]";
+const REDACTED = "[redacted]";
 
 export function redactSensitive(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(redactSensitive);

@@ -5,9 +5,9 @@ import type { DirectoryStatus } from "./derive";
 import type { Copy } from "@/lib/i18n/product-copy";
 
 /** Which of the header's two tallies a directory state counts toward, if either. */
-export type GroupTally = "attention" | "off" | null;
+type GroupTally = "attention" | "off" | null;
 
-export function tallyOf(status: DirectoryStatus): GroupTally {
+function tallyOf(status: DirectoryStatus): GroupTally {
   switch (status) {
     case "degraded":
     case "error":

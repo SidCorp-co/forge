@@ -1,11 +1,11 @@
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { projectSlugOf } from "@/features/shell/project-slug";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import NotFound from "./not-found";
 
 // A URL under a project that names no page (a stale link such as the retired /skill-updates, ISS-220)
-// reads its 404 in the language that project's pages read in, not in English by default.
+// reads its 404 in the person's own interface language, else English: the project's content language
+// never turns Forge's chrome (owner, 2026-10-08; REQ-13 BC-2).
 
 const path = vi.hoisted(() => ({ current: "/projects/hop/skill-updates" }));
 vi.mock("next/navigation", () => ({ usePathname: () => path.current, useRouter: () => ({ push: vi.fn() }) }));
@@ -22,19 +22,14 @@ function missing(at: string, choice: "en" | "vi" | null) {
 }
 
 describe("the page a missing URL reads", () => {
-  it("reads in a vi project's language under that project's URL", async () => {
+  it("reads English under a vi project's URL when the person chose nothing", async () => {
     missing("/projects/hop/skill-updates", null);
-    expect(await screen.findByText("Không tìm thấy trang")).toBeInTheDocument(); // i18n-allow: Vietnamese text under test
-  });
-
-  it("keeps the person's own choice over the project's", async () => {
-    missing("/projects/hop/skill-updates", "en");
     expect(await screen.findByText("Page not found")).toBeInTheDocument();
+    expect(screen.queryByText("Không tìm thấy trang")).toBeNull(); // i18n-allow: Vietnamese text under test
   });
 
-  it("names the project slug only under /projects/<slug>", () => {
-    expect(projectSlugOf("/projects/hop/skill-updates")).toBe("hop");
-    expect(projectSlugOf("/ecosystems/threads")).toBeNull();
-    expect(projectSlugOf(null)).toBeNull();
+  it("reads in the person's own choice", async () => {
+    missing("/projects/hop/skill-updates", "vi");
+    expect(await screen.findByText("Không tìm thấy trang")).toBeInTheDocument(); // i18n-allow: Vietnamese text under test
   });
 });

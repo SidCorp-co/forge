@@ -8,6 +8,7 @@ import { QUESTION_REFUSAL_CODES, questionAboutRequestSchema } from '@forge/contr
 import { RELEASE_BLOCKER_CODES, RELEASE_REFUSAL_CODES } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
 import { memorySources, memoryWritableSources } from '../../db/schema-vocabulary.js';
+import { ISSUE_FLOW_GUIDE } from '../../guides/issue-flow-guide.js';
 import { releaseBatchStatePrompt } from '../state-prompts/release-batch.js';
 import {
   DRIVE_RULES_TEXT,
@@ -125,8 +126,12 @@ describe('a run writes memory another reader can trust', () => {
     expect(MEMORY_REFUSAL_CODES).toContain('MEMORY_EVIDENCE_REQUIRED');
   });
 
+  // REQ-23 BC-2: the prompt names the guide that says it, and the guide says it
   it('says a flagged hit carries its reason and bookkeeping is read only when asked for', () => {
     expect(DRIVE_RULES_TEXT).toContain(
+      "What a hit's `staleReason` and a `bookkeeping` row mean: `GET /api/guides/issue-flow.md`.",
+    );
+    expect(ISSUE_FLOW_GUIDE.body.replace(/\s+/g, ' ')).toContain(
       'A hit carrying `staleReason` was flagged possibly stale by a release for the reason it gives, so check that claim before relying on it; a `bookkeeping` row is the upkeep record core keeps of memory itself, never written by a run, and returned only when `sourceFilter` names it.',
     );
     expect(memorySources).toContain('bookkeeping');

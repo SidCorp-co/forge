@@ -60,7 +60,7 @@ function factLabels(screen: ChromeScreen, language: "en" | "vi"): string[] {
 function collapsedLabels(en: string[], vi: string[]): { vi: string; en: [string, string] } | null {
   for (let i = 0; i < vi.length; i++) {
     for (let j = i + 1; j < vi.length; j++) {
-      if (vi[i] === vi[j] && en[i] !== en[j]) return { vi: vi[i] as string, en: [en[i] as string, en[j] as string] };
+      if (vi[i] === vi[j] && en[i] !== en[j]) return { vi: vi[i], en: [en[i], en[j]] };
     }
   }
   return null;

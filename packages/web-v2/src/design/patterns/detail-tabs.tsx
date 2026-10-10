@@ -10,13 +10,13 @@ export function useUrlTab<T extends string>(tabs: readonly T[]): [T, (t: T) => v
   return useUrlChoice("tab", tabs, tabs[0]);
 }
 
-export interface DetailTabItem<T extends string> {
+interface DetailTabItem<T extends string> {
   value: T;
   label: string;
   count?: number;
 }
 
-export interface DetailTabsProps<T extends string> {
+interface DetailTabsProps<T extends string> {
   tabs: readonly DetailTabItem<T>[];
   value: T;
   onChange: (t: T) => void;

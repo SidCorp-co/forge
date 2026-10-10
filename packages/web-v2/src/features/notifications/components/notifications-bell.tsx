@@ -14,7 +14,7 @@ import { useInvitationItems } from "./use-invitation-items";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 
-export interface NotificationsBellProps {
+interface NotificationsBellProps {
   /** Dropdown visibility — toggled by the sidebar bell, or the bell in the mobile More drawer. */
   open: boolean;
   onClose: () => void;

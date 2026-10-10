@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api/client";
 
-export interface DeploymentVersion {
+interface DeploymentVersion {
 	version: string;
 	sourceCommit: string | null;
 	uptimeSeconds: number;

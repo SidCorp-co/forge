@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { RadioGroup as ShadcnRadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils/cn";
 
-export interface RadioGroupProps {
+interface RadioGroupProps {
   value: string;
   onChange?: (v: string) => void;
   name: string;
@@ -24,7 +24,7 @@ export function RadioGroup({ value, onChange, name, children, className }: Radio
   );
 }
 
-export interface RadioProps {
+interface RadioProps {
   value: string;
   label?: ReactNode;
   disabled?: boolean;

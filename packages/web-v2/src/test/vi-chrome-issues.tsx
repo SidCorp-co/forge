@@ -11,14 +11,14 @@ import { BlockerBanner } from "@/features/issues/components/blocker-banner";
 import { BulkActionBar } from "@/features/issues/components/bulk-action-bar";
 import { CommentThread } from "@/features/issues/components/comment-thread";
 import { RunsTab } from "@/features/issues/components/detail/issue-sections";
-import { IssueChanges as ChangesRow } from "@/features/issues/components/issue-changes";
-import { IssueCriteria as CriteriaSection } from "@/features/issues/components/issue-criteria";
+import { IssueChanges } from "@/features/issues/components/issue-changes";
+import { IssueCriteria } from "@/features/issues/components/issue-criteria";
 import { IssueDetailScreen } from "@/features/issues/components/issue-detail-screen";
 import { IssuePeek } from "@/features/issues/components/issue-peek";
 import { IssuesBoard } from "@/features/issues/components/issues-board";
 import { IssuesListView } from "@/features/issues/components/issues-list-view";
 import { IssuesEmptyState } from "@/features/issues/components/list/issues-empty-state";
-import { LiveAgent as LiveAgentPanel } from "@/features/issues/components/live-agent";
+import { LiveAgent } from "@/features/issues/components/live-agent";
 import { MergeMarkerControl } from "@/features/issues/components/merge-marker-control";
 import { NewIssueDialog } from "@/features/issues/components/new-issue-dialog";
 import { ModulePicker } from "@/features/issues/components/module-picker";
@@ -133,7 +133,7 @@ const row = (n: number, over: Partial<IssueRow> = {}): IssueRow =>
     agentSessions: [{ id: "s1", status: "running", deviceName: "box-1" }] as never,
     workState: { step: "build" } as never,
     ...over,
-  }) as IssueRow;
+  });
 
 const ROWS: IssueRow[] = [
   row(1, {
@@ -304,7 +304,7 @@ export const SCREENS = [
           <IssuesEmptyState key={JSON.stringify(s)} onClear={noop} onNewIssue={noop} {...s} />
         ))}
         {wrap([], <BulkActionBar projectId={P} selectedRows={ROWS} onCleared={noop} />)}
-        {wrap([], <BulkActionBar projectId={P} selectedRows={[ROWS[3] as IssueRow]} onCleared={noop} />)}
+        {wrap([], <BulkActionBar projectId={P} selectedRows={[ROWS[3]]} onCleared={noop} />)}
         <StagedFileList files={[new File(["x"], "anh.png", { type: "image/png" })]} warnings={["x"]} remove={noop} />
       </>
     ),
@@ -312,7 +312,7 @@ export const SCREENS = [
   { name: "Issues board · attention", render: board("attention") },
   { name: "Issues board · module", render: board("module") },
   { name: "Issues board · waves", render: board("waves") },
-  { name: "Issue peek", render: () => wrap([], <IssuePeek slug="hop" row={STANDING_ROWS[0] as IssueStandingRow} clock={clock} peek={peek} onOpenFull={noop} />) },
+  { name: "Issue peek", render: () => wrap([], <IssuePeek slug="hop" row={STANDING_ROWS[0]} clock={clock} peek={peek} onOpenFull={noop} />) },
   { name: "Issue detail", render: () => wrap(detailQueries(), <IssueDetailScreen projectId={P} slug="hop" id="i1" />) },
   { name: "Issue detail · actions menu", render: () => wrap(detailQueries(), <IssueDetailScreen projectId={P} slug="hop" id="i1" />), act: click(labelled("issues.actions.menu")) },
   {
@@ -321,9 +321,9 @@ export const SCREENS = [
       wrap(
         detailQueries(),
         <>
-          <ChangesRow issue={ISSUE} slug="hop" developer />
-          <CriteriaSection issue={ISSUE} projectId={P} checklist={[]} canWrite requirementKey="REQ-1" />
-          <CriteriaSection issue={{ ...ISSUE, id: "i2" }} projectId={P} checklist={[{ key: "a", text: "Tieu chi", checked: true }]} canWrite={false} requirementKey={null} />
+          <IssueChanges issue={ISSUE} slug="hop" developer />
+          <IssueCriteria issue={ISSUE} projectId={P} checklist={[]} canWrite requirementKey="REQ-1" />
+          <IssueCriteria issue={{ ...ISSUE, id: "i2" }} projectId={P} checklist={[{ key: "a", text: "Tieu chi", checked: true }]} canWrite={false} requirementKey={null} />
           <RunsTab issueId="i1" slug="hop" sessions={[]} standingQ={{ isLoading: false, isError: false, data: DETAIL } as never} stepOutcomes={DETAIL.stepOutcomes} expandedStep="build" onToggleStep={noop} />
           <RunsTab issueId="i1" slug="hop" sessions={RUNS} standingQ={{ isLoading: false, isError: false, data: DETAIL } as never} stepOutcomes={[]} expandedStep={null} onToggleStep={noop} />
           <CommentThread issueId="i1" comments={COMMENTS} members={undefined} />
@@ -348,8 +348,8 @@ export const SCREENS = [
           {BLOCKERS.map((b) => (
             <BlockerBanner key={b.reason} blocker={b} slug="hop" pending={false} onResumePark={noop} onResumeRun={noop} onProvideInfo={noop} />
           ))}
-          <LiveAgentPanel state={{ kind: "live", session: { id: "s1", status: "running", heartbeat: "stale", startedAt: AT, deviceId: "dev-1234567" } as never }} step="build" slug="hop" issueId="i1" />
-          <LiveAgentPanel state={{ kind: "queued", step: { jobId: "j1", jobType: "triage", queuedAt: AT, nextAttempt: "", retryAfterAt: "2026-10-08T09:00:00.000Z", gate: { reason: "issue_busy", short: "Another job active", detail: "Another job is already active on this issue.", who: "Wait for the active run to finish.", needsAction: false } } }} step="—" slug="hop" issueId="i1" />
+          <LiveAgent state={{ kind: "live", session: { id: "s1", status: "running", heartbeat: "stale", startedAt: AT, deviceId: "dev-1234567" } as never }} step="build" slug="hop" issueId="i1" />
+          <LiveAgent state={{ kind: "queued", step: { jobId: "j1", jobType: "triage", queuedAt: AT, nextAttempt: "", retryAfterAt: "2026-10-08T09:00:00.000Z", gate: { reason: "issue_busy", short: "Another job active", detail: "Another job is already active on this issue.", who: "Wait for the active run to finish.", needsAction: false } } }} step="—" slug="hop" issueId="i1" />
           <AwaitingReleaseBanner projectId={P} issueId="i1" canWrite />
         </>,
       ),

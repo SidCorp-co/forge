@@ -115,7 +115,7 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
 }
 
 /** A file core serves for download: its bytes, and the name its Content-Disposition gives (null for none). */
-export interface ApiFile {
+interface ApiFile {
   blob: Blob;
   name: string | null;
 }

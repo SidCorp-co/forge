@@ -7,7 +7,7 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { productCopy } from "@/lib/i18n/product-copy";
 import type { WorkflowDesign } from "../types";
-import { buildGateSentence, healthSentences, reconciliationSentence, WorkflowDesignFacts } from "./workflow-design-facts";
+import { buildGateSentence, healthSentences, reconciliationSentence, WorkflowDesignProperties } from "./workflow-design-facts";
 
 const en = productCopy("en");
 
@@ -55,7 +55,7 @@ describe("the rail keeps kernel terms behind the Developer view", () => {
   const shown = { steps: [], kind: "flow", summary: null } as never;
   const rail = () =>
     render(
-      <WorkflowDesignFacts
+      <WorkflowDesignProperties
         d={design}
         record={{ writerName: "Ba", document: { updatedAt: "2026-10-01T00:00:00Z" } } as never}
         shown={shown}

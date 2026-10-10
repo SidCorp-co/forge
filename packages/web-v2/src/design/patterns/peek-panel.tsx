@@ -62,7 +62,7 @@ export function usePeekKeys(peek: PeekState, onOpenFull: (key: string) => void):
   }, [peek, onOpenFull]);
 }
 
-export interface PeekPanelProps {
+interface PeekPanelProps {
   peek: PeekState;
   /** The list's name, on the back control of the narrow-screen sheet: "← Issues". */
   listLabel: string;
@@ -108,7 +108,7 @@ export function PeekPanel({ peek, listLabel, noun, onOpenFull, children, testId 
   );
 }
 
-export interface PeekHeadProps {
+interface PeekHeadProps {
   noun: string;
   itemKey: string;
   badge?: ReactNode;

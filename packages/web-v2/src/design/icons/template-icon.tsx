@@ -5,7 +5,7 @@ import {
   RefreshCw, Send, Server, Square, SquareCheck, Table, Target, TriangleAlert, User, Clock, Zap,
 } from "lucide-react";
 
-export type TemplateIconKey = (typeof TEMPLATE_ICONS)[number];
+type TemplateIconKey = (typeof TEMPLATE_ICONS)[number];
 
 /* One glyph per icon key a diagram template may name; a key added to the contract without one
    here fails the type check rather than rendering nothing. */

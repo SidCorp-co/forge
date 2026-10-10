@@ -9,7 +9,7 @@ export interface Correction {
   code: string;
 }
 
-export function splitCorrections(text: string): { prose: string; corrections: Correction[] } {
+function splitCorrections(text: string): { prose: string; corrections: Correction[] } {
   const corrections: Correction[] = [];
   const kept: string[] = [];
   for (const line of text.split("\n")) {

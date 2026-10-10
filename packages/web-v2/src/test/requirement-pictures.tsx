@@ -14,7 +14,7 @@ import { reqDetail } from "./vi-chrome-requirements";
 export const PROJECT = "7f1c1d1e-0000-4000-8000-000000000001";
 const at = "2026-10-08T10:00:00.000Z";
 
-export const pic = (kind: RequirementPictureView["kind"], content: unknown, alt: string): RequirementPictureView => ({
+const pic = (kind: RequirementPictureView["kind"], content: unknown, alt: string): RequirementPictureView => ({
   id: `p-${kind}`,
   kind,
   content: content as RequirementPictureView["content"],

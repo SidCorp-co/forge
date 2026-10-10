@@ -148,7 +148,7 @@ export function chartDraftOf(content: ChartContent): ChartDraft | null {
 }
 
 /** Why a sample chart cannot be drawn yet: an axis left unnamed, no figure, or a row whose figure is not a number. */
-export type ChartFault = { field: "xLabel" | "valueLabel" | "rows" } | { field: "row"; row: number };
+type ChartFault = { field: "xLabel" | "valueLabel" | "rows" } | { field: "row"; row: number };
 
 /** The draft's figures as a chart's content, every one of them sample, or the first thing it lacks. */
 export function chartFromDraft(draft: ChartDraft, title?: string): { ok: true; content: ChartContent } | { ok: false; fault: ChartFault } {

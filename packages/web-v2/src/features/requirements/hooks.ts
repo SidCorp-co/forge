@@ -17,7 +17,7 @@ export const requirementKeys = {
   areas: (projectId: string | undefined) => ["requirement-areas", projectId] as const,
 };
 
-export const requirementQueries = {
+const requirementQueries = {
   list: (projectId: string | undefined) => readOf(requirementKeys.list(projectId), () => requirementsApi.list(projectId as string)),
   detail: (projectId: string | undefined, req: string | undefined) =>
     readOf(requirementKeys.detail(projectId, req), () => requirementsApi.get(projectId as string, req as string)),
@@ -34,7 +34,7 @@ export function useRequirementDecisions(projectId: string | undefined, req: stri
     // switching whose records show keeps the open fold standing on the rows it had, not a loader;
     // only the same requirement's rows, so another requirement never wears this one's decisions
     placeholderData: (previous, previousQuery) =>
-      previousQuery?.queryKey[1] === (projectId ?? "") && previousQuery.queryKey[2] === (req ?? "") ? previous : undefined,
+      previousQuery?.queryKey[1] === projectId && previousQuery?.queryKey[2] === req ? previous : undefined,
   });
 }
 

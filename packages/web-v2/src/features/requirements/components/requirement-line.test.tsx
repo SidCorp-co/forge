@@ -5,7 +5,7 @@
 import { render, screen } from "@testing-library/react";
 import type { RequirementSummary } from "@forge/contracts/requirements";
 import { describe, expect, it } from "vitest";
-import { RequirementLine } from "./requirement-line";
+import { RequirementsList } from "./requirements-list";
 import { RequirementsMap } from "./requirements-map";
 
 const NOW = Date.parse("2026-10-10T12:00:00.000Z");
@@ -32,7 +32,8 @@ const row = (over: Partial<RequirementSummary["standing"]> = {}) =>
     },
   }) as unknown as RequirementSummary;
 
-const line = (r: RequirementSummary) => render(<RequirementLine r={r} slug="hop" now={NOW} selected={false} onPeek={() => {}} />);
+// the row as the list draws it, through the shared grouped list
+const line = (r: RequirementSummary) => render(<RequirementsList groups={[{ id: "you", label: "Needs you", rows: [r] }]} slug="hop" now={NOW} selected={null} onPeek={() => {}} />);
 
 describe("a requirement's row on the list", () => {
   it("reads AGE from the time in its state, not from its last edit", () => {

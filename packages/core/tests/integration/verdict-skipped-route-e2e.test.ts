@@ -56,7 +56,7 @@ async function tracedClosedIssue(): Promise<{ issueId: string; req: string }> {
   for (const [path, body] of [
     [`/requirements/${req}/revisions/1/propose`, {}],
     [`/requirements/${req}/revisions/1/accept`, {}],
-    [`/requirements/${req}/agree`, { revision: 1 }],
+    [`/requirements/${req}/agree`, { revision: 1, reason: 'Agreed with the owner for this test.' }],
   ] as const) {
     const r = await onProject('POST', path, body);
     expect(r.status, `${path} ${JSON.stringify(r.body)}`).toBe(200);

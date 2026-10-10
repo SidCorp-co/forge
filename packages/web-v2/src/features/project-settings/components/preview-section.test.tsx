@@ -5,9 +5,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { V1Read } from "@/features/project-config/types";
+import type { V1Read } from "@/features/project-config";
 import { type Call, fakeCore } from "@/test/render";
-import { PreviewSection } from "./preview-section";
+import { PreviewSettings } from "./preview-section";
 
 const P = "11111111-1111-4111-8111-111111111111";
 const doc = (extra: Record<string, unknown> = {}) => ({
@@ -30,7 +30,7 @@ function mount(canEdit = true) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <PreviewSection projectId={P} slug="hop" canEdit={canEdit} />
+      <PreviewSettings projectId={P} slug="hop" canEdit={canEdit} />
     </QueryClientProvider>,
   );
 }
@@ -80,7 +80,7 @@ describe("the preview setting", () => {
     mount();
     fireEvent.change(await field("Start command"), { target: { value: "node server.js" } });
     save();
-    const row = (await screen.findAllByText(/preview\.port is required when the command does not hold/))[0] as HTMLElement;
+    const row = (await screen.findAllByText(/preview\.port is required when the command does not hold/))[0];
     expect(row).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Start command" })).toHaveValue("node server.js");
   });

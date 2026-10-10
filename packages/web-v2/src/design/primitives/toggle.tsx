@@ -1,7 +1,7 @@
 
 import { Switch } from "@/components/ui/switch";
 
-export interface ToggleProps {
+interface ToggleProps {
   checked: boolean;
   onChange?: (checked: boolean) => void;
   disabled?: boolean;

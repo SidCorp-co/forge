@@ -3,7 +3,7 @@
  * It is the person's cue to sign in again, never an error to show: core has already cleared the
  * cookies, and the app treats the answer as being signed out.
  */
-export const SESSION_ENDED_CODE = 'SESSION_EXPIRED';
+const SESSION_ENDED_CODE = 'SESSION_EXPIRED';
 
 export const SESSION_ENDED_LINE = 'Your session ended. Please sign in again.';
 

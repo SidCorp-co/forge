@@ -5,7 +5,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { MockupView } from "../types";
-import { MockupsPanel } from "./mockups-panel";
+import { MockupList } from "./mockups-panel";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -30,7 +30,7 @@ const mockup = (over: Partial<MockupView> = {}): MockupView =>
 
 function panel(rows: MockupView[], post: () => { body: unknown } = () => ({ body: { mockup: rows[0] } })) {
   const calls = fakeCore((c) => (c.method === "GET" ? { body: { mockups: rows, returned: rows.length } } : post()));
-  renderWithQuery(<MockupsPanel projectId="p1" target={{ type: "feedback", key: "FB-1" }} canPropose={false} />);
+  renderWithQuery(<MockupList projectId="p1" target={{ type: "feedback", key: "FB-1" }} canPropose={false} />);
   return calls;
 }
 
@@ -64,7 +64,7 @@ describe("accepting a mockup", () => {
   });
 
   it("shows an accepted mockup's reason as the accept's", async () => {
-    panel([mockup({ status: "accepted", reason: "Matches the spec", can: { accept: false, return: false, withdraw: false } } as Partial<MockupView>)]);
+    panel([mockup({ status: "accepted", reason: "Matches the spec", can: { accept: false, return: false, withdraw: false } })]);
     expect(await screen.findByText("Accepted: Matches the spec")).toBeInTheDocument();
   });
 });
@@ -75,7 +75,7 @@ describe("accepting a mockup", () => {
 describe("a requirement's Mockups tab", () => {
   const requirementPanel = () => {
     fakeCore(() => ({ body: { mockups: [], returned: 0 } }));
-    renderWithQuery(<MockupsPanel projectId="p1" target={{ type: "requirement", key: "REQ-1", revision: 1 }} />);
+    renderWithQuery(<MockupList projectId="p1" target={{ type: "requirement", key: "REQ-1", revision: 1 }} />);
   };
 
   it("offers no proposal, even when the caller would let one through", async () => {

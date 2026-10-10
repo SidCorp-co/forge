@@ -26,7 +26,7 @@ function Key({ row }: { row: PlanRow }) {
 type Block = { kind: "row"; row: PlanRow } | { kind: "cut"; version: string; who: Said; rows: PlanRow[] };
 
 /** Rows waiting on the same release cut sit under one line naming the release and who cuts it; a lone one stays a row. */
-export function landBlocks(rows: readonly PlanRow[]): Block[] {
+function landBlocks(rows: readonly PlanRow[]): Block[] {
   const byVersion = new Map<string, PlanRow[]>();
   for (const r of rows) if (r.release) byVersion.set(r.release.version, [...(byVersion.get(r.release.version) ?? []), r]);
   const blocks: Block[] = [];

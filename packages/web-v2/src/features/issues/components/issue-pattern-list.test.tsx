@@ -6,7 +6,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
-import { PatternsPanel } from "./patterns-panel";
+import { IssuePatternList } from "./issue-pattern-list";
 
 const view = (over: Record<string, unknown>) => ({
   id: "p1",
@@ -49,7 +49,7 @@ function core(patterns: unknown[], decidable: string[], decided: (c: Call) => un
 describe("the issue's new patterns", () => {
   it("lists a pending one with its summary, and offers its review to a reader core says may decide it", async () => {
     core([view({})], ["p1"]);
-    renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" show="open" />);
+    renderWithQuery(<IssuePatternList issueId="i1" projectId="pr1" show="open" />);
     const row = await screen.findByTestId("pattern-queue-door");
     expect(row).toHaveTextContent("New pattern queue-door");
     expect(row).toHaveTextContent("no catalogued pattern consumes a queue");
@@ -58,14 +58,14 @@ describe("the issue's new patterns", () => {
 
   it("offers no review to a reader who may not decide it: its author, or one without patterns.approve", async () => {
     core([view({})], []);
-    renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" show="open" />);
+    renderWithQuery(<IssuePatternList issueId="i1" projectId="pr1" show="open" />);
     const row = await screen.findByTestId("pattern-queue-door");
     expect(within(row).queryByRole("button", { name: "Review" })).toBeNull();
   });
 
   it("returns it with the reason typed, and sends nothing until a reason is given", async () => {
     const calls = core([view({})], ["p1"], () => ({ pattern: view({ decision: "returned", pending: false }) }));
-    renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" show="open" />);
+    renderWithQuery(<IssuePatternList issueId="i1" projectId="pr1" show="open" />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Review" }));
     const form = await screen.findByTestId("pattern-decide");
@@ -78,7 +78,7 @@ describe("the issue's new patterns", () => {
 
   it("approves it", async () => {
     const calls = core([view({})], ["p1"], () => ({ pattern: view({ decision: "approved", pending: false }) }));
-    renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" show="open" />);
+    renderWithQuery(<IssuePatternList issueId="i1" projectId="pr1" show="open" />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Review" }));
     const form = await screen.findByTestId("pattern-decide");
@@ -92,11 +92,11 @@ describe("the issue's new patterns", () => {
 
   it("shows an unanswered return with its reason, and nothing for an issue that names only catalogued patterns", async () => {
     core([view({ decision: "returned", pending: false, unanswered: true, decisionReason: "use api-route" })], []);
-    const { unmount } = renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" show="open" />);
+    const { unmount } = renderWithQuery(<IssuePatternList issueId="i1" projectId="pr1" show="open" />);
     expect(await screen.findByTestId("pattern-queue-door")).toHaveTextContent("was returned: use api-route");
     unmount();
     core([view({ kind: "reuse", pattern: "api-route", pending: false, summary: null })], []);
-    renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" show="open" />);
+    renderWithQuery(<IssuePatternList issueId="i1" projectId="pr1" show="open" />);
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByTestId("issue-patterns")).toBeNull();
   });
@@ -105,7 +105,7 @@ describe("the issue's new patterns", () => {
 describe("a returned pattern's reason, as the person wrote it (judge J1 on 0.4.0-dev.222)", () => {
   it("keeps a reason ending in a full stop whole, and says the hold apart from it", async () => {
     core([view({ decision: "returned", pending: false, unanswered: true, decisionReason: "Use the api-route task." })], []);
-    renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" show="open" />);
+    renderWithQuery(<IssuePatternList issueId="i1" projectId="pr1" show="open" />);
     const row = await screen.findByTestId("pattern-queue-door");
     expect(row).toHaveTextContent("was returned: Use the api-route task.");
     expect(row.textContent).not.toContain("..");
@@ -116,7 +116,7 @@ describe("a returned pattern's reason, as the person wrote it (judge J1 on 0.4.0
 
   it("says a later pattern answered the return apart from the reason too", async () => {
     core([view({ decision: "returned", pending: false, unanswered: false, decisionReason: "No." })], []);
-    renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" show="decided" />);
+    renderWithQuery(<IssuePatternList issueId="i1" projectId="pr1" show="decided" />);
     const row = await screen.findByTestId("pattern-queue-door");
     expect(row).toHaveTextContent("was returned: No.");
     expect(row.textContent).not.toContain("..");
@@ -127,7 +127,7 @@ describe("a returned pattern's reason, as the person wrote it (judge J1 on 0.4.0
 describe("what the issue page says around a review (judge at 9988a9335, comment 1000c87f)", () => {
   it("says a pending pattern waits on a reviewer, and shows no permission key", async () => {
     core([view({})], []);
-    renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" show="open" />);
+    renderWithQuery(<IssuePatternList issueId="i1" projectId="pr1" show="open" />);
     const row = await screen.findByTestId("pattern-queue-door");
     expect(row).toHaveTextContent("Waits on a reviewer");
     expect(row.textContent).not.toContain("patterns.approve");
@@ -135,7 +135,7 @@ describe("what the issue page says around a review (judge at 9988a9335, comment 
 
   it("refuses a reason over the limit there, before sending anything", async () => {
     const calls = core([view({})], ["p1"]);
-    renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" show="open" />);
+    renderWithQuery(<IssuePatternList issueId="i1" projectId="pr1" show="open" />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Review" }));
     const form = await screen.findByTestId("pattern-decide");
@@ -185,7 +185,7 @@ describe("what the issue page says around a review (judge at 9988a9335, comment 
   };
 
   const decideAndLose = async (typed: string) => {
-    renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" show="open" />);
+    renderWithQuery(<IssuePatternList issueId="i1" projectId="pr1" show="open" />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Review" }));
     const form = await screen.findByTestId("pattern-decide");
@@ -227,7 +227,7 @@ describe("what the issue page says around a review (judge at 9988a9335, comment 
       if (failing) return { status: 500, body: { error: { code: "INTERNAL", message: "boom" } } };
       return { body: listed([view({})], []) };
     });
-    renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" show="open" />);
+    renderWithQuery(<IssuePatternList issueId="i1" projectId="pr1" show="open" />);
     const failed = await screen.findByTestId("issue-patterns-failed");
     expect(failed).toHaveTextContent("could not be read, so whether a new pattern holds the issue cannot be shown here");
     failing = false;
@@ -243,8 +243,8 @@ describe("decided patterns sit in Activity, not at the top (REQ-43 BC-8)", () =>
     core([approved, answered], []);
     renderWithQuery(
       <>
-        <PatternsPanel issueId="i1" projectId="pr1" show="open" />
-        <PatternsPanel issueId="i1" projectId="pr1" show="decided" />
+        <IssuePatternList issueId="i1" projectId="pr1" show="open" />
+        <IssuePatternList issueId="i1" projectId="pr1" show="decided" />
       </>,
     );
     const decided = await screen.findByTestId("issue-patterns-decided");
@@ -259,8 +259,8 @@ describe("decided patterns sit in Activity, not at the top (REQ-43 BC-8)", () =>
     core([pending, held], []);
     renderWithQuery(
       <>
-        <PatternsPanel issueId="i1" projectId="pr1" show="open" />
-        <PatternsPanel issueId="i1" projectId="pr1" show="decided" />
+        <IssuePatternList issueId="i1" projectId="pr1" show="open" />
+        <IssuePatternList issueId="i1" projectId="pr1" show="decided" />
       </>,
     );
     const top = await screen.findByTestId("issue-patterns");

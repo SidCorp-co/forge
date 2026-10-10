@@ -8,7 +8,7 @@ import { useToast } from "./toast-provider";
 
 type Line = string | { title: string; description?: string } | null | undefined;
 
-export interface ToastWriteEffects<V, D> {
+interface ToastWriteEffects<V, D> {
   /** The reads stale once the write lands. */
   touches?: readonly QueryKey[] | ((vars: V) => readonly QueryKey[]);
   /** What the success toast says, or how to say it from the answer; nothing is toasted when absent. */

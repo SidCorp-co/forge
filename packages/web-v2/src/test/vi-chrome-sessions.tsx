@@ -2,7 +2,9 @@ import type { QueryKey } from "@tanstack/react-query";
 import { fireEvent } from "@testing-library/react";
 import { SessionsScreen } from "@/features/sessions/components/sessions-screen";
 import { SessionScreen } from "@/features/session/components/session-screen";
+import { runnerQueries } from "@/features/runners/queries";
 import type { SessionRow } from "@/features/sessions/types";
+import { type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 import { Seeded } from "./vi-chrome-requirements";
 
 // The Sessions list and a session's page for the vi walking test: every status and kind a row can
@@ -13,30 +15,29 @@ const P = "p-sessions";
 const AT = "2026-10-07T08:00:00.000Z";
 const LATER = "2026-10-07T08:30:00.000Z";
 
-const row = (id: string, over: Partial<SessionRow> = {}): SessionRow =>
-  ({
-    id,
-    projectId: P,
-    userId: "u1",
-    deviceId: "d1",
-    pipelineRunId: null,
-    title: `Phien ${id}`,
-    repoPath: "/srv/hop",
-    status: "completed",
-    kind: "pipeline",
-    parentSessionId: null,
-    usage: { turns: 12, contextUsed: 1200, inputTotal: 12_000, outputTotal: 3400, cacheRead: 800, cacheWrite: 400 },
-    metadata: { type: "pipeline", issueId: "i1", step: "code" },
-    failureReason: null,
-    dispatchedAt: AT,
-    startedAt: AT,
-    lastHeartbeatAt: AT,
-    createdAt: AT,
-    updatedAt: LATER,
-    estimatedCost: 1.25,
-    lastMessagePreview: "Xin chao",
-    ...over,
-  }) as SessionRow;
+const row = (id: string, over: Partial<SessionRow> = {}): SessionRow => ({
+  id,
+  projectId: P,
+  userId: "u1",
+  deviceId: "d1",
+  pipelineRunId: null,
+  title: `Phien ${id}`,
+  repoPath: "/srv/hop",
+  status: "completed",
+  kind: "pipeline",
+  parentSessionId: null,
+  usage: { turns: 12, contextUsed: 1200, inputTotal: 12_000, outputTotal: 3400, cacheRead: 800, cacheWrite: 400 },
+  metadata: { type: "pipeline", issueId: "i1", step: "code" },
+  failureReason: null,
+  dispatchedAt: AT,
+  startedAt: AT,
+  lastHeartbeatAt: AT,
+  createdAt: AT,
+  updatedAt: LATER,
+  estimatedCost: 1.25,
+  lastMessagePreview: "Xin chao",
+  ...over,
+});
 
 const ROWS = [
   row("s1", { status: "running" }),
@@ -127,7 +128,8 @@ const data = (): [QueryKey, unknown][] => [
     retrySummary: null,
     gateAtOpen: { read: "ok", condition: { verdict: "failing_open", count: 12, perDay: 4, windowMs: 3 * 86_400_000, byReason: [{ reason: "core-unreachable", count: 9 }, { reason: "timeout", count: 3 }] } },
   }],
-  [["devices", "me", null], [{ id: "d1", name: "may-1", platform: "linux", status: "online", lastSeenAt: AT, agentVersion: "0.4.0", agentOutdated: false, disabledAt: null }]],
+  // the cache key the read builds (an absent org keys as ""), never a hand-written copy of it
+  [runnerQueries.myDevices(null).queryKey, [{ id: "d1", name: "may-1", platform: "linux", status: "online", lastSeenAt: AT, agentVersion: "0.4.0", agentOutdated: false, disabledAt: null }]],
   [["sessions", "list", { projectId: P, issueId: "i1", page: 1 }], { items: ROWS.slice(0, 2), totalCount: 2 }],
 ];
 
@@ -138,9 +140,11 @@ const wrap = (children: React.ReactNode, search = "") => {
 // the agent's working — tool calls, the rail, the report's lenses — is drawn in the Developer view (REQ-43 BC-7)
 const DEV = "?view=developer";
 const stuck = new Set(["s12", "run-1"]);
-const clickNth = (selector: string, n: number) => () => {
-  const hit = document.querySelectorAll(selector)[n];
-  if (!hit) throw new Error(`nothing to click at ${selector}`);
+// a button found by its label in either language: the rail test draws each screen in en as well
+const clickLabel = (key: ProductCopyKey) => () => {
+  const labels = [productCopy("vi")(key), productCopy("en")(key)];
+  const hit = [...document.querySelectorAll("button")].find((b) => labels.includes(b.textContent?.trim() ?? ""));
+  if (!hit) throw new Error(`nothing to click labelled ${key}`);
   fireEvent.click(hit);
 };
 const clickAll = (selector: string) => () => {
@@ -157,8 +161,8 @@ export const SCREENS = [
   { name: "Session · chat failed and empty", render: () => wrap(<SessionScreen sessionId="s-fail" projectSlug="hop" />) },
   { name: "Session · run report", render: () => wrap(<SessionScreen sessionId="s-run" projectSlug="hop" />) },
   { name: "Session · run report · developer", render: () => wrap(<SessionScreen sessionId="s-run" projectSlug="hop" />, DEV) },
-  { name: "Session · run report diff", render: () => wrap(<SessionScreen sessionId="s-run" projectSlug="hop" />, DEV), act: clickNth('[role="tab"]', 1) },
-  { name: "Session · run report transcript", render: () => wrap(<SessionScreen sessionId="s-run" projectSlug="hop" />, DEV), act: clickNth('[role="tab"]', 2) },
+  { name: "Session · run report diff", render: () => wrap(<SessionScreen sessionId="s-run" projectSlug="hop" />, DEV), act: clickLabel("runs.report.lens.diff") },
+  { name: "Session · run report transcript", render: () => wrap(<SessionScreen sessionId="s-run" projectSlug="hop" />, DEV), act: clickLabel("runs.report.lens.transcript") },
   { name: "Session · box run with later turns", render: () => wrap(<SessionScreen sessionId="s-box" projectSlug="hop" />) },
   { name: "Session · missing", render: () => wrap(<SessionScreen sessionId="s-none" projectSlug="hop" />) },
 ];

@@ -7,7 +7,7 @@ import { BUILD_THE_FIX, type RecordingToolResult, recordingToolResultSchema } fr
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
-import { recordingReadIn, TurnReproduce } from "./reproduce-turn";
+import { recordingReadIn, TurnReproduce } from "@/features/previews/components/reproduce-turn";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));

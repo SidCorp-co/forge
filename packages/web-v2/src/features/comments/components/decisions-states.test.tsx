@@ -10,9 +10,9 @@ const refetch = vi.fn();
 const q = { isLoading: false, isError: false, data: undefined as unknown, error: null as unknown, refetch };
 vi.mock("../hooks", () => ({ useEntityDecisions: () => q, usePostEntityComment: () => ({ mutate: vi.fn(), isPending: false, isError: false }) }));
 
-import { DecisionsPanel } from "./decisions-panel";
+import { Decisions } from "./decisions";
 
-const mount = () => render(<DecisionsPanel projectId="p" scope="workflow" targetRef="r" />);
+const mount = () => render(<Decisions projectId="p" scope="workflow" targetRef="r" />);
 beforeEach(() => {
   refetch.mockClear();
   Object.assign(q, { isLoading: false, isError: false, data: undefined, error: null });

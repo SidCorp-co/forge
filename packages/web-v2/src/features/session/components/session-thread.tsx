@@ -17,7 +17,7 @@ import { tailOutputSize, useStickToBottom } from "./use-stick-to-bottom";
 type SessionDetail = NonNullable<ReturnType<typeof useSession>["data"]>;
 type TurnsQuery = ReturnType<typeof useSessionTurnPages>["turnsQ"];
 
-export interface SessionThreadProps {
+interface SessionThreadProps {
   session: SessionDetail;
   items: ConversationItem[];
   turnsQ: TurnsQuery;

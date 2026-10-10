@@ -12,7 +12,7 @@ const PEOPLE_AT_A_GLANCE = 4;
 export const FOCAL = "__system";
 
 /** Left to right: people, the system, everything outside it. */
-export type Column = 0 | 1 | 2;
+type Column = 0 | 1 | 2;
 
 export interface ViewNode {
   id: string;

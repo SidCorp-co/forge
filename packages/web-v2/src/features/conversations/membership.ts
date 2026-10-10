@@ -28,7 +28,7 @@ export interface MembershipClaim {
   text: string;
 }
 
-export type ClaimKey =
+type ClaimKey =
   | "reads-what-was-said"
   | "removal-unreads-nothing"
   | "replies-stay"

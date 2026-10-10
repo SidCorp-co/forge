@@ -7,9 +7,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { V1Read } from "@/features/project-config/types";
+import type { V1Read } from "@/features/project-config";
 import { type Call, fakeCore } from "@/test/render";
-import { ComputeSection } from "./compute-section";
+import { ComputeSettings } from "./compute-section";
 
 const P = "11111111-1111-4111-8111-111111111111";
 
@@ -34,15 +34,15 @@ function mount() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <ComputeSection projectId={P} slug="hop" canEdit />
+      <ComputeSettings projectId={P} slug="hop" canEdit />
     </QueryClientProvider>,
   );
 }
 
 const toggle = (name: string) => screen.getByRole("switch", { name });
 
-async function save() {
-  await act(async () => {
+function save() {
+  act(() => {
     fireEvent.click(within(screen.getByTestId("save-bar")).getByRole("button", { name: "Save changes" }));
   });
 }
@@ -65,7 +65,7 @@ describe("the compute setting in Advanced", () => {
     mount();
     fireEvent.click(await screen.findByRole("switch", { name: "Computation" }));
     fireEvent.click(toggle("Third-party sandboxes"));
-    await save();
+    save();
     await waitFor(() => {
       const put = calls.find((c) => c.method === "PUT");
       expect(put?.body).toMatchObject({ baseRevision: 6, document: { compute: { enabled: true, thirdParty: true } } });
@@ -76,7 +76,7 @@ describe("the compute setting in Advanced", () => {
     const calls = core({ declared: true, revision: 6, document: doc({ compute: { enabled: true } }) });
     mount();
     fireEvent.click(await screen.findByRole("switch", { name: "Computation" }));
-    await save();
+    save();
     await waitFor(() => expect(calls.find((c) => c.method === "PUT")).toBeDefined());
     expect(calls.find((c) => c.method === "PUT")?.body).not.toHaveProperty("document.compute");
     expect(calls.find((c) => c.method === "PUT")?.body).toHaveProperty("document.project.slug", "hop");
@@ -86,7 +86,7 @@ describe("the compute setting in Advanced", () => {
     const calls = core({ declared: true, revision: 6, document: doc({ compute: { enabled: true, zdrOnly: true } }) });
     mount();
     fireEvent.click(await screen.findByRole("switch", { name: "Computation" }));
-    await save();
+    save();
     await waitFor(() => {
       expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({ document: { compute: { enabled: false, zdrOnly: true } } });
     });

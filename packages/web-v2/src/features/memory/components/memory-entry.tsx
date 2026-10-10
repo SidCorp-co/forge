@@ -24,7 +24,7 @@ const REASON_MIN = 3;
 
 type Mode = "read" | "untrue" | "correct" | "retire";
 
-export interface MemoryEntryRowProps {
+interface MemoryEntryRowProps {
   entry: MemoryEntry;
   slug: string;
   timeZone?: string;

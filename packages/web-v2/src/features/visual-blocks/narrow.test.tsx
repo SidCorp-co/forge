@@ -20,7 +20,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date(Date.parse(AS_OF) + 60_000));
   // jsdom lays nothing out: recharts and the flow canvas read a size from these
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
-    () => ({ width: 24, height: 12, top: 0, left: 0, right: 24, bottom: 12, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect,
+    () => ({ width: 24, height: 12, top: 0, left: 0, right: 24, bottom: 12, x: 0, y: 0, toJSON: () => ({}) }),
   );
   vi.stubGlobal("DOMMatrixReadOnly", class { m22 = 1; });
   vi.stubGlobal(
@@ -28,7 +28,7 @@ beforeEach(() => {
     class {
       constructor(private readonly cb: ResizeObserverCallback) {}
       observe(target: Element) {
-        this.cb([{ target, contentRect: { width: 375, height: 240 } } as unknown as ResizeObserverEntry], this as never);
+        this.cb([{ target, contentRect: { width: 375, height: 240 } } as unknown as ResizeObserverEntry], this);
       }
       unobserve() {}
       disconnect() {}
@@ -85,25 +85,26 @@ const show = (block: unknown) =>
     </VisualBlockProvider>,
   );
 
-const bodyRows = () => within(screen.getAllByRole("table")[0] as HTMLElement).getAllByRole("row").slice(1);
+const bodyRows = () => within(screen.getAllByRole("table")[0]).getAllByRole("row").slice(1);
 
 describe("a table in a narrow container", () => {
   it("scrolls sideways inside its own box and holds its first column while it does", () => {
     show(table);
-    expect(screen.getByTestId("table-scroll").className).toContain("overflow-x-auto");
+    // the table scrolls inside its own region, never the page
+    expect((screen.getAllByRole("table")[0]).parentElement?.className).toContain("overflow-x-auto");
     const head = screen.getAllByRole("columnheader");
     expect(head[0]?.className).toMatch(/\bsticky\b/);
     expect(head[0]?.className).toMatch(/\bleft-0\b/);
     expect(head[0]?.className).toMatch(/\bbg-app\b/);
-    const first = within(bodyRows()[0] as HTMLElement).getAllByRole("cell");
+    const first = within(bodyRows()[0]).getAllByRole("cell");
     expect(first[0]?.className).toMatch(/\bsticky\b/);
     for (const cell of [...head.slice(1), ...first.slice(1)]) expect(cell.className).not.toMatch(/\bsticky\b/);
   });
 
   it("keeps a text column at a readable width, clamped to two lines, with the whole text on hover", () => {
     show(table);
-    const text = screen.getAllByTestId("table-text")[0] as HTMLElement;
-    expect(text.className).toMatch(/\bmin-w-\[10rem\]/);
+    const text = screen.getAllByTestId("table-text")[0];
+    expect(text.className).toMatch(/\bmin-w-40\b/);
     expect(text.className).toMatch(/\bline-clamp-2\b/);
     expect(text.getAttribute("title")).toBe(LONG);
     expect(text.textContent).toBe(LONG);
@@ -111,12 +112,12 @@ describe("a table in a narrow container", () => {
 
   it("opens a clamped text in place on a tap or a key, for a reader with no pointer to hover", () => {
     show(table);
-    const text = screen.getAllByTestId("table-text")[0] as HTMLElement;
+    const text = screen.getAllByTestId("table-text")[0];
     expect(text.tagName).toBe("BUTTON");
     expect(text.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(text);
     expect(text.className).not.toMatch(/\bline-clamp-2\b/);
-    expect(text.className).toMatch(/\bmin-w-\[10rem\]/);
+    expect(text.className).toMatch(/\bmin-w-40\b/);
     expect(text.getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(text);
     expect(text.className).toMatch(/\bline-clamp-2\b/);
@@ -124,7 +125,7 @@ describe("a table in a narrow container", () => {
 
   it("puts a figure on one line, right-aligned in tabular digits, and its heading over it", () => {
     show(table);
-    const cells = within(bodyRows()[1] as HTMLElement).getAllByRole("cell");
+    const cells = within(bodyRows()[1]).getAllByRole("cell");
     for (const i of [3, 4, 5, 6, 7]) {
       expect(cells[i]?.className).toMatch(/\bwhitespace-nowrap\b/);
       expect(cells[i]?.className).toMatch(/\btext-right\b/);
@@ -154,8 +155,8 @@ describe("a table in a narrow container", () => {
     });
     expect(bodyRows()).toHaveLength(33);
     expect(screen.getByTestId("table-show-all").className).toMatch(/\bprint:hidden\b/);
-    expect(screen.getByTestId("table-scroll").className).toMatch(/\bprint:overflow-visible\b/);
-    expect((screen.getAllByTestId("table-text")[0] as HTMLElement).className).toMatch(/\bprint:line-clamp-none\b/);
+    expect((screen.getAllByRole("table")[0]).parentElement?.className).toMatch(/\bprint:overflow-visible\b/);
+    expect((screen.getAllByTestId("table-text")[0]).className).toMatch(/\bprint:line-clamp-none\b/);
     act(() => {
       window.dispatchEvent(new Event("afterprint"));
     });
@@ -178,7 +179,7 @@ describe("a table in a narrow container", () => {
 describe("a state cell", () => {
   it("is the shared badge in its family's sentence-case label and tone, the stored value only in its tooltip", () => {
     show(table);
-    const badges = within(bodyRows()[0] as HTMLElement).getAllByTestId("status-badge");
+    const badges = within(bodyRows()[0]).getAllByTestId("status-badge");
     expect(badges).toHaveLength(1);
     expect(badges[0]?.textContent).toContain("In delivery");
     expect(badges[0]?.getAttribute("data-value")).toBe("in_delivery");
@@ -191,7 +192,7 @@ describe("a state cell", () => {
   it("reads sentence-cased and neutral where the column names no vocabulary", () => {
     const plain = fields.map((f) => (f.name === "state" ? { name: "state", type: "status", label: "State" } : f));
     show({ ...table, frame: { fields: plain, rows } });
-    const badge = within(bodyRows()[0] as HTMLElement).getByTestId("status-badge");
+    const badge = within(bodyRows()[0]).getByTestId("status-badge");
     expect(badge.textContent).toBe("In delivery");
     expect(badge.getAttribute("data-tone")).toBe("neutral");
     expect(badge.getAttribute("title")).toBe("in_delivery");
@@ -199,7 +200,7 @@ describe("a state cell", () => {
 
   it("is the same badge in a status list", () => {
     show({ ...over, kind: "status-list", ref: "key", status: "state" });
-    const row = screen.getAllByTestId("status-row")[0] as HTMLElement;
+    const row = screen.getAllByTestId("status-row")[0];
     expect(within(row).getByTestId("status-badge").getAttribute("data-value")).toBe("in_delivery");
     expect(row.textContent).not.toContain("in_delivery");
   });
@@ -246,7 +247,8 @@ describe("open wide", () => {
     fireEvent.click(screen.getByTestId("visual-block-open-wide"));
     const wide = await screen.findByTestId("visual-block-wide");
     expect(wide.getAttribute("role")).toBe("dialog");
-    expect(wide.className).toContain("w-[min(96vw,1200px)]");
+    // the dialog's widest size, not the default
+    expect(wide.className).toContain("sm:max-w-6xl");
     expect(within(wide).getByRole("table")).toBeTruthy();
     expect(within(wide).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(fields.map((f) => f.label));
   });
@@ -311,7 +313,7 @@ describe("a flow in a narrow container", () => {
     const canvas = await screen.findByTestId("flow-canvas");
     // twenty 36px steps with 28px between them: well past the 520px box
     expect(Number.parseFloat(canvas.style.height)).toBeGreaterThan(1200);
-    expect(screen.getByTestId("flow-scroll").className).toMatch(/\bmax-h-\[520px\]/);
+    expect(screen.getByTestId("flow-scroll").className).toMatch(/\bmax-h-130\b/);
     // the canvas takes no touch gesture, so a finger scrolls the box; that it is drawn at zoom 1 jsdom
     // cannot show (it never measures a node, so it never fits a view): the browser harness measures it
     expect(document.querySelector(".react-flow")?.className).toContain("[&_.react-flow__pane]:touch-auto");

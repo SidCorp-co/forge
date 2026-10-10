@@ -1,6 +1,6 @@
+import { fireEvent } from "@testing-library/react";
 import type { MemoryEntry } from "@forge/contracts/memory";
-import { flushSync } from "react-dom";
-import { MemoryEntryRow } from "@/features/memory/components/memory-entry";
+import { MemoryEntryItem } from "@/features/memory/components/memory-entry";
 import type { ChromeScreen } from "./vi-chrome-screens";
 
 // The Memory page's rows for the vi walking test: one that names gone records and a release flag and
@@ -41,7 +41,7 @@ const BASE: MemoryEntry = {
   archivedBy: null,
 };
 const noop = () => {};
-const row = (e: MemoryEntry) => <MemoryEntryRow entry={e} slug="hop" timeZone="UTC" busy={false} onVerify={noop} onCorrect={noop} onRetire={noop} />;
+const row = (e: MemoryEntry) => <MemoryEntryItem entry={e} slug="hop" timeZone="UTC" busy={false} onVerify={noop} onCorrect={noop} onRetire={noop} />;
 
 export const SCREENS: ChromeScreen[] = [
   { name: "Memory row", render: () => <ul>{row(BASE)}</ul> },
@@ -61,9 +61,11 @@ export const SCREENS: ChromeScreen[] = [
     render: () => <ul>{row(BASE)}</ul>,
     act: () => {
       const button = (n: number) => document.querySelectorAll<HTMLButtonElement>('[data-testid="memory-entry"] button')[n];
-      button(1)?.click(); // "Not true anymore" asks which act; the correct form is its first choice
-      flushSync(() => {});
-      button(0)?.click();
+      // "Not true anymore" asks which act; the correct form is its first choice. fireEvent commits each click before the next
+      const first = button(1);
+      if (first) fireEvent.click(first);
+      const choice = button(0);
+      if (choice) fireEvent.click(choice);
     },
   },
 ];

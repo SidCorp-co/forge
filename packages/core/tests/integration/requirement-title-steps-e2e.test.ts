@@ -169,7 +169,10 @@ describe('a requirement is created from a title alone (BC-17)', () => {
 describe('the author is told at every step change (BC-21)', () => {
   it('tells the author Agreed, Deferred, Agreed again and In delivery, each with the step after it', async () => {
     const { key, id } = await readyByMember('Cards show their owner');
-    const agreed = await on(member, 'POST', `/requirements/${key}/agree`, { revision: 1 });
+    const agreed = await on(member, 'POST', `/requirements/${key}/agree`, {
+      revision: 1,
+      reason: 'Agreed with the owner for this test.',
+    });
     expect(agreed.status, JSON.stringify(agreed.body)).toBe(200);
     await deliver('requirement.transitioned', 'notify-requirements', id);
     const deferred = await on(admin, 'POST', `/requirements/${key}/defer`, {

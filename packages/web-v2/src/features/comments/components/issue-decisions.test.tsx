@@ -6,7 +6,7 @@
 import { screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
-import { DecisionsPanel } from "./decisions-panel";
+import { Decisions } from "./decisions";
 
 const row = {
   id: "d1",
@@ -29,7 +29,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("an issue's Decisions tab", () => {
   it("reads the issue's decisions through the entity decisions read, with what, who, when and why", async () => {
     const calls = fakeCore((c) => (c.path === "/projects/p1/issues/ISS-110/comments?intent=decision" ? { body: { comments: [row], returned: 1 } } : undefined));
-    renderWithQuery(<DecisionsPanel projectId="p1" scope="issue" targetRef="ISS-110" />);
+    renderWithQuery(<Decisions projectId="p1" scope="issue" targetRef="ISS-110" />);
     const decision = await screen.findByTestId("decision-row");
     expect(within(decision).getByText("Print it on the header")).toBeInTheDocument();
     expect(decision).toHaveTextContent("the clinic asked for it");

@@ -9,7 +9,7 @@ import { useToast } from "@/providers/toast-provider";
 
 /** Map contract severity → toast tone. `warning` has no dedicated tone yet, so
  *  it borrows the neutral `default` card (its bell hue is still amber). */
-export function severityToTone(severity: NotificationSeverity): ToastTone {
+function severityToTone(severity: NotificationSeverity): ToastTone {
   switch (severity) {
     case "success":
       return "success";
@@ -25,7 +25,7 @@ export function severityToTone(severity: NotificationSeverity): ToastTone {
 /** Pure routing decision for an incoming notification: which transient surfaces
  *  fire and with what toast tone. Bell is handled separately (query
  *  invalidation), so it is not part of this decision. Exported for tests. */
-export function planNotificationDelivery(input: {
+function planNotificationDelivery(input: {
   type: string;
   severity: NotificationSeverity;
 }): { toast: boolean; browser: boolean; tone: ToastTone } {
@@ -37,7 +37,7 @@ export function planNotificationDelivery(input: {
   };
 }
 
-export function shouldPlaySound(plan: { toast: boolean; browser: boolean }): boolean {
+function shouldPlaySound(plan: { toast: boolean; browser: boolean }): boolean {
   return plan.toast || plan.browser;
 }
 

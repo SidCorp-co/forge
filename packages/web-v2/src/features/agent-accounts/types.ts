@@ -11,7 +11,7 @@ export interface AgentAccountRow {
   canAct: boolean;
 }
 
-export interface AgentCredentialFence {
+interface AgentCredentialFence {
   boundProjectId: string | null;
   projectIds: string[] | null;
 }

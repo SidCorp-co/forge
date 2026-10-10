@@ -51,7 +51,7 @@ const HUE_DOT: Record<NotificationItem["hue"], string> = {
   cobalt: "var(--cobalt-500)",
 };
 
-export interface NotificationsMenuProps {
+interface NotificationsMenuProps {
   items: NotificationItem[];
   onSelect?: (id: string) => void;
   onMarkAllRead?: () => void;

@@ -60,11 +60,6 @@ export function providerModule(provider: string): ProviderModule | undefined {
   return byName.get(provider);
 }
 
-/** Every provider name, for a refusal that names the legal set. */
-export function providerNames(): string[] {
-  return PROVIDER_MODULES.map((m) => m.provider);
-}
-
 /** The provider's name from its copy key `integrations.provider.<provider>`, in `language` (English when none); a provider this build has no key for reads as its raw name, which is true, if bare. */
 export function providerLabel(provider: string, language?: string): string {
   return copyOr(language ?? "en", `integrations.provider.${provider}`, provider);

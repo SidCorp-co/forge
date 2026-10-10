@@ -1,6 +1,6 @@
 import { type ConversationItem, type ToolCallData, toolKind } from "./types";
 
-export interface DiffHunk {
+interface DiffHunk {
   oldLines: string[];
   newLines: string[];
 }
@@ -81,7 +81,7 @@ export function deriveFilesChanged(items: ConversationItem[]): FileDiff[] {
  * `parentSessionId` column exists yet, so a true session hierarchy is a
  * documented backend follow-up).
  */
-export interface AgentTaskInvocation {
+interface AgentTaskInvocation {
   id: string;
   /** Underlying tool: `Task` (sub-agent) or `Skill`. */
   tool: "Task" | "Skill";

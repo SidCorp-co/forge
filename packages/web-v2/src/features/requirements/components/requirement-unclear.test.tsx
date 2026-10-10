@@ -10,7 +10,7 @@ import type { RequirementQuestionView } from "@forge/contracts/requirements";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { LinkIssueControl } from "./link-issue";
 import { RequirementDecisions } from "./requirement-decisions";
-import { AssumptionsSection, UnclearSection } from "./requirement-unclear";
+import { Assumptions, OpenQuestions } from "./requirement-unclear";
 
 const question = (over: Partial<RequirementQuestionView>): RequirementQuestionView => ({
   id: "q1",
@@ -33,7 +33,7 @@ const refusal = (code: string, detail: string) => ({
 describe("what a requirement still leaves unclear", () => {
   it("counts the open questions, flags the one the agree waits for, and says who answers and where it was asked", () => {
     renderWithQuery(
-      <UnclearSection
+      <OpenQuestions
         questions={[
           question({}),
           question({ id: "q2", prompt: "Who builds the lead to patient link?", blocking: false, whoAnswers: null, place: { kind: "issue", key: "ISS-81", title: "lead link" } }),
@@ -51,27 +51,27 @@ describe("what a requirement still leaves unclear", () => {
     const [first, second, third] = screen.getAllByTestId("unclear-question");
     expect(first).toHaveTextContent("Blocks the agree");
     // the retired REQUIREMENT_OPEN_QUESTIONS is named nowhere: a blocking question is the ready checklist's gap
-    expect(within(first as HTMLElement).getByText("Blocks the agree").closest("[title]")?.getAttribute("title")).toBe("Blocks the agree");
+    expect(within(first).getByText("Blocks the agree").closest("[title]")?.getAttribute("title")).toBe("Blocks the agree");
     expect(first).toHaveTextContent("Answered by the clinic owner");
     expect(first).toHaveTextContent("Asked on this requirement");
-    expect(within(second as HTMLElement).queryByText("Blocks the agree")).toBeNull();
-    expect(within(second as HTMLElement).getByRole("link", { name: "ISS-81" })).toHaveAttribute("href", "/projects/hop/issues/ISS-81");
-    expect(within(second as HTMLElement).queryByTestId("unclear-answer")).toBeNull();
+    expect(within(second).queryByText("Blocks the agree")).toBeNull();
+    expect(within(second).getByRole("link", { name: "ISS-81" })).toHaveAttribute("href", "/projects/hop/issues/ISS-81");
+    expect(within(second).queryByTestId("unclear-answer")).toBeNull();
     expect(third).toHaveTextContent("Yes, its own purpose");
-    expect(within(third as HTMLElement).queryByTestId("unclear-answer")).toBeNull();
+    expect(within(third).queryByTestId("unclear-answer")).toBeNull();
   });
 
   it("answers a question asked of the requirement in words, on the round it was shown", async () => {
     const calls = fakeCore(() => ({ body: { id: "q1", status: "answered" } }));
     const user = userEvent.setup();
-    renderWithQuery(<UnclearSection questions={[question({ round: 2 })]} unclear={1} projectId="p1" reqKey="REQ-14" slug="hop" />);
+    renderWithQuery(<OpenQuestions questions={[question({ round: 2 })]} unclear={1} projectId="p1" reqKey="REQ-14" slug="hop" />);
     await user.type(screen.getByRole("textbox", { name: "Your answer" }), "Only the owner");
     await user.click(screen.getByRole("button", { name: "Answer" }));
     await waitFor(() => expect(calls).toContainEqual({ method: "POST", path: "/questions/q1/answer", body: { text: "Only the owner", round: 2 } }));
   });
 
   it("lists the assumptions with whose they are and how each is confirmed", () => {
-    renderWithQuery(<AssumptionsSection assumptions={[{ text: "Every referral names one referrer.", owner: "the BA", confirmBy: "a count over last month" }]} revision={3} />);
+    renderWithQuery(<Assumptions assumptions={[{ text: "Every referral names one referrer.", owner: "the BA", confirmBy: "a count over last month" }]} revision={3} />);
     const row = screen.getByTestId("assumption");
     expect(row).toHaveTextContent("Every referral names one referrer.");
     expect(row).toHaveTextContent("Owned by the BA · Confirmed by: a count over last month");
@@ -79,7 +79,7 @@ describe("what a requirement still leaves unclear", () => {
 
   it("links the record an assistant's assumption was taken from (REQ-34 BC-13)", () => {
     const filled = { text: "Persona: Referral clerk", owner: "BA assistant", confirmBy: "The author corrects the draft where it is wrong" };
-    renderWithQuery(<AssumptionsSection assumptions={[{ ...filled, source: "workflow:referral" }, { ...filled, text: "Goal: one match", source: "REQ-1" }]} revision={1} slug="hop" />);
+    renderWithQuery(<Assumptions assumptions={[{ ...filled, source: "workflow:referral" }, { ...filled, text: "Goal: one match", source: "REQ-1" }]} revision={1} slug="hop" />);
     const sources = screen.getAllByTestId("assumption-source");
     expect(sources.map((s) => s.textContent)).toEqual(["From referral", "From REQ-1"]);
     expect(sources.map((s) => within(s).getByRole("link").getAttribute("href"))).toEqual(["/projects/hop/workflows/referral", "/projects/hop/requirements/REQ-1"]);

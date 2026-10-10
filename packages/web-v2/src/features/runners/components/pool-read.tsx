@@ -7,7 +7,7 @@ import type { RunnerPoolRead } from "../types";
  * A box beats every 30 seconds and every beat carries its whole pool picture,
  * so a report older than ten missed beats is one the box has stopped renewing.
  */
-export const POOL_READ_STALE_MS = 5 * 60_000;
+const POOL_READ_STALE_MS = 5 * 60_000;
 
 
 

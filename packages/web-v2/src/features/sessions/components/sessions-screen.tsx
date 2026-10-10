@@ -47,7 +47,7 @@ import { SessionsHeader } from "./sessions-header";
 import { orderByOwner } from "./session-tree";
 
 /** Narrows the list to one issue's sessions, with the way back to all of them. */
-export interface SessionsIssueFilter {
+interface SessionsIssueFilter {
   issueId: string;
   clearHref: string;
 }

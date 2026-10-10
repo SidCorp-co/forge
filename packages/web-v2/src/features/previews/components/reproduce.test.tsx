@@ -7,8 +7,8 @@ import { PREVIEW_ROUTES } from "@forge/contracts/preview";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
-import { PREVIEW_ID, PROJECT_ID, previewOf, ticketBody } from "./fixtures";
-import { ReproduceSection } from "./reproduce-section";
+import { PREVIEW_ID, PROJECT_ID, previewOf, ticketBody } from "@/test/previews";
+import { Reproduction } from "@/features/previews/components/reproduce";
 
 const REPRO_ID = "77777777-7777-4777-8777-777777777777";
 const BUILD = "c".repeat(40);
@@ -32,7 +32,7 @@ function core(handlers: Record<string, (c: Call) => { status?: number; body: unk
 }
 
 const mount = (carriers: string[] = []) =>
-  renderWithQuery(<ReproduceSection projectId={PROJECT_ID} fbKey="FB-52" carriers={carriers} redacted={false} />);
+  renderWithQuery(<Reproduction projectId={PROJECT_ID} fbKey="FB-52" carriers={carriers} redacted={false} />);
 
 beforeEach(() => window.history.replaceState(null, "", "/projects/shop/feedback/FB-52"));
 afterEach(() => vi.unstubAllGlobals());
@@ -61,7 +61,7 @@ describe("BC-17: Reproduce on the feedback item", () => {
       [`POST /previews/${REPRO_ID}/ticket`]: () => ({ body: ticketBody("tk-r") }),
     });
     mount();
-    const frame = (await screen.findByTitle("Preview of FB-52")) as HTMLIFrameElement;
+    const frame = await screen.findByTitle<HTMLIFrameElement>("Preview of FB-52");
     expect(frame.getAttribute("src")).toContain("enter?ticket=tk-r");
   });
 

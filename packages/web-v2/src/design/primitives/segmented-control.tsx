@@ -13,7 +13,7 @@ export interface SegmentOption<T extends string> {
   countTone?: "neutral" | "attention";
 }
 
-export interface SegmentedControlProps<T extends string> {
+interface SegmentedControlProps<T extends string> {
   options: SegmentOption<T>[];
   value: T;
   onChange?: (value: T) => void;

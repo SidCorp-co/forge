@@ -30,7 +30,7 @@ export function RunningTable({ rows, total, slug }: { rows: StatusInFlightIssue[
       ) : (
         <RowList label={t("home.running")}>
           {rows.map((r) => (
-            <RowItem key={r.key} testId="home-running-row" href={issueHref(slug, r.key)} lead={r.key} title={r.title} trailing={<WaitingOn w={r.waitingOn} />} />
+            <RowItem key={r.key} testId="home-running-row" rowKey={r.key} href={issueHref(slug, r.key)} lead={r.key} title={r.title} trailing={<WaitingOn w={r.waitingOn} />} />
           ))}
         </RowList>
       )}
@@ -59,6 +59,7 @@ export function AtRiskTable({ rows }: { rows: AtRiskRow[] }) {
             <RowItem
               key={`${r.entity}:${r.key}`}
               testId="home-at-risk-row"
+              rowKey={r.key}
               href={r.href}
               lead={r.key}
               title={r.title}

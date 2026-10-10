@@ -27,9 +27,6 @@ import { checkedFrame, defineAdapter } from './adapter.js';
 /** How far back the shipped releases reach when the asker names no window. */
 export const RELEASE_READINESS_DAYS_DEFAULT = 14;
 
-/** Which part of the frame a row is. Read through no vocabulary: it is drawn sentence-cased. */
-export const RELEASE_READINESS_STAGES = ['in_flight', 'none_in_flight', 'shipped'] as const;
-
 const params = z.object({
   /** How many days back the shipped releases reach. */
   days: z

@@ -27,7 +27,7 @@ export const routeOf = (route: string, params: Record<string, string>): string =
   return path.replace(/^\/api/, "");
 };
 
-export class PreviewRecordRefused extends Error {
+class PreviewRecordRefused extends Error {
   constructor(where: string, issues: string) {
     super(`${where} answered a preview this build cannot read: ${issues}`);
     this.name = "PreviewRecordRefused";

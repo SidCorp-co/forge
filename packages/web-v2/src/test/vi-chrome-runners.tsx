@@ -2,7 +2,7 @@ import type { QueryKey } from "@tanstack/react-query";
 import { fireEvent } from "@testing-library/react";
 import { PoolReadBanner } from "@/features/runners/components/pool-read";
 import { ProjectRunnersScreen } from "@/features/runners/components/project-runners-screen";
-import { RunnerAssignment as RunnerRow } from "@/features/runners/components/assignment/runner-assignment";
+import { RunnerAssignment } from "@/features/runners/components/assignment/runner-assignment";
 import { RunnersScreen } from "@/features/runners/components/runners-screen";
 import type { DeviceRow, ProjectRunner, RunnerPoolRead } from "@/features/runners/types";
 import { type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
@@ -51,7 +51,7 @@ const device = (n: number, over: Partial<DeviceRow> = {}): DeviceRow =>
     },
     createdAt: ago(60 * 24 * 3),
     ...over,
-  }) as DeviceRow;
+  });
 
 const DEVICES = [
   device(1, { agentOutdated: true }),
@@ -85,10 +85,10 @@ const runner = (n: number, over: Partial<ProjectRunner> = {}): ProjectRunner =>
     residentMaster: null,
     poolRead: null,
     ...over,
-  }) as ProjectRunner;
+  });
 
 const RUNNERS = [
-  runner(1, { limitReason: "usage_limit", limitRefusedAt: ago(18), rateLimitedUntil: ahead(3), limitPrintedResetAt: ahead(190), limitDetail: "session limit · resets 2:30am", labels: ["gpu"], residentMaster: { sessionId: "s1", name: "hop-master", lastHeartbeatAt: ago(1) } as never }),
+  runner(1, { limitReason: "usage_limit", limitRefusedAt: ago(18), rateLimitedUntil: ahead(3), limitPrintedResetAt: ahead(190), limitDetail: "session limit · resets 2:30am", labels: ["gpu"], residentMaster: { sessionId: "s1", name: "hop-master", lastHeartbeatAt: ago(1) } }),
   runner(2, { deviceDisabledAt: ago(5), provisionStatus: "syncing_skills", repoPath: null, lastError: "exit 1", runnerStatus: "draining", residentMaster: undefined, agentVersion: null }),
   runner(3, { limitReason: "auth", provisionStatus: "failed", provisionDetail: null, runnerStatus: "disabled" }),
   runner(4, { provisionStatus: null, deviceName: null, lastSeenAt: null }),
@@ -137,11 +137,11 @@ export const SCREENS = [
     name: "Runner row · activity and labels",
     render: () => (
       <Seeded data={projectQueries()}>
-        <RunnerRow runner={RUNNERS[1] as ProjectRunner} current={null} projectId={P} canEdit slug="hop" />
-        <PoolReadBanner poolRead={blind} now={NOW} />
-        <PoolReadBanner poolRead={{ ...blind, receivedAt: new Date(NOW - 3_600_000).toISOString() }} now={NOW} />
-        <PoolReadBanner poolRead={{ ...blind, verdict: "intermittent", countIsFloor: true, recoveredAt: NOW - 30_000 }} now={NOW} />
-        <PoolReadBanner poolRead={{ ...blind, verdict: "intermittent", windowMs: 1_800_000, recoveredAt: NOW - 30_000, receivedAt: new Date(NOW - 3_600_000).toISOString() }} now={NOW} />
+        <RunnerAssignment runner={RUNNERS[1]} current={null} projectId={P} canEdit slug="hop" />
+        <PoolReadBanner poolRead={blind} />
+        <PoolReadBanner poolRead={{ ...blind, receivedAt: new Date(NOW - 3_600_000).toISOString() }} />
+        <PoolReadBanner poolRead={{ ...blind, verdict: "intermittent", countIsFloor: true, recoveredAt: NOW - 30_000 }} />
+        <PoolReadBanner poolRead={{ ...blind, verdict: "intermittent", windowMs: 1_800_000, recoveredAt: NOW - 30_000, receivedAt: new Date(NOW - 3_600_000).toISOString() }} />
       </Seeded>
     ),
     act: () => {
@@ -149,5 +149,5 @@ export const SCREENS = [
       clickKey("runners.labels.add")();
     },
   },
-  { name: "Runner row · unassign", render: () => <Seeded data={projectQueries()}><RunnerRow runner={RUNNERS[0] as ProjectRunner} current={null} projectId={P} canEdit slug="hop" /></Seeded>, act: clickKey("runners.row.unassign") },
+  { name: "Runner row · unassign", render: () => <Seeded data={projectQueries()}><RunnerAssignment runner={RUNNERS[0]} current={null} projectId={P} canEdit slug="hop" /></Seeded>, act: clickKey("runners.row.unassign") },
 ];

@@ -111,7 +111,10 @@ describe("an Agent session's write the judge found unheld is held or refused by 
       ),
     ).toBe(0);
     refusedAs(
-      await w.say('agent', 'POST', at(`/requirements/${w.reqKey}/agree`), { revision: 1 }),
+      await w.say('agent', 'POST', at(`/requirements/${w.reqKey}/agree`), {
+        revision: 1,
+        reason: 'Agreed with the owner for this test.',
+      }),
       'requirement sign-off',
     );
   });

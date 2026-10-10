@@ -115,7 +115,7 @@ describe("an agent report's page", () => {
         triagedAt: AT,
         triageReason: "Fixed in ISS-12",
         waitingOn: wait("none", say("standing.who.nobody")),
-      } as Partial<ReportStanding>),
+      }),
     );
     await screen.findByTestId("report-detail");
     desktop();

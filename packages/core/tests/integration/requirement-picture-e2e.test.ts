@@ -276,7 +276,12 @@ describe('no baseline pins a picture or a mockup (criterion 10)', () => {
     expect(pins.filter((p) => p.kind === 'mockup')).toEqual([]);
     await requirementMockup(req.id, 'accepted');
     expect(
-      refusal(await as('owner', 'POST', `/requirements/${key}/repin`, { revision: 1 })),
+      refusal(
+        await as('owner', 'POST', `/requirements/${key}/repin`, {
+          revision: 1,
+          reason: 'Agreed with the owner for this test.',
+        }),
+      ),
     ).toEqual(['REQUIREMENT_PINS_CURRENT /revision']);
   });
 

@@ -9,7 +9,7 @@ export const needsYouKey = (projectId: string) => [...NEEDS_YOU_ROOT, projectId]
 
 export const useNeedsYou = (projectId: string | undefined) => useQuery(readOf(needsYouKey(projectId ?? ""), () => needsYouApi.read(projectId as string)));
 
-export const needsYouDecisionsKey = (projectId: string) => [...NEEDS_YOU_ROOT, projectId, "decisions"] as const;
+const needsYouDecisionsKey = (projectId: string) => [...NEEDS_YOU_ROOT, projectId, "decisions"] as const;
 
 /** The decisions only the viewer can make (REQ-41 BC-1), the read the home and the chat share. */
 export const useNeedsYouDecisions = (projectId: string | undefined) =>

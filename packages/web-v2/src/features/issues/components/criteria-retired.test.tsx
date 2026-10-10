@@ -8,7 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { IssueDetail } from "../types";
-import { CriteriaSection } from "./criteria-section";
+import { IssueCriteria } from "./issue-criteria";
 import { IssueRetiredCriteria } from "./criteria-list";
 
 const RUNTIME = "880cc8c4d471572bffefc43eb2ba654fd6a252ef";
@@ -81,7 +81,7 @@ describe("a criterion tied again", () => {
 
   it("shows no retired section where nothing was retired", async () => {
     fakeCore((c) => (c.method === "GET" && c.path === "/issues/i1/criteria" ? { body: { criteria: [live], retired: [] } } : undefined));
-    renderWithQuery(<CriteriaSection issue={issue} projectId="p1" checklist={[]} canWrite={false} requirementKey="REQ-37" />);
+    renderWithQuery(<IssueCriteria issue={issue} projectId="p1" checklist={[]} canWrite={false} requirementKey="REQ-37" />);
     // a person's view reads the statement without its trace code (REQ-43 BC-7)
     expect(await screen.findByText("The output cap names its size")).toBeInTheDocument();
     expect(screen.queryByTestId("retired-criteria")).toBeNull();

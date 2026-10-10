@@ -45,7 +45,7 @@ export function useIssuePark(
 }
 
 /** The words the park menu is drawn in: the chrome reader and the issue status's own label. */
-export interface ParkWords {
+interface ParkWords {
 	t: Copy;
 	status: (s: IssueStatus) => string;
 }

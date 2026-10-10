@@ -13,6 +13,9 @@ import type { DesignRevision, WorkflowDesign, WorkflowRecord } from "../types";
 import { CANVAS_SHARE, detailSqueezes } from "./design-room";
 import { WorkflowDesignPage } from "./workflow-design-page";
 
+// a design no requirement roots offers to draft one, which navigates on success
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/" }));
+
 const AT = "2026-10-07T10:00:00.000Z";
 const LONG = Array.from({ length: 12 }, (_, i) => `Line ${i + 1}: the consent owner is not named on the redemption step, and the SLA is unset.`).join("\n");
 

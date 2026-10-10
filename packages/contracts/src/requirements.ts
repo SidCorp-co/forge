@@ -503,9 +503,6 @@ export type RequirementReadinessGate =
  */
 export const REQUIREMENT_NEAR_DUPLICATE_SIMILARITY = 0.9;
 
-export const REQUIREMENT_READINESS_GATE_DEFAULT: RequirementReadinessGate =
-	"off";
-
 /**
  * requirement-to-delivery `similar` -> `ready`: whether the near-duplicate read ran on the head. A
  * head with no stored vector (embeddings down, withheld by policy, not written yet) is not compared,

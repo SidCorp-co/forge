@@ -16,7 +16,7 @@ import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { formatElapsed, qualityRates } from "../derive";
 import type { PulseQuality } from "../types";
 
-export interface QualitySectionProps {
+interface QualitySectionProps {
   quality: PulseQuality;
 }
 

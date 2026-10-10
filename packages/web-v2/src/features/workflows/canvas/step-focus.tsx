@@ -67,7 +67,7 @@ export function useStepFocus(c: Canvas) {
   };
 }
 
-export type StepFocus = ReturnType<typeof useStepFocus>;
+type StepFocus = ReturnType<typeof useStepFocus>;
 
 /** What the canvas lights and leaves undimmed: a step or line, its two ends among them. */
 export interface Lit {
@@ -76,7 +76,7 @@ export interface Lit {
 }
 
 /** What a page traces on a workflow (a requirement's criteria, the step a feedback item hits), read against its current design: what still lights, and the traced steps that left it. */
-export interface PresentTrace {
+interface PresentTrace {
   steps: Set<string>;
   edges: Set<string>;
   /** Traced steps the design no longer has, in the order the traces name them. */

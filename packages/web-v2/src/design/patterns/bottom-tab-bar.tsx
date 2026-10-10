@@ -13,7 +13,7 @@ export interface BottomTabItem {
   leading?: React.ReactNode;
 }
 
-export interface BottomTabBarProps {
+interface BottomTabBarProps {
   items: BottomTabItem[];
   activeKey: string;
   onSelect: (key: string) => void;

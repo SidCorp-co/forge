@@ -21,7 +21,7 @@ import { StatusReport } from "./status-report";
 import { TemplateReport } from "./template-report";
 
 /** Who or what produced a report, in the reader's language. */
-export function producerText(r: StatusReportMeta, t: ReturnType<typeof useCopy>): string {
+function producerText(r: StatusReportMeta, t: ReturnType<typeof useCopy>): string {
   if (r.producer.kind === "schedule") {
     return r.producer.schedule ? t("status.history.sentBy", { name: r.producer.schedule.name }) : t("status.history.sentByGone");
   }
@@ -29,7 +29,7 @@ export function producerText(r: StatusReportMeta, t: ReturnType<typeof useCopy>)
 }
 
 /** Whether the reader may remove a report, by the rule core enforces: its saver, or a project admin. */
-export function mayRemoveReport(r: StatusReportMeta, viewer: { userId: string | null; isAdmin: boolean }): boolean {
+function mayRemoveReport(r: StatusReportMeta, viewer: { userId: string | null; isAdmin: boolean }): boolean {
   if (viewer.isAdmin) return true;
   return r.producer.kind === "person" && viewer.userId !== null && r.producer.user?.id === viewer.userId;
 }

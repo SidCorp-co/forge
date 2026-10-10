@@ -7,13 +7,13 @@ import { apiFile } from "@/lib/api/client";
 const API_PREFIX = "/api";
 
 /** The bytes of an html attachment, as text. A url outside `/api` is refused by name. */
-export async function attachmentText(url: string): Promise<string> {
+async function attachmentText(url: string): Promise<string> {
   if (!url.startsWith(`${API_PREFIX}/`)) throw new Error(`attachment url is not a core path: ${url}`);
   const { blob } = await apiFile(url.slice(API_PREFIX.length));
   return await blob.text();
 }
 
-export const attachmentKeys = {
+const attachmentKeys = {
   all: ["attachments"] as const,
   html: (url: string) => [...attachmentKeys.all, "html", url] as const,
 };

@@ -14,7 +14,7 @@ export interface FieldProps {
 }
 
 /** What a Field gives the control inside it: the id its label points at, and its descriptions. */
-export type FieldControl = { id: string; "aria-describedby"?: string; "aria-invalid"?: true };
+type FieldControl = { id: string; "aria-describedby"?: string; "aria-invalid"?: true };
 
 const FieldControlContext = createContext<FieldControl | null>(null);
 

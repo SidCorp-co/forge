@@ -12,7 +12,7 @@ import { ageText } from "../derive";
 import type { PulseResponse } from "../types";
 import { RecordList } from "./record-panel";
 
-export interface ActionQueueProps {
+interface ActionQueueProps {
   pulse: PulseResponse;
 }
 

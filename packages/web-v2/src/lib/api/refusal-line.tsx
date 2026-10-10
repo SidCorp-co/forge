@@ -6,7 +6,7 @@ import { LEGEND } from "@/design";
 import { readInstantsNow } from "@/lib/i18n/instants";
 
 /** A screen's own words for a refusal, from its code and facts; null leaves core's detail. */
-export type RefusalWords = (r: Refusal) => string | null;
+type RefusalWords = (r: Refusal) => string | null;
 
 /**
  * The first refusal core named that no field shows, with how many more; null when a field shows every

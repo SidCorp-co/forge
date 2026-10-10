@@ -10,16 +10,10 @@ import { baseOf, copyOr, type Copy, copyLocale, productCopy } from "./product-co
 // own content, never Forge's chrome, so a Vietnamese project no longer turns the menus Vietnamese.
 // Content a person or an agent wrote stays in the language it was written in.
 
-export const INTERFACE_LANGUAGES = ["en", "vi"] as const;
-export type InterfaceLanguage = (typeof INTERFACE_LANGUAGES)[number];
+type InterfaceLanguage = "en" | "vi";
 
-/**
- * The chosen language, else English; never the project's content language. The second parameter is
- * not read: it stays only so interface-language.test.tsx, which the POC room may not edit (owner,
- * 2026-10-10), still compiles. Amnesty, priced: the signature lies about an input it ignores; it ends
- * when the review issue rewrites that test, and the parameter is deleted with it.
- */
-export function resolveInterfaceLanguage(choice: string | null | undefined, _unread?: string | null): InterfaceLanguage {
+/** The chosen language, else English; never the project's content language. */
+export function resolveInterfaceLanguage(choice: string | null | undefined): InterfaceLanguage {
   return choice && baseOf(choice) === "vi" ? "vi" : "en";
 }
 

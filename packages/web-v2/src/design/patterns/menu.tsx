@@ -24,7 +24,7 @@ export interface MenuItem {
   group?: string;
 }
 
-export interface MenuProps {
+interface MenuProps {
   trigger: ReactNode;
   items: MenuItem[];
   align?: "left" | "right";

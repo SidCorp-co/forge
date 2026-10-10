@@ -9,7 +9,7 @@ const TONE: Record<Tone, string> = {
   cobalt: "var(--cobalt-500)",
 };
 
-export interface ProgressBarProps {
+interface ProgressBarProps {
   /** 0–100. Ignored when `indeterminate`. */
   value?: number;
   indeterminate?: boolean;

@@ -11,7 +11,7 @@ import {
 import { Button } from "@/design/primitives/button";
 import { useCopy } from "@/lib/i18n/interface-language";
 
-export interface ConfirmDialogProps {
+interface ConfirmDialogProps {
   open: boolean;
   title: string;
   message: ReactNode;

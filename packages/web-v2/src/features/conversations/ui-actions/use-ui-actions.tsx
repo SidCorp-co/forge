@@ -70,7 +70,7 @@ const highlightWords = (h: NonNullable<UiSnapshot["highlight"]>, t: Copy) =>
   h.target === "step" ? `${t("conversations.ui.step")} ${highlightTargetOf(h)}` : highlightTargetOf(h);
 
 /** The one line under the composer: what page the assistant is looking at, in the reader's words. */
-export function seesLabel(s: UiSnapshot, t: Copy, language: string): string {
+function seesLabel(s: UiSnapshot, t: Copy, language: string): string {
   const parts: string[] = [s.item ? s.item.key : s.route === "other" ? s.path : routeWord(s.route, t)];
   if (s.filter) parts.push(...filterParts(s.filter, t, language));
   if (s.listFilter) parts.push(...describeListFilter(s.listFilter.filter));

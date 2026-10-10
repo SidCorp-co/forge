@@ -28,9 +28,9 @@ type PipelineJobType = FromRegistry<
 >;
 
 /** Per-step status precedence computed by the read-side rollup. */
-export type PipelineStepStatus = "pending" | "running" | "completed" | "failed" | "cancelled" | "skipped";
+type PipelineStepStatus = "pending" | "running" | "completed" | "failed" | "cancelled" | "skipped";
 
-export interface PipelineRunCostSummary {
+interface PipelineRunCostSummary {
   estimatedCost: number;
   inputTokens: number;
   outputTokens: number;

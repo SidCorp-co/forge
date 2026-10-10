@@ -10,8 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const auth = vi.hoisted(() => ({ user: { id: "u1" }, isLoading: false }));
 vi.mock("@/providers/auth-provider", () => ({ useAuth: () => auth }));
 
-import { REPLAY_WAIT_MS, wsClient } from "./client";
-import { useRoom } from "./use-room";
+import { REPLAY_WAIT_MS, wsClient } from "@/lib/ws/client";
+import { useRoom } from "@/lib/ws/use-room";
 import { useWebSocket } from "./use-websocket";
 
 class FakeSocket {
@@ -28,7 +28,7 @@ class FakeSocket {
     FakeSocket.last = this;
   }
   send(raw: string) {
-    this.sent.push(JSON.parse(raw));
+    this.sent.push(JSON.parse(raw) as Record<string, unknown>);
   }
   close() {
     this.readyState = 3;
@@ -56,10 +56,10 @@ function page() {
       useQueries({
         queries: KEYS.map((key) => ({
           queryKey: key,
-          queryFn: async () => {
+          queryFn: () => {
             const hash = JSON.stringify(key);
             reads.set(hash, (reads.get(hash) ?? 0) + 1);
-            return {};
+            return Promise.resolve({});
           },
           initialData: {},
         })),
@@ -69,7 +69,8 @@ function page() {
     },
     { wrapper },
   );
-  const refetched = () => [...reads.entries()].filter(([, n]) => n > 0).map(([k]) => JSON.parse(k));
+  // each refetched read by the first segment of its key
+  const refetched = () => [...reads.entries()].filter(([, n]) => n > 0).map(([k]) => (JSON.parse(k) as string[])[0]);
   return { qc, refetched };
 }
 
@@ -120,7 +121,7 @@ describe("the socket opening after the page read its data", () => {
       socket.receive("replay.done", { room: "user:u1", frames: 0, complete: true });
     });
     await settle(REPLAY_WAIT_MS + 500);
-    const keys = refetched().map((k) => k[0]);
+    const keys = refetched();
     expect(keys).toEqual(expect.arrayContaining(["issue", "attention", "issues"]));
     expect(keys).not.toContain("projects");
     expect(keys).not.toContain("notifications");
@@ -136,7 +137,7 @@ describe("the socket opening after the page read its data", () => {
       socket.receive("replay.done", { room: `project:${PROJECT}`, frames: 0, complete: true });
     });
     await settle(400);
-    expect(refetched().map((k) => k[0])).toEqual(expect.arrayContaining(["projects", "attention", "notifications", "questions"]));
+    expect(refetched()).toEqual(expect.arrayContaining(["projects", "attention", "notifications", "questions"]));
   });
 
   it("refetches broadly when the server never answers the replay it was asked for", async () => {
@@ -147,6 +148,6 @@ describe("the socket opening after the page read its data", () => {
     await settle(REPLAY_WAIT_MS - 500);
     expect(refetched()).toEqual([]);
     await settle(1_000);
-    expect(refetched().map((k) => k[0])).toEqual(expect.arrayContaining(["projects", "attention"]));
+    expect(refetched()).toEqual(expect.arrayContaining(["projects", "attention"]));
   });
 });

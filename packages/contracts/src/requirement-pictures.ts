@@ -120,8 +120,6 @@ export const WRITE_PICTURE_SHAPE =
  */
 export const draftPictureSchema = pictureOf(ALT.optional());
 export type DraftPicture = z.infer<typeof draftPictureSchema>;
-export const DRAFT_PICTURE_SHAPE =
-	"{ kind: flow | example_table | wireframe | chart (process, rule, screen and report take one each), content: as the picture route takes it, alt?: left out, it is written from the content }";
 
 /** What the assistant's draft tools tell the model of the kind it names, on the field it fills. */
 export const DRAFT_KIND_HOW =

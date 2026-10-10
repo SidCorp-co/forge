@@ -106,7 +106,7 @@ export function overviewFacts(g: SystemGraph, t: Copy): OverviewFact[] {
 }
 
 /** Where the overview's one line about the system came from. */
-export type DescriptionSource = "project" | "purpose" | "summary";
+type DescriptionSource = "project" | "purpose" | "summary";
 
 export interface SystemDescription {
   text: string;

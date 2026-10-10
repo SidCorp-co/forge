@@ -33,7 +33,7 @@ export interface GraphNode extends Size {
   partition?: number;
 }
 
-export interface GraphEdge {
+interface GraphEdge {
   id: string;
   from: string;
   to: string;

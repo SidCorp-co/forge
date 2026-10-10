@@ -3,9 +3,9 @@ import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-
 import type { ConversationItem, MessageEntry, RunTotals, ToolCallData, ToolKind } from "./types";
 import { getToolLabel, toolKind } from "./types";
 
-export type OutcomeTone = "ok" | "bad" | "muted";
+type OutcomeTone = "ok" | "bad" | "muted";
 
-export interface ToolOutcome {
+interface ToolOutcome {
   text: string;
   tone: OutcomeTone;
 }
@@ -39,7 +39,7 @@ function plural(t: Copy, n: number, unit: Unit): string {
 }
 
 /** `mcp__forge__forge_issues` → `forge`; "" for a non-MCP tool. */
-export function mcpServer(name: string): string {
+function mcpServer(name: string): string {
   return /^mcp__([^_]+)__/.exec(name)?.[1] ?? "";
 }
 
@@ -109,7 +109,7 @@ function runOutcome(text: string, t: Copy): ToolOutcome {
  * fallback is the first non-empty output line, which is what a reader scanning
  * 400 rows can actually use — a JSON blob is not.
  */
-export function toolOutcome(tc: ToolCallData, t: Copy = productCopy()): ToolOutcome {
+function toolOutcome(tc: ToolCallData, t: Copy = productCopy()): ToolOutcome {
   const text = outputText(tc);
   if (tc.isError) return { text: firstLine(text) || t("runs.outcome.error"), tone: "bad" };
   switch (toolKind(tc.name)) {
@@ -132,7 +132,7 @@ export function toolOutcome(tc: ToolCallData, t: Copy = productCopy()): ToolOutc
 
 export type ActivityKind = "errors" | "ran" | "edited" | "forge" | "explored";
 
-export interface ActivityChild {
+interface ActivityChild {
   id: string;
   label: string;
   outcome: ToolOutcome;
@@ -395,7 +395,7 @@ export function deriveBlocker(items: ConversationItem[], t: Copy = productCopy()
   };
 }
 
-export interface TranscriptMeta {
+interface TranscriptMeta {
   totals: RunTotals | null;
   /** Thinking pauses. A count, not text — every thinking block Claude Code
    *  emits carries an empty string, so there is nothing to expand. */
@@ -427,7 +427,7 @@ export function readTranscriptMeta(
 
 export type TimeSpanKey = "queued" | "startup" | "agent";
 
-export interface TimeSpan {
+interface TimeSpan {
   key: TimeSpanKey;
   label: string;
   ms: number;

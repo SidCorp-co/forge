@@ -60,14 +60,6 @@ export const OVERVIEW_FLOW_STAGES = [
 ] as const;
 type OverviewFlowStageId = (typeof OVERVIEW_FLOW_STAGES)[number];
 
-export const OVERVIEW_FLOW_LABELS: Record<OverviewFlowStageId, string> = {
-	draft: "Draft",
-	open: "Open",
-	in_progress: "In progress",
-	awaiting_release: "Awaiting release",
-	closed: "Closed",
-};
-
 export const OVERVIEW_FLOW_STAGE_OF: Record<
 	IssueStatus,
 	OverviewFlowStageId

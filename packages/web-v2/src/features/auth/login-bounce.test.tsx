@@ -24,7 +24,7 @@ afterEach(() => {
 describe("leaveForLogin", () => {
   it("navigates to /login on the first bounce, hard, and refuses the second", () => {
     expect(leaveForLogin(1_000)).toBe("left");
-    expect(assign).toHaveBeenCalledWith("/login");
+    expect(assign).toHaveBeenCalledWith(new URL("/login", window.location.origin));
     expect(leaveForLogin(2_000)).toBe("stopped");
     expect(assign).toHaveBeenCalledTimes(1);
   });
@@ -79,7 +79,7 @@ describe("SignInStopped", () => {
     expect(screen.getByText("You are not signed in")).toBeTruthy();
     expect(assign).not.toHaveBeenCalled();
     screen.getByRole("button", { name: "Go to sign in" }).click();
-    expect(assign).toHaveBeenCalledWith("/login");
+    expect(assign).toHaveBeenCalledWith(new URL("/login", window.location.origin));
   });
 
   it("names cookies blocked in the frame when it is framed", () => {

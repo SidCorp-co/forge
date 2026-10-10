@@ -20,7 +20,7 @@ import { toScene } from "./board-canvas";
 import type { SceneElement } from "./scene-to-wireframe";
 
 /** Tools whose elements no wireframe shape holds; `board-editor.css` hides the same set. */
-export const NOT_KEPT_TOOLS: ReadonlySet<string> = new Set(["ellipse", "diamond", "line", "image", "frame", "magicframe", "embeddable"]);
+const NOT_KEPT_TOOLS: ReadonlySet<string> = new Set(["ellipse", "diamond", "line", "image", "frame", "magicframe", "embeddable"]);
 
 export default function BoardEditor({ doc, onScene }: { doc: WireframeDoc | null; onScene: (elements: readonly SceneElement[]) => void }) {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);

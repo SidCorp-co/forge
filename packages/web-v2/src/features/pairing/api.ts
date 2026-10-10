@@ -1,7 +1,7 @@
 import { apiClient } from "@/lib/api/client";
 
 /** Device descriptor returned by `POST /api/devices/login/approve`. */
-export interface ApprovedDevice {
+interface ApprovedDevice {
   label: string;
   platform: string;
   hostname: string | null;

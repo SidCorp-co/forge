@@ -4,7 +4,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { ReleaseDetail } from "../types";
-import { ReleaseFacts } from "./release-facts";
+import { ReleaseProperties } from "./release-facts";
 
 const release = (verifiedBy: ReleaseDetail["verifiedBy"]) =>
   ({
@@ -25,17 +25,17 @@ const release = (verifiedBy: ReleaseDetail["verifiedBy"]) =>
 
 describe("Verified by on a release", () => {
   it("names the storefront provider whose published state proves the release", () => {
-    render(<ReleaseFacts r={release({ kind: "provider", provider: "Autoflow" })} />);
+    render(<ReleaseProperties r={release({ kind: "provider", provider: "Autoflow" })} />);
     expect(screen.getByTestId("release-verified-by").textContent).toContain("What Autoflow serves");
   });
 
   it("keeps a git project's deployment record as it was", () => {
-    render(<ReleaseFacts r={release({ kind: "deployment", provider: "Coolify" })} />);
+    render(<ReleaseProperties r={release({ kind: "deployment", provider: "Coolify" })} />);
     expect(screen.getByTestId("release-verified-by").textContent).toContain("Production's deployment record");
   });
 
   it("says nothing where no way of proving it is known", () => {
-    render(<ReleaseFacts r={release(null)} />);
+    render(<ReleaseProperties r={release(null)} />);
     expect(screen.queryByTestId("release-verified-by")).toBeNull();
   });
 });

@@ -15,7 +15,7 @@ import type {
  * (ISS-1213): read as absent, either would put a guess on the board. A core older than this web
  * build is the cause.
  */
-export function requireHeld<P extends { items: PipelineIssueRow[] }>(page: P): P {
+function requireHeld<P extends { items: PipelineIssueRow[] }>(page: P): P {
   const missing = page.items
     .filter((i) => typeof i.held !== "boolean" || !isCheckIn(i.lastCheckInAt))
     .map((i) => i.displayId);

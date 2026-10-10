@@ -6,7 +6,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import type { RepinPlan } from "../types";
-import { PinOnlyReading, RepinPanel } from "./design-repins";
+import { PinOnlyReading, DesignRepins } from "./design-repins";
 
 const mutate = vi.hoisted(() => vi.fn());
 const state = vi.hoisted(() => ({ plan: null as RepinPlan | null }));
@@ -65,11 +65,11 @@ describe("the act that clears a base's pin-only dependents", () => {
   it("names every design it takes, and sends them in core's order at the revisions read", () => {
     state.plan = planOf(true);
     mutate.mockReset();
-    render(<RepinPanel projectId="p" workflowId="w-access" slug="hop" />);
+    render(<DesignRepins projectId="p" workflowId="w-access" slug="hop" />);
     const panel = screen.getByTestId("design-repins");
     expect(panel).toHaveTextContent("6 designs only need their pin moved → r13");
     expect(screen.getAllByTestId("repin-ready").map((r) => r.getAttribute("data-flow"))).toEqual(FLOWS);
-    expect(within(screen.getAllByTestId("repin-ready")[1] as HTMLElement).getByText("proposal r6 by hop master, approved as filed")).toBeTruthy();
+    expect(within(screen.getAllByTestId("repin-ready")[1]).getByText("proposal r6 by hop master, approved as filed")).toBeTruthy();
     expect(screen.getByTestId("repin-refused")).toHaveTextContent("billing-ux has a pending change beyond its pins");
     fireEvent.click(screen.getByTestId("repin-act"));
     expect(mutate).toHaveBeenCalledWith({ revision: 13, designs: FLOWS.map((flow, i) => ({ workflowId: `w-${flow}`, revision: 4 + i })) });
@@ -79,7 +79,7 @@ describe("the act that clears a base's pin-only dependents", () => {
     state.plan = planOf(false);
     render(
       <InterfaceLanguageScope language="vi">
-        <RepinPanel projectId="p" workflowId="w-access" slug="hop" />
+        <DesignRepins projectId="p" workflowId="w-access" slug="hop" />
       </InterfaceLanguageScope>,
     );
     expect(screen.getByTestId("design-repins")).toHaveTextContent("6 thiết kế chỉ cần đổi ghim → r13"); // i18n-allow: asserts the vi copy of the re-pin act
@@ -89,7 +89,7 @@ describe("the act that clears a base's pin-only dependents", () => {
 
   it("is nothing for a base with no dependent to re-pin", () => {
     state.plan = { ...planOf(true), ready: [], refused: [] };
-    const { container } = render(<RepinPanel projectId="p" workflowId="w-access" slug="hop" />);
+    const { container } = render(<DesignRepins projectId="p" workflowId="w-access" slug="hop" />);
     expect(container).toBeEmptyDOMElement();
   });
 });

@@ -9,7 +9,7 @@
     "dev": "pnpm gen:help && vite",
     "build": "pnpm gen:help && vite build",
     "start": "vite preview --port 3100",
-    "lint": "eslint --pass-on-unpruned-suppressions src",
+    "lint": "eslint --pass-on-unpruned-suppressions --format ./eslint/count-formatter.mjs src",
     "lint:inventory": "node scripts/lint-inventory.mjs",
     "test": "vitest run",
     "witness": "node witness/run.mjs",

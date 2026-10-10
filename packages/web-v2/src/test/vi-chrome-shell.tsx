@@ -58,7 +58,7 @@ function Sidebar({ compact }: { compact: boolean }) {
       activeKey="proj-feedback"
       attentionCount={3}
       railSlug="hop"
-      rail={rail as never}
+      rail={rail}
       badges={{ needsYou: needsYou as never }}
       onNavigate={noop}
       onRoute={noop}

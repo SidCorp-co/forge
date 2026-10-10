@@ -2,7 +2,7 @@
 import { useCopy } from "@/lib/i18n/interface-language";
 import { Icon } from "../icons/icon";
 
-export interface ListSearchProps {
+interface ListSearchProps {
   noun: string;
   value: string;
   onChange: (text: string) => void;

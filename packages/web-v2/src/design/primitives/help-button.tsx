@@ -8,12 +8,12 @@ import { Kbd } from "@/design/primitives/kbd";
 import { Kicker } from "@/design/primitives/kicker";
 import { Popover } from "@/design/primitives/popover";
 
-export interface HelpShortcut {
+interface HelpShortcut {
   keys: string;
   desc: string;
 }
 
-export interface HelpContent {
+interface HelpContent {
   /** One-paragraph "what this page does". */
   summary: string;
   /** Primary actions available on the page. */
@@ -27,7 +27,7 @@ export interface HelpContent {
   docLabel?: string;
 }
 
-export interface HelpButtonProps extends HelpContent {
+interface HelpButtonProps extends HelpContent {
   /** Visible button label (default "Help"). */
   label?: string;
 }

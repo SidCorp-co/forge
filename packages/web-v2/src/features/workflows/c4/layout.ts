@@ -5,7 +5,7 @@ import { DASH, edgeHue } from "../canvas/style";
 import type { Relationship } from "../types";
 import type { SystemView, ViewEdge, ViewFrame, ViewNode } from "./view";
 
-export interface Pt {
+interface Pt {
   x: number;
   y: number;
 }
@@ -84,7 +84,7 @@ export interface DFrame extends Rect {
 }
 
 /** A merged line's words: the first relationship's own label, and how many more it stands for. */
-export interface DLabel extends Rect {
+interface DLabel extends Rect {
   text: string;
   more: number;
   /** The words as wrapped, and whether the "+N more" chip takes a line of its own after them. */

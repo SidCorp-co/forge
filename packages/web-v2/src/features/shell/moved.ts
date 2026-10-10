@@ -6,7 +6,7 @@ import { issueHref } from "@/lib/routes/issues";
 import { requirementHref, requirementsHref } from "@/lib/routes/requirements";
 import { workflowHref } from "@/lib/routes/workflows";
 
-export const MOVED_PAGES = ["decisions", "roadmap", "memory"] as const;
+const MOVED_PAGES = ["decisions", "roadmap", "memory"] as const;
 export type MovedPage = (typeof MOVED_PAGES)[number];
 
 /** The `?moved=` a page lands with, or null when it names no page that was removed. */

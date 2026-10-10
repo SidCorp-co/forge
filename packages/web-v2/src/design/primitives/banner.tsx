@@ -13,7 +13,7 @@ const TONE: Record<Tone, { line: string; text: string; icon: IconName }> = {
   success: { line: "border-ok-9", text: "text-ok-11", icon: "check" },
 };
 
-export interface BannerProps {
+interface BannerProps {
   tone?: Tone;
   children: ReactNode;
   action?: ReactNode;

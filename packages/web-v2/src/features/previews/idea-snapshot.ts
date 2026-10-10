@@ -5,7 +5,7 @@
 
 import { type PageSnapshot, pageSnapshotSchema, SNAPSHOT_ANSWER, SNAPSHOT_ASK } from "@forge/contracts/preview";
 
-export const SNAPSHOT_WAIT_MS = 6_000;
+const SNAPSHOT_WAIT_MS = 6_000;
 
 /** Why no snapshot came: the page said it could not take one, or said nothing. */
 export class SnapshotUnavailable extends Error {

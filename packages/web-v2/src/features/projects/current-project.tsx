@@ -28,6 +28,3 @@ export function useCurrentProject(): ProjectListItem | null {
   return use(CurrentProjectContext);
 }
 
-export function useCurrentProjectRef(): string | undefined {
-  return use(CurrentProjectRefContext);
-}

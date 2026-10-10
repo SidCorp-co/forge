@@ -24,7 +24,7 @@ import { personHeading, statusMarkdown, waitGroups } from "../report-markdown";
 import { Written } from "@/lib/i18n/written";
 
 export const STATUS_WINDOWS = ["7", "14", "30"] as const;
-export type StatusWindow = (typeof STATUS_WINDOWS)[number];
+type StatusWindow = (typeof STATUS_WINDOWS)[number];
 
 const ROW = "flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-line-subtle py-2 text-13";
 const LIST = "border-t border-line-subtle";
@@ -95,7 +95,7 @@ function Roadmap({ s, slug, clock }: { s: Pick<ProjectStatus, "roadmap">; slug: 
   );
 }
 
-export interface StatusReportProps {
+interface StatusReportProps {
   s: ProjectStatus;
   slug: string;
   clock: EtaClock;

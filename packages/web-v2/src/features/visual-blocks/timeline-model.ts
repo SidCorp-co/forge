@@ -13,7 +13,7 @@ export interface TimelineItem {
   forecast: { p50: number; p85: number; p50Text: string; p85Text: string } | null;
 }
 
-export interface TimelineModel {
+interface TimelineModel {
   /** The earliest and latest instant the data holds; the axis runs exactly between them. */
   min: number;
   max: number;

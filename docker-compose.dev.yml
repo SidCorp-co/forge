@@ -54,8 +54,8 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM}
-      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
       # Public origin of THIS API (e.g. https://forge-beta-api.example.com). Used
       # by forge_uploads to build absolute presigned upload URLs. Distinct from
       # APP_BASE_URL (the web frontend). Leave empty to have forge_uploads return

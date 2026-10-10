@@ -4,7 +4,7 @@
 import type { WireframeDoc } from "@forge/contracts/wireframe";
 import { useSyncExternalStore } from "react";
 
-export interface BoardState {
+interface BoardState {
   open: boolean;
   doc: WireframeDoc | null;
   /** Bumped each time the doc is loaded, which the canvas redraws from. */

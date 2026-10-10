@@ -7,7 +7,7 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatElapsed } from "@/lib/utils/format";
 import type { ProjectRunner } from "../../types";
-import { RunnerRow } from "./runner-row";
+import { RunnerAssignment } from "./runner-assignment";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
@@ -53,7 +53,7 @@ function renderRow(runner: ProjectRunner) {
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={client}>
-			<RunnerRow runner={runner} current={null} projectId="p1" canEdit={false} slug="forge" />
+			<RunnerAssignment runner={runner} current={null} projectId="p1" canEdit={false} slug="forge" />
 		</QueryClientProvider>,
 	);
 }

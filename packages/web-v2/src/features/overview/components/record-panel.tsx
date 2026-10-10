@@ -12,7 +12,7 @@ export interface RecordView {
   ageSeconds: number | null;
 }
 
-export interface RecordPanelProps {
+interface RecordPanelProps {
   title: string;
   /** Every record the condition holds. */
   total: number;

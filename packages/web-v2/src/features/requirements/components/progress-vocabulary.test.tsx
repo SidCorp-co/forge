@@ -5,7 +5,7 @@
 import type { ComingNextForecast, RequirementForecasts, ScopeForecast } from "@forge/contracts/forecast";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ComingNext } from "@/features/releases/components/coming-next";
+import { ComingNext } from "@/features/releases";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { PRODUCT_STRINGS as product } from "@/lib/i18n/product-copy";
 import { REQ_PROJECT, reqQueries, Seeded } from "@/test/vi-chrome-requirements";
@@ -64,8 +64,8 @@ describe("one progress on the requirements list and on Releases", () => {
 });
 
 describe("the progress words", () => {
-  const vi_ = product.vi as Record<string, string>;
-  const en = product.en as Record<string, string>;
+  const vi_ = product.vi;
+  const en = product.en;
 
   it("gives shipped, landed and to do three different Vietnamese words, and only landed uses the landed word", () => {
     const words = ["progress.shipped", "progress.awaitingRelease", "progress.toDo"].map((k) => vi_[k]?.replace("{n} ", ""));

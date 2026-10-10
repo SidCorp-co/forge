@@ -152,6 +152,10 @@ const SECRET_DOORS: Readonly<Record<string, string>> = {
     'POST /open opens one share for whoever holds its token, with no session; a PAT is never a share token',
   'shares/service.ts': 'openShare looks a share up by its token’s SHA-256',
   'shares/token.ts': 'defines hashShareToken, the SHA-256 a share token is looked up by',
+  'integration-door/mcp-relay-routes.ts':
+    'the storefront MCP relay admits only the relay ticket core minted for one binding, read by readRelayTicket; a PAT verifies as none',
+  'integrations/mcp-relay.ts':
+    'readRelayTicket verifies a relay ticket, a JWT under its own issuer naming one binding; a PAT is never one',
   'uploads/routes.ts':
     'an upload or download ticket, a uuid core minted for one file, is the only authority there; a PAT is never one',
 };

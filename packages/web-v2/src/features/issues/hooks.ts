@@ -318,7 +318,7 @@ interface BulkSummary {
 }
 
 /** An issue of a bulk apply, by the key a person reads it under. */
-export interface BulkIssue {
+interface BulkIssue {
   id: string;
   displayId: string;
 }

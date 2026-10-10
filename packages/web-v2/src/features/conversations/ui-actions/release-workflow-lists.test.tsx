@@ -6,7 +6,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { assistantFilters } from "@/features/chat-dock/assistant-filters";
+import { assistantFilters } from "@/features/chat-dock";
 import { notifyLocationChange } from "@/lib/utils/use-location-search";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { RULE, say, waitingOn } from "@/test/said";
@@ -30,8 +30,8 @@ vi.mock("@/features/releases/components/release-train", () => ({ ReleaseTrain: (
 vi.mock("@/features/workflows/components/system-overview", () => ({ SystemOverviewRegion: () => null }));
 
 const { useUiActions, useUiSnapshot } = await import("./use-ui-actions");
-const { ReleasesScreen } = await import("@/features/releases/components/releases-screen");
-const { WorkflowsScreen } = await import("@/features/workflows/components/workflows-screen");
+const { ReleasesScreen } = await import("@/features/releases");
+const { WorkflowsScreen } = await import("@/features/workflows");
 
 const AT = "2026-10-08T10:00:00.000Z";
 const wait = (kind: WaitingKind) => waitingOn(kind, { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE });
@@ -126,7 +126,7 @@ function page(el: ReactElement, path: string) {
   return send;
 }
 
-const snapshot = () => JSON.parse(screen.getByTestId("snapshot").textContent ?? "{}");
+const snapshot = () => JSON.parse(screen.getByTestId("snapshot").textContent ?? "{}") as Record<string, unknown>;
 
 beforeEach(() => assistantFilters.mark({}, true));
 afterEach(() => vi.unstubAllGlobals());
@@ -146,11 +146,15 @@ describe("Releases from chat (BC-4, BC-5)", () => {
 describe("Workflows from chat (BC-4, BC-5)", () => {
   it("keeps the designs waiting on you, and on the words the chat set", async () => {
     const send = page(<WorkflowsScreen projectId="p1" slug="demo" projectName="Demo" />, "/projects/demo/workflows");
-    const rows = () => screen.queryAllByTestId("workflow-row").map((r) => r.getAttribute("data-flow"));
+    const rows = () => screen.queryAllByTestId("workflow-row").map((r) => r.getAttribute("data-row-key"));
     await waitFor(() => expect(rows().sort()).toEqual(["chat-turn", "feedback-triage"]));
     send(turn("ui_workflows_filter", { mode: "replace", set: [{ field: "waitingOn", value: "you" }] }));
     await waitFor(() => expect(rows()).toEqual(["feedback-triage"]));
     expect(snapshot()).toMatchObject({ route: "workflows", listFilter: { list: "workflows", filter: { waitingOn: "you" } }, shown: ["feedback-triage"] });
+    // a design row is found by its flow, so the chat can mark the one it means
+    send(turn("ui_highlight", { target: { key: "feedback-triage" } }));
+    expect(screen.queryByTestId("ui-action-refused")).toBeNull();
+    expect(screen.getByTestId("workflow-row")).toHaveAttribute("data-highlighted", "true");
     send(turn("ui_workflows_filter", { mode: "replace", set: [{ field: "text", value: "chat" }] }));
     await waitFor(() => expect(rows()).toEqual(["chat-turn"]));
     expect(screen.getByTestId("list-filter-chip")).toHaveAttribute("data-assistant", "true");

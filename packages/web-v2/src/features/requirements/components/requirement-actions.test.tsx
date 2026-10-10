@@ -55,8 +55,10 @@ describe("Agree on a draft requirement", () => {
     expect(agree()).toBeEnabled();
     await user.click(agree());
     expect(calls).toEqual([]);
+    // an agree records why (REQ-4 BC-4)
+    await user.type(within(screen.getByTestId("accept-step")).getByRole("textbox", { name: "Why it is agreed, and on whose authority" }), "BA review");
     await user.click(within(screen.getByTestId("accept-step")).getByRole("button", { name: "Agree r1" }));
-    await waitFor(() => expect(calls).toContainEqual({ method: "POST", path: "/projects/p1/requirements/REQ-2/agree", body: { revision: 1 } }));
+    await waitFor(() => expect(calls).toContainEqual({ method: "POST", path: "/projects/p1/requirements/REQ-2/agree", body: { revision: 1, reason: "BA review" } }));
   });
 
   it("names a refusal by its code when core refuses the agree anyway", async () => {
@@ -73,6 +75,7 @@ describe("Agree on a draft requirement", () => {
     const user = userEvent.setup();
     renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={detail([])} />);
     await user.click(agree());
+    await user.type(within(screen.getByTestId("accept-step")).getByRole("textbox", { name: "Why it is agreed, and on whose authority" }), "BA review");
     await user.click(within(screen.getByTestId("accept-step")).getByRole("button", { name: "Agree r1" }));
     expect(await screen.findByTestId("refusal")).toHaveTextContent("REQUIREMENT_DESIGN_UNAPPROVED");
   });

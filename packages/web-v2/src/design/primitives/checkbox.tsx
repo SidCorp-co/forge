@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Checkbox as ShadcnCheckbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils/cn";
 
-export interface CheckboxProps {
+interface CheckboxProps {
   checked: boolean;
   onChange?: (checked: boolean) => void;
   disabled?: boolean;

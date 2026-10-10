@@ -16,10 +16,10 @@ import { HealthBar, Legend, SearchBox, ViewBar, WalkBar, ZoomBar } from "@/featu
 import { useWorkflowTemplates } from "@/features/workflows/hooks";
 import { TypeChip } from "@/features/workflows/canvas/nodes";
 import { type Canvas, readCanvas } from "@/features/workflows/canvas/model";
-import { DetailPanel } from "@/features/workflows/canvas/panel";
+import { CanvasDetail } from "@/features/workflows/canvas/panel";
 import { SystemOverviewRegion } from "@/features/workflows/components/system-overview";
 import { OrphanedTraces } from "@/features/workflows/components/design-decision";
-import { WorkflowDesignFacts } from "@/features/workflows/components/workflow-design-facts";
+import { WorkflowDesignProperties } from "@/features/workflows/components/workflow-design-facts";
 import { WorkflowDesignPage } from "@/features/workflows/components/workflow-design-page";
 import { WorkflowDesignScreen } from "@/features/workflows/components/workflow-design-screen";
 import { WorkflowsScreen } from "@/features/workflows/components/workflows-screen";
@@ -159,7 +159,7 @@ const releaseSeed = (): [QueryKey, unknown][] => [
 
 const peek = { open: "0.1.0", position: { at: 1, of: 2 }, set: () => {}, move: () => {} };
 
-export const releasesScreen = (): ReactElement => (
+const releasesScreen = (): ReactElement => (
   <Seeded data={releaseSeed()}>
     <ReleasesScreen projectId={P} slug="hop" />
     <ComingNext next={coming as never} draft={summary({ waitingOn: waitingOn("person", { who: say("standing.who.holderOf", { perm: "releases.approve" }), act: CUT, rule: RULE }) }) as never} slug="hop" clock={{ lang: "vi", now: Date.parse(AT) }} />
@@ -167,7 +167,7 @@ export const releasesScreen = (): ReactElement => (
   </Seeded>
 );
 
-export const releaseDetailScreen = (): ReactElement => (
+const releaseDetailScreen = (): ReactElement => (
   <Seeded data={releaseSeed()}>
     <ReleaseItemScreen projectId={P} slug="hop" version="0.1.0" />
     <ReleaseActions projectId={P} r={{ ...detail, can: { cut: false, decide: false, split: true }, split: { issueIds: ["i1"], rest: 13 } } as never} />
@@ -210,7 +210,7 @@ const workflowSeed = (): [QueryKey, unknown][] => [
   [["workflow-templates", P], { templates: BUILTIN_WORKFLOW_TEMPLATES.map((template) => ({ origin: "builtin", template })), returned: BUILTIN_WORKFLOW_TEMPLATES.length }],
 ];
 
-export const workflowsScreen = (): ReactElement => (
+const workflowsScreen = (): ReactElement => (
   <Seeded data={workflowSeed()}>
     <WorkflowsScreen projectId={P} slug="hop" projectName="Hop" canEdit />
   </Seeded>
@@ -219,7 +219,7 @@ export const workflowsScreen = (): ReactElement => (
 const contextRecord = record("he-thong", "approved", null, { version: 2, template: { id: "system-context", version: 1 } });
 const graph = { facts: { people: [{ name: "Khach", count: 2, unconfirmed: 1 }], externals: 3, namedBoundaries: 2, boundaries: [{ name: "Ngan hang", count: 2 }] }, focal: null, nodes: [] };
 
-export const systemOverviewScreen = (): ReactElement => (
+const systemOverviewScreen = (): ReactElement => (
   <Seeded data={[[["system-graph", P, "w-he-thong", 2, 0], graph]]}>
     <SystemOverviewRegion records={[contextRecord, ...records] as never} templates={[]} projectId={P} slug="hop" projectName="Hop" />
     <SystemOverviewRegion records={[contextRecord] as never} templates={[]} projectId={P} slug="hop" projectName="Hop" variant="compact" />
@@ -270,13 +270,13 @@ const designSeed = (): [QueryKey, unknown][] => [
 ];
 const designRecord = records[0];
 
-export const workflowDesignScreen = (): ReactElement => (
+const workflowDesignScreen = (): ReactElement => (
   <Seeded data={designSeed()}>
     <WorkflowDesignScreen projectId={P} slug="hop" flow="dat-hang" />
     {(["steps", "revisions"] as const).map((tab) => (
       <WorkflowDesignPage key={tab} projectId={P} slug="hop" d={design as never} record={designRecord as never} template={null} tab={tab} onTab={() => {}} />
     ))}
-    <WorkflowDesignFacts d={{ ...design, gate: { open: true, rule: "mo", says: { rule: verbatim("mo") } } } as never} record={designRecord as never} shown={body("dat-hang", { kind: "state" }) as never} shownRevision={2} template={null} slug="hop" health={{ ...workflowHealth, rooted: { rooted: false, missing: ["approved_revision", "requirement"] }, observation: null } as never} />
+    <WorkflowDesignProperties d={{ ...design, gate: { open: true, rule: "mo", says: { rule: verbatim("mo") } } } as never} record={designRecord as never} shown={body("dat-hang", { kind: "state" }) as never} shownRevision={2} template={null} slug="hop" health={{ ...workflowHealth, rooted: { rooted: false, missing: ["approved_revision", "requirement"] }, observation: null } as never} />
     <OrphanedTraces traces={[{ recordType: "requirement_criterion", key: "REQ-1", href: null, target: { kind: "edge", from: "a", to: "b", label: null } }] as never} revision={2} />
   </Seeded>
 );
@@ -306,7 +306,7 @@ function BuiltinTemplates() {
   );
 }
 
-export const workflowCanvasScreen = (): ReactElement => (
+const workflowCanvasScreen = (): ReactElement => (
   <Seeded data={workflowSeed()}>
     <BuiltinTemplates />
     <ViewBar language="business" lod={1} banded allOpen={false} onLanguage={() => {}} onLod={() => {}} onToggleAll={() => {}} onWalk={() => {}} health={overlay} />
@@ -314,10 +314,10 @@ export const workflowCanvasScreen = (): ReactElement => (
     <SearchBox c={canvas} hits={[]} query="x" onQuery={() => {}} onPick={() => {}} />
     <ZoomBar zoom={1} minimap legend onZoom={() => {}} onReset={() => {}} onFit={() => {}} onMinimap={() => {}} onLegend={() => {}} />
     <WalkBar at={0} total={3} onWalk={() => {}} onStop={() => {}} />
-    <DetailPanel canvas={canvas} selection={{ step: "a" }} walk={null} decision={null} onClose={() => {}} onWalk={() => {}} onStep={() => {}} onEdge={() => {}} />
-    <DetailPanel canvas={canvas} selection={{ step: "b" }} walk={{ order: ["a", "b", "c"], at: 1 }} decision={null} onClose={() => {}} onWalk={() => {}} onStep={() => {}} onEdge={() => {}} />
-    <DetailPanel canvas={canvas} selection={null} walk={{ order: ["a", "b", "c"], at: 3 }} decision={null} onClose={() => {}} onWalk={() => {}} onStep={() => {}} onEdge={() => {}} />
-    <DetailPanel canvas={canvas} selection={{ edge: "a>b" }} walk={null} decision={null} onClose={() => {}} onWalk={() => {}} onStep={() => {}} onEdge={() => {}} />
+    <CanvasDetail canvas={canvas} selection={{ step: "a" }} walk={null} decision={null} onClose={() => {}} onWalk={() => {}} onStep={() => {}} onEdge={() => {}} />
+    <CanvasDetail canvas={canvas} selection={{ step: "b" }} walk={{ order: ["a", "b", "c"], at: 1 }} decision={null} onClose={() => {}} onWalk={() => {}} onStep={() => {}} onEdge={() => {}} />
+    <CanvasDetail canvas={canvas} selection={null} walk={{ order: ["a", "b", "c"], at: 3 }} decision={null} onClose={() => {}} onWalk={() => {}} onStep={() => {}} onEdge={() => {}} />
+    <CanvasDetail canvas={canvas} selection={{ edge: "a>b" }} walk={null} decision={null} onClose={() => {}} onWalk={() => {}} onStep={() => {}} onEdge={() => {}} />
   </Seeded>
 );
 

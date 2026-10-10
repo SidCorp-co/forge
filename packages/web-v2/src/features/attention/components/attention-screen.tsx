@@ -73,7 +73,7 @@ function KindTag({ kind }: { kind: AttentionKind }) {
   );
 }
 
-export function AttentionItemLine({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
+function AttentionItemLine({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
   const t = useCopy();
   return (
     <button

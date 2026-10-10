@@ -1,11 +1,11 @@
 import type { QueryKey } from "@tanstack/react-query";
 import { fireEvent } from "@testing-library/react";
-import { BoardPanel } from "@/features/conversations/board/board-panel";
+import { DockBoard } from "@/features/conversations/board/board-panel";
 import { AddAgentDialog, AddPersonDialog } from "@/features/conversations/components/add-member-dialog";
 import { ConversationChat } from "@/features/conversations/components/conversation-chat";
 import { ConversationMembers } from "@/features/conversations/components/conversation-members";
 import { ScopeNotice } from "@/features/conversations/components/scope-notice";
-import { UiActionCard, type UiCallRecord } from "@/features/conversations/ui-actions/use-ui-actions";
+import { UiActionNotice, type UiCallRecord } from "@/features/conversations/ui-actions/use-ui-actions";
 import { ThreadSub } from "@/features/onboarding/components/thread-sub";
 import { boardStore } from "@/features/board/board-store";
 import { ActorChip, PersonChip } from "@/design";
@@ -151,7 +151,7 @@ export const SCREENS = [
   { name: "Conversation · add person", render: () => wrap(<AddPersonDialog conversationId="c-two" room={membership() as never} open onClose={noop} />) },
   { name: "Conversation · add person confirmation", render: () => wrap(<AddPersonDialog conversationId="c-two" room={membership() as never} open onClose={noop} />), act: clickNth("button.flex.w-full", 0) },
   { name: "Conversation · add person to a direct room", render: () => wrap(<AddPersonDialog conversationId="c-one" room={membership({ shape: "direct" }) as never} open onClose={noop} />), act: clickNth("button.flex.w-full", 0) },
-  { name: "Conversation · scope notice", render: () => wrap(<><ScopeNotice room={membership() as never} /><ScopeNotice room={{ scopeProjects: [{ id: P, name: "Hop", slug: "hop" }] }} /><ScopeNotice room={{ scopeProjects: [] }} /></>) },
+  { name: "Conversation · scope notice", render: () => wrap(<><ScopeNotice room={membership()} /><ScopeNotice room={{ scopeProjects: [{ id: P, name: "Hop", slug: "hop" }] }} /><ScopeNotice room={{ scopeProjects: [] }} /></>) },
   {
     name: "Conversation · thread line",
     render: () => wrap(
@@ -167,12 +167,12 @@ export const SCREENS = [
     name: "Conversation · assistant UI cards",
     render: () => (
       <div>
-        <UiActionCard record={record({ reading: navigate, outcome: OK("Da mo danh sach") })} onUndo={noop} onClear={noop} />
-        <UiActionCard record={record({ reading: navigate, outcome: OK("Da loc: muc cao", [{ field: "priority", label: "Uu tien: cao" }, { field: "createdBy", label: "Do toi tao" }]) })} onUndo={noop} onClear={noop} />
-        <UiActionCard record={record({ reading: navigate, outcome: OK("Da mo danh sach"), undone: true })} onUndo={noop} onClear={noop} />
-        <UiActionCard record={record({ reading: navigate })} onUndo={noop} onClear={noop} />
-        <UiActionCard record={record({ reading: navigate, outcome: { ok: false, code: "UI_ACTION_UNAVAILABLE", message: "Khong the ap dung" } })} onUndo={noop} onClear={noop} />
-        <UiActionCard record={record({ reading: { kind: "refused", name: "ui.select", code: "UI_ACTION_INVALID", message: "Khong hop le" } })} onUndo={noop} onClear={noop} />
+        <UiActionNotice record={record({ reading: navigate, outcome: OK("Da mo danh sach") })} onUndo={noop} onClear={noop} />
+        <UiActionNotice record={record({ reading: navigate, outcome: OK("Da loc: muc cao", [{ field: "priority", label: "Uu tien: cao" }, { field: "createdBy", label: "Do toi tao" }]) })} onUndo={noop} onClear={noop} />
+        <UiActionNotice record={record({ reading: navigate, outcome: OK("Da mo danh sach"), undone: true })} onUndo={noop} onClear={noop} />
+        <UiActionNotice record={record({ reading: navigate })} onUndo={noop} onClear={noop} />
+        <UiActionNotice record={record({ reading: navigate, outcome: { ok: false, code: "UI_ACTION_UNAVAILABLE", message: "Khong the ap dung" } })} onUndo={noop} onClear={noop} />
+        <UiActionNotice record={record({ reading: { kind: "refused", name: "ui.select", code: "UI_ACTION_INVALID", message: "Khong hop le" } })} onUndo={noop} onClear={noop} />
       </div>
     ),
   },
@@ -180,14 +180,14 @@ export const SCREENS = [
     name: "Conversation · board",
     render: () => {
       boardStore.load({ v: 1, title: "So do", shapes: [{ id: "a", type: "box", x: 0, y: 0, w: 10, h: 10 }] } as never);
-      return wrap(<BoardPanel projectId={P} issueKey="ISS-1" />);
+      return wrap(<DockBoard projectId={P} issueKey="ISS-1" />);
     },
   },
   {
     name: "Conversation · board empty",
     render: () => {
       boardStore.load({ v: 1, shapes: [] } as never);
-      return wrap(<BoardPanel projectId={P} />);
+      return wrap(<DockBoard projectId={P} />);
     },
   },
   {

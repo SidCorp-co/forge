@@ -35,14 +35,14 @@ const SKELETON_ROWS = ["s1", "s2", "s3", "s4"];
 
 type EcosystemScope = { projectId: string; ecosystemId: string; name: string };
 
-export type ConversationFilter =
+type ConversationFilter =
   | { kind: "all" }
   | { kind: "project"; id: string; name: string }
   | { kind: "ecosystem"; id: string; name: string };
 
 const EVERY_PROJECT: ConversationFilter = { kind: "all" };
 
-export function filterConversations(
+function filterConversations(
   rows: ListedConversation[],
   opts: { filter: ConversationFilter; search: string; untitled?: string },
 ): ListedConversation[] {

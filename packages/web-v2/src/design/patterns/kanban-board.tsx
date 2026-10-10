@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export interface KanbanBoardProps {
+interface KanbanBoardProps {
   /** Columns (`KanbanColumn`s). */
   children: ReactNode;
 }

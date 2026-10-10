@@ -17,7 +17,7 @@ export type WaitingReason =
 export type WaitingCause = NeedsInfoKind;
 
 /** ISS-903 — the queued candidate, as core projects it. */
-export interface PipelineHealthQueuedStep {
+interface PipelineHealthQueuedStep {
   jobId: string;
   jobType: string;
   stageStatus: string | null;
@@ -42,7 +42,7 @@ export interface PipelineHealth {
   pausedRun?: PipelineHealthPausedRun;
 }
 
-export type PauseResumer = "operator" | "machine" | "sweeper";
+type PauseResumer = "operator" | "machine" | "sweeper";
 
 /** A gate or a pause as core reads it to a person: what holds the step, who acts, whether it clears itself. */
 export interface PipelineReading {
@@ -52,7 +52,7 @@ export interface PipelineReading {
   needsAction: boolean;
 }
 
-export interface PipelineHealthPausedRun {
+interface PipelineHealthPausedRun {
   runId: string;
   pauseReason: string | null;
   kind: string | null;

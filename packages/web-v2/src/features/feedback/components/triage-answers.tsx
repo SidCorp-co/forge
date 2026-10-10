@@ -12,7 +12,7 @@ import { namedRefusals } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
 
 /** The questions the triager answers in `answers`, in the checklist's order. */
-export const TRIAGE_ANSWER_FIELDS = checklistFormOf(FEEDBACK_TRIAGE_CHECKLIST).fields.filter(
+const TRIAGE_ANSWER_FIELDS = checklistFormOf(FEEDBACK_TRIAGE_CHECKLIST).fields.filter(
   (f) => f.answeredBy === "mover" && f.name !== TRIAGE_ROUTE_QUESTION,
 );
 

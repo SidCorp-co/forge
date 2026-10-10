@@ -52,7 +52,7 @@ const LENS_LABEL: Record<Lens, ProductCopyKey> = {
   transcript: "runs.report.lens.transcript",
 };
 
-export interface RunReportProps {
+interface RunReportProps {
   session: SessionRow;
   items: ConversationItem[];
   /** The Developer view (`?view=developer`): the whole report. Off, the person's summary. */

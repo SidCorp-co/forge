@@ -1,15 +1,15 @@
 import { gateView, say } from "@/test/said";
 import { QueryClient, QueryClientProvider, type QueryKey } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useWriteProjectDocument } from "@/features/project-config/hooks";
-import type { V1Read } from "@/features/project-config/types";
+import { useWriteProjectDocument } from "@/features/project-config";
+import type { V1Read } from "@/features/project-config";
 import { fakeCore } from "@/test/render";
 import { DocumentEditor } from "./components/document-editor";
 import { DocumentFields } from "./components/document-fields";
 import { ProjectSettingsScreen } from "./components/project-settings-screen";
-import { ReleaseSection } from "./components/release-section";
+import { ReleaseSettings } from "./components/release-section";
 import type { ReleaseReadiness } from "./types";
 
 vi.mock("next/navigation", () => ({
@@ -36,7 +36,7 @@ const DOC = {
 const READ: V1Read = { declared: true, revision: 6, document: DOC };
 
 function Seeded({ data, children }: { data: [QueryKey, unknown][]; children: ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY }, mutations: { retry: false } } });
+  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY }, mutations: { retry: false } } }));
   for (const [key, value] of data) client.setQueryData(key, value);
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
@@ -73,7 +73,7 @@ describe("the raw project document never lets a person remove or change who the 
     const box = screen.getByRole("textbox", { name: "Project document (JSON)" });
     fireEvent.change(box, { target: { value: JSON.stringify({ ...DOC, project: { ...DOC.project, id: "22222222-2222-4222-8222-222222222222" } }) } });
     expect(screen.getByText(/project\.id is fixed/)).toBeTruthy();
-    expect((screen.getByRole("button", { name: /^Save/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: /^Save/ }).disabled).toBe(true);
   });
 });
 
@@ -113,7 +113,7 @@ describe("release state reads as a state, not an alarm", () => {
   it("draws an empty roster as a neutral line in words, with no code on the page", () => {
     render(
       <Seeded data={[[["project", P, "release-readiness"], readiness()]]}>
-        <ReleaseSection projectId={P} slug="hop" />
+        <ReleaseSettings projectId={P} slug="hop" />
       </Seeded>,
     );
     expect(screen.queryByText(/RELEASE_ROSTER_EMPTY/), "the raw code is shown as text").toBeNull();
@@ -135,7 +135,7 @@ describe("release state reads as a state, not an alarm", () => {
     ];
     render(
       <Seeded data={[[["project", P, "release-readiness"], readiness({ gates } as Partial<ReleaseReadiness>)]]}>
-        <ReleaseSection projectId={P} slug="hop" />
+        <ReleaseSettings projectId={P} slug="hop" />
       </Seeded>,
     );
     const line = screen.getByText(/No runner is paired/).closest("[data-code]");
@@ -146,7 +146,7 @@ describe("release state reads as a state, not an alarm", () => {
     const calls = fakeCore((c) => (c.method === "PUT" ? { body: { id: "k", slug: "build-commands", degraded: false, truncated: false } } : undefined));
     render(
       <Seeded data={[[["project", P, "release-readiness"], readiness({ gaps: ["build-commands"] })]]}>
-        <ReleaseSection projectId={P} slug="hop" />
+        <ReleaseSettings projectId={P} slug="hop" />
       </Seeded>,
     );
     expect(screen.queryByText(/PUT \/api|forge knowledge write/)).toBeNull();
@@ -201,7 +201,7 @@ describe("settings are fields a person changes where they are shown", () => {
     const branch = await screen.findByRole("textbox", { name: "Default branch" });
     fireEvent.change(branch, { target: { value: "main" } });
     const bar = screen.getByTestId("save-bar");
-    await act(async () => {
+    act(() => {
       fireEvent.click(within(bar).getByRole("button", { name: "Save changes" }));
     });
     await waitFor(() => {

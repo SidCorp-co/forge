@@ -7,9 +7,9 @@ import { PREVIEW_FAILURE_REASONS, PREVIEW_FRAME_MESSAGES, PREVIEW_ROUTES } from 
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
-import copy from "./copy.json";
-import { approveBody, HOST, ISSUE_ID, PREVIEW_ID, previewOf, ticketBody } from "./fixtures";
-import { PreviewPanel } from "./preview-panel";
+import copy from "@/lib/i18n/copy/previews.json";
+import { approveBody, HOST, ISSUE_ID, PREVIEW_ID, previewOf, ticketBody } from "@/test/previews";
+import { IssuePreview } from "@/features/previews/components/issue-preview";
 
 const PREVIEW = `/issues/${ISSUE_ID}/preview`;
 const refusal = (code: string, message: string) => ({ error: { code, message, refusals: [] } });
@@ -20,8 +20,8 @@ function core(handlers: Record<string, (c: Call) => Reply>): Call[] {
   return fakeCore((c) => handlers[`${c.method} ${c.path}`]?.(c));
 }
 
-function mount(props: Partial<React.ComponentProps<typeof PreviewPanel>> = {}) {
-  return renderWithQuery(<PreviewPanel issueId={ISSUE_ID} issueLabel="ISS-491" canWrite hasLiveRun {...props} />);
+function mount(props: Partial<React.ComponentProps<typeof IssuePreview>> = {}) {
+  return renderWithQuery(<IssuePreview issueId={ISSUE_ID} issueLabel="ISS-491" canWrite hasLiveRun {...props} />);
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -75,7 +75,7 @@ describe("BC-3: the frame", () => {
   it("is entered through the preview host's enter path with a ticket, sandboxed without top navigation", async () => {
     const calls = live();
     mount();
-    const frame = (await screen.findByTitle("Preview of ISS-491")) as HTMLIFrameElement;
+    const frame = await screen.findByTitle<HTMLIFrameElement>("Preview of ISS-491");
     expect(frame.getAttribute("src")).toBe(`${HOST}__forge_preview/enter?ticket=tk-1`);
     const sandbox = frame.getAttribute("sandbox") ?? "";
     // `allow-storage-access-by-user-activation`: without it the frame's requestStorageAccess() is refused
@@ -101,7 +101,7 @@ describe("BC-3: the frame", () => {
         [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: ticketBody(`tk-${++n}`) }),
       });
       mount();
-      const frame = (await screen.findByTitle("Preview of ISS-491")) as HTMLIFrameElement;
+      const frame = await screen.findByTitle<HTMLIFrameElement>("Preview of ISS-491");
       const posted = vi.spyOn(frame.contentWindow as Window, "postMessage").mockImplementation(() => {});
       send(frame, { type: PREVIEW_FRAME_MESSAGES.ticketRequest });
       await waitFor(() => expect(posted).toHaveBeenCalledTimes(1));
@@ -115,7 +115,7 @@ describe("BC-3: the frame", () => {
         [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: ticketBody("tk-1") }),
       });
       mount();
-      const frame = (await screen.findByTitle("Preview of ISS-491")) as HTMLIFrameElement;
+      const frame = await screen.findByTitle<HTMLIFrameElement>("Preview of ISS-491");
       send(frame, { type: PREVIEW_FRAME_MESSAGES.ticketRequest }, { origin: "https://evil.example.test" });
       send(frame, { type: PREVIEW_FRAME_MESSAGES.ticketRequest }, { source: window });
       send(frame, { type: "forge-preview:something-else" });
@@ -128,7 +128,7 @@ describe("BC-3: the frame", () => {
     it("says so and puts Open in tab first when the frame cannot get its cookie", async () => {
       live();
       mount();
-      const frame = (await screen.findByTitle("Preview of ISS-491")) as HTMLIFrameElement;
+      const frame = await screen.findByTitle<HTMLIFrameElement>("Preview of ISS-491");
       send(frame, { type: PREVIEW_FRAME_MESSAGES.storageRefused });
       expect(await screen.findByTestId("preview-frame-cookie-refused")).toHaveTextContent("Open it in its own tab");
       expect(screen.getByRole("button", { name: "Open in tab" })).toBeTruthy();

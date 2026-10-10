@@ -99,8 +99,7 @@
     "status.waitsMore": "and {n} more",
     "status.waitsNone": "Nothing waits on a person.",
     "status.waitsPerson": "{who} · {n}",
-    "status.window": "the last {days} days",
-    "status.windowLabel": "Window"
+    "status.window": "the last {days} days"
   },
   "vi": {
     "status.asOf": "Tính đến {at}",
@@ -177,7 +176,6 @@
     "status.waitsMore": "và {n} việc khác",
     "status.waitsNone": "Không có việc nào chờ người.",
     "status.waitsPerson": "{who} · {n}",
-    "status.window": "{days} ngày qua",
-    "status.windowLabel": "Khoảng thời gian"
+    "status.window": "{days} ngày qua"
   }
 }

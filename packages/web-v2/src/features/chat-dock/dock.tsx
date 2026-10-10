@@ -8,7 +8,7 @@ import { type ChatTarget, targetInScope } from "./dock-target";
 import { DOCK_SIZE_KEY, type DockSize, settleDockSize } from "./dock-size";
 
 export const DOCK_OPEN_ON_KEY = "web-v2:chat-dock-open-on";
-export const DOCK_PINNED_KEY = "web-v2:chat-dock-pinned";
+const DOCK_PINNED_KEY = "web-v2:chat-dock-pinned";
 
 export interface ChatDockApi {
   projectId: string | null;

@@ -18,7 +18,7 @@ export interface CanvasEdge {
   contract: WorkflowEdgeContract | null;
 }
 
-export interface CanvasBand {
+interface CanvasBand {
   id: string;
   label: string;
   tooltip: string;

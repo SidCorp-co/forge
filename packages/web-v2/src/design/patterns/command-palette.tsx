@@ -34,7 +34,7 @@ export interface Command {
   onRun?: () => void;
 }
 
-export interface CommandPaletteProps {
+interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
   commands: Command[];

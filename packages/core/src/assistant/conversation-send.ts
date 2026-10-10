@@ -44,7 +44,8 @@ import {
 import { ConversationProgress } from './conversation-progress.js';
 import { registerTurnStop } from './conversation-stops.js';
 import { routeWindow } from './route-window.js';
-import { agentConversationContext, webConversationTurn } from './web-turn-inputs.js';
+import { agentConversationContext } from './web-agent-diversion.js';
+import { webConversationTurn } from './web-turn-inputs.js';
 
 /** The room a send happens in, as the route already read it. */
 export interface WebConversationRoom {

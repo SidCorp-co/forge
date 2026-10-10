@@ -58,7 +58,7 @@ export function useHoverCard() {
   };
 }
 
-export interface HoverCardProps {
+interface HoverCardProps {
   /** What is always shown; it takes focus so the card opens from the keyboard too. */
   children: ReactNode;
   content: ReactNode;

@@ -29,6 +29,6 @@ export const SCREENS: ChromeScreen[] = [
   },
   {
     name: "Navigation rail",
-    render: () => <NavRail workspaceItems={WORKSPACE_ITEMS} projectItems={PROJECT_ITEMS as never} activeKey="proj-overview" />,
+    render: () => <NavRail workspaceItems={WORKSPACE_ITEMS} projectItems={PROJECT_ITEMS} activeKey="proj-overview" />,
   },
 ];

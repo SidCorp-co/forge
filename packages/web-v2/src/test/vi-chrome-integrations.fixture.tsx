@@ -50,7 +50,7 @@ const connection = (over: Partial<ConnectionDirectoryItem>): ConnectionDirectory
     updatedAt: ago(60),
     usage: { bindings: [{ id: "b1", projectId: P, role: "deploy", label: "", name: "dev", active: true }] },
     ...over,
-  }) as ConnectionDirectoryItem;
+  });
 
 const CONNECTIONS = [
   connection({}),
@@ -163,15 +163,15 @@ export const SCREENS = [
   { name: "Integrations · empty", render: () => <Seeded data={[[["integration-connections"], { items: [] }], [["orgs"], []], [["projects", "all"], []]]}><IntegrationsScreen /></Seeded> },
   {
     name: "Integrations · connection drawer",
-    render: sectionOf(() => <ConnectionEditDrawer connection={CONNECTIONS[0] as ConnectionDirectoryItem} onClose={() => {}} />),
+    render: sectionOf(() => <ConnectionEditDrawer connection={CONNECTIONS[0]} onClose={() => {}} />),
     act: clickKey("integrations.edit.removeOpen"),
   },
   {
     name: "Integrations · drawer without credential",
     render: sectionOf(() => (
       <>
-        <ConnectionEditDrawer connection={{ ...(CONNECTIONS[2] as ConnectionDirectoryItem), provider: "github" }} onClose={() => {}} />
-        <ConnectionEditDrawer connection={{ ...(CONNECTIONS[1] as ConnectionDirectoryItem), id: "c9", ownerType: "user", hasSecrets: false, lastHealthStatus: null }} onClose={() => {}} />
+        <ConnectionEditDrawer connection={{ ...(CONNECTIONS[2]), provider: "github" }} onClose={() => {}} />
+        <ConnectionEditDrawer connection={{ ...(CONNECTIONS[1]), id: "c9", ownerType: "user", hasSecrets: false, lastHealthStatus: null }} onClose={() => {}} />
       </>
     )),
   },

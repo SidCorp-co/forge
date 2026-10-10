@@ -4,10 +4,10 @@
 
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { ProjectRunner } from "@/features/runners/types";
+import type { ProjectRunner } from "@/features/runners";
 import { formatElapsed } from "@/lib/utils/format";
 import { runnersSummary } from "./derive";
-import { RunnersCard } from "./runners-card";
+import { RunnerLoad } from "./runner-load";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
@@ -32,7 +32,7 @@ const limited = {
 const printedCountdown = new RegExp(`resets in|resumes (in|at)|\\b${formatElapsed(Date.parse(PRINTED) - NOW)}\\b`, "i");
 
 const card = (runner: ProjectRunner) =>
-	render(<RunnersCard summary={runnersSummary([runner], undefined, "en", NOW)} slug="forge" />);
+	render(<RunnerLoad summary={runnersSummary([runner], undefined, "en", NOW)} slug="forge" />);
 
 describe("the dashboard Runners card for a limited runner", () => {
 	it("says why and since when it is held, and when it is tried again, as the Runners screen does", () => {

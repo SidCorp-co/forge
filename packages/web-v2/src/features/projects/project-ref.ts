@@ -10,7 +10,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /** A key segment naming the project by `slug`, or a plain object carrying it, renamed to `id`. */
-export function projectRekey(slug: string, id: string): Rekey {
+function projectRekey(slug: string, id: string): Rekey {
   return (segment) => {
     if (segment === slug) return id;
     if (isPlainObject(segment) && Object.values(segment).includes(slug)) {

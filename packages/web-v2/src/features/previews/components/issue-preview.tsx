@@ -25,7 +25,7 @@ const reasonLines = (t: Copy, reason: PreviewFailureReason) => ({ name: t(REASON
 
 const SETTINGS_REASONS: readonly PreviewFailureReason[] = ["NO_START_COMMAND", "PORT_UNDECLARED", "PORT_IN_USE", "PRODUCTION_ENVIRONMENT"];
 
-export interface IssuePreviewProps {
+interface IssuePreviewProps {
   issueId: string;
   /** The issue's key, for the frame's title. */
   issueLabel: string;

@@ -80,6 +80,9 @@ function Signals({ d }: { d: RunStandingList }) {
 const MODE_KEY: Record<GroupMode, ProductCopyKey> = { attention: "agents.mode.attention", lane: "agents.mode.lane", box: "agents.mode.box" };
 const SCOPE_KEY: Record<RunStandingScope, ProductCopyKey> = { live: "agents.scope.live", finished: "agents.scope.finished", all: "agents.scope.all" };
 
+/** What the list search reads on a run: core's id and the id its box declared it under (a refusal names that one, FB-122), its title, issue, box and release. */
+export const runSearchText = (r: RunStanding) => [r.id, r.boxRunId, r.title, r.issue?.key, r.device?.name, r.release?.version, ...r.issues].join(" ");
+
 export function RunsList({ access }: { access: AgentsAccess }) {
   const { projectId, slug, canWrite } = access;
   const t = useCopy();
@@ -93,7 +96,7 @@ export function RunsList({ access }: { access: AgentsAccess }) {
   const list = useListPage<Item>({
     rows: d ? [d.master, ...d.items] : [],
     keyOf,
-    searchOf: (i) => (isRun(i) ? [i.id, i.boxRunId, i.title, i.issue?.key, i.device?.name, i.release?.version, ...i.issues].join(" ") : ""),
+    searchOf: (i) => (isRun(i) ? runSearchText(i) : ""),
     narrow: (i) => {
       if (!isRun(i)) return scope !== "finished" && on.size === 0;
       return (!on.has("you") || needsViewer(i)) && (!on.has("stuck") || i.state === "stuck");

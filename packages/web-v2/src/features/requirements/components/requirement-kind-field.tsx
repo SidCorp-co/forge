@@ -23,7 +23,7 @@ export function plainRefusal(err: unknown): string | undefined {
 }
 
 /** Whether core drops `picture` when the kind becomes `next`, as `picture.ts:writeKind` decides it. */
-export const dropsPicture = (picture: RequirementPictureView | null, next: RequirementKind | null): boolean =>
+const dropsPicture = (picture: RequirementPictureView | null, next: RequirementKind | null): boolean =>
   picture !== null && (next === null || !kindTakesPicture(next, picture.kind));
 
 export function KindField({

@@ -24,7 +24,7 @@ export interface WaitingOnView {
   says?: SaidWait;
 }
 
-export interface WaitingOnProps {
+interface WaitingOnProps {
   w: WaitingOnView;
   /** Drawn in place of `who` when it names something the reader can open (an issue key). */
   whoNode?: ReactNode;
@@ -67,7 +67,7 @@ export type BannerTone = LegendTone | "agent" | "calm";
 export const bannerColours = (t: BannerTone) =>
   t === "calm" ? { bg: "var(--bg-sunken)", dot: "var(--ink-400)" } : t === "agent" ? AGENT_TINT : LEGEND[t];
 
-export interface WaitBannerProps {
+interface WaitBannerProps {
   tone: BannerTone;
   /** "Waiting on you:", "Waiting on machine:", "Stuck:" — the bold lead. */
   head: string;

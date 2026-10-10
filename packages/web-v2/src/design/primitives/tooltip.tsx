@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils/cn";
 /** The app root's one tooltip provider, so tooltips share their open delay. */
 export { TooltipProvider } from "@/components/ui/tooltip";
 
-export interface TooltipProps {
+interface TooltipProps {
   label: string;
   children: ReactNode;
   side?: "top" | "bottom";

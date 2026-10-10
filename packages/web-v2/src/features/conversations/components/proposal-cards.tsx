@@ -57,7 +57,7 @@ export function ProposalCards({
   );
 }
 
-export function HeldProposal({
+function HeldProposal({
   proposal,
   deciding,
   onDecide,

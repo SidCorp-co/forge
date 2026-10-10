@@ -156,14 +156,6 @@ export function RequirementProgress({ standing, slug, inset }: { standing: Requi
   );
 }
 
-/** "Rev 4 · r5 awaiting sign-off": the revision fact a list row carries, in words rather than raw state names. */
-export function revisionText(t: Copy, current: number | null, s: RequirementStanding): string {
-  const open = s.facts.proposedRevision ?? s.facts.draftRevision;
-  const head = current !== null ? t("requirements.row.rev", { n: current }) : t("requirements.row.noAcceptedRevision");
-  if (open === null) return head;
-  return t(s.facts.proposedRevision !== null ? "requirements.row.revAwaiting" : "requirements.row.revDrafting", { head, r: open });
-}
-
 /** "Agreed 03/10/2026, 14:05 by Lan": when a revision was agreed and by whom, for a tooltip. */
 export const agreedTitle = (t: Copy, at: string, name: string | null) =>
   name ? t("requirements.revision.agreedAtBy", { at, name }) : t("requirements.revision.agreedAt", { at });

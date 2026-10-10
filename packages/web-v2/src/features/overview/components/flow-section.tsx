@@ -8,7 +8,7 @@ import {
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { PulseFlowWeek } from "../types";
 
-export interface FlowSectionProps {
+interface FlowSectionProps {
   flow: PulseFlowWeek[];
 }
 

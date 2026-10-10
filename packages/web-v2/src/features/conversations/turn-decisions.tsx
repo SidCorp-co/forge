@@ -9,7 +9,7 @@ import type { CanonicalBlock } from "@/features/session";
 import { toolOutputText } from "@/lib/tool-output";
 
 /** The assistant's read of the decisions waiting on the asker, the one the needs-you route answers. */
-export const NEEDS_YOU_TOOL = "forge_needs_you";
+const NEEDS_YOU_TOOL = "forge_needs_you";
 
 /** The decisions a turn's newest `forge_needs_you` call returned, or null where none did. */
 export function decisionsIn(blocks: readonly CanonicalBlock[] | null | undefined): NeedsYouDecisions | null {

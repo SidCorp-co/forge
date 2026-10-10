@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils/cn";
 
-export interface StreamWeek {
+interface StreamWeek {
   key: string;
   /** Drawn upward. */
   inbound: number;
@@ -10,7 +10,7 @@ export interface StreamWeek {
   line: number;
 }
 
-export interface StreamBandProps {
+interface StreamBandProps {
   weeks: StreamWeek[];
   inboundLabel: string;
   outboundLabel: string;

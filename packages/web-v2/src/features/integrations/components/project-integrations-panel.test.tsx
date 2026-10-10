@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { StatusCard } from "../types";
-import { ProjectIntegrationsPanel } from "./project-integrations-panel";
+import { ProjectIntegrations } from "./project-integrations-panel";
 import { cardDetail, say } from "@/test/said";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/" }));
@@ -64,10 +64,10 @@ function serve(cards: StatusCard[]) {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("ProjectIntegrationsPanel", () => {
+describe("ProjectIntegrations", () => {
   it("shows a repository no source host binding reaches as not connected, naming the act", async () => {
     serve([UNREACHED_REPOSITORY, GITHUB_OPEN]);
-    renderWithQuery(<ProjectIntegrationsPanel projectId="p1" />);
+    renderWithQuery(<ProjectIntegrations projectId="p1" />);
     const row = (await screen.findAllByText("Repository"))[0]?.closest("tr") as HTMLElement;
     expect(within(row).getAllByText("Not connected").length).toBeGreaterThan(0);
     expect(within(row).queryByText("Connected")).toBeNull();
@@ -78,7 +78,7 @@ describe("ProjectIntegrationsPanel", () => {
 
   it("offers connecting GitHub in one place only: the GitHub row owns the act, the repository row links to it", async () => {
     serve([UNREACHED_REPOSITORY, GITHUB_OPEN]);
-    renderWithQuery(<ProjectIntegrationsPanel projectId="p1" />);
+    renderWithQuery(<ProjectIntegrations projectId="p1" />);
     const repository = (await screen.findAllByText("Repository"))[0]?.closest("tr") as HTMLElement;
     expect(within(repository).queryAllByRole("button")).toEqual([]);
     const connects = screen.getAllByRole("button", { name: /^Connect GitHub/ });
@@ -92,7 +92,7 @@ describe("ProjectIntegrationsPanel", () => {
 
   it("offers the GitHub connect act on a github.com project, and it opens the GitHub drawer", async () => {
     serve([UNREACHED_REPOSITORY, GITHUB_OPEN]);
-    renderWithQuery(<ProjectIntegrationsPanel projectId="p1" />);
+    renderWithQuery(<ProjectIntegrations projectId="p1" />);
     const connect = await screen.findByRole("button", { name: "Connect GitHub" });
     expect(connect.closest("tr")?.textContent).toContain("GitHub");
     await userEvent.click(connect);
@@ -105,7 +105,7 @@ describe("ProjectIntegrationsPanel", () => {
       coolify("coolify:dev", "b-dev", "dev", "dev"),
       coolify("coolify:deploy", "b-other", "app y8w4c4ks", null),
     ]);
-    renderWithQuery(<ProjectIntegrationsPanel projectId="p1" />);
+    renderWithQuery(<ProjectIntegrations projectId="p1" />);
     const manage = await screen.findAllByRole("button", { name: /^Manage Coolify/ });
     const names = manage.map((b) => b.getAttribute("aria-label"));
     expect(names).toEqual(["Manage Coolify dev", "Manage Coolify app y8w4c4ks"]);
@@ -114,7 +114,7 @@ describe("ProjectIntegrationsPanel", () => {
 
   it("lists no core-health row and leaves an absent sync blank rather than repeating a placeholder", async () => {
     serve([UNREACHED_REPOSITORY, GITHUB_OPEN]);
-    renderWithQuery(<ProjectIntegrationsPanel projectId="p1" />);
+    renderWithQuery(<ProjectIntegrations projectId="p1" />);
     await screen.findAllByText("Repository");
     expect(screen.queryByText("no sync data")).toBeNull();
     expect(screen.queryByText("no GitHub integration configured")).toBeNull();

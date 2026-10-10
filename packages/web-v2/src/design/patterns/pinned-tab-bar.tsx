@@ -3,7 +3,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
 
-export interface PinnedTab {
+interface PinnedTab {
   id: string;
   label: string;
   icon: IconName;
@@ -11,7 +11,7 @@ export interface PinnedTab {
   href: string;
 }
 
-export interface PinnedTabBarProps {
+interface PinnedTabBarProps {
   tabs: PinnedTab[];
   /** Current `pathname + search` to highlight the active tab. */
   activeHref?: string;

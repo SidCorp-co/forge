@@ -59,7 +59,7 @@ describe("the sections the release page reads (BC-5..8)", () => {
     const base = releasePage();
     const page = { ...base, requirements: [...base.requirements, { ...base.requirements[0], key: "REQ-41", title: "Moves one", completes: false } as (typeof base.requirements)[number]] };
     renderWithQuery(<ReleaseReader page={page} slug="forge" authed={false} />);
-    const r = screen.getAllByTestId("page-requirement")[0] as HTMLElement;
+    const r = screen.getAllByTestId("page-requirement")[0];
     expect(within(r).getByTestId("page-requirement-mark")).toHaveAccessibleName("Completes it");
     expect(r).not.toHaveTextContent("Completes it");
     expect(within(r).queryByTestId("page-requirement-count")).toBeNull();
@@ -80,13 +80,13 @@ describe("the sections the release page reads (BC-5..8)", () => {
     const codes = within(r).getAllByTestId("page-proven-code");
     expect(codes.map((c) => c.getAttribute("data-code"))).toEqual(["BC-1", "BC-2"]);
     expect(codes[0]).toHaveTextContent("BC-1Each release has a page.");
-    expect(within(codes[0] as HTMLElement).getAllByTestId("page-proven-row").map((row) => row.textContent)).toEqual([
+    expect(within(codes[0]).getAllByTestId("page-proven-row").map((row) => row.textContent)).toEqual([
       "✓ISS-1 #1The page shows the version and date.",
       "✓ISS-1 #2The page names who approved it.",
     ]);
     // a criterion met but short of its wording is proven and says so, beside it
     expect(within(r).getAllByTestId("page-proven-short")).toHaveLength(1);
-    expect(within(codes[1] as HTMLElement).getByTestId("page-proven-short")).toHaveAccessibleName("short of its wording");
+    expect(within(codes[1]).getByTestId("page-proven-short")).toHaveAccessibleName("short of its wording");
     expect(codes[1]).toHaveTextContent("≈ISS-1 #3Each release opens on highlights.");
     expect(within(r).queryByTestId("page-unproven")).toBeNull();
     expect(within(r).getByRole("link", { name: "REQ-40" })).toHaveAttribute("href", "/projects/forge/requirements/REQ-40");
@@ -198,7 +198,7 @@ describe("highlights and their clip (BC-2, BC-3)", () => {
   it("fetches an in-app clip with the session's credentials and plays it from the bytes", async () => {
     stubObjectUrls();
     // bytes as a string: Node 22's Response never finishes reading a jsdom Blob, so the clip would never arrive
-    const fetchMock = vi.fn(async () => new Response("webm", { headers: { "content-type": "video/webm" } }));
+    const fetchMock = vi.fn(() => Promise.resolve(new Response("webm", { headers: { "content-type": "video/webm" } })));
     vi.stubGlobal("fetch", fetchMock);
     renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed />);
     const video = await screen.findByTestId("release-media-clip");
@@ -225,7 +225,7 @@ describe("highlights and their clip (BC-2, BC-3)", () => {
   });
 
   it("says so when the clip cannot be fetched, never a blank frame", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("no", { status: 403 })));
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response("no", { status: 403 }))));
     renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed />);
     expect(await screen.findByTestId("release-media-lost")).toHaveTextContent("could not be loaded");
   });

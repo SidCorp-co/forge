@@ -5,7 +5,7 @@
 // nothing, so this is where "opens on" and "plays" go red.
 //
 // The files the item holds are read from `<out>` beside the page, since Chrome reaches no network
-// here: put `shot.png` and `spinner.webm` there before the run.
+// here: put `IMG_0042.png` and `spinner.webm` there before the run.
 //
 //   pnpm --filter web-v2 witness witness/feedback-evidence.witness.tsx --out <dir>
 
@@ -117,7 +117,7 @@ window.fetch = async (input: RequestInfo | URL) => {
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 client.setQueryData(["feedback-item", P, item.key], { feedback: item });
 createRoot(document.getElementById("root") as HTMLElement).render(
-  <InRouter>
+  <InRouter at="/projects/hop/feedback/FB-52" pattern="/projects/$slug/feedback/$feedback">
     <QueryClientProvider client={client}>
       <FeedbackPage projectId={P} slug="hop" fbKey={item.key} tab="overview" onTab={() => {}} />
     </QueryClientProvider>

@@ -12,7 +12,7 @@ import { bucketHref, formatElapsed, projectSilenceRows, waffleCells } from "../d
 import { BUCKET_ORDER } from "../derive";
 import type { PulseResponse } from "../types";
 
-export interface WorkSittingProps {
+interface WorkSittingProps {
   pulse: PulseResponse;
   nowMs: number;
 }

@@ -228,6 +228,40 @@ describe('a verdict keeps its probe, readable from the criterion (criterion 1)',
   });
 });
 
+describe('a pass on an observable criterion cites a clip or says why not (REQ-40 BC-4)', () => {
+  it('is refused VERDICT_CLIP_REQUIRED at the REST door with neither, naming both spellings of the why', async () => {
+    const issue = await issueWith(true);
+    const res = await verdict(issue, { criterion: 1, verdict: 'pass', reason: '' });
+    expect([res.status, refused(res)]).toEqual([422, ['VERDICT_CLIP_REQUIRED']]);
+    expect(pathsOf(res)).toEqual(['/evidence']);
+    expect(res.body.error.refusals[0].detail).toContain('(a `why` line, or `reason`)');
+    expect(await stored(issue)).toEqual({ probes: 0, verdicts: 0 });
+  });
+
+  it('is refused at the comment fence with no why line, and a why line passes it to the probe rule', async () => {
+    const issue = await issueWith(true);
+    const block = (extra: string[]) =>
+      call('author', 'POST', `/api/issues/${issue}/comments`, {
+        intent: 'note',
+        body: [
+          '```forge-record: verdict · contract 1',
+          'criterion: 1',
+          'verdict: pass',
+          `commit: ${SHA}`,
+          'evidence: judge-log.txt',
+          ...extra,
+          '```',
+        ].join('\n'),
+      });
+    const bare = await block([]);
+    expect(bare.status).toBe(422);
+    expect(String(bare.body.detail)).toContain('VERDICT_CLIP_REQUIRED');
+    const said = await block(['why: ran it from the log; no clip was kept']);
+    expect(String(said.body.detail)).toContain('VERDICT_PROBE_REQUIRED');
+    expect(await stored(issue)).toEqual({ probes: 0, verdicts: 0 });
+  });
+});
+
 describe('a pass on an observable criterion with no kept probe (criterion 2)', () => {
   it('is refused by name at the REST door, a short too, and a fail is not', async () => {
     const issue = await issueWith(true);
@@ -253,6 +287,7 @@ describe('a pass on an observable criterion with no kept probe (criterion 2)', (
         'verdict: pass',
         `commit: ${SHA}`,
         'evidence: judge-log.txt',
+        'why: ran it',
         '```',
       ].join('\n'),
     });

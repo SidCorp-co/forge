@@ -15,7 +15,7 @@ interface ReportContext {
  * installed by providers/sentry-init) owns the SDK; every caller reports through the function
  * below and never reaches the SDK around them.
  */
-export interface ErrorTracker {
+interface ErrorTracker {
   captureException(err: unknown, context: ReportContext): void;
 }
 

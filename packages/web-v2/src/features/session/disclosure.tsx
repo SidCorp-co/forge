@@ -26,7 +26,7 @@ export function disclosureKeys(
   });
 }
 
-export interface ThreadDisclosures {
+interface ThreadDisclosures {
   isOpen(key: string): boolean;
   toggle(key: string): void;
   /** Has the reader opened anything inside this turn, at any point in this thread's life? */

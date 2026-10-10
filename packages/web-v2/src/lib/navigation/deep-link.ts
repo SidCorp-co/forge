@@ -8,24 +8,3 @@ export function buildShareLink(pathWithQuery: string): string {
   return `${origin}${BASE_PATH}${path}`;
 }
 
-/** Read a single typed filter back from URL search params with a fallback. */
-export function decodeFilter<T extends string>(
-  params: URLSearchParams | null,
-  key: string,
-  fallback: T,
-): T {
-  const raw = params?.get(key);
-  return (raw ?? fallback) as T;
-}
-
-/** Read a numeric filter (e.g. page) back from URL search params. */
-export function decodeNumber(
-  params: URLSearchParams | null,
-  key: string,
-  fallback: number,
-): number {
-  const raw = params?.get(key);
-  if (raw == null) return fallback;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : fallback;
-}

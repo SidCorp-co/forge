@@ -9,7 +9,7 @@ import { useCopy, useInterfaceLanguage } from "./interface-language";
 import { baseOf } from "./product-copy";
 
 /** Whether a text written in `lang` reads as foreign to a reader of `reader`: known, and not theirs. */
-export const writtenElsewhere = (lang: WrittenLang | null | undefined, reader: string): lang is WrittenLang => !!lang && lang !== baseOf(reader);
+const writtenElsewhere = (lang: WrittenLang | null | undefined, reader: string): lang is WrittenLang => !!lang && lang !== baseOf(reader);
 
 /** The mark a written text carries where its language is not the reader's; nothing otherwise. */
 export function WrittenMark({ lang }: { lang: WrittenLang | null | undefined }) {

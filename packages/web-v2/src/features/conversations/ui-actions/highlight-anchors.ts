@@ -5,7 +5,7 @@
 
 import type { UiHighlight, UiHighlightSection, UiPageItemKind } from "@forge/contracts/ui-actions";
 
-export interface HighlightAnchor {
+interface HighlightAnchor {
   /** Tried in order; the first on the page is marked. */
   selectors: readonly string[];
   /** The `?tab=` the record's page shows it under; null where it shows on every tab. */
@@ -18,7 +18,7 @@ const anchor = (tab: string | null, ...selectors: string[]): HighlightAnchor => 
 const developerAnchor = (...selectors: string[]): HighlightAnchor => ({ selectors, tab: null, view: "developer" });
 
 /** Every section the contract names, per record page. A section with no anchor has no element yet. */
-export const HIGHLIGHT_ANCHORS: { [K in UiPageItemKind]?: Partial<Record<UiHighlightSection, HighlightAnchor>> } = {
+const HIGHLIGHT_ANCHORS: { [K in UiPageItemKind]?: Partial<Record<UiHighlightSection, HighlightAnchor>> } = {
   requirement: {
     waiting: anchor(null, '[data-testid="requirement-progress"] [data-testid="wait-banner"]', '[data-testid="requirement-progress"]'),
     question: anchor("overview", '[data-testid="requirement-unclear"]'),
@@ -45,7 +45,7 @@ export const HIGHLIGHT_ANCHORS: { [K in UiPageItemKind]?: Partial<Record<UiHighl
 };
 
 /** A workflow step is drawn as a row of the design's Steps tab. */
-export const STEP_TAB = "steps";
+const STEP_TAB = "steps";
 
 const quote = (v: string) => (typeof CSS !== "undefined" && CSS.escape ? CSS.escape(v) : v.replace(/["\\]/g, "\\$&"));
 
@@ -53,7 +53,7 @@ const quote = (v: string) => (typeof CSS !== "undefined" && CSS.escape ? CSS.esc
 export function selectorsOf(h: UiHighlight, kind: UiPageItemKind | null): readonly string[] {
   if (h.target === "row") {
     const k = quote(h.key);
-    return [`[data-testid="list-row"][data-key="${k}"]`, `[data-row-key="${k}"]`, `[data-testid="workflow-row"][data-flow="${k}"]`];
+    return [`[data-testid="list-row"][data-key="${k}"]`, `[data-row-key="${k}"]`];
   }
   if (h.target === "step") return [`[data-testid="design-step-row"][data-step="${quote(h.step)}"]`];
   const a = kind ? HIGHLIGHT_ANCHORS[kind]?.[h.section] : undefined;

@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils/cn";
 
-export interface SkeletonProps {
+interface SkeletonProps {
   variant?: "rect" | "text" | "circle";
   className?: string;
   style?: CSSProperties;

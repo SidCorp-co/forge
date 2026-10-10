@@ -8,7 +8,7 @@ import { fakeCore, renderWithQuery } from "@/test/render";
 import { forecastWait, say, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
 import { FeedbackActions, issueKeysOf } from "./feedback-actions";
-import { FeedbackFacts } from "./feedback-facts";
+import { LinkedFeedback } from "./feedback-facts";
 
 const NONE = { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false };
 
@@ -56,7 +56,7 @@ describe("the issues that carry an item", () => {
         answer: null,
       },
     });
-    renderWithQuery(<FeedbackFacts f={f} slug="hop" />);
+    renderWithQuery(<LinkedFeedback f={f} slug="hop" />);
     const rows = screen.getAllByTestId("facts-route-carrier");
     expect(rows.map((r) => within(r).getByRole("link").textContent)).toEqual(["ISS-4", "ISS-7", "ISS-9"]);
     expect(rows.map((r) => r.textContent)).toEqual([
@@ -67,7 +67,7 @@ describe("the issues that carry an item", () => {
   });
 
   it("lists none for an answered item, which nothing carries", () => {
-    renderWithQuery(<FeedbackFacts f={view({ route: { route: "answer", carriers: [], answer: "Yes." } })} slug="hop" />);
+    renderWithQuery(<LinkedFeedback f={view({ route: { route: "answer", carriers: [], answer: "Yes." } })} slug="hop" />);
     expect(screen.queryByTestId("facts-route-carriers")).toBeNull();
     expect(screen.getByText("Yes.")).toBeInTheDocument();
   });
@@ -88,12 +88,12 @@ describe("the item's line as its reporter means done", () => {
         shipped: null,
       },
     };
-    renderWithQuery(<FeedbackFacts f={view()} slug="hop" forecast={forecast} />);
+    renderWithQuery(<LinkedFeedback f={view()} slug="hop" forecast={forecast} />);
     expect(screen.getByTestId("feedback-forecast-line").textContent).toBe("Fixed · waits on A holder of project.admin to cut 0.4.0");
   });
 
   it("draws no forecast fact where the item carries no work that ships", () => {
-    renderWithQuery(<FeedbackFacts f={view()} slug="hop" forecast={{ key: "FB-1", triage: null, delivery: null }} />);
+    renderWithQuery(<LinkedFeedback f={view()} slug="hop" forecast={{ key: "FB-1", triage: null, delivery: null }} />);
     expect(screen.queryByTestId("facts-feedback-forecast")).toBeNull();
   });
 });

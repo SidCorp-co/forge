@@ -1,4 +1,4 @@
-export interface ProjectMarkProps {
+interface ProjectMarkProps {
   /** Tint background (a brand tint token, e.g. `var(--cobalt-50)`). */
   tint: string;
   /** Ink/foreground color (e.g. `var(--cobalt-700)`). */

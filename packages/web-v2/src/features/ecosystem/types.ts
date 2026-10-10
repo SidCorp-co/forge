@@ -18,14 +18,14 @@ export const REPLY_TYPES: Partial<Record<string, DocumentType[]>> = {
   "change-request": ["decision"],
 };
 
-export type DocumentState = "draft" | "submitted" | "returned" | "published" | "withdrawn" | "superseded";
+type DocumentState = "draft" | "submitted" | "returned" | "published" | "withdrawn" | "superseded";
 
 /** Who wrote it, and through what door. The credential decides it, never the body. */
 export type Author =
   | { kind: "agent"; id: string; via: "master" }
   | { kind: "person"; id: string; via: "assistant" | "web" | "cli" };
 
-export interface Gate {
+interface Gate {
   mode: "publish" | "approve";
   decision?: "approved" | "returned";
   decidedBy?: string;
@@ -33,7 +33,7 @@ export interface Gate {
   note?: string;
 }
 
-export interface ChannelDocument {
+interface ChannelDocument {
   id: string;
   number?: string | null;
   ecosystem: string;
@@ -72,7 +72,7 @@ export interface ThreadHold {
   reason?: string;
 }
 
-export type RecipientStatus = "awaiting" | "answered" | "overdue" | "not-owed";
+type RecipientStatus = "awaiting" | "answered" | "overdue" | "not-owed";
 
 export interface Standing {
   open: boolean;
@@ -117,7 +117,7 @@ export interface RegisterRow {
   hold: ThreadHold | null;
 }
 
-export interface EcosystemMembership {
+interface EcosystemMembership {
   id: string;
   document: { ecosystem: string; project: string; state: string };
   ecosystem: { id: string; slug: string; name: string; channel: string; purpose?: string } | null;
@@ -128,13 +128,13 @@ export interface ProjectEcosystemsResponse {
   returned: number;
 }
 
-export interface NamedProject {
+interface NamedProject {
   id: string;
   slug: string;
   name: string;
 }
 
-export interface ApiPagePublication {
+interface ApiPagePublication {
   contract: string;
   slug: string;
   title: string;

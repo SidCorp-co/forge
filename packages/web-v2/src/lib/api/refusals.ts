@@ -75,7 +75,7 @@ const READINGS: Record<string, { label?: string; sentence?: string }> = {
   SECRET_NOT_FOUND: { sentence: en("common.refusal.secretNotFound.sentence") },
 };
 
-export interface RefusalReading {
+interface RefusalReading {
   code: string;
   /** The field's label, else its path; null for a refusal of the whole request. */
   where: string | null;

@@ -39,7 +39,7 @@ export interface RowSelection {
 }
 
 /** The New issue form's options, in English: that form's chrome is translated with its own change. */
-export const PRIORITY_OPTIONS: SelectOption[] = [
+const PRIORITY_OPTIONS: SelectOption[] = [
   { value: "critical", label: PRIORITY_LABELS.critical },
   { value: "high", label: PRIORITY_LABELS.high },
   { value: "medium", label: PRIORITY_LABELS.medium },
@@ -47,7 +47,7 @@ export const PRIORITY_OPTIONS: SelectOption[] = [
   { value: "none", label: PRIORITY_LABELS.none },
 ];
 
-export const COMPLEXITY_OPTIONS: SelectOption[] = [
+const COMPLEXITY_OPTIONS: SelectOption[] = [
   { value: "", label: "—" },
   { value: "xs", label: COMPLEXITY_LABELS.xs },
   { value: "s", label: COMPLEXITY_LABELS.s },

@@ -8,7 +8,7 @@ import type { QueryKey } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Seeded } from "@/test/vi-chrome-requirements";
-import { AwaitingReleaseCard } from "./awaiting-release-card";
+import { AwaitingRelease } from "./awaiting-release";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/" }));
 vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
@@ -31,7 +31,7 @@ const draft = (late: boolean) => ({
 function mount(seed: [QueryKey, unknown][]) {
   render(
     <Seeded data={seed}>
-      <AwaitingReleaseCard slug="hop" projectId="p1" />
+      <AwaitingRelease slug="hop" projectId="p1" />
     </Seeded>,
   );
 }

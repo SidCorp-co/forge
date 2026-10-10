@@ -2,14 +2,14 @@ import type { ReportCell, ReportField } from "@forge/contracts/report-queries";
 import { cellText, type InstantReading, type VisualBlockOf } from "@forge/contracts/visual-blocks";
 
 /** One line or bar group of a chart: the words the legend gives it and the value at each x. */
-export interface ChartSeries {
+interface ChartSeries {
   key: string;
   name: string;
   /** One entry per point, null where the frame holds no value. */
   values: (number | null)[];
 }
 
-export interface ChartPoint {
+interface ChartPoint {
   /** The x cell as it is read. */
   label: string;
   /** The x position when the axis is numeric or a time, else the point's index. */
@@ -34,7 +34,7 @@ export interface ChartModel {
 }
 
 /** What a chart cannot say is not drawn; this is the reason, given in the reader's words. */
-export interface ChartUnsupported {
+interface ChartUnsupported {
   unsupported: string;
 }
 

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
 import { LEGEND, type LegendTone } from "../vocabulary";
 
-export interface FilterChipProps {
+interface FilterChipProps {
   on: boolean;
   onToggle: () => void;
   count: number;

@@ -4,7 +4,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { Button } from "../primitives/button";
 import { Input } from "../primitives/input";
 
-export interface AcceptStepProps {
+interface AcceptStepProps {
   /** The confirming button, named as the act it takes ("Accept", "Agree r1"). */
   confirmLabel: string;
   /** One line saying what confirming does, read before it is pressed. */

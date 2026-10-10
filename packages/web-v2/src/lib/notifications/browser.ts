@@ -40,7 +40,7 @@ export async function requestPermission(): Promise<BrowserPermission> {
   }
 }
 
-export interface FireBrowserNotificationOptions {
+interface FireBrowserNotificationOptions {
   title: string;
   body?: string;
   /** Coalesces repeat notifications about the same entity (notificationId). */

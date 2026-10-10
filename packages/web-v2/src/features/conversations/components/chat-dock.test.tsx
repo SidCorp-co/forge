@@ -7,16 +7,14 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WIREFRAME_VERSION } from "@forge/contracts/wireframe";
-import { boardStore } from "@/features/board/board-store";
-import type { ChatDockApi } from "@/features/chat-dock/dock";
-import type { DockSize } from "@/features/chat-dock/dock-size";
-import { type ChatTarget, targetInScope } from "@/features/chat-dock/dock-target";
+import { boardStore } from "@/features/board";
+import type { ChatDockApi, ChatTarget, DockSize } from "@/features/chat-dock";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { ChatDock, ChatDockBody } from "./chat-dock";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/projects/epod/requirements" }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
-vi.mock("../board/board-panel", () => ({ BOARD_DOCK_WIDTH: 880, BoardPanel: () => <div data-testid="board" /> }));
+vi.mock("../board/board-panel", () => ({ BOARD_DOCK_WIDTH: 880, DockBoard: () => <div data-testid="board" /> }));
 vi.mock("./conversation-chat", () => ({
   ConversationChat: ({ conversationId }: { conversationId?: string }) => (
     <div data-testid="chat" data-conversation={conversationId ?? "new"} />
@@ -57,12 +55,15 @@ function core(rooms: Room[] | "refused") {
     }
     if (path.startsWith("/conversations/")) {
       const id = path.split("/")[2];
-      const listed = rooms === "refused" ? undefined : (rooms as Room[]).find((r) => r.id === id);
+      const listed = rooms === "refused" ? undefined : rooms.find((r) => r.id === id);
       return { body: { id, subjectKey: listed?.subjectKey ?? null, kind: listed?.kind ?? null, ecosystemId: null } };
     }
     return undefined;
   });
 }
+
+/** The dock's scope with nothing picked: this project's latest conversation (`targetInScope`, dock-target.test.ts). */
+const LATEST: ChatTarget = { kind: "latest", projectId: "p1" };
 
 function dockOn(target: ChatTarget | null): ChatDockApi {
   return {
@@ -87,7 +88,7 @@ function dockOn(target: ChatTarget | null): ChatDockApi {
 describe("the dock opened with nothing picked", () => {
   it("lands on the conversation waiting on the person, not a new chat", async () => {
     core([later, drafted]);
-    const dock = dockOn(targetInScope(null, "p1"));
+    const dock = dockOn(LATEST);
     renderWithQuery(<ChatDockBody dock={dock} />);
     await waitFor(() =>
       expect(dock.select).toHaveBeenCalledWith({ kind: "room", projectId: "p1", conversationId: "c-req1" }),
@@ -97,14 +98,14 @@ describe("the dock opened with nothing picked", () => {
 
   it("opens a new draft only when the project has no conversation", async () => {
     core([]);
-    const dock = dockOn(targetInScope(null, "p1"));
+    const dock = dockOn(LATEST);
     renderWithQuery(<ChatDockBody dock={dock} />);
     await waitFor(() => expect(dock.select).toHaveBeenCalledWith({ kind: "draft", projectId: "p1" }));
   });
 
   it("says the list could not be read, with a retry, and opens nothing in its place", async () => {
     core("refused");
-    const dock = dockOn(targetInScope(null, "p1"));
+    const dock = dockOn(LATEST);
     renderWithQuery(<ChatDockBody dock={dock} />);
     expect(await screen.findByText("Conversations could not be read")).toBeTruthy();
     expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy();
@@ -139,7 +140,7 @@ describe("a conversation waiting on the person", () => {
     expect(screen.queryByRole("button", { name: /waiting on you/ })).toBeNull();
   });
 
-  it("still lets New conversation start a fresh draft", async () => {
+  it("still lets New conversation start a fresh draft", () => {
     core([later, drafted]);
     const dock = dockOn({ kind: "room", projectId: "p1", conversationId: "c-other" });
     renderWithQuery(<ChatDockBody dock={dock} />);
@@ -155,7 +156,7 @@ describe("a room scoped to a record", () => {
 
   it("is not reopened off its record's page when it is not waiting on the person", async () => {
     core([later, req17]);
-    const dock = dockOn(targetInScope(null, "p1"));
+    const dock = dockOn(LATEST);
     renderWithQuery(<ChatDockBody dock={dock} />);
     await waitFor(() =>
       expect(dock.select).toHaveBeenCalledWith({ kind: "room", projectId: "p1", conversationId: "c-other" }),
@@ -191,20 +192,20 @@ describe("a room scoped to a record", () => {
 const kept: DockSize[] = [];
 /** The docked panel beside a page column that starts after the 280px sidebar. */
 function Panel({ initial = "large", window: w = 1440 }: { initial?: DockSize; window?: number }) {
-  const [size, setSizeState] = useState<DockSize>(initial);
-  const setSize = (next: DockSize) => {
+  const [size, setSize] = useState<DockSize>(initial);
+  const keep = (next: DockSize) => {
     kept.push(next);
-    setSizeState(next);
+    setSize(next);
   };
-  const page = useRef<HTMLElement | null>(null);
+  const pageRef = useRef<HTMLElement | null>(null);
   const measured = (el: HTMLDivElement | null) => {
     if (el) el.getBoundingClientRect = () => ({ left: 280, right: w, width: w - 280 }) as DOMRect;
-    page.current = el;
+    pageRef.current = el;
   };
   return (
     <>
       <div ref={measured} />
-      <ChatDock dock={{ ...dockOn({ kind: "draft", projectId: "p1" }), size, setSize }} page={page} />
+      <ChatDock dock={{ ...dockOn({ kind: "draft", projectId: "p1" }), size, setSize: keep }} page={pageRef} />
     </>
   );
 }

@@ -24,7 +24,7 @@ export interface SceneElement {
   endBinding?: { elementId: string } | null;
 }
 
-export type SceneReading =
+type SceneReading =
   | { ok: true; doc: WireframeDoc }
   /** An element whose type no wireframe shape holds, named by that type. */
   | { ok: false; unsupported: string }

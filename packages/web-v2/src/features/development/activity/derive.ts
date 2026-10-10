@@ -17,7 +17,7 @@ import type { QueueStats } from "@/features/sessions";
  * Open-issues-by-status donut (AC#4)
  * ------------------------------------------------------------------ */
 
-export type StatusBucketKey = "active" | "attention" | "queued" | "blocked";
+type StatusBucketKey = "active" | "attention" | "queued" | "blocked";
 
 const NON_OPEN_STATUSES = new Set<string>(NON_OPEN_ISSUE_STATUSES);
 
@@ -32,7 +32,7 @@ const STATUS_BUCKETS: ReadonlyArray<{
   { key: "blocked", tone: "blocked", statuses: ["on_hold"] },
 ];
 
-export interface DonutSegment {
+interface DonutSegment {
   key: StatusBucketKey;
   color: string;
   count: number;
@@ -65,7 +65,7 @@ export function statusDonut(dist: Record<string, number> | undefined): StatusDon
  * 7-day spend by stage (AC#4)
  * ------------------------------------------------------------------ */
 
-export type SpendGroupKey = "test" | "code" | "plan" | "other";
+type SpendGroupKey = "test" | "code" | "plan" | "other";
 
 const SPEND_GROUPS: ReadonlyArray<{ key: SpendGroupKey; color: string }> = [
   { key: "test", color: stageColor("test") },
@@ -84,7 +84,7 @@ function stageToSpendGroup(stage: StageKey | null): SpendGroupKey {
   return "other";
 }
 
-export interface SpendSegment {
+interface SpendSegment {
   key: SpendGroupKey;
   color: string;
   cost: number;

@@ -49,6 +49,18 @@ describe("the What's new rail entry", () => {
     expect(screen.queryByTestId("whats-new-panel")).toBeNull();
   });
 
+  it("opens one panel however many entries are mounted (the sidebar's and the layout's)", async () => {
+    serve(feedOf());
+    renderWithQuery(
+      <>
+        <WhatsNewButton />
+        <WhatsNewButton compact />
+      </>,
+    );
+    await screen.findByTestId("whats-new-release");
+    expect(screen.getAllByTestId("whats-new-panel")).toHaveLength(1);
+  });
+
   it("opens nothing and wears no dot when the release is not owed, and by hand writes nothing on close", async () => {
     const calls = serve(feedOf(releaseOf({ owed: false })));
     renderWithQuery(<WhatsNewButton />);

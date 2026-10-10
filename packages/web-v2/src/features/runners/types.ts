@@ -3,7 +3,7 @@ import { formatDateTime, formatElapsed as formatSpan } from "@/lib/i18n/format";
 import { productCopy } from "@/lib/i18n/product-copy";
 import type { DeviceBinaries, DeviceDisk, DeviceGate } from "./device-reads";
 
-export type RunnerBuildState = "current" | "behind" | "unknown";
+type RunnerBuildState = "current" | "behind" | "unknown";
 
 /** A row of `GET /api/me/devices` (owner-scoped). */
 export interface DeviceRow {
@@ -94,7 +94,7 @@ export interface DeviceRunnerAssignment {
  * Per (device × project) workspace provisioning lifecycle — mirrors core's
  * `runnerProvisionStatuses`. NULL/absent = legacy/not-yet-provisioned.
  */
-export type ProvisionStatus =
+type ProvisionStatus =
 	| "queued"
 	| "cloning"
 	| "syncing_skills"
@@ -222,7 +222,7 @@ export function deviceBuildChip(
 export * from "./device-reads";
 
 /** One `runner_events` status transition (from `GET /api/runners/:id/activity`). */
-export interface RunnerEvent {
+interface RunnerEvent {
 	id: string;
 	oldStatus: string | null;
 	newStatus: string;
@@ -231,7 +231,7 @@ export interface RunnerEvent {
 }
 
 /** One recent agent session that ran on a runner's device. */
-export interface RunnerSessionActivity {
+interface RunnerSessionActivity {
 	id: string;
 	title: string | null;
 	status: string;
@@ -318,7 +318,7 @@ export function runnerHealth(status: string): HealthKey {
 }
 
 /** Why a runner is limited — mirrors `runnerLimitReasons` on the core schema. */
-export type RunnerLimitReason = "usage_limit" | "rate_limit" | "auth";
+type RunnerLimitReason = "usage_limit" | "rate_limit" | "auth";
 
 export interface RunnerLimitDisplay {
 	reason: RunnerLimitReason;

@@ -22,7 +22,8 @@ describe("OperatorClientGate", () => {
   it("sends a browser core answers 401 to /login, once, with a hard navigation", async () => {
     fakeCore((c) => (c.path === "/admin/whoami" ? { status: 401, body: { code: "UNAUTHENTICATED", message: "x" } } : undefined));
     renderWithQuery(<OperatorClientGate>child</OperatorClientGate>);
-    await waitFor(() => expect(assign).toHaveBeenCalledWith("/login"));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(new URL("/login", window.location.origin)));
+    expect(assign).toHaveBeenCalledTimes(1);
     expect(screen.queryByText("child")).toBeNull();
   });
 

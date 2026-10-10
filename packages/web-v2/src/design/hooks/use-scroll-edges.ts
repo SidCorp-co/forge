@@ -2,7 +2,7 @@
 import { type RefObject, useEffect, useRef, useState } from "react";
 
 /** Which sides of a horizontal scroller have content out of view. */
-export interface ScrollEdges {
+interface ScrollEdges {
   start: boolean;
   end: boolean;
 }
@@ -12,7 +12,7 @@ const NONE: ScrollEdges = { start: false, end: false };
 // Fractional layout widths leave a sub-pixel remainder that is not content anyone can miss.
 const TOLERANCE_PX = 1;
 
-export function measureScrollEdges(el: HTMLElement): ScrollEdges {
+function measureScrollEdges(el: HTMLElement): ScrollEdges {
   const hidden = el.scrollWidth - el.clientWidth;
   if (hidden <= TOLERANCE_PX) return NONE;
   const offset = Math.abs(el.scrollLeft);

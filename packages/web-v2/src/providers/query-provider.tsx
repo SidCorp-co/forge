@@ -4,9 +4,9 @@ import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react
 import { NEEDS_YOU_ROOT } from "@/features/needs-you/hooks";
 import { ApiError } from "@/lib/api/client";
 
-export const QUERY_MAX_RETRIES = 2;
+const QUERY_MAX_RETRIES = 2;
 
-export function shouldRetryQuery(failureCount: number, error: unknown): boolean {
+function shouldRetryQuery(failureCount: number, error: unknown): boolean {
 	if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
 	return failureCount < QUERY_MAX_RETRIES;
 }

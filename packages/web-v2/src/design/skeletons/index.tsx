@@ -17,7 +17,7 @@ export function BoardRowSkeleton() {
   );
 }
 
-export function KanbanCardSkeleton() {
+function KanbanCardSkeleton() {
   return (
     <div className="flex flex-col gap-2.5 rounded-md border border-line bg-surface p-3">
       <div className="flex items-center justify-between">

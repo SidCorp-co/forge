@@ -23,7 +23,7 @@ type CopyKey = Parameters<Copy>[0];
 
 
 /** The idea preview's record, read again on a short clock while it starts, so a missed frame cannot leave it starting for good. */
-export function useIdeaPreview(initial: PreviewRecord) {
+function useIdeaPreview(initial: PreviewRecord) {
   return useQuery(previewQueries.idea(initial));
 }
 

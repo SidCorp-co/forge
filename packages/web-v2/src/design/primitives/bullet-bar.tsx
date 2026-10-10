@@ -2,7 +2,7 @@
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 
-export interface BulletBarProps {
+interface BulletBarProps {
   label: string;
   /** The measured part. */
   value: number;

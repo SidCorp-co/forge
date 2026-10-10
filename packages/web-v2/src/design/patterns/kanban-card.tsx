@@ -6,7 +6,7 @@ import { Avatar } from "@/design/primitives/avatar";
 import { Stat } from "@/design/primitives/stat";
 import { ToneBadge } from "@/design/primitives/enum-badge";
 
-export interface KanbanCardProps {
+interface KanbanCardProps {
   id: string;
   title: string;
   /** The item's state, a StatusBadge, visible without opening it (ISS-436). */

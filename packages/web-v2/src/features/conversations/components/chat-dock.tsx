@@ -31,7 +31,7 @@ function RoomSub({ projectId }: { projectId: string }) {
 }
 
 /** The record a page is about, by key, when its last path segment is one (`/requirements/REQ-1`). */
-export function pageSubjectKey(pathname: string | null): string | null {
+function pageSubjectKey(pathname: string | null): string | null {
   const last = decodeURIComponent((pathname ?? "").split("/").filter(Boolean).at(-1) ?? "");
   return /^[A-Z]+-\d+$/.test(last) ? last : null;
 }
@@ -79,7 +79,7 @@ function RoomScopeChip({
 }
 
 /** What the way back from a panel over the page is called: the page underneath it. */
-export function pageLabel(pathname: string | null, t: Copy): string {
+function pageLabel(pathname: string | null, t: Copy): string {
   const parts = (pathname ?? "").split("/").filter(Boolean);
   if (parts[0] === "projects" && parts.length <= 2) return t("nav.proj-overview");
   const last = decodeURIComponent(parts.at(-1) ?? "");

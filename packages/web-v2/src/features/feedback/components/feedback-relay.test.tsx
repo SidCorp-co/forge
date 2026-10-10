@@ -11,7 +11,7 @@ import { fakeCore, renderWithQuery } from "@/test/render";
 import type { FeedbackView } from "../types";
 import { FeedbackActions } from "./feedback-actions";
 import { FeedbackAnswer } from "./feedback-answer";
-import { FeedbackFacts } from "./feedback-facts";
+import { LinkedFeedback } from "./feedback-facts";
 import { Messages } from "./feedback-messages";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -141,7 +141,7 @@ describe("a reporter no bell reaches is told by a person", () => {
 
   it("says in the rail who told the reporter, and how", () => {
     renderWithQuery(
-      <FeedbackFacts
+      <LinkedFeedback
         f={view({ shipNotice: {
             state: "told",
             how: "relayed",

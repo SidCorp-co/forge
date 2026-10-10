@@ -5,7 +5,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { Icon } from "../icons/icon";
 
-export interface HtmlArtifactProps {
+interface HtmlArtifactProps {
   html: string;
   title?: string;
   className?: string;

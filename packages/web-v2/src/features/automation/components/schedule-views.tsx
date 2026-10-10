@@ -132,7 +132,7 @@ function ScheduleBanner({ s, className }: { s: ScheduleStanding; className?: str
   );
 }
 
-export function ScheduleProperties({ s, slug }: { s: ScheduleStanding; slug: string }) {
+function ScheduleProperties({ s, slug }: { s: ScheduleStanding; slug: string }) {
   const t = useCopy();
   const time = useTimeFormat();
   const language = useInterfaceLanguage();

@@ -22,7 +22,7 @@ import { IssueDecisionsTab, IssueMemoryTab } from "./issue-record-tabs";
 import { ActivityTab, type ActivityThread, RunsTab, runsTabCount } from "./issue-sections";
 
 /** How many numbered steps a plan lists at its left edge; 0 for a plan written as prose. */
-export function planSteps(plan: string): number {
+function planSteps(plan: string): number {
   return plan.split("\n").filter((line) => /^\d+[.)]\s/.test(line)).length;
 }
 

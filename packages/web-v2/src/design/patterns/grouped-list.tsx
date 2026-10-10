@@ -205,7 +205,7 @@ function Row({ v, selected, onPeek, eta }: { v: ListRowView; selected: boolean; 
   );
 }
 
-export interface ListColumnLabels {
+interface ListColumnLabels {
   key: string;
   title: string;
   state: string;
@@ -213,7 +213,7 @@ export interface ListColumnLabels {
   meta: string;
 }
 
-export interface GroupedListProps<R> {
+interface GroupedListProps<R> {
   ariaLabel: string;
   groups: readonly ListGroup<R>[];
   fold: GroupFold;

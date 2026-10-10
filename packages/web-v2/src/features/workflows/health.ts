@@ -30,7 +30,7 @@ export function overlayOn(param: string | null, surface: HealthSurface): boolean
   return surface === "overview";
 }
 
-export const HEALTH_LAYERS = ["planned", "observed", "both"] as const;
+const HEALTH_LAYERS = ["planned", "observed", "both"] as const;
 export type HealthLayer = (typeof HEALTH_LAYERS)[number];
 
 /** The layer the address names; absent, Both once the code has been observed, else Planned (REQ-17 BC-28). */
@@ -40,11 +40,11 @@ export function layerOf(param: string | null, observed: boolean): HealthLayer {
 }
 
 /** An observed-only step is drawn under this prefix, so its id never meets a planned one. */
-export const OBSERVED_PREFIX = "observed:";
+const OBSERVED_PREFIX = "observed:";
 export const isObservedId = (id: string) => id.startsWith(OBSERVED_PREFIX);
 
 /** A node's rewrite reading: due until a decision names the node, then the decision. */
-export type RewriteReading = Exclude<HealthNode["rewrite"], "none">;
+type RewriteReading = Exclude<HealthNode["rewrite"], "none">;
 
 /** What one drawn node shows: its provenance, one dot per kind, and its rewrite reading. */
 export interface NodeHealthView {

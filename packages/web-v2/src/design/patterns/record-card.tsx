@@ -13,7 +13,7 @@ import { type ReactNode, useState } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 
-export interface RecordCardProps {
+interface RecordCardProps {
   record: ForgeRecordView;
   /** Which reading the project is drawn under; `product` where it is unknown. */
   lens?: RecordLens;

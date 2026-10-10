@@ -6,9 +6,9 @@ import { type CanonicalBlock, type MessageEntry, parseMessages, type RenderBlock
 import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 import { formatDateTime } from "@/lib/i18n/format";
 
-export type ConversationAdapter = "web" | "widget" | "rocketchat" | "telegram";
-export type ConversationShape = "direct" | "group";
-export type ConversationMessageRole = "user" | "assistant" | "system";
+type ConversationAdapter = "web" | "widget" | "rocketchat" | "telegram";
+type ConversationShape = "direct" | "group";
+type ConversationMessageRole = "user" | "assistant" | "system";
 
 export type ConversationMode = "assistant" | "agent";
 
@@ -43,7 +43,7 @@ export interface AgentModeOffer {
 /**
  * Every way a window can close.
  */
-export type ConversationWindowDecision =
+type ConversationWindowDecision =
   | "answered"
   | "nothing-to-say"
   | "guard-backoff"
@@ -75,7 +75,7 @@ export interface ConversationListItem {
   subjectKey?: string | null;
 }
 
-export interface ConversationImage {
+interface ConversationImage {
   name: string;
   mime: string;
   ref: string;
@@ -99,7 +99,7 @@ export interface ConversationMessage {
 }
 
 /** A tool the turn ran, as a reader who did not ask is shown it: its name, and its time once done. */
-export interface ConversationRoomTool {
+interface ConversationRoomTool {
   id: string;
   name: string;
   done: boolean;
@@ -155,7 +155,7 @@ export interface ConversationWindow {
 }
 
 /** Every decision that is NOT an answer — which is every decision a person reads a reason for. */
-export type SilenceDecision = Exclude<ConversationWindowDecision, "answered" | "handed-off">;
+type SilenceDecision = Exclude<ConversationWindowDecision, "answered" | "handed-off">;
 
 export interface ConversationParticipant {
   id: string;
@@ -236,7 +236,7 @@ export interface OutboxMessage {
 }
 
 /** What the thread renders, in the order it renders it. */
-export type ThreadEntry =
+type ThreadEntry =
   | { kind: "said"; key: string; message: ConversationMessage }
   | { kind: "silence"; key: string; decision: SilenceDecision; detail: unknown }
   | { kind: "handed"; key: string; reason: string }
@@ -248,7 +248,7 @@ export type ThreadEntry =
 /**
  * Every decision that is a SILENCE, with the sentence a person reads for it.
  */
-export const SILENCE_REASON: Record<SilenceDecision, ProductCopyKey> = {
+const SILENCE_REASON: Record<SilenceDecision, ProductCopyKey> = {
   "nothing-to-say": "conversations.silence.nothing-to-say",
   "guard-backoff": "conversations.silence.guard-backoff",
   "guard-agent-loop": "conversations.silence.guard-agent-loop",

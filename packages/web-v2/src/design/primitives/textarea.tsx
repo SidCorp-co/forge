@@ -3,7 +3,7 @@ import { Textarea as ShadcnTextarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils/cn";
 import { useFieldControl } from "./field";
 
-export type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
+type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
   ref?: Ref<HTMLTextAreaElement>;
 };
 

@@ -12,7 +12,7 @@ import { useAuth } from "@/providers/auth-provider";
 import { useRevokeShare, useShares } from "../hooks";
 import { ShareRefusal } from "./share-refusal";
 
-export interface ShareListProps {
+interface ShareListProps {
   projectId: string;
   /** A member's name by user id; null for someone no longer on the project. */
   nameOf: (userId: string) => string | null;

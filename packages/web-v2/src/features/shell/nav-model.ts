@@ -30,7 +30,7 @@ export const SECONDARY_DESTINATIONS: Array<NavItem & { href: string }> = [
 
 /** A project-tier nav item. `sub` is appended to `/projects/[slug]`. The rail
  *  renders these inline (Concept C) and ⌘K mirrors them for deep-nav. */
-export interface ProjItem extends NavItem {
+interface ProjItem extends NavItem {
   sub: string;
 }
 

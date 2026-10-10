@@ -19,7 +19,7 @@ export function decodeToolOutput(raw: unknown): unknown {
 /** How long an error message may run before the summary shortens it. */
 const ERROR_CHARS = 120;
 
-export interface ResultSummary {
+interface ResultSummary {
   label: string;
   /** Whether there is a value worth opening onto. */
   hasBody: boolean;

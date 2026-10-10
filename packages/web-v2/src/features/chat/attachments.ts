@@ -89,7 +89,7 @@ export interface StagingRefusal {
   reason: string;
 }
 
-export interface StagingOutcome {
+interface StagingOutcome {
   accepted: File[];
   refused: StagingRefusal[];
 }

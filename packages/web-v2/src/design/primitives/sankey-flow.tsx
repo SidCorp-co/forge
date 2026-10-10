@@ -2,7 +2,7 @@
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 
-export interface SankeyNode {
+interface SankeyNode {
   key: string;
   label: string;
   count: number;
@@ -12,7 +12,7 @@ export interface SankeyNode {
   loop?: boolean;
 }
 
-export interface SankeyFlowProps {
+interface SankeyFlowProps {
   nodes: SankeyNode[];
   /** Sentence a reader who cannot see the drawing gets instead. */
   label: string;

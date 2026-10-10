@@ -31,7 +31,7 @@ export interface RowCtx {
   time: ReturnType<typeof useTimeFormat>;
 }
 
-export type AutomationGroupFamily = "schedule" | "fire" | "report";
+type AutomationGroupFamily = "schedule" | "fire" | "report";
 
 /** A tab's groups in the order the contract declares them, the labels read in the reader's language. */
 export function automationGroups<R extends { attentionGroup: G }, G extends StandingGroup>(

@@ -3,7 +3,7 @@ import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { renderWithQuery } from "@/test/render";
-import { MemoryEntryRow } from "./memory-entry";
+import { MemoryEntryItem } from "./memory-entry";
 
 // MJ-1, MJ-3: a person reads a memory with who wrote it, when, whether anyone checked it and which of
 // the records it names no longer resolve, and corrects or retires it with a reason. A mirror of an
@@ -45,7 +45,7 @@ const BASE: MemoryEntry = {
 const row = (entry: MemoryEntry, acts = { onVerify: vi.fn(), onCorrect: vi.fn(), onRetire: vi.fn() }, lang: "en" | "vi" = "en") => {
   renderWithQuery(
     <InterfaceLanguageScope language={lang}>
-      <MemoryEntryRow entry={entry} slug="hop" timeZone="UTC" busy={false} {...acts} />
+      <MemoryEntryItem entry={entry} slug="hop" timeZone="UTC" busy={false} {...acts} />
     </InterfaceLanguageScope>,
   );
   return acts;
