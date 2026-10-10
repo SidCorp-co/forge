@@ -22,7 +22,7 @@ export function AdoptionPanelSkeleton() {
 
 /** Cumulative users as a line, active workspaces as bars behind it. Both are
     read off the same weekly buckets, so one x-axis serves both. */
-export function AdoptionPanel({ buckets }: { buckets: readonly AdminAdoptionBucket[] }) {
+export function AdoptionChart({ buckets }: { buckets: readonly AdminAdoptionBucket[] }) {
   if (buckets.length === 0) {
     return (
       <PageSection>

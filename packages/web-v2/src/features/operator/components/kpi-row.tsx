@@ -27,7 +27,7 @@ export function KpiRowSkeleton() {
   );
 }
 
-export function KpiRow({ overview }: { overview: AdminOverview }) {
+export function Kpis({ overview }: { overview: AdminOverview }) {
   const { counts, kpis } = overview;
   const spendDelta = formatDelta(
     kpis.spendBaselineUsd > 0

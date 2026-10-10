@@ -19,7 +19,7 @@ function webhookUrl(slug: string | undefined): string {
 }
 
 /** How to point the GitLab project's webhook at Forge: the URL, a secret token, the three events. */
-export function GitlabWebhookPanel({ projectId, bindingId }: { projectId: string; bindingId: string }) {
+export function GitlabWebhook({ projectId, bindingId }: { projectId: string; bindingId: string }) {
   const project = useProject(projectId);
   const rotate = useRotateIntegrationSecret(projectId);
   const [secret, setSecret] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export function GitlabWebhookPanel({ projectId, bindingId }: { projectId: string
       )}
       {error && <Banner tone="danger">{error}</Banner>}
       <div>
-        <Button variant="secondary" onClick={generate} loading={rotate.isPending}>
+        <Button variant="secondary" onClick={() => void generate()} loading={rotate.isPending}>
           {t("integrations.gitlab.generate")}
         </Button>
       </div>

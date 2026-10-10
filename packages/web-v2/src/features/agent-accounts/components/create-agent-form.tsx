@@ -134,7 +134,7 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
           {create.isError && <Banner tone="danger">{formatApiError(create.error)}</Banner>}
 
           <div className="flex justify-end">
-            <Button variant="primary" loading={create.isPending} onClick={submit}>
+            <Button variant="primary" loading={create.isPending} onClick={() => void submit()}>
               {t("settings.agents.create")}
             </Button>
           </div>

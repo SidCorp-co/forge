@@ -9,13 +9,13 @@ import { CONTENT_LANGUAGE_CHOICES, contentLanguageName, contentLanguageProblem }
 import { SENSITIVE_DATA_LEVELS } from "@forge/contracts/data-policy";
 import { FEEDBACK_VERIFY_WINDOW } from "@forge/contracts/feedback";
 import { PERSON_GATES } from "@forge/contracts/person-gates";
-import { Input, Skeleton } from "@/design";
+import { Input, SettingRow, SettingsGroup, Skeleton } from "@/design";
 import { useProjectDocument, useWriteProjectDocument } from "@/features/project-config";
 import { type DocumentDraft, sectionOf, useDocumentDraft } from "@/features/project-config";
 import type { ProjectDetail } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { settingsHref } from "../sections";
-import { ChoiceSetting, optionsOf, Picker, SaveBar, SettingGroup, SettingRow, SwitchSetting, TextSetting } from "./setting-controls";
+import { ChoiceSetting, optionsOf, Picker, refusalError, SaveBar, SwitchSetting, TextSetting } from "./setting-controls";
 
 const OTHER = "other";
 const isChoice = (tag: string) => CONTENT_LANGUAGE_CHOICES.some((c) => c.tag === tag);
@@ -51,7 +51,7 @@ function LanguageField({ draft, disabled }: { draft: DocumentDraft; disabled: bo
 			<SettingRow
 				label={t("settings.project.general.language")}
 				htmlFor={id}
-				refusals={draft.refusedAt(["contentLanguage"])}
+				error={refusalError(draft.refusedAt(["contentLanguage"]))}
 				control={
 					<Picker
 						id={id}
@@ -67,7 +67,7 @@ function LanguageField({ draft, disabled }: { draft: DocumentDraft; disabled: bo
 			{choice === OTHER && (
 				<SettingRow
 					label={t("settings.project.general.languageTag")}
-					effect={problem ?? (tag ? contentLanguageName(tag) : undefined)}
+					hint={problem ?? (tag ? contentLanguageName(tag) : undefined)}
 					control={
 						<Input
 							aria-label={t("settings.project.general.languageTag")}
@@ -92,7 +92,7 @@ function TermsField({ draft, disabled }: { draft: DocumentDraft; disabled: boole
 	return (
 		<SettingRow
 			label={t("settings.project.general.keepTerms")}
-			refusals={draft.refusedAt(["keepTermsInEnglish"])}
+			error={refusalError(draft.refusedAt(["keepTermsInEnglish"]))}
 			control={
 				<Input
 					aria-label={t("settings.project.general.keepTerms")}
@@ -117,7 +117,7 @@ function DaysField({ draft, disabled }: { draft: DocumentDraft; disabled: boolea
 	return (
 		<SettingRow
 			label={t("settings.project.general.verifyWindow")}
-			refusals={draft.refusedAt(path)}
+			error={refusalError(draft.refusedAt(path))}
 			control={
 				<Input
 					aria-label={t("settings.project.general.verifyWindow")}
@@ -136,7 +136,7 @@ function DaysField({ draft, disabled }: { draft: DocumentDraft; disabled: boolea
 	);
 }
 
-export function GeneralSection({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
+export function GeneralSettings({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
 	const t = useCopy();
 	const draft = useProjectDraft(project.id);
 	const section = sectionOf([draft]);
@@ -146,7 +146,7 @@ export function GeneralSection({ project, canEdit }: { project: ProjectDetail; c
 	return (
 		<div>
 			{!draft.declared && <UndeclaredNotice slug={project.slug} />}
-			<SettingGroup title={t("settings.project.general.identity")}>
+			<SettingsGroup title={t("settings.project.general.identity")}>
 				<TextSetting draft={draft} path={["project", "name"]} label={t("settings.project.general.name")} disabled={off} />
 				<TextSetting
 					draft={draft}
@@ -164,12 +164,12 @@ export function GeneralSection({ project, canEdit }: { project: ProjectDetail; c
 						</p>
 					}
 				/>
-			</SettingGroup>
-			<SettingGroup title={t("settings.project.general.languageGroup")}>
+			</SettingsGroup>
+			<SettingsGroup title={t("settings.project.general.languageGroup")}>
 				<LanguageField draft={draft} disabled={off} />
 				<TermsField draft={draft} disabled={off} />
-			</SettingGroup>
-			<SettingGroup title={t("settings.project.general.rules")}>
+			</SettingsGroup>
+			<SettingsGroup title={t("settings.project.general.rules")}>
 				<SwitchSetting
 					draft={draft}
 					path={["plan", "approval", "required"]}
@@ -203,7 +203,7 @@ export function GeneralSection({ project, canEdit }: { project: ProjectDetail; c
 					label={t("settings.project.general.sensitiveData")}
 					disabled={off}
 				/>
-			</SettingGroup>
+			</SettingsGroup>
 			{draft.declared && <SaveBar section={section} canEdit={canEdit} />}
 		</div>
 	);

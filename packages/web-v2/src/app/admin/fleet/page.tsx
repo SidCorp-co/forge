@@ -1,5 +1,5 @@
-import { OperatorSection } from "@/features/operator";
+import { OperatorGroup } from "@/features/operator";
 
 export default function AdminFleetPage() {
-  return <OperatorSection section="fleet" />;
+  return <OperatorGroup section="fleet" />;
 }

@@ -27,7 +27,7 @@ import { StatusPill, scopeLabel } from "./status-pill";
  *  MCP-injection providers therefore get a
  *  single config pane with no empty delivery-log box.
  *
- *  ISS-408/F3: the Configuration tab now also renders a `BindingsSection`
+ *  ISS-408/F3: the Configuration tab now also renders a `ConnectionBindings`
  *  listing every project + scope the underlying connection is bound to
  *  (the "Projects using this connection" payoff of the connection-sharing
  *  cutover). */
@@ -38,7 +38,7 @@ const SECTIONS = new Map(
 
 // A provider with no section is not a provider whose section is empty — it is one this screen has
 // nothing to configure for, and saying so beats rendering a blank pane under its name.
-function ProviderSection({ provider, projectId }: { provider: string; projectId: string }) {
+function ProviderDetails({ provider, projectId }: { provider: string; projectId: string }) {
   const Section = SECTIONS.get(provider);
   const t = useCopy();
   if (!Section) {
@@ -71,7 +71,7 @@ function useBindingForCard(
   }, [list.data, provider, bindingId]);
 }
 
-function BindingsSection({
+function ConnectionBindings({
   connectionId,
   currentProjectId,
 }: {
@@ -113,7 +113,7 @@ function BindingsSection({
       ) : bindingsQ.isError ? (
         <ErrorState
           message={formatApiError(bindingsQ.error)}
-          onRetry={() => bindingsQ.refetch()}
+          onRetry={() => void bindingsQ.refetch()}
         />
       ) : (
         <BindingsList
@@ -198,7 +198,7 @@ function ConfigPane({
   const binding = useBindingForCard(projectId, provider, bindingId);
   return (
     <>
-      <ProviderSection provider={provider} projectId={projectId} />
+      <ProviderDetails provider={provider} projectId={projectId} />
       {binding && (
         <section className="mt-4">
           <AgentAccessControl projectId={projectId} binding={binding} canEdit={canEdit} />
@@ -217,7 +217,7 @@ function ConfigPane({
         </section>
       )}
       {binding?.connectionId && (
-        <BindingsSection
+        <ConnectionBindings
           connectionId={binding.connectionId}
           currentProjectId={projectId}
         />

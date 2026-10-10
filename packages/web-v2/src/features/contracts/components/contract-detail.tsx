@@ -20,7 +20,7 @@ import { formatStamp } from "@/lib/utils/format";
 import { useDecideVersion } from "../hooks";
 import type { ContractConsumerView, ContractStandingDetail, ContractVersionView } from "../types";
 import { AdoptionStrip, ContractBanner } from "./contract-bits";
-import { ContractFacts } from "./contract-facts";
+import { ContractProperties } from "./contract-facts";
 import { VersionTimeline } from "./version-timeline";
 
 export const CONTRACT_TABS = ["overview", "versions", "adoption"] as const;
@@ -221,7 +221,7 @@ export function ContractPage({ d, slug, projectId, tab, onTab }: { d: ContractSt
       dataKey={c.ref}
       rail={
         <FactsRail testId="relations-rail">
-          <ContractFacts d={d} slug={slug} />
+          <ContractProperties d={d} slug={slug} />
         </FactsRail>
       }
     >

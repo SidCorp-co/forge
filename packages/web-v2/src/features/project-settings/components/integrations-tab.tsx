@@ -14,7 +14,7 @@ import {
   agentAccessDeniedReason,
   mayWriteAgentAccess,
 } from "@/features/integrations";
-import { ProjectIntegrationsPanel } from "@/features/integrations";
+import { ProjectIntegrations } from "@/features/integrations";
 import { TourHint } from "@/features/tours";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
@@ -65,7 +65,7 @@ function applicationsOf(targets: CoolifyTargetInput[]): CoolifyTargetInput[] {
   }));
 }
 
-function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+function ShareExisting({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const connectionsQ = useConnections();
   // Only active connections with a stored credential are eligible to share —
   // a soft-deleted or secret-less row would fail server-side (loadOwnedConnection
@@ -222,9 +222,9 @@ export function IntegrationsTab({ projectId, canEdit }: { projectId: string; can
     <div className="flex flex-col gap-10">
       <div>
         <TourHint tourId="integrations" />
-        <ProjectIntegrationsPanel projectId={projectId} canEdit={canEdit} />
+        <ProjectIntegrations projectId={projectId} canEdit={canEdit} />
       </div>
-      <ShareExistingCard projectId={projectId} canEdit={canEdit} />
+      <ShareExisting projectId={projectId} canEdit={canEdit} />
     </div>
   );
 }

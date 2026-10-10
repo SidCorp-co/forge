@@ -11,7 +11,7 @@ export const rocketchat: ProviderModule = {
   agentPathKind: "none",
   bindingKeys: ["rids"],
   target: (config) => urlHost(config.serverUrl),
-  section: () => import("./section").then((m) => ({ default: m.RocketchatSection })),
+  section: () => import("./section").then((m) => ({ default: m.RocketchatSettings })),
   connectionSection: () =>
     import("./connection-config").then((m) => ({ default: m.RocketchatConnectionConfig })),
 };

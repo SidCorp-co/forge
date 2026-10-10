@@ -68,7 +68,7 @@ export function ShareList({ projectId, nameOf, isAdmin }: ShareListProps) {
         </THead>
         <TBody>
           {shares.map((share) => (
-            <ShareRow
+            <ShareItem
               key={share.id}
               share={share}
               creator={nameOf(share.createdBy)}
@@ -100,7 +100,7 @@ export function ShareList({ projectId, nameOf, isAdmin }: ShareListProps) {
   );
 }
 
-function ShareRow({
+function ShareItem({
   share,
   creator,
   you,

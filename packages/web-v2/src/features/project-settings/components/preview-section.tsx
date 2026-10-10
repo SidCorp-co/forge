@@ -9,12 +9,12 @@
 
 import { useId } from "react";
 import { PREVIEW_LIMITS } from "@forge/contracts/preview";
-import { Input, Select, type SelectOption, Skeleton } from "@/design";
+import { Input, Select, type SelectOption, SettingRow, SettingsGroup, Skeleton } from "@/design";
 import type { DocumentDraft } from "@/features/project-config";
 import { sectionOf } from "@/features/project-config";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { UndeclaredNotice, useProjectDraft } from "./general-section";
-import { SaveBar, SettingGroup, SettingRow } from "./setting-controls";
+import { refusalError, SaveBar } from "./setting-controls";
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => (v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
@@ -37,9 +37,9 @@ function TextField({ draft, root, field, label, effect, placeholder, mono, disab
 	return (
 		<SettingRow
 			label={label}
-			effect={effect}
+			hint={effect}
 			htmlFor={id}
-			refusals={draft.refusedAt([root, field])}
+			error={refusalError(draft.refusedAt([root, field]))}
 			control={
 				<Input
 					id={id}
@@ -76,9 +76,9 @@ function EnvironmentField({ draft, label, effect, none, refused, disabled }: Omi
 	return (
 		<SettingRow
 			label={label}
-			effect={effect}
+			hint={effect}
 			htmlFor={id}
-			refusals={draft.refusedAt(["preview", "environment"])}
+			error={refusalError(draft.refusedAt(["preview", "environment"]))}
 			control={
 				<Select
 					id={id}
@@ -100,9 +100,9 @@ function NumberField({ draft, root, field, label, effect, placeholder, disabled 
 	return (
 		<SettingRow
 			label={label}
-			effect={effect}
+			hint={effect}
 			htmlFor={id}
-			refusals={draft.refusedAt([root, field])}
+			error={refusalError(draft.refusedAt([root, field]))}
 			control={
 				<Input
 					id={id}
@@ -130,9 +130,9 @@ function ListField({ draft, root, field, label, effect, placeholder, disabled }:
 	return (
 		<SettingRow
 			label={label}
-			effect={effect}
+			hint={effect}
 			htmlFor={id}
-			refusals={draft.refusedAt([root, field])}
+			error={refusalError(draft.refusedAt([root, field]))}
 			control={
 				<Input
 					id={id}
@@ -163,7 +163,7 @@ interface FieldProps {
 	disabled: boolean;
 }
 
-export function PreviewSection({ projectId, slug, canEdit }: { projectId: string; slug: string; canEdit: boolean }) {
+export function PreviewSettings({ projectId, slug, canEdit }: { projectId: string; slug: string; canEdit: boolean }) {
 	const t = useCopy();
 	const draft = useProjectDraft(projectId);
 	const section = sectionOf([draft]);
@@ -176,7 +176,7 @@ export function PreviewSection({ projectId, slug, canEdit }: { projectId: string
 	return (
 		<div data-testid="preview-section">
 			{!draft.declared && <UndeclaredNotice slug={slug} />}
-			<SettingGroup id="preview" title={t("previews.settings.previewTitle")}>
+			<SettingsGroup id="preview" title={t("previews.settings.previewTitle")}>
 				<TextField draft={draft} root="preview" field="command" label={t("previews.settings.command")} placeholder={t("previews.settings.commandPlaceholder")} mono disabled={off} />
 				<NumberField draft={draft} root="preview" field="port" label={t("previews.settings.port")} disabled={off} />
 				<TextField draft={draft} root="preview" field="cwd" label={t("previews.settings.cwd")} mono disabled={off} />
@@ -189,15 +189,15 @@ export function PreviewSection({ projectId, slug, canEdit }: { projectId: string
 					disabled={off}
 				/>
 				<EnvironmentField draft={draft} label={t("previews.settings.environment")} none={t("previews.settings.environmentNone")} refused={t("previews.settings.environmentRefused")} disabled={off} />
-			</SettingGroup>
-			<SettingGroup id="fast-lane" title={t("previews.settings.fastTitle")}>
+			</SettingsGroup>
+			<SettingsGroup id="fast-lane" title={t("previews.settings.fastTitle")}>
 				<ListField draft={draft} root="fastLane" field="paths" label={t("previews.settings.fastPaths")} placeholder={t("previews.settings.listPlaceholder")} disabled={off} />
 				<ListField draft={draft} root="fastLane" field="deployTargets" label={t("previews.settings.fastTargets")} disabled={off} />
 				{area("kernel", t("previews.settings.fastKernel"))}
 				{area("migrations", t("previews.settings.fastMigrations"))}
 				{area("permissions", t("previews.settings.fastPermissions"))}
 				{area("security", t("previews.settings.fastSecurity"))}
-			</SettingGroup>
+			</SettingsGroup>
 			{draft.declared && <SaveBar section={section} canEdit={canEdit} />}
 		</div>
 	);

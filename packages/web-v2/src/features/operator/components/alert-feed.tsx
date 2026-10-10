@@ -105,7 +105,7 @@ function changedLabel(alert: AdminAlert): string {
   return alert.status === "ok" ? "no change recorded" : "not yet recorded";
 }
 
-function AlertRow({ alert }: { alert: AdminAlert }) {
+function AlertItem({ alert }: { alert: AdminAlert }) {
   const since = formatSince(alert.since);
   return (
     <li className="flex flex-col gap-2 border-b border-line-subtle py-3 last:border-0 first:pt-0">
@@ -149,7 +149,7 @@ export function AlertFeed({ alerts }: { alerts: readonly AdminAlert[] }) {
       <PageSectionBody>
         <ul className="flex flex-col">
           {sortAlerts(alerts).map((a) => (
-            <AlertRow key={a.id} alert={a} />
+            <AlertItem key={a.id} alert={a} />
           ))}
         </ul>
       </PageSectionBody>

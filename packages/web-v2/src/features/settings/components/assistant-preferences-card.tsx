@@ -48,7 +48,7 @@ function describeChange(change: PreferenceChange, t: Copy): string {
     : t("shell.assistant.set", { field, value: change.newValue, by });
 }
 
-export function AssistantPreferencesCard() {
+export function AssistantPreferences() {
   const prefsQ = useAssistantPreferences();
   const update = useUpdateAssistantPreferences();
   const t = useCopy();
@@ -153,7 +153,7 @@ function ChangeTrail() {
               <Button
                 variant="ghost"
                 disabled={restore.isPending}
-                onClick={() => onRestore(change)}
+                onClick={() => void onRestore(change)}
                 aria-label={t("shell.assistant.restoreLabel", { change: describeChange(change, t) })}
               >
                 {t("shell.assistant.restore")}

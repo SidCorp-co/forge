@@ -122,7 +122,7 @@ function HeaderTitle({
 }
 
 /** Replace-key (write-only) + Test + truthful last-health line (AC2, AC6). */
-function CredentialSection({
+function CredentialFields({
   connection,
   canManage,
 }: {
@@ -198,7 +198,7 @@ function CredentialSection({
       )}
       <div className="flex items-center gap-3">
         {canManage && (
-          <Button variant="secondary" size="sm" loading={test.isPending} onClick={runTest}>
+          <Button variant="secondary" size="sm" loading={test.isPending} onClick={() => void runTest()}>
             {t("integrations.edit.test")}
           </Button>
         )}
@@ -223,7 +223,7 @@ function CredentialSection({
 }
 
 /** The provider's own connection-tier form, or a line saying where its config is edited instead. */
-function ConfigSection({
+function ConfigFields({
   connection,
   canManage,
 }: {
@@ -258,7 +258,7 @@ function ConfigSection({
 
 /** "Projects using it" — each row drills into that project's settings →
  *  Integrations tab (AC3); archived projects render non-clickable + badge. */
-function ProjectsSection({
+function ProjectFields({
   connection,
   projects,
   bindings,
@@ -451,9 +451,9 @@ export function ConnectionEditDrawer({
       width={560}
     >
       <div className="flex flex-col gap-5">
-        <CredentialSection connection={connection} canManage={canManage} />
+        <CredentialFields connection={connection} canManage={canManage} />
         <Divider />
-        <ConfigSection connection={connection} canManage={canManage} />
+        <ConfigFields connection={connection} canManage={canManage} />
         {/* ISS-1275 — the connection tier of the release runner label. It renders
             itself away unless some project binds this credential as a LIVE deploy
             target, which is the only place the label decides anything. */}
@@ -463,13 +463,13 @@ export function ConnectionEditDrawer({
           canManage={canManage}
         />
         <Divider />
-        <ProjectsSection
+        <ProjectFields
           connection={connection}
           projects={projects}
           bindings={bindings}
           bindingsLoading={bindingsQ.isLoading}
           bindingsError={bindingsQ.isError ? formatApiError(bindingsQ.error) : null}
-          onRetry={() => bindingsQ.refetch()}
+          onRetry={() => void bindingsQ.refetch()}
           onNavigate={onClose}
         />
         {canManage && (

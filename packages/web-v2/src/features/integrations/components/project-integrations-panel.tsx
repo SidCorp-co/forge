@@ -33,7 +33,7 @@ import { cardProvider, deriveDirectoryStatus, isProviderCard } from "../derive";
 import { connectionTargetFor, providerIcon, providerLabel } from "../providers/registry";
 import type { BindingSummary, StatusCard } from "../types";
 import { ConnectionDetailDrawer } from "./connection-detail-drawer";
-import { McpServersPanel } from "./mcp-servers-panel";
+import { McpServers } from "./mcp-servers-panel";
 import { StatusPill } from "./status-pill";
 
 const ROLE_WORDS = new Set(["Service", "Source", "Deploy"]);
@@ -186,7 +186,7 @@ function RepositoryAction({
   );
 }
 
-function IntegrationRow({
+function IntegrationItem({
   row,
   canEdit,
   onOpen,
@@ -261,7 +261,7 @@ function IntegrationRow({
  * Full integrations management for ONE project: the flush table (a row's action opens the provider
  * drawer) and the Agent MCP servers preview. Used by project settings → Integrations.
  */
-export function ProjectIntegrationsPanel({
+export function ProjectIntegrations({
   projectId,
   canEdit = true,
 }: {
@@ -303,7 +303,7 @@ export function ProjectIntegrationsPanel({
               </span>
             )}
           </span>
-          <Button variant="ghost" size="sm" icon="rerun" onClick={() => status.refetch()}>
+          <Button variant="ghost" size="sm" icon="rerun" onClick={() => void status.refetch()}>
             {t("integrations.panel.refresh")}
           </Button>
         </PageSectionHeader>
@@ -314,7 +314,7 @@ export function ProjectIntegrationsPanel({
             ))}
           </div>
         ) : status.isError ? (
-          <ErrorState message={formatApiError(status.error)} onRetry={() => status.refetch()} />
+          <ErrorState message={formatApiError(status.error)} onRetry={() => void status.refetch()} />
         ) : (
           <Table aria-label={t("integrations.title")} data-tour="int-status">
             <THead>
@@ -330,7 +330,7 @@ export function ProjectIntegrationsPanel({
             </THead>
             <TBody>
               {rows.map((row) => (
-                <IntegrationRow
+                <IntegrationItem
                   key={row.card.key}
                   row={row}
                   canEdit={canEdit}
@@ -343,7 +343,7 @@ export function ProjectIntegrationsPanel({
         )}
       </PageSection>
 
-      <McpServersPanel projectId={projectId} canEdit={canEdit} onConnect={connectProvider} />
+      <McpServers projectId={projectId} canEdit={canEdit} onConnect={connectProvider} />
 
       <ConnectionDetailDrawer
         projectId={projectId}

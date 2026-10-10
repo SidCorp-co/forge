@@ -7,7 +7,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
  * The production approval gate. Whether a release deploys to production without it is the
  * project document's production environment (`deployment.trigger: "on-land"`), not a switch here.
  */
-export function ProdGateSection({
+export function ProdGate({
   integrationId,
   confirmPending,
   onConfirm,

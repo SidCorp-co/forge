@@ -126,7 +126,7 @@ function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
   );
 }
 
-export function ConnectionRow({
+export function ConnectionItem({
   connection,
   ownerLabel,
   projectName,

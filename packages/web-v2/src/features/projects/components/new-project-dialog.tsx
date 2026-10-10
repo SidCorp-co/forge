@@ -118,7 +118,7 @@ function CreateProjectForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex h-full flex-col gap-4">
+    <form onSubmit={(e) => void onSubmit(e)} className="flex h-full flex-col gap-4">
       {errors.form && <Banner tone="danger">{errors.form}</Banner>}
       <Field label="Name" required error={errors.name}>
         <Input

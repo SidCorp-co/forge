@@ -73,8 +73,8 @@ export function useProjectsConsole() {
     isError: projects.isError,
     error: projects.error,
     refetch: () => {
-      projects.refetch();
-      health.refetch();
+      void projects.refetch();
+      void health.refetch();
     },
     toggle,
   };
@@ -92,7 +92,7 @@ export function useCreateProject() {
   return useMutation({
     mutationFn: projectApi.create,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['projects'] });
+      void qc.invalidateQueries({ queryKey: ['projects'] });
     },
   });
 }

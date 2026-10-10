@@ -62,7 +62,7 @@ function SecretForm({
 	);
 }
 
-export function SecretsSection({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+export function SecretSettings({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
 	const t = useCopy();
 	const secrets = useSecretNames(projectId);
 	const profiles = useTestingProfiles(projectId);

@@ -5,17 +5,17 @@ import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { ConnectionEditDrawer } from "@/features/integrations/components/connection-edit-drawer";
 import { DeliveryLogViewer } from "@/features/integrations/components/delivery-log-viewer";
 import { IntegrationsScreen } from "@/features/integrations/components/integrations-screen";
-import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
-import { AutoflowSection } from "@/features/integrations/providers/autoflow/section";
+import { ProjectIntegrations } from "@/features/integrations/components/project-integrations-panel";
+import { AutoflowSettings } from "@/features/integrations/providers/autoflow/section";
 import { CoolifyConnectionConfig } from "@/features/integrations/providers/coolify/connection-config";
-import { CoolifySection } from "@/features/integrations/providers/coolify/section";
+import { CoolifySettings } from "@/features/integrations/providers/coolify/section";
 import { EpodsystemConnectionConfig } from "@/features/integrations/providers/epodsystem/connection-config";
-import { EpodsystemSection } from "@/features/integrations/providers/epodsystem/section";
-import { GitHubSection } from "@/features/integrations/providers/github/section";
-import { GitlabSection } from "@/features/integrations/providers/gitlab/section";
+import { EpodsystemSettings } from "@/features/integrations/providers/epodsystem/section";
+import { GitHubSettings } from "@/features/integrations/providers/github/section";
+import { GitlabSettings } from "@/features/integrations/providers/gitlab/section";
 import { RocketchatConnectionConfig } from "@/features/integrations/providers/rocketchat/connection-config";
-import { RocketchatSection } from "@/features/integrations/providers/rocketchat/section";
-import { SentrySection } from "@/features/integrations/providers/sentry/section";
+import { RocketchatSettings } from "@/features/integrations/providers/rocketchat/section";
+import { SentrySettings } from "@/features/integrations/providers/sentry/section";
 import type { IntegrationSummary, StatusCard } from "@/features/integrations/types";
 import { IntegrationsTab } from "@/features/project-settings/components/integrations-tab";
 import { type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
@@ -185,15 +185,15 @@ export const SCREENS = [
       </>
     )),
   },
-  { name: "Project integrations", render: sectionOf(() => <ProjectIntegrationsPanel projectId={P} canEdit />) },
-  { name: "Project integrations · drawer", render: sectionOf(() => <ProjectIntegrationsPanel projectId={P} canEdit />), act: clickKey("integrations.panel.manage") },
+  { name: "Project integrations", render: sectionOf(() => <ProjectIntegrations projectId={P} canEdit />) },
+  { name: "Project integrations · drawer", render: sectionOf(() => <ProjectIntegrations projectId={P} canEdit />), act: clickKey("integrations.panel.manage") },
   { name: "Project integrations · share", render: sectionOf(() => <IntegrationsTab projectId={P} canEdit />) },
   { name: "Project integrations · read only", render: sectionOf(() => <IntegrationsTab projectId={P} canEdit={false} />, []) },
-  { name: "Integration · Coolify", render: sectionOf(() => <CoolifySection projectId={P} />) },
-  { name: "Integration · Coolify new", render: sectionOf(() => <CoolifySection projectId={P} />, []) },
+  { name: "Integration · Coolify", render: sectionOf(() => <CoolifySettings projectId={P} />) },
+  { name: "Integration · Coolify new", render: sectionOf(() => <CoolifySettings projectId={P} />, []) },
   {
     name: "Integration · Epodsystem",
-    render: sectionOf(() => <EpodsystemSection projectId={P} />),
+    render: sectionOf(() => <EpodsystemSettings projectId={P} />),
     act: () => {
       clickKey("integrations.epod.rotateKey")();
       clickKey("integrations.epod.add")();
@@ -201,29 +201,29 @@ export const SCREENS = [
   },
   {
     name: "Integration · Autoflow",
-    render: sectionOf(() => <AutoflowSection projectId={P} />),
+    render: sectionOf(() => <AutoflowSettings projectId={P} />),
     act: () => {
       clickKey("integrations.autoflow.replaceToken")();
       clickKey("integrations.autoflow.add")();
     },
   },
-  { name: "Integration · Rocket.Chat", render: sectionOf(() => <RocketchatSection projectId={P} />), act: clickKey("integrations.rocket.rotate") },
-  { name: "Integration · Rocket.Chat connect", render: sectionOf(() => <RocketchatSection projectId={P} />, []) },
-  { name: "Integration · Sentry", render: sectionOf(() => <SentrySection projectId={P} />) },
+  { name: "Integration · Rocket.Chat", render: sectionOf(() => <RocketchatSettings projectId={P} />), act: clickKey("integrations.rocket.rotate") },
+  { name: "Integration · Rocket.Chat connect", render: sectionOf(() => <RocketchatSettings projectId={P} />, []) },
+  { name: "Integration · Sentry", render: sectionOf(() => <SentrySettings projectId={P} />) },
   {
     name: "Integration · Sentry retired shape",
-    render: sectionOf(() => <SentrySection projectId={P} />, [binding("sentry", { config: { host: "logs.example.com", organizationSlug: "sid", projectSlug: "hop", targets: [] } })]),
+    render: sectionOf(() => <SentrySettings projectId={P} />, [binding("sentry", { config: { host: "logs.example.com", organizationSlug: "sid", projectSlug: "hop", targets: [] } })]),
   },
-  { name: "Integration · GitLab", render: sectionOf(() => <GitlabSection projectId={P} />) },
-  { name: "Integration · GitLab new", render: sectionOf(() => <GitlabSection projectId={P} />, []) },
-  { name: "Integration · GitHub", render: sectionOf(() => <GitHubSection projectId={P} />) },
-  { name: "Integration · GitHub repository", render: sectionOf(() => <GitHubSection projectId={P} />), act: clickKey("integrations.github.changeRepo") },
-  { name: "Integration · GitHub existing App", render: sectionOf(() => <GitHubSection projectId={P} />, []) },
+  { name: "Integration · GitLab", render: sectionOf(() => <GitlabSettings projectId={P} />) },
+  { name: "Integration · GitLab new", render: sectionOf(() => <GitlabSettings projectId={P} />, []) },
+  { name: "Integration · GitHub", render: sectionOf(() => <GitHubSettings projectId={P} />) },
+  { name: "Integration · GitHub repository", render: sectionOf(() => <GitHubSettings projectId={P} />), act: clickKey("integrations.github.changeRepo") },
+  { name: "Integration · GitHub existing App", render: sectionOf(() => <GitHubSettings projectId={P} />, []) },
   {
     name: "Integration · GitHub new App",
     render: () => (
       <Seeded data={[...queries([]), [["integration-connections"], { items: [] }]]}>
-        <GitHubSection projectId={P} />
+        <GitHubSettings projectId={P} />
       </Seeded>
     ),
   },

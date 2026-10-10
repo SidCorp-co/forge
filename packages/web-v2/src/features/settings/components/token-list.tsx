@@ -64,7 +64,7 @@ export function TokenList({
       <ErrorState
         title={t("settings.tokens.loadFailed")}
         message={formatApiError(tokensQ.error)}
-        onRetry={() => tokensQ.refetch()}
+        onRetry={() => void tokensQ.refetch()}
       />
     );
   if (tokens.length === 0)
@@ -100,14 +100,14 @@ export function TokenList({
           </THead>
           <TBody>
             {tokens.map((token) => (
-              <TokenRow key={token.id} {...props(token)} />
+              <TokenItem key={token.id} {...props(token)} />
             ))}
           </TBody>
         </Table>
       </div>
       <div className="space-y-2.5 md:hidden">
         {tokens.map((token) => (
-          <TokenMobileCard key={token.id} {...props(token)} />
+          <TokenMobileItem key={token.id} {...props(token)} />
         ))}
       </div>
     </>
@@ -181,7 +181,7 @@ function RevokeButton({ token, onRevoke, pending }: RowProps) {
   );
 }
 
-function TokenRow(props: RowProps) {
+function TokenItem(props: RowProps) {
   const { token } = props;
   const t = useCopy();
   const fmtDate = useFmtDate();
@@ -212,7 +212,7 @@ function TokenRow(props: RowProps) {
   );
 }
 
-function TokenMobileCard(props: RowProps) {
+function TokenMobileItem(props: RowProps) {
   const { token } = props;
   const t = useCopy();
   const fmtDate = useFmtDate();

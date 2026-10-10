@@ -76,7 +76,7 @@ function VerifyResult({ result }: { result: IntegrationTestResult | { errorMessa
   );
 }
 
-function McpServerRow({
+function McpServerItem({
   entry,
   projectId,
   binding,
@@ -172,7 +172,7 @@ function McpServerRow({
  * be injected into the next dispatched agent, the exact URL, and a Verify
  * action that runs the provider's real credential healthcheck.
  */
-export function McpServersPanel({
+export function McpServers({
   projectId,
   canEdit = true,
   onConnect,
@@ -196,11 +196,11 @@ export function McpServersPanel({
             <Skeleton className="h-16 w-full" />
           </div>
         ) : preview.isError ? (
-          <ErrorState message={formatApiError(preview.error)} onRetry={() => preview.refetch()} />
+          <ErrorState message={formatApiError(preview.error)} onRetry={() => void preview.refetch()} />
         ) : (
           <ul className="flex flex-col divide-y divide-line-subtle">
             {(preview.data?.servers ?? []).map((entry) => (
-              <McpServerRow
+              <McpServerItem
                 key={`${entry.provider}:${entry.bindingId ?? entry.serverName}`}
                 entry={entry}
                 projectId={projectId}
