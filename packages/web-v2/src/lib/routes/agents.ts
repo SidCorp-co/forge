@@ -4,6 +4,9 @@ export const agentsListHref = (slug: string) => `/projects/${encodeURIComponent(
 
 export const runHref = (slug: string, runId: string) => `${agentsListHref(slug)}/runs/${encodeURIComponent(runId)}`;
 
+/** The Runs tab, where `/agents/runs` with no run id lands rather than reading "runs" as a session id. */
+export const runsListHref = (slug: string) => `${agentsListHref(slug)}?tab=runs`;
+
 /** The Sessions tab narrowed to one issue's sessions; core filters `GET /agent-sessions` by `issueId`. */
 export const issueSessionsHref = (slug: string, issueId: string) =>
   `${agentsListHref(slug)}?tab=sessions&issue=${encodeURIComponent(issueId)}`;
