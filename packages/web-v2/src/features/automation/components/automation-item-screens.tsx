@@ -9,7 +9,8 @@ import { useFireDetail, useReportDetail, useScheduleDetail } from "../hooks";
 import { AUTOMATION_LIST, automationListHref, automationTabHref, fireHref, scheduleHref } from "@/lib/routes/automation";
 import { shortId } from "../view";
 import { FirePage } from "./fire-views";
-import { ReportPage, ReportPrimary } from "./report-views";
+import { ReportPage } from "./report-page";
+import { ReportPrimary } from "./report-views";
 import { type AutomationAccess, RunNow, SchedulePage } from "./schedule-views";
 
 export function ScheduleItemScreen({ access, scheduleId }: { access: AutomationAccess; scheduleId: string }) {

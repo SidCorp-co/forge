@@ -133,7 +133,7 @@ function ScheduleBanner({ s, className }: { s: ScheduleStanding; className?: str
   );
 }
 
-export function ScheduleFacts({ s, slug, failStreak }: { s: ScheduleStanding; slug: string; failStreak?: number }) {
+export function ScheduleProperties({ s, slug, failStreak }: { s: ScheduleStanding; slug: string; failStreak?: number }) {
   const t = useCopy();
   const time = useTimeFormat();
   const language = useInterfaceLanguage();
@@ -211,7 +211,7 @@ export function SchedulePeek({
       />
       <ScheduleBanner s={s} className="px-4.5" />
       <div className="px-4.5 pb-4 pt-4">
-        <ScheduleFacts s={s} slug={access.slug} />
+        <ScheduleProperties s={s} slug={access.slug} />
       </div>
     </PeekPanel>
   );
@@ -364,7 +364,7 @@ export function SchedulePage({ access, scheduleId }: { access: AutomationAccess;
             dataKey={s.id}
             rail={
               <FactsRail>
-                <ScheduleFacts s={s} slug={access.slug} />
+                <ScheduleProperties s={s} slug={access.slug} />
               </FactsRail>
             }
           >

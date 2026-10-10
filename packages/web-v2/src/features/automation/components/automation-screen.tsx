@@ -12,12 +12,14 @@ import {
   SCHEDULE_GROUP_LABELS,
 } from "@forge/contracts/automation-standing";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   Button,
   GroupedList,
   type ListGroup,
+  ListLayout,
   ListSearch,
+  ListToolbar,
   PageTitle,
   rememberListOrigin,
   Tabs,
@@ -29,10 +31,9 @@ import {
   visibleRows,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { useCreateSchedule } from "@/features/automation/schedule-hooks";
+import { useCreateSchedule } from "../schedule-hooks";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
-import { cn } from "@/lib/utils/cn";
 import { useAutomationStanding } from "../hooks";
 import { AUTOMATION_LIST, AUTOMATION_TABS, type AutomationTab, fireHref, reportHref, scheduleHref } from "@/lib/routes/automation";
 import type { AutomationStandingResponse, FireStanding, ReportStanding, ScheduleStanding } from "../types";
@@ -82,7 +83,7 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
   const d = q.data;
   const groups = (d ? tabRows(d, tab, text, t) : []);
   const noun = t(`schedules.noun.${tab}` as ProductCopyKey);
-  const ctx: RowCtx = useMemo(() => ({ t, language, time }), [t, language, time]);
+  const ctx: RowCtx = { t, language, time };
   const visible = visibleRows(groups, fold).map((r) => r.id);
   const allKeys = groups.flatMap((g) => g.rows.map((r) => r.id));
   const peek = usePeek(visible, allKeys);
@@ -122,9 +123,39 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
             <div className="border-b border-line-subtle px-5 max-md:px-2" data-testid="automation-tabs">
               <Tabs tabs={tabs} value={tab} onChange={(v) => setTab(v as AutomationTab)} />
             </div>
-            <div className={cn("grid min-h-128 items-start", open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
+            <ListLayout
+              peek={
+                open ? (
+                  <>
+                    {tab === "schedules" ? (
+                      <SchedulePeek key={open.id} s={open as ScheduleStanding} access={access} peek={peek} onOpenFull={() => openFull(open.id)} />
+                    ) : null}
+                    {tab === "fires" ? (
+                      <FirePeek
+                        key={open.id}
+                        f={open as FireStanding}
+                        schedule={scheduleOf((open as FireStanding).scheduleId)}
+                        slug={slug}
+                        peek={peek}
+                        onOpenFull={() => openFull(open.id)}
+                      />
+                    ) : null}
+                    {tab === "reports" ? (
+                      <ReportPeek
+                        key={open.id}
+                        r={open as ReportStanding}
+                        projectId={projectId}
+                        slug={slug}
+                        canWrite={access.canWrite}
+                        peek={peek}
+                        onOpenFull={() => openFull(open.id)}
+                      />
+                    ) : null}
+                  </>
+                ) : undefined
+              }
+            >
+                <ListToolbar>
                   <ListSearch noun={noun} value={params.get("q") ?? ""} onChange={(v) => setParams({ q: v || null })} />
                   {tab === "schedules" && access.canManage && !creating ? (
                     <Button type="button" variant="primary" size="sm" icon="plus" className="ml-auto" onClick={() => setCreating(true)} data-testid="schedule-new">
@@ -136,7 +167,7 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
                       {t("schedules.newest", { n: d.fires.length, total: d.firesTotal })}
                     </span>
                   ) : null}
-                </div>
+                </ListToolbar>
                 {tab === "schedules" && creating ? (
                   <div className="border-b border-line-subtle px-5 py-4 max-md:px-3">
                     <ScheduleForm
@@ -159,32 +190,7 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
                   empty={text ? t("schedules.emptySearch") : t("schedules.emptyList", { noun })}
                   columns={columnsOf(tab, t)}
                 />
-              </div>
-              {open && tab === "schedules" ? (
-                <SchedulePeek key={open.id} s={open as ScheduleStanding} access={access} peek={peek} onOpenFull={() => openFull(open.id)} />
-              ) : null}
-              {open && tab === "fires" ? (
-                <FirePeek
-                  key={open.id}
-                  f={open as FireStanding}
-                  schedule={scheduleOf((open as FireStanding).scheduleId)}
-                  slug={slug}
-                  peek={peek}
-                  onOpenFull={() => openFull(open.id)}
-                />
-              ) : null}
-              {open && tab === "reports" ? (
-                <ReportPeek
-                  key={open.id}
-                  r={open as ReportStanding}
-                  projectId={projectId}
-                  slug={slug}
-                  canWrite={access.canWrite}
-                  peek={peek}
-                  onOpenFull={() => openFull(open.id)}
-                />
-              ) : null}
-            </div>
+            </ListLayout>
           </div>
         );
       }}
