@@ -19,8 +19,12 @@ describe('an invitation reaches its invitee by mail, or is refused by name (REQ-
       thrown = err;
     }
     expect(isRefusal(thrown, 'MAIL_NOT_CONFIGURED')).toBe(true);
-    expect((thrown as Error).message + JSON.stringify((thrown as { refusals: unknown }).refusals)).toMatch(/SMTP_HOST/);
-    expect(() => refuseUnmailable({ NODE_ENV: 'development', SMTP_DEBUG: false }, refuse)).toThrow();
+    expect(
+      (thrown as Error).message + JSON.stringify((thrown as { refusals: unknown }).refusals),
+    ).toMatch(/SMTP_HOST/);
+    expect(() =>
+      refuseUnmailable({ NODE_ENV: 'development', SMTP_DEBUG: false }, refuse),
+    ).toThrow();
   });
 
   it('withdraws the token and refuses INVITATION_MAIL_FAILED when the send fails', async () => {

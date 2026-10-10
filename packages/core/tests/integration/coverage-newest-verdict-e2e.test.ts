@@ -73,7 +73,12 @@ async function agreedRequirement(linkWorkflow?: string): Promise<string> {
   await makeAgreeReady(projectId, Number(key.slice(4)), ownerId);
   await ok(onProject('POST', `/requirements/${key}/revisions/1/propose`, {}));
   await ok(onProject('POST', `/requirements/${key}/revisions/1/accept`, {}));
-  await ok(onProject('POST', `/requirements/${key}/agree`, { revision: 1, reason: 'Agreed with the owner for this test.' }));
+  await ok(
+    onProject('POST', `/requirements/${key}/agree`, {
+      revision: 1,
+      reason: 'Agreed with the owner for this test.',
+    }),
+  );
   return key;
 }
 

@@ -60,7 +60,10 @@ export function releasePageWorld(context: () => ReleasePageWorldContext) {
     for (const [path, body] of [
       [`/requirements/${key}/revisions/1/propose`, {}],
       [`/requirements/${key}/revisions/1/accept`, {}],
-      [`/requirements/${key}/agree`, { revision: 1, reason: 'Agreed with the owner for this test.' }],
+      [
+        `/requirements/${key}/agree`,
+        { revision: 1, reason: 'Agreed with the owner for this test.' },
+      ],
     ] as const) {
       const r = await CTX.call('owner', 'POST', path, body);
       expect(r.status, `${path} ${JSON.stringify(r.body)}`).toBe(200);

@@ -90,8 +90,14 @@ async function currentRequirement(ready = false): Promise<string> {
 describe('agreeing a requirement (ready_check)', () => {
   it('stops on each blocking gap, naming its question, the same through a session and an agent token', async () => {
     const key = await currentRequirement();
-    const bySession = await on(member, 'POST', `/requirements/${key}/agree`, { revision: 1, reason: 'Agreed with the owner for this test.' });
-    const byAgent = await on(agent, 'POST', `/requirements/${key}/agree`, { revision: 1, reason: 'Agreed with the owner for this test.' });
+    const bySession = await on(member, 'POST', `/requirements/${key}/agree`, {
+      revision: 1,
+      reason: 'Agreed with the owner for this test.',
+    });
+    const byAgent = await on(agent, 'POST', `/requirements/${key}/agree`, {
+      revision: 1,
+      reason: 'Agreed with the owner for this test.',
+    });
     const named = [
       'CHECKLIST_INCOMPLETE /answers/problem',
       'CHECKLIST_INCOMPLETE /answers/who',
@@ -111,17 +117,26 @@ describe('agreeing a requirement (ready_check)', () => {
 
   it('setting off (the default): a member with no approve permission agrees a complete one', async () => {
     const key = await currentRequirement(true);
-    const r = await on(member, 'POST', `/requirements/${key}/agree`, { revision: 1, reason: 'Agreed with the owner for this test.' });
+    const r = await on(member, 'POST', `/requirements/${key}/agree`, {
+      revision: 1,
+      reason: 'Agreed with the owner for this test.',
+    });
     expect(r.status, JSON.stringify(r.body)).toBe(200);
   });
 
   it('setting on: the member is refused naming the permission, and an approver agrees it', async () => {
     await setApprovals({ agree: true });
     const key = await currentRequirement(true);
-    const refused = await on(agent, 'POST', `/requirements/${key}/agree`, { revision: 1, reason: 'Agreed with the owner for this test.' });
+    const refused = await on(agent, 'POST', `/requirements/${key}/agree`, {
+      revision: 1,
+      reason: 'Agreed with the owner for this test.',
+    });
     expect(refused.status, JSON.stringify(refused.body)).toBe(403);
     expect(JSON.stringify(refused.body)).toContain('requirements.approve');
-    const agreed = await on(owner, 'POST', `/requirements/${key}/agree`, { revision: 1, reason: 'Agreed with the owner for this test.' });
+    const agreed = await on(owner, 'POST', `/requirements/${key}/agree`, {
+      revision: 1,
+      reason: 'Agreed with the owner for this test.',
+    });
     expect(agreed.status, JSON.stringify(agreed.body)).toBe(200);
   });
 });

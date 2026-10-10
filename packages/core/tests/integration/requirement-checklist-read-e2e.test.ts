@@ -101,7 +101,12 @@ describe("a requirement's checklists read", () => {
     await makeAgreeReady(projectId, Number(key.slice(4)), ownerId);
     await ok(on('POST', `/requirements/${key}/revisions/1/propose`, {}));
     await ok(on('POST', `/requirements/${key}/revisions/1/accept`, {}));
-    await ok(on('POST', `/requirements/${key}/agree`, { revision: 1, reason: 'Agreed with the owner for this test.' }));
+    await ok(
+      on('POST', `/requirements/${key}/agree`, {
+        revision: 1,
+        reason: 'Agreed with the owner for this test.',
+      }),
+    );
 
     const agreed = await read(key);
     const ready = checklist(agreed, 'requirement_ready');

@@ -34,7 +34,13 @@ describe('every act a token makes over REST is recorded against it (REQ-27 BC-2)
     const res = await app().request(`/api/projects/${P}/issues`, { method: 'POST' });
     expect(res.status).toBe(201);
     expect(written).toEqual([
-      expect.objectContaining({ tokenId: 't1', tool: 'rest', action: `POST /api/projects/${P}/issues`, projectId: P, resultCode: 'ok' }),
+      expect.objectContaining({
+        tokenId: 't1',
+        tool: 'rest',
+        action: `POST /api/projects/${P}/issues`,
+        projectId: P,
+        resultCode: 'ok',
+      }),
     ]);
   });
 
@@ -49,7 +55,13 @@ describe('every act a token makes over REST is recorded against it (REQ-27 BC-2)
   });
 
   it('reads the result and the project off the answer and the path', () => {
-    expect([200, 404, 429, 500, 401].map(actResultOf)).toEqual(['ok', 'not_found', 'rate_limited', 'error', 'forbidden']);
+    expect([200, 404, 429, 500, 401].map(actResultOf)).toEqual([
+      'ok',
+      'not_found',
+      'rate_limited',
+      'error',
+      'forbidden',
+    ]);
     expect(projectOfPath('/api/issues/abc')).toBeNull();
   });
 });
