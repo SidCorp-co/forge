@@ -104,8 +104,8 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => (
     'tools as an auth/reauth problem and do NOT retry. Report the reason and say where the switch ' +
     'is — beside the integration under Settings → Integrations, on the binding itself. ' +
     'NEVER returns ' +
-    'a credential — the crmk_ key / sat_ token is injected into the runner only via its mcpServers ' +
-    'entry. Build on the DRAFT; publishing promotes it. Project scope comes from ' +
+    "a credential — the run reaches the provider MCP through Forge's relay (/api/mcp-relay) with a " +
+    'ticket for this binding; the crmk_ key / sat_ token stays in Forge. Build on the DRAFT; publishing promotes it. Project scope comes from ' +
     'the X-Forge-Project-Slug header (or an explicit projectId). Authorization: project membership.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {

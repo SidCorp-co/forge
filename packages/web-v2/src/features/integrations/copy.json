@@ -227,7 +227,7 @@
     "integrations.hint": "The connections in {scope}: credentials shared across projects. A project's own integrations are in its settings → Integrations.",
     "integrations.mcp.connect": "Connect {provider}",
     "integrations.mcp.health": "health: {status}",
-    "integrations.mcp.intro": "Every MCP server injected into a Claude agent dispatched for this project: its granted integrations. The list comes from the same resolver that performs the injection; credentials are attached at dispatch time and never shown here. A connected integration reaches an agent only once it is granted, on the row below.",
+    "integrations.mcp.intro": "The MCP servers an agent on this project gets. Each call goes through Forge, which adds the credential. Agents never hold it. Grant access on the row.",
     "integrations.mcp.noCredential": "No credential",
     "integrations.mcp.notConfigured": "Not configured",
     "integrations.mcp.notConnected": "{provider} is not connected, so no MCP server is injected.",

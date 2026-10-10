@@ -65,6 +65,7 @@ import {
   integrationConnectionsRoutes,
   integrationsRoutes,
   issueMergePullRequestRoutes,
+  mcpRelayRoutes,
   webhookInboundRoutes,
 } from './integration-door/routes.js';
 import {
@@ -312,6 +313,7 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/jobs', jobLifecycleUserRoutes);
   app.route('/api/jobs', jobTestingSecretsRoutes);
   app.route('/api/webhooks', webhookInboundRoutes);
+  app.route('/api/mcp-relay', mcpRelayRoutes);
   app.route('/api/memory', memorySearchRoutes);
   app.route('/api/memory', memoryListRoutes);
   app.route('/api/memory', memoryWriteRoutes);

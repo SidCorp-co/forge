@@ -162,7 +162,7 @@
       "integrations.help.disable": 15,
       "integrations.help.open": 25,
       "integrations.hint": 18,
-      "integrations.mcp.intro": 51,
+      "integrations.mcp.intro": 27,
       "integrations.mcp.notGrantedHint": 30,
       "integrations.mcp.notResolvedHint": 53,
       "integrations.mcp.shadowedHint": 80,
