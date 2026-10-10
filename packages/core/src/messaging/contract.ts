@@ -108,7 +108,9 @@ export class MessageRefusedError extends Error {
       detail: `${r.why} (rule ${r.rule}; shape: ${r.shape}; for example: ${r.example}; door ${this.door})`,
     }));
     return new RefusalError(
-      rows.length > 0 ? rows : [{ code: this.code, path: this.at, detail: `refused at door ${this.door}` }],
+      rows.length > 0
+        ? rows
+        : [{ code: this.code, path: this.at, detail: `refused at door ${this.door}` }],
       this.code,
     );
   }

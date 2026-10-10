@@ -4,6 +4,13 @@
  * forgets to is still a named 422: found by the release judge J7 on ISS-439, where
  * `POST /api/issues/:id/transition` answered INTERNAL_ERROR to a reason the comment route refused
  * as MESSAGE_REFUSED.
+ *
+ * @direct-test-of packages/core/src/issues/transition-reason.ts
+ * @direct-test-of packages/core/src/comments/notices.ts
+ * @direct-test-of packages/core/src/comments/screen.ts
+ * @direct-test-of packages/core/src/comments/routes.ts
+ * @direct-test-of packages/core/src/issues/record-events/routes.ts
+ * @direct-test-of packages/core/src/issues/record-events/write.ts
  */
 
 import { randomUUID } from 'node:crypto';

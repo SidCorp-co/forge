@@ -206,7 +206,9 @@ function touches(mod: Module, carried: Map<string, Set<string>>) {
   const hits = new Set<string>();
   const refs = new Map<string, Set<string>>();
   const carries = (from: string, name?: string) =>
-    name === undefined ? (carried.get(from)?.size ?? 0) > 0 : (carried.get(from)?.has(name) ?? false);
+    name === undefined
+      ? (carried.get(from)?.size ?? 0) > 0
+      : (carried.get(from)?.has(name) ?? false);
   const hit = (node: ts.Node) => hits.add(ownerOf(mod, node));
 
   const visit = (node: ts.Node): void => {
@@ -308,7 +310,8 @@ function readDoors() {
         }
       }
       const exported = new Set<string>();
-      for (const [name, decl] of mod.decls) if (decl.exported && reach.has(name)) exported.add(name);
+      for (const [name, decl] of mod.decls)
+        if (decl.exported && reach.has(name)) exported.add(name);
       for (const [name, local] of mod.localExports) {
         const b = mod.bindings.get(local);
         const viaImport = b && !('namespace' in b) && carried.get(b.from)?.has(b.name);
