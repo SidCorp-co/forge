@@ -11,34 +11,26 @@ import type { StandingGroupLabels } from "@forge/contracts/standing";
 import { needsViewer } from "@forge/contracts/standing";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
 import { ListFilterBar, useListNarrowing } from "@/features/chat-dock";
-import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 import {
   ActorChip,
   Button,
   EmptyState,
   enumLabel,
   GroupedList,
-  ListLayout,
+  ListPage,
   ListSearch,
-  ListToolbar,
   LEGEND,
   type ListGroup,
   type ListRowView,
+  useListPage,
   PageTitle,
-  rememberListOrigin,
   sortGroupsBy,
   StatusBadge,
   standingGroups,
   statusReading,
-  TopBarActions,
-  useGroupFold,
-  usePeek,
-  usePeekKeys,
-  useUrlParams,
   useViewMode,
   ViewModeSwitcher,
-  visibleRows,
   WaitingOn,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
@@ -180,106 +172,85 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
   const label = useLabel();
   const time = useTimeFormat();
   const language = useInterfaceLanguage();
-  const modes = useMemo(() => groupModes(t), [t]);
+  const modes = groupModes(t);
   const q = useFeedbackList(projectId);
-  const router = useRouter();
-  const [params, setParams] = useUrlParams();
   const [grouping, setGrouping] = useViewMode(modes);
-  const text = params.get("q") ?? "";
   const [creating, setCreating] = useState(false);
-  const fold = useGroupFold("web-v2:feedback-fold");
-
-  const all = q.data?.feedback ?? [];
-  // the search box reads q; the rest is the list filter the chat sets too (REQ-41 BC-5)
-  const filter = useListNarrowing("feedback");
-  const rows = useMemo(() => {
-    const t = text.trim().toLowerCase();
-    return all.filter(
-      (r) =>
-        (!t || `${r.key} ${r.title} ${r.reporter.name ?? ""}`.toLowerCase().includes(t)) &&
-        matchesListFilter(filter, { waiting: waitingFilterOf(r), text: "", phase: r.phase, kind: r.kind, severity: r.severity, createdAt: r.createdAt }),
-    );
-  }, [all, text, filter]);
   const forecastQ = useFeedbackForecasts(projectId);
-  const forecasts = useMemo(() => new Map((forecastQ.data?.items ?? []).map((i) => [i.key, i])), [forecastQ.data]);
+  const forecasts = new Map((forecastQ.data?.items ?? []).map((i) => [i.key, i]));
   const clock = useEtaClock();
   const [etaSorted, toggleEtaSort] = useEtaSort();
-  const etaOf = useCallback((k: string) => etaOfFeedback(forecasts.get(k), clock), [forecasts, clock]);
-  const groups = useMemo(() => {
-    const plain = groupsOf(rows, grouping, label, t, language);
-    return etaSorted ? sortGroupsBy(plain, (r) => etaSortValue(etaOf(r.key))) : plain;
-  }, [rows, grouping, etaSorted, etaOf, label, t, language]);
-  const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.key), [groups, fold]);
-  const allKeys = useMemo(() => all.map((r) => r.key), [all]);
-  const peek = usePeek(visible, allKeys);
-  const row = useMemo(() => rowOf(slug, etaOf, clock, t, time), [slug, etaOf, clock, t, time]);
-
-  const openFull = useCallback(
-    (key: string) => {
-      rememberListOrigin(FEEDBACK_LIST);
-      router.push(feedbackHref(slug, key));
+  const etaOf = (k: string) => etaOfFeedback(forecasts.get(k), clock);
+  // the search box reads q; the rest is the list filter the chat sets too (REQ-41 BC-5)
+  const filter = useListNarrowing("feedback");
+  const all = q.data?.feedback ?? [];
+  const list = useListPage({
+    rows: all,
+    keyOf: (r) => r.key,
+    searchOf: (r) => `${r.key} ${r.title} ${r.reporter.name ?? ""}`,
+    narrow: (r) => matchesListFilter(filter, { waiting: waitingFilterOf(r), text: "", phase: r.phase, kind: r.kind, severity: r.severity, createdAt: r.createdAt }),
+    groupsOf: (rows) => {
+      const plain = groupsOf(rows, grouping, label, t, language);
+      return etaSorted ? sortGroupsBy(plain, (r) => etaSortValue(etaOf(r.key))) : plain;
     },
-    [router, slug],
-  );
-  usePeekKeys(peek, openFull);
+    foldKey: "web-v2:feedback-fold",
+    hrefOf: (key) => feedbackHref(slug, key),
+    origin: FEEDBACK_LIST,
+  });
+  const { peek } = list;
 
-  const title = (
-    <>
-      <PageTitle after={<ViewModeSwitcher modes={modes} value={grouping} onChange={setGrouping} placement="header" />}>{t("feedback.title")}</PageTitle>
-      <TopBarActions>
-        <Button type="button" variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)} disabled={creating}>
-          {t("feedback.title")}
-        </Button>
-      </TopBarActions>
-    </>
-  );
   return (
-    <QueryBoundary query={q} loadingLabel={t("feedback.loading")} title={title} height="60vh" retry="always">
+    <QueryBoundary query={q} loadingLabel={t("feedback.loading")} title={<PageTitle>{t("feedback.title")}</PageTitle>} height="60vh" retry="always">
       {() => (
-        <div className="grid min-h-full content-start bg-app" data-testid="feedback-screen">
-          {title}
-          {creating ? (
-            <FeedbackForm
-              projectId={projectId}
-              onDone={(key) => {
-                setCreating(false);
-                if (key) peek.set(key);
-              }}
-            />
-          ) : null}
-          <ListLayout
-            peek={
-              peek.open ? (
-                <FeedbackPeek key={peek.open} projectId={projectId} slug={slug} fbKey={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} />
-              ) : null
-            }
-          >
-              <ListToolbar>
-                <ViewModeSwitcher modes={modes} value={grouping} onChange={setGrouping} placement="toolbar" />
-                <ListSearch noun={t("feedback.noun")} value={text} onChange={(q) => setParams({ q: q || null })} />
-                <ListFilterBar list="feedback" />
-              </ListToolbar>
-              {all.length === 0 ? (
-                <div className="px-5 py-10">
-                  <EmptyState message={t("feedback.empty.title")} />
-                </div>
-              ) : (
-                <>
-                  <Funnel rows={all} untold={q.data?.untold} />
-                  <GroupedList
-                    ariaLabel={t("feedback.title")}
-                    groups={groups}
-                    fold={fold}
-                    row={row}
-                    eta={{ label: ETA_COPY[clock.lang].header, sortLabel: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort }}
-                    selected={peek.open}
-                    onPeek={(k) => peek.set(k === peek.open ? null : k)}
-                    empty={t("feedback.noMatch")}
-                  />
-                </>
-              )}
-          </ListLayout>
-        </div>
+        <ListPage
+          testId="feedback-screen"
+          title={t("feedback.title")}
+          titleAfter={<ViewModeSwitcher modes={modes} value={grouping} onChange={setGrouping} placement="header" />}
+          actions={
+            <Button type="button" variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)} disabled={creating}>
+              {t("feedback.title")}
+            </Button>
+          }
+          lead={
+            creating ? (
+              <FeedbackForm
+                projectId={projectId}
+                onDone={(key) => {
+                  setCreating(false);
+                  if (key) peek.set(key);
+                }}
+              />
+            ) : null
+          }
+          toolbar={
+            <>
+              <ViewModeSwitcher modes={modes} value={grouping} onChange={setGrouping} placement="toolbar" />
+              <ListSearch noun={t("feedback.noun")} {...list.search} />
+              <ListFilterBar list="feedback" />
+            </>
+          }
+          peek={peek.open ? <FeedbackPeek key={peek.open} projectId={projectId} slug={slug} fbKey={peek.open} peek={peek} onOpenFull={() => list.openFull(peek.open as string)} /> : null}
+        >
+          {all.length === 0 ? (
+            <div className="px-5 py-10">
+              <EmptyState message={t("feedback.empty.title")} />
+            </div>
+          ) : (
+            <>
+              <Funnel rows={all} untold={q.data?.untold} />
+              <GroupedList
+                ariaLabel={t("feedback.title")}
+                groups={list.groups}
+                fold={list.fold}
+                row={rowOf(slug, etaOf, clock, t, time)}
+                eta={{ label: ETA_COPY[clock.lang].header, sortLabel: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort }}
+                selected={peek.open}
+                onPeek={list.togglePeek}
+                empty={t("feedback.noMatch")}
+              />
+            </>
+          )}
+        </ListPage>
       )}
     </QueryBoundary>
   );

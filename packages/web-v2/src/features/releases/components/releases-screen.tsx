@@ -3,8 +3,6 @@
 import { RELEASE_ATTENTION_GROUPS, RELEASE_ATTENTION_LABELS } from "@forge/contracts/releases";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
 import { ListFilterBar, useListNarrowing } from "@/features/chat-dock";
-import { useRouter } from "next/navigation";
-import { useCallback, useMemo } from "react";
 import {
   ActorChip,
   EmptyState,
@@ -13,17 +11,11 @@ import {
   standingGroups,
   type ListRowView,
   PageTitle,
-  rememberListOrigin,
   StatusBadge,
-  useGroupFold,
-  usePeek,
-  usePeekKeys,
-  useUrlParams,
-  visibleRows,
+  useListPage,
   WaitingOn,
-  ListLayout,
+  ListPage,
   ListSearch,
-  ListToolbar,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -81,97 +73,62 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
   const q = useReleases(projectId);
   const comingQ = useComingNext(projectId);
   const clock = useEtaClock();
-  const router = useRouter();
-  const [params, setParams] = useUrlParams();
-  const text = params.get("q") ?? "";
-  const fold = useGroupFold("web-v2:releases-fold");
-  const all = q.data?.releases ?? [];
-  // the search box reads q; whom a release waits on and its state are the list filter the chat sets too (REQ-41 BC-5)
+  // whom a release waits on and its state are the list filter the chat sets too (REQ-41 BC-5)
   const filter = useListNarrowing("releases");
-  const rows = useMemo(() => {
-    const t = text.trim().toLowerCase();
-    return all.filter(
-      (r) =>
-        (!t || `${r.version} ${r.headline} ${r.requirements.join(" ")}`.toLowerCase().includes(t)) &&
-        matchesListFilter(filter, { waiting: waitingFilterOf(r), text: "", state: r.state }),
-    );
-  }, [all, text, filter]);
-  const groups = useMemo(() => groupsOf(rows, label), [rows, label]);
-  const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.version), [groups, fold]);
-  const allKeys = useMemo(() => all.map((r) => r.version), [all]);
-  const peek = usePeek(visible, allKeys);
-  const row = useMemo(() => rowOf(slug, t, time), [slug, t, time]);
-  const openFull = useCallback(
-    (version: string) => {
-      rememberListOrigin(RELEASES_LIST);
-      router.push(releaseHref(slug, version));
-    },
-    [router, slug],
-  );
-  usePeekKeys(peek, openFull);
+  const all = q.data?.releases ?? [];
+  const list = useListPage({
+    rows: all,
+    keyOf: (r) => r.version,
+    searchOf: (r) => `${r.version} ${r.headline} ${r.requirements.join(" ")}`,
+    narrow: (r) => matchesListFilter(filter, { waiting: waitingFilterOf(r), text: "", state: r.state }),
+    groupsOf: (rows) => groupsOf(rows, label),
+    foldKey: "web-v2:releases-fold",
+    hrefOf: (version) => releaseHref(slug, version),
+    origin: RELEASES_LIST,
+  });
+  const { peek } = list;
 
-  const title = <PageTitle>{t("releases.title")}</PageTitle>;
   return (
-    <QueryBoundary query={q} loadingLabel={t("releases.loadingList")} title={title} height="60vh" retry="always">
-      {(data) => {
-        const production = data.production;
-        return (
-          <div className="grid min-h-full content-start bg-app" data-testid="releases-screen">
-            {title}
-            <ListLayout peek={peek.open ? <ReleasePeek key={peek.open} projectId={projectId} version={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} /> : null}>
-                <SearchBar
-                  text={text}
-                  onText={(q) => setParams({ q: q || null })}
-                  productionUnreadable={production.ok ? null : production.reason}
-                />
-                <ComingNext next={comingQ.data} draft={all.find((r) => r.state === "draft")} slug={slug} clock={clock} />
-                {all.length === 0 ? (
-                  <div className="px-5 py-10">
-                    <EmptyState message={t("releases.emptyTitle")} />
-                  </div>
-                ) : (
-                  <>
-                    <ReleaseTrain releases={all} slug={slug} selected={peek.open ?? undefined} />
-                    <GroupedList
-                      ariaLabel={t("releases.title")}
-                      groups={groups}
-                      fold={fold}
-                      row={row}
-                      selected={peek.open}
-                      onPeek={(k) => peek.set(k === peek.open ? null : k)}
-                      empty={t("releases.noMatch")}
-                      columns={{ meta: rows.some((r) => r.owner) ? t("list.col.meta") : t("releases.colAge") }}
-                    />
-                  </>
-                )}
-            </ListLayout>
-          </div>
-        );
-      }}
-    </QueryBoundary>
-  );
-}
-
-function SearchBar({
-  text,
-  onText,
-  productionUnreadable,
-}: {
-  text: string;
-  onText: (q: string) => void;
-  /** Why production cannot be read, or null when it can. */
-  productionUnreadable: string | null;
-}) {
-  const t = useCopy();
-  return (
-    <ListToolbar>
-      <ListSearch noun={t("releases.searchNoun")} value={text} onChange={onText} />
-      <ListFilterBar list="releases" />
-      {productionUnreadable === null ? null : (
-        <span className="text-12 text-muted" title={productionUnreadable} data-testid="production-unreadable">
-          {t("releases.productionUnreadable")}
-        </span>
+    <QueryBoundary query={q} loadingLabel={t("releases.loadingList")} title={<PageTitle>{t("releases.title")}</PageTitle>} height="60vh" retry="always">
+      {({ production }) => (
+        <ListPage
+          testId="releases-screen"
+          title={t("releases.title")}
+          toolbar={
+            <>
+              <ListSearch noun={t("releases.searchNoun")} {...list.search} />
+              <ListFilterBar list="releases" />
+              {production.ok ? null : (
+                <span className="text-12 text-muted" title={production.reason} data-testid="production-unreadable">
+                  {t("releases.productionUnreadable")}
+                </span>
+              )}
+            </>
+          }
+          peek={peek.open ? <ReleasePeek key={peek.open} projectId={projectId} version={peek.open} peek={peek} onOpenFull={() => list.openFull(peek.open as string)} /> : null}
+        >
+          <ComingNext next={comingQ.data} draft={all.find((r) => r.state === "draft")} slug={slug} clock={clock} />
+          {all.length === 0 ? (
+            <div className="px-5 py-10">
+              <EmptyState message={t("releases.emptyTitle")} />
+            </div>
+          ) : (
+            <>
+              <ReleaseTrain releases={all} slug={slug} selected={peek.open ?? undefined} />
+              <GroupedList
+                ariaLabel={t("releases.title")}
+                groups={list.groups}
+                fold={list.fold}
+                row={rowOf(slug, t, time)}
+                selected={peek.open}
+                onPeek={list.togglePeek}
+                empty={t("releases.noMatch")}
+                columns={{ meta: list.rows.some((r) => r.owner) ? t("list.col.meta") : t("releases.colAge") }}
+              />
+            </>
+          )}
+        </ListPage>
       )}
-    </ListToolbar>
+    </QueryBoundary>
   );
 }

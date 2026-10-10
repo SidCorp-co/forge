@@ -11,10 +11,10 @@ import { ListLayout, ListToolbar } from "../patterns/list-page";
 import { PageTitle } from "../primitives/heading";
 import { TopBarActions } from "../primitives/top-bar-slot";
 
-function Head({ title, actions }: { title: ReactNode; actions?: ReactNode }) {
+function Head({ title, after, actions }: { title: ReactNode; after?: ReactNode; actions?: ReactNode }) {
   return (
     <>
-      <PageTitle>{title}</PageTitle>
+      <PageTitle after={after}>{title}</PageTitle>
       {actions ? <TopBarActions>{actions}</TopBarActions> : null}
     </>
   );
@@ -22,8 +22,12 @@ function Head({ title, actions }: { title: ReactNode; actions?: ReactNode }) {
 
 export interface ListPageProps {
   title: ReactNode;
-  /** The one primary act, and a view switch: in the top bar. */
+  /** A view switch beside the title. */
+  titleAfter?: ReactNode;
+  /** The one primary act: in the top bar. */
   actions?: ReactNode;
+  /** What opens above the filter bar on an act: a create form. */
+  lead?: ReactNode;
   /** ListSearch, ToolbarSelect and FilterChip children of the filter bar. */
   toolbar?: ReactNode;
   /** A PeekPanel while one row is open. */
@@ -34,10 +38,11 @@ export interface ListPageProps {
 }
 
 /** Records to scan and open: filter bar, list, peek beside it. */
-export function ListPage({ title, actions, toolbar, peek, children, testId }: ListPageProps) {
+export function ListPage({ title, titleAfter, actions, lead, toolbar, peek, children, testId }: ListPageProps) {
   return (
     <div className="min-h-full bg-app" data-testid={testId}>
-      <Head title={title} actions={actions} />
+      <Head title={title} after={titleAfter} actions={actions} />
+      {lead}
       {toolbar ? <ListToolbar>{toolbar}</ListToolbar> : null}
       <ListLayout peek={peek}>{children}</ListLayout>
     </div>
