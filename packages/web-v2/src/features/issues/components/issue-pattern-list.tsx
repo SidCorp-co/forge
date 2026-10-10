@@ -15,7 +15,7 @@ import { useDecidePattern, useIssuePatterns } from "../patterns-api";
  * pattern needs no review and is not shown. A read that failed says so, since a held issue would
  * otherwise show no reason for the hold.
  */
-export function PatternsPanel({ issueId, projectId }: { issueId: string; projectId: string }) {
+export function IssuePatternList({ issueId, projectId }: { issueId: string; projectId: string }) {
   const t = useCopy();
   const q = useIssuePatterns(issueId, projectId);
   if (q.isError) {
@@ -40,7 +40,7 @@ export function PatternsPanel({ issueId, projectId }: { issueId: string; project
   return (
     <div className="grid gap-2" data-testid="issue-patterns">
       {shown.map((p) => (
-        <PatternRow
+        <PatternEntry
           key={p.id}
           issueId={issueId}
           projectId={projectId}
@@ -58,7 +58,7 @@ function toneOf(p: IssuePatternView): "info" | "attention" | "danger" | "success
   return p.decision === "approved" ? "success" : "info";
 }
 
-function PatternRow({
+function PatternEntry({
   issueId,
   projectId,
   pattern,

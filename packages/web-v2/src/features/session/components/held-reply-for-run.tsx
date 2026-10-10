@@ -1,6 +1,6 @@
 "use client";
 
-import { MonoTag, PageSectionTitle } from "@/design";
+import { MonoTag, FactsGroup } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { SessionMetadata } from "@/features/sessions";
 
@@ -28,10 +28,7 @@ export function HeldReplyForRun({ metadata }: { metadata: SessionMetadata | null
   const refusals = heldRefusalsOf(metadata);
   if (refusals.length === 0) return null;
   return (
-    <section data-testid="session-held-reply">
-      <PageSectionTitle className="fg-caption sticky top-0 z-10 mb-2 bg-app py-1 uppercase tracking-wide">
-        {t("sessions.held.title")}
-      </PageSectionTitle>
+    <FactsGroup title={t("sessions.held.title")} testId="session-held-reply">
       <p className="fg-body-sm mb-2">{t("sessions.held.lead")}</p>
       <ul className="flex flex-col gap-2">
         {refusals.map((r) => (
@@ -44,6 +41,6 @@ export function HeldReplyForRun({ metadata }: { metadata: SessionMetadata | null
           </li>
         ))}
       </ul>
-    </section>
+    </FactsGroup>
   );
 }

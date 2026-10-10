@@ -8,3 +8,4 @@ export { useReleases } from "./hooks";
 export { parseReleaseRoster } from "./roster";
 export { type ReleaseSummary } from "./types";
 export { verifiedSentence } from "./verified";
+export type { ReleaseRoster, ReleaseRosterEntry } from "./roster";

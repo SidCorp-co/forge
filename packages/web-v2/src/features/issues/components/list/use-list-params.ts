@@ -72,10 +72,10 @@ export function useIssueListParams(slug: string) {
   );
 
   const [rawQ, setRawQ] = useState(q);
-  const lastAppliedQ = useRef(q);
+  const lastAppliedQRef = useRef(q);
   useEffect(() => {
-    if (q !== lastAppliedQ.current) {
-      lastAppliedQ.current = q;
+    if (q !== lastAppliedQRef.current) {
+      lastAppliedQRef.current = q;
       setRawQ(q);
     }
   }, [q]);
@@ -83,7 +83,7 @@ export function useIssueListParams(slug: string) {
     const t = setTimeout(() => {
       const v = rawQ.trim();
       if (v === q) return;
-      lastAppliedQ.current = v;
+      lastAppliedQRef.current = v;
       setParams({ q: v, page: "" });
     }, 300);
     return () => clearTimeout(t);

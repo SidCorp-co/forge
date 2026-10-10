@@ -1,16 +1,18 @@
 "use client";
 
 import { useIssueSelectionBridge } from "@/features/chat-dock";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { IssueRow } from "../../types";
 
 /** The rows ticked for a bulk act on this page; any change of view, named by `viewKey`, clears them. */
 export function usePageSelection(rows: IssueRow[], viewKey: string) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on any view change, not on `selected` itself.
-  useEffect(() => {
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  // any change of view clears the ticks
+  const [shownView, setShownView] = useState(viewKey);
+  if (shownView !== viewKey) {
+    setShownView(viewKey);
     setSelected(new Set());
-  }, [viewKey]);
+  }
 
   const toggleRow = (id: string, next: boolean) => {
     setSelected((prev) => {

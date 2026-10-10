@@ -2,7 +2,7 @@
 
 
 import { ISSUE_CREATE_ATTACHMENTS_MAX } from "@forge/contracts/attachments";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, type RefObject, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Banner, Button, Field, Icon, Input, Select, SlideOver, Tabs, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -48,14 +48,54 @@ function attachmentErrorCopy(dropped: { code?: string; message: string }, t: (ke
   return key ? t(key) : dropped.message;
 }
 
+/** The toast a create answers with: the new key, or which files core would not attach and why. */
+function announceCreated(created: CreatedIssue, toast: ReturnType<typeof useToast>["toast"], t: ReturnType<typeof useCopy>) {
+  const dropped = created.attachmentErrors ?? [];
+  if (dropped.length > 0) {
+    const one = dropped.length === 1;
+    toast({
+      title: one ? t("issues.newIssue.droppedOne") : t("issues.newIssue.droppedMany", { n: dropped.length }),
+      description: t(one ? "issues.newIssue.droppedHintOne" : "issues.newIssue.droppedHintMany", {
+        files: dropped.map((e) => `${e.name} — ${attachmentErrorCopy(e, t)}`).join("; "),
+      }),
+      tone: "error",
+    });
+  } else {
+    toast({ title: t("issues.activity.created"), description: created.displayId, tone: "success" });
+  }
+}
+
 export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
+  const t = useCopy();
+  const create = useCreateIssue(scope.projectId);
+  const titleRef = useRef<HTMLInputElement>(null);
+  // a drawer dismissed mid-create reopens with its guard released, and a second submit would file a duplicate
+  const dismiss = () => {
+    if (!create.isPending) onClose();
+  };
+  return (
+    <SlideOver open={open} onClose={dismiss} title={t("issues.newIssue")} width={480} initialFocus={titleRef}>
+      {/* each opening starts a fresh draft: the form remounts rather than being reset */}
+      <NewIssueForm key={String(open)} scope={scope} create={create} onClose={onClose} titleRef={titleRef} />
+    </SlideOver>
+  );
+}
+
+function NewIssueForm({
+  scope,
+  create,
+  onClose,
+  titleRef,
+}: {
+  scope: NewIssueDialogProps["scope"];
+  create: ReturnType<typeof useCreateIssue>;
+  onClose: () => void;
+  titleRef: RefObject<HTMLInputElement | null>;
+}) {
   const router = useRouter();
   const { toast } = useToast();
-  const create = useCreateIssue(scope.projectId);
   const submitting = useSubmitGuard();
   const t = useCopy();
-  const priorityOptions = usePriorityOptions();
-  const complexityOptions = useComplexityOptions();
   const modeTabs = [
     { value: "standard", label: t("issues.newIssue.mode.standard") },
     { value: "quick", label: t("issues.newIssue.mode.quick") },
@@ -72,24 +112,6 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   const [complexity, setComplexity] = useState("");
   const [errors, setErrors] = useState<{ title?: string; form?: string }>({});
   const staged = useStagedFiles({ unit: "issue", video: true, uniqueNames: true });
-  const resetStaged = staged.reset;
-  const resetCreate = create.reset;
-
-  useEffect(() => {
-    if (open) {
-      setMode("standard");
-      setTitle("");
-      setDescription("");
-      setContext("");
-      setPriority("medium");
-      setCategory("");
-      setComplexity("");
-      setErrors({});
-      resetStaged();
-      resetCreate();
-      submitting.release();
-    }
-  }, [open, submitting, resetStaged, resetCreate]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -132,19 +154,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
           ...(attachments.length ? { attachments } : {}),
         });
       }
-      const dropped = created.attachmentErrors ?? [];
-      if (dropped.length > 0) {
-        const one = dropped.length === 1;
-        toast({
-          title: one ? t("issues.newIssue.droppedOne") : t("issues.newIssue.droppedMany", { n: dropped.length }),
-          description: t(one ? "issues.newIssue.droppedHintOne" : "issues.newIssue.droppedHintMany", {
-            files: dropped.map((e) => `${e.name} — ${attachmentErrorCopy(e, t)}`).join("; "),
-          }),
-          tone: "error",
-        });
-      } else {
-        toast({ title: t("issues.activity.created"), description: created.displayId, tone: "success" });
-      }
+      announceCreated(created, toast, t);
       onClose();
       router.push(`/projects/${scope.slug}/issues/${created.id}`);
     } catch (err) {
@@ -153,15 +163,9 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
     }
   }
 
-  // a drawer dismissed mid-create reopens with its guard released, and a second submit would file a duplicate
-  const dismiss = () => {
-    if (!create.isPending) onClose();
-  };
-
   return (
-    <SlideOver open={open} onClose={dismiss} title={t("issues.newIssue")} width={480}>
       <form
-        onSubmit={onSubmit}
+        onSubmit={(e) => void onSubmit(e)}
         // Quick capture sends no attachments — never stage invisible files there.
         onPaste={mode === "quick" ? undefined : staged.onPaste}
         className="flex h-full flex-col gap-4">
@@ -184,7 +188,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
             placeholder={
               mode === "quick" ? t("issues.newIssue.quickPlaceholder") : t("issues.newIssue.titlePlaceholder")
             }
-            autoFocus
+            ref={titleRef}
             maxLength={500}
           />
         </Field>
@@ -202,48 +206,17 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
         )}
 
         {mode === "standard" && (
-          <>
-            <Field label={t("issues.newIssue.description")}>
-              <BodyEditor
-                label={t("issues.newIssue.description")}
-                value={description}
-                onChange={setDescription}
-                placeholder={t("issues.newIssue.descriptionPlaceholder")}
-                rows={5}
-              />
-            </Field>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Field label={t("issues.field.priority")}>
-                <Select
-                  aria-label={t("issues.field.priority")}
-                  value={priority}
-                  options={priorityOptions}
-                  onChange={(v) => setPriority(v as IssuePriority)}
-                />
-              </Field>
-              <Field label={t("issues.field.complexity")} hint={t("issues.newIssue.optional")}>
-                <Select
-                  aria-label={t("issues.field.complexity")}
-                  value={complexity}
-                  options={complexityOptions}
-                  onChange={setComplexity}
-                />
-              </Field>
-            </div>
-
-            <Field label={t("issues.category.label")}>
-              <Input
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="bug"
-                translate="no"
-                maxLength={100}
-              />
-            </Field>
-
-            <AttachmentsField staged={staged} />
-          </>
+          <StandardFields
+            description={description}
+            onDescription={setDescription}
+            priority={priority}
+            onPriority={setPriority}
+            complexity={complexity}
+            onComplexity={setComplexity}
+            category={category}
+            onCategory={setCategory}
+            staged={staged}
+          />
         )}
 
         <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
@@ -255,7 +228,77 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
           </Button>
         </div>
       </form>
-    </SlideOver>
+  );
+}
+
+/** The standard form's fields past the title: description, priority, complexity, category, files. */
+function StandardFields({
+  description,
+  onDescription,
+  priority,
+  onPriority,
+  complexity,
+  onComplexity,
+  category,
+  onCategory,
+  staged,
+}: {
+  description: string;
+  onDescription: (v: string) => void;
+  priority: IssuePriority;
+  onPriority: (v: IssuePriority) => void;
+  complexity: string;
+  onComplexity: (v: string) => void;
+  category: string;
+  onCategory: (v: string) => void;
+  staged: ReturnType<typeof useStagedFiles>;
+}) {
+  const t = useCopy();
+  const priorityOptions = usePriorityOptions();
+  const complexityOptions = useComplexityOptions();
+  return (
+    <>
+        <Field label={t("issues.newIssue.description")}>
+          <BodyEditor
+            label={t("issues.newIssue.description")}
+            value={description}
+            onChange={onDescription}
+            placeholder={t("issues.newIssue.descriptionPlaceholder")}
+            rows={5}
+          />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label={t("issues.field.priority")}>
+            <Select
+              aria-label={t("issues.field.priority")}
+              value={priority}
+              options={priorityOptions}
+              onChange={(v) => onPriority(v as IssuePriority)}
+            />
+          </Field>
+          <Field label={t("issues.field.complexity")} hint={t("issues.newIssue.optional")}>
+            <Select
+              aria-label={t("issues.field.complexity")}
+              value={complexity}
+              options={complexityOptions}
+              onChange={onComplexity}
+            />
+          </Field>
+        </div>
+
+        <Field label={t("issues.category.label")}>
+          <Input
+            value={category}
+            onChange={(e) => onCategory(e.target.value)}
+            placeholder="bug"
+            translate="no"
+            maxLength={100}
+          />
+        </Field>
+
+        <AttachmentsField staged={staged} />
+    </>
   );
 }
 

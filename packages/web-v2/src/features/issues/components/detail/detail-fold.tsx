@@ -6,7 +6,7 @@
 import { type ReactNode, useId } from "react";
 import { cn } from "@/lib/utils/cn";
 
-export function FoldRow({
+export function DetailFold({
   label,
   summary,
   open,

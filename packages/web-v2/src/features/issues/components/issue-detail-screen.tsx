@@ -41,7 +41,7 @@ import type { IssueAgentSession, IssueStatus } from "../types";
 import { ReleaseNowAct } from "./awaiting-release-banner";
 import { BlockerAct, } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
-import type { LiveAgentState, } from "./live-agent-panel";
+import type { LiveAgentState, } from "./live-agent";
 import { ModulePicker } from "./module-picker";
 import { PropertiesRail } from "./properties-rail";
 import { readStart } from "./start-issue-action";
@@ -90,7 +90,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   const pending = patch.isPending || transitionPending || resumeRun.isPending;
 
   const issue = issueQ.data;
-  const stickyHeader = useRef<HTMLDivElement>(null);
+  const stickyHeaderRef = useRef<HTMLDivElement>(null);
   const answerInThread = useCreateComment(issue?.id ?? "");
   const attachmentsQ = useAttachments(canonicalId, projectId);
   const activityQ = useActivity(canonicalId, projectId);
@@ -112,7 +112,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
 
   const focusDecisions = () => {
     if (typeof window !== "undefined") {
-      requestAnimationFrame(() => focusIssueQuestions(stickyHeader.current));
+      requestAnimationFrame(() => focusIssueQuestions(stickyHeaderRef.current));
     }
   };
 
@@ -160,7 +160,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
 
   return (
     <ReleaseApprovalProvider value={standingQ.data?.releaseApproval}>
-      <div className="min-h-full bg-app" ref={stickyHeader} data-testid="issue-detail" data-view={view}>
+      <div className="min-h-full bg-app" ref={stickyHeaderRef} data-testid="issue-detail" data-view={view}>
         <DetailHeader
           back={{ href: back, label: t("issues.screen.title") }}
           itemKey={issue.displayId}

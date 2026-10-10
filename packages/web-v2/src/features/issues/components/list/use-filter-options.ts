@@ -2,7 +2,6 @@
 
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useAuth } from "@/providers/auth-provider";
-import { useMemo } from "react";
 import { useProjectLabels, useProjectMembers, useProjectModules } from "../../hooks";
 import type { ToolbarOption } from "../issues-toolbar";
 import type { RowAssignee } from "../issue-row-actions";

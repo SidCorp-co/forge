@@ -12,17 +12,12 @@ import { type ReactNode, useMemo } from "react";
 import {
   ActorChip,
   type BannerTone,
-  CoverageBar,
   Fact,
-  FactsEmpty,
-  FactsGroup,
   type ListRowView,
   MarkStrip,
   type MarkView,
   StatusBadge,
-  statusReading,
   StepBar,
-  ToneBadge,
   WaitBanner,
   WaitingOn,
 } from "@/design";
@@ -193,7 +188,7 @@ export function IssueStrip({ standing }: { standing: IssueStanding }) {
 /** The peek's facts, each once and each beside where it comes from: whom it waits on, the
  *  requirement it serves, its module, its branch, its owner. State and whose turn are the head's
  *  and the banner's, so they are not repeated here. */
-export function IssuePeekFacts({
+export function IssuePeekProperties({
   row,
   slug,
   forecast,

@@ -19,7 +19,7 @@ import type { IssueAgentSession } from "../../types";
 import { ActivityFeed } from "../activity-feed";
 import { CommentThread } from "../comment-thread";
 import { SessionGroupTimeline } from "../session-group-timeline";
-import { StepArtifactCard } from "../step-artifact-card";
+import { StepArtifact } from "../step-artifact";
 import { CheckTimes } from "./check-times";
 
 export type ActivityThread = "comments" | "activity";
@@ -95,7 +95,7 @@ export function RunsTab({
           <ViewHeading>{t("issues.steps.title")}</ViewHeading>
           <div className="space-y-2">
             {stepOutcomes.map((outcome) => (
-              <StepArtifactCard
+              <StepArtifact
                 key={outcome.step}
                 outcome={outcome}
                 open={expandedStep === outcome.step}

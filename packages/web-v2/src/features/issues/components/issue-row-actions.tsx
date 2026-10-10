@@ -265,7 +265,7 @@ function AssigneeCell({ assignee }: { assignee: RowAssignee | null }) {
   );
 }
 
-export function IssueTableRow({
+export function IssueTableLine({
   row,
   slug,
   actions,

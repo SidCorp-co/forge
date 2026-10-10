@@ -19,7 +19,7 @@ import type { Copy } from "@/lib/i18n/product-copy";
 import { groupRows } from "../../derive";
 import { hasLiveAgentSession } from "../../waiting";
 import type { GroupBy, IssueRow, IssueSort } from "../../types";
-import { IssueTableRow, type RowAssignee } from "../issue-row-actions";
+import { IssueTableLine, type RowAssignee } from "../issue-row-actions";
 import type { RowActions } from "../issue-table-row";
 
 const columnsOf = (t: Copy): ColumnDef<IssueRow, unknown>[] => [
@@ -142,7 +142,7 @@ export function IssuesTable({
               </TR>
             )}
             {g.rows.map((row) => (
-              <IssueTableRow
+              <IssueTableLine
                 key={row.id}
                 row={row}
                 slug={slug}

@@ -11,7 +11,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { PageSection, PageSectionBody, Icon, MonoTag } from "@/design";
+import { Icon, MonoTag, Section } from "@/design";
 import { useElapsed } from "@/design/hooks/use-elapsed";
 import { WORK_STEP_LABELS } from "@forge/contracts/issue-vocabulary";
 import { enumLabel } from "@/design/vocabulary";
@@ -40,21 +40,19 @@ const HEARTBEAT_DOT: Record<IssueAgentSession["heartbeat"], string> = {
   unknown: "var(--neutral-8)",
 };
 
-export function LiveAgentPanel({ state, step, slug, issueId }: LiveAgentPanelProps) {
+export function LiveAgent({ state, step, slug, issueId }: LiveAgentPanelProps) {
   return (
-    <PageSection>
-      <PageSectionBody>
+    <Section>
         {state.kind === "live" ? (
-          <LiveRow session={state.session} step={step} slug={slug} issueId={issueId} />
+          <LiveSession session={state.session} step={step} slug={slug} issueId={issueId} />
         ) : (
-          <QueuedRow step={state.step} slug={slug} issueId={issueId} />
+          <QueuedStep step={state.step} slug={slug} issueId={issueId} />
         )}
-      </PageSectionBody>
-    </PageSection>
+      </Section>
   );
 }
 
-function LiveRow({
+function LiveSession({
   session,
   step,
   slug,
@@ -125,7 +123,7 @@ function LiveRow({
  *  No heartbeat dot and no runner — there is no session to have either, and an
  *  "unknown heartbeat" grey dot would read as a dead agent rather than an
  *  absent one. */
-function QueuedRow({
+function QueuedStep({
   step,
   slug,
   issueId,

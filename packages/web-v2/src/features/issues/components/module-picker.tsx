@@ -8,11 +8,10 @@
 // Tab focus trap and focus-restore-to-trigger (`design/patterns/slide-over.tsx`),
 // so nothing is hand-rolled here.
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Button,
-  PageSectionTitle,
   Checkbox,
   EmptyState,
   ErrorState,
@@ -54,16 +53,19 @@ export function ModulePicker({
   const save = useSetIssueModules(issueId);
   const t = useCopy();
 
-  const attached = useMemo(() => labels.filter((l) => l.kind === "module"), [labels]);
+  const attached = labels.filter((l) => l.kind === "module");
 
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [primary, setPrimary] = useState<string>(NO_PRIMARY);
-
-  useEffect(() => {
-    if (!open) return;
-    setSelected(new Set(attached.map((l) => l.id)));
-    setPrimary(attached.find((l) => l.isPrimary)?.id ?? NO_PRIMARY);
-  }, [open, attached]);
+  // each opening starts from the modules the issue carries now
+  const [wasOpen, setWasOpen] = useState(false);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    if (open) {
+      setSelected(new Set(attached.map((l) => l.id)));
+      setPrimary(attached.find((l) => l.isPrimary)?.id ?? NO_PRIMARY);
+    }
+  }
 
   // each module named under its ancestors ("Execution › Runs"), so the list reads in tree order
   const modules = modulesQ.modules
@@ -123,7 +125,7 @@ export function ModulePicker({
       ) : (
         <div className="flex h-full flex-col gap-6">
           <section>
-            <PageSectionTitle className="fg-overline mb-2">{t("issues.modules.primary")}</PageSectionTitle>
+            <h3 className="fg-overline mb-2">{t("issues.modules.primary")}</h3>
             <RadioGroup name="primary-module" value={primary} onChange={choosePrimary}>
               <Radio value={NO_PRIMARY} label={t("issues.modules.noPrimary")} disabled={save.isPending} />
               {modules.map((m) => (
@@ -133,7 +135,7 @@ export function ModulePicker({
           </section>
 
           <section>
-            <PageSectionTitle className="fg-overline mb-2">{t("issues.modules.also")}</PageSectionTitle>
+            <h3 className="fg-overline mb-2">{t("issues.modules.also")}</h3>
             <div className="flex flex-col gap-2.5">
               {modules
                 .filter((m) => m.id !== primary)
