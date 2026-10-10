@@ -25,7 +25,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store,sharing=locked \
 # Dockerfile's rather than the scheduler's.
 RUN pnpm --filter @forge/observability build && pnpm --filter @forge/contracts build
 # No third dot HERE, deliberately: `@forge/core...` would pull @forge/contracts
-# back into this invocation and let it build a second time beside core's tsc,
+# back into this invocation and let it build a second time beside core's tsgo,
 # which is the same race again. The install above keeps its `...` — that is
 # where the workspace deps have to be present, and @forge/observability shipping
 # as raw .ts under node_modules is what the third dot prevents there.

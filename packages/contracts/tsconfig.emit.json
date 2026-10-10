@@ -9,7 +9,6 @@
     "incremental": false,
     "paths": {}
   },
-  "include": [
-    "src/**/*.ts"
-  ]
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/*.test.ts"]
 }

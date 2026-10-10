@@ -36,7 +36,7 @@ The confinement is the sandbox, and it bounds each axis BC-11 names:
   view.
 - **Network:** a network namespace with one way out, the egress proxy, which reaches only the
   model and Forge hosts it was started with (`packages/runner/crates/runner-platform/src/confine/egress.rs`).
-- **CPU, memory and file size:** `LIMITS` in `confine.rs` sets `RLIMIT_CPU`, `RLIMIT_DATA` and
+- **CPU, memory and file size:** `packages/runner/crates/runner-platform/src/confine.rs:LIMITS` sets `RLIMIT_CPU`, `RLIMIT_DATA` and
   `RLIMIT_FSIZE` on the sandbox before bubblewrap execs, inherited by every command inside.
 - **Time:** core's turn timeouts end the turn and the runner kills the session's process group.
 - **Shown:** the Agent door's prompt asks for the command and the output the answer rests on.

@@ -28,10 +28,6 @@
       "@forge/observability": ["../observability/src/index.ts"]
     }
   },
-  "include": [
-    "src/**/*",
-    "tests/**/*",
-    "vitest.config.ts",
-    "vitest.integration.config.ts"
-  ]
+  "include": ["src/**/*"],
+  "exclude": ["**/*.test.ts"]
 }

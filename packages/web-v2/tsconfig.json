@@ -13,6 +13,7 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
+    "tsBuildInfoFile": "node_modules/.cache/tsc/typecheck.tsbuildinfo",
     "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./src/*"],
@@ -29,5 +30,13 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "src/test/**",
+    "src/vitest.setup.ts",
+    "vitest.config.ts",
+    "witness/**"
+  ]
 }

@@ -147,10 +147,11 @@ would bury every real change under it. Its biome linter is off too, so ESLint al
 `packages/web-v2/eslint.config.mjs` enforces `packages/web-v2/CODE-STANDARD.md` with each library's
 own plugin: typescript-eslint (type-aware), react-hooks with the React Compiler rules, @eslint-react,
 @next/eslint-plugin-next, @tanstack/eslint-plugin-query, jsx-a11y, sonarjs's cognitive complexity
-and eslint-plugin-boundaries (a feature imports another only through its `index.ts`;
+and eslint-plugin-boundaries (a feature imports another only through its index file;
 `src/components/ui` only through `src/design`). `no-restricted-imports` and `no-restricted-syntax`
-carry the UI stack bans in `src/features`, and `eslint/ui-grammar.mjs` refuses a component named
-after a layout word unless `eslint/ui-grammar-allowlist.json` gives a reason. A preset's `warn` is
+carry the UI stack bans in `src/features`, and `packages/web-v2/eslint/ui-grammar.mjs` refuses a
+component named after a layout word unless `packages/web-v2/eslint/ui-grammar-allowlist.json` gives
+a reason. A preset's `warn` is
 raised to `error`.
 
 The existing tree's violations are ESLint bulk suppressions in `eslint-suppressions.json`: a file
@@ -338,6 +339,13 @@ Four contracts:
 4. **Bounded width** — the checks run at a concurrency of 6 rather than all at once, overridable
    with `VERIFY_CONCURRENCY`. Why 6 and not more was measured, and the measurement lives at the
    thing it decided: the rationale on `verify.mjs:runAll`.
+
+**The typecheck is not a verify check** (since 2026-10-10). `merge-check` runs `tc-changed` and
+then `verify`, so verify's own `core typecheck` checked core twice on every dev merge. Types are
+`pnpm typecheck` (tsgo, each package's `tsconfig.json`, which is its source alone) and `tc-changed`
+inside `test:changed` and `merge-check`. Test files are `pnpm typecheck:test` (`tsconfig.test.json`),
+which runs in CI's `core` and `web` jobs — on main and nightly, never on a dev merge. `next build`
+checks no types and runs no lint (`packages/web-v2/next.config.ts`: `ignoreBuildErrors`).
 
 ### One proposition per verdict
 

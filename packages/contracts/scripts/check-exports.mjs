@@ -2,9 +2,10 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
 // every export resolves to emitted dist — the core image runs Node 22, which cannot load a .ts export, so a src-pointing or unemitted entry crash-loops core at boot instead of failing here (2026-10-05)
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-// A `*` subpath exports every module under src/, so each one must have been emitted.
+// A `*` subpath exports every module under src/, so each one must have been emitted. A test file is
+// not a module anyone imports, and tsconfig.emit.json does not emit it.
 const modules = readdirSync(new URL('../src/', import.meta.url))
-  .filter((f) => f.endsWith('.ts') && !f.endsWith('.d.ts'))
+  .filter((f) => f.endsWith('.ts') && !f.endsWith('.d.ts') && !f.endsWith('.test.ts'))
   .map((f) => f.slice(0, -3));
 const bad = [];
 for (const [entry, target] of Object.entries(pkg.exports)) {

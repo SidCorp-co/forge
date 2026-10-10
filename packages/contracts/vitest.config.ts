@@ -5,10 +5,9 @@ import { defineConfig } from 'vitest/config';
  *
  * `integration-binding-shape.test.ts` asserts what a typed caller may NOT write, and
  * `@ts-expect-error` IS the assertion: the line fails when the error it expects stops happening.
- * Nothing was compiling it. CI runs `pnpm --filter @forge/contracts test` and nothing else for
- * this package; `build` is `tsc --noEmit` against a tsconfig that EXCLUDES `*.test.ts`, and no job
- * runs `typecheck` at all. A `@ts-expect-error` that had stopped expecting anything would have
- * gone on printing a green.
+ * `typecheck` covers the source only (tsconfig.json excludes `*.test.ts`), so this run is what
+ * compiles the test files, against tsconfig.test.json. A `@ts-expect-error` that had stopped
+ * expecting anything would otherwise go on printing a green.
  *
  * `include` names the ordinary test files rather than the `*.test-d.ts` default, because these
  * assertions live beside runtime ones in the same file — the shape a caller may declare and the
@@ -21,7 +20,7 @@ export default defineConfig({
     typecheck: {
       enabled: true,
       include: ['src/**/*.test.ts'],
-      tsconfig: './tsconfig.json',
+      tsconfig: './tsconfig.test.json',
     },
   },
 });

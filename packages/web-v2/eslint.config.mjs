@@ -73,7 +73,8 @@ const configs = tseslint.config(
   ...tseslint.configs.recommendedTypeChecked,
   {
     languageOptions: {
-      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+      // tsconfig.json is the source alone (the default typecheck); the test config is source + tests
+      parserOptions: { project: "./tsconfig.test.json", tsconfigRootDir: import.meta.dirname },
       globals: { ...globals.browser, ...globals.node },
     },
   },

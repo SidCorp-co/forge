@@ -118,7 +118,8 @@ export { useNow } from "./hooks/use-now";
 export { useMediaQuery } from "./hooks/use-media-query";
 export { useBrowserValue } from "./hooks/use-browser-value";
 export { focusOnMount } from "./hooks/focus-on-mount";
-export { keyedByContent, keyedNodes, keyedRows, useListKeys, type ListKeys } from "./hooks/use-list-keys";
+export { keyedByContent, keyedNodes, keyedRows } from "./keyed";
+export { useListKeys, type ListKeys } from "./hooks/use-list-keys";
 
 export {
   ListPage, DetailPage, SettingsPage, BoardPage, ReportPage,

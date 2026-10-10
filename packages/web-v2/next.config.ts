@@ -9,11 +9,17 @@ const nextConfig: NextConfig = {
   // React Compiler memoises components and hooks at build time (react.dev/learn/react-compiler);
   // hand-written useMemo/useCallback kept only for an identity an outside system needs.
   reactCompiler: true,
-  // Type checking is `pnpm tc:changed` / `tsc`, not the image build. Next bundles @forge/* from
-  // their package exports (dist/): Turbopack does not map a `.js` import to its `.ts` source in
-  // files reached through tsconfig.json's @forge `paths`. tsconfig.next.json is tsconfig.json
-  // without those, standalone because Turbopack merges an extended config's `paths`.
+  // The build only builds: types are `pnpm typecheck` (tsgo), lint is `pnpm lint`. Next bundles
+  // @forge/* from their package exports (dist/): Turbopack does not map a `.js` import to its `.ts`
+  // source in files reached through tsconfig.json's @forge `paths`. tsconfig.next.json is
+  // tsconfig.json without those, standalone because Turbopack merges an extended config's `paths`.
   typescript: { ignoreBuildErrors: true, tsconfigPath: "tsconfig.next.json" },
+  experimental: {
+    // No source maps: nothing reads them (sentry-release.yml uploads none), and they were 130 MB.
+    turbopackSourceMaps: false,
+    // Page-data workers default to one per core: 55 here, ~12 s and ~5 GB for 29 pages.
+    cpus: 4,
+  },
   ...(basePath ? { basePath, assetPrefix: basePath } : {}),
   // a share page carries its token in its path: never cached, indexed or sent on as a Referer
   async headers() {

@@ -1,4 +1,4 @@
-import { useListKeys } from "@/design/hooks/use-list-keys";
+import { keyedByContent } from "@/design/keyed";
 import { Skeleton } from "@/design/primitives/skeleton";
 import { PageSection } from "@/design/primitives/page-section";
 
@@ -32,11 +32,11 @@ export function KanbanCardSkeleton() {
 }
 
 export function KanbanColumnSkeleton({ cards = 3 }: { cards?: number }) {
-  const placeholders = useListKeys(cards);
+  const placeholders = keyedByContent(Array.from({ length: cards }, () => "card"));
   return (
     <div className="flex w-full flex-col gap-3">
       <Skeleton className="h-4 w-20" />
-      {placeholders.keys.map((key) => (
+      {placeholders.map(({ key }) => (
         <KanbanCardSkeleton key={key} />
       ))}
     </div>

@@ -85,7 +85,8 @@ pnpm db:studio     # drizzle-kit studio — browse the DB in a UI
 
 | Script | Purpose |
 |---|---|
-| `pnpm lint` | Biome check over `src` |
-| `pnpm lint:fix` | Biome check with `--write` |
-| `pnpm typecheck` | `tsc --noEmit` |
+| `pnpm lint` | Biome check over `src` and `tests` |
+| `pnpm lint:fix` | the same with `--write` |
+| `pnpm typecheck` | `tsgo --noEmit` over the source (`tsconfig.json`) |
+| `pnpm typecheck:test` | `tsgo --noEmit` over source and tests (`tsconfig.test.json`) |
 | `pnpm clean` | `rm -rf dist` |
