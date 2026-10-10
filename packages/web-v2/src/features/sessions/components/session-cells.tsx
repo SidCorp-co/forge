@@ -153,7 +153,7 @@ export function StatusCell({
     !!reason && (display === "failed" || display === "stalled" || display === "cancelled_stale");
   const subLine = showReason ? reason : display === "cancelled" ? outcome.label : null;
   // Red reason text only for a genuine failure; swept/cleanup reads subtle.
-  const reasonColor = outcome.bucket === "failed" ? "var(--amberw-600)" : "var(--fg-subtle)";
+  const reasonColor = outcome.bucket === "failed" ? "var(--warn-11)" : "var(--fg-subtle)";
   return (
     <div className="flex flex-col items-start gap-1">
       {!awaitingReply && outcome.tooltip ? (

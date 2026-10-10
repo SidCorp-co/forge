@@ -10,9 +10,9 @@ import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interfa
 import type { TimeSpanKey, TimeSpend } from "../../run-report";
 
 const SPAN_COLOR: Record<TimeSpanKey, string> = {
-  queued: "var(--paper-300)",
-  startup: "var(--slate-500)",
-  agent: "var(--cobalt-500)",
+  queued: "var(--neutral-7)",
+  startup: "var(--muted-9)",
+  agent: "var(--info-9)",
 };
 
 export function TimeSpendBar({ spend }: { spend: TimeSpend }) {

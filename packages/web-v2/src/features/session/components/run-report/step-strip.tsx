@@ -12,9 +12,9 @@ import type { PipelineRunSummary } from "@/features/pipeline";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 
 const TICK: Record<string, { glyph: string; color: string }> = {
-  completed: { glyph: "✓", color: "var(--green-600)" },
-  done: { glyph: "✓", color: "var(--green-600)" },
-  failed: { glyph: "✕", color: "var(--red-600)" },
+  completed: { glyph: "✓", color: "var(--ok-11)" },
+  done: { glyph: "✓", color: "var(--ok-11)" },
+  failed: { glyph: "✕", color: "var(--danger-11)" },
   cancelled: { glyph: "⊘", color: "var(--fg-subtle)" },
   running: { glyph: "●", color: "var(--pipeline-active)" },
 };

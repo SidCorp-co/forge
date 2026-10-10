@@ -16,9 +16,11 @@ interface HeldRefusal {
 export function heldRefusalsOf(metadata: SessionMetadata | null): HeldRefusal[] {
   const held = (metadata?.conversationAgent as { held?: { refusals?: unknown } } | undefined)?.held;
   if (!held || !Array.isArray(held.refusals)) return [];
-  return held.refusals.filter(
-    (r): r is HeldRefusal => !!r && typeof r.rule === "string" && typeof r.why === "string",
-  );
+  return (held.refusals as unknown[]).filter((r): r is HeldRefusal => {
+    if (!r || typeof r !== "object") return false;
+    const o = r as Record<string, unknown>;
+    return typeof o.rule === "string" && typeof o.why === "string";
+  });
 }
 
 export function HeldReplyForRun({ metadata }: { metadata: SessionMetadata | null }) {

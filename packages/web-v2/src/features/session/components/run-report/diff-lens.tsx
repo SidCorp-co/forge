@@ -12,7 +12,7 @@ import { EmptyState } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { shortenPath } from "../../run-report";
 import type { FileDiff } from "../../derive";
-import { InlineDiff } from "../tool-card";
+import { InlineDiff } from "../tool-call";
 
 export function DiffLens({
   files,

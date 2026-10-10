@@ -11,15 +11,16 @@
 // lens that promises the complete record, and a record of what ran without what
 // the agent said it was doing is not one.
 
+import { cn } from "@/lib/utils/cn";
 import { useEffect, useState } from "react";
 import { Kbd } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { TranscriptRow } from "../../run-report";
 
-const TONE_COLOR = {
-  ok: "var(--green-600)",
-  bad: "var(--red-600)",
-  muted: "var(--fg-subtle)",
+const TONE_CLASS = {
+  ok: "text-ok-11",
+  bad: "text-danger-11",
+  muted: "text-subtle",
 } as const;
 
 const MAX_BODY_CHARS = 1200;
@@ -34,7 +35,7 @@ function Row({ row, open, onToggle }: { row: TranscriptRow; open: boolean; onTog
       className="border-line-subtle border-b last:border-b-0"
       style={
         row.isError
-          ? { background: "var(--red-50)" }
+          ? { background: "var(--danger-3)" }
           : row.kind === "said"
             ? { background: "var(--bg-sunken)" }
             : undefined
@@ -51,7 +52,7 @@ function Row({ row, open, onToggle }: { row: TranscriptRow; open: boolean; onTog
           className="fg-caption w-23 flex-none truncate font-mono"
           style={
             row.isMcp
-              ? { color: "var(--cobalt-500)" }
+              ? { color: "var(--info-9)" }
               : row.kind === "said"
                 ? { color: "var(--accent-text)" }
                 : undefined
@@ -65,8 +66,7 @@ function Row({ row, open, onToggle }: { row: TranscriptRow; open: boolean; onTog
           {row.arg}
         </span>
         <span
-          className="fg-caption max-w-[42%] flex-none truncate font-mono"
-          style={{ color: TONE_COLOR[row.outcome.tone] }}
+          className={cn("fg-caption max-w-2/5 flex-none truncate font-mono", TONE_CLASS[row.outcome.tone])}
         >
           {row.outcome.text}
         </span>
@@ -89,7 +89,7 @@ function Row({ row, open, onToggle }: { row: TranscriptRow; open: boolean; onTog
 export function TranscriptLens({ rows }: { rows: TranscriptRow[] }) {
   const t = useCopy();
   const time = useTimeFormat();
-  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+  const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

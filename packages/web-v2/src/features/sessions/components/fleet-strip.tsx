@@ -128,7 +128,7 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <span
                     className="fg-caption font-semibold"
-                    style={{ color: busy ? "var(--cobalt-700)" : "var(--fg-subtle)" }}
+                    style={{ color: busy ? "var(--info-11)" : "var(--fg-subtle)" }}
                   >
                     {busy ? t("sessions.fleet.busy") : t("sessions.fleet.free")}
                   </span>
