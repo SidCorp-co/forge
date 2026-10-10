@@ -114,7 +114,7 @@ export function FeedbackForm({
         </Field>
       </div>
       <StagedFileList files={staged.files} warnings={staged.warnings} remove={staged.remove} />
-      {agentReport ? <p className="text-12-5 text-muted">{t("feedback.form.copied", { id: agentReport.slice(0, 8) })}</p> : null}
+      {agentReport ? <p className="text-13 text-muted">{t("feedback.form.copied", { id: agentReport.slice(0, 8) })}</p> : null}
       <RefusalLine error={write.error} onField={refused.onField} />
       {failed ? (
         <div className="grid gap-1.5" data-testid="feedback-attach-failed">

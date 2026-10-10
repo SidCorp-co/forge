@@ -72,7 +72,7 @@ export function FeedbackAnswer({
     }
   })();
   return (
-    <p className={`text-15 font-semibold leading-snug text-fg ${className ?? ""}`} data-testid="feedback-answer-line">
+    <p className={`text-14 font-semibold leading-snug text-fg ${className ?? ""}`} data-testid="feedback-answer-line">
       {said}
     </p>
   );

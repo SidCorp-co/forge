@@ -106,7 +106,7 @@ function AssistantStrip({
   }
   return (
     <section
-      className="border-l-3 border-ai-9 bg-ai-bg py-2 pl-4.25 pr-5 text-12-5"
+      className="border-l-3 border-ai-9 bg-ai-bg py-2 pl-4.25 pr-5 text-13"
       aria-label={t("requirements.assistant.label")}
       data-testid="assistant-strip"
     >
@@ -131,7 +131,7 @@ function WaitingSuggestion({ s, r, projectId, onPeek }: { s: Suggestion; r: Requ
   const [step, setStep] = useState<"accept" | "reject" | null>(null);
   return (
     <div className="flex flex-wrap items-center gap-2 py-0.75" data-testid="assistant-strip-row">
-      <span className="font-mono text-11-5 font-semibold text-link">{r.key}</span>
+      <span className="font-mono text-12 font-semibold text-link">{r.key}</span>
       <StatusBadge family="requirement" value={r.standing.state} />
       <span className="min-w-0 truncate">{summaryOf(s, lang)}</span>
       <span className="flex-1" />

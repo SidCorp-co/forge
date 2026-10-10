@@ -19,7 +19,9 @@ import {
   EmptyState,
   enumLabel,
   GroupedList,
+  ListLayout,
   ListSearch,
+  ListToolbar,
   LEGEND,
   type ListGroup,
   type ListRowView,
@@ -40,7 +42,6 @@ import {
   WaitingOn,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { cn } from "@/lib/utils/cn";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { EtaCell } from "@/features/forecast/components/eta-cell";
@@ -246,13 +247,18 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
               }}
             />
           ) : null}
-          <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
+          <ListLayout
+            peek={
+              peek.open ? (
+                <FeedbackPeek key={peek.open} projectId={projectId} slug={slug} fbKey={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} />
+              ) : null
+            }
+          >
+              <ListToolbar>
                 <ViewModeSwitcher modes={modes} value={grouping} onChange={setGrouping} placement="toolbar" />
                 <ListSearch noun={t("feedback.noun")} value={text} onChange={(q) => setParams({ q: q || null })} />
                 <ListFilterBar list="feedback" />
-              </div>
+              </ListToolbar>
               {all.length === 0 ? (
                 <div className="px-5 py-10">
                   <EmptyState message={t("feedback.empty.title")} />
@@ -272,11 +278,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
                   />
                 </>
               )}
-            </div>
-            {peek.open ? (
-              <FeedbackPeek key={peek.open} projectId={projectId} slug={slug} fbKey={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} />
-            ) : null}
-          </div>
+          </ListLayout>
         </div>
       )}
     </QueryBoundary>

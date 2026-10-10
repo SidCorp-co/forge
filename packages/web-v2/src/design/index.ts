@@ -117,3 +117,7 @@ export {
   ListPage, DetailPage, SettingsPage, BoardPage, ReportPage,
   type ListPageProps, type DetailPageProps, type SettingsPageProps, type BoardPageProps, type ReportPageProps,
 } from "./templates/page-templates";
+
+// Library parts features compose as their docs show, reached only through the design layer
+export { Combobox } from "@base-ui/react/combobox";
+export { ChartContainer, type ChartConfig } from "@/components/ui/chart";

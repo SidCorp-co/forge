@@ -82,7 +82,7 @@ function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId:
     <section id="proposal" className="border-l-3 py-1 pl-4" style={{ borderColor: AGENT_TINT.dot }} data-testid="open-revision">
       <ViewHeading
         right={
-          <span className="inline-flex items-center gap-2 text-12-5 text-muted">
+          <span className="inline-flex items-center gap-2 text-13 text-muted">
             <ActorChip name={open.authorName ?? t("standing.who.itsAuthor")} kind={open.authorKind} />
             <span title={t(proposed ? "requirements.revision.proposedAt" : "requirements.revision.writtenAt", { at: time.dateTime(at) })}>{time.relative(at)}</span>
           </span>
