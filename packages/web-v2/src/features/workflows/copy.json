@@ -115,6 +115,7 @@
     "workflows.facts.noBuild": "No issue builds this design yet.",
     "workflows.facts.noRequirement": "no requirement links it",
     "workflows.facts.noRequirementLinks": "No requirement links this design.",
+    "workflows.facts.draftRequirement": "Draft a requirement from this design",
     "workflows.facts.noVersion": "No released version carries it yet",
     "workflows.facts.none": "None",
     "workflows.facts.notApproved": "Not approved yet",

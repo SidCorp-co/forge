@@ -77,7 +77,12 @@ names the workflow it builds is not dispatched while that design is not approved
    token whose grant names it is an observer credential and never holds \`workflow-designs.write\` or
    \`workflow-designs.approve\`, so the agent that reads the code cannot change the design it reads. The
    observation records who wrote it and their agency; one is kept per commit.
-6. **Decide each marked node.** A workflow decision comment carrying \`decision.node\` (a step or an edge,
+6. **Read the design's health.** \`GET /api/projects/:id/workflows/:workflow/health\` answers every
+   marker on each step and edge (outdated, needs update, has a problem, removal proposed, upcoming,
+   not in design, wrong), each with the rule that derived it and its source record, the node's
+   provenance and rewrite state, and what waits on a person. It is derived on every read: no route
+   writes a marker. \`GET /api/projects/:id/workflows\` carries each design's summary counts.
+7. **Decide each marked node.** A workflow decision comment carrying \`decision.node\` (a step or an edge,
    \`verdict\` keep | rewrite | delete, \`layer\` planned or observed, the \`marker\` it carried) names a
    node of the approved revision, or with \`layer: "observed"\` a node of the latest observation, else
    \`WORKFLOW_NODE_UNKNOWN\`. Posting one takes \`workflow-designs.approve\`.

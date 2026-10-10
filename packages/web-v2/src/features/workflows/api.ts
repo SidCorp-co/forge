@@ -14,6 +14,12 @@ export const workflowsApi = {
     apiClient<SystemGraph>(
       `/projects/${projectId}/workflows/${workflowId}/system-graph?revision=${revision}${against ? `&against=${against}` : ""}`,
     ),
+  /** FB-86: a requirement drafted from this design, titled after it and linked to it at birth. */
+  draftRequirement: (projectId: string, body: { title: string; designs: string[] }) =>
+    apiClient<{ key: string }>(`/projects/${projectId}/requirements`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   repins: (projectId: string, workflowId: string) => apiClient<RepinPlan>(`/projects/${projectId}/workflows/${workflowId}/design/repins`),
   repin: (projectId: string, workflowId: string, body: RepinActBody) =>
     apiClient<RepinActResult>(`/projects/${projectId}/workflows/${workflowId}/design/repins`, {
