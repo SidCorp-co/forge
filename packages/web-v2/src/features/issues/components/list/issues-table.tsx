@@ -52,7 +52,7 @@ function stateToSort(state: SortingState): IssueSort {
 }
 
 export interface TableSelection {
-  selected: Set<string>;
+  selected: ReadonlySet<string>;
   toggleRow: (id: string, next: boolean) => void;
   allOnPageSelected: boolean;
   someOnPageSelected: boolean;

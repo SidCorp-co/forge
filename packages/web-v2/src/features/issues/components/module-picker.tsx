@@ -19,6 +19,7 @@ import {
   RadioGroup,
   Skeleton,
   SlideOver,
+  useIdSet,
 } from "@/design";
 import { ancestorsOf } from "@/features/modules";
 import { formatApiError } from "@/lib/api/error";
@@ -55,14 +56,14 @@ export function ModulePicker({
 
   const attached = labels.filter((l) => l.kind === "module");
 
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const selected = useIdSet();
   const [primary, setPrimary] = useState<string>(NO_PRIMARY);
   // each opening starts from the modules the issue carries now
   const [wasOpen, setWasOpen] = useState(false);
   if (wasOpen !== open) {
     setWasOpen(open);
     if (open) {
-      setSelected(new Set(attached.map((l) => l.id)));
+      selected.reset(attached.map((l) => l.id));
       setPrimary(attached.find((l) => l.isPrimary)?.id ?? NO_PRIMARY);
     }
   }
@@ -73,25 +74,20 @@ export function ModulePicker({
         .sort((a, b) => a.label.localeCompare(b.label));
 
   function toggle(id: string, next: boolean) {
-    setSelected((prev) => {
-      const copy = new Set(prev);
-      if (next) copy.add(id);
-      else copy.delete(id);
-      return copy;
-    });
+    selected.toggle(id, next);
     if (!next && primary === id) setPrimary(NO_PRIMARY);
   }
 
   function choosePrimary(id: string) {
     setPrimary(id);
-    if (id !== NO_PRIMARY) setSelected((prev) => new Set(prev).add(id));
+    if (id !== NO_PRIMARY) selected.toggle(id, true);
   }
 
   function commit() {
     save.mutate(
       {
         current: labels,
-        moduleIds: [...selected],
+        moduleIds: [...selected.ids],
         primaryId: primary === NO_PRIMARY ? null : primary,
       },
       { onSuccess: () => onClose() },
