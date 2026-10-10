@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.227] - 2026-10-10
+
+Release pages list only what each release shipped; bearer tokens and secrets handled safely
+
+### Fixed
+
+- **Writing "bearer" in a comment is no longer refused as a secret.** Only a real token after "Bearer" is held back now. A verdict whose reason or evidence holds a token is refused, as a comment holding one is.
+- **A release page lists only what that release shipped.** The developer view lists the files the release itself changed, the migration journal is no longer a data risk, and a change reworked later no longer shows the later note.
+
 ## [0.4.0-dev.226] - 2026-10-10
 
 Intake retries missed drafts; merges run the change's kept probes first
