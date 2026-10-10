@@ -1,1 +1,0 @@
-**A change asked right after an idea preview goes live is kept with the picture.** A chat turn and a runner's ack now merge their own keys into the session record instead of writing an older copy over it.

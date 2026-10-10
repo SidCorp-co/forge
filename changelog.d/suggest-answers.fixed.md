@@ -1,1 +1,0 @@
-**A question with no recommended answer gets one from the assistant.** Core drafts it in the background from the issue's product record and shows it as "Suggested by the assistant", one click to send; a draft that fails records why.

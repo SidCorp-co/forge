@@ -1,1 +1,0 @@
-**Forge previews itself on demo data.** `pnpm preview:demo` starts a throwaway Postgres, a seeded demo core and the web, signs the demo member in with no credential, and removes it all on stop, which waits for the whole process group.

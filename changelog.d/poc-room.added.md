@@ -1,1 +1,0 @@
-**A POC room builds a requirement live with its owner, and settles only what was settled.** Members chat beside one preview on a POC branch with no gate; settling merges into dev and files a follow-up issue.
