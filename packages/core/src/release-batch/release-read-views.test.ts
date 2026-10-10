@@ -44,6 +44,7 @@ function facts(n: number): ReleaseFacts {
       requirementId: null,
       criteria: [],
       reopenedAt: null,
+      closedAt: [],
       merged: {
         at: new Date(T0 + i * DAY),
         landing: null,
@@ -305,5 +306,76 @@ describe('an issue reopened after the release claimed it (BC-6, J9 on 0.4.0-dev.
       'ISS-1',
       'ISS-2',
     ]);
+  });
+});
+
+describe('a release that shipped the rework claims it at its own close (BC-6, J10 on 0.4.0-dev.227)', () => {
+  // ISS-455's real timeline. dev.224 shipped round 1; J8 reopened it at 02:21:48; dev.225's run had
+  // started at 02:17:16, and the retry fix (d729b27be) merged at 02:51 was closed into dev.225 when it
+  // released at 03:12:04. Read against dev.225's run start, the reopen fell after it, so dev.225 said
+  // ISS-455 was "reworked in a later release" and left out the note it shipped.
+  const at = (hms: string) => new Date(`2026-10-10T${hms}Z`);
+  const RETRY = 'An assistant draft the model missed is tried again, up to three tries.';
+  const release = (version: string, opened: string, released: string | null): Part => ({
+    ...part(1, [], released ? 'shipped' : 'in_progress'),
+    version,
+    runId: version,
+    issueIds: ['i455'],
+    openedAt: at(opened),
+    releasedAt: released ? at(released) : null,
+  });
+  const DEV224 = release('0.4.0-dev.224', '01:19:11.380', '02:01:10.033');
+  const DEV225 = release('0.4.0-dev.225', '02:17:16.051', '03:12:04.688');
+  const iss455 = (closes: string[], reopened: string | null): Shared => {
+    const s = shared(0);
+    s.facts.issues.set('i455', {
+      id: 'i455',
+      key: 'ISS-455',
+      title: 'Intake drafts',
+      status: 'closed',
+      updatedAt: at('03:12:04.700'),
+      releaseNotes: { section: 'Fixed', userFacing: RETRY, technical: 'outbox retry' },
+      requirementId: null,
+      criteria: [],
+      verdicts: new Map(),
+      reopenedAt: reopened ? at(reopened) : null,
+      closedAt: closes.map(at),
+      merged: { at: at('02:51:29.870'), landing: null, artifacts: null, commitSha: null, readPaths: null },
+    });
+    return s;
+  };
+  const fixes = (d: ReturnType<typeof detailOf_>) =>
+    d.notes.sections.filter((x) => x.section === 'Fixed').flatMap((x) => x.entries);
+  const live = () => iss455(['02:01:10.040', '03:12:04.690'], '02:21:48.000');
+
+  it('shows the rework on dev.225, the release that shipped it, as its own fix', () => {
+    const d = detailOf(DEV225, live(), null, new Map(), [], null);
+    expect(d.notes.reworked).toEqual([]);
+    expect(fixes(d).map((e) => [e.key, e.userFacing])).toEqual([['ISS-455', RETRY]]);
+    expect(d.issues.find((i) => i.key === 'ISS-455')?.section).toBe('Fixed');
+    expect(JSON.stringify(d.headline)).toContain('tried again');
+  });
+
+  it('keeps it reworked on dev.224, whose close the reopen came after', () => {
+    const d = detailOf(DEV224, live(), null, new Map(), [], null);
+    expect(d.notes.reworked).toEqual([{ key: 'ISS-455', title: 'Intake drafts' }]);
+    expect(fixes(d)).toEqual([]);
+    expect(d.issues.find((i) => i.key === 'ISS-455')?.section).toBeNull();
+  });
+
+  it('reads it reworked on dev.225 too once a reopen follows that close', () => {
+    const again = iss455(['02:01:10.040', '03:12:04.690'], '06:09:37.000');
+    expect(detailOf(DEV225, again, null, new Map(), [], null).notes.reworked).toHaveLength(1);
+    expect(detailOf(DEV224, again, null, new Map(), [], null).notes.reworked).toHaveLength(1);
+  });
+
+  it('claims at the cut where the release has not closed it: unshipped, or shipped without closing it', () => {
+    const open = { ...DEV225, state: 'in_progress' as const, releasedAt: null };
+    expect(detailOf(open, live(), null, new Map(), [], null).notes.reworked).toHaveLength(1);
+    // reopened inside dev.225's window and never closed again: dev.225 did not ship its rework
+    const unclosed = iss455(['02:01:10.040'], '02:21:48.000');
+    expect(detailOf(DEV225, unclosed, null, new Map(), [], null).notes.reworked).toHaveLength(1);
+    const before = iss455(['02:01:10.040', '03:12:04.690'], '02:10:00.000');
+    expect(detailOf(open, before, null, new Map(), [], null).notes.reworked).toEqual([]);
   });
 });

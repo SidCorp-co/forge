@@ -16,6 +16,7 @@ import { criterionVerdicts } from '../db/schema-issue-criteria.js';
 import { requirements } from '../db/schema-requirements.js';
 import {
   activeIssuePrefix,
+  closedAtOf,
   type CriterionWithVerdict,
   listCriteriaOf,
   reopenedAtOf,
@@ -39,6 +40,8 @@ export interface IssueFact {
   verdicts: ReadonlyMap<number, readonly CarriedVerdict[]>;
   /** The issue's last move to `reopen`: its note and mark after it are a later round's. */
   reopenedAt: Date | null;
+  /** Every move of the issue into `closed`, oldest first: the moments releases shipped it. */
+  closedAt: Date[];
   /** The merged mark's columns, which `landing-surfaces.ts` reads what the landing changed from. */
   merged: {
     at: Date | null;
@@ -234,9 +237,10 @@ export async function loadReleaseFacts(
     activeIssuePrefix(projectId),
     cuttersOf(runIds),
   ]);
-  const [criteria, reopened, reqs] = await Promise.all([
+  const [criteria, reopened, closed, reqs] = await Promise.all([
     listCriteriaOf(db, ids),
     reopenedAtOf(db, ids),
+    closedAtOf(db, ids),
     requirementFacts(
       projectId,
       rows.flatMap((r) => (r.requirementId ? [r.requirementId] : [])),
@@ -269,6 +273,7 @@ export async function loadReleaseFacts(
         criteria: (criteria.get(r.id) ?? []).map((c) => criterionView(c, reopened.get(r.id))),
         verdicts: judged(r.id),
         reopenedAt: reopened.get(r.id) ?? null,
+        closedAt: closed.get(r.id) ?? [],
         merged: {
           at: r.mergedAt,
           landing: r.mergedLanding,

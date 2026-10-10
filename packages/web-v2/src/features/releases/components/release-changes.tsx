@@ -138,8 +138,11 @@ function UnclassifiedReason({ why, group, slug }: { why: string; group: ReleaseC
   );
 }
 
-/** "What changes": per surface what the release's landings name, risks first, design apart. */
-export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?: string }) {
+/**
+ * "What changes": per surface what the release changes, risks first, design apart. `headed` false
+ * under a toggle that already names the section and says its sentence (the release page's developer view).
+ */
+export function WhatChanges({ changes, slug, headed = true }: { changes: ReleaseChanges; slug?: string; headed?: boolean }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const label = useLabel();
@@ -148,10 +151,14 @@ export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?:
   return (
     <section aria-label={t("releases.changes.title")} data-testid="release-changes" className="grid gap-4">
       <div>
-        <ViewHeading hint={t("releases.changes.hint")}>{t("releases.changes.title")}</ViewHeading>
-        <p className="text-13-5" data-testid="release-changes-sentence">
-          {changesSentence(changes, t, label)}
-        </p>
+        {headed ? (
+          <>
+            <ViewHeading hint={t("releases.changes.hint")}>{t("releases.changes.title")}</ViewHeading>
+            <p className="text-13-5" data-testid="release-changes-sentence">
+              {changesSentence(changes, t, label)}
+            </p>
+          </>
+        ) : null}
         {changes.boxRead.length > 0 ? (
           <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-12-5 text-muted" data-testid="release-box-read">
             <span>{t("releases.changes.boxRead")}</span>

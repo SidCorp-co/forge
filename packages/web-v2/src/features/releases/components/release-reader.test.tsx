@@ -2,7 +2,7 @@
 // known issues in plain words, the clip played from the bytes the session may fetch, and the
 // technical notes only where the page carries them.
 
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { releasePage, TECHNICAL } from "@/test/release-page";
 import { renderWithQuery } from "@/test/render";
@@ -250,6 +250,25 @@ describe("the developer view (BC-9)", () => {
     );
     expect(screen.getByTestId("page-technical-range")).toHaveAttribute("data-read", "unread");
     expect(screen.getByTestId("page-technical-range")).toHaveTextContent(`The range was not read: ${why}.`);
+  });
+
+  // J10 on 0.4.0-dev.227: "Deploys UI, API, Logic and Config." read beside the toggle and again under
+  // a heading, whose hint said the list was each issue's landing though it is the range's files
+  it("says what the release deploys once under its toggle, with no hint that the list is the landings", () => {
+    const surface = (s: "ui" | "api") => ({
+      surface: s,
+      count: 1,
+      shipsNothing: false,
+      issues: [],
+      artifacts: [{ ref: `packages/${s}/a.ts`, change: "changed" as const, issues: [], carriedBy: null }],
+    });
+    const changes = { ...TECHNICAL.changes, surfaces: [surface("ui"), surface("api")] };
+    renderWithQuery(<ReleaseReader page={releasePage({ view: "developer", technical: { ...TECHNICAL, changes } })} slug="forge" authed />);
+    const tech = screen.getByTestId("release-technical");
+    fireEvent.click(within(tech).getByTestId("release-technical-toggle"));
+    expect(within(tech).getAllByText("Deploys UI and API.")).toHaveLength(1);
+    expect(within(tech).getAllByTestId("release-surface")).toHaveLength(2);
+    expect(tech).not.toHaveTextContent("landing names");
   });
 
   it("draws nothing technical for the user view", () => {

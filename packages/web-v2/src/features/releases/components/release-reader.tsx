@@ -350,7 +350,7 @@ function Technical({ page, slug }: { page: ReleasePage; slug?: string | undefine
         <span className="ml-2 text-12-5 text-muted">{changesSentence(tech.changes, t, label)}</span>
         {open ? (
           <div className="mt-3">
-            <WhatChanges changes={tech.changes} {...(slug ? { slug } : {})} />
+            <WhatChanges changes={tech.changes} headed={false} {...(slug ? { slug } : {})} />
           </div>
         ) : null}
       </div>
