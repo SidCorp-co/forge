@@ -1,7 +1,6 @@
 /**
- * The language a notice to a reporter is written in, as the web reads its chrome
- * (`web-v2/src/lib/i18n/interface-language.tsx:resolveInterfaceLanguage`): the person's own choice,
- * else the project's content language, else English. Content a person wrote (a release note's
+ * The language a notice to a reporter is written in: the person's own choice, else the project's
+ * content language, else English. Content a person wrote (a release note's
  * user-facing line, the item's title, a triager's reason) stays as written; only the words around it
  * are translated.
  */

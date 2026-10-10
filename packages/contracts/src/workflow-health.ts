@@ -65,12 +65,6 @@ export const HEALTH_MARKER_LABELS: Record<HealthMarkerKind, string> = {
 	wrong: "Wrong",
 };
 
-export const EVIDENCE_MARKER_KINDS = [
-	"outdated",
-	"needs_update",
-	"has_problem",
-	"remove_proposed",
-] as const satisfies readonly HealthMarkerKind[];
 export const PROVENANCE_MARKER_KINDS = [
 	"upcoming",
 	"not_in_design",
