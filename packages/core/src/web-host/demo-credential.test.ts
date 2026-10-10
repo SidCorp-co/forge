@@ -105,10 +105,21 @@ describe('a demo core', () => {
 });
 
 describe('any other core', () => {
-  it('hands back its fetch unchanged, and never looks for a demo member', () => {
+  it('passes every request on as it came, and never looks for a demo member', async () => {
     settings.FORGE_DEMO_MODE = false;
-    const { fetch } = app();
-    expect(withDemoCredential(fetch)).toBe(fetch);
+    const { fetch, seen } = app();
+    const request = new Request('http://core.test/api/projects');
+    await withDemoCredential(fetch)(request);
+    expect(seen).toEqual([request]);
     expect(member.asked).toBe(0);
+  });
+
+  it('reads demo mode per request, so a core wrapped before its settings were read follows them', async () => {
+    settings.FORGE_DEMO_MODE = false;
+    const { fetch, seen } = app();
+    const signed = withDemoCredential(fetch);
+    settings.FORGE_DEMO_MODE = true;
+    await signed(new Request('http://core.test/api/projects'));
+    expect(tokenOf(seen[0])).toBeDefined();
   });
 });

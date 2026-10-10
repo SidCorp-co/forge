@@ -4,7 +4,6 @@ import './error-tracking-init.js';
 import { createServer, type Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { cors } from 'hono/cors';
 import {
   admitChatRestWrite,
   agreedRecordsIn,
@@ -92,9 +91,9 @@ import {
 } from './memory/index.js';
 import { provideMessageReads } from './messaging/reads.js';
 import { provideChatWriteHold } from './middleware/chat-write-hold.js';
+import { allowedOrigins, corsMiddleware } from './middleware/cors.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
-import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { readMemo } from './middleware/read-memo.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import {
@@ -103,7 +102,7 @@ import {
   resolvingRouteRefs,
   unaddressableProjectSlug,
 } from './middleware/route-refs.js';
-import { SERVER_TIMING_HEADER, serverTiming } from './middleware/server-timing.js';
+import { serverTiming } from './middleware/server-timing.js';
 import { deleteFeedbackMockups } from './mockups/index.js';
 import { emitNotification } from './notifications/index.js';
 import {
@@ -183,6 +182,7 @@ import {
   writeKeptPreview,
 } from './suggestions/index.js';
 import { coreTimers } from './timer-registry.js';
+import { servedWebBuild } from './web-host/index.js';
 import { readServing } from './whats-new/index.js';
 import { provideWorkPorts } from './work-ports.js';
 import { workflowDesign, workflowFlowsOf } from './workflows/index.js';
@@ -351,14 +351,6 @@ provideAgreementReplay((request) => Promise.resolve(app.fetch(request)));
 // a script's ctx.forge.get is answered by this app in-process, under its owner's read token (REQ-37)
 provideSandboxPorts({ restFetch: (request) => Promise.resolve(app.fetch(request)) });
 
-let corsOrigins: string[] | undefined;
-function allowedOrigins(): string[] {
-  corsOrigins ??= env.CORS_ORIGINS.split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  return corsOrigins;
-}
-
 app.use(
   '*',
   serverTiming((origin) => allowedOrigins().includes(origin)),
@@ -366,22 +358,6 @@ app.use(
 app.use('*', readMemo());
 app.use('*', requestId());
 app.use('*', requestLogger());
-const corsMiddleware = cors({
-  origin: (origin) => (allowedOrigins().includes(origin) ? origin : null),
-  credentials: true,
-  allowHeaders: ['Content-Type', 'Authorization', 'X-Device-Token', 'X-Forge-Project-Slug'],
-  allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  exposeHeaders: [
-    'X-Total-Count',
-    'Retry-After',
-    'X-RateLimit-Limit',
-    'X-RateLimit-Remaining',
-    'X-RateLimit-Reset',
-    'X-RateLimit-Scope',
-    PAT_ACCEPTED_PERMISSIONS_HEADER,
-    SERVER_TIMING_HEADER,
-  ],
-});
 app.use('/api/*', corsMiddleware);
 app.use('/mcp', corsMiddleware);
 app.use('/api/*', refuseUnresolvedRefs());
@@ -431,6 +407,8 @@ const isMain = import.meta.url === `file://${process.argv[1]}`;
 
 if (isMain) {
   const port = env.PORT;
+  // a core told to serve a web build (WEB_DIST_DIR) it cannot read stops here, naming the fix
+  servedWebBuild();
 
   if (env.EMBEDDINGS_DIM !== MEMORY_EMBEDDING_DIM) {
     throw new Error(

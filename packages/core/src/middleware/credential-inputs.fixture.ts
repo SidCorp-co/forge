@@ -308,6 +308,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
   'the request handed to core’s own router, gates and body checks, which read it here': lines`
     index.ts Request handed to hono:fetch in module code
     web-host/mount.ts Request handed to hono:fetch in hostTheWeb
+    web-host/mount.ts Context handed to hono:host in hostTheWeb
     middleware/route-refs.ts Request handed to hono:dispatch in resolvingRouteRefs
     middleware/route-refs.ts Context handed to hono:authenticate in refuseUnresolvedRefs
     middleware/zod-validator.ts Context handed to hono:middleware in refuseUndeclaredBodyType

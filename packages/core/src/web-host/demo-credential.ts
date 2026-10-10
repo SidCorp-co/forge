@@ -14,10 +14,9 @@ const RENEW_BEFORE_MS = 24 * 60 * 60 * 1000;
  * core answers every request that carries no credential as its seeded member, so the browser holds
  * no cookie at all and a frame on another site (Safari blocks every third-party cookie, Chrome
  * never sends SameSite=Lax into one) is signed in exactly like a tab. Anywhere that is not a demo
- * core this hands back `fetch` unchanged; the socket's door is attachWs's `credentialless`.
+ * core a request passes to `fetch` as it came; the socket's door is attachWs's `credentialless`.
  */
 export function withDemoCredential<F extends Fetch>(fetch: F): F {
-  if (!env.FORGE_DEMO_MODE) return fetch;
   let held: { token: string; renewAt: number } | null = null;
   let warned = false;
 
@@ -39,6 +38,8 @@ export function withDemoCredential<F extends Fetch>(fetch: F): F {
   };
 
   return (async (request: Request, ...rest: never[]) => {
+    // read per request, never at wrap time: the wrap happens as core is imported
+    if (!env.FORGE_DEMO_MODE) return fetch(request, ...rest);
     const signed =
       request.headers.has('authorization') ||
       cookieValues(request.headers.get('cookie'), AUTH_COOKIE_NAME).length > 0;
