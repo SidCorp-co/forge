@@ -2,7 +2,7 @@
 
 import { Button } from "@/design";
 import type { V1Read } from "@/features/project-config";
-import type { ProjectMember } from "@/features/projects/types";
+import type { ProjectMember } from "@/features/projects";
 import { canWriteProject } from "@/features/projects";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useRunPipelineStep } from "../hooks";

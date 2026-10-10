@@ -193,7 +193,7 @@ export interface CreateReleaseBatchResult {
   verification: Exclude<RecordedReleaseVerification, "unverified">;
 }
 
-export type { ReleaseRoster, ReleaseRosterEntry } from "@/features/releases/roster";
+export type { ReleaseRoster, ReleaseRosterEntry } from "@/features/releases";
 
 export const releaseBatchApi = {
   /** `GET …/release-batches/roster` — waiting, oldest first. Parsed, not cast. */

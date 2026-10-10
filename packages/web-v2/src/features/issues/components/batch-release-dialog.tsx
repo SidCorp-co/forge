@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Banner, Button, SlideOver } from "@/design";
-import { inlineCode } from "@/features/project-settings/components/inline-code";
+import { inlineCode } from "@/features/project-settings";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useBatchRelease } from "../hooks";
@@ -38,13 +38,15 @@ export function BatchReleaseDialog({
 
   // A refusal belongs to the press that met it, so a dialog opened again starts clean; a press
   // still in flight is kept, since resetting it would leave its answer nowhere to land.
-  const pendingRef = useRef(isPending);
-  pendingRef.current = isPending;
-  useEffect(() => {
-    if (!open) return;
-    setRefusal(null);
-    if (!pendingRef.current) reset();
-  }, [open, reset]);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    if (open) setRefusal(null);
+  }
+  const close = () => {
+    if (!isPending) reset();
+    onClose();
+  };
 
   const handleConfirm = () => {
     const issueIds = selectedIssues.map((i) => i.id);
@@ -65,7 +67,7 @@ export function BatchReleaseDialog({
   return (
     <SlideOver
       open={open}
-      onClose={onClose}
+      onClose={close}
       title={t("issues.bulk.batchRelease")}
       width={400}
     >
@@ -101,7 +103,7 @@ export function BatchReleaseDialog({
           <Button
             variant="ghost"
             size="sm"
-            onClick={onClose}
+            onClick={close}
             disabled={batch.isPending}
           >
             {t("common.cancel")}

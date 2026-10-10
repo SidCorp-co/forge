@@ -2,7 +2,6 @@
 
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { type Refusal, refusalFact, refusalsOf } from "@/lib/api/refusals";

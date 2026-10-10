@@ -8,3 +8,4 @@ export { canManageProject, canWriteProject, isOrgAdmin } from "./write-access";
 export { deriveHealth } from "./derive";
 export { useProjectHealth } from "./hooks";
 export type { ProjectHealthRow } from "./types";
+export type { ProjectMember } from "./types";

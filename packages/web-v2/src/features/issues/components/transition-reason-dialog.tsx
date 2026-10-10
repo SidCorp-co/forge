@@ -7,7 +7,7 @@
 "use client";
 
 import type { REASON_REQUIRED_STATUSES } from "@forge/contracts/issue-machine";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button, Field, Radio, RadioGroup, Textarea } from "@/design";
 import { SlideOver } from "@/design/patterns/slide-over";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
@@ -48,14 +48,20 @@ interface TransitionReasonDialogProps {
   onClose: () => void;
 }
 
-export function TransitionReasonDialog({
+export function TransitionReasonDialog(props: TransitionReasonDialogProps) {
+  if (!props.status) return null;
+  // each status asked for starts a fresh reason: the form remounts rather than being reset
+  return <ReasonForm key={props.status} {...props} status={props.status} />;
+}
+
+function ReasonForm({
   status,
   openQuestions,
   targets,
   loading,
   onConfirm,
   onClose,
-}: TransitionReasonDialogProps) {
+}: TransitionReasonDialogProps & { status: DialogMode }) {
   const [reason, setReason] = useState("");
   const [kind, setKind] = useState<WaitingCause>("needs_answer");
   const [target, setTarget] = useState<IssueStatus | null>(null);
@@ -64,19 +70,13 @@ export function TransitionReasonDialog({
   const t = useCopy();
   const L = useLabel();
 
-  useEffect(() => {
-    if (status) {
-      setReason("");
-      setKind("needs_answer");
-      setTarget(null);
-      setSent(false);
-    }
-  }, [status]);
-  useEffect(() => {
+  // a move that settled (loading went false) frees the confirm again
+  const [wasLoading, setWasLoading] = useState(loading);
+  if (wasLoading !== loading) {
+    setWasLoading(loading);
     if (!loading) setSent(false);
-  }, [loading]);
+  }
 
-  if (!status) return null;
   const copy = copyOf(t, status);
   const trimmed = reason.trim();
   const picking = status === "move_anyway";

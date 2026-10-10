@@ -11,7 +11,6 @@ import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { useMemo } from "react";
 import { listFilterFromSearch } from "@forge/contracts/ui-list-filters";
 import { useReportShown } from "@/design/hooks/use-page-shown";
 import { writeUrlParams } from "@/design/hooks/use-url-params";

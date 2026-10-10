@@ -101,7 +101,7 @@ export function BodyEditor({
 }: BodyEditorProps) {
   const [showPreview, setShowPreview] = useState(false);
   const t = useCopy();
-  const view = useRef<EditorView | null>(null);
+  const viewRef = useRef<EditorView | null>(null);
   const debounced = useDebounced(value, PREVIEW_DEBOUNCE_MS);
 
   const extensions = [markdown()];
@@ -114,7 +114,7 @@ export function BodyEditor({
   });
 
   const run = (tool: Tool) => {
-    if (view.current) applyTool(tool, view.current);
+    if (viewRef.current) applyTool(tool, viewRef.current);
   };
 
   return (
@@ -141,7 +141,7 @@ export function BodyEditor({
           value={value}
           onChange={onChange}
           onCreateEditor={(v) => {
-            view.current = v;
+            viewRef.current = v;
             v.dom.addEventListener("keydown", (e) => shortcut(e, v));
           }}
           extensions={extensions}

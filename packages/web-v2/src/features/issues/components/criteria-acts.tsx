@@ -62,14 +62,6 @@ export function RecordVerdict({ issueId, row }: { issueId: string; row: Criterio
   const [screenshot, setScreenshot] = useState<File | null>(null);
   const [picker, setPicker] = useState(0);
   const [refused, setRefused] = useState<EvidenceFileRefusal | null>(null);
-  const isClip = !!screenshot && screenshot.type.startsWith("video/");
-  const [clipUrl, setClipUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!isClip || !screenshot || typeof URL.createObjectURL !== "function") return setClipUrl(null);
-    const url = URL.createObjectURL(screenshot);
-    setClipUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [isClip, screenshot]);
   const named = build.data?.sha ?? "";
   const sha = typed ?? named;
   const skipped = verdict === "skipped";
@@ -86,19 +78,7 @@ export function RecordVerdict({ issueId, row }: { issueId: string; row: Criterio
     setRefused(null);
     record.reset();
   };
-  const shaHint = typed !== null && sha.trim() !== named
-    ? sha.trim()
-      ? t("issues.verdictAct.commitTyped")
-      : skipped
-        ? t("issues.verdictAct.commitSkipped")
-        : t("issues.verdictAct.commitNone", { basis: build.data?.basis ?? "" })
-    : build.isPending
-      ? t("issues.verdictAct.commitLoading")
-      : build.isError
-        ? t("issues.verdictAct.commitUnread", { error: formatApiError(build.error) })
-        : build.data
-          ? namedBuildHint(t, build.data)
-          : "";
+  const shaHint = shaHintOf(t, { typed, sha, named, skipped, build });
   const shaReady = skipped ? !sha.trim() || isWholeSha(sha) : isWholeSha(sha);
   const ready = shaReady && (!skipped || note.trim() !== "");
   return (
@@ -146,47 +126,95 @@ export function RecordVerdict({ issueId, row }: { issueId: string; row: Criterio
                 />
               </Field>
             ) : null}
-            <Field
-              label={t("issues.verdictAct.screenshot")}
-              hint={
-                screenshot && uploadAs && uploadAs !== safeAttachmentName(screenshot.name)
-                  ? t("issues.verdictAct.renamed", { name: safeAttachmentName(screenshot.name), as: uploadAs })
-                  : undefined
-              }
-            >
-              <input
-                key={picker}
-                type="file"
-                accept={EVIDENCE_FILE_ACCEPT}
-                className="text-12"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
-                  const why = file ? evidenceFileRefusal(file) : null;
-                  setRefused(why);
-                  if (why) setPicker((k) => k + 1);
-                  setScreenshot(why ? null : file);
-                  setCited("");
-                }}
-                data-testid="verdict-screenshot"
-              />
-              {refused ? (
-                <p role="alert" className="mt-1 text-13 text-danger" data-testid="verdict-evidence-refusal">
-                  {refusalText(t, refused)}
-                </p>
-              ) : null}
-              {isClip && screenshot ? (
-                <div className="mt-2 grid gap-1" data-testid="verdict-clip-chosen">
-                  <span className="text-13 text-muted">{t("issues.verdictAct.clipChosen", { name: screenshot.name, size: formatSize(screenshot.size) })}</span>
-                  {clipUrl ? <video src={clipUrl} controls muted preload="metadata" className="max-h-48 w-full border-y border-line-subtle" /> : null}
-                </div>
-              ) : null}
-            </Field>
+            <ScreenshotField
+              screenshot={screenshot}
+              uploadAs={uploadAs}
+              picker={picker}
+              refused={refused}
+              onPick={(file, why) => {
+                setRefused(why);
+                if (why) setPicker((k) => k + 1);
+                setScreenshot(why ? null : file);
+                setCited("");
+              }}
+            />
             <RefusalLine error={record.error} testid="verdict-refusal" />
           </div>
         }
       />
     </>
   );
+}
+
+/** What the commit field says under it: the typed sha, the build core named, or why there is none. */
+function shaHintOf(
+  t: Copy,
+  { typed, sha, named, skipped, build }: { typed: string | null; sha: string; named: string; skipped: boolean; build: ReturnType<typeof useJudgedBuild> },
+): string {
+  if (typed !== null && sha.trim() !== named) {
+    if (sha.trim()) return t("issues.verdictAct.commitTyped");
+    return skipped ? t("issues.verdictAct.commitSkipped") : t("issues.verdictAct.commitNone", { basis: build.data?.basis ?? "" });
+  }
+  if (build.isPending) return t("issues.verdictAct.commitLoading");
+  if (build.isError) return t("issues.verdictAct.commitUnread", { error: formatApiError(build.error) });
+  return build.data ? namedBuildHint(t, build.data) : "";
+}
+
+/** The file chosen as evidence: a screenshot or a clip, refused by name when it cannot be sent. */
+function ScreenshotField({
+  screenshot,
+  uploadAs,
+  picker,
+  refused,
+  onPick,
+}: {
+  screenshot: File | null;
+  uploadAs: string | null;
+  picker: number;
+  refused: EvidenceFileRefusal | null;
+  onPick: (file: File | null, why: EvidenceFileRefusal | null) => void;
+}) {
+  const t = useCopy();
+  return (
+    <Field
+      label={t("issues.verdictAct.screenshot")}
+      hint={
+        screenshot && uploadAs && uploadAs !== safeAttachmentName(screenshot.name)
+          ? t("issues.verdictAct.renamed", { name: safeAttachmentName(screenshot.name), as: uploadAs })
+          : undefined
+      }
+    >
+      <input
+        key={picker}
+        type="file"
+        accept={EVIDENCE_FILE_ACCEPT}
+        className="text-12"
+        onChange={(e) => {
+          const file = e.target.files?.[0] ?? null;
+          onPick(file, file ? evidenceFileRefusal(file) : null);
+        }}
+        data-testid="verdict-screenshot"
+      />
+      {refused ? (
+        <p role="alert" className="mt-1 text-13 text-danger" data-testid="verdict-evidence-refusal">
+          {refusalText(t, refused)}
+        </p>
+      ) : null}
+      {screenshot?.type.startsWith("video/") ? (
+        <div className="mt-2 grid gap-1" data-testid="verdict-clip-chosen">
+          <span className="text-13 text-muted">{t("issues.verdictAct.clipChosen", { name: screenshot.name, size: formatSize(screenshot.size) })}</span>
+          {typeof URL.createObjectURL === "function" ? <ClipPreview key={picker} file={screenshot} /> : null}
+        </div>
+      ) : null}
+    </Field>
+  );
+}
+
+/** A chosen clip played back from a local object URL, released when the clip is replaced or the form closes. */
+function ClipPreview({ file }: { file: File }) {
+  const [url] = useState(() => URL.createObjectURL(file));
+  useEffect(() => () => URL.revokeObjectURL(url), [url]);
+  return <video src={url} controls muted preload="metadata" className="max-h-48 w-full border-y border-line-subtle" />;
 }
 
 /**

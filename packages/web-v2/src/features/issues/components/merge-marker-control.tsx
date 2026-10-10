@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button, Field, Input, Textarea } from "@/design";
 import { SlideOver } from "@/design/patterns/slide-over";
 import { formatApiError } from "@/lib/api/error";
@@ -45,13 +45,13 @@ export function MergeMarkerControl({
   const marker = useMergeMarker(issueId);
   const t = useCopy();
 
-  useEffect(() => {
-    if (open) {
-      setTarget(outsideGit ? "" : suggestedTarget);
-      setNote("");
-      setRefusal(null);
-    }
-  }, [open, suggestedTarget, outsideGit]);
+  // each opening starts from the suggested target, an empty note and no refusal
+  const openFresh = () => {
+    setTarget(outsideGit ? "" : suggestedTarget);
+    setNote("");
+    setRefusal(null);
+    setOpen(true);
+  };
 
   if (mergedAt) {
     return (
@@ -71,7 +71,7 @@ export function MergeMarkerControl({
 
   return (
     <>
-      <Button variant="ghost" size="sm" icon="check" onClick={() => setOpen(true)}>
+      <Button variant="ghost" size="sm" icon="check" onClick={openFresh}>
         {t("issues.merge.mark")}
       </Button>
       {open && (

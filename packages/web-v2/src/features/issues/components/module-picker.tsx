@@ -8,7 +8,7 @@
 // Tab focus trap and focus-restore-to-trigger (`design/patterns/slide-over.tsx`),
 // so nothing is hand-rolled here.
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Button,
@@ -54,16 +54,19 @@ export function ModulePicker({
   const save = useSetIssueModules(issueId);
   const t = useCopy();
 
-  const attached = useMemo(() => labels.filter((l) => l.kind === "module"), [labels]);
+  const attached = labels.filter((l) => l.kind === "module");
 
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [primary, setPrimary] = useState<string>(NO_PRIMARY);
-
-  useEffect(() => {
-    if (!open) return;
-    setSelected(new Set(attached.map((l) => l.id)));
-    setPrimary(attached.find((l) => l.isPrimary)?.id ?? NO_PRIMARY);
-  }, [open, attached]);
+  // each opening starts from the modules the issue carries now
+  const [wasOpen, setWasOpen] = useState(false);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    if (open) {
+      setSelected(new Set(attached.map((l) => l.id)));
+      setPrimary(attached.find((l) => l.isPrimary)?.id ?? NO_PRIMARY);
+    }
+  }
 
   // each module named under its ancestors ("Execution › Runs"), so the list reads in tree order
   const modules = modulesQ.modules
