@@ -151,11 +151,13 @@ describe('Forge answers for an item nobody confirmed only from the record, once 
   it('leaves an item still inside its window, however recently it was last swept', async () => {
     const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
     const fb = await resolved('ann', 'Why does the badge say Planned?');
+    // the reporter's own "is triaged" notice is already there; the sweeps add nothing to it
+    const before = (await bell('ann')).length;
     await sweepResolvedFeedback();
     await seen(fb, 6);
     await sweepResolvedFeedback();
     expect((await read(fb)).status).toBe('triaged');
-    expect((await bell('ann')).some((n) => n.title.includes(fb))).toBe(false);
+    expect((await bell('ann')).slice(before)).toEqual([]);
   });
 
   it('counts from the project’s own window, and a reopened item starts over', async () => {

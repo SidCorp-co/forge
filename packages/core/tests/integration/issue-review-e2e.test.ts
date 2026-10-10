@@ -361,13 +361,15 @@ describe('a review is timed with the issue checks (FB-121)', () => {
   it('times a run review that sends no start from its reviewing run', async () => {
     const { id } = await builtIssue(projects.catalog);
     const reviewer = await runOnBox(projects.catalog);
-    expect((await post(boxToken, id, review({ run: reviewer }))).status).toBe(201);
+    expect((await post(boxToken, id, review({ run: reviewer, startedAt: undefined }))).status).toBe(
+      201,
+    );
     expect((await reviewTime(id))?.checks).toBe(1);
   });
 
   it('records a person review that sends no start untimed, never a made-up duration', async () => {
     const { id } = await builtIssue(projects.catalog);
-    expect((await post(personToken, id, review())).status).toBe(201);
+    expect((await post(personToken, id, review({ startedAt: undefined }))).status).toBe(201);
     expect(await reviewTime(id)).toMatchObject({ checks: 0, totalMs: 0 });
   });
 

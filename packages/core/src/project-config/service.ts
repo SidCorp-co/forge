@@ -111,9 +111,11 @@ export function readProjectConfig(projectId: string): Promise<Held<ProjectDocume
   });
 }
 
-export async function readPolicy(projectId: string): Promise<Held<PolicyDocument> | null> {
-  const stored = await drizzleConfigStore.readPolicy(projectId);
-  return stored ? reread(policyDocumentSchema, stored, `policy of ${projectId}`) : null;
+export function readPolicy(projectId: string): Promise<Held<PolicyDocument> | null> {
+  return memoizedRead(`projectPolicy:${projectId}`, async () => {
+    const stored = await drizzleConfigStore.readPolicy(projectId);
+    return stored ? reread(policyDocumentSchema, stored, `policy of ${projectId}`) : null;
+  });
 }
 
 export async function readTestingProfile(
