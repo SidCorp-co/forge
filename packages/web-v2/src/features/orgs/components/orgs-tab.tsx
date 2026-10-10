@@ -47,8 +47,7 @@ export function OrgsTab() {
     <div className="space-y-6">
       <PageSection>
         <PageSectionBody>
-          <SectionTitle className="fg-h3 mb-1">{t("settings.orgs.title")}</SectionTitle>
-          <p className="fg-body-sm mb-4 text-muted">{t("settings.orgs.intro")}</p>
+          <SectionTitle className="fg-h3 mb-4">{t("settings.orgs.title")}</SectionTitle>
           <ul className="divide-y divide-line-subtle">
             {orgs.map((o) => (
               <li

@@ -89,7 +89,7 @@ export function RunsTab({
       ) : standingQ.isError ? (
         <EmptyPanelLine title={t("issues.steps.title")} status={t("common.couldNotLoad")} detail={formatApiError(standingQ.error)} />
       ) : stepOutcomes.length === 0 ? (
-        sessions.length > 0 ? null : <EmptyPanelLine title={t("issues.steps.title")} status={t("issues.steps.none")} detail={t("issues.steps.noneHint")} />
+        sessions.length > 0 ? null : <EmptyPanelLine title={t("issues.steps.title")} status={t("issues.steps.none")} />
       ) : (
         <section aria-label={t("issues.steps.title")}>
           <ViewHeading>{t("issues.steps.title")}</ViewHeading>

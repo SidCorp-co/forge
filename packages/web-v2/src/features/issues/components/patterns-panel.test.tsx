@@ -125,25 +125,24 @@ describe("a returned pattern's reason, as the person wrote it (judge J1 on 0.4.0
 });
 
 describe("what the issue page says around a review (judge at 9988a9335, comment 1000c87f)", () => {
-  it("says in words who may review a pending pattern, and shows no permission key", async () => {
+  it("says a pending pattern waits on a reviewer, and shows no permission key", async () => {
     core([view({})], []);
     renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" />);
     const row = await screen.findByTestId("pattern-queue-door");
-    expect(row).toHaveTextContent("a project admin, or a member allowed to approve patterns");
+    expect(row).toHaveTextContent("Waits on a reviewer");
     expect(row.textContent).not.toContain("patterns.approve");
   });
 
-  it("shows the reason's limit, and refuses a longer reason there before sending anything", async () => {
+  it("refuses a reason over the limit there, before sending anything", async () => {
     const calls = core([view({})], ["p1"]);
     renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Review" }));
     const form = await screen.findByTestId("pattern-decide");
-    expect(form).toHaveTextContent("Up to 2000 characters");
     await user.click(within(form).getByRole("textbox"));
     await user.paste("x".repeat(2001));
     expect(within(form).getByRole("alert")).toHaveTextContent(
-      "The reason is 2001 characters, over the 2000 a decision takes",
+      "The reason is 2001 characters, over 2000. Shorten it.",
     );
     expect(within(form).getByRole("button", { name: "Approve" })).toBeDisabled();
     expect(within(form).getByRole("button", { name: "Return" })).toBeDisabled();

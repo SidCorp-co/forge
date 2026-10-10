@@ -156,6 +156,7 @@ export interface WsFramePayloads extends JobFrames {
 	"pat.created": TokenFrame;
 	"pat.revoked": TokenFrame;
 	"pat.used": TokenFrame;
+	"pat.fenced": TokenFrame;
 	/**
 	 * Sent once to the one socket whose subscribe asked for a replay: the room's frames it missed were
 	 * just sent ahead of this. `complete` is false where the server no longer held all of that span.

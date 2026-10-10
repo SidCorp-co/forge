@@ -33,5 +33,4 @@ export const coolify: ProviderModule = {
   section: () => import("./section").then((m) => ({ default: m.CoolifySection })),
   connectionSection: () =>
     import("./connection-config").then((m) => ({ default: m.CoolifyConnectionConfig })),
-  connectionNote: null,
 };

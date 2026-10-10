@@ -277,7 +277,7 @@ export interface SessionOutcome {
   statusKey: StatusKey;
   /** Short chip/secondary label. */
   label: string;
-  /** Plain-language tooltip explaining why this is (or isn't) a failure. */
+  /** The failure reason's next act, or "" where there is none: no tooltip explains a state (REQ-43 BC-4). */
   tooltip: string;
 }
 
@@ -293,36 +293,36 @@ export function classifySessionOutcome(
 ): SessionOutcome {
   const t = productCopy(language);
   if (display === "completed" || display === "completed_via_recovery") {
-    return { bucket: "success", statusKey: "done", label: t("sessions.outcome.completed"), tooltip: t("sessions.outcome.completedHint") };
+    return { bucket: "success", statusKey: "done", label: t("sessions.outcome.completed"), tooltip: "" };
   }
 
   if (display === "cancelled_stale") {
-    return { bucket: "swept", statusKey: "swept", label: t("sessions.outcome.swept"), tooltip: t("sessions.outcome.sweptHint") };
+    return { bucket: "swept", statusKey: "swept", label: t("sessions.outcome.swept"), tooltip: "" };
   }
 
   if (display === "cancelled") {
-    return { bucket: "cleanup", statusKey: "archived", label: t("sessions.outcome.cancelled"), tooltip: t("sessions.outcome.cancelledHint") };
+    return { bucket: "cleanup", statusKey: "archived", label: t("sessions.outcome.cancelled"), tooltip: "" };
   }
 
   if (display === "failed") {
     const reason = failureReason ?? null;
     const presentation = reason ? presentationOf(reason) : "failure";
     if (presentation === "cleanup") {
-      return { bucket: "cleanup", statusKey: "swept", label: t("sessions.outcome.cleanedUp"), tooltip: t("sessions.outcome.cleanedUpHint") };
+      return { bucket: "cleanup", statusKey: "swept", label: t("sessions.outcome.cleanedUp"), tooltip: "" };
     }
     if (presentation === "swept") {
       return {
         bucket: "swept",
         statusKey: "swept",
         label: failureReasonLabel(reason, language) ?? t("sessions.outcome.cancelled"),
-        tooltip: failureReasonAction(reason, language) ?? t("sessions.outcome.sweptRuleHint"),
+        tooltip: failureReasonAction(reason, language) ?? "",
       };
     }
     return {
       bucket: "failed",
       statusKey: "failed",
       label: failureReasonLabel(reason, language) ?? t("sessions.outcome.failed"),
-      tooltip: failureReasonAction(reason, language) ?? t("sessions.outcome.failedHint"),
+      tooltip: failureReasonAction(reason, language) ?? "",
     };
   }
 

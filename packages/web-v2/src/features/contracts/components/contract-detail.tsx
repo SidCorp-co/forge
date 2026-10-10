@@ -105,9 +105,6 @@ function Decide({ d, v, projectId }: { d: ContractStandingDetail; v: ContractVer
         <Button type="button" variant="secondary" size="sm" disabled={m.isPending} onClick={() => setReturning((r) => !r)}>
           {t("contracts.decide.return")}
         </Button>
-        {v.classification === "breaking" ? (
-          <span className="text-12 text-muted">{t("contracts.decide.breakingNote")}</span>
-        ) : null}
       </div>
       {returning ? (
         <div className="grid max-w-[560px] gap-2">

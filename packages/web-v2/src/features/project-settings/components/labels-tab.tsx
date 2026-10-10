@@ -47,7 +47,6 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
     <PageSection>
       <PageSectionBody>
         <SectionTitle className="fg-h3 mb-1 text-accent-text!">{t("settings.project.work.labels")}</SectionTitle>
-        <p className="fg-body-sm mb-4 max-w-[68ch] text-muted">{t("settings.project.work.labelsLead")}</p>
 
         {labelsQ.isLoading ? (
           <div className="space-y-2">
@@ -57,7 +56,7 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
         ) : labelsQ.isError ? (
           <ErrorState message={formatApiError(labelsQ.error)} onRetry={() => labelsQ.refetch()} />
         ) : plainLabels.length === 0 ? (
-          <EmptyState title={t("settings.project.work.noLabels")} message={t("settings.project.work.noLabelsBody")} mascot={false} />
+          <EmptyState message={t("settings.project.work.noLabels")} mascot={false} />
         ) : (
           <ul className="divide-y divide-line-subtle">
             {plainLabels.map((label) => (

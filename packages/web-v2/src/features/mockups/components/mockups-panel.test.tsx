@@ -80,7 +80,7 @@ describe("a requirement's Mockups tab", () => {
 
   it("offers no proposal, even when the caller would let one through", async () => {
     requirementPanel();
-    await screen.findByText("No mockup was proposed for this requirement.");
+    await screen.findByText("No mockups");
     expect(screen.queryByRole("button", { name: "Upload" })).toBeNull();
   });
 
@@ -88,19 +88,21 @@ describe("a requirement's Mockups tab", () => {
   it("says none was proposed for it, never that one is yet to come", async () => {
     requirementPanel();
     const tab = await screen.findByTestId("view-mockups");
-    await screen.findByText("No mockup was proposed for this requirement.");
-    expect(tab).not.toHaveTextContent(/proposed yet/);
+    await screen.findByText("No mockups");
+    expect(tab).not.toHaveTextContent(/yet/);
   });
 
   it("an item tab with none still says one may be proposed", async () => {
     panel([]);
-    expect(await screen.findByText("No mockup proposed yet.")).toBeInTheDocument();
+    expect(await screen.findByText("None yet")).toBeInTheDocument();
   });
 
-  it("says the revision's picture replaces mockups, and never that someone other than the author accepts", async () => {
+  // REQ-43 BC-4: the tab no longer explains where a requirement's picture went or who accepts
+  it("explains nothing about pictures or who accepts", async () => {
     requirementPanel();
     const tab = await screen.findByTestId("view-mockups");
-    expect(tab).toHaveTextContent("A requirement's picture now belongs to each revision");
+    await screen.findByText("No mockups");
+    expect(tab).not.toHaveTextContent(/picture/);
     expect(tab).not.toHaveTextContent(/other than its author/);
   });
 });

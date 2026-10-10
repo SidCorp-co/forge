@@ -36,11 +36,18 @@ export function targetView(r: Row, l: Linked): FeedbackTargetView {
             },
           }
         : null;
+    const named = node ? ('step' in node ? [node.step] : [node.edge.from, node.edge.to]) : [];
+    const stepNames = Object.fromEntries(
+      named.flatMap((id) => {
+        const name = w?.steps.get(id);
+        return name ? [[id, name]] : [];
+      }),
+    );
     return {
       type,
       key: w?.flow ?? (r.workflowId as string),
       title: w?.title ?? null,
-      ...(node ? { node } : {}),
+      ...(node ? { node, stepNames } : {}),
     };
   }
   if (type === 'contract') {

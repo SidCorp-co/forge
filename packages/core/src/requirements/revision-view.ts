@@ -9,6 +9,7 @@ import type {
   requirementRevisions,
 } from '../db/schema-requirements.js';
 import type { Person } from '../lib/people.js';
+import { withCorrections } from './assumption-corrections.js';
 import { type PictureRow, pictureView } from './picture-read.js';
 import { liveAt } from './rules.js';
 
@@ -66,11 +67,15 @@ export function revisionView(
   pictures: readonly PictureRow[],
 ) {
   const name = (id: string | null) => (id === null ? null : (people.get(id)?.name ?? null));
+  const live = liveAt(criteria, r.revision);
   return {
     revision: r.revision,
     state: r.state as RevisionState,
     baseRevision: r.baseRevision,
-    spec: r.spec as RequirementSpec,
+    spec: withCorrections(
+      { tldr: r.tldr, spec: r.spec as RequirementSpec },
+      live.map((c) => c.body),
+    ),
     tldr: r.tldr,
     changeSummary: r.changeSummary,
     reason: r.reason,
@@ -88,7 +93,7 @@ export function revisionView(
     writtenLang: r.writtenLang,
     kind: (r.kind as RequirementKind | null) ?? null,
     picture: pictureOf(r.pictureId, pictures, people),
-    criteria: liveAt(criteria, r.revision).map(criterionView),
+    criteria: live.map(criterionView),
     criteriaChanges: criteriaChangesOf(criteria, r.revision, r.baseRevision),
   };
 }

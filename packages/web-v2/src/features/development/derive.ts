@@ -9,7 +9,6 @@ export const partSegments = (parts: readonly OverviewAttentionPart[], t: Copy): 
     label: t(`issues.attention.${p.group}`),
     count: p.count,
     tone: ISSUE_ATTENTION_LABELS[p.group].tone,
-    hint: t(`issues.attention.${p.group}.hint`),
   }));
 
 export const partsLine = (parts: readonly OverviewAttentionPart[], t: Copy): string =>

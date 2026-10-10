@@ -254,7 +254,7 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, onCorrec
               <Textarea rows={6} value={text} onChange={(e) => setText(e.target.value)} />
             </Field>
           ) : null}
-          <Field label={t("memory.why")} hint={t("memory.whyHint")}>
+          <Field label={t("memory.why")}>
             <Input value={reason} onChange={(e) => setReason(e.target.value)} />
           </Field>
           <div className="flex gap-2">

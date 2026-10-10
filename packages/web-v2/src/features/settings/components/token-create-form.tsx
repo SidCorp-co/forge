@@ -206,7 +206,7 @@ function DraftFields({
           onChange={(e) => set("name", e.target.value)}
         />
       </Field>
-      <Field label={t("settings.tokens.scopes")} required error={err(errors.scopes)} hint={t("settings.tokens.scopesHint")}>
+      <Field label={t("settings.tokens.scopes")} required error={err(errors.scopes)}>
         <div className="flex flex-wrap gap-4 pt-1">
           {PAT_SCOPES.map((scope) => (
             <Checkbox
@@ -222,7 +222,6 @@ function DraftFields({
         label={t("settings.tokens.permissionsLabel")}
         required
         error={err(errors.permissions)}
-        hint={t("settings.tokens.permissionsHint")}
       >
         <RadioGroup
           name="pat-grant"
@@ -240,12 +239,12 @@ function DraftFields({
           </>
         )}
       </Field>
-      <Field label={t("settings.tokens.expires")} hint={t("settings.tokens.expiresHint")}>
+      <Field label={t("settings.tokens.expires")}>
         <Input type="date" value={draft.expiresAt} onChange={(e) => set("expiresAt", e.target.value)} />
       </Field>
       <Field
         label={t("settings.tokens.bind")}
-        hint={projectsQ.isLoading ? t("settings.tokens.loadingProjects") : t("settings.tokens.bindHint")}
+        hint={projectsQ.isLoading ? t("settings.tokens.loadingProjects") : undefined}
       >
         <Select
           options={projectOptions}
@@ -283,12 +282,12 @@ function PermissionPicks({
   );
 }
 
-function SsoReauth({ providers, onStart }: { providers: string[]; onStart: (p: string) => void }) {
+export function SsoReauth({ providers, onStart }: { providers: string[]; onStart: (p: string) => void }) {
   const t = useCopy();
   return (
     <Field
       label={t("settings.tokens.reauth")}
-      hint={providers.length > 0 ? t("settings.tokens.reauthHint") : t("settings.tokens.reauthNone")}
+      hint={providers.length > 0 ? undefined : t("settings.tokens.reauthNone")}
     >
       <div className="flex flex-wrap gap-3 pt-1">
         {providers.map((p) => (

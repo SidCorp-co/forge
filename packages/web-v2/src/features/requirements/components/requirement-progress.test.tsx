@@ -115,7 +115,7 @@ describe("the top of a requirement page", () => {
   it("says nothing is owed on an accepted one, at the lifecycle's last step with no next", () => {
     const accepted = { ...reqDetail, standing: { ...reqDetail.standing, state: "accepted", next: null, attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.empty"), rule: RULE }) } } as RequirementDetail;
     render(<RequirementProgress standing={accepted.standing} slug="hop" inset="px-4" />);
-    expect(screen.getByTestId("wait-banner")).toHaveTextContent("Accepted. Nothing is owed on it.");
+    expect(screen.getByTestId("wait-banner")).toHaveTextContent("Accepted. Nothing owed");
     expect(screen.getByTestId("step-bar")).toHaveTextContent("Step 5 of 5");
     expect(screen.getByTestId("step-bar")).not.toHaveTextContent("next");
     expect(strayInStrip(screen.getByTestId("requirement-progress"), accepted.standing)).toBeNull();

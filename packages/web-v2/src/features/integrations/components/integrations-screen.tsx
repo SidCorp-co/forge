@@ -17,7 +17,6 @@ import {
   PageSectionBody,
   EmptyState,
   ErrorState,
-  HelpButton,
   Input,
   NativeSelect,
   PageContainer,
@@ -67,7 +66,6 @@ function AddConnection({ projects }: { projects: Array<{ id: string; slug: strin
         maxHeight={360}
         className="w-[300px] bg-surface p-3 shadow-md"
       >
-        <p className="fg-body-sm mb-2 text-muted">{t("integrations.addBody")}</p>
         {projects.length === 0 ? (
           <p className="fg-body-sm text-subtle">{t("integrations.addNoProject")}</p>
         ) : (
@@ -196,14 +194,12 @@ export function IntegrationsScreen() {
   const selected = items.find((c) => c.id === selectedId) ?? null;
   const closeDrawer = useCallback(() => setSelectedId(null), []);
 
-  const scopeName = activeOrg ? (activeOrg.isPersonal ? t("integrations.scope.personal") : activeOrg.name) : t("integrations.scope.workspace");
 
   function renderEmpty() {
     if (inScope.length > 0) {
       return (
         <EmptyState
-          title={t("integrations.empty.noMatch")}
-          message={t("integrations.empty.noMatchBody", { n: inScope.length, scope: scopeName })}
+          message={t("integrations.empty.noMatch")}
           mascot={false}
           action={{
             label: t("integrations.empty.clearFilters"),
@@ -218,30 +214,22 @@ export function IntegrationsScreen() {
     if (all.length > 0) {
       return (
         <EmptyState
-          title={t("integrations.empty.noneIn", { scope: scopeName })}
+          title={t("integrations.empty.noneIn")}
           message={all.length > 1 ? t("integrations.empty.elsewhereMany", { n: all.length }) : t("integrations.empty.elsewhereOne")}
           mascot={false}
         />
       );
     }
     return (
-      <EmptyState
-        title={t("integrations.empty.none")}
-        message={t("integrations.empty.noneBody")}
-        mascot={false}
-      />
+      <EmptyState message={t("integrations.empty.none")} mascot={false} />
     );
   }
 
   return (
     <PageContainer className="flex flex-col gap-5">
-      <PageTitle hint={t("integrations.hint", { scope: scopeName })}>{t("integrations.title")}</PageTitle>
+      <PageTitle>{t("integrations.title")}</PageTitle>
       <TopBarActions>
         <AddConnection projects={spaceProjects} />
-        <HelpButton
-          summary={t("integrations.help")}
-          actions={[t("integrations.help.open"), t("integrations.help.disable"), t("integrations.help.binding"), t("integrations.help.add")]}
-        />
       </TopBarActions>
 
       {inScope.length > 1 && (

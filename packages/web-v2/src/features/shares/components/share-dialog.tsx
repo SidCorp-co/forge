@@ -27,21 +27,10 @@ const AUDIENCE_LABEL: Record<ShareAudience, string> = {
   link: "Anyone with the link",
 };
 
-const AUDIENCE_HINT: Record<ShareAudience, string> = {
-  members: "Opens only for someone signed in who can read this project.",
-  link: "Opens for anyone holding the link, without signing in.",
-};
-
 const SUBJECT_TITLE: Record<ShareSubject["kind"], string> = {
   message: "Share this answer",
   "status-report": "Share this status report",
   release: "Share this release page",
-};
-
-const SUBJECT_LEAD: Record<ShareSubject["kind"], string> = {
-  message: "A frozen copy of the whole answer: the question, the reply and every block it drew, with the runs they were read from, as you can read them now.",
-  "status-report": "A frozen copy of this status report, as you can read it now.",
-  release: "A frozen copy of this release page as the people using the product read it, with its clips and pictures.",
 };
 
 /** The days field read as a share's expiry, or the sentence saying what a valid one is. */
@@ -107,11 +96,6 @@ export function ShareDialog({
             if (canCreate) submit();
           }}
         >
-          <p className="fg-body-sm text-muted">
-            {SUBJECT_LEAD[subject.kind]} Secrets and email addresses are removed. Nothing else in the project
-            can be reached from the link.
-          </p>
-
           <fieldset className="flex flex-col gap-2.5">
             <legend className="fg-label mb-2">Who can open it</legend>
             <RadioGroup name="share-audience" value={audience} onChange={(v) => setAudience(v as ShareAudience)}>
@@ -121,7 +105,6 @@ export function ShareDialog({
                 return (
                   <div key={a} className="flex flex-col gap-0.5" data-testid={`share-audience-${a}`}>
                     <Radio value={a} label={AUDIENCE_LABEL[a]} disabled={disabled} />
-                    <p className="fg-caption pl-7 text-subtle">{AUDIENCE_HINT[a]}</p>
                     {refusal && (
                       <p className="fg-caption pl-7 text-fg" data-testid={`share-audience-${a}-reason`} data-code={refusal.code}>
                         <span className="font-mono" translate="no">
@@ -210,7 +193,7 @@ function CreatedLink({
         </p>
       )}
       <p className="fg-body-sm text-fg">
-        This link is shown once. Copy it now: Forge keeps only a fingerprint of it and cannot show it again.
+        This link is shown once. Copy it now.
       </p>
       <div className="flex items-center gap-2">
         <Input

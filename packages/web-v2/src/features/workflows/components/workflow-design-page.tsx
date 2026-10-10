@@ -55,7 +55,7 @@ function StepRows({ steps, numbered, diff, revision }: { steps: WorkflowStep[]; 
                 {titleOf(s)}
               </span>
               {mark ? (
-                <span className="ml-2 text-12 font-semibold text-accent-text" title={t("workflows.markHint", { r: revision, mark: (MARK[mark] ? t(MARK[mark]) : mark).toLowerCase() })}>
+                <span className="ml-2 text-12 font-semibold text-accent-text">
                   {t("workflows.markIn", { mark: MARK[mark] ? t(MARK[mark]) : mark, r: revision })}
                 </span>
               ) : null}

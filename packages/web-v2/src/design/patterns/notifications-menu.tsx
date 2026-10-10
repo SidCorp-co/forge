@@ -239,7 +239,7 @@ export function NotificationsMenu({
                     )}
                     <EnumBadge family="notificationType" value={n.type} />
                     {n.resolved && (
-                      <ToneBadge tone="done" label={t("shell.bell.resolved")} glyph="✓" value="resolved" title={`resolved · ${t("shell.bell.resolvedHint")}`} />
+                      <ToneBadge tone="done" label={t("shell.bell.resolved")} glyph="✓" value="resolved" title={t("shell.bell.resolved")} />
                     )}
                     {n.sub && (
                       <button

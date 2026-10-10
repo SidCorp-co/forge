@@ -44,7 +44,7 @@ describe("BC-17: Reproduce on the feedback item", () => {
       [`GET /previews/${REPRO_ID}`]: () => ({ body: { preview: reproduce({ state: "starting", liveAt: null }) } }),
     });
     mount();
-    expect(screen.getByText(/never production\. For members of this project only/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("For members of this project only");
     fireEvent.click(screen.getByRole("button", { name: "Reproduce FB-52" }));
     await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ kind: "reproduce", feedback: "FB-52" }));
     expect(await screen.findByTestId("reproduce-state")).toHaveTextContent("Starting");

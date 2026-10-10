@@ -74,9 +74,6 @@ export function ThemePanel({ config }: { config: EpodsystemReadConfig }) {
           {t("integrations.epod.openStorefront")}
         </a>
       )}
-      <p className="fg-body-sm text-subtle">
-        {t("integrations.epod.buildsNote")}
-      </p>
     </div>
   );
 }

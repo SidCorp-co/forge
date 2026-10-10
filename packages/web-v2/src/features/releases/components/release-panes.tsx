@@ -111,7 +111,7 @@ export function FeedbackAnswered({ r, slug }: { r: ReleaseDetail; slug: string }
   if (r.feedbackAnswered.length === 0) return null;
   return (
     <section aria-label={t("releases.feedbackAnswered")} data-testid="release-feedback">
-      <ViewHeading hint={t("releases.feedbackAnsweredHint")}>{t("releases.feedbackAnswered")}</ViewHeading>
+      <ViewHeading>{t("releases.feedbackAnswered")}</ViewHeading>
       <p className="mb-2 text-12-5 text-muted" data-testid="release-feedback-counts">
         {(["told", "not_told", "before_notices", "on_ship"] as const)
           .filter((k) => r.feedbackToldCounts[k] > 0)
@@ -146,7 +146,7 @@ export function OverviewPane({ r, slug, all }: { r: ReleaseDetail; slug: string;
       <FeedbackAnswered r={r} slug={slug} />
       {r.gates.length > 0 ? (
         <section aria-label={t("releases.whyNotCut")}>
-          <ViewHeading hint={r.state === "draft" ? t("releases.inTheWayHint") : undefined}>
+          <ViewHeading>
             {r.state === "draft" ? t("releases.inTheWay") : t("releases.worthKnowing")}
           </ViewHeading>
           <ul className="divide-y divide-line-subtle border-y border-line-subtle">
@@ -160,7 +160,7 @@ export function OverviewPane({ r, slug, all }: { r: ReleaseDetail; slug: string;
         <ReleaseTrain releases={all} slug={slug} selected={r.key} />
       </section>
       <section aria-label={t("releases.requirementsCompletes")}>
-        <ViewHeading hint={t("releases.requirementsCompletesHint")}>{t("releases.requirementsCompletes")}</ViewHeading>
+        <ViewHeading>{t("releases.requirementsCompletes")}</ViewHeading>
         <Requirements r={r} slug={slug} />
       </section>
     </div>
@@ -346,7 +346,7 @@ export function NotesPane({ r, slug }: { r: ReleaseDetail; slug: string }) {
       ))}
       {withoutNotes.length > 0 ? (
         <section>
-          <ViewHeading hint={t("releases.withoutNoteHint")}>{t("releases.withoutNote")}</ViewHeading>
+          <ViewHeading>{t("releases.withoutNote")}</ViewHeading>
           <ul className="grid gap-1 text-13 text-muted">
             {withoutNotes.map((w) => (
               <li key={w.key}>

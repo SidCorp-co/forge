@@ -14,5 +14,4 @@ export const rocketchat: ProviderModule = {
   section: () => import("./section").then((m) => ({ default: m.RocketchatSection })),
   connectionSection: () =>
     import("./connection-config").then((m) => ({ default: m.RocketchatConnectionConfig })),
-  connectionNote: null,
 };

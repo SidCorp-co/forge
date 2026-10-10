@@ -43,12 +43,12 @@ describe("the dashboard Runners card for a limited runner", () => {
 	it("names the printed time as what the account said, and never counts down to it", () => {
 		const { getByTestId } = card(limited);
 		const line = getByTestId("runner-line");
-		expect(line).toHaveTextContent(/The account said it resets at .+: its claim, not when work resumes\./);
+		expect(line).toHaveTextContent(/said it resets at .+/);
 		expect(line.textContent).not.toMatch(printedCountdown);
 	});
 
 	it("speaks of no printed time where the account printed none", () => {
 		const { getByTestId } = card({ ...limited, limitPrintedResetAt: null });
-		expect(getByTestId("runner-line").textContent).not.toMatch(/The account said it resets/);
+		expect(getByTestId("runner-line").textContent).not.toMatch(/resets at/);
 	});
 });

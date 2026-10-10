@@ -68,12 +68,7 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
           <Radio
             key={c}
             value={c}
-            label={
-              <span className="grid">
-                <span className="text-13 font-medium">{t(`feedback.choice.${c}`)}</span>
-                <span className="text-12 text-muted">{t(`feedback.choice.${c}Hint`)}</span>
-              </span>
-            }
+            label={<span className="text-13 font-medium">{t(`feedback.choice.${c}`)}</span>}
           />
         ))}
       </RadioGroup>
@@ -115,14 +110,12 @@ function VerifyBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
     <section className="grid gap-2" data-testid="feedback-verify">
       <h3 className="text-12 font-semibold text-muted">{t("feedback.act.confirmFix")}</h3>
       <p className="text-12 text-muted" data-testid="verify-copy">
-        {t("feedback.verify.copy")}
         {f.verifyHeld
           ? t("feedback.verify.held")
           : f.autoVerify
             ? t("feedback.verify.byDate", { at: time.dateTime(f.autoVerify.at), n: f.autoVerify.windowDays })
             : t("feedback.verify.byPerson")}
       </p>
-      {f.can.askVerify ? <p className="text-12 text-muted">{t("feedback.verify.asking")}</p> : null}
       {!reopening && f.can.verify ? (
         <Input value={evidence} onChange={(e) => setEvidence(e.target.value)} maxLength={500} aria-label={t("feedback.verify.evidence")} placeholder={t("feedback.verify.evidence")} />
       ) : null}

@@ -366,6 +366,20 @@ describe("what a block shows of its frame", () => {
   });
 });
 
+describe("a count beside its unit (FB-126)", () => {
+  const issues = { name: "total", type: "number", unit: "issues", label: "Issues" } as const;
+
+  it("reads one issue, not one issues, and any other count in the plural", () => {
+    expect(cellText(issues, 1)).toBe("1 issue");
+    expect(cellText(issues, 0)).toBe("0 issues");
+    expect(cellText(issues, 2)).toBe("2 issues");
+  });
+
+  it("leaves an abbreviated unit as written", () => {
+    expect(cellText({ name: "h", type: "number", unit: "h", label: "Hours" }, 1)).toBe("1 h");
+  });
+});
+
 describe("a state cell as words", () => {
   const vocab = (vocabulary: "requirement" | "releaseState" | "bcVerdict") =>
     ({ name: "state", type: "status", label: "State", vocabulary }) as const;

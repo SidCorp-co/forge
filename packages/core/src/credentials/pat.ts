@@ -1,7 +1,7 @@
 import argon2 from 'argon2';
 import { and, desc, eq, type InferSelectModel, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { personalAccessTokens, type UserKind, users } from '../db/schema.js';
+import { personalAccessTokens, tokenFenceChanges, type UserKind, users } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { env, LEGACY_PAT_PEPPER } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
@@ -18,6 +18,7 @@ import {
   patGrantIsStated,
   type StatedPatGrant,
 } from './pat-permissions.js';
+import { tokenFence } from './token-fence.js';
 
 const ARGON2_OPTIONS = {
   type: argon2.argon2id,
@@ -360,24 +361,40 @@ export async function revokePat(id: string, userId: string): Promise<Pat | null>
  * more project does not mean a new secret on every box. Null when the token is not the holder's, is
  * revoked, or belongs to a box (a box's reach is core's to set).
  */
+/**
+ * A personal token's new project list, and the record of the change in the same transaction
+ * (FB-48): the token keeps its secret, and `token_fence_changes` keeps who moved its fence and what
+ * it reached before and after. Null where the token is not the holder's live personal token.
+ */
 export async function setPatFence(
   id: string,
   userId: string,
   fence: { projectIds: string[] | null; boundProjectId: string | null },
 ): Promise<Pat | null> {
-  const [updated] = await db
-    .update(personalAccessTokens)
-    .set({ projectIds: fence.projectIds, boundProjectId: fence.boundProjectId })
-    .where(
-      and(
-        eq(personalAccessTokens.id, id),
-        eq(personalAccessTokens.userId, userId),
-        isNull(personalAccessTokens.revokedAt),
-        isNull(personalAccessTokens.deviceId),
-      ),
-    )
-    .returning();
-  return updated ?? null;
+  return db.transaction(async (tx) => {
+    const live = and(
+      eq(personalAccessTokens.id, id),
+      eq(personalAccessTokens.userId, userId),
+      isNull(personalAccessTokens.revokedAt),
+      isNull(personalAccessTokens.deviceId),
+    );
+    const [before] = await tx.select().from(personalAccessTokens).where(live).for('update');
+    if (!before) return null;
+    const [updated] = await tx
+      .update(personalAccessTokens)
+      .set({ projectIds: fence.projectIds, boundProjectId: fence.boundProjectId })
+      .where(live)
+      .returning();
+    if (!updated) return null;
+    const was = tokenFence(before);
+    await tx.insert(tokenFenceChanges).values({
+      tokenId: id,
+      userId,
+      beforeProjects: was ? [...was] : null,
+      afterProjects: [...(tokenFence(updated) ?? [])],
+    });
+    return updated;
+  });
 }
 
 /** Count active PATs for a user. Used for the per-user cap. */

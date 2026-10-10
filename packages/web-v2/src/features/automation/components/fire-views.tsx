@@ -223,7 +223,7 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
     <div className="grid gap-8" data-testid="fire-produced-items">
       {p.reports.length ? (
         <section>
-          <ViewHeading hint={`${p.reports.length}`}>{t("schedules.fire.reports")}</ViewHeading>
+          <ViewHeading right={<span className="text-12-5 text-muted">{p.reports.length}</span>}>{t("schedules.fire.reports")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {p.reports.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
@@ -239,7 +239,7 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
       ) : null}
       {p.issues.length ? (
         <section>
-          <ViewHeading hint={`${p.issues.length}`}>{t("schedules.fire.issues")}</ViewHeading>
+          <ViewHeading right={<span className="text-12-5 text-muted">{p.issues.length}</span>}>{t("schedules.fire.issues")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {p.issues.map((i) => (
               <li key={i.id} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
@@ -255,7 +255,7 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
       ) : null}
       {p.proposals.length ? (
         <section>
-          <ViewHeading hint={`${p.proposals.length}`}>{t("schedules.fire.proposals")}</ViewHeading>
+          <ViewHeading right={<span className="text-12-5 text-muted">{p.proposals.length}</span>}>{t("schedules.fire.proposals")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {p.proposals.map((a) => (
               <li key={`${a.skill}:${a.summary}`} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
@@ -269,7 +269,7 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
       ) : null}
       {p.runs.length ? (
         <section>
-          <ViewHeading hint={`${p.runs.length}`}>{t("schedules.fire.runs")}</ViewHeading>
+          <ViewHeading right={<span className="text-12-5 text-muted">{p.runs.length}</span>}>{t("schedules.fire.runs")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {p.runs.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
@@ -283,7 +283,7 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
       ) : null}
       {p.notifications.length ? (
         <section>
-          <ViewHeading hint={`${p.notifications.length}`}>{t("schedules.fire.notifications")}</ViewHeading>
+          <ViewHeading right={<span className="text-12-5 text-muted">{p.notifications.length}</span>}>{t("schedules.fire.notifications")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {p.notifications.map((n) => (
               <li key={n.id} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">

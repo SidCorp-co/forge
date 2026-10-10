@@ -81,7 +81,7 @@ describe("the ETA cell reads a clock, not a duration", () => {
     const { line, sub } = etaLines(eta, vi);
     expect(`${line} ${sub}`).not.toMatch(/\d+(\.\d)? (min|h|d)\b/);
     expect(eta.detail).toMatch(/^Trong 2,2 giờ – 31 giờ · tính lúc 12:00\./); // i18n-allow: asserts the vi ETA copy
-    expect(eta.detail).toContain("không phải cam kết"); // i18n-allow: asserts the vi ETA copy
+    expect(eta.detail).toContain("Forecast: half land by");
     expect(eta.detail).toContain("held to 2");
   });
 });

@@ -49,7 +49,6 @@ export function ModuleBars({ modules }: { modules: OverviewModules }) {
         ))}
         {loose.open > 0 || loose.shipped > 0 ? <Row m={{ ...loose, name: t("issues.board.noModule") }} max={modules.max} /> : null}
       </div>
-      {none ? <p className="mt-2.5 text-12 text-muted">{t("overview.dev.noModulesAll")}</p> : null}
       {quiet.length > 0 ? (
         <div className="mt-3">
           <button
@@ -70,7 +69,6 @@ export function ModuleBars({ modules }: { modules: OverviewModules }) {
           ) : null}
         </div>
       ) : null}
-      {modules.max > 0 ? <p className="mt-2.5 text-12 text-muted">{t("overview.dev.oneScale")}</p> : null}
     </div>
   );
 }

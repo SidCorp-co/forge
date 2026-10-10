@@ -49,12 +49,12 @@ function SecretForm({
 					</Field>
 				</div>
 				<div className="w-64">
-					<Field label={t("settings.project.raw.secretValue")} hint={t("settings.project.raw.secretValueHint")}>
+					<Field label={t("settings.project.raw.secretValue")}>
 						<Input type="password" autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} />
 					</Field>
 				</div>
 			</div>
-			{write.isError && <Banner tone="danger">{t("settings.project.raw.nothingWritten", { error: formatApiError(write.error) })}</Banner>}
+			{write.isError && <Banner tone="danger">{t("settings.project.raw.writeFailed", { error: formatApiError(write.error) })}</Banner>}
 			<Button variant="primary" disabled={!ready || write.isPending} loading={write.isPending} onClick={save} className="min-h-11">
 				{t("settings.project.raw.secretStore")} <code translate="no">secret://{target.scope || "…"}/{target.name || "…"}</code>
 			</Button>
@@ -73,7 +73,6 @@ export function SecretsSection({ projectId, canEdit }: { projectId: string; canE
 	return (
 		<section aria-label={t("settings.project.raw.secrets")} className="mt-6 border-t border-line pt-5">
 			<PageSectionTitle className="fg-label text-fg">{t("settings.project.raw.secrets")}</PageSectionTitle>
-			<p className="fg-body-sm mt-1 mb-3 text-muted">{t("settings.project.raw.secretsLead")}</p>
 			{secrets.isError && <Banner tone="danger">{t("settings.project.raw.secretsUnread", { error: formatApiError(secrets.error) })}</Banner>}
 			{profiles.isError && <Banner tone="danger">{t("settings.project.raw.profilesUnread", { error: formatApiError(profiles.error) })}</Banner>}
 			{uses.length > 0 && (

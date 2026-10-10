@@ -29,10 +29,7 @@ export function ConnectionOwnerField({
   if (!canCreateOrgOwned) return null;
 
   return (
-    <Field
-      label={t("integrations.owner.label")}
-      hint={t("integrations.owner.hint")}
-    >
+    <Field label={t("integrations.owner.label")}>
       <Select
         value={value ?? ""}
         onChange={(v) => onChange(v === "" ? undefined : v)}

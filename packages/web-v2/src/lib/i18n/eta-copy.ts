@@ -1,15 +1,15 @@
 import { baseOf, copyLocale, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 
-// The ETA column's words, in the project's content language (contracts `content-language.ts`): vi
-// where the project writes Vietnamese, English for every other tag. The words are the `eta.*` keys
-// of the forecast's copy file, `features/forecast/copy.json`, read through `productCopy`.
+// The ETA column's words, in the interface language (`eta-clock.ts:useEtaClock`), never the project's
+// content language (REQ-13 BC-2): vi for a vi tag, English for every other. The words are the `eta.*`
+// keys of the forecast's copy file, `features/forecast/copy.json`, read through `productCopy`.
 
 const ETA_LANGS = ["vi", "en"] as const;
 export type EtaLang = (typeof ETA_LANGS)[number];
 
-/** The ETA copy for a project's content language tag: vi for any vi tag, else English. */
-export const etaLangOf = (contentLanguage: string | null | undefined): EtaLang =>
-  baseOf(contentLanguage) === "vi" ? "vi" : "en";
+/** The ETA copy for a language tag: vi for any vi tag, else English. */
+export const etaLangOf = (tag: string | null | undefined): EtaLang =>
+  baseOf(tag) === "vi" ? "vi" : "en";
 
 interface EtaCopy {
   /** The column header and the rail's label. */

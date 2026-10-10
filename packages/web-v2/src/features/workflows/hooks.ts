@@ -90,6 +90,19 @@ export function useSystemGraph(ref: SystemGraphRef | null) {
   });
 }
 
+/** FB-86: drafts a requirement from a design no requirement roots; the design and the list read again. */
+export function useDraftRequirementFromDesign(projectId: string, workflowId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { title: string; designs: string[] }) => workflowsApi.draftRequirement(projectId, body),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["workflow-design", projectId, workflowId] });
+      qc.invalidateQueries({ queryKey: ["workflow-health", projectId, workflowId] });
+      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+    },
+  });
+}
+
 export function useDesignDecision(projectId: string, workflowId: string) {
   const qc = useQueryClient();
   return useMutation({

@@ -62,7 +62,7 @@ describe("the issue rail's Requirement property", () => {
     await user.click(await screen.findByRole("option", { name: /REQ-5/ }));
     const ask = await screen.findByRole("alertdialog");
     expect(ask).toHaveTextContent("Link ISS-136 to REQ-5?");
-    expect(ask).toHaveTextContent("ISS-136 will deliver REQ-5 Referrals.");
+    expect(ask).toHaveTextContent("ISS-136 will deliver REQ-5 Referrals, read against its current revision");
     expect(calls.filter((c) => c.method === "POST")).toEqual([]);
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());

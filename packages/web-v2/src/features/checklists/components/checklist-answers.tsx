@@ -107,7 +107,8 @@ function GapRow({ row, answerAt }: { row: Extract<Row, { kind: "gap" }>; answerA
 
 /**
  * One checklist's answers and gaps. Nothing is drawn for a checklist the item has not reached (no
- * reading now, no move); a move recorded before the checklist reads "No checklist" (BC-9).
+ * reading now, no move); a move recorded before the checklist reads "No checklist" where nothing
+ * stands now, and otherwise says so under a heading that reads the item as it stands (BC-9).
  */
 export function ChecklistAnswers({
   read,
@@ -127,16 +128,25 @@ export function ChecklistAnswers({
   if (!move && !read.now && !unrecorded) return null;
   const rows = rowsOf(read, move);
   const open = rows.filter((r) => r.kind === "gap").length;
-  const hint = move
-    ? <span title={time.dateTime(move.at)}>{t("checklist.passed", { at: time.relative(move.at) })}</span>
-    : unrecorded
-      ? t("checklist.noChecklist")
-      : open === 0
-        ? t("checklist.complete")
-        : t("checklist.open", { n: open });
+  // a move recorded before the checklist judged nothing, but the item's own reading still stands:
+  // the heading says how it reads now, and the line under it why no move is shown
+  const state = move ? (
+    <span title={time.dateTime(move.at)}>{t("checklist.passed", { at: time.relative(move.at) })}</span>
+  ) : rows.length === 0 ? (
+    t("checklist.noChecklist")
+  ) : open === 0 ? (
+    t("checklist.complete")
+  ) : (
+    t("checklist.open", { n: open })
+  );
   return (
     <section data-testid="checklist" data-checklist={read.id} data-standing={move ? "passed" : unrecorded ? "no_checklist" : read.now?.complete ? "complete" : "open"}>
-      <ViewHeading hint={hint}>{read.form.title}</ViewHeading>
+      <ViewHeading right={<span className="text-12-5 text-muted">{state}</span>}>{read.form.title}</ViewHeading>
+      {unrecorded && rows.length > 0 ? (
+        <p className="text-12 text-subtle" data-testid="checklist-unrecorded">
+          {t("checklist.movedBefore")}
+        </p>
+      ) : null}
       {rows.length > 0 ? <dl className="grid">{rows.map((r) => (r.kind === "answer" ? <AnswerRow key={r.field.name} row={r} revision={revision} /> : <GapRow key={r.field.name} row={r} answerAt={answerAt} />))}</dl> : null}
     </section>
   );

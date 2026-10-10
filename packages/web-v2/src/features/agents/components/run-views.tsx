@@ -228,6 +228,13 @@ export function RunFacts({ r, slug }: { r: RunStanding; slug: string }) {
             <span title={time.dateTime(r.finishedAt)}>{fmtTime(r.finishedAt, language)}</span>
           </Fact>
         ) : null}
+        {r.boxRunId ? (
+          <Fact label={t("runs.fact.boxRunId")}>
+            <span className="break-all font-mono text-12-5" data-testid="run-box-id">
+              {r.boxRunId}
+            </span>
+          </Fact>
+        ) : null}
         {r.sessionId ? (
           <Fact label={t("runs.fact.session")}>
             <span className="font-mono text-12-5" title={r.sessionId}>
@@ -355,7 +362,7 @@ function Overview({ r }: { r: RunStanding }) {
       </section>
       {stuck ? (
         <section>
-          <ViewHeading hint={enumLabel("runStuckRule", stuck.rule, language)}>{t("runs.whyStuck")}</ViewHeading>
+          <ViewHeading right={<span className="text-12-5 text-muted">{enumLabel("runStuckRule", stuck.rule, language)}</span>}>{t("runs.whyStuck")}</ViewHeading>
           <p className="text-13">{said(stuck.says.detail, language)}</p>
           <p className="mt-1 text-12-5 text-muted">{said(stuck.says.failsBy, language)}</p>
           <p className="mt-2 font-mono text-12 text-subtle" title={stuck.evidence.value ?? undefined} translate="no">
@@ -434,7 +441,7 @@ function Events({ d }: { d: RunStandingDetail }) {
   if (d.events.length === 0) return <FactsEmpty>{t("runs.noEvents")}</FactsEmpty>;
   return (
     <section>
-      <ViewHeading hint={d.eventsHasMore ? t("runs.firstN", { n: time.number(d.events.length) }) : time.number(d.events.length)}>{t("runs.transitions")}</ViewHeading>
+      <ViewHeading right={<span className="text-12-5 text-muted">{d.eventsHasMore ? t("runs.firstN", { n: time.number(d.events.length) }) : time.number(d.events.length)}</span>}>{t("runs.transitions")}</ViewHeading>
       <Table aria-label={t("runs.transitions")}>
         <THead className="bg-sunken">
           <TR>
@@ -516,7 +523,7 @@ function Lease({ r }: { r: RunStanding }) {
       </section>
       {h.expiries.length > 1 ? (
         <section>
-          <ViewHeading hint={t("runs.lease.earliest")}>{t("runs.lease.everyClock")}</ViewHeading>
+          <ViewHeading>{t("runs.lease.everyClock")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {h.expiries.map((x) => (
               <li key={`${x.source}:${x.at}`} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">

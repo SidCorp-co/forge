@@ -70,7 +70,36 @@ function grantOf(permissions: string[] | null): 'unstated' | 'full' | 'named' {
   return patGrantIsStatedFull(permissions) ? 'full' : 'named';
 }
 
-function publicShape(row: typeof personalAccessTokens.$inferSelect) {
+type PatRow = typeof personalAccessTokens.$inferSelect;
+
+/**
+ * Why this token's project list cannot be edited, or null where it can (FB-48): a box's token and
+ * the tokens core mints have the reach core set for them, a revoked one reaches nothing, and an
+ * account permission resolves no project.
+ */
+function fenceFixed(row: PatRow): { code: PatRefusalCode; path: string; detail: string } | null {
+  const reserved = coreTokenNamePrefixOf(row.name);
+  if (row.deviceId || reserved)
+    return {
+      code: 'PAT_REFUSED',
+      path: '/id',
+      detail: `token ${row.name} is ${row.deviceId ? "a box's, whose reach follows its pairing" : `one core minted (${reserved}…)`}: only a personal token you minted has its project list edited`,
+    };
+  if (row.revokedAt)
+    return { code: 'PAT_REFUSED', path: '/id', detail: 'this token is revoked; mint a new one' };
+  const accountOnly = (row.permissions ?? []).filter((p) =>
+    (PAT_ACCOUNT_ONLY_PERMISSIONS as readonly string[]).includes(p),
+  );
+  if (accountOnly.length > 0)
+    return {
+      code: 'PAT_ACCOUNT_PERMISSION_ON_SCOPED_TOKEN',
+      path: '/permissions',
+      detail: `${accountOnly.join(', ')} ${accountOnly.length === 1 ? 'is' : 'are'} account permissions, whose routes resolve no project, and this token would be fenced to projects. Mint a token without them.`,
+    };
+  return null;
+}
+
+function publicShape(row: PatRow) {
   return {
     id: row.id,
     name: row.name,
@@ -85,6 +114,7 @@ function publicShape(row: typeof personalAccessTokens.$inferSelect) {
     lastUsedAt: row.lastUsedAt,
     lastUsedIp: row.lastUsedIp,
     revokedAt: row.revokedAt,
+    fenceEditable: fenceFixed(row) === null,
   };
 }
 
@@ -229,8 +259,9 @@ patRoutes.post('/pat', requireFreshAuth(5), zValidator('json', createBodySchema)
   );
 });
 
-// A token's project list is edited by its holder after mint (FB-48): the project list replaces the
-// old one, whole, and every project in it must be one the holder can see. A fence is changed, never
+// A token's project list is edited by its holder after mint (FB-48), behind a fresh sign-in, keeping
+// its secret: the project list replaces the old one, whole, every project in it must be one the
+// holder can see, and the change is recorded (`setPatFence`). A fence is changed or added, never
 // removed, so a fenced token cannot become one that reaches everything.
 patRoutes.patch(
   '/pat/:id',
@@ -255,30 +286,8 @@ patRoutes.patch(
     }
     const row = (await listPatsOf(userId)).find((t) => t.id === id);
     if (!row) throw notFound();
-    // a box's token and the tokens core mints (a workspace, a script read, an agreement) have the
-    // reach core set for them: widening one would let it reach what it was minted not to
-    const reserved = coreTokenNamePrefixOf(row.name);
-    if (row.deviceId || reserved) {
-      throw refuse(
-        'PAT_REFUSED',
-        `token ${row.name} is ${row.deviceId ? "a box's, whose reach follows its pairing" : `one core minted (${reserved}…)`}: only a personal token you minted has its project list edited`,
-        '/id',
-      );
-    }
-    if (row.revokedAt) {
-      throw refuse('PAT_REFUSED', 'this token is revoked; mint a new one', '/id');
-    }
-    const grant = row.permissions ?? [];
-    const accountOnly = grant.filter((p) =>
-      (PAT_ACCOUNT_ONLY_PERMISSIONS as readonly string[]).includes(p),
-    );
-    if (accountOnly.length > 0) {
-      throw refuse(
-        'PAT_ACCOUNT_PERMISSION_ON_SCOPED_TOKEN',
-        `${accountOnly.join(', ')} ${accountOnly.length === 1 ? 'is' : 'are'} account permissions, whose routes resolve no project, and this token would be fenced to projects. Mint a token without them.`,
-        '/permissions',
-      );
-    }
+    const fixed = fenceFixed(row);
+    if (fixed) throw refuse(fixed.code, fixed.detail, fixed.path);
     const allowed = new Set(await loadVisibleProjectIds(userId));
     const missing = [...(projectIds ?? []), ...(boundProjectId ? [boundProjectId] : [])].find(
       (pid) => !allowed.has(pid),
@@ -292,6 +301,12 @@ patRoutes.patch(
     const updated = await setPatFence(id, userId, { projectIds, boundProjectId });
     if (!updated) throw notFound();
     forgetPatThrottle(updated.id);
+    await tokenChanged({
+      userId,
+      tokenId: updated.id,
+      change: 'fenced',
+      ts: new Date().toISOString(),
+    });
     return c.json(publicShape(updated));
   },
 );

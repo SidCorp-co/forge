@@ -15,7 +15,6 @@ import {
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
-import { TourHint } from "@/features/tours/components/tour-hint";
 import { useDraftReleaseForecast } from "@/features/forecast/hooks";
 import { useRelease, useReleasePage, useReleases } from "../hooks";
 import { ContinuedAs, EndedAttempt } from "./release-attempts";
@@ -96,7 +95,6 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
             <EndedAttempt r={r} slug={slug} />
             {r.continuedAs ? <ContinuedAs to={r.continuedAs} slug={slug} className="border-b border-line-subtle px-8 py-2 max-md:px-4" /> : null}
             <ReleasePhoneStanding r={r} forecast={forecastQ.data} />
-            <TourHint tourId="release-what-changes" />
             <div className="flex items-center gap-3 border-b border-line-subtle px-8 py-2.5 max-md:px-4" data-testid="release-view-bar">
               <span data-tour="rel-technical" data-testid="release-view-switch" title={t("releases.page.view.label")}>
                 <SegmentedControl

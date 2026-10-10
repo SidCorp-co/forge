@@ -49,11 +49,9 @@ export function IssuePicker({
   const items = [...found, ...value.filter((v) => !found.some((f) => f.key === v.key))];
   const status = query.isFetching
     ? t("issues.picker.searching")
-    : q.length === 0
-      ? t("issues.picker.hint")
-      : query.isSuccess && found.length === 0
-        ? t("issues.picker.none", { text: q })
-        : null;
+    : q.length > 0 && query.isSuccess && found.length === 0
+      ? t("issues.picker.none")
+      : null;
 
   return (
     <Combobox.Root

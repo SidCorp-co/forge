@@ -111,7 +111,7 @@ jobs:
           node-version: '22'
       - run: node scripts/check-source-language.mjs --all
       # Copy budget (REQ-43): no English web copy string over 12 words (20 for a refusal or
-      # confirmation) beyond the baseline, which only shrinks. Reads JSON only, so it lives here.
+      # confirmation, 2 for an empty state) and none that explains. Reads JSON only, so it lives here.
       - run: node scripts/check-copy-budget.mjs
       # The release record: CHANGELOG.md holds released sections only, an unreleased entry is a
       # changelog.d/ fragment, and an entry published in either is not removed without a declared reason.

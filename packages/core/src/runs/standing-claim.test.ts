@@ -46,6 +46,7 @@ function building(
       openPhase: undefined,
       pauseReason: null,
       releaseVersion: null,
+      boxRunId: null,
       declarationRefusal: null,
     },
     issue: {

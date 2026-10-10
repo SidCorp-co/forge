@@ -7,7 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import type { PersonVia } from '@forge/contracts/ecosystem';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import type { QuestionAboutRequest } from '@forge/contracts/questions';
+import type { QuestionAboutRequest, QuestionRoundFacts } from '@forge/contracts/questions';
 import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
@@ -40,7 +40,10 @@ async function accessOn(projectId: string, userId: string): Promise<PermissionFa
   return access?.role ? access : null;
 }
 
-function shapeOf(current: QuestionStep | undefined, access: PermissionFacts | null) {
+function shapeOf(
+  current: QuestionStep | undefined,
+  access: PermissionFacts | null,
+): QuestionRoundFacts & { options: VisibleOption[] } {
   const choice = current ? isChoiceStep(current) : true;
   const options: VisibleOption[] =
     current && isChoiceStep(current)

@@ -50,5 +50,41 @@ export async function sendStoredAttachment(
   }
   setInertAttachmentHeaders(c, file.mime, file.name, opts.download);
   if (opts.download) c.header('Cache-Control', 'private, no-store');
-  return c.body(new Uint8Array(buffer));
+  return sendBytes(c, buffer);
+}
+
+/**
+ * The byte span a `Range: bytes=…` header asks of a `size`-byte body: `null` when the header is
+ * absent or not a single byte range (the whole body is then the answer, as RFC 9110 allows), or
+ * `'unsatisfiable'` when it starts past the end.
+ */
+export function byteRange(
+  header: string | undefined,
+  size: number,
+): { start: number; end: number } | 'unsatisfiable' | null {
+  const m = header ? /^bytes=(\d*)-(\d*)$/.exec(header.trim()) : null;
+  if (!m || (m[1] === '' && m[2] === '')) return null;
+  if (m[1] === '') {
+    const suffix = Number(m[2]);
+    if (suffix === 0 || size === 0) return 'unsatisfiable';
+    return { start: Math.max(0, size - suffix), end: size - 1 };
+  }
+  const start = Number(m[1]);
+  const end = m[2] === '' ? size - 1 : Math.min(Number(m[2]), size - 1);
+  if (start >= size) return 'unsatisfiable';
+  if (end < start) return null;
+  return { start, end };
+}
+
+/** A stored file's bytes, as 206 with the asked span when the request carries a byte range. */
+export function sendBytes(c: Context, bytes: Uint8Array): Response {
+  c.header('Accept-Ranges', 'bytes');
+  const range = byteRange(c.req.header('range'), bytes.length);
+  if (range === 'unsatisfiable') {
+    c.header('Content-Range', `bytes */${bytes.length}`);
+    return c.body(null, 416);
+  }
+  if (!range) return c.body(new Uint8Array(bytes), 200);
+  c.header('Content-Range', `bytes ${range.start}-${range.end}/${bytes.length}`);
+  return c.body(new Uint8Array(bytes.subarray(range.start, range.end + 1)), 206);
 }

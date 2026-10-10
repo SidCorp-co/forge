@@ -13,7 +13,7 @@ describe("revision summary", () => {
     ).toBe("Adds Sign in, Pick a shift, Confirm and 1 more; removes Old; rewords Home; adds 1 line; changes 2 lines.");
   });
   it("says when nothing changed, and when it is the first draft", () => {
-    expect(revisionSummary(none, false, en)).toBe("No change to the steps or lines.");
+    expect(revisionSummary(none, false, en)).toBe("No change");
     expect(revisionSummary(null, true, en)).toBe("First draft of the design.");
     expect(revisionSummary(null, false, en)).toBeNull();
   });

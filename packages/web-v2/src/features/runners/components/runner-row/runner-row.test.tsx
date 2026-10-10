@@ -66,13 +66,13 @@ describe("the Runners screen row for a limited runner", () => {
 
 	it("names the printed time as what the account said, and never counts down to it", () => {
 		const { container } = renderRow(fb87Runner);
-		expect(screen.getByText(/The account said it resets at .+: its claim, not when work resumes\./)).toBeInTheDocument();
+		expect(screen.getByText(/Account said it resets at .+: its claim, not when work resumes\./)).toBeInTheDocument();
 		expect(container.textContent).not.toMatch(printedCountdown);
 	});
 
 	it("speaks of no printed time where the account printed none", () => {
 		const { container } = renderRow({ ...fb87Runner, limitPrintedResetAt: null });
 		expect(container).toHaveTextContent("Usage limit · refused 18m ago · next try in 3m");
-		expect(container.textContent).not.toMatch(/The account said it resets/);
+		expect(container.textContent).not.toMatch(/Account said it resets/);
 	});
 });

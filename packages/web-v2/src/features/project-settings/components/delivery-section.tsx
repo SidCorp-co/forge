@@ -36,12 +36,11 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const storefrontSourceVars = (provider: string) => ({ provider, providerWithArticle: withArticle(provider) });
 
 /** A list of names typed as "dev, main"; blanks and repeats dropped. */
-function CommaList({ draft, path, label, effect, disabled }: { draft: DocumentDraft; path: string[]; label: string; effect: string; disabled: boolean }) {
+function CommaList({ draft, path, label, disabled }: { draft: DocumentDraft; path: string[]; label: string; disabled: boolean }) {
 	const text = list(draft.get(path)).map(String).join(", ");
 	return (
 		<SettingRow
 			label={label}
-			effect={effect}
 			refusals={draft.refusedAt(path)}
 			control={
 				<Input
@@ -65,12 +64,12 @@ function RepositoryGroup({ draft, off }: { draft: DocumentDraft; off: boolean })
 	const source = obj(draft.get(["source"]));
 	const gateType = str(obj(obj(draft.get(["validation"])).gate).type) || "none";
 	return (
-		<SettingGroup id="repository" title={t("settings.project.delivery.repository")} lead={t("settings.project.delivery.repositoryLead")}>
+		<SettingGroup id="repository" title={t("settings.project.delivery.repository")}>
 			{source.type === "git" ? (
 				<>
-					<TextSetting draft={draft} path={["source", "git", "repository"]} label={t("settings.project.delivery.repo")} effect={t("settings.project.delivery.repoEffect")} placeholder="github.com/owner/repo" mono disabled={off} />
-					<TextSetting draft={draft} path={["source", "git", "defaultBranch"]} label={t("settings.project.delivery.defaultBranch")} effect={t("settings.project.delivery.defaultBranchEffect")} mono disabled={off} />
-					<CommaList draft={draft} path={["source", "git", "branches"]} label={t("settings.project.delivery.branches")} effect={t("settings.project.delivery.branchesEffect")} disabled={off} />
+					<TextSetting draft={draft} path={["source", "git", "repository"]} label={t("settings.project.delivery.repo")} placeholder="github.com/owner/repo" mono disabled={off} />
+					<TextSetting draft={draft} path={["source", "git", "defaultBranch"]} label={t("settings.project.delivery.defaultBranch")} mono disabled={off} />
+					<CommaList draft={draft} path={["source", "git", "branches"]} label={t("settings.project.delivery.branches")} disabled={off} />
 				</>
 			) : source.type === "storefront" ? (
 				<p className="fg-body-sm text-muted">{t("settings.project.delivery.storefrontSource", storefrontSourceVars(str(obj(source.storefront).provider)))}</p>
@@ -87,10 +86,9 @@ function RepositoryGroup({ draft, off }: { draft: DocumentDraft; off: boolean })
 					)}
 				</div>
 			)}
-			<ChoiceSetting draft={draft} path={["workspace", "isolation"]} options={optionsOf(t, "settings.project.delivery.isolation", ISOLATIONS)} label={t("settings.project.delivery.isolationLabel")} effect={t("settings.project.delivery.isolationEffect")} disabled={off} />
+			<ChoiceSetting draft={draft} path={["workspace", "isolation"]} options={optionsOf(t, "settings.project.delivery.isolation", ISOLATIONS)} label={t("settings.project.delivery.isolationLabel")} disabled={off} />
 			<SettingRow
 				label={t("settings.project.delivery.gate")}
-				effect={t("settings.project.delivery.gateEffect")}
 				refusals={draft.refusedAt(["validation"])}
 				control={
 					<div className="flex flex-col gap-2 sm:flex-row">
@@ -139,7 +137,6 @@ function Probes({ draft, base, off }: { draft: DocumentDraft; base: string[]; of
 	return (
 		<SettingRow
 			label={t("settings.project.delivery.probes")}
-			effect={t("settings.project.delivery.probesEffect")}
 			refusals={draft.refusedAt([...base, "verification"])}
 			control={
 				<div className="space-y-2">
@@ -200,11 +197,10 @@ function EnvironmentRow({ draft, name, options, off }: { draft: DocumentDraft; n
 					/>
 				)}
 			</div>
-			<ChoiceSetting draft={draft} path={[...base, "tier"]} options={optionsOf(t, "settings.project.delivery.tier", TIERS)} label={t("settings.project.delivery.tierLabel")} effect={t("settings.project.delivery.tierEffect")} disabled={off} />
-			<TextSetting draft={draft} path={[...base, "deploysFrom"]} optional mono label={t("settings.project.delivery.deploysFrom")} effect={t("settings.project.delivery.deploysFromEffect")} disabled={off} />
+			<ChoiceSetting draft={draft} path={[...base, "tier"]} options={optionsOf(t, "settings.project.delivery.tier", TIERS)} label={t("settings.project.delivery.tierLabel")} disabled={off} />
+			<TextSetting draft={draft} path={[...base, "deploysFrom"]} optional mono label={t("settings.project.delivery.deploysFrom")} disabled={off} />
 			<SettingRow
 				label={t("settings.project.delivery.deployBy")}
-				effect={t("settings.project.delivery.deployByEffect")}
 				refusals={draft.refusedAt([...base, "deployment"])}
 				control={
 					<Picker
@@ -223,9 +219,9 @@ function EnvironmentRow({ draft, name, options, off }: { draft: DocumentDraft; n
 				}
 			/>
 			{bound !== EXTERNAL && (
-				<ChoiceSetting draft={draft} path={[...base, "deployment", "trigger"]} options={optionsOf(t, "settings.project.delivery.trigger", TRIGGERS)} label={t("settings.project.delivery.triggerLabel")} effect={t("settings.project.delivery.triggerEffect")} disabled={off} />
+				<ChoiceSetting draft={draft} path={[...base, "deployment", "trigger"]} options={optionsOf(t, "settings.project.delivery.trigger", TRIGGERS)} label={t("settings.project.delivery.triggerLabel")} disabled={off} />
 			)}
-			<TextSetting draft={draft} path={[...base, "url"]} optional mono placeholder="https://" label={t("settings.project.delivery.url")} effect={t("settings.project.delivery.urlEffect")} disabled={off} />
+			<TextSetting draft={draft} path={[...base, "url"]} optional mono placeholder="https://" label={t("settings.project.delivery.url")} disabled={off} />
 			<Probes draft={draft} base={base} off={off} />
 		</section>
 	);
@@ -241,7 +237,7 @@ function EnvironmentsGroup({ draft, projectId, off }: { draft: DocumentDraft; pr
 	const [adding, setAdding] = useState("");
 	const valid = /^[a-z][a-z0-9-]{0,62}$/.test(adding) && !names.includes(adding);
 	return (
-		<SettingGroup id="environments" title={t("settings.project.delivery.environments")} lead={t("settings.project.delivery.environmentsLead")}>
+		<SettingGroup id="environments" title={t("settings.project.delivery.environments")}>
 			{names.length === 0 && <p className="fg-body-sm text-muted">{t("settings.project.delivery.noEnvironments")}</p>}
 			{names.map((name) => (
 				<EnvironmentRow key={name} draft={draft} name={name} options={options} off={off} />
@@ -294,7 +290,6 @@ function ReleasePathGroup({ draft, off }: { draft: DocumentDraft; off: boolean }
 		<SettingGroup id="release-path" title={t("settings.project.delivery.releasePath")} lead={pathSentence(draft, t)}>
 			<SettingRow
 				label={t("settings.project.delivery.promotions")}
-				effect={t("settings.project.delivery.promotionsEffect")}
 				refusals={draft.refusedAt(["promotions"])}
 				control={
 					<div className="space-y-2">
@@ -330,8 +325,8 @@ function ReleasePathGroup({ draft, off }: { draft: DocumentDraft; off: boolean }
 					</div>
 				}
 			/>
-			<ChoiceSetting draft={draft} path={["rollback", "strategy"]} options={optionsOf(t, "settings.project.delivery.rollback", ROLLBACKS)} label={t("settings.project.delivery.rollbackLabel")} effect={t("settings.project.delivery.rollbackEffect")} disabled={off} />
-			<SwitchSetting draft={draft} path={["release", "approval", "required"]} fallback={false} label={t("settings.project.delivery.releaseApproval")} effect={t("settings.project.delivery.releaseApprovalEffect")} disabled={off} />
+			<ChoiceSetting draft={draft} path={["rollback", "strategy"]} options={optionsOf(t, "settings.project.delivery.rollback", ROLLBACKS)} label={t("settings.project.delivery.rollbackLabel")} disabled={off} />
+			<SwitchSetting draft={draft} path={["release", "approval", "required"]} fallback={false} label={t("settings.project.delivery.releaseApproval")} disabled={off} />
 		</SettingGroup>
 	);
 }
@@ -339,12 +334,11 @@ function ReleasePathGroup({ draft, off }: { draft: DocumentDraft; off: boolean }
 function AutomationGroup({ policy, off }: { policy: DocumentDraft; off: boolean }) {
 	const t = useCopy();
 	return (
-		<SettingGroup id="automation" title={t("settings.project.delivery.automation")} lead={policy.declared ? t("settings.project.delivery.automationLead") : t("settings.project.delivery.automationUndeclared")}>
-			<ChoiceSetting draft={policy} path={["qa"]} options={optionsOf(t, "settings.project.delivery.qa", ["self", "independent"])} label={t("settings.project.delivery.qaLabel")} effect={t("settings.project.delivery.qaEffect")} disabled={off} />
+		<SettingGroup id="automation" title={t("settings.project.delivery.automation")} lead={policy.declared ? undefined : t("settings.project.delivery.automationUndeclared")}>
+			<ChoiceSetting draft={policy} path={["qa"]} options={optionsOf(t, "settings.project.delivery.qa", ["self", "independent"])} label={t("settings.project.delivery.qaLabel")} disabled={off} />
 			<SettingRow
 				inline
 				label={t("settings.project.delivery.intake")}
-				effect={t("settings.project.delivery.intakeEffect")}
 				refusals={policy.refusedAt(["intake"])}
 				control={
 					<Picker

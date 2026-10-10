@@ -161,10 +161,9 @@ describe("recording a verdict from a criterion row", () => {
     renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { user, form } = await openJudge(1);
     await within(form).findByDisplayValue(LIVE);
-    await user.click(within(form).getByRole("button", { name: "Could not judge" }));
+    await user.click(within(form).getByRole("button", { name: "Could not judge, not a pass" }));
     const send = screen.getByRole("button", { name: "Record verdict" });
     expect(send).toBeDisabled();
-    expect(form).toHaveTextContent("never counts as a pass");
     await user.type(within(form).getByRole("textbox", { name: /Why it could not be judged/ }), "The property is in the code, not on any screen.");
     expect(send).toBeEnabled();
     await user.click(send);
@@ -187,18 +186,19 @@ describe("recording a verdict from a criterion row", () => {
     renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { user, form } = await openJudge(1);
     await within(form).findByText(/this issue has not merged/);
-    await user.click(within(form).getByRole("button", { name: "Could not judge" }));
+    await user.click(within(form).getByRole("button", { name: "Could not judge, not a pass" }));
     await user.type(within(form).getByRole("textbox", { name: /Why it could not be judged/ }), "Nothing deployed carries it.");
     await user.click(screen.getByRole("button", { name: "Record verdict" }));
     await waitFor(() => expect(verdictPosted(calls)).toMatchObject({ verdict: "skipped", identity: null }));
   });
 
-  it("says plainly that Short counts as a pass", async () => {
+  it("says on its controls that Short counts as a pass and Could not judge does not", async () => {
     core();
     renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { form } = await openJudge(1);
+    // the controls carry the rule, so no sentence explains them (REQ-43 BC-4)
     expect(within(form).getByRole("button", { name: "Pass, short of wording" })).toBeInTheDocument();
-    expect(form).toHaveTextContent("Short counts as a pass");
+    expect(within(form).getByRole("button", { name: "Could not judge, not a pass" })).toBeInTheDocument();
   });
 
   it("cites an attachment the issue already holds, uploading nothing", async () => {
@@ -226,7 +226,7 @@ describe("recording a verdict from a criterion row", () => {
     const { user, form } = await openJudge(1);
     await within(form).findByRole("combobox", { name: "Attached to this issue" });
     await user.upload(within(form).getByTestId("verdict-screenshot"), new File(["png"], "report-1440.png", { type: "image/png" }));
-    expect(form).toHaveTextContent("report-1440.png is already attached to this issue; this one uploads as report-1440-2.png");
+    expect(form).toHaveTextContent("report-1440.png is already attached; this one uploads as report-1440-2.png");
     await user.click(screen.getByRole("button", { name: "Record verdict" }));
     await waitFor(() => expect(verdictPosted(calls)).toMatchObject({ evidence: ["report-1440-2.png"] }));
     const upload = calls.find((c) => c.path === "/issues/i1/attachments" && c.method === "POST")?.body as FormData;
@@ -331,7 +331,7 @@ describe("tying a closed issue to its requirement's criteria", () => {
     renderWithQuery(<CriteriaSection issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     await user.click(await screen.findByRole("button", { name: "Tie to REQ-32 criteria" }));
     const form = await screen.findByTestId("tie-form");
-    const box = await within(form).findByRole("checkbox", { name: /BC-13 .* · tied to an earlier wording; tying refreshes it to this one/ });
+    const box = await within(form).findByRole("checkbox", { name: /BC-13 .* · tied to an earlier wording; tying refreshes it for judging/ });
     expect(box).not.toBeChecked();
     expect(box).not.toHaveAttribute("data-disabled");
     expect(form).not.toHaveTextContent("already tied");

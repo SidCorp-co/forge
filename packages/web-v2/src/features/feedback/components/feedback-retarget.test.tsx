@@ -63,7 +63,7 @@ describe("changing what a feedback item is about", () => {
     fireEvent.click(screen.getByRole("button", { name: "Change what it is about…" }));
     await screen.findByTestId("feedback-choices");
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "Nothing like this" } });
-    expect(screen.getByTestId("feedback-target-unmatched")).toHaveTextContent("No requirement of this project is titled or keyed “Nothing like this”: pick one from the list.");
+    expect(screen.getByTestId("feedback-target-unmatched")).toHaveTextContent("No requirement titled or keyed “Nothing like this”: pick one from the list.");
     expect(screen.getByRole("button", { name: "Move it" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "labels" } });
     expect(screen.queryByTestId("feedback-target-unmatched")).toBeNull();
@@ -97,7 +97,7 @@ describe("changing what a feedback item is about", () => {
   it("names a route or tool target with the label's own casing", () => {
     renderWithQuery(<FeedbackActions projectId="p1" f={view({ target: { type: "endpoint", key: "shop-tools:save_backend_workflow", title: null } })} />);
     fireEvent.click(screen.getByRole("button", { name: "Change what it is about…" }));
-    expect(screen.getByText("Now API route or tool shop-tools:save_backend_workflow. Its route and phase stay as they are; the move is kept in its history.")).toBeInTheDocument();
+    expect(screen.getByText("Now API route or tool shop-tools:save_backend_workflow.")).toBeInTheDocument();
   });
 
   it("tells the mover before Move it that a project serving nothing has no route or tool to name", async () => {
@@ -105,7 +105,7 @@ describe("changing what a feedback item is about", () => {
     renderWithQuery(<FeedbackActions projectId="p1" f={view()} />);
     fireEvent.click(screen.getByRole("button", { name: "Change what it is about…" }));
     fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
-    expect(await screen.findByTestId("feedback-endpoints-none")).toHaveTextContent("File it as a Screen instead.");
+    expect(await screen.findByTestId("feedback-endpoints-none")).toHaveTextContent("file it as a Screen.");
   });
 
   it("shows a refusal by its code and keeps what was typed", async () => {

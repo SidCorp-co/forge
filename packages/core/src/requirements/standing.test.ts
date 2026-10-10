@@ -54,6 +54,7 @@ const input = (issues: StandingIssue[]) => ({
   agreedAt: at('2026-09-01T00:00:00Z'),
   release: null,
   updatedAt: at('2026-09-26T00:00:00Z'),
+  statusSince: at('2026-09-26T00:00:00Z'),
   now: at('2026-09-28T00:00:00Z'),
 });
 
@@ -376,5 +377,41 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
     );
     expect(s.state).toBe('delivered');
     expect(s.waitingOn.act).toMatch(/^check BC-1, BC-3, BC-5 against the traceability matrix/);
+  });
+});
+
+// REQ-29 BC-5's AGE: time in the state it stands in, never since its last edit (live dev.227, where
+// setting area and short name on every requirement read every row "1m")
+describe('how long a requirement has stood in its state', () => {
+  const since = at('2026-09-10T00:00:00Z');
+  const edited = at('2026-09-27T23:59:00Z');
+
+  it('a placement or short-name edit moves its touched time and leaves its state time', () => {
+    const s = deriveStanding({ ...input([]), statusSince: since, updatedAt: edited });
+    expect(s.state).toBe('agreed');
+    expect(s.touchedAt).toBe(edited.toISOString());
+    expect(s.stateSince).toBe(since.toISOString());
+  });
+
+  it('in delivery, it counts from when the first live issue started, not from any issue edit', () => {
+    const started = (n: number, iso: string): StandingIssue => ({
+      ...issue(n, 'in_progress', false),
+      updatedAt: edited,
+      startedAt: at(iso),
+    });
+    const s = deriveStanding({
+      ...input([started(1, '2026-09-15T00:00:00Z'), started(2, '2026-09-12T00:00:00Z')]),
+      statusSince: since,
+    });
+    expect(s.state).toBe('in_delivery');
+    expect(s.stateSince).toBe('2026-09-12T00:00:00.000Z');
+  });
+
+  it('a status move after the work started is where it counts from', () => {
+    const s = deriveStanding({
+      ...input([{ ...issue(1, 'in_progress', false), startedAt: at('2026-09-12T00:00:00Z') }]),
+      statusSince: at('2026-09-20T00:00:00Z'),
+    });
+    expect(s.stateSince).toBe('2026-09-20T00:00:00.000Z');
   });
 });

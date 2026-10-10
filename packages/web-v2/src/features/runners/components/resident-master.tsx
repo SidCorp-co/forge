@@ -37,9 +37,8 @@ export function ResidentMaster({
 				<p className="fg-caption text-muted">{t("runners.master.none")}</p>
 			)}
 
-			<p className="fg-caption text-muted">{t("runners.master.notGoverned")}</p>
 			<p className="fg-caption text-muted">
-				{t("runners.master.toStop")} <code>forge-runner master stand-down {named}</code> {where}. {t("runners.master.standDown")}{" "}
+				{t("runners.master.toStop")} <code>forge-runner master stand-down {named}</code> {where}.{" "}
 				<code>--force</code> {t("runners.master.force")} <code>forge-runner master stand-up {named}</code> {t("runners.master.standUp")}
 			</p>
 		</div>

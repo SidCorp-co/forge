@@ -41,8 +41,8 @@ export function focusDecisionPanel(stickyHeader: HTMLElement | null): void {
  * one thing — that the issue's own question list came back empty — and that
  * sentence is a claim about the record, which it never read: an owner read it
  * on an issue whose thread carried the question in full and stopped for
- * nineteen hours. So the heading reports the query, and the way forward is the
- * card's content rather than a footnote under a dismissal.
+ * nineteen hours. So the heading reports the query and nothing else: no line
+ * explains what to do next (REQ-43 BC-4).
  */
 function NothingToAnswer() {
   const t = useCopy();
@@ -51,14 +51,6 @@ function NothingToAnswer() {
       <PageSectionHeader>
         <PageSectionTitle>{t("agents.decision.none")}</PageSectionTitle>
       </PageSectionHeader>
-      <PageSectionBody className="space-y-2">
-        <p className="fg-body-sm text-fg">
-          {t("agents.decision.noneMove")}
-        </p>
-        <p className="fg-caption text-muted">
-          {t("agents.decision.noneNote")}
-        </p>
-      </PageSectionBody>
     </PageSection>
   );
 }
@@ -122,9 +114,6 @@ function ThreadQuestionCard({
           <div role="status" className="space-y-1 rounded-md border border-line-subtle p-3">
             <p className="fg-caption text-muted">{t("agents.decision.answeredIn")}</p>
             <p className="fg-body-sm whitespace-pre-wrap text-fg">{answer.text}</p>
-            <p className="fg-caption text-muted">
-              {t("agents.decision.resumeHint")}
-            </p>
           </div>
         ) : !onAnswer ? null : sent ? (
           <p role="status" className="fg-body-sm text-fg">

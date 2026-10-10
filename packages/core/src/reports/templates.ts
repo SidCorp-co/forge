@@ -284,7 +284,9 @@ export async function runTemplate(args: {
   return { document, narrative, slots, notDrawn: drawn.notDrawn, text: documentText(document) };
 }
 
-// a numeral glued to a letter is part of a name (p50, p85, v2), not a figure the narrative states
+// digits glued to a letter before them (p85, p50At, v2) are part of a name the rows give a field, not a
+// figure: the Roadmap guidance asks for the p85 date against the p50, and a draft saying "p85" was
+// refused as stating 85 on every run (FB-126); a digit after a digit, a point or a comma is inside a figure
 const NUMBER = /(?<![\p{L}\d.,])\d[\d,]*(?:\.\d+)?/gu;
 const numeralsIn = (text: string): string[] =>
   (text.match(NUMBER) ?? []).map((n) => n.replaceAll(',', ''));

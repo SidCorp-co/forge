@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { fromDrizzle, type JobInsert, type PgBoss } from 'pg-boss';
+import { backfillMarkedIn, markBackfillIn } from '../db/backfill-markers.js';
 import { db } from '../db/client.js';
 import { logger } from '../lib/logger.js';
 
@@ -101,10 +102,7 @@ export async function carryOverV10Jobs(boss: PgBoss): Promise<void> {
 
   const outcome = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${MARKER}))`);
-    const [marked] = await tx.execute<{ n: number }>(
-      sql`SELECT count(*)::int AS n FROM backfill_markers WHERE key = ${MARKER}`,
-    );
-    if ((marked?.n ?? 0) > 0) return null;
+    if (await backfillMarkedIn(tx, MARKER)) return null;
 
     const jobs = await tx.execute<V10Job>(sql`
       SELECT id, name, priority, data, state, retry_limit, retry_count, retry_delay, retry_backoff,
@@ -179,9 +177,7 @@ export async function carryOverV10Jobs(boss: PgBoss): Promise<void> {
     }
 
     const report = { jobs: jobs.length, queues: byQueue.size, unslotted };
-    await tx.execute(
-      sql`INSERT INTO backfill_markers (key, report) VALUES (${MARKER}, ${JSON.stringify(report)}::jsonb)`,
-    );
+    await markBackfillIn(tx, MARKER, report);
     return report;
   });
 

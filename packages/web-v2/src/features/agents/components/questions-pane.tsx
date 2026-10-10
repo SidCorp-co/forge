@@ -136,12 +136,8 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
 
   if (questions.length === 0) {
     return (
-      <div className="grid min-h-[40vh] place-items-center p-4">
-        <EmptyState
-          titleId={EMPTY_TITLE_ID}
-          title={t("agents.questions.emptyTitle")}
-          message={t("agents.questions.emptyBody")}
-        />
+      <div id={EMPTY_TITLE_ID} tabIndex={-1} className="grid min-h-[40vh] place-items-center p-4 focus-visible:outline-none">
+        <EmptyState message={t("agents.questions.emptyTitle")} />
       </div>
     );
   }

@@ -102,14 +102,6 @@ export function agentAdditionClaims(args: {
       text: t("conversations.claim.reads", { at }),
     },
     {
-      key: "removal-unreads-nothing",
-      text: t("conversations.claim.removal", { at }),
-    },
-    {
-      key: "replies-stay",
-      text: t("conversations.claim.replies", { at }),
-    },
-    {
       key: "scope-after",
       text: t("conversations.claim.scopeAfter", { at, project: candidate.project.name, projects: list(after, t) }),
     },

@@ -17,7 +17,6 @@ import {
 	EmptyState,
 	ErrorState,
 	Field,
-	HelpButton,
 	Input,
 	PageContainer,
 	PageTitle,
@@ -40,7 +39,6 @@ import {
 	useDevices,
 	useProjectRunners,
 } from "../hooks";
-import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
 function repositoryOf(document: Record<string, unknown> | null | undefined): string | null {
 	const source = document?.source as { type?: unknown; git?: { repository?: unknown } } | undefined;
@@ -100,10 +98,7 @@ function AssignDevice({
 								onChange={setDeviceId}
 							/>
 						</Field>
-						<Field
-							label={t("runners.assign.repoPath")}
-							hint={t("runners.assign.repoPathHint")}
-						>
+						<Field label={t("runners.assign.repoPath")}>
 							<Input
 								value={repoPath}
 								onChange={(e) => setRepoPath(e.target.value)}
@@ -117,7 +112,7 @@ function AssignDevice({
 					    the device itself), and both change what "Assign &
 					    provision" actually does. */}
 					{!hasRepository && (
-						<Banner tone="info">{t("runners.assign.noRepository")}</Banner>
+						<Banner tone="info">{t("runners.assign.repositoryMissing")}</Banner>
 					)}
 					{picked && picked.status !== "online" && (
 						<Banner tone="info">{t("runners.assign.offlineNote", { name: picked.name })}</Banner>
@@ -141,7 +136,7 @@ function AssignDevice({
 					</div>
 
 					<div className="rounded-lg border border-dashed border-line-strong p-3">
-						<span className="fg-label">{t("runners.assign.noDevice")}</span>
+						<span className="fg-label">{t("runners.assign.setUpDevice")}</span>
 						<div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
 							<code className="font-mono text-13 text-fg">
 								forge-runner setup
@@ -193,13 +188,7 @@ export function ProjectRunnersScreen({
 		<>
 			{!embedded && (
 				<>
-					<PageTitle hint={t("runners.project.hint")}>{t("overview.runners.title")}</PageTitle>
-					<TopBarActions>
-					<HelpButton
-						summary={t("runners.project.help")}
-						actions={[t("runners.project.helpDeclare"), t("runners.project.helpAssign"), t("runners.project.helpManage")]}
-					/>
-					</TopBarActions>
+					<PageTitle>{t("overview.runners.title")}</PageTitle>
 				</>
 			)}
 
@@ -228,8 +217,7 @@ export function ProjectRunnersScreen({
 						/>
 					) : rows.length === 0 ? (
 						<EmptyState
-							title={t("runners.project.noneAssigned")}
-							message={t("runners.project.noneAssignedBody")}
+							message={t("runners.project.noneAssigned")}
 							mascot={false}
 						/>
 					) : (

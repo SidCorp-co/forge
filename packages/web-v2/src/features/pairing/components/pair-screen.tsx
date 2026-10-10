@@ -147,10 +147,7 @@ export function PairScreen() {
               </div>
 
               {orgAdmin && (
-                <Field
-                  label="Pair this device as"
-                  hint="Paired as an agent, the box reaches that agent's projects. Paired as you, it reaches none — it can run the daemon and nothing project-scoped."
-                >
+                <Field label="Pair this device as">
                   <Select
                     value={asAgent}
                     onChange={(v) => setPicked({ orgId: activeOrgId, agentUserId: v })}
@@ -223,7 +220,7 @@ export function PairScreen() {
 
       <p className="fg-body-sm flex items-center gap-1.5 text-subtle">
         <Icon name="lock" size={13} />
-        Only approve devices you started yourself. Pairing codes expire 10 minutes after creation.
+        Only approve devices you started yourself.
       </p>
     </div>
   );

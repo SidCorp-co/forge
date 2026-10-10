@@ -18,7 +18,7 @@ export function TellShippedBar({ projectId, f }: { projectId: string; f: Feedbac
   return (
     <div className="grid gap-1.5" data-testid="feedback-tell-shipped">
       <p className="text-13">
-        {t("feedback.tell.head")} <span className="text-muted">{t("feedback.tell.hint")}</span>
+        {t("feedback.tell.head")}
       </p>
       <RefusalLine error={tell.error} />
       <div>

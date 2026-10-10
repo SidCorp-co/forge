@@ -3,8 +3,11 @@
 import { HEALTH_MARKER_KINDS, type WorkflowHealth } from "@forge/contracts/workflow-health";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Fact, FactsEmpty, FactsGroup, StatusBadge } from "@/design";
+import { Button, Fact, FactsEmpty, FactsGroup, StatusBadge } from "@/design";
+import { formatApiError } from "@/lib/api/error";
+import { refusalsOf } from "@/lib/api/refusals";
 import { TONE_META } from "@/design/status";
 import { DisclosureToggle } from "@/features/releases/components/release-bits";
 import { issueHref } from "@/lib/routes/issues";
@@ -13,6 +16,7 @@ import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i1
 import { said } from "@/lib/i18n/said";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { revisionReason } from "../decision-words";
+import { useDraftRequirementFromDesign } from "../hooks";
 import { markersByKind, sourceHref, targetWords } from "../health";
 import type { WorkflowBody, WorkflowDesign, WorkflowRecord } from "../types";
 import { HealthMark } from "./health-parts";
@@ -58,7 +62,7 @@ function HealthGroup({ health, slug, projectId, canDecide }: { health: WorkflowH
         ))}
       </ul>
       {health.needsYou > 0 ? (
-        <p className="mt-2 text-12-5 font-semibold text-accent-text" data-testid="health-needs-you" title={t("workflows.facts.needsPersonHint")}>
+        <p className="mt-2 text-12-5 font-semibold text-accent-text" data-testid="health-needs-you">
           {t("workflows.facts.needsPerson", { n: health.needsYou })}
         </p>
       ) : null}
@@ -127,7 +131,7 @@ function ReconciliationGroup({ health, slug }: { health: WorkflowHealth; slug: s
         {r.criteria.total === 0 ? (
           <span className="text-muted">{t("workflows.facts.noBc")}</span>
         ) : (
-          <span className="font-mono tabular-nums text-12-5" title={t("workflows.facts.bcsProvenHint")}>
+          <span className="font-mono tabular-nums text-12-5">
             {t("workflows.facts.of", { a: r.criteria.proven, b: r.criteria.total })}
           </span>
         )}
@@ -145,12 +149,38 @@ function ReconciliationGroup({ health, slug }: { health: WorkflowHealth; slug: s
   );
 }
 
-function Requirements({ d, slug }: { d: WorkflowDesign; slug: string }) {
+/**
+ * FB-86: a design no requirement roots offers to draft one from it: a requirement titled after the
+ * design and linked to it at birth, which the assistant then drafts from the design (REQ-34 BC-10).
+ */
+function DraftFromDesign({ projectId, slug, workflowId, flow, title }: { projectId: string; slug: string; workflowId: string; flow: string; title: string }) {
+  const t = useCopy();
+  const router = useRouter();
+  const create = useDraftRequirementFromDesign(projectId, workflowId);
+  const refused = create.error ? (refusalsOf(create.error)[0]?.detail ?? formatApiError(create.error)) : null;
+  return (
+    <div className="mt-2 grid gap-1">
+      <Button size="sm" variant="secondary" loading={create.isPending} onClick={() => create.mutate({ title, designs: [flow] }, { onSuccess: (r) => router.push(requirementHref(slug, r.key)) })} data-testid="draft-from-design">
+        {t("workflows.facts.draftRequirement")}
+      </Button>
+      {refused ? (
+        <p role="alert" className="text-12-5 text-red">
+          {refused}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function Requirements({ d, slug, projectId, title }: { d: WorkflowDesign; slug: string; projectId: string | undefined; title: string }) {
   const t = useCopy();
   return (
     <FactsGroup title={t("workflows.facts.requirement")} count={d.requirements.length > 1 ? t("workflows.facts.linked", { n: d.requirements.length }) : undefined} testId="facts-requirement">
       {d.requirements.length === 0 ? (
-        <FactsEmpty>{t("workflows.facts.noRequirementLinks")}</FactsEmpty>
+        <>
+          <FactsEmpty>{t("workflows.facts.noRequirementLinks")}</FactsEmpty>
+          {projectId ? <DraftFromDesign projectId={projectId} slug={slug} workflowId={d.workflowId} flow={d.flow} title={title} /> : null}
+        </>
       ) : (
         <ul className="grid gap-1.5">
           {d.requirements.map((r) => (
@@ -338,7 +368,7 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
         </FactsGroup>
       ) : null}
       <PlainStatus d={d} health={health} />
-      <Requirements d={d} slug={slug} />
+      <Requirements d={d} slug={slug} projectId={projectId} title={shown.title} />
       <FactsGroup title={t("workflows.facts.properties")} testId="facts-properties">
         <Fact label={t("workflows.facts.revision")} testId="fact-revision">
           <span className="font-mono text-12-5">r{shownRevision}</span>
@@ -363,7 +393,7 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
           )}
         </Fact>
         <Fact label={t("workflows.facts.approver")}>
-          <span title={t("workflows.facts.approverHint", { perm: d.approver })}>{t("workflows.facts.approverAnyone")}</span>
+          <span>{t("workflows.facts.approverAnyone")}</span>
         </Fact>
         <Fact label={t("workflows.facts.template")}>
           <span title={template ? `${template.id}@${template.version}` : undefined}>{template?.title ?? t("workflows.facts.none")}</span>

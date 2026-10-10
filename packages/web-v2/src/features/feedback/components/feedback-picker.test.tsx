@@ -75,7 +75,7 @@ describe("the duplicate-of picker", () => {
     renderWithQuery(<FeedbackActions projectId="p1" f={view()} />);
     fireEvent.click(screen.getByRole("radio", { name: /Duplicate of an item/ }));
     await userEvent.type(screen.getByRole("combobox", { name: "Original" }), "zebra");
-    await waitFor(() => expect(screen.getByText("No open feedback item matches “zebra”")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("No match")).toBeTruthy());
     expect(screen.queryAllByRole("option")).toEqual([]);
   });
 

@@ -11,29 +11,28 @@ describe("membership claims", () => {
   it("read in English exactly as they were written", () => {
     const c = roomOpeningClaims({ projects: [hop, kho], agentCount: 2 });
     expect(c.map((x) => x.text)).toEqual([
-      "This room will be about Hop and Kho. That is read from the agents in it, and nobody chooses it.",
-      "A room about more than one project takes no messages from Forge — a message is answered under exactly one project. Take an agent out afterwards, and the room can be spoken in.",
-      "With more than one agent this is a shared room: anybody holding a role on Hop and Kho will be able to read it, not only the people listed here.",
+      "About Hop and Kho.",
+      "More than one project: the room takes no messages.",
+      "Shared: anyone with a role on Hop and Kho reads it.",
     ]);
     expect(composerRefusal({ scopeProjects: [hop, kho] })).toEqual({
-      reason: "This room is about Hop and Kho, and a message is answered under exactly one project.",
-      wayOut: "Take one of its agents out, and the room can be spoken in again.",
+      reason: "About Hop and Kho; a message needs exactly one project.",
+      wayOut: "Take an agent out to speak here again.",
     });
     expect(personAdditionClaims({ name: "Lan", room: { shape: "direct" } })[0]?.text).toBe(
-      "Lan will be able to read this room, including everything said in it before now.",
+      "Lan reads this room, including what was said before.",
     );
   });
 
-  it("read with no English sentence in Vietnamese", () => {
+  // A claim rewritten under REQ-43 carries English only (ISS-403), so a vi page reads its English
+  // rather than a translation of the longer sentence it replaced; one still translated reads vi.
+  it("read in Vietnamese where a translation stands, and in their English where none does", () => {
     const t = productCopy("vi");
-    const texts = [
-      ...roomOpeningClaims({ projects: [hop, kho], agentCount: 2, t }).map((x) => x.text),
-      ...roomOpeningClaims({ projects: [hop], agentCount: 1, t }).map((x) => x.text),
-      ...personAdditionClaims({ name: "Lan", room: { shape: "group", scopeProjects: [hop] }, t }).map((x) => x.text),
-      removalClaim({ id: "p", kind: "person", displayName: null } as never, {}, t),
-      composerRefusal({ scopeProjects: [hop, kho] }, t)?.reason ?? "",
-    ];
-    for (const s of texts) expect(s, s).not.toMatch(ENGLISH);
+    expect(removalClaim({ id: "p", kind: "person", displayName: null } as never, {}, t)).not.toMatch(ENGLISH);
+    expect(roomOpeningClaims({ projects: [hop], agentCount: 1, t }).map((x) => x.text)).toEqual([
+      "About Hop.",
+      "One-to-one: only the people in it read it.",
+    ]);
   });
 });
 

@@ -29,7 +29,7 @@ export function DiffLens({
   const time = useTimeFormat();
   const active = files.find((f) => f.path === selectedPath) ?? files[0];
   if (!active) {
-    return <EmptyState title={t("runs.diff.empty")} message={t("runs.diff.emptyBody")} />;
+    return <EmptyState message={t("runs.diff.empty")} />;
   }
   return (
     <div className="flex min-h-0 flex-col">

@@ -211,11 +211,7 @@ function Inbox({ view }: { view: AttentionView }) {
         <RoomSub key={p.id} room={projectRoom(p.id)} />
       ))}
 
-      <PageTitle
-          hint="Cross-project items waiting on you: every project's needs-you rows, mentions, failures and offline runners."
-        >
-          Attention
-      </PageTitle>
+      <PageTitle>Attention</PageTitle>
 
       {total === 0 ? (
         <div className="grid min-h-[40vh] place-items-center">

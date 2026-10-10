@@ -146,7 +146,7 @@ describe("a memory on the record it names", () => {
 
   it("says why decay archived a row no person retired, in the reader's words", () => {
     row({ ...BASE, archivedAt: "2026-10-07T00:00:00.000Z", archivedBy: { rule: "flagged", by: "ISS-126" } });
-    expect(screen.getByTestId("memory-retired").textContent).toBe("Archived on 07/10/2026: flagged possibly stale by ISS-126 and not confirmed within 14 days");
+    expect(screen.getByTestId("memory-retired").textContent).toBe("Archived on 07/10/2026: flagged stale by ISS-126, never confirmed");
   });
 
   it("reads a decay archive in Vietnamese, with no English sentence of core's", () => {
@@ -161,7 +161,7 @@ describe("a memory on the record it names", () => {
 
   it("says a flag gave no reason rather than passing silence as one", () => {
     row({ ...BASE, flagged: { since: "2026-10-06T00:00:00.000Z", by: "ISS-126", reason: null } });
-    expect(screen.getByTestId("memory-flagged").textContent).toContain("gave no reason");
+    expect(screen.getByTestId("memory-flagged").textContent).toContain("with no reason");
   });
 
   it("offers no act on the mirror of an issue", () => {

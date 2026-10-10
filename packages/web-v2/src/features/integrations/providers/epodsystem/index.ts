@@ -14,5 +14,4 @@ export const epodsystem: ProviderModule = {
   section: () => import("./section").then((m) => ({ default: m.EpodsystemSection })),
   connectionSection: () =>
     import("./connection-config").then((m) => ({ default: m.EpodsystemConnectionConfig })),
-  connectionNote: null,
 };

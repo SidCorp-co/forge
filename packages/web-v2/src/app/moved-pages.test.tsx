@@ -47,7 +47,7 @@ describe("an old Decisions, Roadmap or Memory link", () => {
   it("says on the page it lands on where the record went, once, and goes when dismissed", async () => {
     at("/projects/hop/requirements?group=roadmap&moved=roadmap");
     render(<MovedNotice />);
-    expect(screen.getByTestId("moved-notice")).toHaveTextContent("The Roadmap page is gone: Now, Next and Later are a grouping of the Requirements list");
+    expect(screen.getByTestId("moved-notice")).toHaveTextContent("Roadmap moved: Now, Next and Later group the Requirements list.");
     await userEvent.setup().click(screen.getByRole("button", { name: "Dismiss" }));
     expect(screen.queryByTestId("moved-notice")).toBeNull();
     expect(window.location.search).toBe("?group=roadmap");

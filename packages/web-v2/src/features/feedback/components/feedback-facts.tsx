@@ -257,6 +257,7 @@ export function FeedbackFacts({
   const time = useTimeFormat();
   const language = useInterfaceLanguage();
   const t = f.target;
+  const stepName = (id: string) => t.stepNames?.[id] ?? id;
   const r = f.route;
   const carrierType = r?.route === "issue" ? "issue" : r?.route === "new_requirement" ? "requirement" : r?.route === "duplicate" ? "feedback" : "other";
   return (
@@ -300,7 +301,9 @@ export function FeedbackFacts({
         </div>
         {t.node ? (
           <p className="mt-1.5 text-12-5 text-muted" data-testid="facts-node">
-            {"step" in t.node ? tr("feedback.fact.step", { step: t.node.step }) : tr("feedback.fact.link", { from: t.node.edge.from, to: t.node.edge.to })}
+            {"step" in t.node
+              ? tr("feedback.fact.step", { step: stepName(t.node.step) })
+              : tr("feedback.fact.link", { from: stepName(t.node.edge.from), to: stepName(t.node.edge.to) })}
           </p>
         ) : null}
         {f.whereSeen && t.type !== "screen" ? <p className="mt-1.5 text-12-5 text-muted">{tr("feedback.fact.seenAt", { where: f.whereSeen })}</p> : null}
@@ -380,9 +383,7 @@ export function FeedbackFacts({
         ) : null}
         {f.sensitive ? (
           <Fact label={tr("feedback.fact.data")}>
-            <span className="text-12-5" title={tr("feedback.fact.sensitiveHint")}>
-              {tr("feedback.fact.sensitive")}
-            </span>
+            <span className="text-12-5">{tr("feedback.fact.sensitive")}</span>
           </Fact>
         ) : null}
       </FactsGroup>

@@ -104,7 +104,7 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
   );
   usePeekKeys(peek, openFull);
 
-  const title = <PageTitle hint={t("schedules.titleHint")}>{t("schedules.title")}</PageTitle>;
+  const title = <PageTitle>{t("schedules.title")}</PageTitle>;
   return (
     <QueryBoundary query={q} loadingLabel={t("schedules.loadingAutomation")} title={title} height="60vh" retry="always">
       {(d) => {

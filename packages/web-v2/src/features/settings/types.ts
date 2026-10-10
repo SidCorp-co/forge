@@ -38,6 +38,8 @@ export interface PatToken {
   lastUsedAt: string | null;
   lastUsedIp: string | null;
   revokedAt: string | null;
+  /** FB-48 — whether this is a live personal token whose project list its holder may edit. */
+  fenceEditable: boolean;
 }
 
 /** `POST /api/pat` echoes the row plus the one-time `plaintext` token. */

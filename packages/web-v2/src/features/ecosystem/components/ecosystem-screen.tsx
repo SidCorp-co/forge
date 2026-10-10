@@ -32,11 +32,9 @@ function AddProject({ ecosystemId, bus }: { ecosystemId: string; bus: Bus }) {
   const candidates = (mine.data ?? []).filter((p) => !onBus.has(p.id) && !p.archivedAt);
   return (
     <div className="relative">
-      <Tooltip label="Invites a project into this ecosystem; an admin of that project accepts it, and its master then maps its links" multiline>
-        <Button size="sm" icon="plus" type="button" onClick={() => setOpen((o) => !o)}>
-          Add project
-        </Button>
-      </Tooltip>
+      <Button size="sm" icon="plus" type="button" onClick={() => setOpen((o) => !o)}>
+        Add project
+      </Button>
       {open ? (
         <div className="absolute right-0 top-full z-10 mt-1 grid w-[300px] gap-2 rounded-lg border border-line bg-surface p-3 shadow-md">
           {candidates.length === 0 ? (
@@ -87,12 +85,10 @@ function LensBar({ lens, onLens }: { lens: Lens; onLens: (l: Lens) => void }) {
           value: "live",
           label: "Live",
           icon: "activity",
-          title: "Each link as its master last recorded it, refreshed every 15 seconds; a chip whose project's builder is running rings",
         },
         {
           value: "impact",
           label: "Impact",
-          title: "Pick a contract to see which consumers its latest version breaks, checked against the fields and surface each one uses",
         },
       ]}
     />
@@ -133,14 +129,10 @@ function EcosystemHeader({ eco, bus }: { eco: WorkspaceEcosystem | undefined; bu
     <div className={cn("flex min-w-0 flex-wrap items-center gap-3 pt-5", GUTTER)}>
       <PageTitle className="truncate text-[22px] font-bold">{name}</PageTitle>
       {eco ? (
-        <Tooltip label={`Document code: every document in ${name} is numbered ${eco.code}-…`}>
-          <MonoTag hue="cobalt">{eco.code}</MonoTag>
-        </Tooltip>
+        <MonoTag hue="cobalt">{eco.code}</MonoTag>
       ) : null}
       {eco?.steward.name ? (
-        <Tooltip label={`${eco.steward.name} stewards ${name}: it invites members and sets the reply windows and the approve gates`} multiline>
-          <Badge tone="cobalt">Steward · {eco.steward.name}</Badge>
-        </Tooltip>
+        <Badge tone="cobalt">Steward · {eco.steward.name}</Badge>
       ) : null}
       {eco?.steward.mine && bus ? (
         <span className="ml-auto flex gap-2">

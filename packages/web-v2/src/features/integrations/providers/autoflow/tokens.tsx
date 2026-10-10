@@ -42,7 +42,7 @@ export function RefreshPairFields({ value, onChange }: { value: TokenPair; onCha
   const t = useCopy();
   return (
     <>
-      <Field label={t("integrations.autoflow.refresh")} hint={t("integrations.autoflow.refreshHint")}>
+      <Field label={t("integrations.autoflow.refresh")}>
         <Input
           type="password"
           autoComplete="new-password"
@@ -51,7 +51,7 @@ export function RefreshPairFields({ value, onChange }: { value: TokenPair; onCha
           onChange={(e) => onChange({ ...value, refreshToken: e.target.value })}
         />
       </Field>
-      <Field label={t("integrations.autoflow.client")} hint={t("integrations.autoflow.clientHint")}>
+      <Field label={t("integrations.autoflow.client")}>
         <Input
           placeholder="mcpc_…"
           value={value.clientId}

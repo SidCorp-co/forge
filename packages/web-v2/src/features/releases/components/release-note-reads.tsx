@@ -57,7 +57,7 @@ export function ApprovedDesigns({ r, slug }: { r: ReleaseDetail; slug: string })
   if (r.notes.designs.length === 0) return null;
   return (
     <div data-testid="release-designs-approved">
-      <h3 className="mb-1 text-12 font-semibold uppercase tracking-wide text-subtle" title={t("releases.designsApprovedHint")}>
+      <h3 className="mb-1 text-12 font-semibold uppercase tracking-wide text-subtle">
         {t("releases.designsApproved")}
       </h3>
       <ul className="border-t border-line-subtle">

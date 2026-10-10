@@ -176,18 +176,6 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
 
         {errors.form && <Banner tone="danger">{errors.form}</Banner>}
 
-        <p className="fg-caption">
-          {t("issues.newIssue.isWorkLead")} <strong>{t("issues.newIssue.isWorkWord")}</strong> {t("issues.newIssue.isWorkRest")}{" "}
-          <a
-            href="/docs?path=file-a-request"
-            target="_blank"
-            rel="noreferrer"
-            className="underline"
-          >
-            {t("issues.newIssue.guide")}
-          </a>
-          .
-        </p>
 
         <Field label={t("issues.newIssue.title")} required error={errors.title}>
           <Input
@@ -202,10 +190,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
         </Field>
 
         {mode === "quick" && (
-          <Field
-            label={t("issues.newIssue.context")}
-            hint={t("issues.newIssue.contextHint")}
-          >
+          <Field label={t("issues.newIssue.context")}>
             <Textarea
               value={context}
               onChange={(e) => setContext(e.target.value)}
@@ -218,7 +203,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
 
         {mode === "standard" && (
           <>
-            <Field label={t("issues.newIssue.description")} hint={t("issues.newIssue.descriptionHint")}>
+            <Field label={t("issues.newIssue.description")}>
               <BodyEditor
                 label={t("issues.newIssue.description")}
                 value={description}
@@ -247,16 +232,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
               </Field>
             </div>
 
-            <Field
-              label={t("issues.category.label")}
-              hint={
-                <>
-                  {t("issues.newIssue.categoryHint")}{" "}
-                  <span translate="no" className="font-mono">
-                    bug, feature, chore
-                  </span>
-                </>
-              }>
+            <Field label={t("issues.category.label")}>
               <Input
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
@@ -287,10 +263,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
 function AttachmentsField({ staged }: { staged: ReturnType<typeof useStagedFiles> }) {
   const t = useCopy();
   return (
-    <Field
-      label={t("issues.attachments.title")}
-      hint={t("issues.newIssue.attachHint")}
-    >
+    <Field label={t("issues.attachments.title")}>
       <div
         {...staged.dropZone}
         className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed px-4 py-5 text-center transition-colors ${

@@ -46,7 +46,7 @@ describe("a proposal that only moves its pins", () => {
   it("reads as a pin-only change, with the pins old → new and the proof nothing else changed", () => {
     render(<PinOnlyReading change={{ pins: [{ workflow: "access", from: 12, to: 13 }], ...proof }} approvedRevision={4} />);
     expect(screen.getByTestId("design-pin-only")).toHaveTextContent("Pin-only change · access r12 → r13, nothing else");
-    expect(screen.getByTestId("design-pin-only-proof")).toHaveTextContent("Against approved r4 the design differs only at /basedOn/0/revision");
+    expect(screen.getByTestId("design-pin-only-proof")).toHaveTextContent("Differs from r4 only at /basedOn/0/revision");
   });
 
   it("reads in Vietnamese, and is nothing for any other change", () => {

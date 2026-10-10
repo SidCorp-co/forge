@@ -6,7 +6,7 @@
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useOnboardingState } from "../hooks";
 import type { OnboardingStatus } from "../types";
-import { HoverNote, ThreadStatusChip } from "./marks";
+import { ThreadStatusChip } from "./marks";
 
 export function ThreadSub({
   kind,
@@ -37,7 +37,6 @@ function OverdueLine({ projectId, kind }: { projectId: string; kind: "onboarding
   return (
     <p className="text-[11.5px] text-[color:var(--red-600)]" data-testid="thread-overdue">
       {t("conversations.sub.overdue", { days: batch.waitingDays, open: batch.open })}
-      <span className="text-subtle">{` · ${t("conversations.sub.overdueHint")}`}</span>
     </p>
   );
 }
@@ -46,9 +45,7 @@ function ThreadSubLine({ ba, status }: { ba: boolean; status: OnboardingStatus |
   const t = useCopy();
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-subtle">
-      <HoverNote label={ba ? t("conversations.sub.withBa") : t("conversations.sub.withAgent")}>
-        {ba ? t("conversations.sub.baHint") : t("conversations.sub.agentHint")}
-      </HoverNote>
+      <span>{ba ? t("conversations.sub.withBa") : t("conversations.sub.withAgent")}</span>
       {status && <ThreadStatusChip status={status} />}
     </div>
   );

@@ -94,8 +94,8 @@ export function IssueActions({
   return (
     <span className="flex items-center gap-1.5" data-testid="issue-actions">
       {primary}
-      {/* below 768px the bar holds the back control, the one primary act and the menu; asking and help wait for the room */}
-      <span className="contents max-md:hidden">
+      {/* below 768px of page column the bar holds the back control, the one primary act and the menu; asking and help wait for the room */}
+      <span className="contents max-column-md:hidden">
         <AskAboutThis about={null} />
         <HelpButton
         summary={t("issues.help.summary")}

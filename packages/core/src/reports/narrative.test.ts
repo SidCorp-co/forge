@@ -176,3 +176,35 @@ describe("the roadmap narrative's dates and times", () => {
     expect(out.text).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
 });
+
+// FB-126 (J9 on 0.4.0-dev.225): every Roadmap run took two calls, and the prose showed stored
+// tokens (`in_progress`, `in_delivery`) and read a count of issues as "1 total release".
+describe('what the narrative is handed and held to', () => {
+  it('keeps a risk naming the p85 date against the p50 on its first call: p85 names a field, it states no figure', async () => {
+    answers.push(
+      JSON.stringify({
+        summary: 'REQ-40 lands first, at Oct 10, 02:19 UTC.',
+        risks: "REQ-30's p85 date is far behind its p50.",
+        recommendations: 'Keep REQ-40 first.',
+        findings: ['', ''],
+      }),
+    );
+    const out = await run();
+    expect(out.narrative).toMatchObject({ path: 'written', calls: 1 });
+    expect(out.document.narrative.risks).toBe("REQ-30's p85 date is far behind its p50.");
+  });
+
+  it('hands each state as the words its badge shows, and each field by its label and what it counts', async () => {
+    runReport.mockImplementation(async () => {
+      const r = roadmapRun();
+      (r.frame.rows[0] as Record<string, unknown>).state = 'in_delivery';
+      return r;
+    });
+    answers.push(answer('REQ-40 is forecast first, at Oct 10, 02:19 UTC.'));
+    await run();
+    const input = asked[0]?.[1]?.content ?? '';
+    expect(input).toContain('"state":"In delivery"');
+    expect(input).not.toContain('in_delivery');
+    expect(input).toContain('p50At "Likely by (p50)" (date)');
+  });
+});

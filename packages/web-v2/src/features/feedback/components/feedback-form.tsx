@@ -1,6 +1,6 @@
 "use client";
 
-import { FEEDBACK_KINDS, FEEDBACK_SEVERITIES } from "@forge/contracts/feedback";
+import { FEEDBACK_KINDS, FEEDBACK_LIMITS, FEEDBACK_SEVERITIES } from "@forge/contracts/feedback";
 import { useState } from "react";
 import { Button, enumLabel, Field, Input, NativeSelect, statusReading, Textarea } from "@/design";
 import { placeRefusals } from "@/lib/api/field-refusals";
@@ -87,7 +87,7 @@ export function FeedbackForm({
       }}
     >
       <Field label={t("feedback.form.title")} error={refused.at("title")} required>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={FEEDBACK_LIMITS.title} autoFocus />
       </Field>
       <div className="grid gap-3 sm:grid-cols-[10rem_10rem_minmax(0,1fr)]">
         <Field label={t("feedback.form.kind")} error={refused.at("kind")}>
@@ -104,12 +104,12 @@ export function FeedbackForm({
             options={FEEDBACK_SEVERITIES.map((v) => ({ value: v, label: statusReading("severity", v, language).label }))}
           />
         </Field>
-        <Field label={t("feedback.form.about")} hint={t("feedback.target.hint")} error={refused.at("about")}>
+        <Field label={t("feedback.form.about")} error={refused.at("about")}>
           <TargetPicker projectId={projectId} type={targetType} onType={setTargetType} value={target} onValue={setTarget} />
         </Field>
       </div>
       <div {...staged.dropZone} className={staged.dragOver ? "ring-2 ring-cobalt-400 ring-offset-1" : undefined}>
-        <Field label={t("feedback.form.body")} hint={t("feedback.form.bodyHint")} error={refused.at("body")}>
+        <Field label={t("feedback.form.body")} error={refused.at("body")}>
           <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} />
         </Field>
       </div>

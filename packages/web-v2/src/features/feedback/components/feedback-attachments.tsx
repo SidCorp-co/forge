@@ -16,8 +16,6 @@ import { useAttachFeedback } from "../hooks";
 import type { FeedbackView } from "../types";
 import { isEvidenceMedia } from "./feedback-evidence";
 
-const MB = FEEDBACK_LIMITS.attachmentBytes / 1024 / 1024;
-
 /** The staging an item or a filing uses: the types, the bytes and the count core's feedback route keeps. */
 export function useFeedbackStaging(held: number) {
   return useStagedFiles({
@@ -50,7 +48,7 @@ export function FeedbackAttachments({ projectId, f }: { projectId: string; f: Fe
               <span className="font-mono">{a.name}</span>
               {a.from ? <span className="text-muted">{t("feedback.body.from", { from: a.from })}</span> : null}
               {a.flagged ? (
-                <span className="font-semibold" style={{ color: LEGEND.you.fg }} title={t("feedback.body.flaggedHint")}>
+                <span className="font-semibold" style={{ color: LEGEND.you.fg }}>
                   {t("feedback.body.flagged")}
                 </span>
               ) : null}
@@ -72,11 +70,7 @@ export function FeedbackAttachments({ projectId, f }: { projectId: string; f: Fe
               {t("feedback.attach.choose")}
             </Button>
             {staged.input}
-            <span className="text-12 text-subtle">
-              {full
-                ? t("feedback.attach.full", { n: held })
-                : t("feedback.attach.hint", { mb: MB, n: FEEDBACK_LIMITS.attachmentsPerItem })}
-            </span>
+            {full ? <span className="text-12 text-subtle">{t("feedback.attach.full", { n: held })}</span> : null}
           </div>
         </div>
       ) : null}

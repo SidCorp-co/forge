@@ -17,6 +17,7 @@ import {
   UNDEFER_REQUIREMENT_SHAPE,
   undeferRequirementRequestSchema,
 } from '@forge/contracts/requirements';
+import { REQUIREMENT_TITLE_MAX, titleText } from '@forge/contracts/title-text';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { egressForRequest } from '../lib/data-egress.js';
@@ -89,7 +90,7 @@ requirementRoutes.post(
   projectParam,
   strictBody(
     z.strictObject({
-      title: z.string().trim().min(1).max(500),
+      title: titleText(REQUIREMENT_TITLE_MAX),
       ...revisionFields,
       criteria: revisionFields.criteria.default([]),
       designs: z.array(z.string().trim().min(1).max(200)).max(10).optional(),
@@ -131,7 +132,7 @@ requirementRoutes.post(
         .string()
         .trim()
         .regex(/^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/),
-      title: z.string().trim().min(1).max(500),
+      title: titleText(REQUIREMENT_TITLE_MAX),
       ...revisionFields,
       criteria: revisionFields.criteria.default([]),
     }),

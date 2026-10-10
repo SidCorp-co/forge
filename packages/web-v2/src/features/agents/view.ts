@@ -88,10 +88,9 @@ export function runBanner(r: RunStanding, language = "en"): { tone: BannerTone; 
 
 const laneLabel = (l: RunLane, language: string) => (l === "job" ? productCopy(language)("runs.lane.jobs") : l === "issue" ? productCopy(language)("runs.lane.issueRuns") : enumLabel("runLane", l, language));
 
-/** A run attention group's words in `language`; a group this build does not know reads as its id. */
+/** A run attention group's label in `language`; a group this build does not know reads as its id. */
 export const attentionGroupText = (g: string, language: string) => ({
   label: copyOr(language, `runs.attention.${g}.label`, g),
-  hint: copyOr(language, `runs.attention.${g}.hint`, ""),
 });
 
 /** The list's groups under one grouping: core's attention groups in core's order, or by lane or box. */

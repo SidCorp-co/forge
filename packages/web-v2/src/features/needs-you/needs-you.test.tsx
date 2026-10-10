@@ -130,6 +130,6 @@ describe("the menu's hint", () => {
   });
 
   it("says nothing waits when the count is nought", () => {
-    expect(needsYouHint("Releases", { you: 0, acts: [] })).toBe("Releases · nothing waits on you");
+    expect(needsYouHint("Releases", { you: 0, acts: [] })).toBe("Releases: nothing");
   });
 });

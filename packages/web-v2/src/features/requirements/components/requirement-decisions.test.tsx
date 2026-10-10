@@ -38,7 +38,7 @@ describe("a requirement's Decisions tab", () => {
     renderWithQuery(<RequirementDecisions projectId="p1" slug="hop" reqKey="REQ-25" />);
     await user.click(await screen.findByRole("button", { name: /Decisions/ }));
     expect(await screen.findAllByTestId("decision-row")).toHaveLength(1);
-    expect(screen.getByTestId("decisions-folded")).toHaveTextContent("12 records agents kept here");
+    expect(screen.getByTestId("decisions-folded")).toHaveTextContent("12 agent records folded away");
     await user.click(screen.getByRole("button", { name: "Show them" }));
     await waitFor(() => expect(calls.map((c) => c.path)).toContain("/projects/p1/requirements/REQ-25/decisions?by=all"));
     await waitFor(() => expect(screen.getAllByTestId("decision-row")).toHaveLength(2));

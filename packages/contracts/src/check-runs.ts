@@ -11,7 +11,8 @@ import { z } from "zod";
  * What a check is, in the order the issue page lists them. `conformance` is the project's
  * conformance gate (`pnpm verify` here); `base` is the check that the change contains its base's
  * latest commit; `probes` is one kept probe run against the change, which the merge check makes
- * for each probe its issue keeps (REQ-36 BC-9). `review` is a kind a run records when it made one.
+ * for each probe its issue keeps (REQ-36 BC-9). `review` is written by core with each recorded review
+ * (`issues/review.ts:recordReview`), timed from when it began.
  */
 export const CHECK_KINDS = [
 	"tests",

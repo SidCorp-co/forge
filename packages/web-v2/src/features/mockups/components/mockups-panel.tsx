@@ -218,9 +218,6 @@ export function MockupsPanel({ projectId, target, canPropose = true }: { project
   return (
     <section data-testid="view-mockups" aria-label={t("common.mockups.title")}>
       <ViewHeading right={proposes ? <Propose projectId={projectId} target={target} /> : undefined}>{t("common.mockups.title")}</ViewHeading>
-      <p className="mb-3 max-w-[80ch] text-13 text-muted">
-        {target.type === "requirement" ? t("common.mockups.leadRequirement") : t("common.mockups.leadItem")}
-      </p>
       {q.isError ? <p className="text-13 text-muted">{formatApiError(q.error)}</p> : null}
       {q.isSuccess && rows.length === 0 ? (
         <p className="text-13 text-subtle">{target.type === "requirement" ? t("common.mockups.noneRequirement") : t("common.mockups.none")}</p>

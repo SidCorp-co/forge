@@ -29,7 +29,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
 import { actorFor, holderNames, holds, projectResource, requireCan } from '../permissions/index.js';
 import { readReleaseMode } from '../project-config/index.js';
-import { deliveredAmong } from '../requirements/index.js';
+import { deliveredAmong, nodesOfDesign } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { liveMasterOwedTriages } from './owed-triage.js';
 import type { FeedbackActor, Row } from './read.js';
@@ -58,7 +58,11 @@ export interface Linked {
   routeIssues: Map<string, string[]>;
   requirements: Map<string, { key: string; title: string; status: string; delivered: boolean }>;
   releases: Map<string, string>;
-  workflows: Map<string, { flow: string; title: string | null }>;
+  /** Each workflow's flow, title, and the words its design gives each step, by step id. */
+  workflows: Map<
+    string,
+    { flow: string; title: string | null; steps: ReadonlyMap<string, string | null> }
+  >;
   providers: Map<string, string>;
   suggestions: Map<
     string,
@@ -243,6 +247,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
         {
           flow: w.flow,
           title: ((w.document as { title?: unknown }).title as string | undefined) ?? null,
+          steps: nodesOfDesign(w.document)?.steps ?? new Map<string, string | null>(),
         },
       ]),
     ),
