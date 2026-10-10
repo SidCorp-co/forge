@@ -134,6 +134,7 @@ export function PrimaryActions({
         tip={s.waitingOn.says.effect ? said(s.waitingOn.says.effect, lang) : t("requirements.act.repinTip", { moved })}
         consequence={t("requirements.act.repinConsequence", { moved })}
         reasonLabel={t("requirements.act.repinWhyLabel")}
+        reasonRequired
         act={(reason) => ({ kind: "repin", revision: head.revision, reason })}
       />
     );
@@ -154,6 +155,7 @@ export function PrimaryActions({
         label={t("requirements.act.agreeR", { r: head.revision })}
         consequence={t("requirements.act.agreeConsequence", { r: head.revision })}
         reasonLabel={t("requirements.act.agreeWhyLabel")}
+        reasonRequired
         act={(reason) => ({ kind: "agree", revision: head.revision, reason })}
       />
     );
@@ -193,6 +195,7 @@ function SignOff({
   tip,
   consequence,
   reasonLabel,
+  reasonRequired = false,
   act: build,
 }: {
   projectId: string;
@@ -202,6 +205,8 @@ function SignOff({
   consequence: string;
   /** The reason field's label, named for this act. */
   reasonLabel: string;
+  /** Core refuses this act without a reason (agree, re-pin). */
+  reasonRequired?: boolean;
   act: (reason: string | undefined) => RequirementAction;
 }) {
   const act = useRequirementAction(projectId, reqKey);
@@ -226,6 +231,7 @@ function SignOff({
             confirmLabel={label}
             consequence={consequence}
             reasonLabel={reasonLabel}
+            reasonRequired={reasonRequired}
             loading={act.isPending}
             onCancel={() => setOpen(false)}
             onConfirm={(reason) => act.mutate(build(reason), { onSuccess: () => setOpen(false) })}

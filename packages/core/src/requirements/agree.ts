@@ -14,6 +14,7 @@ import {
 import { movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import { personGateOf } from '../project-config/index.js';
+import { signoffReasonRefusal } from './acceptance-rules.js';
 import { linkedContracts, writePinsIn } from './baselines.js';
 import { readyAnswersOf, readyFactsAt, requirementReadyRecord } from './checklist-record.js';
 import { requirementDependents } from './dependents.js';
@@ -207,6 +208,8 @@ export async function agreeRequirement(input: {
   const gate = await personGateOf(projectId, 'agree');
   const signer = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
   if (signer) return { ok: false, refusals: [signer] };
+  const unsaid = signoffReasonRefusal('agree', input.reason);
+  if (unsaid) return { ok: false, refusals: [unsaid] };
   let undecided: { near: NearDuplicate[]; currentRevision: number | null } | null = null;
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);

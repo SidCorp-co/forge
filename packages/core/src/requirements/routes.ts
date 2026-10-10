@@ -222,7 +222,7 @@ requirementRoutes.post(
       revision: z.number().int().min(1),
       reason: z.string().max(REASON_TEXT_MAX).nullable().optional(),
     }),
-    '{ revision, reason? } names the head revision being agreed',
+    '{ revision, reason } names the head revision being agreed and says why it is signed',
   ),
   async (c) => {
     const { id, req } = c.req.valid('param');

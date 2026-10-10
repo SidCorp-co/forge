@@ -13,6 +13,8 @@ export interface AcceptStepProps {
   /** The reason field's accessible label, named for the act ("Why it is agreed, …"); an accept's by default. */
   reasonLabel?: string;
   loading?: boolean;
+  /** The act refuses an empty reason (an agree, a re-pin: REQ-4 BC-4), so the confirm stays off until one is typed. */
+  reasonRequired?: boolean;
   /** The trimmed reason, or undefined where the field was left empty. */
   onConfirm: (reason: string | undefined) => void;
   onCancel: () => void;
@@ -20,14 +22,15 @@ export interface AcceptStepProps {
 
 /**
  * The confirm step an accept of work opens (ISS-281, FB-16): what accepting does, the person's reason
- * and the authority they accept under, then the act or Cancel. The reason is optional, as every accept
- * route keeps it (ISS-84); where it is given it is sent and kept on the act. Three accepts do not open
+ * and the authority they accept under, then the act or Cancel. The reason is optional where the route
+ * keeps it so (ISS-84) and required where it refuses an empty one (`reasonRequired`); where it is given
+ * it is sent and kept on the act. Three accepts do not open
  * it: a release Approve (`release-batch/approvals.ts:parseDecision` refuses a reason on an approve), a
  * design Approve ("Approve with a note" carries its conditions, FB-68) and an invitation accept, which
  * is membership rather than an act on work. While it is open, the button that opened it is off, so a
  * second press cannot close it and drop the typed reason; Cancel closes it.
  */
-export function AcceptStep({ confirmLabel, consequence, reasonLabel, loading = false, onConfirm, onCancel }: AcceptStepProps) {
+export function AcceptStep({ confirmLabel, consequence, reasonLabel, loading = false, reasonRequired = false, onConfirm, onCancel }: AcceptStepProps) {
   const t = useCopy();
   const [reason, setReason] = useState("");
   return (
@@ -43,13 +46,14 @@ export function AcceptStep({ confirmLabel, consequence, reasonLabel, loading = f
       <span className="flex flex-wrap items-center gap-2">
         <Input
           aria-label={reasonLabel ?? t("common.acceptWhyLabel")}
-          placeholder={t("common.acceptWhy")}
+          placeholder={t(reasonRequired ? "common.acceptWhyRequired" : "common.acceptWhy")}
+          required={reasonRequired}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           className="min-w-[16rem] flex-1"
           autoFocus
         />
-        <Button type="submit" size="sm" variant="primary" loading={loading}>
+        <Button type="submit" size="sm" variant="primary" disabled={reasonRequired && !reason.trim()} loading={loading}>
           {confirmLabel}
         </Button>
         <Button type="button" size="sm" variant="ghost" disabled={loading} onClick={onCancel}>

@@ -1,6 +1,7 @@
 {
   "en": {
     "common.acceptWhy": "Why, and on whose authority (optional)",
+    "common.acceptWhyRequired": "Why, and on whose authority",
     "common.acceptWhyLabel": "Why it is accepted, and on whose authority",
     "common.actor.agent": "{name} · agent",
     "common.age.days": "{n}d",
