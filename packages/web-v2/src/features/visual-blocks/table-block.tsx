@@ -4,6 +4,7 @@ import type { ReportField } from "@forge/contracts/report-queries";
 import { cellText, type VisualBlockOf, tableRows } from "@forge/contracts/visual-blocks";
 import { type ReactNode, useEffect, useState } from "react";
 import { flushSync } from "react-dom";
+import { Table, TBody, TD, TH, THead, TR } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { Cell } from "./cells";
 import { useBlockInstants } from "./instants";
@@ -35,7 +36,7 @@ function ClampedText({ text, children }: { text: string; children: ReactNode }) 
     <button
       type="button"
       className={cn(
-        "block min-w-[10rem] max-w-[20rem] cursor-text text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+        "block min-w-40 max-w-80 cursor-text text-left focus-visible:outline-none focus-visible:shadow-focus",
         !open && "line-clamp-2 print:line-clamp-none",
       )}
       title={text}
@@ -68,7 +69,7 @@ function usePrinting(): boolean {
 }
 
 /** The first column stays put while the rest scroll sideways, on the page's own ground so nothing shows through it. */
-const STICKY = "sticky left-0 z-[1] bg-app";
+const STICKY = "sticky left-0 z-1 bg-app";
 
 /**
  * A table block: the frame's chosen columns as a flush table on hairlines, sorted and cut as the
@@ -86,33 +87,33 @@ export function TableBlockView({ block }: { block: VisualBlockOf<"table"> }) {
   const hidden = block.frame.rows.length - rows.length;
   return (
     <div className="min-w-0">
-      <div className="overflow-x-auto print:overflow-visible" data-testid="table-scroll">
-        <table className="w-full border-collapse text-left text-[12.5px]">
-          <thead>
-            <tr className="border-b border-line">
+      <div data-testid="table-scroll">
+        <Table className="text-13">
+          <THead>
+            <TR>
               {fields.map((f, c) => (
-                <th
+                <TH
                   key={f.name}
                   scope="col"
                   className={cn(
-                    "py-1.5 pr-4 align-bottom text-[11.5px] font-semibold text-subtle",
+                    "py-1.5 pl-0 pr-4 align-bottom font-sans text-12 font-semibold normal-case tracking-normal text-subtle",
                     NUMERIC.has(f.type) && "text-right",
                     c === 0 && STICKY,
                   )}
                   data-type={f.type}
                 >
                   {f.label}
-                </th>
+                </TH>
               ))}
-            </tr>
-          </thead>
-          <tbody>
+            </TR>
+          </THead>
+          <TBody>
             {shown.map((row, i) => (
               // a frame row has no key of its own; the order is the block's and never changes under a reader
               // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
-              <tr key={i} className="border-b border-line-subtle last:border-b-0">
+              <TR key={i} className="hover:bg-transparent">
                 {fields.map((f, c) => (
-                  <td key={f.name} className={cn("py-1.5 pr-4 align-top", cellClass(f), c === 0 && STICKY)} data-type={f.type}>
+                  <TD key={f.name} className={cn("py-1.5 pl-0 pr-4 align-top text-13", cellClass(f), c === 0 && STICKY)} data-type={f.type}>
                     {f.type === "string" ? (
                       <ClampedText text={cellText(f, row[f.name], instants)}>
                         <Cell field={f} cell={row[f.name]} />
@@ -120,18 +121,18 @@ export function TableBlockView({ block }: { block: VisualBlockOf<"table"> }) {
                     ) : (
                       <Cell field={f} cell={row[f.name]} />
                     )}
-                  </td>
+                  </TD>
                 ))}
-              </tr>
+              </TR>
             ))}
-          </tbody>
-        </table>
+          </TBody>
+        </Table>
       </div>
-      {rows.length === 0 && <p className="py-1.5 text-[12px] text-subtle">No rows.</p>}
+      {rows.length === 0 && <p className="py-1.5 text-12 text-subtle">No rows.</p>}
       {rows.length > TABLE_ROW_CAP && (
         <button
           type="button"
-          className="mt-1 text-[12px] font-medium text-link hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] print:hidden"
+          className="mt-1 text-12 font-medium text-link hover:underline focus-visible:outline-none focus-visible:shadow-focus print:hidden"
           aria-expanded={all}
           onClick={() => setAll((a) => !a)}
           data-testid="table-show-all"
@@ -140,7 +141,7 @@ export function TableBlockView({ block }: { block: VisualBlockOf<"table"> }) {
         </button>
       )}
       {hidden > 0 && (
-        <p className="py-1 text-[11.5px] text-subtle">
+        <p className="py-1 text-12 text-subtle">
           Showing {rows.length} of {block.frame.rows.length} rows.
         </p>
       )}

@@ -19,7 +19,7 @@ function useReadAt(iso: string, now: Date = new Date()): { label: string; full: 
   return { label: today ? time.clock(at) : time.dateTime(at), full: time.dateTime(at) };
 }
 
-const LINE = "mt-1 text-[11px] text-subtle";
+const LINE = "mt-1 text-12 text-subtle";
 
 /** A setting's name as a person reads it: "windowDays" and "window_days" both read "window days". */
 const settingName = (key: string): string =>
@@ -69,7 +69,7 @@ function RunSource({ runId, facts }: { runId: string; facts: SourceFacts }) {
     <div className={LINE} data-testid="visual-block-source">
       <button
         type="button"
-        className="text-left hover:text-muted focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        className="text-left hover:text-muted focus-visible:outline-none focus-visible:shadow-focus"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         data-testid="visual-block-source-toggle"
@@ -114,7 +114,7 @@ function ExecutionSource({ executionId, execution }: { executionId: string; exec
     <div className={LINE} data-testid="visual-block-source">
       <button
         type="button"
-        className="text-left hover:text-muted focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        className="text-left hover:text-muted focus-visible:outline-none focus-visible:shadow-focus"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         data-testid="visual-block-source-toggle"
