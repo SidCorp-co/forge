@@ -95,9 +95,9 @@ describe('the act a requirement waits on reads in a BA’s words', () => {
     expect(s.waitingOn.act).not.toMatch(KERNEL);
   });
 
-  it('asks for a review of how the requirement is split into work', () => {
+  it('asks to review the breakdown, in words short enough for the list', () => {
     const s = deriveStanding({ ...base, openSuggestionKinds: ['breakdown'] });
-    expect(s.waitingOn.act).toBe('Review how this requirement is split into work');
+    expect(s.waitingOn.act).toBe('review the breakdown');
   });
 });
 

@@ -275,7 +275,7 @@ export const SAID = {
 	"standing.act.releaseRunning": { en: "a release is running" },
 	"standing.act.replan": { en: "re-plan {keys}", vars: { keys: "key" } },
 	"standing.act.retie": { en: "tie {keys} to the current wording of {codes}, then judge it", vars: { codes: "key", keys: "key" } },
-	"standing.act.reviewBreakdown": { en: "Review how this requirement is split into work" },
+	"standing.act.reviewBreakdown": { en: "review the breakdown" },
 	"standing.act.reviseReturned": { en: "revise returned r{r}", vars: { r: "count" } },
 	"standing.act.reviseThenProposeOrDrop": { en: "revise returned r{r}, then propose or drop it", vars: { r: "count" } },
 	"standing.act.runnerOnline": { en: "bring a runner online" },

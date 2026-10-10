@@ -50,7 +50,8 @@ export function Passing({ r, wide = true }: { r: RequirementSummary; wide?: bool
 export function WaitsText({ r }: { r: RequirementSummary }) {
   if (r.standing.attentionGroup === "done") return null;
   const w = waitsLineOf(r.standing);
-  return <span className={cn("truncate text-13", w.kind === "you" ? "font-medium text-accent-text" : "text-muted")}>{w.text}</span>;
+  // an act may name keys and versions, so it wraps rather than being cut (live dev.227, 1440 px)
+  return <span className={cn("min-w-0 break-words text-13 leading-snug", w.kind === "you" ? "font-medium text-accent-text" : "text-muted")} data-testid="req-waits">{w.text}</span>;
 }
 
 /** The name a person reads: the short one when set, else the title. The full title is the tooltip. */
