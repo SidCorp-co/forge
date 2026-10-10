@@ -323,6 +323,14 @@ describe("chat opens any record by key and highlights on it (BC-6)", () => {
     await waitFor(() => expect(snapshot().highlight).toEqual({ target: "section", section: "plan", of: "ISS-493" }));
   });
 
+  it("opens the developer view to mark the plan, which a person's view does not draw (REQ-43 BC-7)", () => {
+    const p = page(<section data-testid="view-overview" />, "/projects/demo/issues/ISS-493");
+    p.send(turn());
+    p.send(turn({ name: "ui_highlight", args: { target: { key: "ISS-493", section: "plan" } } }));
+    expect(screen.queryByTestId("ui-action-refused")).toBeNull();
+    expect(window.location.search).toBe("?view=developer");
+  });
+
   // ISS-495, QA of dev.220: the model filled every slot (`step: "x"` beside the section), and the
   // browser read back what core forwarded with the input schema and refused it. The real calls, in the
   // form core forwards them, land on the page.

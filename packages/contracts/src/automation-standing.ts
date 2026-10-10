@@ -76,20 +76,17 @@ export type ReportGroup = (typeof REPORT_GROUPS)[number];
 export const SCHEDULE_GROUP_LABELS: StandingGroupLabels<ScheduleGroup> = {
 	needs_you: {
 		label: "Needs you",
-		hint: "Failing, or the account it runs as is gone",
 		tone: "you",
 		collapsed: false,
 	},
 	waiting: {
 		label: "Waiting on someone else",
-		hint: "Its owner or an admin owes the fix",
 		tone: "blocked",
 		collapsed: false,
 	},
-	on: { label: "On", hint: "", tone: "ready", collapsed: false },
+	on: { label: "On", tone: "ready", collapsed: false },
 	off: {
 		label: "Off",
-		hint: "Paused; never claimed",
 		tone: "done",
 		collapsed: true,
 	},
@@ -98,26 +95,22 @@ export const SCHEDULE_GROUP_LABELS: StandingGroupLabels<ScheduleGroup> = {
 export const FIRE_GROUP_LABELS: StandingGroupLabels<FireGroup> = {
 	needs_you: {
 		label: "Needs you",
-		hint: "Its reports wait for triage, or its schedule is failing",
 		tone: "you",
 		collapsed: false,
 	},
-	running: { label: "Running", hint: "", tone: "run", collapsed: false },
+	running: { label: "Running", tone: "run", collapsed: false },
 	produced: {
 		label: "Produced something",
-		hint: "",
 		tone: "ready",
 		collapsed: false,
 	},
 	nothing_produced: {
 		label: "Nothing produced",
-		hint: "",
 		tone: "neutral",
 		collapsed: false,
 	},
 	failed_or_skipped: {
 		label: "Failed or skipped",
-		hint: "",
 		tone: "err",
 		collapsed: true,
 	},
@@ -126,20 +119,17 @@ export const FIRE_GROUP_LABELS: StandingGroupLabels<FireGroup> = {
 export const REPORT_GROUP_LABELS: StandingGroupLabels<ReportGroup> = {
 	needs_you: {
 		label: "Needs you",
-		hint: "New, high severity first, then oldest",
 		tone: "you",
 		collapsed: false,
 	},
 	waiting: {
 		label: "Waiting for triage",
-		hint: "New: a fire's report owed by its schedule owner, or an issue run's report on the harness it worked under",
 		tone: "blocked",
 		collapsed: false,
 	},
-	filed: { label: "Filed", hint: "", tone: "ready", collapsed: false },
+	filed: { label: "Filed", tone: "ready", collapsed: false },
 	closed: {
 		label: "Dismissed or duplicate",
-		hint: "",
 		tone: "done",
 		collapsed: true,
 	},

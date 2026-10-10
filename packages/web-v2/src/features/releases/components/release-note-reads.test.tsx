@@ -85,8 +85,10 @@ describe("a production release whose notes call it a demo", () => {
     expect(screen.getByTestId("release-customer-demo")).toHaveTextContent("hop.auto.sidcorp.co");
   });
 
-  it("names the site a live release serves, beside the word production", () => {
+  // REQ-43 BC-5: where a live release runs is the page's facts' (the reader's Runs at, the peek's
+  // Address); the banner of an ended release says only that nothing is owed
+  it("says nothing is owed on a live release, and leaves where it runs to the page's facts", () => {
     renderWithQuery(<ReleaseBanner r={r050 as never} />);
-    expect(screen.getByText(/Live on production at hop\.auto\.sidcorp\.co\./)).toBeInTheDocument();
+    expect(screen.getByTestId("wait-banner")).toHaveTextContent(/^Nothing is owed on it\.$/);
   });
 });

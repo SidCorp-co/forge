@@ -119,12 +119,12 @@ const groupModes = (t: Copy) => [
   { value: "subject" as const, label: t("feedback.group.subject"), title: t("feedback.group.subjectTitle") },
 ];
 
-/** Core's attention groups with their label and hint in the interface language. */
+/** Core's attention groups with their label in the interface language. */
 const attentionLabels = (label: ReturnType<typeof useLabel>): StandingGroupLabels<FeedbackAttentionGroup> =>
   Object.fromEntries(
     FEEDBACK_ATTENTION_GROUPS.map((g) => [
       g,
-      { ...FEEDBACK_ATTENTION_LABELS[g], label: label("feedbackAttention", g), hint: FEEDBACK_ATTENTION_LABELS[g].hint ? label("feedbackAttentionHint", g) : FEEDBACK_ATTENTION_LABELS[g].hint },
+      { ...FEEDBACK_ATTENTION_LABELS[g], label: label("feedbackAttention", g) },
     ]),
   ) as StandingGroupLabels<FeedbackAttentionGroup>;
 

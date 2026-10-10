@@ -125,10 +125,11 @@ export const feedbackList = () => (
   </Seeded>
 );
 
-export const feedbackDetail = () => (
-  <Seeded>
+/** The item's page; `over` changes the item it reads (its phase, what the reader can do). */
+export const feedbackDetail = (over: Partial<FeedbackView> = {}) => (
+  <SeededQueries data={SEED.map(([k, v]): [QueryKey, unknown] => (k[0] === "feedback-item" ? [k, { feedback: view(over) }] : [k, v]))}>
     <FeedbackItemScreen projectId={P} slug="hop" fbKey={ITEM.key} />
-  </Seeded>
+  </SeededQueries>
 );
 
 export const feedbackPeek = () => (

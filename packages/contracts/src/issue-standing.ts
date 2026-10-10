@@ -24,37 +24,31 @@ export const ISSUE_ATTENTION_LABELS: StandingGroupLabels<IssueAttentionGroup> =
 	{
 		needs_you: {
 			label: "Needs you",
-			hint: "Answer, decide or approve",
 			tone: "you",
 			collapsed: false,
 		},
 		moving: {
 			label: "Moving",
-			hint: "A run holds a live lease",
 			tone: "run",
 			collapsed: false,
 		},
 		stuck: {
 			label: "Stuck",
-			hint: "Waits on another issue, has no live holder, or came back",
 			tone: "blocked",
 			collapsed: false,
 		},
 		queued: {
 			label: "Queued",
-			hint: "Nothing blocks it; waits for a master slot, a judge or a release",
 			tone: "ready",
 			collapsed: false,
 		},
 		paused: {
 			label: "Paused",
-			hint: "Deliberately on hold",
 			tone: "neutral",
 			collapsed: true,
 		},
 		done: {
 			label: "Done",
-			hint: "Shipped or dropped",
 			tone: "done",
 			collapsed: true,
 		},

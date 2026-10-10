@@ -1,7 +1,8 @@
 "use client";
 
 // One checklist as an item's page reads it (REQ-34 r2 BC-5, BC-9, BC-26), drawn from core's read and
-// never restating a question: each answer is a property under its question, with where it came from;
+// never restating a question: each answer is a property under its question, with where it came from
+// in the developer view (agent text, REQ-43 BC-7);
 // each gap is the question still to answer, in core's words, beside where it is answered. Once a move
 // passed, the page shows the answers that move was judged by, so an assumed one stays visible as an
 // assumption; a later revision that answers it reads as the correction, never an edit in place.
@@ -64,7 +65,7 @@ function Source({ answer, field }: { answer: ChecklistAnswer; field: ChecklistFo
   );
 }
 
-function AnswerRow({ row, revision }: { row: Extract<Row, { kind: "answer" }>; revision: number | null }) {
+function AnswerRow({ row, revision, developer }: { row: Extract<Row, { kind: "answer" }>; revision: number | null; developer: boolean }) {
   const t = useCopy();
   const { field, answer } = row;
   const corrected = correctedBy(answer, row.now);
@@ -77,7 +78,7 @@ function AnswerRow({ row, revision }: { row: Extract<Row, { kind: "answer" }>; r
           <span className={`whitespace-pre-wrap break-words text-14 ${corrected ? "text-muted line-through" : "text-fg"}`}>{shownValue(field, answer.value)}</span>
           {answer.provenance === "assumed" ? <ToneBadge tone={corrected ? "done" : "neutral"} label={t("checklist.assumed")} title={t("checklist.assumed")} /> : null}
         </span>
-        <Source answer={answer} field={field} />
+        {developer ? <Source answer={answer} field={field} /> : null}
         {corrected ? (
           <span className="flex flex-wrap items-center gap-2" data-testid="checklist-correction">
             <ToneBadge tone="ready" label={t("checklist.corrected")} title={t("checklist.corrected")} />
@@ -113,8 +114,11 @@ export function ChecklistAnswers({
   read,
   revision = null,
   answerAt,
+  developer = false,
 }: {
   read: ChecklistRead;
+  /** The developer view: where each answer came from. */
+  developer?: boolean;
   /** The revision core read `now` at, named on a correction. */
   revision?: number | null;
   /** Where a gap is answered: an act or a link beside it. */
@@ -137,7 +141,7 @@ export function ChecklistAnswers({
   return (
     <section data-testid="checklist" data-checklist={read.id} data-standing={move ? "passed" : unrecorded ? "no_checklist" : read.now?.complete ? "complete" : "open"}>
       <ViewHeading right={<span className="text-12-5 text-muted">{state}</span>}>{read.form.title}</ViewHeading>
-      {rows.length > 0 ? <dl className="grid">{rows.map((r) => (r.kind === "answer" ? <AnswerRow key={r.field.name} row={r} revision={revision} /> : <GapRow key={r.field.name} row={r} answerAt={answerAt} />))}</dl> : null}
+      {rows.length > 0 ? <dl className="grid">{rows.map((r) => (r.kind === "answer" ? <AnswerRow key={r.field.name} row={r} revision={revision} developer={developer} /> : <GapRow key={r.field.name} row={r} answerAt={answerAt} />))}</dl> : null}
     </section>
   );
 }

@@ -13,6 +13,7 @@ export function CriteriaSection({
   checklist,
   canWrite,
   requirementKey,
+  developer = false,
 }: {
   issue: Pick<IssueDetail, "id" | "status">;
   projectId: string;
@@ -21,10 +22,12 @@ export function CriteriaSection({
   canWrite: boolean;
   /** The requirement the issue delivers, by key; null where it delivers none. */
   requirementKey: string | null;
+  /** The developer view: trace codes and commits drawn. */
+  developer?: boolean;
 }) {
   const tie =
     canWrite && requirementKey && issue.status !== "dropped" ? (
       <TieCriteria issueId={issue.id} projectId={projectId} requirementKey={requirementKey} />
     ) : null;
-  return <CriteriaList issueId={issue.id} judge={canWrite} headingAct={tie} checklist={checklist} />;
+  return <CriteriaList issueId={issue.id} judge={canWrite} headingAct={tie} checklist={checklist} developer={developer} />;
 }

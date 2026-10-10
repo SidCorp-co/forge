@@ -133,7 +133,6 @@ export type StandingGroup = (typeof STANDING_GROUPS)[number];
 
 export interface StandingGroupLabel {
 	label: string;
-	hint: string | null;
 	tone: IssueStatusTone;
 	collapsed: boolean;
 }

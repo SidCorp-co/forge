@@ -191,7 +191,8 @@ describe("an issue page in the person's view", () => {
     for (const [i, el] of order.slice(1).entries()) {
       expect(order[i]?.compareDocumentPosition(el) ?? 0).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     }
-    expect(within(root).getByTestId("details-plan")).toHaveTextContent("26 steps");
+    // the plan is agent text: the developer view's (BC-7)
+    expect(within(root).queryByTestId("details-plan")).toBeNull();
     expect(within(root).getByTestId("details-files")).toHaveTextContent("13");
     expect(within(root).queryByText(/Step 26/)).toBeNull();
     // the voided question is Activity's, never the top of the page
@@ -216,6 +217,24 @@ describe("an issue page in the person's view", () => {
     expect(root.textContent).not.toMatch(/overwritten/);
   });
 
+  it("says the step once: Now says it, the badge and the bar do not (BC-5)", async () => {
+    const root = await page();
+    const now = within(root).getByTestId("issue-now");
+    expect(now).toHaveTextContent("Build");
+    const said = [...root.querySelectorAll("*")].filter((el) => el.children.length === 0 && !el.closest(".sr-only") && /\bBuild\b/.test(el.textContent ?? ""));
+    expect(said).toHaveLength(1);
+    expect(now.contains(said[0] ?? null)).toBe(true);
+  });
+
+  it("reads each criterion without the trace code an agent wrote at its head (BC-7)", async () => {
+    fakeCore((c) => (c.path.split("?")[0]?.endsWith("/criteria") ? { body: { criteria: [{ ...criteria[0], statement: "(REQ-34 BC-1) The refusal names the question." }], retired: [] } } : core(c)));
+    window.history.replaceState(null, "", "/projects/forge/issues/ISS-451");
+    renderWithQuery(<IssueDetailScreen projectId={P} slug="forge" id="ISS-451" />);
+    const row = await screen.findByTestId("criterion-row");
+    expect(row).toHaveTextContent("The refusal names the question.");
+    expect(row.textContent).not.toContain("BC-1");
+  });
+
   it("shows two relations of each kind and counts the rest", async () => {
     const root = await page();
     expect(within(within(root).getByTestId("rail-holds-up")).getAllByRole("link")).toHaveLength(2);
@@ -226,6 +245,7 @@ describe("an issue page in the person's view", () => {
 describe("an issue page in the developer view", () => {
   it("opens every fold: the plan, the files and the voided question", async () => {
     const root = await page("?view=developer");
+    expect(within(root).getByTestId("details-plan")).toHaveTextContent("26 steps");
     expect(await within(root).findByText(/Step 26/)).toBeInTheDocument();
     expect(await within(root).findByText(/Which door should the refusal name first/)).toBeInTheDocument();
     expect(visibleWords(root)).toBeGreaterThan(300);

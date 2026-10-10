@@ -54,8 +54,6 @@ import { copyOr } from "./product-copy";
 
 const labelsOf = <V extends { label: string }>(m: Record<string, V>): Record<string, string> =>
   Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.label]));
-const hintsOf = <V extends { hint: string | null }>(m: Record<string, V>): Record<string, string> =>
-  Object.fromEntries(Object.entries(m).flatMap(([k, v]) => (v.hint ? [[k, v.hint]] : [])));
 
 // The built-in workflow templates' words, keyed `<template id>.<element id>`: a node type, a band
 // and a line kind take their words from the template they belong to, since two templates may give one
@@ -76,11 +74,9 @@ export const LABEL_GROUPS = {
   bcVerdict: BC_VERDICT_LABELS,
   revisionState: REVISION_STATE_LABELS,
   requirementAttention: labelsOf(REQUIREMENT_ATTENTION_LABELS),
-  requirementAttentionHint: hintsOf(REQUIREMENT_ATTENTION_LABELS),
   releaseState: RELEASE_STATE_LABELS,
   releaseProof: RELEASE_PROOF_LABELS,
   releaseAttention: labelsOf(RELEASE_ATTENTION_LABELS),
-  releaseAttentionHint: hintsOf(RELEASE_ATTENTION_LABELS),
   feedbackPhase: FEEDBACK_PHASE_LABELS,
   feedbackKind: FEEDBACK_KIND_LABELS,
   feedbackSeverity: FEEDBACK_SEVERITY_LABELS,
@@ -89,7 +85,6 @@ export const LABEL_GROUPS = {
   feedbackTarget: FEEDBACK_TARGET_LABELS,
   feedbackAttention: labelsOf(FEEDBACK_ATTENTION_LABELS),
   contractAttention: labelsOf(CONTRACT_ATTENTION_LABELS),
-  feedbackAttentionHint: hintsOf(FEEDBACK_ATTENTION_LABELS),
   needsYouArea: NEEDS_YOU_AREA_LABELS,
   healthMarker: HEALTH_MARKER_LABELS,
   designStatus: DESIGN_STATUS_LABELS,

@@ -4,17 +4,17 @@
 // revisions and the diff a proposal carries, and the history by source.
 
 import { Written } from "@/lib/i18n/written";
-import type { CoverageIssue, HistorySource, RequirementCriteriaChanges, RequirementHistoryEntry } from "@forge/contracts/requirements";
+import { BC_VERDICTS, type BcVerdict, type CoverageIssue, type HistorySource, type RequirementCriteriaChanges, type RequirementHistoryEntry } from "@forge/contracts/requirements";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
-import { ActorChip, AGENT_TINT, LEGEND, SegmentedControl, StatusBadge, VerdictEvidence, WhoMark } from "@/design";
+import { ActorChip, AGENT_TINT, FilterChip, LEGEND, SegmentedControl, StatusBadge, statusReading, VerdictEvidence, WhoMark } from "@/design";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
 import { issueHref } from "@/lib/routes/issues";
-import { agreedTitle, diffColours, VerdictDot, VerdictWord } from "./standing-bits";
+import { agreedTitle, diffColours, VerdictDot } from "./standing-bits";
 
 const Ins = ({ children }: { children: ReactNode }) => (
   <ins className="rounded-[3px] px-[3px] no-underline" style={{ background: diffColours.ins.bg, color: diffColours.ins.fg }}>
@@ -152,19 +152,45 @@ function byIssue(links: CoverageIssue[]) {
   return [...seen.values()].map((ls) => ({ i: ls[0] as CoverageIssue, links: ls, stale: ls.every((l) => l.stale) }));
 }
 
-/** Each business criterion once, as a checklist: its verdict's glyph dot, its code and the verdict's word,
- *  its wording, the verdict that counts (the newest, with its issue, identity and time) or why none does, the issues tracing
- *  to it inline, and the per-criterion evidence behind an expander. */
-export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: string }) {
+/** The verdict pills over the checklist: every criterion, then each verdict a criterion stands at, with its count. */
+function VerdictFilter({ coverage, value, onChange }: { coverage: RequirementDetail["standing"]["coverage"]; value: BcVerdict | "all"; onChange: (v: BcVerdict | "all") => void }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const present = BC_VERDICTS.map((v) => ({ verdict: v, n: coverage.filter((c) => c.verdict === v).length })).filter((x) => x.n > 0);
+  return (
+    <fieldset className="m-0 mb-2 flex min-w-0 flex-wrap gap-1.5 border-0 p-0" aria-label={t("requirements.criteria.show")} data-testid="criteria-filter">
+      <FilterChip on={value === "all"} onToggle={() => onChange("all")} count={coverage.length} testId="criteria-filter-all">
+        {t("requirements.criteria.all")}
+      </FilterChip>
+      {present.map(({ verdict, n }) => (
+        <FilterChip key={verdict} on={value === verdict} onToggle={() => onChange(value === verdict ? "all" : verdict)} count={n} testId={`criteria-filter-${verdict}`}>
+          {statusReading("bcVerdict", verdict, language).label}
+        </FilterChip>
+      ))}
+    </fieldset>
+  );
+}
+
+/**
+ * Each business criterion once, as a checklist: its verdict as one glyph dot named on it, its wording,
+ * why no verdict counts where none does, the issues tracing to it inline, and the per-criterion
+ * evidence behind an expander. The counts live in the filter pills over it, so no row says its
+ * verdict's word (REQ-43 BC-10). The developer view adds the agent text: each criterion's code, the
+ * verdict that counts with its issue, identity and time, and the revision it changed in (BC-7).
+ */
+export function CriteriaChecklist({ d, slug, developer = false }: { d: RequirementDetail; slug: string; developer?: boolean }) {
   const t = useCopy();
   const time = useTimeFormat();
+  const [filter, setFilter] = useState<BcVerdict | "all">("all");
   const cov = d.standing.coverage;
   if (cov.length === 0) return <p className="py-1.5 text-13 text-subtle">{t("requirements.criteria.empty")}</p>;
   const shown = d.standing.shownRevision;
   const wording = new Map(d.criteria.map((c) => [c.code, c]));
   return (
+    <>
+    <VerdictFilter coverage={cov} value={filter} onChange={setFilter} />
     <ul className="border-t border-line-subtle" data-testid="criteria-checklist">
-      {cov.map((c) => {
+      {cov.filter((c) => filter === "all" || c.verdict === filter).map((c) => {
         const crit = wording.get(c.code);
         const issues = byIssue(c.issues);
         return (
@@ -173,18 +199,19 @@ export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: str
               <VerdictDot verdict={c.verdict} />
             </span>
             <div className="min-w-0">
-              <div className="mb-0.5 flex flex-wrap items-baseline gap-x-2">
-                <span className="font-mono text-12 font-semibold text-muted" title={crit ? t("requirements.criteria.since", { r: crit.sinceRevision }) : undefined}>
-                  {c.code}
-                </span>
-                <VerdictWord verdict={c.verdict} />
-              </div>
+              {developer ? (
+                <div className="mb-0.5 flex flex-wrap items-baseline gap-x-2">
+                  <span className="font-mono text-12 font-semibold text-muted" title={crit ? t("requirements.criteria.since", { r: crit.sinceRevision }) : undefined} data-testid="criterion-code">
+                    {c.code}
+                  </span>
+                </div>
+              ) : null}
               {crit?.form === "scenario" ? (
                 <pre className="whitespace-pre-wrap font-mono text-12-5 leading-relaxed">{c.body}</pre>
               ) : (
                 <p className="text-14 leading-relaxed">{c.body}</p>
               )}
-              {c.counts ? (
+              {developer && c.counts ? (
                 <p className="mt-1 text-12-5 text-muted" data-testid="criterion-counts">
                   {t("requirements.criteria.counts", { verdict: t(VERDICT_WORD[c.counts.verdict]), issue: c.counts.displayId, n: c.counts.criterion })}
                   <span className="font-mono text-12"> · {c.counts.identity}</span>
@@ -196,7 +223,7 @@ export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: str
                   {c.why}
                 </p>
               ) : null}
-              {crit && shown !== null && crit.sinceRevision === shown && shown > 1 ? (
+              {developer && crit && shown !== null && crit.sinceRevision === shown && shown > 1 ? (
                 <span className="mt-1 inline-block text-12 text-muted">{t("requirements.criteria.changedIn", { r: shown })}</span>
               ) : null}
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-12-5">
@@ -226,7 +253,7 @@ export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: str
                         <li key={`${i.issueId}-${l.criterion}`} className="text-muted" data-testid="criterion-evidence-row">
                           <span className="font-medium text-fg">{t(l.verdict ? VERDICT_WORD[l.verdict] : "requirements.criteria.notJudged")}</span>
                           {l.verdictAt ? <span title={time.dateTime(l.verdictAt)}> · {time.relative(l.verdictAt)}</span> : null}
-                          {l.identity ? <span className="font-mono text-12"> · {l.identity}</span> : null}
+                          {developer && l.identity ? <span className="font-mono text-12"> · {l.identity}</span> : null}
                           {l.stale ? t("requirements.criteria.tracesEarlier") : ""}
                           {l.notCounted ? t("requirements.criteria.notCounted", { reason: l.notCounted }) : ""}{" "}
                           <Link href={issueHref(slug, i.displayId)} className="whitespace-nowrap font-mono text-12 text-subtle hover:underline" data-testid="criterion-issue-key">
@@ -248,6 +275,7 @@ export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: str
         );
       })}
     </ul>
+    </>
   );
 }
 

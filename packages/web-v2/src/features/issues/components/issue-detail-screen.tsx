@@ -18,7 +18,7 @@ import {
   FactsRail,
   ProjectLoader,
   useListOrigin,
-  useUrlChoice,
+  useRecordView,
 } from "@/design";
 import { useResumeRun } from "@/features/run-control/hooks";
 import { focusDecisionPanel } from "@/features/questions/components/decision-panel";
@@ -31,7 +31,7 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { isLiveRun, issueQueryKey, parseChecklist, runStatusChip, workStepOf } from "../derive";
+import { isLiveRun, issueQueryKey, parseChecklist, runStatusChip } from "../derive";
 import { deriveQueuedStep } from "../waiting";
 import { useActivity, useAttachments, type useIssue, useCreateComment } from "../detail-hooks";
 import { usePatchIssue, useProjectMembers } from "../hooks";
@@ -47,7 +47,7 @@ import { PropertiesRail } from "./properties-rail";
 import { readStart } from "./start-issue-action";
 import { StatusEdit } from "./inline-edit-cell";
 import { IssueActions } from "./detail/issue-actions";
-import { ISSUE_PAGE_VIEWS, type IssuePageView, IssuePageMain } from "./detail/issue-page-main";
+import { IssuePageMain } from "./detail/issue-page-main";
 import { Written } from "@/lib/i18n/written";
 
 interface IssueDetailScreenProps {
@@ -57,7 +57,7 @@ interface IssueDetailScreenProps {
 }
 
 export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProps) {
-  const [view, setView] = useUrlChoice<IssuePageView>("view", ISSUE_PAGE_VIEWS, "person");
+  const [view, setView] = useRecordView();
   const developer = view === "developer";
   const t = useCopy();
   const back = useListOrigin(ISSUES_LIST, issuesHref(slug));
@@ -136,11 +136,11 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
     sessionContext: issue.sessionContext,
   });
 
-  // The status, once, in the top bar, as the control that moves it: the run is not a second chip.
+  // The status, once, in the top bar, as the control that moves it: the run is not a second chip, and
+  // the step is the stepper's under Now, so the chip does not say it too (REQ-43 BC-5).
   const badge = (
     <StatusEdit
       status={issue.status}
-      step={workStepOf(issue)}
       moves={moves}
       agentStatus={issue.agentStatus}
       disabled={pending || !canWrite}

@@ -2,6 +2,8 @@
 
 // ISS-55 — the issue's acceptance criteria as one line each: its number, the statement clipped to the
 // line, and a mark for the verdict (REQ-43 BC-10). The filter pills carry the counts, so no row does.
+// A person's view reads each statement without the trace code an agent wrote at its head, and each
+// verdict without the commit it was taken at; the developer view reads both (BC-7).
 // A row opens on its full statement, the verdict's identity, reason and evidence, and, for a person
 // who may write, the act that records a verdict. The criteria a reword or a re-tie retired are
 // Activity's, each marked Retired with every verdict it earned, so an earlier judge's finding stays
@@ -15,22 +17,24 @@ import type { Copy } from "@/lib/i18n/product-copy";
 import type { CriterionStanding } from "@forge/contracts/issue-vocabulary";
 import { criterionStandingOf } from "@forge/contracts/verdict-identity";
 import { cn } from "@/lib/utils/cn";
+import { withoutCriterionCode } from "@/lib/utils/criterion-code";
 import { identityPhrase } from "../identity-phrase";
 import { type CriterionRow, type CriterionVerdict, type RetiredCriterionRow, useCriteria } from "../criteria";
 import { clipWords } from "../derive";
 import { useAttachments } from "../detail-hooks";
 import { RecordVerdict } from "./criteria-acts";
 
-function tooltipOf(row: CriterionRow, t: Copy, language: string, at: (iso: string) => string): string {
+function tooltipOf(row: CriterionRow, t: Copy, language: string, at: (iso: string) => string, developer: boolean): string {
   const v = row.latest;
   if (!v) return t("issues.verdict.none");
-  return verdictLines(v, t, language, at);
+  return verdictLines(v, t, language, at, developer);
 }
 
-function verdictLines(v: CriterionVerdict, t: Copy, language: string, at: (iso: string) => string): string {
+function verdictLines(v: CriterionVerdict, t: Copy, language: string, at: (iso: string) => string, developer = true): string {
   const by = v.authorAgency === "agent" ? t("issues.verdict.byAgent") : t("issues.verdict.byPerson");
+  const word = v.verdict === "short" ? t("issues.verdict.short") : statusReading("criterion", v.verdict, language).label;
   const parts = [
-    `${v.verdict === "short" ? t("issues.verdict.short") : statusReading("criterion", v.verdict, language).label} · ${identityPhrase(v, t)}`,
+    developer ? `${word} · ${identityPhrase(v, t)}` : word,
     v.reason ? t("issues.verdict.reason", { reason: v.reason }) : null,
     t("issues.verdict.by", { by, at: at(v.createdAt) }),
   ];
@@ -87,13 +91,26 @@ function Pill({ pressed, onClick, children }: { pressed: boolean; onClick: () =>
   );
 }
 
-function CriterionItem({ line, issueId, judge, kept }: { line: CriterionLine; issueId: string; judge: boolean | undefined; kept: ReturnType<typeof useAttachments>["data"] }) {
+function CriterionItem({
+  line,
+  issueId,
+  judge,
+  kept,
+  developer,
+}: {
+  line: CriterionLine;
+  issueId: string;
+  judge: boolean | undefined;
+  kept: ReturnType<typeof useAttachments>["data"];
+  developer: boolean;
+}) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
   const [open, setOpen] = useState(false);
   const reading = statusReading("criterion", line.standing, language).label;
   const row = line.row;
+  const statement = developer ? line.statement : withoutCriterionCode(line.statement);
   return (
     <li className="border-t border-line-subtle first:border-t-0" data-testid="criterion-row">
       <button
@@ -103,17 +120,17 @@ function CriterionItem({ line, issueId, judge, kept }: { line: CriterionLine; is
         className="flex w-full min-w-0 items-baseline gap-3 py-2 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
       >
         <span className="w-8 flex-none tabular-nums text-subtle">{line.n}</span>
-        <span className="min-w-0 flex-1 truncate">{clipWords(line.statement, ROW_WORDS)}</span>
+        <span className="min-w-0 flex-1 truncate">{clipWords(statement, ROW_WORDS)}</span>
         <span className={cn("w-6 flex-none text-center font-semibold", MARK_TONE[line.standing])} role="img" aria-label={reading} title={reading} data-testid={`criterion-${line.n}-verdict`}>
           {MARK[line.standing]}
         </span>
       </button>
       {open ? (
         <div className="grid gap-2 pb-3 pl-11 text-13 text-muted" data-testid="criterion-full">
-          <p className="whitespace-pre-wrap">{line.statement}</p>
+          <p className="whitespace-pre-wrap">{statement}</p>
           {row ? (
             <>
-              <p className="whitespace-pre-wrap">{tooltipOf(row, t, language, time.dateTime)}</p>
+              <p className="whitespace-pre-wrap">{tooltipOf(row, t, language, time.dateTime, developer)}</p>
               <VerdictEvidence
                 className="grid gap-1 text-12-5"
                 note={row.latest?.reason?.trim() ? row.latest.reason : null}
@@ -141,8 +158,11 @@ export function CriteriaList({
   judge,
   headingAct,
   checklist = [],
+  developer = false,
 }: {
   issueId: string;
+  /** The developer view: each statement with its trace code, each verdict with its commit. */
+  developer?: boolean;
   /** Whether the reader may record a verdict; the Judge reads the build it defaults to from core. */
   judge?: boolean;
   headingAct?: ReactNode;
@@ -188,7 +208,7 @@ export function CriteriaList({
           </fieldset>
           <ol className="text-14">
             {shown.map((line) => (
-              <CriterionItem key={line.id} line={line} issueId={issueId} judge={judge} kept={kept.data} />
+              <CriterionItem key={line.id} line={line} issueId={issueId} judge={judge} kept={kept.data} developer={developer} />
             ))}
           </ol>
         </>

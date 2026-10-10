@@ -10,9 +10,12 @@ export interface HighlightAnchor {
   selectors: readonly string[];
   /** The `?tab=` the record's page shows it under; null where it shows on every tab. */
   tab: string | null;
+  /** The `?view=` it is drawn in where only the developer view draws it (agent text, REQ-43 BC-7). */
+  view?: "developer";
 }
 
 const anchor = (tab: string | null, ...selectors: string[]): HighlightAnchor => ({ selectors, tab });
+const developerAnchor = (...selectors: string[]): HighlightAnchor => ({ selectors, tab: null, view: "developer" });
 
 /** Every section the contract names, per record page. A section with no anchor has no element yet. */
 export const HIGHLIGHT_ANCHORS: { [K in UiPageItemKind]?: Partial<Record<UiHighlightSection, HighlightAnchor>> } = {
@@ -36,7 +39,7 @@ export const HIGHLIGHT_ANCHORS: { [K in UiPageItemKind]?: Partial<Record<UiHighl
     waiting: anchor(null, '[data-highlight~="waiting"]'),
     question: anchor(null, '[data-highlight~="question"]'),
     criteria: anchor(null, '[data-testid="view-criteria"]'),
-    plan: anchor(null, '[data-highlight~="plan"]'),
+    plan: developerAnchor('[data-highlight~="plan"]'),
     preview: anchor(null, '[data-highlight~="preview"]'),
   },
 };
@@ -62,6 +65,12 @@ export function tabOf(h: UiHighlight, kind: UiPageItemKind | null): string | nul
   if (h.target === "step") return STEP_TAB;
   if (h.target === "row" || !kind) return null;
   return HIGHLIGHT_ANCHORS[kind]?.[h.section]?.tab ?? null;
+}
+
+/** The view a highlight's element is drawn in where only one view draws it, or null. */
+export function viewOf(h: UiHighlight, kind: UiPageItemKind | null): "developer" | null {
+  if (h.target !== "section" || !kind) return null;
+  return HIGHLIGHT_ANCHORS[kind]?.[h.section]?.view ?? null;
 }
 
 /** The first element on the page a highlight names, or null. */

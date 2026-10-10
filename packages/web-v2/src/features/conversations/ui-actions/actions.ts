@@ -44,7 +44,7 @@ import { issueHref } from "@/lib/routes/issues";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
 import { workflowHref } from "@/lib/routes/workflows";
-import { findHighlighted, selectorsOf, tabOf } from "./highlight-anchors";
+import { findHighlighted, selectorsOf, tabOf, viewOf } from "./highlight-anchors";
 
 /** The board as the one line the person reads: its title and what it holds. */
 export function describeBoard(doc: WireframeDoc, t: Copy): string {
@@ -280,7 +280,8 @@ function applyListFilter(action: UiListFilterAction, env: UiActionEnv): UiAction
 
 /**
  * Marks a section, a step or a row on the page as it stands (BC-6). A section the record's page shows
- * under another tab switches to that tab first; one the page does not draw at all is refused
+ * under another tab, or only in its developer view, switches to that tab or view first; one the page
+ * does not draw at all is refused
  * UI_ACTION_NOT_ON_PAGE, the code core gives a highlight its snapshot already rules out.
  */
 function applyHighlight(h: UiHighlight, env: UiActionEnv): UiActionOutcome {
@@ -298,10 +299,14 @@ function applyHighlight(h: UiHighlight, env: UiActionEnv): UiActionOutcome {
   if (selectors.length === 0) return no(`names section "${what}", which ${withArticle(String(item?.kind))} page does not draw`);
   const onPage = env.find(selectors);
   const tab = tabOf(h, item?.kind ?? null);
+  const view = viewOf(h, item?.kind ?? null);
   if (!onPage) {
-    if (tab === null || url.searchParams.get("tab") === tab)
+    const toTab = tab !== null && url.searchParams.get("tab") !== tab ? tab : null;
+    const toView = view !== null && url.searchParams.get("view") !== view ? view : null;
+    if (toTab === null && toView === null)
       return no(h.target === "row" ? `names row ${what}, which the list beside the chat is not showing` : `names ${h.target} "${what}", which this page is not showing`);
-    url.searchParams.set("tab", tab);
+    if (toTab !== null) url.searchParams.set("tab", toTab);
+    if (toView !== null) url.searchParams.set("view", toView);
     env.go(`${url.pathname}?${url.searchParams.toString()}`);
   }
   env.mark(h, url.pathname, selectors);

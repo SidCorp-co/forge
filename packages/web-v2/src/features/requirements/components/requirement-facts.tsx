@@ -17,8 +17,6 @@ import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { FeedbackRoute } from "@forge/contracts/feedback";
-import { progressText } from "@/features/forecast/progress";
-import { useRequirementForecast } from "@/features/forecast/hooks";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { LinkIssueControl } from "./link-issue";
 import { PromoteDraftRow } from "./promote-drafts";
@@ -140,10 +138,13 @@ export function RequirementFacts({
   slug,
   onOpenRevisions,
   projectId,
+  developer = false,
 }: {
   d: RequirementDetail;
   slug: string;
-  /** Reads its issues' progress count. */
+  /** The developer view: the revision that stands, by number (BC-7); the dates line names when it was agreed. */
+  developer?: boolean;
+  /** The project its placement, promote and link acts write to. */
   projectId: string;
   /** Opens the revisions view; the peek, which has none, leaves it out and the revision reads as text. */
   onOpenRevisions?: () => void;
@@ -151,7 +152,6 @@ export function RequirementFacts({
   const t = useCopy();
   const label = useLabel();
   const time = useTimeFormat();
-  const forecast = useRequirementForecast(projectId, d.key).data;
   const s = d.standing;
   const f = s.facts;
   const baseline = d.baselines[0];
@@ -165,9 +165,11 @@ export function RequirementFacts({
         </Fact>
         <PlacementFacts projectId={projectId} d={d} />
         <RequirementShipped releases={d.releases} slug={slug} />
-        <Fact label={t("requirements.facts.current")}>
-          <span>{d.currentRevision !== null ? `r${d.currentRevision}` : t("requirements.facts.noneAccepted")}</span>
-        </Fact>
+        {developer ? (
+          <Fact label={t("requirements.facts.current")}>
+            <span>{d.currentRevision !== null ? `r${d.currentRevision}` : t("requirements.facts.noneAccepted")}</span>
+          </Fact>
+        ) : null}
         {d.request ? (
           <Fact label={t("requirements.facts.requestedBy")}>
             <span title={t("requirements.facts.requestTitle", { contract: d.request.contract })}>{d.request.project}</span>
@@ -186,7 +188,8 @@ export function RequirementFacts({
         ) : null}
       </FactsGroup>
 
-      <FactsGroup title={t("requirements.facts.issues")} count={f.issuesTotal && forecast ? progressText(forecast.progress, t) : undefined} testId="facts-issues">
+      {/* how many shipped is the strip's wait ("Shipped 8 of 13") and each row's status: no count of its own here (REQ-43 BC-5) */}
+      <FactsGroup title={t("requirements.facts.issues")} testId="facts-issues">
         {d.issues.length === 0 ? (
           <FactsEmpty>{t("requirements.facts.notBrokenDown")}</FactsEmpty>
         ) : (
@@ -290,7 +293,7 @@ export function RequirementFacts({
           <>
             {" · "}
             <span title={agreedTitle(t, time.dateTime(baseline.agreedAt), baseline.agreedByName)}>
-              {t("requirements.facts.agreedR", { r: baseline.revision, when: time.relative(baseline.agreedAt) })}
+              {developer ? t("requirements.facts.agreedR", { r: baseline.revision, when: time.relative(baseline.agreedAt) }) : t("requirements.facts.agreed", { when: time.relative(baseline.agreedAt) })}
             </span>
           </>
         ) : null}

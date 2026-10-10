@@ -23,25 +23,21 @@ export type ModuleAttentionGroup = (typeof MODULE_ATTENTION_GROUPS)[number];
 export const MODULE_ATTENTION_LABELS: StandingGroupLabels<ModuleAttentionGroup> = {
 	needs_you: {
 		label: "Needs you",
-		hint: "An issue in it waits on you to answer, decide or approve",
 		tone: "you",
 		collapsed: false,
 	},
 	moving: {
 		label: "Moving",
-		hint: "A run holds a live lease on one of its issues",
 		tone: "run",
 		collapsed: false,
 	},
 	stuck: {
 		label: "Stuck",
-		hint: "An issue in it waits on another issue, has no live holder, or came back",
 		tone: "blocked",
 		collapsed: false,
 	},
 	quiet: {
 		label: "Quiet",
-		hint: "Nothing in it needs anyone and nothing is running",
 		tone: "done",
 		collapsed: true,
 	},

@@ -160,25 +160,21 @@ export const FEEDBACK_ATTENTION_LABELS: StandingGroupLabels<FeedbackAttentionGro
 	{
 		needs_you: {
 			label: "Needs you",
-			hint: "Triage it, or confirm the fix you reported",
 			tone: "you",
 			collapsed: false,
 		},
 		moving: {
 			label: "Moving",
-			hint: "An issue, revision or requirement carries it",
 			tone: "run",
 			collapsed: false,
 		},
 		waiting: {
 			label: "Someone else’s turn",
-			hint: "The reporter confirms the fix",
 			tone: "neutral",
 			collapsed: false,
 		},
 		done: {
 			label: "Done",
-			hint: "Verified or declined",
 			tone: "done",
 			collapsed: true,
 		},

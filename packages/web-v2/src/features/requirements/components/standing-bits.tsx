@@ -2,13 +2,13 @@
 
 // What a requirement's standing (core `requirements/standing.ts`) says, put into the shared design
 // pieces: its whose-turn as the shared banner, the issue or release the wait is about linked inside its
-// act, its lifecycle as the shared step bar, its coverage as a dot per verdict carrying the verdict's
-// own glyph beside its own word, so a verdict is never told by colour alone. Nothing here draws a
-// colour, a step or a verdict word of its own.
+// act, its lifecycle as the shared step bar, and each verdict as a dot carrying the verdict's own
+// glyph and named on it, so a verdict is never told by colour alone. Nothing here draws a colour, a
+// step or a verdict word of its own. The header's badge says the state, so neither the banner nor the
+// bar says it again (REQ-43 BC-5).
 
 import Link from "next/link";
 import {
-  BC_VERDICTS,
   type BcVerdict,
   criteriaCoverageOf,
   REQUIREMENT_LIFECYCLE,
@@ -25,13 +25,18 @@ import { issueHref } from "@/lib/routes/issues";
 import { releaseHref } from "@/lib/routes/releases";
 import { cn } from "@/lib/utils/cn";
 
-/** One verdict as a dot carrying the verdict's glyph (✓ × ↻ ⇣ ○ !), so its shape tells it apart where its colour does not. */
+/**
+ * One verdict as a dot carrying the verdict's glyph (✓ × ↻ ⇣ ○ !), so its shape tells it apart where
+ * its colour does not; named on it, since it is the verdict's one mark on its row (REQ-43 BC-10).
+ */
 export function VerdictDot({ verdict }: { verdict: BcVerdict }) {
   const r = statusReading("bcVerdict", verdict, useInterfaceLanguage());
   const c = LEGEND[r.tone];
   return (
     <span
-      aria-hidden
+      role="img"
+      aria-label={r.label}
+      title={r.label}
       className="grid size-4 flex-none place-items-center rounded-full border text-[10px] font-bold leading-none"
       style={{ background: c.bg, borderColor: c.dot, color: c.fg }}
       data-testid="verdict-dot"
@@ -42,19 +47,12 @@ export function VerdictDot({ verdict }: { verdict: BcVerdict }) {
   );
 }
 
-/** A verdict's own word, as text a sighted reader sees on every width; its hint on hover. */
-export function VerdictWord({ verdict }: { verdict: BcVerdict }) {
-  const r = statusReading("bcVerdict", verdict, useInterfaceLanguage());
-  return (
-    <span className="text-12 font-semibold" style={{ color: LEGEND[r.tone].fg }} title={r.hint ?? undefined} data-testid="verdict-word">
-      {r.label}
-    </span>
-  );
-}
-
 const onLifecycle = (state: RequirementState) => REQUIREMENT_LIFECYCLE.indexOf(state as (typeof REQUIREMENT_LIFECYCLE)[number]);
 
-/** Draft → Agreed → In delivery → Delivered → Accepted, and the step core says comes next. */
+/**
+ * Draft → Agreed → In delivery → Delivered → Accepted as a bar, and the step core says comes next. The
+ * header's badge names the state, so the bar draws its place and names no step of its own.
+ */
 function Stepper({ state, next }: { state: RequirementState; next: RequirementState | null }) {
   const t = useCopy();
   const label = useLabel();
@@ -63,7 +61,7 @@ function Stepper({ state, next }: { state: RequirementState; next: RequirementSt
   if (at < 0) {
     return next ? (
       <p className="text-12 text-muted" data-testid="step-off-line">
-        {t("requirements.step.next", { caption: label("requirementState", state), state: label("requirementState", next) })}
+        {t("requirements.step.next", { state: label("requirementState", next) })}
       </p>
     ) : null;
   }
@@ -75,7 +73,8 @@ function Stepper({ state, next }: { state: RequirementState; next: RequirementSt
         state: i < at || (i === at && s === "accepted") ? "done" : i === at ? "now" : "next",
         tone: s === "delivered" ? "you" : "run",
       }))}
-      caption={stepCaption(t, at + 1, REQUIREMENT_LIFECYCLE.length, next ? label("requirementState", next) : null)}
+      caption={next ? t("requirements.step.next", { state: label("requirementState", next) }) : undefined}
+      named={false}
     />
   );
 }
@@ -110,7 +109,7 @@ function WaitAct({ act, w, slug }: { act: string; w: RequirementWaitingOn; slug:
   );
 }
 
-/** The strip's first line: whom it waits on and for what, or that nothing is owed. */
+/** The strip's first line: whom it waits on and for what, or that nothing is owed (the badge says it ended). */
 function RequirementBanner({ standing, slug, className }: { standing: RequirementStanding; slug: string; className?: string }) {
   const t = useCopy();
   const w = saidView(standing.waitingOn, useInterfaceLanguage());
@@ -119,11 +118,8 @@ function RequirementBanner({ standing, slug, className }: { standing: Requiremen
   return (
     <WaitBanner
       tone={stuck ? "you" : BANNER_TONE[w.kind]}
-      head={t(
-        done ? (standing.state === "accepted" ? "requirements.banner.accepted" : "requirements.banner.dropped") : stuck ? "requirements.banner.stuck" : w.kind === "you" ? "requirements.banner.waitingOnYou" : "requirements.banner.waitingOn",
-        { who: w.who },
-      )}
-      body={done ? t("requirements.banner.nothingOwed") : stuck ? t("requirements.banner.noOwner") : <WaitAct act={w.act} w={standing.waitingOn} slug={slug} />}
+      head={t(done ? "requirements.banner.nothingOwed" : stuck ? "requirements.banner.stuck" : w.kind === "you" ? "requirements.banner.waitingOnYou" : "requirements.banner.waitingOn", { who: w.who })}
+      body={done ? null : stuck ? t("requirements.banner.noOwner") : <WaitAct act={w.act} w={standing.waitingOn} slug={slug} />}
       rule={w.rule}
       effect={done ? undefined : w.effect}
       className={className}
@@ -131,15 +127,10 @@ function RequirementBanner({ standing, slug, className }: { standing: Requiremen
   );
 }
 
-/** How many criteria stand at each verdict, in the vocabulary's order; a verdict no criterion has is left out. */
-const verdictCounts = (coverage: RequirementStanding["coverage"]) =>
-  BC_VERDICTS.map((v) => ({ verdict: v, n: coverage.filter((c) => c.verdict === v).length })).filter((x) => x.n > 0);
-
 /**
  * The top of a requirement on every width, its full page's and its peek's alike: whom it waits on and
- * for what, the lifecycle step it stands at and the one after, and "k/n verified" over a count per
- * verdict, each a glyph dot, a number and the verdict's word. Every word is the lifecycle's and the
- * verdicts' own; this draws no step or verdict of its own.
+ * for what, where it stands on the lifecycle and the step after, and "k/n verified". The count per
+ * verdict lives in the criteria's filter (REQ-43 BC-10), so the strip counts no verdict.
  */
 export function RequirementProgress({ standing, slug, inset }: { standing: RequirementStanding; slug: string; inset: string }) {
   const t = useCopy();
@@ -156,17 +147,8 @@ export function RequirementProgress({ standing, slug, inset }: { standing: Requi
             </div>
           ) : null}
           {n > 0 ? (
-            <div className="grid gap-1.5" data-testid="progress-verified">
+            <div data-testid="progress-verified">
               <span className="text-13 font-semibold text-fg">{t("requirements.verified", { a: k, b: n })}</span>
-              <ul className="flex flex-wrap gap-x-3 gap-y-1" data-testid="progress-verdicts">
-                {verdictCounts(standing.coverage).map(({ verdict, n: count }) => (
-                  <li key={verdict} className="inline-flex items-center gap-1.5 text-12" data-verdict={verdict}>
-                    <VerdictDot verdict={verdict} />
-                    <b className="font-semibold text-fg">{count}</b>
-                    <VerdictWord verdict={verdict} />
-                  </li>
-                ))}
-              </ul>
             </div>
           ) : null}
         </div>
@@ -182,12 +164,6 @@ export function revisionText(t: Copy, current: number | null, s: RequirementStan
   if (open === null) return head;
   return t(s.facts.proposedRevision !== null ? "requirements.row.revAwaiting" : "requirements.row.revDrafting", { head, r: open });
 }
-
-/** "Step 2 of 5 · next In delivery". */
-const stepCaption = (t: Copy, at: number, of: number, next: string | null) => {
-  const caption = t("requirements.step.caption", { at, of });
-  return next ? t("requirements.step.next", { caption, state: next }) : caption;
-};
 
 /** "Agreed 03/10/2026, 14:05 by Lan": when a revision was agreed and by whom, for a tooltip. */
 export const agreedTitle = (t: Copy, at: string, name: string | null) =>

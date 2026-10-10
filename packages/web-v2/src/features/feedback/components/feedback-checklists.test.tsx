@@ -15,10 +15,15 @@ import { feedbackDetail } from "@/test/vi-chrome-feedback";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/projects/hop/feedback/FB-2", useParams: () => ({ slug: "hop" }) }));
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  window.history.replaceState(null, "", "/");
+});
 
 describe("a feedback item's triage checklist on its page", () => {
-  function feedbackPage(read: ChecklistRead) {
+  /** Where an answer came from is agent text, drawn in the developer view (REQ-43 BC-7). */
+  function feedbackPage(read: ChecklistRead, view: "person" | "developer" = "person") {
+    window.history.replaceState(null, "", view === "developer" ? "/?view=developer" : "/");
     const calls = fakeCore((c: Call) => {
       if (c.path === "/projects/p1/feedback/FB-2/checklist") return { body: { feedbackId: "f2", key: "FB-2", checklists: [read] } };
       return HANG;
@@ -48,7 +53,7 @@ describe("a feedback item's triage checklist on its page", () => {
       { question: "reproduced", value: "Twice on the staging board.", provenance: "given", source: "mover" },
       { question: "route", value: "issue", provenance: "given", source: "derived:short-form" },
     ];
-    feedbackPage(readOf(FEEDBACK_TRIAGE_CHECKLIST, record(FEEDBACK_TRIAGE_CHECKLIST, { kind: "bug", requirement: "REQ-1" }), [{ ...passed(answers), from: "new", to: "triaged", gate: "feedback_triage" }]));
+    feedbackPage(readOf(FEEDBACK_TRIAGE_CHECKLIST, record(FEEDBACK_TRIAGE_CHECKLIST, { kind: "bug", requirement: "REQ-1" }), [{ ...passed(answers), from: "new", to: "triaged", gate: "feedback_triage" }]), "developer");
     const section = await screen.findByTestId("checklist");
     expect(section.dataset.standing).toBe("passed");
     expect(within(section).queryAllByTestId("checklist-gap")).toEqual([]);
@@ -58,5 +63,25 @@ describe("a feedback item's triage checklist on its page", () => {
     // the short form gave the route; the triager sent none, so it is not read as theirs
     expect(row(section, "route")).toHaveTextContent("Derived by the short-form rule");
     expect(row(section, "route")).not.toHaveTextContent("Given in the move");
+  });
+
+  it("keeps the checklist under Activity for a reader past triage, not at the top (REQ-43 BC-8)", async () => {
+    const past = { phase: "planned", can: { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false } } as const;
+    fakeCore((c: Call) => (c.path === "/projects/p1/feedback/FB-2/checklist" ? { body: { feedbackId: "f2", key: "FB-2", checklists: [readOf(FEEDBACK_TRIAGE_CHECKLIST, record(FEEDBACK_TRIAGE_CHECKLIST, { kind: "bug" }))] } } : HANG));
+    const top = renderWithQuery(feedbackDetail(past));
+    await screen.findAllByText("Muc FB-2");
+    expect(screen.queryByTestId("checklist")).toBeNull();
+    top.unmount();
+    window.history.replaceState(null, "", "/?tab=activity");
+    renderWithQuery(feedbackDetail(past));
+    const activity = await screen.findByTestId("view-activity");
+    expect(await within(activity).findByTestId("checklist")).toHaveTextContent("Feedback triage");
+  });
+
+  it("leaves where each answer came from to the developer view (REQ-43 BC-7)", async () => {
+    feedbackPage(readOf(FEEDBACK_TRIAGE_CHECKLIST, record(FEEDBACK_TRIAGE_CHECKLIST, { kind: "bug", requirement: "REQ-1" })));
+    const section = await screen.findByTestId("checklist");
+    expect(row(section, "kind")).toHaveTextContent(optionLabel(FEEDBACK_TRIAGE_CHECKLIST, "kind", "bug"));
+    expect(within(section).queryByTestId("checklist-source")).toBeNull();
   });
 });

@@ -1,10 +1,13 @@
 "use client";
 
-// A feedback item's full page: its screenshots, recordings and the step it hits, then its triage
-// checklist's answers and gaps (REQ-34 r2 BC-5), the acts a person can take and what the reporter said (Overview), the mockups proposed about it (Mockups), and
-// every decision on it (History), as tabs beside the sticky facts rail. The page leads with the
-// reporter's answer (where it stands, when, the release that shipped it); the phase, whose turn and
-// what carries it live in the rail.
+// A feedback item's full page: its screenshots, recordings and the step it hits, then, while it waits
+// on triage, its triage checklist's answers and gaps (REQ-34 r2 BC-5), the acts a person can take and
+// what the reporter said (Overview), the mockups proposed about it (Mockups), and every decision on it
+// with the triage it passed (Activity: past items, REQ-43 BC-8), as tabs beside the sticky facts rail.
+// The header's badge says the phase; the page leads with what the badge does not say (when it is
+// expected, the release that shipped it), then whose turn it is, once (BC-5). A person's view leaves
+// the agent text out — the assistant's draft, where an answer came from — and `?view=developer` draws
+// it (BC-7).
 
 import { Written, WrittenMark } from "@/lib/i18n/written";
 import type { ReactNode } from "react";
@@ -16,7 +19,10 @@ import {
   DetailTabs,
   enumLabel,
   FactsRail,
+  type RecordView,
+  RecordViewSwitch,
   StatusBadge,
+  useRecordView,
   useUrlTab,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
@@ -39,7 +45,7 @@ import { FeedbackBanner, FeedbackFacts } from "./feedback-facts";
 import { Messages } from "./feedback-messages";
 import { FeedbackRoom } from "./feedback-room";
 
-const FEEDBACK_TABS = ["overview", "mockups", "history"] as const;
+const FEEDBACK_TABS = ["overview", "mockups", "activity"] as const;
 type FeedbackTab = (typeof FEEDBACK_TABS)[number];
 export const useFeedbackTab = () => useUrlTab(FEEDBACK_TABS);
 
@@ -109,6 +115,15 @@ export function FeedbackHistory({ f }: { f: FeedbackView }) {
   );
 }
 
+/** The person / developer switch, at the right above the tabs. */
+function ViewBar({ view, onView }: { view: RecordView; onView: (v: RecordView) => void }) {
+  return (
+    <div className="flex justify-end px-8 pt-3 max-md:px-4" data-testid="feedback-view-bar">
+      <RecordViewSwitch view={view} onView={onView} />
+    </div>
+  );
+}
+
 export function FeedbackPage({
   projectId,
   slug,
@@ -123,6 +138,8 @@ export function FeedbackPage({
   onTab: (t: FeedbackTab) => void;
 }) {
   const t = useCopy();
+  const [view, onView] = useRecordView();
+  const developer = view === "developer";
   const q = useFeedbackItem(projectId, fbKey);
   const forecasts = useFeedbackForecasts(projectId);
   const clock = useEtaClock();
@@ -134,21 +151,25 @@ export function FeedbackPage({
         const tabs = [
           { value: "overview" as const, label: t("feedback.tab.overview") },
           { value: "mockups" as const, label: t("feedback.tab.mockups"), count: mockups.data?.returned },
-          { value: "history" as const, label: t("feedback.tab.history"), count: f.decisions.length },
+          { value: "activity" as const, label: t("feedback.tab.activity") },
         ];
+        // the triage checklist is the work while triage is owed; once passed, it is a past item
+        const checklists = <FeedbackChecklists projectId={projectId} fbKey={f.key} canTriage={f.can.triage} developer={developer} />;
         return (
           <DetailLayout
             testId="feedback-detail"
             dataKey={f.key}
             rail={
               <FactsRail>
-                <FeedbackFacts f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} />
+                {/* the forecast is the answer line's, above: the rail does not say when a second time */}
+                <FeedbackFacts f={f} slug={slug} developer={developer} />
               </FactsRail>
             }
           >
             <DetailMobileTitle itemKey={f.key} title={<Written text={f.title} lang={f.writtenLang} />} badge={<StatusBadge family="feedbackPhase" value={f.phase} />} />
             <FeedbackAnswer f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} className="px-8 pt-4 pb-2 max-md:px-4" />
             <FeedbackBanner f={f} slug={slug} className="px-8 py-2.5 max-md:px-4" />
+            <ViewBar view={view} onView={onView} />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="feedback-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("feedback.tab.overview")}>
               {tab === "mockups" ? <MockupsPanel projectId={projectId} target={{ type: "feedback", key: f.key }} canPropose={!f.redacted} /> : null}
@@ -156,8 +177,8 @@ export function FeedbackPage({
                 <div className="grid gap-8" data-testid="view-overview">
                   <FeedbackEvidence projectId={projectId} slug={slug} f={f} />
                   <Proposals projectId={projectId} f={f} />
-                  <IntakeDraft projectId={projectId} slug={slug} itemKey={f.key} assumptions />
-                  <FeedbackChecklists projectId={projectId} fbKey={f.key} canTriage={f.can.triage} />
+                  {developer ? <IntakeDraft projectId={projectId} slug={slug} itemKey={f.key} assumptions /> : null}
+                  {f.can.triage ? checklists : null}
                   {f.can.triage || f.can.verify || f.can.reopen || f.can.askVerify || f.can.redact ? (
                     <section id="feedback-act" data-highlight="triage verify">
                       <FeedbackActions projectId={projectId} f={f} />
@@ -174,9 +195,10 @@ export function FeedbackPage({
                   <Messages projectId={projectId} f={f} />
                 </div>
               ) : null}
-              {tab === "history" ? (
-                <section aria-label={t("feedback.tab.history")}>
+              {tab === "activity" ? (
+                <section className="grid gap-8" aria-label={t("feedback.tab.activity")} data-testid="view-activity">
                   <FeedbackHistory f={f} />
+                  {f.can.triage ? null : checklists}
                 </section>
               ) : null}
             </DetailPane>

@@ -86,7 +86,7 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
             dataKey={r.key}
             rail={
               <FactsRail>
-                <ReleaseFacts r={r} forecast={forecastQ.data} />
+                <ReleaseFacts r={r} forecast={forecastQ.data} besideReader />
               </FactsRail>
             }
           >

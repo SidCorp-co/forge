@@ -1,8 +1,10 @@
 "use client";
 
-// The reporter's answer, first on the item's page: where it stands in plain words, when the forecast
-// expects it while the work is moving, and the release that shipped it once it has. Every part is read
-// off core (the phase, the forecast, the ship notice); this only says it as one sentence.
+// The reporter's answer, first on the item's page: what the header's phase badge does not say — when
+// the forecast expects it while the work is planned, and the release that shipped it once it has. A
+// phase with nothing to add says nothing here, so the phase is said once (REQ-43 BC-5); who confirmed
+// the fix is the rail's Verified row. Every part is read off core (the phase, the forecast, the ship
+// notice); this only says it as one sentence.
 
 import type { FeedbackForecast } from "@forge/contracts/forecast";
 import Link from "next/link";
@@ -55,22 +57,23 @@ export function FeedbackAnswer({
       case "reopened":
       case "triaged":
       case "declined":
-        return t(`feedback.answer.${f.phase}`);
+        return null;
       case "planned": {
         const eta = etaOfFeedback(forecast, clock);
-        return eta?.kind === "range" ? t("feedback.answer.plannedEta", { when: whenText(eta.p50At, clock, true) }) : t("feedback.answer.planned");
+        return eta?.kind === "range" ? t("feedback.answer.plannedEta", { when: whenText(eta.p50At, clock, true) }) : null;
       }
       case "resolved":
       case "verified": {
-        const confirmed = f.phase === "verified" ? t("feedback.answer.confirmed") : "";
-        if (f.route?.route === "answer") return `${t("feedback.answer.answered")}${confirmed}`;
+        // an answer is the route's own, drawn in the rail's Carried by
+        if (f.route?.route === "answer") return null;
         const { release, at } = shippedOf(f);
         const head = release ? t("feedback.answer.shippedIn", { release }) : t("feedback.answer.shipped");
-        const text = `${head}${at ? t("feedback.answer.on", { date: time.date(at) }) : ""}.${confirmed}`;
+        const text = `${head}${at ? t("feedback.answer.on", { date: time.date(at) }) : ""}.`;
         return release ? withRelease(text, release, slug) : text;
       }
     }
   })();
+  if (said === null) return null;
   return (
     <p className={`text-15 font-semibold leading-snug text-fg ${className ?? ""}`} data-testid="feedback-answer-line">
       {said}

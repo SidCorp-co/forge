@@ -415,7 +415,9 @@
     "common.stepNext": "{label} · not yet",
     "common.stepNow": "{label} · current step",
     "common.waffle.many": "{label}: {n} issues",
-    "common.waffle.one": "{label}: {n} issue"
+    "common.waffle.one": "{label}: {n} issue",
+    "common.view.person": "Person",
+    "common.view.developer": "Developer"
   },
   "vi": {
     "common.acceptWhy": "Lý do, và theo thẩm quyền của ai (không bắt buộc)",

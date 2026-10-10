@@ -118,7 +118,7 @@ export function IssueBanner({ standing, className }: { standing: IssueStanding; 
 }
 
 /** Triage → … → Release with the current step lit; an issue past release is all done. */
-export function IssueSteps({ standing, caption = true }: { standing: IssueStanding; caption?: boolean }) {
+export function IssueSteps({ standing, caption = true, named = true }: { standing: IssueStanding; caption?: boolean; named?: boolean }) {
   const t = useCopy();
   const L = useLabel();
   const time = useTimeFormat();
@@ -140,6 +140,7 @@ export function IssueSteps({ standing, caption = true }: { standing: IssueStandi
           </span>
         ) : undefined
       }
+      named={named}
     />
   );
 }
