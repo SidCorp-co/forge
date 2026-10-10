@@ -12,7 +12,7 @@ number.
 | Package | What |
 |---|---|
 | `packages/core` | Hono backend over Drizzle/Postgres, mounting every module's routes from `packages/core/src/route-registry.ts`; also the WebSocket server, the MCP server, and the job pool a master agent claims from. |
-| `packages/web-v2` | Next.js cloud UI, canonical at `/`. Feature modules under `src/features/<domain>/`. |
+| `packages/web-v2` | Vite + React SPA on TanStack Router, built into core's image and served by core (`packages/core/src/web-host`) at `/`. Feature modules under `src/features/<domain>/`. |
 | `packages/runner` | Headless Rust `forge-runner` CLI daemon for servers/CI; pairs as a device. |
 | `packages/contracts` | Shared cross-app TS types & registries, under `packages/contracts/src/`. |
 | `packages/observability` | Shared telemetry helpers (incl. the secret scrubber). |
