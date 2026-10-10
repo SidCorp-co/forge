@@ -116,14 +116,15 @@ export function checkRunViewOf(row: StoredCheckRun): IssueCheckRunView {
   };
 }
 
-/** The issue's checks, newest first, and the time spent on each kind. */
+/** The issue's checks with its reviews' (`review-rules.ts:reviewCheckViewOf`), newest first, and the time spent on each kind. */
 export function issueChecksViewOf(
   issueId: string,
   rows: readonly StoredCheckRun[],
+  reviews: readonly IssueCheckRunView[] = [],
 ): IssueChecksView {
-  const checks = rows
-    .map(checkRunViewOf)
-    .sort((a, b) => b.startedAt.localeCompare(a.startedAt) || a.id.localeCompare(b.id));
+  const checks = [...rows.map(checkRunViewOf), ...reviews].sort(
+    (a, b) => b.startedAt.localeCompare(a.startedAt) || a.id.localeCompare(b.id),
+  );
   return {
     issueId,
     totalMs: checks.reduce((sum, c) => sum + c.durationMs, 0),

@@ -156,7 +156,8 @@ async function reviewRequired(projectId: string): Promise<boolean> {
   return document?.validation?.mergeCheck === 'required';
 }
 
-async function reviewsOf(issueId: string): Promise<StoredReview[]> {
+/** The reviews recorded on the issue. */
+export async function recordedReviewsOf(issueId: string): Promise<StoredReview[]> {
   const records = await listRecordEvents(issueId, { kinds: ['review'], kernelOnly: true });
   return records.flatMap((r: RecordEvent) => {
     const stored = storedReviewOf(r);
@@ -256,7 +257,7 @@ export async function issueReviewOf(issue: {
     issueRefOf(issue.id),
     owedFor(issue),
     reviewRequired(issue.projectId),
-    reviewsOf(issue.id),
+    recordedReviewsOf(issue.id),
   ]);
   return {
     issue: ref,
@@ -288,7 +289,7 @@ export async function unreviewedMergeRefusal(args: {
   if (!(await reviewRequired(args.projectId))) return null;
   const [issueRef, reviews, builders] = await Promise.all([
     issueRefOf(args.issueId),
-    reviewsOf(args.issueId),
+    recordedReviewsOf(args.issueId),
     buildersOf(args.issueId, null),
   ]);
   return unreviewedDetail({ issueRef, commit: args.commit, reviews, builders });

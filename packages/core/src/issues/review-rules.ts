@@ -10,6 +10,7 @@
  * lands in the same change) owes no line until a release carries its page; the record names it.
  */
 
+import { CHECK_RUN_LIMITS, type IssueCheckRunView } from '@forge/contracts/check-runs';
 import type { CriterionDesignView, IssueDesignView } from '@forge/contracts/issue-design';
 import type {
   IssueReviewRefusalCode,
@@ -160,9 +161,38 @@ function criterionRefusals(body: RecordReviewRequest, owed: ReviewOwed): ReviewR
   return out;
 }
 
+/** A clock a box may run ahead of core's by, before its start reads as one in the future. */
+const CLOCK_SKEW_MS = 60_000;
+
+/** Why the review's start cannot be timed against `now`, or null. */
+function startedAtRefusal(startedAt: string, now: Date): ReviewRefusal | null {
+  const took = now.getTime() - new Date(startedAt).getTime();
+  if (took < -CLOCK_SKEW_MS) {
+    return refusal(
+      'REVIEW_REFUSED',
+      `startedAt ${startedAt} is after now (${now.toISOString()}); it is when the review began`,
+      '/startedAt',
+    );
+  }
+  if (took > CHECK_RUN_LIMITS.durationMs) {
+    return refusal(
+      'REVIEW_REFUSED',
+      `startedAt ${startedAt} is more than a day ago; a review that ran longer was left running, not timed`,
+      '/startedAt',
+    );
+  }
+  return null;
+}
+
 /** Why this review cannot be recorded against what it owes, or none. */
-export function reviewRefusals(body: RecordReviewRequest, owed: ReviewOwed): ReviewRefusal[] {
+export function reviewRefusals(
+  body: RecordReviewRequest,
+  owed: ReviewOwed,
+  now: Date = new Date(),
+): ReviewRefusal[] {
   const out = [...checklistRefusals(body, owed), ...criterionRefusals(body, owed)];
+  const started = startedAtRefusal(body.startedAt, now);
+  if (started) out.push(started);
   if (body.base.toLowerCase() === body.head.toLowerCase()) {
     out.push(
       refusal(
@@ -283,6 +313,7 @@ export function reviewRecordFields(args: {
     { key: 'base', value: base },
     { key: 'head', value: head },
     { key: 'diff', value: `${base}..${head}` },
+    { key: 'started', value: new Date(body.startedAt).toISOString() },
     { key: 'patterns', value: patterns.length ? patterns.join(', ') : 'none' },
     { key: 'reviewer-session', value: reviewer.session ?? 'none' },
     { key: 'reviewer-box', value: reviewer.box ?? 'none' },
@@ -333,6 +364,8 @@ export interface StoredReview {
   result: ReviewOutcome;
   failed: string[];
   reviewer: Reviewer;
+  /** When the review began; null on one recorded before a review carried its start. */
+  startedAt: Date | null;
   recordedAt: Date;
 }
 
@@ -349,6 +382,7 @@ export function storedReviewOf(record: {
   if (!head || !base || !actor || (result !== 'pass' && result !== 'fail')) return null;
   const none = (v: string | undefined) => (v === undefined || v === 'none' ? null : v);
   const failed = one('failed')?.split(', ') ?? [];
+  const started = one('started');
   return {
     id: record.id,
     head,
@@ -356,7 +390,34 @@ export function storedReviewOf(record: {
     result,
     failed,
     reviewer: { session: none(one('reviewer-session')), box: none(one('reviewer-box')), actor },
+    startedAt: started ? new Date(started) : null,
     recordedAt: record.createdAt,
+  };
+}
+
+/**
+ * A recorded review as one check of kind `review` in the issue's check times (REQ-36 BC-14): timed
+ * from its start to its record. A review recorded before it carried a start is listed untimed.
+ */
+export function reviewCheckViewOf(review: StoredReview): IssueCheckRunView {
+  const started = review.startedAt ?? review.recordedAt;
+  const failed = review.failed.length ? `Failed ${review.failed.join(', ')}` : null;
+  const untimed = review.startedAt ? null : 'Untimed: recorded before a review carried its start';
+  return {
+    id: review.id,
+    kind: 'review',
+    name: 'Review',
+    scope: `${review.base.slice(0, 7)}..${review.head.slice(0, 7)}`,
+    command: 'POST /api/issues/:id/review',
+    files: [],
+    result: review.result,
+    durationMs: Math.max(0, review.recordedAt.getTime() - started.getTime()),
+    startedAt: started.toISOString(),
+    head: review.head,
+    note: [failed, untimed].filter(Boolean).join('. ') || null,
+    runSessionId: review.reviewer.session,
+    via: 'report',
+    recordedAt: review.recordedAt.toISOString(),
   };
 }
 

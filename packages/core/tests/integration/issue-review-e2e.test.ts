@@ -181,6 +181,7 @@ const checklist = (result = 'pass') =>
 const review = (over: Doc = {}) => ({
   base: BASE,
   head: HEAD,
+  startedAt: new Date(Date.now() - 120_000).toISOString(),
   checklist: checklist(),
   criteria: [
     {
@@ -307,6 +308,11 @@ describe('a review recorded by another run (criteria 1 and 2)', () => {
     expect(fieldsOf(record, 'diff')).toEqual([`${BASE}..${HEAD}`]);
     expect(fieldsOf(record, 'evidence')[0]).toContain('a passing merge check');
     expect(fieldsOf(record, 'reruns')[0]).toMatch(/^none: a review runs no check, test or probe/);
+    // its time joins the issue's checks as kind review, never as one of the builder's checks (ISS-515)
+    const checks = (await call(personToken, 'GET', `/api/issues/${id}/checks`)).body;
+    const kind = (checks.kinds as Doc[]).find((k) => k.kind === 'review');
+    expect(kind?.checks).toBe(1);
+    expect(Number(kind?.totalMs)).toBeGreaterThanOrEqual(120_000);
     const keys = (record.fields as Doc[]).map((f) => f.key);
     for (const rerun of ['check', 'checks', 'probe', 'probes', 'tests']) {
       expect(keys).not.toContain(rerun);
