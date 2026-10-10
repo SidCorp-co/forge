@@ -21,9 +21,11 @@ function set(next: Partial<BoardState>) {
 
 export const boardStore = {
   get: () => state,
-  subscribe(l: () => void) {
+  subscribe: (l: () => void) => {
     listeners.add(l);
-    return () => listeners.delete(l);
+    return () => {
+      listeners.delete(l);
+    };
   },
   /** Show a document on the canvas, replacing what is there. */
   load(doc: WireframeDoc) {
