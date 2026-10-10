@@ -3193,6 +3193,20 @@
       "when": 1825891200000,
       "tag": "0497_session_failure_reasons_written_as_prose_move_to_their_detail",
       "breakpoints": true
+    },
+    {
+      "idx": 498,
+      "version": "7",
+      "when": 1825977600000,
+      "tag": "0498_a_tokens_project_list_change_is_recorded",
+      "breakpoints": true
+    },
+    {
+      "idx": 499,
+      "version": "7",
+      "when": 1826064000000,
+      "tag": "0499_an_alert_says_when_its_level_last_changed",
+      "breakpoints": true
     }
   ]
 }

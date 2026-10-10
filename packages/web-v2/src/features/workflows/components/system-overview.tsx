@@ -197,11 +197,8 @@ function NoContext({ projectId, quiet }: { projectId: string; quiet: boolean }) 
     <section className="border-b border-line-subtle bg-surface px-7 py-4 max-md:px-4" aria-label={t("workflows.overview.title")} data-testid="system-overview" data-empty>
       <p className="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-13-5">
         <b className="font-semibold">{t("workflows.overview.noContext")}</b>
-        {quiet ? (
-          <span className="text-muted">{t("workflows.overview.noContextQuiet")}</span>
-        ) : (
+        {quiet ? null : (
           <>
-            <span className="text-muted">{t("workflows.overview.noContextAsk")}</span>
             <Button
               type="button"
               variant="ghost"

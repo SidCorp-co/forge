@@ -60,22 +60,17 @@ export function AddAutoflowForm({
     >
       {hasDefault && (
         <LabelField
-          hint={t("integrations.form.labelHint")}
           placeholder="staging"
           value={label}
           onChange={setLabel}
           error={badLabel}
         />
       )}
-      <Field label={t("integrations.autoflow.shop")} hint={t("integrations.autoflow.shopHint")} required>
+      <Field label={t("integrations.autoflow.shop")} required>
         <Input placeholder="hop" value={shop} onChange={(e) => setShop(e.target.value.toLowerCase())} />
         {shopError && <p className="fg-body-sm text-danger">{shopError}</p>}
       </Field>
-      <Field
-        label={t("integrations.autoflow.token")}
-        hint={t("integrations.autoflow.tokenHint")}
-        required
-      >
+      <Field label={t("integrations.autoflow.token")} required>
         <Input
           type="password"
           autoComplete="new-password"

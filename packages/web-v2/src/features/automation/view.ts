@@ -44,7 +44,7 @@ export interface RowCtx {
 
 export type AutomationGroupFamily = "schedule" | "fire" | "report";
 
-/** A tab's groups in the order the contract declares them, the labels and hints read in the reader's language. */
+/** A tab's groups in the order the contract declares them, the labels read in the reader's language. */
 export function automationGroups<R extends { attentionGroup: G }, G extends StandingGroup>(
   rows: readonly R[],
   order: readonly G[],
@@ -55,7 +55,6 @@ export function automationGroups<R extends { attentionGroup: G }, G extends Stan
   return order.map((g) => ({
     id: g,
     label: t(`schedules.group.${family}.${g}.label` as ProductCopyKey),
-    hint: labels[g].hint ? t(`schedules.group.${family}.${g}.hint` as ProductCopyKey) : "",
     tone: labels[g].tone,
     collapsed: labels[g].collapsed,
     rows: rows.filter((r) => r.attentionGroup === g),

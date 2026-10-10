@@ -65,10 +65,7 @@ export function AgentsTab() {
 
   if (activeOrg && !ORG_ROLE_PERMISSIONS[activeOrg.role].includes("org.admin")) {
     return (
-      <EmptyState
-        title={t("settings.agents.adminOnly")}
-        message={t("settings.agents.adminOnlyBody")}
-      />
+      <EmptyState message={t("settings.agents.adminOnly")} />
     );
   }
 
@@ -122,7 +119,6 @@ export function AgentsTab() {
         <SectionTitle className="fg-h3">
           {t("settings.agents.title", { org: activeOrg?.name ?? t("settings.agents.thisOrg") })}
         </SectionTitle>
-        <p className="fg-body-sm mt-1">{t("settings.agents.intro")}</p>
       </header>
 
       {revealed && (
@@ -160,10 +156,7 @@ export function AgentsTab() {
       <CreateAgentForm orgId={orgId} />
 
       {agents.length === 0 ? (
-        <EmptyState
-          title={t("settings.agents.none")}
-          message={t("settings.agents.noneBody")}
-        />
+        <EmptyState message={t("settings.agents.none")} />
       ) : (
         <PageSection>
           <PageSectionBody>
@@ -184,7 +177,7 @@ export function AgentsTab() {
                     <TR key={agent.userId}>
                       <TD>
                         {renaming?.userId === agent.userId ? (
-                          <Field label={t("settings.agents.name")} hint={t("settings.agents.nameHint")}>
+                          <Field label={t("settings.agents.name")}>
                             <Input
                               value={renaming.value}
                               autoFocus

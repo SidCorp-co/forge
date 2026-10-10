@@ -32,7 +32,7 @@ export function agentAccessRefusedMessage(
   if (path?.kind === 'permission') {
     return `\`${provider}\` takes no agent access grant: whoever holds \`${path.permission}\` on the project may use it, agent or person, and nothing on the binding narrows that. Leave \`agentAccess\` out or send \`none\`.`;
   }
-  return `\`${provider}\` declares no agent path, so there is nothing for an agent to be granted. Whether agents may use an integration is only a question for a provider core answers tools from, or one whose credential reaches the runner.`;
+  return `\`${provider}\` declares no agent path, so there is nothing for an agent to be granted. Whether agents may use an integration is only a question for a provider core answers tools from, or one whose MCP server the run reaches through Forge's relay.`;
 }
 
 /** The sentence an agent-facing tool gives for a binding nobody has granted. */

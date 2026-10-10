@@ -41,7 +41,7 @@ protocol and nothing else:
 | error tracking | `sentry/` | Sentry | project |
 | storefront | `epodsystem/`, `autoflow/` | ePodSystem, Autoflow | project |
 | chat | `rocketchat/` (the REST and DDP clients, the connection owner, room routing, the thread registry) | Rocket.Chat | project |
-| LLM | `llm/`, over the AI SDK (`ai`, `@ai-sdk/openai-compatible`, `@ai-sdk/anthropic`) behind `ChatProvider` | OpenAI-compatible endpoints (LiteLLM), Anthropic Messages | deployment |
+| LLM | `llm/`, over the AI SDK (`ai`, `@ai-sdk/openai-compatible`) behind `ChatProvider` | the model gateway: an OpenAI-compatible endpoint (LiteLLM); no provider is reached directly | deployment |
 | embeddings | `llm/embeddings.ts`, over `llm/embeddings-client.ts` and the AI SDK's `embedMany` | OpenAI-compatible endpoints | deployment |
 | mail | `identity/smtp.ts` | SMTP | deployment |
 | identity | `./identity/` | GitHub OAuth, Google, generic OIDC | deployment |

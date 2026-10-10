@@ -90,7 +90,7 @@ describe("keeping the idea (BC-16)", () => {
     const sent = calls.find((c) => c.path === `/previews/${PREVIEW_ID}/keep`);
     expect(sent?.body).toEqual({ alt: "The home with a larger chat box", snapshot: PAIR });
     expect(screen.getByTestId("idea-kept")).toHaveTextContent("Kept as the picture of REQ-41.");
-    expect(screen.getByTestId("idea-kept")).toHaveTextContent("Criteria drafted from what you asked are waiting");
+    expect(screen.getByTestId("idea-kept")).toHaveTextContent("Criteria drafted from your asks wait on the requirement");
   });
 
   it("says by name when the page gave no snapshot, and keeps nothing", async () => {

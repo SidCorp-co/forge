@@ -103,24 +103,23 @@ export function SentryTargetsField({
             </div>
             <Field
               label={t("integrations.provider.label")}
-              hint={t("integrations.sentry.labelHint")}
               required
               error={rowInvalid(row) ? t("integrations.sentry.labelRequired") : undefined}
             >
               {input(i, "label", "Backend prod")}
             </Field>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label={t("integrations.sentry.orgSlug")} hint={t("integrations.sentry.orgSlugHint")}>
+              <Field label={t("integrations.sentry.orgSlug")}>
                 {input(i, "organizationSlug")}
               </Field>
-              <Field label={t("integrations.sentry.projectSlug")} hint={t("integrations.sentry.projectSlugHint")}>
+              <Field label={t("integrations.sentry.projectSlug")}>
                 {input(i, "projectSlug")}
               </Field>
             </div>
-            <Field label={t("integrations.sentry.environment")} hint={t("integrations.sentry.environmentHint")}>
+            <Field label={t("integrations.sentry.environment")}>
               {input(i, "environment")}
             </Field>
-            <Field label={t("integrations.sentry.notes")} hint={t("integrations.sentry.notesHint")}>
+            <Field label={t("integrations.sentry.notes")}>
               <Textarea
                 value={row.notes}
                 onChange={(e) => setTarget(i, "notes", e.target.value)}

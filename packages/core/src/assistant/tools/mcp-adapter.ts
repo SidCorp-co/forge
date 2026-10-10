@@ -26,6 +26,8 @@ export interface ChatToolSpec {
   factory: ContextScopedMcpToolFactory;
   /** Permitted `action` values; omit for single-action tools. */
   allowedActions?: string[];
+  /** A record tool (Feedback, a draft Requirement or revision), which `buildRecordToolset` serves on its own. */
+  record?: true;
   describe?: string;
   /** Runs after the action gate, may mutate `args`; an error string rejects, null allows. `ctx.projectId` is the session-bound project, resolved BEFORE it is pinned onto `args`. */
   guard?: (

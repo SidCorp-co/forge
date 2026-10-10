@@ -52,7 +52,7 @@ export const operationalFlow: WorkflowTemplate = {
       {
         id: 'decide',
         label: 'Decide',
-        tooltip: 'The rules that decide, the state they set and what is expected next.',
+        tooltip: 'The deciding rules, the state they set, and what comes next.',
         types: ['RULE', 'STATE', 'EXPECTATION'],
       },
       {
@@ -86,7 +86,7 @@ export const operationalFlow: WorkflowTemplate = {
       id: 'SOURCE',
       label: 'Source',
       tooltip:
-        'A system that holds the facts (a HIS, a LIS). It emits events and is read; nothing writes back into it.',
+        'A system holding the facts (a HIS, a LIS); read, never written.',
       icon: 'database',
       colour: 'slate',
       required: ['label', 'owner'],
@@ -98,7 +98,7 @@ export const operationalFlow: WorkflowTemplate = {
       id: 'EVENT',
       label: 'Event',
       tooltip:
-        'Something that happened, named domain.verb_past (`event`), with the keys it carries (`payload`). Exactly one source emits it.',
+        'Something that happened (`event`) with its keys (`payload`); one source emits it.',
       icon: 'bolt',
       colour: 'orange',
       required: ['label', 'event', 'payload'],
@@ -153,7 +153,7 @@ export const operationalFlow: WorkflowTemplate = {
       id: 'RULE',
       label: 'Rule',
       tooltip:
-        'A decision: its inputs, the table of conditions, and the outputs it gives. Its full table lives in a decision-model design.',
+        'A decision: inputs, conditions and outputs; its table is a decision model.',
       icon: 'diamond',
       colour: 'violet',
       required: ['label', 'inputs', 'conditions', 'outputs'],
@@ -187,7 +187,7 @@ export const operationalFlow: WorkflowTemplate = {
     {
       id: 'EXPECTATION',
       label: 'Expectation',
-      tooltip: 'What must happen by when (`sla`); a miss breaches to an attention item.',
+      tooltip: 'What must happen by when (`sla`); a miss raises attention.',
       icon: 'clock',
       colour: 'amber',
       required: ['label', 'sla'],
@@ -206,7 +206,7 @@ export const operationalFlow: WorkflowTemplate = {
     {
       id: 'TASK',
       label: 'Task',
-      tooltip: 'A piece of the case for one role, by a deadline, done once (`idempotency`).',
+      tooltip: 'A task for one role, by a deadline, done once (`idempotency`).',
       icon: 'check-square',
       colour: 'pink',
       required: ['label', 'owner', 'sla', 'idempotency'],
@@ -224,7 +224,7 @@ export const operationalFlow: WorkflowTemplate = {
     {
       id: 'ACTION',
       label: 'Action',
-      tooltip: 'What staff actually did: a call, a message, a booking. It ends in an outcome.',
+      tooltip: 'What staff actually did: a call, a message, a booking.',
       icon: 'arrow-right',
       colour: 'cyan',
       required: ['label', 'owner'],

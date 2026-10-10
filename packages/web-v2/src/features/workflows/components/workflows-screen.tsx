@@ -5,7 +5,7 @@ import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-fil
 import { useReportShown } from "@/design/hooks/use-page-shown";
 import { ListFilterBar, useListFilter } from "@/features/chat-dock/list-filter-bar";
 import Link from "next/link";
-import { Button, EmptyState, PageTitle, rememberListOrigin, Tooltip } from "@/design";
+import { Button, EmptyState, PageTitle, rememberListOrigin } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useAskForDesigns } from "@/features/onboarding/components/ask-for-designs";
 import { useOnboardingState } from "@/features/onboarding/hooks";
@@ -180,9 +180,7 @@ function Designs({
         {groups.map((g) => (
           <div key={g.id} data-testid="workflow-group" data-group={g.id}>
             <div className={cn("flex min-h-[34px] items-center gap-2 bg-sunken py-[5px] text-13", pad)}>
-              <Tooltip label={g.hint} side="bottom">
-                <span className="cursor-help font-bold">{g.label}</span>
-              </Tooltip>
+              <span className="font-bold">{g.label}</span>
               <span className="font-mono text-12 font-bold text-muted">{g.rows.length}</span>
             </div>
             {g.rows.map((r) => (narrow ? <NarrowRow key={r.document.id} r={r} slug={slug} templates={templates} /> : <Row key={r.document.id} r={r} slug={slug} templates={templates} />))}
@@ -205,8 +203,7 @@ function NoWorkflows({ projectId }: { projectId: string }) {
   return (
     <div className="px-7 py-10 max-md:px-4" data-testid="no-workflows">
       <EmptyState
-        title={t("workflows.emptyTitle")}
-        message={t("workflows.emptyMessage")}
+        message={t("workflows.empty")}
         action={state.data ? { label: action === "start" ? t("workflows.askForDesigns") : (hint?.actionLabel ?? t("workflows.openOnboarding")), onClick: () => ask(action) } : undefined}
       />
       {error ? (
@@ -250,7 +247,7 @@ export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false 
         if (systemContextOf(all)) {
           return (
             <div className="flex min-h-0 flex-1 flex-col bg-app" data-testid="workflows-screen">
-              <PageTitle hint={t("workflows.titleHintSplit")}>{t("workflows.title")}</PageTitle>
+              <PageTitle>{t("workflows.title")}</PageTitle>
               <div className="flex min-h-0 flex-1 max-lg:flex-col lg:[contain:size]" data-testid="workflows-split">
                 {overview}
                 <aside className="w-[400px] flex-none overflow-y-auto border-l border-line-subtle bg-surface max-lg:w-full max-lg:overflow-visible max-lg:border-l-0 max-lg:border-t" data-testid="workflows-list-pane">
@@ -262,7 +259,7 @@ export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false 
         }
         return (
           <div className="grid min-h-full content-start bg-app" data-testid="workflows-screen">
-            <PageTitle hint={t("workflows.titleHint")}>{t("workflows.title")}</PageTitle>
+            <PageTitle>{t("workflows.title")}</PageTitle>
             {overview}
             {all.length === 0 ? (
               <NoWorkflows projectId={projectId} />

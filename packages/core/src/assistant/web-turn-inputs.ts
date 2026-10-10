@@ -22,6 +22,7 @@ import type { TurnAuthority } from '../credentials/turn-credential.js';
 import { db } from '../db/client.js';
 import type { ConversationMode } from '../db/schema-conversations.js';
 import { requirements } from '../db/schema-requirements.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import { firstRequirementsOnboardingOf } from '../onboarding/index.js';
 import { readContentLanguage } from '../project-config/index.js';
 import { makeConversationImageResolver } from './conversation-images.js';
@@ -43,7 +44,7 @@ import { mergeToolsets } from './tools/mcp-adapter.js';
 import { buildOfferActToolset } from './tools/offer-act-tool.js';
 import { buildOfferPreviewToolset } from './tools/offer-preview-tool.js';
 import { buildChatToolContext } from './tools/principal.js';
-import { buildProjectToolset } from './tools/registry.js';
+import { buildProjectToolset, buildRecordToolset } from './tools/registry.js';
 import { buildUiActionToolset } from './tools/ui-actions-tool.js';
 import { fenceToolsetToOrigin, handoffVenueRefusal, turnOriginRefused } from './turn-origin.js';
 import type { TurnHookContext, TurnInputs, TurnReply } from './turn-request.js';
@@ -195,7 +196,10 @@ async function divertToAgent(
       userId: authority.userId,
     }),
     ...(args.window.images.length ? { images: args.window.images } : {}),
-    persona: webAgentConversationPersona(args.project, args.askedBy),
+    persona: webAgentConversationPersona(
+      args.project,
+      await askerWithRole(args.project.id, authority.userId, args.askedBy),
+    ),
     door: 'web-agent-completion',
     replies: WEB_AGENT_REPLIES,
     ackAfterMs: null,
@@ -237,6 +241,29 @@ function notStartedText(
   }
 }
 
+/**
+ * The asker as the persona names them, with the role they hold on this project, so routing a change
+ * wish reads who shapes the product (REQ-30 BC-3): an org owner or admin, or a project admin, shapes
+ * it; a member or viewer reports to it.
+ */
+export async function askerWithRole(
+  projectId: string,
+  userId: string | null,
+  askedBy: string | null,
+): Promise<string | null> {
+  if (!askedBy || !userId) return askedBy;
+  const access = await effectiveProjectRole(userId, projectId);
+  const role =
+    access?.orgRole === 'owner' || access?.orgRole === 'admin'
+      ? `org ${access.orgRole}, shapes the product`
+      : access?.role === 'admin'
+        ? 'project admin, shapes the product'
+        : access?.role
+          ? `project ${access.role}`
+          : null;
+  return role ? `${askedBy} (${role})` : askedBy;
+}
+
 /** Assistant mode: the persona and toolset the room's subject calls for. */
 async function prepareWebTurn(
   args: WebTurnArgs,
@@ -271,21 +298,27 @@ async function prepareWebTurn(
   });
   const resolveDocument = (file: ConversationImage) =>
     readRoomDocumentByRef(conversationId, file.ref);
-  // a room opened about a requirement answers through the BA door: its persona and its
-  // narrow tool set only, never the project toolset or the UI actions
+  const asker = await askerWithRole(args.project.id, authority.userId, args.askedBy);
+  // a room opened about a requirement answers through the BA door: its persona and its narrow
+  // tool set, plus the record tools, so a problem or a new wish said here has somewhere to go
+  // (REQ-30 BC-3); never the project toolset or the UI actions
   if (room?.requirementId) {
     const key = await requirementKeyOf(room.requirementId);
     return {
-      persona: baDoorPersona(args.project.name, key, args.askedBy),
+      persona: baDoorPersona(args.project.name, key, asker),
       resolveImage: makeConversationImageResolver(conversationId),
       resolveDocument,
-      tools: buildBaToolset(ctx, { projectId: args.project.id, requirementId: room.requirementId }),
+      tools: mergeToolsets(
+        buildBaToolset(ctx, { projectId: args.project.id, requirementId: room.requirementId }),
+        buildRecordToolset(ctx),
+        buildRequirementDraftToolset(ctx, args.project.id),
+      ),
     };
   }
   const onboardingId = firstRequirementsOnboardingOf(room?.externalId);
   if (onboardingId) {
     return {
-      persona: baFirstRequirementsPersona(args.project.name, args.askedBy),
+      persona: baFirstRequirementsPersona(args.project.name, asker),
       resolveImage: makeConversationImageResolver(conversationId),
       resolveDocument,
       tools: fenceToolsetToOrigin(
@@ -295,7 +328,7 @@ async function prepareWebTurn(
     };
   }
   return {
-    persona: webConversationPersona(args.project.name, args.project.slug, args.askedBy),
+    persona: webConversationPersona(args.project.name, args.project.slug, asker),
     resolveImage: makeConversationImageResolver(conversationId),
     resolveDocument,
     pageContext: await turnPageContext({
@@ -306,7 +339,10 @@ async function prepareWebTurn(
     tools: mergeToolsets(
       buildProjectToolset(ctx),
       buildRequirementDraftToolset(ctx, args.project.id),
-      buildUiActionToolset({ snapshot: () => latestUiSnapshot(conversationId) }),
+      buildUiActionToolset(
+        { snapshot: () => latestUiSnapshot(conversationId) },
+        args.window.question,
+      ),
       buildOfferActToolset({
         projectId: args.project.id,
         userId: authority.userId,

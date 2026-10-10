@@ -12,7 +12,7 @@
     "intake.changes.scope": "Scope",
     "intake.changes.outcome": "Outcome",
     "intake.recommended": "Recommended",
-    "intake.nothingToAsk": "Nothing to ask",
+    "intake.nothingToAsk": "Nothing",
     "intake.none": "None",
     "intake.failed.INTAKE_MODEL_UNCONFIGURED": "Not drafted: no model",
     "intake.failed.INTAKE_WITHHELD": "Not drafted: data policy",
@@ -33,6 +33,7 @@
     "intake.field.severity": "Severity",
     "intake.field.requirement": "Requirement",
     "intake.field.reproduced": "Reproduced",
-    "intake.field.route": "Route"
+    "intake.field.route": "Route",
+    "intake.notAffected": "Not affected"
   }
 }

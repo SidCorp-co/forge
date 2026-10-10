@@ -35,7 +35,7 @@ export const systemContext: WorkflowTemplate = {
     {
       id: 'CONTAINER',
       label: 'Container',
-      tooltip: 'A thing that runs inside a system: an app, a database, a queue, a worker.',
+      tooltip: 'Something running inside a system: an app, database, queue or worker.',
       icon: 'cpu',
       colour: 'blue',
       required: ['label', 'purpose'],
@@ -133,7 +133,7 @@ export const integrationSequence: WorkflowTemplate = {
       id: 'sync',
       label: 'Sync call',
       tooltip:
-        'A call that waits for its reply; it retries once, safely (`idempotency`), and says what a failure does.',
+        'A call that waits for its reply and retries once (`idempotency`).',
       direction: 'forward',
       required: ['label', 'idempotency', 'onFailure'],
       line: 'solid',

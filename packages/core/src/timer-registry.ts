@@ -33,6 +33,7 @@ import { sweepQuestionSuggestions } from './questions/index.js';
 import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
 import { sweepExpiredExecutions, sweepExpiredReportRuns } from './reports/index.js';
 import {
+  advanceReadyRequirements,
   followApprovedDesigns,
   sweepDeliveredRequirements,
   sweepStaleDrafts,
@@ -110,6 +111,17 @@ function requirementTimers(): Timer[] {
         'design-follow-sweep: followed',
         followApprovedDesigns,
         (r) => (r as { followed: number }).followed > 0,
+      ),
+    },
+    // REQ-34 BC-20: a draft whose ready checklist is complete moves on with nobody confirming
+    {
+      kind: 'cluster',
+      name: 'requirement-advance-sweep',
+      cron: '*/5 * * * *',
+      run: logged(
+        'requirement-advance-sweep: moved',
+        advanceReadyRequirements,
+        (r) => (r as { moved: number }).moved > 0,
       ),
     },
     {

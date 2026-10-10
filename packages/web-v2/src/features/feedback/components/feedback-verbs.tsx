@@ -30,7 +30,7 @@ export function DeclineForm({ projectId, f, done }: { projectId: string; f: Feed
   const [reason, setReason] = useState("");
   return (
     <div className="grid gap-2">
-      <Field label={t("feedback.decline.label")} hint={t("feedback.decline.hint")}>
+      <Field label={t("feedback.decline.label")}>
         <Textarea aria-label={t("feedback.decline.aria")} rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
       </Field>
       <RefusalLine error={act.error} />
@@ -58,7 +58,7 @@ export function DuplicateForm({ projectId, f, done }: { projectId: string; f: Fe
   const [draft, setDraft] = useState<TriageAnswerDraft>({ severity: f.severity });
   return (
     <div className="grid gap-2">
-      <Field label={t("feedback.duplicate.label")} hint={t("feedback.duplicate.hint")} htmlFor={fieldId}>
+      <Field label={t("feedback.duplicate.label")} htmlFor={fieldId}>
         <FeedbackPicker id={fieldId} projectId={projectId} self={f.key} value={picked} onChange={setPicked} />
       </Field>
       <TriageAnswerFields value={draft} onChange={setDraft} error={act.error} />
@@ -86,7 +86,7 @@ export function SnoozeForm({ projectId, f, done }: { projectId: string; f: Feedb
   const [reason, setReason] = useState("");
   return (
     <div className="grid gap-2">
-      <Field label={t("feedback.snooze.label")} hint={t("feedback.snooze.hint")}>
+      <Field label={t("feedback.snooze.label")}>
         <Input aria-label={t("feedback.snooze.untilAria")} type="date" min={tomorrow()} value={day} onChange={(e) => setDay(e.target.value)} />
       </Field>
       <Field label={t("feedback.snooze.why")}>
@@ -121,7 +121,7 @@ export function TriageVerbs({ projectId, f }: { projectId: string; f: FeedbackVi
       <fieldset className="m-0 flex min-w-0 flex-wrap gap-2 border-0 p-0">
         <legend className="sr-only">{t("feedback.verbs.legend")}</legend>
         {VERBS.map((v) => (
-          <Button key={v} type="button" size="sm" variant={verb === v ? "primary" : undefined} title={t(`feedback.verb.${v}Hint`)} aria-pressed={verb === v} onClick={() => setVerb(verb === v ? null : v)}>
+          <Button key={v} type="button" size="sm" variant={verb === v ? "primary" : undefined} aria-pressed={verb === v} onClick={() => setVerb(verb === v ? null : v)}>
             {t(`feedback.verb.${v}`)}
           </Button>
         ))}
@@ -151,7 +151,6 @@ export function DropItem({ projectId, f }: { projectId: string; f: FeedbackView 
         <Button type="button" size="sm" aria-pressed={open} onClick={() => setOpen(!open)}>
           {t("feedback.drop.open")}
         </Button>
-        <span className="text-12 text-muted">{t("feedback.drop.hint")}</span>
       </div>
       {open ? (
         <div className="border-t border-line-subtle pt-3" data-testid="verb-drop">

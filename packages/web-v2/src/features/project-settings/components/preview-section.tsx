@@ -171,29 +171,28 @@ export function PreviewSection({ projectId, slug, canEdit }: { projectId: string
 	const off = !canEdit || !draft.declared;
 	const idle = PREVIEW_LIMITS.idleMinutes;
 	const area = (field: "kernel" | "migrations" | "permissions" | "security", label: string) => (
-		<ListField draft={draft} root="fastLane" field={field} label={label} effect={t("previews.settings.fastAreaEffect")} disabled={off} />
+		<ListField draft={draft} root="fastLane" field={field} label={label} disabled={off} />
 	);
 	return (
 		<div data-testid="preview-section">
 			{!draft.declared && <UndeclaredNotice slug={slug} />}
-			<SettingGroup id="preview" title={t("previews.settings.previewTitle")} lead={t("previews.settings.previewLead")}>
-				<TextField draft={draft} root="preview" field="command" label={t("previews.settings.command")} effect={t("previews.settings.commandEffect")} placeholder={t("previews.settings.commandPlaceholder")} mono disabled={off} />
-				<NumberField draft={draft} root="preview" field="port" label={t("previews.settings.port")} effect={t("previews.settings.portEffect")} disabled={off} />
-				<TextField draft={draft} root="preview" field="cwd" label={t("previews.settings.cwd")} effect={t("previews.settings.cwdEffect")} mono disabled={off} />
+			<SettingGroup id="preview" title={t("previews.settings.previewTitle")}>
+				<TextField draft={draft} root="preview" field="command" label={t("previews.settings.command")} placeholder={t("previews.settings.commandPlaceholder")} mono disabled={off} />
+				<NumberField draft={draft} root="preview" field="port" label={t("previews.settings.port")} disabled={off} />
+				<TextField draft={draft} root="preview" field="cwd" label={t("previews.settings.cwd")} mono disabled={off} />
 				<NumberField
 					draft={draft}
 					root="preview"
 					field="idleMinutes"
 					label={t("previews.settings.idle")}
-					effect={t("previews.settings.idleEffect", { min: idle.min, max: idle.max, default: idle.default })}
 					placeholder={String(idle.default)}
 					disabled={off}
 				/>
-				<EnvironmentField draft={draft} label={t("previews.settings.environment")} effect={t("previews.settings.environmentEffect")} none={t("previews.settings.environmentNone")} refused={t("previews.settings.environmentRefused")} disabled={off} />
+				<EnvironmentField draft={draft} label={t("previews.settings.environment")} none={t("previews.settings.environmentNone")} refused={t("previews.settings.environmentRefused")} disabled={off} />
 			</SettingGroup>
-			<SettingGroup id="fast-lane" title={t("previews.settings.fastTitle")} lead={t("previews.settings.fastLead")}>
-				<ListField draft={draft} root="fastLane" field="paths" label={t("previews.settings.fastPaths")} effect={t("previews.settings.fastPathsEffect")} placeholder={t("previews.settings.listPlaceholder")} disabled={off} />
-				<ListField draft={draft} root="fastLane" field="deployTargets" label={t("previews.settings.fastTargets")} effect={t("previews.settings.fastTargetsEffect")} disabled={off} />
+			<SettingGroup id="fast-lane" title={t("previews.settings.fastTitle")}>
+				<ListField draft={draft} root="fastLane" field="paths" label={t("previews.settings.fastPaths")} placeholder={t("previews.settings.listPlaceholder")} disabled={off} />
+				<ListField draft={draft} root="fastLane" field="deployTargets" label={t("previews.settings.fastTargets")} disabled={off} />
 				{area("kernel", t("previews.settings.fastKernel"))}
 				{area("migrations", t("previews.settings.fastMigrations"))}
 				{area("permissions", t("previews.settings.fastPermissions"))}

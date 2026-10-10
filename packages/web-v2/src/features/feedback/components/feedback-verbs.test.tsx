@@ -220,14 +220,13 @@ describe("messages to reporters", () => {
     expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
   });
 
-  it("marks an internal note as members-only, says it is never sent, and sends it with no preview", async () => {
+  it("marks an internal note as members-only and sends it with no preview", async () => {
     const note = { id: "m1", audience: "internal", text: "Call Ana first.", sentBy: "u1", sentByName: "Dana", sentAgency: "human", sentAt: "2026-10-07T01:00:00.000Z", recipients: [], relayed: false, writtenLang: "en" };
     const calls = core((c) => (c.path.endsWith("/messages") ? { body: { feedback: merged } } : undefined));
     renderWithQuery(<Messages projectId="p1" f={view({ messages: [note] as FeedbackView["messages"], reporters: merged.reporters })} />);
     expect(screen.getByTestId("feedback-note")).toHaveTextContent("Internal note · members only");
     expect(screen.getByTestId("feedback-note")).toHaveTextContent("Call Ana first.");
     fireEvent.click(screen.getByRole("radio", { name: "Internal note" }));
-    expect(screen.getByTestId("feedback-composer")).toHaveTextContent("never sent to a reporter");
     expect(screen.queryByRole("button", { name: "Preview" })).toBeNull();
     fireEvent.change(screen.getByRole("textbox", { name: "Internal note" }), { target: { value: "Second look." } });
     fireEvent.click(screen.getByRole("button", { name: "Add note" }));

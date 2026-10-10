@@ -86,6 +86,6 @@ describe("a release draws each requirement as a bar of criteria passed", () => {
     renderWithQuery(<OverviewPane r={release([requirement("REQ-1", { criteria: 0, passing: 0, judged: 0 })])} slug="hop" all={[]} />);
     const row = rows()[0] as HTMLElement;
     expect(within(row).queryByRole("img")).toBeNull();
-    expect(row.textContent).toContain("No criteria recorded");
+    expect(row.textContent).toContain("No criteria");
   });
 });

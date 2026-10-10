@@ -22,6 +22,6 @@ describe("the dashboard's plan sections", () => {
 
   it("says so when nothing lands this week", () => {
     render(<LandsThisWeek slug="hop" rows={[]} clock={clock} />);
-    expect(within(screen.getByTestId("lands-this-week")).getByText(/Nothing is forecast to land this week/)).toBeTruthy();
+    expect(within(screen.getByTestId("lands-this-week")).getByText("Nothing landing")).toBeTruthy();
   });
 });

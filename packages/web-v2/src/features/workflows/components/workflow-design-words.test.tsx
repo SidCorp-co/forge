@@ -34,7 +34,7 @@ const design = { gate: { open: false, rule: sentence(HELD), says: { rule: HELD }
 describe("the design rail's plain sentences", () => {
   it("say why the code is not compared, without the word Unrooted", () => {
     const [first] = healthSentences(health(), en);
-    expect(first).toBe("The code is not being compared with this design: it has no approved revision yet and no requirement follows it.");
+    expect(first).toBe("The code is not being compared with this design: not approved and no requirement.");
     expect(first).not.toMatch(KERNEL);
     expect(reconciliationSentence(health(), en)).not.toMatch(KERNEL);
     expect(buildGateSentence(design, en)).toBe("Work on this design is on hold until it is approved.");

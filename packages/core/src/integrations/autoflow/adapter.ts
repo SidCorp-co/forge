@@ -245,8 +245,8 @@ const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, Autoflow
 
 /**
  * Autoflow ("Sidcorp Auto"): a project that runs ON the platform — a site plus its Backend Builder
- * flows — with no git repository. `direct-mcp`: the site's OAuth access token is rendered into the
- * runner's MCP config for the shop MCP server, and core only reports the target.
+ * flows — with no git repository. `direct-mcp`: the run's MCP config names Forge's relay for the shop
+ * MCP server, and core adds the site's OAuth access token to each relayed call (REQ-21 BC-2).
  */
 export const autoflowIntegration = declareIntegration<AutoflowConfig, AutoflowSecrets>({
   provider: 'autoflow',
@@ -267,7 +267,7 @@ export const autoflowIntegration = declareIntegration<AutoflowConfig, AutoflowSe
       serverName: 'autoflow',
       previewSecrets: { accessToken: '[redacted]' },
       justification:
-        'The site and its Backend Builder flows are built through the Autoflow shop MCP server itself, opened only by the site-bound OAuth access token. Forge has no API of its own in front of that surface, so the token reaches the runner or the build has nothing to call.',
+        'The site and its Backend Builder flows are built through the Autoflow shop MCP server itself, opened only by the site-bound OAuth access token. Forge has no API of its own in front of that surface, so Forge relays each MCP call of a run to it (/api/mcp-relay) and adds the token itself; the run holds only a relay ticket.',
       // A run outlives a probe: it is handed a token good for hours, refreshed first where due.
       freshSecrets: async ({ connectionId, config }) => {
         const fresh = await ensureFreshAutoflowToken({

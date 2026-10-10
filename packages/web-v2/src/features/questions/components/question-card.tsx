@@ -349,7 +349,7 @@ function StillWaitsFields({
               onChange={(e) => onChange({ ...draft, reason: e.target.value })}
             />
           </Field>
-          <Field label={t("agents.question.blockedBy")} hint={t("agents.question.blockedByHint")}>
+          <Field label={t("agents.question.blockedBy")}>
             <IssuePicker
               projectId={projectId}
               value={draft.blockedBy}

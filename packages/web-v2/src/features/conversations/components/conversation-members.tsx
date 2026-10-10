@@ -64,15 +64,14 @@ export function ConversationMembers({
 
           {(
             [
-              [t("conversations.members.agents"), t("conversations.members.agentsHint"), t("conversations.members.addAgent"), agents, () => setAddingAgent(true)],
-              [t("conversations.members.people"), t("conversations.members.peopleHint"), t("conversations.members.addPerson"), people, () => setAddingPerson(true)],
+              [t("conversations.members.agents"), t("conversations.members.addAgent"), agents, () => setAddingAgent(true)],
+              [t("conversations.members.people"), t("conversations.members.addPerson"), people, () => setAddingPerson(true)],
             ] as const
-          ).map(([title, hint, addLabel, members, onAdd]) => (
+          ).map(([title, addLabel, members, onAdd]) => (
             <section key={title} className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
                   <SectionTitle className="fg-overline text-subtle">{title}</SectionTitle>
-                  <p className="fg-caption text-subtle">{hint}</p>
                 </div>
                 {canChange && (
                   <Button size="sm" variant="secondary" icon="plus" onClick={onAdd}>
@@ -153,13 +152,11 @@ function MemberRow({
           {isAgent ? `@${member.displayName ?? member.label}` : (member.displayName ?? t("conversations.members.unknown"))}
         </span>
         <span className="fg-caption block truncate text-subtle">
-          {isAgent ? (project?.name ?? t("conversations.members.noLongerAbout")) : t("conversations.members.person")}
+          {isAgent ? (project?.name ?? t("conversations.members.formerProject")) : t("conversations.members.person")}
         </span>
       </div>
       {isAgent && member.reachable === false && (
-        <Tooltip label={t("conversations.members.cantActHint")}>
-          <span className="fg-caption rounded bg-surface px-1.5 py-0.5 text-muted">{t("conversations.members.cantAct")}</span>
-        </Tooltip>
+        <span className="fg-caption rounded bg-surface px-1.5 py-0.5 text-muted">{t("conversations.members.cantAct")}</span>
       )}
       {canChange && (
         <Tooltip label={removalClaim(member, room, t)}>

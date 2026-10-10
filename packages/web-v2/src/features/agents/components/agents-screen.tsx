@@ -28,7 +28,7 @@ export function AgentsScreen({ access }: { access: AgentsAccess }) {
 
   return (
     <div className="grid min-h-full content-start bg-app" data-testid="agents-screen">
-      <PageTitle hint={t("agents.hint")}>{t("agents.title")}</PageTitle>
+      <PageTitle>{t("agents.title")}</PageTitle>
       <div className="border-b border-line-subtle px-5 max-md:px-2" data-testid="agents-tabs">
         <Tabs tabs={TABS} value={tab} onChange={(t) => setTab(t as AgentsTab)} />
       </div>

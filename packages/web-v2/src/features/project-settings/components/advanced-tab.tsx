@@ -24,7 +24,6 @@ export function AdvancedSection({ project, canEdit }: { project: ProjectDetail; 
       <ComputeSection projectId={project.id} slug={project.slug} canEdit={canEdit} />
       <section id="documents" aria-label={t("settings.project.advanced.technical")} className="scroll-mt-24">
         <h3 className="fg-h3 text-accent-text!">{t("settings.project.advanced.technical")}</h3>
-        <p className="fg-body-sm mt-1 max-w-[68ch] text-muted">{t("settings.project.advanced.technicalLead")}</p>
         <ProjectDocumentSection project={project} canEdit={canEdit} />
         <PolicyDocumentSection projectId={project.id} canEdit={canEdit} />
         <TestingProfilesSection projectId={project.id} canEdit={canEdit} />
@@ -69,7 +68,6 @@ function ArchiveCard({ project, canEdit }: { project: ProjectDetail; canEdit: bo
           </>
         ) : (
           <>
-            <p className="fg-caption mb-4 text-muted">{t("settings.project.advanced.archiveBody")}</p>
             {canEdit &&
               (confirming ? (
                 <div className="space-y-4">
@@ -133,8 +131,7 @@ function MoveToOrgCard({ project }: { project: ProjectDetail }) {
   return (
     <PageSection>
       <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-1 text-accent-text!">{t("settings.project.advanced.move")}</SectionTitle>
-        <p className="fg-caption mb-4 text-muted">{t("settings.project.advanced.moveBody")}</p>
+        <SectionTitle className="fg-h3 mb-4 text-accent-text!">{t("settings.project.advanced.move")}</SectionTitle>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <div className="flex-1 sm:max-w-80">
             <Field label={t("settings.project.advanced.destination")}>

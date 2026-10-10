@@ -301,7 +301,7 @@ export const SCREENS = [
           { inModule: false, isFiltered: false, projectHasIssues: true },
           { inModule: false, isFiltered: false, projectHasIssues: false },
         ].map((s) => (
-          <IssuesEmptyState key={JSON.stringify(s)} moduleName={null} creatorName={null} onClear={noop} onNewIssue={noop} {...s} />
+          <IssuesEmptyState key={JSON.stringify(s)} onClear={noop} onNewIssue={noop} {...s} />
         ))}
         {wrap([], <BulkActionBar projectId={P} selectedRows={ROWS} onCleared={noop} />)}
         {wrap([], <BulkActionBar projectId={P} selectedRows={[ROWS[3] as IssueRow]} onCleared={noop} />)}

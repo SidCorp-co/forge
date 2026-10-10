@@ -107,7 +107,7 @@ export const REQUIREMENT_STATE_HINTS: Record<RequirementState, string> = {
 		"delivered: every linked issue is closed; an approver accepts the delivery",
 	accepted: "accepted: delivered and accepted",
 	deferred:
-		"deferred: out of the current release; nothing is planned or built against it until a person undefers it",
+		"deferred: out of this release; nothing is built until a person undefers it",
 	dropped: "dropped: no longer wanted",
 };
 
@@ -298,13 +298,13 @@ export const BC_VERDICT_TONES: Record<BcVerdict, StandingTone> = {
 
 export const BC_VERDICT_HINTS: Record<BcVerdict, string> = {
 	passing:
-		"passing: the newest verdict on an issue criterion tracing to this wording is a pass",
+		"passing: the newest verdict on a tracing criterion is a pass",
 	failing:
-		"failing: the newest verdict on an issue criterion tracing to this wording is a fail",
+		"failing: the newest verdict on a tracing criterion is a fail",
 	stale:
-		"stale: issue criteria trace only to an earlier wording of this criterion; tie it again from the issue's Criteria tab, then judge it",
+		"stale: traces only an earlier wording; tie it again, then judge it",
 	not_live:
-		"not_live: issue criteria tracing this wording were judged only at builds the live one does not hold; judge it again on the live build",
+		"not_live: judged only on builds the live one lacks; judge it on live",
 	not_judged:
 		"not_judged: no verdict on an issue criterion tracing to this wording counts yet",
 	gap: "gap: no issue criterion traces to this criterion",
@@ -493,6 +493,9 @@ export interface RequirementStanding
 	owner: { id: string; name: string | null; kind: "human" | "agent" } | null;
 	/** The newest write to the requirement, its revisions or its issues. */
 	touchedAt: string;
+	/** When it came to stand in `state`: its last status move, or its delivery phase's start; what the
+	 *  list's age reads, which an edit moving no state (an area, a short name) never restarts. */
+	stateSince: string;
 }
 
 export const REQUIREMENT_READINESS_GATES = ["off", "warn", "block"] as const;
@@ -588,7 +591,7 @@ export const repinRequirementRequestSchema = z.strictObject({
 	reason: z.string().max(REASON_TEXT_MAX).nullable().optional(),
 });
 export const REPIN_REQUIREMENT_SHAPE =
-	"{ revision, reason? } — names the head revision; writes a baseline pinning each linked design's approved revision and each linked contract's current version";
+	"{ revision, reason } — names the head revision and says why it now follows; writes a baseline pinning each linked design's approved revision and each linked contract's current version";
 
 /** Each named issue by key or uuid; left out, every draft issue linked to the requirement. */
 export const promoteRequirementDraftsRequestSchema = z.strictObject({
@@ -699,6 +702,7 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_NOT_DELIVERED",
 	"REQUIREMENT_ALREADY_ACCEPTED",
 	"REQUIREMENT_DROP_REASON_REQUIRED",
+	"REQUIREMENT_SIGNOFF_REASON_REQUIRED",
 	"REQUIREMENT_NOT_DROPPABLE",
 	"REQUIREMENT_PINS_CURRENT",
 	"REQUIREMENT_CONTRACT_UNKNOWN",
@@ -779,6 +783,14 @@ export interface RequirementAssumption {
 	confirmBy: string;
 	/** The record it was taken from, by its intake ref (REQ-n, FB-n, workflow:<flow>, release:<version>), where one is named. */
 	source?: string | undefined;
+	/** The answer the assistant filled (an intake field) and the value it assumed there. */
+	field?: string | undefined;
+	value?: string | undefined;
+	/**
+	 * Derived on read (REQ-34 BC-26): the revision shown no longer holds the assumed value in that
+	 * field, so a later edit corrected it. The assumption stays visible, marked, never silently gone.
+	 */
+	corrected?: boolean | undefined;
 }
 
 export interface RequirementSpec {

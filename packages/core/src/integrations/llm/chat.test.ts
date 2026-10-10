@@ -17,7 +17,7 @@ describe('completeOnce', () => {
 
   it('drains the stream to its text and its summed usage, under the provider model', async () => {
     let streamed: ChatStreamEvent[] = [];
-    register('anthropic', () => ({
+    register('openai', () => ({
       id: 'scripted',
       defaultModel: 'scripted-model',
       async *stream() {
@@ -55,7 +55,7 @@ describe('completeOnce', () => {
 
   it('sends nothing where the policy withholds the surface', async () => {
     let called = false;
-    register('anthropic', () => ({
+    register('openai', () => ({
       id: 'scripted',
       defaultModel: 'scripted-model',
       async *stream() {

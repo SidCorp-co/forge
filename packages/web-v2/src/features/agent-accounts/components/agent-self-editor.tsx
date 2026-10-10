@@ -129,10 +129,10 @@ export function AgentSelfEditor({
 
   return (
     <div className="space-y-4" data-testid={`agent-self-${agentUserId}`}>
-      <Field label={t("settings.agents.self.soul")} hint={t("settings.agents.self.soulHint")}>
+      <Field label={t("settings.agents.self.soul")}>
         <Textarea value={draft.soul} rows={5} maxLength={8000} onChange={(e) => set("soul", e.target.value)} />
       </Field>
-      <Field label={t("settings.agents.self.instructions")} hint={t("settings.agents.self.instructionsHint")}>
+      <Field label={t("settings.agents.self.instructions")}>
         <Textarea
           value={draft.instructions}
           rows={4}
@@ -141,10 +141,10 @@ export function AgentSelfEditor({
         />
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t("settings.agents.self.greeting")} hint={t("settings.agents.self.greetingHint")}>
+        <Field label={t("settings.agents.self.greeting")}>
           <Input value={draft.greeting} maxLength={500} onChange={(e) => set("greeting", e.target.value)} />
         </Field>
-        <Field label={t("settings.agents.self.glyph")} hint={t("settings.agents.self.glyphHint")}>
+        <Field label={t("settings.agents.self.glyph")}>
           <Input value={draft.emoji} maxLength={16} onChange={(e) => set("emoji", e.target.value)} />
         </Field>
       </div>
@@ -157,7 +157,7 @@ export function AgentSelfEditor({
             onChange={(v) => set("answerInGroup", v as AnswerInGroupMode)}
           />
         </Field>
-        <Field label={t("settings.agents.self.backoff")} hint={t("settings.agents.self.backoffHint")}>
+        <Field label={t("settings.agents.self.backoff")}>
           <Input
             inputMode="numeric"
             value={draft.backoffAfter}
@@ -171,14 +171,14 @@ export function AgentSelfEditor({
             onChange={(v) => set("heartbeat", v === "on")}
           />
         </Field>
-        <Field label={t("settings.agents.self.interval")} hint={t("settings.agents.self.intervalHint")}>
+        <Field label={t("settings.agents.self.interval")}>
           <Input
             inputMode="numeric"
             value={draft.heartbeatMinutes}
             onChange={(e) => set("heartbeatMinutes", e.target.value)}
           />
         </Field>
-        <Field label={t("settings.agents.self.dormant")} hint={t("settings.agents.self.dormantHint")}>
+        <Field label={t("settings.agents.self.dormant")}>
           <Input
             inputMode="numeric"
             value={draft.dormantHours}

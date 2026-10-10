@@ -38,7 +38,7 @@ export function DevelopmentOverviewScreen({ scope }: { scope: { projectId: strin
   const t = useCopy();
   return (
     <>
-      <PageTitle hint={t("overview.dev.hint")}>{t("overview.dev.title")}</PageTitle>
+      <PageTitle>{t("overview.dev.title")}</PageTitle>
       <div className="flex min-h-full flex-col bg-app pb-8" data-testid="development-overview">
         <QueryBoundary query={q} loadingLabel={t("overview.dev.loading")} height="50vh" retry="always">
           {(d) => (
@@ -55,7 +55,7 @@ export function DevelopmentOverviewScreen({ scope }: { scope: { projectId: strin
                     <IssueFlow flow={d.flow} />
                   </section>
                   <section aria-label={t("issues.attention.moving")}>
-                    <ViewHeading right={<Note>{t("overview.dev.movingNote")}</Note>}>
+                    <ViewHeading>
                       {t("issues.attention.moving")} <Count n={d.moving.count} />
                     </ViewHeading>
                     <LeaseLanes moving={d.moving} slug={scope.slug} />
@@ -63,19 +63,19 @@ export function DevelopmentOverviewScreen({ scope }: { scope: { projectId: strin
                 </div>
                 <div className="min-w-0 space-y-9">
                   <section aria-label={t("issues.attention.stuck")}>
-                    <ViewHeading right={<Note>{t("overview.dev.stuckNote")}</Note>}>
+                    <ViewHeading>
                       {t("issues.attention.stuck")} <Count n={d.stuck.count} />
                     </ViewHeading>
                     <StuckChains stuck={d.stuck} slug={scope.slug} />
                   </section>
                   <section aria-label={t("overview.dev.modules")}>
-                    <ViewHeading right={<Note>{t("overview.dev.modulesNote")}</Note>}>{t("overview.dev.modules")}</ViewHeading>
+                    <ViewHeading>{t("overview.dev.modules")}</ViewHeading>
                     <ModuleBars modules={d.modules} />
                   </section>
                 </div>
               </div>
               {d.flow.total === 0 && needsYou.length === 0 && d.stuck.count === 0 && d.moving.count === 0 ? (
-                <EmptyState title={t("overview.dev.emptyTitle")} message={t("overview.dev.emptyBody")} />
+                <EmptyState message={t("overview.dev.emptyTitle")} />
               ) : null}
               <section id="needs-you" aria-label={t("issues.attention.needs_you")} className="scroll-mt-4" data-testid="needs-you">
                 <NeedsYouList

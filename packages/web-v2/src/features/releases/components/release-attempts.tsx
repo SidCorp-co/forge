@@ -89,7 +89,7 @@ export function AttemptsSection({ r, slug }: { r: ReleaseDetail; slug: string })
   if (r.cuts.length === 0) return null;
   return (
     <section aria-label={t("releases.attempts")} data-testid="release-cuts">
-      <ViewHeading hint={t("releases.attemptsHint")}>{t("releases.attempts")}</ViewHeading>
+      <ViewHeading>{t("releases.attempts")}</ViewHeading>
       <ol className="border-t border-line-subtle">
         {r.cuts.map((c) => (
           <Attempt key={c.runId} c={c} release={r.version} slug={slug} />

@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { FeedbackView } from "../types";
 import { atOf } from "@/features/previews/reproduce-timeline";
-import { Recordings } from "./recordings";
+import { clockOf, Recordings } from "./recordings";
 
 const replayed = vi.hoisted(() => ({ events: [] as unknown[], played: 0 }));
 vi.mock("rrweb", () => ({
@@ -142,8 +142,38 @@ describe("the item's recordings", () => {
     const rows = screen.getAllByTestId("recording-row");
     expect(rows.map((r) => r.getAttribute("data-kind")), "a screenshot is not a recording").toEqual(["upload", "reproduce"]);
     expect(rows[0]).toHaveTextContent("Bo");
-    expect(rows[0]).toHaveTextContent("Uploaded");
     expect(rows[1]).toHaveTextContent("Ann");
+  });
+
+  it("names each uploaded video by its file, format and size, so two uploads read apart", async () => {
+    fakeCore((c) => (c.path === LIST ? { body: { recordings: [] } } : undefined));
+    const two = [upload(), upload({ id: "v2", name: "checkout.webm", mime: "video/webm", size: 3_400_000, createdAt: "2026-10-09T09:00:00.000Z" })];
+    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: two } as unknown as FeedbackView} />);
+    const files = await screen.findAllByTestId("recording-file");
+    expect(files.map((f) => f.textContent)).toEqual(["spinner.mp4MP4 · 878.9 KB", "checkout.webmWebM · 3.2 MB"]);
+  });
+
+  it("says a video this browser cannot play is unplayable, with a download, never a black player", async () => {
+    fakeCore((c) => (c.path === LIST ? { body: { recordings: [] } } : undefined));
+    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: [upload({ name: "phone.mov", mime: "video/quicktime" })] } as unknown as FeedbackView} />);
+    fireEvent.error(await screen.findByTestId("recording-video"));
+    const said = await screen.findByTestId("recording-unplayable");
+    expect(said).toHaveTextContent("This browser cannot play this MOV file. Download phone.mov");
+    expect(within(said).getByRole("link").getAttribute("href")).toBe(upload().url);
+    expect(screen.queryByTestId("recording-video")).toBeNull();
+  });
+
+  it("says a video that decodes with no picture is unplayable", async () => {
+    fakeCore((c) => (c.path === LIST ? { body: { recordings: [] } } : undefined));
+    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: [upload()] } as unknown as FeedbackView} />);
+    fireEvent.loadedMetadata(await screen.findByTestId("recording-video"));
+    expect(await screen.findByTestId("recording-unplayable")).toHaveTextContent("MP4");
+  });
+
+  it("writes a video's length as m:ss, and h:mm:ss past the hour", () => {
+    expect(clockOf(0)).toBe("0:00");
+    expect(clockOf(83.4)).toBe("1:23");
+    expect(clockOf(3725)).toBe("1:02:05");
   });
 
   it("plays an uploaded video in the page, read by its text alternative, not its file name", async () => {
@@ -155,7 +185,6 @@ describe("the item's recordings", () => {
     expect(video.hasAttribute("controls")).toBe(true);
     expect(video.getAttribute("aria-label")).toBe("Recording 1 of 1 for FB-52: Save order fails");
     expect(screen.getByTestId("recording-row")).toHaveTextContent("Ann");
-    expect(screen.queryByText("spinner.mp4")).toBeNull();
   });
 
   it("opens a reproduce recording from the list in place of the video", async () => {

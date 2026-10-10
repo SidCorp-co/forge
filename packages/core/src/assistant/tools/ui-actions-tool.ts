@@ -14,6 +14,7 @@ import {
   UI_ACTION_DEFERRED,
   UI_ACTION_NAMES,
   UI_ACTIONS,
+  UI_LIST_FILTER_ACTIONS,
   UI_PAGE_ITEM_KINDS,
   type UiAction,
   type UiPageItemKind,
@@ -125,8 +126,53 @@ export function highlightOnPageRefusal(
   return highlightRefusal(action.params, page.snapshot);
 }
 
+const FILTER_WIRES: ReadonlySet<string> = new Set(
+  Object.values(UI_LIST_FILTER_ACTIONS).flatMap((key) => [key, UI_ACTIONS[key].wire]),
+);
+
+const wordsOf = (text: string): string[] => text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+
+/**
+ * A filter call with its search taken out where the person never said its words (FB-110: asked to
+ * show what waits on them, a model also searched "wait" or "/", and the list came up empty). The
+ * search is the one free-text field, so it is the one a model fills from nothing; every other field
+ * is a closed choice the contract checks. What was taken out is named, never dropped silently.
+ */
+export function withoutUnsaidSearch(
+  name: string,
+  args: unknown,
+  said: string,
+): { args: unknown; ignored: string[] } {
+  if (!FILTER_WIRES.has(name) || typeof args !== 'object' || args === null) {
+    return { args, ignored: [] };
+  }
+  const { set } = args as { set?: unknown };
+  const heard = new Set(wordsOf(said));
+  const unsaid = (v: unknown) =>
+    typeof v === 'string' && v.trim() !== '' && !wordsOf(v).some((w) => heard.has(w));
+  const note = (v: unknown) =>
+    `set.text "${String(v)}" (the person said none of its words; search only for words they said)`;
+  if (Array.isArray(set)) {
+    const text = set.find((e) => (e as { field?: unknown })?.field === 'text') as
+      | { value?: unknown }
+      | undefined;
+    if (!text || !unsaid(text.value)) return { args, ignored: [] };
+    return {
+      args: { ...args, set: set.filter((e) => e !== text) },
+      ignored: [note(text.value)],
+    };
+  }
+  if (typeof set === 'object' && set !== null && 'text' in set) {
+    const { text, ...rest } = set as Record<string, unknown>;
+    if (!unsaid(text)) return { args, ignored: [] };
+    return { args: { ...args, set: rest }, ignored: [note(text)] };
+  }
+  return { args, ignored: [] };
+}
+
 export function buildUiActionToolset(
   page: { snapshot: () => UiSnapshot | null } = { snapshot: () => null },
+  said?: string,
 ): ChatToolset {
   // the actions this turn applied, in order, so a highlight after an open is judged on that record
   const applied: UiAction[] = [];
@@ -155,8 +201,17 @@ export function buildUiActionToolset(
           `UI_ACTION_INVALID: ${name} arguments were not valid JSON. Nothing was changed.`,
         );
       }
-      const parsed = parseUiAction(name, args);
-      if (!parsed.ok) return toolError(parsed.message);
+      // the contract refuses a search with no word by name first; a worded one the person never
+      // said is then taken out, where the message is known
+      const first = parseUiAction(name, args);
+      if (!first.ok) return toolError(first.message);
+      const heard =
+        said === undefined ? { args, ignored: [] } : withoutUnsaidSearch(name, args, said);
+      const parsed = heard.ignored.length > 0 ? parseUiAction(name, heard.args) : first;
+      if (!parsed.ok) {
+        return toolError(`${parsed.message} (after ${heard.ignored.join('; ')} was taken out)`);
+      }
+      const ignored = [...heard.ignored, ...(parsed.ignored ?? [])];
       const figures = boardFigureRefusal(parsed.action);
       if (figures) return toolError(figures);
       const offPage = highlightOnPageRefusal(projected(), parsed.action);
@@ -169,7 +224,7 @@ export function buildUiActionToolset(
             text: JSON.stringify({
               deferred: UI_ACTION_DEFERRED,
               action: parsed.action,
-              note: `Handed to the person's browser, which applies it and shows it as a card with Undo; the next message carries the page it produced.${parsed.ignored ? ` Ignored, not applied: ${parsed.ignored.join('; ')}.` : ''}`,
+              note: `Handed to the person's browser, which applies it and shows it as a card with Undo; the next message carries the page it produced.${ignored.length > 0 ? ` Ignored, not applied: ${ignored.join('; ')}.` : ''}`,
             }),
           },
         ],

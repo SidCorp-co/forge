@@ -74,10 +74,7 @@ export function McpTab() {
     );
   if (projects.length === 0)
     return (
-      <EmptyState
-        title={t("settings.orgs.noProjectsTitle")}
-        message={t("settings.mcp.noProjects")}
-      />
+      <EmptyState message={t("settings.orgs.noProjectsTitle")} />
     );
 
   return (
@@ -98,7 +95,7 @@ export function McpTab() {
               <p className="fg-label mb-1.5">{t("settings.mcp.endpoint")}</p>
               <MonoTag>{endpoint}</MonoTag>
             </div>
-            <Field label={t("common.nav.project")} hint={t("settings.mcp.projectHint")}>
+            <Field label={t("common.nav.project")}>
               <Select
                 options={projects.map((p) => ({ value: p.id, label: `${p.name} · ${p.slug}` }))}
                 value={selectedProject?.id ?? ""}
@@ -116,10 +113,7 @@ export function McpTab() {
           <TestConnectionPanel mcpUrl={endpoint} projectSlug={selectedProject.slug} />
         </>
       ) : (
-        <EmptyState
-          title={t("settings.mcp.chooseProject")}
-          message={t("settings.mcp.chooseProjectBody")}
-        />
+        <EmptyState message={t("settings.mcp.chooseProject")} />
       )}
     </div>
   );
@@ -317,8 +311,7 @@ function TestConnectionPanel({ mcpUrl, projectSlug }: { mcpUrl: string; projectS
   return (
     <PageSection>
       <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-1">{t("integrations.edit.test")}</SectionTitle>
-        <p className="fg-caption mb-4">{t("settings.mcp.testIntro")}</p>
+        <SectionTitle className="fg-h3 mb-4">{t("integrations.edit.test")}</SectionTitle>
         <form
           className="flex flex-col gap-3 sm:flex-row sm:items-end"
           onSubmit={(e) => {

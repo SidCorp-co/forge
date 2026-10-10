@@ -1,5 +1,6 @@
-// The copy budget (REQ-43 BC-1, BC-2): every English string in the web copy files is short.
-// Pure functions over already-read strings, so a test can plant a string without a file.
+// The copy budget (REQ-43 BC-1, BC-2, BC-4, BC-6): every English string in the web copy files is
+// short, an empty state is a word or two, and no string explains. Pure functions over already-read
+// strings, so a test can plant a string without a file.
 
 /** A `{name}` or `{{name}}` placeholder; it is one word whatever it expands to. */
 const PLACEHOLDER = /\{\{[^}]*\}\}|\{[^}]*\}/g;
@@ -9,73 +10,69 @@ export function wordsOf(text) {
   return text.replace(PLACEHOLDER, 'X').split(/\s+/).filter(Boolean).length;
 }
 
-/** A key is a refusal or a confirmation when any of its dot-separated segments matches `segments`. */
-export function isRefusalKey(key, segments) {
+/** Whether any dot-separated segment of `key` matches `segments` whole. */
+export function keyHasSegment(key, segments) {
   return key.split('.').some((segment) => segments.test(segment));
 }
 
+/** Whether the last dot-separated segment of `key` — the one naming the string itself — matches `segments` whole. */
+export function keyEndsWith(key, segments) {
+  return segments.test(key.slice(key.lastIndexOf('.') + 1));
+}
+
 /**
- * Every over-budget string of `entries` (`{file, key, text}`), keyed `file::key`:
- * `{file, key, words, budget}`. English only: a key's other languages are translations of it.
+ * What a key is, read from its segments by the conventions the config declares, never guessed from
+ * the sentence: `explain` (a string that explains a section, a button or who can see something,
+ * refused at any length), `empty` (an empty state), `refusal` (a refusal or confirmation) or `copy`.
+ * An explanation or an empty state is named by the key's last segment, since a namespace segment
+ * such as `help` in `common.help.title` names a page, not the string; a refusal by any segment,
+ * since `x.refusal.moved` names its kind in the middle. Explaining wins over the rest, so a
+ * `noneHint` is refused rather than budgeted as an empty state.
  */
-export function overBudget(entries, { budget, refusalBudget, refusalSegments }) {
+export function kindOf(key, { refusalSegments, emptySegments, explainSegments }) {
+  if (keyEndsWith(key, explainSegments)) return 'explain';
+  if (keyEndsWith(key, emptySegments)) return 'empty';
+  if (keyHasSegment(key, refusalSegments)) return 'refusal';
+  return 'copy';
+}
+
+/** The words a key of `kind` may hold; an explaining string may hold none. */
+function allowedFor(kind, { budget, refusalBudget, emptyBudget }) {
+  if (kind === 'explain') return 0;
+  if (kind === 'empty') return emptyBudget;
+  if (kind === 'refusal') return refusalBudget;
+  return budget;
+}
+
+/**
+ * Every string of `entries` (`{file, key, text}`) the budget refuses, keyed `file::key`:
+ * `{file, key, kind, words, budget}`. English only: a key's other languages are translations of it.
+ * A blank string is no words, so it is never refused, whatever its kind.
+ */
+export function overBudget(entries, cfg) {
   const over = new Map();
   for (const { file, key, text } of entries) {
     const words = wordsOf(text);
-    const allowed = isRefusalKey(key, refusalSegments) ? refusalBudget : budget;
-    if (words > allowed) over.set(`${file}::${key}`, { file, key, words, budget: allowed });
+    const kind = kindOf(key, cfg);
+    const allowed = allowedFor(kind, cfg);
+    if (words > allowed) over.set(`${file}::${key}`, { file, key, kind, words, budget: allowed });
   }
   return over;
 }
 
-/** `{file: {key: words}}` of the baseline document, flattened to `file::key` → words. */
-export function frozen(doc) {
-  const out = new Map();
-  for (const [file, keys] of Object.entries(doc?.files ?? {})) {
-    for (const [key, words] of Object.entries(keys)) out.set(`${file}::${key}`, words);
-  }
-  return out;
-}
-
-/**
- * What is wrong between the strings over budget now and the baseline: each fault names file, key,
- * the word count and the budget. The baseline only shrinks, so a fixed string that is still listed
- * is a fault too — an entry nothing trims would let the next over-budget string take its place.
- */
-export function faults(over, baseline) {
-  const out = [];
-  for (const [id, o] of over) {
-    const was = baseline.get(id);
-    if (was === undefined) {
-      out.push(
-        `${o.file} · ${o.key}: ${o.words} words, budget ${o.budget}; a new string over budget is refused`,
-      );
-    } else if (o.words > was) {
-      out.push(`${o.file} · ${o.key}: grew from ${was} to ${o.words} words, budget ${o.budget}`);
-    } else if (o.words < was) {
-      out.push(
-        `${o.file} · ${o.key}: now ${o.words} words (baseline ${was}), budget ${o.budget}; trim the baseline entry`,
-      );
-    }
-  }
-  for (const [id, was] of baseline) {
-    if (over.has(id)) continue;
-    const [file, key] = id.split('::');
-    out.push(
-      `${file} · ${key}: within budget now (baseline ${was}) or gone; remove its baseline entry`,
-    );
-  }
-  return out;
-}
-
-/** The baseline document for `over`, entries sorted so a diff shows only what changed. */
-export function baselineOf(over) {
-  const files = {};
-  for (const o of [...over.values()].sort((a, b) =>
-    `${a.file}::${a.key}`.localeCompare(`${b.file}::${b.key}`),
-  )) {
-    files[o.file] ??= {};
-    files[o.file][o.key] = o.words;
-  }
-  return { files };
+/** One refusal line per string over budget, naming file, key, its words and what its kind allows. */
+export function faults(over) {
+  return [...over.values()]
+    .sort((a, b) => `${a.file}::${a.key}`.localeCompare(`${b.file}::${b.key}`))
+    .map((o) => {
+      if (o.kind === 'explain')
+        return `${o.file} · ${o.key}: a string that explains a section, a button or who can see something is refused at any length; delete it, or change the control`;
+      const what =
+        o.kind === 'empty'
+          ? 'an empty state'
+          : o.kind === 'refusal'
+            ? 'a refusal or confirmation'
+            : 'a copy string';
+      return `${o.file} · ${o.key}: ${o.words} words, budget ${o.budget} for ${what}`;
+    });
 }

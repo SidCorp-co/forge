@@ -12,7 +12,14 @@
     "duplicate.body": "Your report was merged into {original}. You will hear about it there, and your report stays on record.",
     "autoVerified.title": "{key} was verified: {title}",
     "autoVerified.body": "Verified automatically after {days} days with no reply. If the fix does not answer your report, file it again as new feedback.",
-    "message.title": "A message about {key}: {title}"
+    "message.title": "A message about {key}: {title}",
+    "step.triaged.title": "{key} is triaged: {title}",
+    "step.triaged.body": "It is routed to {carrier}.",
+    "step.triaged.bodyNoCarrier": "It is routed for work.",
+    "step.verified.title": "{key} is verified: {title}",
+    "step.verified.body": "The fix was confirmed on your behalf.",
+    "step.reopened.title": "{key} is reopened: {title}",
+    "step.reopened.body": "The problem was reported as still there. It goes back to triage."
   },
   "vi": {
     "shipped.title": "{key} đã được phát hành trong bản {version}: {title}",
@@ -27,6 +34,13 @@
     "duplicate.body": "Báo cáo của bạn đã được gộp vào {original}. Bạn sẽ nhận tin về nó ở đó, và báo cáo của bạn vẫn được lưu lại.",
     "autoVerified.title": "{key} đã được xác nhận: {title}",
     "autoVerified.body": "Tự động xác nhận sau {days} ngày không có phản hồi. Nếu bản sửa chưa giải quyết điều bạn báo, hãy gửi lại thành một phản hồi mới.",
-    "message.title": "Tin nhắn về {key}: {title}"
+    "message.title": "Tin nhắn về {key}: {title}",
+    "step.triaged.title": "{key} đã được phân loại: {title}",
+    "step.triaged.body": "Mục này được chuyển tới {carrier}.",
+    "step.triaged.bodyNoCarrier": "Mục này đã được chuyển để xử lý.",
+    "step.verified.title": "{key} đã được xác nhận: {title}",
+    "step.verified.body": "Bản sửa đã được xác nhận thay cho bạn.",
+    "step.reopened.title": "{key} đã được mở lại: {title}",
+    "step.reopened.body": "Vấn đề được báo là vẫn còn. Mục này quay lại bước phân loại."
   }
 }

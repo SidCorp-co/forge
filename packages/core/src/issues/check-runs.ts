@@ -31,8 +31,6 @@ import {
 } from './check-run-rules.js';
 import { issueDisplayIds } from './display-ids.js';
 import { runOfCall } from './pattern-runs.js';
-import { recordedReviewsOf } from './review.js';
-import { reviewCheckViewOf } from './review-rules.js';
 
 type Written = { ok: true; recorded: number; alreadyRecorded: number };
 type Refused = { ok: false; refusals: CheckRunRefusal[] };
@@ -184,16 +182,12 @@ export async function recordChecks(args: {
   };
 }
 
-/**
- * `GET /api/issues/:id/checks`: every check recorded on the issue, each recorded review timed as a
- * check of kind `review`, and the time spent per kind.
- */
+/** `GET /api/issues/:id/checks`: every check recorded on the issue and the time spent per kind. */
 export async function issueChecksOf(issueId: string): Promise<IssueChecksView> {
   const rows = await db
     .select()
     .from(issueCheckRuns)
     .where(eq(issueCheckRuns.issueId, issueId))
     .orderBy(asc(issueCheckRuns.startedAt));
-  const reviews = (await recordedReviewsOf(issueId)).map(reviewCheckViewOf);
-  return issueChecksViewOf(issueId, rows.map(storedOf), reviews);
+  return issueChecksViewOf(issueId, rows.map(storedOf));
 }

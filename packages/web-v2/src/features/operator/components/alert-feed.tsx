@@ -98,6 +98,13 @@ function ReapButton({ jobId, label }: { jobId: string; label: string }) {
   );
 }
 
+/** When the level shown was set, as the sweep recorded it; the five-minute sweep may not have seen it yet. */
+function changedLabel(alert: AdminAlert): string {
+  const changed = formatSince(alert.changedAt);
+  if (changed) return changed === "just now" ? `${alert.status} just now` : `${alert.status} for ${changed}`;
+  return alert.status === "ok" ? "no change recorded" : "not yet recorded";
+}
+
 function AlertRow({ alert }: { alert: AdminAlert }) {
   const since = formatSince(alert.since);
   return (
@@ -106,7 +113,10 @@ function AlertRow({ alert }: { alert: AdminAlert }) {
         <span className="fg-label">{ALERT_TITLE[alert.id] ?? alert.key}</span>
         <StatusBadge family="alert" value={alert.status} />
         {alert.count > 0 && <span className="fg-caption font-mono">{alert.count}</span>}
-        {since && <span className="fg-caption ml-auto">oldest {since}</span>}
+        <span className="fg-caption ml-auto" title={alert.changedAt ?? undefined}>
+          {changedLabel(alert)}
+          {since ? ` · oldest ${since}` : ""}
+        </span>
       </div>
       <p className="fg-body-sm pl-4">{alert.detail}</p>
 

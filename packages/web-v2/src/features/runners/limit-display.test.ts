@@ -25,7 +25,7 @@ describe("runnerLimitDisplay", () => {
 	});
 
 	it("names the printed time as what the account said, not as when work resumes", () => {
-		expect(runnerLimitDisplay(refused, "en", now)?.printedText).toMatch(/^The account said it resets at .+: its claim, not when work resumes\.$/);
+		expect(runnerLimitDisplay(refused, "en", now)?.printedText).toMatch(/^Account said it resets at .+: its claim, not when work resumes\.$/);
 		expect(runnerLimitDisplay({ ...refused, limitPrintedResetAt: null }, "en", now)?.printedText).toBeNull();
 	});
 
@@ -48,7 +48,7 @@ describe("runnerLimitDisplay", () => {
 		const vi = runnerLimitDisplay(refused, "vi", now);
 		const line = vi ? runnerLimitLine(vi) : "";
 		expect(line).not.toMatch(/Usage limit|refused|next try/);
-		expect(vi?.printedText).not.toMatch(/The account said/);
+		expect(vi?.printedText).not.toMatch(/Account said/);
 		expect(vi?.detail).toBe(refused.limitDetail);
 	});
 });

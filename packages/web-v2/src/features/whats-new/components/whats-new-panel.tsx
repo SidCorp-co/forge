@@ -45,7 +45,7 @@ export function WhatsNewPanel({ open, onClose, feed, failure, loading = false }:
         )}
         {feed && !release && (
           <p className="pt-4 text-13 text-muted" data-testid="whats-new-none">
-            {t("whatsNew.none", { environment: feed.environment })}
+            {t("whatsNew.none")}
           </p>
         )}
         {feed && release && (

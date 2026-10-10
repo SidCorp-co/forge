@@ -9,6 +9,8 @@ import { asc, eq } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
 import type { Row } from './read.js';
+import { tellReporters } from './reporter-language.js';
+import { stepNotice } from './reporter-notices.js';
 
 export interface Reporter {
   id: string;
@@ -39,3 +41,25 @@ export async function reportersOf(tx: Tx, row: Row): Promise<Reporter[]> {
 /** Those a bell can tell: an agent reporter has none. */
 export const withBell = (reporters: readonly Reporter[]) =>
   reporters.filter((r) => r.agency === 'human');
+
+/**
+ * Tells every reporter with a bell, but the one who made the move, of a step their item took
+ * (REQ-34 BC-21): a reporter's own verify or reopen tells nobody, a triager's tells them.
+ */
+export async function tellStepToReporters(
+  tx: Tx,
+  row: Row,
+  step: 'triaged' | 'verified' | 'reopened',
+  moverId: string | null,
+  carrier: string | null = null,
+): Promise<void> {
+  const told = withBell(await reportersOf(tx, row))
+    .map((r) => r.id)
+    .filter((id) => id !== moverId);
+  await tellReporters(
+    tx,
+    { projectId: row.projectId, feedbackId: row.id, kind: 'step' },
+    told,
+    (language) => stepNotice(language, step, feedbackKey(row.fbSeq), row.title, carrier),
+  );
+}

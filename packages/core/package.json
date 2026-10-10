@@ -1,6 +1,6 @@
 {
   "name": "@forge/core",
-  "version": "0.4.0-dev.227",
+  "version": "0.4.0-dev.228",
   "private": true,
   "license": "Apache-2.0",
   "description": "Forge core API — Hono + Drizzle (RFC 0002 Strapi replacement).",
@@ -42,7 +42,6 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.72",
     "@ai-sdk/openai-compatible": "^3.0.63",
     "@forge/contracts": "workspace:*",
     "@forge/observability": "workspace:*",

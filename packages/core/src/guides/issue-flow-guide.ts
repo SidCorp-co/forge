@@ -194,9 +194,8 @@ condition holds, so carry on. A wait on a mark is never also \`about\` a require
   \`GET /api/issues/:id/review\` lists what it owes: each checklist line of every pattern the
   design chose, and each criterion the design classes a code property (on a project that reads no
   catalog, those criteria alone). \`POST /api/issues/:id/review\`
-  \`{ base, head, startedAt, checklist: [{ pattern, line, result, note }], criteria: [{ criterion, result, reason, evidence }], run? }\`
-  records it, \`startedAt\` being when the review began (its time joins the issue's checks),
-  \`result\` being \`pass\`, \`fail\` or (a line only) \`not_applicable\`, and writes each
+  \`{ base, head, checklist: [{ pattern, line, result, note }], criteria: [{ criterion, result, reason, evidence }], run? }\`
+  records it, \`result\` being \`pass\`, \`fail\` or (a line only) \`not_applicable\`, and writes each
   criterion's result as the review's verdict at \`head\`. It is refused \`REVIEW_BY_BUILDER\` from
   the building run, \`REVIEW_RUN_UNNAMED\` from a box call naming no run while that run is live
   there (send \`run\`, the reviewing run's id), and \`REVIEW_LINE_MISSING\`,
@@ -240,7 +239,8 @@ A judge records a short screen clip of each observable criterion it judges, the 
 met or not: WebM or MP4, at most ${RELEASE_CLIP_MAX_SECONDS} seconds and ${RELEASE_CLIP_MAX_BYTES / (1024 * 1024)} MiB.
 Upload it as an attachment and cite its name in that verdict's \`evidence\`. A release page shows a
 highlight's clip from there, from a pass on the build it describes. The project's knowledge names
-the recorder its box has. A verdict judged without a clip says why in its \`reason\`.
+the recorder its box has. A \`pass\` on an observable criterion judged without a clip says why in its
+\`reason\`; one with neither is refused \`VERDICT_CLIP_REQUIRED\`.
 
 A test is evidence only where it can fail: plant the failure it guards against and watch it go red
 naming its own rule before the green counts.

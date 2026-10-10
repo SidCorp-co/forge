@@ -95,7 +95,6 @@ function attentionGroups(rows: IssueStandingRow[], t: Copy): ListGroup<IssueStan
     id: g,
     ...ISSUE_ATTENTION_LABELS[g],
     label: t(`issues.attention.${g}`),
-    hint: t(`issues.attention.${g}.hint`),
     rows: rows.filter((r) => r.standing.attentionGroup === g),
   }));
 }
@@ -427,7 +426,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
             {(data) =>
               data.issues.length === 0 ? (
                 <div className="px-5 py-10">
-                  <EmptyState title={scope === "closed" ? t("issues.board.noClosed") : t("issues.board.noIssue")} message={t("issues.board.emptyHint")} />
+                  <EmptyState message={scope === "closed" ? t("issues.board.noClosed") : t("issues.board.noIssue")} />
                 </div>
               ) : mode === "waves" ? (
                 <>

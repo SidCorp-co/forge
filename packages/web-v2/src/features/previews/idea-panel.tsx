@@ -92,7 +92,7 @@ export function IdeaPanel({ preview: initial, about, canWrite, slug }: { preview
         >
           <div className="min-w-0 flex-1">
             <Field label={t("previews.idea.keep.alt")}>
-              <Input value={alt} maxLength={300} placeholder={t("previews.idea.keep.altHint")} onChange={(e) => setAlt(e.target.value)} />
+              <Input value={alt} maxLength={300} placeholder={t("previews.idea.keep.altPlaceholder")} onChange={(e) => setAlt(e.target.value)} />
             </Field>
           </div>
           <Button type="submit" size="sm" variant="primary" disabled={alt.trim() === ""} loading={keep.isPending}>
@@ -118,7 +118,7 @@ export function IdeaPanel({ preview: initial, about, canWrite, slug }: { preview
           {kept.suggestionId ? <p className="fg-caption text-muted">{t("previews.idea.kept.criteria")}</p> : null}
           {kept.suggestionRefusal ? (
             <p className="fg-caption text-muted" data-testid="idea-criteria-refused">
-              {t("previews.idea.kept.noCriteria")} {kept.suggestionRefusal.code}: {kept.suggestionRefusal.detail}
+              {t("previews.idea.kept.criteriaRefused")} {kept.suggestionRefusal.code}: {kept.suggestionRefusal.detail}
             </p>
           ) : null}
         </div>

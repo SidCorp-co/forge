@@ -7,6 +7,7 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
+import { signoffReasonRefusal } from './acceptance-rules.js';
 import { latestBaselineIn, linkedContracts, writePinsIn } from './baselines.js';
 import { linkedDesigns, type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { type RequirementRefusal, repinRefusals } from './rules.js';
@@ -31,6 +32,8 @@ export async function repinRequirement(input: {
   const row = await rowIn(db, projectId, input.ref);
   const signer = await signerRefusal(actor, projectId, 're-pinning a requirement', row);
   if (signer) return { ok: false, refusals: [signer] };
+  const unsaid = signoffReasonRefusal('repin', input.reason);
+  if (unsaid) return { ok: false, refusals: [unsaid] };
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     return repinIn(tx, {

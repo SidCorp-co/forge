@@ -65,7 +65,6 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
       <div className="flex w-full max-w-sm flex-col gap-4">
         <div className="text-center">
           <p className="fg-h3">{t("shell.chat.emptyTitle")}</p>
-          <p className="fg-body-sm mt-1 text-muted">{t("shell.start.lead")}</p>
         </div>
 
         <div>
@@ -84,11 +83,6 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
             }}
             placeholder={t("shell.start.pick")}
           />
-          {projectId && (
-            <p className="fg-caption mt-1 text-subtle">
-              {t("shell.start.startsWith")}
-            </p>
-          )}
         </div>
 
         {projectId && !confirming && (

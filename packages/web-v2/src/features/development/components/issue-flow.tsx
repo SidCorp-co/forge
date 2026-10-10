@@ -12,7 +12,7 @@ function AttentionLegend({ groups = ISSUE_ATTENTION_GROUPS }: { groups?: readonl
   return (
     <ul className="mt-2 flex flex-wrap gap-x-3.5 gap-y-1 text-12 text-muted" aria-label={t("overview.dev.legend")}>
       {groups.map((g) => (
-        <li key={g} className="inline-flex items-center gap-1.5" title={t(`issues.attention.${g}.hint`)}>
+        <li key={g} className="inline-flex items-center gap-1.5">
           <span aria-hidden className="size-2 rounded-[2px]" style={{ background: LEGEND[ISSUE_ATTENTION_LABELS[g].tone].dot }} />
           {t(`issues.attention.${g}`)}
         </li>
@@ -23,7 +23,7 @@ function AttentionLegend({ groups = ISSUE_ATTENTION_GROUPS }: { groups?: readonl
 
 export function IssueFlow({ flow }: { flow: OverviewFlow }) {
   const t = useCopy();
-  if (flow.total === 0) return <p className="text-13 text-muted">{t("overview.dev.flowEmpty", { days: flow.windowDays })}</p>;
+  if (flow.total === 0) return <p className="text-13 text-muted">{t("overview.dev.flowEmpty")}</p>;
   return (
     <div data-testid="issue-flow">
       <ol className="flex items-stretch" aria-label={t("overview.dev.flow")}>

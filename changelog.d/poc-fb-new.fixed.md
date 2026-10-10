@@ -1,0 +1,1 @@
+**Ten feedback items from the dev judges are fixed.** Recordings seek, titles refuse plainly, checklists read whole, runs are found by box id. Requirements keep their age per state and wrap Waits on; a decision can answer an open question.

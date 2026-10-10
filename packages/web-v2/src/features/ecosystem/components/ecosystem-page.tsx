@@ -12,9 +12,9 @@ import { ecosystemRoutes } from "../routes";
 type Section = "channel" | "api";
 
 // Threads is the workspace inbox, so its tab leaves the project; Project API is this project's own page, and its contracts live under Delivery
-const SECTIONS: { value: Section; label: string; href: (slug: string) => string }[] = [
-  { value: "channel", label: "Threads", href: () => ecosystemRoutes.threads() },
-  { value: "api", label: "Project API", href: ecosystemRoutes.apiPage },
+const SECTIONS: { value: Section; label: "ecosystem.threads.title" | "ecosystem.page.api"; href: (slug: string) => string }[] = [
+  { value: "channel", label: "ecosystem.threads.title", href: () => ecosystemRoutes.threads() },
+  { value: "api", label: "ecosystem.page.api", href: ecosystemRoutes.apiPage },
 ];
 
 /**
@@ -39,12 +39,12 @@ export function EcosystemPage({
         <PageContainer className="min-w-0 space-y-4">
           <header className="flex min-w-0 flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
-              <p className="fg-caption">{project.slug} · Ecosystem</p>
+              <p className="fg-caption">{t("ecosystem.page.eyebrow", { slug: project.slug })}</p>
               <PageTitle className="fg-h2 break-words">{title}</PageTitle>
             </div>
             {actions ? <div className="flex flex-wrap gap-2">{actions(project)}</div> : null}
           </header>
-          <nav aria-label="Ecosystem sections" className="flex flex-wrap gap-1 border-b border-line">
+          <nav aria-label={t("ecosystem.page.sections")} className="flex flex-wrap gap-1 border-b border-line">
             {SECTIONS.map((s) => (
               <Link
                 key={s.value}
@@ -55,7 +55,7 @@ export function EcosystemPage({
                   s.value === section ? "text-fg" : "text-muted hover:text-fg",
                 )}
               >
-                {s.label}
+                {t(s.label)}
               </Link>
             ))}
           </nav>

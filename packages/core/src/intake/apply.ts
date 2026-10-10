@@ -110,7 +110,6 @@ async function applyToFeedback(
       producerId: null,
       kind: 'feedback_triage',
       target: { feedback: item.key },
-      baseRevision: null,
       payload: draft.triage,
       model,
     });

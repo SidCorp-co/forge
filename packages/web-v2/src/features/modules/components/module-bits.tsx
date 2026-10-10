@@ -18,8 +18,7 @@ export function AttentionBadge({ group }: { group: ModuleAttentionGroup }) {
   const language = useInterfaceLanguage();
   const m = MODULE_ATTENTION_LABELS[group];
   const label = copyOr(language, `modules.attention.${group}`, m.label);
-  const hint = copyOr(language, `modules.attention.${group}.hint`, m.hint ?? "");
-  return <ToneBadge tone={m.tone} label={label} value={group} pulse={group === "moving"} title={`${label} · ${hint}`} />;
+  return <ToneBadge tone={m.tone} label={label} value={group} pulse={group === "moving"} title={label} />;
 }
 
 /** An open-issue kind's words in `language`, from the issue list's own. */

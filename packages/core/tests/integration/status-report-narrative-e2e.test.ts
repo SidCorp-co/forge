@@ -24,7 +24,7 @@ import { seedProjectDocument } from '../helpers/release-world.js';
 const asked: ChatMessage[][] = [];
 let answers: string[] = [];
 
-register('anthropic', () => ({
+register('openai', () => ({
   id: 'scripted',
   defaultModel: 'scripted-model',
   async *stream(req): AsyncIterable<ChatStreamEvent> {

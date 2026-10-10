@@ -244,9 +244,6 @@ function Controls({ s, access }: { s: ScheduleStanding; access: AutomationAccess
           />
           {s.enabled ? t("schedules.isOn") : t("schedules.isPaused")}
         </span>
-        {s.viewerMay.takeOver ? (
-          <p className="text-12-5 text-muted">{t("schedules.takeOverNote")}</p>
-        ) : null}
         {editing && config ? (
           <ScheduleForm
             initial={config}

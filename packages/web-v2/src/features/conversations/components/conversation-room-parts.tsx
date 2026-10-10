@@ -67,7 +67,7 @@ export function RoomEmpty() {
   return (
     <div className="flex min-h-[40dvh] flex-col">
       <div className="grid flex-1 place-items-center">
-        <EmptyState title={t("shell.chat.emptyTitle")} message={t("shell.chat.emptyMessage")} mascot />
+        <EmptyState message={t("shell.chat.emptyTitle")} mascot />
       </div>
     </div>
   );

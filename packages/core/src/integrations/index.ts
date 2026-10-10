@@ -47,6 +47,13 @@ export {
   previousHeldInboundSecret,
   rotateHeldInboundSecret,
 } from './inbound-secret.js';
+export {
+  httpUpstreamOf,
+  readRelayTicket,
+  relayedBinding,
+  relayUpstreamOf,
+  relayUrlFor,
+} from './mcp-relay.js';
 export { applyGrantedMcpServers } from './mcp-resolver.js';
 export { raceWithTimeout } from './probe.js';
 export {

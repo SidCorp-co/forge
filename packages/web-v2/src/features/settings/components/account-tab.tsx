@@ -22,8 +22,8 @@ import { useCopy } from "@/lib/i18n/interface-language";
 
 const THEMES = ["system", "light", "dark"] as const;
 // A language is named in its own words wherever the screen is read (`language.*` of the locale file).
-const PROJECT_DEFAULT = "project";
-type LanguageChoice = LanguagePref | typeof PROJECT_DEFAULT;
+// No choice reads as English: a project's content language never sets Forge's chrome (REQ-13 BC-2).
+const DEFAULT_LANGUAGE: LanguagePref = "en";
 
 export function AccountTab() {
   const { user } = useAuth();
@@ -55,11 +55,10 @@ function PreferencesCard() {
   const prefsQ = usePreferences();
   const update = useUpdatePreferences();
   const [theme, setTheme] = useState<ThemePref>("system");
-  const [language, setLanguage] = useState<LanguageChoice>(PROJECT_DEFAULT);
+  const [language, setLanguage] = useState<LanguagePref>(DEFAULT_LANGUAGE);
   const t = useCopy();
   const themeOptions: SelectOption[] = THEMES.map((v) => ({ value: v, label: t(`shell.account.theme.${v}`) }));
   const languageOptions: SelectOption[] = [
-    { value: PROJECT_DEFAULT, label: t("language.project") },
     { value: "en", label: t("language.en") },
     { value: "vi", label: t("language.vi") },
   ];
@@ -68,11 +67,11 @@ function PreferencesCard() {
   useEffect(() => {
     if (prefsQ.data) {
       setTheme(prefsQ.data.theme);
-      setLanguage(prefsQ.data.language ?? PROJECT_DEFAULT);
+      setLanguage(prefsQ.data.language ?? DEFAULT_LANGUAGE);
     }
   }, [prefsQ.data]);
 
-  const dirty = !!prefsQ.data && (theme !== prefsQ.data.theme || language !== (prefsQ.data.language ?? PROJECT_DEFAULT));
+  const dirty = !!prefsQ.data && (theme !== prefsQ.data.theme || language !== (prefsQ.data.language ?? DEFAULT_LANGUAGE));
 
   return (
     <PageSection>
@@ -85,18 +84,18 @@ function PreferencesCard() {
           </div>
         ) : (
           <div className="space-y-4">
-            <Field label={t("shell.account.theme")} hint={t("shell.account.themeHint")}>
+            <Field label={t("shell.account.theme")}>
               <Select
                 options={themeOptions}
                 value={theme}
                 onChange={(v) => setTheme(v as ThemePref)}
               />
             </Field>
-            <Field label={t("language.label")} hint={t("language.hint")}>
+            <Field label={t("language.label")}>
               <Select
                 options={languageOptions}
                 value={language}
-                onChange={(v) => setLanguage(v as LanguageChoice)}
+                onChange={(v) => setLanguage(v as LanguagePref)}
               />
             </Field>
             <div>
@@ -104,7 +103,7 @@ function PreferencesCard() {
                 variant="primary"
                 loading={update.isPending}
                 disabled={!dirty}
-                onClick={() => update.mutate({ theme, language: language === PROJECT_DEFAULT ? null : language })}
+                onClick={() => update.mutate({ theme, language })}
                 className="min-h-11"
               >
                 {t("shell.account.save")}

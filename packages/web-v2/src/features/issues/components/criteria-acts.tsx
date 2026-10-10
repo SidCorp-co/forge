@@ -35,9 +35,9 @@ import { useRequirementCriteria } from "../requirement-link";
 const VERDICTS: readonly PersonVerdict[] = ["pass", "short", "fail", "skipped"];
 
 function refusalText(t: Copy, r: EvidenceFileRefusal): string {
-  if (r.kind === "clipTooLarge") return t("issues.verdictAct.clipTooLarge", { name: r.name, cap: r.cap });
-  if (r.kind === "empty") return t("issues.verdictAct.fileEmpty", { name: r.name });
-  return t("issues.verdictAct.fileType", { name: r.name });
+  if (r.kind === "clipTooLarge") return t("issues.verdictAct.clipTooLargeRefused", { name: r.name, cap: r.cap });
+  if (r.kind === "empty") return t("issues.verdictAct.fileEmptyRefused", { name: r.name });
+  return t("issues.verdictAct.fileTypeRefused", { name: r.name });
 }
 
 /** What the commit field says about the build core named, before anything is typed over it. */
@@ -117,7 +117,7 @@ export function RecordVerdict({ issueId, row }: { issueId: string; row: Criterio
         message={
           <div className="grid gap-4" data-testid="verdict-form">
             <p className="whitespace-pre-wrap text-13 text-muted">{row.statement}</p>
-            <Field label={t("issues.verdictAct.verdict")} hint={t("issues.verdictAct.verdictHint")}>
+            <Field label={t("issues.verdictAct.verdict")}>
               <SegmentedControl
                 value={verdict}
                 onChange={setVerdict}
@@ -129,7 +129,6 @@ export function RecordVerdict({ issueId, row }: { issueId: string; row: Criterio
             </Field>
             <Field
               label={t(skipped ? "issues.verdictAct.skipNote" : "issues.verdictAct.note")}
-              hint={t(skipped ? "issues.verdictAct.skipNoteHint" : "issues.verdictAct.noteHint")}
               required={skipped}
             >
               <Textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} maxLength={4000} />
@@ -152,7 +151,7 @@ export function RecordVerdict({ issueId, row }: { issueId: string; row: Criterio
               hint={
                 screenshot && uploadAs && uploadAs !== safeAttachmentName(screenshot.name)
                   ? t("issues.verdictAct.renamed", { name: safeAttachmentName(screenshot.name), as: uploadAs })
-                  : t("issues.verdictAct.screenshotHint")
+                  : undefined
               }
             >
               <input
@@ -236,7 +235,6 @@ export function TieCriteria({
         onConfirm={() => tie.mutate(picked, { onSuccess: close })}
         message={
           <div className="grid gap-3" data-testid="tie-form">
-            <p className="text-13 text-muted">{t("issues.tieAct.lead")}</p>
             {bcs.isLoading ? <p className="text-13 text-subtle">{t("issues.steps.loading")}</p> : null}
             <RefusalLine error={bcs.error} testid="tie-read-refusal" />
             <ul className="max-h-[50vh] divide-y divide-line-subtle overflow-y-auto border-y border-line-subtle">

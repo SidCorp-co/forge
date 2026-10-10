@@ -240,7 +240,7 @@ const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, Epod
 };
 
 /**
- * Epodsystem's declaration. `direct-mcp`: the `crmk_` key is rendered into the runner's MCP config.
+ * Epodsystem's declaration. `direct-mcp`: the run's MCP config names Forge's relay, which adds the `crmk_` key (REQ-21 BC-2).
  *
  * `tools` is empty although core answers `forge_storefront_target` from the same binding, and that
  * is deliberate — the tool REPORTS the grant rather than being gated by it. Gating it would close a
@@ -266,7 +266,7 @@ export const epodsystemIntegration = declareIntegration<EpodsystemConfig, Epodsy
       serverName: 'epodsystem',
       previewSecrets: { apiKey: '[redacted]' },
       justification:
-        'The storefront shop tools are the Epodsystem MCP server itself, authenticated by the store key. Forge has no API of its own in front of the theme and product surface, so the key reaches the runner or the shop skill has nothing to call.',
+        'The storefront shop tools are the Epodsystem MCP server itself, authenticated by the store key. Forge has no API of its own in front of the theme and product surface, so Forge relays each MCP call of a run to it (/api/mcp-relay) and adds the key itself; the run holds only a relay ticket.',
       buildEntry: (config, secrets) => {
         const apiKey = secrets.apiKey;
         if (typeof apiKey !== 'string' || apiKey.length === 0) return null;

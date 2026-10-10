@@ -14,6 +14,7 @@ import { Button, ViewHeading } from "@/design";
 import { reproduceApi } from "@/features/previews/reproduce-api";
 import { recordingsKey } from "@/features/previews/reproduce-section";
 import { TimelineTable } from "@/features/previews/reproduce-timeline";
+import { formatSize } from "@/features/attachments/components/staged-files";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { coreFileUrl } from "@/lib/utils/core-url";
@@ -87,7 +88,7 @@ export function Recordings({ projectId, f }: { projectId: string; f: FeedbackVie
                 <td className="py-1.5 pr-3">{by(r)}</td>
                 <td className="py-1.5 pr-3 font-mono max-md:hidden">{r.kind === "reproduce" ? (r.recording.build.release ?? r.recording.build.sha.slice(0, 12)) : null}</td>
                 <td className="py-1.5 pr-3">
-                  {r.kind === "upload" ? t("previews.recordings.uploaded") : <ReproduceState recording={r.recording} />}
+                  {r.kind === "upload" ? <UploadFacts file={r.file} /> : <ReproduceState recording={r.recording} />}
                 </td>
                 <td className="py-1.5 text-right">
                   {open?.id === r.id ? null : (
@@ -117,19 +118,81 @@ function ReproduceState({ recording }: { recording: RecordingRecord }) {
   );
 }
 
-/** A video attached to the item, played in the page and read by its text alternative. */
+/** A file's type as a person names it: its format, not its media type. */
+const FORMATS: Record<string, string> = { "video/mp4": "MP4", "video/webm": "WebM", "video/quicktime": "MOV" };
+export const formatOf = (mime: string) => FORMATS[mime] ?? (mime.split("/")[1] ?? mime).toUpperCase();
+
+/** A length in seconds as m:ss, or h:mm:ss past the hour. */
+export function clockOf(seconds: number): string {
+  const s = Math.round(seconds);
+  const mmss = `${Math.floor((s % 3600) / 60)}:${String(s % 60).padStart(2, "0")}`;
+  return s >= 3600 ? `${Math.floor(s / 3600)}:${mmss.padStart(5, "0")}` : mmss;
+}
+
+/** How long a video runs, read from its metadata alone; null until read, or where it cannot be. */
+function useVideoLength(src: string): number | null {
+  const [length, setLength] = useState<number | null>(null);
+  useEffect(() => {
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    const read = () => setLength(Number.isFinite(v.duration) && v.duration > 0 ? v.duration : null);
+    v.addEventListener("loadedmetadata", read);
+    v.src = src;
+    return () => {
+      v.removeEventListener("loadedmetadata", read);
+      v.removeAttribute("src");
+    };
+  }, [src]);
+  return length;
+}
+
+/** An attached video's row facts: its name, then its format, size and length. */
+function UploadFacts({ file }: { file: Attachment }) {
+  const length = useVideoLength(coreFileUrl(file.url));
+  const facts = [formatOf(file.mime), formatSize(file.size), ...(length === null ? [] : [clockOf(length)])];
+  return (
+    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2" data-testid="recording-file">
+      <span className="min-w-0 truncate font-mono">{file.name}</span>
+      <span className="text-muted">{facts.join(" · ")}</span>
+    </span>
+  );
+}
+
+/**
+ * A video attached to the item, played in the page and read by its text alternative. One this browser
+ * cannot decode, or decodes with no picture, is said so with a way to download it, never a black box.
+ */
 function UploadedVideo({ file, alt }: { file: Attachment; alt: string }) {
+  const t = useCopy();
+  const [unplayable, setUnplayable] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a newly shown file is tried afresh
+  useEffect(() => setUnplayable(false), [file.id]);
+  const src = coreFileUrl(file.url);
   return (
     <div className="grid gap-3" data-testid="recording-detail" data-recording={file.id}>
-      {/* biome-ignore lint/a11y/useMediaCaption: a screen recording someone attached comes with no captions file; its text alternative is its label */}
-      <video
-        src={coreFileUrl(file.url)}
-        controls
-        preload="metadata"
-        aria-label={alt}
-        className="max-h-[420px] w-full max-w-[720px] rounded-md border border-line bg-black"
-        data-testid="recording-video"
-      />
+      {unplayable ? (
+        <p role="status" className="fg-body-sm text-muted" data-testid="recording-unplayable">
+          {t("feedback.evidence.unplayable", { format: formatOf(file.mime) })}{" "}
+          <a href={src} download={file.name} className="font-semibold text-link hover:underline">
+            {t("feedback.evidence.download", { name: file.name })}
+          </a>
+        </p>
+      ) : (
+        // biome-ignore lint/a11y/useMediaCaption: a screen recording someone attached comes with no captions file; its text alternative is its label
+        <video
+          src={src}
+          controls
+          preload="metadata"
+          aria-label={alt}
+          className="max-h-[420px] w-full max-w-[720px] rounded-md border border-line bg-black"
+          data-testid="recording-video"
+          onError={() => setUnplayable(true)}
+          onLoadedMetadata={(e) => {
+            const v = e.currentTarget;
+            if (v.videoWidth === 0 && v.videoHeight === 0) setUnplayable(true);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -44,21 +44,19 @@ export function ProposeChange({ projectId, reqKey }: { projectId: string; reqKey
   const [busy, setBusy] = useState(false);
   if (!dock) return null;
   return (
-    <Tooltip label={t("requirements.act.proposeChangeTip")} multiline>
-      <Button
-        type="button"
-        size="sm"
-        loading={busy}
-        onClick={async () => {
-          setBusy(true);
-          const target = await door();
-          setBusy(false);
-          if (target) dock.show(target);
-        }}
-      >
-        {t("requirements.act.proposeChange")}
-      </Button>
-    </Tooltip>
+    <Button
+      type="button"
+      size="sm"
+      loading={busy}
+      onClick={async () => {
+        setBusy(true);
+        const target = await door();
+        setBusy(false);
+        if (target) dock.show(target);
+      }}
+    >
+      {t("requirements.act.proposeChange")}
+    </Button>
   );
 }
 
@@ -134,6 +132,7 @@ export function PrimaryActions({
         tip={s.waitingOn.says.effect ? said(s.waitingOn.says.effect, lang) : t("requirements.act.repinTip", { moved })}
         consequence={t("requirements.act.repinConsequence", { moved })}
         reasonLabel={t("requirements.act.repinWhyLabel")}
+        reasonRequired
         act={(reason) => ({ kind: "repin", revision: head.revision, reason })}
       />
     );
@@ -154,6 +153,7 @@ export function PrimaryActions({
         label={t("requirements.act.agreeR", { r: head.revision })}
         consequence={t("requirements.act.agreeConsequence", { r: head.revision })}
         reasonLabel={t("requirements.act.agreeWhyLabel")}
+        reasonRequired
         act={(reason) => ({ kind: "agree", revision: head.revision, reason })}
       />
     );
@@ -193,6 +193,7 @@ function SignOff({
   tip,
   consequence,
   reasonLabel,
+  reasonRequired = false,
   act: build,
 }: {
   projectId: string;
@@ -202,6 +203,8 @@ function SignOff({
   consequence: string;
   /** The reason field's label, named for this act. */
   reasonLabel: string;
+  /** Core refuses this act without a reason (agree, re-pin). */
+  reasonRequired?: boolean;
   act: (reason: string | undefined) => RequirementAction;
 }) {
   const act = useRequirementAction(projectId, reqKey);
@@ -226,6 +229,7 @@ function SignOff({
             confirmLabel={label}
             consequence={consequence}
             reasonLabel={reasonLabel}
+            reasonRequired={reasonRequired}
             loading={act.isPending}
             onCancel={() => setOpen(false)}
             onConfirm={(reason) => act.mutate(build(reason), { onSuccess: () => setOpen(false) })}
@@ -343,9 +347,7 @@ export function ProposalDecision({ projectId, d, revision }: { projectId: string
   const act = useRequirementAction(projectId, d.key);
   const [step, setStep] = useState<"accept" | "return" | null>(null);
   const [reason, setReason] = useState("");
-  if (!d.canSignOff) {
-    return <p className="text-12 text-subtle">{t("requirements.act.signerDecides")}</p>;
-  }
+  if (!d.canSignOff) return null;
   const busy = act.isPending;
   return (
     <div className="grid gap-2">

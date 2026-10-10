@@ -10,7 +10,7 @@ import { useIntegrationsList, useOrgConnectionLocked, useUpdateProviderIntegrati
 import type { IntegrationSummary } from "../../types";
 import { text } from "../config-read";
 import { BindingRowHeader, MultiBindingSection } from "../multi-binding";
-import { BindingRowActions, healthBadge, OrgLockedNote, TestOutcome, Ticked, useBindingTest } from "../shared";
+import { BindingRowActions, healthBadge, OrgLockedNote, TestOutcome, useBindingTest } from "../shared";
 import { AddAutoflowForm } from "./add-form";
 import { EMPTY_TOKENS, RefreshPairFields, tokenSecrets, tokensValid } from "./tokens";
 
@@ -22,7 +22,6 @@ export function AutoflowSection({ projectId }: { projectId: string }) {
       projectId={projectId}
       provider="autoflow"
       title={t("integrations.autoflow.title")}
-      intro={<Ticked text={t("integrations.autoflow.intro")} />}
       emptyText={t("integrations.autoflow.empty")}
       addLabel={t("integrations.autoflow.add")}
       renderRow={(binding, isDefault) => (
@@ -79,7 +78,7 @@ function AutoflowBindingRow({
       <SiteFacts config={config} />
       {rotating && (
         <>
-          <Field label={t("integrations.autoflow.newToken")} hint={t("integrations.autoflow.newTokenHint")}>
+          <Field label={t("integrations.autoflow.newToken")}>
             <Input
               type="password"
               autoComplete="new-password"

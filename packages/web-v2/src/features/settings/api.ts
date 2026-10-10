@@ -33,6 +33,10 @@ export const settingsApi = {
   createToken: (input: CreatePatInput) =>
     apiClient<PatTokenCreated>(`/pat`, { method: "POST", body: JSON.stringify(input) }),
 
+  /** `PATCH /api/pat/:id` — the token's new project list, whole; the secret stays. May 403 FRESH_AUTH_REQUIRED. */
+  setTokenProjects: ({ id, projectIds }: { id: string; projectIds: string[] }) =>
+    apiClient<PatToken>(`/pat/${id}`, { method: "PATCH", body: JSON.stringify({ projectIds }) }),
+
   /** `DELETE /api/pat/:id` — revoke. */
   revokeToken: (id: string) => apiClient<PatToken>(`/pat/${id}`, { method: "DELETE" }),
 

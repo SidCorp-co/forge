@@ -19,7 +19,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-const READ_ONLY = "You can read this project but not change it: a project admin can give you write access";
+const READ_ONLY = "Read only: ask a project admin for write access";
 
 function issue(over: Partial<IssueDetail>): IssueDetail {
   return {

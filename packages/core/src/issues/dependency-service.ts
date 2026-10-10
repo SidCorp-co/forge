@@ -121,7 +121,7 @@ export async function writeIssueDependency(
     if (s.projectId !== input.projectId)
       throw refuse(
         'CROSS_PROJECT',
-        'both issues of an edge are in this project; cross-project edges are not supported',
+        'both issues of an edge are in this project. Work in another project is waited on by its contract version, never its issue: POST /api/issues/:id/contract-waits { contract: <provider slug>/<contract slug>, minVersion }',
       );
   }
   // ISS-1237 — an edge naming an archived issue would point at a row no reader can find. The

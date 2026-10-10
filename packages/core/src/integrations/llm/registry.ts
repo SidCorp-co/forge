@@ -33,15 +33,17 @@ interface ResolvedChatProvider {
   model: string;
 }
 
-/** The provider registered under `providerId` (the env default) with `model` or its default; refuses ASSISTANT_MODEL_NOT_CONFIGURED (503), naming the env variables, when none resolves. */
+/** The provider registered under `providerId` (the env default) with `model` or its default; refuses ASSISTANT_MODEL_NOT_CONFIGURED (503), naming the gateway settings `missing`, when none resolves. */
 export function resolveChatProvider(
   providerId: string | undefined,
   model?: string,
+  missing: readonly string[] = ['LITELLM_API_URL', 'LITELLM_API_KEY'],
 ): ResolvedChatProvider {
   const provider = providerId ? get(providerId) : undefined;
   if (provider) return { provider, model: model ?? provider.defaultModel };
+  const named = missing.length > 0 ? missing : ['LITELLM_API_URL', 'LITELLM_API_KEY'];
   throw refuser<ConversationRefusalCode>('ASSISTANT_MODEL_NOT_CONFIGURED')(
     'ASSISTANT_MODEL_NOT_CONFIGURED',
-    'no chat model is configured on this instance, so Assistant mode cannot answer: set LITELLM_API_URL + LITELLM_API_KEY (the model gateway) in the instance .env and restart core',
+    `no chat model is configured on this instance, so Assistant mode cannot answer: ${named.join(' and ')} ${named.length === 1 ? 'is' : 'are'} not set; set the model gateway in the instance .env and restart core`,
   );
 }

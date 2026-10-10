@@ -60,7 +60,6 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
     <PageSection>
       <PageSectionBody>
         <SectionTitle className="fg-h3 mb-1 text-accent-text!">{t("settings.project.people.members")}</SectionTitle>
-        <p className="fg-body-sm mb-4 max-w-[68ch] text-muted">{t("settings.project.people.rolesLead")}</p>
         {membersQ.isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-9 w-full rounded-md" />

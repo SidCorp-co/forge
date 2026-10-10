@@ -340,6 +340,58 @@ describe('a review recorded by another run (criteria 1 and 2)', () => {
   });
 });
 
+const reviewTime = async (issue: string) =>
+  ((await call(personToken, 'GET', `/api/issues/${issue}/checks`)).body.kinds as Doc[]).find(
+    (k) => k.kind === 'review',
+  );
+
+describe('a review is timed with the issue checks (FB-121)', () => {
+  it('counts a run review from the time it sends, keyed by its record, so a resend adds nothing', async () => {
+    const { id } = await builtIssue(projects.catalog);
+    const reviewer = await runOnBox(projects.catalog);
+    const startedAt = new Date(Date.now() - 90_000).toISOString();
+    const res = await post(boxToken, id, review({ run: reviewer, startedAt }));
+    expect(res.status).toBe(201);
+    const time = await reviewTime(id);
+    expect(time?.checks).toBe(1);
+    expect(time?.totalMs).toBeGreaterThanOrEqual(90_000);
+    expect(time?.slowest?.id).toBe(res.body.review.id);
+  });
+
+  it('times a run review that sends no start from its reviewing run', async () => {
+    const { id } = await builtIssue(projects.catalog);
+    const reviewer = await runOnBox(projects.catalog);
+    expect((await post(boxToken, id, review({ run: reviewer }))).status).toBe(201);
+    expect((await reviewTime(id))?.checks).toBe(1);
+  });
+
+  it('records a person review that sends no start untimed, never a made-up duration', async () => {
+    const { id } = await builtIssue(projects.catalog);
+    expect((await post(personToken, id, review())).status).toBe(201);
+    expect(await reviewTime(id)).toMatchObject({ checks: 0, totalMs: 0 });
+  });
+
+  it('refuses a start after now by name, recording nothing', async () => {
+    const { id } = await builtIssue(projects.catalog);
+    const reviewer = await runOnBox(projects.catalog);
+    const later = new Date(Date.now() + 3_600_000).toISOString();
+    const res = await post(boxToken, id, review({ run: reviewer, startedAt: later }));
+    expect([res.status, res.body.error.refusals[0].path]).toEqual([422, '/startedAt']);
+    expect(await reviewRecords(id)).toEqual([]);
+  });
+
+  it('keeps the reviewer a reviewer: its timed review does not make it the building run', async () => {
+    const { id } = await builtIssue(projects.catalog);
+    const reviewer = await runOnBox(projects.catalog);
+    const startedAt = new Date(Date.now() - 1_000).toISOString();
+    expect((await post(boxToken, id, review({ run: reviewer, startedAt }))).status).toBe(201);
+    const again = await post(boxToken, id, review({ run: reviewer }));
+    expect(again.status).toBe(201);
+    const marked = await mark(id);
+    expect([marked.status, marked.body.action]).toEqual([200, 'merged']);
+  });
+});
+
 describe('the merge mark asks for the review (criterion 2)', () => {
   it('refuses a mark with no review by name, then marks once another run reviewed the commit', async () => {
     const { id } = await builtIssue(projects.catalog);

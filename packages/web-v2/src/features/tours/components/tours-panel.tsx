@@ -53,9 +53,6 @@ export function ToursPanel({ open, onClose }: { open: boolean; onClose: () => vo
           );
         })}
       </ul>
-      <p className="mt-6 max-w-[72ch] border-t border-line pt-3 text-12-5 text-subtle">
-        {t("tours.note")} <code className="font-mono">?tour=release-what-changes</code>
-      </p>
     </SlideOver>
   );
 }

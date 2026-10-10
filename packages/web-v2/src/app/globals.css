@@ -37,6 +37,13 @@
 @custom-variant xl (@container page (width >= 80rem));
 @custom-variant 2xl (@container page (width >= 96rem));
 @custom-variant window-md (@media (width >= 48rem));
+/* The page column itself, less the sidebar beside it: what the shell's top bar has to lay out in.
+   The page breakpoints above read the window while the Ask Agent panel is closed, and the 280px
+   sidebar takes part of it, so a bar laid out by them crowds its title at 768-1040px of window
+   (FB-114). The detail header and the title block that stands in for it read `column` instead,
+   which is `[data-page]` in the shell and the window outside it. */
+@custom-variant column-md (@container column (width >= 48rem));
+@custom-variant max-column-md (@container column (width < 48rem));
 
 /* ============================================================
    Tailwind v4 theme mapping — utilities reference the SEMANTIC
@@ -192,7 +199,7 @@
 
   /* the window, as the container every breakpoint reads (see the variants above) */
   body {
-    container: page / inline-size;
+    container: page column / inline-size;
     background: var(--bg-app);
     color: var(--fg-default);
     font-family: var(--font-sans);
@@ -202,8 +209,10 @@
     text-rendering: optimizeLegibility;
   }
 
-  /* the page column, as that container while the Ask Agent panel stands beside it (app/(workspace)/layout.tsx) */
-  [data-shell]:has([data-dock-placement="beside"]) [data-page] { container: page / inline-size; }
+  /* the page column is always the `column` container, and the `page` one too while the Ask Agent panel
+     stands beside it (app/(workspace)/layout.tsx) */
+  [data-page] { container: column / inline-size; }
+  [data-shell]:has([data-dock-placement="beside"]) [data-page] { container: page column / inline-size; }
 
   ::-webkit-scrollbar { width: 11px; height: 11px; }
   ::-webkit-scrollbar-thumb { background: var(--paper-300); border-radius: 999px; border: 3px solid var(--bg-app); }

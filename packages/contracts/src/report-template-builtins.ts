@@ -121,7 +121,7 @@ const ROADMAP = {
   ],
   narrative: slots(
     "Say what lands when, from the forecast dates.",
-    "Name the requirements whose p85 date is far behind their p50, or that have no basis.",
+    "Name the requirements whose almost-surely date is much later than their likely date, or that have no basis; say both dates, never the gap between them.",
     "Say what to move or cut, from the forecast.",
   ),
 } satisfies ReportTemplate;

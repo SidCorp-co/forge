@@ -14089,7 +14089,6 @@
                 "required": [
                   "base",
                   "head",
-                  "startedAt",
                   "checklist",
                   "criteria"
                 ],
@@ -15532,6 +15531,110 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-validated": []
+      }
+    },
+    "/api/mcp-relay/{bindingId}": {
+      "delete": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bindingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "description": "A JSON-RPC 2.0 message for the bound MCP server, relayed as sent; GET and DELETE carry none.",
+          "required": false
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-validated": []
+      },
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bindingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "description": "A JSON-RPC 2.0 message for the bound MCP server, relayed as sent; GET and DELETE carry none.",
+          "required": false
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-validated": []
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bindingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "description": "A JSON-RPC 2.0 message for the bound MCP server, relayed as sent; GET and DELETE carry none.",
+          "required": false
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
         "x-forge-validated": []
       }
     },
@@ -21794,6 +21897,11 @@
                               "minLength": 3,
                               "type": "string"
                             },
+                            "field": {
+                              "maxLength": 40,
+                              "minLength": 1,
+                              "type": "string"
+                            },
                             "owner": {
                               "maxLength": 200,
                               "minLength": 1,
@@ -21807,6 +21915,10 @@
                             "text": {
                               "maxLength": 2000,
                               "minLength": 5,
+                              "type": "string"
+                            },
+                            "value": {
+                              "maxLength": 2000,
                               "type": "string"
                             }
                           },
@@ -30714,6 +30826,11 @@
                               "minLength": 3,
                               "type": "string"
                             },
+                            "field": {
+                              "maxLength": 40,
+                              "minLength": 1,
+                              "type": "string"
+                            },
                             "owner": {
                               "maxLength": 200,
                               "minLength": 1,
@@ -30727,6 +30844,10 @@
                             "text": {
                               "maxLength": 2000,
                               "minLength": 5,
+                              "type": "string"
+                            },
+                            "value": {
+                              "maxLength": 2000,
                               "type": "string"
                             }
                           },
@@ -32945,6 +33066,11 @@
                               "minLength": 3,
                               "type": "string"
                             },
+                            "field": {
+                              "maxLength": 40,
+                              "minLength": 1,
+                              "type": "string"
+                            },
                             "owner": {
                               "maxLength": 200,
                               "minLength": 1,
@@ -32958,6 +33084,10 @@
                             "text": {
                               "maxLength": 2000,
                               "minLength": 5,
+                              "type": "string"
+                            },
+                            "value": {
+                              "maxLength": 2000,
                               "type": "string"
                             }
                           },
@@ -33524,6 +33654,11 @@
                               "minLength": 3,
                               "type": "string"
                             },
+                            "field": {
+                              "maxLength": 40,
+                              "minLength": 1,
+                              "type": "string"
+                            },
                             "owner": {
                               "maxLength": 200,
                               "minLength": 1,
@@ -33537,6 +33672,10 @@
                             "text": {
                               "maxLength": 2000,
                               "minLength": 5,
+                              "type": "string"
+                            },
+                            "value": {
+                              "maxLength": 2000,
                               "type": "string"
                             }
                           },

@@ -74,10 +74,7 @@ function PersonalOrgProjects({ orgId }: { orgId: string }) {
         ) : projectsQ.isError ? (
           <ErrorState message={formatApiError(projectsQ.error)} onRetry={() => projectsQ.refetch()} />
         ) : (projectsQ.data ?? []).length === 0 ? (
-          <EmptyState
-            title={t("settings.orgs.noProjectsTitle")}
-            message={t("settings.orgs.noProjectsBody")}
-          />
+          <EmptyState message={t("settings.orgs.noProjectsTitle")} />
         ) : (
           <ul className="divide-y divide-line-subtle">
             {(projectsQ.data ?? []).map((p) => (

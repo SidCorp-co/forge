@@ -90,7 +90,7 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
   const t = useCopy();
   const time = useTimeFormat();
   if (shown.length === 0) {
-    return <EmptyState title={t("issues.activity.emptyTitle")} message={t("issues.activity.empty")} mascot={false} />;
+    return <EmptyState message={t("issues.activity.empty")} mascot={false} />;
   }
   return (
     <ol className="space-y-3">

@@ -61,7 +61,7 @@ describe("a requirement's comment thread", () => {
     });
     const user = userEvent.setup();
     renderWithQuery(<EntityCommentThread projectId="p1" scope="requirement" targetRef="REQ-32" />);
-    expect(await screen.findByText("No comments yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No comments")).toBeInTheDocument();
     await user.type(screen.getByPlaceholderText("Add a note…"), "  Checked against the HOP walk. ");
     await user.click(screen.getByRole("button", { name: "Post note" }));
     await waitFor(() => expect(calls).toContainEqual({ method: "POST", path: LIST, body: { intent: "note", body: "Checked against the HOP walk." } }));

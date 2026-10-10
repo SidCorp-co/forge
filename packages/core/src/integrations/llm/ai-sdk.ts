@@ -1,5 +1,5 @@
 /**
- * The bridge both chat adapters share over the AI SDK: Forge's OpenAI-shaped messages and tools go
+ * The bridge the gateway chat adapter uses over the AI SDK: Forge's OpenAI-shaped messages and tools go
  * in as the SDK's model messages and execute-less tools, so the model only ever emits a tool call
  * and the loop in `run-turn-core.ts` stays Forge's; the SDK's stream parts come back as
  * `ChatStreamEvent`s. The SDK owns the wire, the SSE reading and the pre-stream retry. A tool the
@@ -9,7 +9,6 @@
 import {
   APICallError,
   type AssistantContent,
-  type JSONValue,
   jsonSchema,
   type ModelMessage,
   RetryError,
@@ -27,8 +26,6 @@ import type {
 } from './types.js';
 
 export const MAX_RETRIES = 2;
-
-type ProviderOptions = Record<string, Record<string, JSONValue>>;
 
 const DATA_URI = /^data:([^;,]+);base64,([\s\S]+)$/;
 
@@ -71,34 +68,18 @@ function toolInput(argumentsJson: string): Record<string, unknown> {
   }
 }
 
-interface MessageOptions {
-  /** Every system message joined into one leading system message carrying these options; otherwise each stays where it was. */
-  hoistSystem?: { providerOptions?: ProviderOptions } | undefined;
-  /** Drop assistant turns that come before the first user turn. */
-  userFirst?: boolean | undefined;
-}
-
-export function toModelMessages(
-  messages: readonly ChatMessage[],
-  opts: MessageOptions = {},
-): ModelMessage[] {
+export function toModelMessages(messages: readonly ChatMessage[]): ModelMessage[] {
   const out: ModelMessage[] = [];
-  const system: string[] = [];
   const toolNames = new Map<string, string>();
-  let seenUser = false;
   for (const m of messages) {
     if (m.role === 'system') {
       const text = flattenText(m.content);
-      if (!text) continue;
-      if (opts.hoistSystem) system.push(text);
-      else out.push({ role: 'system', content: text });
+      if (text) out.push({ role: 'system', content: text });
     } else if (m.role === 'user') {
       const content = userContent(m.content);
       if (content.length === 0) continue;
-      seenUser = true;
       out.push({ role: 'user', content });
     } else if (m.role === 'assistant') {
-      if (opts.userFirst && !seenUser) continue;
       const text = flattenText(m.content);
       const content: Exclude<AssistantContent, string> = text ? [{ type: 'text', text }] : [];
       for (const tc of m.tool_calls ?? []) {
@@ -126,33 +107,18 @@ export function toModelMessages(
       });
     }
   }
-  if (opts.hoistSystem && system.length > 0) {
-    out.unshift({
-      role: 'system',
-      content: system.join('\n\n'),
-      ...(opts.hoistSystem.providerOptions
-        ? { providerOptions: opts.hoistSystem.providerOptions }
-        : {}),
-    });
-  }
   return out;
 }
 
-/** Execute-less tools in the order given, so the model emits each call and Forge runs it; `lastProviderOptions` marks the final one (a cache breakpoint). */
-export function toToolSet(
-  tools: readonly ChatTool[],
-  lastProviderOptions?: ProviderOptions,
-): ToolSet {
+/** Execute-less tools in the order given, so the model emits each call and Forge runs it. */
+export function toToolSet(tools: readonly ChatTool[]): ToolSet {
   const set: Record<string, Tool> = {};
-  tools.forEach((t, i) => {
+  for (const t of tools) {
     set[t.function.name] = {
       ...(t.function.description ? { description: t.function.description } : {}),
       inputSchema: jsonSchema({ type: 'object', ...t.function.parameters }),
-      ...(i === tools.length - 1 && lastProviderOptions
-        ? { providerOptions: lastProviderOptions }
-        : {}),
     };
-  });
+  }
   return set;
 }
 
@@ -200,13 +166,6 @@ export async function* bridgeStream(b: StreamBridge): AsyncGenerator<ChatStreamE
           if (!part.text) continue;
           emitted = true;
           yield { type: 'reasoning', text: part.text };
-        } else if (part.type === 'reasoning-start') {
-          const anthropic = part.providerMetadata?.anthropic as
-            | { redactedData?: unknown }
-            | undefined;
-          if (anthropic?.redactedData === undefined) continue;
-          emitted = true;
-          yield { type: 'reasoning', text: '', redacted: true };
         } else if (
           (part.type === 'tool-call' || part.type === 'tool-result') &&
           part.providerExecuted === true

@@ -48,9 +48,9 @@ beforeEach(() => {
 afterEach(cleanup);
 
 const tabs = [
-  { tab: "passes", key: "passes", loading: "loading passes…", empty: "No pass is recorded for this project's master yet.", data: { items: [], hasMore: false } },
-  { tab: "runs", key: "runs", loading: "loading runs…", empty: "No live run this master dispatched holds a lease.", data: { items: [] } },
-  { tab: "charter", key: "charter", loading: "loading the charter…", empty: "No charter is declared for this project's master.", data: { declared: false, rules: [] } },
+  { tab: "passes", key: "passes", loading: "loading passes…", empty: "No passes", data: { items: [], hasMore: false } },
+  { tab: "runs", key: "runs", loading: "loading runs…", empty: "No runs", data: { items: [] } },
+  { tab: "charter", key: "charter", loading: "loading the charter…", empty: "No charter", data: { declared: false, rules: [] } },
 ] as const;
 
 describe.each(tabs)("the master $tab tab", ({ tab, key, loading, empty, data }) => {

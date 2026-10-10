@@ -10,13 +10,13 @@ import {
   egressAt,
 } from '../../lib/data-egress.js';
 import { isRefusal } from '../../lib/refusal.js';
-import { defaultChatProviderId } from './bootstrap.js';
+import { defaultChatProviderId, missingGatewaySettings } from './bootstrap.js';
 import { resolveChatProvider } from './registry.js';
 import type { ChatMessage, ChatProvider, ChatStreamUsage } from './types.js';
 
 /** The deployment's chat model name; refuses ASSISTANT_MODEL_NOT_CONFIGURED (503) when none is. */
 export function chatModelName(): string {
-  return resolveChatProvider(defaultChatProviderId()).model;
+  return resolveChatProvider(defaultChatProviderId(), undefined, missingGatewaySettings()).model;
 }
 
 /**
@@ -32,7 +32,11 @@ export async function openChat(
   const level = await levelOf(scope, what);
   const gate = egressAt(level, scope.surface, null, what);
   if (!gate.ok) throw new EgressRefused(gate.refusal);
-  const resolved = resolveChatProvider(defaultChatProviderId());
+  const resolved = resolveChatProvider(
+    defaultChatProviderId(),
+    undefined,
+    missingGatewaySettings(),
+  );
   return { provider: gated(resolved.provider, level, scope.surface, what), model: resolved.model };
 }
 

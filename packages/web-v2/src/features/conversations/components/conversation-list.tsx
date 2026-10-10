@@ -268,10 +268,7 @@ export function ConversationList({
         )}
         {list.isLoading && SKELETON_ROWS.map((k) => <SessionRowSkeleton key={k} />)}
         {!list.isLoading && list.error == null && rows.length === 0 && (
-          <EmptyState
-            title={archived ? t("shell.list.noneArchived") : list.rows.length ? t("shell.list.noMatch") : t("shell.list.none")}
-            message={archived ? t("shell.list.archivedHint") : t("shell.list.noneHint")}
-          />
+          <EmptyState message={archived ? t("shell.list.noneArchived") : list.rows.length ? t("shell.list.noMatch") : t("shell.list.none")} />
         )}
         {dockSections(rows, {
           projectId: current?.id ?? null,

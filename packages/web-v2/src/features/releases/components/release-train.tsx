@@ -124,7 +124,7 @@ export function ReleaseTrain({ releases, slug, selected }: { releases: ReleaseSu
   const earlier = cut.length - shown.length;
   return (
     <section aria-label={t("releases.train")} className="px-5 pb-4 pt-4 max-md:px-3" data-testid="release-train">
-      <ViewHeading hint={t("releases.trainHint")}>{t("releases.train")}</ViewHeading>
+      <ViewHeading>{t("releases.train")}</ViewHeading>
       <ol className="m-0 flex list-none items-stretch gap-1 overflow-x-auto p-0">
         {earlier > 0 ? (
           <li className="grid flex-none content-center px-2 text-12 text-subtle" data-testid="train-earlier">

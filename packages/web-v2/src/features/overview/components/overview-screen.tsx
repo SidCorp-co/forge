@@ -57,8 +57,7 @@ export function OverviewScreen() {
     return (
       <PageContainer className="grid min-h-[60vh] place-items-center">
         <EmptyState
-          title={hasAnyProjects ? t('overview.noProjectsIn', { org: orgLabel ?? t('overview.thisOrg') }) : t('overview.welcome')}
-          message={hasAnyProjects ? t('overview.noProjectsBody') : t('overview.welcomeBody')}
+          message={hasAnyProjects ? t('overview.noProjectsIn') : t('overview.welcome')}
           action={{ label: t('overview.newProject'), onClick: () => router.push('/projects?new=1') }}
         />
       </PageContainer>
@@ -67,7 +66,7 @@ export function OverviewScreen() {
 
   return (
     <PageContainer className="flex flex-col gap-4">
-      <PageTitle hint={t('overview.hint', { org: orgLabel ?? t('overview.yourOrg') })}>
+      <PageTitle>
           {t('overview.title')}{orgLabel ? ` · ${orgLabel}` : ''}
       </PageTitle>
 

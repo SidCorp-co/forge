@@ -65,7 +65,7 @@ export function RetargetEditor({
     <section className="grid gap-3" data-testid="feedback-retarget">
       <h3 className="text-12 font-semibold text-muted">{t("feedback.retarget.heading")}</h3>
       <p className="text-12 text-muted">{t("feedback.retarget.now", { about: about(f.target, language) })}</p>
-      <Field label={t("feedback.retarget.moveTo")} hint={t("feedback.target.hint")}>
+      <Field label={t("feedback.retarget.moveTo")}>
         <TargetPicker projectId={projectId} type={type} onType={setType} value={target} onValue={setTarget} />
       </Field>
       <Field label={t("feedback.retarget.why")}>

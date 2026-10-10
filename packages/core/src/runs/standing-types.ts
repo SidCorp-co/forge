@@ -40,6 +40,8 @@ export interface RunFacts {
     openPhase: string | undefined;
     pauseReason: string | null;
     releaseVersion: string | null;
+    /** The id the box gave its run when it declared it; null for a run no box declared. */
+    boxRunId: string | null;
     /** The take refusal a box's declaration is queued behind, until core admits it. */
     declarationRefusal: {
       code: string;

@@ -93,7 +93,7 @@ describe("the checks an issue's runs made", () => {
     expect(within(rows[0] as HTMLElement).getByRole("link", { name: "ISS-474 build" }).getAttribute("href")).toBe(
       "/projects/forge/agents/runs/run-9",
     );
-    expect(rows[1]).toHaveTextContent("Not in a run");
+    expect(rows[1]).toHaveTextContent("No run");
   });
 
   it("shows the commit each check ran on, and a check's note where it has one", async () => {
@@ -113,7 +113,7 @@ describe("the checks an issue's runs made", () => {
 
   it("says no check is recorded yet, still listing the kinds", async () => {
     show(viewOf([]));
-    expect(await screen.findByText("Checks appear here once a run records the checks it timed.")).toBeInTheDocument();
+    expect(await screen.findByText("None")).toBeInTheDocument();
     expect(screen.getAllByTestId("check-kind")).toHaveLength(6);
   });
 });

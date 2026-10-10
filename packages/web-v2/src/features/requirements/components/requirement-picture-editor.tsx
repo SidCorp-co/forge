@@ -147,7 +147,7 @@ export function PictureEditor({
       {kind === "example_table" ? <TableFields rows={rows} onRows={setRows} at={at} t={t} /> : null}
       {kind === "chart" ? <ChartFields chart={chart} onChart={setChart} at={at} other={own?.kind === "chart" && !storedChart} t={t} /> : null}
       {kind === "wireframe" ? (
-        <Field label={t("requirements.picture.edit.board")} hint={t(waiting ? "requirements.picture.edit.boardLoading" : "requirements.picture.edit.boardHint")} error={at("board")}>
+        <Field label={t("requirements.picture.edit.board")} hint={waiting ? t("requirements.picture.edit.boardLoading") : undefined} error={at("board")}>
           <div className="h-[420px] border border-line-subtle max-md:h-[360px]" data-testid="picture-board-editor">
             <BoardEditor
               doc={startBoard}
@@ -159,7 +159,7 @@ export function PictureEditor({
           </div>
         </Field>
       ) : null}
-      <Field label={t("requirements.picture.edit.alt")} hint={t("requirements.picture.edit.altHint")} error={at("alt")} required>
+      <Field label={t("requirements.picture.edit.alt")} error={at("alt")} required>
         <Textarea rows={2} value={alt} onChange={(e) => setAlt(e.target.value)} />
       </Field>
       {local?.field === "content" ? <p role="alert" className="fg-caption text-[color:var(--red-600)]">{local.text}</p> : null}
@@ -190,11 +190,11 @@ type At = (field: PictureField) => string | undefined;
 function FlowFields({ flow, onFlow, at, t }: { flow: { steps: string; links: string }; onFlow: (f: { steps: string; links: string }) => void; at: At; t: Copy }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label={t("requirements.picture.edit.steps")} hint={t("requirements.picture.edit.stepsHint")} error={at("steps")}>
+      <Field label={t("requirements.picture.edit.steps")} error={at("steps")}>
         <Textarea rows={6} value={flow.steps} onChange={(e) => onFlow({ ...flow, steps: e.target.value })} />
       </Field>
-      <Field label={t("requirements.picture.edit.links")} hint={t("requirements.picture.edit.linksHint")} error={at("links")}>
-        <Textarea rows={6} value={flow.links} onChange={(e) => onFlow({ ...flow, links: e.target.value })} />
+      <Field label={t("requirements.picture.edit.links")} error={at("links")}>
+        <Textarea rows={6} placeholder={t("requirements.picture.edit.linksPlaceholder")} value={flow.links} onChange={(e) => onFlow({ ...flow, links: e.target.value })} />
       </Field>
     </div>
   );

@@ -97,7 +97,7 @@ function CorrectionLine({ correction }: { correction: Correction }) {
       <Icon name="alert" size={15} className="mt-0.5 flex-none text-[color:var(--red-600)]" />
       <p className="fg-body-sm text-fg">
         <span className="font-semibold">{t("shell.thread.correction")}</span> {t("shell.thread.refused", { what: correction.what })} (
-        <span className="font-mono">{correction.code}</span>){t("shell.thread.nothingWritten")}
+        <span className="font-mono">{correction.code}</span>){t("shell.thread.writtenNothing")}
       </p>
     </div>
   );
@@ -478,7 +478,7 @@ function LiveTurn({
     <div className="flex flex-col gap-2" data-testid="thread-live-turn" data-live-view="asker">
       {withdrawn && <ReplacedDraftNote />}
       {draft && (
-        <p className="fg-caption flex items-center gap-1.5 text-subtle" data-testid="thread-live-draft" title={t("conversations.live.draftWhy")}>
+        <p className="fg-caption flex items-center gap-1.5 text-subtle" data-testid="thread-live-draft">
           <Icon name="alert" size={12} className="flex-none" />
           {t("conversations.live.draft")}
         </p>

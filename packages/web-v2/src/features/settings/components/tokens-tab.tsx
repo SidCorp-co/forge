@@ -10,19 +10,20 @@ import { useRevokeToken, useTokens } from "../hooks";
 import type { PatToken, PatTokenCreated } from "../types";
 import { TokenCreateForm } from "./token-create-form";
 import { TokenList } from "./token-list";
+import { fenceOf, TokenProjects } from "./token-projects";
 
 export function TokensTab() {
   const tokensQ = useTokens();
   const projectsQ = useProjects();
   const revoke = useRevokeToken();
   const [revealed, setRevealed] = useState<PatTokenCreated | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const t = useCopy();
 
   const projectsById = new Map((projectsQ.data ?? []).map((p) => [p.id, p]));
-  const levelOf = (token: PatToken) =>
-    token.boundProjectId
-      ? t("settings.tokens.levelProject", { slug: projectsById.get(token.boundProjectId)?.slug ?? token.boundProjectId.slice(0, 8) })
-      : t("settings.tokens.levelUser");
+  const reachOf = (token: PatToken) => fenceOf(token)?.map((id) => projectsById.get(id)?.slug ?? id.slice(0, 8)) ?? null;
+  // the row is read from the list each render, so the editor shows the fence the last act left
+  const edited = (tokensQ.data?.tokens ?? []).find((tk) => tk.id === editing) ?? null;
 
   return (
     <div className="space-y-6">
@@ -37,11 +38,15 @@ export function TokensTab() {
         <SectionTitle className="fg-h3 mb-3">{t("settings.tokens.yours")}</SectionTitle>
         <TokenList
           tokensQ={tokensQ}
-          levelOf={levelOf}
+          reachOf={reachOf}
           onRevoke={(id) => revoke.mutate(id)}
+          onEditProjects={(tk) => setEditing(tk.id)}
           pending={revoke.isPending}
         />
       </div>
+      <SlideOver open={!!edited} onClose={() => setEditing(null)} title={t("settings.tokens.projectsTitle")}>
+        {edited && <TokenProjects key={edited.id} token={edited} projects={projectsQ.data ?? []} />}
+      </SlideOver>
       <SlideOver open={!!revealed} onClose={() => setRevealed(null)} title={t("settings.tokens.created")}>
         {revealed && (
           <TokenReveal

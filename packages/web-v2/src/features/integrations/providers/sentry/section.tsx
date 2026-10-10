@@ -61,7 +61,6 @@ export function SentrySection({ projectId }: { projectId: string }) {
 
   return (
     <ProviderCard title={providerLabel("sentry", language)} badge={activeBadge(existing, t)}>
-      <p className="fg-body-sm text-muted">{t("integrations.sentry.intro")}</p>
       {retired.length > 0 && (
         <Banner tone="danger">
           <Ticked text={oldShapeText(retired, t)} />
@@ -69,7 +68,6 @@ export function SentrySection({ projectId }: { projectId: string }) {
       )}
       <Field
         label={t("integrations.sentry.host")}
-        hint={t("integrations.sentry.hostHint")}
         required={!existing || !form.host.trim()}
       >
         <Input
@@ -81,7 +79,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
       </Field>
       <Field
         label={t("integrations.sentry.token")}
-        hint={existing ? t("integrations.provider.tokenStored") : t("integrations.sentry.tokenHint")}
+        hint={existing ? t("integrations.provider.tokenStored") : undefined}
         required={!existing}
       >
         <Input

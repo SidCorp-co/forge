@@ -43,7 +43,7 @@ export interface Canvas {
 const genericKind = (t: Copy): TemplateEdgeKind => ({
   id: "flow",
   label: t("workflows.canvas.flowKind"),
-  tooltip: t("workflows.canvas.flowKindHint"),
+  tooltip: t("workflows.canvas.flowKind"),
   direction: "forward",
   required: [],
   line: "solid",
@@ -122,7 +122,7 @@ export function readCanvas(doc: Canvas["doc"], template: WorkflowTemplate | null
   const placed = new Set(bands.flatMap((b) => b.steps));
   const stray = doc.steps.filter((s) => !placed.has(s.id)).map((s) => s.id);
   if (banded && stray.length > 0) {
-    bands.push({ id: "__unplaced", label: t("workflows.canvas.unplaced"), tooltip: t("workflows.canvas.unplacedHint"), steps: stray });
+    bands.push({ id: "__unplaced", label: t("workflows.canvas.unplaced"), tooltip: t("workflows.canvas.unplaced"), steps: stray });
     for (const id of stray) bandOf.set(id, "__unplaced");
   }
   const lanes = new Map(

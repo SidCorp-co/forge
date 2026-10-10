@@ -215,7 +215,7 @@ export const criterionCountsAsPass = (standing: CriterionStanding): boolean =>
 export const CRITERION_STANDING_HINTS: Record<CriterionStanding, string> = {
 	pass: "pass: the latest verdict passed",
 	short:
-		"short: met, short of its wording, and judged not to block; it counts as a pass",
+		"short: met, short of its wording, not blocking; counts as a pass",
 	fail: "fail: the latest verdict failed",
 	skipped: "skipped: judged and skipped with a reason; never counts as a pass",
 	unresolved:

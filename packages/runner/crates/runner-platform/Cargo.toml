@@ -15,7 +15,7 @@ tracing = { workspace = true }
 which = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31", features = ["signal", "process", "fs"] }
+nix = { version = "0.31", features = ["signal", "process", "fs", "resource"] }
 
 # Keychain only on macOS/Windows — Linux uses the file store to avoid pulling
 # libdbus-sys (system dbus-1) via secret-service, keeping the binary portable.

@@ -13,6 +13,7 @@
  * records is not asked, as the merge check is not.
  */
 
+import { CHECK_RUN_LIMITS } from '@forge/contracts/check-runs';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import type {
   IssueReview,
@@ -22,16 +23,18 @@ import type {
 } from '@forge/contracts/issue-review';
 import { PATTERN_CATALOG } from '@forge/contracts/pattern-catalog';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { issues } from '../db/schema.js';
+import { agentSessions } from '../db/schema-agent-sessions.js';
 import { issueCheckRuns } from '../db/schema-issue-check-runs.js';
 import { criterionVerdicts } from '../db/schema-issue-criteria.js';
 import { liveIssueLeasesSql } from '../db/schema-issue-leases.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
 import type { Actor } from './activity.js';
+import { writeCheckRuns } from './check-runs.js';
 import { recordVerdict } from './criteria/verdict-record.js';
 import { issueDesignOf } from './design-record.js';
 import { issueDisplayIds } from './display-ids.js';
@@ -83,10 +86,11 @@ async function buildersOf(issueId: string, box: string | null): Promise<Builders
         `),
       )
     : [];
+  // a review's own timing is the reviewer's, never a sign it built the change
   const checks = await db
     .select({ session: issueCheckRuns.runSessionId, actor: issueCheckRuns.recordedBy })
     .from(issueCheckRuns)
-    .where(eq(issueCheckRuns.issueId, issueId));
+    .where(and(eq(issueCheckRuns.issueId, issueId), ne(issueCheckRuns.kind, 'review')));
   const sessions = new Set<string>([
     ...leases.map((l) => l.session_id),
     ...checks.flatMap((c) => (c.session ? [c.session] : [])),
@@ -109,7 +113,13 @@ async function evidenceAt(issueId: string, head: string): Promise<HeadEvidence> 
   const checks = await db
     .select({ kind: issueCheckRuns.kind, result: issueCheckRuns.result })
     .from(issueCheckRuns)
-    .where(and(eq(issueCheckRuns.issueId, issueId), eq(issueCheckRuns.headSha, head)));
+    .where(
+      and(
+        eq(issueCheckRuns.issueId, issueId),
+        eq(issueCheckRuns.headSha, head),
+        ne(issueCheckRuns.kind, 'review'),
+      ),
+    );
   const verifications = await listRecordEvents(issueId, {
     kinds: ['verification'],
     kernelOnly: true,
@@ -128,6 +138,25 @@ async function evidenceAt(issueId: string, head: string): Promise<HeadEvidence> 
     mergeCheckPassed: passingHeads(verifications).includes(head),
     verdicts: verdicts.length,
   };
+}
+
+/**
+ * When a review began: the time it sends, else its reviewing run's start; null for a person's review
+ * that sends none, or a run start over a day back, which times the run, not the review.
+ */
+async function reviewStartOf(
+  sent: string | undefined,
+  session: string | null,
+  now: Date,
+): Promise<Date | null> {
+  if (sent) return new Date(sent);
+  if (!session) return null;
+  const [row] = await db
+    .select({ startedAt: agentSessions.startedAt, createdAt: agentSessions.createdAt })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, session));
+  const start = row ? (row.startedAt ?? row.createdAt) : null;
+  return start && now.getTime() - start.getTime() <= CHECK_RUN_LIMITS.durationMs ? start : null;
 }
 
 /** What a review of this issue owes, or the refusal naming why none can be recorded yet. */
@@ -156,8 +185,7 @@ async function reviewRequired(projectId: string): Promise<boolean> {
   return document?.validation?.mergeCheck === 'required';
 }
 
-/** The reviews recorded on the issue. */
-export async function recordedReviewsOf(issueId: string): Promise<StoredReview[]> {
+async function reviewsOf(issueId: string): Promise<StoredReview[]> {
   const records = await listRecordEvents(issueId, { kinds: ['review'], kernelOnly: true });
   return records.flatMap((r: RecordEvent) => {
     const stored = storedReviewOf(r);
@@ -203,6 +231,23 @@ export async function recordReview(args: {
   const who = reviewerRefusal(ref, reviewer, builders);
   if (who) throw refused([who]);
   const head = body.head.toLowerCase();
+  const now = new Date();
+  const started = await reviewStartOf(body.startedAt, reviewer.session, now);
+  if (started && started.getTime() > now.getTime()) {
+    throw one(
+      'REVIEW_REFUSED',
+      `startedAt ${body.startedAt} is after now; send when the review began`,
+      '/startedAt',
+    );
+  }
+  if (started && now.getTime() - started.getTime() > CHECK_RUN_LIMITS.durationMs) {
+    throw one(
+      'REVIEW_REFUSED',
+      `startedAt ${body.startedAt} is over a day back; a review is timed from when it began`,
+      '/startedAt',
+    );
+  }
+  const { result, failed } = outcomeOf(body);
   const fields = reviewRecordFields({
     body,
     owed: owed.owed,
@@ -231,9 +276,36 @@ export async function recordReview(args: {
         author: { userId: args.author.userId, deviceId: args.box, agency: args.author.agency },
       });
     }
+    // the review is timed with the issue's checks (REQ-36 BC-14), as kind review, keyed by its record
+    if (started) {
+      const timed = await writeCheckRuns(tx, {
+        issueId: issue.id,
+        projectId: issue.projectId,
+        head,
+        checks: [
+          {
+            id: written.id,
+            kind: 'review',
+            name: 'review',
+            scope: `${body.base.slice(0, 12).toLowerCase()}..${head.slice(0, 12)}`,
+            command: '',
+            files: [],
+            result,
+            durationMs: now.getTime() - started.getTime(),
+            startedAt: started.toISOString(),
+          },
+        ],
+        via: 'report',
+        runSessionId: reviewer.session,
+        actor: args.actor,
+      });
+      if (!timed.ok)
+        throw new Error(
+          `review ${written.id}: its timing was refused: ${timed.refusals[0]?.detail}`,
+        );
+    }
     return written;
   });
-  const { result, failed } = outcomeOf(body);
   return {
     review: {
       id: record.id,
@@ -257,7 +329,7 @@ export async function issueReviewOf(issue: {
     issueRefOf(issue.id),
     owedFor(issue),
     reviewRequired(issue.projectId),
-    recordedReviewsOf(issue.id),
+    reviewsOf(issue.id),
   ]);
   return {
     issue: ref,
@@ -289,7 +361,7 @@ export async function unreviewedMergeRefusal(args: {
   if (!(await reviewRequired(args.projectId))) return null;
   const [issueRef, reviews, builders] = await Promise.all([
     issueRefOf(args.issueId),
-    recordedReviewsOf(args.issueId),
+    reviewsOf(args.issueId),
     buildersOf(args.issueId, null),
   ]);
   return unreviewedDetail({ issueRef, commit: args.commit, reviews, builders });

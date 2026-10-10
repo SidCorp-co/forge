@@ -222,7 +222,7 @@ export function ComposeScreen({
   const pageR = readingOf(useApiPage(projectId));
 
   if (!canWriteProject(role)) {
-    return <ReadOnlyNotice role={role} slug={slug} writes="drafts and replies" />;
+    return <ReadOnlyNotice role={role} slug={slug} />;
   }
   for (const [what, r, wanted] of [
     [`Document ${params.inReplyTo}`, parentR, params.inReplyTo],

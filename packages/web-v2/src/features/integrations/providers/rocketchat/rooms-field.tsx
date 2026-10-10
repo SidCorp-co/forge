@@ -30,10 +30,7 @@ export function RoomsField({
   }
 
   return (
-    <Field
-      label={t("integrations.rocket.rooms")}
-      hint={t("integrations.rocket.roomsHint")}
-    >
+    <Field label={t("integrations.rocket.rooms")}>
       <div className="flex flex-col gap-2">
         {savedRids.map((r) => (
           <div key={r} className="flex items-center gap-2">

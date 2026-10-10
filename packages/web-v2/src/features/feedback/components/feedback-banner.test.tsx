@@ -40,7 +40,7 @@ describe("the feedback banner", () => {
     render(<FeedbackBanner f={view({ phase: "verified", attentionGroup: "done" })} />);
     const banner = screen.getByTestId("wait-banner");
     expect(banner).toHaveTextContent("Verified.");
-    expect(banner).toHaveTextContent("Nothing is owed on it.");
+    expect(banner).toHaveTextContent("Nothing owed");
     expect(banner).not.toHaveTextContent("Waiting on");
   });
 

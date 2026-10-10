@@ -124,7 +124,7 @@ describe("the sections the release page reads (BC-5..8)", () => {
     expect(screen.getByTestId("page-action")).toHaveTextContent("0478_release_highlights.sql");
     unmount();
     renderWithQuery(<ReleaseReader page={releasePage({ actionRequired: [] })} authed={false} />);
-    expect(screen.getByTestId("page-actions")).toHaveTextContent("Nothing is required of you.");
+    expect(screen.getByTestId("page-actions")).toHaveTextContent("Nothing required");
   });
 
   // J10 on 0.4.0-dev.227: each ask printed its migration path twice, in the sentence and under it
@@ -161,12 +161,12 @@ describe("the sections the release page reads (BC-5..8)", () => {
   it("says a range it could not read, never that nothing is required", () => {
     renderWithQuery(<ReleaseReader page={releasePage({ actionRequired: [], shipped: { state: "unread", why: "the repository was unreachable" } })} authed={false} />);
     expect(screen.getByTestId("page-actions-none")).toHaveTextContent("could not be read: the repository was unreachable.");
-    expect(screen.getByTestId("page-actions")).not.toHaveTextContent("Nothing is required of you.");
+    expect(screen.getByTestId("page-actions")).not.toHaveTextContent("Nothing required");
   });
 
   it("says no known issues where there are none, never leaving the section silent", () => {
     renderWithQuery(<ReleaseReader page={releasePage({ knownIssues: [] })} authed={false} />);
-    expect(screen.getByTestId("page-known-issues")).toHaveTextContent("No known issues on this build.");
+    expect(screen.getByTestId("page-known-issues")).toHaveTextContent("None known");
   });
 });
 
@@ -215,7 +215,7 @@ describe("highlights and their clip (BC-2, BC-3)", () => {
     const bare = { ...h, requirement: { key: "REQ-41", title: "Other" }, media: null, mediaGap: "QA recorded no clip for this build" };
     renderWithQuery(<ReleaseReader page={{ ...page, highlights: { ...page.highlights, highlights: [picture, bare] } }} authed={false} />);
     expect(screen.getByTestId("release-media-picture")).toHaveAttribute("src", "/api/uploads/download/t1");
-    expect(screen.getByTestId("page-highlight-gap")).toHaveTextContent("No clip or picture: QA recorded no clip for this build");
+    expect(screen.getByTestId("page-highlight-gap")).toHaveTextContent("No clip: QA recorded no clip for this build");
   });
 
   it("says a draft is on its way, or failed with the refusals it earned, instead of showing nothing", () => {

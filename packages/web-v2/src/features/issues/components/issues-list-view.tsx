@@ -187,12 +187,6 @@ export function IssuesListView({
       {!issuesQ.isLoading && !issuesQ.isError && rows.length === 0 && (
         <IssuesEmptyState
           inModule={!!moduleId}
-          moduleName={options.activeModuleName}
-          creatorName={
-            createdBy
-              ? (options.creatorOptions.find((o) => o.value === createdBy)?.label ?? t("issues.empty.thatCreator"))
-              : null
-          }
           isFiltered={view.isFiltered}
           projectHasIssues={projectHasIssues}
           onClear={view.clearAll}

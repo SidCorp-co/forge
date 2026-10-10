@@ -45,7 +45,6 @@ function AnswerForm({ q, projectId, reqKey }: { q: RequirementQuestionView; proj
         <Button type="submit" size="sm" variant="secondary" disabled={!ready || answer.isPending}>
           {t("requirements.unclear.answer")}
         </Button>
-        <span className="text-12 text-subtle">{t("requirements.unclear.becomesDecision")}</span>
       </span>
       <RefusalLine error={answer.error} testid="unclear-answer-refusal" />
     </form>
@@ -98,7 +97,7 @@ export function UnclearSection({
   const t = useCopy();
   return (
     <section data-testid="requirement-unclear">
-      <ViewHeading hint={t("requirements.unclear.count", { n: unclear })}>{t("requirements.unclear.heading")}</ViewHeading>
+      <ViewHeading right={<span className="text-12-5 text-muted">{t("requirements.unclear.count", { n: unclear })}</span>}>{t("requirements.unclear.heading")}</ViewHeading>
       {questions.length === 0 ? (
         <p className="text-13 text-subtle">{t("requirements.unclear.none")}</p>
       ) : (
@@ -117,14 +116,18 @@ export function AssumptionsSection({ assumptions, revision, slug }: { assumption
   const t = useCopy();
   return (
     <section data-testid="requirement-assumptions">
-      <ViewHeading hint={revision !== null ? t("requirements.overview.fromR", { r: revision }) : undefined}>{t("requirements.assumptions.heading")}</ViewHeading>
+      <ViewHeading right={revision !== null ? <span className="text-12-5 text-muted">{t("requirements.overview.fromR", { r: revision })}</span> : undefined}>{t("requirements.assumptions.heading")}</ViewHeading>
       {assumptions.length === 0 ? (
         <p className="text-13 text-subtle">{t("requirements.assumptions.none")}</p>
       ) : (
         <ul className="grid">
           {assumptions.map((a) => (
-            <li key={a.text} className="grid gap-1 border-t border-line-subtle py-3 first:border-t-0 first:pt-0" data-testid="assumption">
-              <p className="text-14 leading-snug text-fg">{a.text}</p>
+            <li key={a.text} className="grid gap-1 border-t border-line-subtle py-3 first:border-t-0 first:pt-0" data-testid="assumption" data-corrected={a.corrected || undefined}>
+              {/* a later edit replaced what was assumed: it stays readable, struck and marked (REQ-34 BC-26) */}
+              <p className="flex flex-wrap items-baseline gap-x-2 text-14 leading-snug">
+                <span className={a.corrected ? "text-subtle line-through" : "text-fg"}>{a.text}</span>
+                {a.corrected ? <span className="text-12 font-medium text-muted">{t("requirements.assumptions.corrected")}</span> : null}
+              </p>
               <span className="text-12 text-subtle">
                 {t("requirements.assumptions.owner", { who: a.owner })} · {t("requirements.assumptions.confirmBy", { how: a.confirmBy })}
                 {a.source && slug ? (

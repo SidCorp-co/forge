@@ -41,7 +41,7 @@ import {
 } from './read.js';
 import { tellReporters } from './reporter-language.js';
 import { duplicateNotice } from './reporter-notices.js';
-import { reportersOf, withBell } from './reporters.js';
+import { reportersOf, tellStepToReporters, withBell } from './reporters.js';
 import { NO_ROUTE, writeRouteIn } from './route-write.js';
 import {
   carriersNamed,
@@ -300,7 +300,8 @@ export async function triageIn(
   const sent = t.route === 'decline' ? undefined : t.route;
   const answers = triageAnswersOf({ route: sent, answers: t.answers });
   const derived = triageDerivedOf({ kind, route: sent, answers: t.answers });
-  if (row.status !== 'triaged') {
+  const firstTriage = row.status !== 'triaged';
+  if (firstTriage) {
     const moved = await transition(tx, FEEDBACK_MACHINE, {
       to: 'triaged',
       expect: row.status,
@@ -340,6 +341,9 @@ export async function triageIn(
   if ('refusals' in written) return { refusals: written.refusals };
   const carriers = written.carriers;
   if (route === 'duplicate') await tellDuplicateReporters(tx, row, carriers[0] ?? '');
+  // a triage that moves the item tells its reporters where it went; a re-route moves no step
+  else if (firstTriage)
+    await tellStepToReporters(tx, row, 'triaged', actor.userId, carriers.join(', ') || null);
   await decide(tx, row, actor, {
     decision: 'triaged',
     route,

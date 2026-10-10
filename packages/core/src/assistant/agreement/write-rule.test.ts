@@ -204,6 +204,11 @@ const ALLOWED: readonly { why: string; rest: readonly string[]; tools: readonly 
     ],
   },
   {
+    why: 'a change the person asked for in this message, sent to their own throwaway idea sketch; it writes no record',
+    rest: [],
+    tools: ['preview_change'],
+  },
+  {
     why: "a read of this room's own past",
     rest: [],
     tools: ['rocketchat_history', 'rocketchat_quote_context', 'conversation_transcript_search'],

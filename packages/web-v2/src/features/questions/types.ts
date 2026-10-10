@@ -1,5 +1,5 @@
 import type { QuestionSuggestion } from "@forge/contracts/question-suggestion";
-import type { AnswerHold, AnswerResume } from "@forge/contracts/questions";
+import type { AnswerHold, AnswerResume, QuestionRoundFacts } from "@forge/contracts/questions";
 
 
 export type OptionAuthority = "writer" | "admin";
@@ -59,13 +59,16 @@ export function isChoiceStep(step: QuestionStep): step is ChoiceStep {
   return untagged.answerShape === undefined && Array.isArray(untagged.options);
 }
 
-export interface AgentQuestion {
+/** A question as every reader answers it: the open round's facts (`QuestionRoundFacts`) and its rounds. */
+export interface AgentQuestion extends QuestionRoundFacts {
   id: string;
   projectId: string;
   issueId: string | null;
   status: QuestionStatus;
   blockerKind: BlockerKind;
+  /** Every round, on the issue and single-question reads; the project page reads only `currentStep`. */
   steps?: QuestionStep[];
+  /** The last round, on the project page read only; `currentRoundOf` reads either shape. */
   currentStep?: QuestionStep | null;
   rounds?: number;
   maxRounds: number;
@@ -74,11 +77,7 @@ export interface AgentQuestion {
   parkDeadlineAt: string | null;
   createdAt: string;
   updatedAt: string;
-  answerShape: AnswerShape;
   options: VisibleOption[];
-  recommendedOptionId: string;
-  needed: string;
-  locked: boolean;
   /** The assistant's record for a round (REQ-41 BC-2): the suggested answer, or why it drafted none. */
   suggestion?: QuestionSuggestion | null;
   origin?: { kind: string; documentId?: string; number?: string } | null;

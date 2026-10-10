@@ -392,6 +392,9 @@ export interface RunStanding
 	extends Omit<Standing<RunGroup, RunWaitingKind>, "waitingOn"> {
 	waitingOn: RunWaitingOn;
 	id: string;
+	/** The id the box gave its run when it declared it, which a box and a refusal name it by
+	 *  (ISSUE_SCOPE_HELD); null for a run no box declared. */
+	boxRunId: string | null;
 	projectId: string;
 	lane: RunLane;
 	state: RunState;

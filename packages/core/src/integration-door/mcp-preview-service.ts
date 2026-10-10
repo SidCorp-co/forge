@@ -5,11 +5,13 @@ import {
   directMcpIntegrations,
   effectiveConfig,
   grantHolds,
+  httpUpstreamOf,
   type IntegrationDeclaration,
   type IntegrationProvider,
   listAgentGrantedBindings,
   listBindingsForProject,
   mcpServerNameFor,
+  relayUrlFor,
   toIso,
 } from '../integrations/index.js';
 import { resolveSessionMcpServers } from '../jobs/index.js';
@@ -148,8 +150,16 @@ async function integrationRows(
           held: grantHolds(decl, pair.binding),
           wouldWinSlot,
         }),
-        url: typeof entry?.url === 'string' ? entry.url : null,
-        headers: willInject ? { Authorization: 'Bearer [redacted]' } : null,
+        // REQ-21 BC-2: an HTTP server is reached through Forge's relay, so the run sees that URL
+        // and a relay ticket, never the provider's endpoint credential
+        url: httpUpstreamOf(entry)
+          ? relayUrlFor(pair.binding.id)
+          : typeof entry?.url === 'string'
+            ? entry.url
+            : null,
+        headers: willInject
+          ? { Authorization: httpUpstreamOf(entry) ? 'Bearer [relay ticket]' : 'Bearer [redacted]' }
+          : null,
         lastHealthStatus: pair.connection.lastHealthStatus,
         lastHealthAt: toIso(pair.connection.lastHealthAt),
       });

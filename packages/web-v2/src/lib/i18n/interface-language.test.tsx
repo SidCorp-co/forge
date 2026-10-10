@@ -38,17 +38,17 @@ describe("the interface language a screen renders in", () => {
 
   it("renders vi when the person picks vi on a project that writes English", async () => {
     screenWith("vi", "en");
-    expect(await screen.findByText(product.vi["dash.landsEmpty"])).toBeInTheDocument();
+    expect(await screen.findByText(product.vi["dash.landsThisWeek"])).toBeInTheDocument();
   });
 
   it("renders English when the person picks English on a project that writes Vietnamese", async () => {
     screenWith("en", "vi");
-    expect(await screen.findByText(product.en["dash.landsEmpty"])).toBeInTheDocument();
-    expect(screen.queryByText(product.vi["dash.landsEmpty"])).toBeNull();
+    expect(await screen.findByText(product.en["dash.landsThisWeek"])).toBeInTheDocument();
+    expect(screen.queryByText(product.vi["dash.landsThisWeek"])).toBeNull();
   });
 
   it("follows the project's content language when the person chose nothing", async () => {
     screenWith(null, "vi");
-    expect(await screen.findByText(product.vi["dash.landsEmpty"])).toBeInTheDocument();
+    expect(await screen.findByText(product.vi["dash.landsThisWeek"])).toBeInTheDocument();
   });
 });

@@ -69,7 +69,6 @@ export function PreviewPanel(props: PreviewPanelProps) {
         <PreviewBody {...props} preview={preview} />
       ) : (
         <div className="flex flex-wrap items-center gap-3">
-          <p className="fg-body-sm min-w-0 flex-1 text-muted">{t("previews.lead")}</p>
           <Button size="sm" loading={open.isPending} onClick={() => open.mutate()}>
             {t("previews.start")}
           </Button>
@@ -167,7 +166,6 @@ function PreviewBody({ preview, issueId, issueLabel, canWrite, hasLiveRun, compa
         </p>
       ) : null}
       {preview.state === "live" ? <PreviewFrame preview={preview} issueLabel={issueLabel} height={compact ? 360 : 520} /> : null}
-      {preview.state === "live" && canWrite && !compact ? <p className="fg-caption text-muted">{t("previews.approveHint")}</p> : null}
       {preview.state === "idle_closed" ? <p className="fg-body-sm text-muted">{t("previews.closed.idle_closed", { minutes: preview.idleMinutes })}</p> : null}
       {preview.state === "approved" ? (
         <>

@@ -10,7 +10,7 @@ import { db } from '../db/client.js';
 import { gatedMovesOf } from '../lifecycle/index.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
-import { feedbackTriageRecord } from './checklist-record.js';
+import { feedbackTriageRecord, withReportedSeverity } from './checklist-record.js';
 import { detailAs } from './read.js';
 
 export const feedbackChecklistRoutes = new Hono<{ Variables: AuthVars }>();
@@ -52,7 +52,10 @@ feedbackChecklistRoutes.get(
           design: checklist.design,
           form: checklistFormOf(checklist),
           input: triageAnswersInput(),
-          now: evaluateChecklist(checklist, { given: {}, record }),
+          now: withReportedSeverity(
+            evaluateChecklist(checklist, { given: {}, record }),
+            item.severity,
+          ),
           moves: moves
             .filter((m) => m.gate === checklist.id)
             .map((m) => ({ ...m, countsAsPassed: countsAsPassed(m.standing) })),

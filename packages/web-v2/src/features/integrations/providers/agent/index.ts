@@ -12,5 +12,4 @@ export const agent: ProviderModule = {
   target: () => null,
   section: null,
   connectionSection: null,
-  connectionNote: null,
 };

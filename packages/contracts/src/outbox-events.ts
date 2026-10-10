@@ -470,8 +470,9 @@ export interface OutboxEventPayloads {
 	"feedback.reporterTold": {
 		projectId: string;
 		feedbackId: string;
-		/** What the notice is about; the only kinds that reach a reporter. */
-		kind: "declined" | "duplicate" | "message" | "verified";
+		/** What the notice is about; the only kinds that reach a reporter. `step` is a move somebody
+		 *  else made on their item: triaged, verified on their behalf, or reopened (REQ-34 BC-21). */
+		kind: "declined" | "duplicate" | "message" | "verified" | "step";
 		/** Reporters with a bell to tell, one notice for all. */
 		recipients: string[];
 		title: string;
@@ -532,11 +533,11 @@ export interface OutboxEventPayloads {
 		revision: number;
 		acceptedBy: string;
 	};
-	/** A personal access token of `userId` was minted, revoked, or used (at most once a minute). */
+	/** A personal access token of `userId` was minted, revoked, had its project list changed, or was used (at most once a minute). */
 	"credential.tokenChanged": {
 		userId: string;
 		tokenId: string;
-		change: "created" | "revoked" | "used";
+		change: "created" | "revoked" | "used" | "fenced";
 		ts: string;
 	};
 	/** A runner row changed; `data` is what its rooms are told, `runnerRoom` whether the runner's own room is too. */

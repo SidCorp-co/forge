@@ -32,7 +32,7 @@ const blueprintTypes: TemplateNodeType[] = [
   {
     id: 'FRONTSTAGE',
     label: 'Frontstage',
-    tooltip: 'What staff or the product do in front of the customer, on a channel (`channel`).',
+    tooltip: 'What staff or the product do before the customer, on a `channel`.',
     icon: 'monitor',
     colour: 'blue',
     required: ['label', 'owner', 'channel'],
@@ -115,7 +115,7 @@ const blueprintKinds: TemplateEdgeKind[] = [
   {
     id: 'flow',
     label: 'Flow',
-    tooltip: 'The next step. A customer action reaches a system only through the frontstage.',
+    tooltip: 'The next step; customers reach systems only through the frontstage.',
     direction: 'forward',
     required: [],
     toTypes: ACTING,

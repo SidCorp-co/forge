@@ -18,7 +18,7 @@ import type { CoolifyTargetInput, IntegrationSummary } from "../../types";
 import { providerLabel } from "../registry";
 import { healthBadge, OrgLockedNote, ProviderCard, TestOutcome, useBindingTest } from "../shared";
 import type { CoolifyReadConfig } from "./config";
-import { DeployConfirmationHint, ProdGateSection } from "./gates";
+import { ProdGateSection } from "./gates";
 import { CoolifyTargetsField } from "./targets-field";
 
 const NEW_BINDING = "new";
@@ -191,7 +191,6 @@ function CoolifyServerFields(p: {
   return (
     <fieldset className="flex flex-col gap-3 border-t border-line-subtle pt-3">
       <legend className="fg-label px-1 text-subtle">{t("integrations.coolify.server")}</legend>
-      <p className="fg-body-sm text-muted">{t("integrations.coolify.serverIntro")}</p>
       {!p.existing && <ConnectionOwnerField projectId={p.projectId} value={p.ownerOrgId} onChange={p.setOwnerOrgId} />}
       <Field label={t("integrations.gitlab.baseUrl")} required>
         <Input
@@ -204,7 +203,7 @@ function CoolifyServerFields(p: {
       </Field>
       <Field
         label={t("integrations.coolify.token")}
-        hint={p.existing ? t("integrations.provider.tokenStored") : t("integrations.coolify.tokenHint")}
+        hint={p.existing ? t("integrations.provider.tokenStored") : undefined}
         required={!p.existing}
       >
         <Input
@@ -282,7 +281,6 @@ function PanelActions({
           </>
         )}
       </div>
-      {existing && <DeployConfirmationHint />}
       {existing && (
         <ProdGateSection
           integrationId={existing.id}

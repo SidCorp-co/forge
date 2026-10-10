@@ -22,9 +22,9 @@ describe("the What's new panel", () => {
     expect(screen.getByTestId("release-media-clip")).toHaveAttribute("src", expect.stringContaining("/api/attachments/"));
   });
 
-  it("says plainly when no release carries this build, naming the environment", () => {
+  it("says plainly when no release carries this build", () => {
     open(feedOf(null, "beta"));
-    expect(screen.getByTestId("whats-new-none")).toHaveTextContent("This beta instance is running a build that is no release yet");
+    expect(screen.getByTestId("whats-new-none")).toHaveTextContent("Nothing new");
     expect(screen.queryByTestId("page-highlights")).toBeNull();
   });
 

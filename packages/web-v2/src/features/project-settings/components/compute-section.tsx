@@ -29,11 +29,10 @@ export function ComputeSection({ projectId, slug, canEdit }: { projectId: string
     const held = Object.values(choices).some((v) => v !== undefined);
     draft.set(["compute"], on ? { ...choices, enabled: true } : held ? { ...choices, enabled: false } : undefined);
   };
-  const choice = (key: "thirdParty" | "zdrOnly", label: string, effect: string) => (
+  const choice = (key: "thirdParty" | "zdrOnly", label: string) => (
     <SettingRow
       inline
       label={label}
-      effect={effect}
       refusals={draft.refusedAt(["compute", key])}
       control={<Toggle checked={compute[key] === true} disabled={off || !enabled} aria-label={label} onChange={(v) => draft.set(["compute", key], v ? true : undefined)} />}
     />
@@ -41,16 +40,15 @@ export function ComputeSection({ projectId, slug, canEdit }: { projectId: string
   return (
     <div data-testid="compute-section">
       {!draft.declared && <UndeclaredNotice slug={slug} />}
-      <SettingGroup id="compute" title={t("settings.project.compute.title")} lead={t("settings.project.compute.lead")}>
+      <SettingGroup id="compute" title={t("settings.project.compute.title")}>
         <SettingRow
           inline
           label={t("settings.project.compute.enabled")}
-          effect={t("settings.project.compute.enabledEffect")}
           refusals={draft.refusedAt(["compute"]).filter((r) => r.path === "/compute" || r.path === "/compute/enabled")}
           control={<Toggle checked={enabled} disabled={off} aria-label={t("settings.project.compute.enabled")} onChange={setEnabled} />}
         />
-        {choice("thirdParty", t("settings.project.compute.thirdParty"), t("settings.project.compute.thirdPartyEffect"))}
-        {choice("zdrOnly", t("settings.project.compute.zdrOnly"), t("settings.project.compute.zdrOnlyEffect"))}
+        {choice("thirdParty", t("settings.project.compute.thirdParty"))}
+        {choice("zdrOnly", t("settings.project.compute.zdrOnly"))}
       </SettingGroup>
       {draft.declared && <SaveBar section={section} canEdit={canEdit} />}
     </div>

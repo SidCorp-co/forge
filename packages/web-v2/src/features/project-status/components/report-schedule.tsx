@@ -147,7 +147,7 @@ function NewSchedule({ projectId }: { projectId: string }) {
           <Input id="status-schedule-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} required />
         </Field>
       </div>
-      <Field label={t("status.schedule.recipients")} hint={t("status.schedule.recipientsHint")}>
+      <Field label={t("status.schedule.recipients")}>
         <ul className="grid gap-1.5">
           {(members.data ?? []).map((m) => (
             <li key={m.userId}>

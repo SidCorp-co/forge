@@ -61,10 +61,9 @@ export function GitlabSection({ projectId }: { projectId: string }) {
 
   return (
     <ProviderCard title="GitLab" badge={activeBadge(existing, t)}>
-      <p className="fg-body-sm text-muted">{t("integrations.gitlab.intro")}</p>
       <Field
         label={t("integrations.autoflow.token")}
-        hint={existing ? t("integrations.provider.tokenStored") : t("integrations.gitlab.tokenHint")}
+        hint={existing ? t("integrations.provider.tokenStored") : undefined}
         required={!existing}
       >
         <Input
@@ -78,7 +77,7 @@ export function GitlabSection({ projectId }: { projectId: string }) {
       </Field>
       {orgLocked && <OrgLockedNote />}
       {!existing && <ConnectionOwnerField projectId={projectId} value={b.ownerOrgId} onChange={b.setOwnerOrgId} />}
-      <Field label={t("integrations.gitlab.baseUrl")} hint={t("integrations.gitlab.baseUrlHint")}>
+      <Field label={t("integrations.gitlab.baseUrl")}>
         <Input
           value={form.baseUrl}
           onChange={(e) => set("baseUrl", e.target.value)}
@@ -86,7 +85,7 @@ export function GitlabSection({ projectId }: { projectId: string }) {
           disabled={orgLocked}
         />
       </Field>
-      <Field label={t("integrations.gitlab.path")} hint={t("integrations.gitlab.pathHint")} required>
+      <Field label={t("integrations.gitlab.path")} required>
         <Input
           value={form.projectPath}
           onChange={(e) => {

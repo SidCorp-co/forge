@@ -127,11 +127,7 @@ export function OpsMonitor() {
         <RoomSub key={p.id} room={projectRoom(p.id)} />
       ))}
 
-      <PageTitle
-          hint={`Cross-project run telemetry, step durations, and spend — live across ${projects.length} project${projects.length === 1 ? "" : "s"}.`}
-        >
-          Ops
-        </PageTitle>
+      <PageTitle>Ops</PageTitle>
       <TopBarActions>
         <HelpButton
           summary="A live cross-project view of pipeline runs: real-time monitor, throughput and stage-duration progress, project health, and a recent-runs list."

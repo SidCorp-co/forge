@@ -56,11 +56,9 @@ export function FeedbackPicker({
   const items = [...found, ...picked.filter((v) => !found.some((f) => f.key === v.key))];
   const status = list.isLoading
     ? t("feedback.picker.loading")
-    : q.length === 0
-      ? t("feedback.picker.hint")
-      : list.isSuccess && found.length === 0
-        ? t("feedback.picker.none", { text: q })
-        : null;
+    : q.length > 0 && list.isSuccess && found.length === 0
+      ? t("feedback.picker.none")
+      : null;
 
   return (
     <Combobox.Root

@@ -35,10 +35,7 @@ const note = z
 
 export const reviewChecklistResultSchema = z.strictObject({
 	/** The catalog slug of a pattern the issue's design chose. */
-	pattern: z
-		.string()
-		.trim()
-		.regex(PATTERN_SLUG_PATTERN, "pattern is a catalog slug"),
+	pattern: z.string().trim().regex(PATTERN_SLUG_PATTERN, "pattern is a catalog slug"),
 	/** The checklist line's number on that pattern's page, from 1. */
 	line: z.number().int().min(1),
 	result: z.enum(REVIEW_LINE_RESULTS),
@@ -66,20 +63,18 @@ export const recordReviewRequestSchema = z.strictObject({
 	/** The diff reviewed is `base..head`. */
 	base: wholeShaSchema("base"),
 	head: wholeShaSchema("head"),
-	/** When the review began: its time is counted with the issue's checks (REQ-36 BC-14). */
-	startedAt: z.iso.datetime({
-		offset: true,
-		error: "startedAt is when the review began, an ISO 8601 date-time",
-	}),
 	checklist: z.array(reviewChecklistResultSchema).max(REVIEW_LIMITS.lines),
 	criteria: z.array(reviewCriterionResultSchema).max(REVIEW_LIMITS.criteria),
 	/** The run making the call, where the box's runs share one credential. */
 	run: z.string().trim().min(1).max(200).optional(),
+	/** When the review began, so its time is counted with the issue's checks; absent, the reviewing
+	 *  run's start is taken, and a person's review with neither is recorded untimed. */
+	startedAt: z.iso.datetime({ offset: true, error: "startedAt is an ISO 8601 date-time" }).optional(),
 });
 export type RecordReviewRequest = z.infer<typeof recordReviewRequestSchema>;
 
 export const RECORD_REVIEW_SHAPE =
-	"{ base: <40 hex>, head: <40 hex>, startedAt: <ISO 8601>, checklist: [{ pattern, line, result: pass | fail | not_applicable, note }], criteria: [{ criterion, result: pass | fail, reason, evidence: [..] }], run? }";
+	"{ base: <40 hex>, head: <40 hex>, checklist: [{ pattern, line, result: pass | fail | not_applicable, note }], criteria: [{ criterion, result: pass | fail, reason, evidence: [..] }], run?, startedAt?: ISO 8601 }";
 
 /** A merge mark where a review is owed and no passing one by another than the builder stands at the commit. */
 export const MERGE_REVIEW_MISSING = "MERGE_REVIEW_MISSING" as const;
@@ -97,8 +92,7 @@ export const ISSUE_REVIEW_REFUSAL_CODES = [
 	"REVIEW_ISSUE_FINISHED",
 	...PERMISSION_REFUSAL_CODES,
 ] as const;
-export type IssueReviewRefusalCode =
-	(typeof ISSUE_REVIEW_REFUSAL_CODES)[number];
+export type IssueReviewRefusalCode = (typeof ISSUE_REVIEW_REFUSAL_CODES)[number];
 
 /** The record's `result`: pass where every line and criterion holds, else fail. */
 export const REVIEW_OUTCOMES = ["pass", "fail"] as const;

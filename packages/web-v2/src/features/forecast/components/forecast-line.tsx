@@ -13,7 +13,7 @@ export function ScopeForecastLine({ scope }: { scope: ScopeForecast }) {
   const t = useCopy();
   const { line, detail } = scopeText(scope, clock);
   const honest = honestyLine(scope.delivery, scope.moved, t, clock.lang);
-  const anchored = t("fc.anchoredHint", { at: formatDateTime(scope.anchor.at, clock.lang, clock.timeZone), event: said(scope.anchor.event, clock.lang) });
+  const anchored = t("fc.anchoredAt", { at: formatDateTime(scope.anchor.at, clock.lang, clock.timeZone), event: said(scope.anchor.event, clock.lang) });
   return (
     <span className="fg-body-sm text-muted" title={`${detail}\n${anchored}`} data-testid="scope-forecast-line" data-kind={scope.forecast?.kind ?? "empty"}>
       {line}

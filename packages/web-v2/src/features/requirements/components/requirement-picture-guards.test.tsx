@@ -80,7 +80,7 @@ describe("a kind change that would drop a drawn picture asks first (criteria 14,
     fireEvent.change(await screen.findByRole("combobox", { name: "What this requirement is" }), { target: { value: "screen" } });
     const ask = await screen.findByRole("alertdialog");
     expect(ask).toHaveTextContent("Make this a screen requirement?");
-    expect(ask).toHaveTextContent("The example table Lan drew is removed");
+    expect(ask).toHaveTextContent("Removes the example table Lan drew");
     fireEvent.click(within(ask).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(puts(calls)).toEqual([]);
@@ -95,7 +95,7 @@ describe("a kind change that would drop a drawn picture asks first (criteria 14,
     fireEvent.change(await screen.findByRole("combobox", { name: "What this requirement is" }), { target: { value: "screen" } });
     fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Change it and remove the picture" }));
     await waitFor(() => expect(puts(calls)).toEqual([{ path: "revisions/1/kind", body: { kind: "screen" } }]));
-    expect(await screen.findByText(/No wireframe is drawn yet/)).toBeInTheDocument();
+    expect(await screen.findByText("No wireframe")).toBeInTheDocument();
   });
 
   it("asks nothing where no picture is drawn", async () => {
@@ -153,7 +153,7 @@ describe("the wireframe editor never replaces a drawn board with an empty one (c
     fireEvent.click(await screen.findByRole("button", { name: "Replace the wireframe" }));
     await screen.findByTestId("board-editor-stub");
     fireEvent.click(screen.getByRole("button", { name: "Save the picture" }));
-    expect(await screen.findByText("The board is empty. Draw the wireframe on it, or cancel to keep the one shown.")).toBeInTheDocument();
+    expect(await screen.findByText("Empty board")).toBeInTheDocument();
     expect(puts(calls)).toEqual([]);
   });
 });
@@ -173,7 +173,7 @@ describe("the board names what it cannot keep (criterion 18)", () => {
     await screen.findByTestId("board-editor-stub");
     fireEvent.change(screen.getByRole("textbox", { name: /Text alternative/ }), { target: { value: "A frame." } });
     fireEvent.click(screen.getByRole("button", { name: "Save the picture" }));
-    expect(await screen.findByText(`The board holds ${named}, which a wireframe does not keep. Use boxes, text, arrows and pen strokes.`)).toBeInTheDocument();
+    expect(await screen.findByText(`A wireframe does not keep ${named}; use boxes, text, arrows, pen.`)).toBeInTheDocument();
     expect(puts(calls)).toEqual([]);
   });
 });
@@ -192,8 +192,8 @@ describe("a process that links a workflow (criteria 19, 20)", () => {
     picture(detail({ kind: "process" }, { workflows: [CHECKOUT_LINK], traces: [{ code: "BC-1", workflowId: "w1", flow: "checkout", steps: ["shipping"], edges: [{ from: "cart", to: "shipping" }] }] }));
     await screen.findByTestId("canvas-stub");
     const f = screen.getByRole("figure");
-    expect(f).toHaveAccessibleName("The Checkout workflow. None of the steps its criteria trace is in its current design: shipping.");
-    expect(within(f).getByText("None of the steps its criteria trace is in this workflow's current design, so nothing is lit.")).toBeInTheDocument();
+    expect(f).toHaveAccessibleName("The Checkout workflow; none of its traced steps remain: shipping.");
+    expect(within(f).getByText("No traced step is in the current design.")).toBeInTheDocument();
     expect(canvases.at(-1)?.highlight ?? null).toBeNull();
   });
 

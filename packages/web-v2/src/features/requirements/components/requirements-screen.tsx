@@ -30,6 +30,7 @@ import { useChatDock } from "@/features/chat-dock/dock";
 import { useWorkflows } from "@/features/workflows/hooks";
 import { REQUIREMENTS_LIST, requirementHref } from "@/lib/routes/requirements";
 import type { RequirementSummary } from "../types";
+import { REQUIREMENT_TITLE_MAX } from "@forge/contracts/title-text";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
 import { ListFilterBar, useListNarrowing } from "@/features/chat-dock/list-filter-bar";
 import { RequirementPeek } from "./requirement-peek";
@@ -58,7 +59,7 @@ export function CreateRequirementForm({ projectId, onDone }: { projectId: string
       }}
     >
       <Field label={t("requirements.form.title")} error={refused.at("title")} required>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={REQUIREMENT_TITLE_MAX} autoFocus />
       </Field>
       <RefusalLine error={create.error} onField={refused.onField} />
       <div className="flex gap-2">
@@ -265,8 +266,7 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
               {all.length === 0 ? (
                 <div className="px-5 py-10">
                   <EmptyState
-                    title={t("requirements.emptyTitle")}
-                    message={t("requirements.emptyMessage")}
+                    message={t("requirements.empty")}
                     action={
                       dock && approvedDesigns > 0
                         ? { label: t("requirements.draftFromDesigns", { n: approvedDesigns }), onClick: () => dock.show({ kind: "draft", projectId, draft: t("requirements.draftFromDesignsAsk") }) }

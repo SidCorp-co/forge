@@ -127,7 +127,7 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
                 <ComingNext next={comingQ.data} draft={all.find((r) => r.state === "draft")} slug={slug} clock={clock} />
                 {all.length === 0 ? (
                   <div className="px-5 py-10">
-                    <EmptyState title={t("releases.emptyTitle")} message={t("releases.emptyMessage")} />
+                    <EmptyState message={t("releases.emptyTitle")} />
                   </div>
                 ) : (
                   <>

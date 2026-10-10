@@ -167,6 +167,8 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   '/api/shares':
     "a share is opened by the token in the request body, by anyone for a link share and by a signed-in member's session for a members share; a personal or agent token never opens one",
   '/api/webhooks': 'signed by the sender: the HMAC over the body is the credential',
+  '/api/mcp-relay':
+    'ticket-authenticated: the relay ticket core minted for one integration binding is the credential; no personal or agent token opens it',
   '/api/devices/me': DEVICE,
   '/api/devices/heartbeat': DEVICE,
   '/api/devices/login/init': DEVICE,

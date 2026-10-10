@@ -64,11 +64,9 @@ function UsesGroup({ d }: { d: LinkRecord["document"] }) {
             Outside the contract
           </h4>
           {d.outsideContract.map((o) => (
-            <Tooltip key={o} label="The contract does not publish this, so a provider change here breaks the consumer without notice" multiline>
-              <span className="font-mono text-11-5" style={{ color: "var(--amberw-600)" }}>
-                {o}
-              </span>
-            </Tooltip>
+            <span key={o} className="font-mono text-11-5" style={{ color: "var(--amberw-600)" }}>
+              {o}
+            </span>
           ))}
         </>
       ) : null}

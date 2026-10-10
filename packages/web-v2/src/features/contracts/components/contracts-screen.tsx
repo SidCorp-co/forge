@@ -34,14 +34,14 @@ import { versionLine, WindowText } from "./contract-bits";
 import { ContractPeek } from "./contract-peek";
 
 const GROUP_MODES = [
-  { value: "attention" as const, label: "Attention", title: "Grouped by whose turn it is" },
-  { value: "direction" as const, label: "Direction", title: "Grouped by what this project provides and what it consumes" },
+  { value: "attention" as const, label: "Attention" },
+  { value: "direction" as const, label: "Direction" },
 ];
 type GroupMode = (typeof GROUP_MODES)[number]["value"];
 
 const modesIn = (t: Copy) => [
-  { value: "attention" as const, label: t("contracts.mode.attention"), title: t("contracts.mode.attentionTitle") },
-  { value: "direction" as const, label: t("contracts.mode.direction"), title: t("contracts.mode.directionTitle") },
+  { value: "attention" as const, label: t("contracts.mode.attention") },
+  { value: "direction" as const, label: t("contracts.mode.direction") },
 ];
 
 const columnsIn = (t: Copy) => ({ key: t("contracts.col.key"), title: t("contracts.col.title"), state: t("contracts.col.state"), meta: t("contracts.col.meta") });
@@ -131,16 +131,13 @@ export function ContractsScreen({ projectId, slug }: { projectId: string; slug: 
               <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
                 <ViewModeSwitcher modes={modes} value={mode} onChange={setMode} placement="toolbar" />
                 <ListSearch noun={t("contracts.searchNoun")} value={text} onChange={(v) => setParams({ q: v || null })} />
-                <span className="ml-auto text-12 text-subtle" title={t("contracts.declaredTitle")}>
+                <span className="ml-auto text-12 text-subtle">
                   {data.declared ? t("contracts.declared") : t("contracts.undeclared")}
                 </span>
               </div>
               {all.length === 0 ? (
                 <div className="px-5 py-10">
-                  <EmptyState
-                    title={t("contracts.empty.title")}
-                    message={t("contracts.empty.message")}
-                  />
+                  <EmptyState message={t("contracts.empty.title")} />
                 </div>
               ) : (
                 <GroupedList

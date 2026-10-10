@@ -89,6 +89,8 @@ export function withGapsFilled(
     owner: 'BA assistant',
     confirmBy: 'The author corrects the draft where it is wrong',
     source: f.source,
+    field: f.field,
+    value: f.value.slice(0, 2_000),
   }));
   if (assumed.length) spec.assumptions = [...(draft.spec.assumptions ?? []), ...assumed];
   return {

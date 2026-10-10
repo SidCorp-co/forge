@@ -9,6 +9,7 @@ import {
   type ForecastRange,
   type ReleaseLeg,
 } from '@forge/contracts/forecast';
+import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import { ROADMAP_HORIZONS } from '@forge/contracts/project-status';
 import {
   defineReportQuery,
@@ -17,6 +18,7 @@ import {
   type ReportFrame,
 } from '@forge/contracts/report-queries';
 import { z } from 'zod';
+import { counted } from '../lib/plural.js';
 import { readProjectStatus } from '../project-status/index.js';
 import { defineAdapter, type ReportQueryAdapter } from './adapter.js';
 
@@ -43,18 +45,20 @@ function landingBasis(f: ForecastRange): string {
   const keys = f.aheadKeys.join(', ');
   const more = f.ahead > f.aheadKeys.length ? ', …' : '';
   return [
-    f.ahead > 0 ? `${f.ahead} ahead${keys ? ` (${keys}${more})` : ''}` : 'nothing ahead',
+    f.ahead > 0
+      ? `${counted(f.ahead, 'issue')} ahead${keys ? ` (${keys}${more})` : ''}`
+      : 'nothing ahead',
     f.waitsOn.length > 0 ? `waits on ${f.waitsOn.join(', ')} to land first` : null,
-    `read from ${f.basis.n} issues landed in the last ${f.basis.windowDays} days`,
+    `read from ${counted(f.basis.n, 'issue')} landed in the last ${counted(f.basis.windowDays, 'day')}`,
   ]
     .filter((p): p is string => p !== null)
     .join('; ');
 }
 
 const releaseBasis = (leg: ReleaseLeg | null): string | null => {
-  if (leg?.kind === 'automatic') return `release lag read from ${leg.basis.n} releases`;
+  if (leg?.kind === 'automatic') return `release lag read from ${counted(leg.basis.n, 'release')}`;
   if (leg?.kind === 'not_enough_history')
-    return `release not forecast: ${leg.n} of ${leg.floor} releases on record`;
+    return `release not forecast: ${leg.n} of ${counted(leg.floor, 'release')} on record`;
   if (leg?.kind === 'person') return `then ${leg.who} to ${leg.act}`;
   return null;
 };
@@ -106,9 +110,11 @@ export function etaOf(delivery: DeliveryForecast | null): {
     case 'paused':
       return none(`waits on ${landing.who} to ${landing.act}`);
     case 'not_enough_history':
-      return none(`not enough history, ${landing.n} of ${landing.floor} landed issues`);
+      return none(`not enough history, ${landing.n} of ${counted(landing.floor, 'landed issue')}`);
     case 'ended':
-      return none(`ended (${landing.status})`);
+      return none(
+        `ended (${((ISSUE_STATUS_LABELS as Record<string, string>)[landing.status] ?? landing.status).toLowerCase()})`,
+      );
     case 'landed':
       return release?.kind === 'person'
         ? none(`landed, waits on ${release.who} to ${release.act}`)

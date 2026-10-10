@@ -33,17 +33,17 @@ export function WorkflowPicture({ projectId, slug, traced }: { projectId: string
   const names = record ? record.document.steps.filter((s) => shown.steps.has(s.id)).map((s) => s.node?.label ?? s.title ?? s.id) : [];
   const gone = shown.gone.join(", ");
   let alt = t("requirements.picture.workflow.altNone", { title: w.title });
-  let legend = t("requirements.picture.workflow.untraced");
+  let legend: string | null = t("requirements.picture.workflow.untraced");
   if (lit) {
     alt = t("requirements.picture.workflow.alt", { title: w.title, steps: names.join(", ") });
-    legend = t("requirements.picture.workflow.legend");
+    legend = null;
   } else if (traces) {
     alt = t("requirements.picture.workflow.altGone", { title: w.title, steps: gone });
     legend = t("requirements.picture.workflow.allGone");
   }
   const head = (
     <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
-      <span>{legend}</span>
+      {legend ? <span>{legend}</span> : null}
       {lit && shown.gone.length > 0 ? <span>{t("requirements.picture.workflow.someGone", { steps: gone })}</span> : null}
       <Link href={workflowHref(slug, w.flow)} className="font-semibold text-link hover:underline">
         {t("requirements.picture.workflow.open")}

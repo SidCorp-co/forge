@@ -196,6 +196,7 @@ function runPart(b: BaseRun, lane: RunFacts['run']['rawLane'], t: Tables): RunFa
     openPhase: str(phase?.phase) ?? undefined,
     pauseReason: str(metadataObject(b.metadata).pauseReason),
     releaseVersion: b.release_version,
+    boxRunId: str(metadataObject(b.metadata).boxRunId) ?? null,
     declarationRefusal: declarationRefusalOf(metadataObject(b.metadata).declarationRefusal),
   };
 }

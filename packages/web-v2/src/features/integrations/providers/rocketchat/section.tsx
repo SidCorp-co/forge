@@ -11,7 +11,7 @@ import { useMemo, useState } from "react";
 import { AgentAccessControl } from "../../components/agent-access-control";
 import { useIntegrationsList, useOrgConnectionLocked, useUpdateProviderIntegration } from "../../hooks";
 import type { IntegrationSummary } from "../../types";
-import { BindingRowActions, healthBadge, OrgLockedNote, TestOutcome, Ticked, useBindingTest } from "../shared";
+import { BindingRowActions, healthBadge, OrgLockedNote, TestOutcome, useBindingTest } from "../shared";
 import { AddRocketchatForm } from "./add-form";
 import type { RocketchatReadConfig } from "./config";
 import { RoomsField } from "./rooms-field";
@@ -70,9 +70,6 @@ function RocketchatBindingPanel({ projectId, binding }: { projectId: string; bin
         <span className="fg-body-sm font-semibold">{cfg.serverUrl ?? "Rocket.Chat"}</span>
         <Badge tone={badge.tone}>{badge.label}</Badge>
       </div>
-      <p className="fg-body-sm text-muted">
-        <Ticked text={t("integrations.rocket.intro")} />
-      </p>
       <TestOutcome error={test.error} result={test.result} okFallback={t("integrations.rocket.ok")} />
       <RoomsField
         projectId={projectId}
@@ -120,7 +117,7 @@ function RotateFields(p: {
   const t = useCopy();
   return (
     <>
-      <Field label={t("integrations.rocket.newToken")} hint={t("integrations.rocket.newTokenHint")}>
+      <Field label={t("integrations.rocket.newToken")}>
         <Input
           type="password"
           autoComplete="new-password"
@@ -129,7 +126,7 @@ function RotateFields(p: {
           onChange={(e) => p.onAuthToken(e.target.value)}
         />
       </Field>
-      <Field label={t("integrations.rocket.userId")} hint={t("integrations.rocket.userIdRotateHint")}>
+      <Field label={t("integrations.rocket.userId")}>
         <Input placeholder={t("integrations.rocket.userIdPlaceholder")} value={p.botUserId} onChange={(e) => p.onBotUserId(e.target.value)} />
       </Field>
     </>

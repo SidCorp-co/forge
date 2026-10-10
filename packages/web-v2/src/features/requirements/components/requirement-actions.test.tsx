@@ -41,7 +41,7 @@ describe("Agree on a draft requirement", () => {
     await user.hover(agree().closest('[data-slot="tooltip-trigger"]') as HTMLElement);
     await waitFor(() =>
       expect(document.querySelector('[data-slot="tooltip-content"]')).toHaveTextContent(
-        "not approved: Checkout (proposed), Refund (no design yet)",
+        "not approved: Checkout (proposed), Refund (no design)",
       ),
     );
     await user.click(agree());

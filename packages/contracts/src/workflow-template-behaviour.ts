@@ -34,7 +34,7 @@ export const uxFlow: WorkflowTemplate = {
       id: 'SCREEN',
       label: 'Screen',
       tooltip:
-        'A screen: who it is for (`persona`), its `route`, the `wireframe` drawn for it and the `actions` it offers. One that shows data has its empty, loading and error states.',
+        'A screen: `persona`, `route`, `wireframe`, `actions`, and its empty, loading, error states.',
       icon: 'monitor',
       colour: 'blue',
       required: ['label', 'persona', 'route', 'wireframe', 'actions'],
@@ -60,7 +60,7 @@ export const uxFlow: WorkflowTemplate = {
       id: 'USER_ACTION',
       label: 'User action',
       tooltip:
-        'What the person does, and where it leads: no action is a dead end. It links to the business step it triggers.',
+        'What the person does and where it leads, triggering a business step.',
       icon: 'pointer',
       colour: 'green',
       required: ['label'],
@@ -110,7 +110,7 @@ export const uxFlow: WorkflowTemplate = {
     {
       id: 'flow',
       label: 'Flow',
-      tooltip: 'The person goes on: a screen offers an action, an action reaches the system.',
+      tooltip: 'The person goes on: a screen, an action, the system.',
       direction: 'forward',
       required: [],
       line: 'solid',
@@ -182,7 +182,7 @@ const machineTypes: TemplateNodeType[] = [
   {
     id: 'STATE',
     label: 'State',
-    tooltip: 'A state the subject is in. Every state but a final one has a way out.',
+    tooltip: 'A state the subject is in; non-final ones have a way out.',
     icon: 'circle-dot',
     colour: 'blue',
     required: ['label'],
