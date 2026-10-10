@@ -1,7 +1,7 @@
 "use client";
 
 // An uploaded `text/html` attachment, rendered inline as an artifact instead of
-// being offered as a download. The bytes are fetched here rather than pointed at
+// being offered as a download. The bytes are read (api.ts) rather than pointed at
 // with an iframe `src`: the download route sets `Content-Disposition: attachment`
 // on html (`lib/attachment-headers.ts`), which a framed navigation obeys but
 // `fetch` does not — so this is the only way to show the page without weakening
@@ -10,14 +10,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { HtmlArtifact, Icon, Spinner } from "@/design";
 import { coreFileUrl } from "@/lib/utils/core-url";
+import { attachmentQueries } from "../api";
 
 const MAX_BYTES = 2 * 1024 * 1024;
-
-async function fetchArtifact(url: string): Promise<string> {
-  const res = await fetch(coreFileUrl(url), { credentials: "include" });
-  if (!res.ok) throw new Error(`${res.status}`);
-  return await res.text();
-}
 
 export function HtmlAttachment({
   name,
@@ -29,12 +24,7 @@ export function HtmlAttachment({
   size: number;
 }) {
   const oversize = size > MAX_BYTES;
-  const q = useQuery({
-    queryKey: ["attachment-html", url],
-    queryFn: () => fetchArtifact(url),
-    enabled: !oversize,
-    staleTime: 5 * 60 * 1000,
-  });
+  const q = useQuery(attachmentQueries.html(url, !oversize));
 
   if (oversize || q.isError) {
     return (
