@@ -12,7 +12,8 @@ import { useAuth } from "@/providers/auth-provider";
 // (signed in) or hand off to login/register (signed out).
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Suspense, useState } from "react";
 
 interface InviteInfo {
   /** Project invites carry projectName; org invites carry orgName. */
@@ -47,20 +48,20 @@ function AcceptInvite() {
   const isOrg = params.get("kind") === "org";
   const base = isOrg ? "/org-invitations" : "/invitations";
 
-  const [info, setInfo] = useState<InviteInfo | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const infoQ = useQuery({
+    queryKey: ["invitation", base, token],
+    queryFn: () => apiClient<InviteInfo>(`${base}/${encodeURIComponent(token)}`),
+    enabled: token !== "",
+    retry: false,
+  });
+  const info = infoQ.data ?? null;
+  const loadError = !token
+    ? (ERROR_COPY.INVALID_TOKEN ?? "Missing invitation token.")
+    : infoQ.isError
+      ? inviteCopy(infoQ.error)
+      : null;
   const [acceptError, setAcceptError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
-
-  useEffect(() => {
-    if (!token) {
-      setLoadError(ERROR_COPY.INVALID_TOKEN ?? "Missing invitation token.");
-      return;
-    }
-    apiClient<InviteInfo>(`${base}/${encodeURIComponent(token)}`)
-      .then(setInfo)
-      .catch((err) => setLoadError(inviteCopy(err)));
-  }, [token, base]);
 
   async function accept() {
     setAccepting(true);
@@ -132,7 +133,7 @@ function AcceptInvite() {
               variant="primary"
               className="w-full"
               loading={accepting}
-              onClick={accept}
+              onClick={() => void accept()}
             >
               Accept invitation
             </Button>

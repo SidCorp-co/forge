@@ -5,7 +5,7 @@ import { QueryProvider } from "@/providers/query-provider";
 import { AuthProvider } from "@/providers/auth-provider";
 import { WsMount } from "@/providers/ws-mount";
 import { ToastProvider } from "@/providers/toast-provider";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/design";
 import { SentryInit } from "@/providers/sentry-init";
 import { RouteProgress } from "@/design/patterns/route-progress";
 import "./globals.css";

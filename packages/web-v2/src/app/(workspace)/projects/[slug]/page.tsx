@@ -83,7 +83,7 @@ export default function ProjectOverviewPage() {
   if (projectsQ.isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState title={t("dash.loadFailed")} message={formatApiError(projectsQ.error)} onRetry={() => projectsQ.refetch()} />
+        <ErrorState title={t("dash.loadFailed")} message={formatApiError(projectsQ.error)} onRetry={() => void projectsQ.refetch()} />
       </div>
     );
   }
