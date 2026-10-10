@@ -1,1 +1,1 @@
-**Chat reaches models only through the gateway, and drives the preview beside it.** The direct Anthropic adapter is gone, a change asked in chat reaches the open idea preview, and a filter searches only words said.
+**Chat reaches models only through the gateway and does more from one conversation.** It edits an open idea preview, records feedback from a requirement's room, and reports read cleaner; masters write in the project's language.
