@@ -4,7 +4,7 @@ import { Button, PageTitle, TopBarActions, useViewMode, type ViewMode, ViewModeS
 import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useProjectModules } from "../hooks";
 import { IssuesBoard } from "./issues-board";
@@ -61,7 +61,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
 
   // Closing drops `new` from this entry and keeps the rest, so Back and reload stay shut. The state
   // is `null` because Next skips syncing `useSearchParams` for a state carrying its `__NA` mark.
-  const closeNew = useCallback(() => {
+  const closeNew = () => {
     setNewOpen(false);
     if (typeof window === "undefined") return;
     const sp = new URLSearchParams(window.location.search);
@@ -69,7 +69,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
     sp.delete("new");
     const qs = sp.toString();
     window.history.replaceState(null, "", `${pathname}${qs ? `?${qs}` : ""}`);
-  }, [pathname]);
+  };
 
   // the Table draws its rows from the issue list, which carries no project rule; the standing read
   // (shared with the grouped views' cache) says whether a release needs a person's approval

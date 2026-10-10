@@ -7,7 +7,7 @@
 // fallback for a dropped socket.
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -138,8 +138,7 @@ export function useAnswerProjectQuestion(projectId: string) {
  */
 export function useAnsweringQuestions(send: (input: AnswerInput) => Promise<unknown>) {
   const [answering, setAnswering] = useState<ReadonlySet<string>>(() => new Set());
-  const answer = useCallback(
-    (input: AnswerInput, onAnswered?: (input: AnswerInput) => void) => {
+  const answer = (input: AnswerInput, onAnswered?: (input: AnswerInput) => void) => {
       setAnswering((prev) => new Set(prev).add(input.questionId));
       Promise.resolve(send(input))
         .then(
@@ -153,8 +152,6 @@ export function useAnsweringQuestions(send: (input: AnswerInput) => Promise<unkn
             return next;
           }),
         );
-    },
-    [send],
-  );
+    };
   return { answering, answer };
 }

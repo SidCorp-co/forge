@@ -103,7 +103,7 @@ export function ContextRail({
 
   const usage = session.usage ?? {};
   const files = deriveFilesChanged(items);
-  const agentTasks = useMemo(() => deriveAgentTasks(items), [items]);
+  const agentTasks = deriveAgentTasks(items);
   const isPipeline = isJobDriven(session);
   // Only a run session's run is opened by the box with its gate condition (ISS-1192).
   const isRunSession = sessionKind(session) === "run_session";
@@ -127,12 +127,12 @@ export function ContextRail({
 
   const issueId = session.metadata?.issueId;
   const siblingsQ = useSessions({ projectId: session.projectId });
-  const siblings = useMemo(() => {
+  const siblings = (() => {
     if (!issueId) return [];
     return (siblingsQ.data?.items ?? []).filter(
       (s) => s.id !== session.id && s.metadata?.issueId === issueId,
     );
-  }, [siblingsQ.data, issueId, session.id]);
+  })();
 
   // Real per-session cost from usage_records (ISS-378 AC#6) — the session row
   // itself carries no dollar cost/model.

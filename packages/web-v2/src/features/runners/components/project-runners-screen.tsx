@@ -30,7 +30,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { CopyButton } from "./runners-screen";
 import { RunnerRow } from "./runner-row/runner-row";
 import {
@@ -64,13 +64,9 @@ function AssignDevice({
 	const t = useCopy();
 	const language = useInterfaceLanguage();
 
-	const available = useMemo(
-		() =>
-			(devices.data ?? []).filter(
+	const available = (devices.data ?? []).filter(
 				(d) => d.status !== "revoked" && !assignedDeviceIds.has(d.id),
-			),
-		[devices.data, assignedDeviceIds],
-	);
+			);
 
 	const options = [
 		{ value: "", label: t("runners.assign.select") },
@@ -171,18 +167,10 @@ export function ProjectRunnersScreen({
 	const t = useCopy();
 
 	const rows = runners.data ?? [];
-	const assignedDeviceIds = useMemo(
-		() =>
-			new Set(rows.map((r) => r.deviceId).filter((id): id is string => !!id)),
-		[rows],
-	);
-	const currentByRunner = useMemo(
-		() =>
-			new Map(
+	const assignedDeviceIds = new Set(rows.map((r) => r.deviceId).filter((id): id is string => !!id));
+	const currentByRunner = new Map(
 				(active.data?.runners ?? []).map((r) => [r.runnerId, r.current]),
-			),
-		[active.data],
-	);
+			);
 
 	const body = (
 		<>

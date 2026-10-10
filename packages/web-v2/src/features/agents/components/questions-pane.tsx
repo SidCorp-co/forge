@@ -8,7 +8,7 @@
 // What stays is the case nothing else can show — a MASTER's question from the
 // device door, which carries `issueId: null`.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { EmptyState, ErrorState, Skeleton } from "@/design";
 import { QuestionCard } from "@/features/questions/components/question-card";
@@ -93,16 +93,13 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
     card.querySelector<HTMLElement>("[data-question-title]")?.focus();
   }, [focusQuestionId, focusPresent]);
 
-  const onAnswer = useCallback(
-    (input: AnswerInput) => {
+  const onAnswer = (input: AnswerInput) => {
       const index = Math.max(
         0,
         questionsRef.current.findIndex((q) => q.id === input.questionId),
       );
       answer(input, () => setAnswered((rest) => [...rest, { id: input.questionId, index }]));
-    },
-    [answer],
-  );
+    };
 
   if (isLoading) {
     return (

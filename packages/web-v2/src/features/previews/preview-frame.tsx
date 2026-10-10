@@ -9,7 +9,7 @@
 // answers `frame-ancestors` for Forge's origin itself (core).
 
 import { PREVIEW_FRAME_MESSAGES, type PreviewRecord } from "@forge/contracts/preview";
-import { type Ref, useCallback, useEffect, useRef, useState } from "react";
+import { type Ref, useEffect, useRef, useState } from "react";
 import { Button } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -51,14 +51,11 @@ export function PreviewFrame({ preview, issueLabel, height = 520, frameRef }: { 
   const [tabFailure, setTabFailure] = useState<unknown>(null);
   const [cookieRefused, setCookieRefused] = useState(false);
   const iframe = useRef<HTMLIFrameElement | null>(null);
-  const setIframe = useCallback(
-    (el: HTMLIFrameElement | null) => {
+  const setIframe = (el: HTMLIFrameElement | null) => {
       iframe.current = el;
       if (typeof frameRef === "function") frameRef(el);
       else if (frameRef) (frameRef as { current: HTMLIFrameElement | null }).current = el;
-    },
-    [frameRef],
-  );
+    };
 
   // A ticket is single-use: one per entry, and a new one whenever the frame is reloaded by hand.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` is the reload trigger, not an input.
@@ -104,14 +101,14 @@ export function PreviewFrame({ preview, issueLabel, height = 520, frameRef }: { 
     return () => window.removeEventListener("message", onMessage);
   }, [preview.id, preview.url]);
 
-  const openInTab = useCallback(async () => {
+  const openInTab = async () => {
     setTabFailure(null);
     try {
       await openPreviewInTab(preview.id);
     } catch (err) {
       setTabFailure(err);
     }
-  }, [preview]);
+  };
 
   const problem = failure ?? tabFailure;
   return (

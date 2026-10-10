@@ -98,14 +98,14 @@ export function IssuesListView({
     isPending: transitionPending,
   } = useGuardedTransition();
 
-  const rows = useMemo(() => issuesQ.data?.items ?? [], [issuesQ.data]);
+  const rows = issuesQ.data?.items ?? [];
   useReportShown(rows.map((r) => r.displayId));
   // whom an issue waits on is the standing read's, which the grouped views draw; the paged search has none
   const waiting = listFilterFromSearch("issues", view.search).waitingOn;
   const now = issuesQ.dataUpdatedAt || Date.now();
   const total = issuesQ.data?.totalCount ?? 0;
   const buckets = issuesQ.data?.extra?.buckets;
-  const segments = useMemo(() => withCounts(segmentsOf(t), buckets), [buckets, t]);
+  const segments = withCounts(segmentsOf(t), buckets);
   const pageCount = Math.max(1, Math.ceil(total / ISSUES_PAGE_SIZE));
 
   const actions: RowActions = {

@@ -32,7 +32,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 // Rerun / Fork), two-pane body (thread + context rail), sticky composer.
 // Subscribes to the project WS room so persisted-turn invalidations stream the
 // caret + live updates (ISS-291 model — no client-side stream reducer).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useStuckRuns } from "@/features/agents/hooks";
 import { useCancelSession, useRerunSession } from "@/features/sessions/hooks";
 import {
@@ -94,20 +94,20 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
 
   // The turn rows are the session's only transcript. The detail row's `messages` is their last
   // few rows, so it never stands in for them, and a failed turns read is shown as one.
-  const items = useMemo(() => parseTurns(turnsQ.data?.turns ?? []), [turnsQ.data]);
+  const items = parseTurns(turnsQ.data?.turns ?? []);
   // Later turns exist past the page cap: the last loaded item is not the session's newest turn.
   const truncated = !!turnsQ.data?.nextCursor;
   const isRun = session ? isJobDriven(session) : false;
   // Task-count indicator (ISS-391) — surfaces "this session ran N agents/skills"
   // in the header without opening the context rail. Same derivation the rail uses.
-  const taskCount = useMemo(() => deriveAgentTasks(items).length, [items]);
+  const taskCount = deriveAgentTasks(items).length;
 
   const send = useSendMessage(sessionId);
   const regenerate = useRegenerateTurn(sessionId);
   const fork = useForkSession(sessionId);
   const editTurn = useEditTurn(sessionId);
 
-  const streamedChars = useMemo(() => tailOutputSize(items), [items]);
+  const streamedChars = tailOutputSize(items);
 
   const stuck = useStuckRuns(session?.projectId);
   const display = session ? deriveSessionDisplayStatus(session, stuck) : "queued";

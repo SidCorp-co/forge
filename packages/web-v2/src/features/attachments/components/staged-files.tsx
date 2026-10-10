@@ -7,7 +7,7 @@
 import { ISSUE_CREATE_ATTACHMENTS_MAX } from "@forge/contracts/attachments";
 import { Banner, Icon, IconButton } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { type ClipboardEvent, type DragEvent, useCallback, useRef, useState } from "react";
+import { type ClipboardEvent, type DragEvent, useRef, useState } from "react";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const DOC_MIMES = [
@@ -157,11 +157,11 @@ export function useStagedFiles({
     }
   };
 
-  const reset = useCallback(() => {
+  const reset = () => {
     setFiles([]);
     setWarnings([]);
     setDragOver(false);
-  }, []);
+  };
 
   const input = (
     <input

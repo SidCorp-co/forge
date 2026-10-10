@@ -6,7 +6,7 @@
 // events only arrive on subscribed rooms, so we fan out a `useRoom` per project
 // (bounded list) — `pipeline_run.status_changed` then refreshes
 // `['projects','health']` + `['pipeline-runs','list']`.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Badge,
   PageSection,
@@ -83,24 +83,15 @@ export function OpsMonitor() {
   const durationsQ = useStepDurations({ days: 7 });
   const throughputQ = useThroughput({ days: 30 });
 
-  const health = useMemo(
-    () => (healthQ.data ?? []).filter((h) => projectIds.has(h.id)),
-    [healthQ.data, projectIds],
-  );
-  const durations = useMemo(
-    () => (durationsQ.data ?? []).filter((r) => projectIds.has(r.projectId)),
-    [durationsQ.data, projectIds],
-  );
-  const throughput = useMemo(
-    () => (throughputQ.data ?? []).filter((r) => projectIds.has(r.projectId)),
-    [throughputQ.data, projectIds],
-  );
-  const nameById = useMemo(() => {
+  const health = (healthQ.data ?? []).filter((h) => projectIds.has(h.id));
+  const durations = (durationsQ.data ?? []).filter((r) => projectIds.has(r.projectId));
+  const throughput = (throughputQ.data ?? []).filter((r) => projectIds.has(r.projectId));
+  const nameById = (() => {
     const m = new Map<string, string>();
     for (const p of projects) m.set(p.id, p.name);
     for (const h of health) if (!m.has(h.id)) m.set(h.id, h.projectName);
     return m;
-  }, [projects, health]);
+  })();
 
   if (projectsLoading || healthQ.isLoading) {
     return (
@@ -278,7 +269,7 @@ function ProgressTab({
   onRetry: () => void;
 }) {
   const shipped = (throughput ?? []).reduce((a, r) => a + r.count, 0);
-  const aggs = useMemo(() => aggregateByStep(durations), [durations]);
+  const aggs = aggregateByStep(durations);
   const maxAvg = Math.max(1, ...aggs.map((a) => a.avgSec));
 
   if (loading) {

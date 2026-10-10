@@ -54,13 +54,13 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
 
   // Per-device queue depth from queue-stats (queued sessions waiting on that
   // device). Sessions with no device assigned bucket under the null key.
-  const queuedByDevice = useMemo(() => {
+  const queuedByDevice = (() => {
     const m = new Map<string | null, number>();
     for (const d of queueQ.data?.devices ?? []) m.set(d.deviceId, d.queued);
     return m;
-  }, [queueQ.data]);
+  })();
 
-  const boundByDevice = useMemo(() => {
+  const boundByDevice = (() => {
     const m = new Map<string, { row: SessionRow; display: AgentSessionDisplayStatus }>();
     rows.forEach((row, i) => {
       const d = displays[i];
@@ -69,7 +69,7 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
       }
     });
     return m;
-  }, [rows, displays]);
+  })();
 
   const onlineRunners = devicePool.filter((d) => d.status === "online").length;
   const queuedCount = rows.filter((r) => r.status === "queued" || r.status === "idle").length;
