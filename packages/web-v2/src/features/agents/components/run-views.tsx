@@ -306,3 +306,6 @@ export function RunPeek({
     </PeekPanel>
   );
 }
+
+// the page moved to run-page.tsx; re-exported from its original path
+export { RunPage } from "./run-page";
