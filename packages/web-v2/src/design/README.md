@@ -8,7 +8,7 @@ Every piece on this page is rendered at `/dev/design`.
 
 | Template | Use it for | Slots | Blocks that fill them |
 |---|---|---|---|
-| `ListPage` | records to scan and open | `title` `actions` `toolbar` `peek` `children` | `ListSearch` `ToolbarSelect` `FilterChip` · `GroupedList` or `RowList` · `PeekPanel` + `PeekHead` |
+| `ListPage` + `useListPage` | records to scan and open | `title` `titleAfter` `actions` `lead` `toolbar` `peek` `children` | `ListSearch` `ToolbarSelect` `FilterChip` · `GroupedList` or `RowList` · `PeekPanel` + `PeekHead`; `useListPage` holds the search, filters, groups, fold and peek in the URL |
 | `DetailPage` | one record | `header` `rail` `lead` `tabs` `label` `children` | `DetailHeader` · `FactsRail` `FactsGroup` `Fact` · `DetailTabs` + `useUrlTab` · `Section` `PropertyList` `RowList` |
 | `SettingsPage` | configuration | `title` `actions` `nav` `children` | `SettingsGroup` `SettingRow` `FormActions` · `Field` + `placeRefusals` |
 | `BoardPage` | work by stage | `title` `actions` `toolbar` `children` | `KanbanColumn` `KanbanCard` |
