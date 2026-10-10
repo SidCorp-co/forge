@@ -109,3 +109,8 @@ export { useDebounced } from "./hooks/use-debounced";
 export { useElapsed } from "./hooks/use-elapsed";
 export { useNow } from "./hooks/use-now";
 export { useMediaQuery } from "./hooks/use-media-query";
+
+// Library parts features compose as their docs show, reached only through the design layer
+export { Combobox } from "@base-ui/react/combobox";
+export { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+export { ChartContainer, type ChartConfig } from "@/components/ui/chart";

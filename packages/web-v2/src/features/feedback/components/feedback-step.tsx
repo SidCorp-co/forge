@@ -56,7 +56,7 @@ export function FeedbackStep({ projectId, slug, flow, title, node }: { projectId
           {t("feedback.evidence.open")}
         </Link>
       </figcaption>
-      <div className="flex h-[360px] min-w-0 overflow-hidden rounded-md border border-line-subtle max-md:h-[300px]" data-flow={flow}>
+      <div className="flex h-90 min-w-0 overflow-hidden rounded-md border border-line-subtle max-md:h-75" data-flow={flow}>
         {canvas}
       </div>
     </figure>

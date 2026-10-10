@@ -66,7 +66,7 @@ function Body({ projectId, f }: { projectId: string; f: FeedbackView }) {
       {f.redacted ? (
         <p className="text-13 text-subtle">{t("feedback.body.redacted")}</p>
       ) : (
-        <p className="max-w-[80ch] whitespace-pre-wrap text-14 leading-relaxed" data-testid="feedback-body" lang={f.writtenLang ?? undefined}>
+        <p className="max-w-2xl whitespace-pre-wrap text-14 leading-relaxed" data-testid="feedback-body" lang={f.writtenLang ?? undefined}>
           {f.body?.trim() ? (
             <>
               {f.body}

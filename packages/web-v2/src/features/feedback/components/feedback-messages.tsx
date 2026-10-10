@@ -44,7 +44,7 @@ function Thread({ messages }: { messages: FeedbackMessageView[] }) {
                 <span title={time.dateTime(m.sentAt)}>{time.relative(m.sentAt)}</span>
               </span>
             </span>
-            <Written className="max-w-[80ch] whitespace-pre-wrap" text={m.text} lang={m.writtenLang} />
+            <Written className="max-w-2xl whitespace-pre-wrap" text={m.text} lang={m.writtenLang} />
           </li>
         );
       })}
@@ -60,7 +60,7 @@ export function MessagePreview({ shown }: { shown: FeedbackMessagePreview }) {
     <div className="grid gap-1 border-l-2 border-line py-1 pl-3" data-testid="message-preview">
       <span className="text-11 font-semibold uppercase tracking-wide text-muted">{t("feedback.messages.previewHead")}</span>
       <span className="text-13 font-semibold">{shown.title}</span>
-      <span className="max-w-[80ch] whitespace-pre-wrap text-13">{shown.body}</span>
+      <span className="max-w-2xl whitespace-pre-wrap text-13">{shown.body}</span>
       <span className="text-12 text-muted">{t("feedback.messages.to", { names: shown.recipients.map((r) => r.name ?? someone).join(", ") })}</span>
       {shown.notReached.map((r) => (
         <span key={r.id} className="text-12 text-muted">
