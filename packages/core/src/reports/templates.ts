@@ -284,7 +284,10 @@ export async function runTemplate(args: {
   return { document, narrative, slots, notDrawn: drawn.notDrawn, text: documentText(document) };
 }
 
-const NUMBER = /\d[\d,]*(?:\.\d+)?/g;
+// digits glued to a letter before them (p85, p50At) are part of a name the rows give a field, not a
+// figure: the Roadmap guidance asks for the p85 date against the p50, and a draft saying "p85" was
+// refused as stating 85 on every run (FB-126)
+const NUMBER = /(?<![A-Za-z])\d[\d,]*(?:\.\d+)?/g;
 const numeralsIn = (text: string): string[] =>
   (text.match(NUMBER) ?? []).map((n) => n.replaceAll(',', ''));
 

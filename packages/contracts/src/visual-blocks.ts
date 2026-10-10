@@ -495,8 +495,13 @@ export function cellText(field: ReportField, cell: ReportCell | undefined, readi
   if (field.type === "duration" && typeof cell === "number") return duration(cell);
   if (field.type === "date" && typeof cell === "string") return reading ? readInstantsIn(cell, reading) : cell.replace(/T00:00:00(\.0+)?Z$/, "");
   if (field.type === "string" && typeof cell === "string") return readInstantsIn(cell, reading);
-  if (typeof cell === "number") return field.unit ? `${cell} ${field.unit}` : String(cell);
+  if (typeof cell === "number") return field.unit ? `${cell} ${unitFor(cell, field.unit)}` : String(cell);
   return cell;
+}
+
+/** A count's unit as it reads beside the count: one issue, two issues; an abbreviation (h) as written. */
+export function unitFor(n: number, unit: string): string {
+  return n === 1 && unit.length > 2 && unit.endsWith("s") ? unit.slice(0, -1) : unit;
 }
 
 const md = (s: string): string => s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ");

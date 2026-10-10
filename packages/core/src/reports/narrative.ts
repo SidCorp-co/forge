@@ -11,7 +11,7 @@
 // slot in silence (REQ-32 BC-7).
 
 import { contentLanguageBlock } from '@forge/contracts/content-language';
-import type { ReportFrame } from '@forge/contracts/report-queries';
+import { type ReportFrame, stateLabel } from '@forge/contracts/report-queries';
 import {
   FINDING_MAX_WORDS,
   type ReportDocument,
@@ -104,7 +104,7 @@ export function narrativeInput(document: ReportDocument, slots: readonly Slot[])
       `### ${block.kind}${block.title ? ` "${block.title}"` : ''}${query ? ` (query ${query})` : ''}, finding ${i + 1}`,
       ...(frame
         ? [
-            `Fields: ${frame.fields.map((f) => `${f.name} (${f.type})`).join(', ')}`,
+            `Fields: ${frame.fields.map(fieldWords).join(', ')}`,
             `Rows: ${JSON.stringify(frame.rows.map((row) => inUtcWords(frame, row)))}`,
           ]
         : ['It shows no rows.']),
@@ -113,15 +113,26 @@ export function narrativeInput(document: ReportDocument, slots: readonly Slot[])
   return parts.join('\n');
 }
 
-/** A row with each date cell, and each instant inside a text cell, as its UTC words. */
+/** A field as a reader of the block knows it: its name, the label its column shows, and what it counts. */
+const fieldWords = (f: ReportFrame['fields'][number]): string =>
+  `${f.name} "${f.label}" (${f.type}${f.unit ? `, counted in ${f.unit}` : ''})`;
+
+/**
+ * A row as the block shows it: each date cell, and each instant inside a text cell, as its UTC words,
+ * and each state as the words its badge shows (`stateLabel`), never its stored token (FB-126).
+ */
 function inUtcWords(
   frame: ReportFrame,
   row: ReportFrame['rows'][number],
 ): ReportFrame['rows'][number] {
-  const types = new Map(frame.fields.map((f) => [f.name, f.type]));
+  const fields = new Map(frame.fields.map((f) => [f.name, f]));
   return Object.fromEntries(
     Object.entries(row).map(([name, cell]) => {
-      const type = types.get(name);
+      const field = fields.get(name);
+      const type = field?.type;
+      if (field && type === 'status' && typeof cell === 'string' && cell !== '') {
+        return [name, stateLabel(field, cell)];
+      }
       return [
         name,
         typeof cell === 'string' && (type === 'date' || type === 'string')
