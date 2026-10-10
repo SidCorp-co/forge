@@ -1,9 +1,9 @@
 {
   "en": {
     "pipeline.board.empty": "No issues in this column.",
-    "pipeline.board.help": "Click a card to inspect its run · pause / resume / cancel from the panel",
+    "pipeline.board.help": "Click a card to inspect · pause / resume / cancel",
     "pipeline.board.helpAria": "Pipeline help",
-    "pipeline.board.hint": "One column per state an issue can be in. There is no order between them.",
+    "pipeline.board.hint": "One column per state; unordered.",
     "pipeline.board.lastCheckIn": "Last check-in {clock} · {ago} ago",
     "pipeline.board.noCheckIn": "No check-in",
     "pipeline.board.noCheckInRecord": "No check-in on record",

@@ -10,7 +10,7 @@
     "settings.orgs.deleteTail": "This cannot be undone.",
     "settings.orgs.deleted": "Organization deleted",
     "settings.orgs.expired": "Expired",
-    "settings.orgs.intro": "Every project lives in exactly one org. Org owners/admins manage all of its projects; org members still need a per-project invite.",
+    "settings.orgs.intro": "Org owners and admins manage all its projects; members need project invites.",
     "settings.orgs.invitationRevoked": "Invitation revoked",
     "settings.orgs.invitationSent": "Invitation sent",
     "settings.orgs.lens.product": "Product",

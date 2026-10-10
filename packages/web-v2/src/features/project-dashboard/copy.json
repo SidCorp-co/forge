@@ -27,7 +27,7 @@
     "dash.orient.more": ", and {n} more",
     "dash.orient.moreModules": "+{n} more",
     "dash.orient.next": "Next",
-    "dash.orient.noDescription": "No description yet: say what this project is in one line, on its system map below.",
+    "dash.orient.noDescription": "No description yet — add one line on the system map.",
     "dash.orient.noModules": "No business modules are declared yet.",
     "dash.orient.noRelease": "No release yet.",
     "dash.orient.nothingNext": "Nothing agreed is waiting.",

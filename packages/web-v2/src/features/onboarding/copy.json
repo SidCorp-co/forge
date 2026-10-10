@@ -9,7 +9,7 @@
     "onboarding.first.waitingDays": "waiting {n} days",
     "onboarding.hint.master": "Master {name}",
     "onboarding.hint.reanalyze": "Re-analyze",
-    "onboarding.hint.reanalyzeTitle": "Runs one new analysis job and replaces any open batch; approved revisions are never overwritten."
+    "onboarding.hint.reanalyzeTitle": "Runs a new analysis; approved revisions are kept."
   },
   "vi": {
     "onboarding.first.lead": "Yêu cầu đầu tiên",

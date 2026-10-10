@@ -7,7 +7,7 @@
     "whatsNew.kind.new": "New",
     "whatsNew.loading": "Reading what's new…",
     "whatsNew.nav": "What's new",
-    "whatsNew.none": "This {environment} instance is running a build that is no release yet, so there is nothing new to show.",
+    "whatsNew.none": "This {environment} build is not a release yet.",
     "whatsNew.release": "Release {version}",
     "whatsNew.title": "What's new",
     "whatsNew.unreadHint": "a new release"
