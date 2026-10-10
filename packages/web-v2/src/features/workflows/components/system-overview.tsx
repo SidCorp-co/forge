@@ -208,6 +208,7 @@ function NoContext({ projectId, quiet }: { projectId: string; quiet: boolean }) 
               size="sm"
               className="h-auto p-0 text-13-5 font-semibold text-link hover:bg-transparent hover:underline"
               loading={pending}
+              disabled={!state.data}
               onClick={() => ask(action)}
               data-testid="start-onboarding"
             >

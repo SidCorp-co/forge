@@ -196,15 +196,18 @@ function Designs({
 /** No design yet: the owner asks for the first ones here, confirmed before the job that draws them runs. */
 function NoWorkflows({ projectId }: { projectId: string }) {
   const t = useCopy();
-  const hint = useOnboardingState(projectId).data?.hint;
+  const state = useOnboardingState(projectId);
+  const hint = state.data?.hint;
   const { ask, dialog, error } = useAskForDesigns(projectId);
   const action = hint?.action ?? "start";
+  // no action until the onboarding is read: a default of "start" taken before it arrives asks for a
+  // second job beside the one running, and is refused (ISS-268)
   return (
     <div className="px-7 py-10 max-md:px-4" data-testid="no-workflows">
       <EmptyState
         title={t("workflows.emptyTitle")}
         message={t("workflows.emptyMessage")}
-        action={{ label: action === "start" ? t("workflows.askForDesigns") : (hint?.actionLabel ?? t("workflows.openOnboarding")), onClick: () => ask(action) }}
+        action={state.data ? { label: action === "start" ? t("workflows.askForDesigns") : (hint?.actionLabel ?? t("workflows.openOnboarding")), onClick: () => ask(action) } : undefined}
       />
       {error ? (
         <p role="alert" className="text-center text-12 text-red">

@@ -177,9 +177,14 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
         <div className="mt-1 grid grid-cols-[84px_minmax(0,1fr)] items-start gap-x-2.5 border-t border-line-subtle py-1.5">
           <span className="pt-px text-[11.5px] text-subtle">Analysis</span>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <HoverNote label={`Job ${onboarding.job?.status ?? "none"}`}>
+            <HoverNote label={`Job ${onboarding.job?.status ?? "none"}${onboarding.job && onboarding.job.attempt > 1 ? ` · attempt ${onboarding.job.attempt}` : ""}`}>
               Cost bound: one analysis job per onboarding. A re-analysis runs only when a person asks.
             </HoverNote>
+            {onboarding.job?.endedWith ? (
+              <span className="min-w-0 text-[12px] text-muted" data-testid="onboarding-ended-with">
+                {onboarding.job.endedWith}
+              </span>
+            ) : null}
             <HoverNote
               label={
                 <button
