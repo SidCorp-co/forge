@@ -54,14 +54,19 @@ describe('the probes a merge owes', () => {
   });
 
   it('reads the saved criteria read, and refuses any other file by name', () => {
-    const ok = criteriaOf(JSON.stringify({ criteria: [{ n: 3, class: 'observable', probe: null, statement: 'x' }] }), 'c.json');
+    const ok = criteriaOf(
+      JSON.stringify({ criteria: [{ n: 3, class: 'observable', probe: null, statement: 'x' }] }),
+      'c.json',
+    );
     expect(ok.criteria).toEqual([{ n: 3, class: 'observable', probe: null }]);
     expect(criteriaOf('{', 'c.json').refusal).toContain('is not JSON');
     expect(criteriaOf('{"items":[]}', 'c.json').refusal).toContain('holds no `criteria` list');
-    expect(criteriaOf('{"criteria":[{"class":null}]}', 'c.json').refusal).toContain('criteria[0] has no criterion number');
-    expect(criteriaOf('{"criteria":[{"n":1,"probe":{"kind":"command"}}]}', 'c.json').refusal).toContain(
-      "criterion 1's probe has no `id`",
+    expect(criteriaOf('{"criteria":[{"class":null}]}', 'c.json').refusal).toContain(
+      'criteria[0] has no criterion number',
     );
+    expect(
+      criteriaOf('{"criteria":[{"n":1,"probe":{"kind":"command"}}]}', 'c.json').refusal,
+    ).toContain("criterion 1's probe has no `id`");
     expect(readProbesFlag('none')).toEqual({ criteria: null });
     expect(readProbesFlag(join(ROOT, 'absent.json')).refusal).toContain('cannot be read (ENOENT)');
     const file = join(ROOT, 'criteria.json');
@@ -104,8 +109,16 @@ describe('a command probe runs in the checkout', () => {
   });
 
   it('is red where its program cannot start', () => {
-    const probe = { id: 'x', kind: 'command', command: { argv: ['no-such-program-472'] }, expect: { exitCode: 0 } };
-    const spawn = () => ({ status: null, error: Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }) });
+    const probe = {
+      id: 'x',
+      kind: 'command',
+      command: { argv: ['no-such-program-472'] },
+      expect: { exitCode: 0 },
+    };
+    const spawn = () => ({
+      status: null,
+      error: Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }),
+    });
     const out = runCommandProbe(probe, { root: ROOT, origin: null, spawn });
     expect(out.result).toBe('fail');
     expect(out.detail).toContain('ENOENT');
@@ -117,7 +130,9 @@ describe('a command probe runs in the checkout', () => {
       stdoutIncludes: ['http://127.0.0.1:3999'],
     });
     const env = { ...process.env, [PROBE_ORIGIN_ENV]: 'https://forge-dev.example' };
-    expect(runCommandProbe(echo, { root: ROOT, origin: 'http://127.0.0.1:3999', env }).result).toBe('pass');
+    expect(runCommandProbe(echo, { root: ROOT, origin: 'http://127.0.0.1:3999', env }).result).toBe(
+      'pass',
+    );
     const unset = runCommandProbe(
       node(`process.stdout.write(String(process.env.${PROBE_ORIGIN_ENV}))`, {
         exitCode: 0,
@@ -131,11 +146,14 @@ describe('a command probe runs in the checkout', () => {
 
   it('runs at its cwd inside the checkout', () => {
     const calls = [];
-    const spawn = (cmd, args, opts) => {
+    const spawn = (_cmd, _args, opts) => {
       calls.push(opts.cwd);
       return { status: 0, stdout: '' };
     };
-    runCommandProbe({ ...node('1'), command: { argv: ['x'], cwd: 'packages/core' } }, { root: '/repo', origin: null, spawn });
+    runCommandProbe(
+      { ...node('1'), command: { argv: ['x'], cwd: 'packages/core' } },
+      { root: '/repo', origin: null, spawn },
+    );
     expect(calls).toEqual(['/repo/packages/core']);
   });
 });
@@ -146,22 +164,33 @@ describe('a request probe goes to the origin serving the change', () => {
       result: 'none',
       detail: 'could not run: no --probe-origin names a build of the change to send it to',
     });
-    expect((await runRequestProbe(request({ as: 'replayer' }), { origin: 'http://h' })).detail).toContain(
-      'the merge check holds none',
-    );
-    expect((await runRequestProbe(request({ service: 'api' }), { origin: 'http://h' })).detail).toContain(
-      'names service `api`',
-    );
+    expect(
+      (await runRequestProbe(request({ as: 'replayer' }), { origin: 'http://h' })).detail,
+    ).toContain('the merge check holds none');
+    expect(
+      (await runRequestProbe(request({ service: 'api' }), { origin: 'http://h' })).detail,
+    ).toContain('names service `api`');
   });
 
   it('holds on the status and body it expects, and is red otherwise', async () => {
     const probe = request({}, { status: 200, bodyIncludes: ['"ok":true'] });
-    expect((await runRequestProbe(probe, { origin: 'http://h', fetchImpl: answering(200, '{"ok":true}') })).result).toBe(
-      'pass',
-    );
-    const status = await runRequestProbe(probe, { origin: 'http://h', fetchImpl: answering(500, '{"ok":true}') });
+    expect(
+      (
+        await runRequestProbe(probe, {
+          origin: 'http://h',
+          fetchImpl: answering(200, '{"ok":true}'),
+        })
+      ).result,
+    ).toBe('pass');
+    const status = await runRequestProbe(probe, {
+      origin: 'http://h',
+      fetchImpl: answering(500, '{"ok":true}'),
+    });
     expect(status).toMatchObject({ result: 'fail', detail: 'it answered 500, expected 200' });
-    const body = await runRequestProbe(probe, { origin: 'http://h', fetchImpl: answering(200, '{}') });
+    const body = await runRequestProbe(probe, {
+      origin: 'http://h',
+      fetchImpl: answering(200, '{}'),
+    });
     expect(body).toMatchObject({ result: 'fail', detail: 'its body lacks "\\"ok\\":true"' });
   });
 
@@ -211,7 +240,9 @@ describe('a probe run, as the report carries it', () => {
     expect(out.missing.map((m) => m.criterion)).toEqual([3, 4]);
     expect(out.red.map((r) => r.criterion)).toEqual([2]);
     const lines = probeRefusalLines(out);
-    expect(lines[0]).toMatch(/^MERGE_PROBE_MISSING — criterion 3: it is observable and keeps no probe; criterion 4: could not run/);
+    expect(lines[0]).toMatch(
+      /^MERGE_PROBE_MISSING — criterion 3: it is observable and keeps no probe; criterion 4: could not run/,
+    );
     expect(lines[1]).toBe('MERGE_PROBE_RED — criterion 2: it exited 1, expected 0');
   });
 
@@ -222,7 +253,9 @@ describe('a probe run, as the report carries it', () => {
     ]);
     expect(probeRefusalLines(none)).toEqual([]);
     const unnamed = await runProbes(null, { root: ROOT });
-    expect(unnamed.checks.map((c) => [c.scope, c.result, c.command])).toEqual([['no issue', 'none', '--probes none']]);
+    expect(unnamed.checks.map((c) => [c.scope, c.result, c.command])).toEqual([
+      ['no issue', 'none', '--probes none'],
+    ]);
     expect(unnamed.bindings).toEqual([]);
   });
 });

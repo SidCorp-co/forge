@@ -49,15 +49,22 @@ export function criteriaOf(text, path) {
   }
   for (const [i, c] of list.entries()) {
     if (!Number.isInteger(c?.n) || c.n < 1) {
-      return { refusal: `--probes ${path}: criteria[${i}] has no criterion number \`n\`; it is ${SHAPE}` };
+      return {
+        refusal: `--probes ${path}: criteria[${i}] has no criterion number \`n\`; it is ${SHAPE}`,
+      };
     }
-    if (c.probe != null && (typeof c.probe.id !== 'string' || !['command', 'request'].includes(c.probe.kind))) {
+    if (
+      c.probe != null &&
+      (typeof c.probe.id !== 'string' || !['command', 'request'].includes(c.probe.kind))
+    ) {
       return {
         refusal: `--probes ${path}: criterion ${c.n}'s probe has no \`id\` or no \`kind\` of command or request; it is ${SHAPE}`,
       };
     }
   }
-  return { criteria: list.map((c) => ({ n: c.n, class: c.class ?? null, probe: c.probe ?? null })) };
+  return {
+    criteria: list.map((c) => ({ n: c.n, class: c.class ?? null, probe: c.probe ?? null })),
+  };
 }
 
 /** Read `--probes`: `none`, or a criteria read saved to a file. */
@@ -78,13 +85,17 @@ export function originOf(value) {
   try {
     url = new URL(value);
   } catch {
-    return { refusal: `--probe-origin ${value} is not a URL; it is the http(s) origin serving the change` };
+    return {
+      refusal: `--probe-origin ${value} is not a URL; it is the http(s) origin serving the change`,
+    };
   }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
     return { refusal: `--probe-origin ${value} is not an http(s) origin without a credential` };
   }
   if (url.pathname !== '/' || url.search || url.hash) {
-    return { refusal: `--probe-origin ${value} has a path; it is an origin, and each probe names its own path` };
+    return {
+      refusal: `--probe-origin ${value} has a path; it is an origin, and each probe names its own path`,
+    };
   }
   return { origin: url.origin };
 }
@@ -120,7 +131,7 @@ const missingIncludes = (text, wanted = []) => wanted.filter((w) => !text.includ
 export function requestUnrunnable(probe, origin) {
   if (!origin) return 'no --probe-origin names a build of the change to send it to';
   if (probe.request.as === 'replayer')
-    return 'it goes out with the replayer\'s credential, and the merge check holds none';
+    return "it goes out with the replayer's credential, and the merge check holds none";
   if (probe.request.service)
     return `it names service \`${probe.request.service}\`, and --probe-origin names one origin`;
   return null;
@@ -141,15 +152,19 @@ export function runCommandProbe(probe, { root, origin, env = process.env, spawn 
     maxBuffer: 256 * 1024 * 1024,
   });
   const durationMs = Date.now() - started;
-  const originNote = origin ? `${PROBE_ORIGIN_ENV}=${origin}` : `${PROBE_ORIGIN_ENV} unset: no --probe-origin given`;
+  const originNote = origin
+    ? `${PROBE_ORIGIN_ENV}=${origin}`
+    : `${PROBE_ORIGIN_ENV} unset: no --probe-origin given`;
   const stdout = r.stdout ?? '';
   let fault = null;
-  if (r.error) fault = `it could not be started or did not finish (${r.error.code ?? r.error.message})`;
+  if (r.error)
+    fault = `it could not be started or did not finish (${r.error.code ?? r.error.message})`;
   else if (r.status !== probe.expect.exitCode)
     fault = `it exited ${r.status ?? `on ${r.signal}`}, expected ${probe.expect.exitCode}`;
   else {
     const absent = missingIncludes(stdout, probe.expect.stdoutIncludes);
-    if (absent.length) fault = `its stdout lacks ${absent.map((a) => JSON.stringify(a)).join(', ')}`;
+    if (absent.length)
+      fault = `its stdout lacks ${absent.map((a) => JSON.stringify(a)).join(', ')}`;
   }
   return {
     result: fault ? 'fail' : 'pass',
@@ -165,7 +180,12 @@ export async function runRequestProbe(probe, { origin, fetchImpl = fetch }) {
   const started = Date.now();
   const unrunnable = requestUnrunnable(probe, origin);
   if (unrunnable) {
-    return { result: 'none', detail: `could not run: ${unrunnable}`, startedAt: started, durationMs: 0 };
+    return {
+      result: 'none',
+      detail: `could not run: ${unrunnable}`,
+      startedAt: started,
+      durationMs: 0,
+    };
   }
   const { method, path, headers, body } = probe.request;
   let res;
@@ -188,7 +208,8 @@ export async function runRequestProbe(probe, { origin, fetchImpl = fetch }) {
   }
   const durationMs = Date.now() - started;
   let fault = null;
-  if (res.status !== probe.expect.status) fault = `it answered ${res.status}, expected ${probe.expect.status}`;
+  if (res.status !== probe.expect.status)
+    fault = `it answered ${res.status}, expected ${probe.expect.status}`;
   else {
     const absent = missingIncludes(text, probe.expect.bodyIncludes);
     if (absent.length) fault = `its body lacks ${absent.map((a) => JSON.stringify(a)).join(', ')}`;
@@ -271,6 +292,8 @@ export function probeRefusalLines({ missing, red }) {
       `MERGE_PROBE_MISSING — ${missing.map((m) => `criterion ${m.criterion}: ${m.why}`).join('; ')}`,
     );
   if (red.length)
-    lines.push(`MERGE_PROBE_RED — ${red.map((r) => `criterion ${r.criterion}: ${r.why}`).join('; ')}`);
+    lines.push(
+      `MERGE_PROBE_RED — ${red.map((r) => `criterion ${r.criterion}: ${r.why}`).join('; ')}`,
+    );
   return lines;
 }

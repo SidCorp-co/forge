@@ -105,7 +105,9 @@ async function keep(issue: string, criterion: number): Promise<string> {
 }
 
 /** A full-lane report whose `probes` checks ran `ran`, each bound to its kept probe. */
-function reportRunning(ran: { criterion: number; probe: string; result?: 'pass' | 'fail' | 'none' }[]) {
+function reportRunning(
+  ran: { criterion: number; probe: string; result?: 'pass' | 'fail' | 'none' }[],
+) {
   const probeChecks = ran.map((r) => ({
     ...passingCheck('probes'),
     scope: `criterion ${r.criterion}`,
@@ -117,8 +119,17 @@ function reportRunning(ran: { criterion: number; probe: string; result?: 'pass' 
     base: { branch: 'dev', sha: BASE },
     head: HEAD,
     touched: [{ path: 'packages/core/src/issues/x.ts', change: 'changed' }],
-    checks: [...others, ...(probeChecks.length ? probeChecks : [{ ...passingCheck('probes'), result: 'none' as const }])],
-    probes: ran.map((r, i) => ({ criterion: r.criterion, probe: r.probe, check: probeChecks[i]!.id })),
+    checks: [
+      ...others,
+      ...(probeChecks.length
+        ? probeChecks
+        : [{ ...passingCheck('probes'), result: 'none' as const }]),
+    ],
+    probes: ran.map((r, i) => ({
+      criterion: r.criterion,
+      probe: r.probe,
+      check: probeChecks[i]?.id ?? '',
+    })),
   });
 }
 
@@ -193,7 +204,8 @@ describe("a merge check is held to the issue's kept probes", () => {
       201,
     );
     const [kept] = await verifications(issue);
-    const field = (key: string) => (kept?.fields as Doc[]).find((f) => f.key === key)?.value;
+    const fields = (kept?.fields ?? []) as Doc[];
+    const field = (key: string) => fields.find((f) => f.key === key)?.value;
     expect(field('probes')).toBe('2 kept probe(s) ran and held, for criteria 1, 3');
     expect(field('not-checked')).not.toContain('probe');
   });
@@ -202,7 +214,10 @@ describe("a merge check is held to the issue's kept probes", () => {
     const issue = await designedIssue();
     const one = await keep(issue, 1);
     const body = reportRunning([{ criterion: 1, probe: one }]);
-    const res = await record(issue, { ...body, probes: [{ criterion: 1, probe: one, check: randomUUID() }] });
+    const res = await record(issue, {
+      ...body,
+      probes: [{ criterion: 1, probe: one, check: randomUUID() }],
+    });
     expect(res.status).toBe(400);
     expect(JSON.stringify(res.body)).toContain('is not a `probes` check of this report');
   });

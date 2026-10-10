@@ -41,10 +41,14 @@ export function passingChecks(): CheckRun[] {
  * it: what a report on an issue keeping probes carries (REQ-36 BC-9), or core refuses it
  * MERGE_PROBE_MISSING.
  */
-export function passingChecksRunning(
-  kept: readonly { criterion: number; probe: string }[],
-): { checks: CheckRun[]; probes: MergeProbeBinding[] } {
-  const ran = kept.map((k) => ({ ...k, run: { ...passingCheck('probes'), scope: `criterion ${k.criterion}` } }));
+export function passingChecksRunning(kept: readonly { criterion: number; probe: string }[]): {
+  checks: CheckRun[];
+  probes: MergeProbeBinding[];
+} {
+  const ran = kept.map((k) => ({
+    ...k,
+    run: { ...passingCheck('probes'), scope: `criterion ${k.criterion}` },
+  }));
   const rest = passingChecks().filter((c) => c.name !== 'probes' || ran.length === 0);
   return {
     checks: [...rest, ...ran.map((r) => r.run)],

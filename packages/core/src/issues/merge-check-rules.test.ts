@@ -98,11 +98,18 @@ describe("the change's kept probes (REQ-36 BC-1, BC-9)", () => {
   const PROBE_A = '11111111-1111-4111-8111-111111111111';
   const PROBE_B = '22222222-2222-4222-8222-222222222222';
   /** A report whose `probes` checks are `ran`, each bound to its criterion's probe. */
-  const withProbes = (ran: { criterion: number; probe: string; over?: Doc }[]): MergeCheckReport => {
-    const probeChecks = ran.map((r) => run('probes', { scope: `criterion ${r.criterion}`, ...r.over }));
+  const withProbes = (
+    ran: { criterion: number; probe: string; over?: Doc }[],
+  ): MergeCheckReport => {
+    const probeChecks = ran.map((r) =>
+      run('probes', { scope: `criterion ${r.criterion}`, ...r.over }),
+    );
     const others = REQUIRED_MERGE_CHECKS.filter((n) => n !== 'probes').map((n) => run(n));
     return {
-      ...report([...others, ...(probeChecks.length ? probeChecks : [run('probes', { result: 'none' })])]),
+      ...report([
+        ...others,
+        ...(probeChecks.length ? probeChecks : [run('probes', { result: 'none' })]),
+      ]),
       probes: ran.map((r, i) => ({
         criterion: r.criterion,
         probe: r.probe,
@@ -146,16 +153,24 @@ describe("the change's kept probes (REQ-36 BC-1, BC-9)", () => {
   it('refuses MERGE_PROBE_MISSING for a probe that could not run, and for an older probe', () => {
     const notRun = probeRefusals(
       withProbes([
-        { criterion: 1, probe: PROBE_A, over: { result: 'none', note: 'could not run: no origin' } },
+        {
+          criterion: 1,
+          probe: PROBE_A,
+          over: { result: 'none', note: 'could not run: no origin' },
+        },
       ]),
       [observable(1, PROBE_A)],
     );
     expect(notRun[0]?.code).toBe('MERGE_PROBE_MISSING');
-    expect(notRun[0]?.detail).toContain("criterion 1's kept probe did not run (could not run: no origin)");
+    expect(notRun[0]?.detail).toContain(
+      "criterion 1's kept probe did not run (could not run: no origin)",
+    );
     const stale = probeRefusals(withProbes([{ criterion: 1, probe: PROBE_B }]), [
       observable(1, PROBE_A),
     ]);
-    expect(stale[0]?.detail).toContain(`criterion 1 keeps probe ${PROBE_A}, and the report ran ${PROBE_B}`);
+    expect(stale[0]?.detail).toContain(
+      `criterion 1 keeps probe ${PROBE_A}, and the report ran ${PROBE_B}`,
+    );
   });
 
   it('refuses MERGE_PROBE_RED for a red probe, by its own name rather than MERGE_CHECK_RED', () => {

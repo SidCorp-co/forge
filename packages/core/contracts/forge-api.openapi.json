@@ -13423,6 +13423,36 @@
                     "pattern": "^[0-9a-f]{40}$",
                     "type": "string"
                   },
+                  "probes": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "check": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "criterion": {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "probe": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "criterion",
+                        "probe",
+                        "check"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 200,
+                    "type": "array"
+                  },
                   "touched": {
                     "items": {
                       "additionalProperties": false,
@@ -13461,6 +13491,7 @@
                 ],
                 "type": "object",
                 "x-forge-refinements": [
+                  "a refinement with no fixed message, whose rule this contract cannot state",
                   "a fast-lane report names the patch id of what it checked (`git diff --binary <base> <head> | git patch-id --stable`): core holds it to the patch id the approved preview served"
                 ]
               }

@@ -100,10 +100,12 @@ describe('what a merge needs', () => {
   });
 
   it('refuses a full-lane run that does not say whose probes it runs, before it runs anything', () => {
-    const askedAt = CLI.indexOf("die(\n      'a merge runs its issue\\'s kept probes");
+    const askedAt = CLI.indexOf("a merge runs its issue's kept probes");
     expect(askedAt).toBeGreaterThan(-1);
     expect(askedAt).toBeLessThan(CLI.indexOf("spawnSync('git', ['fetch'"));
-    expect(CLI.indexOf('await runProbes(criteria')).toBeLessThan(CLI.indexOf("run(['pnpm', 'verify']"));
+    expect(CLI.indexOf('await runProbes(criteria')).toBeLessThan(
+      CLI.indexOf("run(['pnpm', 'verify']"),
+    );
     expect(CLI).toContain('probes: probeRun.bindings');
   });
 
@@ -172,7 +174,11 @@ describe('the fast lane (REQ-39 BC-7)', () => {
     expect(missingCheck(fast, 'fast')).toBeNull();
     expect(missingCheck(fast, 'full')).toBe('integration-tests');
     expect(missingCheck(fast.slice(0, 2), 'fast')).toBe('direct-tests');
-    expect(notRunOnLane('fast').map((n) => n.name)).toEqual(['integration-tests', 'probes', 'verify']);
+    expect(notRunOnLane('fast').map((n) => n.name)).toEqual([
+      'integration-tests',
+      'probes',
+      'verify',
+    ]);
     expect(notRunOnLane('full')).toEqual([]);
   });
 

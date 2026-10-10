@@ -114,7 +114,8 @@ export function probeRefusals(
   for (const c of criteria) {
     if (c.class === 'code_property') continue;
     if (!c.probe) {
-      if (c.class === 'observable') missing.push(`criterion ${c.n} is observable and keeps no probe`);
+      if (c.class === 'observable')
+        missing.push(`criterion ${c.n} is observable and keeps no probe`);
       continue;
     }
     const keptId = c.probe.id;
@@ -156,8 +157,13 @@ export function probeRefusals(
 export function probesRan(report: MergeCheckReport): string {
   const ran = report.checks.filter((c) => c.kind === 'probes' && c.result !== 'none');
   if (ran.length === 0) return 'no kept probe to run';
-  const criteria = [...new Set((report.probes ?? []).map((b) => b.criterion))].sort((a, b) => a - b);
-  return `${ran.length} kept probe(s) ran and held, for criteria ${criteria.join(', ')}`.slice(0, 400);
+  const criteria = [...new Set((report.probes ?? []).map((b) => b.criterion))].sort(
+    (a, b) => a - b,
+  );
+  return `${ran.length} kept probe(s) ran and held, for criteria ${criteria.join(', ')}`.slice(
+    0,
+    400,
+  );
 }
 
 /** At most this many characters in one record field. */

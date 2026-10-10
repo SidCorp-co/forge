@@ -88,7 +88,7 @@ if (lane === 'fast') {
 } else {
   if (probesFlag === null)
     die(
-      'a merge runs its issue\'s kept probes: pass --probes <file>, the saved answer of ' +
+      "a merge runs its issue's kept probes: pass --probes <file>, the saved answer of " +
         '`GET /api/issues/<issue id>/criteria`, or --probes none for a run that names no issue',
     );
   const read = readProbesFlag(probesFlag);
