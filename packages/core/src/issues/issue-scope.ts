@@ -90,7 +90,7 @@ function scopeHeld(holds: readonly ScopeHold[], door: string): RefusalError {
     holds.map((h) => ({
       code: SCOPE_HELD,
       path: '',
-      detail: `${door} is refused. ${h.issueKey} shares ${shared(h)} with ${h.holderKey}, held by live run ${h.run}. It waits until that run ends.`,
+      detail: `${door} is refused. ${h.issueKey} shares ${shared(h)} with ${h.holderKey}, held by live run ${h.run} (the Runs page finds it by that id). It waits until that run ends.`,
     })),
     SCOPE_HELD,
   );

@@ -231,6 +231,7 @@
     "runs.event.when": "When",
     "runs.fact.attempt": "Attempt",
     "runs.fact.box": "Box",
+    "runs.fact.boxRunId": "Box run id",
     "runs.fact.dispatchedBy": "Dispatched by",
     "runs.fact.finished": "Finished",
     "runs.fact.holder": "Holder",

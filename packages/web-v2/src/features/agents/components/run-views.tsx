@@ -228,6 +228,13 @@ export function RunFacts({ r, slug }: { r: RunStanding; slug: string }) {
             <span title={time.dateTime(r.finishedAt)}>{fmtTime(r.finishedAt, language)}</span>
           </Fact>
         ) : null}
+        {r.boxRunId ? (
+          <Fact label={t("runs.fact.boxRunId")}>
+            <span className="break-all font-mono text-12-5" data-testid="run-box-id">
+              {r.boxRunId}
+            </span>
+          </Fact>
+        ) : null}
         {r.sessionId ? (
           <Fact label={t("runs.fact.session")}>
             <span className="font-mono text-12-5" title={r.sessionId}>

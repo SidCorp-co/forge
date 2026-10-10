@@ -52,8 +52,8 @@ const keyOf = (i: Item) => (isRun(i) ? i.id : MASTER_KEY);
 const FILTERS = ["you", "stuck"] as const;
 type Filter = (typeof FILTERS)[number];
 
-const matches = (text: string, r: RunStanding) =>
-  !text || [r.id, r.title, r.issue?.key, r.device?.name, r.release?.version, ...r.issues].join(" ").toLowerCase().includes(text);
+export const matches = (text: string, r: RunStanding) =>
+  !text || [r.id, r.boxRunId, r.title, r.issue?.key, r.device?.name, r.release?.version, ...r.issues].join(" ").toLowerCase().includes(text);
 
 function Signals({ d }: { d: RunStandingList }) {
   const t = useCopy();

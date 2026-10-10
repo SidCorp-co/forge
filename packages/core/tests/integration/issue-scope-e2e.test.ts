@@ -206,6 +206,10 @@ describe('a declaration over an issue whose design meets a held one (criterion 1
     expect(details(pre)).toContain(`${w(454).key} shares module issues with ${w(453).key}`);
     expect(details(pre)).toContain(`held by live run ${holder.runId}`);
     expect(details(pre)).toContain('until that run ends');
+    // the Runs page reads the run by the id the refusal names (FB-122)
+    const listed = await call(author, 'GET', `/api/projects/${projectId}/runs/standing`);
+    const ids = (listed.body.items as Array<{ boxRunId: string | null }>).map((r) => r.boxRunId);
+    expect(ids).toContain(holder.runId);
 
     const refused = await open([w(454).key]);
     expect([refused.res.status, codes(refused.res)]).toEqual([422, ['ISSUE_SCOPE_HELD']]);
