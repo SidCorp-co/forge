@@ -312,13 +312,19 @@ describe('the design record (criteria 2 and 3)', () => {
     expect(shape.status).toBe(400);
     // each blank part at its own path, in words naming it, never zod's text (ISS-467, judge J1)
     expect(
-      (shape.body.error.refusals as { path: string; detail: string }[]).map((r) => [r.path, r.detail]),
+      (shape.body.error.refusals as { path: string; detail: string }[]).map((r) => [
+        r.path,
+        r.detail,
+      ]),
     ).toEqual([
       [
         '/criteria/0/proof',
         'The proof is blank: name the probe or the review line that will prove this criterion.',
       ],
-      ['/modules', 'No module is named: name at least one module of the project the change touches.'],
+      [
+        '/modules',
+        'No module is named: name at least one module of the project the change touches.',
+      ],
     ]);
     const viewer = await call('viewer', 'PUT', design(issue), whole);
     expect([viewer.status, viewer.body.error.code]).toEqual([403, 'PERMISSION_FORBIDDEN']);

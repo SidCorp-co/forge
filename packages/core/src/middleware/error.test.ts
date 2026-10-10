@@ -149,7 +149,10 @@ describe('a structured field with several faults', () => {
   });
 
   it('names a fault outside the field in the same detail', async () => {
-    const { body } = await send({ criterion: 'one', probe: { kind: 'command', command: {}, expect: { exitCode: 0 } } });
+    const { body } = await send({
+      criterion: 'one',
+      probe: { kind: 'command', command: {}, expect: { exitCode: 0 } },
+    });
     expect(body.error.refusals.map((r) => [r.code, r.path])).toEqual([
       ['BAD_REQUEST', '/criterion'],
       ['VERDICT_PROBE_SHAPE', '/probe/command/argv'],
@@ -159,7 +162,10 @@ describe('a structured field with several faults', () => {
   });
 
   it('keeps a lone fault said once, with the shape', async () => {
-    const { body } = await send({ criterion: 1, probe: { kind: 'command', command: {}, expect: { exitCode: 0 } } });
+    const { body } = await send({
+      criterion: 1,
+      probe: { kind: 'command', command: {}, expect: { exitCode: 0 } },
+    });
     expect(body.error.refusals).toHaveLength(1);
     expect(body.detail).toContain('/probe/command/argv');
     expect(body.detail.split(SHAPE)).toHaveLength(2);
