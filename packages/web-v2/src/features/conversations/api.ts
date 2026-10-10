@@ -8,7 +8,7 @@ import type {
   ConversationDetail,
   ConversationMembership,
   ConversationMode,
-  ConversationRow,
+  ConversationListItem,
 } from "./types";
 
 export interface OpenConversationArgs {
@@ -63,7 +63,7 @@ export interface ConversationAttachment {
 export const conversationsApi = {
   /** `GET /api/conversations?projectId=` — the rooms this project's handle speaks in. */
   list: (projectId: string, pageSize = 50, archived = false) =>
-    apiClientList<ConversationRow>(
+    apiClientList<ConversationListItem>(
       `/conversations?${new URLSearchParams({
         projectId,
         page: "1",
@@ -83,7 +83,7 @@ export const conversationsApi = {
 
   /** `POST /api/conversations` — open a room in this project, with whoever it starts with. */
   open: (args: OpenConversationArgs) =>
-    apiClient<ConversationRow>("/conversations", {
+    apiClient<ConversationListItem>("/conversations", {
       method: "POST",
       body: JSON.stringify({
         projectId: args.projectId,
@@ -169,14 +169,14 @@ export const conversationsApi = {
 
   /** `PATCH /api/conversations/:id` — rename. */
   rename: (id: string, title: string | null) =>
-    apiClient<ConversationRow>(`/conversations/${id}`, {
+    apiClient<ConversationListItem>(`/conversations/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ title }),
     }),
 
   /** `PATCH /api/conversations/:id` — file it away, or bring it back. */
   setArchived: (id: string, archived: boolean) =>
-    apiClient<ConversationRow>(`/conversations/${id}`, {
+    apiClient<ConversationListItem>(`/conversations/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ archived }),
     }),

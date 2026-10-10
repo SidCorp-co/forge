@@ -11,7 +11,7 @@ import { type ChatDockApi, usePageRoom } from "@/features/chat-dock/dock";
 import { DockPreview } from "./dock-preview";
 import { type DockSize, dockOverPage, dockSizes, dockWidth, sizeAt, sizeFromDrag } from "@/features/chat-dock/dock-size";
 import { isScopedRoom, targetConversationId } from "@/features/chat-dock/dock-target";
-import { BOARD_DOCK_WIDTH, BoardPanel } from "../board/board-panel";
+import { BOARD_DOCK_WIDTH, DockBoard } from "../board/board-panel";
 import { useBoard } from "@/features/board/board-store";
 import { useUiSnapshot } from "../ui-actions/use-ui-actions";
 import { useConversation } from "../hooks";
@@ -48,7 +48,7 @@ function ScopeChip({ label, title, ecosystem }: { label: string; title: string; 
     <span
       data-testid="scope-chip"
       title={title}
-      className="fg-caption inline-flex max-w-[10rem] flex-none items-center gap-1 rounded-pill bg-sunken px-2 py-0.5 text-muted"
+      className="fg-caption inline-flex max-w-40 flex-none items-center gap-1 rounded-pill bg-sunken px-2 py-0.5 text-muted"
     >
       <Icon name={ecosystem ? "link" : "folder"} size={12} className="flex-none" />
       <span className="truncate">{label}</span>
@@ -164,10 +164,10 @@ export function ChatDockBody({ dock, fullScreen, overPage, sizeControl }: { dock
     if (!board.open) return chat;
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <div className="min-h-0 flex-[3]">
+        <div className="min-h-0 flex-3">
           <BoardForProject projectId={project.id} slug={project.slug} />
         </div>
-        <div className="min-h-0 flex-[2] overflow-hidden">{chat}</div>
+        <div className="min-h-0 flex-2 overflow-hidden">{chat}</div>
       </div>
     );
   };
@@ -181,7 +181,7 @@ export function ChatDockBody({ dock, fullScreen, overPage, sizeControl }: { dock
               type="button"
               onClick={dock.close}
               data-testid="chat-dock-way-back"
-              className="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-md bg-sunken px-2.5 text-[13px] font-semibold text-fg hover:bg-hover"
+              className="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-md bg-sunken px-2.5 text-13 font-semibold text-fg hover:bg-hover"
             >
               <span aria-hidden>←</span>
               <span className="truncate">{wayBack}</span>
@@ -191,7 +191,7 @@ export function ChatDockBody({ dock, fullScreen, overPage, sizeControl }: { dock
         {/* the header wraps in its own order, so the title and every control stay inside the narrowest
             panel (half of the 360px floor) and Tab reads the rows as they are drawn */}
         <header data-testid="chat-dock-header" className="flex flex-none flex-wrap items-center justify-end gap-1 border-b border-line bg-surface px-3 py-2">
-          <h2 className="fg-body-sm min-w-0 flex-[1_0_auto] truncate font-semibold text-fg">
+          <h2 className="fg-body-sm min-w-0 grow shrink-0 truncate font-semibold text-fg">
             {listing ? t("shell.dock.conversations") : title}
           </h2>
           <div className="flex flex-none items-center gap-1">
@@ -246,10 +246,10 @@ export function ChatDockBody({ dock, fullScreen, overPage, sizeControl }: { dock
 
 function BoardForProject({ projectId, slug }: { projectId: string; slug: string }) {
   const { snapshot } = useUiSnapshot(slug);
-  return <BoardPanel projectId={projectId} issueKey={snapshot.item?.kind === "issue" ? snapshot.item.key : undefined} />;
+  return <DockBoard projectId={projectId} issueKey={snapshot.item?.kind === "issue" ? snapshot.item.key : undefined} />;
 }
 
-const segment = (on: boolean) => `whitespace-nowrap rounded px-1.5 py-0.5 ${on ? "bg-surface text-fg shadow-sm" : "text-muted"}`;
+const segment = (on: boolean) => `whitespace-nowrap rounded px-1.5 py-0.5 ${on ? "bg-surface text-fg " : "text-muted"}`;
 
 /** One of the two sizes on the switch: a click on it moves the panel to the size it names, and keeps it. */
 function SizeTarget({ size, at, onSize }: { size: "half" | "large"; at: "half" | "large" | null; onSize: (size: DockSize) => void }) {
@@ -262,7 +262,7 @@ function SizeTarget({ size, at, onSize }: { size: "half" | "large"; at: "half" |
       data-on={on || undefined}
       aria-pressed={on}
       onClick={() => onSize(size)}
-      className={`${segment(on)} cursor-pointer hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--link)]`}
+      className={`${segment(on)} cursor-pointer hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link`}
     >
       {t(size === "half" ? "shell.dock.size.half" : "shell.dock.size.large")}
     </button>
@@ -350,7 +350,7 @@ function ResizeHandle({
         onDrag(null);
       }}
       title={t("shell.dock.drag")}
-      className="absolute left-0 top-0 z-10 m-0 h-full w-1.5 -translate-x-1/2 cursor-col-resize touch-none border-0 bg-transparent transition-colors hover:bg-[color:var(--link)] focus-visible:bg-[color:var(--link)] focus-visible:outline-none"
+      className="absolute left-0 top-0 z-10 m-0 h-full w-1.5 -translate-x-1/2 cursor-col-resize touch-none border-0 bg-transparent transition-colors hover:bg-link focus-visible:bg-link focus-visible:outline-none"
     />
   );
 }
@@ -395,7 +395,7 @@ export function ChatDock({ dock, page }: { dock: ChatDockApi; page: RefObject<HT
       data-dock-placement={over ? "over" : "beside"}
       className={
         over
-          ? "fixed inset-y-0 right-0 z-30 hidden flex-col border-l border-line bg-app shadow-[var(--shadow-lg)] md:flex"
+          ? "fixed inset-y-0 right-0 z-30 hidden flex-col border-l border-line bg-app shadow-overlay md:flex"
           : "relative hidden h-full flex-none flex-col border-l border-line bg-app md:flex"
       }
       style={{ width }}

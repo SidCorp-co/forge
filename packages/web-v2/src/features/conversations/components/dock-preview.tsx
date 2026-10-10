@@ -35,7 +35,7 @@ function IssuePreview({ id, projectId }: { id: string; projectId: string }) {
   return (
     <PreviewPanel
       compact
-      className="max-h-[60%] flex-none overflow-y-auto border-b border-line px-3 py-3"
+      className="max-h-3/5 flex-none overflow-y-auto border-b border-line px-3 py-3"
       issueId={issue.id}
       issueLabel={issue.displayId}
       canWrite={canWriteProject(role)}

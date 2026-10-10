@@ -81,7 +81,7 @@ export function ConversationMembers({
               </div>
               <div className="flex flex-col gap-1.5">
                 {members.map((member) => (
-                  <MemberRow
+                  <ConversationMember
                     key={member.id}
                     member={member}
                     room={room}
@@ -113,7 +113,7 @@ export function ConversationMembers({
 }
 
 /** One member, in the shape its kind gets. */
-function MemberRow({
+function ConversationMember({
   member,
   room,
   canChange,
@@ -132,15 +132,15 @@ function MemberRow({
   return (
     <div
       data-testid={isAgent ? "member-row-agent" : "member-row-person"}
-      className={`flex min-h-[40px] items-center gap-2 rounded-md px-2.5 py-1.5 ${
+      className={`flex min-h-10 items-center gap-2 rounded-md px-2.5 py-1.5 ${
         isAgent
-          ? "border border-[color:var(--accent)] bg-[color:var(--accent-tint)]"
+          ? "border border-accent bg-accent-tint"
           : "border border-transparent"
       }`}
     >
       {isAgent ? (
         <span data-testid="member-mark-agent" className="flex-none">
-          <Icon name="agent" size={15} className="text-[color:var(--accent-text)]" />
+          <Icon name="agent" size={15} className="text-accent-text" />
         </span>
       ) : (
         <span data-testid="member-mark-person" className="flex-none">

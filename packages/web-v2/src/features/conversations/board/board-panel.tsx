@@ -36,7 +36,7 @@ const stamp = () => new Date().toISOString().replace(/[-:]/g, "").replace(/\..*$
  * board as a wireframe mockup, with its SVG beside it, on the issue or feedback item named (ISS-78). A requirement key is
  * refused here by name: a requirement's picture is drawn on the requirement, never proposed (REQ-35).
  */
-export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKey?: string | undefined }) {
+export function DockBoard({ projectId, issueKey }: { projectId: string; issueKey?: string | undefined }) {
   const t = useCopy();
   const board = useBoard();
   const [key, setKey] = useState(issueKey ?? "");
@@ -100,14 +100,14 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
         <IconButton icon="x" size="sm" aria-label={t("conversations.board.close")} onClick={boardStore.close} />
       </header>
       {requirementKey && (
-        <p role="alert" className="fg-caption flex-none px-3 pb-2 text-[color:var(--red-600)]">
+        <p role="alert" className="fg-caption flex-none px-3 pb-2 text-danger">
           {t("conversations.board.notRequirement", { key: key.trim() })}
         </p>
       )}
       {state.said && !requirementKey && (
         <p
           role={state.error ? "alert" : "status"}
-          className={`fg-caption flex-none px-3 pb-2 ${state.error ? "text-[color:var(--red-600)]" : "text-muted"}`}
+          className={`fg-caption flex-none px-3 pb-2 ${state.error ? "text-danger" : "text-muted"}`}
         >
           {state.said}
         </p>
