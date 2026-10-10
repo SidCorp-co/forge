@@ -1,7 +1,7 @@
 "use client";
 
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import { masterStandDown, masterStandUp } from "../commands";
+import { masterStandDown, masterStandUp } from "@/lib/utils/runner-commands";
 import type { ResidentMaster as ResidentMasterRow } from "../types";
 
 /**

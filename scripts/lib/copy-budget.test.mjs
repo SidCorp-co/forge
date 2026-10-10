@@ -178,7 +178,9 @@ describe('inlineCopyOf — copy a component writes inline (REQ-43 BC-1, BC-2)', 
   });
   it('reads a copy attribute, and leaves an attribute that is not copy', () => {
     expect(
-      read('const A = () => <input placeholder="Your answer" type="text" className="flex gap" confirmLabel="Reap job" />;'),
+      read(
+        'const A = () => <input placeholder="Your answer" type="text" className="flex gap" confirmLabel="Reap job" />;',
+      ),
     ).toEqual([
       [1, 'placeholder', 'Your answer'],
       [1, 'confirmLabel', 'Reap job'],
@@ -186,7 +188,9 @@ describe('inlineCopyOf — copy a component writes inline (REQ-43 BC-1, BC-2)', 
   });
   it('reads a literal a JSX expression renders: the || fallback, both arms of ?:, and &&', () => {
     expect(
-      read('const A = ({ r, x }) => <Page title={r || "Document"}>{x ? "Collapse" : "Expand"}{x && "Shown"}</Page>;'),
+      read(
+        'const A = ({ r, x }) => <Page title={r || "Document"}>{x ? "Collapse" : "Expand"}{x && "Shown"}</Page>;',
+      ),
     ).toEqual([
       [1, 'title', 'Document'],
       [1, 'text', 'Collapse'],
@@ -195,7 +199,11 @@ describe('inlineCopyOf — copy a component writes inline (REQ-43 BC-1, BC-2)', 
     ]);
   });
   it('leaves a literal passed to a call, since t("…") and cn("…") are arguments, not copy', () => {
-    expect(read('const A = ({ t }) => <p title={t("issues.title")}>{t("issues.open")}{cn("text sm")}</p>;')).toEqual([]);
+    expect(
+      read(
+        'const A = ({ t }) => <p title={t("issues.title")}>{t("issues.open")}{cn("text sm")}</p>;',
+      ),
+    ).toEqual([]);
   });
   it('leaves data and punctuation: a URL, an address, a key, a format, an entity, a dot', () => {
     expect(
@@ -215,8 +223,10 @@ describe('inlineCopyOf — copy a component writes inline (REQ-43 BC-1, BC-2)', 
     expect(inlineFaults(found)[0]).toContain('property label: "Runs"');
   });
   it('names each by file and line, and says to move or delete it', () => {
-    expect(inlineFaults(inlineCopyOf('const A = () => <p>Skip for now</p>;', FILE, ATTRS))).toEqual([
-      `${FILE}:1 · JSX text "Skip for now": copy written inline; move it to its feature's copy file, or delete it`,
-    ]);
+    expect(inlineFaults(inlineCopyOf('const A = () => <p>Skip for now</p>;', FILE, ATTRS))).toEqual(
+      [
+        `${FILE}:1 · JSX text "Skip for now": copy written inline; move it to its feature's copy file, or delete it`,
+      ],
+    );
   });
 });

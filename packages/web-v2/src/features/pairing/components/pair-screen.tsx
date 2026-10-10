@@ -16,14 +16,10 @@ import {
   Select,
   enumLabel,
 } from "@/design";
-import { useAgentAccounts } from "@/features/agent-accounts/hooks";
 import { agentAddress, agentLabel } from "@/features/agent-accounts/label";
-import { useActiveOrg } from "@/features/orgs/active-org";
-import { isOrgAdmin } from "@/features/projects/write-access";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { useAuth } from "@/providers/auth-provider";
-import { useApproveDevice } from "../hooks";
+import { useApproveDevice, usePairIdentities } from "../hooks";
 
 /** The value the picker carries for "this box is mine", which is not an agent id. */
 const AS_MYSELF = "";
@@ -49,10 +45,7 @@ export function PairScreen() {
     agentUserId: AS_MYSELF,
   });
 
-  const { user } = useAuth();
-  const { activeOrg } = useActiveOrg();
-  const orgAdmin = isOrgAdmin(activeOrg?.role);
-  const agentsQ = useAgentAccounts(orgAdmin ? (activeOrg?.id ?? null) : null);
+  const { user, activeOrg, orgAdmin, agentsQ } = usePairIdentities();
   const agents = agentsQ.data ?? [];
 
   const approved = approve.data?.approved === true;

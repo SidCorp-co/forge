@@ -48,7 +48,7 @@ import {
   scopeName,
   UNKNOWN_COUNT,
 } from "../scope";
-import { RUNNER_SETUP } from "../commands";
+import { RUNNER_SETUP } from "@/lib/utils/runner-commands";
 import { BuildChip, DeviceDetail } from "./device-detail";
 
 export function CopyButton({ value }: { value: string }) {

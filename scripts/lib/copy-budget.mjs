@@ -173,7 +173,11 @@ export function inlineCopyOf(source, file, attributes) {
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
       return add(node, where, node.text);
     if (ts.isTemplateExpression(node))
-      return add(node, where, [node.head.text, ...node.templateSpans.map((s) => s.literal.text)].join(' '));
+      return add(
+        node,
+        where,
+        [node.head.text, ...node.templateSpans.map((s) => s.literal.text)].join(' '),
+      );
     if (ts.isParenthesizedExpression(node)) return rendered(node.expression, where);
     if (ts.isConditionalExpression(node)) {
       rendered(node.whenTrue, where);
@@ -190,7 +194,8 @@ export function inlineCopyOf(source, file, attributes) {
   };
   const visit = (node) => {
     if (ts.isJsxText(node)) add(node, 'text', node.text);
-    else if (ts.isJsxExpression(node) && !ts.isJsxAttribute(node.parent)) rendered(node.expression, 'text');
+    else if (ts.isJsxExpression(node) && !ts.isJsxAttribute(node.parent))
+      rendered(node.expression, 'text');
     else if (ts.isJsxAttribute(node)) {
       const name = node.name.getText(sf);
       if (attributes.test(name)) {
@@ -211,7 +216,8 @@ export function inlineCopyOf(source, file, attributes) {
 /** One refusal line per string a component writes inline, naming file, line, where and the words. */
 export function inlineFaults(written) {
   return written.map((w) => {
-    const what = w.where === 'text' ? 'JSX text' : w.where.endsWith(':') ? `property ${w.where}` : w.where;
+    const what =
+      w.where === 'text' ? 'JSX text' : w.where.endsWith(':') ? `property ${w.where}` : w.where;
     const words = w.text.length > 60 ? `${w.text.slice(0, 57)}…` : w.text;
     return `${w.file}:${w.line} · ${what} "${words}": copy written inline; move it to its feature's copy file, or delete it`;
   });

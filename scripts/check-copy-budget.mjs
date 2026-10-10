@@ -14,13 +14,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { checkerConfig } from './lib/checker-config.mjs';
-import {
-  faults,
-  inlineCopyOf,
-  inlineFaults,
-  overBudget,
-  sentencesOf,
-} from './lib/copy-budget.mjs';
+import { faults, inlineCopyOf, inlineFaults, overBudget, sentencesOf } from './lib/copy-budget.mjs';
 import { dieAs, ROOT, walkFiles } from './lib/gate.mjs';
 
 const die = dieAs('copy-budget');

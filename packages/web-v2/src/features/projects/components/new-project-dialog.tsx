@@ -6,7 +6,7 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { Banner, Button, Field, Input, Select, SlideOver } from '@/design';
 import { useActiveOrg } from '@/features/orgs/active-org';
 import { useOrgs } from '@/features/orgs/hooks';
-import { RUNNER_SETUP } from '@/features/runners/commands';
+import { RUNNER_SETUP } from '@/lib/utils/runner-commands';
 import { ApiError } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
 import { useCopy } from '@/lib/i18n/interface-language';

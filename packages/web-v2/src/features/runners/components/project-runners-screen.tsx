@@ -31,7 +31,7 @@ import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useMemo, useState } from "react";
-import { RUNNER_SETUP } from "../commands";
+import { RUNNER_SETUP } from "@/lib/utils/runner-commands";
 import { CopyButton } from "./runners-screen";
 import { RunnerRow } from "./runner-row/runner-row";
 import {
