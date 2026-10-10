@@ -215,7 +215,7 @@ describe('a filter searches only words the person said (FB-110)', () => {
     const r = await run({
       set: [
         { field: 'waitingOn', value: 'you' },
-        { field: 'text', value: '.*' },
+        { field: 'text', value: 'pending' },
       ],
       mode: 'merge',
       clear: [],
@@ -231,5 +231,19 @@ describe('a filter searches only words the person said (FB-110)', () => {
     });
     expect(r.body.action?.params.set).toEqual({ text: 'requirements', waitingOn: 'you' });
     expect(r.body.note).not.toMatch(/Ignored/);
+  });
+});
+
+describe('a search with no word is still refused by name before the said check', () => {
+  it('refuses "/" with the contract rule, not by taking it out', async () => {
+    const asked = buildUiActionToolset(undefined, 'what waits on me');
+    const r = await asked.execute(
+      'ui_requirements_filter',
+      JSON.stringify({ set: { text: '/', waitingOn: 'you' }, mode: 'merge', clear: [] }),
+    );
+    expect(r.isError).toBe(true);
+    expect(r.content.map((c) => ('text' in c ? c.text : '')).join('')).toContain(
+      'text must hold a word',
+    );
   });
 });

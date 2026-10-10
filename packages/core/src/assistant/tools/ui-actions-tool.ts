@@ -172,7 +172,7 @@ export function withoutUnsaidSearch(
 
 export function buildUiActionToolset(
   page: { snapshot: () => UiSnapshot | null } = { snapshot: () => null },
-  said = '',
+  said?: string,
 ): ChatToolset {
   // the actions this turn applied, in order, so a highlight after an open is judged on that record
   const applied: UiAction[] = [];
@@ -201,9 +201,16 @@ export function buildUiActionToolset(
           `UI_ACTION_INVALID: ${name} arguments were not valid JSON. Nothing was changed.`,
         );
       }
-      const heard = withoutUnsaidSearch(name, args, said);
-      const parsed = parseUiAction(name, heard.args);
-      if (!parsed.ok) return toolError(parsed.message);
+      // the contract refuses a search with no word by name first; a worded one the person never
+      // said is then taken out, where the message is known
+      const first = parseUiAction(name, args);
+      if (!first.ok) return toolError(first.message);
+      const heard =
+        said === undefined ? { args, ignored: [] } : withoutUnsaidSearch(name, args, said);
+      const parsed = heard.ignored.length > 0 ? parseUiAction(name, heard.args) : first;
+      if (!parsed.ok) {
+        return toolError(`${parsed.message} (after ${heard.ignored.join('; ')} was taken out)`);
+      }
       const ignored = [...heard.ignored, ...(parsed.ignored ?? [])];
       const figures = boardFigureRefusal(parsed.action);
       if (figures) return toolError(figures);
