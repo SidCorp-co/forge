@@ -2595,10 +2595,10 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   each release is `0.4.0-dev.1`, `0.4.0-dev.2` and so on. Dev releases carry such a version in
   `/api/version` and the sidebar, tagged `dev-v…`.
 
-- **A reviewer can revise a proposed suggestion instead of rejecting it whole (ISS-117).**
-  `POST /api/projects/:id/suggestions/:sid/revise { payload, reason }` (and `forge_suggestions`
-  `revise`) rejects the original with the reason and proposes the edited payload as the reviewer's
-  own suggestion, naming the one it revises; the reviewer cannot then accept it, somebody else does.
+- **A reviewer can revise a proposed suggestion instead of rejecting it whole (ISS-117).** `POST
+  /api/projects/:id/suggestions/:sid/revise` rejects the original with the reason and proposes the
+  edited payload as the reviewer's own suggestion; the reviewer cannot then accept it, somebody else
+  does.
 
 - **A breakdown files its issues sized and held by their design (ISS-117).** Each item carries a
   complexity, and may carry a priority, a category and the pinned design it builds; accepting it
@@ -2627,9 +2627,9 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   issue, a dismissal needs a reason, and a scheduled run's report links that run. Improvements
   shows triage and offers Dismiss.
 
-- **Every schedule run is one row in its history (ISS-112).** A run of any kind records how it
-  started, ended and why, and links its session; older runs are rebuilt. A run skipped for want of a
-  box now counts toward the failing-automation alert.
+- **Every schedule run is one row in its history (ISS-112).** A run records how it started, ended
+  and why, and links its session. A run skipped for want of a box counts toward the
+  failing-automation alert.
 
 - **A run nothing moves reads Stuck, from core (ISS-109).** After 3 min of silence, a lapsed claim or
   a box and core disagreeing, a live run reads `stuck` with its rule and evidence; the Agents runs pane
@@ -2642,10 +2642,9 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   its state, holder and when its hold ends, what it waits on, its outcome and attempt; master pass
   history pages at `masters/passes`, both also over MCP.
 
-- **The menu counts what waits on you.** Requirements, Releases, Feedback, Issues and Contracts
-  each show how many rows wait on you, with what they wait for in a tooltip, and the dashboard shows
-  requirements in delivery and untriaged feedback. All come from `GET /api/projects/:id/needs-you`,
-  which counts each list's own waiting-on-you group.
+- **The menu counts what waits on you.** Requirements, Releases, Feedback, Issues and Contracts each
+  show how many rows wait on you, and the dashboard shows requirements in delivery and untriaged
+  feedback. All come from `GET /api/projects/:id/needs-you`.
 
 - **A notification reads as its key and one line.** The bell shows the record it names, a one-line
   summary and its type as a badge; the long body opens under Details.
@@ -2690,7 +2689,7 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
 
 - **A storefront project's work can be judged on an unpublished draft.** A verdict names an Autoflow
   workflow, its draft version and a preview environment; Forge reads the draft back, and only a
-  confirmed draft counts toward `awaiting_release`, never on a git project.
+  confirmed draft counts toward `awaiting_release`.
 
 - **An issue can wait on another project's contract version.** `POST /api/issues/:id/contract-waits`
   or `forge_ecosystem contract_wait_add` with `<provider>/<contract> >= version`: the issue is not
@@ -2710,9 +2709,9 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   each is confirmed; zoom in to show them all.
 - **A system-context design is drawn on the same canvas as every other design**, with the same
   minimap, zoom, search, side panel and walk-through, for both its Context and Containers views.
-- **A new project can be onboarded in a chat thread.** The agent reads the code, drafts the key
-  designs for your approval and asks what it cannot tell in one questionnaire card,
-  at most three rounds. The BA assistant asks through the same card.
+- **A new project can be onboarded in a chat thread.** The agent reads the code, drafts the designs
+  and asks what it cannot tell in one questionnaire card, at most three rounds. The BA assistant
+  asks through the same card.
 - **A project sets the language agents write its prose in.** Project settings → Basics, or
   `PUT /api/projects/:id/content-language`: requirements, comments, suggestions, plans and assistant
   replies follow it; code, commits and PR titles stay English. Each session records what it was
@@ -5919,9 +5918,9 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   one key it moved, and an edit that changes nothing records nothing. Existing history is
   converted in place. Edits made over MCP now appear in the history too.
 
-- **`forge-runner bind --path` installs the git credential helper**, as `--clone` always did, so
-  an existing checkout authenticates over HTTPS with the credential Forge mints for its host. A
-  checkout whose `origin` is on another host than the project declares is refused by name.
+- **`forge-runner bind --path` installs the git credential helper**, as `--clone` did, so an
+  existing checkout authenticates over HTTPS with the credential Forge mints for its host. A
+  checkout whose `origin` is on another host than the project declares is refused.
 - **The Integrations page names a GitLab repository GitLab.** The repository card was keyed and
   labelled GitHub whatever host the repository lived on.
 
