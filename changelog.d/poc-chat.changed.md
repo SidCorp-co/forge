@@ -1,1 +1,1 @@
-**Chat reaches models only through the gateway.** The direct Anthropic adapter and its ANTHROPIC_* settings are gone, and an unconfigured instance names the gateway setting it lacks.
+**Chat reaches models only through the gateway, and drives the preview beside it.** The direct Anthropic adapter is gone, a change asked in chat reaches the open idea preview, and a filter searches only words said.

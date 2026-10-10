@@ -306,7 +306,10 @@ async function prepareWebTurn(
     tools: mergeToolsets(
       buildProjectToolset(ctx),
       buildRequirementDraftToolset(ctx, args.project.id),
-      buildUiActionToolset({ snapshot: () => latestUiSnapshot(conversationId) }),
+      buildUiActionToolset(
+        { snapshot: () => latestUiSnapshot(conversationId) },
+        args.window.question,
+      ),
       buildOfferActToolset({
         projectId: args.project.id,
         userId: authority.userId,

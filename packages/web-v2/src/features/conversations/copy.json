@@ -156,6 +156,7 @@
     "conversations.silenceRow.tool-not-called": "The agent chose not to post in this room.",
     "conversations.stage.doing.act": "Preparing a button for you",
     "conversations.stage.doing.idea": "Preparing a preview button for you",
+    "conversations.stage.doing.ideaChange": "Sending your change to the preview",
     "conversations.stage.doing.filing": "Writing to the tracker: {what}",
     "conversations.stage.doing.knowledge": "Reading project knowledge",
     "conversations.stage.doing.memory": "Searching project memory",
