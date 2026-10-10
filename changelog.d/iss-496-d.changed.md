@@ -1,1 +1,0 @@
-**Run, session, workflow, contract and report pages open on their state.** Each says each fact once and folds codes, ids and transcripts behind a Developer view. Every word a page shows comes from a copy file the budget reads.

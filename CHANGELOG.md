@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.230] - 2026-10-10
+
+Record pages open on their state, and every screen's copy follows the twelve-word rule
+
+### Changed
+
+- **Run, session, workflow, contract and report pages open on their state.** Each says each fact once and folds codes, ids and transcripts behind a Developer view. Every word a page shows comes from a copy file the budget reads.
+
 ## [0.4.0-dev.229] - 2026-10-10
 
 Pages say less: short labels, and record pages open on their state
