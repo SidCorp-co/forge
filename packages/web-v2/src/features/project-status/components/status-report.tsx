@@ -35,7 +35,7 @@ function Section({ title, asOf, clock, children, testId }: { title: string; asOf
   const t = useCopy();
   return (
     <section aria-label={title} data-testid={testId} className="break-inside-avoid">
-      <ViewHeading right={<span className="text-12-5 text-muted">{t("status.readAt", { at: formatDateTime(asOf, clock.lang, clock.timeZone) })}</span>}>{title}</ViewHeading>
+      <ViewHeading right={<span className="text-13 text-muted">{t("status.readAt", { at: formatDateTime(asOf, clock.lang, clock.timeZone) })}</span>}>{title}</ViewHeading>
       {children}
     </section>
   );
@@ -44,7 +44,7 @@ function Section({ title, asOf, clock, children, testId }: { title: string; asOf
 const Quiet = ({ children }: { children: React.ReactNode }) => <p className="text-13 text-muted">{children}</p>;
 
 function eta(d: RoadmapItem["delivery"], clock: EtaClock) {
-  return d ? <span className="text-12-5 text-muted">{etaInline(etaOfDelivery(d, clock), clock)}</span> : null;
+  return d ? <span className="text-13 text-muted">{etaInline(etaOfDelivery(d, clock), clock)}</span> : null;
 }
 
 /** The forecast's move and why, its confidence and its release: core's, said in the reader's language. */
@@ -52,7 +52,7 @@ function Honesty({ d, moved, clock }: { d: RoadmapItem["delivery"]; moved: Roadm
   const t = useCopy();
   const line = honestyLine(d, moved, t, clock.lang);
   return line ? (
-    <span className="w-full text-12-5 text-muted" data-testid="forecast-honesty">
+    <span className="w-full text-13 text-muted" data-testid="forecast-honesty">
       {line}
     </span>
   ) : null;
@@ -79,13 +79,13 @@ function Roadmap({ s, slug, clock }: { s: Pick<ProjectStatus, "roadmap">; slug: 
                   {eta(i.delivery, clock)}
                   <Honesty d={i.delivery} moved={i.moved} clock={clock} />
                   {i.deferral ? (
-                    <span className="w-full text-12-5 text-muted">
+                    <span className="w-full text-13 text-muted">
                       {i.deferral.targetPhase
                         ? t("status.deferredTo", { phase: i.deferral.targetPhase, reason: i.deferral.reason })
                         : t("status.deferred", { reason: i.deferral.reason })}
                     </span>
                   ) : null}
-                  {i.state === "draft" ? <span className="w-full text-12-5 text-muted">{t("status.notAgreed")}</span> : null}
+                  {i.state === "draft" ? <span className="w-full text-13 text-muted">{t("status.notAgreed")}</span> : null}
                 </li>
               ))}
             </ul>
@@ -201,7 +201,7 @@ export function StatusReport({ s, slug, clock, window, onWindow, actions }: Stat
                 <Link href={requirementHref(slug, r.key)} className={KEY_LINK} title={r.title}>
                   {r.key}
                 </Link>{" "}
-                <span className="text-12-5 text-muted">{t("status.criteriaProven", { proven: r.proven, total: r.total })}</span>
+                <span className="text-13 text-muted">{t("status.criteriaProven", { proven: r.proven, total: r.total })}</span>
               </span>
             ))}
           </p>
@@ -247,7 +247,7 @@ export function StatusReport({ s, slug, clock, window, onWindow, actions }: Stat
                         {needsYouKeyLabel(x, (a) => label("needsYouArea", a))}
                       </Link>
                       <Written className="min-w-0 flex-1" text={said(x.says.title, language)} lang={x.titleLang} />
-                      <span className="text-12-5 text-muted">{said(x.waitingOn.says.act, language)}</span>
+                      <span className="text-13 text-muted">{said(x.waitingOn.says.act, language)}</span>
                     </li>
                   ))}
                 </ul>
@@ -273,8 +273,8 @@ export function StatusReport({ s, slug, clock, window, onWindow, actions }: Stat
                 </Link>
                 <span className="min-w-0 flex-1">{r.title}</span>
                 <StatusBadge family="requirement" value={r.state} />
-                <span className="text-12-5 text-muted">{t("status.criteriaProven", { proven: r.criteria.proven, total: r.criteria.total })}</span>
-                <IssueProgressText progress={r.progress} className="text-12-5 text-muted" />
+                <span className="text-13 text-muted">{t("status.criteriaProven", { proven: r.criteria.proven, total: r.criteria.total })}</span>
+                <IssueProgressText progress={r.progress} className="text-13 text-muted" />
                 {eta(r.delivery, clock)}
                 <Honesty d={r.delivery} moved={r.moved} clock={clock} />
               </li>
@@ -313,7 +313,7 @@ export function StatusReport({ s, slug, clock, window, onWindow, actions }: Stat
               <li key={`${l.kind}:${l.key}`} className={ROW}>
                 <MonoTag>{l.key}</MonoTag>
                 <span className="min-w-0 flex-1">{l.title}</span>
-                <span className="text-12-5 text-danger">{t(`status.late.${l.late.reason}`, { by: spanText(l.late.byMinutes, clock.lang) })}</span>
+                <span className="text-13 text-danger">{t(`status.late.${l.late.reason}`, { by: spanText(l.late.byMinutes, clock.lang) })}</span>
               </li>
             ))}
           </ul>
@@ -324,7 +324,7 @@ export function StatusReport({ s, slug, clock, window, onWindow, actions }: Stat
         <Roadmap s={s} slug={slug} clock={clock} />
       </Section>
 
-      <p className="text-12-5 text-muted">{t("status.forecastNote")}</p>
+      <p className="text-13 text-muted">{t("status.forecastNote")}</p>
     </article>
   );
 }

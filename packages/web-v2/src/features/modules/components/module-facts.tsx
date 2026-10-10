@@ -11,7 +11,7 @@ import type { ModuleActiveIssue, ModuleDetail } from "../types";
 
 const SHOWN = 8;
 
-function IssueRow({ i, slug }: { i: ModuleActiveIssue; slug: string }) {
+function ModuleIssue({ i, slug }: { i: ModuleActiveIssue; slug: string }) {
   return (
     <li className="flex min-w-0 items-center gap-1.5 text-13" data-testid="rail-issue">
       <Link href={issueHref(slug, i.key)} className="flex-none font-mono text-12 font-semibold text-link hover:underline">
@@ -37,15 +37,15 @@ function ActiveIssues({ d, slug }: { d: ModuleDetail; slug: string }) {
         <>
           <ul className="grid gap-1">
             {first.map((i) => (
-              <IssueRow key={i.key} i={i} slug={slug} />
+              <ModuleIssue key={i.key} i={i} slug={slug} />
             ))}
           </ul>
           {rest.length ? (
             <details className="mt-1.5">
-              <summary className="cursor-pointer select-none text-12-5 font-medium text-muted hover:text-fg">{t("modules.facts.showMore", { n: rest.length })}</summary>
+              <summary className="cursor-pointer select-none text-13 font-medium text-muted hover:text-fg">{t("modules.facts.showMore", { n: rest.length })}</summary>
               <ul className="mt-1 grid gap-1">
                 {rest.map((i) => (
-                  <IssueRow key={i.key} i={i} slug={slug} />
+                  <ModuleIssue key={i.key} i={i} slug={slug} />
                 ))}
               </ul>
             </details>
@@ -57,7 +57,7 @@ function ActiveIssues({ d, slug }: { d: ModuleDetail; slug: string }) {
 }
 
 /** The module's relations and properties: the sticky rail of its full page and the body of its peek, one component, so each fact is stated once. */
-export function ModuleFacts({ d, slug }: { d: ModuleDetail; slug: string }) {
+export function ModuleProperties({ d, slug }: { d: ModuleDetail; slug: string }) {
   const t = useCopy();
   const m = d.module;
   return (
@@ -78,7 +78,7 @@ export function ModuleFacts({ d, slug }: { d: ModuleDetail; slug: string }) {
                   {r.title}
                 </span>
                 {r.criteria.length ? (
-                  <span className="flex-none font-mono text-11-5 text-subtle" title={t("modules.facts.criteria", { codes: r.criteria.join(", ") })}>
+                  <span className="flex-none font-mono text-12 text-subtle" title={t("modules.facts.criteria", { codes: r.criteria.join(", ") })}>
                     {r.criteria.join(" ")}
                   </span>
                 ) : null}

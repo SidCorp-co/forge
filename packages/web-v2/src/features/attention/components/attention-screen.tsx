@@ -63,21 +63,21 @@ function KindTag({ kind }: { kind: AttentionKind }) {
   const m = KIND_META[kind];
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2 py-0.5 font-semibold"
-      style={{ color: m.fg, background: m.bg, fontSize: "var(--text-11-5)" }}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2 py-0.5 text-12 font-semibold"
+      style={{ color: m.fg, background: m.bg }}
     >
-      <Icon name={m.icon} size={13} style={{ color: m.fg }} />
+      <Icon name={m.icon} size={13} />
       {m.label}
     </span>
   );
 }
 
-export function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
+export function AttentionItemLine({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
   return (
     <button
       type="button"
       onClick={() => onOpen(item.link)}
-      className="flex w-full items-center gap-3 px-0.5 py-2.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]"
+      className="flex w-full items-center gap-3 px-0.5 py-2.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus max-md:min-h-11"
     >
       <KindTag kind={item.kind} />
       {item.kind === "channel_gate" ? (
@@ -99,8 +99,7 @@ export function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (l
 function CountBadge({ children }: { children: ReactNode }) {
   return (
     <span
-      className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
-      style={{ fontSize: "var(--text-11)", lineHeight: "16px", color: "var(--fg-muted)", background: "var(--paper-100)" }}
+      className="inline-flex min-w-4.5 items-center justify-center rounded-pill bg-neutral-3 px-1.5 text-12 font-semibold text-muted"
     >
       {children}
     </span>
@@ -138,13 +137,12 @@ function Group({
             type="button"
             aria-expanded={expanded}
             onClick={() => setToggled(!expanded)}
-            className="flex w-full items-center gap-2 rounded-md px-0.5 py-1 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]"
+            className="flex w-full items-center gap-2 rounded-md px-0.5 py-1 text-left focus-visible:outline-none focus-visible:shadow-focus max-md:min-h-11"
           >
             <Icon
               name="chevronRight"
               size={15}
-              className="text-subtle transition-transform duration-[150ms]"
-              style={{ transform: expanded ? "rotate(90deg)" : "none" }}
+              className={expanded ? "rotate-90 text-subtle transition-transform duration-150" : "text-subtle transition-transform duration-150"}
             />
             {title}
             <CountBadge>{matched}</CountBadge>
@@ -159,7 +157,7 @@ function Group({
       {expanded && (
         <div className="flex flex-col divide-y divide-line-subtle">
           {items.map((it) => (
-            <AttentionRow key={`${it.kind}-${it.link}-${it.questionId ?? ""}-${it.since}`} item={it} onOpen={onOpen} />
+            <AttentionItemLine key={`${it.kind}-${it.link}-${it.questionId ?? ""}-${it.since}`} item={it} onOpen={onOpen} />
           ))}
           {matched > items.length && (
             <p className="fg-caption px-0.5 text-muted">
@@ -214,7 +212,7 @@ function Inbox({ view }: { view: AttentionView }) {
       <PageTitle>Attention</PageTitle>
 
       {total === 0 ? (
-        <div className="grid min-h-[40vh] place-items-center">
+        <div className="grid min-h-72 place-items-center">
           <EmptyState title="Inbox zero" message="Nothing needs your attention right now." />
         </div>
       ) : (

@@ -14,13 +14,13 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 
 const GRID = "grid grid-cols-[84px_minmax(0,1fr)_minmax(0,200px)] items-center gap-x-3.5 max-md:grid-cols-[auto_minmax(0,1fr)]";
-const ROW = `${GRID} min-h-[44px] border-b border-line-subtle py-1.5`;
+const ROW = `${GRID} min-h-11 border-b border-line-subtle py-1.5`;
 const KIND_KEY = { requirement: "dash.kind.requirement", feedback: "dash.kind.feedback", release: "dash.kind.release" } as const;
 
 function Key({ row }: { row: PlanRow }) {
   const t = useCopy();
   return (
-    <Link className="font-mono text-12-5 font-semibold text-link hover:underline" href={row.href} title={t(KIND_KEY[row.kind])}>
+    <Link className="font-mono text-13 font-semibold text-link hover:underline" href={row.href} title={t(KIND_KEY[row.kind])}>
       {row.key}
     </Link>
   );

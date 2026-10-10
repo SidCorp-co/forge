@@ -39,7 +39,7 @@ export function SinceLastReport({ detail, slug, clock }: { detail: StatusReportD
   const d = detail.diff;
   return (
     <section aria-label={t("status.since.title")} data-testid="status-since" className="grid gap-4">
-      <ViewHeading right={d ? <span className="text-12-5 text-muted">{t("status.since.at", { at: when(d.since) })}</span> : undefined}>{t("status.since.title")}</ViewHeading>
+      <ViewHeading right={d ? <span className="text-13 text-muted">{t("status.since.at", { at: when(d.since) })}</span> : undefined}>{t("status.since.title")}</ViewHeading>
       {d === null ? (
         <p className="text-13 text-muted">{t("status.since.first")}</p>
       ) : (
@@ -51,7 +51,7 @@ export function SinceLastReport({ detail, slug, clock }: { detail: StatusReportD
                   {r.version}
                 </Link>
                 <span className="text-muted">{when(r.releasedAt)}</span>
-                <span className="w-full text-12-5">
+                <span className="w-full text-13">
                   {r.issues.map((i, at) => (
                     <span key={i.key}>
                       {at > 0 ? ", " : ""}
@@ -69,7 +69,7 @@ export function SinceLastReport({ detail, slug, clock }: { detail: StatusReportD
                   {r.key}
                 </Link>
                 <span className="min-w-0 flex-1">{r.title}</span>
-                <span className="text-12-5 text-muted">{t("status.requirementsShipped")}</span>
+                <span className="text-13 text-muted">{t("status.requirementsShipped")}</span>
               </li>
             ))}
           </Part>
@@ -78,7 +78,7 @@ export function SinceLastReport({ detail, slug, clock }: { detail: StatusReportD
               <li key={`${l.kind}:${l.key}`} className={ROW}>
                 <MonoTag>{l.key}</MonoTag>
                 <span className="min-w-0 flex-1">{l.title}</span>
-                <span className="text-12-5 text-danger">{t(`status.late.${l.late.reason}`, { by: spanText(l.late.byMinutes, clock.lang) })}</span>
+                <span className="text-13 text-danger">{t(`status.late.${l.late.reason}`, { by: spanText(l.late.byMinutes, clock.lang) })}</span>
               </li>
             ))}
           </Part>
@@ -92,7 +92,7 @@ export function SinceLastReport({ detail, slug, clock }: { detail: StatusReportD
               </li>
             ))}
           </Part>
-          {d.waitsCut ? <p className="text-12-5 text-muted">{t("status.since.waitsCut", { n: detail.status?.waits.people.length ?? 0 })}</p> : null}
+          {d.waitsCut ? <p className="text-13 text-muted">{t("status.since.waitsCut", { n: detail.status?.waits.people.length ?? 0 })}</p> : null}
           <Part title={t("status.since.moved")} count={d.moved.length}>
             {d.moved.map((m) => (
               <li key={`${m.kind}:${m.key}`} className={ROW} data-testid="since-moved">
@@ -108,7 +108,7 @@ export function SinceLastReport({ detail, slug, clock }: { detail: StatusReportD
                     <span className="min-w-0 flex-1">{m.title}</span>
                   </>
                 )}
-                <span className="text-12-5 text-muted">{t("status.since.movedLine", { from: when(m.from), to: when(m.to) })}</span>
+                <span className="text-13 text-muted">{t("status.since.movedLine", { from: when(m.from), to: when(m.to) })}</span>
               </li>
             ))}
           </Part>

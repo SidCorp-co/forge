@@ -13,7 +13,7 @@ import { releaseHref } from "@/lib/routes/releases";
 import { statusReportHref } from "@/lib/routes/status";
 import { verifiedSentence } from "@/features/releases/verified";
 
-const LINK = "rounded-sm hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
+const LINK = "rounded-sm hover:underline focus-visible:outline-none focus-visible:shadow-focus";
 
 export function ShippedRecently({ shipped, slug, clock }: { shipped: StatusShipped | undefined; slug: string; clock: EtaClock }) {
   const t = useCopy();

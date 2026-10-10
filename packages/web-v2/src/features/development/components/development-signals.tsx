@@ -2,19 +2,10 @@
 
 import type { Said } from "@forge/contracts/said";
 import type { ReactNode } from "react";
-import { HoverCard, LEGEND, Tooltip } from "@/design";
+import { HoverCard, Signal, SignalsStrip, Tooltip } from "@/design";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import type { DevelopmentOverview } from "../types";
-
-function Signal({ label, children, testId }: { label: string; children: ReactNode; testId: string }) {
-  return (
-    <div className="flex min-w-0 items-baseline gap-2" data-testid={testId}>
-      <dt className="whitespace-nowrap text-13 font-medium text-muted">{label}</dt>
-      <dd className="min-w-0 text-13 text-fg">{children}</dd>
-    </div>
-  );
-}
 
 /** A signal core cannot read, its reason read from what core said (`development/overview-read.ts`). */
 export function Unavailable({ reason }: { reason: Said }) {
@@ -65,7 +56,7 @@ function Contracts({ s }: { s: DevelopmentOverview["signals"]["contracts"] }) {
         </HoverCard>
       ) : null}
       {s.awaitingApproval > 0 ? (
-        <span style={{ color: LEGEND.you.fg }}>
+        <span className="text-status-warn-fg">
           {t("overview.signal.toApprove")} <b className="font-semibold">{s.awaitingApproval}</b>
         </span>
       ) : null}
@@ -98,24 +89,23 @@ function Master({ s }: { s: DevelopmentOverview["signals"]["master"] }) {
   );
 }
 
-export function SignalsStrip({ data }: { data: DevelopmentOverview }) {
+/** The development overview's signals: CI, post-merge, the contracts window and the master, on the shared strip. */
+export function DevelopmentSignals({ data }: { data: DevelopmentOverview }) {
   const t = useCopy();
   return (
-    <div className="border-b border-line-subtle bg-surface" data-testid="signals-strip">
-      <dl className="flex flex-wrap items-baseline gap-x-8 gap-y-2 px-5 py-2.5 max-md:px-3" aria-label={t("overview.signal.signals")}>
-        <Signal label={t("overview.signal.ci")} testId="signal-ci">
-          <Unavailable reason={data.signals.ci.says.reason} />
-        </Signal>
-        <Signal label={t("overview.signal.postMerge")} testId="signal-post-merge">
-          <Unavailable reason={data.signals.postMerge.says.reason} />
-        </Signal>
-        <Signal label={t("overview.signal.contracts")} testId="signal-contracts">
-          <Contracts s={data.signals.contracts} />
-        </Signal>
-        <Signal label={t("overview.signal.master")} testId="signal-master">
-          <Master s={data.signals.master} />
-        </Signal>
-      </dl>
-    </div>
+    <SignalsStrip>
+      <Signal label={t("overview.signal.ci")} testId="signal-ci">
+        <Unavailable reason={data.signals.ci.says.reason} />
+      </Signal>
+      <Signal label={t("overview.signal.postMerge")} testId="signal-post-merge">
+        <Unavailable reason={data.signals.postMerge.says.reason} />
+      </Signal>
+      <Signal label={t("overview.signal.contracts")} testId="signal-contracts">
+        <Contracts s={data.signals.contracts} />
+      </Signal>
+      <Signal label={t("overview.signal.master")} testId="signal-master">
+        <Master s={data.signals.master} />
+      </Signal>
+    </SignalsStrip>
   );
 }

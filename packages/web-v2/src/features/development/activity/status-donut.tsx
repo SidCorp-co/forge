@@ -1,54 +1,36 @@
-// Open-issues-by-status donut (ISS-379, AC#4). Pure-CSS conic-gradient ring +
-// legend — no chart lib. Light-first (kit color tokens).
-import {
-  PageSection,
-  PageSectionBody,
-  PageSectionTitle,
-  Icon,
-} from "@/design";
+"use client";
+
+// Open issues by status (ISS-379, AC#4): a Recharts ring in the shared ChartContainer, its legend
+// beside it. The colours are the legend tones the segments carry.
+
+import { Cell, Pie, PieChart } from "recharts";
+import { type ChartConfig, ChartContainer, Section } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { conicGradient, type StatusDonutData } from "./derive";
+import type { StatusDonutData } from "./derive";
+import { ChartLegend } from "./chart-legend";
 
 export function StatusDonut({ data }: { data: StatusDonutData }) {
   const { segments, total } = data;
   const t = useCopy();
+  const config: ChartConfig = Object.fromEntries(segments.map((s) => [s.key, { label: t(`overview.donut.${s.key}`), color: s.color }]));
   return (
-    <PageSection className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-line-subtle py-3">
-        <Icon name="board" size={16} className="text-subtle" />
-        <PageSectionTitle>{t("overview.donut.title")}</PageSectionTitle>
-      </div>
-      <PageSectionBody className="flex-1">
-        {total === 0 ? (
-          <p className="fg-body-sm py-6 text-center text-muted">{t("overview.donut.empty")}</p>
-        ) : (
-          <div className="flex items-center gap-5">
-            <div
-              className="relative size-28 flex-none rounded-full"
-              style={{ background: conicGradient(segments) }}
-              role="img"
-              aria-label={t("overview.donut.aria", { n: total })}
-            >
-              <div className="absolute inset-4.5 flex flex-col items-center justify-center rounded-full bg-surface">
-                <span className="font-mono text-xl font-bold tabular-nums text-fg">{total}</span>
-                <span className="fg-caption text-subtle">{t("overview.donut.open")}</span>
-              </div>
-            </div>
-            <ul className="min-w-0 flex-1 space-y-1.5">
-              {segments.map((s) => (
-                <li key={s.key} className="flex items-center gap-2">
-                  <span className="size-2.5 flex-none rounded-sm" style={{ background: s.color }} />
-                  <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{t(`overview.donut.${s.key}`)}</span>
-                  <span className="font-mono text-sm font-semibold tabular-nums text-fg">{s.count}</span>
-                  <span className="fg-caption w-10 text-right tabular-nums text-subtle">
-                    {Math.round(s.pct)}%
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </PageSectionBody>
-    </PageSection>
+    <Section title={t("overview.donut.title")} right={<span className="font-mono text-13 font-semibold tabular-nums text-fg">{total}</span>}>
+      {total === 0 ? (
+        <p className="py-6 text-center text-13 text-muted">{t("overview.donut.empty")}</p>
+      ) : (
+        <div className="flex items-center gap-5">
+          <ChartContainer config={config} className="aspect-square size-28 flex-none" role="img" aria-label={t("overview.donut.aria", { n: total })}>
+            <PieChart>
+              <Pie data={segments} dataKey="count" nameKey="key" innerRadius="62%" outerRadius="100%" strokeWidth={0} isAnimationActive={false}>
+                {segments.map((s) => (
+                  <Cell key={s.key} fill={s.color} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ChartContainer>
+          <ChartLegend rows={segments.map((s) => ({ key: s.key, color: s.color, label: t(`overview.donut.${s.key}`), value: String(s.count), share: `${Math.round(s.pct)}%` }))} />
+        </div>
+      )}
+    </Section>
   );
 }

@@ -22,7 +22,7 @@ export function HomeChat({ projectId }: { projectId: string }) {
     setRoom({ id: target.kind === "room" ? target.conversationId : undefined });
   }
   return (
-    <section aria-label={t("home.chat.aria")} data-testid="home-chat" className="flex h-[70dvh] min-h-[26rem] min-w-0 flex-col border border-line bg-surface">
+    <section aria-label={t("home.chat.aria")} data-testid="home-chat" className="flex h-[70dvh] min-h-104 min-w-0 flex-col border border-line bg-surface">
       {q.isError ? (
         <ErrorState title={t("shell.dock.listUnread")} message={formatApiError(q.error)} onRetry={() => void q.refetch()} />
       ) : room ? (

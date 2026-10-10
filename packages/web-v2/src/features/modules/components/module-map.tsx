@@ -38,7 +38,7 @@ interface CouplingEdgeData extends Record<string, unknown> {
   dim: boolean;
 }
 
-function ModuleCard({ data }: NodeProps & { data: ModuleNodeData }) {
+function ModuleMapNode({ data }: NodeProps & { data: ModuleNodeData }) {
   const t = useCopy();
   const { row: r, act } = data;
   const key = keyOf(r);
@@ -102,7 +102,7 @@ function CouplingEdge({ id, data }: EdgeProps & { data: CouplingEdgeData }) {
   );
 }
 
-const NODE_TYPES = { module: memo(ModuleCard) };
+const NODE_TYPES = { module: memo(ModuleMapNode) };
 const EDGE_TYPES = { coupling: memo(CouplingEdge) };
 
 function edgeTitle(c: ModuleLevelCoupling, name: (id: string) => string, t: Copy): string {

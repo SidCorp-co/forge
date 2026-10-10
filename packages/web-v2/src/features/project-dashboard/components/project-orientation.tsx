@@ -62,7 +62,7 @@ export function ProjectOrientation({ slug, description, modules, now, next, live
   const moreModules = (modules?.length ?? 0) - shownModules.length;
   return (
     <section aria-label={t("dash.orient.title")} className="grid gap-3" data-testid="project-orientation">
-      <p className={`m-0 max-w-[86ch] text-14 leading-relaxed ${description ? "text-fg" : "text-muted"}`} data-testid="orient-description">
+      <p className={`m-0 max-w-3xl text-14 leading-relaxed ${description ? "text-fg" : "text-muted"}`} data-testid="orient-description">
         {description ?? t("dash.orient.noDescription")}
       </p>
       <dl className="m-0 border-t border-line-subtle">

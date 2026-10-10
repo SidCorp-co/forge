@@ -14,7 +14,7 @@ export interface FlowSectionProps {
 }
 
 /** Section 4 — which way is the flow going? */
-export function FlowSection({ flow }: FlowSectionProps) {
+export function FlowFigures({ flow }: FlowSectionProps) {
   const t = useCopy();
   if (flow.length === 0) {
     return (

@@ -137,7 +137,7 @@ export function StatusHistory({ projectId, slug, clock, isAdmin }: { projectId: 
                 >
                   <span className="text-fg">{when(r.asOf)}</span>
                   <span className="min-w-0 flex-1 text-muted">{producerText(r, t)}</span>
-                  <span className="text-12-5 text-muted">{r.template ? r.template.title : t("status.window", { days: r.days ?? 0 })}</span>
+                  <span className="text-13 text-muted">{r.template ? r.template.title : t("status.window", { days: r.days ?? 0 })}</span>
                 </button>
                 {mayRemoveReport(r, viewer) ? (
                   <RemoveReport projectId={projectId} report={r} when={when(r.asOf)} onRemoved={() => (r.id === open ? setParams({ report: null }) : undefined)} />
