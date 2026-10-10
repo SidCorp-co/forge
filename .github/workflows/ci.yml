@@ -410,9 +410,9 @@ jobs:
           # filter match any non-MD file in the diff. Don't use negations
           # here — keep filters as plain positive include lists.
           filters: |
-            # `packages/core/**` is here because `pnpm --filter web-v2 build` type-checks
+            # `packages/core/**` is here because `pnpm --filter web-v2 typecheck` reads
             # core's SOURCES, not a built .d.ts — so a core-only change can break the web
-            # build while the job that would catch it is skipped, and a skipped job passes
+            # while the job that would catch it is skipped, and a skipped job passes
             # `ci-passed`. That is not hypothetical: `39431309` added a regex `s` flag in
             # `chat/providers/gemini.ts`, `web` was skipped on every run that carried it,
             # and the first thing to notice was a production deploy failing on TS1501.
@@ -489,6 +489,13 @@ jobs:
       # package that consumes the values.
       - run: pnpm --filter @forge/contracts test
       - run: pnpm --filter web-v2 test
+      # `next build` checks no types (`ignoreBuildErrors`) and runs no lint, so the
+      # types are checked here, once. web-v2's paths reach core's and contracts'
+      # sources, so this is also what catches a core change that breaks the web.
+      # Contracts' test files are type-checked by its own vitest run (typecheck mode).
+      - run: pnpm --filter @forge/contracts typecheck
+      - run: pnpm --filter web-v2 typecheck
+      - run: pnpm --filter web-v2 typecheck:test
       - run: pnpm --filter web-v2 build
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8080/api
@@ -505,14 +512,13 @@ jobs:
       # violation.
       - run: pnpm --filter @forge/core lint
       - run: pnpm --filter @forge/core test
-      # BLOCKING since 2026-08-10. `typecheck` uses the base tsconfig, which
-      # includes test files (build uses tsconfig.build.json and excludes them).
-      # It carried 84 pre-existing errors — weakly-typed mock access
-      # (`spy.mock.calls[0][0]` on a 0-arg `vi.fn()`), `res.json<T>()` after
-      # Hono dropped the type arg, and noUncheckedIndexedAccess — and ran
-      # non-blocking for months, so it drifted. Cleared to 0; gated so it stays
-      # there. A new failure here is a real type error, not legacy noise.
+      # BLOCKING since 2026-08-10, when 84 drifted errors were cleared to 0. tsgo
+      # since 2026-10-10: the same errors as tsc, about five times faster.
+      # `typecheck` is the source (tsconfig.json); `typecheck:test` adds the
+      # tests (tsconfig.test.json). A merge into dev runs the first alone, through
+      # tc-changed; the test files are type-checked here, on main and nightly.
       - run: pnpm --filter @forge/core typecheck
+      - run: pnpm --filter @forge/core typecheck:test
       - run: pnpm --filter @forge/core build
       # Integration tests run in `core-integration` below, after the merge.
 

@@ -6,6 +6,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "!**/*.test.ts", "!**/*.test.tsx", "!tests/**"],
       "outputs": [
         "dist/**",
         "build/**",
@@ -16,6 +17,7 @@
     },
     "@forge/contracts#build": {
       "dependsOn": [],
+      "inputs": ["$TURBO_DEFAULT$", "!**/*.test.ts"],
       "outputs": ["dist/**"]
     },
     "dev": {
@@ -31,7 +33,25 @@
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/**"]
     },
     "typecheck": {
-      "outputs": []
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/contracts/src/**",
+        "$TURBO_ROOT$/packages/core/src/**",
+        "$TURBO_ROOT$/packages/observability/src/**",
+        "!$TURBO_ROOT$/packages/**/*.test.ts",
+        "!$TURBO_ROOT$/packages/**/*.test.tsx",
+        "!tests/**"
+      ],
+      "outputs": ["node_modules/.cache/tsc/typecheck.tsbuildinfo"]
+    },
+    "typecheck:test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/contracts/src/**",
+        "$TURBO_ROOT$/packages/core/src/**",
+        "$TURBO_ROOT$/packages/observability/src/**"
+      ],
+      "outputs": ["node_modules/.cache/tsc/test.tsbuildinfo"]
     },
     "clean": {
       "cache": false

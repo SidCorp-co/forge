@@ -6,11 +6,5 @@
     "declaration": false,
     "paths": {}
   },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "**/*.test.ts",
-    "**/*.fixture.ts"
-  ]
+  "exclude": ["**/*.test.ts", "**/*.fixture.ts"]
 }

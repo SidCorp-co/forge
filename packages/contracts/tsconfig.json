@@ -23,5 +23,6 @@
       "@forge/observability": ["../observability/src/index.ts"]
     }
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["**/*.test.ts"]
 }

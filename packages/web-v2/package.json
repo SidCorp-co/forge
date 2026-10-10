@@ -11,7 +11,9 @@
     "lint": "eslint --pass-on-unpruned-suppressions src",
     "lint:inventory": "node scripts/lint-inventory.mjs",
     "test": "vitest run",
-    "witness": "node witness/run.mjs"
+    "witness": "node witness/run.mjs",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck:test": "tsgo --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -64,6 +66,7 @@
     "@types/node": "^26.6.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "babel-plugin-react-compiler": "^1.0.0",
     "eslint": "^10.12.0",
     "eslint-import-resolver-typescript": "^4.4.5",

@@ -20,12 +20,14 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "typescript": "^5.7.2",
     "vitest": "^5.0.3"
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.emit.json --noCheck && node scripts/check-exports.mjs",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsgo -p tsconfig.emit.json --noCheck && node scripts/check-exports.mjs",
     "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck:test": "tsgo --noEmit -p tsconfig.test.json"
   }
 }

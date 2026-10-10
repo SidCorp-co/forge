@@ -14,7 +14,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsgo -p tsconfig.json",
     "clean": "rm -rf dist"
   },
   "files": [
@@ -22,6 +22,7 @@
     "src"
   ],
   "devDependencies": {
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "typescript": "^5.7.0"
   }
 }

@@ -168,13 +168,6 @@ export const CHECKS = [
     needs: ['deps'],
   },
   {
-    axis: 'form',
-    label: 'core typecheck',
-    cmd: ['pnpm', '--filter', '@forge/core', 'exec', 'tsc', '--noEmit', '--extendedDiagnostics'],
-    scanned: /^Files:\s+(\d+)/m,
-    needs: ['deps', 'observability-build', 'contracts-build'],
-  },
-  {
     axis: 'runner',
     label: 'cargo gates',
     cmd: ['node', 'scripts/check-runner-gates.mjs'],

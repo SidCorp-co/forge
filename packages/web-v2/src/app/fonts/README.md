@@ -31,6 +31,7 @@ weight web-v2 uses.
 
 ## Licence
 
+<!-- doc-citation: unchecked `google/fonts/ofl/jetbrainsmono/OFL.txt` — a path in the google/fonts repository, not this tree -->
 JetBrains Mono is SIL Open Font License 1.1, which permits redistribution in this repo provided
 the licence travels with the file — `OFL-jetbrains-mono.txt`, verbatim from
 `google/fonts/ofl/jetbrainsmono/OFL.txt`. The binary also carries `https://scripts.sil.org/OFL` in

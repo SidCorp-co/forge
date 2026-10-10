@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Typecheck the workspace packages this branch touched against its base, plus every package that
 // imports one of them, in parallel and incrementally. Workspace imports resolve to source through
-// each tsconfig's `paths`, so nothing has to be built first.
+// each tsconfig's `paths`, so nothing has to be built first. Each package's tsconfig.json is its
+// source alone; its test files are tsconfig.test.json, checked by `pnpm typecheck:test` on main.
 //
 //   pnpm tc:changed                 against origin/dev
 //   pnpm tc:changed --base <ref>    against another ref

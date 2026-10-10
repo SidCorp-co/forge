@@ -8,7 +8,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
-import { keyedNodes } from "../hooks/use-list-keys";
+import { keyedNodes } from "../keyed";
 
 export function RowList({ children, label, header, testId, className }: { children: ReactNode; label?: string; header?: ReactNode; testId?: string; className?: string }) {
   return (

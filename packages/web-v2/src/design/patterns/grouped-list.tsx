@@ -10,7 +10,7 @@ import type { StandingGroup, StandingGroupLabels } from "@forge/contracts/standi
 import type { MouseEvent, ReactNode } from "react";
 import { useState } from "react";
 import { cn } from "@/lib/utils/cn";
-import { keyedNodes } from "../hooks/use-list-keys";
+import { keyedNodes } from "../keyed";
 import { useBrowserValue } from "../hooks/use-browser-value";
 import { Icon } from "../icons/icon";
 import { LEGEND, type LegendTone } from "../vocabulary";
