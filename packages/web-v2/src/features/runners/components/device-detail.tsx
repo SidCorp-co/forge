@@ -1,36 +1,34 @@
 "use client";
 
 import {
-	Banner,
-	Button,
-	EnumBadge,
-	EmptyState,
-	ErrorState,
-	Field,
-	HealthDot,
-	Icon,
-	Input,
-	Skeleton,
-	SlideOver,
-	StatusBadge,
-	Property,
-	PropertyList,
+  Banner,
+  Button,
+  EnumBadge,
+  EmptyState,
+  Field,
+  HealthDot,
+  Icon,
+  Input,
+  SlideOver,
+  StatusBadge,
+  Property,
+  PropertyList,
 } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import Link from "next/link";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useDeviceRunners, useRenameDevice } from "../hooks";
 import {
-	type DeviceBuildChip,
-	type DeviceRow,
-	type DeviceRunnerAssignment,
-	deviceBinariesRead,
-	deviceDiskStale,
-	diskRootLine,
-	deviceBuildChip,
-	deviceGateBanner,
-	runnerHealth,
+  type DeviceBuildChip,
+  type DeviceRow,
+  type DeviceRunnerAssignment,
+  deviceBinariesRead,
+  deviceDiskStale,
+  diskRootLine,
+  deviceBuildChip,
+  deviceGateBanner,
+  runnerHealth,
 } from "../types";
 
 /** The build chip beside a device's version: amber when an update is pending. */
@@ -49,83 +47,61 @@ export function BuildChip({ chip, className = "" }: { chip: DeviceBuildChip; cla
 	);
 }
 
-/**
- * The binaries this box's panes need and cannot resolve, one hairline row each,
- * with what the box looked for. Every pane it starts fails on any listed here.
- */
-function DeviceBinaries({ device }: { device: DeviceRow }) {
-	const t = useCopy();
-	const read = deviceBinariesRead(device.binaries, useInterfaceLanguage());
+interface ReadEntry {
+	key: string;
+	verdict: string;
+	tone: string;
+	detail: string;
+}
+
+/** A label, then one hairline row per thing the box reported (its name, core's verdict, the detail), then the notes under them. */
+function DeviceRead({ label, entries, empty, notes }: { label: string; entries: ReadEntry[] | null; empty: string; notes: (string | null | false)[] }) {
 	return (
 		<div className="flex flex-col gap-1">
-			<span className="fg-label">{t("runners.detail.binaries")}</span>
-			{read.state === "unreported" && <p className="fg-body-sm text-subtle">{t("runners.detail.binariesUnreported")}</p>}
-			{read.state === "resolved" && <p className="fg-body-sm text-subtle">{t("runners.detail.binariesResolved")}</p>}
-			{read.state === "missing" && (
+			<span className="fg-label">{label}</span>
+			{entries === null || entries.length === 0 ? <p className="fg-body-sm text-subtle">{empty}</p> : (
 				<div className="flex flex-col divide-y divide-line-subtle">
-					{read.missing.map((m) => (
-						<div key={m.name} className="flex flex-col gap-0.5 py-2">
+					{entries.map((e) => (
+						<div key={e.key} className="flex flex-col gap-0.5 py-2">
 							<span className="inline-flex items-center gap-2">
-								<code className="fg-body-sm font-semibold text-fg">{m.name}</code>
-								<span className="fg-caption text-warn-11">
-									{t("runners.detail.missing")}
-								</span>
+								<code className="fg-body-sm font-semibold text-fg">{e.key}</code>
+								<span className={`fg-caption ${e.tone}`}>{e.verdict}</span>
 							</span>
-							<span className="fg-body-sm text-subtle">{m.detail}</span>
+							<span className="fg-body-sm text-subtle">{e.detail}</span>
 						</div>
 					))}
 				</div>
 			)}
-			{read.stale && <p className="fg-caption text-subtle">{read.stale}.</p>}
+			{notes.filter(Boolean).map((n) => <p key={n as string} className="fg-caption text-subtle">{n}</p>)}
 		</div>
 	);
 }
 
-/**
- * What each filesystem this box writes its runs' scratch into had left, as core
- * judged it, one hairline row per root. Under the critical threshold a run that
- * cannot create a file fails in whatever way its own tooling fails.
- */
+/** The binaries this box's panes need and cannot resolve, with what it looked for: every pane it starts fails on any listed. */
+function DeviceBinaries({ device }: { device: DeviceRow }) {
+	const t = useCopy();
+	const read = deviceBinariesRead(device.binaries, useInterfaceLanguage());
+	const empty = read.state === "unreported" ? t("runners.detail.binariesUnreported") : t("runners.detail.binariesResolved");
+	const entries = read.missing.map((m) => ({ key: m.name, verdict: t("runners.detail.missing"), tone: "text-warn-11", detail: m.detail }));
+	return <DeviceRead label={t("runners.detail.binaries")} entries={entries} empty={empty} notes={[read.stale && `${read.stale}.`]} />;
+}
+
+const VERDICT_TONE: Record<string, string> = { critical: "text-danger", clear: "text-subtle" };
+
+/** What each filesystem this box writes its runs' scratch into had left, as core judged it; under the critical threshold a run fails however its own tooling fails. */
 function DeviceDisk({ device }: { device: DeviceRow }) {
 	const disk = device.disk;
 	const t = useCopy();
 	const language = useInterfaceLanguage();
 	const stale = disk ? deviceDiskStale(disk, language) : null;
-	return (
-		<div className="flex flex-col gap-1">
-			<span className="fg-label">{t("runners.detail.disk")}</span>
-			{disk === null ? (
-				<p className="fg-body-sm text-subtle">{t("runners.detail.diskUnreported")}</p>
-			) : (
-				<div className="flex flex-col divide-y divide-line-subtle">
-					{disk.roots.map((r) => (
-						<div key={r.root} className="flex flex-col gap-0.5 py-2">
-							<span className="inline-flex items-center gap-2">
-								<code className="fg-body-sm font-semibold text-fg">{r.root}</code>
-								<span
-									className={
-										r.verdict === "critical"
-											? "fg-caption text-danger"
-											: r.verdict === "clear"
-												? "fg-caption text-subtle"
-												: "fg-caption text-warn-11"
-									}
-								>
-									{t(`runners.disk.verdict.${r.verdict}`)}
-									{r.axis && r.verdict !== "clear" ? ` ${t(`runners.disk.on.${r.axis}`)}` : ""}
-								</span>
-							</span>
-							<span className="fg-body-sm text-subtle">{diskRootLine(r, language)}</span>
-						</div>
-					))}
-				</div>
-			)}
-			{disk && disk.verdict !== "clear" && disk.verdict !== "unmeasurable" && (
-				<p className="fg-caption text-subtle">{t("runners.detail.diskThresholds", { tight: disk.tightFreePercent, critical: disk.criticalFreePercent })}</p>
-			)}
-			{stale && <p className="fg-caption text-subtle">{stale}.</p>}
-		</div>
-	);
+	const entries = disk?.roots.map((r) => ({
+		key: r.root,
+		verdict: `${t(`runners.disk.verdict.${r.verdict}`)}${r.axis && r.verdict !== "clear" ? ` ${t(`runners.disk.on.${r.axis}`)}` : ""}`,
+		tone: VERDICT_TONE[r.verdict] ?? "text-warn-11",
+		detail: diskRootLine(r, language),
+	})) ?? null;
+	const thresholds = disk && disk.verdict !== "clear" && disk.verdict !== "unmeasurable" && t("runners.detail.diskThresholds", { tight: disk.tightFreePercent, critical: disk.criticalFreePercent });
+	return <DeviceRead label={t("runners.detail.disk")} entries={entries} empty={t("runners.detail.diskUnreported")} notes={[thresholds, stale && `${stale}.`]} />;
 }
 
 /** Rename + read-only status/config for the device (device-global concerns). */
@@ -206,39 +182,22 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 	);
 }
 
-/**
- * One project this device serves — READ-ONLY here. Per-project assignment,
- * repo path/branch, and provisioning moved to the project's Settings → Runners
- * tab (`/projects/<slug>/settings?tab=connections#runners`); this is the device-side roll-up
- * that links there.
- */
-function ProjectPool({
-	assignment,
-}: { assignment: DeviceRunnerAssignment }) {
-	const router = useRouter();
+/** One project this device serves, read-only: assignment, repo path and provisioning live on the project's Settings → Runners, which this links to. */
+function ProjectPool({ assignment }: { assignment: DeviceRunnerAssignment }) {
 	return (
-		<button
-			type="button"
-			onClick={() =>
-				router.push(`/projects/${assignment.slug}/settings?tab=connections#runners`)
-			}
+		<Link
+			href={`/projects/${assignment.slug}/settings?tab=connections#runners`}
 			className="flex w-full items-center justify-between gap-2 py-3 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
 		>
 			<div className="flex min-w-0 items-center gap-2">
 				<HealthDot health={runnerHealth(assignment.status)} withLabel={false} />
-				<span className="truncate font-semibold text-fg">
-					{assignment.name}
-				</span>
+				<span className="truncate font-semibold text-fg">{assignment.name}</span>
 			</div>
 			<div className="flex flex-none items-center gap-2">
-				{assignment.repoPath && (
-					<code className="fg-caption max-w-50 truncate text-subtle">
-						{assignment.repoPath}
-					</code>
-				)}
+				{assignment.repoPath && <code className="fg-caption max-w-50 truncate text-subtle">{assignment.repoPath}</code>}
 				<Icon name="arrowRight" size={14} className="text-subtle" />
 			</div>
-		</button>
+		</Link>
 	);
 }
 
@@ -247,7 +206,6 @@ export function DeviceDetail({
 	onClose,
 }: { device: DeviceRow | null; onClose: () => void }) {
 	const runners = useDeviceRunners(device?.id ?? null);
-	const rows = runners.data ?? [];
 	const t = useCopy();
 
 	return (
@@ -262,33 +220,18 @@ export function DeviceDetail({
 					<DeviceSummary device={device} />
 
 					<div className="flex flex-col gap-3">
-						<div className="flex flex-col gap-0.5">
-							<span className="fg-label">{t("runners.detail.projectsServed")}</span>
-						</div>
+						<span className="fg-label">{t("runners.detail.projectsServed")}</span>
 
 						{device.status === "revoked" ? (
 							<Banner tone="attention">{t("runners.detail.revoked")}</Banner>
-						) : runners.isLoading ? (
-							<div className="flex flex-col gap-2">
-								<Skeleton className="h-14 w-full" />
-								<Skeleton className="h-14 w-full" />
-							</div>
-						) : runners.isError ? (
-							<ErrorState
-								message={formatApiError(runners.error)}
-								onRetry={() => void runners.refetch()}
-							/>
-						) : rows.length === 0 ? (
-							<EmptyState
-								message={t("runners.detail.noProjects")}
-								mascot={false}
-							/>
 						) : (
-							<div className="flex flex-col divide-y divide-line-subtle">
-								{rows.map((r) => (
-									<ProjectPool key={r.runnerId} assignment={r} />
-								))}
-							</div>
+							<QueryBoundary query={runners} loadingLabel={t("runners.detail.projectsServed")} height="inline">
+								{(rows) => rows.length === 0 ? <EmptyState message={t("runners.detail.noProjects")} mascot={false} /> : (
+									<div className="flex flex-col divide-y divide-line-subtle">
+										{rows.map((r) => <ProjectPool key={r.runnerId} assignment={r} />)}
+									</div>
+								)}
+							</QueryBoundary>
 						)}
 					</div>
 				</div>
