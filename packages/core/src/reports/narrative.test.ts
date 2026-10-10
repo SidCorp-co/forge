@@ -8,6 +8,7 @@ import { getReportQuery, listReportQueries } from '../report-queries/registry.js
 // off after its day, and put three requirements at a fourth one's time. What must hold: the model is
 // handed no ISO, each of those answers is refused by name and retried, and a clean answer is kept
 // with every time its requirement's own.
+// @direct-test-of packages/core/src/reports/narrative-instants.ts
 
 const answers: string[] = [];
 const asked: { role: string; content: string }[][] = [];
@@ -132,7 +133,9 @@ describe("the roadmap narrative's dates and times", () => {
     );
     const failed = await run();
     expect(failed.narrative).toMatchObject({ path: 'not_written', calls: 2 });
-    expect(asked[1]?.at(-1)?.content).toContain('states "2026-10-10T", an instant cut off after its day');
+    expect(asked[1]?.at(-1)?.content).toContain(
+      'states "2026-10-10T", an instant cut off after its day',
+    );
     expect(failed.narrative.reason).toContain('puts REQ-34, REQ-30, REQ-31 at Oct 10, 10:46 UTC');
     expect(failed.document.narrative.summary).toBe('');
 
@@ -146,7 +149,9 @@ describe("the roadmap narrative's dates and times", () => {
     );
     const kept = await run();
     expect(kept.narrative).toMatchObject({ path: 'retried', calls: 2 });
-    expect(asked.at(-1)?.at(-1)?.content).toContain('puts REQ-34, REQ-30, REQ-31 at Oct 10, 10:46 UTC');
+    expect(asked.at(-1)?.at(-1)?.content).toContain(
+      'puts REQ-34, REQ-30, REQ-31 at Oct 10, 10:46 UTC',
+    );
     expect(kept.document.narrative.summary).toBe(
       `REQ-40 lands first at ${T('02:19')}; REQ-34 follows at ${T('04:33')} and REQ-43 at ${T('10:46')}.`,
     );
@@ -165,7 +170,9 @@ describe("the roadmap narrative's dates and times", () => {
     answers.push(answer(summary, ['', `REQ-30 has the latest forecast end, Oct 10, 16:01 UTC.`]));
     const out = await run();
     expect(out.narrative).toMatchObject({ path: 'written', calls: 1 });
-    expect(out.document.blocks[1]?.finding).toBe(`REQ-30 has the latest forecast end, ${T('16:01')}.`);
+    expect(out.document.blocks[1]?.finding).toBe(
+      `REQ-30 has the latest forecast end, ${T('16:01')}.`,
+    );
     expect(out.text).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
 });

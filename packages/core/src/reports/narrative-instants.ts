@@ -24,16 +24,15 @@ export interface Held {
 
 const KEY = /\b[A-Z][A-Z0-9]*-\d+\b/g;
 const WHOLE_KEY = /^[A-Z][A-Z0-9]*-\d+$/;
-const ISO_IN_TEXT = /\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2}))?/g;
+const ISO_IN_TEXT =
+  /\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2}))?/g;
 const ZONED = /(?:Z|[+-]\d{2}:?\d{2})$/;
 
 function heldOf(iso: string, keys: ReadonlySet<string>): Held | null {
   const words = UTC_READING.instant(iso);
   if (words === iso) return null;
   const dayOnly = !words.includes(':');
-  const day = dayOnly
-    ? iso.slice(0, 10)
-    : new Date(iso).toISOString().slice(0, 10);
+  const day = dayOnly ? iso.slice(0, 10) : new Date(iso).toISOString().slice(0, 10);
   return {
     iso: dayOnly ? iso.slice(0, 10) : iso,
     words,
@@ -59,7 +58,11 @@ export function instantsShown(blocks: readonly VisualBlock[]): Held[] {
         const cell = row[field.name];
         if (typeof cell !== 'string') continue;
         const found =
-          field.type === 'date' ? [cell] : field.type === 'string' ? (cell.match(ISO_IN_TEXT) ?? []) : [];
+          field.type === 'date'
+            ? [cell]
+            : field.type === 'string'
+              ? (cell.match(ISO_IN_TEXT) ?? [])
+              : [];
         for (const iso of found) {
           const h = heldOf(iso, keys);
           if (h) held.push(h);

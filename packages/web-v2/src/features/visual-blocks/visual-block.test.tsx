@@ -1,6 +1,7 @@
 // A visual block is drawn through the registry. What must hold: the three kinds draw their frame
 // (table sorted and cut as the block says, kpi figures with deltas, status rows linking to what they
 // name), each drawn block shows its source, and a block this screen cannot draw is named, never dropped.
+// @direct-test-of packages/web-v2/src/features/visual-blocks/visual-block.tsx
 
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";

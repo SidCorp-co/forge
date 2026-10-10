@@ -11,13 +11,13 @@
 // slot in silence (REQ-32 BC-7).
 
 import { contentLanguageBlock } from '@forge/contracts/content-language';
+import type { ReportFrame } from '@forge/contracts/report-queries';
 import {
   FINDING_MAX_WORDS,
   type ReportDocument,
   type TemplateNarrativeSlot,
 } from '@forge/contracts/report-templates';
 import type { StatusReportNarrative } from '@forge/contracts/status-reports';
-import type { ReportFrame } from '@forge/contracts/report-queries';
 import { readInstantsIn, shownFrame, UTC_READING } from '@forge/contracts/visual-blocks';
 import { recordModelCallUsage } from '../agent-sessions/index.js';
 import {
@@ -114,7 +114,10 @@ export function narrativeInput(document: ReportDocument, slots: readonly Slot[])
 }
 
 /** A row with each date cell, and each instant inside a text cell, as its UTC words. */
-function inUtcWords(frame: ReportFrame, row: ReportFrame['rows'][number]): ReportFrame['rows'][number] {
+function inUtcWords(
+  frame: ReportFrame,
+  row: ReportFrame['rows'][number],
+): ReportFrame['rows'][number] {
   const types = new Map(frame.fields.map((f) => [f.name, f.type]));
   return Object.fromEntries(
     Object.entries(row).map(([name, cell]) => {

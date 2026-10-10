@@ -389,7 +389,9 @@ describe("a narrative's dates and times are the ones its rows hold", () => {
       summary:
         'REQ-40 is forecast first at 2026-10-10T02:19:33.076Z. REQ-34, REQ-30, REQ-31, and REQ-43 follow on 2026-10-10T. No forecast is shown for the remaining requirements.',
     });
-    expect(message).toContain('slot "summary" states "2026-10-10T", an instant cut off after its day');
+    expect(message).toContain(
+      'slot "summary" states "2026-10-10T", an instant cut off after its day',
+    );
   });
 
   it('refuses an instant with no zone, and a time no block shows', async () => {
@@ -397,7 +399,9 @@ describe("a narrative's dates and times are the ones its rows hold", () => {
       summary: 'REQ-40 lands at 2026-10-10T02:19:33. REQ-43 lands at Oct 11, 09:00 UTC.',
     });
     expect(message).toContain('states "2026-10-10T02:19:33", an instant with no zone');
-    expect(message).toContain('states Oct 11, 09:00 UTC, which no block of template "roadmap" shows');
+    expect(message).toContain(
+      'states Oct 11, 09:00 UTC, which no block of template "roadmap" shows',
+    );
   });
 
   it("keeps run 3's summary written in the UTC words it was handed, as the ISO each time matched", async () => {
@@ -422,7 +426,10 @@ describe("a narrative's dates and times are the ones its rows hold", () => {
       `REQ-30 has the latest forecast endpoint, ${T('16:01')}.`,
     ]);
     expect(doc.blocks[1]?.finding).toBe(`REQ-30 has the latest forecast endpoint, ${T('16:01')}.`);
-    const message = await refusal({}, ['', 'REQ-34 has the latest forecast endpoint, Oct 10, 16:01 UTC.']);
+    const message = await refusal({}, [
+      '',
+      'REQ-34 has the latest forecast endpoint, Oct 10, 16:01 UTC.',
+    ]);
     expect(message).toContain(
       'finding 2 (table "Forecast") puts REQ-34 at Oct 10, 16:01 UTC, which is not a time its row holds (REQ-34: Oct 10, 04:33 UTC, Oct 10, 09:58 UTC)',
     );
