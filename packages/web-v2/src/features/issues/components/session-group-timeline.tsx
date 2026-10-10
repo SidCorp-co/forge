@@ -8,8 +8,8 @@
 // `issue.agentSessions` (AC9): no raw claudeSessionId / "sessionGroup" key in
 // the default view (AC8); legacy rows lacking metadata render without a badge
 // rather than erroring.
-import { useState } from "react";
-import { Badge, enumLabel, Icon, MonoTag, Section, StatusBadge } from "@/design";
+import { OperatorDetails } from "./live-agent";
+import { Badge, enumLabel, Icon, Section, StatusBadge } from "@/design";
 import {
   deriveSessionTimeline,
   type SessionTimelineEntry,
@@ -46,7 +46,6 @@ const CONTINUITY_META: Record<"resumed" | "fresh", { glyph: string; tone: "neutr
 const KNOWN_GROUPS = new Set(["build", "planning", "verify"]);
 
 function SessionGroupEntry({ entry, isLast }: { entry: SessionTimelineEntry; isLast: boolean }) {
-  const [showOps, setShowOps] = useState(false);
   const t = useCopy();
   const language = useInterfaceLanguage();
   const groupLabel = entry.group && KNOWN_GROUPS.has(entry.group) ? t(`issues.session.group.${entry.group as "build" | "planning" | "verify"}`) : entry.groupLabel;
@@ -111,37 +110,10 @@ function SessionGroupEntry({ entry, isLast }: { entry: SessionTimelineEntry; isL
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowOps((v) => !v)}
-          className="fg-caption mt-1.5 inline-flex items-center gap-1 text-muted transition-colors hover:text-fg"
-          aria-expanded={showOps}
-        >
-          <Icon name={showOps ? "chevronDown" : "chevronRight"} size={12} />
-          {t("issues.live.operatorDetails")}
-        </button>
-        {showOps && (
-          <div className="mt-2 flex flex-wrap gap-2 border-t border-line-subtle pt-2">
-            {entry.claudeShort && <OpsTag label="claude" value={entry.claudeShort} />}
-            {(entry.deviceName ?? entry.deviceShort) && (
-              <OpsTag label="device" value={entry.deviceName ?? entry.deviceShort ?? ""} />
-            )}
-            <OpsTag label="status" value={entry.status} />
-            {entry.continuity === "fresh" && entry.freshReason && (
-              <span className="fg-caption text-muted">{t(`issues.session.freshReason.${entry.freshReason}`)}</span>
-            )}
-          </div>
-        )}
+        <OperatorDetails tags={[["claude", entry.claudeShort], ["device", entry.deviceName ?? entry.deviceShort], ["status", entry.status]]}>
+          {entry.continuity === "fresh" && entry.freshReason ? <span className="fg-caption text-muted">{t(`issues.session.freshReason.${entry.freshReason}`)}</span> : null}
+        </OperatorDetails>
       </div>
     </div>
-  );
-}
-
-function OpsTag({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="inline-flex items-center gap-1">
-      <span className="fg-caption text-muted">{label}</span>
-      <MonoTag hue="neutral">{value}</MonoTag>
-    </span>
   );
 }
