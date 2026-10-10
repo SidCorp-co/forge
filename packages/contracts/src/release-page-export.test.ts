@@ -67,18 +67,34 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 				proven: [
 					{
 						code: "BC-1",
-						statement: "Each release has a page.",
+						statement: "The page shows the version and date.",
 						short: false,
 						issueKey: "ISS-1",
+						n: 1,
+					},
+					{
+						code: "BC-1",
+						statement: "The page names who approved it.",
+						short: false,
+						issueKey: "ISS-1",
+						n: 2,
 					},
 					{
 						code: "BC-2",
 						statement: "Highlights open it.",
 						short: true,
 						issueKey: "ISS-1",
+						n: 3,
 					},
 				],
 				unproven: 1,
+				business: {
+					total: 13,
+					proven: [
+						{ code: "BC-1", statement: "Each release has a page." },
+						{ code: "BC-2", statement: "The page opens on highlights." },
+					],
+				},
 			},
 		],
 		untraced: {
@@ -88,6 +104,7 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 					statement: "The export opens in a mail client.",
 					short: false,
 					issueKey: "ISS-4",
+					n: 1,
 				},
 			],
 			unproven: 0,
@@ -143,14 +160,25 @@ describe("a release page as Markdown (BC-11)", () => {
 		);
 		expect(md).toContain("## Improvements\n- Releases read as pages.");
 		expect(md).toContain("## Fixes\n- Dates show correctly.");
+		// J7 on 0.4.0-dev.222: rows tracing one criterion each said its wording, so they read alike
 		expect(md).toContain(
-			"- Release page (complete): Each release has a page.; Highlights open it. (short of its wording) (1 not yet proven on this build)",
+			"- Release page (complete): 2 of its 13 criteria proven on this build: Each release has a page (The page shows the version and date; The page names who approved it); The page opens on highlights (Highlights open it, short of its wording)",
 		);
 		// a proven criterion of an issue tracing no requirement is listed too, as the header counts it
 		expect(md).toContain(
 			"- Not traced to a requirement: The export opens in a mail client.",
 		);
 		expect(md).toContain("- Known issues are listed. (Falls short)");
+	});
+	it("reads a share frozen before a requirement was counted as its rows did", () => {
+		const [req] = page().requirements;
+		if (!req) throw new Error("the fixture carries a requirement");
+		const frozen = releasePageMarkdown(
+			page({ requirements: [{ ...req, business: null }] }),
+		);
+		expect(frozen).toContain(
+			"- Release page (complete): The page shows the version and date.; The page names who approved it.; Highlights open it. (short of its wording) (1 not yet proven on this build)",
+		);
 	});
 	it("says an empty Action required reads empty, and never names an issue key", () => {
 		expect(md).toContain("## Action required\nNothing is required of you.");

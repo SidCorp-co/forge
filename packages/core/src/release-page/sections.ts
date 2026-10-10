@@ -115,12 +115,15 @@ function shippedArtifacts(changes: ReleaseDetail['changes']): ShippedArtifact[] 
 }
 
 const MIGRATION = /(^|\/)migrations?\/|\.sql$/i;
+// a migrator's bookkeeping beside its migrations (drizzle's journal and snapshots): no schema change
+const MIGRATION_META = /(^|\/)migrations?\/(.*\/)?meta\//i;
 const DEPENDENCY =
   /(^|\/)(package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\.lock|Cargo\.toml|Cargo\.lock|go\.mod|go\.sum|requirements\.txt|pyproject\.toml)$/;
 const CONTRACT = /(^|\/)contracts?\//;
 const PERMISSIONS: ReadonlySet<string> = new Set(PROJECT_PERMISSIONS);
 
-const isMigration = (a: ShippedArtifact) => a.surface === 'data' && MIGRATION.test(a.ref);
+const isMigration = (a: ShippedArtifact) =>
+  a.surface === 'data' && MIGRATION.test(a.ref) && !MIGRATION_META.test(a.ref);
 const permissionOf = (a: ShippedArtifact) => {
   const ref = a.ref.replace(/^`|`$/g, '').trim();
   return PERMISSIONS.has(ref) ? ref : null;
@@ -162,16 +165,32 @@ function derivedArtifacts(shipped: ReleaseShipped): ShippedArtifact[] {
 }
 
 /**
+ * What the issues' landings add to a page. Where the range is read it is what the release ships: a
+ * landing only names the issues behind an item the range ships, or a permission key, which no range
+ * reads. An issue carried again (reopened, then released anew) still names all it ever landed,
+ * which an earlier release shipped. Where the range is unread, every landing counts, as it says.
+ */
+function landedArtifacts(
+  changes: ReleaseDetail['changes'],
+  shipped: ReleaseShipped,
+): ShippedArtifact[] {
+  const landed = shippedArtifacts(changes);
+  if (shipped.state !== 'read') return landed;
+  const ships = new Set(shipped.migrations);
+  return landed.filter((a) => permissionOf(a) !== null || (isMigration(a) && ships.has(a.ref)));
+}
+
+/**
  * What an admin must do once the release lands, each item naming the artifact that owes it (BC-7):
- * what the release's commit range ships (`shipped`), then what its issues' landings name, an item
- * both say once.
+ * what the release's commit range ships (`shipped`), then what its issues' landings add
+ * (`landedArtifacts`), an item both say once.
  */
 export function actionsOf(
   changes: ReleaseDetail['changes'],
   shipped: ReleaseShipped,
 ): ReleaseActionItem[] {
   const out = new Map<string, ReleaseActionItem>();
-  for (const a of [...derivedArtifacts(shipped), ...shippedArtifacts(changes)]) {
+  for (const a of [...derivedArtifacts(shipped), ...landedArtifacts(changes, shipped)]) {
     const permission = permissionOf(a);
     const kind: ReleaseActionKind | null = permission
       ? 'permission'
@@ -195,33 +214,40 @@ export function actionsOf(
 
 const uniq = (refs: readonly string[]) => [...new Set(refs)].sort();
 
-/** The developer view's addition: each issue's technical note, and the migrations, contracts and dependencies the release ships (BC-9). */
+/**
+ * The developer view's addition: each issue's technical note, and the migrations, contracts and
+ * dependencies the release ships (BC-9) — the range's own, where it is read and named above them;
+ * what the issues' landings name only where it is unread.
+ */
 export function technicalOf(detail: ReleaseDetail, shipped: ReleaseShipped): ReleaseTechnicalNotes {
   const entries = [
     ...detail.notes.sections.flatMap((s: ReleaseNoteSection) => s.entries),
     ...detail.notes.designs,
   ];
+  const notes = entries.flatMap((e) =>
+    e.technical?.trim() ? [{ issueKey: e.key, title: e.title, technical: e.technical }] : [],
+  );
+  if (shipped.state === 'read') {
+    return {
+      notes,
+      migrations: uniq(shipped.migrations),
+      contracts: uniq(shipped.contracts),
+      dependencies: uniq(shipped.dependencies),
+      settings: uniq(
+        shipped.settings.map((s) => `${s.name} (${s.required ? 'required' : 'optional'})`),
+      ),
+      changes: detail.changes,
+    };
+  }
   const landed = shippedArtifacts(detail.changes);
-  const derived = shipped.state === 'read' ? shipped : null;
   return {
-    notes: entries.flatMap((e) =>
-      e.technical?.trim() ? [{ issueKey: e.key, title: e.title, technical: e.technical }] : [],
+    notes,
+    migrations: uniq(landed.filter(isMigration).map((a) => a.ref)),
+    contracts: uniq(
+      landed.filter((a) => a.surface === 'api' || CONTRACT.test(a.ref)).map((a) => a.ref),
     ),
-    migrations: uniq([
-      ...(derived?.migrations ?? []),
-      ...landed.filter(isMigration).map((a) => a.ref),
-    ]),
-    contracts: uniq([
-      ...(derived?.contracts ?? []),
-      ...landed.filter((a) => a.surface === 'api' || CONTRACT.test(a.ref)).map((a) => a.ref),
-    ]),
-    dependencies: uniq([
-      ...(derived?.dependencies ?? []),
-      ...landed.filter((a) => DEPENDENCY.test(a.ref)).map((a) => a.ref),
-    ]),
-    settings: uniq(
-      (derived?.settings ?? []).map((s) => `${s.name} (${s.required ? 'required' : 'optional'})`),
-    ),
+    dependencies: uniq(landed.filter((a) => DEPENDENCY.test(a.ref)).map((a) => a.ref)),
+    settings: [],
     changes: detail.changes,
   };
 }

@@ -388,28 +388,42 @@ export interface ReleasePageHeader {
 }
 
 /**
- * One carried criterion proven on `header.build` (`criterionCountsAsPass` of `releaseStandingOf`):
- * `code` is the requirement criterion it traces, with that criterion's wording, or null with the
- * issue criterion's own wording where it traces none; `short` marks one met but short of its wording.
+ * One carried criterion proven on `header.build` (`criterionCountsAsPass` of `releaseStandingOf`), in
+ * its own wording, so two criteria proving one requirement criterion read apart: `issueKey` and `n`
+ * name it, `code` is the requirement criterion it traces (null where it traces none), and `short`
+ * marks one met but short of its wording.
  */
 export interface ReleasePageProven {
 	code: string | null;
 	statement: string;
 	short: boolean;
 	issueKey: string | null;
+	/** Its number on its issue; null on a share frozen before rows carried it. */
+	n: number | null;
 }
 
-/** The carried criteria of one group, each row one criterion: what the header counts, listed. */
+/** The carried criteria of one group, each row one issue criterion: what the header counts, listed. */
 export interface ReleasePageCriteria {
 	proven: ReleasePageProven[];
-	/** How many of its carried criteria are not proven on the build: the known issues among them. */
+	/** How many of its carried issue criteria are not proven on the build: the known issues among them. */
 	unproven: number;
+}
+
+/** One requirement criterion the build proves, said once in its own wording: the rows tracing it prove it. */
+export interface ReleasePageCode {
+	code: string;
+	statement: string;
 }
 
 export interface ReleasePageRequirement extends ReleasePageCriteria {
 	key: string;
 	title: string;
 	completes: boolean;
+	/**
+	 * The requirement's own criteria, counted in them: how many are live, and each the build proves
+	 * (one proven row tracing it is enough), in code order. Null on a share frozen before it was counted.
+	 */
+	business: { total: number; proven: ReleasePageCode[] } | null;
 }
 
 /** One user-facing line (`customer-notes.ts:customerNotes` output), with the kind its section reads as. */
@@ -555,12 +569,14 @@ const PersonSchema = z.strictObject({
 	name: z.string(),
 	kind: z.enum(["human", "agent"]),
 });
-// a share frozen before every carried criterion was listed has a code on each row and no issue key
+// a share frozen before every carried criterion was listed has a code on each row and no issue key;
+// one frozen before rows carried their own wording has no number, its row saying the code's wording
 const ProvenSchema = z.strictObject({
 	code: z.string().min(1).nullable(),
 	statement: z.string(),
 	short: z.boolean().default(false),
 	issueKey: z.string().min(1).nullable().default(null),
+	n: z.number().int().min(1).nullable().default(null),
 });
 const ChangeSchema = z.strictObject({
 	issueKey: z.string().min(1),
@@ -606,6 +622,15 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 			completes: z.boolean(),
 			proven: z.array(ProvenSchema),
 			unproven: z.number().int().min(0),
+			business: z
+				.strictObject({
+					total: z.number().int().min(0),
+					proven: z.array(
+						z.strictObject({ code: z.string().min(1), statement: z.string() }),
+					),
+				})
+				.nullable()
+				.default(null),
 		}),
 	),
 	untraced: z

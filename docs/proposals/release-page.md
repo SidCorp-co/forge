@@ -51,11 +51,11 @@ hairlines, no cards. English copy.
 |---|---|---|---|---|
 | Header: version, date, where it runs, commit, approved by | both | 1, 12 | `ReleaseDetail` (version, releasedAt, production, finish commit, verified, approvals) | approval reads "not asked" where the setting asks nobody |
 | Highlights, 1–3, each with a clip or picture | both | 2, 3 | stored highlights (below) | judged by `judgeHighlights` before they show |
-| Requirements completed or advanced, with criteria proven live | both | 5 | `requirementsCompleted` + verdicts | "proven" is `criterionCountsAsPass(releaseStandingOf(verdicts, build))` (a pass or a short on the build) in the header, the Proof panel, this list and the release record alike, over the same carried criteria; each carried criterion is one row, one tracing no code listed by its issue key and those of issues tracing no requirement listed apart (`untraced`), so the list sums to the header's total; a short is listed with a "short of its wording" mark. Highlights stay pass-only |
+| Requirements completed or advanced, with criteria proven live | both | 5 | `requirementsCompleted` + verdicts | "proven" is `criterionCountsAsPass(releaseStandingOf(verdicts, build))` (a pass or a short on the build) in the header, the Proof panel, this list and the release record alike, over the same carried criteria; each proven carried criterion is one row in its own wording, named by its issue key and number, so the rows and the known issues sum to the header's total; a requirement is counted in its own live criteria (`business`: proven of total), each one a proven row traces said once with its rows under it; rows of issues tracing no requirement are listed apart (`untraced`) with how many are not proven; a short is listed with a "short of its wording" mark. Highlights stay pass-only |
 | Improvements, Fixes | both | 6 | `customerNotes` over each issue's `releaseNotes.userFacing`; section read as new, improved or fixed | an issue with no note is named, not invented |
-| Action required: settings, migrations, permissions | both | 7 | the release's commit range as the run that cut it reported it from its checkout (`forge-runner release range` → `release-batch/shipped-range.ts:recordRange`, read by `shippedBetween`; no source host is called): journal entries, new required settings of the deployment files; and the release's landing artifacts (`ReleaseChanges`): migration files, permission keys, project-config paths | each item names the artifact that owes it; a range not reported, or reported for another head, says so, never "Nothing is required" |
+| Action required: settings, migrations, permissions | both | 7 | the release's commit range as the run that cut it reported it from its checkout (`forge-runner release range` → `release-batch/shipped-range.ts:recordRange`, read by `shippedBetween`; no source host is called): journal entries, new required settings of the deployment files. A landing artifact (`ReleaseChanges`) adds only a permission key, which no range reads, and its issues to an item the range ships; an issue carried again names all it ever landed, which an earlier release shipped. Where the range is unread, the landings' migration files, permission keys and project-config paths stand. The migrator's journal and snapshots (`migrations/meta/`) are never a migration | each item names the artifact that owes it; a range not reported, or reported for another head, says so, never "Nothing is required" |
 | Known issues | both | 8 | every carried criterion the truth rule does not claim | fail, short, skipped, or not judged on this build; the user view says the criterion's own wording and its state, the developer view adds the verdict's reason and where it was judged instead |
-| Technical notes: changes, migrations, API contracts, dependencies | developer | 9 | `releaseNotes.technical`, `ReleaseChanges`, and the reported commit range: journal entries, generated API contract operations, `package.json` dependency moves, new deployment settings | the view says which range the lists were read from, or why none was |
+| Technical notes: changes, migrations, API contracts, dependencies | developer | 9 | `releaseNotes.technical`, and the reported commit range: journal entries, generated API contract operations, `package.json` dependency moves, new deployment settings; only where the range is unread, the paths the landings (`ReleaseChanges`) name | the view says which range the lists were read from, or why none was, and lists only what that range changes |
 
 **Truth rule (BC-13).** The build a page describes is the commit the release was cut at and
 deploys. A criterion is claimed only when the newest verdict whose identity is that commit is a
@@ -87,10 +87,12 @@ verdicts (`releaseStandingOf`) and claims nothing.
 
 ## Clips (BC-3, BC-4)
 
-- QA records one clip per observable criterion it judges: a Playwright screencast (or one context
-  with `recordVideo`) started before the step that shows the criterion and stopped after it, webm,
-  at most `RELEASE_CLIP_MAX_SECONDS` and `RELEASE_CLIP_MAX_BYTES`. A longer clip is re-recorded
-  tighter, never trimmed by a server and never the ceiling raised.
+- QA records one clip per observable criterion it judges, webm, at most `RELEASE_CLIP_MAX_SECONDS`
+  and `RELEASE_CLIP_MAX_BYTES`; the served method (`guides/issue-flow.md`, verdict section) asks
+  for it. On this repository the recorder is the screen witness: `pnpm --filter web-v2 witness
+  <entry> --out <dir> --clip` writes `<case>.webm`, the page's screencast from ready through each
+  stage, encoded by Chrome's MediaRecorder (`packages/web-v2/witness/run.mjs`). A longer run is
+  played faster to fit, one over the byte ceiling fails by name, and the ceiling is never raised.
 - It is uploaded as an issue attachment and cited by name in the verdict's `evidence`, the same
   path a screenshot takes today. The Judge form accepts video as well as images.
 - A highlight picks, from the clips and pictures cited by pass verdicts on criteria it claims, the

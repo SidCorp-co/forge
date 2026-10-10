@@ -53,12 +53,41 @@ describe("the sections the release page reads (BC-5..8)", () => {
     renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed={false} />);
     const r = screen.getByTestId("page-requirement");
     expect(r).toHaveTextContent("REQ-40");
-    expect(within(r).getByTestId("page-proven")).toHaveTextContent("BC-1Each release has a page.");
+    // counted in the requirement's own criteria, each proven one said once with the rows proving it
+    expect(within(r).getByTestId("page-requirement-count")).toHaveTextContent("2 of its 13 criteria proven on this build");
+    const codes = within(r).getAllByTestId("page-proven-code");
+    expect(codes.map((c) => c.getAttribute("data-code"))).toEqual(["BC-1", "BC-2"]);
+    expect(codes[0]).toHaveTextContent("BC-1Each release has a page.");
+    expect(within(codes[0] as HTMLElement).getAllByTestId("page-proven-row").map((row) => row.textContent)).toEqual([
+      "ISS-1 #1The page shows the version and date.",
+      "ISS-1 #2The page names who approved it.",
+    ]);
     // a criterion met but short of its wording is proven and says so, beside it
     expect(within(r).getAllByTestId("page-proven-short")).toHaveLength(1);
-    expect(within(r).getByTestId("page-proven")).toHaveTextContent("BC-2Each release opens on highlights.short of its wording");
-    expect(within(r).getByTestId("page-unproven")).toHaveTextContent("1 not yet proven on this build");
+    expect(codes[1]).toHaveTextContent("ISS-1 #3Each release opens on highlights.short of its wording");
+    expect(within(r).queryByTestId("page-unproven")).toBeNull();
     expect(within(r).getByRole("link", { name: "REQ-40" })).toHaveAttribute("href", "/projects/forge/requirements/REQ-40");
+  });
+
+  it("draws seven criteria proving one requirement criterion as seven rows a reader tells apart", () => {
+    // J7 on 0.4.0-dev.222: REQ-34 drew `BC-18 A refusal says…` seven times, under one repeated React key
+    const base = releasePage();
+    const seven = Array.from({ length: 7 }, (_, i) => ({ code: "BC-18", statement: `refusal ${i + 1} names its field`, short: false, issueKey: "ISS-451", n: i + 1 }));
+    const page = {
+      ...base,
+      requirements: [
+        { key: "REQ-34", title: "Refusals", completes: false, proven: seven, unproven: 30, business: { total: 26, proven: [{ code: "BC-18", statement: "A refusal says in plain words what to fix, on that field." }] } },
+      ],
+    };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    renderWithQuery(<ReleaseReader page={page} authed={false} />);
+    const r = screen.getByTestId("page-requirement");
+    expect(within(r).getAllByText("A refusal says in plain words what to fix, on that field.")).toHaveLength(1);
+    const rows = within(r).getAllByTestId("page-proven-row").map((row) => row.textContent);
+    expect(new Set(rows).size).toBe(7);
+    expect(within(r).getByTestId("page-requirement-count")).toHaveTextContent("1 of its 26 criteria proven on this build");
+    expect(errors.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+    errors.mockRestore();
   });
 
   it("splits improvements from fixes in the user's words, with no issue key", () => {

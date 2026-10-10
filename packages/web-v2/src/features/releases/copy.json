@@ -169,6 +169,7 @@
     "releases.page.loading": "Loading the release page",
     "releases.page.requirements.advances": "Moves it forward",
     "releases.page.requirements.completes": "Completes it",
+    "releases.page.requirements.count": "{proven} of its {total} criteria proven on this build",
     "releases.page.requirements.none": "This release completes or advances no requirement.",
     "releases.page.requirements.noneProven": "No criterion is proven on this build yet.",
     "releases.page.requirements.short": "short of its wording",

@@ -101,15 +101,22 @@ describe("the header, the Proof panel and the list say one count (BC-5)", () => 
         title: "Visit reminders",
         completes: false,
         proven: [
-          { code: "BC-1", statement: "A nurse sees the reminder", short: false, issueKey: "ISS-1" },
-          { code: "BC-2", statement: "A nurse sees it on a phone", short: true, issueKey: "ISS-1" },
-          { code: null, statement: "(REQ-1 BC-2) the reminder names the patient", short: false, issueKey: "ISS-2" },
+          { code: "BC-1", statement: "A nurse sees the reminder", short: false, issueKey: "ISS-1", n: 1 },
+          { code: "BC-2", statement: "A nurse sees it on a phone", short: true, issueKey: "ISS-1", n: 2 },
+          { code: null, statement: "(REQ-1 BC-2) the reminder names the patient", short: false, issueKey: "ISS-2", n: 1 },
         ],
         unproven: 2,
+        business: {
+          total: 3,
+          proven: [
+            { code: "BC-1", statement: "A nurse is reminded of the visit" },
+            { code: "BC-2", statement: "The reminder reaches a phone" },
+          ],
+        },
       },
     ],
     untraced: {
-      proven: [{ code: null, statement: "the list loads in a second", short: false, issueKey: "ISS-3" }],
+      proven: [{ code: null, statement: "the list loads in a second", short: false, issueKey: "ISS-3", n: 1 }],
       unproven: 0,
     },
   });
@@ -126,14 +133,16 @@ describe("the header, the Proof panel and the list say one count (BC-5)", () => 
     const header = await screen.findByTestId("page-header-verified");
     expect(header).toHaveTextContent("Partly verified: 4 of 6 criteria proven");
     expect(within(screen.getByTestId("facts-proof")).getByText("4 of 6 proven")).toBeTruthy();
+    // every proven issue criterion is a row; the rest are the known issues
     const rows = screen.getAllByTestId("page-proven-row");
-    const unproven = screen.getAllByTestId("page-unproven").map((e) => Number(e.getAttribute("data-n")));
     expect(rows).toHaveLength(4);
-    expect(rows.length + unproven.reduce((a, b) => a + b, 0)).toBe(6);
+    expect(rows.length + screen.getAllByTestId("page-known-issue").length).toBe(6);
+    // the requirement counts in its own criteria, said as such (J7 on 0.4.0-dev.222)
+    expect(screen.getByTestId("page-requirement-count")).toHaveTextContent("2 of its 3 criteria proven on this build");
     // the short is proven and marked; the criterion tracing no code is listed under its issue's key
     expect(screen.getAllByTestId("page-proven-short")).toHaveLength(1);
-    expect(rows[2]).toHaveTextContent("ISS-2(REQ-1 BC-2) the reminder names the patient");
-    expect(within(screen.getByTestId("page-untraced")).getByTestId("page-proven-row")).toHaveTextContent("ISS-3the list loads in a second");
+    expect(rows[2]).toHaveTextContent("ISS-2 #1(REQ-1 BC-2) the reminder names the patient");
+    expect(within(screen.getByTestId("page-untraced")).getByTestId("page-proven-row")).toHaveTextContent("ISS-3 #1the list loads in a second");
   });
 });
 

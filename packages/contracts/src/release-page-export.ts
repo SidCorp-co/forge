@@ -10,6 +10,8 @@ import type {
 	ReleasePage,
 	ReleasePageChange,
 	ReleasePageCriteria,
+	ReleasePageProven,
+	ReleasePageRequirement,
 } from "./release-page.js";
 
 export interface ReleasePageExportOptions {
@@ -96,13 +98,33 @@ function mediaLink(m: ReleaseMediaRef, origin: string | undefined) {
 
 const lineOf = (c: ReleasePageChange) => ({ text: c.line });
 
+const rowText = (p: ReleasePageProven) =>
+	p.short ? `${p.statement} (short of its wording)` : p.statement;
+
 /** One group's proven criteria, a short marked, then how many are not proven on the build. */
 function criteriaText(g: ReleasePageCriteria): string {
 	const proven =
-		g.proven.length > 0
-			? `: ${g.proven.map((p) => (p.short ? `${p.statement} (short of its wording)` : p.statement)).join("; ")}`
-			: "";
+		g.proven.length > 0 ? `: ${g.proven.map(rowText).join("; ")}` : "";
 	return `${proven}${g.unproven > 0 ? ` (${g.unproven} not yet proven on this build)` : ""}`;
+}
+
+const bare = (text: string) => text.trim().replace(/\.+$/, "");
+
+/**
+ * A requirement counted in its own criteria, each one the build proves said once with the rows that
+ * prove it; a share frozen before it was counted reads as its group did.
+ */
+function requirementText(r: ReleasePageRequirement): string {
+	if (!r.business) return criteriaText(r);
+	const b = r.business;
+	const count = `: ${b.proven.length} of its ${b.total} criteria proven on this build`;
+	const codes = b.proven.map((c) => {
+		const rows = r.proven
+			.filter((p) => p.code === c.code)
+			.map((p) => `${bare(p.statement)}${p.short ? ", short of its wording" : ""}`);
+		return `${bare(c.statement)} (${rows.join("; ")})`;
+	});
+	return codes.length > 0 ? `${count}: ${codes.join("; ")}` : count;
 }
 
 function sectionsOf(page: ReleasePage, origin: string | undefined): Section[] {
@@ -112,7 +134,7 @@ function sectionsOf(page: ReleasePage, origin: string | undefined): Section[] {
 		out.push({ title: "Highlights", items: highlights });
 	const proves = [
 		...page.requirements.map((r) => ({
-			text: `${r.title}${r.completes ? " (complete)" : " (in progress)"}${criteriaText(r)}`,
+			text: `${r.title}${r.completes ? " (complete)" : " (in progress)"}${requirementText(r)}`,
 		})),
 		...(page.untraced
 			? [{ text: `Not traced to a requirement${criteriaText(page.untraced)}` }]

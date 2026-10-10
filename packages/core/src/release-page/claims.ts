@@ -127,41 +127,55 @@ export interface CarriedRequirement {
 const byCode = (a: string | null, b: string | null) =>
   a === null ? (b === null ? 0 : 1) : b === null ? -1 : a.localeCompare(b, 'en', { numeric: true });
 
+const byKeyThenN = (a: ReleasePageProven, b: ReleasePageProven) =>
+  (a.issueKey ?? '').localeCompare(b.issueKey ?? '', 'en', { numeric: true }) ||
+  (a.n ?? 0) - (b.n ?? 0);
+
 /**
- * One group's carried criteria, each row one criterion as the header counts it (BC-5): the proven
- * ones listed, a short marked, the traced ones in code order, then those that trace no code under
- * their own wording; the rest counted as not proven on the build.
+ * One group's carried criteria, each row one issue criterion as the header counts it (BC-5), in its
+ * own wording so rows tracing one code read apart: the proven ones listed, a short marked, the traced
+ * ones in code order, then those that trace no code; the rest counted as not proven on the build.
  */
-function criteriaOf(
-  claims: readonly ClaimReading[],
-  wording: ReadonlyMap<string, string>,
-): ReleasePageCriteria {
+function criteriaOf(claims: readonly ClaimReading[]): ReleasePageCriteria {
   const proven: ReleasePageProven[] = claims
     .filter((c) => c.proven)
     .map(({ criterion, short }) => ({
       code: criterion.bc,
-      statement: (criterion.bc ? wording.get(criterion.bc) : undefined) ?? criterion.statement,
+      statement: criterion.statement,
       short,
       issueKey: criterion.issueKey,
+      n: criterion.n,
     }))
-    .sort((a, b) => byCode(a.code, b.code));
+    .sort((a, b) => byCode(a.code, b.code) || byKeyThenN(a, b));
   return { proven, unproven: claims.length - proven.length };
 }
 
-/** Each requirement the release completes or advances, with every carried criterion it proves live and how many it does not (BC-5). */
+/**
+ * Each requirement the release completes or advances (BC-5): every carried criterion it proves live
+ * and how many it does not, and its own live criteria counted in them, each one a proven row traces
+ * said once in its words.
+ */
 export function requirementsOf(
   requirements: readonly CarriedRequirement[],
   claims: readonly ClaimReading[],
 ): ReleasePageRequirement[] {
-  return requirements.map((r) => ({
-    key: r.key,
-    title: r.title,
-    completes: r.completes,
-    ...criteriaOf(
-      claims.filter((c) => c.criterion.requirementKey === r.key),
-      r.criteria,
-    ),
-  }));
+  return requirements.map((r) => {
+    const group = criteriaOf(claims.filter((c) => c.criterion.requirementKey === r.key));
+    const traced = new Set(group.proven.map((p) => p.code));
+    return {
+      key: r.key,
+      title: r.title,
+      completes: r.completes,
+      ...group,
+      business: {
+        total: r.criteria.size,
+        proven: [...r.criteria]
+          .filter(([code]) => traced.has(code))
+          .map(([code, statement]) => ({ code, statement }))
+          .sort((a, b) => byCode(a.code, b.code)),
+      },
+    };
+  });
 }
 
 /**
@@ -176,7 +190,7 @@ export function untracedOf(
   const rest = claims.filter(
     (c) => c.criterion.requirementKey === null || !listed.has(c.criterion.requirementKey),
   );
-  return rest.length === 0 ? null : criteriaOf(rest, new Map());
+  return rest.length === 0 ? null : criteriaOf(rest);
 }
 
 /**

@@ -5,7 +5,7 @@
 // page in the app (a member, with links into the project) and a frozen page a share link opens (no
 // links, tickets for its media), so the two cannot read differently.
 
-import type { ReleasePage, ReleasePageCriteria } from "@forge/contracts/release-page";
+import type { ReleasePage, ReleasePageCriteria, ReleasePageProven, ReleasePageRequirement } from "@forge/contracts/release-page";
 import Link from "next/link";
 import { useState } from "react";
 import { ViewHeading } from "@/design";
@@ -54,6 +54,26 @@ function ReleaseHeader({ page }: { page: ReleasePage }) {
   );
 }
 
+const rowKey = (p: ReleasePageProven) => `${p.issueKey ?? ""}:${p.n ?? p.statement}:${p.code ?? ""}`;
+
+/** One proven row: the criterion's own wording, named by its issue and number where it carries them, a short marked. */
+function ProvenRow({ p, label }: { p: ReleasePageProven; label: string | null }) {
+  const t = useCopy();
+  return (
+    <li data-testid="page-proven-row">
+      {label ? <span className="mr-2 font-mono text-12 text-subtle">{label}</span> : null}
+      {p.statement}
+      {p.short ? (
+        <span className="ml-2 text-12 text-muted" data-testid="page-proven-short">
+          {t("releases.page.requirements.short")}
+        </span>
+      ) : null}
+    </li>
+  );
+}
+
+const nameOf = (p: ReleasePageProven) => (p.issueKey && p.n !== null ? `${p.issueKey} #${p.n}` : (p.code ?? p.issueKey));
+
 /** One group's carried criteria: each proven one (a short marked, one tracing no code under its issue's key), then how many are not. */
 function Criteria({ group }: { group: ReleasePageCriteria }) {
   const t = useCopy();
@@ -62,15 +82,7 @@ function Criteria({ group }: { group: ReleasePageCriteria }) {
       {group.proven.length > 0 ? (
         <ul className="grid gap-0.5 text-12-5" data-testid="page-proven">
           {group.proven.map((p) => (
-            <li key={`${p.issueKey ?? ""}:${p.code ?? ""}:${p.statement}`} data-testid="page-proven-row">
-              <span className="mr-2 font-mono text-12 text-subtle">{p.code ?? p.issueKey}</span>
-              {p.statement}
-              {p.short ? (
-                <span className="ml-2 text-12 text-muted" data-testid="page-proven-short">
-                  {t("releases.page.requirements.short")}
-                </span>
-              ) : null}
-            </li>
+            <ProvenRow key={rowKey(p)} p={p} label={nameOf(p)} />
           ))}
         </ul>
       ) : (
@@ -80,6 +92,44 @@ function Criteria({ group }: { group: ReleasePageCriteria }) {
         <span className="text-12-5 text-muted" data-testid="page-unproven" data-n={group.unproven}>
           {t("releases.page.requirements.unproven", { n: group.unproven })}
         </span>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * A requirement counted in its own criteria (BC-5): how many of them the build proves, then each one
+ * said once with the issue criteria under it that prove it, so seven rows tracing one read apart.
+ */
+function RequirementCriteria({ r }: { r: ReleasePageRequirement }) {
+  const t = useCopy();
+  if (!r.business) return <Criteria group={r} />;
+  const codes = new Set(r.business.proven.map((c) => c.code));
+  const rest = r.proven.filter((p) => p.code === null || !codes.has(p.code));
+  return (
+    <>
+      <span className="text-12-5 text-muted" data-testid="page-requirement-count" data-proven={r.business.proven.length} data-total={r.business.total}>
+        {t("releases.page.requirements.count", { proven: r.business.proven.length, total: r.business.total })}
+      </span>
+      {r.business.proven.length + rest.length > 0 ? (
+        <ul className="grid gap-1.5 text-12-5" data-testid="page-proven">
+          {r.business.proven.map((c) => (
+            <li key={c.code} data-testid="page-proven-code" data-code={c.code}>
+              <span className="mr-2 font-mono text-12 text-subtle">{c.code}</span>
+              <span className="font-semibold">{c.statement}</span>
+              <ul className="mt-0.5 grid gap-0.5 pl-4">
+                {r.proven
+                  .filter((p) => p.code === c.code)
+                  .map((p) => (
+                    <ProvenRow key={rowKey(p)} p={p} label={p.issueKey && p.n !== null ? `${p.issueKey} #${p.n}` : null} />
+                  ))}
+              </ul>
+            </li>
+          ))}
+          {rest.map((p) => (
+            <ProvenRow key={rowKey(p)} p={p} label={nameOf(p)} />
+          ))}
+        </ul>
       ) : null}
     </>
   );
@@ -107,7 +157,7 @@ function Requirements({ page, slug }: { page: ReleasePage; slug?: string | undef
                 <span className="min-w-0 flex-1 font-semibold">{r.title}</span>
                 <span className="text-12 text-muted">{r.completes ? t("releases.page.requirements.completes") : t("releases.page.requirements.advances")}</span>
               </span>
-              <Criteria group={r} />
+              <RequirementCriteria r={r} />
             </li>
           ))}
           {page.untraced ? (

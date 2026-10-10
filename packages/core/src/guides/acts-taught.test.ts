@@ -5,6 +5,7 @@
 
 import { MERGE_REFUSAL_CODES } from '@forge/contracts/issues';
 import { QUESTION_REFUSAL_CODES } from '@forge/contracts/questions';
+import { RELEASE_CLIP_MAX_BYTES, RELEASE_CLIP_MAX_SECONDS } from '@forge/contracts/release-page';
 import { DESIGN_REFUSAL_CODES } from '@forge/contracts/workflows';
 import { describe, expect, it } from 'vitest';
 import { memorySources, memoryWritableSources } from '../db/schema-vocabulary.js';
@@ -127,6 +128,24 @@ describe('the workflow-design guide clears pin-only dependents in one act', () =
     expect(repins.length).toBeGreaterThan(0);
     expect(repins.filter((c) => !(DESIGN_REFUSAL_CODES as readonly string[]).includes(c))).toEqual(
       [],
+    );
+  });
+});
+
+describe('a judge records a clip of each observable criterion it judges (REQ-40 BC-4)', () => {
+  // J7 on 0.4.0-dev.223: none of 30 observable QA verdicts carried a clip, and nothing in the
+  // method a judge reads asked for one
+  const flow = body('issue-flow');
+  const verdicts = flow.slice(flow.indexOf('### 5.'), flow.indexOf('### 6.'));
+
+  it('asks for the clip in the verdict section, cited in the verdict evidence', () => {
+    expect(verdicts).toMatch(/records a short screen clip of each observable criterion it judges/);
+    expect(verdicts).toMatch(/cite its name in that verdict's `evidence`/);
+  });
+
+  it('states the ceiling a release page shows, read from the contract', () => {
+    expect(verdicts).toContain(
+      `at most ${RELEASE_CLIP_MAX_SECONDS} seconds and ${RELEASE_CLIP_MAX_BYTES / (1024 * 1024)} MiB`,
     );
   });
 });

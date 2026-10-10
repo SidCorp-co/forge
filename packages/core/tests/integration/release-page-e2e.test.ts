@@ -154,11 +154,19 @@ describe('a release page claims a criterion only with a pass verdict on the buil
         key: 'REQ-1',
         title: 'Visit reminders',
         completes: false,
+        // each row in its issue criterion's own wording, the requirement criterion it proves said once
         proven: [
-          { code: 'BC-1', statement: 'A nurse sees the reminder', short: false, issueKey: 'ISS-1' },
-          { code: 'BC-2', statement: 'A nurse sees it on a phone', short: true, issueKey: 'ISS-1' },
+          { code: 'BC-1', statement: 'criterion 1', short: false, issueKey: 'ISS-1', n: 1 },
+          { code: 'BC-2', statement: 'criterion 2', short: true, issueKey: 'ISS-1', n: 2 },
         ],
         unproven: 2,
+        business: {
+          total: 4,
+          proven: [
+            { code: 'BC-1', statement: 'A nurse sees the reminder' },
+            { code: 'BC-2', statement: 'A nurse sees it on a phone' },
+          ],
+        },
       },
     ]);
     // every carried issue traces the requirement, so nothing is listed apart

@@ -303,3 +303,71 @@ describe('what the commit range ships adds to what the issues named (BC-7, BC-9)
     expect(technicalOf(detail({ changes: none }), UNREAD).migrations).toEqual([]);
   });
 });
+
+describe('a read range is what the release ships, whatever its issues landed before (BC-7, BC-9)', () => {
+  // J7 on 0.4.0-dev.223: the developer view said "Read from the range 4c9ea53..3b5e47c" and listed
+  // migration 0493, the journal and 7 contract files that range does not change: 0493 shipped in
+  // dev.222, and an issue carried again brought its whole landing. Action required asked for a backup
+  // for both, the journal read as a schema change.
+  const MIG = 'packages/core/drizzle/migrations/0493_requirement_reviews.sql';
+  const JOURNAL = 'packages/core/drizzle/migrations/meta/_journal.json';
+  const SNAPSHOT = 'packages/core/drizzle/migrations/meta/0493_snapshot.json';
+  const landed = (surface: 'data' | 'api' | 'config', refs: string[]) => ({
+    surface,
+    count: refs.length,
+    shipsNothing: false,
+    issues: ['ISS-488'],
+    artifacts: refs.map((ref) => ({
+      ref,
+      change: 'added' as const,
+      issues: ['ISS-488'],
+      carriedBy: null,
+    })),
+  });
+  const earlier: ReleaseDetail['changes'] = {
+    surfaces: [
+      landed('data', [MIG, JOURNAL, SNAPSHOT]),
+      landed('api', ['packages/contracts/src/requirements.ts', 'packages/core/src/x/routes.ts']),
+      landed('config', ['scripts/check-x.mjs', 'packages/core/package.json']),
+    ],
+    risks: [],
+    unclassified: [],
+    boxRead: [],
+    shipsNothing: false,
+  };
+  const quiet: ReleaseShipped = {
+    state: 'read',
+    base: '4c9ea53'.padEnd(40, '0'),
+    head: HEAD,
+    migrations: [],
+    contracts: [],
+    dependencies: [],
+    settings: [],
+  };
+
+  it('lists no migration, contract or dependency the range does not change', () => {
+    const t = technicalOf(detail({ changes: earlier }), quiet);
+    expect(t.migrations).toEqual([]);
+    expect(t.contracts).toEqual([]);
+    expect(t.dependencies).toEqual([]);
+  });
+
+  it('asks an admin for nothing the range does not ship', () => {
+    expect(actionsOf(earlier, quiet)).toEqual([]);
+  });
+
+  it('keeps an issue on an item the range ships and its landing names', () => {
+    const ships = { ...quiet, migrations: [MIG] };
+    expect(technicalOf(detail({ changes: earlier }), ships).migrations).toEqual([MIG]);
+    expect(actionsOf(earlier, ships)).toEqual([
+      expect.objectContaining({ kind: 'migration', ref: MIG, issues: ['ISS-488'] }),
+    ]);
+  });
+
+  it('never reads the journal or a snapshot as a migration, where the range is unread too', () => {
+    expect(technicalOf(detail({ changes: earlier }), UNREAD).migrations).toEqual([MIG]);
+    expect(actionsOf(earlier, UNREAD).filter((a) => a.kind === 'migration')).toEqual([
+      expect.objectContaining({ ref: MIG }),
+    ]);
+  });
+});

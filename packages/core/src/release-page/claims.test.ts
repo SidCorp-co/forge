@@ -102,12 +102,54 @@ describe('the truth rule over the carried criteria', () => {
         title: 'Reminders',
         completes: false,
         proven: [
-          { code: 'BC-1', statement: 'A nurse sees the reminder', short: false, issueKey: 'ISS-1' },
-          { code: 'BC-2', statement: 'A doctor sees the report', short: true, issueKey: 'ISS-1' },
+          { code: 'BC-1', statement: 'criterion 1', short: false, issueKey: 'ISS-1', n: 1 },
+          { code: 'BC-2', statement: 'criterion 2', short: true, issueKey: 'ISS-1', n: 2 },
         ],
         unproven: 2,
+        business: {
+          total: 2,
+          proven: [
+            { code: 'BC-1', statement: 'A nurse sees the reminder' },
+            { code: 'BC-2', statement: 'A doctor sees the report' },
+          ],
+        },
       },
     ]);
+  });
+
+  it('reads seven criteria proving one requirement criterion apart, and counts the requirement in its own criteria', () => {
+    // J7 on 0.4.0-dev.222: REQ-34 drew `BC-18 A refusal says…` seven times, one row per ISS-451
+    // criterion tracing it, and read 10 proven plus 30 unproven for a requirement of 26 criteria
+    const traced = Array.from({ length: 7 }, (_, i) => ({
+      ...criterion(i + 1, 'BC-18', [verdict('pass', BUILD, '2026-10-09T10:00:00.000Z')]),
+      issueKey: 'ISS-451',
+      requirementKey: 'REQ-34',
+      statement: `field refusal ${i + 1} names what to fix`,
+    }));
+    const open = {
+      ...criterion(8, 'BC-19', [verdict('fail', BUILD, '2026-10-09T10:00:00.000Z')]),
+      issueKey: 'ISS-451',
+      requirementKey: 'REQ-34',
+    };
+    const live = new Map<string, string>(
+      Array.from({ length: 26 }, (_, i) => [`BC-${i + 1}`, `business criterion ${i + 1}`]),
+    );
+    live.set('BC-18', 'A refusal says in plain words what to fix, on that field.');
+    const [req34] = requirementsOf(
+      [{ key: 'REQ-34', title: 'Refusals', completes: false, criteria: live }],
+      readClaims([...traced, open], BUILD),
+    );
+    const rows = req34?.proven ?? [];
+    expect(rows).toHaveLength(7);
+    expect(new Set(rows.map((p) => p.statement)).size).toBe(7);
+    expect(new Set(rows.map((p) => `${p.issueKey}:${p.n}`)).size).toBe(7);
+    expect(rows.every((p) => p.code === 'BC-18')).toBe(true);
+    expect(req34?.business).toEqual({
+      total: 26,
+      proven: [
+        { code: 'BC-18', statement: 'A refusal says in plain words what to fix, on that field.' },
+      ],
+    });
   });
 
   it('lists the carried criteria under no requirement apart, so the list sums to every carried criterion', () => {

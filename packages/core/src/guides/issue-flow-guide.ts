@@ -8,6 +8,7 @@
 // against another core's statuses and records sends a run to verbs this one refuses (ISS-275).
 
 import { WORK_STEPS } from '@forge/contracts/issue-vocabulary';
+import { RELEASE_CLIP_MAX_BYTES, RELEASE_CLIP_MAX_SECONDS } from '@forge/contracts/release-page';
 import { guideRef } from './guide-ref.js';
 import type { CoreGuide } from './types.js';
 
@@ -222,6 +223,12 @@ it. A \`pass\` or \`short\` on an observable criterion with no probe sent and no
 \`VERDICT_PROBE_REQUIRED\`; a malformed probe \`VERDICT_PROBE_SHAPE\` at its path, one holding a
 credential \`VERDICT_PROBE_SECRET\`, one on a code property \`VERDICT_PROBE_CODE_PROPERTY\`. A criterion
 no design classes owes none, and its verdict's record says so.
+
+A judge records a short screen clip of each observable criterion it judges, the run that shows it
+met or not: WebM or MP4, at most ${RELEASE_CLIP_MAX_SECONDS} seconds and ${RELEASE_CLIP_MAX_BYTES / (1024 * 1024)} MiB.
+Upload it as an attachment and cite its name in that verdict's \`evidence\`. A release page shows a
+highlight's clip from there, from a pass on the build it describes. The project's knowledge names
+the recorder its box has. A verdict judged without a clip says why in its \`reason\`.
 
 A test is evidence only where it can fail: plant the failure it guards against and watch it go red
 naming its own rule before the green counts.

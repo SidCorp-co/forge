@@ -4,7 +4,7 @@
 // nothing out, so a defect that only a width shows — a check's name cut to three characters at
 // 390 px (ISS-474) — is one no vitest test here can see. This is where it goes red.
 //
-//   pnpm --filter web-v2 witness witness/<name>.witness.tsx --out <dir>
+//   pnpm --filter web-v2 witness witness/<name>.witness.tsx --out <dir> [--clip]
 //
 // An entry mounts its component over a stubbed core and sets `window.__witness` to
 // `{ cases: [{ name, width }], ready(): boolean, probe(): string[] }`: `ready` says the component has
@@ -16,6 +16,13 @@
 // list of sentences, fails by name. The run exits 1 naming every failed probe, and 2 when it could
 // not witness at all.
 //
+// With `--clip` each case is also recorded as `<out>/<case>.webm`: the page's frames from ready to its
+// last stage (CDP screencast, each stage held long enough to read), encoded by Chrome's own
+// MediaRecorder, so no encoder is installed. A judge attaches it as the verdict's evidence (REQ-40
+// BC-4). It is kept within the clip ceiling a release page shows (`RELEASE_CLIP_MAX_SECONDS`,
+// `RELEASE_CLIP_MAX_BYTES`): a longer recording is played faster, and one over the byte ceiling fails
+// by name rather than being written.
+//
 // Chrome reaches no network on some boxes, so everything is a `file://` page in `<out>`; the
 // browser binary is `WITNESS_CHROME`, else `google-chrome`.
 
@@ -26,7 +33,7 @@ import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const WEB = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const USAGE = "usage: node witness/run.mjs <entry.witness.tsx> --out <dir>";
+const USAGE = "usage: node witness/run.mjs <entry.witness.tsx> --out <dir> [--clip]";
 
 function cannot(why) {
   console.error(`witness: ${why}`);
@@ -36,12 +43,15 @@ function cannot(why) {
 function argsOf(argv) {
   const at = argv.indexOf("--out");
   const out = at >= 0 ? argv[at + 1] : undefined;
-  const entry = argv.filter((a, i) => a !== "--out" && i !== at + 1)[0];
+  const clip = argv.includes("--clip");
+  const unknown = argv.find((a, i) => a.startsWith("--") && a !== "--out" && a !== "--clip" && i !== at + 1);
+  if (unknown) cannot(`${unknown} is not a flag the witness takes. ${USAGE}`);
+  const entry = argv.filter((a, i) => a !== "--out" && a !== "--clip" && i !== at + 1)[0];
   if (!entry) cannot(`no entry named. ${USAGE}`);
   if (!out) cannot(`no --out directory named: screenshots and the page are written there, never into the tree by default. ${USAGE}`);
   const path = resolve(process.cwd(), entry);
   if (!existsSync(path)) cannot(`entry ${path} does not exist. ${USAGE}`);
-  return { entry: path, out: resolve(process.cwd(), out) };
+  return { entry: path, out: resolve(process.cwd(), out), clip };
 }
 
 const need = createRequire(resolve(WEB, "package.json"));
@@ -102,7 +112,7 @@ async function devtoolsOf(profile, chrome) {
   cannot(`${chrome.spawnfile} wrote no DevToolsActivePort in 10s`);
 }
 
-/** One CDP connection: `send` answers a command's result, `next` the next event of a method. */
+/** One CDP connection: `send` answers a command's result, `next` the next event of a method, `on` every one until it is let go. */
 async function connect(url) {
   const ws = new WebSocket(url);
   await new Promise((ok, fail) => {
@@ -112,6 +122,7 @@ async function connect(url) {
   let id = 0;
   const calls = new Map();
   const waits = [];
+  const listeners = new Set();
   ws.onmessage = (m) => {
     const msg = JSON.parse(String(m.data));
     if (msg.id !== undefined) {
@@ -121,6 +132,7 @@ async function connect(url) {
       else call?.ok(msg.result);
       return;
     }
+    for (const l of listeners) if (l.method === msg.method) l.fn(msg.params, msg.sessionId);
     const at = waits.findIndex((w) => w.method === msg.method);
     if (at >= 0) waits.splice(at, 1)[0].ok(msg.params);
   };
@@ -132,11 +144,153 @@ async function connect(url) {
         ws.send(JSON.stringify({ id, method, params, sessionId }));
       }),
     next: (method) => new Promise((ok) => waits.push({ method, ok })),
+    on: (method, fn) => {
+      const l = { method, fn };
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
     close: () => ws.close(),
   };
 }
 
-async function witnessCase(cdp, session, url, c, out) {
+/** How long a clip holds the page at ready and after each stage, so a reader sees what it did. */
+const CLIP_HOLD_MS = 1200;
+const CLIP_HEIGHT = 900;
+
+/** The clip ceiling a release page shows (`@forge/contracts/release-page`), read from where it is declared. */
+async function clipCeiling() {
+  const esbuild = load("esbuild");
+  const built = await esbuild.build({
+    stdin: {
+      contents: 'export { RELEASE_CLIP_MAX_SECONDS, RELEASE_CLIP_MAX_BYTES } from "@forge/contracts/release-page";',
+      resolveDir: WEB,
+      loader: "ts",
+    },
+    bundle: true,
+    format: "esm",
+    platform: "node",
+    write: false,
+    tsconfig: resolve(WEB, "tsconfig.json"),
+    logLevel: "error",
+  });
+  const mod = await import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString("base64")}`);
+  return { seconds: mod.RELEASE_CLIP_MAX_SECONDS, bytes: mod.RELEASE_CLIP_MAX_BYTES };
+}
+
+/** The page's screencast frames while a case runs, each stamped on a clock that leaves out the time spent shooting. */
+function recorder(cdp, session) {
+  const frames = [];
+  const started = Date.now();
+  let skipped = 0;
+  let pausedAt = null;
+  const now = () => Date.now() - started - skipped;
+  const off = cdp.on("Page.screencastFrame", (p, from) => {
+    if (from !== session) return;
+    cdp.send("Page.screencastFrameAck", { sessionId: p.sessionId }, session).catch(() => {});
+    if (pausedAt === null) frames.push({ data: p.data, at: now() });
+  });
+  return {
+    start: (width) => cdp.send("Page.startScreencast", { format: "jpeg", quality: 80, maxWidth: width, maxHeight: CLIP_HEIGHT, everyNthFrame: 1 }, session),
+    pause: () => {
+      pausedAt = Date.now();
+    },
+    resume: () => {
+      if (pausedAt !== null) skipped += Date.now() - pausedAt;
+      pausedAt = null;
+    },
+    stop: async () => {
+      const end = now();
+      await cdp.send("Page.stopScreencast", {}, session);
+      off();
+      return { frames, end };
+    },
+  };
+}
+
+/**
+ * Runs in the page: plays the frames on a canvas, each for its hold, and records the canvas with
+ * Chrome's MediaRecorder. Self-contained, since it is sent as its source text.
+ */
+async function encodeInPage(frames, width, height) {
+  const mime = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((m) => MediaRecorder.isTypeSupported(m));
+  if (!mime) return { why: "this Chrome records no WebM" };
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  document.body.appendChild(canvas);
+  const g = canvas.getContext("2d");
+  const images = await Promise.all(
+    frames.map(async (f) => {
+      const img = new Image();
+      img.src = `data:image/jpeg;base64,${f.data}`;
+      await img.decode();
+      return img;
+    }),
+  );
+  let current = images[0];
+  const draw = () => {
+    g.fillStyle = "#fff";
+    g.fillRect(0, 0, width, height);
+    g.drawImage(current, 0, 0, width, (current.naturalHeight * width) / current.naturalWidth);
+  };
+  draw();
+  const rec = new MediaRecorder(canvas.captureStream(15), { mimeType: mime, videoBitsPerSecond: 1_500_000 });
+  const chunks = [];
+  rec.ondataavailable = (e) => {
+    if (e.data.size > 0) chunks.push(e.data);
+  };
+  const stopped = new Promise((ok) => {
+    rec.onstop = ok;
+  });
+  rec.start();
+  const tick = setInterval(draw, 66);
+  for (const [i, f] of frames.entries()) {
+    current = images[i];
+    draw();
+    await new Promise((ok) => setTimeout(ok, f.hold));
+  }
+  clearInterval(tick);
+  rec.stop();
+  await stopped;
+  const bytes = new Uint8Array(await new Blob(chunks, { type: "video/webm" }).arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { webm: btoa(bin) };
+}
+
+/** Each frame's hold, the whole played faster where it would run past the ceiling. */
+function clipTimeline(frames, end, maxMs) {
+  if (frames.length === 0) return [];
+  const span = Math.max(end - frames[0].at, 1);
+  const scale = Math.min(1, maxMs / span);
+  return frames.map((f, i) => ({ data: f.data, hold: Math.max(1, Math.round(((frames[i + 1]?.at ?? end) - f.at) * scale)) }));
+}
+
+/** Encodes one case's recording into `<out>/<name>.webm`, or says why it could not. */
+async function writeClip(send, recording, width, ceiling, out, name) {
+  // half a second under the ceiling, so the encoder's own start and stop cannot carry it over
+  const timed = clipTimeline(recording.frames, recording.end, ceiling.seconds * 1000 - 500);
+  if (timed.length === 0) return [`the clip has no frame: Chrome sent none of the page`];
+  const loaded = await send("Page.navigate", { url: "about:blank" });
+  if (loaded.errorText) return [`the clip could not be encoded: ${loaded.errorText}`];
+  const r = await send("Runtime.evaluate", {
+    expression: `(${encodeInPage.toString()})(${JSON.stringify(timed)}, ${width}, ${CLIP_HEIGHT})`,
+    awaitPromise: true,
+    returnByValue: true,
+  });
+  if (r.exceptionDetails) return [`the clip could not be encoded: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`];
+  const made = r.result.value;
+  if (!made?.webm) return [`the clip could not be encoded: ${made?.why ?? "the page answered nothing"}`];
+  const bytes = Buffer.from(made.webm, "base64");
+  if (bytes.length === 0) return ["the clip encoded to no bytes"];
+  if (bytes.length > ceiling.bytes) {
+    return [`the clip is ${bytes.length} bytes, over the ${ceiling.bytes} a release page shows: give the entry fewer stages`];
+  }
+  writeFileSync(resolve(out, `${name}.webm`), bytes);
+  return [];
+}
+
+async function witnessCase(cdp, session, url, c, out, ceiling) {
   const send = (method, params) => cdp.send(method, params, session);
   const metrics = (height) =>
     send("Emulation.setDeviceMetricsOverride", { width: c.width, height, deviceScaleFactor: 1, mobile: c.width < 600 });
@@ -162,13 +316,22 @@ async function witnessCase(cdp, session, url, c, out) {
   // a page laid out wider than its window and scaled down would measure nothing a phone shows
   const laidOut = await value("window.innerWidth");
   if (laidOut !== c.width) failures.push(`the page laid out at ${laidOut} px, not the case's ${c.width} px`);
+  // a clip records what the window shows; the full-height screenshot between stages is left out of it
+  const rec = ceiling ? recorder(cdp, session) : null;
+  const hold = () => (rec ? pause(CLIP_HOLD_MS) : Promise.resolve());
   const shoot = async (name) => {
+    rec?.pause();
     const { cssContentSize } = await send("Page.getLayoutMetrics");
     await metrics(Math.ceil(cssContentSize.height));
     const shot = await send("Page.captureScreenshot", { format: "png" });
     writeFileSync(resolve(out, `${name}.png`), Buffer.from(shot.data, "base64"));
     await metrics(900);
+    rec?.resume();
   };
+  if (rec) {
+    await rec.start(c.width);
+    await hold();
+  }
   const stages = await value("Array.isArray(window.__witness.stages) ? window.__witness.stages.map((s) => s.name) : null");
   if (!stages) {
     failures.push(...(await answer("window.__witness.probe()", "the entry's probe")));
@@ -177,16 +340,19 @@ async function witnessCase(cdp, session, url, c, out) {
     for (const [i, stage] of stages.entries()) {
       const wrong = await answer(`Promise.resolve(window.__witness.stages[${i}].run())`, "the stage");
       failures.push(...wrong.map((f) => `${stage}: ${f}`));
+      await hold();
       await shoot(`${c.name}-${stage}`);
     }
   }
+  if (rec) failures.push(...(await writeClip(send, await rec.stop(), c.width, ceiling, out, c.name)));
   return failures.map((f) => `${c.name} (${c.width} px): ${f}`);
 }
 
 async function main() {
-  const { entry, out } = argsOf(process.argv.slice(2));
+  const { entry, out, clip } = argsOf(process.argv.slice(2));
   mkdirSync(out, { recursive: true });
   const url = await buildPage(entry, out);
+  const ceiling = clip ? await clipCeiling() : null;
   const profile = resolve(out, ".chrome-profile");
   rmSync(profile, { recursive: true, force: true });
   const chrome = spawn(
@@ -207,8 +373,8 @@ async function main() {
     await loaded;
     const cases = (await cdp.send("Runtime.evaluate", { expression: "window.__witness && window.__witness.cases", returnByValue: true }, sessionId)).result.value;
     if (!Array.isArray(cases) || cases.length === 0) cannot(`${basename(entry)} set no window.__witness.cases`);
-    for (const c of cases) failures.push(...(await witnessCase(cdp, sessionId, url, c, out)));
-    console.log(`witness: ${basename(entry)}, ${cases.length} case(s), screenshots in ${out}`);
+    for (const c of cases) failures.push(...(await witnessCase(cdp, sessionId, url, c, out, ceiling)));
+    console.log(`witness: ${basename(entry)}, ${cases.length} case(s), screenshots${clip ? " and clips" : ""} in ${out}`);
   } finally {
     cdp?.close();
     chrome.kill("SIGKILL");

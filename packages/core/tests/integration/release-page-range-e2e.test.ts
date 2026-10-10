@@ -181,16 +181,17 @@ describe('what a release requires is read from the range its run reports, with n
       head: BUILD,
       migrations: MIGRATIONS,
     });
-    expect(user.actionRequired.map((a) => [a.kind, a.ref]).slice(0, 4)).toEqual([
+    // J7 on 0.4.0-dev.223: an issue's landed migration the range does not add (0999 here) was listed
+    // under the range's own line, and an admin was asked to back up for it; a permission key, which no
+    // range reads, still comes from the landing
+    expect(user.actionRequired.map((a) => [a.kind, a.ref])).toEqual([
       ...MIGRATIONS.map((m) => ['migration', m]),
       ['setting', 'VAULT_KEY'],
+      ['permission', 'shares.write'],
     ]);
     // QA 0.4.0-dev.220: Migrations, API contracts, Dependencies and Settings all read "None"
     const dev = await page('developer');
-    expect(dev.technical?.migrations).toEqual([
-      ...MIGRATIONS,
-      'packages/core/drizzle/migrations/0999_reminders.sql',
-    ]);
+    expect(dev.technical?.migrations).toEqual(MIGRATIONS);
     expect(dev.technical?.contracts).toEqual(['added GET /api/previews']);
     expect(dev.technical?.dependencies).toEqual([
       'packages/core: added zod 4.6.5',
