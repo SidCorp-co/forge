@@ -8,7 +8,7 @@ import type { Forecast } from "@forge/contracts/forecast";
 import type { IssueStanding, IssueStandingRow } from "@forge/contracts/issue-standing";
 import { WORK_STEPS } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
-import { type ReactNode, useMemo } from "react";
+import type { ReactNode } from "react";
 import {
   ActorChip,
   type BannerTone,
@@ -48,7 +48,7 @@ export interface RowWords {
 export function useRowWords(): RowWords {
   const t = useCopy();
   const time = useTimeFormat();
-  return useMemo(() => ({ t, time }), [t, time]);
+  return { t, time };
 }
 
 /** The secondary line: module, the requirement and its criteria, a high priority, where it came from, criteria passing. */
