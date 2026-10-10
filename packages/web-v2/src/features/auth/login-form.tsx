@@ -74,7 +74,6 @@ export function LoginForm({
           autoComplete="email"
           inputMode="email"
           spellCheck={false}
-          autoFocus={!presetEmail}
           placeholder="you@studio.com"
           value={email}
           onChange={(e) => {
@@ -90,7 +89,6 @@ export function LoginForm({
           icon="lock"
           autoComplete="current-password"
           placeholder="••••••••"
-          autoFocus={!!presetEmail}
           value={password}
           onChange={(e) => {
             setPassword(e.target.value);

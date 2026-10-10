@@ -8,22 +8,7 @@
 //   2. Test the connection live via JSON-RPC `tools/list`.
 import { Fragment, type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  Badge,
-  Banner,
-  Button,
-  PageSection,
-  PageSectionBody,
-  EmptyState,
-  ErrorState,
-  Field,
-  Input,
-  MonoTag,
-  SectionTitle,
-  Select,
-  Skeleton,
-  Tabs,
-} from "@/design";
+import { Badge, Banner, Button, EmptyState, ErrorState, Field, Input, MonoTag, PageSection, PageSectionBody, SectionTitle, Select, Skeleton, Tabs, useBrowserValue } from "@/design";
 import { useProjects } from "@/features/projects";
 import { useCurrentProject } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
@@ -46,9 +31,8 @@ const TOKENS_TAB_HREF = "/settings?tab=tokens";
 
 export function McpTab() {
   const projectsQ = useProjects();
-  // Resolved after mount: where core shares the browser's origin, the URL reads `window`.
-  const [endpoint, setEndpoint] = useState("/mcp");
-  useEffect(() => setEndpoint(getMcpUrl()), []);
+  // where core shares the browser's origin, the URL reads `window`
+  const endpoint = useBrowserValue(getMcpUrl, "/mcp");
   const projects = projectsQ.data ?? [];
   const currentProject = useCurrentProject();
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -204,25 +188,18 @@ function McpSnippet({
 /** Snippet body with the token placeholder highlighted — it's the one part of
  *  the config the user must edit, so it shouldn't blend into the JSON. */
 function SnippetCode({ content }: { content: string }) {
-  const parts = content.split(TOKEN_PLACEHOLDER);
+  // each part keyed by where it starts in `content`, which no edit of another part moves
+  const parts = content.split(TOKEN_PLACEHOLDER).map((part, i, all) => ({
+    part,
+    at: all.slice(0, i).reduce((n, p) => n + p.length + TOKEN_PLACEHOLDER.length, 0),
+    last: i === all.length - 1,
+  }));
   return (
     <>
-      {parts.map((part, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: parts derive solely from `content` and re-render together.
-        <Fragment key={i}>
+      {parts.map(({ part, at, last }) => (
+        <Fragment key={at}>
           {part}
-          {i < parts.length - 1 && (
-            <mark
-              className="rounded-sm font-semibold"
-              style={{
-                background: "var(--flame-50)",
-                color: "var(--flame-700)",
-                padding: "1px 3px",
-              }}
-            >
-              {TOKEN_PLACEHOLDER}
-            </mark>
-          )}
+          {last ? null : <mark className="rounded-sm bg-accent-3 px-0.75 py-px font-semibold text-accent-11">{TOKEN_PLACEHOLDER}</mark>}
         </Fragment>
       ))}
     </>
@@ -277,7 +254,7 @@ function TestOutcome({ test }: { test: TestState }) {
       <div className="mt-4">
         <Banner tone="danger">
           <span className="font-mono text-12-5">{test.error}</span>
-          {test.hint && <p className="mt-1">{test.hint}</p>}
+          {test.hint ? <p className="mt-1">{test.hint}</p> : null}
         </Banner>
       </div>
     );

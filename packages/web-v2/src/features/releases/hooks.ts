@@ -1,63 +1,29 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type { ReleasePageViewKind } from "@forge/contracts/release-page";
+import { readOf, useWrite } from "@/lib/api/query-kit";
 import { releasesApi } from "./api";
 import type { ReleaseDecisionBody } from "./types";
 
-export function useReleases(projectId: string | undefined) {
-  return useQuery({
-    queryKey: ["releases", projectId ?? ""],
-    queryFn: () => releasesApi.list(projectId as string),
-    enabled: Boolean(projectId),
-    staleTime: 15_000,
-  });
-}
+export const useReleases = (projectId: string | undefined) => useQuery(readOf(["releases", projectId], () => releasesApi.list(projectId as string)));
 
-export function useRelease(projectId: string | undefined, version: string | undefined) {
-  return useQuery({
-    queryKey: ["release", projectId ?? "", version ?? ""],
-    queryFn: () => releasesApi.get(projectId as string, version as string),
-    enabled: Boolean(projectId && version),
-    staleTime: 0,
-  });
-}
+export const useRelease = (projectId: string | undefined, version: string | undefined) =>
+  useQuery(readOf(["release", projectId, version], () => releasesApi.get(projectId as string, version as string), 0));
 
 /** How often a page owed a highlight draft is read again while it waits. */
 const DRAFT_POLL_MS = 5_000;
 
-export function useReleasePage(projectId: string | undefined, version: string | undefined, view: ReleasePageViewKind) {
-  return useQuery({
-    queryKey: ["release-page", projectId ?? "", version ?? "", view],
-    queryFn: () => releasesApi.page(projectId as string, version as string, view),
-    enabled: Boolean(projectId && version),
-    staleTime: 0,
+export const useReleasePage = (projectId: string | undefined, version: string | undefined, view: ReleasePageViewKind) =>
+  useQuery({
+    ...readOf(["release-page", projectId, version, view], () => releasesApi.page(projectId as string, version as string, view), 0),
     refetchInterval: (q) => (q.state.data?.highlights.state === "pending" ? DRAFT_POLL_MS : false),
   });
-}
 
-function useInvalidate(projectId: string) {
-  const qc = useQueryClient();
-  return () => {
-    void qc.invalidateQueries({ queryKey: ["releases", projectId] });
-    void qc.invalidateQueries({ queryKey: ["release", projectId] });
-    void qc.invalidateQueries({ queryKey: ["release-page", projectId] });
-  };
-}
+/** Every release read of the project, which a decision or a cut changes. */
+const touched = (projectId: string) => [["releases", projectId], ["release", projectId], ["release-page", projectId]];
 
-export function useReleaseDecision(projectId: string) {
-  const invalidate = useInvalidate(projectId);
-  return useMutation({
-    mutationFn: (v: { runId: string; approvalId: string; body: ReleaseDecisionBody }) =>
-      releasesApi.decide(projectId, v.runId, v.approvalId, v.body),
-    onSettled: invalidate,
-  });
-}
+export const useReleaseDecision = (projectId: string) =>
+  useWrite((v: { runId: string; approvalId: string; body: ReleaseDecisionBody }) => releasesApi.decide(projectId, v.runId, v.approvalId, v.body), { touches: touched(projectId) });
 
-export function useCutRelease(projectId: string) {
-  const invalidate = useInvalidate(projectId);
-  return useMutation({
-    mutationFn: (issueIds: string[]) => releasesApi.cut(projectId, issueIds),
-    onSettled: invalidate,
-  });
-}
+export const useCutRelease = (projectId: string) => useWrite((issueIds: string[]) => releasesApi.cut(projectId, issueIds), { touches: touched(projectId) });
