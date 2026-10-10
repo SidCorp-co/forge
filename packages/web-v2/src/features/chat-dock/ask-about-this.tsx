@@ -14,7 +14,7 @@ export function AskAboutThis({ about }: { about: AskAbout }) {
     <button
       type="button"
       onClick={() => dock.askAbout(about)}
-      className="inline-flex items-center justify-center gap-[6px] whitespace-nowrap rounded-md border border-line-strong bg-surface px-[11px] py-[6px] text-13 font-semibold leading-none text-fg transition-colors duration-[120ms] hover:bg-hover focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none"
+      className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-line-strong bg-surface px-2.75 py-1.5 text-13 font-semibold leading-none text-fg transition-colors duration-120 hover:bg-hover focus-visible:shadow-focus focus-visible:outline-none"
     >
       <Icon name="chat" size={15} />
       {t("common.askAboutThis")}
