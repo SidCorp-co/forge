@@ -104,7 +104,7 @@ export function Menu({
           side={side}
           align={align === "right" ? "end" : "start"}
           sideOffset={6}
-          className="w-auto min-w-[180px] rounded-lg border border-line bg-surface p-1.5 text-fg shadow-lg ring-0"
+          className="w-auto min-w-[180px] rounded-lg border border-line bg-surface p-1.5 text-fg shadow-overlay ring-0"
         >
           {groupsOf(items).map((run) => {
             const first = run.items[0]?.i ?? 0;

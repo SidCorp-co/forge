@@ -89,7 +89,7 @@ export function HelpButton({
         id={panelId}
         role="dialog"
         aria-label={t("common.help.dialog")}
-        className="forge-drop w-[320px] overflow-y-auto rounded-lg border border-line bg-surface shadow-lg"
+        className="forge-drop w-[320px] overflow-y-auto rounded-lg border border-line bg-surface shadow-overlay"
       >
         <div className="flex items-center justify-between gap-2 border-b border-line-subtle px-4 py-2.5">
           <span className="fg-label inline-flex items-center gap-1.5">
@@ -143,7 +143,7 @@ export function HelpButton({
             <Link
               href={`/docs?path=${encodeURIComponent(docPath)}`}
               onClick={() => setOpen(false)}
-              className="fg-body-sm inline-flex items-center gap-1.5 font-semibold text-[color:var(--link)] hover:underline"
+              className="fg-body-sm inline-flex items-center gap-1.5 font-semibold text-link hover:underline"
             >
               <Icon name="book" size={14} />
               {docLabel ?? t("common.help.docs")}

@@ -16,7 +16,7 @@ export function KanbanColumn({ title, color, count, children, emptyHint }: Kanba
   return (
     <section
       aria-label={title}
-      className="flex w-[248px] flex-none snap-start flex-col rounded-lg border border-line-subtle bg-sunken"
+      className="flex w-[248px] flex-none snap-start flex-col border-r border-line-subtle bg-sunken last:border-r-0"
     >
       <header className="flex items-center gap-2 px-3.5 pb-2.5 pt-3">
         <span className="size-2.5 flex-none rounded-full" style={{ background: color }} />

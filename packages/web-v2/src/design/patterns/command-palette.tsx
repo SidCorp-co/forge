@@ -81,7 +81,7 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
       }}
       title={t("shell.palette.title")}
       description={t("shell.palette.description")}
-      className="top-palette-top w-full max-w-xl border border-line bg-surface shadow-lg sm:max-w-xl"
+      className="top-palette-top w-full max-w-xl border border-line bg-surface shadow-overlay sm:max-w-xl"
     >
       <CommandPrimitive filter={matches} loop={false} className="flex size-full flex-col overflow-hidden bg-surface text-fg">
         <div className="flex items-center gap-2.5 border-b border-line-subtle px-4 py-3">

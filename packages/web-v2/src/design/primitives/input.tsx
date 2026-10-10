@@ -10,7 +10,7 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 const FIELD =
-  "h-auto rounded-md border-line-strong bg-surface px-3 py-2 text-base text-fg md:text-sm placeholder:text-disabled transition-shadow focus-visible:border-[color:var(--link)] focus-visible:ring-0 focus-visible:shadow-[var(--shadow-focus)] aria-[invalid=true]:border-[color:var(--red-500)] aria-[invalid=true]:ring-0";
+  "h-auto rounded-md border-line-strong bg-surface px-3 py-2 text-base text-fg md:text-sm placeholder:text-disabled transition-shadow focus-visible:border-link focus-visible:ring-0 focus-visible:shadow-focus aria-[invalid=true]:border-danger-9 aria-[invalid=true]:ring-0";
 
 const BARE =
   "h-auto rounded-none border-0 bg-transparent p-0 text-base text-fg md:text-15 placeholder:text-disabled focus-visible:ring-0 focus-visible:shadow-none";

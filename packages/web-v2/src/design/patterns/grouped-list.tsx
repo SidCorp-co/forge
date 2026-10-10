@@ -156,7 +156,7 @@ function Row({ v, selected, onPeek, eta }: { v: ListRowView; selected: boolean; 
         eta ? COLS_ETA : COLS,
         "relative min-h-[54px] w-full cursor-pointer items-center border-b border-line-subtle py-[7px] text-left text-fg no-underline hover:bg-hover",
         "max-md:grid-cols-[auto_minmax(0,1fr)_auto] max-md:gap-y-1 max-md:px-3 max-md:py-2.5",
-        selected && "bg-[var(--cobalt-50)] before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-link hover:bg-[var(--cobalt-50)]",
+        selected && "bg-sel before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-link hover:bg-sel",
       )}
     >
       <span className={cn("truncate font-mono text-11-5 font-semibold text-link max-md:order-1", v.dim && "opacity-65")}>{v.keyLabel ?? v.key}</span>
@@ -168,7 +168,7 @@ function Row({ v, selected, onPeek, eta }: { v: ListRowView; selected: boolean; 
             {v.facts.map((p, i) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: the facts line is positional
               <span key={i} className="whitespace-nowrap">
-                {i > 0 ? <span className="mx-1.5 text-[var(--paper-400)]">·</span> : null}
+                {i > 0 ? <span className="mx-1.5 text-neutral-8">·</span> : null}
                 {p}
               </span>
             ))}

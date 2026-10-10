@@ -219,7 +219,7 @@ export function NotificationsMenu({
                   <button
                     type="button"
                     onClick={() => onSelect?.(n.id)}
-                    className="flex w-full min-w-0 items-baseline gap-2 rounded-sm text-left focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none"
+                    className="flex w-full min-w-0 items-baseline gap-2 rounded-sm text-left focus-visible:shadow-focus focus-visible:outline-none"
                   >
                     {n.subjectKey && (
                       <span className="flex-none font-mono text-12 font-semibold text-link" data-testid="notification-key">

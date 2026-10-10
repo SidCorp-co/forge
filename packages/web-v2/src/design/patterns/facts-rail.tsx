@@ -72,7 +72,7 @@ export function CoverageBar({ segments, legend = true }: { segments: readonly Co
   if (total === 0) return null;
   return (
     <div data-testid="coverage-bar">
-      <div className="flex h-2 overflow-hidden rounded-pill bg-[var(--paper-200)]" role="img" aria-label={present.map((s) => `${s.label} ${s.count}`).join(", ")}>
+      <div className="flex h-2 overflow-hidden rounded-pill bg-neutral-5" role="img" aria-label={present.map((s) => `${s.label} ${s.count}`).join(", ")}>
         {present.map((s) => (
           <span key={s.key} className="h-full" style={{ width: `${(s.count / total) * 100}%`, background: fillOf(s) }} />
         ))}

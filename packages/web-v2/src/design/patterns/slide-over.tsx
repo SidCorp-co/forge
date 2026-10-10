@@ -52,7 +52,7 @@ export function SlideOver({
             <SheetTitle className="fg-h3">{title}</SheetTitle>
             <SheetClose
               aria-label={t("common.close")}
-              className="rounded-md p-1 text-subtle transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+              className="rounded-md p-1 text-subtle transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-focus"
             >
               <Icon name="x" size={18} />
             </SheetClose>

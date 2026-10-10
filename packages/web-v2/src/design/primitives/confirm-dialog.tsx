@@ -44,7 +44,7 @@ export function ConfirmDialog({
         if (!next && !loading) onClose();
       }}
     >
-      <AlertDialogContent className="gap-4 rounded-xl border border-line bg-surface p-5 text-fg shadow-lg ring-0 data-[size=default]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-[420px]">
+      <AlertDialogContent className="gap-4 rounded-xl border border-line bg-surface p-5 text-fg shadow-overlay ring-0 data-[size=default]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-[420px]">
         <AlertDialogHeader className="place-items-start text-left">
           <AlertDialogTitle className="fg-h3">{title}</AlertDialogTitle>
           <AlertDialogDescription render={<div />} className="fg-body-sm text-fg">

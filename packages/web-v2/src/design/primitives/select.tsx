@@ -61,12 +61,12 @@ export function Select({
             quiet
               ? "h-auto! w-full gap-1.5 rounded-sm border-transparent bg-transparent py-1 pl-1.5 pr-1 text-left text-13 transition-colors hover:bg-hover"
               : "h-auto! w-full gap-2 rounded-md bg-surface py-2 pl-3 pr-2.5 text-left text-sm transition-shadow",
-            "focus-visible:ring-0 focus-visible:shadow-[var(--shadow-focus)]",
+            "focus-visible:ring-0 focus-visible:shadow-focus",
             isInvalid
-              ? "border-[color:var(--red-500)] focus-visible:border-[color:var(--red-500)]"
+              ? "border-danger-9 focus-visible:border-danger-9"
               : quiet
-                ? "focus-visible:border-[color:var(--link)]"
-                : "border-line-strong focus-visible:border-[color:var(--link)]",
+                ? "focus-visible:border-link"
+                : "border-line-strong focus-visible:border-link",
           )}
         >
           {selected?.icon && <Icon name={selected.icon} size={16} className="text-subtle" />}
@@ -78,7 +78,7 @@ export function Select({
           align="start"
           alignItemWithTrigger={false}
           sideOffset={6}
-          className="max-h-[min(256px,var(--available-height))] rounded-lg border border-line bg-surface p-1.5 shadow-lg ring-0"
+          className="max-h-[min(256px,var(--available-height))] rounded-lg border border-line bg-surface p-1.5 shadow-overlay ring-0"
         >
           {options.map((o) => (
             <SelectItem
@@ -109,7 +109,7 @@ export function NativeSelect({ options, className, ...props }: NativeSelectProps
       <select
         className={cn(
           "w-full appearance-none rounded-md border border-line-strong bg-surface py-2 pl-3 pr-9 text-sm text-fg",
-          "transition-shadow focus-visible:border-[color:var(--link)] focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none",
+          "transition-shadow focus-visible:border-link focus-visible:shadow-focus focus-visible:outline-none",
           "disabled:cursor-not-allowed disabled:opacity-50",
           className,
         )}

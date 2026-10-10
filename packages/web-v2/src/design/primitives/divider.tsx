@@ -10,7 +10,7 @@ export function Divider({ orientation = "horizontal", className }: DividerProps)
     <hr
       aria-orientation={orientation}
       className={cn(
-        "block border-0 bg-[var(--border-subtle)]",
+        "block border-0 bg-line-subtle",
         orientation === "horizontal" ? "h-px w-full" : "h-full w-px",
         className,
       )}

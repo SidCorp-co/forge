@@ -23,7 +23,7 @@ export function Tooltip({ label, children, side = "top", multiline = false }: To
       <TooltipContent
         side={side}
         className={cn(
-          "w-max rounded-md bg-[var(--ink-900)] px-2 py-1 font-mono text-11 text-on-accent shadow-md",
+          "w-max rounded-md bg-neutral-12 px-2 py-1 font-mono text-11 text-on-accent shadow-overlay",
           multiline ? "max-w-[240px] whitespace-normal text-left" : "max-w-[calc(100vw-16px)] whitespace-normal",
         )}
       >

@@ -28,7 +28,7 @@ export function Tabs({ tabs, value, onChange }: TabsProps) {
             <TabsTrigger
               key={t.value}
               value={t.value}
-              className="h-auto flex-none gap-2 rounded-sm border-0 px-3 py-2.5 text-13-5 font-semibold text-muted hover:text-fg data-active:text-fg focus-visible:ring-0 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] after:bottom-[-1px]! after:inset-x-2! after:rounded-pill after:bg-accent"
+              className="h-auto flex-none gap-2 rounded-sm border-0 px-3 py-2.5 text-13-5 font-semibold text-muted hover:text-fg data-active:text-fg focus-visible:ring-0 focus-visible:outline-none focus-visible:shadow-focus after:bottom-[-1px]! after:inset-x-2! after:rounded-pill after:bg-accent"
             >
               {t.label}
               {typeof t.count === "number" && <Badge tone={active ? "accent" : "neutral"}>{t.count}</Badge>}

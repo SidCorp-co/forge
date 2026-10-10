@@ -59,7 +59,7 @@ export interface NavRailProps {
 
 const countOf = (n: number | undefined) => (n && n > 0 ? n : 0);
 const shown = (n: number) => (n > 99 ? "99+" : String(n));
-const FOCUS = "focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
+const FOCUS = "focus-visible:outline-none focus-visible:shadow-focus";
 
 function Count({ n, compact }: { n: number; compact: boolean }) {
   if (n <= 0) return null;

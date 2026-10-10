@@ -100,7 +100,7 @@ export function HoverCard({ children, content, label, placement = "bottom-start"
         role="dialog"
         aria-label={label}
         maxWidth={360}
-        className={cn("rounded-lg border border-line bg-surface px-3.5 py-3 text-13 shadow-lg", cardClassName)}
+        className={cn("rounded-lg border border-line bg-surface px-3.5 py-3 text-13 shadow-overlay", cardClassName)}
         {...h.card}
       >
         {content}

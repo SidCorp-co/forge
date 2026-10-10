@@ -42,7 +42,7 @@ function Facts({ facts }: { facts: ReactNode[] }) {
       {facts.map((p, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: the facts line is positional
         <span key={i} className="whitespace-nowrap">
-          {i > 0 ? <span className="mx-1.5 text-[var(--paper-400)]">·</span> : null}
+          {i > 0 ? <span className="mx-1.5 text-neutral-8">·</span> : null}
           {p}
         </span>
       ))}
@@ -65,7 +65,7 @@ export function RowItem({ title, lead, facts, note, trailing, href, onClick, sel
   const row = cn(
     "flex min-h-12 w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-left no-underline md:flex-nowrap",
     (href || onClick) && "cursor-pointer hover:bg-hover",
-    selected && "bg-[var(--cobalt-50)]",
+    selected && "bg-sel",
   );
   return (
     <li className="border-b border-line-subtle" data-testid={testId ?? "row-item"} aria-current={selected || undefined}>

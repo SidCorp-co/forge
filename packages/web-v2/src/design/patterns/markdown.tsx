@@ -127,13 +127,13 @@ const proseComponents: Components = {
     </blockquote>
   ),
   code: makeCodeRenderer(
-    "block overflow-x-auto rounded-lg border border-line bg-sunken p-4 font-mono text-13 leading-relaxed text-fg",
+    "block overflow-x-auto rounded-xs border border-line bg-sunken p-4 font-mono text-13 leading-relaxed text-fg",
     "rounded bg-sunken px-1.5 py-0.5 font-mono text-13 text-fg",
   ),
   pre: ({ children }) => <pre className="my-4 overflow-x-auto">{children}</pre>,
   img: imgRenderer,
   table: ({ children }) => (
-    <div className="my-4 overflow-x-auto rounded-lg border border-line">
+    <div className="my-4 overflow-x-auto border-y border-line">
       <table className="w-full border-collapse text-left text-13">{children}</table>
     </div>
   ),

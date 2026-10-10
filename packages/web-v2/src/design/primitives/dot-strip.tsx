@@ -37,7 +37,7 @@ export function DotStrip({ items, axisLabels, className }: DotStripProps) {
               onClick={item.onOpen}
               aria-label={item.label}
               style={style}
-              className="absolute top-1/2 size-2.5 rounded-full bg-accent opacity-70 hover:opacity-100 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+              className="absolute top-1/2 size-2.5 rounded-full bg-accent opacity-70 hover:opacity-100 focus-visible:outline-none focus-visible:shadow-focus"
             />
           ) : (
             <span

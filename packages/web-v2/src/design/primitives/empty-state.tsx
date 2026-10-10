@@ -22,7 +22,7 @@ export function EmptyState({ title, message, action, mascot = true, titleId }: E
           <p
             id={titleId}
             tabIndex={titleId ? -1 : undefined}
-            className="fg-h3 rounded-md focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="fg-h3 rounded-md focus-visible:outline-none focus-visible:shadow-focus"
           >
             {title}
           </p>

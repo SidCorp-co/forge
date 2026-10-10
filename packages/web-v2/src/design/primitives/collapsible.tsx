@@ -20,7 +20,7 @@ export function Collapsible({ title, count, children, defaultOpen = false }: Col
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 py-3 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        className="flex w-full items-center gap-2 py-3 text-left focus-visible:outline-none focus-visible:shadow-focus"
       >
         <Icon
           name="chevronRight"

@@ -23,7 +23,7 @@ export function Banner({ tone = "info", children, action, onDismiss }: BannerPro
   const t = TONE[tone];
   return (
     <div
-      className="flex items-center gap-3 rounded-lg border px-4 py-3"
+      className="flex items-center gap-3 border-y px-4 py-3"
       style={{ color: t.fg, background: t.bg, borderColor: t.border }}
     >
       <Icon name={t.icon} size={18} />

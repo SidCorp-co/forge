@@ -35,7 +35,7 @@ export function Checkbox({
         "size-[18px] rounded-sm border-line-strong bg-surface hover:border-strong",
         "data-checked:border-transparent data-checked:bg-accent data-checked:text-on-accent",
         "data-indeterminate:border-transparent data-indeterminate:bg-accent data-indeterminate:text-on-accent",
-        "focus-visible:ring-0 focus-visible:shadow-[var(--shadow-focus-accent)]",
+        "focus-visible:ring-0 focus-visible:shadow-focus-accent",
       )}
     />
   );
