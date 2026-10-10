@@ -1,0 +1,24 @@
+// The session feature's reads: one key factory and its queryOptions. The `agent-session` prefix is
+// the one the WebSocket router invalidates (`lib/ws/event-router.ts`), so the shapes stay as they are.
+import { queryOptions } from "@tanstack/react-query";
+import { sessionApi } from "./api";
+import { fetchAllTurns, TURN_PAGE_CAP } from "./turns";
+
+export const sessionKeys = {
+  all: ["agent-session"] as const,
+  detail: (id: string | undefined) => [...sessionKeys.all, id] as const,
+  turns: (id: string | undefined, pages: number) => [...sessionKeys.detail(id), "turns", pages] as const,
+};
+
+export const sessionQueries = {
+  detail: (id: string | undefined) =>
+    queryOptions({ queryKey: sessionKeys.detail(id), queryFn: () => sessionApi.detail(id as string), enabled: !!id }),
+  turns: (id: string | undefined, pages: number = TURN_PAGE_CAP) =>
+    queryOptions({
+      queryKey: sessionKeys.turns(id, pages),
+      queryFn: () => fetchAllTurns(id as string, pages),
+      enabled: !!id,
+      // Keeps the loaded turns on screen while more pages load, never across sessions.
+      placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === id ? prev : undefined),
+    }),
+};

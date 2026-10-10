@@ -6,16 +6,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { formatRefusal } from "@/lib/api/error";
-import type { TurnRow, TurnsResponse } from "./types";
 import { type EditTurnOpts, type ForkOpts, type SendOpts, sessionApi } from "./api";
+import { sessionsKeys } from "@/features/sessions";
+import { sessionKeys, sessionQueries } from "./queries";
+import { TURN_PAGE_CAP } from "./turns";
+
+export { fetchAllTurns, TURN_PAGE_CAP, TURN_PAGE_SIZE } from "./turns";
 
 /** Session detail row. Keyed `['agent-session', id]` — WS-invalidated. */
 export function useSession(id: string | undefined) {
-  return useQuery({
-    queryKey: ["agent-session", id],
-    queryFn: () => sessionApi.detail(id as string),
-    enabled: !!id,
-  });
+  return useQuery(sessionQueries.detail(id));
 }
 
 /**
@@ -24,13 +24,7 @@ export function useSession(id: string | undefined) {
  * `nextCursor` means later turns exist and were not loaded; raise `pages` to load them.
  */
 export function useSessionTurns(id: string | undefined, pages: number = TURN_PAGE_CAP) {
-  return useQuery({
-    queryKey: ["agent-session", id, "turns", pages],
-    queryFn: () => fetchAllTurns(id as string, pages),
-    enabled: !!id,
-    // Keeps the loaded turns on screen while more pages load, never across sessions.
-    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === id ? prev : undefined),
-  });
+  return useQuery(sessionQueries.turns(id, pages));
 }
 
 /** The session's turns, plus the act that loads the next `TURN_PAGE_CAP` pages past a cap. */
@@ -41,27 +35,12 @@ export function useSessionTurnPages(id: string) {
   return { turnsQ, loadMoreTurns: () => setLoaded({ id, pages: pages + TURN_PAGE_CAP }) };
 }
 
-export const TURN_PAGE_SIZE = 500;
-export const TURN_PAGE_CAP = 40;
-
-export async function fetchAllTurns(id: string, pages: number = TURN_PAGE_CAP): Promise<TurnsResponse> {
-  const turns: TurnRow[] = [];
-  let after: string | undefined;
-  for (let page = 0; page < pages; page++) {
-    const res = await sessionApi.getTurns(id, { after, limit: TURN_PAGE_SIZE });
-    turns.push(...res.turns);
-    if (!res.nextCursor) return { turns, nextCursor: null };
-    after = res.nextCursor;
-  }
-  return { turns, nextCursor: after ?? null };
-}
-
 /** Invalidate the whole `['agent-session', id]` family after a mutation. */
 function useInvalidateSession(id: string) {
   const qc = useQueryClient();
   return () => {
-    void qc.invalidateQueries({ queryKey: ["agent-session", id] });
-    void qc.invalidateQueries({ queryKey: ["agent-sessions"] });
+    void qc.invalidateQueries({ queryKey: sessionKeys.detail(id) });
+    void qc.invalidateQueries({ queryKey: sessionsKeys.all });
   };
 }
 
