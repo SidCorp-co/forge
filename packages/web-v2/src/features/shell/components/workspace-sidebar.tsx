@@ -2,11 +2,11 @@
 
 import { useMemo } from "react";
 import { NavRail } from "@/design";
-import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
-import { useMyEcosystems } from "@/features/ecosystem/hooks";
+import { OrgSwitcher } from "@/features/orgs";
+import { useMyEcosystems } from "@/features/ecosystem";
 import { ProjectSwitcher } from "./project-switcher";
-import { HelpToursButton } from "@/features/tours/components/help-tours-button";
-import { WhatsNewButton } from "@/features/whats-new/components/whats-new-button";
+import { HelpToursButton } from "@/features/tours";
+import { WhatsNewButton } from "@/features/whats-new";
 import { SidebarVersion } from "./sidebar-version";
 import { type ProjectBadges, projectMenu, workspaceNavItems } from "../nav-model";
 import type { useRailProjectData } from "../use-rail-project-data";

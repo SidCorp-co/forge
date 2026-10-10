@@ -108,7 +108,7 @@ export function GlanceCards({ glance }: { glance: AdminOverview["glance"] }) {
               <button
                 type="button"
                 aria-label={`${spec.label} — ${spec.help}`}
-                className="fg-label cursor-help rounded-sm text-left focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none"
+                className="fg-label cursor-help rounded-sm text-left focus-visible:shadow-focus focus-visible:outline-none"
               >
                 {spec.label}
               </button>

@@ -92,7 +92,7 @@ export function AgentAccessChoice({
       {!canEdit && (
         <p className="fg-body-sm text-subtle">{t(disabledReason ?? "integrations.access.deniedProject")}</p>
       )}
-      {failure && <p className="fg-body-sm text-[var(--red-600)]">{failure}</p>}
+      {failure && <p className="fg-body-sm text-danger-11">{failure}</p>}
     </div>
   );
 }

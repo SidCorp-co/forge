@@ -27,8 +27,8 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
-import { useProjectsIncludingArchived } from "@/features/projects/hooks";
-import type { ProjectListItem } from "@/features/projects/types";
+import { useProjectsIncludingArchived } from "@/features/projects";
+import type { ProjectListItem } from "@/features/projects";
 import {
   useCanManageConnection,
   useConnectionBindings,

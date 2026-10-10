@@ -19,7 +19,7 @@ export const SidebarBell = forwardRef<HTMLButtonElement, { count: number; onTogg
         <Icon name="bell" size={17} />
         {count > 0 && (
           <span
-            className="absolute right-0.5 top-0.5 inline-flex min-w-[15px] items-center justify-center rounded-pill px-1 text-10 font-bold text-white"
+            className="absolute right-0.5 top-0.5 inline-flex min-w-3.75 items-center justify-center rounded-pill px-1 text-10 font-bold text-white"
             style={{ background: "var(--flame-500)" }}
           >
             {count > 99 ? "99+" : count}

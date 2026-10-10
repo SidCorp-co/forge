@@ -52,7 +52,7 @@ function UsesGroup({ d }: { d: LinkRecord["document"] }) {
       ) : (
         <div className="flex flex-wrap gap-1">
           {d.fieldsUsed.map((f) => (
-            <span key={f} className="rounded-pill bg-[var(--bg-sunken)] px-2 font-mono text-11">
+            <span key={f} className="rounded-pill bg-sunken px-2 font-mono text-11">
               {f}
             </span>
           ))}

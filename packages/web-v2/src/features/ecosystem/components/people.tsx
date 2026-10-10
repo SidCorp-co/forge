@@ -2,8 +2,8 @@
 
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 import { Badge } from "@/design";
-import { useProjectMembers } from "@/features/issues/hooks";
-import { useProjects } from "@/features/projects/hooks";
+import { useProjectMembers } from "@/features/issues";
+import { useProjects } from "@/features/projects";
 import { useAuth } from "@/providers/auth-provider";
 import { useApiPage } from "../hooks";
 import type { Author, ThreadHold } from "../types";

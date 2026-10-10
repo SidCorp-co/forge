@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Badge, Button, Icon, Input, MonoTag, PageTitle, SegmentedControl, Tooltip } from "@/design";
-import { useProjects } from "@/features/projects/hooks";
+import { useProjects } from "@/features/projects";
 import { readingOf, refusalsOf } from "@/lib/api/refusals";
 import { cn } from "@/lib/utils/cn";
 import { ecosystemApi } from "../api";
@@ -36,11 +36,11 @@ function AddProject({ ecosystemId, bus }: { ecosystemId: string; bus: Bus }) {
         Add project
       </Button>
       {open ? (
-        <div className="absolute right-0 top-full z-10 mt-1 grid w-[300px] gap-2 rounded-lg border border-line bg-surface p-3 shadow-md">
+        <div className="absolute right-0 top-full z-10 mt-1 grid w-75 gap-2 border border-line bg-surface p-3">
           {candidates.length === 0 ? (
             <p className="fg-caption">Every project you can open is already on the bus.</p>
           ) : (
-            <ul className="grid max-h-[220px] gap-1 overflow-auto">
+            <ul className="grid max-h-55 gap-1 overflow-auto">
               {candidates.map((p) => (
                 <li key={p.id}>
                   <button
@@ -127,7 +127,7 @@ function EcosystemHeader({ eco, bus }: { eco: WorkspaceEcosystem | undefined; bu
   const name = eco?.name ?? bus?.ecosystem.name ?? "Ecosystem";
   return (
     <div className={cn("flex min-w-0 flex-wrap items-center gap-3 pt-5", GUTTER)}>
-      <PageTitle className="truncate text-[22px] font-bold">{name}</PageTitle>
+      <PageTitle className="truncate text-20 font-bold">{name}</PageTitle>
       {eco ? (
         <MonoTag hue="cobalt">{eco.code}</MonoTag>
       ) : null}

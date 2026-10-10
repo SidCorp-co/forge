@@ -62,7 +62,7 @@ export function WorkspacesTable({
             mascot={false}
           />
         ) : (
-          <Table className="min-w-[520px]">
+          <Table className="min-w-130">
             <THead>
               <TR>
                 <TH scope="col">Workspace</TH>

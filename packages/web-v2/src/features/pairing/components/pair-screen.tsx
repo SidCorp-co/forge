@@ -18,10 +18,10 @@ import {
   Select,
   enumLabel,
 } from "@/design";
-import { useAgentAccounts } from "@/features/agent-accounts/hooks";
-import { agentAddress, agentLabel } from "@/features/agent-accounts/label";
-import { useActiveOrg } from "@/features/orgs/active-org";
-import { isOrgAdmin } from "@/features/projects/write-access";
+import { useAgentAccounts } from "@/features/agent-accounts";
+import { agentAddress, agentLabel } from "@/features/agent-accounts";
+import { useActiveOrg } from "@/features/orgs";
+import { isOrgAdmin } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useAuth } from "@/providers/auth-provider";
 import { useApproveDevice } from "../hooks";
@@ -66,7 +66,7 @@ export function PairScreen() {
   const waiting = !orgResolved || (orgAdmin && agentsQ.isLoading);
 
   return (
-    <div className="mx-auto flex w-full max-w-[560px] flex-col gap-4 px-6 py-8">
+    <div className="mx-auto flex w-full max-w-140 flex-col gap-4 px-6 py-8">
       <PageTitle>Approve a device</PageTitle>
       <TopBarActions>
         <HelpButton
@@ -140,7 +140,7 @@ export function PairScreen() {
                 Confirm this code matches what <MonoTag>forge-runner setup</MonoTag> printed in
                 your terminal before approving.
               </p>
-              <div className="flex items-center justify-center rounded-lg border border-line bg-sunken py-5">
+              <div className="flex items-center justify-center border border-line bg-sunken py-5">
                 <span className="font-mono text-2xl font-semibold tracking-[0.25em] text-fg">
                   {code}
                 </span>

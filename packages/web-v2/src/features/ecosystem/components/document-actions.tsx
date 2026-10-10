@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Button, Input, Textarea } from "@/design";
-import type { ProjectListItem } from "@/features/projects/types";
-import { canWriteProject } from "@/features/projects/write-access";
+import type { ProjectListItem } from "@/features/projects";
+import { canWriteProject } from "@/features/projects";
 import { ecosystemApi } from "../api";
 import { useChannelWrite } from "../hooks";
 import { refusalsOf } from "@/lib/api/refusals";
@@ -103,7 +103,7 @@ function DraftActions({ view, projectId, slug }: { view: DocumentView; projectId
     <>
       <Link
         href={ecosystemRoutes.compose(slug, { draft: view.id })}
-        className="inline-flex items-center rounded-md border border-line-strong px-[11px] py-[6px] text-13 hover:bg-hover"
+        className="inline-flex items-center rounded-md border border-line-strong px-2.75 py-1.5 text-13 hover:bg-hover"
       >
         {t("ecosystem.doc.editDraft")}
       </Link>
@@ -155,7 +155,7 @@ export function DocumentActions({ view, projectId, slug, role }: { view: Documen
       {owesReply(view) && d.number ? (
         <Link
           href={ecosystemRoutes.compose(slug, { inReplyTo: d.number, ecosystem: d.ecosystem })}
-          className="inline-flex items-center rounded-md bg-accent px-[11px] py-[6px] text-13 text-on-accent"
+          className="inline-flex items-center rounded-md bg-accent px-2.75 py-1.5 text-13 text-on-accent"
         >
           {t("ecosystem.doc.reply")}
         </Link>

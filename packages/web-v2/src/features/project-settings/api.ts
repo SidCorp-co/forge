@@ -1,5 +1,5 @@
 import type { PluginPinConflict } from "@forge/contracts/plugins";
-import type { ProjectDetail } from "@/features/projects/types";
+import type { ProjectDetail } from "@/features/projects";
 import { apiClient } from "@/lib/api/client";
 import type {
 	LabelCreateInput,

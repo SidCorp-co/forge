@@ -6,10 +6,10 @@
 // moved to the section that now holds its content (`sections.ts:LEGACY_TABS`).
 import { useEffect } from "react";
 import { EmptyState, ErrorState, PageContainer, PageTitle, ProjectLoader, ScreenTabs, type TabItem } from "@/design";
-import { useProject, useProjectsIncludingArchived } from "@/features/projects/hooks";
-import type { ProjectDetail } from "@/features/projects/types";
-import { canManageProject, isOrgAdmin } from "@/features/projects/write-access";
-import { ProjectRunnersScreen } from "@/features/runners/components/project-runners-screen";
+import { useProject, useProjectsIncludingArchived } from "@/features/projects";
+import type { ProjectDetail } from "@/features/projects";
+import { canManageProject, isOrgAdmin } from "@/features/projects";
+import { ProjectRunnersScreen } from "@/features/runners";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";

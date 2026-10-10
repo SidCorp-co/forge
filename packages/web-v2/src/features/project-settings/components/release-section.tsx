@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { Button, ErrorState, LEGEND, Skeleton, Textarea } from "@/design";
-import { GateLine, type GateTone } from "@/features/releases/components/release-bits";
+import { GateLine, type GateTone } from "@/features/releases";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
@@ -47,7 +47,7 @@ function stateLine(r: ReleaseReadiness, t: Copy): string {
 }
 
 function Dot({ tone }: { tone: "attention" }) {
-	return <span aria-hidden className="mt-[7px] size-1.5 flex-none rounded-full" style={{ background: tone === "attention" ? LEGEND.you.dot : undefined }} />;
+	return <span aria-hidden className="mt-1.75 size-1.5 flex-none rounded-full" style={{ background: tone === "attention" ? LEGEND.you.dot : undefined }} />;
 }
 
 function KnowledgeGap({ projectId, slug, gap }: { projectId: string; slug: Gap; gap: NonNullable<(typeof KNOWLEDGE_GAPS)[Gap]> }) {

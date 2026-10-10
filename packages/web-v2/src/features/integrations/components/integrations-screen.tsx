@@ -28,9 +28,9 @@ import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
-import { useActiveOrg } from "@/features/orgs/active-org";
-import { useOrgs } from "@/features/orgs/hooks";
-import { useProjectsIncludingArchived } from "@/features/projects/hooks";
+import { useActiveOrg } from "@/features/orgs";
+import { useOrgs } from "@/features/orgs";
+import { useProjectsIncludingArchived } from "@/features/projects";
 import { useConnections } from "../hooks";
 import { matchesQuery } from "../connection-identity";
 import { groupConnectionsByApp } from "../connection-groups";
@@ -64,7 +64,7 @@ function AddConnection({ projects }: { projects: Array<{ id: string; slug: strin
         placement="bottom-end"
         takesFocus
         maxHeight={360}
-        className="w-[300px] bg-surface p-3 shadow-md"
+        className="w-75 bg-surface p-3"
       >
         {projects.length === 0 ? (
           <p className="fg-body-sm text-subtle">{t("integrations.addNoProject")}</p>
@@ -234,7 +234,7 @@ export function IntegrationsScreen() {
 
       {inScope.length > 1 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <div className="min-w-[240px] flex-1 sm:max-w-[420px]">
+          <div className="min-w-60 flex-1 sm:max-w-105">
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -242,7 +242,7 @@ export function IntegrationsScreen() {
               aria-label={t("integrations.searchAria")}
             />
           </div>
-          <div className="w-[200px] shrink-0">
+          <div className="w-50 shrink-0">
             <NativeSelect
               value={provider}
               onChange={(e) => setProvider(e.target.value)}
@@ -265,7 +265,7 @@ export function IntegrationsScreen() {
       {connections.isLoading ? (
         <div className="flex flex-col gap-3">
           {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-[52px] w-full" />
+            <Skeleton key={i} className="h-13 w-full" />
           ))}
         </div>
       ) : connections.isError ? (

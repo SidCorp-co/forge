@@ -21,7 +21,7 @@ export function ThemePanel({ config }: { config: EpodsystemReadConfig }) {
   const t = useCopy();
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-subtle bg-sunken p-3">
+    <div className="flex flex-col gap-2 border border-subtle bg-sunken p-3">
       <span className="fg-label text-subtle">{t("integrations.epod.storeThemes")}</span>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-12">
         <dt className="text-subtle">{t("integrations.epod.store")}</dt>

@@ -21,7 +21,7 @@ export function MemberStack({ members, total, size = 24 }: MemberStackProps) {
         <span
           // biome-ignore lint/suspicious/noArrayIndexKey: initials repeat, and the stack only ever re-renders whole.
           key={`${m}-${i}`}
-          className="rounded-pill ring-2 ring-[color:var(--bg-surface)]"
+          className="rounded-pill ring-2 ring-surface"
           style={{ marginLeft: i ? -7 : 0 }}
         >
           <Avatar initials={m} hue={HUES[i % HUES.length]} size={size} />
@@ -29,7 +29,7 @@ export function MemberStack({ members, total, size = 24 }: MemberStackProps) {
       ))}
       {overflow > 0 && (
         <span
-          className="ml-[-7px] inline-flex flex-none items-center justify-center rounded-pill bg-sunken font-mono font-semibold text-subtle ring-2 ring-[color:var(--bg-surface)]"
+          className="-ml-1.75 inline-flex flex-none items-center justify-center rounded-pill bg-sunken font-mono font-semibold text-subtle ring-2 ring-surface"
           style={{ width: size, height: size, fontSize: size * 0.36 }}
         >
           +{overflow}

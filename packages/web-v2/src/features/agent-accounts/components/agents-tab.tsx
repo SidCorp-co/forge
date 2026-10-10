@@ -31,8 +31,8 @@ import {
   THead,
   TR,
 } from "@/design";
-import { useActiveOrg } from "@/features/orgs/active-org";
-import { useOrgScopedProjects } from "@/features/projects/hooks";
+import { useActiveOrg } from "@/features/orgs";
+import { useOrgScopedProjects } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";

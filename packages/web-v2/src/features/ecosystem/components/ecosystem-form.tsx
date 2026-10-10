@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, Input, NativeSelect } from "@/design";
-import { useOrgs } from "@/features/orgs/hooks";
-import { useProjects } from "@/features/projects/hooks";
-import { isOrgAdmin } from "@/features/projects/write-access";
+import { useOrgs } from "@/features/orgs";
+import { useProjects } from "@/features/projects";
+import { isOrgAdmin } from "@/features/projects";
 import { readingOf, refusalsOf, type Refusal } from "@/lib/api/refusals";
 import { ecosystemApi } from "../api";
 import { useChannelWrite, useEcosystemDocument } from "../hooks";
@@ -185,7 +185,7 @@ function Form({ held }: { held: HeldEcosystem | null }) {
   const set: Patch = (patch) => setDoc((d) => patch(structuredClone(d)));
   const { save, submit, invited } = useSave(held, doc, steward, members);
   return (
-    <div className="mx-auto grid w-full max-w-[520px] rounded-[14px] border border-line bg-surface shadow-lg">
+    <div className="mx-auto grid w-full max-w-130 rounded-sm border border-line bg-surface">
       <div className="border-b border-line-subtle px-5 py-4">
         <h1 className="text-16 font-semibold">{held ? `${held.document.ecosystem.name} settings` : "New ecosystem"}</h1>
       </div>

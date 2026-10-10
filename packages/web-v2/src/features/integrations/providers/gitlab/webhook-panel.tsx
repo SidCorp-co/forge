@@ -1,7 +1,7 @@
 "use client";
 
 import { Banner, Button } from "@/design";
-import { useProject } from "@/features/projects/hooks";
+import { useProject } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { CORE_URL } from "@/lib/utils/core-url";

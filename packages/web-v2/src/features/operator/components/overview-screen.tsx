@@ -65,7 +65,7 @@ export function OperatorOverviewScreen() {
   useOperatorLiveRooms(workspaces.data?.items.map((w) => w.projectId) ?? []);
 
   return (
-    <div className="mx-auto flex max-w-[1200px] flex-col gap-5">
+    <div className="mx-auto flex max-w-300 flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageTitle className="fg-h2">Deployment overview</PageTitle>
         <SegmentedControl options={WINDOWS} value={window} onChange={setWindow} />
