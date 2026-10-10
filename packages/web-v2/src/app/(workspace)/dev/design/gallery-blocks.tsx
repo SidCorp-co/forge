@@ -57,12 +57,16 @@ function SampleRows() {
   );
 }
 
+/** The gallery's own demo frame, never a block's look: a label line, then a faint dashed outline. */
 function Frame({ name, children }: { name: string; children: React.ReactNode }) {
   return (
-    <div className="mb-6">
-      <code className="mb-2 block font-mono text-12 text-muted">{name}</code>
-      <div className="max-h-96 overflow-auto border border-line">{children}</div>
-    </div>
+    <figure className="mb-8">
+      <figcaption className="mb-2 flex items-center gap-2 font-mono text-12 text-subtle">
+        <span className="text-11 uppercase tracking-wider">demo</span>
+        <span>{name}</span>
+      </figcaption>
+      <div className="max-h-96 overflow-auto border border-dashed border-line-subtle p-4">{children}</div>
+    </figure>
   );
 }
 
@@ -75,7 +79,7 @@ export function BlockGallery() {
         <SampleRows />
       </Frame>
       <Frame name="Section · PropertyList">
-        <div className="p-4">
+        <div>
           <Section title="Delivery" right={<Button variant="ghost">Edit</Button>}>
             <PropertyList>
               <Property label="Owner">Platform</Property>
@@ -94,7 +98,7 @@ export function BlockGallery() {
         </StatRow>
       </Frame>
       <Frame name="SettingsGroup · SettingRow · FormActions">
-        <div className="p-4">
+        <div>
           <SettingsGroup title="Releases">
             <SettingRow label="Name" htmlFor="g-name" hint="Shown on the board" control={<Input id="g-name" value={search} onChange={(e) => setSearch(e.target.value)} />} />
             <SettingRow label="Auto-release" inline control={<Toggle checked={on} onChange={setOn} aria-label="Auto-release" />} />

@@ -25,8 +25,8 @@ export function AuthShell({ title, subtitle, children, footer }: AuthShellProps)
           </div>
         </div>
 
-        {/* Card */}
-        <div className="border border-line bg-surface p-6">
+        {/* The form sits flush on the page: a hairline above it, no box */}
+        <div className="border-t border-line-subtle pt-6">
           <PageTitle className="fg-h3">{title}</PageTitle>
           <p className="fg-body-sm mb-5 mt-1">{subtitle}</p>
           {children}

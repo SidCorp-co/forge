@@ -1,4 +1,4 @@
-import { Banner, Property, PropertyList } from "@/design";
+import { Banner, Property, PropertyList, Section } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { EpodsystemReadConfig } from "./config";
 
@@ -21,8 +21,7 @@ export function ThemeSettings({ config }: { config: EpodsystemReadConfig }) {
   const t = useCopy();
 
   return (
-    <div className="flex flex-col gap-2 border border-subtle bg-sunken p-3">
-      <span className="fg-label text-subtle">{t("integrations.epod.storeThemes")}</span>
+    <Section title={t("integrations.epod.storeThemes")}>
       <PropertyList>
         <Property label={t("integrations.epod.store")}>
           {config.storeName ?? config.storeSlug ?? t("integrations.autoflow.runTest")}
@@ -68,6 +67,6 @@ export function ThemeSettings({ config }: { config: EpodsystemReadConfig }) {
           {t("integrations.epod.openStorefront")}
         </a>
       )}
-    </div>
+    </Section>
   );
 }
