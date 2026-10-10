@@ -1,1 +1,0 @@
-**The project dashboard shows its health over a window.** Invitations are mailed or refused by name, token writes are recorded, an issue's rail shows its traces, and a parked issue can no longer be closed.
