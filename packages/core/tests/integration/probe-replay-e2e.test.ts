@@ -28,7 +28,7 @@ import type { TransitionActor } from '../../src/issues/index.js';
 import type { ProjectDocument } from '../../src/project-config/schema.js';
 import { finishReleaseBatch } from '../../src/release-batch/finish.js';
 import { readReleaseRunState } from '../../src/release-batch/state.js';
-import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
+import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
   addProjectMember,
   createTestProject,
@@ -64,6 +64,9 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  // A finish emits a release whose highlights an outbox consumer drafts after the test returns;
+  // truncating under that delivery deadlocks it against the TRUNCATE, so it is let finish first.
+  await settleOutbox();
   await truncateAll();
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
