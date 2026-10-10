@@ -6,8 +6,8 @@ import { patIsLive } from './pat-live.js';
 /**
  * The projects a token reaches: a list, or null where it carries no fence and reaches every project
  * its holder can see. An empty list reaches nothing. This is the one reading of
- * `personal_access_tokens.bound_project_id` and `project_ids`: the REST door, the MCP door and pool
- * admission all ask it (FB-78).
+ * `personal_access_tokens.bound_project_id` and `project_ids`: the REST door, the MCP door, the box's
+ * WebSocket door and pool admission all ask it (FB-78).
  */
 export type TokenFence = readonly string[] | null;
 

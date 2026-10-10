@@ -299,7 +299,7 @@ export class StandInBox {
   }
 }
 
-/** A credential for a box, as pairing mints one. */
+/** A credential for a box carrying no fence, so it reaches what its holder reaches. */
 export async function boxToken(ownerId: string, deviceId: string): Promise<string> {
   return (
     await mintPat({

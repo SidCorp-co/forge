@@ -27,14 +27,11 @@ export async function readBoxToken(plaintext: unknown): Promise<BoxToken | null>
 
   const [device] = await db.select().from(devices).where(eq(devices.id, row.deviceId)).limit(1);
   if (!device || device.status === 'revoked') return null;
-  // the box door reads an unfenced box token as reaching nothing; no mint path writes one
-  // today (`devices/credential.ts:issueDeviceCredential`), so this narrows only an older row
-  const projectIds = tokenFence(row) ?? [];
   return {
     kind: 'box',
     device,
     scope: {
-      projectIds,
+      projectIds: tokenFence(row),
       tokenId: row.id,
       userId: row.userId,
       grant: row.permissions ?? null,
