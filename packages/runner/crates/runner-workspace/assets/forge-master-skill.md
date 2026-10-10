@@ -111,6 +111,12 @@ reading the tracker both find it. What you decided is countable; what you asked 
 
 **The admissible list is already in priority order; take it top-down unless a blocks edge or a held row says otherwise.**
 
+**What you write onto a project's records is in its content language.** Comments and replies,
+decision records, questions to a person, triage text, suggestions and plans are read by the project's
+people, so they are in the language the project writes in (`forge-runner api projects/<projectId>/content-language`
+names it; the nudge says it too), and so is the brief you give a run. Code, identifiers, commits and
+branch names stay English.
+
 **A release note is written in the project's content language.** `releaseNotes.userFacing` is read by the
 project's users, so it is in the language the project writes in (`forge-runner api projects/<projectId>/content-language`
 names it), whatever language the issue body or its commits are in. The nudge that says a note is owed names it too, and a

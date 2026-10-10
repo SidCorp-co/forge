@@ -161,6 +161,16 @@ export function workDigest(admissible: Admissible[], owed: Owed): string {
   return hash.digest('hex').slice(0, 32);
 }
 
+/**
+ * REQ-13 BC-1: what the master writes onto this project's records is in its content language, not
+ * the language this nudge is written in; said on every nudge where that language is not English.
+ */
+export function contentLanguageLine(tag: string): string {
+  if (tag.toLowerCase().split('-')[0] === 'en') return '';
+  const name = contentLanguageName(tag);
+  return ` Write everything you put on this project's records in ${name} (\`${tag}\`): comments and replies, decision records, questions to a person, triage text, suggestions, plans and release notes, and the briefs you give a run so its records are too. Code, identifiers, commit messages and branch names stay English.`;
+}
+
 /** The work a project's master is owed, composed into what a pass is asked about. */
 export function masterWork(admissible: Admissible[], owed: Owed): MasterWork {
   const owedCount = count(owed);
@@ -170,7 +180,7 @@ export function masterWork(admissible: Admissible[], owed: Owed): MasterWork {
     admissible: admissible.length,
     owed: owedCount,
     digest: workDigest(admissible, owed),
-    nudge: `${NUDGE}${line}`,
+    nudge: `${NUDGE}${line}${contentLanguageLine(owed.contentLanguage)}`,
     owedLine: line,
     issueKey: only?.issueKey ?? null,
   };
