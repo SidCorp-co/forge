@@ -116,3 +116,49 @@ export async function relayedBinding(grant: RelayGrant): Promise<BindingWithConn
   const granted = await listAgentGrantedBindings(grant.projectId, pair.binding.provider);
   return granted.some((g) => g.binding.id === pair.binding.id) ? pair : null;
 }
+
+/** Request headers the MCP transport reads, passed upstream as sent. */
+const FORWARDED = [
+  'content-type',
+  'accept',
+  'mcp-session-id',
+  'mcp-protocol-version',
+  'last-event-id',
+];
+/** Response headers the client reads, passed back as the provider sent them. */
+const RETURNED = ['content-type', 'mcp-session-id', 'cache-control', 'www-authenticate'];
+
+/** One MCP transport request as the relay door received it. */
+export interface RelayedRequest {
+  method: string;
+  header: (name: string) => string | undefined;
+  body?: ArrayBuffer;
+  signal: AbortSignal;
+}
+
+/**
+ * Sends one relayed request to the provider with its credential headers added, and streams the
+ * provider's answer back carrying only the headers the client reads.
+ */
+export async function relayToUpstream(
+  upstream: RelayUpstream,
+  request: RelayedRequest,
+): Promise<Response> {
+  const headers = new Headers(upstream.headers);
+  for (const name of FORWARDED) {
+    const v = request.header(name);
+    if (v) headers.set(name, v);
+  }
+  const answer = await fetch(upstream.url, {
+    method: request.method,
+    headers,
+    ...(request.body ? { body: request.body } : {}),
+    signal: request.signal,
+  });
+  const out = new Headers();
+  for (const name of RETURNED) {
+    const v = answer.headers.get(name);
+    if (v) out.set(name, v);
+  }
+  return new Response(answer.body, { status: answer.status, headers: out });
+}

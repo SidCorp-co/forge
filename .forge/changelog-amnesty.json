@@ -64,6 +64,10 @@
     {
       "entry": "**`forge-runner master status` answers two questions, not one.** Whether a pane exists, and\n  whether this box may keep a master at all — so a box deliberately not driving reads as that.",
       "reason": "Corrected, not withdrawn, in the same unreleased block and by the same issue. The published text was true of what shipped and stopped being true in the reopened round: `master status` now prints a third line, this box's runner-admission answer, because the two it printed could not tell an owner why no master was placed. An independent judge measured the gap on a scratch box — runner served as `draining`, no stand-down anywhere, the daemon logging `runner is draining — taking no new work` while `master status` said `driving` in the same minute (ISS-1118 comment 5d9e3805, Finding B). The replacement entry says three questions and names the third. Same feature, one more answer."
+    },
+    {
+      "entry": "**The project dashboard shows its health over a window, invitations are mailed or refused by name, and token writes are recorded.** An issue's rail shows its traces, workflow, feedback, release and lease. A run shows what it was given at dispatch. A parked issue can no longer be closed. Review time is counted. Onboarding follows its retries and says when an attempt drew nothing. The installer and plugin pins refuse by name what they cannot serve.",
+      "reason": "An unreleased fragment over the 40-word entry budget, cut to it in place; the rewrite in changelog.d/poc-delivery.changed.md keeps its lead claim and drops the listed minor ones."
     }
   ]
 }

@@ -8,15 +8,9 @@
 
 import type { PluginPinConflict } from '@forge/contracts/plugins';
 import { and, eq, inArray } from 'drizzle-orm';
-import { Hono } from 'hono';
 import { db } from '../db/client.js';
 import { devices, projects, runners } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/authz.js';
 import { readPluginDesignations } from '../lib/plugin-designation.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { idParamSchema } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
 
 interface BoxProject {
   deviceId: string;
@@ -84,16 +78,7 @@ async function boxProjectsOf(projectId: string): Promise<BoxProject[]> {
   return rows.flatMap((r) => (r.deviceId ? [{ ...r, deviceId: r.deviceId }] : []));
 }
 
-export const projectPluginConflictRoutes = new Hono<{ Variables: AuthVars }>();
-
-projectPluginConflictRoutes.get(
-  '/:id/plugin-conflicts',
-  requireAuth(),
-  assertEmailVerified(),
-  zValidator('param', idParamSchema),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    requireHeld(await loadProjectAccess(id, c.get('userId')), 'project.read');
-    return c.json({ conflicts: pinConflictsOf(id, await boxProjectsOf(id)) });
-  },
-);
+/** The pin conflicts `projectId` has on the boxes it shares. */
+export async function readPluginConflicts(projectId: string): Promise<PluginPinConflict[]> {
+  return pinConflictsOf(projectId, await boxProjectsOf(projectId));
+}
