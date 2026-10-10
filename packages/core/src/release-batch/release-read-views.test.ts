@@ -340,7 +340,13 @@ describe('a release that shipped the rework claims it at its own close (BC-6, J1
       verdicts: new Map(),
       reopenedAt: reopened ? at(reopened) : null,
       closedAt: closes.map(at),
-      merged: { at: at('02:51:29.870'), landing: null, artifacts: null, commitSha: null, readPaths: null },
+      merged: {
+        at: at('02:51:29.870'),
+        landing: null,
+        artifacts: null,
+        commitSha: null,
+        readPaths: null,
+      },
     });
     return s;
   };

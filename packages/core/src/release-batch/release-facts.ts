@@ -16,8 +16,8 @@ import { criterionVerdicts } from '../db/schema-issue-criteria.js';
 import { requirements } from '../db/schema-requirements.js';
 import {
   activeIssuePrefix,
-  closedAtOf,
   type CriterionWithVerdict,
+  closedAtOf,
   listCriteriaOf,
   reopenedAtOf,
 } from '../issues/index.js';
