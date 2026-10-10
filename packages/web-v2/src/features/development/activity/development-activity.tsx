@@ -3,18 +3,18 @@
 // The engineers' figures and cards for one project: runs, runners, spend and open issues by state.
 // They sat on the project Dashboard until it became the BA's page; the data is the same reads.
 
-import { useNow } from "@/design";
+import { StatCell, StatRow, useNow } from "@/design";
+import { formatUsd } from "@/features/pipeline/derive";
 import { useProjectRuns, useStepDurations } from "@/features/pipeline/hooks";
 import { useProjectHealth } from "@/features/projects/hooks";
 import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
 import { useQueueStats } from "@/features/sessions/hooks";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { AwaitingReleaseCard } from "./awaiting-release-card";
+import { AwaitingRelease } from "./awaiting-release";
 import { activeRuns, activeSpend, idleRuns, runnersSummary, spendByStage, statusDonut } from "./derive";
-import { KpiBand } from "./kpi-band";
-import { LiveRunsCard } from "./live-runs-card";
-import { RunnersCard } from "./runners-card";
-import { SpendCard } from "./spend-card";
+import { LiveRuns } from "./live-runs";
+import { RunnerLoad } from "./runner-load";
+import { SpendByStage } from "./spend-by-stage";
 import { StatusDonut } from "./status-donut";
 
 export function DevelopmentActivity({ projectId, slug }: { projectId: string; slug: string }) {
@@ -41,20 +41,26 @@ export function DevelopmentActivity({ projectId, slug }: { projectId: string; sl
 
   return (
     <section aria-label={t("overview.activity.aria")} className="space-y-4 px-5 pb-6 max-md:px-3" data-testid="development-activity">
-      <KpiBand
-        liveRuns={live.length}
-        busyRunners={runners.busyCount}
-        onlineRunners={runners.onlineCount}
-        openIssues={health?.totalActive ?? donut.total}
-        spendTodayUsd={health?.spend24hUsd ?? 0}
-        inFlightUsd={inFlight}
-      />
+      <StatRow>
+        <StatCell
+          label={t("overview.kpi.activeRuns")}
+          value={live.length}
+          tone={live.length > 0 ? "run" : undefined}
+          hint={t("overview.kpi.runnersBusy", { busy: runners.busyCount, online: runners.onlineCount })}
+        />
+        <StatCell label={t("overview.kpi.openIssues")} value={health?.totalActive ?? donut.total} />
+        <StatCell
+          label={t("overview.kpi.spendToday")}
+          value={formatUsd(health?.spend24hUsd ?? 0)}
+          hint={inFlight > 0 ? t("overview.kpi.inFlight", { usd: formatUsd(inFlight) }) : t("overview.kpi.trailing")}
+        />
+      </StatRow>
       <div className="grid grid-cols-1 gap-x-8 gap-y-6 lg:grid-cols-2 xl:grid-cols-3">
-        <LiveRunsCard runs={live} slug={slug} idle={idleRuns(runItems)} />
-        <AwaitingReleaseCard slug={slug} projectId={projectId} />
+        <LiveRuns runs={live} slug={slug} idle={idleRuns(runItems)} />
+        <AwaitingRelease slug={slug} projectId={projectId} />
         <StatusDonut data={donut} />
-        <SpendCard data={spendByStage(durationsQ.data)} inFlightUsd={inFlight} />
-        <RunnersCard summary={runners} slug={slug} />
+        <SpendByStage data={spendByStage(durationsQ.data)} inFlightUsd={inFlight} />
+        <RunnerLoad summary={runners} slug={slug} />
       </div>
     </section>
   );

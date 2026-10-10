@@ -1,22 +1,13 @@
 "use client";
 
-// Awaiting-release card: the issues standing at `awaiting_release`, counted by core's issue list as
+// Awaiting release: the issues standing at `awaiting_release`, counted by core's issue list as
 // the issue flow beside it counts them, and the draft release's turn read from the same draft
 // forecast the dashboard's lateness reads (JU-8), so the page never says "nothing" beside a flow
-// that says 72. Collapsed by default so a large backlog cannot push Runners below the fold.
+// that says 72. Folded to five by default so a large backlog cannot push Runners below the fold.
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import {
-  Button,
-  Checkbox,
-  Icon,
-  PageSection,
-  PageSectionBody,
-  PageSectionTitle,
-  StatusBadge,
-} from "@/design";
+import { Button, Checkbox, Icon, Section, StatusBadge } from "@/design";
 import { useDraftReleaseForecast } from "@/features/forecast/hooks";
 import { spanText } from "@/features/forecast/text";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues/components/batch-release-dialog";
@@ -46,8 +37,7 @@ function DraftTurn({ projectId }: { projectId: string }) {
   );
 }
 
-export function AwaitingReleaseCard({ slug, projectId }: { slug: string; projectId: string }) {
-  const router = useRouter();
+export function AwaitingRelease({ slug, projectId }: { slug: string; projectId: string }) {
   const t = useCopy();
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
@@ -88,15 +78,10 @@ export function AwaitingReleaseCard({ slug, projectId }: { slug: string; project
 
   return (
     <>
-    <PageSection className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-line-subtle py-3">
-        <div className="flex items-center gap-2">
-          <Icon name="check" size={16} className="text-subtle" />
-          <PageSectionTitle>{t("overview.flow.awaiting_release")}</PageSectionTitle>
-        </div>
-        {total > 0 && <span className="fg-caption font-mono text-subtle" data-testid="awaiting-release-count">{total}</span>}
-      </div>
-      <PageSectionBody className="flex-1">
+    <Section
+      title={t("overview.flow.awaiting_release")}
+      right={total > 0 ? <span className="font-mono text-12 text-subtle" data-testid="awaiting-release-count">{total}</span> : null}
+    >
         {read.isSuccess && total === 0 ? (
           <p className="fg-body-sm py-6 text-center text-muted">{t("overview.awaiting.empty")}</p>
         ) : (
@@ -130,17 +115,13 @@ export function AwaitingReleaseCard({ slug, projectId }: { slug: string; project
                     onChange={(checked) => toggle(i.id, checked)}
                     ariaLabel={t("overview.awaiting.select", { what: i.displayId })}
                   />
-                  <button
-                    type="button"
-                    onClick={() => router.push(issueHref(slug, i.displayId))}
-                    className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus-visible:outline-none focus-visible:shadow-focus"
-                  >
+                  <Link href={issueHref(slug, i.displayId)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
                     <StatusBadge family="run" value="passed" />
                     <span className="fg-body-sm min-w-0 flex-1 truncate text-muted">
                       <span className="font-mono text-fg">{i.displayId}</span> {i.title}
                     </span>
                     <Icon name="chevronRight" size={14} className="flex-none text-subtle" />
-                  </button>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -148,7 +129,7 @@ export function AwaitingReleaseCard({ slug, projectId }: { slug: string; project
               <button
                 type="button"
                 onClick={() => setExpanded(true)}
-                className="fg-body-sm mt-2 w-full rounded-md py-1.5 text-center text-subtle transition-colors hover:bg-hover hover:text-fg"
+                className="mt-2 w-full rounded-md py-1.5 text-center text-13 text-subtle transition-colors hover:bg-hover hover:text-fg"
               >
                 {t("overview.awaiting.showMore", { n: hiddenCount })}
               </button>
@@ -164,8 +145,7 @@ export function AwaitingReleaseCard({ slug, projectId }: { slug: string; project
             )}
           </>
         )}
-      </PageSectionBody>
-    </PageSection>
+    </Section>
     <BatchReleaseDialog
       projectId={projectId}
       selectedIssues={selectedIssues}
