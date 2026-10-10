@@ -1,9 +1,10 @@
 // The stack a Forge previewing itself runs on demo data (REQ-39, REQ-41 BC-22), started by
 // `pnpm preview:demo -- --port <port>` (scripts/preview-demo.mjs) in a run's worktree: a throwaway
 // Postgres in a container of its own (the integration harness's own start and stop), core migrated
-// and seeded with the demo world (./demo-world.ts) in demo mode, and the web's dev server on <port>
-// talking to that core. It runs until it is signalled or one of its parts dies, and then removes
-// all of it: no container, process or listener of its own is left.
+// and seeded with the demo world (./demo-world.ts) in demo mode, and serving on <port> the web it
+// was built here (packages/web-v2, `vite build` into a scratch directory, while the database comes
+// up). It runs until it is signalled or one of its parts dies, and then removes all of it: no
+// container, process or listener of its own is left.
 //
 // What it starts never sees the environment it was started in beyond a short list (PATH, HOME, ...):
 // a DATABASE_URL, a token or a core URL held by the box is not passed on, so nothing reaches any
@@ -13,12 +14,11 @@
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
-import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { migrateDatabase } from './migrations.js';
-import { freePort, startPostgres, stopPostgres } from './postgres-container.js';
+import { startPostgres, stopPostgres } from './postgres-container.js';
 
 const CORE_DIR = fileURLToPath(new URL('../..', import.meta.url));
 const ROOT = join(CORE_DIR, '..', '..');
@@ -119,6 +119,30 @@ interface Held {
   scratch: string | null;
 }
 
+/** Builds the web core serves into `outDir`; the child is held, so a teardown stops a build in flight. */
+function buildWeb(outDir: string, held: Held): Promise<void> {
+  const help = spawnSync('node', ['scripts/gen-help-content.mjs'], {
+    cwd: WEB_DIR,
+    encoding: 'utf8',
+  });
+  if (help.status !== 0) {
+    return Promise.reject(new PreviewStartRefused('help', `failed: ${help.stderr || help.stdout}`));
+  }
+  const child = spawn(
+    join(ROOT, 'node_modules', '.bin', 'vite'),
+    ['build', '--outDir', outDir, '--emptyOutDir', '--logLevel', 'warn'],
+    { cwd: WEB_DIR, env: childEnv(process.env, {}), stdio: ['ignore', 'inherit', 'inherit'] },
+  );
+  held.children.push(child);
+  return new Promise((resolve, reject) => {
+    child.once('exit', (code, signal) =>
+      code === 0
+        ? resolve()
+        : reject(new PreviewStartRefused('web build', `exited ${code ?? signal}`)),
+    );
+  });
+}
+
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
   const at = args.indexOf('--port');
@@ -169,7 +193,7 @@ async function main(): Promise<number> {
       }
     }
     if (held.scratch) rmSync(held.scratch, { recursive: true, force: true });
-    log('stopped: container, core and web are gone');
+    log('stopped: container, core and the web build are gone');
   };
 
   // `on`, never `once`: a stop signals the whole group and the bootstrap relays it as well, so the
@@ -181,14 +205,17 @@ async function main(): Promise<number> {
   try {
     process.env.FORGE_QA_LANE = `${LANE}-${port}`;
     reapOrphans();
+    held.scratch = mkdtempSync(join(tmpdir(), 'forge-preview-demo-'));
+    const webDir = join(held.scratch, 'web');
+    const built = buildWeb(webDir, held);
+    // awaited at its own stage below; a build that fails sooner is reported there, not as unhandled
+    built.catch(() => {});
     const pg = await within('postgres', (left) => startPostgres(Math.min(left, 60_000)));
     held.container = pg.name;
     const databaseUrl = pg.adminUrl;
     await within('migrate', () => migrateDatabase(databaseUrl));
 
     const secret = () => randomBytes(24).toString('hex');
-    held.scratch = mkdtempSync(join(tmpdir(), 'forge-preview-demo-'));
-    const corePort = await freePort();
     const coreSet = {
       NODE_ENV: 'development',
       LOG_LEVEL: 'warn',
@@ -196,7 +223,8 @@ async function main(): Promise<number> {
       JWT_SECRET: secret(),
       DEVICE_TOKEN_PEPPER: secret(),
       PAT_PEPPER: secret(),
-      PORT: String(corePort),
+      PORT: String(port),
+      WEB_DIST_DIR: webDir,
       APP_BASE_URL: `http://127.0.0.1:${port}`,
       CORS_ORIGINS: `http://127.0.0.1:${port}`,
       UPLOADS_DIR: join(held.scratch, 'uploads'),
@@ -238,61 +266,29 @@ async function main(): Promise<number> {
         throw new PreviewStartRefused('start', `${what} before it answered`);
       });
 
+    await within('web build', () => built);
     start('core', process.execPath, ['--import', 'tsx', 'src/index.ts'], CORE_DIR, coreSet);
     await within('core', async () => {
       const up = async () => {
         for (;;) {
           try {
-            if ((await fetch(`http://127.0.0.1:${corePort}/api/health`)).ok) return;
+            if ((await fetch(`http://127.0.0.1:${port}/api/health`)).ok) return;
           } catch {}
           await sleep(250);
         }
       };
       await Promise.race([up(), diedWhile()]);
-    });
-
-    await within('help', async () => {
-      const r = spawnSync('node', ['scripts/gen-help-content.mjs'], {
-        cwd: WEB_DIR,
-        encoding: 'utf8',
+      // the page is the build core serves: a demo core sends sign-in home, so a redirect is an answer
+      const page = await fetch(`http://127.0.0.1:${port}/login`, {
+        redirect: 'manual',
+        headers: { accept: 'text/html' },
       });
-      if (r.status !== 0) throw new PreviewStartRefused('help', `failed: ${r.stderr || r.stdout}`);
-    });
-    start(
-      'web',
-      join(ROOT, 'node_modules', '.bin', 'next'),
-      ['dev', '--port', String(port), '--hostname', '127.0.0.1'],
-      WEB_DIR,
-      {
-        NEXT_TELEMETRY_DISABLED: '1',
-        E2E_CORE_PROXY_URL: `http://127.0.0.1:${corePort}`,
-        FORGE_DEMO_SIGNIN: '1',
-      },
-    );
-    await within('web', async () => {
-      const up = async () => {
-        for (;;) {
-          const open = await new Promise<boolean>((r) => {
-            const s = connect(port, '127.0.0.1');
-            s.once('connect', () => {
-              s.destroy();
-              r(true);
-            });
-            s.once('error', () => r(false));
-          });
-          if (open) return;
-          await sleep(250);
-        }
-      };
-      await Promise.race([up(), diedWhile()]);
-      // the first page is compiled before anyone is shown the link
-      const warm = await fetch(`http://127.0.0.1:${port}/login`, { redirect: 'manual' });
-      if (warm.status >= 500)
-        throw new PreviewStartRefused('web', `answered ${warm.status} on /login`);
+      if (page.status >= 400)
+        throw new PreviewStartRefused('core', `answered ${page.status} on /login, not the web`);
     });
 
     log(
-      `ready in ${Math.round((Date.now() - t0) / 100) / 10}s (${timings.join(', ')}): web http://127.0.0.1:${port}, core 127.0.0.1:${corePort}, demo data in ${held.container}`,
+      `ready in ${Math.round((Date.now() - t0) / 100) / 10}s (${timings.join(', ')}): http://127.0.0.1:${port}, demo data in ${held.container}`,
     );
     const outcome = await Promise.race([dying, Promise.race(exits)]);
     log(`${outcome}: stopping`);

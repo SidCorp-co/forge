@@ -37,13 +37,16 @@ const isPageRequest = (c: Context, rel: string): boolean =>
  */
 export function webHost(build: WebBuild, fetch: AppFetch): MiddlewareHandler {
   const base = build.basePath;
-  const files = serveStatic({
+  const serve = serveStatic({
     root: build.dir,
     rewriteRequestPath: (path) => path.slice(base.length),
-    onFound: (path, c) => {
-      c.header('Cache-Control', path.includes('/assets/') ? ASSET_CACHE : FILE_CACHE);
-    },
   });
+  // set on the response serveStatic hands back: a header its onFound sets lands after the body is made
+  const file = async (c: Context, next: () => Promise<void>, rel: string) => {
+    const res = await serve(c, next);
+    res?.headers.set('Cache-Control', rel.startsWith('/assets/') ? ASSET_CACHE : FILE_CACHE);
+    return res ?? undefined;
+  };
 
   // gzip on the way out, as the web's own server did: the build's scripts are most of a first load
   const squeeze = compress();
@@ -100,7 +103,7 @@ export function webHost(build: WebBuild, fetch: AppFetch): MiddlewareHandler {
         { 'Cache-Control': 'public, max-age=60', 'Access-Control-Allow-Origin': '*' },
       );
     }
-    if (build.files.has(rel)) return squeezed(c, async () => (await files(c, next)) ?? undefined);
+    if (build.files.has(rel)) return squeezed(c, () => file(c, next, rel));
     if (!isPageRequest(c, rel)) return next();
 
     if (!build.manifest.routes.some((route) => matchesRoute(route, rel))) {

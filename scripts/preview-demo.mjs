@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // `pnpm preview:demo -- --port <port>`: Forge previewing itself on DEMO data (REQ-39, REQ-41 BC-22).
 // The runner starts it as a preview's command in a run's worktree (`{port}` filled), and it brings up
-// an isolated stack there: a throwaway Postgres, core migrated and seeded with a small demo project,
-// and the web on `<port>` talking to that core. Nothing it starts reaches any other database or API.
+// an isolated stack there: a throwaway Postgres, and core migrated, seeded with a small demo project
+// and serving the web it builds on `<port>`. Nothing it starts reaches any other database or API.
 //
 // This file is the bootstrap, the part that must run before any dependency is installed: it dates the
 // start budget, installs and builds a checkout that has neither, and hands over to
