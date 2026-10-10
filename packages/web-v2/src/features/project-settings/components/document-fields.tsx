@@ -47,6 +47,13 @@ function RefusalLines({ refusals, at }: { refusals: readonly Refusal[]; at: stri
 	);
 }
 
+/** A leaf's value as text: strings as they are, numbers and booleans spelled, anything else as JSON. */
+function leafText(value: unknown): string {
+	if (typeof value === "string") return value;
+	if (typeof value === "number" || typeof value === "boolean") return String(value);
+	return JSON.stringify(value) ?? "";
+}
+
 function Leaf({ name, value, path, ctx }: { name: string; value: unknown; path: string[]; ctx: Ctx }) {
 	const at = pointerOf(path);
 	const error = said(ctx.placed.get(at) ?? [], at);
@@ -57,7 +64,7 @@ function Leaf({ name, value, path, ctx }: { name: string; value: unknown; path: 
 					{name}
 				</span>
 				<span className="fg-body-sm font-mono text-fg" translate="no">
-					{String(value)}
+					{leafText(value)}
 				</span>
 				<span className="fg-caption text-subtle">{ctx.t("settings.project.raw.fixed")}</span>
 			</div>
@@ -88,7 +95,7 @@ function Leaf({ name, value, path, ctx }: { name: string; value: unknown; path: 
 						<Input
 							aria-label={at}
 							type={typeof value === "number" ? "number" : "text"}
-							value={String(value)}
+							value={leafText(value)}
 							disabled={!ctx.canEdit}
 							onChange={(e) => {
 								const raw = e.target.value;

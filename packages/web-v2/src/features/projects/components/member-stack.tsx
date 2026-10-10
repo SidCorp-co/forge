@@ -1,6 +1,6 @@
 // Overlapping avatar stack from email-derived initials, with a `+N` overflow
 // chip when the true `memberCount` exceeds the rendered avatars.
-import { Avatar, type AvatarHue } from '@/design';
+import { Avatar, type AvatarHue, keyedByContent } from '@/design';
 
 const HUES: AvatarHue[] = ['cobalt', 'flame', 'green'];
 
@@ -17,10 +17,9 @@ export function MemberStack({ members, total, size = 24 }: MemberStackProps) {
   const overflow = Math.max(0, total - members.length);
   return (
     <div className="flex items-center">
-      {members.map((m, i) => (
+      {keyedByContent(members, (m) => m).map(({ key, item: m, index: i }) => (
         <span
-          // biome-ignore lint/suspicious/noArrayIndexKey: initials repeat, and the stack only ever re-renders whole.
-          key={`${m}-${i}`}
+          key={key}
           className="rounded-pill ring-2 ring-surface"
           style={{ marginLeft: i ? -7 : 0 }}
         >

@@ -11,7 +11,7 @@
 // org member gets a read-only drawer that can still drill into projects.
 
 import Link from "next/link";
-import { Suspense, lazy, useMemo, useState } from "react";
+import { Suspense, createElement, lazy, useState } from "react";
 import {
   Banner,
   Button,
@@ -41,10 +41,10 @@ import { PROVIDER_MODULES, providerIcon, providerLabel, providerModule, secretPl
 import type { BindingSummary, ConnectionSummary, IntegrationTestResult } from "../types";
 import { DirectoryStatusPill, scopeLabel } from "./status-pill";
 
+// Each provider's connection-tier form, made lazy once here at module scope: the drawer renders the
+// one its provider names, a type that is the same on every render.
 const CONNECTION_SECTIONS = new Map(
-  PROVIDER_MODULES.flatMap((m) =>
-    m.connectionSection ? [[m.provider, lazy(m.connectionSection)] as const] : [],
-  ),
+  PROVIDER_MODULES.flatMap((m) => (m.connectionSection ? [[m.provider, lazy(m.connectionSection)] as const] : [])),
 );
 
 /** Inline rename in the drawer header (AC1). */
@@ -139,8 +139,7 @@ function CredentialFields({
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
   const checked = time.relative(connection.lastHealthAt);
-  const module = providerModule(connection.provider);
-  const secretField = module?.secretField ?? null;
+  const secretField = providerModule(connection.provider)?.secretField ?? null;
 
   const saveKey = () => {
     const next = key.trim();
@@ -230,11 +229,10 @@ function ConfigFields({
   connection: ConnectionSummary;
   canManage: boolean;
 }) {
-  const module = providerModule(connection.provider);
-  const Section = CONNECTION_SECTIONS.get(connection.provider);
+  const section = CONNECTION_SECTIONS.get(connection.provider);
   const t = useCopy();
 
-  if (!Section) {
+  if (!section) {
     return (
       <section className="flex flex-col gap-2">
         <PageSectionTitle>{t("integrations.detail.config")}</PageSectionTitle>
@@ -247,11 +245,11 @@ function ConfigFields({
 
   return (
     <Suspense fallback={<Skeleton className="h-28 w-full" />}>
-      <Section
-        key={connection.id}
-        connection={{ id: connection.id, config: connection.config ?? {} }}
-        canManage={canManage}
-      />
+      {createElement(section, {
+        key: connection.id,
+        connection: { id: connection.id, config: connection.config ?? {} },
+        canManage,
+      })}
     </Suspense>
   );
 }
@@ -259,7 +257,6 @@ function ConfigFields({
 /** "Projects using it" — each row drills into that project's settings →
  *  Integrations tab (AC3); archived projects render non-clickable + badge. */
 function ProjectFields({
-  connection,
   projects,
   bindings,
   bindingsError,
@@ -267,7 +264,6 @@ function ProjectFields({
   onRetry,
   onNavigate,
 }: {
-  connection: ConnectionSummary;
   projects: ProjectListItem[];
   bindings: BindingSummary[];
   bindingsError: string | null;
@@ -276,11 +272,7 @@ function ProjectFields({
   onNavigate: () => void;
 }) {
   const t = useCopy();
-  const byId = useMemo(() => {
-    const map = new Map<string, ProjectListItem>();
-    for (const p of projects) map.set(p.id, p);
-    return map;
-  }, [projects]);
+  const byId = new Map(projects.map((p) => [p.id, p] as const));
 
   return (
     <section className="flex flex-col gap-2">
@@ -435,11 +427,8 @@ export function ConnectionEditDrawer({
   // Distinct PROJECT IDS with a still-resolving binding — dedupe by id (two
   // projects may share a display name) and skip already-disabled bindings,
   // which stopped resolving before any removal.
-  const affectedProjects = useMemo(() => {
-    const byId = new Map(projects.map((p) => [p.id, p.name] as const));
-    const ids = [...new Set(bindings.filter((b) => b.active).map((b) => b.projectId))];
-    return ids.map((id) => byId.get(id) ?? id);
-  }, [bindings, projects]);
+  const nameById = new Map(projects.map((p) => [p.id, p.name] as const));
+  const affectedProjects = [...new Set(bindings.filter((b) => b.active).map((b) => b.projectId))].map((id) => nameById.get(id) ?? id);
 
   if (!connection) return null;
 
@@ -464,7 +453,6 @@ export function ConnectionEditDrawer({
         />
         <Divider />
         <ProjectFields
-          connection={connection}
           projects={projects}
           bindings={bindings}
           bindingsLoading={bindingsQ.isLoading}

@@ -1,7 +1,7 @@
 "use client";
 
 import { cellText, type VisualBlockOf } from "@forge/contracts/visual-blocks";
-import { Bar, BarChart, CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from "recharts";
 import { type ChartConfig, ChartContainer } from "@/design";
 import { type ChartModel, chartModel } from "./chart-model";
 import { useBlockInstants } from "./instants";
@@ -87,43 +87,25 @@ export function ChartBlockView({ block }: { block: VisualBlockOf<"chart"> }) {
     />
   );
   const common = { data, margin: MARGIN, accessibilityLayer: false } as const;
-  const tip = <Tooltip contentStyle={TIP} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ""} />;
+  const tip = <Tooltip contentStyle={TIP} labelFormatter={(_, p) => (p?.[0]?.payload as { label?: string } | undefined)?.label ?? ""} />;
   return (
     <div className="min-w-0" data-testid="chart-block" data-variant={model.variant} data-scale={model.scale}>
       <Legend model={model} />
       <div aria-hidden>
         <ChartContainer config={config} className="aspect-auto h-60 w-full" initialDimension={{ width: 480, height: 240 }}>
-          {model.variant === "bar" ? (
-            <BarChart {...common}>
-              <CartesianGrid vertical={false} stroke="var(--border-subtle)" />
-              {xAxis}
-              {yAxis}
-              {tip}
-              {model.series.map((s) => (
+          <ComposedChart {...common}>
+            <CartesianGrid vertical={false} stroke="var(--border-subtle)" />
+            {xAxis}
+            {yAxis}
+            {tip}
+            {model.series.map((s) =>
+              model.variant === "bar" ? (
                 <Bar key={s.key} dataKey={s.key} name={s.name} fill={`var(--color-${s.key})`} isAnimationActive={false} />
-              ))}
-            </BarChart>
-          ) : (
-            <LineChart {...common}>
-              <CartesianGrid vertical={false} stroke="var(--border-subtle)" />
-              {xAxis}
-              {yAxis}
-              {tip}
-              {model.series.map((s) => (
-                <Line
-                  key={s.key}
-                  dataKey={s.key}
-                  name={s.name}
-                  type="linear"
-                  stroke={`var(--color-${s.key})`}
-                  strokeWidth={2}
-                  dot={{ r: 2.5 }}
-                  connectNulls={false}
-                  isAnimationActive={false}
-                />
-              ))}
-            </LineChart>
-          )}
+              ) : (
+                <Line key={s.key} dataKey={s.key} name={s.name} type="linear" stroke={`var(--color-${s.key})`} strokeWidth={2} dot={{ r: 2.5 }} connectNulls={false} isAnimationActive={false} />
+              ),
+            )}
+          </ComposedChart>
         </ChartContainer>
       </div>
       <TextAlternative block={block} />

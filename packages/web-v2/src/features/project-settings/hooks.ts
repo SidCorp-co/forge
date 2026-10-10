@@ -4,7 +4,7 @@
 // of its own: those are what the dashboard, the console and the WS reconnect-replay read, and a
 // private key updates none.
 
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import type { ProjectDetail } from "@/features/projects";
 import { projectSettingsApi } from "./api";
 import { releaseReadinessKey, useToastedMutation } from "@/features/project-config";
@@ -16,8 +16,8 @@ const members = (id: string | undefined) => ["project", id, "members"];
 const invitations = (id: string | undefined) => ["project", id, "invitations"];
 const labels = (id: string | undefined) => ["project", id, "labels"];
 
-function useProjectQuery<T>(key: readonly unknown[], id: string | undefined, read: (id: string) => Promise<T>) {
-	return useQuery({ queryKey: key, queryFn: () => read(id as string), enabled: Boolean(id) });
+function useProjectQuery<T>(keyOf: (id: string | undefined) => readonly unknown[], id: string | undefined, read: (id: string) => Promise<T>) {
+	return useQuery({ queryKey: keyOf(id), queryFn: id ? () => read(id) : skipToken });
 }
 
 /** PATCH the project row (its org). Invalidates the detail + console list. */
@@ -73,9 +73,9 @@ export function useUpdatePlugins(id: string | undefined) {
 
 /** What this project still owes before its first issue runs. */
 export const useReleaseReadiness = (id: string | undefined) =>
-	useProjectQuery(releaseReadinessKey(id), id, projectSettingsApi.getReleaseReadiness);
+	useProjectQuery(releaseReadinessKey, id, projectSettingsApi.getReleaseReadiness);
 
-export const useMembers = (id: string | undefined) => useProjectQuery(members(id), id, projectSettingsApi.listMembers);
+export const useMembers = (id: string | undefined) => useProjectQuery(members, id, projectSettingsApi.listMembers);
 
 export function useInviteMember(id: string | undefined) {
 	const t = useCopy();
@@ -101,7 +101,7 @@ export function useDirectAddMember(id: string | undefined) {
 }
 
 export const useInvitations = (id: string | undefined) =>
-	useProjectQuery(invitations(id), id, projectSettingsApi.listInvitations);
+	useProjectQuery(invitations, id, projectSettingsApi.listInvitations);
 
 export function useRevokeInvitation(id: string | undefined) {
 	const t = useCopy();
@@ -134,7 +134,7 @@ export function useRemoveMember(id: string | undefined) {
 	});
 }
 
-export const useLabels = (id: string | undefined) => useProjectQuery(labels(id), id, projectSettingsApi.listLabels);
+export const useLabels = (id: string | undefined) => useProjectQuery(labels, id, projectSettingsApi.listLabels);
 
 export function useCreateLabel(id: string | undefined) {
 	const t = useCopy();

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, use, type ReactNode } from "react";
 import type { ProjectListItem } from "./types";
 
 // The rail's resolved project: on a screen with no slug in its URL (Settings) it is
@@ -19,16 +19,16 @@ export function CurrentProjectProvider({
   children: ReactNode;
 }) {
   return (
-    <CurrentProjectContext.Provider value={project}>
-      <CurrentProjectRefContext.Provider value={projectRef ?? project?.id}>{children}</CurrentProjectRefContext.Provider>
-    </CurrentProjectContext.Provider>
+    <CurrentProjectContext value={project}>
+      <CurrentProjectRefContext value={projectRef ?? project?.id}>{children}</CurrentProjectRefContext>
+    </CurrentProjectContext>
   );
 }
 
 export function useCurrentProject(): ProjectListItem | null {
-  return useContext(CurrentProjectContext);
+  return use(CurrentProjectContext);
 }
 
 export function useCurrentProjectRef(): string | undefined {
-  return useContext(CurrentProjectRefContext);
+  return use(CurrentProjectRefContext);
 }

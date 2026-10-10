@@ -40,7 +40,7 @@ function initialForm(existing: IntegrationSummary | undefined): FormState {
 export function SentrySettings({ projectId }: { projectId: string }) {
   const b = useSingleBinding(projectId, sentry, initialForm);
   const { existing, form, set, orgLocked } = b;
-  const retired = retiredSlugs((existing?.config ?? {}) as Record<string, unknown>);
+  const retired = retiredSlugs(existing?.config ?? {});
   const t = useCopy();
   const language = useInterfaceLanguage();
   const canSave =

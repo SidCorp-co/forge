@@ -1,6 +1,6 @@
 "use client";
 
-import { LEGEND, statusReading, Tooltip } from "@/design";
+import { LEGEND, statusReading, Tooltip, useNow } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { formatStamp } from "@/lib/utils/format";
 import type { ContractStandingRow, ContractVersionView } from "../types";
@@ -13,8 +13,8 @@ const toneOf = (v: ContractVersionView) =>
 export function VersionTimeline({ row, versions }: { row: ContractStandingRow; versions: ContractVersionView[] }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
+  const now = useNow(60_000);
   if (versions.length === 0) return <p className="text-13 text-subtle">{t("contracts.versions.none")}</p>;
-  const now = Date.now();
   const due = row.window ? new Date(row.window.dueAt).getTime() : null;
   const times = [...versions.map((v) => new Date(v.recordedAt).getTime()), now, ...(due ? [due] : [])];
   const lo = Math.min(...times);

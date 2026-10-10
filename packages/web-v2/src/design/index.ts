@@ -65,6 +65,7 @@ export { KanbanCard } from "./patterns/kanban-card";
 export { KanbanBoard } from "./patterns/kanban-board";
 export { KanbanColumn } from "./patterns/kanban-column";
 export { NavRail, isNavGroup, type NavEntry, type NavItem, type NavItemGroup } from "./patterns/nav-rail";
+export { RailButton } from "./patterns/rail-button";
 export { BottomTabBar, type BottomTabItem } from "./patterns/bottom-tab-bar";
 export { CommandPalette, type Command } from "./patterns/command-palette";
 export { PinnedTabBar } from "./patterns/pinned-tab-bar";
@@ -116,6 +117,7 @@ export { useElapsed } from "./hooks/use-elapsed";
 export { useNow } from "./hooks/use-now";
 export { useMediaQuery } from "./hooks/use-media-query";
 export { useBrowserValue } from "./hooks/use-browser-value";
+export { keyedByContent, keyedRows, useListKeys, type ListKeys } from "./hooks/use-list-keys";
 
 export {
   ListPage, DetailPage, SettingsPage, BoardPage, ReportPage,

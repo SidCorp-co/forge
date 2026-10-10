@@ -1,8 +1,5 @@
 'use client';
 
-import { useMemo } from 'react';
-
-
 const LABELS = ['Very weak', 'Weak', 'Fair', 'Good', 'Strong'] as const;
 
 // Indexed by score (0..4) — red for the weak end, amber mid, green strong.
@@ -30,17 +27,19 @@ function scorePassword(pw: string): 0 | 1 | 2 | 3 | 4 {
   return Math.min(score, 4) as 0 | 1 | 2 | 3 | 4;
 }
 
+/** The meter's five fixed segments. */
+const SEGMENTS = [0, 1, 2, 3, 4] as const;
+
 export function PasswordMeter({ password }: { password: string }) {
-  const score = useMemo(() => scorePassword(password), [password]);
+  const score = scorePassword(password);
   if (!password) return null;
 
   const filled = score + 1;
   return (
     <div className="mt-2" aria-live="polite">
       <div className="flex gap-1">
-        {Array.from({ length: 5 }).map((_, i) => (
+        {SEGMENTS.map((i) => (
           <span
-            // biome-ignore lint/suspicious/noArrayIndexKey: five fixed meter segments that never reorder
             key={i}
             className="h-1 flex-1 rounded-pill transition-colors duration-200"
             style={{ background: i < filled ? RAMP[score] : 'var(--border-strong)' }}

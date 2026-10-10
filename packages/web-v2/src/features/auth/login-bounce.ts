@@ -7,6 +7,8 @@
 /** A bounce this recent is "the previous navigation"; a person who comes back later is not looping. */
 export const BOUNCE_WINDOW_MS = 30_000;
 
+import { assetPath } from "@/lib/asset";
+
 const KEY = "forge.loginBounce";
 const NAME_PREFIX = "forge.loginBounce:";
 
@@ -53,18 +55,45 @@ export function bouncedRecently(now = Date.now()): boolean {
 }
 
 /**
- * Sends the browser to /login once. A hard navigation, never the client router: /login may answer
- * with a redirect to an API route (the router fetches that as a page and ends blank). Returns
- * `stopped` where the previous navigation already bounced, and then does not navigate.
+ * A hard navigation to /login, never the client router: /login may answer with a redirect to an API
+ * route (the router fetches that as a page and ends blank). The URL carries the base path the app is
+ * served under, which a bare "/login" left out.
+ */
+export function goToLogin(): void {
+  window.location.assign(new URL(assetPath("/login"), window.location.origin));
+}
+
+// What the last bounce decided, as a store a component reads with useSyncExternalStore.
+let outcome: "left" | "stopped" | null = null;
+const listeners = new Set<() => void>();
+function settle(next: typeof outcome): void {
+  if (next === outcome) return;
+  outcome = next;
+  for (const listener of listeners) listener();
+}
+export function subscribeBounce(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+export const bounceOutcome = (): typeof outcome => outcome;
+
+/**
+ * Sends the browser to /login once. Returns `stopped` where the previous navigation already
+ * bounced, and then does not navigate.
  */
 export function leaveForLogin(now = Date.now()): "left" | "stopped" {
-  if (bouncedRecently(now)) return "stopped";
+  if (bouncedRecently(now)) {
+    settle("stopped");
+    return "stopped";
+  }
   write(now);
-  window.location.assign("/login");
+  settle("left");
+  goToLogin();
   return "left";
 }
 
 /** The session is open: the next sign-out is a first bounce again. */
 export function clearBounce(): void {
   write(null);
+  settle(null);
 }

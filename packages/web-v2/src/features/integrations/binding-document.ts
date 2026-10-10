@@ -23,9 +23,9 @@ export type BindingRead =
 	| { declared: true; revision: number; document: BindingDocument };
 
 function bindingKeysOf(provider: string): readonly string[] {
-	const module = providerModule(provider);
-	if (!module) throw new Error(`no provider module for "${provider}", so its binding tier is unknown`);
-	return [...module.bindingKeys, RELEASE_RUNNER_LABEL];
+	const providerDef = providerModule(provider);
+	if (!providerDef) throw new Error(`no provider module for "${provider}", so its binding tier is unknown`);
+	return [...providerDef.bindingKeys, RELEASE_RUNNER_LABEL];
 }
 
 function withoutNulls(config: Record<string, unknown>): Record<string, unknown> {
