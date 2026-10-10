@@ -89,7 +89,10 @@ const roadmapRun = (): ReportRun => {
   };
 };
 
-const answer = (summary: string, findings = ['REQ-40 lands first.', 'REQ-30 has the widest range.']) =>
+const answer = (
+  summary: string,
+  findings = ['REQ-40 lands first.', 'REQ-30 has the widest range.'],
+) =>
   JSON.stringify({
     summary,
     risks: 'REQ-30 has the widest forecast range.',
@@ -167,7 +170,12 @@ describe("the roadmap narrative's dates and times", () => {
     'REQ-40 is likely by Oct 10, 02:19 UTC. REQ-30 is almost surely done by Oct 10, 16:01 UTC, the latest.',
     'REQ-40, then REQ-34, REQ-30 and REQ-31 land on Oct 10; REQ-43 is last at Oct 10, 10:46 UTC.',
   ])('holds over several runs: %s', async (summary) => {
-    answers.push(answer(summary, ['REQ-40 lands first.', `REQ-30 has the latest forecast end, Oct 10, 16:01 UTC.`]));
+    answers.push(
+      answer(summary, [
+        'REQ-40 lands first.',
+        `REQ-30 has the latest forecast end, Oct 10, 16:01 UTC.`,
+      ]),
+    );
     const out = await run();
     expect(out.narrative).toMatchObject({ path: 'written', calls: 1 });
     expect(out.document.blocks[1]?.finding).toBe(

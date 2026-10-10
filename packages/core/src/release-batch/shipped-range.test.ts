@@ -135,12 +135,12 @@ describe('what a release range ships, read from the repository (BC-7, BC-9)', ()
       `services:\n  core:\n    environment:\n${lines.map((l) => `      ${l}`).join('\n')}\n`;
     const host = repo(
       {
-        [BASE]: { [COMPOSE]: compose('DATABASE_URL: ${DATABASE_URL:?set it}') },
+        [BASE]: { [COMPOSE]: compose(`DATABASE_URL: \${DATABASE_URL:?set it}`) },
         [HEAD]: {
           [COMPOSE]: compose(
-            'DATABASE_URL: ${DATABASE_URL:?set it}',
-            'PREVIEW_DOMAIN: ${PREVIEW_DOMAIN:-}',
-            'VAULT_KEY: ${VAULT_KEY:?a key}',
+            `DATABASE_URL: \${DATABASE_URL:?set it}`,
+            `PREVIEW_DOMAIN: \${PREVIEW_DOMAIN:-}`,
+            `VAULT_KEY: \${VAULT_KEY:?a key}`,
           ),
         },
       },

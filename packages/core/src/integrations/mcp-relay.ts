@@ -70,7 +70,7 @@ export interface RelayUpstream {
 export async function relayUpstreamOf(pair: BindingWithConnection): Promise<RelayUpstream | null> {
   const decl = getIntegration(pair.binding.provider);
   const path = decl?.capabilities.agentPath;
-  if (!path || path.kind !== 'direct-mcp' || !pair.connection.secretsEnc) return null;
+  if (path?.kind !== 'direct-mcp' || !pair.connection.secretsEnc) return null;
   const stored = decryptConnectionSecrets<Record<string, unknown>>(pair.connection);
   if (!stored) return null;
   const config = effectiveConfig(pair);
@@ -83,7 +83,7 @@ export async function relayUpstreamOf(pair: BindingWithConnection): Promise<Rela
 }
 
 export function httpUpstreamOf(entry: Record<string, unknown> | null): RelayUpstream | null {
-  if (!entry || entry.type !== 'http' || typeof entry.url !== 'string') return null;
+  if (entry?.type !== 'http' || typeof entry.url !== 'string') return null;
   const headers: Record<string, string> = {};
   for (const [k, v] of Object.entries((entry.headers ?? {}) as Record<string, unknown>)) {
     if (typeof v === 'string') headers[k] = v;

@@ -57,7 +57,10 @@ describe('project-onboarding reanalyze: the dashboard hint offers a re-analysis'
   });
 
   it('names the attempt that failed and why it ended, where the job recorded why (ISS-268)', () => {
-    const h = hintOf(view({ job: job({ status: 'failed', attempt: 3, endedWith: 'the runner went offline' }) }), 'none');
+    const h = hintOf(
+      view({ job: job({ status: 'failed', attempt: 3, endedWith: 'the runner went offline' }) }),
+      'none',
+    );
     expect(h?.text).toBe('Attempt 3 drew nothing: the runner went offline');
   });
 

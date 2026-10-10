@@ -78,7 +78,9 @@ describe('each cap stops the script and names itself', () => {
     const r = await run('const f = (n) => f(n + 1) + 1; f(0)');
     expect(r.status).toBe('failed');
     expect(r.stopped).toBe('stackBytes');
-    expect(r.error?.message).toMatch(/^the script nested calls past its stack cap of \d+ bytes \(stackBytes\) and was stopped$/);
+    expect(r.error?.message).toMatch(
+      /^the script nested calls past its stack cap of \d+ bytes \(stackBytes\) and was stopped$/,
+    );
   });
 
   it('cuts the log at its cap and says so', async () => {

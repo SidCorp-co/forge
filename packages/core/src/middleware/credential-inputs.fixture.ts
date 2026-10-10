@@ -102,14 +102,14 @@ const ROW_KEYS = 'an id, key, number or slug naming a row, checked under the cal
 export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
   'a header no credential rides in: media types, sizes, the proxy’s view, a trace id': words`
     header:accept header:accept-encoding header:cf-ray header:content-encoding
-    header:content-length header:content-type header:host header:link header:origin
+    header:content-length header:content-type header:host header:link header:origin header:range
     header:referer header:sec-fetch-dest header:user-agent header:x-forwarded-for
     header:x-forwarded-host header:x-forwarded-proto header:x-next-page header:x-real-ip
     header:x-request-id`,
   'a header core’s own clients send: what they render, the project an /mcp call names': words`
     header:x-forge-capabilities header:x-forge-project-slug header:x-forge-unresolved-ref`,
   [ROW_KEYS]: words`
-    param:file param:id param:projectId param:provider param:questionId param:slug param:target
+    param:bindingId param:file param:id param:projectId param:provider param:questionId param:slug param:target
     param:templateId param:version query:projectId
     field:param:agentUserId field:param:aid field:param:approvalId field:param:at
     field:param:attachmentId field:param:bid field:param:bindingId field:param:code
@@ -191,7 +191,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:agentVersion field:json:dueAt field:json:dueBy field:json:expectedEditedAt
     field:json:expiresAt field:json:minVersion field:json:parkDeadlineAt field:json:readAt
     field:json:readWhen field:json:timeZone field:json:until field:json:validUntil
-    field:json:version`,
+    field:json:startedAt field:json:version`,
   'a git name: a branch, a commit, a path in a repository': words`
     field:json:agentCommit field:json:atSha field:json:base field:json:branch field:json:commit
     field:json:head field:json:repoPath field:json:sha`,
@@ -212,8 +212,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
   'a value core’s own middleware set once it admitted the caller, never the secret': words`
     var:agency var:agentUserId var:authUserResolution var:chatWriteAdmitted var:device
     var:deviceId var:onBehalfOf var:patDeviceId var:patRequestClass var:patRequestResolution
-    var:patRequestWrites var:patTokenId var:principal var:requestId var:sessionCookie var:user
-    var:userId var:userTokenResolution`,
+    var:patActRecorded var:patRequestWrites var:patTokenId var:principal var:requestId var:sessionCookie
+    var:user var:userId var:userTokenResolution`,
 };
 
 /** Each whole read a presented secret arrives in, by `<module> <what> in <owner>`, and what. */
@@ -344,6 +344,12 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     previews/relay.ts IncomingMessage.pipe in relayPreviewRequest
     previews/relay.ts IncomingMessage.pipe in relayPreviewUpgrade
     previews/relay.ts IncomingMessage.url in serveRecorder`,
+  'the storefront MCP relay, once its relay ticket verified: the transport headers it passes by name, the agent’s message relayed as sent, and the provider’s answer core passes back': lines`
+    integration-door/mcp-relay-routes.ts Headers handed to @types/node:fetch in module code
+    integration-door/mcp-relay-routes.ts Headers handed to undici-types:Response in module code
+    integration-door/mcp-relay-routes.ts Headers.get(name) in module code
+    integration-door/mcp-relay-routes.ts HonoRequest.arrayBuffer in module code
+    integration-door/mcp-relay-routes.ts HonoRequest.header(name) in module code`,
   'a socket ws/server.ts opened for a person or a box, and its frames: subscribe, runner': lines`
     previews/tunnel.ts IncomingMessage handed to @types/ws:handleUpgrade in acceptTunnelUpgrade
     previews/tunnel.ts WebSocket.on(message) in adoptTunnel
