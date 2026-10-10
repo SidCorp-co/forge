@@ -1,10 +1,10 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { FireItemScreen } from "@/features/automation/components/automation-item-screens";
-import { canManageProject, canWriteProject } from "@/features/projects/write-access";
+import { FireItemScreen } from "@/features/automation";
+import { canManageProject, canWriteProject } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { ProjectGate } from "@/features/projects/components/project-gate";
+import { ProjectGate } from "@/features/projects";
 
 export default function Page() {
   const t = useCopy();

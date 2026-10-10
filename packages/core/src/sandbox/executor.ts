@@ -10,6 +10,7 @@ import {
   type ExecutionResult,
   type Executor,
   framesFromReturn,
+  isExecutionLimit,
 } from '@forge/contracts/report-executions';
 import { SCRIPT_LANGUAGE } from '@forge/contracts/script-sandbox';
 import { openForgeReader } from './forge-read.js';
@@ -59,7 +60,8 @@ export const sandboxExecutor: Executor = {
         adapter: sandboxExecutor.id,
         exit: error ? 1 : 0,
         durationMs: run.durationMs,
-        ...(run.stopped ? { stopped: run.stopped } : {}),
+        // an execution records the caps it shares with the sandbox; the stack cap is named by the error
+        ...(run.stopped && isExecutionLimit(run.stopped) ? { stopped: run.stopped } : {}),
         frames,
         logs: { stdout: run.output, stderr: error ? `${error.name}: ${error.message}` : '' },
         ...(error ? { error } : {}),

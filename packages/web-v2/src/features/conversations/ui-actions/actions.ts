@@ -34,10 +34,10 @@ import { withArticle } from "@forge/contracts/articles";
 import { ISSUE_STATUSES } from "@forge/contracts/issue-machine";
 import { REGISTRY_ISSUE_PRIORITIES } from "@forge/contracts/pipeline-registry";
 import { applyWireframePatch, type WireframeDoc } from "@forge/contracts/wireframe";
-import { boardStore } from "@/features/board/board-store";
+import { boardStore } from "@/features/board";
 import { toolOutputText } from "@/lib/tool-output";
-import { assistantFilters } from "@/features/chat-dock/assistant-filters";
-import type { IssueSelectionBridge } from "@/features/chat-dock/selection-bridge";
+import { assistantFilters } from "@/features/chat-dock";
+import type { IssueSelectionBridge } from "@/features/chat-dock";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref } from "@/lib/routes/issues";
@@ -64,7 +64,7 @@ const ROUTE_BY_SUFFIX = Object.entries(UI_ROUTES) as [UiRoute, string][];
 
 function projectPath(pathname: string): { slug: string; rest: string } | null {
   const m = /^\/projects\/([^/]+)(\/.*)?$/.exec(pathname);
-  return m ? { slug: m[1] as string, rest: (m[2] ?? "").replace(/\/$/, "") } : null;
+  return m ? { slug: m[1], rest: (m[2] ?? "").replace(/\/$/, "") } : null;
 }
 
 /** The Issues filter a URL holds, in the registry's closed fields; "me" only where the id is the reader's. */
@@ -109,11 +109,11 @@ const ITEM_SEGMENT: Record<string, UiPageItem["kind"]> = {
 /** The record a project path is the page of (`/requirements/REQ-30`), or null: a key its kind does not take names none. */
 export function pageItemOf(rest: string): UiPageItem | null {
   const m = /^\/([a-z]+)\/([^/]+)$/.exec(rest);
-  const kind = m ? ITEM_SEGMENT[m[1] as string] : undefined;
+  const kind = m ? ITEM_SEGMENT[m[1]] : undefined;
   if (!m || !kind) return null;
   let key: string;
   try {
-    key = decodeURIComponent(m[2] as string);
+    key = decodeURIComponent(m[2]);
   } catch {
     return null;
   }
@@ -199,9 +199,9 @@ function chipLabel(field: UiFilterField, f: Record<string, unknown>, env: Pick<U
   const { t, language } = env;
   if (field === "createdBy") return t("conversations.ui.chipCreatedBy");
   if (field === "assignee") return t("conversations.ui.chipAssignee");
-  if (field === "priority") return t("conversations.ui.chipPriority", { value: enumLabel("priority", String(f.priority ?? ""), language) });
+  if (field === "priority") return t("conversations.ui.chipPriority", { value: enumLabel("priority", typeof f.priority === "string" ? f.priority : "", language) });
   if (field === "status") return t("conversations.ui.chipStatus", { value: ((f.status as string[] | undefined) ?? []).map((s) => statusReading("issue", s, language).label).join(", ") });
-  if (field === "text") return t("conversations.ui.chipSearch", { text: String(f.text ?? "") });
+  if (field === "text") return t("conversations.ui.chipSearch", { text: typeof f.text === "string" ? f.text : "" });
   const [words] = describeListFilter({ [field]: f[field] });
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : field;
 }
@@ -321,6 +321,109 @@ function applyHighlight(h: UiHighlight, env: UiActionEnv): UiActionOutcome {
   };
 }
 
+type UiActionNamed<N extends UiAction["name"]> = Extract<UiAction, { name: N }>;
+
+/** Narrows or replaces the Issues list's filters, resolving "me" to the signed-in person. */
+function applyIssuesFilter(action: UiActionNamed<"ui.issues.filter">, env: UiActionEnv, before: string, back: () => void): UiActionOutcome {
+  const { mode, set, clear } = action.params;
+  const wantsMe = set.createdBy === "me" || set.assignee === "me";
+  if (wantsMe && !env.userId)
+    return refuse(
+      "UI_ACTION_UNAVAILABLE",
+      "UI_ACTION_UNAVAILABLE: ui.issues.filter names \"me\", and this page has no signed-in person to resolve it to. Nothing was changed.",
+    );
+  const url = new URL(before, "http://x");
+  const onIssues = url.pathname === issuesPath(env.slug);
+  const next = new URLSearchParams(onIssues ? url.searchParams : undefined);
+  next.delete("page");
+  if (mode === "replace") for (const f of ISSUE_FIELDS) next.delete(UI_FILTER_PARAMS[f]);
+  for (const f of clear) next.delete(UI_FILTER_PARAMS[f]);
+  if (set.status) next.set("status", set.status.join(","));
+  if (set.priority) next.set("priority", set.priority);
+  if (set.createdBy) next.set("createdBy", env.userId as string);
+  if (set.assignee) next.set("assignee", env.userId as string);
+  if (set.waitingOn) {
+    next.set(UI_FILTER_PARAMS.waitingOn, set.waitingOn);
+    // whom an issue waits on is read by the grouped views (the standing read); the paged Table has none
+    if (next.get("group") === "table") next.delete("group");
+  }
+  if (set.text) next.set("q", set.text);
+  const qs = next.toString();
+  env.go(`${issuesPath(env.slug)}${qs ? `?${qs}` : ""}`);
+  markSet(set, next, mode);
+  const fields = (Object.keys(set) as UiFilterField[]).filter((f) => (set as Record<string, unknown>)[f] !== undefined);
+  const verb = env.t(mode === "replace" ? "conversations.ui.filtered" : "conversations.ui.narrowed");
+  const what = fields.map((f) => chipLabel(f, set as Record<string, unknown>, env)).join(", ");
+  return {
+    ok: true,
+    summary: `${verb}${what ? `: ${what}` : ""}${clear.length ? ` (${env.t("conversations.ui.cleared", { fields: clear.map((f) => env.t(`conversations.ui.field.${f}` as ProductCopyKey)).join(", ") })})` : ""}`,
+    undo: back,
+    chips: fields.map((field) => ({ field, label: chipLabel(field, set as Record<string, unknown>, env) })),
+  };
+}
+
+/** Opens a board in the chat panel; undo puts back the board it replaced, or closes it. */
+function applyBoardDraw(action: UiActionNamed<"ui.board.draw">, env: UiActionEnv): UiActionOutcome {
+  const prior = boardStore.get();
+  boardStore.load(action.params.doc);
+  return {
+    ok: true,
+    summary: env.t("conversations.ui.drew", { board: describeBoard(action.params.doc, env.t) }),
+    undo: () => (prior.open && prior.doc ? boardStore.load(prior.doc) : boardStore.close()),
+    chips: [],
+  };
+}
+
+/** Applies a patch to the open board; refused when none is open. */
+function applyBoardRevise(action: UiActionNamed<"ui.board.revise">, env: UiActionEnv): UiActionOutcome {
+  const prior = boardStore.get();
+  if (!prior.open || !prior.doc)
+    return refuse(
+      "UI_ACTION_UNAVAILABLE",
+      "UI_ACTION_UNAVAILABLE: ui.board.revise needs a board open in the chat panel, and none is. Draw one with ui.board.draw. Nothing was changed.",
+    );
+  const was = prior.doc;
+  const next = applyWireframePatch(was, action.params.ops);
+  if (!next.ok) return refuse(next.code, next.message);
+  boardStore.load(next.doc);
+  const n = action.params.ops.length;
+  return {
+    ok: true,
+    summary: env.t(n === 1 ? "conversations.ui.revisedOne" : "conversations.ui.revisedMany", {
+      n,
+      ops: action.params.ops.map((o) => `${o.op} ${o.op === "add" ? o.shape.id : o.id}`).join(", "),
+    }),
+    undo: () => boardStore.load(was),
+    chips: [],
+  };
+}
+
+/** Selects rows of the Issues Table by key; refused for a key the page is not showing. */
+function applySelect(action: UiActionNamed<"ui.select">, env: UiActionEnv): UiActionOutcome {
+  const bridge = env.selection();
+  if (!bridge)
+    return refuse(
+      "UI_ACTION_UNAVAILABLE",
+      "UI_ACTION_UNAVAILABLE: ui.select needs the Issues list open beside the chat in its Table view (the grouped views select nothing), and it is not. Nothing was selected.",
+    );
+  const rows = bridge.rows();
+  const byKey = new Map(rows.map((r) => [r.displayId, r.id]));
+  const missing = action.params.keys.filter((k: string) => !byKey.has(k));
+  if (missing.length)
+    return refuse(
+      "UI_ACTION_INVALID",
+      `UI_ACTION_INVALID: ui.select names ${missing.join(", ")}, which ${missing.length === 1 ? "is" : "are"} not on the page of the Issues list the person sees. Nothing was selected.`,
+    );
+  const prior = new Set(rows.filter((r) => bridge.selectedKeys().includes(r.displayId)).map((r) => r.id));
+  bridge.setSelectedIds(new Set(action.params.keys.map((k: string) => byKey.get(k) as string)));
+  return {
+    ok: true,
+    summary: action.params.keys.length ? env.t("conversations.ui.selected", { keys: action.params.keys.join(", ") }) : env.t("conversations.ui.clearedSelection"),
+    undo: () => env.selection()?.setSelectedIds(prior),
+    chips: [],
+  };
+}
+
 export function applyUiAction(action: UiAction, env: UiActionEnv): UiActionOutcome {
   const before = env.href();
   const back = () => env.go(before);
@@ -340,99 +443,14 @@ export function applyUiAction(action: UiAction, env: UiActionEnv): UiActionOutco
       return applyListFilter(action, env);
     case "ui.highlight":
       return applyHighlight(action.params, env);
-    case "ui.issues.filter": {
-      const { mode, set, clear } = action.params;
-      const wantsMe = set.createdBy === "me" || set.assignee === "me";
-      if (wantsMe && !env.userId)
-        return refuse(
-          "UI_ACTION_UNAVAILABLE",
-          "UI_ACTION_UNAVAILABLE: ui.issues.filter names \"me\", and this page has no signed-in person to resolve it to. Nothing was changed.",
-        );
-      const url = new URL(before, "http://x");
-      const onIssues = url.pathname === issuesPath(env.slug);
-      const next = new URLSearchParams(onIssues ? url.searchParams : undefined);
-      next.delete("page");
-      if (mode === "replace") for (const f of ISSUE_FIELDS) next.delete(UI_FILTER_PARAMS[f]);
-      for (const f of clear) next.delete(UI_FILTER_PARAMS[f]);
-      if (set.status) next.set("status", set.status.join(","));
-      if (set.priority) next.set("priority", set.priority);
-      if (set.createdBy) next.set("createdBy", env.userId as string);
-      if (set.assignee) next.set("assignee", env.userId as string);
-      if (set.waitingOn) {
-        next.set(UI_FILTER_PARAMS.waitingOn, set.waitingOn);
-        // whom an issue waits on is read by the grouped views (the standing read); the paged Table has none
-        if (next.get("group") === "table") next.delete("group");
-      }
-      if (set.text) next.set("q", set.text);
-      const qs = next.toString();
-      env.go(`${issuesPath(env.slug)}${qs ? `?${qs}` : ""}`);
-      markSet(set as Record<string, unknown>, next, mode);
-      const fields = (Object.keys(set) as UiFilterField[]).filter((f) => (set as Record<string, unknown>)[f] !== undefined);
-      const verb = env.t(mode === "replace" ? "conversations.ui.filtered" : "conversations.ui.narrowed");
-      const what = fields.map((f) => chipLabel(f, set as Record<string, unknown>, env)).join(", ");
-      return {
-        ok: true,
-        summary: `${verb}${what ? `: ${what}` : ""}${clear.length ? ` (${env.t("conversations.ui.cleared", { fields: clear.map((f) => env.t(`conversations.ui.field.${f}` as ProductCopyKey)).join(", ") })})` : ""}`,
-        undo: back,
-        chips: fields.map((field) => ({ field, label: chipLabel(field, set as Record<string, unknown>, env) })),
-      };
-    }
-    case "ui.board.draw": {
-      const prior = boardStore.get();
-      boardStore.load(action.params.doc);
-      return {
-        ok: true,
-        summary: env.t("conversations.ui.drew", { board: describeBoard(action.params.doc, env.t) }),
-        undo: () => (prior.open && prior.doc ? boardStore.load(prior.doc) : boardStore.close()),
-        chips: [],
-      };
-    }
-    case "ui.board.revise": {
-      const prior = boardStore.get();
-      if (!prior.open || !prior.doc)
-        return refuse(
-          "UI_ACTION_UNAVAILABLE",
-          "UI_ACTION_UNAVAILABLE: ui.board.revise needs a board open in the chat panel, and none is. Draw one with ui.board.draw. Nothing was changed.",
-        );
-      const was = prior.doc;
-      const next = applyWireframePatch(was, action.params.ops);
-      if (!next.ok) return refuse(next.code, next.message);
-      boardStore.load(next.doc);
-      const n = action.params.ops.length;
-      return {
-        ok: true,
-        summary: env.t(n === 1 ? "conversations.ui.revisedOne" : "conversations.ui.revisedMany", {
-          n,
-          ops: action.params.ops.map((o) => `${o.op} ${o.op === "add" ? o.shape.id : o.id}`).join(", "),
-        }),
-        undo: () => boardStore.load(was),
-        chips: [],
-      };
-    }
-    case "ui.select": {
-      const bridge = env.selection();
-      if (!bridge)
-        return refuse(
-          "UI_ACTION_UNAVAILABLE",
-          "UI_ACTION_UNAVAILABLE: ui.select needs the Issues list open beside the chat in its Table view (the grouped views select nothing), and it is not. Nothing was selected.",
-        );
-      const rows = bridge.rows();
-      const byKey = new Map(rows.map((r) => [r.displayId, r.id]));
-      const missing = action.params.keys.filter((k: string) => !byKey.has(k));
-      if (missing.length)
-        return refuse(
-          "UI_ACTION_INVALID",
-          `UI_ACTION_INVALID: ui.select names ${missing.join(", ")}, which ${missing.length === 1 ? "is" : "are"} not on the page of the Issues list the person sees. Nothing was selected.`,
-        );
-      const prior = new Set(rows.filter((r) => bridge.selectedKeys().includes(r.displayId)).map((r) => r.id));
-      bridge.setSelectedIds(new Set(action.params.keys.map((k: string) => byKey.get(k) as string)));
-      return {
-        ok: true,
-        summary: action.params.keys.length ? env.t("conversations.ui.selected", { keys: action.params.keys.join(", ") }) : env.t("conversations.ui.clearedSelection"),
-        undo: () => env.selection()?.setSelectedIds(prior),
-        chips: [],
-      };
-    }
+    case "ui.issues.filter":
+      return applyIssuesFilter(action, env, before, back);
+    case "ui.board.draw":
+      return applyBoardDraw(action, env);
+    case "ui.board.revise":
+      return applyBoardRevise(action, env);
+    case "ui.select":
+      return applySelect(action, env);
   }
   const unknown: never = action;
   return refuse("UI_ACTION_UNKNOWN", `UI_ACTION_UNKNOWN: ${JSON.stringify(unknown)} is not a UI action. Nothing was changed.`);

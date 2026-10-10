@@ -6,24 +6,20 @@
 // they can never disagree about how many runs there are
 import { RUN_GROUP_LABELS, RUN_MASTER_GROUP, RUN_STANDING_SCOPES, type RunStandingScope } from "@forge/contracts/run-standing";
 import { needsViewer } from "@forge/contracts/standing";
-import { useRouter } from "next/navigation";
-import { useCallback, useMemo } from "react";
 import {
   FilterChip,
   GroupedList,
   type ListGroup,
+  ListLayout,
   ListSearch,
-  rememberListOrigin,
+  ListToolbar,
   SegmentedControl,
   Signal,
   SignalsStrip,
   StatusBadge,
-  useGroupFold,
-  usePeek,
-  usePeekKeys,
+  useListPage,
   useUrlChoice,
-  useUrlParams,
-  visibleRows,
+  useUrlFlags,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel } from "@/design/vocabulary";
@@ -50,10 +46,6 @@ const isRun = (i: Item): i is RunStanding => "lane" in i;
 const keyOf = (i: Item) => (isRun(i) ? i.id : MASTER_KEY);
 
 const FILTERS = ["you", "stuck"] as const;
-type Filter = (typeof FILTERS)[number];
-
-const matches = (text: string, r: RunStanding) =>
-  !text || [r.id, r.title, r.issue?.key, r.device?.name, r.release?.version, ...r.issues].join(" ").toLowerCase().includes(text);
 
 function Signals({ d }: { d: RunStandingList }) {
   const t = useCopy();
@@ -94,99 +86,77 @@ export function RunsList({ access }: { access: AgentsAccess }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
-  const router = useRouter();
   const [scope, setScope] = useUrlChoice("scope", RUN_STANDING_SCOPES, "live");
   const [mode, setMode] = useUrlChoice<GroupMode>("group", GROUP_MODES, "attention");
-  const [params, setParams] = useUrlParams();
-  const text = (params.get("q") ?? "").trim().toLowerCase();
-  const on = useMemo(() => new Set((params.get("f") ?? "").split(",").filter((x): x is Filter => (FILTERS as readonly string[]).includes(x))), [params]);
-  const toggle = (f: Filter) => {
-    const next = new Set(on);
-    if (next.has(f)) next.delete(f);
-    else next.add(f);
-    setParams({ f: next.size ? [...next].join(",") : null });
-  };
   const q = useRunStanding(projectId, scope);
   const d = q.data;
-  const fold = useGroupFold(`web-v2:runs-fold:${mode}:${scope}`);
-
-  const groups = useMemo((): ListGroup<Item>[] => {
-    if (!d) return [];
-    const rows = d.items.filter(
-      (r) => matches(text, r) && (!on.has("you") || needsViewer(r)) && (!on.has("stuck") || r.state === "stuck"),
-    );
-    const showMaster = scope !== "finished" && on.size === 0 && !text;
-    const master: ListGroup<Item> = { id: MASTER_KEY, ...RUN_MASTER_GROUP, ...attentionGroupText("master", language), rows: showMaster ? [d.master] : [] };
-    const runs = runGroups(rows, mode, language).map((g) =>
-      g.id === "finished" ? { ...g, collapsed: scope === "finished" ? false : RUN_GROUP_LABELS.finished.collapsed } : g,
-    );
-    return [master, ...(runs as ListGroup<Item>[])];
-  }, [d, text, on, scope, mode, language]);
-
-  const visible = useMemo(() => visibleRows(groups, fold).map(keyOf), [groups, fold]);
-  const allKeys = useMemo(() => groups.flatMap((g) => g.rows.map(keyOf)), [groups]);
-  const peek = usePeek(visible, allKeys);
-  const hrefOf = useCallback((key: string) => (key === MASTER_KEY ? masterHref(slug) : runHref(slug, key)), [slug]);
-  const openFull = useCallback(
-    (key: string) => {
-      rememberListOrigin(AGENTS_LIST);
-      router.push(hrefOf(key));
+  const [on, toggle] = useUrlFlags(FILTERS);
+  const list = useListPage<Item>({
+    rows: d ? [d.master, ...d.items] : [],
+    keyOf,
+    searchOf: (i) => (isRun(i) ? [i.id, i.boxRunId, i.title, i.issue?.key, i.device?.name, i.release?.version, ...i.issues].join(" ") : ""),
+    narrow: (i) => {
+      if (!isRun(i)) return scope !== "finished" && on.size === 0;
+      return (!on.has("you") || needsViewer(i)) && (!on.has("stuck") || i.state === "stuck");
     },
-    [router, hrefOf],
-  );
-  usePeekKeys(peek, openFull);
+    groupsOf: (rows) => {
+      const runs = runGroups(rows.filter(isRun), mode, language).map((g) =>
+        g.id === "finished" ? { ...g, collapsed: scope === "finished" ? false : RUN_GROUP_LABELS.finished.collapsed } : g,
+      );
+      const master: ListGroup<Item> = { id: MASTER_KEY, ...RUN_MASTER_GROUP, ...attentionGroupText("master", language), rows: rows.filter((i) => !isRun(i)) };
+      return [master, ...(runs as ListGroup<Item>[])];
+    },
+    foldKey: `web-v2:runs-fold:${mode}:${scope}`,
+    hrefOf: (key) => (key === MASTER_KEY ? masterHref(slug) : runHref(slug, key)),
+    origin: AGENTS_LIST,
+  });
+  const { peek } = list;
   return (
     <QueryBoundary query={q} loadingLabel={t("agents.loadingRuns")} height="50vh" retry="always">
       {(d) => {
         const counts: Record<RunStandingScope, number> = { live: d.counts.live, finished: d.counts.finished, all: d.counts.live + d.counts.finished };
         const runRowOf = runRow((id) => runHref(slug, id), t, language);
         const masterRowOf = masterRow(masterHref(slug), t, language);
-        const row = (i: Item) => (isRun(i) ? runRowOf(i) : masterRowOf(i));
-        const open = peek.open ? groups.flatMap((g) => g.rows).find((i) => keyOf(i) === peek.open) : undefined;
-        const empty = text || on.size ? t("agents.empty.filters") : scope === "finished" ? t("agents.empty.finished") : t("agents.empty.live");
-
+        const open = peek.open ? list.rows.find((i) => keyOf(i) === peek.open) : undefined;
+        const empty = list.search.value || on.size ? t("agents.empty.filters") : scope === "finished" ? t("agents.empty.finished") : t("agents.empty.live");
         return (
           <div className="grid min-h-full content-start bg-app" data-testid="runs-list">
             <Signals d={d} />
-            <div className={cn("grid min-h-[60vh] items-start", open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3" data-testid="runs-toolbar">
-                  <span className="text-12-5 font-medium text-muted">{t("agents.group")}</span>
-                  <SegmentedControl options={GROUP_MODES.map((m) => ({ value: m, label: t(MODE_KEY[m]) }))} value={mode} onChange={setMode} />
-                  <SegmentedControl
-                    options={RUN_STANDING_SCOPES.map((s) => ({ value: s, label: t(SCOPE_KEY[s]), count: counts[s] }))}
-                    value={scope}
-                    onChange={setScope}
-                  />
-                  <ListSearch noun={t("agents.runsNoun")} value={params.get("q") ?? ""} onChange={(v) => setParams({ q: v || null })} />
-                  <FilterChip on={on.has("you")} onToggle={() => toggle("you")} count={d.counts.needsViewer} tone="you" testId="filter-you">
-                    {t("agents.filter.you")}
-                  </FilterChip>
-                  <FilterChip on={on.has("stuck")} onToggle={() => toggle("stuck")} count={d.counts.liveByState.stuck} tone="err" testId="filter-stuck">
-                    <span className="font-mono" translate="no">is:stuck</span>
-                  </FilterChip>
-                  {d.hasMore ? (
-                    <span className="text-12-5 text-subtle">
-                      {t("agents.newestOf", { n: time.number(d.items.length), total: time.number(d.total) })}
-                    </span>
-                  ) : null}
-                </div>
-                <GroupedList
-                  ariaLabel={t("agents.listLabel")}
-                  groups={groups}
-                  fold={fold}
-                  row={row}
-                  selected={peek.open}
-                  onPeek={(k) => peek.set(k === peek.open ? null : k)}
-                  empty={empty}
-                  columns={{ key: t("agents.col.run"), title: t("agents.col.work"), state: t("agents.col.state"), waitingOn: t("agents.col.waitingOn"), meta: t("agents.col.meta") }}
-                />
-              </div>
-              {open && isRun(open) ? (
-                <RunPeek key={open.id} r={open} slug={slug} canWrite={canWrite} peek={peek} onOpenFull={() => openFull(open.id)} />
-              ) : null}
-              {open && !isRun(open) ? <MasterPeek m={open} peek={peek} onOpenFull={() => openFull(MASTER_KEY)} /> : null}
-            </div>
+            <ListLayout
+              peek={
+                open ? (
+                  isRun(open) ? (
+                    <RunPeek key={open.id} r={open} slug={slug} canWrite={canWrite} peek={peek} onOpenFull={() => list.openFull(open.id)} />
+                  ) : (
+                    <MasterPeek m={open} peek={peek} onOpenFull={() => list.openFull(MASTER_KEY)} />
+                  )
+                ) : undefined
+              }
+            >
+              <ListToolbar testId="runs-toolbar">
+                <span className="text-13 font-medium text-muted">{t("agents.group")}</span>
+                <SegmentedControl options={GROUP_MODES.map((m) => ({ value: m, label: t(MODE_KEY[m]) }))} value={mode} onChange={setMode} />
+                <SegmentedControl options={RUN_STANDING_SCOPES.map((s) => ({ value: s, label: t(SCOPE_KEY[s]), count: counts[s] }))} value={scope} onChange={setScope} />
+                <ListSearch noun={t("agents.runsNoun")} {...list.search} />
+                <FilterChip on={on.has("you")} onToggle={() => toggle("you")} count={d.counts.needsViewer} tone="you" testId="filter-you">
+                  {t("agents.filter.you")}
+                </FilterChip>
+                <FilterChip on={on.has("stuck")} onToggle={() => toggle("stuck")} count={d.counts.liveByState.stuck} tone="err" testId="filter-stuck">
+                  <span className="font-mono" translate="no">is:stuck</span>
+                </FilterChip>
+                {d.hasMore ? <span className="text-13 text-subtle">{t("agents.newestOf", { n: time.number(d.items.length), total: time.number(d.total) })}</span> : null}
+              </ListToolbar>
+              <GroupedList
+                ariaLabel={t("agents.listLabel")}
+                groups={list.groups}
+                fold={list.fold}
+                row={(i: Item) => (isRun(i) ? runRowOf(i) : masterRowOf(i))}
+                selected={peek.open}
+                onPeek={list.togglePeek}
+                empty={empty}
+                columns={{ key: t("agents.col.run"), title: t("agents.col.work"), state: t("agents.col.state"), waitingOn: t("agents.col.waitingOn"), meta: t("agents.col.meta") }}
+              />
+            </ListLayout>
           </div>
         );
       }}

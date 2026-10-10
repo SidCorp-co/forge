@@ -26,8 +26,9 @@ export interface ScriptNotice {
   severity?: string;
 }
 
-/** The caps a run can stop at, each naming itself. */
-export type ScriptStop = 'wallMs' | 'memoryMb';
+/** The caps a run can stop at, each naming itself (REQ-37 BC-8). The output cap (`logChars`)
+ *  stops nothing: the log says where it was cut, naming the cap. */
+export type ScriptStop = 'wallMs' | 'memoryMb' | 'stackBytes';
 
 /** Worker → host: a read the script asked for through ctx.forge.get. */
 export interface ReadAsk {

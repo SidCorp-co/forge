@@ -1,7 +1,7 @@
 import { FEEDBACK_TRIAGE_CHECKLIST } from '@forge/contracts/checklist-registry';
-import { fieldKeyShownIn } from '@forge/contracts/checklists';
+import { evaluateChecklist, fieldKeyShownIn } from '@forge/contracts/checklists';
 import { describe, expect, it } from 'vitest';
-import { requirementAnswerOf, triageRecordOf } from './checklist-record.js';
+import { requirementAnswerOf, triageRecordOf, withReportedSeverity } from './checklist-record.js';
 import {
   answersShapeRefusal,
   criterionFitRefusal,
@@ -97,7 +97,7 @@ describe("the item's record answers", () => {
       value: 'REQ-12',
     });
     expect(requirementAnswerOf({ kind: 'bug', targetSeq: null, criterionSeq: 3 })).toEqual({
-      value: "REQ-3, the violated criterion's",
+      value: 'REQ-3, whose criterion it violates',
     });
     expect(requirementAnswerOf({ kind: 'idea', targetSeq: null, criterionSeq: null })).toEqual({
       value: 'None: it is about no requirement.',
@@ -129,5 +129,32 @@ describe('a re-triage of a triaged item', () => {
     ]);
     const passed = judgeRetriage({ ...three, route: 'issue' }, record);
     expect('evaluation' in passed && passed.evaluation.complete).toBe(true);
+  });
+});
+
+describe('the item as it stands for a reader (FB-119)', () => {
+  const now = () =>
+    evaluateChecklist(FEEDBACK_TRIAGE_CHECKLIST, {
+      given: {},
+      record: triageRecordOf({ kind: 'bug', targetSeq: null, criterionSeq: 35 }),
+    });
+
+  it('names the severity the item was reported with, never "no answer yet"', () => {
+    const gap = withReportedSeverity(now(), 'medium').gaps.find((g) => g.question === 'severity');
+    expect(gap?.detail).toBe(
+      'How severe is it? Reported as Medium; the triage confirms it or picks another.',
+    );
+    expect(gap?.detail).not.toMatch(/no answer/);
+  });
+
+  it('leaves every other gap as the checklist words it', () => {
+    const before = now().gaps.filter((g) => g.question !== 'severity');
+    const after = withReportedSeverity(now(), 'high').gaps.filter((g) => g.question !== 'severity');
+    expect(after).toEqual(before);
+  });
+
+  it('reads the requirement answer as a whole phrase', () => {
+    const answer = now().answers.find((a) => a.question === 'requirement');
+    expect(answer?.value).toBe('REQ-35, whose criterion it violates');
   });
 });

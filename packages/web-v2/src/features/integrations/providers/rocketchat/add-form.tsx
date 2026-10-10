@@ -37,7 +37,7 @@ export function AddRocketchatForm({ projectId }: { projectId: string }) {
       title={t("integrations.rocket.connectTitle")}
       submitLabel={t("integrations.rocket.connectBot")}
       canSubmit={canSubmit}
-      onSubmit={handleCreate}
+      onSubmit={() => void handleCreate()}
     >
       <Field label={t("integrations.rocket.server")} required>
         <Input placeholder="https://chat.example.com" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} />
@@ -106,7 +106,7 @@ function FirstRoomField({
           onChange={onRid}
           fallback={<Input placeholder={t("integrations.rocket.ridPlaceholder")} value={rid} onChange={(e) => onRid(e.target.value)} />}
         />
-        <Button variant="secondary" size="sm" loading={probe.isPending} disabled={!creds} onClick={loadRooms}>
+        <Button variant="secondary" size="sm" loading={probe.isPending} disabled={!creds} onClick={() => void loadRooms()}>
           {t("integrations.rocket.loadRooms")}
         </Button>
       </div>

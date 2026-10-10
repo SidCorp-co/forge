@@ -70,6 +70,7 @@ export {
   markApprovedDesign,
 } from './design-landing.js';
 export { isValidDetectorKey } from './detector-key.js';
+export { givenAtDispatch } from './dispatch-given.js';
 export {
   compareDispatchOrder,
   dispatchOrderSql,

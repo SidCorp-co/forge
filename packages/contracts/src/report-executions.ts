@@ -28,6 +28,10 @@ export const EXECUTION_LIMITS = [
 ] as const;
 export type ExecutionLimit = (typeof EXECUTION_LIMITS)[number];
 
+/** Whether a cap a run stopped at is one an execution records. */
+export const isExecutionLimit = (stop: string): stop is ExecutionLimit =>
+	(EXECUTION_LIMITS as readonly string[]).includes(stop);
+
 export const ExecutionLimitsSchema = z
 	.object({
 		wallMs: z.number().int().min(1),

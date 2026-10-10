@@ -7,7 +7,7 @@
 
 import { WrittenMark } from "@/lib/i18n/written";
 import { Avatar, Badge, BodyView, Button, EmptyState, Field, Icon, Textarea } from "@/design";
-import { type ComposerIntent, DecisionInThread, IntentPicker } from "@/features/comments/components/entity-comment-thread";
+import { type ComposerIntent, DecisionInThread, IntentPicker } from "@/features/comments";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -18,12 +18,12 @@ import {
   initials,
   memberLabel,
 } from "../derive";
-import { useIssueQuestions } from "@/features/questions/hooks";
+import { useIssueQuestions } from "@/features/questions";
 import { useCreateComment, useRecordDecision } from "../detail-hooks";
 import type { CommentNode, ProjectMember } from "../types";
-import { AttachmentList } from "@/features/attachments/components/attachment-list";
+import { AttachmentList } from "@/features/attachments";
 import { BodyEditor } from "./body-editor";
-import { StagedFileList, useStagedFiles } from "@/features/attachments/components/staged-files";
+import { StagedFileList, useStagedFiles } from "@/features/attachments";
 
 function AddCommentBox({
   issueId,
@@ -62,8 +62,8 @@ function AddCommentBox({
     <div className="space-y-2" onPaste={staged.onPaste}>
       <div
         {...staged.dropZone}
-        className={`rounded-lg transition-colors ${
-          staged.dragOver ? "ring-2 ring-cobalt-400 ring-offset-1" : ""
+        className={`rounded-md transition-colors ${
+          staged.dragOver ? "ring-2 ring-info-8 ring-offset-1" : ""
         }`}
       >
         <BodyEditor
@@ -127,12 +127,18 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
   const [reason, setReason] = useState("");
   const record = useRecordDecision(issueId);
   const t = useCopy();
-  const open = (useIssueQuestions(issueId).data?.questions ?? []).find(
-    (q) => q.status === "open" && q.answerShape === "free_text" && q.currentStep,
+  // the issue read carries every round as `steps` and the open one's number as `round`, never
+  // `currentStep` (the project page's shape): reading that hid this choice on live dev.227 (FB-80)
+  const open = (useIssueQuestions(issueId).data?.questions ?? []).filter(
+    (q) => q.status === "open" && q.answerShape === "free_text" && q.round > 0,
   );
-  const [settle, setSettle] = useState(true);
+  // one open question is settled unless the person unticks it; with several, nothing is chosen
+  // until the person names the one the decision answers, or none (FB-80)
+  const [picked, setPicked] = useState<string | null | undefined>(undefined);
+  const several = open.length > 1;
+  const settles = picked === undefined ? (several ? undefined : open[0]) : open.find((q) => q.id === picked);
   useHoldPageWhile(record.isPending);
-  const ready = decision.trim().length > 0 && reason.trim().length > 0;
+  const ready = decision.trim().length > 0 && reason.trim().length > 0 && !(several && picked === undefined);
   const refused = record.error ? (refusalsOf(record.error)[0]?.detail ?? formatApiError(record.error)) : null;
   const submit = () => {
     if (!ready) return;
@@ -140,7 +146,7 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
       {
         decision: decision.trim(),
         reason: reason.trim(),
-        ...(open && settle && open.currentStep ? { settles: { questionId: open.id, round: open.currentStep.round } } : {}),
+        ...(settles ? { settles: { questionId: settles.id, round: settles.round } } : {}),
       },
       {
         onSuccess: () => {
@@ -159,14 +165,32 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
       <Field label={t("common.decisions.reason")}>
         <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={4000} disabled={record.isPending} />
       </Field>
-      {open ? (
-        <label className="flex items-center gap-2 text-13">
-          <input type="checkbox" checked={settle} onChange={(e) => setSettle(e.target.checked)} disabled={record.isPending} />
-          {t("issues.thread.settlesQuestion")}
+      {open.length === 1 && open[0] ? (
+        <label className="flex items-start gap-2 text-13">
+          <input type="checkbox" className="mt-0.5" checked={Boolean(settles)} onChange={(e) => setPicked(e.target.checked ? (open[0]?.id ?? null) : null)} disabled={record.isPending} />
+          <span className="grid gap-0.5">
+            {t("issues.thread.settlesQuestion")}
+            <span className="text-muted">{open[0].prompt}</span>
+          </span>
         </label>
+      ) : several ? (
+        // several open: the person names which one the decision answers, so none is settled by guess
+        <fieldset className="grid gap-1.5 text-13" data-testid="settles-which">
+          <legend className="mb-1 font-medium">{t("issues.thread.settlesWhich")}</legend>
+          {open.map((q) => (
+            <label key={q.id} className="flex items-start gap-2">
+              <input type="radio" name="settles" className="mt-0.5" checked={settles?.id === q.id} onChange={() => setPicked(q.id)} disabled={record.isPending} />
+              {q.prompt}
+            </label>
+          ))}
+          <label className="flex items-start gap-2 text-muted">
+            <input type="radio" name="settles" className="mt-0.5" checked={picked === null} onChange={() => setPicked(null)} disabled={record.isPending} />
+            {t("issues.thread.settlesNone")}
+          </label>
+        </fieldset>
       ) : null}
       {refused ? (
-        <p role="alert" className="fg-caption text-red">
+        <p role="alert" className="fg-caption text-danger">
           {refused}
         </p>
       ) : null}

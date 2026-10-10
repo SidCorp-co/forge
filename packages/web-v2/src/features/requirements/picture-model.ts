@@ -101,7 +101,7 @@ export function flowFromLines(steps: string, links: string, title?: string): { o
     seen.add(l.toLowerCase());
   }
   const ids = idsFor(labels);
-  const idOf = new Map(labels.map((l, i) => [l.toLowerCase(), ids[i] as string]));
+  const idOf = new Map(labels.map((l, i) => [l.toLowerCase(), ids[i]]));
   const edges: FlowContent["edges"] = [];
   for (const [i, line] of lines(links).entries()) {
     if (!line) continue;
@@ -113,7 +113,7 @@ export function flowFromLines(steps: string, links: string, title?: string): { o
     if (!end) return { ok: false, fault: { field: "links", fault: "unknownStep", line: i + 1, name: rest.split(":")[0]?.trim() ?? rest } };
     edges.push({ from: idOf.get(from.toLowerCase()) as string, to: end.id, ...(end.label ? { label: end.label } : {}) });
   }
-  return { ok: true, content: { ...(title ? { title } : {}), nodes: labels.map((label, i) => ({ id: ids[i] as string, label })), edges } };
+  return { ok: true, content: { ...(title ? { title } : {}), nodes: labels.map((label, i) => ({ id: ids[i], label })), edges } };
 }
 
 /** A stored flow as the lines its editor opens on. */

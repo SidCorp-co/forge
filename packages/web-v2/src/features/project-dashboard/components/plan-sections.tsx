@@ -6,21 +6,19 @@
 import type { Said } from "@forge/contracts/said";
 import Link from "next/link";
 import { SectionTitle } from "@/design/primitives/heading";
-import { EtaCell } from "@/features/forecast/components/eta-cell";
-import type { EtaClock } from "@/features/forecast/eta";
+import { EtaCell } from "@/features/forecast";
+import type { EtaClock } from "@/features/forecast";
 import { releaseHref } from "@/lib/routes/releases";
 import type { PlanRow } from "../ba-derive";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 
-const GRID = "grid grid-cols-[84px_minmax(0,1fr)_minmax(0,200px)] items-center gap-x-3.5 max-md:grid-cols-[auto_minmax(0,1fr)]";
-const ROW = `${GRID} min-h-[44px] border-b border-line-subtle py-1.5`;
 const KIND_KEY = { requirement: "dash.kind.requirement", feedback: "dash.kind.feedback", release: "dash.kind.release" } as const;
 
 function Key({ row }: { row: PlanRow }) {
   const t = useCopy();
   return (
-    <Link className="font-mono text-12-5 font-semibold text-link hover:underline" href={row.href} title={t(KIND_KEY[row.kind])}>
+    <Link className="font-mono text-13 font-semibold text-link hover:underline" href={row.href} title={t(KIND_KEY[row.kind])}>
       {row.key}
     </Link>
   );
@@ -48,10 +46,14 @@ export function landBlocks(rows: readonly PlanRow[]): Block[] {
 function PlanItem({ r, clock }: { r: PlanRow; clock: EtaClock }) {
   const t = useCopy();
   return (
-    <li className={ROW} data-testid="plan-row" data-key={r.key}>
-      <Key row={r} />
-      <span className="min-w-0 truncate text-13 text-fg max-md:col-span-2 max-md:row-start-2">{r.title || t(KIND_KEY[r.kind])}</span>
-      <EtaCell eta={r.eta} clock={clock} />
+    <li className="flex min-h-11 items-center gap-x-3.5 border-b border-line-subtle py-1.5 max-md:flex-wrap" data-testid="plan-row" data-key={r.key}>
+      <span className="w-21 flex-none max-md:w-auto">
+        <Key row={r} />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-13 text-fg max-md:order-last max-md:basis-full">{r.title || t(KIND_KEY[r.kind])}</span>
+      <span className="w-50 min-w-0 shrink">
+        <EtaCell eta={r.eta} clock={clock} />
+      </span>
     </li>
   );
 }

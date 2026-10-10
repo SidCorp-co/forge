@@ -44,6 +44,29 @@ export async function openPreviewOfSession(sessionId: string): Promise<PreviewRo
   return row ?? null;
 }
 
+/** The person's newest open idea preview of one requirement or feedback item (REQ-41 BC-15), or null. */
+export async function openIdeaPreviewOf(
+  projectId: string,
+  userId: string,
+  key: string,
+): Promise<PreviewRow | null> {
+  const [row] = await db
+    .select()
+    .from(previews)
+    .where(
+      and(
+        eq(previews.projectId, projectId),
+        eq(previews.createdBy, userId),
+        eq(previews.subjectKind, 'idea'),
+        sql`${previews.subject} -> 'about' ->> 'key' = ${key}`,
+        inArray(previews.state, [...OPEN_STATES]),
+      ),
+    )
+    .orderBy(desc(previews.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
 /** The latest approved preview of an issue, with what its approver saw: the fast lane reads it. */
 export async function approvedPreviewOf(issueId: string) {
   const [row] = await db

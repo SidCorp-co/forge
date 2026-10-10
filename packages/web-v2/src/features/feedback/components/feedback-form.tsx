@@ -1,13 +1,13 @@
 "use client";
 
-import { FEEDBACK_KINDS, FEEDBACK_SEVERITIES } from "@forge/contracts/feedback";
+import { FEEDBACK_KINDS, FEEDBACK_LIMITS, FEEDBACK_SEVERITIES } from "@forge/contracts/feedback";
 import { useState } from "react";
-import { Button, enumLabel, Field, Input, NativeSelect, statusReading, Textarea } from "@/design";
+import { Button, enumLabel, Field, Input, NativeSelect, statusReading, Textarea, focusOnMount } from "@/design";
 import { placeRefusals } from "@/lib/api/field-refusals";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
-import { StagedFileList } from "@/features/attachments/components/staged-files";
+import { StagedFileList } from "@/features/attachments";
 import { AttachFailed } from "../api";
 import { useAttachFeedback, useCreateFeedback, usePromoteFeedback } from "../hooks";
 import type { CreateFeedbackRequest, FeedbackKind, FeedbackSeverity } from "../types";
@@ -87,34 +87,40 @@ export function FeedbackForm({
       }}
     >
       <Field label={t("feedback.form.title")} error={refused.at("title")} required>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={FEEDBACK_LIMITS.title} ref={focusOnMount} />
       </Field>
-      <div className="grid gap-3 sm:grid-cols-[10rem_10rem_minmax(0,1fr)]">
-        <Field label={t("feedback.form.kind")} error={refused.at("kind")}>
-          <NativeSelect
-            value={kind}
-            onChange={(e) => setKind(e.target.value as FeedbackKind)}
-            options={FEEDBACK_KINDS.filter((k) => k !== "contract_change").map((k) => ({ value: k, label: enumLabel("feedbackKind", k, language) }))}
-          />
-        </Field>
-        <Field label={t("feedback.form.severity")} error={refused.at("severity")}>
-          <NativeSelect
-            value={severity}
-            onChange={(e) => setSeverity(e.target.value as FeedbackSeverity)}
-            options={FEEDBACK_SEVERITIES.map((v) => ({ value: v, label: statusReading("severity", v, language).label }))}
-          />
-        </Field>
-        <Field label={t("feedback.form.about")} error={refused.at("about")}>
-          <TargetPicker projectId={projectId} type={targetType} onType={setTargetType} value={target} onValue={setTarget} />
-        </Field>
+      <div className="grid gap-3 sm:flex">
+        <div className="sm:w-40 sm:flex-none">
+          <Field label={t("feedback.form.kind")} error={refused.at("kind")}>
+            <NativeSelect
+              value={kind}
+              onChange={(e) => setKind(e.target.value as FeedbackKind)}
+              options={FEEDBACK_KINDS.filter((k) => k !== "contract_change").map((k) => ({ value: k, label: enumLabel("feedbackKind", k, language) }))}
+            />
+          </Field>
+        </div>
+        <div className="sm:w-40 sm:flex-none">
+          <Field label={t("feedback.form.severity")} error={refused.at("severity")}>
+            <NativeSelect
+              value={severity}
+              onChange={(e) => setSeverity(e.target.value as FeedbackSeverity)}
+              options={FEEDBACK_SEVERITIES.map((v) => ({ value: v, label: statusReading("severity", v, language).label }))}
+            />
+          </Field>
+        </div>
+        <div className="min-w-0 sm:flex-1">
+          <Field label={t("feedback.form.about")} error={refused.at("about")}>
+            <TargetPicker projectId={projectId} type={targetType} onType={setTargetType} value={target} onValue={setTarget} />
+          </Field>
+        </div>
       </div>
-      <div {...staged.dropZone} className={staged.dragOver ? "ring-2 ring-cobalt-400 ring-offset-1" : undefined}>
+      <div {...staged.dropZone} className={staged.dragOver ? "ring-2 ring-accent-8 ring-offset-1" : undefined}>
         <Field label={t("feedback.form.body")} error={refused.at("body")}>
           <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} />
         </Field>
       </div>
       <StagedFileList files={staged.files} warnings={staged.warnings} remove={staged.remove} />
-      {agentReport ? <p className="text-12-5 text-muted">{t("feedback.form.copied", { id: agentReport.slice(0, 8) })}</p> : null}
+      {agentReport ? <p className="text-13 text-muted">{t("feedback.form.copied", { id: agentReport.slice(0, 8) })}</p> : null}
       <RefusalLine error={write.error} onField={refused.onField} />
       {failed ? (
         <div className="grid gap-1.5" data-testid="feedback-attach-failed">

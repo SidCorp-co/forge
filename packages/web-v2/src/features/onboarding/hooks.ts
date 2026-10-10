@@ -1,20 +1,29 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { onboardingApi } from "./api";
 import type { QuestionnaireAnswer } from "./types";
 
-export const onboardingKey = (projectId: string) => ["onboarding", projectId] as const;
+export const onboardingKeys = {
+  state: (projectId: string) => ["onboarding", projectId] as const,
+};
+/** The older name, for the screens that invalidate it. */
+export const onboardingKey = onboardingKeys.state;
 
-/** The project's onboarding and the dashboard's one line; non-blocking, so a failed read hides the line. */
+export const onboardingQueries = {
+  /** The project's onboarding and the dashboard's one line; non-blocking, so a failed read hides the line. */
+  state: (projectId: string | undefined) =>
+    queryOptions({
+      queryKey: onboardingKeys.state(projectId ?? ""),
+      queryFn: () => onboardingApi.state(projectId as string),
+      enabled: Boolean(projectId),
+      staleTime: 10_000,
+      refetchInterval: 30_000,
+    }),
+};
+
 export function useOnboardingState(projectId: string | undefined) {
-  return useQuery({
-    queryKey: onboardingKey(projectId ?? ""),
-    queryFn: () => onboardingApi.state(projectId as string),
-    enabled: Boolean(projectId),
-    staleTime: 10_000,
-    refetchInterval: 30_000,
-  });
+  return useQuery(onboardingQueries.state(projectId));
 }
 
 export function useStartOnboarding(projectId: string) {
@@ -22,8 +31,8 @@ export function useStartOnboarding(projectId: string) {
   return useMutation({
     mutationFn: (request?: string) => onboardingApi.start(projectId, request),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: onboardingKey(projectId) });
-      qc.invalidateQueries({ queryKey: ["conversations", "list"] });
+      void qc.invalidateQueries({ queryKey: onboardingKey(projectId) });
+      void qc.invalidateQueries({ queryKey: ["conversations", "list"] });
     },
   });
 }
@@ -41,8 +50,8 @@ export function useReanalyze(projectId: string, conversationId: string | undefin
   return useMutation({
     mutationFn: (reason?: string) => onboardingApi.reanalyze(projectId, reason),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: onboardingKey(projectId) });
-      if (conversationId) qc.invalidateQueries({ queryKey: ["conversations", conversationId] });
+      void qc.invalidateQueries({ queryKey: onboardingKey(projectId) });
+      if (conversationId) void qc.invalidateQueries({ queryKey: ["conversations", conversationId] });
     },
   });
 }
@@ -53,9 +62,9 @@ export function useSubmitAnswers(projectId: string, conversationId: string) {
     mutationFn: (v: { batchId: string; answers: QuestionnaireAnswer[]; skip?: boolean }) =>
       onboardingApi.submit(projectId, v.batchId, { answers: v.answers, ...(v.skip ? { skip: true } : {}) }),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["conversations", conversationId] });
-      qc.invalidateQueries({ queryKey: ["conversations", "list"] });
-      qc.invalidateQueries({ queryKey: onboardingKey(projectId) });
+      void qc.invalidateQueries({ queryKey: ["conversations", conversationId] });
+      void qc.invalidateQueries({ queryKey: ["conversations", "list"] });
+      void qc.invalidateQueries({ queryKey: onboardingKey(projectId) });
     },
   });
 }

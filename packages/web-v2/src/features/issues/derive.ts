@@ -1,15 +1,15 @@
 
 import {
-	ISSUE_STATUSES,
-	ISSUE_TERMINAL_STATUSES,
+  ISSUE_STATUSES,
+  ISSUE_TERMINAL_STATUSES,
 } from "@forge/contracts/issue-machine";
-import { ISSUE_PRIORITY_LABELS, ISSUE_STATUS_LABELS, ISSUE_STATUS_TONES, type IssueStatusTone, WORK_STEP_LABELS, type WorkStep } from "@forge/contracts/issue-vocabulary";
+import { ISSUE_PRIORITY_LABELS, ISSUE_STATUS_LABELS, ISSUE_STATUS_TONES, type IssueStatusTone, type WorkStep } from "@forge/contracts/issue-vocabulary";
 import {
-	type SemanticTone,
-	STATUS_KEY_TONE,
-	type StatusKey,
+  type SemanticTone,
+  STATUS_KEY_TONE,
+  type StatusKey,
 } from "@/design/status";
-import type { CommentKind, FreshReason, GroupBy, IssueAgentSession, IssueAgentStatus, IssueComplexity, IssueDependencies, IssueFilter, IssuePark, IssuePriority, IssueRow, IssueStatus, IssueWorkStateRow, PipelineHealth, SessionContinuity } from "./types";
+import type { CommentKind, FreshReason, GroupBy, IssueAgentSession, IssueAgentStatus, IssueComplexity, IssueDependencies, IssueDependencyEdge, IssueFilter, IssuePark, IssuePriority, IssueRow, IssueStatus, IssueWorkStateRow, PipelineHealth, SessionContinuity } from "./types";
 
 const STATUS_LABELS: Record<IssueStatus, string> = ISSUE_STATUS_LABELS;
 
@@ -25,17 +25,6 @@ export const COMPLEXITY_LABELS: Record<IssueComplexity, string> = {
 
 /** The issue's own status, written out: one word per status, all ten distinct. Every surface that REPORTS a status takes this one. */
 export const statusLabel = (s: IssueStatus): string => STATUS_LABELS[s] ?? s;
-export const priorityLabel = (p: IssuePriority): string =>
-	PRIORITY_LABELS[p] ?? p;
-/** `in_progress` at step `test` reads "In progress · Test"; a step is never guessed from a status. */
-export function statusStepLabel(
-	status: IssueStatus,
-	step: WorkStep | null | undefined,
-): string {
-	const word = statusLabel(status);
-	return status === "in_progress" && step ? `${word} · ${WORK_STEP_LABELS[step]}` : word;
-}
-
 export const workStepOf = (row: {
 	workState?: Pick<IssueWorkStateRow, "step"> | null;
 }): WorkStep | null => row.workState?.step ?? null;
@@ -91,6 +80,14 @@ export function liveDependencies(deps: IssueDependencies | undefined): IssueDepe
 		outgoing: deps.outgoing.filter((e) => !e.expired),
 	};
 }
+/** The issue at an edge's other end from `self`, as far as the edge was enriched with it. */
+export function otherEnd(e: IssueDependencyEdge, self: string) {
+	const out = e.fromIssueId === self;
+	return out
+		? { id: e.toIssueId, displayId: e.toDisplayId, title: e.toTitle, status: e.toStatus }
+		: { id: e.fromIssueId, displayId: e.fromDisplayId, title: e.fromTitle, status: e.fromStatus };
+}
+
 /* The toolbar's Closed segment is the two statuses an issue is over at: the release gate
    (`awaiting_release`) is still open work to the person reading the list. */
 const CLOSED_STATUSES: IssueStatus[] = [...ISSUE_TERMINAL_STATUSES];

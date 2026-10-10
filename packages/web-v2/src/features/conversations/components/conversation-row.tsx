@@ -6,8 +6,8 @@
 // this row and two copies of a destructive control can disagree about what a press means (ISS-1028).
 
 import { useState } from "react";
-import { IconButton, Input, ProjectMark, StatusBadge } from "@/design";
-import { projectGlyph, projectInitials } from "@/features/projects/glyph";
+import { IconButton, Input, ProjectMark, StatusBadge, focusOnMount } from "@/design";
+import { projectGlyph, projectInitials } from "@/features/projects";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ListedConversation } from "../hooks";
 import { conversationTitle } from "../types";
@@ -27,7 +27,7 @@ export interface ConversationRowActions {
   onPin?: (pinned: boolean) => void;
 }
 
-export function ConversationRow({
+export function ConversationListItem({
   row,
   project,
   open,
@@ -55,7 +55,7 @@ export function ConversationRow({
 
   if (editing) {
     return (
-      <RenameRow
+      <RenameConversation
         mark={mark}
         title={title}
         onDone={(next) => {
@@ -68,7 +68,7 @@ export function ConversationRow({
 
   return (
     <div
-      className={`group flex min-h-[44px] w-full items-center gap-2 border-b border-line-subtle px-3 py-2 transition-colors hover:bg-hover ${
+      className={`group flex min-h-11 w-full items-center gap-2 border-b border-line-subtle px-3 py-2 transition-colors hover:bg-hover ${
         open ? "bg-active" : ""
       }`}
     >
@@ -78,7 +78,7 @@ export function ConversationRow({
         aria-current={open ? "true" : undefined}
         aria-label={t("shell.row.open", { title, project: project?.name ?? t("shell.row.unknownProjectLower") })}
         title={t("shell.row.scope", { scope: row.ecosystemId ? t("nav.ecosystem") : t("common.nav.project"), project: project?.name ?? t("shell.row.unknownProject") })}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--link)]"
+        className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link"
       >
         {mark}
         <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{title}</span>
@@ -106,7 +106,7 @@ export function ConversationRow({
 }
 
 /** The row as a name field; `onDone` gets the new title, or null when nothing changed. */
-function RenameRow({ mark, title, onDone }: { mark: React.ReactNode; title: string; onDone: (next: string | null) => void }) {
+function RenameConversation({ mark, title, onDone }: { mark: React.ReactNode; title: string; onDone: (next: string | null) => void }) {
   const [draft, setDraft] = useState(title);
   const t = useCopy();
   const commit = () => {
@@ -114,10 +114,10 @@ function RenameRow({ mark, title, onDone }: { mark: React.ReactNode; title: stri
     onDone(next.length > 0 && next !== title ? next : null);
   };
   return (
-    <div className="flex min-h-[44px] w-full items-center gap-2 border-b border-line-subtle bg-surface px-3 py-1.5">
+    <div className="flex min-h-11 w-full items-center gap-2 border-b border-line-subtle bg-surface px-3 py-1.5">
       {mark}
       <Input
-        autoFocus
+        ref={focusOnMount}
         value={draft}
         aria-label={t("shell.row.name")}
         onFocus={(e) => e.currentTarget.select()}

@@ -2,21 +2,17 @@
 
 // web-v2 feature module: schedules — React Query hooks. Keyed
 // `['schedules', projectId]`; mutations invalidate the subtree on success, and a run also on refusal.
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
-import { useToast } from "@/providers/toast-provider";
+import { useToastWrite } from "@/providers/toast-write";
 import { formatRefusal } from "@/lib/api/error";
-import { automationKey } from "@/features/automation/hooks";
+import { automationKeys, automationQueries } from "./queries";
 import { schedulesApi } from "./schedule-api";
 import type { ScheduleInput } from "./schedule-types";
 
 export function useSchedules(projectId: string | undefined) {
-  return useQuery({
-    queryKey: ["schedules", projectId, "list"],
-    queryFn: () => schedulesApi.list(projectId as string),
-    enabled: !!projectId,
-  });
+  return useQuery(automationQueries.scheduleList(projectId));
 }
 
 function useScheduleMutation<TArgs>(
@@ -25,23 +21,13 @@ function useScheduleMutation<TArgs>(
   successMessage: ProductCopyKey,
   { refreshOnRefusal = false }: { refreshOnRefusal?: boolean } = {},
 ) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
   const t = useCopy();
-  const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["schedules", projectId] });
-    qc.invalidateQueries({ queryKey: automationKey(projectId) });
-  };
-  return useMutation({
-    mutationFn: fn,
-    onSuccess: () => {
-      refresh();
-      toast({ title: t(successMessage), tone: "success" });
-    },
-    onError: (err) => {
-      if (refreshOnRefusal) refresh();
-      toast({ title: t("schedules.toast.refused"), description: formatRefusal(err), tone: "error" });
-    },
+  return useToastWrite(fn, {
+    touches: [automationKeys.schedules(projectId), automationKeys.project(projectId)],
+    said: t(successMessage),
+    failed: t("schedules.toast.refused"),
+    describe: formatRefusal,
+    touchesOnRefusal: refreshOnRefusal,
   });
 }
 

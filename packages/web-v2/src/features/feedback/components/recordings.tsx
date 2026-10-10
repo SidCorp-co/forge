@@ -7,13 +7,15 @@
 // scrubbed events with rrweb's own player while they are kept. Reproduce recordings are for members
 // only: core refuses anyone else by name, RECORDING_FORBIDDEN, and that refusal is what this draws.
 
+import { captionsOf } from "@/lib/utils/captions";
 import type { RecordingRecord } from "@forge/contracts/reproduce";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
-import { Button, ViewHeading } from "@/design";
-import { reproduceApi } from "@/features/previews/reproduce-api";
-import { recordingsKey } from "@/features/previews/reproduce-section";
-import { TimelineTable } from "@/features/previews/reproduce-timeline";
+import { Button, ViewHeading, Table, THead, TBody, TR, TH, TD } from "@/design";
+import { formatSize } from "@/features/attachments";
+import { reproduceApi } from "@/features/previews";
+import { recordingsKey } from "@/features/previews";
+import { Timeline } from "@/features/previews";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { coreFileUrl } from "@/lib/utils/core-url";
@@ -56,24 +58,24 @@ export function Recordings({ projectId, f }: { projectId: string; f: FeedbackVie
     <section aria-label={t("previews.recordings.title")} data-testid="recordings" className="grid gap-3">
       <ViewHeading>{t("previews.recordings.title")}</ViewHeading>
       {q.isError ? (
-        <p role="alert" className="fg-body-sm" style={{ color: "var(--red-600)" }}>
+        <p role="alert" className="fg-body-sm text-danger-11">
           {t("previews.recordings.loadFailed")}: {formatApiError(q.error)}
         </p>
       ) : null}
       {rows.length > 0 ? (
-        <table className="w-full border-collapse text-13" data-testid="recordings-table">
-          <thead>
-            <tr className="border-b border-line text-left text-muted">
-              <th className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.started")}</th>
-              <th className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.by")}</th>
-              <th className="py-1.5 pr-3 font-medium max-md:hidden">{t("previews.recordings.col.build")}</th>
-              <th className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.state")}</th>
-              <th className="py-1.5 font-medium" />
-            </tr>
-          </thead>
-          <tbody>
+        <Table className="w-full border-collapse text-13" data-testid="recordings-table">
+          <THead>
+            <TR className="border-b border-line text-left text-muted">
+              <TH className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.started")}</TH>
+              <TH className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.by")}</TH>
+              <TH className="py-1.5 pr-3 font-medium max-md:hidden">{t("previews.recordings.col.build")}</TH>
+              <TH className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.state")}</TH>
+              <TH className="py-1.5 font-medium" />
+            </TR>
+          </THead>
+          <TBody>
             {rows.map((r) => (
-              <tr
+              <TR
                 key={r.id}
                 className="border-b border-line-subtle"
                 data-testid="recording-row"
@@ -81,27 +83,27 @@ export function Recordings({ projectId, f }: { projectId: string; f: FeedbackVie
                 data-state={r.kind === "reproduce" ? r.recording.state : undefined}
                 aria-current={open?.id === r.id ? "true" : undefined}
               >
-                <td className="py-1.5 pr-3" title={time.dateTime(r.at)}>
+                <TD className="py-1.5 pr-3" title={time.dateTime(r.at)}>
                   {time.relative(r.at)}
-                </td>
-                <td className="py-1.5 pr-3">{by(r)}</td>
-                <td className="py-1.5 pr-3 font-mono max-md:hidden">{r.kind === "reproduce" ? (r.recording.build.release ?? r.recording.build.sha.slice(0, 12)) : null}</td>
-                <td className="py-1.5 pr-3">
-                  {r.kind === "upload" ? t("previews.recordings.uploaded") : <ReproduceState recording={r.recording} />}
-                </td>
-                <td className="py-1.5 text-right">
+                </TD>
+                <TD className="py-1.5 pr-3">{by(r)}</TD>
+                <TD className="py-1.5 pr-3 font-mono max-md:hidden">{r.kind === "reproduce" ? (r.recording.build.release ?? r.recording.build.sha.slice(0, 12)) : null}</TD>
+                <TD className="py-1.5 pr-3">
+                  {r.kind === "upload" ? <RecordingFile file={r.file} /> : <ReproduceState recording={r.recording} />}
+                </TD>
+                <TD className="py-1.5 text-right">
                   {open?.id === r.id ? null : (
                     <Button size="sm" variant="ghost" onClick={() => setOpenId(r.id)}>
                       {t("previews.recordings.show")}
                     </Button>
                   )}
-                </td>
-              </tr>
+                </TD>
+              </TR>
             ))}
-          </tbody>
-        </table>
+          </TBody>
+        </Table>
       ) : null}
-      {open?.kind === "upload" ? <UploadedVideo file={open.file} alt={alt(open)} /> : null}
+      {open?.kind === "upload" ? <UploadedVideo key={open.file.id} file={open.file} alt={alt(open)} /> : null}
       {open?.kind === "reproduce" ? <RecordingDetail recording={open.recording} projectId={projectId} fbKey={f.key} /> : null}
     </section>
   );
@@ -117,19 +119,81 @@ function ReproduceState({ recording }: { recording: RecordingRecord }) {
   );
 }
 
-/** A video attached to the item, played in the page and read by its text alternative. */
+/** A file's type as a person names it: its format, not its media type. */
+const FORMATS: Record<string, string> = { "video/mp4": "MP4", "video/webm": "WebM", "video/quicktime": "MOV" };
+export const formatOf = (mime: string) => FORMATS[mime] ?? (mime.split("/")[1] ?? mime).toUpperCase();
+
+/** A length in seconds as m:ss, or h:mm:ss past the hour. */
+export function clockOf(seconds: number): string {
+  const s = Math.round(seconds);
+  const mmss = `${Math.floor((s % 3600) / 60)}:${String(s % 60).padStart(2, "0")}`;
+  return s >= 3600 ? `${Math.floor(s / 3600)}:${mmss.padStart(5, "0")}` : mmss;
+}
+
+/** How long a video runs, read from its metadata alone; null until read, or where it cannot be. */
+function useVideoLength(src: string): number | null {
+  const [length, setLength] = useState<number | null>(null);
+  useEffect(() => {
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    const read = () => setLength(Number.isFinite(v.duration) && v.duration > 0 ? v.duration : null);
+    v.addEventListener("loadedmetadata", read);
+    v.src = src;
+    return () => {
+      v.removeEventListener("loadedmetadata", read);
+      v.removeAttribute("src");
+    };
+  }, [src]);
+  return length;
+}
+
+/** An attached video's row facts: its name, then its format, size and length. */
+function RecordingFile({ file }: { file: Attachment }) {
+  const length = useVideoLength(coreFileUrl(file.url));
+  const facts = [formatOf(file.mime), formatSize(file.size), ...(length === null ? [] : [clockOf(length)])];
+  return (
+    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2" data-testid="recording-file">
+      <span className="min-w-0 truncate font-mono">{file.name}</span>
+      <span className="text-muted">{facts.join(" · ")}</span>
+    </span>
+  );
+}
+
+/**
+ * A video attached to the item, played in the page and read by its text alternative. One this browser
+ * cannot decode, or decodes with no picture, is said so with a way to download it, never a black box.
+ */
+/** A recording attached with no captions file carries its text alternative as one caption over its whole length. */
 function UploadedVideo({ file, alt }: { file: Attachment; alt: string }) {
+  const t = useCopy();
+  const [unplayable, setUnplayable] = useState(false);
+  const src = coreFileUrl(file.url);
   return (
     <div className="grid gap-3" data-testid="recording-detail" data-recording={file.id}>
-      {/* biome-ignore lint/a11y/useMediaCaption: a screen recording someone attached comes with no captions file; its text alternative is its label */}
-      <video
-        src={coreFileUrl(file.url)}
-        controls
-        preload="metadata"
-        aria-label={alt}
-        className="max-h-[420px] w-full max-w-[720px] rounded-md border border-line bg-black"
-        data-testid="recording-video"
-      />
+      {unplayable ? (
+        <p role="status" className="fg-body-sm text-muted" data-testid="recording-unplayable">
+          {t("feedback.evidence.unplayable", { format: formatOf(file.mime) })}{" "}
+          <a href={src} download={file.name} className="font-semibold text-link hover:underline">
+            {t("feedback.evidence.download", { name: file.name })}
+          </a>
+        </p>
+      ) : (
+        <video
+          src={src}
+          controls
+          preload="metadata"
+          aria-label={alt}
+          className="max-h-105 w-full max-w-180 rounded-md border border-line bg-black"
+          data-testid="recording-video"
+          onError={() => setUnplayable(true)}
+          onLoadedMetadata={(e) => {
+            const v = e.currentTarget;
+            if (v.videoWidth === 0 && v.videoHeight === 0) setUnplayable(true);
+          }}
+        >
+          <track kind="captions" src={captionsOf(alt)} label={alt} />
+        </video>
+      )}
     </div>
   );
 }
@@ -155,7 +219,7 @@ function RecordingDetail({ recording, projectId, fbKey }: { recording: Recording
         ) : null}
       </div>
       {stop.error ? (
-        <p role="alert" className="fg-body-sm" style={{ color: "var(--red-600)" }}>
+        <p role="alert" className="fg-body-sm text-danger-11">
           {t("previews.recordings.stopFailed")}: {formatApiError(stop.error)}
         </p>
       ) : null}
@@ -163,7 +227,7 @@ function RecordingDetail({ recording, projectId, fbKey }: { recording: Recording
         {recording.timeline.length === 0 ? (
           <p className="fg-body-sm text-muted">{t("previews.recordings.timelineEmpty")}</p>
         ) : (
-          <TimelineTable entries={recording.timeline} />
+          <Timeline entries={recording.timeline} />
         )}
       </div>
       {recording.state === "expired" ? <p className="fg-caption text-muted">{t("previews.recordings.expired")}</p> : null}
@@ -177,7 +241,7 @@ function RecordingDetail({ recording, projectId, fbKey }: { recording: Recording
 function Replay({ recordingId, describedBy }: { recordingId: string; describedBy: string }) {
   const t = useCopy();
   const [asked, setAsked] = useState(false);
-  const root = useRef<HTMLElement>(null);
+  const rootRef = useRef<HTMLElement>(null);
   const eventsQ = useQuery({
     queryKey: ["recordings", "events", recordingId],
     queryFn: () => reproduceApi.events(recordingId),
@@ -187,7 +251,7 @@ function Replay({ recordingId, describedBy }: { recordingId: string; describedBy
   const [failure, setFailure] = useState<unknown>(null);
 
   useEffect(() => {
-    const el = root.current;
+    const el = rootRef.current;
     const events = eventsQ.data;
     if (!el || !events) return;
     let player: { destroy(): void } | null = null;
@@ -196,7 +260,7 @@ function Replay({ recordingId, describedBy }: { recordingId: string; describedBy
     import("rrweb")
       .then(({ Replayer }) => {
         if (!current) return;
-        const replayer = new Replayer(events as unknown as ConstructorParameters<typeof Replayer>[0], { root: el, mouseTail: false, showWarning: false });
+        const replayer = new Replayer(events, { root: el, mouseTail: false, showWarning: false });
         player = replayer;
         replayer.play();
       })
@@ -221,13 +285,13 @@ function Replay({ recordingId, describedBy }: { recordingId: string; describedBy
   return (
     <div className="grid gap-2" data-testid="recording-player">
       {problem ? (
-        <p role="alert" className="fg-body-sm" style={{ color: "var(--red-600)" }}>
+        <p role="alert" className="fg-body-sm text-danger-11">
           {t("previews.recordings.replayFailed")}: {formatApiError(problem)}
         </p>
       ) : null}
       {eventsQ.isLoading ? <p role="status" className="fg-body-sm text-muted">{t("previews.recordings.replayLoading")}</p> : null}
       <figure
-        ref={root}
+        ref={rootRef}
         aria-label={t("previews.recordings.replayAlt")}
         aria-describedby={describedBy}
         className="m-0 max-w-full overflow-auto rounded-md border border-line bg-surface"

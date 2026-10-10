@@ -121,9 +121,9 @@ export function rounded(points: readonly ElkPoint[], radius = 10): string {
   if (!first) return "";
   let d = `M${first.x},${first.y}`;
   for (let i = 0; i < rest.length - 1; i++) {
-    const p = points[i] as ElkPoint;
-    const c = rest[i] as ElkPoint;
-    const n = rest[i + 1] as ElkPoint;
+    const p = points[i];
+    const c = rest[i];
+    const n = rest[i + 1];
     const d1 = Math.hypot(c.x - p.x, c.y - p.y);
     const d2 = Math.hypot(n.x - c.x, n.y - c.y);
     if (!d1 || !d2) continue;

@@ -1,19 +1,19 @@
 'use client';
-import { PageTitle } from "@/design";
-
-import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { EmptyState, ErrorState, PageContainer, Skeleton } from '@/design';
-import { useActiveOrg } from '@/features/orgs/active-org';
-import { useProjectsConsole } from '@/features/projects/hooks';
+import { EmptyState, ErrorState, PageContainer, PageTitle, Skeleton, useNow } from '@/design';
+import { useActiveOrg } from "@/features/orgs";
+import { useProjectsConsole } from "@/features/projects";
 import { formatApiError } from '@/lib/api/error';
 import { useCopy } from '@/lib/i18n/interface-language';
 import { usePulse } from '../hooks';
 import { ActionQueue } from './action-queue';
-import { FlowSection } from './flow-section';
+import { FlowFigures } from './flow-section';
 import { LivenessBand } from './liveness-band';
-import { QualitySection } from './quality-section';
+import { QualityFigures } from './quality-section';
 import { WorkSitting } from './work-sitting';
+
+/** The five sections the page reads, held by placeholders while it loads. */
+const PLACEHOLDERS = ["work", "flow", "quality", "liveness", "sitting"] as const;
 
 export function OverviewScreen() {
   const router = useRouter();
@@ -22,12 +22,11 @@ export function OverviewScreen() {
   const { items: allItems } = useProjectsConsole();
   const t = useCopy();
 
-  const [nowMs, setNowMs] = useState(0);
-  useEffect(() => setNowMs(Date.now()), []);
+  const nowMs = useNow(60_000);
 
   const orgLabel = activeOrg ? (activeOrg.isPersonal ? t('overview.personal') : activeOrg.name) : null;
   const data = pulse.data;
-  const hasProjects = useMemo(() => (data ? data.work.perProject.length > 0 : false), [data]);
+  const hasProjects = data ? data.work.perProject.length > 0 : false;
 
   if (pulse.isError) {
     return (
@@ -35,7 +34,7 @@ export function OverviewScreen() {
         <ErrorState
           title={t('overview.loadFailed')}
           message={formatApiError(pulse.error)}
-          onRetry={() => pulse.refetch()}
+          onRetry={() => void pulse.refetch()}
         />
       </PageContainer>
     );
@@ -44,9 +43,8 @@ export function OverviewScreen() {
   if (pulse.isLoading || !data) {
     return (
       <PageContainer className="flex flex-col gap-4">
-        {Array.from({ length: 5 }).map((_, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length placeholder list that never reorders
-          <Skeleton key={i} className="h-40 w-full rounded-lg" />
+        {PLACEHOLDERS.map((k) => (
+          <Skeleton key={k} className="h-40 w-full rounded-md" />
         ))}
       </PageContainer>
     );
@@ -55,7 +53,7 @@ export function OverviewScreen() {
   if (!hasProjects) {
     const hasAnyProjects = allItems.length > 0;
     return (
-      <PageContainer className="grid min-h-[60vh] place-items-center">
+      <PageContainer className="grid min-h-96 place-items-center">
         <EmptyState
           message={hasAnyProjects ? t('overview.noProjectsIn') : t('overview.welcome')}
           action={{ label: t('overview.newProject'), onClick: () => router.push('/projects?new=1') }}
@@ -73,8 +71,8 @@ export function OverviewScreen() {
       <LivenessBand liveness={data.liveness} thresholds={data.thresholds} />
       <WorkSitting pulse={data} nowMs={nowMs} />
       <ActionQueue pulse={data} />
-      <FlowSection flow={data.flow} />
-      <QualitySection quality={data.quality} />
+      <FlowFigures flow={data.flow} />
+      <QualityFigures quality={data.quality} />
     </PageContainer>
   );
 }

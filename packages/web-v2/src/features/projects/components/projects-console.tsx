@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import {
   Banner,
   Button,
@@ -14,19 +14,22 @@ import {
   PageTitle,
   ProjectCardSkeleton,
   Stat,
+  useNow,
+  useUrlChoice,
+  useUrlParams,
 } from '@/design';
-import { useActiveOrg } from '@/features/orgs/active-org';
+import { useActiveOrg } from '@/features/orgs';
 import { formatApiError } from '@/lib/api/error';
 import { useCopy } from '@/lib/i18n/interface-language';
 import { filterProjects, formatSpend, isAttention, sortProjects } from '../derive';
 import { useProjectsConsole } from '../hooks';
 import type { ProjectConsoleItem, ProjectSort, ProjectView, WorkspaceTotals } from '../types';
 import { NewProjectDialog } from './new-project-dialog';
-import { ProjectCard } from './project-card';
+import { ProjectTile } from './project-card';
 import { ProjectList } from './project-list';
 import { ProjectsToolbar } from './projects-toolbar';
 
-const GRID = 'grid gap-x-8 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(326px,1fr))]';
+const GRID = 'grid gap-x-8 gap-y-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4';
 const SKELETONS = ['a', 'b', 'c', 'd', 'e', 'f'];
 
 export function ProjectsConsole() {
@@ -34,18 +37,15 @@ export function ProjectsConsole() {
   const { items, totals, isLoading, isError, error, refetch, toggle } = useProjectsConsole();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [createOpen, setCreateOpen] = useState(false);
-  const onNewProject = () => setCreateOpen(true);
-
-  // The rail switcher's "New project" deep-links here with `?new=1`. Honour it,
-  // then strip the param so a refresh/back doesn't reopen the dialog. `/` is the
-  // Overview dashboard (ISS-355), so replace to `/projects`.
-  useEffect(() => {
-    if (searchParams.get('new') === '1') {
-      setCreateOpen(true);
-      router.replace('/projects');
-    }
-  }, [searchParams, router]);
+  const [opened, setOpened] = useState(false);
+  // The rail switcher's "New project" deep-links here with `?new=1`: the dialog reads it as open,
+  // and closing strips it so a refresh or back does not reopen it.
+  const createOpen = opened || searchParams.get('new') === '1';
+  const onNewProject = () => setOpened(true);
+  const onCloseCreate = () => {
+    setOpened(false);
+    if (searchParams.get('new') === '1') router.replace('/projects');
+  };
 
   return (
     <PageContainer>
@@ -62,7 +62,7 @@ export function ProjectsConsole() {
       ) : (
         <ConsoleBody items={items} totals={totals} onTogglePin={toggle} onNewProject={onNewProject} />
       )}
-      <NewProjectDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+      <NewProjectDialog open={createOpen} onClose={onCloseCreate} />
     </PageContainer>
   );
 }
@@ -79,26 +79,22 @@ function ConsoleBody({
   onNewProject: () => void;
 }) {
   const t = useCopy();
-  const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<ProjectSort>('recent');
-  const [view, setView] = useState<ProjectView>('cards');
-  const [attentionOnly, setAttentionOnly] = useState(false);
+  const [params, setParams] = useUrlParams();
+  const query = params.get('q') ?? '';
+  const setQuery = (q: string) => setParams({ q });
+  const [sort, setSort] = useUrlChoice<ProjectSort>('sort', ['recent', 'name', 'health'], 'recent');
+  const [view, setView] = useUrlChoice<ProjectView>('view', ['cards', 'list'], 'cards');
+  const attentionOnly = params.get('attention') === '1';
+  const setAttentionOnly = (on: boolean) => setParams({ attention: on ? '1' : null });
   // The console is HARD-SCOPED to the global active org (ISS-469/470), never a
   // local filter, so the chrome and the console cannot contradict. null only
   // while orgs load → show all for one tick (no flash of empty), then scope.
   const { activeOrg, activeOrgId } = useActiveOrg();
   const scopeLabel = activeOrg ? (activeOrg.isPersonal ? t('projects.form.personal') : activeOrg.name) : null;
 
-  // Relative timestamps: 0 on the server + first paint (renders "just now"),
-  // then the real clock after mount — hydration-safe.
-  const [now, setNow] = useState(0);
-  useEffect(() => setNow(Date.now()), []);
-
-  const attentionCount = useMemo(() => items.filter(isAttention).length, [items]);
-  const visible = useMemo(
-    () => sortProjects(filterProjects(items, query, attentionOnly, activeOrgId), sort),
-    [items, query, attentionOnly, sort, activeOrgId],
-  );
+  const now = useNow(60_000);
+  const attentionCount = items.filter(isAttention).length;
+  const visible = sortProjects(filterProjects(items, query, attentionOnly, activeOrgId), sort);
 
   return (
     <>
@@ -118,7 +114,7 @@ function ConsoleBody({
           <Banner
             tone="attention"
             action={
-              <Button variant="ghost" size="sm" onClick={() => setAttentionOnly((a) => !a)}>
+              <Button variant="ghost" size="sm" onClick={() => setAttentionOnly(!attentionOnly)}>
                 {attentionOnly ? t('projects.attention.showAll') : t('projects.attention.only')}
               </Button>
             }
@@ -166,7 +162,7 @@ function ProjectSections({
     ) : (
       <div className={GRID}>
         {rows.map((p) => (
-          <ProjectCard key={p.id} project={p} now={now} onTogglePin={onTogglePin} />
+          <ProjectTile key={p.id} project={p} now={now} onTogglePin={onTogglePin} />
         ))}
       </div>
     );
@@ -198,9 +194,9 @@ function ProjectSections({
           <button
             type="button"
             onClick={onNewProject}
-            className="group flex min-h-[156px] flex-col items-center justify-center gap-2.5 border-t border-dashed border-line-strong text-muted transition-colors hover:border-accent hover:bg-accent-tint hover:text-accent-text"
+            className="group flex min-h-39 flex-col items-center justify-center gap-2.5 border-t border-dashed border-line-strong text-muted transition-colors hover:border-accent hover:bg-accent-tint hover:text-accent-text"
           >
-            <span className="flex size-[38px] items-center justify-center rounded-md bg-sunken transition-colors group-hover:bg-surface">
+            <span className="flex size-9.5 items-center justify-center rounded-md bg-sunken transition-colors group-hover:bg-surface">
               <Icon name="plus" size={22} className="text-subtle group-hover:text-accent" />
             </span>
             <span className="text-sm font-semibold">{t('projects.new')}</span>
@@ -239,7 +235,7 @@ function StatsBand({ totals }: { totals: WorkspaceTotals }) {
       <span className="h-4 w-px bg-line" aria-hidden />
       <Stat icon="folder">{t('projects.count', { n: totals.projects })}</Stat>
       <span className="inline-flex items-center gap-1.5 font-mono text-12-5 text-accent-text">
-        <span className="forge-pulse inline-block size-[7px] rounded-pill bg-accent" aria-hidden />
+        <span className="forge-pulse inline-block size-1.75 rounded-pill bg-accent" aria-hidden />
         {t('projects.liveRuns', { n: totals.liveRuns })}
       </span>
       <Stat icon="inbox" title={t('projects.openIssues')}>

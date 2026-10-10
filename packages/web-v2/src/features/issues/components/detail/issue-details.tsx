@@ -7,19 +7,18 @@
 // sit in Activity (BC-8).
 
 import { type ReactNode, useState } from "react";
-import { Markdown, ViewHeading } from "@/design";
-import { AttachmentList } from "@/features/attachments/components/attachment-list";
-import { DecisionPanel } from "@/features/questions/components/decision-panel";
-import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
-import type { MockupTarget } from "@/features/mockups/types";
+import { Disclosure, Markdown, ViewHeading } from "@/design";
+import { AttachmentList } from "@/features/attachments";
+import { IssueQuestions } from "@/features/questions";
+import { MockupList } from "@/features/mockups";
+import type { MockupTarget } from "@/features/mockups";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { useActivity, useAttachments, useComments } from "../../detail-hooks";
 import type { useIssueStandingOf, useProjectMembers } from "../../hooks";
 import type { IssueDetail } from "../../types";
 import { IssueRetiredCriteria } from "../criteria-list";
 import { IssueDescription } from "../issue-description";
-import { PatternsPanel } from "../patterns-panel";
-import { FoldRow } from "./fold-row";
+import { IssuePatternList } from "../issue-pattern-list";
 import { IssueDecisionsTab, IssueMemoryTab } from "./issue-record-tabs";
 import { ActivityTab, type ActivityThread, RunsTab, runsTabCount } from "./issue-sections";
 
@@ -66,9 +65,9 @@ export function IssueDetails({
   const sessions = issue.agentSessions ?? [];
   const stepOutcomes = standingQ.data?.stepOutcomes ?? [];
   const row = (key: string, label: string, summary: ReactNode, body: ReactNode, highlight?: string) => (
-    <FoldRow key={key} label={label} summary={summary} open={isOpen(key)} onToggle={() => toggle(key)} testId={`details-${key}`} highlight={highlight}>
+    <Disclosure key={key} title={label} summary={summary} open={isOpen(key)} onOpenChange={() => toggle(key)} testId={`details-${key}`} highlight={highlight}>
       {body}
-    </FoldRow>
+    </Disclosure>
   );
   return (
     <section aria-label={t("issues.details.title")} data-testid="issue-details">
@@ -104,8 +103,8 @@ export function IssueDetails({
             canWrite={canWrite}
             past={
               <>
-                <PatternsPanel issueId={issue.id} projectId={projectId} show="decided" />
-                <DecisionPanel issueId={issue.id} show="past" />
+                <IssuePatternList issueId={issue.id} projectId={projectId} show="decided" />
+                <IssueQuestions issueId={issue.id} show="past" />
                 <IssueDecisionsTab projectId={projectId} issueKey={issue.displayId} />
                 <IssueRetiredCriteria issueId={issue.id} />
               </>
@@ -128,7 +127,7 @@ export function IssueDetails({
               />,
             )
           : null}
-        {developer ? row("mockups", t("common.mockups.title"), mockupCount ?? null, <MockupsPanel projectId={projectId} target={mockupTarget} />) : null}
+        {developer ? row("mockups", t("common.mockups.title"), mockupCount ?? null, <MockupList projectId={projectId} target={mockupTarget} />) : null}
         {developer ? row("memory", t("memory.title"), null, <IssueMemoryTab projectId={projectId} slug={slug} issueKey={issue.displayId} />) : null}
       </div>
     </section>

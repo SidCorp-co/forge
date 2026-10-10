@@ -3,7 +3,7 @@
 import type { ExecutionFacts } from "@forge/contracts/report-executions";
 import type { ReportRunFacts } from "@forge/contracts/report-queries";
 import type { BlockSource } from "@forge/contracts/visual-blocks";
-import { createContext, type ReactNode, useContext } from "react";
+import { createContext, type ReactNode, use } from "react";
 
 /** What a run says about itself: the query that produced a frame, the settings it read with and the moment it was read. */
 export type SourceFacts = Pick<ReportRunFacts, "queryId" | "asOf" | "params">;
@@ -23,7 +23,7 @@ export interface VisualBlockContextValue {
 const VisualBlockContext = createContext<VisualBlockContextValue>({ projectSlug: undefined });
 
 export function VisualBlockProvider({ value, children }: { value: VisualBlockContextValue; children: ReactNode }) {
-  return <VisualBlockContext.Provider value={value}>{children}</VisualBlockContext.Provider>;
+  return <VisualBlockContext value={value}>{children}</VisualBlockContext>;
 }
 
-export const useVisualBlockContext = (): VisualBlockContextValue => useContext(VisualBlockContext);
+export const useVisualBlockContext = (): VisualBlockContextValue => use(VisualBlockContext);

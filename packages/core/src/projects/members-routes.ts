@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { projectMemberRoles } from '../db/schema.js';
 import { loadOrgRole, loadProjectAccess } from '../lib/authz.js';
 import { env } from '../lib/env.js';
+import { mailInvitation, refuseUnmailable } from '../lib/invitation-mail.js';
 import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
 import {
@@ -196,6 +197,7 @@ memberRoutes.post(
       }
     }
 
+    refuseUnmailable(env, refuse);
     const { token, expiresAt } = await issueInvitationToken({
       projectId,
       inviterId,
@@ -203,15 +205,17 @@ memberRoutes.post(
       role,
     });
 
-    try {
-      await sendInvitationEmail(email, {
-        projectName: project.name,
-        inviterEmail: inviter.email,
-        token,
-      });
-    } catch (sendErr) {
-      logger.error({ err: sendErr, projectId, email }, 'failed to send project invitation email');
-    }
+    await mailInvitation({
+      email,
+      send: () =>
+        sendInvitationEmail(email, {
+          projectName: project.name,
+          inviterEmail: inviter.email,
+          token,
+        }),
+      withdraw: () => revokeProjectInvitation(projectId, email),
+      refuse,
+    });
 
     // ISS-597: notify registered invitees in-app so they see the invite
     // in the bell without needing the email. Unregistered users (no userId

@@ -1,90 +1,49 @@
 "use client";
 
-// web-v2 feature module: parked decisions — react-query surface.
-//
-// A question's ask, answer, void and expiry reach the project room as `question.changed`
-// (`lib/ws/event-router.ts`), which refetches `["questions"]`; the polls below stay as the
-// fallback for a dropped socket.
+// Parked decisions: the queries live in `queries.ts`, the answers and their toasts here.
 
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { ApiError } from "@/lib/api/client";
-import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { useToast } from "@/providers/toast-provider";
+import { useToastWrite } from "@/providers/toast-write";
 import { questionsApi } from "./api";
+import { questionKeys, questionQueries } from "./queries";
 import type { AnswerInput } from "./types";
-import { isUuid } from "@/lib/api/ref-bridge";
 
-const issueQuestionsKey = (issueId: string) => ["questions", issueId];
-export const projectQuestionsKey = (projectId: string) => ["questions", "project", projectId];
-/** Under the project's key, so answering from either surface refreshes the other. */
-export const gateQuestionKey = (projectId: string, documentId: string) => [
-  ...projectQuestionsKey(projectId),
-  "gate",
-  documentId,
-];
+/** Kept for the screens that invalidate a project's questions by key. */
+export const projectQuestionsKey = questionKeys.project;
+export const gateQuestionKey = questionKeys.gate;
 
-const FOLLOW_UP_POLL_MS = 30_000;
-
-/** `issueId` is the uuid, or the display key with the `projectId` it is scoped by. */
 export function useIssueQuestions(issueId: string, projectId?: string) {
-  return useQuery({
-    queryKey: issueId && !isUuid(issueId) ? ["questions", { issue: issueId, project: projectId ?? null }] : issueQuestionsKey(issueId),
-    queryFn: () => questionsApi.listForIssue(issueId, projectId),
-    enabled: Boolean(issueId),
-    refetchInterval: (query) =>
-      (query.state.data?.questions.length ?? 0) > 0 ? FOLLOW_UP_POLL_MS : false,
-  });
+  return useQuery(questionQueries.issue(issueId, projectId));
 }
 
-export function useAnswerQuestion(issueId: string) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
+/** An answer: the reads in `touches` and the attention counts are read again, on a refusal too (the question may have moved). */
+function useAnswer(touches: readonly (readonly unknown[])[]) {
   const t = useCopy();
-  return useMutation({
-    mutationFn: questionsApi.answer,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: issueQuestionsKey(issueId) });
-      qc.invalidateQueries({ queryKey: ["issue", issueId] });
-      qc.invalidateQueries({ queryKey: ["attention"] });
-      toast({
-        title: t("agents.question.recorded"),
-        tone: "success",
-      });
-    },
-    onError: (err) => {
-      qc.invalidateQueries({ queryKey: issueQuestionsKey(issueId) });
-      toast({ title: t("agents.question.notRecorded"), description: formatApiError(err), tone: "error" });
-    },
+  return useToastWrite(questionsApi.answer, {
+    touches: [...touches, ["attention"]],
+    said: t("agents.question.recorded"),
+    failed: t("agents.question.notRecorded"),
+    touchesOnRefusal: true,
   });
 }
 
+export const useAnswerQuestion = (issueId: string) => useAnswer([questionKeys.issue(issueId), ["issue", issueId]]);
+
+export const useAnswerProjectQuestion = (projectId: string) => useAnswer([projectQuestionsKey(projectId)]);
 
 /** Every OPEN decision on one project that names no issue, for the Agents screen. */
-const PROJECT_QUEUE_POLL_MS = 30_000;
-
 export function useProjectQuestions(projectId: string | undefined) {
-  const query = useInfiniteQuery({
-    queryKey: projectQuestionsKey(projectId ?? ""),
-    queryFn: ({ pageParam }) =>
-      questionsApi.listOpenWithoutIssue(projectId as string, pageParam ?? undefined),
-    initialPageParam: null as string | null,
-    getNextPageParam: (last) => (last.hasMore ? (last.nextCursor ?? undefined) : undefined),
-    enabled: Boolean(projectId),
-    refetchInterval: PROJECT_QUEUE_POLL_MS,
+  return useInfiniteQuery({
+    ...questionQueries.project(projectId),
+    // the pages read as one list: every question, and the newest page's total and whether more remain
+    select: (data) => {
+      const last = data.pages[data.pages.length - 1];
+      return { questions: data.pages.flatMap((p) => p.questions), total: last?.total, hasMore: last?.hasMore };
+    },
   });
-  const pages = query.data?.pages ?? [];
-  return {
-    ...query,
-    data: pages.length
-      ? {
-          questions: pages.flatMap((p) => p.questions),
-          total: pages[pages.length - 1]?.total,
-          hasMore: pages[pages.length - 1]?.hasMore,
-        }
-      : undefined,
-  };
 }
 
 function linkedVerdict(q: {
@@ -102,35 +61,10 @@ function linkedVerdict(q: {
   };
 }
 
+/** The linked question's read and what it says about the row: `{ query, gone, unreachable }`. */
 export function useLinkedQuestion(questionId: string | undefined, enabled: boolean) {
-  const query = useQuery({
-    queryKey: ["questions", "one", questionId ?? ""],
-    queryFn: () => questionsApi.get(questionId as string),
-    enabled: Boolean(questionId) && enabled,
-    retry: false,
-  });
-  return { ...query, ...linkedVerdict(query) };
-}
-
-export function useAnswerProjectQuestion(projectId: string) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  const t = useCopy();
-  return useMutation({
-    mutationFn: questionsApi.answer,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: projectQuestionsKey(projectId) });
-      qc.invalidateQueries({ queryKey: ["attention"] });
-      toast({
-        title: t("agents.question.recorded"),
-        tone: "success",
-      });
-    },
-    onError: (err) => {
-      qc.invalidateQueries({ queryKey: projectQuestionsKey(projectId) });
-      toast({ title: t("agents.question.notRecorded"), description: formatApiError(err), tone: "error" });
-    },
-  });
+  const query = useQuery(questionQueries.one(questionId, enabled));
+  return { query, ...linkedVerdict(query) };
 }
 
 /**
@@ -138,8 +72,7 @@ export function useAnswerProjectQuestion(projectId: string) {
  */
 export function useAnsweringQuestions(send: (input: AnswerInput) => Promise<unknown>) {
   const [answering, setAnswering] = useState<ReadonlySet<string>>(() => new Set());
-  const answer = useCallback(
-    (input: AnswerInput, onAnswered?: (input: AnswerInput) => void) => {
+  const answer = (input: AnswerInput, onAnswered?: (input: AnswerInput) => void) => {
       setAnswering((prev) => new Set(prev).add(input.questionId));
       Promise.resolve(send(input))
         .then(
@@ -153,8 +86,6 @@ export function useAnsweringQuestions(send: (input: AnswerInput) => Promise<unkn
             return next;
           }),
         );
-    },
-    [send],
-  );
+    };
   return { answering, answer };
 }

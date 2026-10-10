@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Badge, Banner, Button, PageSectionTitle, Field, Input, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useSecretNames, useTestingProfiles, useWriteSecret } from "@/features/project-config/hooks";
+import { useSecretNames, useTestingProfiles, useWriteSecret } from "@/features/project-config";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { NAME, type SecretStanding, secretUsesIn, standingOf } from "../secret-refs";
@@ -62,7 +62,7 @@ function SecretForm({
 	);
 }
 
-export function SecretsSection({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+export function SecretSettings({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
 	const t = useCopy();
 	const secrets = useSecretNames(projectId);
 	const profiles = useTestingProfiles(projectId);

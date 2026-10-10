@@ -7,7 +7,7 @@ import type { IssueMove } from "@forge/contracts/issue-machine";
 // the mutation factory, the row value snaps back since nothing is invalidated).
 
 import type { WorkStep } from "@forge/contracts/issue-vocabulary";
-import { Menu, NativeSelect, Select, StatusBadge, type MenuItem, type SelectOption } from "@/design";
+import { Menu, Select, StatusBadge, type MenuItem, type SelectOption } from "@/design";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { agentHoldsMove, heldByAgent } from "../edit-lock";
@@ -24,8 +24,6 @@ interface InlineSelectProps {
   /** Why the field cannot be changed: the control is disabled, described by this line and titled with its text. */
   refusal?: EditRefusal | null;
   ariaLabel: string;
-  /** Use the OS-native picker (mobile cards). */
-  native?: boolean;
   className?: string;
 }
 
@@ -43,27 +41,12 @@ export function InlineSelect({
   disabled,
   refusal,
   ariaLabel,
-  native,
   className,
 }: InlineSelectProps) {
   const off = Boolean(disabled) || Boolean(refusal);
   const describedBy = refusal?.id;
   const description = refusal && !refusal.id ? refusal.text : undefined;
-  const control = native ? (
-    <NativeSelect
-      aria-label={ariaLabel}
-      aria-describedby={describedBy}
-      aria-description={description}
-      value={value}
-      disabled={off}
-      options={options}
-      className={className}
-      onChange={(e) => {
-        const next = e.target.value;
-        if (next !== value) onCommit(next);
-      }}
-    />
-  ) : (
+  const control = (
     <Select
       quiet
       aria-label={ariaLabel}
@@ -169,7 +152,7 @@ export function StatusEdit({
         <button
           type="button"
           aria-label={t("issues.status.change", { status: statusWord(status) })}
-          className="inline-flex min-h-11 items-center rounded-md px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          className="inline-flex min-h-11 items-center rounded-md px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
         >
           {chip}
         </button>

@@ -124,7 +124,7 @@ export function SingleBindingFooter({
             {existing ? t("integrations.edit.save") : t("integrations.provider.create")}
           </Button>
           {existing && (
-            <Button variant="secondary" onClick={() => b.test.run(existing.id)} loading={b.test.pending}>
+            <Button variant="secondary" onClick={() => void b.test.run(existing.id)} loading={b.test.pending}>
               {t("integrations.edit.test")}
             </Button>
           )}

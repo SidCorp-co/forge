@@ -99,8 +99,8 @@ function Header({
   return (
     <div
       className={cn(
-        "relative z-[1] mx-[3px] grid content-start gap-1 rounded-lg px-2 pb-3 pt-2.5",
-        selected ? "bg-[var(--accent-tint)]" : "hover:bg-hover",
+        "relative z-1 mx-0.75 grid content-start gap-1 px-2 pb-3 pt-2.5",
+        selected ? "bg-accent-tint" : "hover:bg-hover",
       )}
       style={{ gridRow: 1, gridColumn: col }}
     >
@@ -122,18 +122,18 @@ function Header({
           onClick={() => onSelect(p.builder ? { kind: "builder", id: p.id } : { kind: "project", id: p.id })}
           className={cn(
             "flex min-w-0 items-center gap-1.5 whitespace-nowrap text-left text-12",
-            line.tone === "bad" ? "text-[var(--red-600)]" : line.tone === "active" ? "text-fg" : "text-subtle",
+            line.tone === "bad" ? "text-danger-11" : line.tone === "active" ? "text-fg" : "text-subtle",
           )}
         >
           {line.tone === "active" ? (
-            <i className="forge-pulse inline-block h-[7px] w-[7px] flex-none rounded-full" style={{ background: "var(--accent)" }} />
+            <i className="forge-pulse inline-block h-1.75 w-1.75 flex-none rounded-full" style={{ background: "var(--accent)" }} />
           ) : null}
           <span className="truncate">{line.text}</span>
         </button>
       </Tooltip>
       ) : null}
       {line && line.progress !== null ? (
-        <span className="h-[3px] overflow-hidden rounded-sm bg-[var(--bg-sunken)]">
+        <span className="h-0.75 overflow-hidden rounded-sm bg-sunken">
           <i className="block h-full" style={{ width: `${Math.round(line.progress * 100)}%`, background: "var(--accent)" }} />
         </span>
       ) : null}
@@ -224,7 +224,7 @@ function ConsumerCells({
   return [...byConsumer].map(([consumer, links]) => (
     <div
       key={consumer}
-      className={cn("relative z-[1] flex flex-wrap place-content-center items-center gap-1", fade && "eco-fade")}
+      className={cn("relative z-1 flex flex-wrap place-content-center items-center gap-1", fade && "eco-fade")}
       style={{ gridRow: r, gridColumn: col.get(consumer), minHeight: ROW_H }}
     >
       {links.map((l) => {
@@ -260,14 +260,14 @@ function Row(props: RowProps) {
   const tip = rowTip(row, names, t);
   return (
     <>
-      <div className={cn("relative z-[1] flex items-center", fade && "eco-fade")} style={{ gridRow: r, gridColumn: 1, height: ROW_H }}>
+      <div className={cn("relative z-1 flex items-center", fade && "eco-fade")} style={{ gridRow: r, gridColumn: 1, height: ROW_H }}>
         <Tooltip label={tip} multiline>
           <button
             type="button"
             onClick={() => onSelect({ kind: "contract", key: row.key })}
             className={cn(
               "truncate font-mono text-12 font-medium",
-              isSel ? "text-[var(--red-600)]" : "text-fg hover:text-[var(--accent-text)]",
+              isSel ? "text-danger-11" : "text-fg hover:text-accent-text",
             )}
           >
             {row.ref.slug}
@@ -284,7 +284,7 @@ function Row(props: RowProps) {
         </div>
       ) : null}
       {providerCol ? (
-        <div className={cn("relative z-[1] grid place-items-center", fade && "eco-fade")} style={{ gridRow: r, gridColumn: providerCol, height: ROW_H }}>
+        <div className={cn("relative z-1 grid place-items-center", fade && "eco-fade")} style={{ gridRow: r, gridColumn: providerCol, height: ROW_H }}>
           <Chip
             label={c?.currentVersion ?? (c ? t("ecosystem.bus.noVersion") : t("ecosystem.bus.unpublished"))}
             tone="own"
@@ -346,7 +346,7 @@ export function BusDiagram({
           <div
             key={`col-${p.id}`}
             aria-hidden
-            className="pointer-events-none ml-[50%] border-l border-dashed border-line"
+            className="pointer-events-none mx-auto w-0 border-l border-dashed border-line"
             style={{ gridRow: `2 / span ${R}`, gridColumn: i + 2 }}
           />
         ))}

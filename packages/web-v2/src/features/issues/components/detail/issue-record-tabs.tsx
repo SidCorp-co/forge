@@ -4,11 +4,11 @@
 // memories naming it, read on the issue itself through the one entity decisions read and the one
 // item memory section a requirement's and a workflow's pages use.
 
-import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
-import { ItemMemory } from "@/features/memory/components/item-memory";
+import { Decisions } from "@/features/comments";
+import { ItemMemory } from "@/features/memory";
 
 export function IssueDecisionsTab({ projectId, issueKey }: { projectId: string; issueKey: string }) {
-  return <DecisionsPanel projectId={projectId} scope="issue" targetRef={issueKey} />;
+  return <Decisions projectId={projectId} scope="issue" targetRef={issueKey} />;
 }
 
 export function IssueMemoryTab({ projectId, slug, issueKey }: { projectId: string; slug: string; issueKey: string }) {

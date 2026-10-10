@@ -8,10 +8,10 @@ import { PeekHead, PeekPanel, type PeekState, StatusBadge } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
-import { useFeedbackForecasts } from "@/features/forecast/hooks";
+import { useFeedbackForecasts } from "@/features/forecast";
 import { useFeedbackItem } from "../hooks";
 import { FeedbackPrimary } from "./feedback-detail";
-import { FeedbackBanner, FeedbackFacts } from "./feedback-facts";
+import { FeedbackBanner, LinkedFeedback } from "./feedback-facts";
 import { TriageVerbs } from "./feedback-verbs";
 
 export function FeedbackPeek({
@@ -45,12 +45,12 @@ export function FeedbackPeek({
                 title={<Written text={f.title} lang={f.writtenLang} />}
                 action={<FeedbackPrimary f={f} onAct={onOpenFull} />}
               />
-              <FeedbackBanner f={f} slug={slug} className="px-[18px]" />
-              <div className="px-[18px] pt-3 empty:hidden">
+              <FeedbackBanner f={f} slug={slug} className="px-4.5" />
+              <div className="px-4.5 pt-3 empty:hidden">
                 <TriageVerbs projectId={projectId} f={f} />
               </div>
-              <div className="px-[18px] pb-4 pt-4">
-                <FeedbackFacts f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} />
+              <div className="px-4.5 pb-4 pt-4">
+                <LinkedFeedback f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} />
               </div>
             </>
           );

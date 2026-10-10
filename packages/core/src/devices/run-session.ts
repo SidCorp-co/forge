@@ -13,6 +13,7 @@
  */
 
 import {
+  RUN_GIVEN_METADATA_KEY,
   RUN_GROUP_METADATA_KEY,
   RUN_ISSUE_STATUSES_METADATA_KEY,
   RUN_ISSUES_METADATA_KEY,
@@ -29,6 +30,7 @@ import {
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
 import {
+  givenAtDispatch,
   heldIssuePrefixes,
   type IssueLeaseRelease,
   refuseHeldTakeForSeqs,
@@ -233,11 +235,14 @@ export async function openRunSession(args: {
     throw err;
   }
   const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
+  // what each issue is given as the run opens: read once here, never rewritten (REQ-1 BC-3, REQ-4 BC-12)
+  const given = await givenAtDispatch(db, args.projectId, canonical.seqs);
   const metadata = {
     ...identity,
     [RUN_ISSUES_METADATA_KEY]: canonical.keys,
     [RUN_GROUP_METADATA_KEY]: canonical.keys,
     [RUN_ISSUE_STATUSES_METADATA_KEY]: openingStatuses,
+    [RUN_GIVEN_METADATA_KEY]: given,
     ...(args.gate ? { [RUN_GATE_METADATA_KEY]: args.gate } : {}),
   };
   const spec: OneShotRunSpec = { projectId: args.projectId, kind: 'system', metadata };

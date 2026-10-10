@@ -41,7 +41,7 @@ function RecencyDot({ landing }: { landing: ModuleLanding | null }) {
   const days = landing ? landingAge(landing) : null;
   const colour = days === null ? "var(--paper-300)" : days <= 2 ? LEGEND.ready.dot : days <= 7 ? "var(--ink-400)" : "var(--paper-400)";
   const title = landing ? t("modules.lastLanding", { key: landing.issueKey, when: formatStamp(landing.landedAt), d: days ?? 0 }) : t("modules.nothingLanded");
-  return <span role="img" aria-label={title} title={title} className="size-2 flex-none rounded-full" style={{ background: colour }} data-testid="recency-dot" />;
+  return <span role="img" aria-label={title} title={title} className="size-2 flex-none rounded-pill" style={{ background: colour }} data-testid="recency-dot" />;
 }
 
 /** Open issues by state on one scale across the list, the dot ahead of it the recency of the last landing. */
@@ -57,7 +57,7 @@ export function OpenBar({ standing, max }: { standing: ModuleStanding; max: numb
         role="img"
         aria-label={text}
         title={text}
-        className="flex h-2 max-w-[110px] flex-1 overflow-hidden rounded-pill bg-[var(--paper-200)]"
+        className="flex h-2 max-w-27.5 flex-1 overflow-hidden rounded-pill bg-neutral-5"
       >
         {parts.map((k) => (
           <span
@@ -76,12 +76,12 @@ export function ActivityBars({ days, height = 28, barWidth = 8 }: { days: Module
   const max = Math.max(1, ...days.map((d) => d.events));
   const total = days.reduce((n, d) => n + d.events, 0);
   return (
-    <span className="inline-flex items-end gap-[3px]" role="img" aria-label={t("modules.activity.aria", { n: total, days: days.length })} data-testid="activity-bars">
+    <span className="inline-flex items-end gap-0.75" role="img" aria-label={t("modules.activity.aria", { n: total, days: days.length })} data-testid="activity-bars">
       {days.map((d) => (
         <i
           key={d.date}
           title={`${d.date} · ${t(d.events === 1 ? "modules.activity.eventOne" : "modules.activity.eventMany", { n: d.events })}`}
-          className="block rounded-[1px]"
+          className="block rounded-1"
           style={{
             width: barWidth,
             height: d.events > 0 ? Math.max(4, (d.events / max) * height) : 3,

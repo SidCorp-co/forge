@@ -2,7 +2,7 @@
 
 import type { Node, Viewport } from "@xyflow/react";
 import { useReactFlow } from "@xyflow/react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { type Language, ViewBar } from "./controls";
 import { EDGE_TYPES } from "./edges";
 import { Frame } from "./frame";
@@ -10,8 +10,8 @@ import { useCanvasModel } from "./model";
 import { type BandRowData, NODE_TYPES, type StepNodeData } from "./nodes";
 import { hue, tint } from "./style";
 import { useCanvasLayout } from "./use-canvas-layout";
-import { focusChrome, litOf, useStepFocus } from "./step-focus";
-import { buildView, type Lod, lodOf } from "./view";
+import { focusChrome, type Lit, litOf, useStepFocus } from "./step-focus";
+import { buildView, type Lod, lodOf, type View } from "./view";
 import type { WorkflowCanvasProps } from "./workflow-canvas";
 
 function nearestCentre(positions: ReadonlyMap<string, { x: number; y: number; width: number; height: number }>, vp: Viewport, el: HTMLElement): string | null {
@@ -62,6 +62,33 @@ function openingView(el: HTMLElement, size: { width: number; height: number }, l
   return { x: (el.clientWidth - size.width * k) / 2, y: 64, zoom: k };
 }
 
+/** What a relayout is keyed on: the language, and each node with whether a step shows in full. */
+const structureOf = (language: Language, view: View) => `${language}|${view.nodes.map((n) => (n.kind === "step" ? `${n.key}:${n.full ? 1 : 0}` : n.key)).join(",")}`;
+
+/** What the canvas marks on its nodes: the selection, what relates to it, the walk, the diff and health. */
+function decorationOf(f: ReturnType<typeof useStepFocus>, lit: Lit | null, o: Pick<WorkflowCanvasProps, "highlight" | "diff" | "health"> & { language: Language }) {
+  return {
+    selected: f.step,
+    selectedEdge: f.edge,
+    relNodes: lit?.nodes ?? null,
+    relEdges: lit?.edges ?? null,
+    traced: o.highlight?.steps ?? null,
+    hits: f.hits,
+    visited: f.walk === null ? new Set<string>() : new Set(f.visited),
+    contract: o.language === "contract",
+    diff: o.diff ?? null,
+    health: o.health ?? null,
+  };
+}
+
+/** The viewport a level of detail opens at, zoomed about the canvas's centre. */
+function levelViewport(l: Lod, vp: Viewport, el: HTMLElement | null): Viewport {
+  const k = l === 0 ? Math.min(vp.zoom, 0.4) : l === 1 ? 0.75 : 1.05;
+  const cx = (el?.clientWidth ?? 0) / 2;
+  const cy = (el?.clientHeight ?? 0) / 2;
+  return { x: cx - ((cx - vp.x) * k) / vp.zoom, y: cy - ((cy - vp.y) * k) / vp.zoom, zoom: k };
+}
+
 /** A design laid out by ELK from its template: bands, stages and steps, levels of detail by zoom. */
 export function FlowCanvas(props: WorkflowCanvasProps) {
   const { doc, template, diff = null, health = null, highlight = null } = props;
@@ -69,35 +96,16 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
   const c = useCanvasModel(doc, template);
   const banded = c.bands.length > 0;
   const f = useStepFocus(c);
-  const { focus, hits, walk } = f;
-  const lit = useMemo(() => litOf(focus, highlight), [focus, highlight]);
+  const lit = useMemo(() => litOf(f.focus, highlight), [f.focus, highlight]);
   const [language, setLanguage] = useState<Language>("business");
   const [lod, setLod] = useState<Lod>(1);
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
-  const [zoom, setZoom] = useState(1);
-  const wrap = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
+  const wrapRef = useRef<HTMLDivElement>(null);
 
   const view = useMemo(() => buildView(c, { lod, expanded, open }), [c, lod, expanded, open]);
-  const structure = useMemo(
-    () => `${language}|${view.nodes.map((n) => (n.kind === "step" ? `${n.key}:${n.full ? 1 : 0}` : n.key)).join(",")}`,
-    [language, view],
-  );
-  const decoration = useMemo(
-    () => ({
-      selected: f.step,
-      selectedEdge: f.edge,
-      relNodes: lit?.nodes ?? null,
-      relEdges: lit?.edges ?? null,
-      traced: highlight?.steps ?? null,
-      hits,
-      visited: walk === null ? new Set<string>() : new Set(f.visited),
-      contract: language === "contract",
-      diff,
-      health,
-    }),
-    [f.step, f.edge, lit, highlight, hits, walk, f.visited, language, diff, health],
-  );
+  const structure = useMemo(() => structureOf(language, view), [language, view]);
+  const decoration = useMemo(() => decorationOf(f, lit, { highlight, language, diff, health }), [f, lit, highlight, language, diff, health]);
 
   const layout = useCanvasLayout({
     c,
@@ -108,21 +116,19 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
     openBands: expanded,
     onToggleBand: toggleBand,
     onLaidOut: (first, size, positions) => {
-      if (!first || !wrap.current) return;
-      const vp = openingView(wrap.current, size, [...(highlight?.steps ?? [])].flatMap((id) => positions.get(view.keyOf.get(id) ?? id) ?? []));
+      if (!first || !wrapRef.current) return;
+      const vp = openingView(wrapRef.current, size, [...(highlight?.steps ?? [])].flatMap((id) => positions.get(view.keyOf.get(id) ?? id) ?? []));
       void rf.setViewport(vp);
-      setZoom(vp.zoom);
     },
   });
 
-  const centerAnchor = useCallback(() => {
-    const el = wrap.current;
-    if (!el || !layout.positions) return null;
-    const best = nearestCentre(layout.positions, rf.getViewport(), el);
+  const centerAnchor = () => {
+    const el = wrapRef.current;
+    const best = el && layout.positions ? nearestCentre(layout.positions, rf.getViewport(), el) : null;
     if (!best) return null;
     const band = view.nodes.find((n) => n.key === best);
     return layout.anchorFor(band?.kind === "band" ? (c.bands.find((b) => b.id === band.band)?.steps ?? [best]) : [best]);
-  }, [layout, rf, view, c]);
+  };
 
   const openBands = (bands: string[], anchorIds: string[]) => {
     layout.keep(layout.anchorFor(anchorIds) ?? centerAnchor());
@@ -193,8 +199,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
     f.setSelection({ edge: e.src[0]?.id ?? key });
   };
 
-  const onMove = (_: unknown, vp: Viewport) => {
-    setZoom(vp.zoom);
+  const onMove = (vp: Viewport) => {
     if (!banded) return;
     const next = lodOf(vp.zoom);
     if (next !== lod) {
@@ -205,15 +210,11 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
 
   const setLevel = (l: Lod) => {
     if (l === lod) return;
-    const el = wrap.current;
+    const el = wrapRef.current;
     if (l > 0 && expanded.size === 0) setExpanded(new Set(c.bands.map((b) => b.id)));
     layout.keep(centerAnchor());
     setLod(l);
-    const vp = rf.getViewport();
-    const k = l === 0 ? Math.min(vp.zoom, 0.4) : l === 1 ? 0.75 : 1.05;
-    const cx = (el?.clientWidth ?? 0) / 2;
-    const cy = (el?.clientHeight ?? 0) / 2;
-    void rf.setViewport({ x: cx - ((cx - vp.x) * k) / vp.zoom, y: cy - ((cy - vp.y) * k) / vp.zoom, zoom: k });
+    void rf.setViewport(levelViewport(l, rf.getViewport(), el));
   };
 
   const allOpen = banded && lod >= 1 && c.bands.every((b) => expanded.has(b.id));
@@ -232,7 +233,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
     <Frame
       layout="flow"
       compact={props.compact ?? false}
-      wrap={wrap}
+      wrap={wrapRef}
       template={template}
       nodes={layout.nodes}
       edges={layout.edges}
@@ -240,12 +241,11 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
       nodeTypes={NODE_TYPES}
       edgeTypes={EDGE_TYPES}
       ready={layout.ready}
-      zoom={zoom}
       minZoom={0.2}
       maxZoom={2}
       onNodeClick={(n) => onNodeClick(null, n)}
       onEdgePick={pickEdge}
-      onMove={(vp) => onMove(null, vp)}
+      onMove={onMove}
       onFit={() => void rf.fitView({ duration: 240, padding: 0.08 })}
       nodeColor={nodeColor}
       nodeStroke={nodeStroke}

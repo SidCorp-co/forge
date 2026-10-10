@@ -1,3 +1,4 @@
+import { RUN_GIVEN_METADATA_KEY } from '@forge/contracts/agent-sessions';
 import {
   LIVE_PIPELINE_RUN_STATUSES,
   TERMINAL_PIPELINE_RUN_STATUSES,
@@ -9,6 +10,7 @@ import {
   type RunAttemptRow,
   type RunEvent,
   type RunEventEntity,
+  type RunGiven,
   type RunLiveState,
   type RunStanding,
   type RunStandingDetail,
@@ -252,7 +254,21 @@ export async function readRunStanding(
       .sort((a, b) => b.n - a.n);
   }
   const { events, hasMore } = await eventsOf(run);
-  return { generatedAt: ctx.now.toISOString(), run, attempts, events, eventsHasMore: hasMore };
+  return {
+    generatedAt: ctx.now.toISOString(),
+    run,
+    given: givenOf(one.metadata),
+    attempts,
+    events,
+    eventsHasMore: hasMore,
+  };
+}
+
+/** What the run was given at its open (`issues/dispatch-given.ts`); null for a run opened before. */
+function givenOf(metadata: unknown): RunGiven | null {
+  const m = metadata && typeof metadata === 'object' ? (metadata as Record<string, unknown>) : {};
+  const given = m[RUN_GIVEN_METADATA_KEY];
+  return given && typeof given === 'object' && !Array.isArray(given) ? (given as RunGiven) : null;
 }
 
 /** What the run read model says `runId` waits on now; null when the project holds no such run. */

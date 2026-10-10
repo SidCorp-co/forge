@@ -11,6 +11,7 @@ import type {
   CoverageIssue,
   RequirementCoverage,
 } from '@forge/contracts/requirements';
+import { verdictExercised } from '@forge/contracts/verdict-identity';
 import { liveAt } from './rules.js';
 
 /**
@@ -202,7 +203,7 @@ export function coverageOf(
       const wording = byId.get(ic.requirementCriterionId);
       const issue = issues.get(ic.issueId);
       if (!wording || wording.code !== bc.code || !issue) return [];
-      const judged = JUDGED.has(ic.verdict);
+      const judged = verdictExercised(ic.verdict);
       const r = ic.verdict === null ? null : resolve(ic.identity, input.liveBuild ?? null);
       return [
         {
@@ -240,13 +241,11 @@ export function coverageOf(
   });
 }
 
-const JUDGED: ReadonlySet<CoverageIssue['verdict']> = new Set(['pass', 'short', 'fail']);
-
 /** Of the live links' judgements that count, the newest. */
 function countedOf(links: readonly CoverageIssue[]): CoverageCount | null {
   let newest: CoverageIssue | null = null;
   for (const l of links) {
-    if (l.stale || !JUDGED.has(l.verdict) || l.verdictAt === null || l.notCounted !== null) {
+    if (l.stale || !verdictExercised(l.verdict) || l.verdictAt === null || l.notCounted !== null) {
       continue;
     }
     if (!newest || (newest.verdictAt as string) < l.verdictAt) newest = l;
@@ -269,7 +268,7 @@ function verdictOf(links: readonly CoverageIssue[], counts: CoverageCount | null
   const current = links.filter((l) => !l.stale);
   if (current.length === 0) return 'stale';
   if (counts) return counts.verdict === 'fail' ? 'failing' : 'passing';
-  const otherBuild = current.some((l) => JUDGED.has(l.verdict) && l.inLiveBuild === false);
+  const otherBuild = current.some((l) => verdictExercised(l.verdict) && l.inLiveBuild === false);
   return otherBuild ? 'not_live' : 'not_judged';
 }
 

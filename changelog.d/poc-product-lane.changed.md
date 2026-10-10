@@ -1,0 +1,1 @@
+**Requirements move on by themselves, and Forge speaks English, briefly.** A ready draft advances unconfirmed and each list row shows its stage. Reporters hear each step, strings stay within twelve words, menus ignore project language, and token projects are editable.

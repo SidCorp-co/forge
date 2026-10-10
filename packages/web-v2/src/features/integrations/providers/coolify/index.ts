@@ -29,7 +29,7 @@ export const coolify: ProviderModule = {
     }),
   },
   target: (config) => urlHost(config.baseUrl),
-  section: () => import("./section").then((m) => ({ default: m.CoolifySection })),
+  section: () => import("./section").then((m) => ({ default: m.CoolifySettings })),
   connectionSection: () =>
     import("./connection-config").then((m) => ({ default: m.CoolifyConnectionConfig })),
 };

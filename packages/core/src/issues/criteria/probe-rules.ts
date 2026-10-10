@@ -22,6 +22,7 @@ import {
   probeRouteFault,
 } from '@forge/contracts/criterion-probes';
 import type { CriterionClass } from '@forge/contracts/issue-design';
+import { verdictEarns, verdictExercised } from '@forge/contracts/verdict-identity';
 import { containsSecret } from '@forge/observability';
 import { jsonPointer } from '../../lib/refusal.js';
 
@@ -30,11 +31,6 @@ export interface ProbeRefusal {
   readonly path: string;
   readonly detail: string;
 }
-
-/** The verdicts that claim the criterion held, and so rest on a probe. */
-const EARNED: ReadonlySet<string> = new Set(['pass', 'short']);
-/** The verdicts taken by running something; `skipped` ran nothing, so it rests on no probe. */
-const EXERCISED: ReadonlySet<string> = new Set(['pass', 'short', 'fail']);
 
 const SECRET_VALUE =
   'this is shaped like a credential (a token, key, password or signed URL), and a probe stores none. The value is not echoed back';
@@ -112,7 +108,7 @@ export function probeRuleFault(facts: ProbeFacts): ProbeRefusal | null {
       detail: `criterion ${criterion} is a code property in the issue's design: the review judges it against the diff, so it keeps no probe of the running build. Leave \`probe\` out, or reclass it (PUT /api/issues/:id/design)`,
     };
   }
-  if (criterionClass === 'observable' && EARNED.has(verdict) && !sent && !kept) {
+  if (criterionClass === 'observable' && verdictEarns(verdict) && !sent && !kept) {
     return {
       code: 'VERDICT_PROBE_REQUIRED',
       path: '/probe',
@@ -124,7 +120,7 @@ export function probeRuleFault(facts: ProbeFacts): ProbeRefusal | null {
 
 /** Whether a verdict that sends no probe rests on the criterion's kept one. */
 export function restsOnKept(verdict: string): boolean {
-  return EXERCISED.has(verdict);
+  return verdictExercised(verdict);
 }
 
 /**
@@ -137,7 +133,7 @@ export function probeNote(
   probeId: string | null,
 ): string | null {
   if (probeId) return probeId;
-  if (!EARNED.has(verdict)) return null;
+  if (!verdictEarns(verdict)) return null;
   return criterionClass === 'code_property'
     ? 'not owed: a code property is judged against the diff'
     : criterionClass === null

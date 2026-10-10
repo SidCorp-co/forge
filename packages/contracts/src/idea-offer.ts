@@ -9,10 +9,14 @@ import { PREVIEW_IDEA_LIMITS } from "./preview.js";
 /** The tool the model calls to offer one. */
 export const IDEA_OFFER_TOOL = "offer_preview" as const;
 
+/** The tool the model calls to send a change the person asked for in chat to their open idea preview (REQ-41 BC-15). */
+export const IDEA_CHANGE_TOOL = "preview_change" as const;
+
 export const IDEA_OFFER_REFUSAL_CODES = [
 	"IDEA_OFFER_INVALID",
 	"IDEA_OFFER_ITEM_UNKNOWN",
 	"IDEA_OFFER_FORBIDDEN",
+	"IDEA_PREVIEW_NOT_OPEN",
 ] as const;
 export type IdeaOfferRefusalCode = (typeof IDEA_OFFER_REFUSAL_CODES)[number];
 
@@ -29,6 +33,12 @@ export const ideaOfferParamsSchema = z.strictObject({
 	brief: z.string().trim().min(1).max(PREVIEW_IDEA_LIMITS.brief),
 });
 export type IdeaOfferParams = z.infer<typeof ideaOfferParamsSchema>;
+
+export const ideaChangeParamsSchema = z.strictObject({
+	about: ITEM_KEY,
+	/** The change the person asked for in this message, in their words. */
+	change: z.string().trim().min(1).max(PREVIEW_IDEA_LIMITS.brief),
+});
 
 export const ideaOfferSchema = z.strictObject({
 	v: z.literal(1),

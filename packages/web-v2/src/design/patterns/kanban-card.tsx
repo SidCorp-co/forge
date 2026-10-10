@@ -1,25 +1,18 @@
 import type { ReactNode } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
-import type { StatusKey, AvatarHue } from "@/design/status";
+import type { AvatarHue } from "@/design/status";
 import { MonoTag } from "@/design/primitives/mono-tag";
 import { Avatar } from "@/design/primitives/avatar";
 import { Stat } from "@/design/primitives/stat";
-import { StatusChip } from "@/design/primitives/status-chip";
+import { ToneBadge } from "@/design/primitives/enum-badge";
 
 export interface KanbanCardProps {
   id: string;
   title: string;
-  status: StatusKey;
-  /** Exact chip text override — e.g. the issue's TRUE lifecycle label
-   *  ("Approved" / "Needs info") instead of the collapsed bucket label. */
-  statusLabel?: string;
-  /** Chip vocabulary (ISS-360): `issue` lifecycle pill vs `session` execution
-   *  chip (used when a live run's status is shown). Defaults to `issue`. */
-  statusDomain?: "issue" | "session";
-  badge?: ReactNode;
+  /** The item's state, a StatusBadge, visible without opening it (ISS-436). */
+  badge: ReactNode;
   cost?: string;
-  /** When true, render a small amber "hold" glyph — the issue is on manual
-   *  hold so the dispatcher won't pick up new jobs (ISS-386). */
+  /** On manual hold: the dispatcher picks up no new job (ISS-386). */
   held?: boolean;
   waitingReason?: string;
   /** A line under the title, e.g. when a row nothing holds last checked in. */
@@ -28,20 +21,8 @@ export interface KanbanCardProps {
   onClick?: () => void;
 }
 
-export function KanbanCard({
-  id,
-  title,
-  status,
-  statusLabel,
-  statusDomain = "issue",
-  badge,
-  cost,
-  held,
-  waitingReason,
-  note,
-  assignee,
-  onClick,
-}: KanbanCardProps) {
+/** One item on a board column: key, title, state. A hairline tile, flat, no shadow. */
+export function KanbanCard({ id, title, badge, cost, held, waitingReason, note, assignee, onClick }: KanbanCardProps) {
   const t = useCopy();
   const label = [
     t("common.kanban.open", { id, title }),
@@ -56,32 +37,19 @@ export function KanbanCard({
       type="button"
       onClick={onClick}
       aria-label={label}
-      className="flex w-full flex-col gap-2.5 rounded-md border border-line bg-surface p-3 text-left shadow-xs transition-colors duration-[120ms] hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+      className="flex w-full flex-col gap-2 border border-line-subtle bg-surface p-3 text-left transition-colors duration-150 hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
     >
       <div className="flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-1.5">
           <MonoTag>{id}</MonoTag>
-          {held && (
-            <span
-              className="inline-flex items-center rounded-pill px-1.5 font-semibold"
-              style={{ fontSize: "var(--text-11)", lineHeight: "16px", color: "var(--amberw-600)", background: "var(--amberw-50)" }}
-              title={t("common.kanban.held")}
-            >
-              ⏸ {t("common.kanban.hold")}
-            </span>
-          )}
+          {held && <ToneBadge tone="you" glyph="⏸" label={t("common.kanban.hold")} title={t("common.kanban.held")} />}
         </span>
         {assignee && <Avatar initials={assignee.initials} hue={assignee.hue} size={20} />}
       </div>
-      <p className="fg-body-sm line-clamp-2 text-fg" style={{ fontWeight: 500 }}>
-        {title}
-      </p>
+      <p className="line-clamp-2 text-13 font-medium text-fg">{title}</p>
       {note && <p className="fg-caption text-muted">{note}</p>}
-      {/* Real status, visible WITHOUT opening the panel (ISS-436). */}
       <div className="flex items-center justify-between gap-2">
-        <span title={waitingReason}>
-          {badge ?? <StatusChip status={status} size="sm" domain={statusDomain} label={statusLabel} />}
-        </span>
+        <span title={waitingReason}>{badge}</span>
         {cost && <Stat icon="dollar">{cost}</Stat>}
       </div>
     </button>

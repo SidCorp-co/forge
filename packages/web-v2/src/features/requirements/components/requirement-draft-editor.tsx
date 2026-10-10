@@ -9,30 +9,22 @@ import { Button, Field, Input, Textarea } from "@/design";
 import { placeRefusals } from "@/lib/api/field-refusals";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useWrite } from "@/lib/api/query-kit";
 import { requirementsApi } from "../api";
+import { requirementKeys } from "../hooks";
 import type { RequirementDetail, RequirementRevision } from "../types";
 
 const DRAFT_FIELDS = { summary: ["/tldr"], criteria: ["/criteria"] } as const;
 
 export function DraftEditor({ projectId, d, draft }: { projectId: string; d: RequirementDetail; draft: RequirementRevision }) {
   const t = useCopy();
-  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [tldr, setTldr] = useState(draft.tldr ?? "");
   const [lines, setLines] = useState(draft.criteria.map((c) => c.body).join("\n"));
-  const save = useMutation({
-    mutationFn: () =>
-      requirementsApi.writeDraft(projectId, d.key, draft, {
-        tldr: tldr.trim(),
-        criteria: lines.split("\n").map((l) => l.trim()).filter(Boolean),
-      }),
-    onSuccess: (detail) => {
-      qc.setQueryData(["requirement", projectId, d.key], detail);
-      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
-      setOpen(false);
-    },
-  });
+  const save = useWrite(
+    () => requirementsApi.writeDraft(projectId, d.key, draft, { tldr: tldr.trim(), criteria: lines.split("\n").map((l) => l.trim()).filter(Boolean) }),
+    { shows: requirementKeys.detail(projectId, d.key), touches: [requirementKeys.list(projectId)] },
+  );
   const refused = placeRefusals(save.error, DRAFT_FIELDS);
   if (!open) {
     return (
@@ -46,7 +38,7 @@ export function DraftEditor({ projectId, d, draft }: { projectId: string; d: Req
       className="grid basis-full gap-2 border-t border-line-subtle pt-2"
       onSubmit={(e) => {
         e.preventDefault();
-        save.mutate();
+        save.mutate(undefined, { onSuccess: () => setOpen(false) });
       }}
     >
       <Field label={t("requirements.draft.summary")} error={refused.at("summary")}>

@@ -9,18 +9,18 @@ import { ROADMAP_HORIZONS } from "@forge/contracts/project-status";
 import Link from "next/link";
 import { type ReactNode, useMemo, useState } from "react";
 import { Button, MonoTag, SegmentedControl, StatusBadge, ViewHeading, WaitingOn } from "@/design";
-import { IssueProgressText } from "@/features/forecast/components/issue-progress";
-import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast/eta";
-import { honestyLine } from "@/features/forecast/honesty";
-import { spanText } from "@/features/forecast/text";
+import { IssueProgressText } from "@/features/forecast";
+import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast";
+import { honestyLine } from "@/features/forecast";
+import { spanText } from "@/features/forecast";
 import { formatDateTime } from "@/lib/i18n/format";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import { issueHref } from "@/lib/routes/issues";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
-import { needsYouHref, needsYouKeyLabel } from "@/features/needs-you/routes";
-import { verifiedSentence } from "@/features/releases/verified";
+import { needsYouHref, needsYouKeyLabel } from "@/features/needs-you";
+import { verifiedSentence } from "@/features/releases";
 import { personHeading, statusMarkdown, waitGroups } from "../report-markdown";
 import { Written } from "@/lib/i18n/written";
 
@@ -35,7 +35,7 @@ function Section({ title, asOf, clock, children, testId }: { title: string; asOf
   const t = useCopy();
   return (
     <section aria-label={title} data-testid={testId} className="break-inside-avoid">
-      <ViewHeading right={<span className="text-12-5 text-muted">{t("status.readAt", { at: formatDateTime(asOf, clock.lang, clock.timeZone) })}</span>}>{title}</ViewHeading>
+      <ViewHeading right={<span className="text-13 text-muted">{t("status.readAt", { at: formatDateTime(asOf, clock.lang, clock.timeZone) })}</span>}>{title}</ViewHeading>
       {children}
     </section>
   );
@@ -44,7 +44,7 @@ function Section({ title, asOf, clock, children, testId }: { title: string; asOf
 const Quiet = ({ children }: { children: React.ReactNode }) => <p className="text-13 text-muted">{children}</p>;
 
 function eta(d: RoadmapItem["delivery"], clock: EtaClock) {
-  return d ? <span className="text-12-5 text-muted">{etaInline(etaOfDelivery(d, clock), clock)}</span> : null;
+  return d ? <span className="text-13 text-muted">{etaInline(etaOfDelivery(d, clock), clock)}</span> : null;
 }
 
 /** The forecast's move and why, its confidence and its release: core's, said in the reader's language. */
@@ -52,7 +52,7 @@ function Honesty({ d, moved, clock }: { d: RoadmapItem["delivery"]; moved: Roadm
   const t = useCopy();
   const line = honestyLine(d, moved, t, clock.lang);
   return line ? (
-    <span className="w-full text-12-5 text-muted" data-testid="forecast-honesty">
+    <span className="w-full text-13 text-muted" data-testid="forecast-honesty">
       {line}
     </span>
   ) : null;
@@ -79,13 +79,13 @@ function Roadmap({ s, slug, clock }: { s: Pick<ProjectStatus, "roadmap">; slug: 
                   {eta(i.delivery, clock)}
                   <Honesty d={i.delivery} moved={i.moved} clock={clock} />
                   {i.deferral ? (
-                    <span className="w-full text-12-5 text-muted">
+                    <span className="w-full text-13 text-muted">
                       {i.deferral.targetPhase
                         ? t("status.deferredTo", { phase: i.deferral.targetPhase, reason: i.deferral.reason })
                         : t("status.deferred", { reason: i.deferral.reason })}
                     </span>
                   ) : null}
-                  {i.state === "draft" ? <span className="w-full text-12-5 text-muted">{t("status.notAgreed")}</span> : null}
+                  {i.state === "draft" ? <span className="w-full text-13 text-muted">{t("status.notAgreed")}</span> : null}
                 </li>
               ))}
             </ul>
@@ -107,17 +107,223 @@ export interface StatusReportProps {
   actions?: ReactNode;
 }
 
-export function StatusReport({ s, slug, clock, window, onWindow, actions }: StatusReportProps) {
+/** What each part of the report reads. */
+interface PartProps {
+  s: ProjectStatus;
+  slug: string;
+  clock: EtaClock;
+}
+
+function ShippedPart({ s, slug, clock }: PartProps) {
+  const t = useCopy();
+  const when = (iso: string) => formatDateTime(iso, clock.lang, clock.timeZone);
+  return (
+  <Section title={t("status.shipped")} asOf={s.shipped.asOf} clock={clock} testId="status-shipped">
+    {s.shipped.releases.length === 0 ? (
+      <Quiet>{t("status.shippedNone", { days: s.days })}</Quiet>
+    ) : (
+      <ul className={LIST}>
+        {s.shipped.releases.map((r) => (
+          <li key={r.version} className={ROW} data-testid="status-shipped-release">
+            <Link href={releaseHref(slug, r.version)} className="font-mono text-13 font-semibold text-link hover:underline">
+              {r.version}
+            </Link>
+            <span className="text-muted">{when(r.releasedAt)}</span>
+            <span className="text-muted">{t("dash.shippedIssues", { n: r.issueCount })}</span>
+            <span className="min-w-0 flex-1 text-muted">{verifiedSentence(r.verified, t)}</span>
+            {r.headline ? <span className="w-full">{r.headline}</span> : null}
+          </li>
+        ))}
+        {s.shipped.releaseCount > s.shipped.releases.length ? (
+          <li className={`${ROW} text-muted`}>{t("status.shippedMore", { n: s.shipped.releaseCount - s.shipped.releases.length })}</li>
+        ) : null}
+      </ul>
+    )}
+    {s.shipped.requirementsShipped.length > 0 ? (
+      <p className="mt-3 text-13">
+        <span className="text-muted">{t("status.requirementsShipped")}: </span>
+        {s.shipped.requirementsShipped.map((r, i) => (
+          <span key={r.key}>
+            {i > 0 ? ", " : ""}
+            <Link href={requirementHref(slug, r.key)} className={KEY_LINK} title={r.title}>
+              {r.key}
+            </Link>
+          </span>
+        ))}
+      </p>
+    ) : null}
+    {(s.shipped.requirementsAwaitingProof ?? []).length > 0 ? (
+      <p className="mt-1.5 text-13" data-testid="status-awaiting-proof">
+        <span className="text-muted">{t("status.requirementsAwaitingProof")}: </span>
+        {(s.shipped.requirementsAwaitingProof ?? []).map((r, i) => (
+          <span key={r.key}>
+            {i > 0 ? ", " : ""}
+            <Link href={requirementHref(slug, r.key)} className={KEY_LINK} title={r.title}>
+              {r.key}
+            </Link>{" "}
+            <span className="text-13 text-muted">{t("status.criteriaProven", { proven: r.proven, total: r.total })}</span>
+          </span>
+        ))}
+      </p>
+    ) : null}
+  </Section>
+  );
+}
+
+function InFlightPart({ s, slug, clock }: PartProps) {
+  const t = useCopy();
+  const label = useLabel();
+  return (
+  <Section title={t("status.inFlight")} asOf={s.inFlight.asOf} clock={clock} testId="status-in-flight">
+    <p className="text-13">
+      <span className="font-semibold">{t("status.openIssues", { n: s.inFlight.open })}</span>
+      {s.inFlight.byStatus.length > 0 ? <span className="text-muted"> · {s.inFlight.byStatus.map((b) => `${label("issueStatus", b.status)} ${b.count}`).join(" · ")}</span> : null}
+    </p>
+    {s.inFlight.truncated ? <Quiet>{t("status.truncated")}</Quiet> : null}
+    <h3 className="mt-3 mb-1.5 text-13 font-semibold">{t("status.running")}</h3>
+    {s.inFlight.running.length === 0 ? (
+      <Quiet>{t("status.runningNone")}</Quiet>
+    ) : (
+      <ul className={LIST}>
+        {s.inFlight.running.map((i) => (
+          <li key={i.key} className={ROW}>
+            <Link href={issueHref(slug, i.key)} className={KEY_LINK}>
+              {i.key}
+            </Link>
+            <Written className="min-w-0 flex-1" text={i.title} lang={i.titleLang} />
+            <StatusBadge family="issue" value={i.status} />
+          </li>
+        ))}
+      </ul>
+    )}
+  </Section>
+  );
+}
+
+function WaitsPart({ s, slug, clock }: PartProps) {
   const t = useCopy();
   const language = useInterfaceLanguage();
+  const label = useLabel();
+  return (
+  <Section title={t("status.waits")} asOf={s.waits.asOf} clock={clock} testId="status-waits">
+    {s.waits.people.length === 0 ? (
+      <Quiet>{t("status.waitsNone")}</Quiet>
+    ) : (
+      <div className="grid gap-4">
+        {waitGroups(s.waits).map((g) => (
+          <div key={g.person ? `${g.person.kind}:${g.person.who}` : "all"} data-testid="status-wait-person">
+            {g.person ? <h3 className="mb-1.5 text-13 font-semibold text-fg">{personHeading(g.person, t, language)}</h3> : null}
+            <ul className={LIST}>
+              {g.rows.map((x) => (
+                <li key={`${x.area}:${x.key}`} className={ROW}>
+                  <Link href={needsYouHref(slug, x)} className={KEY_LINK}>
+                    {needsYouKeyLabel(x, (a) => label("needsYouArea", a))}
+                  </Link>
+                  <Written className="min-w-0 flex-1" text={said(x.says.title, language)} lang={x.titleLang} />
+                  <span className="text-13 text-muted">{said(x.waitingOn.says.act, language)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+        {s.waits.peopleCount > s.waits.people.length ? <p className="text-13 text-muted">{t("status.waitsMore", { n: s.waits.peopleCount - s.waits.people.length })}</p> : null}
+      </div>
+    )}
+  </Section>
+  );
+}
+
+function RequirementsPart({ s, slug, clock }: PartProps) {
+  const t = useCopy();
+  return (
+  <Section title={t("status.requirements")} asOf={s.requirements.asOf} clock={clock} testId="status-requirements">
+    <p className="mb-2 text-13 font-semibold" data-testid="status-criteria-proven">
+      {t("status.criteriaProven", { proven: s.requirements.proven, total: s.requirements.total })}
+    </p>
+    {s.requirements.items.length === 0 ? (
+      <Quiet>{t("status.requirementsNone")}</Quiet>
+    ) : (
+      <ul className={LIST}>
+        {s.requirements.items.map((r) => (
+          <li key={r.key} className={ROW}>
+            <Link href={requirementHref(slug, r.key)} className={KEY_LINK}>
+              {r.key}
+            </Link>
+            <span className="min-w-0 flex-1">{r.title}</span>
+            <StatusBadge family="requirement" value={r.state} />
+            <span className="text-13 text-muted">{t("status.criteriaProven", { proven: r.criteria.proven, total: r.criteria.total })}</span>
+            <IssueProgressText progress={r.progress} className="text-13 text-muted" />
+            {eta(r.delivery, clock)}
+            <Honesty d={r.delivery} moved={r.moved} clock={clock} />
+          </li>
+        ))}
+      </ul>
+    )}
+  </Section>
+  );
+}
+
+function NextReleasePart({ s, slug, clock }: PartProps) {
+  const t = useCopy();
+  const label = useLabel();
+  return (
+  <Section title={t("status.nextRelease")} asOf={s.nextRelease.asOf} clock={clock} testId="status-next-release">
+    {s.nextRelease.version === null ? (
+      <Quiet>{t("status.nextReleaseNone")}</Quiet>
+    ) : (
+      <p className="flex flex-wrap items-baseline gap-x-3 text-13">
+        <Link href={releaseHref(slug, s.nextRelease.version)} className="font-mono text-13 font-semibold text-link hover:underline">
+          {s.nextRelease.version}
+        </Link>
+        {s.nextRelease.state && s.nextRelease.state !== "draft" ? <span className="text-muted">{label("releaseState", s.nextRelease.state)}</span> : null}
+        <IssueProgressText progress={s.nextRelease.progress} className="text-muted" />
+        {s.nextRelease.forecast?.delivery ? eta(s.nextRelease.forecast.delivery, clock) : null}
+        {s.nextRelease.turn ? <WaitingOn w={{ kind: "person", who: s.nextRelease.turn.who, act: s.nextRelease.turn.act, says: s.nextRelease.turn.says }} /> : null}
+        {s.nextRelease.behind ? (
+          <span className="text-muted" data-testid="status-next-behind">
+            {t("status.behind", { version: s.nextRelease.behind.version, n: s.nextRelease.behind.issueCount })}
+          </span>
+        ) : null}
+      </p>
+    )}
+  </Section>
+  );
+}
+
+function LatePart({ s, clock }: Omit<PartProps, "slug">) {
+  const t = useCopy();
+  return (
+  <Section title={t("status.late")} asOf={s.late.asOf} clock={clock} testId="status-late">
+    {s.late.items.length === 0 ? (
+      <Quiet>{t("status.lateNone")}</Quiet>
+    ) : (
+      <ul className={LIST}>
+        {s.late.items.map((l) => (
+          <li key={`${l.kind}:${l.key}`} className={ROW}>
+            <MonoTag>{l.key}</MonoTag>
+            <span className="min-w-0 flex-1">{l.title}</span>
+            <span className="text-13 text-danger">{t(`status.late.${l.late.reason}`, { by: spanText(l.late.byMinutes, clock.lang) })}</span>
+          </li>
+        ))}
+      </ul>
+    )}
+  </Section>
+  );
+}
+
+export function StatusReport({ s, slug, clock, window, onWindow, actions }: StatusReportProps) {
+  const t = useCopy();
   const label = useLabel();
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
   const markdown = useMemo(() => statusMarkdown(s, { t, label, clock }), [s, t, label, clock]);
   const when = (iso: string) => formatDateTime(iso, clock.lang, clock.timeZone);
   const copy = () => {
-    const done = navigator.clipboard?.writeText(markdown);
-    if (!done) return setCopied("failed");
-    done.then(
+    // a page served without a secure context has no clipboard to write to
+    if (!globalThis.isSecureContext) {
+      setCopied("failed");
+      return;
+    }
+    navigator.clipboard.writeText(markdown).then(
       () => setCopied("done"),
       () => setCopied("failed"),
     );
@@ -158,173 +364,23 @@ export function StatusReport({ s, slug, clock, window, onWindow, actions }: Stat
         ) : null}
       </header>
 
-      <Section title={t("status.shipped")} asOf={s.shipped.asOf} clock={clock} testId="status-shipped">
-        {s.shipped.releases.length === 0 ? (
-          <Quiet>{t("status.shippedNone", { days: s.days })}</Quiet>
-        ) : (
-          <ul className={LIST}>
-            {s.shipped.releases.map((r) => (
-              <li key={r.version} className={ROW} data-testid="status-shipped-release">
-                <Link href={releaseHref(slug, r.version)} className="font-mono text-13 font-semibold text-link hover:underline">
-                  {r.version}
-                </Link>
-                <span className="text-muted">{when(r.releasedAt)}</span>
-                <span className="text-muted">{t("dash.shippedIssues", { n: r.issueCount })}</span>
-                <span className="min-w-0 flex-1 text-muted">{verifiedSentence(r.verified, t)}</span>
-                {r.headline ? <span className="w-full">{r.headline}</span> : null}
-              </li>
-            ))}
-            {s.shipped.releaseCount > s.shipped.releases.length ? (
-              <li className={`${ROW} text-muted`}>{t("status.shippedMore", { n: s.shipped.releaseCount - s.shipped.releases.length })}</li>
-            ) : null}
-          </ul>
-        )}
-        {s.shipped.requirementsShipped.length > 0 ? (
-          <p className="mt-3 text-13">
-            <span className="text-muted">{t("status.requirementsShipped")}: </span>
-            {s.shipped.requirementsShipped.map((r, i) => (
-              <span key={r.key}>
-                {i > 0 ? ", " : ""}
-                <Link href={requirementHref(slug, r.key)} className={KEY_LINK} title={r.title}>
-                  {r.key}
-                </Link>
-              </span>
-            ))}
-          </p>
-        ) : null}
-        {(s.shipped.requirementsAwaitingProof ?? []).length > 0 ? (
-          <p className="mt-1.5 text-13" data-testid="status-awaiting-proof">
-            <span className="text-muted">{t("status.requirementsAwaitingProof")}: </span>
-            {(s.shipped.requirementsAwaitingProof ?? []).map((r, i) => (
-              <span key={r.key}>
-                {i > 0 ? ", " : ""}
-                <Link href={requirementHref(slug, r.key)} className={KEY_LINK} title={r.title}>
-                  {r.key}
-                </Link>{" "}
-                <span className="text-12-5 text-muted">{t("status.criteriaProven", { proven: r.proven, total: r.total })}</span>
-              </span>
-            ))}
-          </p>
-        ) : null}
-      </Section>
+      <ShippedPart s={s} slug={slug} clock={clock} />
 
-      <Section title={t("status.inFlight")} asOf={s.inFlight.asOf} clock={clock} testId="status-in-flight">
-        <p className="text-13">
-          <span className="font-semibold">{t("status.openIssues", { n: s.inFlight.open })}</span>
-          {s.inFlight.byStatus.length > 0 ? <span className="text-muted"> · {s.inFlight.byStatus.map((b) => `${label("issueStatus", b.status)} ${b.count}`).join(" · ")}</span> : null}
-        </p>
-        {s.inFlight.truncated ? <Quiet>{t("status.truncated")}</Quiet> : null}
-        <h3 className="mt-3 mb-1.5 text-13 font-semibold">{t("status.running")}</h3>
-        {s.inFlight.running.length === 0 ? (
-          <Quiet>{t("status.runningNone")}</Quiet>
-        ) : (
-          <ul className={LIST}>
-            {s.inFlight.running.map((i) => (
-              <li key={i.key} className={ROW}>
-                <Link href={issueHref(slug, i.key)} className={KEY_LINK}>
-                  {i.key}
-                </Link>
-                <Written className="min-w-0 flex-1" text={i.title} lang={i.titleLang} />
-                <StatusBadge family="issue" value={i.status} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
+      <InFlightPart s={s} slug={slug} clock={clock} />
 
-      <Section title={t("status.waits")} asOf={s.waits.asOf} clock={clock} testId="status-waits">
-        {s.waits.people.length === 0 ? (
-          <Quiet>{t("status.waitsNone")}</Quiet>
-        ) : (
-          <div className="grid gap-4">
-            {waitGroups(s.waits).map((g) => (
-              <div key={g.person ? `${g.person.kind}:${g.person.who}` : "all"} data-testid="status-wait-person">
-                {g.person ? <h3 className="mb-1.5 text-13 font-semibold text-fg">{personHeading(g.person, t, language)}</h3> : null}
-                <ul className={LIST}>
-                  {g.rows.map((x) => (
-                    <li key={`${x.area}:${x.key}`} className={ROW}>
-                      <Link href={needsYouHref(slug, x)} className={KEY_LINK}>
-                        {needsYouKeyLabel(x, (a) => label("needsYouArea", a))}
-                      </Link>
-                      <Written className="min-w-0 flex-1" text={said(x.says.title, language)} lang={x.titleLang} />
-                      <span className="text-12-5 text-muted">{said(x.waitingOn.says.act, language)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-            {s.waits.peopleCount > s.waits.people.length ? <p className="text-13 text-muted">{t("status.waitsMore", { n: s.waits.peopleCount - s.waits.people.length })}</p> : null}
-          </div>
-        )}
-      </Section>
+      <WaitsPart s={s} slug={slug} clock={clock} />
 
-      <Section title={t("status.requirements")} asOf={s.requirements.asOf} clock={clock} testId="status-requirements">
-        <p className="mb-2 text-13 font-semibold" data-testid="status-criteria-proven">
-          {t("status.criteriaProven", { proven: s.requirements.proven, total: s.requirements.total })}
-        </p>
-        {s.requirements.items.length === 0 ? (
-          <Quiet>{t("status.requirementsNone")}</Quiet>
-        ) : (
-          <ul className={LIST}>
-            {s.requirements.items.map((r) => (
-              <li key={r.key} className={ROW}>
-                <Link href={requirementHref(slug, r.key)} className={KEY_LINK}>
-                  {r.key}
-                </Link>
-                <span className="min-w-0 flex-1">{r.title}</span>
-                <StatusBadge family="requirement" value={r.state} />
-                <span className="text-12-5 text-muted">{t("status.criteriaProven", { proven: r.criteria.proven, total: r.criteria.total })}</span>
-                <IssueProgressText progress={r.progress} className="text-12-5 text-muted" />
-                {eta(r.delivery, clock)}
-                <Honesty d={r.delivery} moved={r.moved} clock={clock} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
+      <RequirementsPart s={s} slug={slug} clock={clock} />
 
-      <Section title={t("status.nextRelease")} asOf={s.nextRelease.asOf} clock={clock} testId="status-next-release">
-        {s.nextRelease.version === null ? (
-          <Quiet>{t("status.nextReleaseNone")}</Quiet>
-        ) : (
-          <p className="flex flex-wrap items-baseline gap-x-3 text-13">
-            <Link href={releaseHref(slug, s.nextRelease.version)} className="font-mono text-13 font-semibold text-link hover:underline">
-              {s.nextRelease.version}
-            </Link>
-            {s.nextRelease.state && s.nextRelease.state !== "draft" ? <span className="text-muted">{label("releaseState", s.nextRelease.state)}</span> : null}
-            <IssueProgressText progress={s.nextRelease.progress} className="text-muted" />
-            {s.nextRelease.forecast?.delivery ? eta(s.nextRelease.forecast.delivery, clock) : null}
-            {s.nextRelease.turn ? <WaitingOn w={{ kind: "person", who: s.nextRelease.turn.who, act: s.nextRelease.turn.act, says: s.nextRelease.turn.says }} /> : null}
-            {s.nextRelease.behind ? (
-              <span className="text-muted" data-testid="status-next-behind">
-                {t("status.behind", { version: s.nextRelease.behind.version, n: s.nextRelease.behind.issueCount })}
-              </span>
-            ) : null}
-          </p>
-        )}
-      </Section>
+      <NextReleasePart s={s} slug={slug} clock={clock} />
 
-      <Section title={t("status.late")} asOf={s.late.asOf} clock={clock} testId="status-late">
-        {s.late.items.length === 0 ? (
-          <Quiet>{t("status.lateNone")}</Quiet>
-        ) : (
-          <ul className={LIST}>
-            {s.late.items.map((l) => (
-              <li key={`${l.kind}:${l.key}`} className={ROW}>
-                <MonoTag>{l.key}</MonoTag>
-                <span className="min-w-0 flex-1">{l.title}</span>
-                <span className="text-12-5 text-danger">{t(`status.late.${l.late.reason}`, { by: spanText(l.late.byMinutes, clock.lang) })}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
+      <LatePart s={s} clock={clock} />
 
       <Section title={t("status.roadmap")} asOf={s.roadmap.asOf} clock={clock} testId="status-roadmap">
         <Roadmap s={s} slug={slug} clock={clock} />
       </Section>
 
-      <p className="text-12-5 text-muted">{t("status.forecastNote")}</p>
+      <p className="text-13 text-muted">{t("status.forecastNote")}</p>
     </article>
   );
 }

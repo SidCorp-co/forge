@@ -41,6 +41,26 @@ export const QUESTION_REFUSAL_STATUSES = {
 } as const satisfies RefusalStatuses<QuestionRefusalCode>;
 
 /**
+ * What every question read carries about its open round, whichever rounds it lists beside: the issue and
+ * single-question reads list every round as `steps`, the project page only the last as `currentStep`.
+ * A reader reaches the open round through these fields, never through one read's own listing (FB-80:
+ * the issue composer read `currentStep`, which the issue read never carries, and offered no question).
+ */
+export interface QuestionRoundFacts {
+	answerShape: "choice" | "free_text";
+	/** The open round's number, which an answer or a decision settling it names; 0 with no round. */
+	round: number;
+	prompt: string;
+	askedAt: string;
+	/** What a free-text round asks for; empty on a choice. */
+	needed: string;
+	/** The option a choice round recommends; empty on free text. */
+	recommendedOptionId: string;
+	/** The viewer may not answer this free-text round. */
+	locked: boolean;
+}
+
+/**
  * What an answer says the issue still waits on, stored on the round it answers (ISS-257). It keeps
  * the answer from returning the issue to the status its park left; `blockedBy` is the issue whose
  * `blocks` edge the answer wrote onto it.

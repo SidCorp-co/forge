@@ -198,23 +198,23 @@ export function useCanvasLayout(input: {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const initialized = useNodesInitialized();
   const [placed, setPlaced] = useState<{ structure: string; at: Placed; positions: Map<string, { x: number; y: number; width: number; height: number }>; width: number } | null>(null);
-  const pending = useRef<string | null>(null);
-  const anchor = useRef<Anchor | null>(null);
-  const centerOn = useRef<string | null>(null);
-  const first = useRef(true);
-  const toggle = useRef(input.onToggleBand);
-  toggle.current = input.onToggleBand;
-  const laidOut = useRef(input.onLaidOut);
-  laidOut.current = input.onLaidOut;
+  const pendingRef = useRef<string | null>(null);
+  const anchorRef = useRef<Anchor | null>(null);
+  const centerOnRef = useRef<string | null>(null);
+  const firstRef = useRef(true);
+  const toggleRef = useRef(input.onToggleBand);
+  toggleRef.current = input.onToggleBand;
+  const laidOutRef = useRef(input.onLaidOut);
+  laidOutRef.current = input.onLaidOut;
 
   // The structure and decoration effects each fire on their own trigger and read the rest as it is now.
-  const latest = useRef({ c, view, decoration });
-  latest.current = { c, view, decoration };
+  const latestRef = useRef({ c, view, decoration });
+  latestRef.current = { c, view, decoration };
 
   useEffect(() => {
     if (!structure) return;
-    const now = latest.current;
-    pending.current = structure;
+    const now = latestRef.current;
+    pendingRef.current = structure;
     setNodes((prev) => {
       const at = new Map(prev.map((n) => [n.id, n.position]));
       return now.view.nodes.map((n) => ({
@@ -229,7 +229,7 @@ export function useCanvasLayout(input: {
   }, [structure, setNodes]);
 
   useEffect(() => {
-    const now = latest.current;
+    const now = latestRef.current;
     setNodes((prev) =>
       prev.map((n) => {
         if (n.type === "bandRow") return n;
@@ -245,14 +245,14 @@ export function useCanvasLayout(input: {
       const keys = [...new Set(ids.map((id) => view.keyOf.get(id) ?? id))];
       const ns = keys.map((k) => rf.getNode(k)).filter((n): n is Node => Boolean(n));
       if (ns.length === 0) return null;
-      const n = ns[0] as Node;
+      const n = ns[0];
       return { ids, sx: (n.position.x + (n.measured?.width ?? 250) / 2) * vp.zoom + vp.x, sy: n.position.y * vp.zoom + vp.y };
     },
     [rf, view],
   );
 
   useEffect(() => {
-    if (!initialized || pending.current !== structure) return;
+    if (!initialized || pendingRef.current !== structure) return;
     const token = structure;
     const sizes = new Map(
       rf.getNodes().filter((n) => n.type !== "bandRow").map((n) => [n.id, { width: n.measured?.width ?? 250, height: n.measured?.height ?? 60 }]),
@@ -273,13 +273,13 @@ export function useCanvasLayout(input: {
       partition: banded ? (key) => order.get(bandOfKey(key) ?? "") ?? 0 : null,
       direction,
     }).then((at) => {
-      if (pending.current !== token) return;
-      pending.current = null;
+      if (pendingRef.current !== token) return;
+      pendingRef.current = null;
       const left = banded ? GUT : 24;
       const positions = new Map([...at.nodes].map(([k, p]) => [k, { ...p, x: p.x + left, y: p.y + TOP }]));
       const width = Math.max(at.width + left + 150, 720);
       const height = at.height + TOP + 36;
-      const rows = banded ? bandRows(c, positions, bandOfKey, { width, height }, input.openBands, (b) => toggle.current(b)) : [];
+      const rows = banded ? bandRows(c, positions, bandOfKey, { width, height }, input.openBands, (b) => toggleRef.current(b)) : [];
       setNodes((prev) => [
         ...rows,
         ...prev.filter((n) => n.type !== "bandRow").map((n) => {
@@ -289,10 +289,10 @@ export function useCanvasLayout(input: {
       ]);
       setPlaced({ structure: token, at, positions, width });
       const vp = rf.getViewport();
-      const a = anchor.current;
-      anchor.current = null;
-      laidOut.current(first.current, { width, height }, positions);
-      first.current = false;
+      const a = anchorRef.current;
+      anchorRef.current = null;
+      laidOutRef.current(firstRef.current, { width, height }, positions);
+      firstRef.current = false;
       if (a) {
         const keys = [...new Set(a.ids.map((id) => view.keyOf.get(id) ?? id))];
         const ps = keys.map((k) => positions.get(k)).filter((p): p is NonNullable<typeof p> => Boolean(p));
@@ -303,8 +303,8 @@ export function useCanvasLayout(input: {
           void rf.setViewport({ x: a.sx - ((x0 + x1) / 2) * vp.zoom, y: a.sy - y0 * vp.zoom, zoom: vp.zoom });
         }
       }
-      const focus = centerOn.current;
-      centerOn.current = null;
+      const focus = centerOnRef.current;
+      centerOnRef.current = null;
       const p = focus ? positions.get(view.keyOf.get(focus) ?? focus) : null;
       if (p) void rf.setCenter(p.x + p.width / 2, p.y + p.height / 2, { zoom: vp.zoom, duration: 320 });
     });
@@ -323,12 +323,12 @@ export function useCanvasLayout(input: {
     positions: placed?.positions ?? null,
     /** Keep what the eye is on in place across the next relayout. */
     keep: (a: Anchor | null) => {
-      anchor.current = a;
+      anchorRef.current = a;
     },
     /** Centre on this step once the next relayout lands; with none coming, now. */
     center: (id: string, relayout: boolean) => {
       if (relayout) {
-        centerOn.current = id;
+        centerOnRef.current = id;
         return;
       }
       const p = placed?.positions.get(view.keyOf.get(id) ?? id);

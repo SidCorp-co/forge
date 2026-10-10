@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon, Spinner } from "@/design";
-import type { AgentSessionDisplayStatus } from "@/features/sessions/types";
+import type { AgentSessionDisplayStatus } from "@/features/sessions";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { ConversationItem, RenderBlock } from "../types";
@@ -83,7 +83,7 @@ export function TurnStage({
       style={{ fontSize: "var(--text-12)" }}
       aria-live="polite"
     >
-      <span className="flex h-[14px] w-[14px] flex-none items-center justify-center">
+      <span className="flex h-3.5 w-3.5 flex-none items-center justify-center">
         {stage === "failed" ? (
           <Icon name="alert" size={12} className="text-danger" />
         ) : (

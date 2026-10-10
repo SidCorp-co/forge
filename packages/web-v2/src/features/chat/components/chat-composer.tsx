@@ -81,7 +81,7 @@ export function ReadOnlyComposerNote({ sticky = true }: { sticky?: boolean }) {
 }
 
 const FRAME =
-  "flex w-full flex-col rounded-2xl border bg-surface transition-shadow focus-within:border-[color:var(--link)] focus-within:shadow-[var(--shadow-focus)]";
+  "flex w-full flex-col rounded-md border bg-surface transition-shadow focus-within:border-link focus-within:shadow-focus";
 
 // the hint is a line of its own under the box, never inside the footer row, where it ran over
 // the footer's own controls in a narrow dock (REQ-11 BC-8); a narrow composer keeps it on Send's tooltip
@@ -141,7 +141,7 @@ export function ChatComposer(props: ChatComposerProps) {
   const hint = hintLine(files, frameWidth, t);
 
   return (
-    <ComposerWidthContext.Provider value={frameWidth}>
+    <ComposerWidthContext value={frameWidth}>
       <div className={bandClass(props.sticky ?? true, "px-4 py-3 sm:px-6")} onPaste={staged.onPaste}>
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 xl:max-w-4xl">
           {staged.refusals.length > 0 && <RefusalBanner refusals={staged.refusals} />}
@@ -152,7 +152,7 @@ export function ChatComposer(props: ChatComposerProps) {
               // react-dropzone marks its root aria-disabled whenever dropping is off, and this root
               // holds the footer, Stop included; each control states its own disabled state instead.
               "aria-disabled": undefined,
-              className: `${FRAME} ${isDragActive ? "border-dashed border-[color:var(--link)]" : "border-line-strong"}`,
+              className: `${FRAME} ${isDragActive ? "border-dashed border-link" : "border-line-strong"}`,
             })}
           >
             {attachments && (
@@ -164,7 +164,7 @@ export function ChatComposer(props: ChatComposerProps) {
             <MessageBox
               value={value}
               onChange={setValue}
-              onEnter={submit}
+              onEnter={() => void submit()}
               disabled={disabled}
               placeholder={disabled ? t("shell.composer.offline") : (props.placeholder ?? t("shell.composer.placeholder"))}
             />
@@ -179,7 +179,7 @@ export function ChatComposer(props: ChatComposerProps) {
               onStop={props.onStop}
               stopping={props.stopping}
               canSend={canSend}
-              onSend={submit}
+              onSend={() => void submit()}
             />
           </div>
 
@@ -191,7 +191,7 @@ export function ChatComposer(props: ChatComposerProps) {
         </div>
       </div>
       {sketching && <SketchPad open onClose={() => setSketching(false)} onAttach={(file) => staged.take([file])} />}
-    </ComposerWidthContext.Provider>
+    </ComposerWidthContext>
   );
 }
 
@@ -250,9 +250,9 @@ function ComposerFooter(p: {
       <div className="ml-auto flex flex-none items-center gap-2.5">
         {/* Stop is offered on the turn, not on this browser's send: `onStop` is given only while there is a turn to end. */}
         {p.onStop ? (
-          <Button variant="secondary" size="md" icon="stop" aria-label={t("shell.composer.stop")} className="h-11 w-11 flex-none rounded-full p-0" loading={p.stopping} onClick={p.onStop} />
+          <Button variant="secondary" size="md" icon="stop" aria-label={t("shell.composer.stop")} className="h-11 w-11 flex-none rounded-pill p-0" loading={p.stopping} onClick={p.onStop} />
         ) : (
-          <Button variant="primary" size="md" icon="arrowRight" aria-label={t("shell.composer.send")} title={t("shell.composer.sendTitle", { keys: t("shell.composer.keys") })} className="h-11 w-11 flex-none rounded-full p-0" loading={p.busy} disabled={!p.canSend} onClick={p.onSend} />
+          <Button variant="primary" size="md" icon="arrowRight" aria-label={t("shell.composer.send")} title={t("shell.composer.sendTitle", { keys: t("shell.composer.keys") })} className="h-11 w-11 flex-none rounded-pill p-0" loading={p.busy} disabled={!p.canSend} onClick={p.onSend} />
         )}
       </div>
     </div>

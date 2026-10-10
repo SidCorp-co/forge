@@ -4,7 +4,7 @@
 // more click (ISS-1310). The park view is read once and every surface below takes it from here.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { IssueMove } from "@forge/contracts/issue-machine";
 import type { MenuItem } from "@/design";
 import type { Copy } from "@/lib/i18n/product-copy";
@@ -28,20 +28,18 @@ export function useIssuePark(
 	projectId?: string,
 ): ParkReading {
 	const qc = useQueryClient();
-	const key = useMemo(() => parkQueryKey(issueId, projectId), [issueId, projectId]);
-	const q = useQuery({
-		queryKey: key,
-		queryFn: () => issueDetailApi.getPark(issueId as string, projectId),
-		enabled: Boolean(issueId),
-	});
-	const readAt = useRef<{ key: readonly unknown[]; status: IssueStatus | undefined }>({ key, status });
+	const key = parkQueryKey(issueId, projectId);
+	const keyText = JSON.stringify(key);
+	const q = useQuery({ queryKey: key, queryFn: () => issueDetailApi.getPark(issueId as string, projectId), enabled: Boolean(issueId) });
+	// a status move on the same issue is a new reading of its park
+	const readAtRef = useRef({ keyText, status });
 	useEffect(() => {
-		const prior = readAt.current;
-		readAt.current = { key, status };
-		if (prior.key === key && prior.status !== undefined && status !== undefined && prior.status !== status) {
-			void qc.invalidateQueries({ queryKey: key, exact: true });
+		const prior = readAtRef.current;
+		readAtRef.current = { keyText, status };
+		if (prior.keyText === keyText && prior.status !== undefined && status !== undefined && prior.status !== status) {
+			void qc.invalidateQueries({ queryKey: JSON.parse(keyText) as readonly unknown[], exact: true });
 		}
-	}, [key, status, qc]);
+	}, [keyText, status, qc]);
 	if (q.isError) return { state: "error" };
 	if (q.isPending || !q.data) return { state: "loading" };
 	return { state: "ready", park: q.data.park };

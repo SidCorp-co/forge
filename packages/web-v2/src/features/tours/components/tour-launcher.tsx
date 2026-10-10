@@ -55,16 +55,16 @@ export function TourLauncher() {
   const search = useLocationSearch();
   const router = useRouter();
   const start = useStartTour();
-  const started = useRef<string | null>(null);
+  const startedRef = useRef<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(search);
     const tour = tourById(params.get("tour"));
     if (!tour || !onTourRoute(tour, pathname, params)) return;
     const once = `${pathname}?${search}`;
-    if (started.current === once) return;
+    if (startedRef.current === once) return;
     return whenAnchored(tour, () => {
-      started.current = once;
+      startedRef.current = once;
       params.delete("tour");
       const rest = params.toString();
       router.replace(rest ? `${pathname}?${rest}` : pathname, { scroll: false });

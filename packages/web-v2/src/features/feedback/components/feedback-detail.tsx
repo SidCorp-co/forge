@@ -26,22 +26,22 @@ import {
   useUrlTab,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { FeedbackChecklists } from "@/features/checklists/components/item-checklists";
-import { IntakeDraft } from "@/features/intake/components/intake-draft";
-import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
-import { ReproduceSection } from "@/features/previews/reproduce-section";
-import { useMockups } from "@/features/mockups/hooks";
+import { FeedbackChecklists } from "@/features/checklists";
+import { IntakeDraft } from "@/features/intake";
+import { MockupList } from "@/features/mockups";
+import { useMockups } from "@/features/mockups";
+import { Reproduction } from "@/features/previews";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
-import { useFeedbackForecasts } from "@/features/forecast/hooks";
+import { useFeedbackForecasts } from "@/features/forecast";
 import { useFeedbackItem } from "../hooks";
 import type { FeedbackView } from "../types";
 import { FeedbackActions, Proposals } from "./feedback-actions";
 import { FeedbackAnswer } from "./feedback-answer";
 import { FeedbackAttachments } from "./feedback-attachments";
 import { FeedbackEvidence } from "./feedback-evidence";
-import { FeedbackBanner, FeedbackFacts } from "./feedback-facts";
+import { FeedbackBanner, LinkedFeedback } from "./feedback-facts";
 import { Messages } from "./feedback-messages";
 import { FeedbackRoom } from "./feedback-room";
 
@@ -61,7 +61,7 @@ export function FeedbackPrimary({ f, onAct }: { f: FeedbackView; onAct: () => vo
 }
 
 function Heading({ children }: { children: ReactNode }) {
-  return <h2 className="mb-3 text-15 font-semibold leading-snug text-fg">{children}</h2>;
+  return <h2 className="mb-3 text-14 font-semibold leading-snug text-fg">{children}</h2>;
 }
 
 function Body({ projectId, f }: { projectId: string; f: FeedbackView }) {
@@ -72,7 +72,7 @@ function Body({ projectId, f }: { projectId: string; f: FeedbackView }) {
       {f.redacted ? (
         <p className="text-13 text-subtle">{t("feedback.body.redacted")}</p>
       ) : (
-        <p className="max-w-[80ch] whitespace-pre-wrap text-14 leading-relaxed" data-testid="feedback-body" lang={f.writtenLang ?? undefined}>
+        <p className="max-w-2xl whitespace-pre-wrap text-14 leading-relaxed" data-testid="feedback-body" lang={f.writtenLang ?? undefined}>
           {f.body?.trim() ? (
             <>
               {f.body}
@@ -162,7 +162,7 @@ export function FeedbackPage({
             rail={
               <FactsRail>
                 {/* the forecast is the answer line's, above: the rail does not say when a second time */}
-                <FeedbackFacts f={f} slug={slug} developer={developer} />
+                <LinkedFeedback f={f} slug={slug} developer={developer} />
               </FactsRail>
             }
           >
@@ -172,7 +172,7 @@ export function FeedbackPage({
             <ViewBar view={view} onView={onView} />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="feedback-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("feedback.tab.overview")}>
-              {tab === "mockups" ? <MockupsPanel projectId={projectId} target={{ type: "feedback", key: f.key }} canPropose={!f.redacted} /> : null}
+              {tab === "mockups" ? <MockupList projectId={projectId} target={{ type: "feedback", key: f.key }} canPropose={!f.redacted} /> : null}
               {tab === "overview" ? (
                 <div className="grid gap-8" data-testid="view-overview">
                   <FeedbackEvidence projectId={projectId} slug={slug} f={f} />
@@ -185,7 +185,7 @@ export function FeedbackPage({
                     </section>
                   ) : null}
                   <Body projectId={projectId} f={f} />
-                  <ReproduceSection
+                  <Reproduction
                     projectId={projectId}
                     fbKey={f.key}
                     carriers={f.route?.route === "issue" ? f.route.carriers.flatMap((c) => (c.key ? [c.key] : [])) : []}

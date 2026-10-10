@@ -11,17 +11,10 @@
 // The markup is a radiogroup and stays one: `fieldset` + `legend.sr-only` +
 // `input[type=radio]`, one tab stop with the arrows moving between options.
 
-import {
-  type KeyboardEvent as ReactKeyboardEvent,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type RefObject, use, useRef, useState } from "react";
 import Link from "next/link";
-import { Icon } from "@/design";
-import { ComposerWidthContext } from "@/features/chat/components/chat-composer";
+import { Icon, Menu, Popover } from "@/design";
+import { ComposerWidthContext } from "@/features/chat";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { AgentModeOffer, ConversationMode } from "../types";
@@ -71,66 +64,31 @@ function asSentence(clause: string): string {
 }
 
 /**
- * Why Agent cannot be picked, and the way out of it. Pressable rather than
- * greyed out: a control with a condition names the condition.
- *
- * Escape is taken here and marked taken, so the dock or slide-over this
- * composer sits in does not read the same key as its own close.
+ * Why Agent cannot be picked, and the way out of it, anchored on the control. Pressable rather than
+ * greyed out: a control with a condition names the condition. Focus, Escape and outside press are
+ * the Popover's.
  */
-function BlockedPanel({
-  reason,
-  onClose,
-}: {
-  reason: string | null;
-  onClose: (returnFocus: boolean) => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const wayOut = useRef<HTMLAnchorElement>(null);
+function BlockedNote({ anchor, reason, onClose }: { anchor: RefObject<HTMLElement | null>; reason: string | null | undefined; onClose: () => void }) {
   const t = useCopy();
-  // The control that opened this may have just been unmounted with the menu it
-  // was in, so the keyboard has nowhere to stand unless this takes it. It lands
-  // on the way out the panel offers rather than on the explanation.
-  useEffect(() => {
-    wayOut.current?.focus();
-  }, []);
-  useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [onClose]);
   return (
-    <div
-      ref={ref}
+    <Popover
+      open
+      anchor={anchor}
+      placement="top-start"
+      takesFocus
+      onDismiss={onClose}
       id="conversation-mode-blocked"
-      role="dialog"
       aria-label={t("shell.mode.unavailable")}
       data-testid="mode-blocked-panel"
-      onKeyDown={(e) => {
-        if (e.key !== "Escape") return;
-        e.preventDefault();
-        e.stopPropagation();
-        onClose(true);
-      }}
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onClose(false);
-      }}
-      className="absolute bottom-full left-0 z-20 mb-2 w-72 rounded-md border border-line bg-surface p-3 shadow-lg"
+      className="w-72 p-3"
     >
       <p className="fg-body-sm font-semibold text-fg">{t("shell.mode.needsRunner")}</p>
-      <p className="fg-caption mt-1 text-muted">
-        {reason ? asSentence(reason) : t("shell.mode.noRunner")}
-      </p>
-      <Link
-        ref={wayOut}
-        href={PAIR_A_RUNNER}
-        className="fg-body-sm mt-2.5 inline-flex items-center gap-1.5 rounded-sm text-link hover:underline"
-      >
+      <p className="fg-caption mt-1 text-muted">{reason ? asSentence(reason) : t("shell.mode.noRunner")}</p>
+      <Link href={PAIR_A_RUNNER} className="fg-body-sm mt-2.5 inline-flex items-center gap-1.5 rounded-sm text-link hover:underline">
         <Icon name="link" size={14} />
         {t("shell.mode.pairRunner")}
       </Link>
-    </div>
+    </Popover>
   );
 }
 
@@ -167,8 +125,8 @@ function ModeTrack({
             data-blocked={isBlocked ? "true" : undefined}
             className={[
               "inline-flex cursor-pointer items-center gap-1.5 rounded-sm px-2.5 py-1 text-13 font-semibold",
-              "transition-colors focus-within:shadow-[var(--shadow-focus)]",
-              selected ? "bg-surface text-fg shadow-xs" : "text-muted hover:text-fg",
+              "transition-colors focus-within:shadow-focus",
+              selected ? "bg-surface text-fg " : "text-muted hover:text-fg",
             ].join(" ")}
           >
             <input
@@ -186,7 +144,7 @@ function ModeTrack({
               <span
                 aria-hidden="true"
                 data-testid="mode-condition-dot"
-                className="size-1.5 rounded-full bg-amber"
+                className="size-1.5 rounded-pill bg-warn-9"
               />
             )}
           </label>
@@ -196,7 +154,7 @@ function ModeTrack({
   );
 }
 
-/** The same choice where the footer is too narrow for a track. */
+/** The same choice where the footer is too narrow for a track: the design Menu, its items checked. */
 function ModeMenu({
   value,
   onChange,
@@ -210,99 +168,28 @@ function ModeMenu({
   disabled: boolean | undefined;
   onBlockedPress: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const t = useCopy();
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
-
-  /** Close, and put the caret back where the person left it. */
-  const close = (returnFocus: boolean) => {
-    setOpen(false);
-    if (returnFocus) triggerRef.current?.focus();
-  };
-
-  // Opening a menu that keeps the keyboard outside it is a menu a keyboard
-  // cannot use: focus lands on the option already chosen.
-  useEffect(() => {
-    if (!open) return;
-    const checked = MODES.findIndex((m) => m.mode === value);
-    itemRefs.current[checked < 0 ? 0 : checked]?.focus();
-  }, [open, value]);
-
-  const onItemKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      close(true);
-      return;
-    }
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    const step = e.key === "ArrowDown" ? 1 : -1;
-    const next = (index + step + MODES.length) % MODES.length;
-    itemRefs.current[next]?.focus();
-  };
-
   return (
-    <div className="relative">
-      <button
-        type="button"
-        ref={triggerRef}
-        disabled={disabled}
-        data-testid="conversation-mode-menu-trigger"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onKeyDown={(e) => {
-          if (e.key === "Escape" && open) {
-            e.preventDefault();
-            e.stopPropagation();
-            close(true);
-          }
-        }}
-        onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1.5 rounded-md border border-line bg-sunken px-2.5 py-1.5 text-13 font-semibold text-fg"
-      >
-        {labelOf(value, t)}
-        <Icon name="chevronDown" size={13} />
-      </button>
-      {open && (
-        <div
-          role="menu"
-          aria-label={t("shell.mode.legend")}
-          data-testid="conversation-mode-menu"
-          onBlur={(e) => {
-            // The keyboard left the menu for something outside it: close, and
-            // do not drag the caret back to the trigger it is leaving.
-            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) close(false);
-          }}
-          className="absolute bottom-full left-0 z-20 mb-2 w-64 rounded-md border border-line bg-surface p-1 shadow-lg"
+    <Menu
+      align="left"
+      side="top"
+      trigger={
+        <button
+          type="button"
+          disabled={disabled}
+          data-testid="conversation-mode-menu-trigger"
+          className="inline-flex items-center gap-1.5 rounded-md border border-line bg-sunken px-2.5 py-1.5 text-13 font-semibold text-fg"
         >
-          {MODES.map(({ mode, label }, index) => {
-            const isBlocked = mode === "agent" && blocked;
-            return (
-              <button
-                key={mode}
-                type="button"
-                role="menuitemradio"
-                aria-checked={value === mode}
-                ref={(node) => {
-                  itemRefs.current[index] = node;
-                }}
-                onKeyDown={(e) => onItemKeyDown(e, index)}
-                onClick={() => {
-                  close(!isBlocked);
-                  if (isBlocked) onBlockedPress();
-                  else onChange(mode);
-                }}
-                className="flex w-full flex-col items-start gap-0.5 rounded-sm px-2 py-1.5 text-left hover:bg-sunken"
-              >
-                <span className="fg-body-sm font-semibold text-fg">{t(label)}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
+          {labelOf(value, t)}
+          <Icon name="chevronDown" size={13} />
+        </button>
+      }
+      items={MODES.map(({ mode, label }) => ({
+        label: t(label),
+        checked: value === mode,
+        onSelect: () => (mode === "agent" && blocked ? onBlockedPress() : onChange(mode)),
+      }))}
+    />
   );
 }
 
@@ -330,19 +217,8 @@ export function ConversationModeControl({
   disabled?: boolean;
 }) {
   const [blockedOpen, setBlockedOpen] = useState(false);
-  const holder = useRef<HTMLDivElement>(null);
-  // Closing the panel from the keyboard puts the caret back on the control it
-  // was opened from: the checked radio in the track, the button in the menu.
-  const closeBlocked = useCallback((returnFocus: boolean) => {
-    setBlockedOpen(false);
-    if (!returnFocus) return;
-    holder.current
-      ?.querySelector<HTMLElement>(
-        'input[type="radio"]:checked, [data-testid="conversation-mode-menu-trigger"]',
-      )
-      ?.focus();
-  }, []);
-  const composerWidth = useContext(ComposerWidthContext);
+  const holderRef = useRef<HTMLDivElement>(null);
+  const composerWidth = use(ComposerWidthContext);
   const t = useCopy();
   const asMenu = narrow ?? (composerWidth !== null && composerWidth < TRACK_MIN_WIDTH);
 
@@ -360,7 +236,7 @@ export function ConversationModeControl({
 
   const blocked = !offer.available;
   return (
-    <div className="relative" ref={holder}>
+    <div className="relative" ref={holderRef}>
       {asMenu ? (
         <ModeMenu
           value={value}
@@ -379,9 +255,7 @@ export function ConversationModeControl({
           describedBy={blockedOpen ? "conversation-mode-blocked" : undefined}
         />
       )}
-      {blockedOpen && (
-        <BlockedPanel reason={offer.reason} onClose={closeBlocked} />
-      )}
+      {blockedOpen ? <BlockedNote anchor={holderRef} reason={offer.reason} onClose={() => setBlockedOpen(false)} /> : null}
     </div>
   );
 }

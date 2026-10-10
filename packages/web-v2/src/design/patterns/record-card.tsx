@@ -54,7 +54,7 @@ function Field({ field, open }: { field: ForgeRecordFieldView; open: boolean }):
         <details
           className="min-w-0"
           open={shown}
-          onToggle={(e) => setShown((e.currentTarget as HTMLDetailsElement).open)}
+          onToggle={(e) => setShown(e.currentTarget.open)}
         >
           <summary className="fg-caption cursor-pointer text-muted">
             {shown ? t("common.record.fold") : t("common.record.showAll", { n: field.over })}

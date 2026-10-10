@@ -119,6 +119,7 @@ const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_PAYLOAD_INVALID",
 	"SUGGESTION_TARGET_INVALID",
 	"SUGGESTION_BASE_STALE",
+	"SUGGESTION_BASE_REQUIRED",
 	"SUGGESTION_DUPLICATE",
 	"SUGGESTION_QUEUE_FULL",
 	...PERMISSION_REFUSAL_CODES,
@@ -175,6 +176,9 @@ export const requirementAssumptionSchema = z.strictObject({
 	owner: z.string().trim().min(1).max(200),
 	confirmBy: z.string().trim().min(3).max(1_000),
 	source: z.string().trim().min(1).max(200).optional(),
+	// the answer the assistant filled and the value it assumed there, so a later edit reads it corrected
+	field: z.string().trim().min(1).max(40).optional(),
+	value: z.string().max(2_000).optional(),
 });
 
 export const requirementSpecSchema = z.strictObject({

@@ -58,7 +58,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
             data-testid="brand-org-switcher"
             aria-haspopup="menu"
             aria-label={t("shell.org.named", { name: label })}
-            className="flex w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-hover focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none"
+            className="flex w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-hover focus-visible:shadow-focus focus-visible:outline-none"
           >
             <span className="fg-h3 min-w-0 flex-1 truncate" style={{ fontSize: "var(--text-16)" }}>
               {label}
@@ -74,13 +74,13 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
     const glyph = (
       <span className="relative inline-flex">
         <span
-          className="inline-flex size-[30px] items-center justify-center rounded-md border border-line bg-sunken text-subtle"
+          className="inline-flex size-7.5 items-center justify-center rounded-md border border-line bg-sunken text-subtle"
         >
           <Icon name="users" size={16} />
         </span>
         {!isSingle && (
           <span
-            className="absolute -bottom-[3px] -right-1 inline-flex size-[15px] items-center justify-center rounded-pill text-subtle"
+            className="absolute -bottom-0.75 -right-1 inline-flex size-3.75 items-center justify-center rounded-pill text-subtle"
             style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)" }}
           >
             <Icon name="chevronUpDown" size={9} strokeWidth={2.4} />
@@ -89,7 +89,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
       </span>
     );
     const labelEl = (
-      <span title={label} className="mt-1 block min-w-0 max-w-full truncate text-center text-10 font-semibold tracking-[-0.01em] text-muted">
+      <span title={label} className="mt-1 block min-w-0 max-w-full truncate text-center text-10 font-semibold tracking-tight text-muted">
         {label}
       </span>
     );
@@ -99,7 +99,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
       return (
         <Link
           href="/org"
-          className="flex w-[76px] flex-col items-center rounded-md px-1 pb-1 pt-5px transition-colors hover:bg-hover"
+          className="flex w-19 flex-col items-center rounded-md px-1 pb-1 pt-5px transition-colors hover:bg-hover"
           aria-label={t("shell.org.named", { name: label })}
         >
           {glyph}
@@ -118,7 +118,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
             type="button"
             aria-haspopup="menu"
             aria-label={t("shell.org.switch", { name: label })}
-            className="flex w-[76px] flex-col items-center rounded-md px-1 pb-1 pt-5px transition-colors hover:bg-hover"
+            className="flex w-19 flex-col items-center rounded-md px-1 pb-1 pt-5px transition-colors hover:bg-hover"
           >
             {glyph}
             {labelEl}
@@ -132,11 +132,11 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
   // project switcher button.
   const rowInner = (
     <>
-      <span className="inline-flex size-[26px] flex-none items-center justify-center rounded-sm border border-line bg-surface text-subtle">
+      <span className="inline-flex size-6.5 flex-none items-center justify-center rounded-sm border border-line bg-surface text-subtle">
         <Icon name="users" size={15} />
       </span>
       <span className="flex min-w-0 flex-1 flex-col text-left">
-        <span className="text-10 font-semibold uppercase tracking-[0.06em] text-subtle">{t("shell.org.kicker")}</span>
+        <span className="text-10 font-semibold uppercase tracking-wider text-subtle">{t("shell.org.kicker")}</span>
         <span className="fg-label truncate">{label}</span>
       </span>
       {!isSingle && <Icon name="chevronUpDown" size={15} className="flex-none text-subtle" />}

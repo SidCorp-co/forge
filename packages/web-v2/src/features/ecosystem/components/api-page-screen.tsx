@@ -7,7 +7,7 @@ import { readingOf } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { Loading, UnreadNotice } from "./notices";
 
-function PublishesSection({ page, ecoName }: { page: ApiPage; ecoName: Map<string, string> }) {
+function PublishedApis({ page, ecoName }: { page: ApiPage; ecoName: Map<string, string> }) {
   const t = useCopy();
   return (
     <section aria-label={t("ecosystem.api.publishes")} className="space-y-2">
@@ -47,7 +47,7 @@ function PublishesSection({ page, ecoName }: { page: ApiPage; ecoName: Map<strin
   );
 }
 
-function CommitmentsSection({ page, slug }: { page: ApiPage; slug: string }) {
+function ApiCommitments({ page, slug }: { page: ApiPage; slug: string }) {
   const t = useCopy();
   return (
     <section aria-label={t("ecosystem.api.commitments")} className="space-y-2">
@@ -105,7 +105,7 @@ export function ApiPageScreen({ projectId, slug }: { projectId: string; slug: st
         )}
       </section>
 
-      <PublishesSection page={page} ecoName={ecoName} />
+      <PublishedApis page={page} ecoName={ecoName} />
 
       <section aria-label={t("ecosystem.api.consumes")} className="space-y-2">
         <h2 className="fg-label text-fg">{t("ecosystem.api.consumes")}</h2>
@@ -123,7 +123,7 @@ export function ApiPageScreen({ projectId, slug }: { projectId: string; slug: st
         )}
       </section>
 
-      <CommitmentsSection page={page} slug={slug} />
+      <ApiCommitments page={page} slug={slug} />
 
       {page.reader.access === "party" ? (
         <p className="fg-caption">

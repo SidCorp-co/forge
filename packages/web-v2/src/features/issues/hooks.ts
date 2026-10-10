@@ -2,15 +2,15 @@
 
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { type Refusal, refusalFact, refusalsOf } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
+import { useToastWrite } from "@/providers/toast-write";
+import { issueKeys, issueQueries } from "./queries";
 import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, releaseBatchApi } from "./api";
 import type { IssueStandingScope } from "@forge/contracts/issue-standing";
-import { issueKeySegment } from "@/lib/api/ref-bridge";
 import type {
   IssueLabel,
   IssuePriority,
@@ -30,78 +30,45 @@ export function useCreateIssue(projectId: string) {
   return useMutation<CreatedIssue, unknown, CreateIssueInput>({
     mutationFn: (body) => issuesApi.create(projectId, body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["issues"] });
+      void qc.invalidateQueries({ queryKey: issueKeys.all });
     },
   });
 }
 
 /** Issues search list. Keyed `['issues','search', projectId, opts]`. */
 export function useIssues(projectId: string | undefined, opts: IssueSearchOpts) {
-  return useQuery({
-    queryKey: ["issues", "search", projectId, opts],
-    queryFn: () => issuesApi.search(projectId as string, opts),
-    enabled: !!projectId,
-    placeholderData: (prev) => prev,
-  });
+  return useQuery(issueQueries.search(projectId, opts));
 }
 
 /** Per-issue cost rollup. Keyed `['issue', id, 'cost']` — lazy + cached; `projectId` lets a display-key `id` (ISS-1160) resolve. */
 /** Keyed under `['issues','standing']`, which the event router invalidates on every issue event. */
 export function useIssueStanding(projectId: string | undefined, scope: IssueStandingScope) {
-  return useQuery({
-    queryKey: ["issues", "standing", projectId ?? "", scope],
-    queryFn: () => issuesApi.standing(projectId as string, scope),
-    enabled: Boolean(projectId),
-    staleTime: 10_000,
-  });
+  return useQuery(issueQueries.standing(projectId, scope));
 }
 
 export function useIssueStandingOf(projectId: string | undefined, key: string | undefined) {
-  return useQuery({
-    queryKey: ["issues", "standing", projectId ?? "", "one", key ?? ""],
-    queryFn: () => issuesApi.standingOf(projectId as string, key as string),
-    enabled: Boolean(projectId && key),
-    staleTime: 10_000,
-  });
+  return useQuery(issueQueries.standingOf(projectId, key));
 }
 
 export function useIssueCost(id: string | undefined, enabled = true, projectId?: string) {
-  return useQuery({
-    queryKey: ["issue", issueKeySegment(id, projectId), "cost"],
-    queryFn: () => issuesApi.costSummary(id as string, projectId),
-    enabled: !!id && enabled,
-    staleTime: 60_000,
-  });
+  return useQuery(issueQueries.cost(id, enabled, projectId));
 }
 
 /** Per-issue dependency edges. Keyed `['issue', id, 'dependencies']` — lazy, same ISS-1160 scoping. */
 export function useIssueDeps(id: string | undefined, enabled = true, projectId?: string) {
-  return useQuery({
-    queryKey: ["issue", issueKeySegment(id, projectId), "dependencies"],
-    queryFn: () => issuesApi.dependencies(id as string, projectId),
-    enabled: !!id && enabled,
-    staleTime: 30_000,
-  });
+  return useQuery(issueQueries.deps(id, enabled, projectId));
 }
 
 /** Project members (creator filter options). Keyed `['project', projectId, 'members']`. */
 export function useProjectMembers(projectId: string | undefined) {
-  return useQuery({
-    queryKey: ["project", projectId, "members"],
-    queryFn: () => issuesApi.members(projectId as string),
-    enabled: !!projectId,
-    staleTime: 5 * 60_000,
-  });
+  return useQuery(issueQueries.members(projectId));
 }
 
 /** Project labels (label filter options). Keyed `['project', projectId, 'labels']` (ISS-586). */
+const projectLabelsQuery = issueQueries.labels;
+
 export function useProjectLabels(projectId: string | undefined) {
-  return useQuery<IssueLabel[]>({
-    queryKey: ["project", projectId, "labels"],
-    queryFn: () => issuesApi.labels(projectId as string),
-    enabled: !!projectId,
-    staleTime: 5 * 60_000,
-  });
+  return useQuery(projectLabelsQuery(projectId));
 }
 
 /**
@@ -112,12 +79,7 @@ export function useProjectLabels(projectId: string | undefined) {
  * and the picker off one cache entry.
  */
 export function useProjectModules(projectId: string | undefined) {
-  const q = useProjectLabels(projectId);
-  const modules = useMemo(
-    () => (q.data ?? []).filter((l) => l.kind === "module"),
-    [q.data],
-  );
-  return { ...q, data: q.data ? modules : undefined, modules };
+  return useQuery({ ...projectLabelsQuery(projectId), select: (labels) => labels.filter((l) => l.kind === "module") });
 }
 
 /**
@@ -141,51 +103,25 @@ function buildModuleLabelWrite(
 
 /** Replace an issue's module attributions, preserving its plain labels. */
 export function useSetIssueModules(issueId: string | undefined) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
   const t = useCopy();
-  return useMutation({
-    mutationFn: (args: {
-      current: IssueLabel[];
-      moduleIds: string[];
-      primaryId: string | null;
-    }) =>
-      issuesApi.setLabels(
-        issueId as string,
-        buildModuleLabelWrite(args.current, args.moduleIds, args.primaryId),
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["issue", issueId] });
-      qc.invalidateQueries({ queryKey: ["issues"] });
-      toast({ title: t("issues.toast.modulesUpdated"), tone: "success" });
-    },
-    onError: (err) =>
-      toast({
-        title: t("issues.toast.modulesFailed"),
-        description: formatApiError(err),
-        tone: "error",
-      }),
-  });
+  return useIssueMutation(
+    (args: { current: IssueLabel[]; moduleIds: string[]; primaryId: string | null }) =>
+      issuesApi.setLabels(issueId as string, buildModuleLabelWrite(args.current, args.moduleIds, args.primaryId)),
+    { success: t("issues.toast.modulesUpdated"), failure: t("issues.toast.modulesFailed"), touches: () => [["issue", issueId]] },
+  );
 }
 
-/** Shared mutation factory: invalidate `['issues']` on success, toast on error
- *  (ILLEGAL_TRANSITION / ASSIGNEE_NOT_MEMBER map to friendly copy by code). */
+/** The issue write every hook below shares: `['issues']` and the reads in `touches` are read again on success, a
+ *  `success` line is toasted, and a refusal is toasted in core's words under `failure` (an update failure by default). */
 function useIssueMutation<TArgs, TData>(
   fn: (args: TArgs) => Promise<TData>,
-  opts: { successMessage?: string } = {},
+  opts: { success?: string; failure?: string; touches?: (args: TArgs) => readonly unknown[][] } = {},
 ) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
   const t = useCopy();
-  return useMutation({
-    mutationFn: fn,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["issues"] });
-      if (opts.successMessage) toast({ title: opts.successMessage, tone: "success" });
-    },
-    onError: (err) => {
-      toast({ title: t("issues.toast.updateFailed"), description: formatApiError(err), tone: "error" });
-    },
+  return useToastWrite(fn, {
+    touches: (args) => [issueKeys.all, ...(opts.touches?.(args) ?? [])],
+    said: opts.success,
+    failed: opts.failure ?? t("issues.toast.updateFailed"),
   });
 }
 
@@ -195,29 +131,13 @@ export function usePatchIssue() {
   );
 }
 
-/**
- * A description write, which differs from `usePatchIssue` in the one way that
- * matters on the detail screen: it invalidates `['issue', id]`, so the saved
- * body comes back rendered without a reload.
- */
+/** A description write: unlike `usePatchIssue` it re-reads `['issue', id]`, so the saved body comes back rendered without a reload. */
 export function useSaveDescription(id: string) {
-  const qc = useQueryClient();
   const t = useCopy();
-  const mut = useIssueMutation(
-    (args: { id: string; body: PatchIssueInput }) => issuesApi.patch(args.id, args.body),
-    { successMessage: t("issues.toast.descriptionSaved") },
-  );
-  return {
-    ...mut,
-    mutate: (args: { id: string; body: PatchIssueInput }, options?: { onSuccess?: () => void }) =>
-      mut.mutate(args, {
-        onSuccess: () => {
-          qc.invalidateQueries({ queryKey: ["issue", id] });
-          qc.invalidateQueries({ queryKey: ["activities", id] });
-          options?.onSuccess?.();
-        },
-      }),
-  };
+  return useIssueMutation((args: { id: string; body: PatchIssueInput }) => issuesApi.patch(args.id, args.body), {
+    success: t("issues.toast.descriptionSaved"),
+    touches: () => [["issue", id], ["activities", id]],
+  });
 }
 
 type TransitionArgs = {
@@ -259,7 +179,7 @@ export function useTransitionIssue() {
         answers: args.answers,
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["issues"] });
+      void qc.invalidateQueries({ queryKey: issueKeys.all });
     },
   });
   return {
@@ -274,9 +194,9 @@ export function useTransitionIssue() {
     ) =>
       mut.mutate(args, {
         onSuccess: () => {
-          qc.invalidateQueries({ queryKey: ["issue", args.id] });
-          qc.invalidateQueries({ queryKey: ["activities", args.id] });
-          qc.invalidateQueries({ queryKey: ["questions", args.id] });
+          void qc.invalidateQueries({ queryKey: ["issue", args.id] });
+          void qc.invalidateQueries({ queryKey: ["activities", args.id] });
+          void qc.invalidateQueries({ queryKey: ["questions", args.id] });
           options?.onSuccess?.();
         },
         onError: (err) => {
@@ -309,9 +229,9 @@ export function useMergeMarker(issueId: string) {
   const { toast } = useToast();
   const t = useCopy();
   const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["issue", issueId] });
-    qc.invalidateQueries({ queryKey: ["activities", issueId] });
-    qc.invalidateQueries({ queryKey: ["issues"] });
+    void qc.invalidateQueries({ queryKey: ["issue", issueId] });
+    void qc.invalidateQueries({ queryKey: ["activities", issueId] });
+    void qc.invalidateQueries({ queryKey: issueKeys.all });
   };
   // ISS-1327 — the answer says whether this call moved the row; a toast that ignores it tells a
   // person their landing was recorded when the mark that stood was kept.
@@ -329,10 +249,7 @@ export function useMergeMarker(issueId: string) {
       }
     },
   });
-  const unmark = useIssueMutation(
-    (args: { note?: string } = {}) => issuesApi.unmarkMerged(issueId, args),
-    { successMessage: t("issues.toast.unmarked") },
-  );
+  const unmark = useIssueMutation((args: { note?: string } = {}) => issuesApi.unmarkMerged(issueId, args), { success: t("issues.toast.unmarked") });
   return {
     isPending: mark.isPending || unmark.isPending,
     /** Refused marks go to `onError` so the form that sent them can keep what was typed. */
@@ -344,8 +261,7 @@ export function useMergeMarker(issueId: string) {
 
 export function useRunPipelineStep() {
   const t = useCopy();
-  return useIssueMutation((args: { id: string }) =>
-    issuesApi.runPipelineStep(args.id), { successMessage: t("issues.toast.started") });
+  return useIssueMutation((args: { id: string }) => issuesApi.runPipelineStep(args.id), { success: t("issues.toast.started") });
 }
 
 
@@ -362,11 +278,7 @@ export type BulkUpdate =
  */
 /** What is waiting at the release gate, and when the next cut fires. */
 export function useReleaseRoster(projectId: string | undefined) {
-  return useQuery({
-    queryKey: ["release-roster", projectId],
-    queryFn: () => releaseBatchApi.roster(projectId as string),
-    enabled: !!projectId,
-  });
+  return useQuery(issueQueries.roster(projectId));
 }
 
 /** `showsRefusal` answers, when a refusal lands, whether the caller is showing it itself. */
@@ -377,9 +289,9 @@ export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefu
   return useMutation<CreateReleaseBatchResult, unknown, { issueIds: string[] }>({
     mutationFn: ({ issueIds }) => releaseBatchApi.create(projectId, issueIds),
     onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: ["issues"] });
-      qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
-      qc.invalidateQueries({ queryKey: ["release-roster"] });
+      void qc.invalidateQueries({ queryKey: issueKeys.all });
+      void qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
+      void qc.invalidateQueries({ queryKey: ["release-roster"] });
       toast({
         title: result.issueIds.length === 1 ? t("issues.toast.batchStartedOne") : t("issues.toast.batchStarted", { n: result.issueIds.length }),
         tone: "success",
@@ -442,8 +354,8 @@ export function useBulkUpdateIssues() {
       return summary;
     },
     onSuccess: (summary, { issues }) => {
-      qc.invalidateQueries({ queryKey: ["issues"] });
-      for (const { id } of issues) qc.invalidateQueries({ queryKey: ["issue", id] });
+      void qc.invalidateQueries({ queryKey: issueKeys.all });
+      for (const { id } of issues) void qc.invalidateQueries({ queryKey: ["issue", id] });
       const parts = [t("issues.toast.bulkUpdated", { n: summary.updated })];
       if (summary.skipped) parts.push(t("issues.toast.bulkSkipped", { n: summary.skipped }));
       if (summary.failed) parts.push(t("issues.toast.bulkFailedN", { n: summary.failed }));
@@ -464,8 +376,8 @@ export function useBulkUpdateIssues() {
 export function useBlockerEdit(issueId: string, projectId: string) {
   const qc = useQueryClient();
   const done = () => {
-    qc.invalidateQueries({ queryKey: ["issue"] });
-    qc.invalidateQueries({ queryKey: ["issues"] });
+    void qc.invalidateQueries({ queryKey: ["issue"] });
+    void qc.invalidateQueries({ queryKey: issueKeys.all });
   };
   const add = useMutation({ mutationFn: (key: string) => issuesApi.addBlocker(issueId, projectId, key), onSuccess: done });
   const remove = useMutation({ mutationFn: (edgeId: string) => issuesApi.removeEdge(issueId, edgeId), onSuccess: done });

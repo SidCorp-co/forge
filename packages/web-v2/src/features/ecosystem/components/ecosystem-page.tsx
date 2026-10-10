@@ -3,8 +3,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { PageContainer, PageTitle } from "@/design";
-import { ProjectGate } from "@/features/projects/components/project-gate";
-import type { ProjectListItem } from "@/features/projects/types";
+import { ProjectGate } from "@/features/projects";
+import type { ProjectListItem } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { ecosystemRoutes } from "../routes";

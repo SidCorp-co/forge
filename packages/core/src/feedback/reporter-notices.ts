@@ -80,3 +80,23 @@ export function shippedNotice(
           : noticeCopy(language, 'shipped.bodyNoRelease', {}),
   };
 }
+
+/**
+ * A move somebody else made on the reporter's item (REQ-34 BC-21): triaged and where it went,
+ * verified on their behalf, or reopened. Its decline, merge and auto-verify have notices of their own.
+ */
+export function stepNotice(
+  language: NoticeLanguage,
+  step: 'triaged' | 'verified' | 'reopened',
+  key: string,
+  title: string,
+  carrier: string | null = null,
+): NoticeText {
+  const body =
+    step === 'triaged'
+      ? carrier
+        ? noticeCopy(language, 'step.triaged.body', { carrier })
+        : noticeCopy(language, 'step.triaged.bodyNoCarrier', {})
+      : noticeCopy(language, `step.${step}.body`, {});
+  return { title: noticeCopy(language, `step.${step}.title`, { key, title }), body };
+}

@@ -1,9 +1,9 @@
 "use client";
 
-import { AgentsScreen } from "@/features/agents/components/agents-screen";
+import { AgentsScreen } from "@/features/agents";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { ProjectGate } from "@/features/projects/components/project-gate";
-import { canWriteProject } from "@/features/projects/write-access";
+import { ProjectGate } from "@/features/projects";
+import { canWriteProject } from "@/features/projects";
 
 export default function ProjectAgentsPage() {
   const t = useCopy();

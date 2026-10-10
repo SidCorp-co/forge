@@ -23,12 +23,8 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 
-/** The orange of a filter the assistant set, the same on every list. */
-export const ASSISTANT_MARK = {
-  borderColor: "var(--orange-500, #f97316)",
-  color: "var(--orange-700, #c2410c)",
-  background: "var(--orange-50, #fff7ed)",
-};
+/** The mark of a filter the assistant set, the same on every list. */
+const ASSISTANT_MARK = "border-warn-9 bg-warn-2 text-warn-11";
 
 /** The list's filter as its URL holds it now. */
 export function useListFilter<L extends UiList>(list: L): UiListFilter<L> {
@@ -69,10 +65,9 @@ export function WaitingFilter({ value }: { value: UiWaitingFilter | undefined })
             data-assistant={marked || undefined}
             onClick={() => setListParam("waitingOn", o.v)}
             className={cn(
-              "inline-flex h-[26px] items-center rounded-pill border px-2.5 text-12 font-semibold",
-              on ? "border-fg bg-fg text-surface" : "border-line bg-surface text-muted hover:text-fg",
+              "inline-flex h-6.5 items-center rounded-pill border px-2.5 text-12 font-semibold",
+              marked ? ASSISTANT_MARK : on ? "border-fg bg-fg text-surface" : "border-line bg-surface text-muted hover:text-fg",
             )}
-            style={marked ? ASSISTANT_MARK : undefined}
           >
             {o.label}
           </button>
@@ -103,8 +98,7 @@ export function ListFilterChips({ filter }: { filter: Record<string, unknown> })
             data-testid="list-filter-chip"
             data-field={field}
             data-assistant={marked || undefined}
-            className="inline-flex items-center gap-1 rounded-pill border border-line bg-sunken px-2 py-0.5 text-12-5 font-semibold text-fg"
-            style={marked ? ASSISTANT_MARK : undefined}
+            className={cn("inline-flex items-center gap-1 rounded-pill border px-2 py-0.5 text-13 font-semibold", marked ? ASSISTANT_MARK : "border-line bg-sunken text-fg")}
           >
             {label}
             <button type="button" aria-label={t("conversations.list.removeChip", { label })} onClick={() => setListParam(field, null)} className="leading-none">

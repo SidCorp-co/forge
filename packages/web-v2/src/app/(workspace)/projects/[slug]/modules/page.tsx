@@ -1,8 +1,8 @@
 "use client";
 
-import { ModulesScreen } from "@/features/modules/components/modules-screen";
+import { ModulesScreen } from "@/features/modules";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { ProjectGate } from "@/features/projects/components/project-gate";
+import { ProjectGate } from "@/features/projects";
 
 export default function ProjectModulesPage() {
   const t = useCopy();

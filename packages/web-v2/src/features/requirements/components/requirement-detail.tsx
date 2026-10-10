@@ -16,7 +16,7 @@ import { Written } from "@/lib/i18n/written";
 import {
   ActorChip,
   AGENT_TINT,
-  Collapsible,
+  Disclosure,
   DetailLayout,
   DetailMobileTitle,
   DetailPane,
@@ -30,16 +30,16 @@ import {
   ViewHeading,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { EntityCommentThread } from "@/features/comments/components/entity-comment-thread";
-import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
-import { useMockups } from "@/features/mockups/hooks";
-import { PendingBadge } from "@/features/suggestions/components/suggestion-list";
-import { useWaitingSuggestions } from "@/features/suggestions/hooks";
+import { EntityCommentThread } from "@/features/comments";
+import { MockupList } from "@/features/mockups";
+import { useMockups } from "@/features/mockups";
+import { PendingBadge } from "@/features/suggestions";
+import { useWaitingSuggestions } from "@/features/suggestions";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useRequirement } from "../hooks";
 import type { RequirementDetail, RequirementRevision } from "../types";
 import { ProposalDecision, ProposeChange } from "./requirement-actions";
-import { RequirementFacts } from "./requirement-facts";
+import { RequirementProperties } from "./requirement-facts";
 import { CriteriaChanges, CriteriaChecklist, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
 import { RequirementDecisions } from "./requirement-decisions";
 import { RequirementMemory, useRequirementMemoryCount } from "./requirement-memory";
@@ -82,10 +82,10 @@ function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId:
   const proposed = open.state === "proposed";
   const at = open.proposedAt ?? open.createdAt;
   return (
-    <section id="proposal" className="border-l-[3px] py-1 pl-4" style={{ borderColor: AGENT_TINT.dot }} data-testid="open-revision">
+    <section id="proposal" className="border-l-3 py-1 pl-4" style={{ borderColor: AGENT_TINT.dot }} data-testid="open-revision">
       <ViewHeading
         right={
-          <span className="inline-flex items-center gap-2 text-12-5 text-muted">
+          <span className="inline-flex items-center gap-2 text-13 text-muted">
             <ActorChip name={open.authorName ?? t("standing.who.itsAuthor")} kind={open.authorKind} />
             <span title={t(proposed ? "requirements.revision.proposedAt" : "requirements.revision.writtenAt", { at: time.dateTime(at) })}>{time.relative(at)}</span>
           </span>
@@ -96,15 +96,15 @@ function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId:
           {proposed ? <PendingBadge /> : null}
         </span>
       </ViewHeading>
-      <Written className="block max-w-[80ch] text-14 leading-relaxed" text={open.changeSummary ?? open.reason} lang={open.writtenLang} />
-      {open.changeSummary && open.reason && open.reason !== open.changeSummary ? <p className="mt-1.5 max-w-[80ch] text-13 text-muted">{t("requirements.revision.why", { reason: open.reason })}</p> : null}
+      <Written className="block max-w-2xl text-14 leading-relaxed" text={open.changeSummary ?? open.reason} lang={open.writtenLang} />
+      {open.changeSummary && open.reason && open.reason !== open.changeSummary ? <p className="mt-1.5 max-w-2xl text-13 text-muted">{t("requirements.revision.why", { reason: open.reason })}</p> : null}
       <div className="mt-1.5">
         <CriteriaChanges changes={open.criteriaChanges} />
       </div>
       <div className="mt-3" data-testid="open-revision-diff">
-        <Collapsible title={t("requirements.revision.changesAgainst", { r: base?.revision ?? "—" })}>
+        <Disclosure title={t("requirements.revision.changesAgainst", { r: base?.revision ?? "—" })}>
           <RevisionDiff base={base} next={open} />
-        </Collapsible>
+        </Disclosure>
       </div>
       {proposed ? (
         <div className="mt-4">
@@ -142,18 +142,18 @@ function RequirementActivity({ projectId, slug, d }: { projectId: string; slug: 
   const t = useCopy();
   return (
     <section data-testid="view-activity" aria-label={t("requirements.tab.activity")}>
-      <Collapsible title={t("requirements.activity.comments")}>
+      <Disclosure title={t("requirements.activity.comments")}>
         <EntityCommentThread projectId={projectId} scope="requirement" targetRef={d.key} />
-      </Collapsible>
+      </Disclosure>
       <div className="-mt-px">
-        <Collapsible title={t("requirements.activity.history")} count={d.history.length}>
+        <Disclosure title={t("requirements.activity.history")} count={d.history.length}>
           <History entries={d.history} />
-        </Collapsible>
+        </Disclosure>
       </div>
       <div className="-mt-px" data-testid="revision-fold">
-        <Collapsible title={t("requirements.revision.all")} count={d.revisions.length}>
+        <Disclosure title={t("requirements.revision.all")} count={d.revisions.length}>
           <RevisionList d={d} />
-        </Collapsible>
+        </Disclosure>
       </div>
       {/* the decisions fold themselves, by decisions and answers, beside the composer that records one */}
       <div className="mt-6" data-testid="view-decisions">
@@ -218,7 +218,7 @@ export function RequirementPage({
             dataKey={d.key}
             rail={
               <FactsRail testId="relations-rail">
-                <RequirementFacts d={d} slug={slug} onOpenRevisions={() => onTab("revisions")} projectId={projectId} developer={developer} />
+                <RequirementProperties d={d} slug={slug} onOpenRevisions={() => onTab("revisions")} projectId={projectId} developer={developer} />
               </FactsRail>
             }
           >
@@ -231,7 +231,7 @@ export function RequirementPage({
               {shownTab === "overview" ? <RequirementOverview d={d} projectId={projectId} slug={slug} onRevise={() => onTab("revisions")} developer={developer} /> : null}
               {shownTab === "criteria" ? <Criteria d={d} projectId={projectId} slug={slug} developer={developer} /> : null}
               {shownTab === "revisions" ? <Revisions d={d} projectId={projectId} /> : null}
-              {shownTab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}
+              {shownTab === "mockups" ? <MockupList projectId={projectId} target={mockupTarget} /> : null}
               {shownTab === "memory" ? <RequirementMemory projectId={projectId} slug={slug} reqKey={d.key} /> : null}
               {shownTab === "activity" ? <RequirementActivity projectId={projectId} slug={slug} d={d} /> : null}
             </DetailPane>

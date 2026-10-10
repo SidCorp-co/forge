@@ -2,7 +2,7 @@ import type { ParkThreadQuestion } from "@forge/contracts/park";
 import { fireEvent } from "@testing-library/react";
 import type { QueryKey } from "@tanstack/react-query";
 import { AgentsScreen } from "@/features/agents/components/agents-screen";
-import { DecisionPanel } from "@/features/questions/components/decision-panel";
+import { IssueQuestions as DecisionPanel } from "@/features/questions/components/issue-questions";
 import { projectQuestionsKey } from "@/features/questions/hooks";
 import type { AgentQuestion, QuestionOption, QuestionStep } from "@/features/questions/types";
 import { Seeded } from "./vi-chrome-requirements";
@@ -36,6 +36,9 @@ const question = (over: Partial<AgentQuestion> = {}): AgentQuestion => ({
   status: "open",
   blockerKind: "human",
   steps: [freeStep(1)],
+  round: 1,
+  prompt: "Cau hoi 1",
+  askedAt: AT,
   maxRounds: 3,
   voidReason: null,
   endedReason: null,
@@ -56,6 +59,7 @@ const choice = question({
   answerShape: "choice",
   options: choiceOptions.map((o) => ({ ...o, locked: o.id === "b" })),
   recommendedOptionId: "a",
+  round: 2,
   steps: [
     { round: 1, prompt: "Cau hoi 1", askedAt: AT, answerShape: "choice", options: choiceOptions, recommendedOptionId: "a", chosenOptionId: "a", answeredAt: AT } as QuestionStep,
     { round: 2, prompt: "Cau hoi 2", askedAt: AT, answerShape: "choice", options: choiceOptions, recommendedOptionId: "a" } as QuestionStep,
@@ -64,10 +68,11 @@ const choice = question({
 
 const earlier = question({
   id: "q3",
+  round: 3,
   steps: [freeStep(1, { answeredAt: AT, answerText: "Tra loi mot" }), freeStep(2, { answeredAt: AT, answerText: "Tra loi hai" }), freeStep(3)],
 });
 
-const hidden = question({ id: "q4", issueId: null, rounds: 3, steps: undefined, currentStep: freeStep(3) });
+const hidden = question({ id: "q4", issueId: null, rounds: 3, round: 3, steps: undefined, currentStep: freeStep(3) });
 
 const settled = (id: string, over: Partial<AgentQuestion>, step: Partial<QuestionStep> = {}) =>
   question({ id, steps: [freeStep(1, { answeredAt: AT, answerText: "Tra loi", ...step })], ...over });

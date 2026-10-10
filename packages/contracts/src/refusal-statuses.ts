@@ -10,14 +10,15 @@ import { DEVICE_REFUSAL_STATUSES } from "./devices.js";
 import { ECOSYSTEM_REFUSAL_STATUSES } from "./ecosystem.js";
 import { FAST_LANE_REFUSAL_STATUSES } from "./fast-lane.js";
 import { INTAKE_REFUSAL_STATUSES } from "./intake-drafts.js";
+import { ISSUE_DESIGN_REFUSAL_STATUSES } from "./issue-design.js";
 import { ISSUE_TRANSITION_REFUSAL_STATUSES } from "./issue-machine.js";
 import {
 	ISSUE_CREATE_REFUSAL_STATUSES,
 	ISSUE_TAKE_REFUSAL_STATUSES,
 	ISSUE_UPDATE_REFUSAL_STATUSES,
 } from "./issues.js";
-import { ISSUE_DESIGN_REFUSAL_STATUSES } from "./issue-design.js";
 import { MEMORY_REFUSAL_STATUSES } from "./memory.js";
+import { ORG_REFUSAL_STATUSES } from "./orgs.js";
 import { PATTERN_REFUSAL_STATUSES } from "./patterns.js";
 import { PIPELINE_REFUSAL_STATUSES } from "./pipeline.js";
 import { ROOM_REFUSAL_STATUSES } from "./poc-room.js";
@@ -71,6 +72,7 @@ const DECLARED: ReadonlyArray<
 	ROOM_REFUSAL_STATUSES,
 	PRODUCT_STATE_REFUSAL_STATUSES,
 	PROJECT_CONFIG_REFUSAL_STATUSES,
+	ORG_REFUSAL_STATUSES,
 	PROJECT_REFUSAL_STATUSES,
 	QUESTION_REFUSAL_STATUSES,
 	RELEASE_REFUSAL_STATUSES,

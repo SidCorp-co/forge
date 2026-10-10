@@ -15,6 +15,7 @@ import {
 	REGISTRY_ISSUE_PRIORITIES,
 } from "./pipeline-registry.js";
 import { REASON_LINE_MAX } from "./reason-text.js";
+import { titleText } from "./title-text.js";
 import { type Said, saidSchema } from "./said.js";
 import type {
 	Standing,
@@ -337,7 +338,7 @@ const feedbackTargetFields = {
 export const createFeedbackRequestSchema = z.strictObject({
 	kind: z.enum(FEEDBACK_KINDS),
 	severity: z.enum(FEEDBACK_SEVERITIES).optional(),
-	title: z.string().trim().min(1).max(FEEDBACK_LIMITS.title),
+	title: titleText(FEEDBACK_LIMITS.title),
 	body: z.string().max(FEEDBACK_LIMITS.body).optional(),
 	whereSeen: z.string().trim().max(FEEDBACK_LIMITS.whereSeen).optional(),
 	/** The language the title and body are written in; absent, the writer's own (`@forge/contracts/written-lang`). */
@@ -354,7 +355,7 @@ const carrierFields = {
 		.optional(),
 	createIssue: z
 		.strictObject({
-			title: z.string().trim().min(1).max(FEEDBACK_LIMITS.title).optional(),
+			title: titleText(FEEDBACK_LIMITS.title).optional(),
 			description: z.string().max(FEEDBACK_LIMITS.body).optional(),
 			/** The filed issue's bands; absent, priority follows the severity and category the kind. */
 			complexity: z.enum(REGISTRY_ISSUE_COMPLEXITIES).optional(),
@@ -364,7 +365,7 @@ const carrierFields = {
 		.optional(),
 	suggestion: z.uuid().optional(),
 	requirement: ref.optional(),
-	title: z.string().trim().min(1).max(FEEDBACK_LIMITS.title).optional(),
+	title: titleText(FEEDBACK_LIMITS.title).optional(),
 	answer: z.string().max(FEEDBACK_LIMITS.answer).optional(),
 	duplicateOf: ref.optional(),
 	note: z.string().max(FEEDBACK_LIMITS.reason).optional(),
@@ -425,7 +426,7 @@ export const promoteAgentReportRequestSchema = z.strictObject({
 	agentReport: z.uuid(),
 	kind: z.enum(FEEDBACK_KINDS),
 	severity: z.enum(FEEDBACK_SEVERITIES).optional(),
-	title: z.string().trim().min(1).max(FEEDBACK_LIMITS.title).optional(),
+	title: titleText(FEEDBACK_LIMITS.title).optional(),
 	body: z.string().max(FEEDBACK_LIMITS.body).optional(),
 	whereSeen: z.string().trim().max(FEEDBACK_LIMITS.whereSeen).optional(),
 	...feedbackTargetFields,
@@ -525,6 +526,9 @@ export interface FeedbackTargetView {
 	title: string | null;
 	/** On a workflow target, the step or edge the item names; absent, it is about the whole workflow. */
 	node?: NodeRef;
+	/** The words the design gives each step `node` names, by step id; a step the design no longer has
+	 *  is left out, and is read by its id. */
+	stepNames?: Record<string, string>;
 }
 
 /** One route or tool a project serves, as `GET …/feedback/endpoints` lists it for the About picker. */

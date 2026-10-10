@@ -1,8 +1,8 @@
 "use client";
 
-import { DevelopmentOverviewScreen } from "@/features/development/components/development-overview-screen";
+import { DevelopmentOverviewScreen } from "@/features/development";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { ProjectGate } from "@/features/projects/components/project-gate";
+import { ProjectGate } from "@/features/projects";
 
 export default function DevelopmentOverviewPage() {
   const t = useCopy();

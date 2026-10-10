@@ -2,14 +2,15 @@
 
 
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
-  useCallback,
-  useEffect,
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
+import Image from "next/image";
+import { MediaOverlay } from "@/design";
+import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";
 
 export interface LightboxImage {
@@ -47,9 +48,9 @@ function useZoomPan(index: number, go: (delta: number) => void) {
 
   // Active pointers (for pinch) keyed by pointerId, plus drag bookkeeping. Kept
   // in refs so the move handler reads live values without re-subscribing.
-  const pointers = useRef(new Map<number, { x: number; y: number }>());
-  const pinchStart = useRef<{ dist: number; scale: number } | null>(null);
-  const dragStart = useRef<{
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchStartRef = useRef<{ dist: number; scale: number } | null>(null);
+  const dragStartRef = useRef<{
     x: number;
     y: number;
     ox: number;
@@ -57,37 +58,38 @@ function useZoomPan(index: number, go: (delta: number) => void) {
     moved: boolean;
   } | null>(null);
 
-  const resetZoom = useCallback(() => {
+  // a new image opens at fit: the zoom is reset while rendering when the index moves
+  const [shownIndex, setShownIndex] = useState(index);
+  if (shownIndex !== index) {
+    setShownIndex(index);
     setScale(1);
     setOffset({ x: 0, y: 0 });
-  }, []);
+  }
 
-  const zoomBy = useCallback((delta: number) => {
+  const resetZoom = () => {
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+  };
+
+  const zoomBy = (delta: number) => {
     setScale((s) => {
       const next = clamp(s + delta, MIN_SCALE, MAX_SCALE);
       if (next === MIN_SCALE) setOffset({ x: 0, y: 0 });
       return next;
     });
-  }, []);
-
-  // Reset zoom when the shown image changes (navigation, thumbnail pick).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset is keyed on the image index, not the resetZoom identity
-  useEffect(() => {
-    resetZoom();
-  }, [index]);
+  };
 
   // ── Pointer gestures (mouse + touch unified): pan when zoomed, pinch with two
   // fingers, swipe-to-navigate when at fit scale, double-tap/click to toggle.
-  const onPointerDown = useCallback(
-    (e: ReactPointerEvent) => {
+  const onPointerDown = (e: ReactPointerEvent) => {
       (e.target as Element).setPointerCapture?.(e.pointerId);
-      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pointers.current.size === 2) {
-        const [a, b] = [...pointers.current.values()];
-        pinchStart.current = { dist: dist(a, b), scale };
-        dragStart.current = null;
-      } else if (pointers.current.size === 1) {
-        dragStart.current = {
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointersRef.current.size === 2) {
+        const [a, b] = [...pointersRef.current.values()];
+        pinchStartRef.current = { dist: dist(a, b), scale };
+        dragStartRef.current = null;
+      } else if (pointersRef.current.size === 1) {
+        dragStartRef.current = {
           x: e.clientX,
           y: e.clientY,
           ox: offset.x,
@@ -95,40 +97,34 @@ function useZoomPan(index: number, go: (delta: number) => void) {
           moved: false,
         };
       }
-    },
-    [scale, offset],
-  );
+    };
 
-  const onPointerMove = useCallback(
-    (e: ReactPointerEvent) => {
-      if (!pointers.current.has(e.pointerId)) return;
-      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const onPointerMove = (e: ReactPointerEvent) => {
+      if (!pointersRef.current.has(e.pointerId)) return;
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
       // Pinch-zoom.
-      if (pointers.current.size === 2 && pinchStart.current) {
-        const [a, b] = [...pointers.current.values()];
-        const ratio = dist(a, b) / (pinchStart.current.dist || 1);
-        setScale(clamp(pinchStart.current.scale * ratio, MIN_SCALE, MAX_SCALE));
+      if (pointersRef.current.size === 2 && pinchStartRef.current) {
+        const [a, b] = [...pointersRef.current.values()];
+        const ratio = dist(a, b) / (pinchStartRef.current.dist || 1);
+        setScale(clamp(pinchStartRef.current.scale * ratio, MIN_SCALE, MAX_SCALE));
         return;
       }
 
       // Single-pointer drag → pan (only meaningful when zoomed).
-      const d = dragStart.current;
+      const d = dragStartRef.current;
       if (!d) return;
       const dx = e.clientX - d.x;
       const dy = e.clientY - d.y;
       if (!d.moved && Math.hypot(dx, dy) > TAP_SLOP) d.moved = true;
       if (zoomed) setOffset({ x: d.ox + dx, y: d.oy + dy });
-    },
-    [zoomed],
-  );
+    };
 
-  const endPointer = useCallback(
-    (e: ReactPointerEvent) => {
-      const d = dragStart.current;
-      const wasPinching = pointers.current.size === 2;
-      pointers.current.delete(e.pointerId);
-      if (pointers.current.size < 2) pinchStart.current = null;
+  const endPointer = (e: ReactPointerEvent) => {
+      const d = dragStartRef.current;
+      const wasPinching = pointersRef.current.size === 2;
+      pointersRef.current.delete(e.pointerId);
+      if (pointersRef.current.size < 2) pinchStartRef.current = null;
       // Snap an over-pinched-down image back to fit.
       if (wasPinching) {
         setScale((s) => {
@@ -142,31 +138,26 @@ function useZoomPan(index: number, go: (delta: number) => void) {
         const dx = e.clientX - d.x;
         if (Math.abs(dx) > SWIPE_THRESHOLD) go(dx < 0 ? 1 : -1);
       }
-      dragStart.current = null;
-    },
-    [zoomed, go],
-  );
+      dragStartRef.current = null;
+    };
 
   // Ctrl/Cmd + wheel zooms; plain wheel is left alone (page is scroll-locked).
-  const onWheel = useCallback(
-    (e: ReactWheelEvent) => {
+  const onWheel = (e: ReactWheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       zoomBy(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
-    },
-    [zoomBy],
-  );
+    };
 
-  const toggleZoom = useCallback(() => {
+  const toggleZoom = () => {
     if (zoomed) resetZoom();
     else setScale(2);
-  }, [zoomed, resetZoom]);
+  };
 
   return {
     scale,
     offset,
     zoomed,
-    moving: dragStart.current?.moved ?? false,
+    moving: dragStartRef.current?.moved ?? false,
     zoomBy,
     resetZoom,
     onPointerDown,
@@ -178,7 +169,7 @@ function useZoomPan(index: number, go: (delta: number) => void) {
 }
 
 const GLYPH =
-  "flex size-9 items-center justify-center rounded-md leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] disabled:opacity-30 sm:size-8";
+  "flex size-9 items-center justify-center rounded-md leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-focus disabled:opacity-30 sm:size-8";
 
 function LightboxHeader({
   image,
@@ -217,7 +208,7 @@ function LightboxHeader({
           onClick={() => zoomBy(-ZOOM_STEP)}
           disabled={scale <= MIN_SCALE}
           aria-label={t("issues.image.zoomOut")}
-          className={`${GLYPH} text-lg`}
+          className={cn(GLYPH, "text-lg")}
         >
           &minus;
         </button>
@@ -225,7 +216,7 @@ function LightboxHeader({
           type="button"
           onClick={resetZoom}
           aria-label={t("issues.image.resetZoom")}
-          className="fg-caption min-w-11 rounded-md px-1 py-1.5 tabular-nums text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          className="fg-caption min-w-11 rounded-md px-1 py-1.5 tabular-nums text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-focus"
         >
           {Math.round(scale * 100)}%
         </button>
@@ -234,7 +225,7 @@ function LightboxHeader({
           onClick={() => zoomBy(ZOOM_STEP)}
           disabled={scale >= MAX_SCALE}
           aria-label={t("issues.image.zoomIn")}
-          className={`${GLYPH} text-lg`}
+          className={cn(GLYPH, "text-lg")}
         >
           +
         </button>
@@ -250,7 +241,7 @@ function LightboxHeader({
           type="button"
           onClick={onClose}
           aria-label={t("common.close")}
-          className={`${GLYPH} text-xl`}
+          className={cn(GLYPH, "text-xl")}
         >
           &times;
         </button>
@@ -270,18 +261,10 @@ function Thumbnails({ images, index, onPick }: { images: LightboxImage[]; index:
           onClick={() => onPick(i)}
           aria-label={t("issues.image.view", { name: img.name })}
           aria-current={i === index}
-          className={`flex-none overflow-hidden rounded-md border-2 transition-colors ${
-            i === index
-              ? "border-cobalt-400"
-              : "border-transparent opacity-60 hover:opacity-100"
-          }`}
+          className={cn("flex-none overflow-hidden rounded-md border-2 transition-colors", i === index ? "border-info-8" : "border-transparent opacity-60 hover:opacity-100")}
         >
-          {/* biome-ignore lint/performance/noImgElement: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
-          <img
-            src={img.href}
-            alt={img.alt ?? img.name}
-            className="size-11 object-cover sm:size-14"
-          />
+          {/* unoptimized: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
+          <Image unoptimized src={img.href} alt={img.alt ?? img.name} width={56} height={56} className="size-11 object-cover sm:size-14" />
         </button>
       ))}
     </div>
@@ -303,58 +286,23 @@ export function ImageLightbox({
   const t = useCopy();
   const count = images.length;
   const current = images[index];
-  const restoreRef = useRef<HTMLElement | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  const go = useCallback(
-    (delta: number) => {
-      if (count <= 1) return;
-      onIndexChange((index + delta + count) % count);
-    },
-    [count, index, onIndexChange],
-  );
+  const go = (delta: number) => {
+    if (count <= 1) return;
+    onIndexChange((index + delta + count) % count);
+  };
   const { scale, offset, zoomed, moving, zoomBy, resetZoom, ...gesture } = useZoomPan(index, go);
-
-  useEffect(() => {
-    restoreRef.current = document.activeElement as HTMLElement;
-    panelRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowRight") go(1);
-      else if (e.key === "ArrowLeft") go(-1);
-      else if (e.key === "+" || e.key === "=") zoomBy(ZOOM_STEP);
-      else if (e.key === "-") zoomBy(-ZOOM_STEP);
-      else if (e.key === "0") resetZoom();
-    };
-    document.addEventListener("keydown", onKey);
-    // Lock background scroll while the gallery is open.
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-      restoreRef.current?.focus?.();
-    };
-  }, [onClose, go, zoomBy, resetZoom]);
+  const onKey = (e: ReactKeyboardEvent) => {
+    if (e.key === "ArrowRight") go(1);
+    else if (e.key === "ArrowLeft") go(-1);
+    else if (e.key === "+" || e.key === "=") zoomBy(ZOOM_STEP);
+    else if (e.key === "-") zoomBy(-ZOOM_STEP);
+    else if (e.key === "0") resetZoom();
+  };
 
   if (!current) return null;
 
-  return createPortal(
-    // biome-ignore lint/a11y/useKeyWithClickEvents: Escape closes through the document keydown listener above
-    <div
-      ref={panelRef}
-      role="dialog"
-      aria-modal="true"
-      aria-label={t("issues.image.position", { at: index + 1, of: count, name: current.name })}
-      tabIndex={-1}
-      className="fixed inset-0 z-[60] flex flex-col outline-none"
-      style={{ background: "var(--scrim-media)", backdropFilter: "blur(6px)" }}
-      // A click on the backdrop itself closes; a click inside the content goes no further.
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-        else e.stopPropagation();
-      }}
-    >
+  return (
+    <MediaOverlay open onOpenChange={(open) => !open && onClose()} onKeyDown={onKey} label={t("issues.image.position", { at: index + 1, of: count, name: current.name })}>
       <LightboxHeader image={current} index={index} count={count} scale={scale} zoomBy={zoomBy} resetZoom={resetZoom} onClose={onClose} />
 
       {/* Stage. */}
@@ -364,14 +312,14 @@ export function ImageLightbox({
             type="button"
             onClick={() => go(-1)}
             aria-label={t("issues.image.previous")}
-            className="absolute left-2 z-10 flex size-11 items-center justify-center rounded-pill bg-white/10 text-2xl leading-none text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] sm:left-3 sm:size-10"
+            className="absolute left-2 z-10 flex size-11 items-center justify-center rounded-pill bg-white/10 text-2xl leading-none text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:shadow-focus sm:left-3 sm:size-10"
           >
             &lsaquo;
           </button>
         )}
         {/* biome-ignore lint/a11y/noStaticElementInteractions: the pointer pan and zoom surface; the header's zoom buttons are its keyboard equivalent */}
         <div
-          className="flex h-full w-full touch-none select-none items-center justify-center"
+          className="relative h-full w-full touch-none select-none"
           onPointerDown={gesture.onPointerDown}
           onPointerMove={gesture.onPointerMove}
           onPointerUp={gesture.endPointer}
@@ -379,12 +327,15 @@ export function ImageLightbox({
           onWheel={gesture.onWheel}
           onDoubleClick={gesture.toggleZoom}
         >
-          {/* biome-ignore lint/performance/noImgElement: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
-          <img
+          {/* unoptimized: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
+          <Image
+            unoptimized
+            fill
+            sizes="100vw"
             src={current.href}
             alt={current.alt ?? current.name}
             draggable={false}
-            className="max-h-full max-w-full object-contain will-change-transform"
+            className="object-contain will-change-transform"
             style={{
               transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
               transition: moving ? "none" : "transform 120ms ease-out",
@@ -397,7 +348,7 @@ export function ImageLightbox({
             type="button"
             onClick={() => go(1)}
             aria-label={t("issues.image.next")}
-            className="absolute right-2 z-10 flex size-11 items-center justify-center rounded-pill bg-white/10 text-2xl leading-none text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] sm:right-3 sm:size-10"
+            className="absolute right-2 z-10 flex size-11 items-center justify-center rounded-pill bg-white/10 text-2xl leading-none text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:shadow-focus sm:right-3 sm:size-10"
           >
             &rsaquo;
           </button>
@@ -405,7 +356,6 @@ export function ImageLightbox({
       </div>
 
       {count > 1 && <Thumbnails images={images} index={index} onPick={onIndexChange} />}
-    </div>,
-    document.body,
+    </MediaOverlay>
   );
 }

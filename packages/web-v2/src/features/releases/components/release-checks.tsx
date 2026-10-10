@@ -5,7 +5,7 @@ import { StatusBadge, ToneBadge, ViewHeading } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { ReleaseApprovalView, ReleaseAttemptView, ReleaseDetail } from "../types";
-import { AttemptsSection } from "./release-attempts";
+import { ReleaseAttempts } from "./release-attempts";
 import { DisclosureToggle, shortSha } from "./release-bits";
 
 const STAGE_LABEL: Record<ReleaseAttemptView["stage"], ProductCopyKey> = {
@@ -32,7 +32,7 @@ function Attempt({ a }: { a: ReleaseAttemptView }) {
   return (
     <li className="border-b border-line-subtle py-2.5 text-13" data-testid="release-attempt" data-stage={a.stage}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="w-[72px] font-semibold">{t(STAGE_LABEL[a.stage])}</span>
+        <span className="w-18 font-semibold">{t(STAGE_LABEL[a.stage])}</span>
         {verdictBadge(a, t)}
         {a.health ? <span className="text-12 text-muted">{t(a.health === "up" ? "releases.productionUp" : "releases.productionDown")}</span> : null}
         {a.commit ? (
@@ -49,9 +49,9 @@ function Attempt({ a }: { a: ReleaseAttemptView }) {
           </DisclosureToggle>
         ) : null}
       </div>
-      {a.verdictReason ? <p className="mt-1 text-12-5 text-muted">{a.verdictReason}</p> : null}
+      {a.verdictReason ? <p className="mt-1 text-13 text-muted">{a.verdictReason}</p> : null}
       {open ? (
-        <div className="mt-2 grid gap-1.5 text-12-5">
+        <div className="mt-2 grid gap-1.5 text-13">
           {a.identity ? <p className="text-muted">{a.identity}</p> : null}
           {a.readings.length > 0 ? (
             <ul className="list-disc pl-5 text-muted">
@@ -83,11 +83,11 @@ function Approval({ a }: { a: ReleaseApprovalView }) {
           ) : null}
         </span>
       </span>
-      <span className="text-12-5 text-muted" title={a.evidence.commit}>
+      <span className="text-13 text-muted" title={a.evidence.commit}>
         {t("releases.evidenceFrom", { env: a.evidence.environment, sha: shortSha(a.evidence.commit) })} {a.evidence.reading}
       </span>
-      {a.note ? <span className="text-12-5">{a.note}</span> : null}
-      {a.reason ? <span className="text-12-5 text-muted">{t("releases.reason")} {a.reason}</span> : null}
+      {a.note ? <span className="text-13">{a.note}</span> : null}
+      {a.reason ? <span className="text-13 text-muted">{t("releases.reason")} {a.reason}</span> : null}
     </li>
   );
 }
@@ -99,7 +99,7 @@ export function ChecksPane({ r, slug }: { r: ReleaseDetail; slug: string }) {
   }
   return (
     <div className="grid gap-8" data-testid="view-checks">
-      <AttemptsSection r={r} slug={slug} />
+      <ReleaseAttempts r={r} slug={slug} />
       {r.approvals.length > 0 ? (
         <section aria-label={t("releases.approvals")}>
           <ViewHeading>{t("releases.approval")}</ViewHeading>

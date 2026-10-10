@@ -11,28 +11,23 @@ import {
   SCHEDULE_GROUPS,
   SCHEDULE_GROUP_LABELS,
 } from "@forge/contracts/automation-standing";
-import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 import {
   Button,
   GroupedList,
   type ListGroup,
+  ListLayout,
   ListSearch,
+  ListToolbar,
   PageTitle,
-  rememberListOrigin,
   Tabs,
-  useGroupFold,
-  usePeek,
-  usePeekKeys,
-  useUrlParams,
+  useListPage,
   useUrlTab,
-  visibleRows,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { useCreateSchedule } from "@/features/automation/schedule-hooks";
+import { useCreateSchedule } from "../schedule-hooks";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
-import { cn } from "@/lib/utils/cn";
 import { useAutomationStanding } from "../hooks";
 import { AUTOMATION_LIST, AUTOMATION_TABS, type AutomationTab, fireHref, reportHref, scheduleHref } from "@/lib/routes/automation";
 import type { AutomationStandingResponse, FireStanding, ReportStanding, ScheduleStanding } from "../types";
@@ -42,20 +37,23 @@ import { ReportPeek, reportRow } from "./report-views";
 import { ScheduleForm } from "./schedule-form";
 import { type AutomationAccess, SchedulePeek, scheduleRow } from "./schedule-views";
 
-const matches = (text: string, ...parts: Array<string | null | undefined>) =>
-  !text || parts.join(" ").toLowerCase().includes(text);
+type Row = ScheduleStanding | FireStanding | ReportStanding;
 
-function tabRows(d: AutomationStandingResponse, tab: AutomationTab, text: string, t: Copy) {
-  if (tab === "schedules") {
-    const rows = d.schedules.filter((s) => matches(text, s.name, s.targetProjectSlug, s.owner?.name));
-    return automationGroups(rows, SCHEDULE_GROUPS, SCHEDULE_GROUP_LABELS, "schedule", t) as ListGroup<ScheduleStanding | FireStanding | ReportStanding>[];
-  }
-  if (tab === "fires") {
-    const rows = d.fires.filter((f) => matches(text, f.id, f.scheduleName));
-    return automationGroups(rows, FIRE_GROUPS, FIRE_GROUP_LABELS, "fire", t) as ListGroup<ScheduleStanding | FireStanding | ReportStanding>[];
-  }
-  const rows = d.reports.filter((r) => matches(text, r.id, r.summary, r.fire?.scheduleName, r.targetRef));
-  return automationGroups(rows, REPORT_GROUPS, REPORT_GROUP_LABELS, "report", t) as ListGroup<ScheduleStanding | FireStanding | ReportStanding>[];
+const searchOf: Record<AutomationTab, (r: Row) => string> = {
+  schedules: (r) => { const s = r as ScheduleStanding; return [s.name, s.targetProjectSlug, s.owner?.name].join(" "); },
+  fires: (r) => { const f = r as FireStanding; return [f.id, f.scheduleName].join(" "); },
+  reports: (r) => { const x = r as ReportStanding; return [x.id, x.summary, x.fire?.scheduleName, x.targetRef].join(" "); },
+};
+
+function rowsOf(d: AutomationStandingResponse | undefined, tab: AutomationTab): Row[] {
+  if (!d) return [];
+  return tab === "schedules" ? d.schedules : tab === "fires" ? d.fires : d.reports;
+}
+
+function groupsOf(rows: Row[], tab: AutomationTab, t: Copy): ListGroup<Row>[] {
+  if (tab === "schedules") return automationGroups(rows as ScheduleStanding[], SCHEDULE_GROUPS, SCHEDULE_GROUP_LABELS, "schedule", t);
+  if (tab === "fires") return automationGroups(rows as FireStanding[], FIRE_GROUPS, FIRE_GROUP_LABELS, "fire", t);
+  return automationGroups(rows as ReportStanding[], REPORT_GROUPS, REPORT_GROUP_LABELS, "report", t);
 }
 
 const columnsOf = (tab: AutomationTab, t: Copy) => ({
@@ -74,35 +72,24 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
   const q = useAutomationStanding(projectId);
   const create = useCreateSchedule(projectId);
   const [creating, setCreating] = useState(false);
-  const router = useRouter();
   const [tab, setTab] = useUrlTab(AUTOMATION_TABS);
-  const [params, setParams] = useUrlParams();
-  const text = (params.get("q") ?? "").trim().toLowerCase();
-  const fold = useGroupFold(`web-v2:automation-fold:${tab}`);
-  const d = q.data;
-  const groups = useMemo(() => (d ? tabRows(d, tab, text, t) : []), [d, tab, text, t]);
   const noun = t(`schedules.noun.${tab}` as ProductCopyKey);
-  const ctx: RowCtx = useMemo(() => ({ t, language, time }), [t, language, time]);
-  const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.id), [groups, fold]);
-  const allKeys = useMemo(() => groups.flatMap((g) => g.rows.map((r) => r.id)), [groups]);
-  const peek = usePeek(visible, allKeys);
-
-  const hrefOf = useMemo(
-    () => ({
-      schedules: (id: string) => scheduleHref(slug, id),
-      fires: (id: string) => fireHref(slug, id),
-      reports: (id: string) => reportHref(slug, id),
-    }),
-    [slug],
-  );
-  const openFull = useCallback(
-    (key: string) => {
-      rememberListOrigin(AUTOMATION_LIST);
-      router.push(hrefOf[tab](key));
-    },
-    [router, hrefOf, tab],
-  );
-  usePeekKeys(peek, openFull);
+  const ctx: RowCtx = { t, language, time };
+  const hrefOf = {
+    schedules: (id: string) => scheduleHref(slug, id),
+    fires: (id: string) => fireHref(slug, id),
+    reports: (id: string) => reportHref(slug, id),
+  };
+  const list = useListPage<Row>({
+    rows: rowsOf(q.data, tab),
+    keyOf: (r) => r.id,
+    searchOf: searchOf[tab],
+    groupsOf: (rows) => groupsOf(rows, tab, t),
+    foldKey: `web-v2:automation-fold:${tab}`,
+    hrefOf: (id) => hrefOf[tab](id),
+    origin: AUTOMATION_LIST,
+  });
+  const { peek, openFull } = list;
 
   const title = <PageTitle>{t("schedules.title")}</PageTitle>;
   return (
@@ -113,13 +100,13 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
           { value: "fires", label: t("schedules.tab.fires"), count: d.firesTotal },
           { value: "reports", label: t("schedules.tab.reports"), count: d.reportCounts.new },
         ];
-        const row = (r: ScheduleStanding | FireStanding | ReportStanding) =>
+        const row = (r: Row) =>
           tab === "schedules"
             ? scheduleRow(hrefOf.schedules, ctx)(r as ScheduleStanding)
             : tab === "fires"
               ? fireRow(hrefOf.fires, ctx)(r as FireStanding)
               : reportRow(hrefOf.reports, ctx)(r as ReportStanding);
-        const open = peek.open ? groups.flatMap((g) => g.rows).find((r) => r.id === peek.open) : undefined;
+        const open = peek.open ? list.rows.find((r) => r.id === peek.open) : undefined;
         const scheduleOf = (id: string) => d.schedules.find((s) => s.id === id);
 
         return (
@@ -128,21 +115,51 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
             <div className="border-b border-line-subtle px-5 max-md:px-2" data-testid="automation-tabs">
               <Tabs tabs={tabs} value={tab} onChange={(v) => setTab(v as AutomationTab)} />
             </div>
-            <div className={cn("grid min-h-[60vh] items-start", open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
-                  <ListSearch noun={noun} value={params.get("q") ?? ""} onChange={(v) => setParams({ q: v || null })} />
+            <ListLayout
+              peek={
+                open ? (
+                  <>
+                    {tab === "schedules" ? (
+                      <SchedulePeek key={open.id} s={open as ScheduleStanding} access={access} peek={peek} onOpenFull={() => openFull(open.id)} />
+                    ) : null}
+                    {tab === "fires" ? (
+                      <FirePeek
+                        key={open.id}
+                        f={open as FireStanding}
+                        schedule={scheduleOf((open as FireStanding).scheduleId)}
+                        slug={slug}
+                        peek={peek}
+                        onOpenFull={() => openFull(open.id)}
+                      />
+                    ) : null}
+                    {tab === "reports" ? (
+                      <ReportPeek
+                        key={open.id}
+                        r={open as ReportStanding}
+                        projectId={projectId}
+                        slug={slug}
+                        canWrite={access.canWrite}
+                        peek={peek}
+                        onOpenFull={() => openFull(open.id)}
+                      />
+                    ) : null}
+                  </>
+                ) : undefined
+              }
+            >
+                <ListToolbar>
+                  <ListSearch noun={noun} {...list.search} />
                   {tab === "schedules" && access.canManage && !creating ? (
                     <Button type="button" variant="primary" size="sm" icon="plus" className="ml-auto" onClick={() => setCreating(true)} data-testid="schedule-new">
                       {t("schedules.new")}
                     </Button>
                   ) : null}
                   {tab === "fires" && d.firesHasMore ? (
-                    <span className="text-12-5 text-subtle">
+                    <span className="text-13 text-subtle">
                       {t("schedules.newest", { n: d.fires.length, total: d.firesTotal })}
                     </span>
                   ) : null}
-                </div>
+                </ListToolbar>
                 {tab === "schedules" && creating ? (
                   <div className="border-b border-line-subtle px-5 py-4 max-md:px-3">
                     <ScheduleForm
@@ -157,40 +174,15 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
                 ) : null}
                 <GroupedList
                   ariaLabel={t("schedules.ariaList", { noun })}
-                  groups={groups}
-                  fold={fold}
+                  groups={list.groups}
+                  fold={list.fold}
                   row={row}
                   selected={peek.open}
-                  onPeek={(k) => peek.set(k === peek.open ? null : k)}
-                  empty={text ? t("schedules.emptySearch") : t("schedules.emptyList", { noun })}
+                  onPeek={list.togglePeek}
+                  empty={list.search.value ? t("schedules.emptySearch") : t("schedules.emptyList", { noun })}
                   columns={columnsOf(tab, t)}
                 />
-              </div>
-              {open && tab === "schedules" ? (
-                <SchedulePeek key={open.id} s={open as ScheduleStanding} access={access} peek={peek} onOpenFull={() => openFull(open.id)} />
-              ) : null}
-              {open && tab === "fires" ? (
-                <FirePeek
-                  key={open.id}
-                  f={open as FireStanding}
-                  schedule={scheduleOf((open as FireStanding).scheduleId)}
-                  slug={slug}
-                  peek={peek}
-                  onOpenFull={() => openFull(open.id)}
-                />
-              ) : null}
-              {open && tab === "reports" ? (
-                <ReportPeek
-                  key={open.id}
-                  r={open as ReportStanding}
-                  projectId={projectId}
-                  slug={slug}
-                  canWrite={access.canWrite}
-                  peek={peek}
-                  onOpenFull={() => openFull(open.id)}
-                />
-              ) : null}
-            </div>
+            </ListLayout>
           </div>
         );
       }}

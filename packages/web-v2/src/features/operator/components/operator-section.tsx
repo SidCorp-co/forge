@@ -16,7 +16,7 @@ const EMPTY: Record<PlaceholderSection, ProductCopyKey> = {
   "mcp-logs": "operator.placeholder.mcpLogsEmpty",
 };
 
-export function OperatorSection({ section }: { section: PlaceholderSection }) {
+export function OperatorGroup({ section }: { section: PlaceholderSection }) {
   const t = useCopy();
   return <EmptyState message={t(EMPTY[section])} />;
 }

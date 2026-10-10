@@ -1,12 +1,11 @@
 "use client";
 
-import { forwardRef } from "react";
+import type { Ref } from "react";
 import { Icon } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 
 /** The notifications bell at the top of the sidebar, with the open count on it. */
-export const SidebarBell = forwardRef<HTMLButtonElement, { count: number; onToggle: () => void }>(
-  function SidebarBell({ count, onToggle }, ref) {
+export function SidebarBell({ count, onToggle, ref }: { count: number; onToggle: () => void; ref?: Ref<HTMLButtonElement> }) {
     const t = useCopy();
     return (
       <button
@@ -19,7 +18,7 @@ export const SidebarBell = forwardRef<HTMLButtonElement, { count: number; onTogg
         <Icon name="bell" size={17} />
         {count > 0 && (
           <span
-            className="absolute right-0.5 top-0.5 inline-flex min-w-[15px] items-center justify-center rounded-pill px-1 text-10 font-bold text-white"
+            className="absolute right-0.5 top-0.5 inline-flex min-w-3.75 items-center justify-center rounded-pill px-1 text-10 font-bold text-white"
             style={{ background: "var(--flame-500)" }}
           >
             {count > 99 ? "99+" : count}
@@ -27,5 +26,4 @@ export const SidebarBell = forwardRef<HTMLButtonElement, { count: number; onTogg
         )}
       </button>
     );
-  },
-);
+}

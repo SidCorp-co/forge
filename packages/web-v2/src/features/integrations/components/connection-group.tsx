@@ -15,9 +15,9 @@ import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { type ConnectionGroup, groupSummary } from "../connection-groups";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { providerIcon } from "../providers/registry";
-import { ConnectionRow } from "./connection-row";
+import { ConnectionItem } from "./connection-row";
 
-export function ConnectionGroupSection({
+export function ConnectionGroupList({
   group,
   open,
   onToggle,
@@ -42,12 +42,12 @@ export function ConnectionGroupSection({
           aria-expanded={open}
           aria-controls={rowsId}
           onClick={onToggle}
-          className="flex w-full items-center gap-2 px-4 py-3 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          className="flex w-full items-center gap-2 px-4 py-3 text-left focus-visible:outline-none focus-visible:shadow-focus"
         >
           <Icon
             name="chevronRight"
             size={16}
-            className="shrink-0 text-subtle transition-transform duration-[150ms]"
+            className="shrink-0 text-subtle transition-transform duration-150"
             style={{ transform: open ? "rotate(90deg)" : "none" }}
           />
           <Icon
@@ -67,7 +67,7 @@ export function ConnectionGroupSection({
       <div id={rowsId} hidden={!open} className={open ? "forge-fade" : undefined}>
         {open &&
           group.connections.map((c) => (
-            <ConnectionRow
+            <ConnectionItem
               key={c.id}
               connection={c}
               ownerLabel={ownerLabel(c)}

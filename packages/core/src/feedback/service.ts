@@ -35,7 +35,7 @@ import { detailAs, type FeedbackActor, type Row, rowIn } from './read.js';
 import { isRefusal, resolveTarget } from './refs.js';
 import { tellReporters } from './reporter-language.js';
 import { declinedNotice } from './reporter-notices.js';
-import { reportersOf, withBell } from './reporters.js';
+import { reportersOf, tellStepToReporters, withBell } from './reporters.js';
 import {
   decideActRefusal,
   declineRefusal,
@@ -355,6 +355,8 @@ async function personalAct(
       key: feedbackKey(row.fbSeq),
       decision: act,
     });
+    // a triager's verify or reopen tells the reporters; their own tells nobody
+    await tellStepToReporters(tx, row, act, actor.userId);
     return null;
   });
   if (refusals) return { ok: false, refusals };

@@ -8,6 +8,7 @@ import type { SuggestionKind, SuggestionView } from '@forge/contracts/suggestion
 import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
+import { projectWorkflows } from '../db/schema-workflows.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { openRevisionOf, rowIn } from '../requirements/index.js';
@@ -67,8 +68,17 @@ export const onTarget = (t: SuggestionTarget) =>
         : eq(suggestions.issueId, t.id);
 
 /** The target's head revision: a requirement's current revision, none for an issue or feedback. */
+/** The revision a suggestion on `t` is made against: a requirement's current revision, a workflow's
+ *  design revision; an issue and a feedback item hold no revisions, so theirs is null (REQ-8 BC-1). */
 export async function headOf(tx: Tx, projectId: string, t: SuggestionTarget) {
-  return t.type === 'requirement' ? (await rowIn(tx, projectId, t.id)).currentRevision : null;
+  if (t.type === 'requirement') return (await rowIn(tx, projectId, t.id)).currentRevision;
+  if (t.type !== 'workflow') return null;
+  const [design] = await tx
+    .select({ revision: projectWorkflows.revision })
+    .from(projectWorkflows)
+    .where(and(eq(projectWorkflows.id, t.id), eq(projectWorkflows.projectId, projectId)));
+  if (!design) throw notFound(`project ${projectId} holds no workflow ${t.id}`);
+  return design.revision;
 }
 
 /** The open revision a suggestion of `kind` builds on instead of the head: a revision_diff's on a

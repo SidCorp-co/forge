@@ -1,6 +1,6 @@
 "use client";
 
-import { Banner, Collapsible, EmptyState, ErrorState, enumLabel, Icon, type IconName, Skeleton, StatusBadge } from "@/design";
+import { Banner, Disclosure, EmptyState, ErrorState, enumLabel, Icon, type IconName, Skeleton, StatusBadge } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useIntegrationDeliveries } from "../hooks";
@@ -15,7 +15,7 @@ import type { IntegrationDelivery } from "../types";
 // ISS-1140: a call turned away AT the door — bad or missing signature — which never became a
 // delivery reads `refused` (contracts `ui-vocabulary.ts` `delivery`), never as work still in flight.
 
-function DeliveryRow({ row }: { row: IntegrationDelivery }) {
+function DeliveryItem({ row }: { row: IntegrationDelivery }) {
   const dirIcon: IconName = row.direction === "inbound" ? "inbox" : "arrowRight";
   const duration = typeof row.durationMs === "number" ? `${row.durationMs}ms` : "—";
   const t = useCopy();
@@ -23,7 +23,7 @@ function DeliveryRow({ row }: { row: IntegrationDelivery }) {
   const time = useTimeFormat();
 
   return (
-    <Collapsible
+    <Disclosure
       title={
         <span className="flex w-full flex-wrap items-center gap-x-3 gap-y-1">
           <span className="inline-flex items-center gap-1.5 text-muted">
@@ -58,7 +58,7 @@ function DeliveryRow({ row }: { row: IntegrationDelivery }) {
           </div>
         )}
       </div>
-    </Collapsible>
+    </Disclosure>
   );
 }
 
@@ -85,13 +85,13 @@ export function DeliveryLogViewer({
     return (
       <div className="flex flex-col gap-2">
         {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-[44px] w-full" />
+          <Skeleton key={i} className="h-11 w-full" />
         ))}
       </div>
     );
   }
   if (deliveries.isError) {
-    return <ErrorState message={formatApiError(deliveries.error)} onRetry={() => deliveries.refetch()} />;
+    return <ErrorState message={formatApiError(deliveries.error)} onRetry={() => void deliveries.refetch()} />;
   }
 
   const items = deliveries.data?.items ?? [];
@@ -102,7 +102,7 @@ export function DeliveryLogViewer({
   return (
     <div className="flex flex-col gap-2">
       {items.map((row) => (
-        <DeliveryRow key={row.id} row={row} />
+        <DeliveryItem key={row.id} row={row} />
       ))}
     </div>
   );

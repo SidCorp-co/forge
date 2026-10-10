@@ -57,7 +57,7 @@ export function WorkspacesTable({
         {rows.length === 0 ? (
           <EmptyState message={t("operator.workspaces.empty")} mascot={false} />
         ) : (
-          <Table className="min-w-[520px]">
+          <Table className="min-w-130">
             <THead>
               <TR>
                 <TH scope="col">{t("operator.workspaces.col.workspace")}</TH>

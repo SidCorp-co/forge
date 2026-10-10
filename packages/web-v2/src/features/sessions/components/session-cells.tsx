@@ -1,8 +1,8 @@
 import { useRouter } from "next/navigation";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { Badge, HealthDot, Icon, MonoTag, StatusChip, Tooltip } from "@/design";
+import { Badge, HealthDot, Icon, MonoTag, StatusBadge, Tooltip } from "@/design";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
-import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
+import { IssueRefBadge } from "@/features/issues";
 import {
   type StuckRuns,
   deriveLiveness,
@@ -153,15 +153,15 @@ export function StatusCell({
     !!reason && (display === "failed" || display === "stalled" || display === "cancelled_stale");
   const subLine = showReason ? reason : display === "cancelled" ? outcome.label : null;
   // Red reason text only for a genuine failure; swept/cleanup reads subtle.
-  const reasonColor = outcome.bucket === "failed" ? "var(--amberw-600)" : "var(--fg-subtle)";
+  const reasonColor = outcome.bucket === "failed" ? "var(--warn-11)" : "var(--fg-subtle)";
   return (
     <div className="flex flex-col items-start gap-1">
       {!awaitingReply && outcome.tooltip ? (
         <Tooltip label={outcome.tooltip}>
-          <StatusChip status={chipStatus} stage={stage} domain="session" />
+          <StatusBadge family="run" value={chipStatus} stage={stage} size="md" />
         </Tooltip>
       ) : (
-        <StatusChip status={chipStatus} stage={stage} domain="session" />
+        <StatusBadge family="run" value={chipStatus} stage={stage} size="md" />
       )}
       {subLine && (
         <span className="fg-caption" style={{ color: reasonColor }}>

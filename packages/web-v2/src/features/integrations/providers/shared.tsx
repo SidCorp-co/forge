@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, type BadgeProps, Banner, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle } from "@/design";
+import { Badge, type BadgeProps, keyedByContent, Banner, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import type { Said } from "@forge/contracts/said";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
@@ -15,10 +15,9 @@ import type { IntegrationSummary, IntegrationTestResult } from "../types";
 export function Ticked({ text }: { text: string }) {
   return (
     <>
-      {text.split(/(`[^`]+`)/).map((part, i) =>
+      {keyedByContent(text.split(/(`[^`]+`)/), (part) => part).map(({ key, item: part }) =>
         part.startsWith("`") && part.endsWith("`") && part.length > 1 ? (
-          // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one fixed sentence never reorder
-          <span key={i} className="font-mono" translate="no">
+          <span key={key} className="font-mono" translate="no">
             {part.slice(1, -1)}
           </span>
         ) : (
@@ -50,7 +49,7 @@ export function healthBadge(
 }
 
 /** A provider's card: title, an optional badge, and its content stacked. */
-export function ProviderCard({
+export function ProviderSummary({
   title,
   badge,
   children,

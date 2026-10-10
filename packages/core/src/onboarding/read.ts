@@ -276,6 +276,39 @@ export async function openBatchView(
   };
 }
 
+/**
+ * The newest attempt of the job onboarding queued: core's retries (`jobs.retry_of`) are new jobs, so
+ * `last_job_id` names the first attempt and the record follows the chain to the one that runs now
+ * (ISS-268). `attempt` counts the chain, 1 for the job onboarding queued itself.
+ */
+async function latestAttemptOf(tx: Executor, firstJobId: string) {
+  const chain = await tx.execute<{ id: string; attempt: number }>(sql`
+    WITH RECURSIVE chain AS (
+      SELECT id, 1 AS attempt FROM ${jobs} WHERE id = ${firstJobId}
+      UNION ALL
+      SELECT j.id, c.attempt + 1 FROM ${jobs} j JOIN chain c ON j.retry_of = c.id
+    )
+    SELECT chain.id, chain.attempt FROM chain JOIN ${jobs} x ON x.id = chain.id
+    ORDER BY chain.attempt DESC, x.queued_at DESC LIMIT 1`);
+  const newest = chain[0];
+  if (!newest) return [];
+  const rows = await tx
+    .select({
+      id: jobs.id,
+      status: jobs.status,
+      payload: jobs.payload,
+      pipelineRunId: jobs.pipelineRunId,
+      queuedAt: jobs.queuedAt,
+      dispatchedAt: jobs.dispatchedAt,
+      finishedAt: jobs.finishedAt,
+      failureReason: jobs.failureReason,
+      error: jobs.error,
+    })
+    .from(jobs)
+    .where(eq(jobs.id, newest.id));
+  return rows.map((r) => ({ ...r, attempt: Number(newest.attempt) }));
+}
+
 export async function onboardingView(
   tx: Executor,
   row: OnboardingRow,
@@ -285,20 +318,7 @@ export async function onboardingView(
     designsOf(tx, row.projectId, row.designs),
     seriesItemsOf(tx, row),
     openBatchView(tx, eq(questionnaireBatches.onboardingId, row.id), now),
-    row.lastJobId
-      ? tx
-          .select({
-            id: jobs.id,
-            status: jobs.status,
-            payload: jobs.payload,
-            pipelineRunId: jobs.pipelineRunId,
-            queuedAt: jobs.queuedAt,
-            dispatchedAt: jobs.dispatchedAt,
-            finishedAt: jobs.finishedAt,
-          })
-          .from(jobs)
-          .where(eq(jobs.id, row.lastJobId))
-      : Promise.resolve([]),
+    row.lastJobId ? latestAttemptOf(tx, row.lastJobId) : Promise.resolve([]),
     projectHoldsSensitiveData(row.projectId),
   ]);
   const j = job[0];
@@ -332,6 +352,9 @@ export async function onboardingView(
           dispatchedAt: j.dispatchedAt?.toISOString() ?? null,
           finishedAt: j.finishedAt?.toISOString() ?? null,
           waitingOn,
+          attempt: j.attempt,
+          endedWith:
+            LIVE.has(j.status) || j.status === 'done' ? null : (j.failureReason ?? j.error ?? null),
         }
       : null,
     sensitiveData: sensitive,

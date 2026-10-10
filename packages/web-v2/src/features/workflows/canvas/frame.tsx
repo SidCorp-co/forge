@@ -1,9 +1,10 @@
 "use client";
 
+import { fixedHeight } from "@/design";
 import "@xyflow/react/dist/base.css";
-import "./canvas.css";
+import "@/design/patterns/graph-canvas.css";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
-import { type Edge, type EdgeTypes, MiniMap, type Node, type NodeTypes, type OnNodesChange, ReactFlow, useReactFlow, type Viewport } from "@xyflow/react";
+import { type Edge, type EdgeTypes, MiniMap, type Node, type NodeTypes, type OnNodesChange, ReactFlow, useReactFlow, useViewport, type Viewport } from "@xyflow/react";
 import { type ReactNode, type RefObject, useEffect, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Legend, ZoomBar } from "./controls";
@@ -24,13 +25,13 @@ interface FrameProps {
   ready: boolean;
   /** Something is selected, so what is not related to it is dimmed. */
   dim: boolean;
-  zoom: number;
   minZoom: number;
   maxZoom: number;
   onNodeClick: (n: Node) => void;
   onEdgePick: (key: string) => void;
   onPaneClick: () => void;
-  onMove: (vp: Viewport) => void;
+  /** The viewport moved: a pan or a zoom, by the reader or the canvas. */
+  onMove?: (vp: Viewport) => void;
   onFit: () => void;
   /** Zoom by a factor; absent, zoom within the bounds. */
   onZoom?: (factor: number) => void;
@@ -87,6 +88,7 @@ export function Frame(p: FrameProps) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  const { zoom } = useViewport();
   const zoomBy = p.onZoom ?? ((f: number) => void rf.zoomTo(Math.min(p.maxZoom, Math.max(p.minZoom, rf.getZoom() * f)), { duration: 160 }));
 
   // Side by side, the row takes the screen's height rather than the panel's: `contain: size` keeps the
@@ -95,7 +97,7 @@ export function Frame(p: FrameProps) {
     <div className={cn("flex min-h-0 flex-1", !p.compact && "max-lg:flex-col lg:[contain:size]")} data-testid="workflow-canvas" data-layout={p.layout} data-focus={Boolean(p.focus?.on)}>
       <div
         ref={p.wrap}
-        className={cn("wfc min-w-0 flex-1", !p.compact && !p.focus?.on && "max-lg:h-[72vh] max-lg:flex-none")}
+        className={cn("wfc min-w-0 flex-1", !p.compact && !p.focus?.on && [fixedHeight("pane", "max-lg"), "max-lg:flex-none"])}
         data-ready={p.ready}
         data-dim={p.dim}
         data-compact={Boolean(p.compact)}
@@ -113,7 +115,7 @@ export function Frame(p: FrameProps) {
           onNodeClick={(_, n) => p.onNodeClick(n)}
           onEdgeClick={(_, e) => p.onEdgePick(e.id)}
           onPaneClick={p.onPaneClick}
-          onMove={(_, vp) => p.onMove(vp)}
+          onMove={(_, vp) => p.onMove?.(vp)}
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable={false}
@@ -142,7 +144,7 @@ export function Frame(p: FrameProps) {
         {p.toolbar}
         {p.search}
         <ZoomBar
-          zoom={p.zoom}
+          zoom={zoom}
           minimap={minimap}
           legend={legend}
           onZoom={zoomBy}

@@ -1,0 +1,19 @@
+{
+  "en": {
+    "checklist.passed": "Passed {at}",
+    "checklist.complete": "Complete",
+    "checklist.open": "{n} open",
+    "checklist.noChecklist": "No checklist",
+    "checklist.movedBefore": "Moved on before this checklist existed. This is how it reads now.",
+    "checklist.assumed": "Assumed",
+    "checklist.corrected": "Corrected",
+    "checklist.source.record": "From its {field}",
+    "checklist.source.mover": "Given in the move",
+    "checklist.source.derived": "Derived by the {rule} rule",
+    "checklist.source.recommended": "Recommended answer",
+    "checklist.source.open": "Waits on an owner question",
+    "checklist.nowIn": "Now, from r{r}",
+    "checklist.answer": "Answer",
+    "checklist.readinessAdvice": "Readiness advice"
+  }
+}

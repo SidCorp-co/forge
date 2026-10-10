@@ -15,26 +15,27 @@ import {
 } from "@/design";
 import { feedbackFigures, landsThisWeek, planRows, requirementsByState } from "@/features/project-dashboard/ba-derive";
 import { BaFigures } from "@/features/project-dashboard/components/ba-figures";
+import { ProjectHealthFigures } from "@/features/project-dashboard/components/health-panel";
 import { LandsThisWeek } from "@/features/project-dashboard/components/plan-sections";
-import { ProjectMemory } from "@/features/memory/components/project-memory";
+import { ProjectMemory } from "@/features/memory";
 import { ProjectOrientation } from "@/features/project-dashboard/components/project-orientation";
-import { useModuleRollup } from "@/features/modules/hooks";
+import { useModuleRollup } from "@/features/modules";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
-import { useComingNext, useFeedbackForecasts, useRequirementForecasts } from "@/features/forecast/hooks";
-import { etaInline, etaOfScope } from "@/features/forecast/eta";
-import { useFeedbackList } from "@/features/feedback/hooks";
-import { useReleases } from "@/features/releases/hooks";
+import { useComingNext, useFeedbackForecasts, useRequirementForecasts } from "@/features/forecast";
+import { etaInline, etaOfScope } from "@/features/forecast";
+import { useFeedbackList } from "@/features/feedback";
+import { useReleases } from "@/features/releases";
 import { useRequirements } from "@/features/requirements/hooks";
-import { useNeedsYouDecisions } from "@/features/needs-you/hooks";
+import { useNeedsYouDecisions } from "@/features/needs-you";
 import { ProjectHome } from "@/features/project-home/components/project-home";
 import { ShippedRecently } from "@/features/project-status/components/shipped-recently";
 import { useProjectStatus } from "@/features/project-status/hooks";
-import { OnboardingHint } from "@/features/onboarding/components/onboarding-hint";
+import { OnboardingHint } from "@/features/onboarding";
 import { useProjectRef } from "@/features/projects/project-ref";
-import { useOnboardingState } from "@/features/onboarding/hooks";
-import { projectGlyph, projectInitials } from "@/features/projects/glyph";
-import { canManageProject } from "@/features/projects/write-access";
-import { useProjectDocument } from "@/features/project-config/hooks";
+import { useOnboardingState } from "@/features/onboarding";
+import { projectGlyph, projectInitials } from "@/features/projects";
+import { canManageProject } from "@/features/projects";
+import { useProjectDocument } from "@/features/project-config";
 import { SystemOverviewRegion } from "@/features/workflows/components/system-overview";
 import { useWorkflowTemplates, useWorkflows } from "@/features/workflows/hooks";
 import { formatApiError } from "@/lib/api/error";
@@ -82,7 +83,7 @@ export default function ProjectOverviewPage() {
   if (projectsQ.isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState title={t("dash.loadFailed")} message={formatApiError(projectsQ.error)} onRetry={() => projectsQ.refetch()} />
+        <ErrorState title={t("dash.loadFailed")} message={formatApiError(projectsQ.error)} onRetry={() => void projectsQ.refetch()} />
       </div>
     );
   }
@@ -173,6 +174,8 @@ export default function ProjectOverviewPage() {
           release={draft ? { version: draft.version, eta: etaOfScope(comingQ.data?.draft, clock) } : null}
           clock={clock}
         />
+
+        <ProjectHealthFigures projectId={project.id} />
 
         <LandsThisWeek rows={landsThisWeek(rows, clock)} clock={clock} slug={project.slug} />
 

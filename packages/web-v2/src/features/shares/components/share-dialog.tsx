@@ -14,7 +14,7 @@ import {
 } from "@forge/contracts/shares";
 import Link from "next/link";
 import { useState } from "react";
-import { Button, EnumBadge, Field, Input, Radio, RadioGroup, SlideOver } from "@/design";
+import { Button, EnumBadge, Field, Input, Radio, RadioGroup, SlideOver, useNow } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { useCreateShare, useShareAudiences } from "../hooks";
@@ -57,6 +57,7 @@ export function ShareDialog({
   const [rawDays, setRawDays] = useState(String(SHARE_DEFAULT_EXPIRY_DAYS));
   const [created, setCreated] = useState<ShareCreated | null>(null);
   const time = useTimeFormat();
+  const now = useNow(60_000);
   const t = useCopy();
 
   const expiry = expiryOf(rawDays, t);
@@ -119,7 +120,7 @@ export function ShareDialog({
           <Field
             label={t("shares.dialog.expires")}
             error={"error" in expiry ? expiry.error : undefined}
-            hint={"days" in expiry ? t("shares.dialog.expiresOn", { date: time.date(Date.now() + expiry.days * DAY_MS) }) : undefined}
+            hint={"days" in expiry ? t("shares.dialog.expiresOn", { date: time.date(now + expiry.days * DAY_MS) }) : undefined}
           >
             <Input
               type="number"

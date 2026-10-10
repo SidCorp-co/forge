@@ -1,7 +1,7 @@
 // contract -> packages/core/src/ecosystem/link-read.ts:readBus — the bus, link and builder-run shapes here are core's reads of link-v1 and builder-run-v1 (packages/core/src/ecosystem/link-schema.ts), so a field added or renamed there changes here in the same change
 
 import type { Copy } from "@/lib/i18n/product-copy";
-import { projectGlyph } from "@/features/projects/glyph";
+import { projectGlyph } from "@/features/projects";
 
 export type LinkState = "building" | "current" | "behind" | "breaking" | "unverified";
 

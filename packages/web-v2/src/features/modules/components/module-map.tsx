@@ -5,7 +5,7 @@
 // level between them. Line width is the coupling's weight. The map is a fitted picture: nothing on it moves, pans or zooms.
 
 import "@xyflow/react/dist/base.css";
-import "@/features/workflows/canvas/canvas.css";
+import "@/design/patterns/graph-canvas.css";
 import { BaseEdge, type Edge, type EdgeProps, EdgeLabelRenderer, Handle, type Node, type NodeProps, Position, ReactFlow } from "@xyflow/react";
 import { type KeyboardEvent, memo, useEffect, useMemo, useRef, useState } from "react";
 import { layoutGraph, type Placed, rounded } from "@/lib/graph/layout";
@@ -38,7 +38,7 @@ interface CouplingEdgeData extends Record<string, unknown> {
   dim: boolean;
 }
 
-function ModuleCard({ data }: NodeProps & { data: ModuleNodeData }) {
+function ModuleMapNode({ data }: NodeProps & { data: ModuleNodeData }) {
   const t = useCopy();
   const { row: r, act } = data;
   const key = keyOf(r);
@@ -102,7 +102,7 @@ function CouplingEdge({ id, data }: EdgeProps & { data: CouplingEdgeData }) {
   );
 }
 
-const NODE_TYPES = { module: memo(ModuleCard) };
+const NODE_TYPES = { module: memo(ModuleMapNode) };
 const EDGE_TYPES = { coupling: memo(CouplingEdge) };
 
 function edgeTitle(c: ModuleLevelCoupling, name: (id: string) => string, t: Copy): string {
@@ -164,9 +164,9 @@ export function ModuleMap({
     };
   }, [rows, drawn, cols, measured]);
 
-  const act = useRef({ select: onSelect, open: onOpen });
-  act.current = { select: onSelect, open: onOpen };
-  const stableAct = useMemo(() => ({ select: (k: string) => act.current.select(k), open: (k: string) => act.current.open(k) }), []);
+  const actRef = useRef({ select: onSelect, open: onOpen });
+  actRef.current = { select: onSelect, open: onOpen };
+  const stableAct = useMemo(() => ({ select: (k: string) => actRef.current.select(k), open: (k: string) => actRef.current.open(k) }), []);
 
   const selectedId = rows.find((r) => keyOf(r) === selected)?.id ?? null;
   const near = useMemo(

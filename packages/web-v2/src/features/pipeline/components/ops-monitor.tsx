@@ -6,21 +6,14 @@
 // events only arrive on subscribed rooms, so we fan out a `useRoom` per project
 // (bounded list) — `pipeline_run.status_changed` then refreshes
 // `['projects','health']` + `['pipeline-runs','list']`.
-import { useEffect, useMemo, useState } from "react";
 import {
   Badge,
-  PageSection,
-  PageSectionBody,
-  PageSectionHeader,
-  PageSectionTitle,
   EmptyState,
-  ErrorState,
   HealthDot,
   MonoTag,
   PageContainer,
   PageTitle,
   ProgressBar,
-  ProjectLoader,
   Stat,
   Table,
   Tabs,
@@ -29,20 +22,25 @@ import {
   TH,
   THead,
   TR,
+  useUrlChoice,
+  useUrlParams,
+  Section,
+  StatCell,
+  StatRow,
 } from "@/design";
-import { deriveHealth } from "@/features/projects/derive";
-import { useOrgScopedProjects, useProjectHealth } from "@/features/projects/hooks";
-import type { ProjectHealthRow } from "@/features/projects/types";
-import { formatApiError } from "@/lib/api/error";
+import { deriveHealth, type ProjectHealthRow, useOrgScopedProjects, useProjectHealth } from "@/features/projects";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { formatDurationSec, formatUsd } from "../derive";
 import { useStepDurations, useThroughput } from "../hooks";
 import type { StepDurationRow, ThroughputRow } from "../types";
 import { RunDetail } from "./run-detail";
+import { formatDurationSec, formatUsd } from "@/lib/i18n/format";
 
-const TABS = ["monitor", "progress", "health", "runs"] as const;
+
+const TAB_VALUES = ["monitor", "progress", "health", "runs"] as const;
+type OpsTab = (typeof TAB_VALUES)[number];
 
 /** Subscribes to one WS room for its lifetime (renders nothing). Lets us fan
  *  out room subscriptions over a list without breaking the rules-of-hooks. */
@@ -53,18 +51,11 @@ function RoomSub({ room }: { room: string }) {
 
 export function OpsMonitor() {
   const t = useCopy();
-  const [tab, setTab] = useState("monitor");
-  const [runId, setRunId] = useState<string | null>(null);
-
-  // Open a run directly from a shared deep-link (`/ops?run=<id>`).
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const shared = new URLSearchParams(window.location.search).get("run");
-    if (shared) {
-      setRunId(shared);
-      setTab("runs");
-    }
-  }, []);
+  // The tab and the open run live in the URL, so `/ops?run=<id>` is a shareable deep link.
+  const [tab, setTab] = useUrlChoice<OpsTab>("tab", TAB_VALUES, "monitor");
+  const [params, setParams] = useUrlParams();
+  const runId = params.get("run");
+  const setRunId = (id: string | null) => setParams({ run: id });
 
   // ISS-477 — scope the whole monitor to the active org's projects. The health
   // rollup (AC #4) filters by project id; the step-duration/throughput rows also
@@ -78,42 +69,15 @@ export function OpsMonitor() {
   const durationsQ = useStepDurations({ days: 7 });
   const throughputQ = useThroughput({ days: 30 });
 
-  const health = useMemo(
-    () => (healthQ.data ?? []).filter((h) => projectIds.has(h.id)),
-    [healthQ.data, projectIds],
-  );
-  const durations = useMemo(
-    () => (durationsQ.data ?? []).filter((r) => projectIds.has(r.projectId)),
-    [durationsQ.data, projectIds],
-  );
-  const throughput = useMemo(
-    () => (throughputQ.data ?? []).filter((r) => projectIds.has(r.projectId)),
-    [throughputQ.data, projectIds],
-  );
-  const nameById = useMemo(() => {
+  const health = (healthQ.data ?? []).filter((h) => projectIds.has(h.id));
+  const inOrg = <R extends { projectId: string }>(rows: R[]) => rows.filter((r) => projectIds.has(r.projectId));
+  const scoped = { isLoading: projectsLoading || healthQ.isLoading, isError: !!projectsError || healthQ.isError, error: projectsError ?? healthQ.error, data: healthQ.data, refetch: healthQ.refetch };
+  const nameById = (() => {
     const m = new Map<string, string>();
     for (const p of projects) m.set(p.id, p.name);
     for (const h of health) if (!m.has(h.id)) m.set(h.id, h.projectName);
     return m;
-  }, [projects, health]);
-
-  if (projectsLoading || healthQ.isLoading) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <ProjectLoader label={t("pipeline.ops.loading")} />
-      </div>
-    );
-  }
-  if (projectsError || healthQ.isError) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState
-          message={formatApiError(projectsError ?? healthQ.error)}
-          onRetry={() => healthQ.refetch()}
-        />
-      </div>
-    );
-  }
+  })();
 
   return (
     <PageContainer className="flex min-h-dvh flex-col">
@@ -125,34 +89,28 @@ export function OpsMonitor() {
       <PageTitle>{t("pipeline.ops.title")}</PageTitle>
 
       <div className="overflow-x-auto">
-        <Tabs tabs={TABS.map((value) => ({ value, label: t(`pipeline.ops.tab.${value}`) }))} value={tab} onChange={setTab} />
+        <Tabs tabs={TAB_VALUES.map((value) => ({ value, label: t(`pipeline.ops.tab.${value}`) }))} value={tab} onChange={(v) => setTab(v as OpsTab)} />
       </div>
 
       <div className="pt-5">
-        {tab === "monitor" && <MonitorTab health={health} durations={durations} />}
-        {tab === "progress" && (
-          <ProgressTab
-            throughput={throughput}
-            durations={durations}
-            loading={throughputQ.isLoading || durationsQ.isLoading}
-            isError={throughputQ.isError || durationsQ.isError}
-            onRetry={() => {
-              if (throughputQ.isError) throughputQ.refetch();
-              if (durationsQ.isError) durationsQ.refetch();
-            }}
-          />
-        )}
-        {tab === "health" && <HealthTab health={health} />}
-        {tab === "runs" && (
-          <RunsTab
-            durations={durations}
-            loading={durationsQ.isLoading}
-            isError={durationsQ.isError}
-            onRetry={() => durationsQ.refetch()}
-            nameById={nameById}
-            onOpen={setRunId}
-          />
-        )}
+        <QueryBoundary query={scoped} loadingLabel={t("pipeline.ops.loading")} height="60vh">
+          {() => (
+            <>
+              {tab === "monitor" && <MonitorTab health={health} durations={inOrg(durationsQ.data ?? [])} />}
+              {tab === "health" && <HealthTab health={health} />}
+              {tab === "progress" && (
+                <QueryBoundary query={durationsQ} loadingLabel={t("pipeline.ops.loadingProgress")} height="30vh">
+                  {(d) => <ProgressTab throughput={inOrg(throughputQ.data ?? [])} durations={inOrg(d)} />}
+                </QueryBoundary>
+              )}
+              {tab === "runs" && (
+                <QueryBoundary query={durationsQ} loadingLabel={t("pipeline.ops.loadingRuns")} height="30vh">
+                  {(d) => <RunsTab durations={inOrg(d)} nameById={nameById} onOpen={setRunId} />}
+                </QueryBoundary>
+              )}
+            </>
+          )}
+        </QueryBoundary>
       </div>
 
       <RunDetail open={!!runId} onClose={() => setRunId(null)} issue={null} runId={runId} />
@@ -160,286 +118,123 @@ export function OpsMonitor() {
   );
 }
 
-/* ── Monitor ──────────────────────────────────────────────────────────── */
-
-function MonitorTab({
-  health,
-  durations,
-}: {
-  health: ProjectHealthRow[];
-  durations: StepDurationRow[] | undefined;
-}) {
-  const totalLive = health.reduce((a, h) => a + h.liveRuns, 0);
-  const totalSpend = health.reduce((a, h) => a + h.spend24hUsd, 0);
-  const totalActive = health.reduce((a, h) => a + h.totalActive, 0);
-  const totalRunners = health.reduce((a, h) => a + h.runnerCount, 0);
-  const recent = (durations ?? []).length;
-
+function MonitorTab({ health, durations }: { health: ProjectHealthRow[]; durations: StepDurationRow[] }) {
+  const sum = (of: (h: ProjectHealthRow) => number) => health.reduce((a, h) => a + of(h), 0);
   const live = health.filter((h) => h.liveRuns > 0);
   const t = useCopy();
-
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Tile label={t("pipeline.ops.liveRuns")} value={String(totalLive)} />
-        <Tile label={t("pipeline.ops.spend24h")} value={formatUsd(totalSpend)} />
-        <Tile label={t("pipeline.ops.activeIssues")} value={String(totalActive)} />
-        <Tile label={t("pipeline.ops.onlineRunners")} value={String(totalRunners)} />
-      </div>
-
-      <PageSection>
-        <PageSectionHeader>
-          <PageSectionTitle>{t("pipeline.ops.liveNow")}</PageSectionTitle>
-          <Stat icon="activity" mono={false}>
-            {t("pipeline.ops.steps7d", { n: recent })}
-          </Stat>
-        </PageSectionHeader>
-        <PageSectionBody>
-          {live.length === 0 ? (
-            <p className="fg-body-sm text-muted">{t("pipeline.ops.nothingLive")}</p>
-          ) : (
-            <div className="flex flex-col gap-2.5">
-              {live.map((h) => (
-                <div key={h.id} className="flex items-center gap-3">
-                  <span className="fg-body-sm flex-1 truncate font-medium text-fg">
-                    {h.projectName}
-                  </span>
-                  <Badge tone="accent">{t("pipeline.ops.liveCount", { n: h.liveRuns })}</Badge>
-                  <Stat icon="dollar">{formatUsd(h.spend24hUsd)}</Stat>
-                </div>
-              ))}
-            </div>
-          )}
-        </PageSectionBody>
-      </PageSection>
+      <StatRow>
+        <StatCell label={t("pipeline.ops.liveRuns")} value={sum((h) => h.liveRuns)} />
+        <StatCell label={t("pipeline.ops.spend24h")} value={formatUsd(sum((h) => h.spend24hUsd))} />
+        <StatCell label={t("pipeline.ops.activeIssues")} value={sum((h) => h.totalActive)} />
+        <StatCell label={t("pipeline.ops.onlineRunners")} value={sum((h) => h.runnerCount)} />
+      </StatRow>
+      <Section title={t("pipeline.ops.liveNow")} right={<Stat icon="activity" mono={false}>{t("pipeline.ops.steps7d", { n: durations.length })}</Stat>}>
+        {live.length === 0 ? (
+          <p className="fg-body-sm text-muted">{t("pipeline.ops.nothingLive")}</p>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {live.map((h) => (
+              <div key={h.id} className="flex items-center gap-3">
+                <span className="fg-body-sm flex-1 truncate font-medium text-fg">{h.projectName}</span>
+                <Badge tone="accent">{t("pipeline.ops.liveCount", { n: h.liveRuns })}</Badge>
+                <Stat icon="dollar">{formatUsd(h.spend24hUsd)}</Stat>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
     </div>
   );
 }
 
-function Tile({ label, value }: { label: string; value: string }) {
-  return (
-    <PageSection>
-      <PageSectionBody>
-        <p className="fg-caption">{label}</p>
-        <p className="mt-1 font-mono text-2xl font-bold text-fg">{value}</p>
-      </PageSectionBody>
-    </PageSection>
-  );
-}
-
-/* ── Progress ─────────────────────────────────────────────────────────── */
-
-interface StepAgg {
-  step: string;
-  count: number;
-  avgSec: number;
-  cost: number;
-}
-
-function aggregateByStep(durations: StepDurationRow[] | undefined): StepAgg[] {
+function aggregateByStep(durations: StepDurationRow[]) {
   const m = new Map<string, { totalSec: number; count: number; cost: number }>();
-  for (const r of durations ?? []) {
+  for (const r of durations) {
     const cur = m.get(r.step) ?? { totalSec: 0, count: 0, cost: 0 };
-    cur.totalSec += r.durationSeconds;
-    cur.count += 1;
-    cur.cost += r.costUsd;
-    m.set(r.step, cur);
+    m.set(r.step, { totalSec: cur.totalSec + r.durationSeconds, count: cur.count + 1, cost: cur.cost + r.costUsd });
   }
-  return [...m.entries()]
-    .map(([step, v]) => ({ step, count: v.count, avgSec: v.totalSec / v.count, cost: v.cost }))
-    .sort((a, b) => b.avgSec - a.avgSec);
+  return [...m.entries()].map(([step, v]) => ({ step, avgSec: v.totalSec / v.count, cost: v.cost })).sort((a, b) => b.avgSec - a.avgSec);
 }
 
-function ProgressTab({
-  throughput,
-  durations,
-  loading,
-  isError,
-  onRetry,
-}: {
-  throughput: ThroughputRow[] | undefined;
-  durations: StepDurationRow[] | undefined;
-  loading: boolean;
-  isError: boolean;
-  onRetry: () => void;
-}) {
-  const shipped = (throughput ?? []).reduce((a, r) => a + r.count, 0);
-  const aggs = useMemo(() => aggregateByStep(durations), [durations]);
+function ProgressTab({ throughput, durations }: { throughput: ThroughputRow[]; durations: StepDurationRow[] }) {
+  const aggs = aggregateByStep(durations);
   const maxAvg = Math.max(1, ...aggs.map((a) => a.avgSec));
   const t = useCopy();
-
-  if (loading) {
-    return (
-      <div className="grid min-h-[30vh] place-items-center">
-        <ProjectLoader label={t("pipeline.ops.loadingProgress")} />
-      </div>
-    );
-  }
-  if (isError) return <ErrorState message={t("pipeline.ops.progressFailed")} onRetry={onRetry} />;
-
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <Tile label={t("pipeline.ops.shipped30d")} value={String(shipped)} />
-        <Tile label={t("pipeline.ops.stepsWeek")} value={String((durations ?? []).length)} />
-        <Tile
-          label={t("pipeline.ops.spend7d")}
-          value={formatUsd((durations ?? []).reduce((a, r) => a + r.costUsd, 0))}
-        />
-      </div>
-
-      <PageSection>
-        <PageSectionHeader>
-          <PageSectionTitle>{t("pipeline.ops.avgByStage")}</PageSectionTitle>
-        </PageSectionHeader>
-        <PageSectionBody>
-          {aggs.length === 0 ? (
-            <p className="fg-body-sm text-muted">{t("pipeline.ops.noSteps")}</p>
-          ) : (
-            <div className="flex flex-col gap-2.5">
-              {aggs.map((a) => (
-                <div key={a.step} className="flex items-center gap-2.5">
-                  <span className="w-16 flex-none font-mono text-12 text-muted">{a.step}</span>
-                  <ProgressBar className="flex-1" value={(a.avgSec / maxAvg) * 100} />
-                  <span className="w-20 flex-none text-right font-mono text-12 text-fg">
-                    {formatDurationSec(a.avgSec)}
-                  </span>
-                  <span className="hidden w-14 flex-none text-right font-mono text-12 text-subtle sm:block">
-                    {formatUsd(a.cost)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </PageSectionBody>
-      </PageSection>
+      <StatRow>
+        <StatCell label={t("pipeline.ops.shipped30d")} value={throughput.reduce((a, r) => a + r.count, 0)} />
+        <StatCell label={t("pipeline.ops.stepsWeek")} value={durations.length} />
+        <StatCell label={t("pipeline.ops.spend7d")} value={formatUsd(durations.reduce((a, r) => a + r.costUsd, 0))} />
+      </StatRow>
+      <Section title={t("pipeline.ops.avgByStage")}>
+        {aggs.length === 0 ? (
+          <p className="fg-body-sm text-muted">{t("pipeline.ops.noSteps")}</p>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {aggs.map((a) => (
+              <div key={a.step} className="flex items-center gap-2.5">
+                <span className="w-16 flex-none font-mono text-12 text-muted">{a.step}</span>
+                <ProgressBar className="flex-1" value={(a.avgSec / maxAvg) * 100} />
+                <span className="w-20 flex-none text-right font-mono text-12 text-fg">{formatDurationSec(a.avgSec)}</span>
+                <span className="hidden w-14 flex-none text-right font-mono text-12 text-subtle sm:block">{formatUsd(a.cost)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
     </div>
   );
 }
-
-/* ── Health ───────────────────────────────────────────────────────────── */
 
 function HealthTab({ health }: { health: ProjectHealthRow[] }) {
   const t = useCopy();
   if (health.length === 0) return <EmptyState message={t("pipeline.ops.noProjects")} />;
   return (
-    <div className="grid gap-x-8 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="flex flex-col gap-2">
       {health.map((h) => (
-        <PageSection key={h.id}>
-          <PageSectionHeader>
-            <PageSectionTitle>{h.projectName}</PageSectionTitle>
-            <HealthDot health={deriveHealth(h)} />
-          </PageSectionHeader>
-          <PageSectionBody>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
-              <Metric label={t("pipeline.ops.active")} value={String(h.totalActive)} />
-              <Metric label={t("pipeline.ops.liveRuns")} value={String(h.liveRuns)} />
-              <Metric label={t("pipeline.ops.runners")} value={String(h.runnerCount)} />
-              <Metric label={t("pipeline.ops.spend24h")} value={formatUsd(h.spend24hUsd)} />
-              <Metric label={t("pipeline.ops.blockers")} value={String(h.blockers?.length ?? 0)} />
-              <Metric label={t("pipeline.ops.escalations")} value={String(h.pendingEscalations)} />
-            </div>
-          </PageSectionBody>
-        </PageSection>
+        <Section title={h.projectName} right={<HealthDot health={deriveHealth(h)} />} key={h.id}>
+          <StatRow>
+            <StatCell label={t("pipeline.ops.active")} value={h.totalActive} />
+            <StatCell label={t("pipeline.ops.liveRuns")} value={h.liveRuns} />
+            <StatCell label={t("pipeline.ops.runners")} value={h.runnerCount} />
+            <StatCell label={t("pipeline.ops.spend24h")} value={formatUsd(h.spend24hUsd)} />
+            <StatCell label={t("pipeline.ops.blockers")} value={h.blockers?.length ?? 0} />
+            <StatCell label={t("pipeline.ops.escalations")} value={h.pendingEscalations} />
+          </StatRow>
+        </Section>
       ))}
     </div>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="fg-caption">{label}</p>
-      <p className="mt-0.5 font-mono text-sm font-semibold text-fg">{value}</p>
-    </div>
-  );
-}
-
-/* ── Runs ─────────────────────────────────────────────────────────────── */
-
-function RunsTab({
-  durations,
-  loading,
-  isError,
-  onRetry,
-  nameById,
-  onOpen,
-}: {
-  durations: StepDurationRow[] | undefined;
-  loading: boolean;
-  isError: boolean;
-  onRetry: () => void;
-  nameById: Map<string, string>;
-  onOpen: (runId: string) => void;
-}) {
+function RunsTab({ durations, nameById, onOpen }: { durations: StepDurationRow[]; nameById: Map<string, string>; onOpen: (runId: string) => void }) {
   const t = useCopy();
-  if (loading) {
-    return (
-      <div className="grid min-h-[30vh] place-items-center">
-        <ProjectLoader label={t("pipeline.ops.loadingRuns")} />
-      </div>
-    );
-  }
-  if (isError) return <ErrorState message={t("pipeline.ops.runsFailed")} onRetry={onRetry} />;
-  const rows = durations ?? [];
-  if (rows.length === 0) {
-    return <EmptyState message={t("pipeline.ops.noRuns")} />;
-  }
-
+  if (durations.length === 0) return <EmptyState message={t("pipeline.ops.noRuns")} />;
   return (
-    <>
-      {/* Mobile: a flush list */}
-      <div className="flex flex-col divide-y divide-line-subtle sm:hidden">
-        {rows.map((r) => (
-          <button
-            type="button"
-            key={`${r.runId}-${r.step}-${r.startedAt}`}
-            onClick={() => onOpen(r.runId)}
-            className="flex flex-col gap-1.5 py-3 text-left hover:bg-hover"
-          >
-            <div className="flex items-center gap-2">
+    <Table>
+      <THead>
+        <TR>
+          <TH>{t("pipeline.ops.colProject")}</TH>
+          <TH>{t("pipeline.ops.colStep")}</TH>
+          <TH className="text-right">{t("pipeline.ops.colDuration")}</TH>
+          <TH className="text-right">{t("pipeline.ops.colCost")}</TH>
+        </TR>
+      </THead>
+      <TBody>
+        {durations.map((r) => (
+          <TR key={`${r.runId}-${r.step}-${r.startedAt}`} className="cursor-pointer" onClick={() => onOpen(r.runId)}>
+            <TD className="truncate">{nameById.get(r.projectId) ?? r.projectId.slice(0, 8)}</TD>
+            <TD>
               <MonoTag>{r.step}</MonoTag>
-              <span className="fg-body-sm truncate text-fg">
-                {nameById.get(r.projectId) ?? r.projectId.slice(0, 8)}
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <Stat icon="clock">{formatDurationSec(r.durationSeconds)}</Stat>
-              <Stat icon="dollar">{formatUsd(r.costUsd)}</Stat>
-            </div>
-          </button>
+            </TD>
+            <TD className="text-right font-mono">{formatDurationSec(r.durationSeconds)}</TD>
+            <TD className="text-right font-mono">{formatUsd(r.costUsd)}</TD>
+          </TR>
         ))}
-      </div>
-
-      {/* Desktop: table */}
-      <div className="hidden sm:block">
-        <Table>
-          <THead>
-            <TR>
-              <TH>{t("pipeline.ops.colProject")}</TH>
-              <TH>{t("pipeline.ops.colStep")}</TH>
-              <TH className="text-right">{t("pipeline.ops.colDuration")}</TH>
-              <TH className="text-right">{t("pipeline.ops.colCost")}</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {rows.map((r) => (
-              <TR
-                key={`${r.runId}-${r.step}-${r.startedAt}`}
-                className="cursor-pointer"
-                onClick={() => onOpen(r.runId)}
-              >
-                <TD className="truncate">{nameById.get(r.projectId) ?? r.projectId.slice(0, 8)}</TD>
-                <TD>
-                  <MonoTag>{r.step}</MonoTag>
-                </TD>
-                <TD className="text-right font-mono">{formatDurationSec(r.durationSeconds)}</TD>
-                <TD className="text-right font-mono">{formatUsd(r.costUsd)}</TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
-      </div>
-    </>
+      </TBody>
+    </Table>
   );
 }

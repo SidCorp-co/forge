@@ -1,5 +1,5 @@
-import { OperatorSection } from "@/features/operator";
+import { OperatorGroup } from "@/features/operator";
 
 export default function AdminPipelinePage() {
-  return <OperatorSection section="pipeline" />;
+  return <OperatorGroup section="pipeline" />;
 }

@@ -14,11 +14,30 @@ import { LEGEND, type LegendTone } from "../vocabulary";
 /** The rail itself: a raised white working surface beside the page-toned main column, one hairline
  *  between them; sticky under the top bar,
  *  scrolling on its own when it is taller than the screen; below 1024px it follows the content. */
-export function FactsRail({ children, label, testId }: { children: ReactNode; label?: string; testId?: string }) {
+export function FactsRail({
+  children,
+  label,
+  testId,
+  belowHeader = false,
+  className,
+}: {
+  children: ReactNode;
+  label?: string;
+  testId?: string;
+  /** Sticky under a page's own 4rem sticky header as well as the top bar. */
+  belowHeader?: boolean;
+  className?: string;
+}) {
   const t = useCopy();
   return (
-    <aside className="min-w-0 border-line-subtle bg-surface max-lg:border-t lg:border-l" aria-label={label ?? t("common.facts")} data-testid={testId ?? "facts-rail"}>
-      <div className="px-5 py-5 max-md:px-4 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-48px)] lg:overflow-y-auto" data-testid="facts-rail-body">
+    <aside className={cn("min-w-0 border-line-subtle max-lg:border-t lg:border-l", className)} aria-label={label ?? t("common.facts")} data-testid={testId ?? "facts-rail"}>
+      <div
+        className={cn(
+          "px-5 py-5 max-md:px-4 lg:sticky lg:overflow-y-auto",
+          belowHeader ? "lg:top-16 lg:max-h-[calc(100dvh-4rem)]" : "lg:top-0 lg:max-h-[calc(100dvh-48px)]",
+        )}
+        data-testid="facts-rail-body"
+      >
         {children}
       </div>
     </aside>
@@ -72,7 +91,7 @@ export function CoverageBar({ segments, legend = true }: { segments: readonly Co
   if (total === 0) return null;
   return (
     <div data-testid="coverage-bar">
-      <div className="flex h-2 overflow-hidden rounded-pill bg-[var(--paper-200)]" role="img" aria-label={present.map((s) => `${s.label} ${s.count}`).join(", ")}>
+      <div className="flex h-2 overflow-hidden rounded-pill bg-neutral-5" role="img" aria-label={present.map((s) => `${s.label} ${s.count}`).join(", ")}>
         {present.map((s) => (
           <span key={s.key} className="h-full" style={{ width: `${(s.count / total) * 100}%`, background: fillOf(s) }} />
         ))}

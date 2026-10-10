@@ -10,10 +10,6 @@
 import {
 	Banner,
 	Button,
-	PageSection,
-	PageSectionBody,
-	PageSectionHeader,
-	PageSectionTitle,
 	EmptyState,
 	ErrorState,
 	Field,
@@ -23,17 +19,17 @@ import {
 	Select,
 	Skeleton,
 	enumLabel,
+  Section,
 } from "@/design";
-import { useProjectDocument } from "@/features/project-config/hooks";
-import { useProject } from "@/features/projects/hooks";
+import { useProjectDocument } from "@/features/project-config";
+import { useProject } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { useMemo, useState } from "react";
-import { RUNNER_SETUP } from "@/lib/utils/runner-commands";
-import { CopyButton } from "./runners-screen";
-import { RunnerRow } from "./runner-row/runner-row";
+import { useState } from "react";
+import { SetupCommand } from "./runners-screen";
+import { RunnerAssignment } from "./assignment/runner-assignment";
 import {
 	useActiveRunners,
 	useAssignDeviceToProject,
@@ -65,13 +61,9 @@ function AssignDevice({
 	const t = useCopy();
 	const language = useInterfaceLanguage();
 
-	const available = useMemo(
-		() =>
-			(devices.data ?? []).filter(
+	const available = (devices.data ?? []).filter(
 				(d) => d.status !== "revoked" && !assignedDeviceIds.has(d.id),
-			),
-		[devices.data, assignedDeviceIds],
-	);
+			);
 
 	const options = [
 		{ value: "", label: t("runners.assign.select") },
@@ -85,11 +77,7 @@ function AssignDevice({
 	const picked = available.find((d) => d.id === deviceId) ?? null;
 
 	return (
-		<PageSection>
-			<PageSectionHeader>
-				<PageSectionTitle>{t("runners.assign.title")}</PageSectionTitle>
-			</PageSectionHeader>
-			<PageSectionBody>
+		<Section title={t("runners.assign.title")}>
 				<div className="flex flex-col gap-4">
 					<div className="grid gap-3 sm:grid-cols-2">
 						<Field label={t("runners.col.device")}>
@@ -136,17 +124,15 @@ function AssignDevice({
 						</Button>
 					</div>
 
-					<div className="rounded-lg border border-dashed border-line-strong p-3">
+					<div className="rounded-md border border-dashed border-line-strong p-3">
 						<span className="fg-label">{t("runners.assign.setUpDevice")}</span>
-						<div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
-							<code className="font-mono text-13 text-fg">{RUNNER_SETUP}</code>
-							<CopyButton value={RUNNER_SETUP} />
+						<div className="mt-2">
+							<SetupCommand />
 						</div>
 						<p className="fg-body-sm mt-1.5 text-subtle">{t("runners.assign.setupBody")}</p>
 					</div>
 				</div>
-			</PageSectionBody>
-		</PageSection>
+			</Section>
 	);
 }
 
@@ -170,18 +156,10 @@ export function ProjectRunnersScreen({
 	const t = useCopy();
 
 	const rows = runners.data ?? [];
-	const assignedDeviceIds = useMemo(
-		() =>
-			new Set(rows.map((r) => r.deviceId).filter((id): id is string => !!id)),
-		[rows],
-	);
-	const currentByRunner = useMemo(
-		() =>
-			new Map(
+	const assignedDeviceIds = new Set(rows.map((r) => r.deviceId).filter((id): id is string => !!id));
+	const currentByRunner = new Map(
 				(active.data?.runners ?? []).map((r) => [r.runnerId, r.current]),
-			),
-		[active.data],
-	);
+			);
 
 	const body = (
 		<>
@@ -199,11 +177,7 @@ export function ProjectRunnersScreen({
 				/>
 			)}
 
-			<PageSection>
-				<PageSectionHeader>
-					<PageSectionTitle>{t("runners.project.assigned")}</PageSectionTitle>
-				</PageSectionHeader>
-				<PageSectionBody>
+			<Section title={t("runners.project.assigned")}>
 					{runners.isLoading ? (
 						<div className="flex flex-col gap-2">
 							<Skeleton className="h-28 w-full" />
@@ -212,7 +186,7 @@ export function ProjectRunnersScreen({
 					) : runners.isError ? (
 						<ErrorState
 							message={formatApiError(runners.error)}
-							onRetry={() => runners.refetch()}
+							onRetry={() => void runners.refetch()}
 						/>
 					) : rows.length === 0 ? (
 						<EmptyState
@@ -222,7 +196,7 @@ export function ProjectRunnersScreen({
 					) : (
 						<div className="flex flex-col divide-y divide-line-subtle">
 							{rows.map((r) => (
-								<RunnerRow
+								<RunnerAssignment
 									key={r.runnerId}
 									runner={r}
 									current={currentByRunner.get(r.runnerId) ?? null}
@@ -233,8 +207,7 @@ export function ProjectRunnersScreen({
 							))}
 						</div>
 					)}
-				</PageSectionBody>
-			</PageSection>
+				</Section>
 		</>
 	);
 

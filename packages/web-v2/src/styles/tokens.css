@@ -1,115 +1,176 @@
 /* ============================================================
-   FORGE DESIGN SYSTEM — Colors & Type  (source of truth)
-   A calm, bright control plane for running Claude Code at scale.
-   Warm flame-orange action accent · cool cobalt structure ·
-   warm paper-white surfaces · clean grotesk + true monospace.
+   FORGE TOKENS v2 — the one source (FB-36, 2026-10-10)
 
-   2-LAYER TOKENS:
-     Layer 1 — raw palette (--flame-*, --paper-*, --ink-*, --stage-*).
-               Theme-independent. Components NEVER reference these directly.
-     Layer 2 — semantic (--bg-*, --fg-*, --border-*, --accent, ...).
-               Components reference ONLY this layer. Dark mode later =
-               override the semantic block under [data-theme="dark"].
-   Fonts are injected by next/font (see app/layout.tsx) as --font-hanken
-   and --font-jetbrains; we fall back to the family names.
+   Layer 1 — SCALES. OKLCH 12-step scales in the Radix Colors manner, one set for light and one for
+   dark, each step with a fixed role:
+     1–2 app and subtle background · 3–5 component background, hover, active ·
+     6–8 borders (subtle, default, strong) · 9–10 solid fill and its hover · 11–12 text (low, high).
+   Text on step 9 is white (step 12 on warn, an amber that is a light solid). Steps 11 and 12 read
+   at WCAG AA or better on steps 1–3, and white on step 9 too, in both themes; the values were
+   solved for that, not picked.
+   Layer 2 — SEMANTIC aliases (bg, surface, line, fg, accent, status-*). Components read these.
+   Layer 3 — the old names (paper, ink, flame, cobalt, amber, green, red, slate), each mapped onto
+   a scale step so every existing use follows the theme; new code reads layer 2.
+   Type, radius, shadow, density and motion are tokens here too; app/globals.css maps them into
+   Tailwind v4 `@theme`.
    ============================================================ */
 
-:root {
-  /* ===== TYPE FAMILIES ===== */
-  --font-sans: var(--font-hanken), 'Hanken Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: var(--font-jetbrains), 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --neutral-1: oklch(0.993 0.004 75);  --neutral-2: oklch(0.979 0.005 75);  --neutral-3: oklch(0.956 0.007 75);  --neutral-4: oklch(0.932 0.007 75);
+   --neutral-5: oklch(0.907 0.008 75);  --neutral-6: oklch(0.877 0.008 75);  --neutral-7: oklch(0.832 0.009 75);  --neutral-8: oklch(0.765 0.01 75);
+   --neutral-9: oklch(0.56 0.011 75);  --neutral-10: oklch(0.52 0.011 75);  --neutral-11: oklch(0.525 0.01 75);  --neutral-12: oklch(0.255 0.007 75);
+  --accent-1: oklch(0.993 0.003 38);  --accent-2: oklch(0.979 0.009 38);  --accent-3: oklch(0.956 0.021 38);  --accent-4: oklch(0.932 0.034 38);
+   --accent-5: oklch(0.907 0.049 38);  --accent-6: oklch(0.877 0.066 38);  --accent-7: oklch(0.832 0.086 38);  --accent-8: oklch(0.765 0.114 38);
+   --accent-9: oklch(0.58 0.19 38);  --accent-10: oklch(0.54 0.176 38);  --accent-11: oklch(0.54 0.162 38);  --accent-12: oklch(0.255 0.076 38);
+  --ok-1: oklch(0.993 0.004 152);  --ok-2: oklch(0.979 0.008 152);  --ok-3: oklch(0.956 0.018 152);  --ok-4: oklch(0.932 0.028 152);
+   --ok-5: oklch(0.907 0.038 152);  --ok-6: oklch(0.877 0.049 152);  --ok-7: oklch(0.832 0.063 152);  --ok-8: oklch(0.765 0.084 152);
+   --ok-9: oklch(0.545 0.14 152);  --ok-10: oklch(0.505 0.132 152);  --ok-11: oklch(0.515 0.119 152);  --ok-12: oklch(0.255 0.056 152);
+  --warn-1: oklch(0.993 0.004 72);  --warn-2: oklch(0.979 0.01 72);  --warn-3: oklch(0.956 0.021 72);  --warn-4: oklch(0.932 0.032 72);
+   --warn-5: oklch(0.907 0.043 72);  --warn-6: oklch(0.877 0.056 72);  --warn-7: oklch(0.832 0.072 72);  --warn-8: oklch(0.765 0.096 72);
+   --warn-9: oklch(0.8 0.16 72);  --warn-10: oklch(0.76 0.16 72);  --warn-11: oklch(0.53 0.112 72);  --warn-12: oklch(0.255 0.054 72);
+  --danger-1: oklch(0.993 0.003 26);  --danger-2: oklch(0.979 0.009 26);  --danger-3: oklch(0.956 0.021 26);  --danger-4: oklch(0.932 0.034 26);
+   --danger-5: oklch(0.907 0.047 26);  --danger-6: oklch(0.877 0.064 26);  --danger-7: oklch(0.832 0.086 26);  --danger-8: oklch(0.765 0.114 26);
+   --danger-9: oklch(0.585 0.19 26);  --danger-10: oklch(0.545 0.19 26);  --danger-11: oklch(0.54 0.162 26);  --danger-12: oklch(0.255 0.076 26);
+  --info-1: oklch(0.993 0.002 262);  --info-2: oklch(0.979 0.008 262);  --info-3: oklch(0.956 0.02 262);  --info-4: oklch(0.932 0.032 262);
+   --info-5: oklch(0.907 0.044 262);  --info-6: oklch(0.877 0.059 262);  --info-7: oklch(0.832 0.077 262);  --info-8: oklch(0.765 0.102 262);
+   --info-9: oklch(0.565 0.17 262);  --info-10: oklch(0.525 0.17 262);  --info-11: oklch(0.53 0.145 262);  --info-12: oklch(0.255 0.068 262);
+  --muted-1: oklch(0.993 0.002 250);  --muted-2: oklch(0.979 0.01 250);  --muted-3: oklch(0.956 0.019 250);  --muted-4: oklch(0.932 0.021 250);
+   --muted-5: oklch(0.907 0.023 250);  --muted-6: oklch(0.877 0.025 250);  --muted-7: oklch(0.832 0.026 250);  --muted-8: oklch(0.765 0.028 250);
+   --muted-9: oklch(0.56 0.032 250);  --muted-10: oklch(0.52 0.032 250);  --muted-11: oklch(0.525 0.03 250);  --muted-12: oklch(0.255 0.021 250);
+  --ai-1: oklch(0.993 0.002 292);  --ai-2: oklch(0.979 0.009 292);  --ai-3: oklch(0.956 0.019 292);  --ai-4: oklch(0.932 0.03 292);
+   --ai-5: oklch(0.907 0.041 292);  --ai-6: oklch(0.877 0.052 292);  --ai-7: oklch(0.832 0.068 292);  --ai-8: oklch(0.765 0.09 292);
+   --ai-9: oklch(0.575 0.15 292);  --ai-10: oklch(0.535 0.15 292);  --ai-11: oklch(0.535 0.128 292);  --ai-12: oklch(0.255 0.06 292);
 
-  /* ===== NEUTRALS — warm paper scale ===== */
-  --paper-0:   #FFFFFF;
-  --paper-50:  #FBFAF8;
-  --paper-100: #F5F3EF;
-  --paper-200: #EDEAE3;
-  --paper-300: #E4E0D8;
-  --paper-400: #CFC9BE;
+  --bg-app:        var(--neutral-2);
+  --bg-surface:    var(--neutral-1);
+  --shadow-color:  oklch(0.255 0.007 75 / 0.14);
+}
 
-  /* ===== INK — text & structure (cool near-black) ===== */
-  --ink-900: #181B22;
-  --ink-700: #3A404B;
-  --ink-600: #5A616E;
-  --ink-550: #666D7A; /* --fg-subtle: 4.7:1 on --paper-100, the darkest ground small text sits on */
-  --ink-500: #767D8A;
-  --ink-400: #9AA0AB;
+[data-theme="dark"] {
+  color-scheme: dark;
+  --neutral-1: oklch(0.172 0.004 75);  --neutral-2: oklch(0.198 0.005 75);  --neutral-3: oklch(0.238 0.007 75);  --neutral-4: oklch(0.268 0.007 75);
+   --neutral-5: oklch(0.298 0.008 75);  --neutral-6: oklch(0.338 0.008 75);  --neutral-7: oklch(0.398 0.009 75);  --neutral-8: oklch(0.478 0.01 75);
+   --neutral-9: oklch(0.56 0.011 75);  --neutral-10: oklch(0.52 0.011 75);  --neutral-11: oklch(0.63 0.01 75);  --neutral-12: oklch(0.935 0.007 75);
+  --accent-1: oklch(0.172 0.023 38);  --accent-2: oklch(0.198 0.028 38);  --accent-3: oklch(0.238 0.046 38);  --accent-4: oklch(0.268 0.061 38);
+   --accent-5: oklch(0.298 0.076 38);  --accent-6: oklch(0.338 0.091 38);  --accent-7: oklch(0.398 0.106 38);  --accent-8: oklch(0.478 0.129 38);
+   --accent-9: oklch(0.58 0.19 38);  --accent-10: oklch(0.54 0.176 38);  --accent-11: oklch(0.64 0.133 38);  --accent-12: oklch(0.935 0.033 38);
+  --ok-1: oklch(0.172 0.017 152);  --ok-2: oklch(0.198 0.021 152);  --ok-3: oklch(0.238 0.034 152);  --ok-4: oklch(0.268 0.045 152);
+   --ok-5: oklch(0.298 0.056 152);  --ok-6: oklch(0.338 0.067 152);  --ok-7: oklch(0.398 0.078 152);  --ok-8: oklch(0.478 0.095 152);
+   --ok-9: oklch(0.545 0.14 152);  --ok-10: oklch(0.505 0.131 152);  --ok-11: oklch(0.625 0.098 152);  --ok-12: oklch(0.935 0.039 152);
+  --warn-1: oklch(0.172 0.019 72);  --warn-2: oklch(0.198 0.024 72);  --warn-3: oklch(0.238 0.038 72);  --warn-4: oklch(0.268 0.051 72);
+   --warn-5: oklch(0.298 0.064 72);  --warn-6: oklch(0.338 0.071 72);  --warn-7: oklch(0.398 0.084 72);  --warn-8: oklch(0.478 0.101 72);
+   --warn-9: oklch(0.8 0.16 72);  --warn-10: oklch(0.76 0.152 72);  --warn-11: oklch(0.635 0.112 72);  --warn-12: oklch(0.935 0.045 72);
+  --danger-1: oklch(0.172 0.023 26);  --danger-2: oklch(0.198 0.028 26);  --danger-3: oklch(0.238 0.046 26);  --danger-4: oklch(0.268 0.061 26);
+   --danger-5: oklch(0.298 0.076 26);  --danger-6: oklch(0.338 0.091 26);  --danger-7: oklch(0.398 0.106 26);  --danger-8: oklch(0.478 0.129 26);
+   --danger-9: oklch(0.585 0.19 26);  --danger-10: oklch(0.545 0.18 26);  --danger-11: oklch(0.645 0.133 26);  --danger-12: oklch(0.935 0.031 26);
+  --info-1: oklch(0.172 0.02 262);  --info-2: oklch(0.198 0.026 262);  --info-3: oklch(0.238 0.041 262);  --info-4: oklch(0.268 0.054 262);
+   --info-5: oklch(0.298 0.068 262);  --info-6: oklch(0.338 0.082 262);  --info-7: oklch(0.398 0.095 262);  --info-8: oklch(0.478 0.116 262);
+   --info-9: oklch(0.565 0.17 262);  --info-10: oklch(0.525 0.162 262);  --info-11: oklch(0.635 0.119 262);  --info-12: oklch(0.935 0.03 262);
+  --muted-1: oklch(0.172 0.012 250);  --muted-2: oklch(0.198 0.016 250);  --muted-3: oklch(0.238 0.019 250);  --muted-4: oklch(0.268 0.021 250);
+   --muted-5: oklch(0.298 0.023 250);  --muted-6: oklch(0.338 0.025 250);  --muted-7: oklch(0.398 0.026 250);  --muted-8: oklch(0.478 0.028 250);
+   --muted-9: oklch(0.56 0.032 250);  --muted-10: oklch(0.52 0.032 250);  --muted-11: oklch(0.63 0.03 250);  --muted-12: oklch(0.935 0.021 250);
+  --ai-1: oklch(0.172 0.018 292);  --ai-2: oklch(0.198 0.022 292);  --ai-3: oklch(0.238 0.036 292);  --ai-4: oklch(0.268 0.048 292);
+   --ai-5: oklch(0.298 0.06 292);  --ai-6: oklch(0.338 0.072 292);  --ai-7: oklch(0.398 0.084 292);  --ai-8: oklch(0.478 0.102 292);
+   --ai-9: oklch(0.575 0.15 292);  --ai-10: oklch(0.535 0.142 292);  --ai-11: oklch(0.635 0.105 292);  --ai-12: oklch(0.935 0.032 292);
 
-  /* ===== FLAME — primary brand / action ===== */
-  --flame-50:  #FEF2EC;
-  --flame-100: #FDE2D5;
-  --flame-200: #FBC3A8;
-  --flame-300: #F89B72;
-  --flame-500: #F15A2B;
-  --flame-600: #DC4A1D;
-  --flame-700: #B73B15;
+  --bg-app:        var(--neutral-1);
+  --bg-surface:    var(--neutral-2);
+  --shadow-color:  oklch(0 0 0 / 0.5);
+}
 
-  /* ===== COBALT — secondary / structural / links ===== */
-  --cobalt-50:  #EAF0FE;
-  --cobalt-100: #D5E1FD;
-  --cobalt-300: #82A3F2;
-  --cobalt-500: #2D5BD6;
-  --cobalt-600: #2148B4;
-  --cobalt-700: #1A3A92;
+/* also on every [data-theme] element, so a nested theme scope (/dev/design) re-resolves the aliases */
+:root,
+[data-theme] {
+  /* ===== TYPE ===== */
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* the scale: 12 / 13 / 14 / 16 / 20 / 24, each with its fixed line-height */
+  --type-12: 12px;  --type-12-lh: 16px;
+  --type-13: 13px;  --type-13-lh: 18px;
+  --type-14: 14px;  --type-14-lh: 20px;
+  --type-16: 16px;  --type-16-lh: 24px;
+  --type-20: 20px;  --type-20-lh: 28px;
+  --type-24: 24px;  --type-24-lh: 32px;
 
-  /* ===== AMBER — mascot gold highlight / scheduled ===== */
-  --amber-50:  #FDF4DF;
-  --amber-500: #E8920C;
-  --amber-600: #C6790A;
+  /* ===== SEMANTIC: surfaces, lines, text ===== */
+  --bg-sunken:     var(--neutral-3);
+  --bg-hover:      var(--neutral-3);
+  --bg-active:     var(--neutral-4);
 
-  /* ===== SEMANTIC HUES (calm, not neon) ===== */
-  --green-50:  #E8F5EF;  --green-500: #1F9D6B;  --green-600: #168256;
-  --amberw-50: #FDF2DD;  --amberw-500:#E8920C;  --amberw-600:#C6790A;  --amberw-700:#9C5F08;
-  --red-50:    #FCEBE9;  --red-500:   #D6453B;  --red-600:   #B5332A;
-  /* ISS-509 — SLATE: the `infra` tone (runner offline / down). A cool, dimmed
-     blue-grey, deliberately distinct from failure-red AND attention-amber so an
-     offline runner never reads as a code failure. */
-  --slate-50:  #EDF0F4;  --slate-500: #6A7585;  --slate-600: #515B6B;
+  --border-subtle: var(--neutral-6);
+  --border-default:var(--neutral-7);
+  --border-strong: var(--neutral-8);
 
-  /* ============================================================
-     SEMANTIC TOKENS — reference these in components
-     ============================================================ */
-  --bg-app:        var(--paper-50);
-  --bg-surface:    var(--paper-0);
-  --bg-sunken:     var(--paper-100);
-  --bg-hover:      var(--paper-100);
-  --bg-active:     var(--paper-200);
+  --fg-default:    var(--neutral-12);
+  --fg-muted:      color-mix(in oklch, var(--neutral-11) 60%, var(--neutral-12));
+  --fg-subtle:     var(--neutral-11);
+  --fg-disabled:   var(--neutral-8);
+  --fg-on-accent:  #ffffff;
+  --fg-danger:     var(--danger-11);
 
-  --fg-default:    var(--ink-900);
-  --fg-muted:      var(--ink-600);
-  --fg-subtle:     var(--ink-550);
-  --fg-disabled:   var(--ink-400);
-  --fg-on-accent:  #FFFFFF;
-  /* Text that says something failed or was refused: the red Banner's danger tone and a danger Menu
-     item already draw (design/primitives/banner.tsx, design/patterns/menu.tsx). */
-  --fg-danger:     var(--red-600);
+  --accent:        var(--accent-9);
+  --accent-hover:  var(--accent-10);
+  --accent-press:  var(--accent-11);
+  --accent-tint:   var(--accent-3);
+  --accent-text:   var(--accent-11);
 
-  /* Scrims: --ink-900 is rgb(24 27 34), so a dialog's backdrop is the page's own
-     darkest ink at an alpha, not a fourth grey. --scrim-media is deeper because a
-     lightbox has to sink a photograph, not a panel. */
-  --scrim:         rgb(24 27 34 / 0.25);
-  --scrim-strong:  rgb(24 27 34 / 0.4);
-  --scrim-media:   rgb(15 17 21 / 0.82);
+  --link:          var(--info-11);
+  --focus-ring:    var(--info-9);
+  --sel-bg:        var(--info-3);
 
-  --border-subtle: var(--paper-200);
-  --border-default:var(--paper-300);
-  --border-strong: var(--paper-400);
+  /* status: bg (3) · border (7) · solid (9) · text (11) */
+  --status-ok-bg:     var(--ok-3);     --status-ok-line:     var(--ok-7);     --status-ok-solid:     var(--ok-9);     --status-ok-fg:     var(--ok-11);
+  --status-warn-bg:   var(--warn-3);   --status-warn-line:   var(--warn-7);   --status-warn-solid:   var(--warn-9);   --status-warn-fg:   var(--warn-11);
+  --status-danger-bg: var(--danger-3); --status-danger-line: var(--danger-7); --status-danger-solid: var(--danger-9); --status-danger-fg: var(--danger-11);
+  --status-info-bg:   var(--info-3);   --status-info-line:   var(--info-7);   --status-info-solid:   var(--info-9);   --status-info-fg:   var(--info-11);
+  --status-muted-bg:  var(--muted-3);  --status-muted-line:  var(--muted-7);  --status-muted-solid:  var(--muted-9);  --status-muted-fg:  var(--muted-11);
+  --on-warn:          oklch(0.22 0.04 72);
 
-  --accent:        var(--flame-500);
-  --accent-hover:  var(--flame-600);
-  --accent-press:  var(--flame-700);
-  --accent-tint:   var(--flame-50);
-  --accent-text:   var(--flame-700);
+  /* What an agent or the assistant says or proposes (ISS-63): never a status. */
+  --ai-fg:         var(--ai-11);
+  --ai-bg:         var(--ai-3);
+  --ai-bar:        var(--ai-9);
 
-  --link:          var(--cobalt-500);
-  --focus-ring:    var(--cobalt-500);
+  /* Scrims are the page's own darkest ink at an alpha; --scrim-media sinks a photograph. */
+  --scrim:         color-mix(in oklch, var(--neutral-12) 25%, transparent);
+  --scrim-strong:  color-mix(in oklch, var(--neutral-12) 40%, transparent);
+  --scrim-media:   oklch(0.12 0.005 75 / 0.82);
 
-  /* What an agent or the assistant says or proposes (ISS-63): its name, its avatar, the bar on a
-     questionnaire card and the Inferred / New marks. Never a status. */
-  --ai-fg:         #6247B3;
-  --ai-bg:         #F1ECFB;
-  --ai-bar:        #8A6BD1;
-  --sel-bg:        var(--cobalt-50);
+  /* ===== LAYER 3: the old names, each on a scale step ===== */
+  --paper-0:   var(--neutral-1);
+  --paper-50:  var(--neutral-2);
+  --paper-100: var(--neutral-3);
+  --paper-200: var(--neutral-5);
+  --paper-300: var(--neutral-7);
+  --paper-400: var(--neutral-8);
+  --ink-900: var(--neutral-12);
+  --ink-700: color-mix(in oklch, var(--neutral-11) 40%, var(--neutral-12));
+  --ink-600: var(--fg-muted);
+  --ink-550: var(--neutral-11);
+  --ink-500: var(--neutral-9);
+  --ink-400: var(--neutral-8);
+  --flame-50:  var(--accent-2);
+  --flame-100: var(--accent-3);
+  --flame-200: var(--accent-5);
+  --flame-300: var(--accent-7);
+  --flame-500: var(--accent-9);
+  --flame-600: var(--accent-10);
+  --flame-700: var(--accent-11);
+  --cobalt-50:  var(--info-2);
+  --cobalt-100: var(--info-4);
+  --cobalt-300: var(--info-7);
+  --cobalt-500: var(--info-9);
+  --cobalt-600: var(--info-10);
+  --cobalt-700: var(--info-11);
+  --amber-50:  var(--warn-3);
+  --amber-500: var(--warn-9);
+  --amber-600: var(--warn-11);
+  --amberw-50: var(--warn-3);  --amberw-500: var(--warn-9);  --amberw-600: var(--warn-11);  --amberw-700: var(--warn-11);
+  --green-50:  var(--ok-3);    --green-500: var(--ok-9);     --green-600: var(--ok-11);
+  --red-50:    var(--danger-3);--red-500:   var(--danger-9); --red-600:   var(--danger-11);
+  --slate-50:  var(--muted-3); --slate-500: var(--muted-9);  --slate-600: var(--muted-11);
 
   /* ===== SHADCN BRIDGE ===== */
   --background:           var(--bg-app);
@@ -118,23 +179,23 @@
   --card-foreground:      var(--fg-default);
   --popover:              var(--bg-surface);
   --popover-foreground:   var(--fg-default);
-  --primary:              var(--flame-500);
+  --primary:              var(--accent-9);
   --primary-foreground:   var(--fg-on-accent);
   --secondary:            var(--bg-sunken);
   --secondary-foreground: var(--fg-default);
   --muted:                var(--bg-sunken);
   --muted-foreground:     var(--fg-muted);
   --accent-foreground:    var(--fg-default);
-  --destructive:          var(--red-500);
+  --destructive:          var(--danger-9);
   --border:               var(--border-default);
   --input:                var(--border-default);
   --ring:                 var(--focus-ring);
-  --radius:               var(--r-md);
-  --chart-1:              var(--flame-500);
-  --chart-2:              var(--cobalt-500);
-  --chart-3:              var(--green-500);
-  --chart-4:              var(--amber-500);
-  --chart-5:              var(--stage-triage);
+  --radius:               var(--r-sm);
+  --chart-1:              var(--accent-9);
+  --chart-2:              var(--info-9);
+  --chart-3:              var(--ok-9);
+  --chart-4:              var(--warn-9);
+  --chart-5:              var(--ai-9);
 
   /* ===== PIPELINE STAGE ACCENTS (7-step hero motif) ===== */
   --stage-triage:  #8A6BD1;
@@ -180,48 +241,45 @@
   --wf-edge: var(--ink-400);
   --wf-hit: var(--amber-500);
 
-  /* ===== RADII ===== */
+
+  /* ===== RADII — surfaces are square; controls 4–6px; overlays 8px ===== */
+  --r-surface: 0px;
   --r-xs: 4px;
   --r-sm: 6px;
-  --r-md: 9px;
-  --r-lg: 13px;
-  --r-xl: 18px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 8px;
   --r-pill: 999px;
 
-  /* ===== SHADOWS — soft, warm, low-contrast ===== */
-  --shadow-xs: 0 1px 2px rgba(24,27,34,0.05);
-  --shadow-sm: 0 1px 2px rgba(24,27,34,0.06), 0 2px 4px rgba(24,27,34,0.04);
-  --shadow-md: 0 2px 4px rgba(24,27,34,0.05), 0 6px 16px rgba(24,27,34,0.07);
-  --shadow-lg: 0 8px 24px rgba(24,27,34,0.10), 0 2px 6px rgba(24,27,34,0.05);
-  --shadow-focus: 0 0 0 3px rgba(45,91,214,0.20);
-  --shadow-focus-accent: 0 0 0 3px rgba(241,90,43,0.22);
+  /* ===== SHADOWS — overlays only (dialog, popover, menu, peek, toast) ===== */
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-overlay: 0 1px 2px var(--shadow-color), 0 8px 24px var(--shadow-color);
+  --shadow-md: var(--shadow-overlay);
+  --shadow-lg: var(--shadow-overlay);
+  --shadow-focus: 0 0 0 3px color-mix(in oklch, var(--info-9) 35%, transparent);
+  --shadow-focus-accent: 0 0 0 3px color-mix(in oklch, var(--accent-9) 35%, transparent);
 
-  /* ===== SPACING (4px base) ===== */
+  /* ===== DENSITY — rows 36px, 44px on touch; a 4px spacing scale ===== */
+  --row-h: 36px;
+  --row-h-touch: 44px;
   --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
   --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
   --sp-12: 48px; --sp-16: 64px;
 
-  /* ===== MOTION ===== */
+  /* ===== MOTION — 120–200ms; reduced motion turns it off (globals.css) ===== */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --dur-fast: 120ms;
-  --dur-base: 200ms;
-  --dur-slow: 320ms;
+  --dur-base: 160ms;
+  --dur-slow: 200ms;
 }
 
-/* ============================================================
-   DARK THEME — reserved. Override ONLY the semantic layer here;
-   the raw palette + every component stay untouched (drop-in).
-   Values are placeholders — finalize when dark ships.
-   ============================================================
-[data-theme="dark"] {
-  --bg-app: #15171C; --bg-surface: #1B1E25; --bg-sunken: #20242C;
-  --fg-default: #ECEDEF; --fg-muted: #A6ABB5; ...
+@media (pointer: coarse) {
+  :root, [data-theme] { --row-h: var(--row-h-touch); }
 }
-*/
 
-/* The workflow canvas's hues, ready for the dark theme the semantic block above reserves: the
-   canvas reads only --wf-*, so when dark ships its node and edge colours follow without a change. */
+/* The workflow canvas's hues in dark: the canvas reads only --wf-*. */
 [data-theme="dark"] {
   --wf-orange: var(--hue-orange-300);
   --wf-slate: var(--hue-slate-300);
@@ -237,26 +295,22 @@
   --wf-indigo: var(--hue-indigo-300);
   --wf-neutral: var(--ink-400);
   --wf-edge: var(--ink-500);
-  --ai-fg: #C4B2F2;
-  --ai-bg: #2A2340;
-  --ai-bar: #9F86E0;
-  --fg-danger: var(--hue-red-300);
 }
 
 /* ============================================================
    BASE TYPE STYLES
    ============================================================ */
-.fg-display { font-family: var(--font-sans); font-weight: 800; font-size: 44px; line-height: 1.04; letter-spacing: -0.022em; color: var(--fg-default); }
-.fg-h1 { font-family: var(--font-sans); font-weight: 700; font-size: 30px; line-height: 1.12; letter-spacing: -0.018em; color: var(--fg-default); }
-.fg-h2 { font-family: var(--font-sans); font-weight: 700; font-size: 22px; line-height: 1.2; letter-spacing: -0.012em; color: var(--fg-default); }
-.fg-h3 { font-family: var(--font-sans); font-weight: 600; font-size: 17px; line-height: 1.3; letter-spacing: -0.006em; color: var(--fg-default); }
-.fg-body { font-family: var(--font-sans); font-weight: 400; font-size: 15px; line-height: 1.55; color: var(--fg-default); }
-.fg-body-sm { font-family: var(--font-sans); font-weight: 400; font-size: 13.5px; line-height: 1.5; color: var(--fg-muted); }
-.fg-label { font-family: var(--font-sans); font-weight: 600; font-size: 13px; line-height: 1.3; letter-spacing: 0.002em; color: var(--fg-default); }
-.fg-caption { font-family: var(--font-sans); font-weight: 500; font-size: 12px; line-height: 1.35; color: var(--fg-subtle); }
-.fg-overline { font-family: var(--font-mono); font-weight: 600; font-size: 11px; line-height: 1.2; letter-spacing: 0.10em; text-transform: uppercase; color: var(--fg-subtle); }
-.fg-mono { font-family: var(--font-mono); font-weight: 500; font-size: 13px; line-height: 1.5; letter-spacing: -0.01em; color: var(--fg-default); }
-.fg-code { font-family: var(--font-mono); font-weight: 500; font-size: 12.5px; background: var(--bg-sunken); border: 1px solid var(--border-subtle); border-radius: var(--r-xs); padding: 1px 6px; color: var(--ink-700); }
+.fg-display { font-family: var(--font-sans); font-weight: 700; font-size: var(--type-24); line-height: var(--type-24-lh); letter-spacing: -0.018em; color: var(--fg-default); }
+.fg-h1 { font-family: var(--font-sans); font-weight: 650; font-size: var(--type-24); line-height: var(--type-24-lh); letter-spacing: -0.016em; color: var(--fg-default); }
+.fg-h2 { font-family: var(--font-sans); font-weight: 650; font-size: var(--type-20); line-height: var(--type-20-lh); letter-spacing: -0.012em; color: var(--fg-default); }
+.fg-h3 { font-family: var(--font-sans); font-weight: 600; font-size: var(--type-16); line-height: var(--type-16-lh); letter-spacing: -0.006em; color: var(--fg-default); }
+.fg-body { font-family: var(--font-sans); font-weight: 400; font-size: var(--type-14); line-height: var(--type-14-lh); color: var(--fg-default); }
+.fg-body-sm { font-family: var(--font-sans); font-weight: 400; font-size: var(--type-13); line-height: var(--type-13-lh); color: var(--fg-muted); }
+.fg-label { font-family: var(--font-sans); font-weight: 600; font-size: var(--type-13); line-height: var(--type-13-lh); color: var(--fg-default); }
+.fg-caption { font-family: var(--font-sans); font-weight: 500; font-size: var(--type-12); line-height: var(--type-12-lh); color: var(--fg-subtle); }
+.fg-overline { font-family: var(--font-mono); font-weight: 600; font-size: var(--type-12); line-height: var(--type-12-lh); letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-subtle); }
+.fg-mono { font-family: var(--font-mono); font-weight: 500; font-size: var(--type-13); line-height: var(--type-13-lh); letter-spacing: -0.01em; color: var(--fg-default); }
+.fg-code { font-family: var(--font-mono); font-weight: 500; font-size: var(--type-12); background: var(--bg-sunken); border: 1px solid var(--border-subtle); border-radius: var(--r-xs); padding: 1px 6px; color: var(--ink-700); }
 
 /* The stale mark on the issues list's Waiting column, declared HERE and not as
    Tailwind utilities on the element. Every rule above is UNLAYERED and Tailwind

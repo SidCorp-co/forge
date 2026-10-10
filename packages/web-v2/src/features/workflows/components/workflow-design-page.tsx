@@ -1,22 +1,12 @@
 "use client";
 
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
-import {
-  DetailLayout,
-  DetailMobileTitle,
-  DetailPane,
-  DetailTabs,
-  FactsRail,
-  StatusBadge,
-  useRecordView,
-  useUrlTab,
-  ViewHeading,
-} from "@/design";
-import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
-import { ItemMemory, useItemMemoryCount } from "@/features/memory/components/item-memory";
+import { DetailLayout, DetailMobileTitle, DetailPane, DetailTabs, FactsRail, StatusBadge, useRecordView, useUrlTab, ViewHeading, Icon, fixedHeight } from "@/design";
+import { Decisions } from "@/features/comments";
+import { ItemMemory, useItemMemoryCount } from "@/features/memory";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
@@ -32,13 +22,16 @@ import type { WorkflowBody, WorkflowDesign, WorkflowRecord, WorkflowStep } from 
 import { DesignBanner } from "./design-banner";
 import { OrphanedTraces } from "./design-decision";
 import { useBannerOpen, useCanvasFocus, useDetailSqueezes, useRailCollapsed } from "./design-room";
-import { WorkflowDesignFacts } from "./workflow-design-facts";
+import { WorkflowDesignProperties } from "./workflow-design-facts";
 import { DesignPill } from "./workflow-parts";
 
 const DESIGN_TABS = ["design", "steps", "revisions", "decisions", "memory"] as const;
 type DesignTab = (typeof DESIGN_TABS)[number];
 
 export const useDesignTab = () => useUrlTab(DESIGN_TABS);
+
+/** A step's owner and deadline: columns beside its title, lines under it on a phone. */
+const UNDER = "min-w-0 flex-5 text-muted max-md:basis-full max-md:pl-10";
 
 const MARK: Record<string, ProductCopyKey> = { added: "workflows.mark.added", changed: "workflows.mark.changed", removed: "workflows.mark.removed" };
 
@@ -50,9 +43,9 @@ function StepRows({ steps, numbered, diff, revision }: { steps: WorkflowStep[]; 
       {steps.map((s) => {
         const mark = diff?.steps.get(s.id);
         return (
-          <li key={s.id} className="grid grid-cols-[36px_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-baseline gap-x-3 border-b border-line-subtle px-3 py-2.5 text-13 max-md:grid-cols-[28px_minmax(0,1fr)]" data-testid="design-step-row" data-step={s.id} data-mark={mark}>
-            <span className="font-mono text-12 text-subtle">{numbered.get(s.id) ?? ""}</span>
-            <span className="min-w-0">
+          <li key={s.id} className="flex items-baseline gap-x-3 border-b border-line-subtle px-3 py-2.5 text-13 max-md:flex-wrap" data-testid="design-step-row" data-step={s.id} data-mark={mark}>
+            <span className="w-9 flex-none font-mono text-12 text-subtle max-md:w-7">{numbered.get(s.id) ?? ""}</span>
+            <span className="min-w-0 flex-7">
               <span className="font-medium" title={s.node?.purpose ?? s.does}>
                 {titleOf(s)}
               </span>
@@ -63,8 +56,8 @@ function StepRows({ steps, numbered, diff, revision }: { steps: WorkflowStep[]; 
                 </span>
               ) : null}
             </span>
-            <span className="min-w-0 text-muted max-md:col-start-2">{s.node?.owner ?? "—"}</span>
-            <span className="min-w-0 text-muted max-md:col-start-2">{s.node?.sla ?? "—"}</span>
+            <span className={UNDER}>{s.node?.owner ?? "—"}</span>
+            <span className={cn(UNDER, "flex-4")}>{s.node?.sla ?? "—"}</span>
           </li>
         );
       })}
@@ -81,11 +74,11 @@ function StepsPane({ shown, template, diff, revision }: { shown: WorkflowBody; t
   return (
     <div data-testid="view-steps">
       <ViewHeading>{t("workflows.whoOwnsWhat")}</ViewHeading>
-      <div className="grid h-8 grid-cols-[36px_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-x-3 border-y border-line-subtle bg-sunken px-3 text-11-5 font-semibold text-subtle max-md:hidden" aria-hidden>
-        <span>#</span>
-        <span>{unit}</span>
-        <span>{t("workflows.owner")}</span>
-        <span>{t("workflows.deadline")}</span>
+      <div className="flex h-8 items-center gap-x-3 border-y border-line-subtle bg-sunken px-3 text-12 font-semibold text-subtle max-md:hidden" aria-hidden>
+        <span className="w-9 flex-none">#</span>
+        <span className="flex-7">{unit}</span>
+        <span className="flex-5">{t("workflows.owner")}</span>
+        <span className="flex-4">{t("workflows.deadline")}</span>
       </div>
       {groups.map((g) => (
         <section key={g.id} data-testid="design-step-group">
@@ -121,20 +114,13 @@ function RevisionsPane({ d }: { d: WorkflowDesign }) {
       ) : (
         <ul className="border-t border-line-subtle">
           {d.revisions.map((r) => (
-            <li
-              key={r.revision}
-              className={cn(
-                "grid items-baseline gap-x-3 border-b border-line-subtle px-3 py-2.5 text-13",
-                developer ? "grid-cols-[72px_150px_minmax(0,1fr)] max-md:grid-cols-[56px_minmax(0,1fr)]" : "grid-cols-[150px_minmax(0,1fr)] max-md:grid-cols-1",
-              )}
-              data-testid="revision-row"
-            >
+            <li key={r.revision} className="flex items-baseline gap-x-3 border-b border-line-subtle px-3 py-2.5 text-13 max-md:flex-wrap" data-testid="revision-row">
               {/* a revision's number is the Developer view's (REQ-43 BC-7) */}
-              {developer ? <span className="font-mono text-12-5 font-semibold">r{r.revision}</span> : null}
-              <span>
+              {developer ? <span className="w-18 flex-none font-mono text-13 font-semibold max-md:w-14">r{r.revision}</span> : null}
+              <span className="w-37.5 flex-none max-md:w-auto">
                 <StatusBadge family="designRevision" value={r.state} />
               </span>
-              <span className={cn("min-w-0 text-muted", developer && "max-md:col-start-2")}>
+              <span className={cn("min-w-0 flex-1 text-muted max-md:basis-full", developer && "max-md:pl-17")}>
                 <RevisionSummary changes={r.changes} first={d.revisions[d.revisions.length - 1]?.revision === r.revision} />
                 <span title={time.dateTime(r.proposedAt)}>
                   {t("workflows.proposedBy", { who: r.proposedByName ?? r.proposedBy })} · {time.relative(r.proposedAt)}
@@ -150,8 +136,8 @@ function RevisionsPane({ d }: { d: WorkflowDesign }) {
                 ) : null}
                 {r.reason ? (
                   <details className="mt-1">
-                    <summary className="cursor-pointer select-none text-12-5 font-medium text-muted hover:text-fg">{r.decision === "approve" ? t("workflows.approvalNote") : t("workflows.reason")}</summary>
-                    <p className="mt-1 whitespace-pre-wrap break-words text-12-5 text-fg">{revisionReason(r, language)}</p>
+                    <summary className="cursor-pointer select-none text-13 font-medium text-muted hover:text-fg">{r.decision === "approve" ? t("workflows.approvalNote") : t("workflows.reason")}</summary>
+                    <p className="mt-1 whitespace-pre-wrap break-words text-13 text-fg">{revisionReason(r, language)}</p>
                   </details>
                 ) : null}
               </span>
@@ -206,9 +192,29 @@ function RailEdge({ collapsed, onToggle }: { collapsed: boolean; onToggle: () =>
       )}
       data-testid="design-rail-toggle"
     >
-      {collapsed ? <PanelRightOpen size={14} aria-hidden /> : <PanelRightClose size={14} aria-hidden />}
+      {collapsed ? <Icon name="panelRightOpen" size={14} /> : <Icon name="panelRightClose" size={14} />}
     </button>
   );
+}
+
+/** The open tab's view, beside the canvas's own. */
+function TabView({ tab, projectId, slug, d, record, shown, template, diff, revision }: Pick<DesignPageProps, "tab" | "projectId" | "slug" | "d" | "record" | "template"> & { shown: WorkflowBody; diff: DesignDiff | null; revision: number }) {
+  if (tab === "steps") return <StepsPane shown={shown} template={template} diff={diff} revision={revision} />;
+  if (tab === "revisions") return <RevisionsPane d={d} />;
+  if (tab === "decisions") return <Decisions projectId={projectId} scope="workflow" targetRef={record.document.id} />;
+  if (tab === "memory") return <ItemMemory projectId={projectId} slug={slug} cites={record.document.flow} />;
+  return null;
+}
+
+/** The page's tabs, each with what it counts. */
+function designTabs(t: Copy, shown: WorkflowBody, d: WorkflowDesign, decisionCount: number | undefined, memories: number | undefined) {
+  return [
+    { value: "design" as const, label: t("workflows.tab.design") },
+    { value: "steps" as const, label: shown.kind === "state" ? t("workflows.tab.states") : t("workflows.tab.steps"), count: shown.steps.length },
+    { value: "revisions" as const, label: t("workflows.tab.revisions"), count: d.revisions.length },
+    { value: "decisions" as const, label: t("workflows.tab.decisions"), ...(decisionCount === undefined ? {} : { count: decisionCount }) },
+    { value: "memory" as const, label: t("memory.title"), count: memories },
+  ];
 }
 
 export function WorkflowDesignPage({ projectId, slug, d, record, template, decisionCount, tab, onTab, decision, walkDecision, repins }: DesignPageProps) {
@@ -220,23 +226,17 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
   const [railCollapsed, setRailCollapsed] = useRailCollapsed();
   const [bannerOpen, setBannerOpen] = useBannerOpen();
   const [floatOpen, setFloatOpen] = useState(false);
-  const column = useRef<HTMLDivElement>(null);
+  const columnRef = useRef<HTMLDivElement>(null);
   const headRef = useRef<HTMLDivElement>(null);
   const detailRef = useRef<HTMLDivElement>(null);
-  const squeezed = useDetailSqueezes(column, headRef, detailRef, { active: tab === "design" && !focus, open: `${bannerOpen}|${floatOpen}` });
+  const squeezed = useDetailSqueezes(columnRef, headRef, detailRef, { active: tab === "design" && !focus, open: `${bannerOpen}|${floatOpen}` });
   const { shown, shownRevision, approved } = shownDesign(d, record);
   const health = useWorkflowHealth(projectId, record.document.id).data;
   const overlay = useHealthOverlay(health, "design", slug, record.document.flow);
   const fullDiff = approved && health?.diff && health.diff.to === shownRevision ? diffOf(health.diff, approved) : null;
   const diff = changes ? fullDiff : null;
   const memories = useItemMemoryCount(projectId, record.document.flow);
-  const tabs = [
-    { value: "design" as const, label: t("workflows.tab.design") },
-    { value: "steps" as const, label: shown.kind === "state" ? t("workflows.tab.states") : t("workflows.tab.steps"), count: shown.steps.length },
-    { value: "revisions" as const, label: t("workflows.tab.revisions"), count: d.revisions.length },
-    { value: "decisions" as const, label: t("workflows.tab.decisions"), ...(decisionCount !== undefined ? { count: decisionCount } : {}) },
-    { value: "memory" as const, label: t("memory.title"), count: memories },
-  ];
+  const tabs = designTabs(t, shown, d, decisionCount, memories);
   const badge = d.status ? <DesignPill status={d.status} reason={d.status === "returned" ? d.revisions[0]?.reason : null} /> : undefined;
   // Squeezed, a remembered open detail stays folded (the canvas keeps its share) and one opened now floats over the canvas
   const head = (
@@ -271,12 +271,12 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
       railCollapsed={tab === "design" && railCollapsed}
       rail={
         <FactsRail testId="design-rail">
-          <WorkflowDesignFacts d={d} record={record} shown={shown} shownRevision={shownRevision} template={template} slug={slug} health={health} projectId={projectId} />
+          <WorkflowDesignProperties d={d} record={record} shown={shown} shownRevision={shownRevision} template={template} slug={slug} health={health} projectId={projectId} />
         </FactsRail>
       }
     >
       {tab === "design" ? (
-        <div ref={column} className="flex flex-col lg:h-[calc(100dvh-48px)]" data-testid="view-design">
+        <div ref={columnRef} className={cn("flex flex-col", fixedHeight("page", "lg"))} data-testid="view-design">
           {head}
           {/* Focus mode lifts this one element over the page, so the canvas keeps its zoom, selection and walk */}
           <div className={cn("relative flex min-h-0 flex-1 flex-col", focus && "fixed inset-0 z-40 bg-app")} data-testid="design-canvas-area" data-focus={focus}>
@@ -306,10 +306,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
         <>
           {head}
           <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("workflows.tab.design")}>
-            {tab === "steps" ? <StepsPane shown={shown} template={template} diff={fullDiff} revision={shownRevision} /> : null}
-            {tab === "revisions" ? <RevisionsPane d={d} /> : null}
-            {tab === "decisions" ? <DecisionsPanel projectId={projectId} scope="workflow" targetRef={record.document.id} /> : null}
-            {tab === "memory" ? <ItemMemory projectId={projectId} slug={slug} cites={record.document.flow} /> : null}
+            <TabView tab={tab} projectId={projectId} slug={slug} d={d} record={record} shown={shown} template={template} diff={fullDiff} revision={shownRevision} />
           </DetailPane>
         </>
       )}

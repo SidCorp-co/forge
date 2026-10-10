@@ -30,7 +30,7 @@ function Track({ lane, from, to, now }: { lane: OverviewLane; from: number; to: 
       : [];
   const leaseEnd = lane.lease?.expiresAt ? new Date(lane.lease.expiresAt).getTime() : null;
   return (
-    <div className="relative h-5 rounded-[3px] bg-sunken" role="img" aria-label={t("overview.lane.aria", { key: lane.key })}>
+    <div className="relative h-5 rounded-xs bg-sunken" role="img" aria-label={t("overview.lane.aria", { key: lane.key })}>
       {segs
         .filter((s) => s.b > from)
         .map((s) => (
@@ -41,8 +41,8 @@ function Track({ lane, from, to, now }: { lane: OverviewLane; from: number; to: 
           >
             <Tooltip label={t("overview.lane.span", { step: s.label, from: time.clock(s.a), to: s.open ? t("overview.lane.now") : time.clock(s.b) })}>
               <span
-                className="items-center overflow-hidden whitespace-nowrap rounded-[3px] px-1.5 text-10 font-semibold text-on-accent"
-                style={{ background: s.open ? LEGEND.run.dot : "var(--ink-600)" }}
+                className="items-center overflow-hidden whitespace-nowrap rounded-xs px-1.5 text-12 font-semibold text-on-accent"
+                style={{ background: s.open ? LEGEND.run.dot : "var(--neutral-11)" }}
               >
                 {(s.b - s.a) / (to - from) >= LABEL_FROM_SHARE ? s.label : null}
               </span>
@@ -51,12 +51,12 @@ function Track({ lane, from, to, now }: { lane: OverviewLane; from: number; to: 
         ))}
       {leaseEnd !== null && leaseEnd > now ? (
         <div
-          className="absolute top-[5px] h-2.5 rounded-[3px] border border-dashed"
+          className="absolute top-1.25 h-2.5 rounded-xs border border-dashed"
           style={{ left: pct(now), width: `calc(${pct(leaseEnd)} - ${pct(now)})`, borderColor: LEGEND.run.dot }}
           title={t("overview.lane.leaseUntil", { at: time.dateTime(lane.lease?.expiresAt as string) })}
         />
       ) : null}
-      <div aria-hidden className="absolute -bottom-1 -top-1 w-0 border-l-[1.5px] border-fg" style={{ left: pct(now) }} />
+      <div aria-hidden className="absolute -bottom-1 -top-1 w-0 border-l-2 border-fg" style={{ left: pct(now) }} />
     </div>
   );
 }
@@ -65,37 +65,37 @@ function LaneDetail({ lane }: { lane: OverviewLane }) {
   const t = useCopy();
   const time = useTimeFormat();
   return (
-    <dl className="grid grid-cols-[84px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-12-5">
-      <dt className="text-muted">{t("overview.lane.holder")}</dt>
-      <dd className="min-w-0 break-all font-mono text-12">{lane.holder ?? t("overview.lane.noneRecorded")}</dd>
+    <dl className="flex flex-col gap-1.5 text-13">
+      <LaneFact label={t("overview.lane.holder")}>
+        <span className="break-all font-mono text-12">{lane.holder ?? t("overview.lane.noneRecorded")}</span>
+      </LaneFact>
       {lane.box ? (
-        <>
-          <dt className="text-muted">{t("overview.lane.box")}</dt>
-          <dd className="font-mono text-12">{lane.box}</dd>
-        </>
+        <LaneFact label={t("overview.lane.box")}>
+          <span className="font-mono text-12">{lane.box}</span>
+        </LaneFact>
       ) : null}
       {lane.branch ? (
-        <>
-          <dt className="text-muted">{t("overview.lane.branch")}</dt>
-          <dd className="break-all font-mono text-12">{lane.branch}</dd>
-        </>
+        <LaneFact label={t("overview.lane.branch")}>
+          <span className="break-all font-mono text-12">{lane.branch}</span>
+        </LaneFact>
       ) : null}
       {lane.lease ? (
-        <>
-          <dt className="text-muted">{t("issues.facts.lease")}</dt>
-          <dd className="flex flex-wrap items-center gap-1.5">
-            <ToneBadge tone={statusReading("lease", lane.lease.verdict).tone} label={t(`issues.lease.${lane.lease.verdict}`)} title={lane.lease.verdict} value={lane.lease.verdict} />
-            {lane.lease.expiresAt ? <span className="text-muted">{t("overview.lane.until", { at: time.dateTime(lane.lease.expiresAt) })}</span> : null}
-          </dd>
-        </>
+        <LaneFact label={t("issues.facts.lease")}>
+          <ToneBadge tone={statusReading("lease", lane.lease.verdict).tone} label={t(`issues.lease.${lane.lease.verdict}`)} title={lane.lease.verdict} value={lane.lease.verdict} />
+          {lane.lease.expiresAt ? <span className="text-muted">{t("overview.lane.until", { at: time.dateTime(lane.lease.expiresAt) })}</span> : null}
+        </LaneFact>
       ) : null}
-      {lane.heldSince ? (
-        <>
-          <dt className="text-muted">{t("overview.lane.since")}</dt>
-          <dd>{time.dateTime(lane.heldSince)}</dd>
-        </>
-      ) : null}
+      {lane.heldSince ? <LaneFact label={t("overview.lane.since")}>{time.dateTime(lane.heldSince)}</LaneFact> : null}
     </dl>
+  );
+}
+
+function LaneFact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-3">
+      <dt className="w-21 flex-none text-muted">{label}</dt>
+      <dd className="flex min-w-0 flex-wrap items-center gap-1.5">{children}</dd>
+    </div>
   );
 }
 
@@ -109,22 +109,23 @@ export function LeaseLanes({ moving, slug }: { moving: OverviewMoving; slug: str
   const now = new Date(w.now).getTime();
   return (
     <div data-testid="lease-lanes">
-      <div className="grid grid-cols-[minmax(120px,168px)_minmax(0,1fr)] items-center gap-x-3 gap-y-3.5">
+      <div className="flex flex-col gap-3.5">
         {moving.lanes.map((lane) => (
-          <div key={lane.key} className="contents" data-testid="lane" data-key={lane.key}>
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <Link href={issueHref(slug, lane.key)} className="truncate font-mono text-11-5 font-semibold text-link no-underline hover:underline" title={lane.title}>
+          <div key={lane.key} className="flex items-center gap-3" data-testid="lane" data-key={lane.key}>
+            <div className="flex w-42 min-w-0 flex-none flex-col gap-0.5">
+              <Link href={issueHref(slug, lane.key)} className="truncate font-mono text-12 font-semibold text-link no-underline hover:underline" title={lane.title}>
                 {lane.key}
               </Link>
               <HoverCard label={t("overview.lane.runOn", { key: lane.key })} content={<LaneDetail lane={lane} />} placement="bottom-start">
                 <WaitingOn w={lane.waitingOn} />
               </HoverCard>
             </div>
-            <Track lane={lane} from={from} to={to} now={now} />
+            <div className="min-w-0 flex-1">
+              <Track lane={lane} from={from} to={to} now={now} />
+            </div>
           </div>
         ))}
-        <div />
-        <div className="relative h-4 text-11 text-muted" aria-hidden>
+        <div className="relative ml-45 h-4 text-12 text-muted" aria-hidden>
           {ticksOf(from, to).map((tick) => (
             <span key={tick} className="absolute -translate-x-1/2 font-mono tabular-nums" style={{ left: `${(((tick - from) / (to - from)) * 100).toFixed(2)}%` }}>
               {time.clock(tick)}

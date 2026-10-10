@@ -1,0 +1,1 @@
+**The web app follows one written standard, in light and dark.** OKLCH colour scales, Inter, flat surfaces, five page templates and one set of blocks replace hand-made copies; the React Compiler is on.

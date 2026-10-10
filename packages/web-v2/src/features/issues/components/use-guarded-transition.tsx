@@ -51,36 +51,56 @@ interface GuardedTransition {
  * and fires every other status straight at the endpoint — both paths confirm
  * with a toast on success.
  */
+/** A move that asks for a reason first, and what it carries into the dialog. */
+interface ReasonPrompt {
+  id: string;
+  status: DialogMode;
+  /** Where the move goes: the reason status itself, or the close/drop the questions held up. */
+  target: IssueStatus;
+  successMessage: string;
+  onSuccess?: () => void;
+  openQuestions?: number;
+  targets?: IssueStatus[];
+  /** The reason (and kind) already given for a reason-required move the questions then held up,
+   *  re-sent with the withdrawal so the second attempt is not refused for the reason it lacks. */
+  carried?: { reason: string; waitingKind?: WaitingCause };
+}
+
+/** A move its checklist refused, held open so the person answers and moves it again. */
+type ChecklistHold = ChecklistPrompt & {
+  id: string;
+  from: IssueStatus;
+  toStatus: IssueStatus;
+  successMessage: string;
+  onSuccess?: () => void;
+};
+
+/** What a confirmed reason sends: where the move goes, its body, and the reason to carry if questions then hold it. */
+function reasonMove(prompt: ReasonPrompt, reason: string, waitingKind?: WaitingCause, picked?: IssueStatus) {
+  const { id, status } = prompt;
+  const target = status === "move_anyway" ? (picked ?? prompt.target) : prompt.target;
+  const kind = waitingKind ? { waitingKind } : {};
+  const carried = prompt.carried
+    ? { reason: prompt.carried.reason, ...(prompt.carried.waitingKind ? { waitingKind: prompt.carried.waitingKind } : {}) }
+    : {};
+  const body =
+    status === "void_questions"
+      ? { id, toStatus: target, voidQuestions: reason, ...carried }
+      : status === "not_needed"
+        ? { id, toStatus: target, reason, voidQuestions: reason }
+        : { id, toStatus: target, reason, ...kind };
+  const given = status === "void_questions" ? prompt.carried : { reason, ...kind };
+  return { target, body, given };
+}
+
 export function useGuardedTransition(): GuardedTransition {
   const transition = useTransitionIssue();
   const { toast } = useToast();
   const t = useCopy();
   const L = useLabel();
-  const [prompt, setPrompt] = useState<{
-    id: string;
-    status: DialogMode;
-    /** Where the move goes: the reason status itself, or the close/drop the questions held up. */
-    target: IssueStatus;
-    successMessage: string;
-    onSuccess?: () => void;
-    openQuestions?: number;
-    targets?: IssueStatus[];
-    /** The reason (and kind) already given for a reason-required move the questions then held up,
-     *  re-sent with the withdrawal so the second attempt is not refused for the reason it lacks. */
-    carried?: { reason: string; waitingKind?: WaitingCause };
-  } | null>(null);
+  const [prompt, setPrompt] = useState<ReasonPrompt | null>(null);
 
-  /** A move its checklist refused, held open so the person answers and moves it again. */
-  const [checklist, setChecklist] = useState<
-    | (ChecklistPrompt & {
-        id: string;
-        from: IssueStatus;
-        toStatus: IssueStatus;
-        successMessage: string;
-        onSuccess?: () => void;
-      })
-    | null
-  >(null);
+  const [checklist, setChecklist] = useState<ChecklistHold | null>(null);
 
   /** What the person typed into the open checklist form; mirrored into its draft on every keystroke. */
   const [typed, setTyped] = useState<Record<string, string>>({});
@@ -177,19 +197,8 @@ export function useGuardedTransition(): GuardedTransition {
 
   const onConfirm = (reason: string, waitingKind?: WaitingCause, picked?: IssueStatus) => {
     if (!prompt) return;
-    const { id, status, successMessage, onSuccess } = prompt;
-    const target = status === "move_anyway" ? (picked ?? prompt.target) : prompt.target;
-    const kind = waitingKind ? { waitingKind } : {};
-    const carried = prompt.carried
-      ? { reason: prompt.carried.reason, ...(prompt.carried.waitingKind ? { waitingKind: prompt.carried.waitingKind } : {}) }
-      : {};
-    const body =
-      status === "void_questions"
-        ? { id, toStatus: target, voidQuestions: reason, ...carried }
-        : status === "not_needed"
-          ? { id, toStatus: target, reason, voidQuestions: reason }
-          : { id, toStatus: target, reason, ...kind };
-    const given = status === "void_questions" ? prompt.carried : { reason, ...kind };
+    const { id, successMessage, onSuccess } = prompt;
+    const { target, body, given } = reasonMove(prompt, reason, waitingKind, picked);
     transition.mutate(body, {
       onSuccess: succeed(successMessage, () => {
         forgetChecklistDrafts(id);

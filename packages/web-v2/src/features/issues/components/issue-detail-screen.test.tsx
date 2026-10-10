@@ -162,7 +162,7 @@ function visibleWords(root: HTMLElement): number {
   let words = 0;
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     // what a 1440-wide window does not draw: hidden folds, and what only a phone-width window shows
-    if (node.parentElement?.closest("[hidden],[aria-hidden='true'],script,style,[class~='md:hidden']")) continue;
+    if (node.parentElement?.closest("[hidden],[aria-hidden='true'],script,style,[class~='md:hidden'],[class~='column-md:hidden']")) continue;
     words += (node.textContent ?? "").split(/\s+/).filter((token) => /[\p{L}\p{N}]/u.test(token)).length;
   }
   return words;

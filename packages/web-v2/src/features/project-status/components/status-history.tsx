@@ -9,7 +9,7 @@
 import type { StatusReportMeta } from "@forge/contracts/status-reports";
 import { useEffect, useState } from "react";
 import { Button, ConfirmDialog, ErrorState, ProjectLoader, useUrlParams, ViewHeading } from "@/design";
-import type { EtaClock } from "@/features/forecast/eta";
+import type { EtaClock } from "@/features/forecast";
 import { formatApiError } from "@/lib/api/error";
 import { formatDateTime } from "@/lib/i18n/format";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -84,7 +84,7 @@ function OpenReport({ projectId, reportId, slug, clock }: { projectId: string; r
     // opening a report is reading its notice: the inbox row and the bell's unread mark clear
     projectStatusApi.markRead(projectId, reportId).catch(() => undefined);
   }, [projectId, reportId]);
-  if (q.isError) return <ErrorState title={t("status.history.loadFailed")} message={formatApiError(q.error)} onRetry={() => q.refetch()} />;
+  if (q.isError) return <ErrorState title={t("status.history.loadFailed")} message={formatApiError(q.error)} onRetry={() => void q.refetch()} />;
   if (!q.data) return <ProjectLoader label={t("status.loading")} />;
   return (
     <div className="grid gap-9" data-testid="status-history-open">
@@ -119,7 +119,7 @@ export function StatusHistory({ projectId, slug, clock, isAdmin }: { projectId: 
       <section aria-label={t("status.history.title")} className={open ? "grid gap-3 print:hidden" : "grid gap-3"}>
         <ViewHeading>{t("status.history.title")}</ViewHeading>
         {q.isError ? (
-          <ErrorState title={t("status.history.loadFailed")} message={formatApiError(q.error)} onRetry={() => q.refetch()} />
+          <ErrorState title={t("status.history.loadFailed")} message={formatApiError(q.error)} onRetry={() => void q.refetch()} />
         ) : !q.data ? (
           <ProjectLoader label={t("status.loading")} />
         ) : q.data.reports.length === 0 ? (
@@ -131,13 +131,14 @@ export function StatusHistory({ projectId, slug, clock, isAdmin }: { projectId: 
                 <button
                   type="button"
                   aria-current={r.id === open ? "true" : undefined}
+                  data-current={r.id === open || undefined}
                   onClick={() => setParams({ report: r.id === open ? null : r.id })}
-                  className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-0.5 py-2 text-left text-13 hover:bg-hover aria-[current=true]:font-semibold"
+                  className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-0.5 py-2 text-left text-13 hover:bg-hover data-current:font-semibold"
                   data-testid="status-history-row"
                 >
                   <span className="text-fg">{when(r.asOf)}</span>
                   <span className="min-w-0 flex-1 text-muted">{producerText(r, t)}</span>
-                  <span className="text-12-5 text-muted">{r.template ? r.template.title : t("status.window", { days: r.days ?? 0 })}</span>
+                  <span className="text-13 text-muted">{r.template ? r.template.title : t("status.window", { days: r.days ?? 0 })}</span>
                 </button>
                 {mayRemoveReport(r, viewer) ? (
                   <RemoveReport projectId={projectId} report={r} when={when(r.asOf)} onRemoved={() => (r.id === open ? setParams({ report: null }) : undefined)} />

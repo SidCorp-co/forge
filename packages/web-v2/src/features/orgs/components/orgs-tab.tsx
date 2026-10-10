@@ -12,7 +12,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 // still need a per-project invite — mirror that in the helper copy.
 import { useState } from "react";
 import { useCreateOrg, useOrgs } from "../hooks";
-import { OrgMembersCard } from "./org-members-card";
+import { OrgMembers } from "./org-members-card";
 
 export function OrgsTab() {
   const orgsQ = useOrgs();
@@ -31,7 +31,7 @@ export function OrgsTab() {
     return (
       <ErrorState
         message={formatApiError(orgsQ.error)}
-        onRetry={() => orgsQ.refetch()}
+        onRetry={() => void orgsQ.refetch()}
       />
     );
   }
@@ -80,7 +80,7 @@ export function OrgsTab() {
       </PageSection>
 
       {selected && (
-        <OrgMembersCard
+        <OrgMembers
           org={selected}
           onDeleted={() => setSelectedId(null)}
         />

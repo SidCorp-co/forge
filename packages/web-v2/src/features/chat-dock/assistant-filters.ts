@@ -33,7 +33,7 @@ export const assistantFilters = {
 
 /** True where the assistant set `param` to exactly `value` and the person has not changed it since. */
 export function useAssistantSetFilter(): (param: string, value: string) => boolean {
-  const current = useSyncExternalStore(assistantFilters.subscribe, assistantFilters.get, assistantFilters.get);
+  const current = useSyncExternalStore((onChange) => assistantFilters.subscribe(onChange), () => assistantFilters.get(), () => assistantFilters.get());
   const search = useLocationSearch();
   useEffect(() => assistantFilters.forgetChanged(new URLSearchParams(search)), [search]);
   return (param, value) => value !== "" && current.get(param) === value;

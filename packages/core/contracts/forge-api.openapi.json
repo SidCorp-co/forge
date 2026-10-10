@@ -14079,6 +14079,11 @@
                     "maxLength": 200,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "startedAt": {
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -15526,6 +15531,110 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-validated": []
+      }
+    },
+    "/api/mcp-relay/{bindingId}": {
+      "delete": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bindingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "description": "A JSON-RPC 2.0 message for the bound MCP server, relayed as sent; GET and DELETE carry none.",
+          "required": false
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-validated": []
+      },
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bindingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "description": "A JSON-RPC 2.0 message for the bound MCP server, relayed as sent; GET and DELETE carry none.",
+          "required": false
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-validated": []
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bindingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "description": "A JSON-RPC 2.0 message for the bound MCP server, relayed as sent; GET and DELETE carry none.",
+          "required": false
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
         "x-forge-validated": []
       }
     },
@@ -21788,6 +21897,11 @@
                               "minLength": 3,
                               "type": "string"
                             },
+                            "field": {
+                              "maxLength": 40,
+                              "minLength": 1,
+                              "type": "string"
+                            },
                             "owner": {
                               "maxLength": 200,
                               "minLength": 1,
@@ -21801,6 +21915,10 @@
                             "text": {
                               "maxLength": 2000,
                               "minLength": 5,
+                              "type": "string"
+                            },
+                            "value": {
+                              "maxLength": 2000,
                               "type": "string"
                             }
                           },
@@ -27712,6 +27830,56 @@
         ]
       }
     },
+    "/api/projects/{id}/metrics/health": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer",
+              "x-forge-refinements": [
+                "days is one of 7, 14, 30, 90"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "param",
+          "query"
+        ]
+      }
+    },
     "/api/projects/{id}/metrics/timeseries": {
       "get": {
         "parameters": [
@@ -29105,6 +29273,40 @@
         "x-forge-validated": [
           "param",
           "query"
+        ]
+      }
+    },
+    "/api/projects/{id}/plugin-conflicts": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "param"
         ]
       }
     },
@@ -30624,6 +30826,11 @@
                               "minLength": 3,
                               "type": "string"
                             },
+                            "field": {
+                              "maxLength": 40,
+                              "minLength": 1,
+                              "type": "string"
+                            },
                             "owner": {
                               "maxLength": 200,
                               "minLength": 1,
@@ -30637,6 +30844,10 @@
                             "text": {
                               "maxLength": 2000,
                               "minLength": 5,
+                              "type": "string"
+                            },
+                            "value": {
+                              "maxLength": 2000,
                               "type": "string"
                             }
                           },
@@ -32855,6 +33066,11 @@
                               "minLength": 3,
                               "type": "string"
                             },
+                            "field": {
+                              "maxLength": 40,
+                              "minLength": 1,
+                              "type": "string"
+                            },
                             "owner": {
                               "maxLength": 200,
                               "minLength": 1,
@@ -32868,6 +33084,10 @@
                             "text": {
                               "maxLength": 2000,
                               "minLength": 5,
+                              "type": "string"
+                            },
+                            "value": {
+                              "maxLength": 2000,
                               "type": "string"
                             }
                           },
@@ -33434,6 +33654,11 @@
                               "minLength": 3,
                               "type": "string"
                             },
+                            "field": {
+                              "maxLength": 40,
+                              "minLength": 1,
+                              "type": "string"
+                            },
                             "owner": {
                               "maxLength": 200,
                               "minLength": 1,
@@ -33447,6 +33672,10 @@
                             "text": {
                               "maxLength": 2000,
                               "minLength": 5,
+                              "type": "string"
+                            },
+                            "value": {
+                              "maxLength": 2000,
                               "type": "string"
                             }
                           },

@@ -2,17 +2,19 @@
 
 import { CONTRACT_ATTENTION_GROUPS, CONTRACT_ATTENTION_LABELS } from "@forge/contracts/contract-standing";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useCallback, useMemo } from "react";
+import { type ReactNode } from "react";
 import {
   EmptyState,
+  EnumBadge,
   GroupedList,
   type ListGroup,
+  ListLayout,
   type ListRowView,
   ListSearch,
-  EnumBadge,
+  ListToolbar,
   PageTitle,
-  StatusBadge,
   rememberListOrigin,
+  StatusBadge,
   useGroupFold,
   usePeek,
   usePeekKeys,
@@ -23,7 +25,6 @@ import {
   WaitingOn,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { cn } from "@/lib/utils/cn";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { formatAge, formatStamp } from "@/lib/utils/format";
@@ -90,7 +91,7 @@ export function ContractsScreen({ projectId, slug }: { projectId: string; slug: 
   const q = useContractStanding(projectId);
   const t = useCopy();
   const label = useLabel();
-  const modes = useMemo(() => modesIn(t), [t]);
+  const modes = modesIn(t);
   const router = useRouter();
   const [params, setParams] = useUrlParams();
   const [mode, setMode] = useViewMode(GROUP_MODES);
@@ -98,23 +99,17 @@ export function ContractsScreen({ projectId, slug }: { projectId: string; slug: 
   const fold = useGroupFold("web-v2:contracts-fold");
 
   const all = q.data?.contracts ?? [];
-  const rows = useMemo(() => {
-    const t = text.trim().toLowerCase();
-    return t ? all.filter((r) => `${r.ref} ${r.title} ${r.summary ?? ""}`.toLowerCase().includes(t)) : all;
-  }, [all, text]);
-  const groups = useMemo(() => groupsOf(rows, mode, slug, t, label), [rows, mode, slug, t, label]);
-  const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.ref), [groups, fold]);
-  const allKeys = useMemo(() => all.map((r) => r.ref), [all]);
-  const peek = usePeek(visible, allKeys);
-  const row = useMemo(() => rowOf(slug, t), [slug, t]);
+  const needle = text.trim().toLowerCase();
+  const rows = needle ? all.filter((r) => `${r.ref} ${r.title} ${r.summary ?? ""}`.toLowerCase().includes(needle)) : all;
+  const groups = groupsOf(rows, mode, slug, t, label);
+  const visible = visibleRows(groups, fold).map((r) => r.ref);
+  const peek = usePeek(visible, all.map((r) => r.ref));
+  const row = rowOf(slug, t);
 
-  const openFull = useCallback(
-    (key: string) => {
-      rememberListOrigin(CONTRACTS_LIST);
-      router.push(contractHref(slug, key));
-    },
-    [router, slug],
-  );
+  const openFull = (key: string) => {
+    rememberListOrigin(CONTRACTS_LIST);
+    router.push(contractHref(slug, key));
+  };
   usePeekKeys(peek, openFull);
 
   const title = <PageTitle after={<ViewModeSwitcher modes={modes} value={mode} onChange={setMode} placement="header" />}>{t("contracts.title")}</PageTitle>;
@@ -123,15 +118,17 @@ export function ContractsScreen({ projectId, slug }: { projectId: string; slug: 
       {(data) => (
         <div className="grid min-h-full content-start bg-app" data-testid="contracts-screen">
           {title}
-          <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
+          <ListLayout
+            peek={peek.open ? <ContractPeek key={peek.open} projectId={projectId} slug={slug} contractRef={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} /> : undefined}
+          >
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
+              <ListToolbar>
                 <ViewModeSwitcher modes={modes} value={mode} onChange={setMode} placement="toolbar" />
                 <ListSearch noun={t("contracts.searchNoun")} value={text} onChange={(v) => setParams({ q: v || null })} />
                 <span className="ml-auto text-12 text-subtle">
                   {data.declared ? t("contracts.declared") : t("contracts.undeclared")}
                 </span>
-              </div>
+              </ListToolbar>
               {all.length === 0 ? (
                 <div className="px-5 py-10">
                   <EmptyState message={t("contracts.empty.title")} />
@@ -149,8 +146,7 @@ export function ContractsScreen({ projectId, slug }: { projectId: string; slug: 
                 />
               )}
             </div>
-            {peek.open ? <ContractPeek key={peek.open} projectId={projectId} slug={slug} contractRef={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} /> : null}
-          </div>
+          </ListLayout>
         </div>
       )}
     </QueryBoundary>

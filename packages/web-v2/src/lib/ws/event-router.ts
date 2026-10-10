@@ -22,6 +22,15 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 		routeBox(env, qc);
 		return;
 	}
+	if (routeIssueFrame(env, qc) || routeRunFrame(env, qc) || routeAccountFrame(env, qc)) return;
+	// A frame no router names: logged in dev to surface missing wiring.
+	if (process.env.NODE_ENV !== "production") {
+		console.debug("[ws] unhandled event", env.event, env.data);
+	}
+}
+
+/** Issues, questions, comments and dependencies. Answers whether `env` was one of its frames. */
+function routeIssueFrame(env: WsFrame, qc: QueryClient): boolean {
 	const { event, data } = env;
 	switch (event) {
 		case "issue.created":
@@ -35,7 +44,7 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 				scheduleInvalidation(qc, ["issue", data.issueId]);
 				scheduleInvalidation(qc, ["activities", data.issueId]);
 			}
-			return;
+			return true;
 		}
 		case "issue.statusChanged": {
 			scheduleInvalidation(qc, ["issues", "search"]);
@@ -50,7 +59,7 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 				scheduleInvalidation(qc, ["activities", data.issueId]);
 				scheduleInvalidation(qc, ["questions", data.issueId]);
 			}
-			return;
+			return true;
 		}
 		case "question.changed": {
 			// A question moves the marker the Issues list, the needs-you rows and the issue banner read.
@@ -61,7 +70,7 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["project-status"]);
 			scheduleInvalidation(qc, ["attention"]);
 			if (data?.issueId) scheduleInvalidation(qc, ["issue", data.issueId]);
-			return;
+			return true;
 		}
 		case "issue.pipelineHealth.changed": {
 			scheduleInvalidation(qc, ["issues", "standing"]);
@@ -71,7 +80,7 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 			if (data?.projectId) {
 				scheduleInvalidation(qc, ["projects", data.projectId, "active-runners"]);
 			}
-			return;
+			return true;
 		}
 		case "comment.created":
 		case "comment.updated":
@@ -82,8 +91,33 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 				scheduleInvalidation(qc, ["comments", data.issueId]);
 				scheduleInvalidation(qc, ["activities", data.issueId]);
 			}
-			return;
+			return true;
 		}
+		case "dependencyChanged": {
+			scheduleInvalidation(qc, ["issues", "search"]);
+			scheduleInvalidation(qc, ["issues", "standing"]);
+			scheduleInvalidation(qc, ["needs-you"]);
+			for (const id of [data?.fromIssueId, data?.toIssueId]) {
+				if (!id) continue;
+				scheduleInvalidation(qc, ["issue", id, "dependencies"]);
+				scheduleInvalidation(qc, ["issue", id]);
+				scheduleInvalidation(qc, ["activities", id]);
+			}
+			return true;
+		}
+		case "issue.unblockCascade":
+		case "replay.done":
+		case "subscribe.denied":
+			return true;
+		default:
+			return false;
+	}
+}
+
+/** Agent sessions, previews, jobs and pipeline runs. Answers whether `env` was one of its frames. */
+function routeRunFrame(env: WsFrame, qc: QueryClient): boolean {
+	const { event, data } = env;
+	switch (event) {
 		case "agent-session.created":
 		case "agent-session.updated":
 		case "agent-session.status":
@@ -96,7 +130,7 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 			if (data?.issueId) {
 				scheduleInvalidation(qc, ["activities", data.issueId]);
 			}
-			return;
+			return true;
 		}
 		case "agent-session.turn.appended":
 		case "agent-session.turn.edited":
@@ -105,12 +139,12 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 				scheduleInvalidation(qc, ["agent-session", data.sessionId, "turns"]);
 				scheduleInvalidation(qc, ["agent-session", data.sessionId]);
 			}
-			return;
+			return true;
 		}
 		// A live preview moved (REQ-39): the issue's panel reads it again, and the lane read after an approval.
 		case "preview.changed": {
 			if (data?.issueId) scheduleInvalidation(qc, ["preview", data.issueId]);
-			return;
+			return true;
 		}
 		// ISS-197 — recoveryStats refresh on the sessions panel.
 		case "session.recoveryChanged": {
@@ -118,11 +152,11 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 			if (data?.sessionId) {
 				scheduleInvalidation(qc, ["agent-session", data.sessionId]);
 			}
-			return;
+			return true;
 		}
 		// A live log line; no screen holds a job's log, so it refreshes nothing.
 		case "job.event":
-			return;
+			return true;
 		case "job.dispatched":
 		case "job.completed":
 		case "job.failed":
@@ -137,7 +171,7 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 			// the Agents run list (agents `runsKey`) and the runners the job held
 			scheduleInvalidation(qc, [RUNS_STANDING_ROOT, data.projectId]);
 			scheduleInvalidation(qc, ["projects", data.projectId, "active-runners"]);
-			return;
+			return true;
 		}
 		case "pipeline_run.status_changed": {
 			scheduleInvalidation(qc, ["pipeline-runs", "list"]);
@@ -156,11 +190,20 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 			// A run reaching a terminal status frees its runner — refresh the
 			// active-runner snapshot so the busy → idle flip reflects live.
 			scheduleInvalidation(qc, ["projects", data.projectId, "active-runners"]);
-			return;
+			return true;
 		}
+		default:
+			return false;
+	}
+}
+
+/** The person's preferences, notifications, integrations and tokens. Answers whether `env` was one of its frames. */
+function routeAccountFrame(env: WsFrame, qc: QueryClient): boolean {
+	const { event, data } = env;
+	switch (event) {
 		case "user.preferencesChanged": {
 			scheduleInvalidation(qc, ["settings", "preferences"]);
-			return;
+			return true;
 		}
 		case "notification.created":
 		case "notification.read": {
@@ -173,24 +216,8 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 			// ISS-597 — an invitation_received notification means a new pending
 			// invite; refresh the pending list so the actionable item appears live.
 			scheduleInvalidation(qc, ["invitations-pending"]);
-			return;
+			return true;
 		}
-		case "dependencyChanged": {
-			scheduleInvalidation(qc, ["issues", "search"]);
-			scheduleInvalidation(qc, ["issues", "standing"]);
-			scheduleInvalidation(qc, ["needs-you"]);
-			for (const id of [data?.fromIssueId, data?.toIssueId]) {
-				if (!id) continue;
-				scheduleInvalidation(qc, ["issue", id, "dependencies"]);
-				scheduleInvalidation(qc, ["issue", id]);
-				scheduleInvalidation(qc, ["activities", id]);
-			}
-			return;
-		}
-		case "issue.unblockCascade":
-		case "replay.done":
-		case "subscribe.denied":
-			return;
 		case "integration.changed": {
 			// ISS-401/C — a binding mutation (create/update/delete/rotate-secret/
 			// confirm-prod-deploy) broadcasts this to the project room. Refresh the
@@ -203,22 +230,19 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 				scheduleInvalidation(qc, ["integrations", "mcp-preview", data.projectId]);
 			}
 			scheduleInvalidation(qc, ["integration-connections"]);
-			return;
+			return true;
 		}
 		case "pat.created":
 		case "pat.revoked":
-		case "pat.used": {
+		case "pat.used":
+		case "pat.fenced": {
 			// ISS-160 — keep the /settings/tokens list in sync. `pat.used` is
 			// throttled to 1/min/token, and still refreshes the last-used time.
 			scheduleInvalidation(qc, ["settings", "tokens"]);
-			return;
+			return true;
 		}
-		default: {
-			// A frame no case names: logged in dev to surface missing wiring.
-			if (process.env.NODE_ENV !== "production") {
-				console.debug("[ws] unhandled event", event, data);
-			}
-		}
+		default:
+			return false;
 	}
 }
 

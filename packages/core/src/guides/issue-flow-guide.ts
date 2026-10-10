@@ -239,7 +239,8 @@ A judge records a short screen clip of each observable criterion it judges, the 
 met or not: WebM or MP4, at most ${RELEASE_CLIP_MAX_SECONDS} seconds and ${RELEASE_CLIP_MAX_BYTES / (1024 * 1024)} MiB.
 Upload it as an attachment and cite its name in that verdict's \`evidence\`. A release page shows a
 highlight's clip from there, from a pass on the build it describes. The project's knowledge names
-the recorder its box has. A verdict judged without a clip says why in its \`reason\`.
+the recorder its box has. A \`pass\` on an observable criterion judged without a clip says why in its
+\`reason\`; one with neither is refused \`VERDICT_CLIP_REQUIRED\`.
 
 A test is evidence only where it can fail: plant the failure it guards against and watch it go red
 naming its own rule before the green counts.

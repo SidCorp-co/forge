@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { type NotificationSeverity, channelsFor } from "@forge/contracts/notifications";
 import type { ToastTone } from "@/design/primitives/toast";
 import { fireBrowserNotification } from "@/lib/notifications/browser";
@@ -64,6 +64,11 @@ export function useNotificationDelivery(
   onNavigate: (n: DeliveryNotification) => void,
 ): void {
   const { toast } = useToast();
+  // the latest handler, read when a delivery lands, so the socket subscription is made once
+  const navigateRef = useRef(onNavigate);
+  useEffect(() => {
+    navigateRef.current = onNavigate;
+  });
 
   useEffect(() => {
     // Unlock the AudioContext on the user's first interaction after load, so a
@@ -87,7 +92,7 @@ export function useNotificationDelivery(
           title: d.title,
           description: d.body ?? undefined,
           tone: plan.tone,
-          onClick: () => onNavigate(d),
+          onClick: () => navigateRef.current(d),
           slot: "notification",
         });
       }
@@ -96,10 +101,10 @@ export function useNotificationDelivery(
           title: d.title,
           body: d.body ?? undefined,
           tag: d.notificationId,
-          onClick: () => onNavigate(d),
+          onClick: () => navigateRef.current(d),
         });
       }
     });
     return off;
-  }, [toast, onNavigate]);
+  }, [toast]);
 }

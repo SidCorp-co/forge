@@ -6,7 +6,7 @@ import { Banner, Button, PageSectionTitle, MonoTag, Tabs, Textarea } from "@/des
 import { canonicalJson } from "@forge/contracts/document-patch";
 import { formatApiError } from "@/lib/api/error";
 import { documentRefusals, type Refusal, readRefusal } from "@/lib/api/refusals";
-import type { V1Document, V1Read, V1Write, V1Written } from "@/features/project-config/types";
+import type { V1Document, V1Read, V1Write, V1Written } from "@/features/project-config";
 import {
 	isStaleBase,
 	movedSince,
@@ -15,7 +15,7 @@ import {
 	sameDocument,
 	setAt,
 	STALE_BASE,
-} from "@/features/project-config/document-edit";
+} from "@/features/project-config";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { DocumentFields, PROJECT_IDENTITY } from "./document-fields";
@@ -223,7 +223,7 @@ export function DocumentEditor({
 				<MonoTag>{read.declared ? t("settings.project.raw.revision", { revision: read.revision }) : t("settings.project.raw.notDeclared")}</MonoTag>
 				{actions}
 			</div>
-			{description && <div className="fg-body-sm mt-1 mb-3 text-muted">{description}</div>}
+			{description ? <div className="fg-body-sm mt-1 mb-3 text-muted">{description}</div> : null}
 			{!read.declared && (
 				<Banner tone="attention">{t("settings.project.raw.fromTemplate")}</Banner>
 			)}

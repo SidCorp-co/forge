@@ -1,5 +1,5 @@
 
-import { parseReleaseRoster } from "@/features/releases/roster";
+import { parseReleaseRoster } from "@/features/releases";
 import type { IssueStandingDetail, IssueStandingList, IssueStandingScope } from "@forge/contracts/issue-standing";
 import type { RecordedReleaseVerification } from "@forge/contracts/releases";
 import { apiClient, apiClientList } from "@/lib/api/client";
@@ -193,7 +193,7 @@ export interface CreateReleaseBatchResult {
   verification: Exclude<RecordedReleaseVerification, "unverified">;
 }
 
-export type { ReleaseRoster, ReleaseRosterEntry } from "@/features/releases/roster";
+export type { ReleaseRoster, ReleaseRosterEntry } from "@/features/releases";
 
 export const releaseBatchApi = {
   /** `GET …/release-batches/roster` — waiting, oldest first. Parsed, not cast. */

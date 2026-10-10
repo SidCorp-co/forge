@@ -7,14 +7,14 @@
 // supplies the accent colour when a step happens to be one of them.
 
 import { enumLabel, STAGES } from "@/design";
-import { formatDurationMs } from "@/features/pipeline/derive";
-import type { PipelineRunSummary } from "@/features/pipeline/types";
+import type { PipelineRunSummary } from "@/features/pipeline";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { formatDuration } from "@/lib/i18n/format";
 
 const TICK: Record<string, { glyph: string; color: string }> = {
-  completed: { glyph: "✓", color: "var(--green-600)" },
-  done: { glyph: "✓", color: "var(--green-600)" },
-  failed: { glyph: "✕", color: "var(--red-600)" },
+  completed: { glyph: "✓", color: "var(--ok-11)" },
+  done: { glyph: "✓", color: "var(--ok-11)" },
+  failed: { glyph: "✕", color: "var(--danger-11)" },
   cancelled: { glyph: "⊘", color: "var(--fg-subtle)" },
   running: { glyph: "●", color: "var(--pipeline-active)" },
 };
@@ -36,7 +36,7 @@ export function StepStrip({ run, currentStep }: { run: PipelineRunSummary; curre
           <li
             key={`${step.jobType}-${step.startedAt ?? ""}`}
             aria-current={isCurrent ? "step" : undefined}
-            className="min-w-[112px] flex-1 border-t-2 py-2 pr-2.5"
+            className="min-w-28 flex-1 border-t-2 py-2 pr-2.5"
             style={{ borderColor: isCurrent ? "var(--border-strong)" : "var(--border-subtle)" }}
           >
             <div className="flex items-center gap-1.5">
@@ -47,7 +47,7 @@ export function StepStrip({ run, currentStep }: { run: PipelineRunSummary; curre
                 {enumLabel("jobType", step.jobType, language)}
               </span>
               <span className="fg-caption ml-auto">
-                {step.durationMs != null ? formatDurationMs(step.durationMs, language) : "—"}
+                {step.durationMs != null ? formatDuration(step.durationMs, language) : "—"}
               </span>
             </div>
             <div

@@ -1,7 +1,7 @@
 import type { AgentReportView } from "@forge/contracts/agent-reports";
 import { enumLabel } from "@/design/vocabulary";
 import { productCopy } from "@/lib/i18n/product-copy";
-import type { FeedbackDraft } from "@/features/feedback/components/feedback-form";
+import type { FeedbackDraft } from "@/features/feedback";
 
 const FEEDBACK_KIND_OF: Record<AgentReportView["kind"], FeedbackDraft["kind"]> = {
   bug: "bug",

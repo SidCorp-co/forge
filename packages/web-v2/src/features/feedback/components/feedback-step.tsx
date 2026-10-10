@@ -8,10 +8,10 @@
 import type { NodeRef } from "@forge/contracts/workflow-health";
 import Link from "next/link";
 import { type ReactNode, useMemo } from "react";
-import { templateFor } from "@/features/workflows/canvas/model";
-import { presentTrace } from "@/features/workflows/canvas/step-focus";
-import { WorkflowCanvas } from "@/features/workflows/canvas/workflow-canvas";
-import { useWorkflowTemplates, useWorkflows } from "@/features/workflows/hooks";
+import { templateFor } from "@/features/workflows";
+import { presentTrace } from "@/features/workflows";
+import { WorkflowCanvas } from "@/features/workflows";
+import { useWorkflowTemplates, useWorkflows } from "@/features/workflows";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { workflowHref } from "@/lib/routes/workflows";
 
@@ -56,7 +56,7 @@ export function FeedbackStep({ projectId, slug, flow, title, node }: { projectId
           {t("feedback.evidence.open")}
         </Link>
       </figcaption>
-      <div className="flex h-[360px] min-w-0 overflow-hidden rounded-md border border-line-subtle max-md:h-[300px]" data-flow={flow}>
+      <div className="flex h-90 min-w-0 overflow-hidden rounded-md border border-line-subtle max-md:h-75" data-flow={flow}>
         {canvas}
       </div>
     </figure>

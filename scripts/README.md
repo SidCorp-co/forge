@@ -38,7 +38,7 @@ to 84, the two length rules to 143 — and each stopped drifting the day it was 
 
 **An axis measures at its weakest gate.** Reporting the strongest would let one locked checker hide
 a sibling that stopped blocking, which is the whole failure mode here. `form` is gated five times
-(biome for `core`'s rules · biome for `web-v2`'s rules, the two length rules among them · a bare
+(biome for `core`'s rules · ESLint for `web-v2`'s code standard, the two length rules among them · a bare
 `biome check scripts` for the checkers themselves ·
 `check-provider-literals` for where an integration provider may be named and where core may call out · `check-integration-declarations`
 for whether each provider declares the fields the generic paths read),
@@ -55,8 +55,8 @@ passed, because the external record of what shipped belonged to none of them.
 
 | Axis | Gate (CI job) | Owns | Must not touch |
 |---|---|---|---|
-| format + lint | `biome check src` — `core` and `web` | whitespace, import order, recommended rules, every one at `error` with nothing frozen | comment content |
-| size | `biome check src` — `core` and `web` | file & function length: both packages hold biome's two length rules at `error`, nothing frozen | anything else biome checks — that is the row above |
+| format + lint | `biome check src` — `core`; `eslint src` — `web` | whitespace, import order, recommended rules, every one at `error`. `core` freezes nothing. `web-v2` holds its code standard (`packages/web-v2/CODE-STANDARD.md`: React and compiler rules, TanStack Query, Next, a11y, type-aware TypeScript, feature and design-layer boundaries, the UI stack bans), with today's violations frozen in `packages/web-v2/eslint-suppressions.json` | comment content |
+| size | `biome check src` — `core`; `eslint src` — `web` | file & function length: `core` holds biome's two length rules at `error`; `web-v2` holds them as ESLint's `max-lines` and `max-lines-per-function` | anything else the linter checks — that is the row above |
 | checkers | `biome check scripts` — `conformance` | the files in `scripts/` that implement every other gate | anything under `packages/` |
 | lazy init | `check-lazy-module-init` — `conformance` | whether a read of `env` or `db` runs when a core module is merely IMPORTED | what the value is once read, or whether a caller should be reading it at all |
 | provider literals | `check-provider-literals` — `conformance` | whether a provider's name (`coolify`, `sentry`, …) is written outside the locations `.forge/conformance.json` allows WITH a reason: that provider's own directory, the registry, the schema and contracts vocabularies; and whether core imports a vendor SDK `egress.vendorSdks` lists outside `packages/core/src/integrations/`, beyond the exceptions `egress.exceptions` names with a reason (ADR 0006) | whether a name allowed there is USED correctly; and `agent`, which this repo also spells as an actor, an author and a principal — excluded by name, with its reason and its retirement condition printed on every run; and the global `fetch`, which is `check-module-shape`'s |
@@ -86,7 +86,7 @@ a test file that was clean and untouched.
 ### Conformance levels
 
 `.forge/conformance.json` declares each axis's level — `0` no checker · `1` measures, does not
-block · `2` baseline the old, block the new · `3` zero violations. Today: form 3 · knowledge 3 ·
+block · `2` baseline the old, block the new · `3` zero violations. Today: form 2 · knowledge 3 ·
 relations 2 · behaviour 3 · language 3 · record 3. `conformance-status.mjs` prints
 them beside what it measured, so this line is a convenience and that command is the answer.
 
@@ -136,10 +136,28 @@ baseline, so while debt existed the only choices were `warn` (nothing held) and 
 red). `packages/core` drained to zero first; `packages/web-v2` held them at `warn` over a frozen
 per-file ratchet until its last offender was split, and now holds them at `error` too. Size is its
 own row because it is the one biome rule this repo ever had to freeze; today it has no checker of
-its own, and a new over-long function fails the package's `lint` like any other rule.
+its own, and a new over-long function fails the package's `lint` like any other rule. Since
+2026-10-10 `web-v2` lints with ESLint, which holds the same two limits.
 
-The `web-v2` formatter stays **off** on purpose: enabling it is a 313-file, 22k-line diff that would
-bury every real change under it.
+The `web-v2` biome formatter stays **off** on purpose: enabling it is a 313-file, 22k-line diff that
+would bury every real change under it. Its biome linter is off too, so ESLint alone reports there.
+
+### web-v2 lints with ESLint
+
+`packages/web-v2/eslint.config.mjs` enforces `packages/web-v2/CODE-STANDARD.md` with each library's
+own plugin: typescript-eslint (type-aware), react-hooks with the React Compiler rules, @eslint-react,
+@next/eslint-plugin-next, @tanstack/eslint-plugin-query, jsx-a11y, sonarjs's cognitive complexity
+and eslint-plugin-boundaries (a feature imports another only through its `index.ts`;
+`src/components/ui` only through `src/design`). `no-restricted-imports` and `no-restricted-syntax`
+carry the UI stack bans in `src/features`, and `eslint/ui-grammar.mjs` refuses a component named
+after a layout word unless `eslint/ui-grammar-allowlist.json` gives a reason. A preset's `warn` is
+raised to `error`.
+
+The existing tree's violations are ESLint bulk suppressions in `eslint-suppressions.json`: a file
+that gains a violation of a rule fails, and `form`'s `down` baseline refuses a re-freeze that raises
+a count. `pnpm --filter web-v2 lint:inventory` prints every violation, frozen or not, per rule and
+per feature. That is the UI sweep's worklist. When it reads zero, the suppressions file is deleted
+and `form` returns to 3.
 
 ### Declared severity downgrades
 
@@ -150,10 +168,10 @@ the config — an undocumented severity downgrade is how an axis stops meaning w
 
 ### Do not add a rule to an axis another already owns
 
-- **No ESLint on the LENGTH axis.** biome >= 2 covers `noExcessiveLinesPerFunction` and
-  `noExcessiveLinesPerFile`. The only ESLint here is `eslint-module-shape/`, the type-aware
-  module-shape rules, which hold no length or comment rule; two linters holding one axis means two
-  configs drifting apart.
+- **One linter per package on the LENGTH axis.** biome >= 2 covers `noExcessiveLinesPerFunction`
+  and `noExcessiveLinesPerFile` for `core`. `web-v2` holds the same two limits in ESLint, with its
+  biome linter off. `eslint-module-shape/` holds no length or comment rule. Two linters holding one
+  axis in one package means two configs drifting apart.
 - **No comment rules in biome, or anywhere.** A density or run-length rule cannot tell
   documentation from noise on its own: a 19-line `/** */` block above a function can be
   documentation, and 19 comment lines to a counter are not.
@@ -1136,7 +1154,8 @@ address, a path, a format such as `sat_…` — is data, and a value shaped like
 (`nav.runs`, `hintIssueStatus`) names copy; neither is copy. A literal passed to a call (`t("…")`,
 `cn("…")`) is never read, and neither is one held in a variable or a property of another name and
 rendered later: that is the check's limit. `inline.skip` names each directory that is not a page, with why: the test fixtures,
-and guides and docs, which REQ-43 scopes out. A skip naming a directory that no longer exists stops
+guides and docs, which REQ-43 scopes out, and the design gallery at `/dev/design`, whose sample data
+renders the blocks for the people building pages. A skip naming a directory that no longer exists stops
 the check.
 
 ## The web suite's language checks — Forge is not multilingual

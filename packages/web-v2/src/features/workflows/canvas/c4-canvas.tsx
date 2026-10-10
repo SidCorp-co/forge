@@ -1,9 +1,8 @@
 "use client";
 
-import { type Edge, MarkerType, type Node, useReactFlow } from "@xyflow/react";
-import { Play } from "lucide-react";
+import { type Edge, MarkerType, type Node, useReactFlow, useViewport } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, SegmentedControl } from "@/design";
+import { Button, SegmentedControl, Icon } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -39,10 +38,19 @@ const nodeStroke = (n: Node) => (n.type === "c4box" && (n.data as C4BoxData).on 
  * `GET …/system-graph`) → view (`viewOf`, by level and detail) → layout (`layoutView`, ELK) → nodes and
  * edges here. It opens on Every system when that reads at 12px in the view, else on Boundaries.
  */
+/** A level or a graph of its own starts over: a new choice of detail, nothing opened, and a fresh fit. */
 export function C4Canvas(props: WorkflowCanvasProps) {
+  const [param] = useQueryParam("level");
+  const g = props.graph;
+  return <C4View key={`${levelOf(param, props.compact)}|${g?.workflowId ?? ""}|${g?.revision ?? ""}|${g?.against ?? ""}`} {...props} />;
+}
+
+const levelOf = (param: string | null, compact = false): Level => (!compact && param === "containers" ? "containers" : "context");
+
+function C4View(props: WorkflowCanvasProps) {
   const { doc, template, diff = null, compact = false, health = null, highlight = null } = props;
   const rf = useReactFlow();
-  const wrap = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const read = useSystemGraph(props.graph ?? null);
   const graph = read.data ?? null;
   const c = useCanvasModel(doc, template);
@@ -51,16 +59,16 @@ export function C4Canvas(props: WorkflowCanvasProps) {
   const focus = useMemo(() => litOf(f.focus, highlight), [f.focus, highlight]);
   const canFold = useMemo(() => (graph ? foldable(graph) : false), [graph]);
   const [param, setParam] = useQueryParam("level");
-  const level: Level = !compact && param === "containers" ? "containers" : "context";
-  const pendingFit = useRef(true);
+  const level = levelOf(param, compact);
+  const pendingFitRef = useRef(true);
   const viewBox = useCallback(() => {
-    const el = wrap.current;
+    const el = wrapRef.current;
     return el && el.clientWidth > 0 ? { width: el.clientWidth - 2 * PAD, height: el.clientHeight - 2 * PAD } : null;
   }, []);
-  const { detail, setDetail, setOpen, diagram } = useC4Diagram(graph, level, canFold, viewBox, pendingFit);
-  const [zoom, setZoom] = useState(1);
+  const { detail, setDetail, setOpen, diagram } = useC4Diagram(graph, level, canFold, viewBox);
+  const { zoom } = useViewport();
   const [ready, setReady] = useState(false);
-  const centreOn = useRef<string | null>(null);
+  const centreOnRef = useRef<string | null>(null);
 
   /**
    * Fit: as large as the view holds, never below the zoom at which the smallest type reads at 12px.
@@ -77,7 +85,6 @@ export function C4Canvas(props: WorkflowCanvasProps) {
       const x = PAD + offset(d.width, box.width, core ? core.x + core.w / 2 : d.width / 2);
       const y = PAD + offset(d.height, box.height, core ? core.y + core.h / 2 : d.height / 2);
       void rf.setViewport({ x, y, zoom: k });
-      setZoom(k);
       return true;
     },
     [rf, viewBox],
@@ -87,12 +94,12 @@ export function C4Canvas(props: WorkflowCanvasProps) {
 
   useEffect(() => {
     if (!diagram) return;
-    if (pendingFit.current && fitTo(diagram)) {
-      pendingFit.current = false;
+    if (pendingFitRef.current && fitTo(diagram)) {
+      pendingFitRef.current = false;
       setReady(true);
     }
-    const id = centreOn.current;
-    centreOn.current = null;
+    const id = centreOnRef.current;
+    centreOnRef.current = null;
     const b = id ? boxOfStep(diagram, id) : undefined;
     if (b) void rf.setCenter(b.x + b.w / 2, b.y + b.h / 2, { zoom: rf.getViewport().zoom, duration: 320 });
   }, [diagram, fitTo, rf, boxOfStep]);
@@ -102,7 +109,7 @@ export function C4Canvas(props: WorkflowCanvasProps) {
     setSelection({ step: id });
     const b = diagram ? boxOfStep(diagram, id) : undefined;
     if (b?.node.kind === "group") {
-      centreOn.current = id;
+      centreOnRef.current = id;
       setOpen((prev) => new Set([...prev, b.node.id]));
       return;
     }
@@ -112,11 +119,11 @@ export function C4Canvas(props: WorkflowCanvasProps) {
   const { walkTo, ...frameFocus } = focusChrome(f, { c, reveal, decision: props.decision, compact, focus: props.focus, highlight });
 
   const relayout = (next: () => void) => {
-    pendingFit.current = true;
+    pendingFitRef.current = true;
     next();
   };
   const foldGroup = useCallback((id: string) => {
-    pendingFit.current = true;
+    pendingFitRef.current = true;
     setOpen((prev) => new Set([...prev].filter((x) => x !== id)));
   }, [setOpen]);
 
@@ -147,7 +154,7 @@ export function C4Canvas(props: WorkflowCanvasProps) {
 
   const edges = useMemo(() => (diagram ? c4Edges(diagram, { focus, edge, graph }) : []), [diagram, focus, edge, graph]);
 
-  const el = wrap.current;
+  const el = wrapRef.current;
   const overflowing = Boolean(diagram && el && (diagram.width * zoom > el.clientWidth - 8 || diagram.height * zoom > el.clientHeight - 8));
 
   const toolbar = (
@@ -171,7 +178,7 @@ export function C4Canvas(props: WorkflowCanvasProps) {
 
   if (read.error) {
     return (
-      <p role="alert" className="m-auto max-w-[72ch] p-6 text-13 text-red" data-testid="system-graph-error">
+      <p role="alert" className="m-auto max-w-xl p-6 text-13 text-danger-11" data-testid="system-graph-error">
         {refusalsOf(read.error)[0]?.detail ?? formatApiError(read.error)}
       </p>
     );
@@ -180,19 +187,17 @@ export function C4Canvas(props: WorkflowCanvasProps) {
   return (
     <Frame
       layout={level === "context" ? "c4-context" : "c4-containers"}
-      wrap={wrap}
+      wrap={wrapRef}
       template={template}
       nodes={nodes}
       edges={edges}
       nodeTypes={C4_NODE_TYPES}
       edgeTypes={C4_EDGE_TYPES}
       ready={ready && diagram !== null}
-      zoom={zoom}
       minZoom={MIN_READABLE_ZOOM}
       maxZoom={MAX_ZOOM}
       onNodeClick={onNodeClick}
       onEdgePick={pickEdge}
-      onMove={(vp) => setZoom(vp.zoom)}
       onFit={() => {
         if (diagram) fitTo(diagram);
       }}
@@ -289,7 +294,7 @@ function C4Toolbar({
         <>
           <span className="wfc-sep" />
           <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={onWalk} data-testid="walk-start-bar">
-            <Play size={16} />
+            <Icon name="play" size={16} />
             <span className="wfc-t">{t("workflows.canvas.walk")}</span>
           </Button>
         </>
@@ -306,37 +311,26 @@ function useC4Diagram(
   level: Level,
   canFold: boolean,
   viewBox: () => { width: number; height: number } | null,
-  pendingFit: { current: boolean },
 ) {
-  /** Null until the fit has chosen it for this level. */
-  const [detail, setDetail] = useState<Detail | null>(null);
-  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  /** Null until the fit has chosen it; a graph with nothing to fold shows its systems at once. */
+  const [measured, setMeasured] = useState<Detail | null>(null);
+  const detail = canFold ? measured : graph && viewOf(graph, level, "systems") ? "systems" : null;
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const [diagram, setDiagram] = useState<Diagram | null>(null);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new level owes a new choice of detail and a fit
   useEffect(() => {
-    setDetail(null);
-    setOpen(new Set());
-    pendingFit.current = true;
-  }, [level, graph]);
-
-  useEffect(() => {
-    if (detail !== null || !graph) return;
+    if (!canFold || measured !== null || !graph) return;
     const all = viewOf(graph, level, "systems");
     if (!all) return;
-    if (!canFold) {
-      setDetail("systems");
-      return;
-    }
     let live = true;
     void layoutView(all).then((d) => {
       const box = viewBox();
-      if (live) setDetail(box && fitZoom(d, box, FIT_MAX) >= MIN_READABLE_ZOOM ? "systems" : "boundaries");
+      if (live) setMeasured(box && fitZoom(d, box, FIT_MAX) >= MIN_READABLE_ZOOM ? "systems" : "boundaries");
     });
     return () => {
       live = false;
     };
-  }, [detail, graph, level, canFold, viewBox]);
+  }, [measured, graph, level, canFold, viewBox]);
 
   const view = useMemo(() => (detail && graph ? viewOf(graph, level, detail, open) : null), [graph, level, detail, open]);
   useEffect(() => {
@@ -350,5 +344,5 @@ function useC4Diagram(
     };
   }, [view]);
 
-  return { detail, setDetail, setOpen, diagram };
+  return { detail, setDetail: setMeasured, setOpen, diagram };
 }

@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { ContractScreen } from "@/features/contracts/components/contract-screen";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { ProjectGate } from "@/features/projects/components/project-gate";
+import { ProjectGate } from "@/features/projects";
 
 export default function ProjectContractPage() {
   const t = useCopy();

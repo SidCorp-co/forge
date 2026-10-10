@@ -102,7 +102,7 @@ function Editor({
       ) : (
         <p className="fg-body-sm text-subtle">{t(disabledReason)}</p>
       )}
-      {failure && <p className="fg-body-sm text-[var(--red-600)]">{failure}</p>}
+      {failure && <p className="fg-body-sm text-danger-11">{failure}</p>}
     </section>
   );
 }

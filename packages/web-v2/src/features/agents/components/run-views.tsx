@@ -9,49 +9,32 @@ import { RUN_FINAL_STATES, type RunState } from "@forge/contracts/run-standing";
 import Link from "next/link";
 import {
   Button,
-  DetailLayout,
-  DetailMobileTitle,
-  DetailPane,
-  DetailTabs,
   EnumBadge,
   Fact,
   FactsEmpty,
   FactsGroup,
-  FactsRail,
   type ListRowView,
   PeekHead,
   PeekPanel,
   type PeekState,
-  type RecordView,
-  RecordViewSwitch,
   StatusBadge,
   StepBar,
   type StepView,
-  Table,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
-  useRecordView,
-  useUrlTab,
-  ViewHeading,
   WaitBanner,
   WaitingOn,
 } from "@/design";
-import { QueryBoundary } from "@/lib/api/query-boundary";
-import { enumLabel, type StatusFamily, statusReading } from "@/design/vocabulary";
+import { enumLabel } from "@/design/vocabulary";
 import { issueHref } from "@/lib/routes/issues";
 import { formatRefusal } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
-import { formatAge, formatDateTime } from "@/lib/i18n/format";
+import { formatAge, formatDateTime, formatWhen } from "@/lib/i18n/format";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { said, saidOrNull, saidView } from "@/lib/i18n/said";
-import { parkRefusalText, useCancelRun } from "@/features/run-control/hooks";
-import { RUNS_STANDING_ROOT, useRunDetail } from "../hooks";
-import { masterHref, runHref } from "@/lib/routes/agents";
-import type { RunEvent, RunStanding, RunStandingDetail } from "../types";
-import { actorName, fmtTime, leaseLeft, runBanner, runKey, runName, stamp, stepLabel, waitingView } from "../view";
+import { parkRefusalText, useCancelRun } from "@/features/run-control";
+import { RUNS_STANDING_ROOT } from "../hooks";
+import { masterHref } from "@/lib/routes/agents";
+import type { RunStanding } from "../types";
+import { actorName, leaseLeft, runBanner, runKey, stepLabel, waitingView } from "../view";
 
 const isFinal = (s: RunState) => (RUN_FINAL_STATES as readonly string[]).includes(s);
 
@@ -81,7 +64,7 @@ export const runRow =
       title: said(r.says.title, language),
       facts: rowFacts(r, t, language),
       state: <StatusBadge family="runStanding" value={r.state} />,
-      waitingOn: w.kind === "none" ? <span className="text-12-5 text-subtle">—</span> : <WaitingOn w={w} />,
+      waitingOn: w.kind === "none" ? <span className="text-13 text-subtle">—</span> : <WaitingOn w={w} />,
       owner: r.holder.source === "held" ? said(r.holder.says.name, language) : t("runs.noHolder"),
       age: { text: formatAge(at, language), title: t(r.finishedAt ? "runs.finishedAt" : "runs.sinceAt", { at: formatDateTime(at, language) }) },
       dim: isFinal(r.state),
@@ -95,7 +78,7 @@ export function RunBanner({ r, className, developer = false }: { r: RunStanding;
   if (!b.head && !b.body && !detail) return null;
   return (
     <WaitBanner tone={b.tone} head={b.head} body={b.body} rule={developer ? b.rule : undefined} className={className} testId="run-banner">
-      {detail ? <span className="text-12-5 text-muted">{detail}</span> : null}
+      {detail ? <span className="text-13 text-muted">{detail}</span> : null}
     </WaitBanner>
   );
 }
@@ -122,68 +105,127 @@ export function RunPath({ r }: { r: RunStanding }) {
   return <StepBar steps={steps} named={false} />;
 }
 
-function HolderFacts({ r, slug, developer }: { r: RunStanding; slug: string; developer: boolean }) {
+/** Who holds the run's lease: the holder (unless the run holds itself, which its subject names), its box and what is left of it. */
+function HeldBy({ r, developer }: { r: RunStanding; developer: boolean }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
+  const h = r.holder;
+  if (h.source !== "held" && !developer) return null;
+  return (
+    <FactsGroup title={t("runs.fact.holder")}>
+      {h.source === "held" ? (
+        <>
+          {/* a run holding its own lease is named by its subject, which the Work group says */}
+          {h.kind === "run" && !developer ? null : (
+            <Fact label={t("runs.fact.run")}>
+              <span title={developer ? t("runs.holderKind", { kind: t(`runs.holder.${h.kind}`) }) : undefined}>{said(h.says.name, language)}</span>
+            </Fact>
+          )}
+          <Fact label={t("runs.fact.box")}>
+            <span className="font-mono text-13">{h.device?.name ?? "—"}</span>
+          </Fact>
+          <Fact label={t("runs.fact.lease")}>
+            <span title={saidOrNull(h.says.expiryDetail, language) ?? (h.expiresAt ? time.dateTime(h.expiresAt) : undefined)}>{leaseLeft(r, language) ?? saidOrNull(h.says.expiryDetail, language) ?? "—"}</span>
+          </Fact>
+        </>
+      ) : (
+        <FactsEmpty>{said(h.says.detail, language)}</FactsEmpty>
+      )}
+    </FactsGroup>
+  );
+}
+
+/** The master and the pass that dispatched the run, or why none is known. */
+function DispatchedBy({ r, slug }: { r: RunStanding; slug: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
   const h = r.holder;
   const d = h.source === "held" ? h.dispatchedBy : null;
   return (
-    <>
-      {h.source !== "held" && !developer ? null : (
-      <FactsGroup title={t("runs.fact.holder")}>
-        {h.source === "held" ? (
-          <>
-            {/* a run holding its own lease is named by its subject, which the Work group says */}
-            {h.kind === "run" && !developer ? null : (
-              <Fact label={t("runs.fact.run")}>
-                <span title={developer ? t("runs.holderKind", { kind: t(`runs.holder.${h.kind}`) }) : undefined}>{said(h.says.name, language)}</span>
-              </Fact>
+    <FactsGroup title={t("runs.fact.dispatchedBy")}>
+      {d && d.source !== "none" ? (
+        <>
+          <Fact label={t("runs.fact.master")}>
+            <Link href={masterHref(slug)} className="text-link hover:underline">
+              {r.master.source === "session" ? (r.master.name ?? t("runs.fact.masterWord")) : t("runs.fact.masterWord")}
+            </Link>
+          </Fact>
+          <Fact label={t("runs.fact.pass")}>
+            {d.source === "pass" ? (
+              <span title={time.dateTime(d.startedAt)}>
+                {t("runs.fact.passOf", { when: formatWhen(d.startedAt, language), verb: enumLabel("masterVerb", d.verb, language).toLowerCase() })}
+              </span>
+            ) : (
+              <span className="text-muted" title={said(d.says.detail, language)}>
+                {t("runs.notKnown")}
+              </span>
             )}
-            <Fact label={t("runs.fact.box")}>
-              <span className="font-mono text-12-5">{h.device?.name ?? "—"}</span>
-            </Fact>
-            <Fact label={t("runs.fact.lease")}>
-              <span title={saidOrNull(h.says.expiryDetail, language) ?? (h.expiresAt ? time.dateTime(h.expiresAt) : undefined)}>{leaseLeft(r, language) ?? saidOrNull(h.says.expiryDetail, language) ?? "—"}</span>
-            </Fact>
-          </>
-        ) : (
-          <FactsEmpty>{said(h.says.detail, language)}</FactsEmpty>
-        )}
-      </FactsGroup>
+          </Fact>
+        </>
+      ) : (
+        <FactsEmpty>{d && d.source === "none" ? said(d.says.detail, language) : r.master.source === "none" ? said(r.master.says.detail, language) : t("runs.fact.noPass")}</FactsEmpty>
       )}
-      <FactsGroup title={t("runs.fact.dispatchedBy")}>
-        {d && d.source !== "none" ? (
-          <>
-            <Fact label={t("runs.fact.master")}>
-              <Link href={masterHref(slug)} className="text-link hover:underline">
-                {r.master.source === "session" ? (r.master.name ?? t("runs.fact.masterWord")) : t("runs.fact.masterWord")}
-              </Link>
-            </Fact>
-            <Fact label={t("runs.fact.pass")}>
-              {d.source === "pass" ? (
-                <span title={time.dateTime(d.startedAt)}>
-                  {t("runs.fact.passOf", { when: fmtTime(d.startedAt, language), verb: enumLabel("masterVerb", d.verb, language).toLowerCase() })}
-                </span>
-              ) : (
-                <span className="text-muted" title={said(d.says.detail, language)}>
-                  {t("runs.notKnown")}
-                </span>
-              )}
-            </Fact>
-          </>
-        ) : (
-          <FactsEmpty>{d && d.source === "none" ? said(d.says.detail, language) : r.master.source === "none" ? said(r.master.says.detail, language) : t("runs.fact.noPass")}</FactsEmpty>
-        )}
-      </FactsGroup>
-    </>
+    </FactsGroup>
   );
 }
 
-export function RunFacts({ r, slug, developer = false, onPage = false }: { r: RunStanding; slug: string; developer?: boolean; onPage?: boolean }) {
+/** The job, pipeline, box run and session behind the run: the developer view's alone. */
+function RunMachinery({ r }: { r: RunStanding }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  return (
+    <FactsGroup title={t("runs.fact.properties")}>
+      <Fact label={t("runs.fact.jobType")}>{r.job ? enumLabel("jobType", r.job.type, language) : "—"}</Fact>
+      {r.job ? (
+        <Fact label={t("runs.fact.job")}>
+          <StatusBadge family="job" value={r.job.status} />
+        </Fact>
+      ) : null}
+      <Fact label={t("runs.fact.pipeline")}>
+        <StatusBadge family="pipelineRun" value={r.pipelineStatus} />
+      </Fact>
+      {r.boxRunId ? (
+        <Fact label={t("runs.fact.boxRunId")}>
+          <span className="break-all font-mono text-13" data-testid="run-box-id">
+            {r.boxRunId}
+          </span>
+        </Fact>
+      ) : null}
+      {r.sessionId ? (
+        <Fact label={t("runs.fact.session")}>
+          <span className="font-mono text-13" title={r.sessionId}>
+            {r.sessionId.slice(0, 8)}
+          </span>
+        </Fact>
+      ) : null}
+    </FactsGroup>
+  );
+}
+
+/** When the run started and finished, for the peek, which has no moments table. */
+function RunTimes({ r }: { r: RunStanding }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
+  return (
+    <FactsGroup title={t("runs.fact.when")}>
+      <Fact label={t("runs.fact.started")}>
+        <span title={time.dateTime(r.startedAt)}>{formatWhen(r.startedAt, language)}</span>
+      </Fact>
+      {r.finishedAt ? (
+        <Fact label={t("runs.fact.finished")}>
+          <span title={time.dateTime(r.finishedAt)}>{formatWhen(r.finishedAt, language)}</span>
+        </Fact>
+      ) : null}
+    </FactsGroup>
+  );
+}
+
+export function RunProperties({ r, slug, developer = false, onPage = false }: { r: RunStanding; slug: string; developer?: boolean; onPage?: boolean }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   // on the page the moments table says when it started, stood and finished; the peek has no table
   const times = !onPage;
   return (
@@ -192,18 +234,19 @@ export function RunFacts({ r, slug, developer = false, onPage = false }: { r: Ru
         <FactsGroup title={t("runs.fact.standing")}>
           {times ? (
             <Fact label={t("runs.fact.since")}>
-              <span title={developer ? `${stamp(r.since, language)} — ${said(r.says.rule, language)}` : stamp(r.since, language)}>{fmtTime(r.since, language)}</span>
+              <span title={developer ? `${formatWhen(r.since, language)} — ${said(r.says.rule, language)}` : formatWhen(r.since, language)}>{formatWhen(r.since, language)}</span>
             </Fact>
           ) : null}
           {r.stuck.source === "stuck" ? <Fact label={t("runs.fact.cause")}>{enumLabel("runStuckRule", r.stuck.rule, language)}</Fact> : null}
         </FactsGroup>
       ) : null}
-      <HolderFacts r={r} slug={slug} developer={developer} />
+      <HeldBy r={r} developer={developer} />
+      <DispatchedBy r={r} slug={slug} />
       <FactsGroup title={t("runs.fact.work")}>
         <Fact label={t("runs.fact.subject")}>
           {r.issue ? (
             <>
-              <Link href={issueHref(slug, r.issue.key)} className="font-mono text-12-5 font-semibold text-link hover:underline">
+              <Link href={issueHref(slug, r.issue.key)} className="font-mono text-13 font-semibold text-link hover:underline">
                 {r.issue.key}
               </Link>
               <StatusBadge family="issue" value={r.issue.status} />
@@ -220,38 +263,8 @@ export function RunFacts({ r, slug, developer = false, onPage = false }: { r: Ru
         </Fact>
         {r.attempt.source === "runs" && !onPage ? <Fact label={t("runs.fact.attempt")}>{r.attempt.n}</Fact> : null}
       </FactsGroup>
-      {developer ? (
-      <FactsGroup title={t("runs.fact.properties")}>
-        <Fact label={t("runs.fact.jobType")}>{r.job ? enumLabel("jobType", r.job.type, language) : "—"}</Fact>
-        {r.job ? (
-          <Fact label={t("runs.fact.job")}>
-            <StatusBadge family="job" value={r.job.status} />
-          </Fact>
-        ) : null}
-        <Fact label={t("runs.fact.pipeline")}>
-          <StatusBadge family="pipelineRun" value={r.pipelineStatus} />
-        </Fact>
-        {r.sessionId ? (
-          <Fact label={t("runs.fact.session")}>
-            <span className="font-mono text-12-5" title={r.sessionId}>
-              {r.sessionId.slice(0, 8)}
-            </span>
-          </Fact>
-        ) : null}
-      </FactsGroup>
-      ) : null}
-      {times ? (
-        <FactsGroup title={t("runs.fact.when")}>
-          <Fact label={t("runs.fact.started")}>
-            <span title={time.dateTime(r.startedAt)}>{fmtTime(r.startedAt, language)}</span>
-          </Fact>
-          {r.finishedAt ? (
-            <Fact label={t("runs.fact.finished")}>
-              <span title={time.dateTime(r.finishedAt)}>{fmtTime(r.finishedAt, language)}</span>
-            </Fact>
-          ) : null}
-        </FactsGroup>
-      ) : null}
+      {developer ? <RunMachinery r={r} /> : null}
+      {times ? <RunTimes r={r} /> : null}
     </>
   );
 }
@@ -282,12 +295,12 @@ export function RunActions({ r, slug, canWrite }: { r: RunStanding; slug: string
         </Button>
       ) : null}
       {cancel.isError ? (
-        <span className="text-12-5 text-danger" data-testid="run-cancel-refusal">
+        <span className="text-13 text-danger" data-testid="run-cancel-refusal">
           {formatRefusal(cancel.error)}
         </span>
       ) : null}
       {parkRefused ? (
-        <span className="text-12-5 text-danger" data-testid="run-cancel-park-refused">
+        <span className="text-13 text-danger" data-testid="run-cancel-park-refused">
           {t("runs.parkRefused", { why: parkRefused })}
         </span>
       ) : null}
@@ -319,292 +332,16 @@ export function RunPeek({
         title={said(r.says.title, language)}
         action={<RunActions r={r} slug={slug} canWrite={canWrite} />}
       />
-      <div className="px-[18px] pb-3">
+      <div className="px-4.5 pb-3">
         <RunPath r={r} />
       </div>
-      <RunBanner r={r} className="px-[18px]" />
-      <div className="px-[18px] pb-4 pt-4">
-        <RunFacts r={r} slug={slug} />
+      <RunBanner r={r} className="px-4.5" />
+      <div className="px-4.5 pb-4 pt-4">
+        <RunProperties r={r} slug={slug} />
       </div>
     </PeekPanel>
   );
 }
 
-export const RUN_TABS = ["overview", "attempts", "events", "lease"] as const;
-
-function Overview({ r, developer }: { r: RunStanding; developer: boolean }) {
-  const t = useCopy();
-  const language = useInterfaceLanguage();
-  const walked: Array<[string, string | null, string]> = [[t("runs.fact.started"), r.startedAt, "pipeline_runs.started_at"]];
-  if (r.holder.source === "held" && r.holder.acquiredAt) walked.push([t("runs.moment.claimed"), r.holder.acquiredAt, "holder.acquiredAt"]);
-  walked.push([t("runs.fact.since"), r.since, `since: ${said(r.says.rule, language)}`]);
-  if (r.finishedAt) walked.push([t("runs.fact.finished"), r.finishedAt, "pipeline_runs.finished_at"]);
-  const stuck = developer && r.stuck.source === "stuck" ? r.stuck : null;
-  const o = developer ? r.outcome : null;
-  return (
-    <div className="grid gap-8">
-      <section>
-        <ViewHeading>{t("runs.fact.standing")}</ViewHeading>
-        <div className="mb-4 max-w-md">
-          <RunPath r={r} />
-        </div>
-        <Table aria-label={t("runs.fact.standing")}>
-          <THead className="bg-sunken">
-            <TR>
-              <TH>{t("runs.moment.moment")}</TH>
-              <TH>{t("runs.moment.at")}</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {walked.map(([label, at, src]) => (
-              <TR key={label}>
-                <TD>{label}</TD>
-                <TD>
-                  <span title={developer ? `${stamp(at, language)} — ${src}` : stamp(at, language)} translate="no">
-                    {fmtTime(at, language)}
-                  </span>
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
-      </section>
-      {stuck ? (
-        <section>
-          <ViewHeading right={<span className="text-12-5 text-muted">{enumLabel("runStuckRule", stuck.rule, language)}</span>}>{t("runs.whyStuck")}</ViewHeading>
-          <p className="text-13">{said(stuck.says.detail, language)}</p>
-          <p className="mt-1 text-12-5 text-muted">{said(stuck.says.failsBy, language)}</p>
-          <p className="mt-2 font-mono text-12 text-subtle" title={stuck.evidence.value ?? undefined} translate="no">
-            {stuck.evidence.table}.{stuck.evidence.column} · {stuck.evidence.id.slice(0, 8)}
-            {stuck.evidence.at ? ` · ${fmtTime(stuck.evidence.at, language)}` : ""}
-          </p>
-        </section>
-      ) : null}
-      {o?.kind === "handed_back" && o.returnedTo.length > 0 ? (
-        <section>
-          <ViewHeading>{t("runs.returned")}</ViewHeading>
-          <ul className="border-t border-line-subtle">
-            {o.returnedTo.map((x) => (
-              <li key={x.issueKey} className="flex items-center gap-2 border-b border-line-subtle py-2 text-13">
-                <span className="font-mono text-12-5 font-semibold">{x.issueKey}</span>
-                <StatusBadge family="issue" value={x.status} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-    </div>
-  );
-}
-
-function Attempts({ d, slug, developer }: { d: RunStandingDetail; slug: string; developer: boolean }) {
-  const t = useCopy();
-  const language = useInterfaceLanguage();
-  const r = d.run;
-  if (d.attempts.length === 0) return <FactsEmpty>{r.attempt.source === "none" ? said(r.attempt.says.detail, language) : t("runs.oneAttempt")}</FactsEmpty>;
-  return (
-    <section>
-      <ViewHeading>{developer ? t("runs.attemptsOn", { subject: r.attempt.source === "runs" ? r.attempt.of : t("runs.thisSubject") }) : t("runs.attempts")}</ViewHeading>
-      <Table aria-label={t("runs.attempts")}>
-        <THead className="bg-sunken">
-          <TR>
-            <TH>{t("runs.fact.attempt")}</TH>
-            <TH>{t("runs.fact.standing")}</TH>
-            <TH>{t("runs.fact.started")}</TH>
-            <TH>{t("runs.fact.finished")}</TH>
-          </TR>
-        </THead>
-        <TBody>
-          {d.attempts.map((a) => (
-            <TR key={a.id}>
-              <TD>
-                {a.id === r.id ? (
-                  <span className="font-mono text-12-5 font-semibold">#{a.n}</span>
-                ) : (
-                  <Link href={runHref(slug, a.id)} className="font-mono text-12-5 font-semibold text-link hover:underline">
-                    #{a.n}
-                  </Link>
-                )}
-              </TD>
-              <TD>
-                <StatusBadge family="runStanding" value={a.state} />
-              </TD>
-              <TD>
-                <span title={formatDateTime(a.startedAt, language)}>{fmtTime(a.startedAt, language)}</span>
-              </TD>
-              <TD>{fmtTime(a.finishedAt, language)}</TD>
-            </TR>
-          ))}
-        </TBody>
-      </Table>
-    </section>
-  );
-}
-
-const EVENT_FAMILY: Record<RunEvent["entity"], StatusFamily> = { run: "pipelineRun", session: "session", job: "job" };
-
-function Events({ d, developer }: { d: RunStandingDetail; developer: boolean }) {
-  const t = useCopy();
-  const language = useInterfaceLanguage();
-  if (d.events.length === 0) return <FactsEmpty>{t("runs.noEvents")}</FactsEmpty>;
-  return (
-    <section>
-      <ViewHeading right={d.eventsHasMore ? <span className="text-12-5 text-muted">{t("runs.moreNotShown")}</span> : null}>{t("runs.transitions")}</ViewHeading>
-      <Table aria-label={t("runs.transitions")}>
-        <THead className="bg-sunken">
-          <TR>
-            <TH>{t("runs.event.when")}</TH>
-            <TH>{t("runs.event.event")}</TH>
-            <TH>{t("runs.event.actor")}</TH>
-            {developer ? <TH>{t("runs.event.reason")}</TH> : null}
-          </TR>
-        </THead>
-        <TBody>
-          {d.events.map((e) => (
-            <TR key={e.id}>
-              <TD>
-                <span title={formatDateTime(e.at, language)}>{fmtTime(e.at, language)}</span>
-              </TD>
-              <TD>
-                <span className="inline-flex flex-wrap items-center gap-1.5" title={developer ? `${enumLabel("runEventEntity", e.entity, language)}: ${e.from ? statusReading(EVENT_FAMILY[e.entity], e.from, language).label : "∅"} → ${statusReading(EVENT_FAMILY[e.entity], e.to, language).label} (${e.source})` : undefined}>
-                  <span className="text-muted">{enumLabel("runEventEntity", e.entity, language)}</span>
-                  <StatusBadge family={EVENT_FAMILY[e.entity]} value={e.to} />
-                </span>
-              </TD>
-              <TD>{e.actor.name ?? enumLabel("runActorType", e.actor.type, language)}</TD>
-              {developer ? (
-                <TD>
-                  <span className="text-12-5 text-muted">{e.reason ? (/^[a-z_]+$/.test(e.reason) ? enumLabel("failureCause", e.reason, language) : e.reason) : "—"}</span>
-                </TD>
-              ) : null}
-            </TR>
-          ))}
-        </TBody>
-      </Table>
-    </section>
-  );
-}
-
-function Lease({ r }: { r: RunStanding }) {
-  const t = useCopy();
-  const language = useInterfaceLanguage();
-  const h = r.holder;
-  if (h.source !== "held") return <FactsEmpty>{said(h.says.detail, language)}</FactsEmpty>;
-  return (
-    <div className="grid gap-8">
-      <section>
-        <ViewHeading>{t("runs.fact.lease")}</ViewHeading>
-        <Table aria-label={t("runs.fact.lease")}>
-          <THead className="bg-sunken">
-            <TR>
-              <TH>{t("runs.lease.fact")}</TH>
-              <TH>{t("runs.lease.value")}</TH>
-            </TR>
-          </THead>
-          <TBody>
-            <TR>
-              <TD>{t("runs.fact.holder")}</TD>
-              <TD>
-                {said(h.says.name, language)} <span className="text-muted">({t(`runs.holder.${h.kind}`)})</span>
-              </TD>
-            </TR>
-            <TR>
-              <TD>{t("runs.lease.acquired")}</TD>
-              <TD>
-                <span title={stamp(h.acquiredAt, language)}>{fmtTime(h.acquiredAt, language)}</span>
-              </TD>
-            </TR>
-            <TR>
-              <TD>{t("runs.lease.expires")}</TD>
-              <TD>
-                <span title={saidOrNull(h.says.expiryDetail, language) ?? stamp(h.expiresAt, language)}>{h.expiresAt ? `${fmtTime(h.expiresAt, language)} · ${leaseLeft(r, language)}` : (saidOrNull(h.says.expiryDetail, language) ?? "—")}</span>
-              </TD>
-            </TR>
-            <TR>
-              <TD>{t("runs.lease.source")}</TD>
-              <TD>{h.expirySource ? <EnumBadge family="runExpirySource" value={h.expirySource} /> : "—"}</TD>
-            </TR>
-            <TR>
-              <TD>{t("runs.lease.verdict")}</TD>
-              <TD>{h.verdict ? <StatusBadge family="lease" value={h.verdict} /> : "—"}</TD>
-            </TR>
-          </TBody>
-        </Table>
-      </section>
-      {h.expiries.length > 1 ? (
-        <section>
-          <ViewHeading>{t("runs.lease.everyClock")}</ViewHeading>
-          <ul className="border-t border-line-subtle">
-            {h.expiries.map((x) => (
-              <li key={`${x.source}:${x.at}`} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
-                <EnumBadge family="runExpirySource" value={x.source} />
-                <span title={formatDateTime(x.at, language)}>{fmtTime(x.at, language)}</span>
-                <StatusBadge family="lease" value={x.verdict} />
-                <span className="text-12-5 text-muted">{said(x.says.rule, language)}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : (
-        <p className="text-12-5 text-subtle" title={saidOrNull(h.expiries[0]?.says.rule, language) ?? undefined}>
-          {saidOrNull(h.expiries[0]?.says.rule, language) ?? saidOrNull(h.says.expiryDetail, language)}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/** The person / developer switch, at the right above the tabs. */
-function ViewBar({ view, onView }: { view: RecordView; onView: (v: RecordView) => void }) {
-  return (
-    <div className="flex justify-end px-8 pt-3 max-md:px-4" data-testid="run-view-bar">
-      <RecordViewSwitch view={view} onView={onView} />
-    </div>
-  );
-}
-
-export function RunPage({ projectId, slug, runId }: { projectId: string; slug: string; runId: string }) {
-  const t = useCopy();
-  const language = useInterfaceLanguage();
-  const q = useRunDetail(projectId, runId);
-  const [picked, setTab] = useUrlTab(RUN_TABS);
-  const [view, onView] = useRecordView();
-  const developer = view === "developer";
-  const tab = picked === "lease" && !developer ? "overview" : picked;
-  return (
-    <QueryBoundary query={q} loadingLabel={t("runs.loadingRun")}>
-      {(data) => {
-        const d = data;
-        const r = d.run;
-        const tabs = [
-          { value: "overview" as const, label: t("runs.tab.overview") },
-          { value: "attempts" as const, label: t("runs.tab.attempts"), count: Math.max(d.attempts.length, 1) },
-          { value: "events" as const, label: t("runs.tab.events"), count: d.events.length },
-          ...(developer ? [{ value: "lease" as const, label: t("runs.tab.lease") }] : []),
-        ];
-        return (
-          <DetailLayout
-            testId="run-detail"
-            dataKey={r.id}
-            rail={
-              <FactsRail>
-                <RunFacts r={r} slug={slug} developer={developer} onPage />
-              </FactsRail>
-            }
-          >
-            <DetailMobileTitle itemKey={runKey(r, language)} title={runName(r, language)} badge={<StatusBadge family="runStanding" value={r.state} />} />
-            <RunBanner r={r} developer={developer} className="px-8 py-2.5 max-md:px-4" />
-            <ViewBar view={view} onView={onView} />
-            <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="run-tabs" />
-            <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("runs.tab.overview")}>
-              {tab === "overview" ? <Overview r={r} developer={developer} /> : null}
-              {tab === "attempts" ? <Attempts d={d} slug={slug} developer={developer} /> : null}
-              {tab === "events" ? <Events d={d} developer={developer} /> : null}
-              {tab === "lease" ? <Lease r={r} /> : null}
-            </DetailPane>
-          </DetailLayout>
-        );
-      }}
-    </QueryBoundary>
-  );
-}
+// the page moved to run-page.tsx; re-exported from its original path
+export { RunPage } from "./run-page";

@@ -1,9 +1,9 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { useAgentAccounts } from "@/features/agent-accounts/hooks";
-import { useActiveOrg } from "@/features/orgs/active-org";
-import { isOrgAdmin } from "@/features/projects/write-access";
+import { useAgentAccounts } from "@/features/agent-accounts";
+import { useActiveOrg } from "@/features/orgs";
+import { isOrgAdmin } from "@/features/projects";
 import { useAuth } from "@/providers/auth-provider";
 import { pairingApi } from "./api";
 

@@ -88,7 +88,7 @@ import {
 import { ENUM_LABELS, type Reading, STATE_READINGS, sentenceCase } from "@forge/contracts/ui-vocabulary";
 import { type LabelGroup, labelKey } from "@/lib/i18n/labels";
 import { copyOr } from "@/lib/i18n/product-copy";
-import { type ColorMeta, TONE_META } from "./status";
+import { type ColorMeta, type StatusKey, TONE_META } from "./status";
 
 /** The legend's meaning per tone: amber waits on you, cobalt is running, slate is blocked, green is
  *  ready, grey is done, red came back; neutral is not moving. */
@@ -131,7 +131,40 @@ const POLICY_TONE: Record<(typeof SENSITIVE_DATA_BADGES)[keyof typeof SENSITIVE_
   failure: "err",
 };
 
+/** An agent run's state (a session, a pipeline step), in the run's own words: "Completed", "Stalled". */
+const RUN_LABELS: Record<StatusKey, string> = {
+  running: "Running",
+  queued: "Queued",
+  blocked: "Blocked",
+  failed: "Failed",
+  shipped: "Released",
+  review: "In review",
+  swept: "Swept",
+  done: "Completed",
+  passed: "Verified",
+  paused: "Idle",
+  waiting: "Waiting for me",
+  zombie: "Stalled",
+  archived: "Cancelled",
+};
+const RUN_TONES: Record<StatusKey, LegendTone> = {
+  running: "run",
+  queued: "neutral",
+  blocked: "blocked",
+  waiting: "you",
+  passed: "ready",
+  failed: "err",
+  paused: "blocked",
+  done: "done",
+  shipped: "done",
+  archived: "done",
+  review: "run",
+  zombie: "err",
+  swept: "neutral",
+};
+
 const CONTRACT_FAMILIES = {
+  run: { labels: RUN_LABELS, tones: RUN_TONES },
   issue: { labels: ISSUE_STATUS_LABELS, tones: ISSUE_STATUS_TONES, glyphs: ISSUE_STATUS_GLYPHS, hints: ISSUE_STATUS_HINTS },
   requirement: { labels: REQUIREMENT_STATE_LABELS, tones: REQUIREMENT_STATE_TONES, glyphs: REQUIREMENT_STATE_GLYPHS, hints: REQUIREMENT_STATE_HINTS },
   bcVerdict: {

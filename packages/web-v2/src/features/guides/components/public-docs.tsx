@@ -13,8 +13,8 @@ import {
   DocsSearchField,
   DocsSearchResults,
   DocsSidebar,
-} from "@/features/docs/components/docs-reader";
-import { deriveToc, searchDocs } from "@/features/docs/reader";
+} from "@/features/docs";
+import { deriveToc, searchDocs } from "@/features/docs";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import { AUDIENCES, type Audience, DOORS, ONE_CORPUS } from "../audience";
 import { type PublicDoc, docsBehind, doorHref, doorSections } from "../corpus";
@@ -51,9 +51,9 @@ export function PublicLanding({
     <div className="flex flex-col gap-6">
       <div>
         <PageTitle className="fg-h2 text-fg">Forge documentation</PageTitle>
-        <p className="fg-body mt-2 max-w-[72ch] text-muted">{ONE_CORPUS}</p>
+        <p className="fg-body mt-2 max-w-xl text-muted">{ONE_CORPUS}</p>
       </div>
-      <div className="max-w-[72ch]">
+      <div className="max-w-xl">
         <DocsSearchField
           query={query}
           onQuery={setQuery}
@@ -103,7 +103,7 @@ function MachineDoor({ docs }: { docs: readonly PublicDoc[] }) {
 
 function DoorPage({ audience, docs }: { audience: Audience; docs: readonly PublicDoc[] }) {
   return (
-    <div style={{ maxWidth: "72ch" }} className="mx-auto">
+    <div className="mx-auto max-w-2xl">
       <PageTitle className="fg-h2 text-fg">{DOORS[audience].label}</PageTitle>
       <p className="fg-body-sm mt-1.5 mb-6 text-muted">{DOORS[audience].blurb}</p>
       {audience === "agent" ? <MachineDoor docs={docs} /> : null}
@@ -224,7 +224,7 @@ export function PublicReader({ corpus, view }: { corpus: readonly PublicDoc[]; v
  *  when core is down, and offers every door as the way on. */
 export function PublicRefusal({ refusal }: { refusal: Refusal }) {
   return (
-    <div className="mx-auto flex max-w-[72ch] flex-col gap-4 py-8">
+    <div className="mx-auto flex max-w-xl flex-col gap-4 py-8">
       <PageTitle className="fg-h2 text-fg">{refusal.heading}</PageTitle>
       <p className="fg-body-sm text-muted">{refusal.body}</p>
       <nav aria-label="Ways in" className="flex flex-col gap-1">

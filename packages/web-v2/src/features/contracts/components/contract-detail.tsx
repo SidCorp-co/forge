@@ -1,27 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Button,
-  DetailLayout,
-  DetailMobileTitle,
-  DetailPane,
-  DetailTabs,
-  EnumBadge,
-  FactsRail,
-  RecordViewSwitch,
-  StatusBadge,
-  Textarea,
-  useRecordView,
-  ViewHeading,
-} from "@/design";
+import { Button, DetailLayout, DetailMobileTitle, DetailPane, DetailTabs, EnumBadge, FactsRail, RecordViewSwitch, RowItem, RowList, StatusBadge, Textarea, useRecordView, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { formatStamp } from "@/lib/utils/format";
 import { useDecideVersion } from "../hooks";
 import type { ContractStandingDetail, ContractVersionView } from "../types";
 import { AdoptionStrip, ContractBanner } from "./contract-bits";
-import { ContractFacts } from "./contract-facts";
+import { ContractProperties } from "./contract-facts";
 import { VersionTimeline } from "./version-timeline";
 
 export const CONTRACT_TABS = ["overview", "versions", "adoption"] as const;
@@ -36,7 +23,7 @@ function Overview({ d }: { d: ContractStandingDetail }) {
   const c = d.contract;
   return (
     <div className="grid gap-8" data-testid="view-overview">
-      {c.summary ? <p className="max-w-[80ch] text-15 leading-relaxed text-fg">{c.summary}</p> : null}
+      {c.summary ? <p className="max-w-prose text-15 leading-relaxed text-fg">{c.summary}</p> : null}
       <section>
         <ViewHeading right={<AdoptionStrip consumers={d.consumers} latest={c.current?.version ?? null} />}>{t("contracts.pcc.consumers")}</ViewHeading>
       </section>
@@ -48,7 +35,8 @@ function Overview({ d }: { d: ContractStandingDetail }) {
   );
 }
 
-const VERSION_COLS = "grid grid-cols-[110px_120px_minmax(0,1fr)_150px] gap-x-3.5 px-3 max-md:grid-cols-[90px_minmax(0,1fr)]";
+const VERSION_COLS = "flex flex-wrap gap-x-3.5 px-3";
+const COL = { version: "w-24 flex-none", recorded: "w-28 flex-none max-md:hidden", changes: "min-w-0 flex-1", approval: "w-36 flex-none max-md:hidden" } as const;
 
 function Decide({ d, v, projectId }: { d: ContractStandingDetail; v: ContractVersionView; projectId: string }) {
   const t = useCopy();
@@ -56,7 +44,7 @@ function Decide({ d, v, projectId }: { d: ContractStandingDetail; v: ContractVer
   const [returning, setReturning] = useState(false);
   const [reason, setReason] = useState("");
   return (
-    <div className="col-span-full grid gap-2 pb-3 pt-1" data-testid="decide-version">
+    <div className="grid basis-full gap-2 pb-3 pt-1" data-testid="decide-version">
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" variant="primary" size="sm" disabled={m.isPending} onClick={() => m.mutate({ version: v.version, decision: "approve" })} data-testid="approve-version">
           {t("contracts.decide.approve", { v: v.version })}
@@ -66,7 +54,7 @@ function Decide({ d, v, projectId }: { d: ContractStandingDetail; v: ContractVer
         </Button>
       </div>
       {returning ? (
-        <div className="grid max-w-[560px] gap-2">
+        <div className="grid max-w-140 gap-2">
           <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("contracts.decide.reasonPlaceholder")} rows={3} />
           <div>
             <Button type="button" size="sm" disabled={m.isPending || reason.trim().length === 0} onClick={() => m.mutate({ version: v.version, decision: "return", reason: reason.trim() })}>
@@ -92,19 +80,19 @@ function Versions({ d, projectId, developer }: { d: ContractStandingDetail; proj
       ) : (
         <>
           <div className={`${VERSION_COLS} h-8 items-center border-y border-line-subtle bg-sunken text-11-5 font-semibold text-subtle`} aria-hidden>
-            <span>{t("contracts.versions.colVersion")}</span>
-            <span className="max-md:hidden">{t("contracts.versions.colRecorded")}</span>
-            <span>{t("contracts.versions.colChanges")}</span>
-            <span className="max-md:hidden">{t("contracts.versions.colApproval")}</span>
+            <span className={COL.version}>{t("contracts.versions.colVersion")}</span>
+            <span className={COL.recorded}>{t("contracts.versions.colRecorded")}</span>
+            <span className={COL.changes}>{t("contracts.versions.colChanges")}</span>
+            <span className={COL.approval}>{t("contracts.versions.colApproval")}</span>
           </div>
           <ul>
             {d.versions.map((v) => (
               <li key={v.version} className={`${VERSION_COLS} items-baseline border-b border-line-subtle py-2.5 text-13`} data-testid="version-row">
-                <span className="font-mono text-12-5 font-semibold">{v.version}</span>
-                <span className="text-12 text-muted max-md:hidden" title={formatStamp(v.recordedAt)}>
+                <span className={`${COL.version} font-mono text-12-5 font-semibold`}>{v.version}</span>
+                <span className={`${COL.recorded} text-12 text-muted`} title={formatStamp(v.recordedAt)}>
                   {v.recordedAt.slice(0, 10)}
                 </span>
-                <span className="min-w-0">
+                <span className={COL.changes}>
                   <span className="inline-flex flex-wrap items-center gap-1.5">
                     <StatusBadge family="classification" value={v.classification} />
                     {v.previous ? <span className="text-12 text-subtle">{t("contracts.versions.after", { v: v.previous })}</span> : null}
@@ -129,7 +117,7 @@ function Versions({ d, projectId, developer }: { d: ContractStandingDetail; proj
                     </details>
                   ) : null}
                 </span>
-                <span className="max-md:hidden" title={v.decisionReason ?? (v.decidedAt ? t("contracts.versions.decided", { when: formatStamp(v.decidedAt) }) : undefined)}>
+                <span className={COL.approval} title={v.decisionReason ?? (v.decidedAt ? t("contracts.versions.decided", { when: formatStamp(v.decidedAt) }) : undefined)}>
                   <StatusBadge family="contractApproval" value={v.approval} />
                 </span>
                 {decidable && v.approval === "proposed" ? <Decide d={d} v={v} projectId={projectId} /> : null}
@@ -152,18 +140,18 @@ function Adoption({ d }: { d: ContractStandingDetail }) {
         {d.consumers.length === 0 ? (
           <p className="text-13 text-subtle">{t("contracts.consumers.none")}</p>
         ) : (
-          <ul className="border-t border-line-subtle">
+          <RowList>
             {d.consumers.map((x) => (
-              <li key={x.project.id} className="grid grid-cols-[minmax(0,1fr)_120px_140px] items-center gap-x-3 border-b border-line-subtle px-3 py-2.5 text-13" data-testid="adoption-row">
-                <span className="min-w-0 truncate">
-                  <b className="font-semibold">{x.project.slug}</b>
-                  {x.self ? <span className="ml-2 text-12 text-subtle">{t("contracts.thisProject")}</span> : null}
-                </span>
-                <span className="font-mono text-12-5">{x.builtAgainst}</span>
-                <StatusBadge family="contractAdoption" value={x.adoption} />
-              </li>
+              <RowItem
+                key={x.project.id}
+                testId="adoption-row"
+                title={x.project.slug}
+                lead={x.self ? <span className="text-12 text-subtle">{t("contracts.thisProject")}</span> : undefined}
+                facts={[<span key="v" className="font-mono">{x.builtAgainst}</span>]}
+                trailing={<StatusBadge family="contractAdoption" value={x.adoption} />}
+              />
             ))}
-          </ul>
+          </RowList>
         )}
       </section>
     </div>
@@ -187,7 +175,7 @@ export function ContractPage({ d, slug, projectId, tab, onTab }: { d: ContractSt
       dataKey={c.ref}
       rail={
         <FactsRail testId="relations-rail">
-          <ContractFacts d={d} slug={slug} developer={developer} />
+          <ContractProperties d={d} slug={slug} developer={developer} />
         </FactsRail>
       }
     >

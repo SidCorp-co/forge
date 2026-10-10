@@ -1,16 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { AcceptStep, Button, enumLabel, Input, LEGEND, Radio, RadioGroup, Textarea } from "@/design";
-import { type IssuePick, IssuePicker } from "@/features/issue-picker/issue-picker";
+import { Button, enumLabel, Input, Radio, RadioGroup, Textarea } from "@/design";
+import { type IssuePick, IssuePicker } from "@/features/issue-picker";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import type { Copy } from "@/lib/i18n/product-copy";
-import type { SuggestionView } from "@/features/suggestions/types";
-import { RejectStep } from "@/features/suggestions/components/reject-step";
-import { useSuggestionDecision, useWaitingSuggestions } from "@/features/suggestions/hooks";
-import { useFeedbackAction } from "../hooks";
+import type { SuggestionView } from "@/features/suggestions";
+import { SuggestionDecider, useWaitingSuggestions } from "@/features/suggestions";
+import { feedbackKeys, useFeedbackAction } from "../hooks";
 import { type FeedbackPick, FeedbackPicker } from "./feedback-picker";
 import { RetargetForm } from "./feedback-retarget";
 import { TellShippedBar } from "./feedback-tell";
@@ -27,7 +26,7 @@ const OPTIONAL: readonly Choice[] = ["file_issue"];
 /** The issues a person picked, by key: one stays one, several become a list. */
 export function issueKeysOf(picked: readonly IssuePick[]): string | string[] {
   const keys = picked.map((p) => p.key);
-  return keys.length === 1 ? (keys[0] as string) : keys;
+  return keys.length === 1 ? (keys[0]) : keys;
 }
 
 function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
@@ -221,9 +220,7 @@ export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView
   const t = useCopy();
   const language = useInterfaceLanguage();
   const q = useWaitingSuggestions(projectId, { feedback: f.id }, f.openSuggestions > 0);
-  const decide = useSuggestionDecision(projectId, [["feedback", projectId], ["feedback-item", projectId]]);
-  const [rejecting, setRejecting] = useState<string | null>(null);
-  const [accepting, setAccepting] = useState<string | null>(null);
+  const affected = [feedbackKeys.list(projectId), feedbackKeys.items(projectId)];
   const rows = q.data?.suggestions ?? [];
   if (rows.length === 0) return null;
   return (
@@ -232,8 +229,8 @@ export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView
         const note = (s.payload as { note?: string } | null)?.note;
         const dedup = (s.payload as { dedup?: FeedbackDedup } | null)?.dedup;
         return (
-          <div key={s.id} className="grid gap-1.5 py-1 pl-3" style={{ borderLeft: `3px solid ${LEGEND.run.dot}` }}>
-            <span className="text-12 font-semibold" style={{ color: LEGEND.run.fg }}>
+          <div key={s.id} className="grid gap-1.5 border-l-3 border-ai-9 py-1 pl-3">
+            <span className="text-12 font-semibold text-ai">
               {t("feedback.proposal.head", { who: s.producerKind === "person" ? t("feedback.proposal.aPerson") : t("feedback.proposal.anAgent") })}
             </span>
             <span className="text-13">{routeLine(s, t, language)}</span>
@@ -251,35 +248,11 @@ export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView
               </span>
             ) : null}
             {f.can.triage ? (
-              accepting === s.id ? (
-                <AcceptStep
-                  confirmLabel={t("feedback.proposal.accept")}
-                  consequence={t("feedback.proposal.consequence", { route: routeLine(s, t, language) })}
-                  loading={decide.isPending}
-                  onCancel={() => setAccepting(null)}
-                  onConfirm={(why) => decide.mutate({ kind: "accept", id: s.id, reason: why }, { onSuccess: () => setAccepting(null) })}
-                />
-              ) : rejecting === s.id ? (
-                <RejectStep
-                  loading={decide.isPending}
-                  onCancel={() => setRejecting(null)}
-                  onConfirm={(why) => decide.mutate({ kind: "reject", id: s.id, reason: why }, { onSuccess: () => setRejecting(null) })}
-                />
-              ) : (
-                <span className="flex gap-2">
-                  <Button type="button" size="sm" variant="primary" disabled={decide.isPending} onClick={() => setAccepting(s.id)}>
-                    {t("feedback.proposal.accept")}
-                  </Button>
-                  <Button type="button" size="sm" onClick={() => setRejecting(s.id)}>
-                    {t("feedback.proposal.reject")}
-                  </Button>
-                </span>
-              )
+              <SuggestionDecider projectId={projectId} s={s} affected={affected} consequence={t("feedback.proposal.consequence", { route: routeLine(s, t, language) })} />
             ) : null}
           </div>
         );
       })}
-      <RefusalLine error={decide.error} />
     </section>
   );
 }

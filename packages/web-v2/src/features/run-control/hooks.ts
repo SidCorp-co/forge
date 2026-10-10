@@ -1,10 +1,11 @@
 "use client";
 
-import { type QueryKey, useMutation, useQueryClient } from "@tanstack/react-query";
+import { type QueryKey } from "@tanstack/react-query";
 import { formatRefusal } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useToast } from "@/providers/toast-provider";
+import { useToastWrite } from "@/providers/toast-write";
 import { type CancelRunResult, runControlApi } from "./api";
 
 /** Shared run-control mutation factory: invalidate the run list + the run detail (and whatever read the
@@ -15,23 +16,17 @@ function useRunControl<T>(
   followUp?: (data: T) => { title: ProductCopyKey; description: string } | null,
   alsoInvalidate: readonly QueryKey[] = [],
 ) {
-  const qc = useQueryClient();
   const { toast } = useToast();
   const t = useCopy();
-  return useMutation({
-    mutationFn: (id: string) => fn(id),
-    onSuccess: (data, id) => {
-      qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
-      qc.invalidateQueries({ queryKey: ["pipeline-run", id] });
-      qc.invalidateQueries({ queryKey: ["projects", "health"] });
-      for (const queryKey of alsoInvalidate) qc.invalidateQueries({ queryKey });
-      toast({ title: t(success), tone: "success" });
+  return useToastWrite(fn, {
+    touches: (id) => [["pipeline-runs"], ["pipeline-run", id], ["projects", "health"], ...alsoInvalidate],
+    said: (data) => {
       const extra = followUp?.(data);
       if (extra) toast({ title: t(extra.title), description: extra.description, tone: "error" });
+      return t(success);
     },
-    onError: (err) => {
-      toast({ title: t("pipeline.control.failed"), description: formatRefusal(err), tone: "error" });
-    },
+    failed: t("pipeline.control.failed"),
+    describe: formatRefusal,
   });
 }
 

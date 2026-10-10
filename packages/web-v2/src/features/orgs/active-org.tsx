@@ -1,12 +1,12 @@
 "use client";
 
-import { createContext, useContext, useMemo } from "react";
+import { createContext, use } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
-import { preferencesApi } from "@/features/preferences/api";
-import { PREFERENCES_KEY as PREFS_KEY, usePreferences } from "@/features/preferences/hooks";
-import type { Preferences } from "@/features/preferences/types";
+import { preferencesApi } from "@/features/preferences";
+import { PREFERENCES_KEY as PREFS_KEY, usePreferences } from "@/features/preferences";
+import type { Preferences } from "@/features/preferences";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useOrgs } from "./hooks";
 import type { OrgListItem } from "./types";
@@ -40,17 +40,13 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
   const { data: orgsData } = useOrgs();
   const { data: prefs } = usePreferences();
 
-  const orgs = useMemo(() => sortOrgs(orgsData ?? []), [orgsData]);
+  const orgs = sortOrgs(orgsData ?? []);
 
-  const activeOrg = useMemo(() => {
-    if (orgs.length === 0) return null;
-    const stored = prefs?.activeOrgId ?? null;
-    return (
-      (stored ? orgs.find((o) => o.id === stored) : undefined) ??
-      orgs.find((o) => o.isPersonal) ??
-      orgs[0]
-    );
-  }, [orgs, prefs?.activeOrgId]);
+  const stored = prefs?.activeOrgId ?? null;
+  const activeOrg =
+    orgs.length === 0
+      ? null
+      : ((stored ? orgs.find((o) => o.id === stored) : undefined) ?? orgs.find((o) => o.isPersonal) ?? orgs[0]);
 
   const mutation = useMutation({
     mutationFn: (orgId: string) => preferencesApi.update({ activeOrgId: orgId }),
@@ -71,26 +67,23 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
   });
 
   const { mutate } = mutation;
-  const value = useMemo<ActiveOrgContextValue>(
-    () => ({
-      orgs,
-      activeOrg,
-      activeOrgId: activeOrg?.id ?? null,
-      setActiveOrg: (orgId: string) => {
-        if (orgId !== activeOrg?.id) mutate(orgId);
-      },
-      isSingle: orgs.length <= 1,
-    }),
-    [orgs, activeOrg, mutate],
-  );
+  const value: ActiveOrgContextValue = {
+    orgs,
+    activeOrg,
+    activeOrgId: activeOrg?.id ?? null,
+    setActiveOrg: (orgId: string) => {
+      if (orgId !== activeOrg?.id) mutate(orgId);
+    },
+    isSingle: orgs.length <= 1,
+  };
 
-  return <ActiveOrgContext.Provider value={value}>{children}</ActiveOrgContext.Provider>;
+  return <ActiveOrgContext value={value}>{children}</ActiveOrgContext>;
 }
 
 /** Read the active-org context. Returns a safe empty state if used outside the
  *  provider (e.g. an isolated test render) rather than throwing. */
 export function useActiveOrg(): ActiveOrgContextValue {
-  const ctx = useContext(ActiveOrgContext);
+  const ctx = use(ActiveOrgContext);
   if (ctx) return ctx;
   return { orgs: [], activeOrg: null, activeOrgId: null, setActiveOrg: () => {}, isSingle: true };
 }

@@ -8,21 +8,22 @@
 // What stays is the case nothing else can show — a MASTER's question from the
 // device door, which carries `issueId: null`.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { EmptyState, ErrorState, Skeleton } from "@/design";
-import { QuestionCard } from "@/features/questions/components/question-card";
+import { QuestionView } from "@/features/questions";
 import {
   useAnsweringQuestions,
   useAnswerProjectQuestion,
   useLinkedQuestion,
   useProjectQuestions,
-} from "@/features/questions/hooks";
-import type { AgentQuestion, AnswerInput } from "@/features/questions/types";
+} from "@/features/questions";
+import type { AgentQuestion, AnswerInput } from "@/features/questions";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 
 const EMPTY_TITLE_ID = "agents-questions-empty-title";
+const NO_QUESTIONS: AgentQuestion[] = [];
 
 interface AnsweredCard {
   id: string;
@@ -49,16 +50,17 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
   const mutation = useAnswerProjectQuestion(scope.projectId);
   const { answering, answer } = useAnsweringQuestions(mutation.mutateAsync);
   const router = useRouter();
-  const [answered, setAnswered] = useState<readonly AnsweredCard[]>([]);
+  // Answered cards waiting to hand focus on once core drops them from the list.
+  const answeredRef = useRef<AnsweredCard[]>([]);
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  const questions = data?.questions ?? [];
+  const questions = data?.questions ?? NO_QUESTIONS;
   const focusPresent = !!focusQuestionId && questions.some((q) => q.id === focusQuestionId);
   // A question on an issue is never on this list, so the one a run row linked is looked up
   // at once: if it names an issue, answered or not, that issue is where the link goes.
   const linked = useLinkedQuestion(focusQuestionId ?? undefined, !!focusQuestionId && !focusPresent);
   const walkedOut = !!focusQuestionId && !focusPresent && !hasNextPage;
-  const onIssue = linked.data?.issueId ?? null;
+  const onIssue = linked.query.data?.issueId ?? null;
   useEffect(() => {
     if (!focusQuestionId || focusPresent || onIssue || !hasNextPage || isFetchingNextPage) return;
     void fetchNextPage();
@@ -66,22 +68,21 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
   useEffect(() => {
     if (onIssue) router.replace(`/projects/${scope.slug}/issues/${onIssue}`);
   }, [onIssue, router, scope.slug]);
-  const questionsRef = useRef<AgentQuestion[]>(questions);
-  questionsRef.current = questions;
-
-  useEffect(() => {
-    if (isLoading || answered.length === 0) return;
-    const head = answered[0];
-    if (!head) return;
-    if (questions.some((q) => q.id === head.id)) return;
+  // The answered card has left the list: focus lands on the card now in its place, or the empty title.
+  const handFocusOn = (current: readonly AgentQuestion[]) => {
+    const head = answeredRef.current[0];
+    if (!head || current.some((q) => q.id === head.id)) return;
     const cards = listRef.current?.querySelectorAll<HTMLElement>("[data-question-id]") ?? [];
     const card = cards[Math.min(head.index, cards.length - 1)];
     const target =
       card?.querySelector<HTMLElement>('[data-first-option="true"]') ??
       card?.querySelector<HTMLElement>("[data-question-title]");
     (target ?? document.getElementById(EMPTY_TITLE_ID))?.focus();
-    setAnswered((rest) => rest.slice(1));
-  }, [answered, isLoading, questions]);
+    answeredRef.current = answeredRef.current.slice(1);
+  };
+  useEffect(() => {
+    if (!isLoading) handFocusOn(questions);
+  });
 
   useEffect(() => {
     if (!focusQuestionId || !focusPresent) return;
@@ -93,16 +94,15 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
     card.querySelector<HTMLElement>("[data-question-title]")?.focus();
   }, [focusQuestionId, focusPresent]);
 
-  const onAnswer = useCallback(
-    (input: AnswerInput) => {
+  const onAnswer = (input: AnswerInput) => {
       const index = Math.max(
         0,
-        questionsRef.current.findIndex((q) => q.id === input.questionId),
+        questions.findIndex((q) => q.id === input.questionId),
       );
-      answer(input, () => setAnswered((rest) => [...rest, { id: input.questionId, index }]));
-    },
-    [answer],
-  );
+      answer(input, () => {
+        answeredRef.current = [...answeredRef.current, { id: input.questionId, index }];
+      });
+    };
 
   if (isLoading) {
     return (
@@ -116,11 +116,11 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
 
   if (isError) {
     return (
-      <div className="grid min-h-[40vh] place-items-center p-4">
+      <div className="grid min-h-80 place-items-center p-4">
         <ErrorState
           title={t("agents.questions.loadFailed")}
           message={formatApiError(error)}
-          onRetry={() => refetch()}
+          onRetry={() => void refetch()}
         />
       </div>
     );
@@ -136,7 +136,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
 
   if (questions.length === 0) {
     return (
-      <div id={EMPTY_TITLE_ID} tabIndex={-1} className="grid min-h-[40vh] place-items-center p-4 focus-visible:outline-none">
+      <div id={EMPTY_TITLE_ID} tabIndex={-1} className="grid min-h-80 place-items-center p-4 focus-visible:outline-none">
         <EmptyState message={t("agents.questions.emptyTitle")} />
       </div>
     );
@@ -145,7 +145,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
   return (
     <div ref={listRef} className="flex flex-col gap-3 p-4">
       {questions.map((question) => (
-        <QuestionCard
+        <QuestionView
           key={question.id}
           question={question}
           onAnswer={onAnswer}
@@ -158,7 +158,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="underline focus-visible:outline-none focus-visible:shadow-focus"
             onClick={() => void fetchNextPage()}
             disabled={isFetchingNextPage}
           >
@@ -174,7 +174,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
           {t("agents.questions.gone")}{" "}
           <button
             type="button"
-            className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="underline focus-visible:outline-none focus-visible:shadow-focus"
             onClick={() => router.refresh()}
           >
             {t("agents.questions.refresh")}
@@ -186,8 +186,8 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
           {t("agents.questions.unreachable")}{" "}
           <button
             type="button"
-            className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-            onClick={() => void linked.refetch()}
+            className="underline focus-visible:outline-none focus-visible:shadow-focus"
+            onClick={() => void linked.query.refetch()}
           >
             {t("agents.questions.tryAgain")}
           </button>

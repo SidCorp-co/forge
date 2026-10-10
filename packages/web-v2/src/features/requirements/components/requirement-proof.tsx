@@ -7,22 +7,23 @@ import { Written } from "@/lib/i18n/written";
 import { BC_VERDICTS, type BcVerdict, type CoverageIssue, type HistorySource, type RequirementCriteriaChanges, type RequirementHistoryEntry } from "@forge/contracts/requirements";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
-import { ActorChip, AGENT_TINT, FilterChip, LEGEND, SegmentedControl, StatusBadge, statusReading, VerdictEvidence, WhoMark } from "@/design";
+import { ActorChip, FilterChip, LEGEND, SegmentedControl, StatusBadge, statusReading, VerdictEvidence, WhoMark } from "@/design";
+import { cn } from "@/lib/utils/cn";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
-import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
+import type { SuggestionView as Suggestion } from "@/features/suggestions";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
 import { issueHref } from "@/lib/routes/issues";
 import { agreedTitle, diffColours, VerdictDot } from "./standing-bits";
 
 const Ins = ({ children }: { children: ReactNode }) => (
-  <ins className="rounded-[3px] px-[3px] no-underline" style={{ background: diffColours.ins.bg, color: diffColours.ins.fg }}>
+  <ins className="rounded-3 px-0.75 no-underline" style={{ background: diffColours.ins.bg, color: diffColours.ins.fg }}>
     {children}
   </ins>
 );
 const Del = ({ children }: { children: ReactNode }) => (
-  <del className="rounded-[3px] px-[3px]" style={{ background: diffColours.del.bg, color: diffColours.del.fg }}>
+  <del className="rounded-3 px-0.75" style={{ background: diffColours.del.bg, color: diffColours.del.fg }}>
     {children}
   </del>
 );
@@ -34,8 +35,8 @@ function listDiff(label: string, before: string[] = [], after: string[] = []) {
   if (added.length === 0 && removed.length === 0) return null;
   return (
     <div key={label}>
-      <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">{label}</h4>
-      <ul className="grid list-disc gap-0.5 pl-[18px] text-14">
+      <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{label}</h4>
+      <ul className="grid list-disc gap-0.5 pl-4.5 text-14">
         {kept.map((x) => (
           <li key={`k-${x}`}>{x}</li>
         ))}
@@ -64,9 +65,9 @@ function criteriaDiff(label: string, before: RequirementCriterion[], after: Requ
     const now = after.find((c) => c.code === code);
     if (was && now && was.body === now.body) continue;
     rows.push(
-      <div key={code} className="grid grid-cols-[48px_minmax(0,1fr)] gap-2.5 border-b border-line-subtle py-2 text-14 last:border-0">
-        <span className="font-mono text-11-5 font-semibold text-muted">{code}</span>
-        <span className="grid gap-1">
+      <div key={code} className="flex gap-2.5 border-b border-line-subtle py-2 text-14 last:border-0">
+        <span className="w-12 flex-none font-mono text-12 font-semibold text-muted">{code}</span>
+        <span className="grid min-w-0 flex-1 gap-1">
           {was ? <Del>{was.body}</Del> : null}
           {now ? <Ins>{now.body}</Ins> : null}
         </span>
@@ -76,7 +77,7 @@ function criteriaDiff(label: string, before: RequirementCriterion[], after: Requ
   if (rows.length === 0) return null;
   return (
     <div key="criteria">
-      <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">{label}</h4>
+      <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{label}</h4>
       {rows}
     </div>
   );
@@ -90,7 +91,7 @@ export function RevisionDiff({ base, next }: { base: RequirementRevision | undef
   const parts = [
     a.goal !== b.goal ? (
       <div key="goal">
-        <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">{t("requirements.diff.goal")}</h4>
+        <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{t("requirements.diff.goal")}</h4>
         <p className="grid gap-1 text-14">
           {a.goal ? <Del>{a.goal}</Del> : null}
           {b.goal ? <Ins>{b.goal}</Ins> : null}
@@ -99,7 +100,7 @@ export function RevisionDiff({ base, next }: { base: RequirementRevision | undef
     ) : null,
     base?.kind !== next.kind ? (
       <div key="kind" data-testid="revision-diff-kind">
-        <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">{t("requirements.picture.edit.kind")}</h4>
+        <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{t("requirements.picture.edit.kind")}</h4>
         <p className="flex flex-wrap gap-2 text-14">
           <Del>{base?.kind ? t(`requirements.picture.kind.${base.kind}`) : t("requirements.picture.edit.kindNone")}</Del>
           <Ins>{next.kind ? t(`requirements.picture.kind.${next.kind}`) : t("requirements.picture.edit.kindNone")}</Ins>
@@ -111,7 +112,7 @@ export function RevisionDiff({ base, next }: { base: RequirementRevision | undef
     listDiff(t("requirements.overview.outOfScope"), a.scopeOut, b.scopeOut),
     criteriaDiff(t("requirements.criteria.heading"), base?.criteria ?? [], next.criteria),
   ].filter(Boolean);
-  if (parts.length === 0) return <p className="text-12-5 text-subtle">{t("requirements.diff.unchanged")}</p>;
+  if (parts.length === 0) return <p className="text-13 text-subtle">{t("requirements.diff.unchanged")}</p>;
   return <div data-testid="revision-diff">{parts}</div>;
 }
 
@@ -128,7 +129,7 @@ export function CriteriaChanges({ changes }: { changes: RequirementCriteriaChang
   ).filter(([, codes]) => codes.length > 0);
   if (groups.length === 0) return null;
   return (
-    <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-12-5 text-muted" data-testid="criteria-changes">
+    <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-13 text-muted" data-testid="criteria-changes">
       {groups.map(([kind, codes]) => (
         <span key={kind} data-change={kind}>
           {t(`label.artifactChange.${kind}`)} <span className="font-mono text-12 text-fg">{codes.join(", ")}</span>
@@ -149,7 +150,7 @@ const VERDICT_WORD: Record<NonNullable<CoverageIssue["verdict"]>, ProductCopyKey
 function byIssue(links: CoverageIssue[]) {
   const seen = new Map<string, CoverageIssue[]>();
   for (const l of links) seen.set(l.issueId, [...(seen.get(l.issueId) ?? []), l]);
-  return [...seen.values()].map((ls) => ({ i: ls[0] as CoverageIssue, links: ls, stale: ls.every((l) => l.stale) }));
+  return [...seen.values()].map((ls) => ({ i: ls[0], links: ls, stale: ls.every((l) => l.stale) }));
 }
 
 /** The verdict pills over the checklist: every criterion, then each verdict a criterion stands at, with its count. */
@@ -194,11 +195,11 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
         const crit = wording.get(c.code);
         const issues = byIssue(c.issues);
         return (
-          <li key={c.code} className="grid grid-cols-[16px_minmax(0,1fr)] gap-x-2.5 border-b border-line-subtle py-3" data-testid="criterion-row" data-verdict={c.verdict}>
-            <span className="pt-0.5">
+          <li key={c.code} className="flex gap-x-2.5 border-b border-line-subtle py-3" data-testid="criterion-row" data-verdict={c.verdict}>
+            <span className="w-4 flex-none pt-0.5">
               <VerdictDot verdict={c.verdict} />
             </span>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               {developer ? (
                 <div className="mb-0.5 flex flex-wrap items-baseline gap-x-2">
                   <span className="font-mono text-12 font-semibold text-muted" title={crit ? t("requirements.criteria.since", { r: crit.sinceRevision }) : undefined} data-testid="criterion-code">
@@ -207,26 +208,26 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
                 </div>
               ) : null}
               {crit?.form === "scenario" ? (
-                <pre className="whitespace-pre-wrap font-mono text-12-5 leading-relaxed">{c.body}</pre>
+                <pre className="whitespace-pre-wrap font-mono text-13 leading-relaxed">{c.body}</pre>
               ) : (
                 <p className="text-14 leading-relaxed">{c.body}</p>
               )}
               {developer && c.counts ? (
-                <p className="mt-1 text-12-5 text-muted" data-testid="criterion-counts">
+                <p className="mt-1 text-13 text-muted" data-testid="criterion-counts">
                   {t("requirements.criteria.counts", { verdict: t(VERDICT_WORD[c.counts.verdict]), issue: c.counts.displayId, n: c.counts.criterion })}
                   <span className="font-mono text-12"> · {c.counts.identity}</span>
                   <span title={time.dateTime(c.counts.at)}> · {time.relative(c.counts.at)}</span>
                 </p>
               ) : null}
               {c.why ? (
-                <p className="mt-1 text-12-5 text-muted" data-testid="criterion-why">
+                <p className="mt-1 text-13 text-muted" data-testid="criterion-why">
                   {c.why}
                 </p>
               ) : null}
               {developer && crit && shown !== null && crit.sinceRevision === shown && shown > 1 ? (
                 <span className="mt-1 inline-block text-12 text-muted">{t("requirements.criteria.changedIn", { r: shown })}</span>
               ) : null}
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-12-5">
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-13">
                 {issues.length === 0 && c.uncoveredReason ? (
                   <span className="text-subtle" data-testid="criterion-uncovered">{t("requirements.criteria.leftUncovered", { reason: c.uncoveredReason })}</span>
                 ) : issues.length === 0 ? (
@@ -234,7 +235,7 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
                 ) : (
                   issues.map(({ i, stale }) => (
                     <span key={i.issueId} className="inline-flex min-w-0 items-center gap-1.5">
-                      <Link href={issueHref(slug, i.displayId)} className="max-w-[36ch] truncate text-link hover:underline" title={`${i.displayId} · ${i.title}`}>
+                      <Link href={issueHref(slug, i.displayId)} className="max-w-xs truncate text-link hover:underline" title={`${i.displayId} · ${i.title}`}>
                         {i.title}
                       </Link>
                       <span className="shrink-0 whitespace-nowrap font-mono text-12 text-subtle" data-testid="criterion-issue-key">{i.displayId}</span>
@@ -245,7 +246,7 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
                 )}
               </div>
               {c.issues.length > 0 ? (
-                <details className="mt-1.5 text-12-5" data-testid="criterion-evidence">
+                <details className="mt-1.5 text-13" data-testid="criterion-evidence">
                   <summary className="cursor-pointer select-none font-medium text-muted hover:text-fg">{t("requirements.criteria.evidence", { n: c.issues.length })}</summary>
                   <ul className="mt-1 grid gap-0.5 pl-3">
                     {issues.flatMap(({ i, links }) =>
@@ -287,6 +288,9 @@ type Check = { check?: unknown; passed?: unknown; detail?: unknown };
  * (ISS-453). Nothing schedules a check, so a requirement it was never run on says nothing rather than
  * a line that reads as work somebody owes.
  */
+/** A payload cell read as words: the assistant writes strings, and anything else reads as none. */
+const wordsOf = (v: unknown) => (typeof v === "string" ? v : "");
+
 export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
   const t = useCopy();
   const r = suggestions.find((s) => s.kind === "readiness");
@@ -298,15 +302,15 @@ export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
     <>
     <span aria-hidden>·</span>
     <span className="inline-flex flex-wrap items-center gap-2" data-testid="readiness">
-      <span title={checks.map((c) => t(c.passed === true ? "requirements.readiness.checkMet" : "requirements.readiness.checkNotMet", { check: String(c.check ?? "") })).join("\n")}>
+      <span title={checks.map((c) => t(c.passed === true ? "requirements.readiness.checkMet" : "requirements.readiness.checkNotMet", { check: wordsOf(c.check) })).join("\n")}>
         {t("checklist.readinessAdvice")} <b className="font-semibold text-fg">{t("requirements.criteria.nOfM", { a: met, b: checks.length })}</b> {t("requirements.readiness.met")}
       </span>
       <span className="inline-flex gap-0.5">
         {checks.map((c) => (
           <span
-            key={`${String(c.check)}-${String(c.detail)}`}
-            title={`${String(c.check ?? "")}${typeof c.detail === "string" ? ` — ${c.detail}` : ""}`}
-            className="block h-2.5 w-4 rounded-[2px]"
+            key={`${wordsOf(c.check)}-${wordsOf(c.detail)}`}
+            title={`${wordsOf(c.check)}${typeof c.detail === "string" ? ` — ${c.detail}` : ""}`}
+            className="block h-2.5 w-4 rounded-2"
             style={{ background: c.passed === true ? LEGEND.ready.dot : LEGEND.you.dot }}
           />
         ))}
@@ -329,9 +333,9 @@ export function RevisionList({ d }: { d: RequirementDetail }) {
         const signed = agreed.get(r.revision);
         const at = r.decidedAt ?? r.proposedAt ?? r.createdAt;
         return (
-          <li key={r.revision} className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-start gap-x-3 border-b border-line-subtle py-2.5 text-13">
-            <span className="pt-0.5 font-mono text-12 font-semibold text-fg">r{r.revision}</span>
-            <div className="min-w-0">
+          <li key={r.revision} className="flex items-start gap-x-3 border-b border-line-subtle py-2.5 text-13">
+            <span className="w-9 flex-none pt-0.5 font-mono text-12 font-semibold text-fg">r{r.revision}</span>
+            <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge family="revision" value={r.state} />
                 {signed ? (
@@ -343,9 +347,9 @@ export function RevisionList({ d }: { d: RequirementDetail }) {
                   <ActorChip name={r.authorName ?? t("standing.who.itsAuthor")} kind={r.authorKind} size={16} />
                 </span>
               </div>
-              <Written className="mt-1 block text-13-5" text={r.changeSummary ?? r.reason} lang={r.writtenLang} />
+              <Written className="mt-1 block text-14" text={r.changeSummary ?? r.reason} lang={r.writtenLang} />
               <CriteriaChanges changes={r.criteriaChanges} />
-              {r.returnReason ? <p className="mt-0.5 text-12-5 text-muted">{t("requirements.revision.returned", { reason: r.returnReason })}</p> : null}
+              {r.returnReason ? <p className="mt-0.5 text-13 text-muted">{t("requirements.revision.returned", { reason: r.returnReason })}</p> : null}
             </div>
             <span className="whitespace-nowrap pt-0.5 text-12 text-subtle" title={time.dateTime(at)}>
               {time.relative(at)}
@@ -401,13 +405,12 @@ export function History({ entries }: { entries: RequirementHistoryEntry[] }) {
           return (
             <li
               key={e.id}
-              className="grid grid-cols-[20px_minmax(0,1fr)] gap-2.5 border-b border-line-subtle py-2.5 text-14 last:border-0"
-              style={question ? { background: AGENT_TINT.bg, borderLeft: `3px solid ${AGENT_TINT.dot}`, paddingLeft: 6 } : undefined}
+              className={cn("flex gap-2.5 border-b border-line-subtle py-2.5 text-14 last:border-0", question && "border-l-3 border-l-ai-9 bg-ai-bg pl-1.5")}
             >
-              <span className="pt-px">
+              <span className="w-5 flex-none pt-px">
                 <WhoMark kind={e.source} who={said(e.says.who, language)} size={18} />
               </span>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5 text-12 text-subtle">
                   <b className="text-13 font-semibold text-fg">{said(e.says.who, language)}</b>
                   <span className="text-12 font-medium text-muted">{said(e.says.kind, language)}</span>

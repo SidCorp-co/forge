@@ -4,6 +4,7 @@ import {
   draftPictureSchema,
   revisionKindField,
 } from '@forge/contracts/requirement-pictures';
+import { REQUIREMENT_TITLE_MAX, titleText } from '@forge/contracts/title-text';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { principalAgency } from '../issues/index.js';
@@ -145,7 +146,7 @@ const drawnFields = {
 
 const draftInput = z.strictObject({
   projectId: z.uuid(),
-  title: z.string().trim().min(1).max(500),
+  title: titleText(REQUIREMENT_TITLE_MAX),
   ...revisionFields,
   ...drawnFields,
   criteria: revisionFields.criteria.default([]),

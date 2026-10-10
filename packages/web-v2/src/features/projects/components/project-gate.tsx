@@ -20,11 +20,11 @@ function Waiting({ label, notFound, projectsQ }: { label: string; notFound?: { t
   const missing = notFound ?? { title: t("dash.notFound"), message: t("dash.notFoundMessage") };
   const { isLoading, isError, error, refetch } = projectsQ;
   return (
-    <div className="grid min-h-[60vh] place-items-center">
+    <div className="grid min-h-96 place-items-center">
       {isLoading ? (
         <ProjectLoader label={label} />
       ) : isError ? (
-        <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
+        <ErrorState message={formatApiError(error)} onRetry={() => void refetch()} />
       ) : (
         <ErrorState title={missing.title} message={missing.message} />
       )}
@@ -37,7 +37,7 @@ export function ProjectGate({ label, notFound, children }: GateProps<ProjectList
   const slug = useParams<{ slug: string }>()?.slug;
   const { ref, row, projectsQ } = useProjectRef(slug);
   if (!projectsQ.isError && row && ref === row.id) return <>{children(row)}</>;
-  if (row && !projectsQ.isError) return <div className="grid min-h-[60vh] place-items-center"><ProjectLoader label={label} /></div>;
+  if (row && !projectsQ.isError) return <div className="grid min-h-96 place-items-center"><ProjectLoader label={label} /></div>;
   return <Waiting label={label} notFound={notFound} projectsQ={projectsQ} />;
 }
 

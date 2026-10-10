@@ -1,7 +1,7 @@
 import { SENSITIVE_DATA_LEVELS, type SensitiveDataLevel } from "@forge/contracts/data-policy";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { SYSTEM_CONTEXT_TEMPLATE } from "@forge/contracts/system-graph";
-import { projectDescriptionOf } from "@/features/project-settings/project-document";
+import { projectDescriptionOf } from "@/features/project-settings";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { builtinTemplateTitle } from "./template-words";
 import type { FactRow, SystemGraph, WorkflowRecord } from "./types";

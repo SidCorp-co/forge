@@ -65,15 +65,15 @@ function Source({ answer, field }: { answer: ChecklistAnswer; field: ChecklistFo
   );
 }
 
-function AnswerRow({ row, revision, developer }: { row: Extract<Row, { kind: "answer" }>; revision: number | null; developer: boolean }) {
+function RecordedAnswer({ row, revision, developer }: { row: Extract<Row, { kind: "answer" }>; revision: number | null; developer: boolean }) {
   const t = useCopy();
   const { field, answer } = row;
   const corrected = correctedBy(answer, row.now);
   const state = corrected ? "corrected" : answer.provenance;
   return (
-    <div className="grid gap-x-6 gap-y-1 border-t border-line-subtle py-2.5 first:border-t-0 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" data-testid="checklist-row" data-question={field.name} data-state={state}>
-      <dt className="text-13 text-muted">{field.label}</dt>
-      <dd className="grid min-w-0 gap-1">
+    <div className="grid gap-x-6 gap-y-1 border-t border-line-subtle py-2.5 first:border-t-0 md:flex" data-testid="checklist-row" data-question={field.name} data-state={state}>
+      <dt className="min-w-0 text-13 text-muted md:flex-2">{field.label}</dt>
+      <dd className="grid min-w-0 gap-1 md:flex-3">
         <span className="flex flex-wrap items-center gap-2">
           <span className={`whitespace-pre-wrap break-words text-14 ${corrected ? "text-muted line-through" : "text-fg"}`}>{shownValue(field, answer.value)}</span>
           {answer.provenance === "assumed" ? <ToneBadge tone={corrected ? "done" : "neutral"} label={t("checklist.assumed")} title={t("checklist.assumed")} /> : null}
@@ -91,12 +91,12 @@ function AnswerRow({ row, revision, developer }: { row: Extract<Row, { kind: "an
   );
 }
 
-function GapRow({ row, answerAt }: { row: Extract<Row, { kind: "gap" }>; answerAt?: ((field: ChecklistFormField) => ReactNode) | undefined }) {
+function UnansweredQuestion({ row, answerAt }: { row: Extract<Row, { kind: "gap" }>; answerAt?: ((field: ChecklistFormField) => ReactNode) | undefined }) {
   const { field, gap } = row;
   return (
-    <div className="grid gap-x-6 gap-y-1 border-t border-line-subtle py-2.5 first:border-t-0 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" data-testid="checklist-row" data-question={field.name} data-state="gap">
-      <dt className="text-14 font-medium text-fg">{field.label}</dt>
-      <dd className="grid min-w-0 gap-1.5">
+    <div className="grid gap-x-6 gap-y-1 border-t border-line-subtle py-2.5 first:border-t-0 md:flex" data-testid="checklist-row" data-question={field.name} data-state="gap">
+      <dt className="min-w-0 text-14 font-medium text-fg md:flex-2">{field.label}</dt>
+      <dd className="grid min-w-0 gap-1.5 md:flex-3">
         <span className="text-13 leading-relaxed text-muted" data-testid="checklist-gap">
           {gapWords(field, gap)}
         </span>
@@ -108,7 +108,8 @@ function GapRow({ row, answerAt }: { row: Extract<Row, { kind: "gap" }>; answerA
 
 /**
  * One checklist's answers and gaps. Nothing is drawn for a checklist the item has not reached (no
- * reading now, no move); a move recorded before the checklist reads "No checklist" (BC-9).
+ * reading now, no move); a move recorded before the checklist reads "No checklist" where nothing
+ * stands now, and otherwise says so under a heading that reads the item as it stands (BC-9).
  */
 export function ChecklistAnswers({
   read,
@@ -131,17 +132,21 @@ export function ChecklistAnswers({
   if (!move && !read.now && !unrecorded) return null;
   const rows = rowsOf(read, move);
   const open = rows.filter((r) => r.kind === "gap").length;
-  const state = move
-    ? <span title={time.dateTime(move.at)}>{t("checklist.passed", { at: time.relative(move.at) })}</span>
-    : unrecorded
-      ? t("checklist.noChecklist")
-      : open === 0
-        ? t("checklist.complete")
-        : t("checklist.open", { n: open });
+  // a move recorded before the checklist judged nothing, but the item's own reading still stands:
+  // the heading says how it reads now, and the line under it why no move is shown
+  const state = move ? (
+    <span title={time.dateTime(move.at)}>{t("checklist.passed", { at: time.relative(move.at) })}</span>
+  ) : rows.length === 0 ? (
+    t("checklist.noChecklist")
+  ) : open === 0 ? (
+    t("checklist.complete")
+  ) : (
+    t("checklist.open", { n: open })
+  );
   return (
     <section data-testid="checklist" data-checklist={read.id} data-standing={move ? "passed" : unrecorded ? "no_checklist" : read.now?.complete ? "complete" : "open"}>
-      <ViewHeading right={<span className="text-12-5 text-muted">{state}</span>}>{read.form.title}</ViewHeading>
-      {rows.length > 0 ? <dl className="grid">{rows.map((r) => (r.kind === "answer" ? <AnswerRow key={r.field.name} row={r} revision={revision} developer={developer} /> : <GapRow key={r.field.name} row={r} answerAt={answerAt} />))}</dl> : null}
+      <ViewHeading right={<span className="text-13 text-muted">{state}</span>}>{read.form.title}</ViewHeading>
+      {rows.length > 0 ? <dl className="grid">{rows.map((r) => (r.kind === "answer" ? <RecordedAnswer key={r.field.name} row={r} revision={revision} developer={developer} /> : <UnansweredQuestion key={r.field.name} row={r} answerAt={answerAt} />))}</dl> : null}
     </section>
   );
 }

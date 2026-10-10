@@ -16,7 +16,7 @@
 import { markdown } from "@codemirror/lang-markdown";
 import { useQuery } from "@tanstack/react-query";
 import CodeMirror, { type EditorView } from "@uiw/react-codemirror";
-import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { BodyView, IconButton, PreviewPane, Spinner, useDebounced } from "@/design";
 import type { IconName } from "@/design/icons/icon";
 import { formatApiError } from "@/lib/api/error";
@@ -101,10 +101,10 @@ export function BodyEditor({
 }: BodyEditorProps) {
   const [showPreview, setShowPreview] = useState(false);
   const t = useCopy();
-  const view = useRef<EditorView | null>(null);
+  const viewRef = useRef<EditorView | null>(null);
   const debounced = useDebounced(value, PREVIEW_DEBOUNCE_MS);
 
-  const extensions = useMemo(() => [markdown()], []);
+  const extensions = [markdown()];
 
   const preview = useQuery({
     queryKey: ["body", "preview", debounced],
@@ -113,9 +113,9 @@ export function BodyEditor({
     retry: false,
   });
 
-  const run = useCallback((tool: Tool) => {
-    if (view.current) applyTool(tool, view.current);
-  }, []);
+  const run = (tool: Tool) => {
+    if (viewRef.current) applyTool(tool, viewRef.current);
+  };
 
   return (
     <div className="space-y-2">
@@ -136,12 +136,12 @@ export function BodyEditor({
         ))}
       </div>
 
-      <div className="overflow-hidden rounded-md border border-line-strong bg-surface focus-within:border-[color:var(--link)] focus-within:shadow-[var(--shadow-focus)]">
+      <div className="overflow-hidden rounded-md border border-line-strong bg-surface focus-within:border-link focus-within:shadow-focus">
         <CodeMirror
           value={value}
           onChange={onChange}
           onCreateEditor={(v) => {
-            view.current = v;
+            viewRef.current = v;
             v.dom.addEventListener("keydown", (e) => shortcut(e, v));
           }}
           extensions={extensions}
@@ -169,7 +169,7 @@ export function BodyEditor({
                 <Spinner size={12} /> {t("issues.editor.checking")}
               </p>
             ) : preview.isError ? (
-              <p className="fg-body-sm text-[color:var(--red-600)]">
+              <p className="fg-body-sm text-danger-11">
                 {formatApiError(preview.error)}
               </p>
             ) : null

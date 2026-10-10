@@ -52,12 +52,12 @@ function Trigger({ compact, project, open, onClick }: { compact: boolean; projec
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={label}
-        className={cn("flex w-[76px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px transition-colors", open ? "bg-hover" : "hover:bg-hover")}
+        className={cn("flex w-19 flex-col items-center gap-1 rounded-md pb-1.5 pt-5px transition-colors", open ? "bg-hover" : "hover:bg-hover")}
       >
         <span className="relative">
           <ProjectMark tint={project.tint} ink={project.ink} initials={project.initials} size={30} radius="var(--r-md)" />
           <span
-            className="absolute -bottom-[3px] -right-1 inline-flex size-[15px] items-center justify-center rounded-pill text-subtle"
+            className="absolute -bottom-0.75 -right-1 inline-flex size-3.75 items-center justify-center rounded-pill text-subtle"
             style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)" }}
           >
             <Icon name="chevronUpDown" size={9} strokeWidth={2.4} />
@@ -93,7 +93,7 @@ function AddProject({ compact, onClick }: { compact: boolean; onClick: () => voi
       aria-label={t("shell.switcher.add")}
       className={cn(
         "flex items-center rounded-md text-subtle transition-colors hover:bg-hover",
-        compact ? "w-[76px] flex-col gap-1 pb-1.5 pt-5px" : "w-full gap-2.5 px-2.5 py-2",
+        compact ? "w-19 flex-col gap-1 pb-1.5 pt-5px" : "w-full gap-2.5 px-2.5 py-2",
       )}
     >
       <span className="inline-flex size-7 items-center justify-center rounded-md border border-dashed border-line">
@@ -104,7 +104,7 @@ function AddProject({ compact, onClick }: { compact: boolean; onClick: () => voi
   );
 }
 
-function SwitcherRow({
+function SwitcherItem({
   project: p,
   active,
   onSelect,
@@ -118,9 +118,9 @@ function SwitcherRow({
   onTogglePin: () => void;
 }) {
   const t = useCopy();
-  const quiet = "inline-flex size-7 flex-none items-center justify-center rounded-md transition-colors hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
+  const quiet = "inline-flex size-7 flex-none items-center justify-center rounded-md transition-colors hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-focus";
   return (
-    <div className={cn("group flex min-h-[40px] items-center gap-2.5 rounded-md px-2 py-1", active ? "bg-accent-tint" : "hover:bg-hover")}>
+    <div className={cn("group flex min-h-10 items-center gap-2.5 rounded-md px-2 py-1", active ? "bg-accent-tint" : "hover:bg-hover")}>
       <button
         type="button"
         onClick={onSelect}
@@ -152,7 +152,7 @@ function Action({ icon, label, onClick }: { icon: IconName; label: string; onCli
     <button
       type="button"
       onClick={onClick}
-      className="flex min-h-[36px] w-full items-center gap-2.5 rounded-md px-2 text-left text-13 font-semibold text-muted transition-colors hover:bg-hover hover:text-fg"
+      className="flex min-h-9 w-full items-center gap-2.5 rounded-md px-2 text-left text-13 font-semibold text-muted transition-colors hover:bg-hover hover:text-fg"
     >
       <Icon name={icon} size={15} className="text-subtle" />
       {label}
@@ -165,15 +165,15 @@ export function ProjectSwitcher(props: ProjectSwitcherProps) {
   const { compact, project, projects, activeSlug } = props;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const anchor = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const rows = useMemo(() => switcherRows(projects, query), [projects, query]);
   const t = useCopy();
 
   if (!project) return projects.length === 0 ? <AddProject compact={compact} onClick={props.onNewProject} /> : null;
 
   const hold = () => {
-    if (timer.current) clearTimeout(timer.current);
+    if (timerRef.current) clearTimeout(timerRef.current);
   };
   const show = () => {
     hold();
@@ -186,7 +186,7 @@ export function ProjectSwitcher(props: ProjectSwitcherProps) {
   };
   const leave = () => {
     hold();
-    timer.current = setTimeout(close, 150);
+    timerRef.current = setTimeout(close, 150);
   };
   const then = (act: () => void) => () => {
     close();
@@ -195,17 +195,17 @@ export function ProjectSwitcher(props: ProjectSwitcherProps) {
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover only keeps the list open for a pointer; the button inside opens it from the keyboard
-    <div ref={anchor} className={compact ? "relative" : "relative w-full"} onMouseEnter={show} onMouseLeave={leave}>
+    <div ref={anchorRef} className={compact ? "relative" : "relative w-full"} onMouseEnter={show} onMouseLeave={leave}>
       <Trigger compact={compact} project={project} open={open} onClick={() => (open ? close() : show())} />
       <Popover
         open={open}
-        anchor={anchor}
+        anchor={anchorRef}
         onDismiss={close}
         placement="right-start"
         gap={compact ? 10 : 6}
         role="dialog"
         aria-label={t("shell.switcher.label")}
-        className="flex w-[300px] flex-col rounded-lg border border-line bg-surface shadow-[var(--shadow-lg)]"
+        className="flex w-75 flex-col"
       >
         <div className="flex items-center gap-2 border-b border-line-subtle px-3 py-2">
           <Icon name="search" size={14} className="text-subtle" />
@@ -218,9 +218,9 @@ export function ProjectSwitcher(props: ProjectSwitcherProps) {
             className="flex-1 border-none bg-transparent py-0.5 text-13 text-fg outline-none placeholder:text-disabled"
           />
         </div>
-        <div className="max-h-[300px] min-h-0 overflow-y-auto p-1.5">
+        <div className="max-h-75 min-h-0 overflow-y-auto p-1.5">
           {rows.map((p) => (
-            <SwitcherRow
+            <SwitcherItem
               key={p.id}
               project={p}
               active={p.slug === activeSlug}

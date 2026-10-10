@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button, Input, NativeSelect } from "@/design";
-import { useOrgs } from "@/features/orgs/hooks";
-import { useProjects } from "@/features/projects/hooks";
-import { isOrgAdmin } from "@/features/projects/write-access";
+import { Button, Input, NativeSelect, Select } from "@/design";
+import { useOrgs } from "@/features/orgs";
+import { useProjects } from "@/features/projects";
+import { isOrgAdmin } from "@/features/projects";
 import { readingOf, refusalsOf, type Refusal } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { ecosystemApi } from "../api";
@@ -85,19 +85,20 @@ function GateField({ doc, set }: { doc: EcosystemDocument; set: Patch }) {
   const t = useCopy();
   return (
     <Field label={t("ecosystem.form.beforeSent")}>
-      <span className="grid gap-1 rounded-md border border-line px-2.5 py-1.5 text-13">
+      <span className="grid gap-1 border-y border-line py-1.5 text-13">
         {DOCUMENT_TYPES.map((type) => (
           <span key={type} className="flex items-center justify-between gap-2">
             {typeLabel(type, t)}
-            <select
+            <Select
               aria-label={t("ecosystem.form.typeBeforeSent", { type: typeLabel(type, t) })}
-              className="rounded border border-line bg-surface px-1 font-semibold"
+              className="w-48"
               value={doc.gate[type]}
-              onChange={(e) => set((d) => ({ ...d, gate: { ...d.gate, [type]: e.target.value as GateMode } }))}
-            >
-              <option value="publish">{t("ecosystem.form.sendAtOnce")}</option>
-              <option value="approve">{t("ecosystem.form.adminApproves")}</option>
-            </select>
+              onChange={(v) => set((d) => ({ ...d, gate: { ...d.gate, [type]: v as GateMode } }))}
+              options={[
+                { value: "publish", label: t("ecosystem.form.sendAtOnce") },
+                { value: "approve", label: t("ecosystem.form.adminApproves") },
+              ]}
+            />
           </span>
         ))}
       </span>
@@ -120,31 +121,25 @@ function MembersField({
   const addable = projects.filter((p) => !members.includes(p.id));
   return (
     <Field label={label}>
-      <span className="flex flex-wrap items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5">
+      <span className="flex flex-wrap items-center gap-1.5 border-y border-line py-1.5">
         {members.map((id) => (
           <button
             key={id}
             type="button"
             onClick={() => setMembers((m) => m.filter((x) => x !== id))}
-            className="rounded-pill px-2 py-px text-11-5 font-semibold"
-            style={{ background: "var(--cobalt-50)", color: "var(--cobalt-700)" }}
+            className="rounded-pill bg-info-3 px-2 py-px text-12 font-semibold text-info-11"
           >
             {projects.find((p) => p.id === id)?.slug ?? id} ✕
           </button>
         ))}
-        <select
+        <Select
           aria-label={t("ecosystem.form.addProject")}
-          className="bg-transparent text-12 text-subtle"
+          className="w-48"
           value=""
-          onChange={(e) => e.target.value && setMembers((m) => [...m, e.target.value])}
-        >
-          <option value="">{t("ecosystem.form.addProjectOption")}</option>
-          {addable.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.slug}
-            </option>
-          ))}
-        </select>
+          placeholder={t("ecosystem.form.addProjectOption")}
+          onChange={(v) => v && setMembers((m) => [...m, v])}
+          options={addable.map((p) => ({ value: p.id, label: p.slug }))}
+        />
       </span>
     </Field>
   );
@@ -190,7 +185,7 @@ function Form({ held }: { held: HeldEcosystem | null }) {
   const set: Patch = (patch) => setDoc((d) => patch(structuredClone(d)));
   const { save, submit, invited } = useSave(held, doc, steward, members);
   return (
-    <div className="mx-auto grid w-full max-w-[520px] rounded-[14px] border border-line bg-surface shadow-lg">
+    <div className="mx-auto grid w-full max-w-130 rounded-sm border border-line bg-surface">
       <div className="border-b border-line-subtle px-5 py-4">
         <h1 className="text-16 font-semibold">{held ? t("ecosystem.form.settingsOf", { name: held.document.ecosystem.name }) : t("ecosystem.form.new")}</h1>
       </div>

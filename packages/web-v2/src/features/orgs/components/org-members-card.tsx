@@ -30,7 +30,7 @@ import {
 
 const ORG_ROLES = ["member", "admin", "owner"] as const;
 
-export function OrgMembersCard({ org, onDeleted }: { org: OrgListItem; onDeleted: () => void }) {
+export function OrgMembers({ org, onDeleted }: { org: OrgListItem; onDeleted: () => void }) {
   const t = useCopy();
   const L = useLabel();
   const ORG_ROLE_OPTIONS: SelectOption[] = ORG_ROLES.map((value) => ({ value, label: L("role", value) }));
@@ -136,7 +136,6 @@ function OwnerActions({ org, onDeleted }: { org: OrgListItem; onDeleted: () => v
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
               placeholder={org.name}
-              autoFocus
             />
           </Field>
           <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">

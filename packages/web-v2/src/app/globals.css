@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter/wght.css";
 @import "../styles/tokens.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -37,6 +38,13 @@
 @custom-variant xl (@container page (width >= 80rem));
 @custom-variant 2xl (@container page (width >= 96rem));
 @custom-variant window-md (@media (width >= 48rem));
+/* The page column itself, less the sidebar beside it: what the shell's top bar has to lay out in.
+   The page breakpoints above read the window while the Ask Agent panel is closed, and the 280px
+   sidebar takes part of it, so a bar laid out by them crowds its title at 768-1040px of window
+   (FB-114). The detail header and the title block that stands in for it read `column` instead,
+   which is `[data-page]` in the shell and the window outside it. */
+@custom-variant column-md (@container column (width >= 48rem));
+@custom-variant max-column-md (@container column (width < 48rem));
 
 /* ============================================================
    Tailwind v4 theme mapping — utilities reference the SEMANTIC
@@ -44,31 +52,36 @@
    override of the semantic tokens re-skins every utility for free.
    No tailwind.config.ts; this block is the config.
    ============================================================ */
-/* Type ramp. Every step is a size this UI already renders — the ramp names them,
-   it does not move them. Sixteen steps with half-pixel neighbours (11/11.5/12/12.5)
-   is drift made visible rather than a scale anyone chose; consolidating it is a
-   one-file decision here instead of 180 scattered edits. */
+/* Type: one scale, 12 / 13 / 14 / 16 / 20 / 24, each with its fixed line-height (tokens.css
+   --type-*). The off-scale names the tree already spells (8.5 … 34) are kept as aliases snapped to
+   the nearest step, so every use draws on the scale; new code spells only the six. */
 @theme {
-  --text-8-5: 8.5px;
-  --text-9: 9px;
-  --text-9-5: 9.5px;
-  --text-10: 10px;
-  --text-11: 11px;
-  --text-11-5: 11.5px;
-  --text-12: 12px;
-  --text-12-5: 12.5px;
-  --text-13: 13px;
-  --text-13-5: 13.5px;
-  --text-14: 14px;
-  --text-15: 15px;
-  --text-16: 16px;
-  --text-20: 20px;
-  --text-22: 22px;
-  --text-34: 34px;
+  --text-12: 12px;  --text-12--line-height: 16px;
+  --text-13: 13px;  --text-13--line-height: 18px;
+  --text-14: 14px;  --text-14--line-height: 20px;
+  --text-16: 16px;  --text-16--line-height: 24px;
+  --text-20: 20px;  --text-20--line-height: 28px;
+  --text-24: 24px;  --text-24--line-height: 32px;
 
-  /* Hairline radii below the --r-xs 4px floor: a 2px corner on an 8px cell is a
-     real repeated decision, the 1/3/5px ones are single sites. Named by value so
-     the ramp invents no design. */
+  --text-8-5: 12px;  --text-8-5--line-height: 16px;
+  --text-9: 12px;    --text-9--line-height: 16px;
+  --text-9-5: 12px;  --text-9-5--line-height: 16px;
+  --text-10: 12px;   --text-10--line-height: 16px;
+  --text-11: 12px;   --text-11--line-height: 16px;
+  --text-11-5: 12px; --text-11-5--line-height: 16px;
+  --text-12-5: 13px; --text-12-5--line-height: 18px;
+  --text-13-5: 14px; --text-13-5--line-height: 20px;
+  --text-15: 14px;   --text-15--line-height: 20px;
+  --text-22: 24px;   --text-22--line-height: 32px;
+  --text-34: 24px;   --text-34--line-height: 32px;
+  --text-xs: 12px;   --text-xs--line-height: 16px;
+  --text-sm: 13px;   --text-sm--line-height: 18px;
+  --text-base: 14px; --text-base--line-height: 20px;
+  --text-lg: 16px;   --text-lg--line-height: 24px;
+  --text-xl: 20px;   --text-xl--line-height: 28px;
+  --text-2xl: 24px;  --text-2xl--line-height: 32px;
+
+  /* Hairline radii for marks inside a control (a 2px corner on an 8px cell). */
   --radius-1: 1px;
   --radius-2: 2px;
   --radius-3: 3px;
@@ -78,6 +91,7 @@
   --spacing-3px: 3px;
   --spacing-5px: 5px;
   --spacing-palette-top: 14vh;
+  --spacing-row: var(--row-h);
 
   --leading-snug-1-5: 1.5;
   --leading-relaxed-1-6: 1.6;
@@ -91,7 +105,7 @@
      resolved to itself → empty → the browser fell back to a system sans, and
      Hanken/JetBrains never rendered even though they loaded. Mirrors the
      full stacks in styles/tokens.css. */
-  --font-sans: var(--font-hanken), "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   /* surfaces */
@@ -132,6 +146,26 @@
   --color-green: var(--green-500);
   --color-red: var(--red-500);
 
+  /* the scales, step by step (bg-neutral-3, text-danger-11, border-ok-7 …) */
+  --color-neutral-1: var(--neutral-1); --color-neutral-2: var(--neutral-2); --color-neutral-3: var(--neutral-3); --color-neutral-4: var(--neutral-4); --color-neutral-5: var(--neutral-5); --color-neutral-6: var(--neutral-6); --color-neutral-7: var(--neutral-7); --color-neutral-8: var(--neutral-8); --color-neutral-9: var(--neutral-9); --color-neutral-10: var(--neutral-10); --color-neutral-11: var(--neutral-11); --color-neutral-12: var(--neutral-12);
+  --color-accent-1: var(--accent-1); --color-accent-2: var(--accent-2); --color-accent-3: var(--accent-3); --color-accent-4: var(--accent-4); --color-accent-5: var(--accent-5); --color-accent-6: var(--accent-6); --color-accent-7: var(--accent-7); --color-accent-8: var(--accent-8); --color-accent-9: var(--accent-9); --color-accent-10: var(--accent-10); --color-accent-11: var(--accent-11); --color-accent-12: var(--accent-12);
+  --color-ok-1: var(--ok-1); --color-ok-2: var(--ok-2); --color-ok-3: var(--ok-3); --color-ok-4: var(--ok-4); --color-ok-5: var(--ok-5); --color-ok-6: var(--ok-6); --color-ok-7: var(--ok-7); --color-ok-8: var(--ok-8); --color-ok-9: var(--ok-9); --color-ok-10: var(--ok-10); --color-ok-11: var(--ok-11); --color-ok-12: var(--ok-12);
+  --color-warn-1: var(--warn-1); --color-warn-2: var(--warn-2); --color-warn-3: var(--warn-3); --color-warn-4: var(--warn-4); --color-warn-5: var(--warn-5); --color-warn-6: var(--warn-6); --color-warn-7: var(--warn-7); --color-warn-8: var(--warn-8); --color-warn-9: var(--warn-9); --color-warn-10: var(--warn-10); --color-warn-11: var(--warn-11); --color-warn-12: var(--warn-12);
+  --color-danger-1: var(--danger-1); --color-danger-2: var(--danger-2); --color-danger-3: var(--danger-3); --color-danger-4: var(--danger-4); --color-danger-5: var(--danger-5); --color-danger-6: var(--danger-6); --color-danger-7: var(--danger-7); --color-danger-8: var(--danger-8); --color-danger-9: var(--danger-9); --color-danger-10: var(--danger-10); --color-danger-11: var(--danger-11); --color-danger-12: var(--danger-12);
+  --color-info-1: var(--info-1); --color-info-2: var(--info-2); --color-info-3: var(--info-3); --color-info-4: var(--info-4); --color-info-5: var(--info-5); --color-info-6: var(--info-6); --color-info-7: var(--info-7); --color-info-8: var(--info-8); --color-info-9: var(--info-9); --color-info-10: var(--info-10); --color-info-11: var(--info-11); --color-info-12: var(--info-12);
+  --color-muted-1: var(--muted-1); --color-muted-2: var(--muted-2); --color-muted-3: var(--muted-3); --color-muted-4: var(--muted-4); --color-muted-5: var(--muted-5); --color-muted-6: var(--muted-6); --color-muted-7: var(--muted-7); --color-muted-8: var(--muted-8); --color-muted-9: var(--muted-9); --color-muted-10: var(--muted-10); --color-muted-11: var(--muted-11); --color-muted-12: var(--muted-12);
+  --color-ai-1: var(--ai-1); --color-ai-2: var(--ai-2); --color-ai-3: var(--ai-3); --color-ai-4: var(--ai-4); --color-ai-5: var(--ai-5); --color-ai-6: var(--ai-6); --color-ai-7: var(--ai-7); --color-ai-8: var(--ai-8); --color-ai-9: var(--ai-9); --color-ai-10: var(--ai-10); --color-ai-11: var(--ai-11); --color-ai-12: var(--ai-12);
+
+  /* status aliases: bg-status-ok-bg, text-status-danger-fg, border-status-warn-line … */
+  --color-status-ok-bg: var(--status-ok-bg); --color-status-ok-line: var(--status-ok-line); --color-status-ok-solid: var(--status-ok-solid); --color-status-ok-fg: var(--status-ok-fg);
+  --color-status-warn-bg: var(--status-warn-bg); --color-status-warn-line: var(--status-warn-line); --color-status-warn-solid: var(--status-warn-solid); --color-status-warn-fg: var(--status-warn-fg);
+  --color-status-danger-bg: var(--status-danger-bg); --color-status-danger-line: var(--status-danger-line); --color-status-danger-solid: var(--status-danger-solid); --color-status-danger-fg: var(--status-danger-fg);
+  --color-status-info-bg: var(--status-info-bg); --color-status-info-line: var(--status-info-line); --color-status-info-solid: var(--status-info-solid); --color-status-info-fg: var(--status-info-fg);
+  --color-status-muted-bg: var(--status-muted-bg); --color-status-muted-line: var(--status-muted-line); --color-status-muted-solid: var(--status-muted-solid); --color-status-muted-fg: var(--status-muted-fg);
+  --color-sel: var(--sel-bg);
+  --color-ai: var(--ai-fg);
+  --color-ai-bg: var(--ai-bg);
+
   /* pipeline stage hues */
   --color-stage-triage: var(--stage-triage);
   --color-stage-clarify: var(--stage-clarify);
@@ -141,7 +175,8 @@
   --color-stage-test: var(--stage-test);
   --color-stage-release: var(--stage-release);
 
-  /* radii (utilities: rounded-sm/md/lg/xl/pill) */
+  /* radii (utilities: rounded-surface/xs/sm/md/lg/xl/pill): a surface is square, a control 4–6px */
+  --radius-surface: var(--r-surface);
   --radius-xs: var(--r-xs);
   --radius-sm: var(--r-sm);
   --radius-md: var(--r-md);
@@ -149,7 +184,10 @@
   --radius-xl: var(--r-xl);
   --radius-pill: var(--r-pill);
 
-  /* shadows (utilities: shadow-xs/sm/md/lg) */
+  /* shadows: overlays only (shadow-overlay; xs and sm draw nothing) */
+  --shadow-overlay: var(--shadow-overlay);
+  --shadow-focus: var(--shadow-focus);
+  --shadow-focus-accent: var(--shadow-focus-accent);
   --shadow-xs: var(--shadow-xs);
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
@@ -192,18 +230,22 @@
 
   /* the window, as the container every breakpoint reads (see the variants above) */
   body {
-    container: page / inline-size;
+    container: page column / inline-size;
     background: var(--bg-app);
     color: var(--fg-default);
     font-family: var(--font-sans);
-    font-size: 15px;
-    line-height: 1.55;
+    font-size: var(--type-14);
+    line-height: var(--type-14-lh);
+    /* Inter's straight-sided 1 (cv11) and tabular figures, so counts and times never shift width */
+    font-feature-settings: "cv11" 1, "tnum" 1;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
 
-  /* the page column, as that container while the Ask Agent panel stands beside it (app/(workspace)/layout.tsx) */
-  [data-shell]:has([data-dock-placement="beside"]) [data-page] { container: page / inline-size; }
+  /* the page column is always the `column` container, and the `page` one too while the Ask Agent panel
+     stands beside it (app/(workspace)/layout.tsx) */
+  [data-page] { container: column / inline-size; }
+  [data-shell]:has([data-dock-placement="beside"]) [data-page] { container: page column / inline-size; }
 
   ::-webkit-scrollbar { width: 11px; height: 11px; }
   ::-webkit-scrollbar-thumb { background: var(--paper-300); border-radius: 999px; border: 3px solid var(--bg-app); }
@@ -272,7 +314,7 @@
 .skeleton { position: relative; overflow: hidden; background: var(--paper-100); }
 .skeleton::after {
   content: ""; position: absolute; inset: 0; transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--neutral-1) 55%, transparent), transparent);
   animation: forge-shimmer 1.4s var(--ease-in-out) infinite;
 }
 
@@ -330,6 +372,12 @@
 .eco-key[data-tone="own"] { background: var(--fg-default); }
 .eco-dots { background-image: radial-gradient(var(--border-default) 1px, transparent 1px); background-size: 18px 18px; }
 
+/* ── View transitions: list → peek → page (design/hooks/use-view-transition.ts) ──
+   A peek and the page it opens name the same element, so the browser morphs one into the other. */
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--dur-slow); animation-timing-function: var(--ease-out); }
+::view-transition-group(forge-record) { animation-duration: var(--dur-slow); animation-timing-function: var(--ease-out); }
+
 /* ── Accessibility: respect reduced-motion ─────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .forge-pulse, .skeleton::after, .forge-indeterminate, .forge-highlight,
@@ -339,6 +387,7 @@
   .fm-breathe, .fm-flameA, .fm-flameB, .fm-ringpulse,
   .eco-live .eco-line, .eco-live .eco-chip, .eco-chip::after { animation: none !important; }
   .skeleton::after { display: none; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }
 
@@ -356,4 +405,12 @@
   tr, li, figcaption { break-inside: avoid; }
   thead { display: table-header-group; }
   figure[data-kind="chart"], figure[data-kind="kpi"], figure[data-kind="timeline"] { break-inside: avoid; }
+}
+
+/* the notch and home-indicator insets, for an edge-to-edge drawer or bar on a phone */
+@utility pt-safe {
+  padding-top: max(env(safe-area-inset-top), 0.75rem);
+}
+@utility pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
 }

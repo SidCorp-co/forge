@@ -31,6 +31,7 @@ import {
 } from './comments/routes.js';
 import { patRoutes } from './credentials/pat-routes.js';
 import { developmentOverviewRoutes, needsYouRoutes } from './development/routes.js';
+
 import {
   deviceAuthRoutes,
   deviceLoginRoutes,
@@ -39,6 +40,7 @@ import {
   deviceOwnerRoutes,
   devicePoolRoutes,
   installRoutes,
+  projectPluginConflictRoutes,
 } from './devices/routes.js';
 import { ecosystemJsonSchemas } from './ecosystem/index.js';
 import {
@@ -65,6 +67,7 @@ import {
   integrationConnectionsRoutes,
   integrationsRoutes,
   issueMergePullRequestRoutes,
+  mcpRelayRoutes,
   webhookInboundRoutes,
 } from './integration-door/routes.js';
 import {
@@ -206,6 +209,7 @@ function mountAccountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/auth', oauthRoutes);
   app.route('/api/projects', projectHealthRoutes);
   app.route('/api/projects', projectMetricsRoutes);
+  app.route('/api/projects', projectPluginConflictRoutes);
   app.route('/api/projects', masterCharterRoutes);
 }
 
@@ -312,6 +316,7 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/jobs', jobLifecycleUserRoutes);
   app.route('/api/jobs', jobTestingSecretsRoutes);
   app.route('/api/webhooks', webhookInboundRoutes);
+  app.route('/api/mcp-relay', mcpRelayRoutes);
   app.route('/api/memory', memorySearchRoutes);
   app.route('/api/memory', memoryListRoutes);
   app.route('/api/memory', memoryWriteRoutes);

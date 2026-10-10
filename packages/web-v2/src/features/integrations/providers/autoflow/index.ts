@@ -10,6 +10,6 @@ export const autoflow: ProviderModule = {
   agentPathKind: "direct-mcp",
   bindingKeys: ["shop"],
   target: (config) => text(config, "shop") ?? text(config, "storeSlug") ?? text(config, "storeName"),
-  section: () => import("./section").then((m) => ({ default: m.AutoflowSection })),
+  section: () => import("./section").then((m) => ({ default: m.AutoflowSettings })),
   connectionSection: null,
 };

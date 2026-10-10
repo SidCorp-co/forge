@@ -29,21 +29,24 @@ function useFmtDate(): (iso: string | null) => string {
 
 interface RowProps {
   token: PatToken;
-  /** "User-level" or "Project: <slug>". */
-  level: string;
+  /** The slugs the token is fenced to, or null where it reaches every project. */
+  reach: string[] | null;
   onRevoke: () => void;
+  onEditProjects: () => void;
   pending: boolean;
 }
 
 export function TokenList({
   tokensQ,
-  levelOf,
+  reachOf,
   onRevoke,
+  onEditProjects,
   pending,
 }: {
   tokensQ: ReturnType<typeof useTokens>;
-  levelOf: (t: PatToken) => string;
+  reachOf: (t: PatToken) => string[] | null;
   onRevoke: (id: string) => void;
+  onEditProjects: (token: PatToken) => void;
   pending: boolean;
 }) {
   const tokens = tokensQ.data?.tokens ?? [];
@@ -52,7 +55,7 @@ export function TokenList({
     return (
       <div className="space-y-2.5">
         {["a", "b", "c"].map((k) => (
-          <Skeleton key={k} className="h-14 w-full rounded-lg" />
+          <Skeleton key={k} className="h-14 w-full" />
         ))}
       </div>
     );
@@ -61,7 +64,7 @@ export function TokenList({
       <ErrorState
         title={t("settings.tokens.loadFailed")}
         message={formatApiError(tokensQ.error)}
-        onRetry={() => tokensQ.refetch()}
+        onRetry={() => void tokensQ.refetch()}
       />
     );
   if (tokens.length === 0)
@@ -69,13 +72,14 @@ export function TokenList({
 
   const props = (token: PatToken): RowProps => ({
     token,
-    level: levelOf(token),
+    reach: reachOf(token),
     onRevoke: () => onRevoke(token.id),
+    onEditProjects: () => onEditProjects(token),
     pending,
   });
   const HEADS = [
     t("settings.agents.name"),
-    t("settings.tokens.level"),
+    t("settings.tokens.projects"),
     t("settings.tokens.prefix"),
     t("settings.tokens.scopes"),
     t("settings.tokens.grant"),
@@ -96,14 +100,14 @@ export function TokenList({
           </THead>
           <TBody>
             {tokens.map((token) => (
-              <TokenRow key={token.id} {...props(token)} />
+              <TokenItem key={token.id} {...props(token)} />
             ))}
           </TBody>
         </Table>
       </div>
       <div className="space-y-2.5 md:hidden">
         {tokens.map((token) => (
-          <TokenMobileCard key={token.id} {...props(token)} />
+          <TokenMobileItem key={token.id} {...props(token)} />
         ))}
       </div>
     </>
@@ -124,6 +128,29 @@ function GrantBadge({ token }: { token: PatToken }) {
     <Badge tone="neutral">
       {count === 1 ? t("settings.tokens.permissionOne") : t("settings.tokens.permissions", { n: count })}
     </Badge>
+  );
+}
+
+/**
+ * What the token reaches: every project, or the slugs it is fenced to, with Edit where the holder may
+ * change the list (FB-48).
+ */
+function Reach({ token, reach, onEditProjects }: RowProps) {
+  const t = useCopy();
+  if (reach === null) return <Badge tone="neutral">{t("settings.tokens.noneAll")}</Badge>;
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+      {reach.map((slug) => (
+        <Badge key={slug} tone="cobalt">
+          {slug}
+        </Badge>
+      ))}
+      {token.fenceEditable && !token.revokedAt && (
+        <Button variant="ghost" size="sm" onClick={onEditProjects} data-testid={`token-projects-edit-${token.id}`}>
+          {t("settings.tokens.projectsEdit")}
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -154,8 +181,8 @@ function RevokeButton({ token, onRevoke, pending }: RowProps) {
   );
 }
 
-function TokenRow(props: RowProps) {
-  const { token, level } = props;
+function TokenItem(props: RowProps) {
+  const { token } = props;
   const t = useCopy();
   const fmtDate = useFmtDate();
   return (
@@ -165,7 +192,7 @@ function TokenRow(props: RowProps) {
         {token.revokedAt && <span className="fg-caption ml-2">{t("settings.tokens.revoked")}</span>}
       </TD>
       <TD>
-        <Badge tone={token.boundProjectId ? "cobalt" : "neutral"}>{level}</Badge>
+        <Reach {...props} />
       </TD>
       <TD>
         <MonoTag>{token.prefix}…</MonoTag>
@@ -185,8 +212,8 @@ function TokenRow(props: RowProps) {
   );
 }
 
-function TokenMobileCard(props: RowProps) {
-  const { token, level } = props;
+function TokenMobileItem(props: RowProps) {
+  const { token } = props;
   const t = useCopy();
   const fmtDate = useFmtDate();
   return (
@@ -200,10 +227,12 @@ function TokenMobileCard(props: RowProps) {
             </p>
             <div className="mt-1.5 flex items-center gap-1.5">
               <MonoTag>{token.prefix}…</MonoTag>
-              <Badge tone={token.boundProjectId ? "cobalt" : "neutral"}>{level}</Badge>
             </div>
           </div>
           <RevokeButton {...props} />
+        </div>
+        <div className="mt-3">
+          <Reach {...props} />
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           <ScopeBadges scopes={token.scopes} />

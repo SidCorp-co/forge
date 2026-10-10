@@ -8,7 +8,7 @@ import { requirementHref } from "@/lib/routes/requirements";
 import { ReleaseMedia } from "./release-media";
 
 /** The one to three highlights a release opens on, or what stands in their place and why. */
-export function ReleaseHighlightsSection({ highlights, slug, authed }: { highlights: ReleaseHighlights; slug?: string | undefined; authed: boolean }) {
+export function ReleaseHighlightList({ highlights, slug, authed }: { highlights: ReleaseHighlights; slug?: string | undefined; authed: boolean }) {
   const t = useCopy();
   if (highlights.state === "none") return null;
   return (
@@ -37,8 +37,8 @@ export function ReleaseHighlightsSection({ highlights, slug, authed }: { highlig
             <li key={h.requirement.key} className="grid gap-3 py-5" data-testid="page-highlight">
               <div className="grid gap-1">
                 <h3 className="text-16 font-semibold leading-snug">{h.title}</h3>
-                <p className="text-13-5">{h.body}</p>
-                <p className="text-12-5 text-muted">
+                <p className="text-14">{h.body}</p>
+                <p className="text-13 text-muted">
                   {slug ? (
                     <Link className="font-mono text-12 text-link hover:underline" href={requirementHref(slug, h.requirement.key)}>
                       {h.requirement.key}
@@ -52,7 +52,7 @@ export function ReleaseHighlightsSection({ highlights, slug, authed }: { highlig
               {h.media ? (
                 <ReleaseMedia media={h.media} label={`${h.title}: ${h.media.name}`} authed={authed} />
               ) : (
-                <p className="text-12-5 text-muted" data-testid="page-highlight-gap">
+                <p className="text-13 text-muted" data-testid="page-highlight-gap">
                   {t("releases.page.highlights.mediaGap", { why: h.mediaGap ?? "" })}
                 </p>
               )}

@@ -6,14 +6,14 @@
 // record, or a decision with its reason. Core refuses a wrong comment by name.
 
 import { useState } from "react";
-import { ActorChip, Badge, BodyView, Button, ErrorState, ProjectLoader, SegmentedControl, Textarea } from "@/design";
-import { formatApiError, isRetryableApiError } from "@/lib/api/error";
+import { ActorChip, Badge, BodyView, Button, SegmentedControl, Textarea } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { WrittenMark } from "@/lib/i18n/written";
 import { useEntityComments, usePostEntityComment } from "../hooks";
 import type { EntityCommentScope, EntityCommentView } from "../types";
-import { DecisionComposer, DecisionRow } from "./decisions-panel";
+import { DecisionComposer, Decision } from "./decisions";
 
 export type ComposerIntent = "question" | "note" | "decision";
 
@@ -36,13 +36,13 @@ export function IntentPicker({ value, onChange }: { value: ComposerIntent; onCha
 /** A decision in a thread: the same row the decision logs draw, behind an accent bar so it reads apart. */
 export function DecisionInThread({ children }: { children: React.ReactNode }) {
   return (
-    <div className="border-l-[3px] pl-3" style={{ borderColor: "var(--green-500)" }} data-testid="thread-decision">
+    <div className="border-l-3 border-ok-9 pl-3" data-testid="thread-decision">
       {children}
     </div>
   );
 }
 
-function CommentRow({ c }: { c: EntityCommentView }) {
+function EntityComment({ c }: { c: EntityCommentView }) {
   const t = useCopy();
   const time = useTimeFormat();
   if (c.intent === "decision") {
@@ -53,7 +53,7 @@ function CommentRow({ c }: { c: EntityCommentView }) {
             <Badge tone="green">{t("common.decisions.decision")}</Badge>
           </span>
           <ul className="grid">
-            <DecisionRow c={c} />
+            <Decision c={c} />
           </ul>
         </DecisionInThread>
       </li>
@@ -110,7 +110,6 @@ export function EntityCommentThread({ projectId, scope, targetRef }: { projectId
   const t = useCopy();
   const q = useEntityComments(projectId, scope, targetRef);
   const [intent, setIntent] = useState<ComposerIntent>("note");
-  const rows = [...(q.data?.comments ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return (
     <div className="grid gap-5" data-testid="entity-comment-thread">
       <div className="grid gap-2">
@@ -121,19 +120,21 @@ export function EntityCommentThread({ projectId, scope, targetRef }: { projectId
           <TalkComposer projectId={projectId} scope={scope} targetRef={targetRef} intent={intent} />
         )}
       </div>
-      {q.isLoading ? (
-        <ProjectLoader label={t("common.intent.loading")} />
-      ) : q.isError ? (
-        <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />
-      ) : rows.length === 0 ? (
-        <p className="text-13 text-subtle">{t("common.intent.none")}</p>
-      ) : (
-        <ul className="grid">
-          {rows.map((c) => (
-            <CommentRow key={c.id} c={c} />
-          ))}
-        </ul>
-      )}
+      <QueryBoundary query={q} loadingLabel={t("common.intent.loading")} height="inline">
+        {(data) =>
+          data.comments.length === 0 ? (
+            <p className="text-13 text-subtle">{t("common.intent.none")}</p>
+          ) : (
+            <ul className="grid">
+              {[...data.comments]
+                .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+                .map((c) => (
+                  <EntityComment key={c.id} c={c} />
+                ))}
+            </ul>
+          )
+        }
+      </QueryBoundary>
     </div>
   );
 }

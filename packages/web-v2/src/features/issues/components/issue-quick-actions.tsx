@@ -5,7 +5,7 @@
 
 import type { IssueMove } from "@forge/contracts/issue-machine";
 import type { WorkStep } from "@forge/contracts/issue-vocabulary";
-import { Button, StatusChip } from "@/design";
+import { Button, StatusBadge } from "@/design";
 import { useId } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { runStatusChip } from "../derive";
@@ -54,7 +54,7 @@ export function IssueQuickActions({
   const refusal = heldByAgent(status, agentStatus) ? { id: refusalId, text: agentHoldsEdit(t) } : null;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line-subtle bg-sunken px-3.5 py-2.5">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-line-subtle bg-sunken px-3.5 py-2.5">
       {dialog}
       <StatusEdit
         status={status}
@@ -65,8 +65,8 @@ export function IssueQuickActions({
         size="sm"
         onTransition={(toStatus) => requestTransition({ id: issueId, status }, toStatus)}
       />
-      {runChip && <StatusChip status={runChip} size="sm" domain="session" />}
-      <span aria-hidden className="h-4 w-px flex-none" style={{ background: "var(--border-default)" }} />
+      {runChip && <StatusBadge family="run" value={runChip} />}
+      <span aria-hidden className="h-4 w-px flex-none bg-line" />
       <InlineSelect
         ariaLabel={t("issues.field.priority")}
         value={priority}

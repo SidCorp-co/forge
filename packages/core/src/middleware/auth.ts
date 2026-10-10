@@ -12,6 +12,7 @@ import { users } from '../db/schema.js';
 import { readPresentedCredential } from './bearer.js';
 import { admitChatWrite } from './chat-write-hold.js';
 import { declareGate } from './declared-gate.js';
+import { recordingPatAct } from './pat-act-record.js';
 import { beginPatRequest } from './pat-rest-surface.js';
 
 export type AuthVars = {
@@ -109,7 +110,7 @@ async function admitPat(
   return runWithPatScope(scope, async () => {
     // a chat credential's write is held, passed or refused here, before any route sees it (REQ-30 BC-4)
     await admitChatWrite(c);
-    await next();
+    await recordingPatAct(c, principal, next);
   });
 }
 

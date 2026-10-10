@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { ReactNode } from "react";
 import { ForgeMascot } from "./forge-mascot";
 import { assetPath } from "@/lib/asset";
@@ -36,12 +37,11 @@ export function ColdBoot({ label = t("common.coldBoot") }: { label?: string }) {
         <div
           style={{
             position: "absolute", inset: "-30%", borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(241,90,43,0.16), rgba(241,90,43,0) 62%)",
+            background: "radial-gradient(circle, color-mix(in oklch, var(--accent) 16%, transparent), transparent 62%)",
             animation: "fm-glow 2.6s var(--ease-in-out) infinite",
           }}
         />
-        {/* biome-ignore lint/performance/noImgElement: a static brand PNG at a fixed size, its src prefixed by assetPath for the basePath; next/image would lazy-load the loader's own mark */}
-        <img className="fm-breathe" src={assetPath("/forge-mark-180.png")} width={72} height={72} alt={t("common.brand")} />
+        <Image className="fm-breathe" src={assetPath("/forge-mark-180.png")} width={72} height={72} alt={t("common.brand")} preload unoptimized />
       </div>
       <div className="fg-h2" style={{ fontWeight: 800 }}>{t("common.brand")}</div>
       <span className="inline-flex items-center gap-2 font-mono" style={{ fontSize: "var(--text-12-5)", color: "var(--fg-muted)" }}>

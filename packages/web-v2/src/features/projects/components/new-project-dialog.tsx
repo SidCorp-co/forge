@@ -2,32 +2,31 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { Banner, Button, Field, Input, Select, SlideOver } from '@/design';
-import { useActiveOrg } from '@/features/orgs/active-org';
-import { useOrgs } from '@/features/orgs/hooks';
-import { RUNNER_SETUP } from '@/lib/utils/runner-commands';
+import { useActiveOrg, useOrgs } from '@/features/orgs';
 import { ApiError } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
-import { useCopy } from '@/lib/i18n/interface-language';
-import type { Copy } from '@/lib/i18n/product-copy';
 import { SLUG_RE, slugify } from '@/lib/slug';
 import { useSubmitGuard } from '@/lib/utils/use-submit-guard';
 import { useToast } from '@/providers/toast-provider';
-import { useAskForDesigns } from '@/features/onboarding/components/ask-for-designs';
+import { useCopy } from '@/lib/i18n/interface-language';
+import type { Copy } from '@/lib/i18n/product-copy';
+import { RUNNER_SETUP } from '@/lib/utils/runner-commands';
+import { useAskForDesigns } from '@/features/onboarding';
 import { useCreateProject } from '../hooks';
 import type { CreatedProject } from '../types';
 
-/** The command a person runs on the job machine to pair it: typed verbatim, so it is not copy. */
-
+/** Mounted only while open, so every open starts from an empty form and step one. */
 export function NewProjectDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return open ? <NewProjectFlow onClose={onClose} /> : null;
+}
+
+function NewProjectFlow({ onClose }: { onClose: () => void }) {
   const t = useCopy();
   const router = useRouter();
   // Step 2 — "Set up pipeline" (ISS-453). `created` non-null flips the wizard.
   const [created, setCreated] = useState<CreatedProject | null>(null);
-  useEffect(() => {
-    if (open) setCreated(null);
-  }, [open]);
 
   /** Leave the wizard and land on the new project (step-2 exit, incl. ✕). */
   function finish() {
@@ -38,7 +37,7 @@ export function NewProjectDialog({ open, onClose }: { open: boolean; onClose: ()
 
   return (
     <SlideOver
-      open={open}
+      open
       onClose={created ? finish : onClose}
       title={created ? t('projects.setup.title') : t('projects.new')}
       width={460}
@@ -46,7 +45,7 @@ export function NewProjectDialog({ open, onClose }: { open: boolean; onClose: ()
       {created ? (
         <SetupPipeline created={created} onFinish={finish} />
       ) : (
-        <CreateProjectForm open={open} onCreated={setCreated} onClose={onClose} />
+        <CreateProjectForm onCreated={setCreated} onClose={onClose} />
       )}
     </SlideOver>
   );
@@ -63,11 +62,9 @@ function validate(t: Copy, name: string, slug: string) {
 }
 
 function CreateProjectForm({
-  open,
   onCreated,
   onClose,
 }: {
-  open: boolean;
   onCreated: (row: CreatedProject) => void;
   onClose: () => void;
 }) {
@@ -80,26 +77,13 @@ function CreateProjectForm({
   const [slugEdited, setSlugEdited] = useState(false);
   // Target org — '' = the caller's personal org (server default). Defaults to
   // the active org (ISS-470): a team org preselects its id, Personal → ''.
-  const [orgId, setOrgId] = useState('');
+  const [orgIdChosen, setOrgIdChosen] = useState<string | null>(null);
   const teamOrgs = (useOrgs().data ?? []).filter((o) => !o.isPersonal);
   const { activeOrg } = useActiveOrg();
   const defaultOrgId = activeOrg && !activeOrg.isPersonal ? activeOrg.id : '';
+  const orgId = orgIdChosen ?? defaultOrgId;
   const [errors, setErrors] = useState<{ name?: string; slug?: string; form?: string }>({});
 
-  // Reset the whole form each time the dialog opens — never leak a prior draft
-  // or stale error into a fresh create.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: resets only when the dialog opens; `create` and `defaultOrgId` are read at that moment.
-  useEffect(() => {
-    if (open) {
-      setName('');
-      setSlug('');
-      setSlugEdited(false);
-      setOrgId(defaultOrgId);
-      setErrors({});
-      create.reset();
-      submitting.release();
-    }
-  }, [open, submitting]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -125,7 +109,7 @@ function CreateProjectForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex h-full flex-col gap-4">
+    <form onSubmit={(e) => void onSubmit(e)} className="flex h-full flex-col gap-4">
       {errors.form && <Banner tone="danger">{errors.form}</Banner>}
       <Field label={t('projects.form.name')} required error={errors.name}>
         <Input
@@ -136,7 +120,6 @@ function CreateProjectForm({
             if (!slugEdited) setSlug(slugify(e.target.value));
           }}
           placeholder={t('projects.form.namePlaceholder')}
-          autoFocus
           maxLength={200}
         />
       </Field>
@@ -155,7 +138,7 @@ function CreateProjectForm({
         <Field label={t('projects.form.org')}>
           <Select
             value={orgId}
-            onChange={setOrgId}
+            onChange={setOrgIdChosen}
             options={[{ value: '', label: t('projects.form.personal') }, ...teamOrgs.map((o) => ({ value: o.id, label: o.name }))]}
           />
         </Field>
@@ -173,10 +156,10 @@ function CreateProjectForm({
 }
 
 function SetupPipeline({ created, onFinish }: { created: CreatedProject; onFinish: () => void }) {
+  const t = useCopy();
   /** The designed onboarding: confirm what its job does, start it, open its thread, land on the project. */
   const onboarding = useAskForDesigns(created.id, { onOpened: onFinish });
   const onboardError = onboarding.error;
-  const t = useCopy();
 
   return (
     <div className="flex h-full flex-col gap-4">

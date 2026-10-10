@@ -174,7 +174,7 @@ function carve(text: string): { prose: string; definitions: string[] } {
       if (opener && line.trim().startsWith(fence)) fence = null;
       prose.push(line);
     } else if (opener) {
-      fence = opener[1] as string;
+      fence = opener[1];
       prose.push(line);
     } else if (DEFINITION_LINE.test(line)) {
       definitions.push(line);

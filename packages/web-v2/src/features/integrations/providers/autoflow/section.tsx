@@ -1,6 +1,6 @@
 "use client";
 
-import { Banner, Field, Input } from "@/design";
+import { Banner, Field, Input, Property, PropertyList } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
@@ -9,30 +9,30 @@ import { AgentAccessControl, agentAccessDeniedReason } from "../../components/ag
 import { useIntegrationsList, useOrgConnectionLocked, useUpdateProviderIntegration } from "../../hooks";
 import type { IntegrationSummary } from "../../types";
 import { text } from "../config-read";
-import { BindingRowHeader, MultiBindingSection } from "../multi-binding";
+import { BindingRowHeader, MultiBindingSettings } from "../multi-binding";
 import { BindingRowActions, healthBadge, OrgLockedNote, TestOutcome, useBindingTest } from "../shared";
 import { AddAutoflowForm } from "./add-form";
 import { EMPTY_TOKENS, RefreshPairFields, tokenSecrets, tokensValid } from "./tokens";
 
 /** Autoflow sites bound to this project: the site a project runs on, and its Backend Builder flows. */
-export function AutoflowSection({ projectId }: { projectId: string }) {
+export function AutoflowSettings({ projectId }: { projectId: string }) {
   const t = useCopy();
   return (
-    <MultiBindingSection
+    <MultiBindingSettings
       projectId={projectId}
       provider="autoflow"
       title={t("integrations.autoflow.title")}
       emptyText={t("integrations.autoflow.empty")}
       addLabel={t("integrations.autoflow.add")}
       renderRow={(binding, isDefault) => (
-        <AutoflowBindingRow key={binding.id} projectId={projectId} binding={binding} isDefault={isDefault} />
+        <AutoflowBinding key={binding.id} projectId={projectId} binding={binding} isDefault={isDefault} />
       )}
       renderAdd={(hasDefault, onDone) => <AddAutoflowForm projectId={projectId} hasDefault={hasDefault} onDone={onDone} />}
     />
   );
 }
 
-function AutoflowBindingRow({
+function AutoflowBinding({
   projectId,
   binding,
   isDefault,
@@ -43,7 +43,7 @@ function AutoflowBindingRow({
 }) {
   const update = useUpdateProviderIntegration(projectId);
   const list = useIntegrationsList(projectId);
-  const test = useBindingTest(projectId, () => list.refetch());
+  const test = useBindingTest(projectId, () => void list.refetch());
   const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
   const [tokens, setTokens] = useState(EMPTY_TOKENS);
   const [rotating, setRotating] = useState(false);
@@ -75,7 +75,7 @@ function AutoflowBindingRow({
         <Banner tone="danger">{binding.lastHealthSays ? said(binding.lastHealthSays, language) : binding.lastHealthDetail}</Banner>
       )}
       <TestOutcome result={test.result} />
-      <SiteFacts config={config} />
+      <SiteDetails config={config} />
       {rotating && (
         <>
           <Field label={t("integrations.autoflow.newToken")}>
@@ -99,10 +99,10 @@ function AutoflowBindingRow({
         setRotating={setRotating}
         rotateLabel={t("integrations.autoflow.replaceToken")}
         saveLabel={t("integrations.autoflow.saveToken")}
-        onSave={saveToken}
+        onSave={() => void saveToken()}
         saving={update.isPending}
         saveDisabled={!tokensValid(tokens)}
-        onTest={() => test.run(binding.id)}
+        onTest={() => void test.run(binding.id)}
         testing={test.pending}
         confirmDelete={t("integrations.autoflow.confirmDelete", { label: binding.label || t("integrations.provider.defaultLabel") })}
       />
@@ -116,21 +116,18 @@ function AutoflowBindingRow({
   );
 }
 
-function SiteFacts({ config }: { config: Record<string, unknown> }) {
+function SiteDetails({ config }: { config: Record<string, unknown> }) {
   const storeName = text(config, "storeName");
   const t = useCopy();
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-12">
-      <dt className="text-subtle">{t("integrations.autoflow.site")}</dt>
-      <dd>
+    <PropertyList>
+      <Property label={t("integrations.autoflow.site")}>
         {text(config, "shop") ?? "—"}
         {storeName && <span className="text-subtle"> · {storeName}</span>}
         {text(config, "storeId") && <span className="text-subtle"> · #{text(config, "storeId")}</span>}
-      </dd>
-      <dt className="text-subtle">{t("integrations.autoflow.workspace")}</dt>
-      <dd>{text(config, "orgId") ?? t("integrations.autoflow.runTest")}</dd>
-      <dt className="text-subtle">{t("integrations.autoflow.platform")}</dt>
-      <dd>{text(config, "baseUrl") ?? "https://auto.sidcorp.co"}</dd>
-    </dl>
+      </Property>
+      <Property label={t("integrations.autoflow.workspace")}>{text(config, "orgId") ?? t("integrations.autoflow.runTest")}</Property>
+      <Property label={t("integrations.autoflow.platform")}>{text(config, "baseUrl") ?? "https://auto.sidcorp.co"}</Property>
+    </PropertyList>
   );
 }

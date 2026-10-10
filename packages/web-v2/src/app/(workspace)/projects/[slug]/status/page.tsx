@@ -7,7 +7,7 @@ import { STATUS_WINDOWS, StatusReport } from "@/features/project-status/componen
 import { TemplateRun } from "@/features/project-status/components/template-run";
 import { useProjectStatus, useSaveStatusReport } from "@/features/project-status/hooks";
 import { ProjectRefGate } from "@/features/projects/components/project-gate";
-import { canManageProject } from "@/features/projects/write-access";
+import { canManageProject } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -39,7 +39,7 @@ function Live({ projectId, slug }: { projectId: string; slug: string }) {
   if (q.isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState title={t("status.loadFailed")} message={formatApiError(q.error)} onRetry={() => q.refetch()} />
+        <ErrorState title={t("status.loadFailed")} message={formatApiError(q.error)} onRetry={() => void q.refetch()} />
       </div>
     );
   }

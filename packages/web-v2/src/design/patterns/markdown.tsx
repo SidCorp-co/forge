@@ -64,12 +64,19 @@ const imgRenderer: Components["img"] = ({ src, alt }) => (
   <BodyImage src={typeof src === "string" ? src : undefined} alt={alt} />
 );
 
+/** The text of a code element's children: react-markdown hands it a string, or strings in an array. */
+function textOf(children: ReactNode): string {
+  if (typeof children === "string" || typeof children === "number") return String(children);
+  if (Array.isArray(children)) return children.map((c: ReactNode) => textOf(c)).join("");
+  return "";
+}
+
 function makeCodeRenderer(blockClass: string, inlineClass: string): Components["code"] {
   return ({ className, children, ...props }: ComponentProps<"code"> & { inline?: boolean }) => {
     if (className === "language-mermaid") {
-      return <MermaidDiagram code={String(children).trimEnd()} className="my-3" />;
+      return <MermaidDiagram code={textOf(children).trimEnd()} className="my-3" />;
     }
-    const isBlock = (className ?? "").includes("language-") || String(children).includes("\n");
+    const isBlock = (className ?? "").includes("language-") || textOf(children).includes("\n");
     return isBlock ? (
       <code className={blockClass} {...props}>
         {children}
@@ -127,13 +134,13 @@ const proseComponents: Components = {
     </blockquote>
   ),
   code: makeCodeRenderer(
-    "block overflow-x-auto rounded-lg border border-line bg-sunken p-4 font-mono text-13 leading-relaxed text-fg",
+    "block overflow-x-auto rounded-xs border border-line bg-sunken p-4 font-mono text-13 leading-relaxed text-fg",
     "rounded bg-sunken px-1.5 py-0.5 font-mono text-13 text-fg",
   ),
   pre: ({ children }) => <pre className="my-4 overflow-x-auto">{children}</pre>,
   img: imgRenderer,
   table: ({ children }) => (
-    <div className="my-4 overflow-x-auto rounded-lg border border-line">
+    <div className="my-4 overflow-x-auto border-y border-line">
       <table className="w-full border-collapse text-left text-13">{children}</table>
     </div>
   ),

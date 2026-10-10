@@ -136,7 +136,7 @@ export function PromoteDrafts({ projectId, d }: { projectId: string; d: Requirem
 }
 
 /** A draft row's own promote: that one issue, by name. */
-export function PromoteDraftRow({ projectId, d, issue }: { projectId: string; d: RequirementDetail; issue: RequirementIssueLink }) {
+export function PromotableDraft({ projectId, d, issue }: { projectId: string; d: RequirementDetail; issue: RequirementIssueLink }) {
   const t = useCopy();
   const promote = usePromoteDrafts(projectId, d.key);
   const promotable = d.canPromote && draftIssuesToPromote(d.status, [issue]).length > 0;

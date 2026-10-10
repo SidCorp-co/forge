@@ -1,7 +1,8 @@
+export { sendPreviewMessage } from './approve.js';
 export { fixConfirmationsOf } from './confirm.js';
 export { previewSite } from './domain.js';
 export { type KeptPreviewWriter, provideKeptPreviewWriter } from './keep-port.js';
-export { approvedPreviewOf } from './read.js';
+export { approvedPreviewOf, openIdeaPreviewOf } from './read.js';
 export {
   readRecording,
   recordingsOfFeedback,

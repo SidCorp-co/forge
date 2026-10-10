@@ -4,6 +4,9 @@ import type { ReactNode } from "react";
 import { Tooltip as TooltipRoot, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils/cn";
 
+/** The app root's one tooltip provider, so tooltips share their open delay. */
+export { TooltipProvider } from "@/components/ui/tooltip";
+
 export interface TooltipProps {
   label: string;
   children: ReactNode;
@@ -23,7 +26,7 @@ export function Tooltip({ label, children, side = "top", multiline = false }: To
       <TooltipContent
         side={side}
         className={cn(
-          "w-max rounded-md bg-[var(--ink-900)] px-2 py-1 font-mono text-11 text-on-accent shadow-md",
+          "w-max rounded-md bg-neutral-12 px-2 py-1 font-mono text-11 text-on-accent shadow-overlay",
           multiline ? "max-w-[240px] whitespace-normal text-left" : "max-w-[calc(100vw-16px)] whitespace-normal",
         )}
       >

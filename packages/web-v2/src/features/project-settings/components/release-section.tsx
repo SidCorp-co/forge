@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { Button, ErrorState, LEGEND, Skeleton, Textarea } from "@/design";
-import { GateLine, type GateTone } from "@/features/releases/components/release-bits";
+import { GateLine, type GateTone } from "@/features/releases";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
@@ -47,7 +47,7 @@ function stateLine(r: ReleaseReadiness, t: Copy): string {
 }
 
 function Dot({ tone }: { tone: "attention" }) {
-	return <span aria-hidden className="mt-[7px] size-1.5 flex-none rounded-full" style={{ background: tone === "attention" ? LEGEND.you.dot : undefined }} />;
+	return <span aria-hidden className="mt-1.75 size-1.5 flex-none rounded-full" style={{ background: tone === "attention" ? LEGEND.you.dot : undefined }} />;
 }
 
 function KnowledgeGap({ projectId, slug, gap }: { projectId: string; slug: Gap; gap: NonNullable<(typeof KNOWLEDGE_GAPS)[Gap]> }) {
@@ -105,7 +105,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 	);
 }
 
-function ChannelFacts({ r }: { r: ReleaseReadiness }) {
+function ChannelDetails({ r }: { r: ReleaseReadiness }) {
 	const t = useCopy();
 	if (!r.hasReleaseGate) return null;
 	const unread = t("settings.project.release.fact.unread");
@@ -124,20 +124,20 @@ function ChannelFacts({ r }: { r: ReleaseReadiness }) {
 	);
 }
 
-export function ReleaseSection({ projectId, slug }: { projectId: string; slug: string }) {
+export function ReleaseSettings({ projectId, slug }: { projectId: string; slug: string }) {
 	const t = useCopy();
 	const q = useReleaseReadiness(projectId);
 	const heading = <h3 className="fg-h3 text-accent-text!">{t("settings.project.release.title")}</h3>;
 	if (q.isLoading) return <div>{heading}<Skeleton className="mt-3 h-16 w-full rounded-md" /></div>;
-	if (q.isError || !q.data) return <div>{heading}<ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} /></div>;
+	if (q.isError || !q.data) return <div>{heading}<ErrorState message={formatApiError(q.error)} onRetry={() => void q.refetch()} /></div>;
 	const r = q.data;
 	const knowledge = r.gaps.filter((g) => KNOWLEDGE_GAPS[g]);
 	const fields = r.gaps.filter((g) => FIELD_GAPS[g]);
 	return (
 		<section aria-label={t("settings.project.release.title")}>
 			{heading}
-			<p className="fg-body-sm mt-1 max-w-[68ch] text-muted">{stateLine(r, t)}</p>
-			{r.declarationRead && <ChannelFacts r={r} />}
+			<p className="fg-body-sm mt-1 max-w-prose text-muted">{stateLine(r, t)}</p>
+			{r.declarationRead && <ChannelDetails r={r} />}
 			{r.gates.length > 0 && (
 				<>
 					<h4 className="fg-label mt-5 text-fg">{t("settings.project.release.now")}</h4>

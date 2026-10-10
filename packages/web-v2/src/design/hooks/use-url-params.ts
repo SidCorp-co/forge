@@ -36,3 +36,15 @@ export function useUrlChoice<T extends string>(
   const write = useCallback((next: T) => set({ [name]: next === fallback ? null : next }), [set, name, fallback]);
   return [value, write];
 }
+
+/** A set of flags in one URL param (`?f=you,stuck`): the ones on, and a toggle that writes the rest back. */
+export function useUrlFlags<T extends string>(values: readonly T[], name = "f"): [Set<T>, (flag: T) => void] {
+  const [params, set] = useUrlParams();
+  const on = new Set((params.get(name) ?? "").split(",").filter((x): x is T => (values as readonly string[]).includes(x)));
+  const toggle = (flag: T) => {
+    const next = new Set(on);
+    if (!next.delete(flag)) next.add(flag);
+    set({ [name]: [...next].join(",") || null });
+  };
+  return [on, toggle];
+}

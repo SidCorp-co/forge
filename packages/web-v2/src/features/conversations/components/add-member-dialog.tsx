@@ -66,14 +66,14 @@ const AGENT: MemberKind<HandleCandidate> = {
   rowClass: "border border-line",
   row: (h) => (
     <>
-      <Icon name="agent" size={15} className="flex-none text-[color:var(--accent-text)]" />
+      <Icon name="agent" size={15} className="flex-none text-accent-text" />
       <span className="fg-body-sm font-mono">@{h.handle}</span>
       <span className="fg-caption ml-auto text-muted">{h.project.name}</span>
     </>
   ),
   head: (h) => (
-    <div className="flex items-center gap-2 rounded-md border border-[color:var(--accent)] bg-[color:var(--accent-tint)] px-3 py-2">
-      <Icon name="agent" size={15} className="flex-none text-[color:var(--accent-text)]" />
+    <div className="flex items-center gap-2 rounded-md border border-accent bg-accent-tint px-3 py-2">
+      <Icon name="agent" size={15} className="flex-none text-accent-text" />
       <span className="fg-label font-mono">@{h.handle}</span>
       <span className="fg-caption ml-auto text-muted">{h.project.name}</span>
     </div>
@@ -201,7 +201,7 @@ function CandidateList<T>({
         <ErrorState
           title={t(kind.failed)}
           message={formatApiError(query.error)}
-          onRetry={() => query.refetch()}
+          onRetry={() => void query.refetch()}
         />
       </div>
     );
@@ -221,7 +221,7 @@ function CandidateList<T>({
           <button
             type="button"
             onClick={() => onPick(c)}
-            className={`flex w-full items-center gap-2 rounded-md ${kind.rowClass} px-3 py-2 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]`}
+            className={`flex w-full items-center gap-2 rounded-md ${kind.rowClass} px-3 py-2 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus`}
           >
             {kind.row(c)}
           </button>

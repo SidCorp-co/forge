@@ -1,7 +1,7 @@
 "use client";
 
 import { Banner, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, Field, Input } from "@/design";
-import { useProjects } from "@/features/projects/hooks";
+import { useProjects } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useState } from "react";
@@ -79,7 +79,7 @@ export function CreateApp({ projectId, onBack }: { projectId: string; onBack: ((
         {connect.isError && <Banner tone="danger">{formatApiError(connect.error)}</Banner>}
 
         <div className="flex items-center gap-3">
-          <Button onClick={start} disabled={connect.isPending}>
+          <Button onClick={() => void start()} disabled={connect.isPending}>
             {connect.isPending ? t("integrations.github.preparing") : t("integrations.github.create")}
           </Button>
           {onBack && (

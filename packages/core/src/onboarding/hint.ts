@@ -121,6 +121,17 @@ function liveJobText(job: NonNullable<OnboardingView['job']>): Said {
   return say(job.status === 'queued' ? 'onboarding.hint.jobQueued' : 'onboarding.hint.jobRunning');
 }
 
+/** A retry names its attempt, so a page read while core retries never looks like the first try (ISS-268). */
+const attemptLine = (job: NonNullable<OnboardingView['job']>, line: Said): Said =>
+  job.attempt > 1 ? say('onboarding.hint.retrying', { n: job.attempt, line }) : line;
+
+/** An attempt that is over and drew nothing says so, and why it ended when the job recorded why. */
+const drewNothing = (job: NonNullable<OnboardingView['job']>): Said =>
+  say('onboarding.hint.drewNothing', {
+    n: job.attempt,
+    why: job.endedWith ? say('onboarding.hint.endedWith', { why: job.endedWith }) : null,
+  });
+
 // the hint is derived, never stored: it says what the onboarding's own rows say now, and it
 // leaves the dashboard once every onboarding design is approved (state `onboarded`). With no
 // onboarding it reads the project's system-context design, so a project that has one approved is
@@ -151,7 +162,7 @@ export function hintOf(
     return hint(
       view.job.waitingOn?.kind === 'you' || view.job.waitingOn?.kind === 'person' ? 'you' : 'run',
       say(view.job.phase === 'revise' ? 'onboarding.hint.updating' : 'onboarding.hint.reading'),
-      liveJobText(view.job),
+      attemptLine(view.job, liveJobText(view.job)),
       'open',
       open,
       mayReanalyze,
@@ -162,7 +173,7 @@ export function hintOf(
     return hint(
       'err',
       say('onboarding.hint.failed'),
-      say('onboarding.hint.mapStays'),
+      drafted ? say('onboarding.hint.mapStays') : drewNothing(view.job),
       'reanalyze',
       say('onboarding.hint.askReanalysis'),
       mayReanalyze,
@@ -173,7 +184,9 @@ export function hintOf(
     say('onboarding.hint.inProgress'),
     drafted
       ? say('onboarding.hint.drafted', { designs: designs(drafted) })
-      : say('onboarding.hint.waitingAnalysis'),
+      : view.job
+        ? drewNothing(view.job)
+        : say('onboarding.hint.waitingAnalysis'),
     'open',
     open,
     mayReanalyze,

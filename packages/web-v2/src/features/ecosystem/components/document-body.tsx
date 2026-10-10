@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { keyedByContent } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 
 const words = (key: string) =>
@@ -19,12 +20,12 @@ function Value({ value }: { value: unknown }): ReactNode {
   }
   if (Array.isArray(value)) {
     if (value.every((v) => typeof v === "string")) return <span className="break-words">{value.join(", ")}</span>;
+    const items: unknown[] = value;
     return (
-      <ul className="space-y-2">
-        {value.map((v, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: a document's list has no ids and never reorders
-          <li key={i} className="rounded-sm border border-line px-2 py-1">
-            <Value value={v} />
+      <ul className="divide-y divide-line-subtle">
+        {keyedByContent(items).map(({ key, item }) => (
+          <li key={key} className="py-1.5">
+            <Value value={item} />
           </li>
         ))}
       </ul>
@@ -48,7 +49,7 @@ function Value({ value }: { value: unknown }): ReactNode {
       </dl>
     );
   }
-  return <span>{String(value)}</span>;
+  return <span>{typeof value === "bigint" ? value.toString() : typeof value}</span>;
 }
 
 /** A document's body, field by field in the order core holds it. */

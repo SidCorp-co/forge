@@ -3,13 +3,15 @@
 
 import type { CriterionClass, CriterionJudge } from '@forge/contracts/issue-design';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import { and, eq, isNull } from 'drizzle-orm';
+import { RELEASE_CLIP_MIMES } from '@forge/contracts/release-page';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import {
   criterionVerdicts,
   issueCriteria,
   type VerdictValue,
 } from '../../db/schema-issue-criteria.js';
+import { issueAttachments } from '../../db/schema-issues.js';
 import { projectWorkflowDesigns } from '../../db/schema-workflows.js';
 import { RefusalError } from '../../lib/refusal.js';
 import { contractLookup } from '../../messaging/verdict-contract.js';
@@ -84,8 +86,49 @@ const VERDICT_PATHS: Partial<Record<VerdictRefusal['code'], string>> = {
   VERDICT_JUDGED_BY_QA: '/judge',
   VERDICT_VALUE_UNKNOWN: '/verdict',
   VERDICT_SKIP_REASON_REQUIRED: '/reason',
+  VERDICT_CLIP_REQUIRED: '/evidence',
   VERDICT_CRITERION_UNKNOWN: '/criterion',
 };
+
+/**
+ * REQ-40 BC-4: a pass on a criterion the design classes observable cites a screen clip of the run
+ * that shows it (a WebM or MP4 attached to the issue, named in `evidence`), so a release page has
+ * something to show; a pass judged without one says why in `reason`.
+ */
+async function clipFault(
+  tx: Tx,
+  issueId: string,
+  draft: {
+    criterion: number;
+    verdict: string;
+    evidence: readonly string[];
+    reason?: string | null;
+  },
+  criterionClass: CriterionClass | null,
+): Promise<VerdictRefusal | null> {
+  if (criterionClass !== 'observable' || draft.verdict !== 'pass') return null;
+  if (draft.reason?.trim()) return null;
+  const cited = draft.evidence.map((e) => e.trim()).filter(Boolean);
+  if (cited.length > 0) {
+    const clips = await tx
+      .select({ name: issueAttachments.name })
+      .from(issueAttachments)
+      .where(
+        and(
+          eq(issueAttachments.issueId, issueId),
+          inArray(issueAttachments.name, cited),
+          inArray(issueAttachments.mime, [...RELEASE_CLIP_MIMES]),
+        ),
+      )
+      .limit(1);
+    if (clips.length > 0) return null;
+  }
+  return {
+    code: 'VERDICT_CLIP_REQUIRED',
+    criterion: draft.criterion,
+    detail: `criterion ${draft.criterion} is observable on the running build, and a \`pass\` on it cites a screen clip of the run that shows it: attach a WebM or MP4 to the issue and name it in \`evidence\`, or say in \`reason\` why it was judged without one`,
+  };
+}
 
 /** A verdict refused by name, in the envelope both doors answer. */
 function verdictRefused(refusal: VerdictRefusal): RefusalError {
@@ -289,6 +332,8 @@ export async function recordVerdict(
     draft,
     args.readDraft ?? readSourceDrafts,
   );
+  const noClip = await clipFault(tx, issue.id, draft, route?.class ?? null);
+  if (noClip) throw verdictRefused(noClip);
   const probeId = await probeOfVerdict(tx, {
     issueId: issue.id,
     projectId: issue.projectId,

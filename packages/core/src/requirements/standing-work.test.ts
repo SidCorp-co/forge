@@ -57,6 +57,7 @@ const input = (issues: StandingIssue[]) => ({
   agreedAt: at('2026-09-01T00:00:00Z'),
   release: null,
   updatedAt: at('2026-09-26T00:00:00Z'),
+  statusSince: at('2026-09-26T00:00:00Z'),
   now: at('2026-09-28T00:00:00Z'),
 });
 

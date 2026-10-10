@@ -1,17 +1,17 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, use, type ReactNode } from "react";
 import { useSidebar, type SidebarState } from "./sidebar";
 
 const SidebarContext = createContext<SidebarState | null>(null);
 
 export function SidebarProvider({ children }: { children: ReactNode }) {
   const sidebar = useSidebar();
-  return <SidebarContext.Provider value={sidebar}>{children}</SidebarContext.Provider>;
+  return <SidebarContext value={sidebar}>{children}</SidebarContext>;
 }
 
 export function useSidebarContext(): SidebarState {
-  const ctx = useContext(SidebarContext);
+  const ctx = use(SidebarContext);
   if (!ctx) throw new Error("useSidebarContext must be used within a SidebarProvider");
   return ctx;
 }

@@ -3,58 +3,38 @@
 The Forge cloud UI — canonical at root `/` since ISS-397 (2026-06-07; legacy
 `packages/web` retired).
 
-- **Brand:** light-first "calm, bright workshop" — warm paper neutrals, flame-orange
-  action accent, cobalt structure, one hue per staged job type. Hanken Grotesk +
-  JetBrains Mono.
-- **Stack:** Next.js 16 (App Router) · React 19 · Tailwind v4 (CSS `@theme`, no config
-  file) · custom primitives (no shadcn) · lucide-react · TanStack Query. Consumes the
-  `core` REST/WS contract via `@forge/contracts`.
+- **Rules:** [`CODE-STANDARD.md`](CODE-STANDARD.md). **Page grammar:** [`src/design/README.md`](src/design/README.md),
+  rendered at `/dev/design`.
+- **Brand:** warm neutrals, a flame-orange accent, one hue per staged job type. Inter Variable for
+  the UI and JetBrains Mono for keys and code. Light and dark, following the member's preference.
+- **Stack:** Next.js 16 (App Router, React Compiler) · React 19 · Tailwind v4 (CSS `@theme`, no
+  config file) · Base UI through shadcn (`src/components/ui`, wrapped by `src/design`) · lucide ·
+  TanStack Query, Table and Virtual · Recharts · react-resizable-panels. It consumes the `core`
+  REST/WS contract through `@forge/contracts`.
 
-## Tokens — 2 layers (light-only now, dark drop-in)
+## Tokens
 
-`src/styles/tokens.css` is the source of truth.
+`src/styles/tokens.css` is the one source. `app/globals.css` maps it into Tailwind with `@theme`.
 
-1. **Raw palette** — `--flame-*`, `--paper-*`, `--ink-*`, `--stage-*`. Theme-independent.
-   Components never reference these directly, never hardcode hex.
-2. **Semantic** — `--bg-*`, `--fg-*`, `--border-*`, `--accent`, … Components reference
-   **only** this layer. `globals.css` maps it into Tailwind via `@theme inline` so
-   utilities resolve through the semantic var.
-
-Adding dark later = one `[data-theme="dark"] { … }` override of the semantic block
-(`tokens.css` already declares one for the workflow canvas hues, the AI marks and
-`--fg-danger`) + flip `forcedTheme` in `providers/theme-provider.tsx`. Raw scale +
-every component stay untouched.
-
-> Exception: data-driven color (status / health / stage dots) lives in
-> `src/design/status.ts` + `stages.ts` and references the raw palette on purpose —
-> the color *is* the datum.
+1. **Scales:** OKLCH, 12 steps each, in the Radix manner, defined for light and dark. Both themes
+   meet WCAG AA.
+2. **Semantic:** `--bg-*`, `--fg-*`, `--border-*`, `--accent*` and `--status-*`, set on the scale
+   steps. Components use this layer.
+3. **Older names:** `--paper-*`, `--ink-*`, `--flame-*` and the rest are mapped onto scale steps, so
+   older code themes too. The sweep moves them off.
 
 ## Layout
 
 ```
 src/
-├─ styles/tokens.css        # source of truth (raw + semantic tokens)
-├─ app/
-│  ├─ globals.css           # @import tokens + @theme inline + base + keyframes
-│  └─ layout.tsx            # fonts (next/font) + providers
-├─ design/                  # presentational, data-agnostic
-│  ├─ icons/icon.tsx        # semantic name → lucide-react
-│  ├─ stages.ts · status.ts # job-type hues + status/health/avatar meta
-│  ├─ primitives/           # Button, StatusChip, MonoTag, Avatar, ProjectMark,
-│  │                        #   HealthDot, Stat, PageSection, Kicker, Spinner, EmptyState,
-│  │                        #   Input, Field, Toggle, SegmentedControl
-│  ├─ patterns/             # KanbanCard, KanbanColumn, NavRail, BottomTabBar,
-│  │                        #   CommandPalette, NotificationsMenu
-│  └─ index.ts              # barrel — import from "@/design"
-├─ features/                # ← every screen lives here, one module per domain
-│                          #   (api.ts + types.ts + components/ + hooks/);
-│                          #   `ls -d src/features/*/` is the inventory
-├─ lib/utils/cn.ts
-└─ providers/               # theme, query
+├─ styles/tokens.css        # the one token source
+├─ app/                     # routes (thin) · globals.css · layout.tsx (fonts, providers)
+├─ components/ui/           # shadcn (Base UI); imported only by src/design
+├─ design/                  # primitives · patterns (blocks) · templates · icons; import from "@/design"
+├─ features/<domain>/       # api.ts · hooks.ts · components/ · types.ts (copy: lib/i18n/copy/<domain>.json)
+├─ lib/                     # api client, i18n copy, utils
+└─ providers/               # theme, query, auth
 ```
-
-The `primitives/` and `patterns/` lists above are illustrative, not exhaustive —
-`ls src/design/primitives src/design/patterns` is the current set.
 
 ## Run
 

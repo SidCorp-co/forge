@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import { Button, Checkbox, ErrorState, Icon, Select, Spinner } from "@/design";
-import { useOrgScopedProjects } from "@/features/projects/hooks";
+import { useOrgScopedProjects } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useOpenConversation, useProjectCandidates } from "../hooks";
@@ -61,7 +61,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
   };
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] place-items-center overflow-y-auto px-4 py-8">
+    <div className="grid h-full min-h-0 grid-cols-1 place-items-center overflow-y-auto px-4 py-8">
       <div className="flex w-full max-w-sm flex-col gap-4">
         <div className="text-center">
           <p className="fg-h3">{t("shell.chat.emptyTitle")}</p>
@@ -106,7 +106,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
         )}
 
         {open.isError && (
-          <p className="fg-body-sm text-[color:var(--red-600)]" data-testid="start-error">
+          <p className="fg-body-sm text-danger" data-testid="start-error">
             {formatApiError(open.error)}
           </p>
         )}
@@ -159,7 +159,7 @@ function Extras({
         <ErrorState
           title={t("shell.start.lookFailed")}
           message={formatApiError(query.error)}
-          onRetry={() => query.refetch()}
+          onRetry={() => void query.refetch()}
         />
       </div>
     );
@@ -185,7 +185,7 @@ function Extras({
                 onChange={() => onToggleHandle({ userId: h.userId, projectId: h.project.id })}
                 label={
                   <span className="flex items-center gap-1.5">
-                    <Icon name="agent" size={13} className="text-[color:var(--accent-text)]" />
+                    <Icon name="agent" size={13} className="text-accent-text" />
                     <span className="font-mono">@{h.handle}</span>
                     <span className="fg-caption text-muted">{h.project.name}</span>
                   </span>

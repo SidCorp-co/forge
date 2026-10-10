@@ -48,6 +48,34 @@ export interface StorefrontDraftVerdictView {
 export const VERDICT_VALUES = ["pass", "short", "fail", "skipped"] as const;
 type VerdictValueName = (typeof VERDICT_VALUES)[number];
 
+/**
+ * The one definition of passing: the verdicts that earn a criterion, a `pass` or a `short` (met,
+ * short of its wording, judged not to block). Every gate, read model and query reads it here.
+ */
+export const EARNING_VERDICTS = [
+	"pass",
+	"short",
+] as const satisfies readonly VerdictValueName[];
+
+/** The verdicts that exercised a criterion: every judged outcome but `skipped`. */
+export const EXERCISED_VERDICTS = [
+	"pass",
+	"short",
+	"fail",
+] as const satisfies readonly VerdictValueName[];
+
+/** Whether a verdict earns its criterion (`EARNING_VERDICTS`). */
+export const verdictEarns = (verdict: string | null | undefined): boolean =>
+	(EARNING_VERDICTS as readonly (string | null | undefined)[]).includes(
+		verdict,
+	);
+
+/** Whether a verdict exercised its criterion (`EXERCISED_VERDICTS`). */
+export const verdictExercised = (verdict: string | null | undefined): boolean =>
+	(EXERCISED_VERDICTS as readonly (string | null | undefined)[]).includes(
+		verdict,
+	);
+
 export const VERDICT_IDENTITY_KINDS = [
 	"commit",
 	"runtime",

@@ -1,19 +1,19 @@
 import { ISSUE_STATUSES } from "@forge/contracts/issue-machine";
-import { deriveQueuedStep, hasLiveAgentSession, queuedChipStatus } from "@/features/issues/waiting";
+import { deriveQueuedStep, hasLiveAgentSession, queuedChipStatus } from "@/features/issues";
 import {
   statusToChip,
   statusToTone,
   workStepOf,
-} from "@/features/issues/derive";
+} from "@/features/issues";
 import { type SemanticTone, STATUS_KEY_TONE, type StatusKey, TONE_META } from "@/design/status";
-import type { IssueStatus } from "@/features/issues/types";
+import type { IssueStatus } from "@/features/issues";
 import type { StageKey } from "@/design/stages";
-import { gateReasonLine } from "@/features/runners/types";
+import { gateReasonLine } from "@/features/runners";
 import { formatElapsed } from "@/lib/utils/format";
 import { formatElapsed as formatElapsedIn } from "@/lib/i18n/format";
-import { copyLocale, productCopy } from "@/lib/i18n/product-copy";
+import { productCopy } from "@/lib/i18n/product-copy";
 import { labelCopy } from "@/lib/i18n/labels";
-import { gateReadingIn } from "@/features/issues/gate-reading";
+import { gateReadingIn } from "@/features/issues";
 import { BOARD_EXCLUDED_STATUSES, type PipelineIssueRow, type PipelineRunListItem, type PipelineRunStatus, type RunGate } from "./types";
 
 export function jobTypeToStage(jobType: string | null | undefined): StageKey | null {
@@ -40,34 +40,6 @@ export function jobTypeToStage(jobType: string | null | undefined): StageKey | n
 export function drawerRunChip(runStatus: PipelineRunStatus, issueRun: StatusKey | null): StatusKey | null {
   if (runStatus === "running" && (issueRun === "running" || issueRun === "queued")) return issueRun;
   return null;
-}
-
-/** Format an estimated cost in USD. `$X.XX`, with small-value and zero cases. */
-export function formatUsd(usd: number | null | undefined, language = "en"): string {
-  if (usd == null) return "—";
-  if (usd === 0) return "$0";
-  const digits = (n: number) => new Intl.NumberFormat(copyLocale(language), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
-  if (usd < 0.01) return `<$${digits(0.01)}`;
-  return `$${digits(usd)}`;
-}
-
-/** Human duration from milliseconds: `820ms` · `4.2s` · `3m 12s` · `1h 04m`. */
-export function formatDurationMs(ms: number | null | undefined, language = "en"): string {
-  if (ms == null) return "—";
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  const t = productCopy(language);
-  const s = ms / 1000;
-  if (s < 60) return t("common.age.seconds", { n: new Intl.NumberFormat(copyLocale(language), { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(s) });
-  const m = Math.floor(s / 60);
-  if (m < 60) return t("common.elapsed.minutes", { m, s: String(Math.floor(s % 60)).padStart(2, "0") });
-  const h = Math.floor(m / 60);
-  return t("common.elapsed.hours", { h, m: String(m % 60).padStart(2, "0") });
-}
-
-/** Human duration from seconds (step-durations view). */
-export function formatDurationSec(sec: number | null | undefined, language = "en"): string {
-  if (sec == null) return "—";
-  return formatDurationMs(sec * 1000, language);
 }
 
 /**
@@ -165,7 +137,7 @@ export function groupIssuesByColumn(issues: PipelineIssueRow[] | undefined, lang
 interface CardStatusView {
   status: StatusKey;
   pipelineRun?: PipelineRunStatus;
-  /** Undefined lets `StatusChip` use the run vocabulary's own label. */
+  /** Undefined lets `StatusBadge` use the run vocabulary's own label. */
   label: string | undefined;
   domain: "session" | "issue";
   /** The gate sentence, for the card's tooltip + aria-label; "" when none. */

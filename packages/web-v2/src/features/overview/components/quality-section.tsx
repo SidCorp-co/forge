@@ -12,7 +12,7 @@ import {
   sentenceCase,
 } from "@/design";
 import { TONE_META } from "@/design/status";
-import { failureReasonLabel } from "@/features/sessions/types";
+import { failureReasonLabel } from "@/features/sessions";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { formatElapsed, qualityRates } from "../derive";
 import type { PulseQuality } from "../types";
@@ -22,7 +22,7 @@ export interface QualitySectionProps {
 }
 
 /** Section 5 — is the output any good? */
-export function QualitySection({ quality }: QualitySectionProps) {
+export function QualityFigures({ quality }: QualitySectionProps) {
   const rates = qualityRates(quality);
   const t = useCopy();
   const language = useInterfaceLanguage();

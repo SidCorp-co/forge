@@ -21,7 +21,7 @@ export function ProgressBar({ value = 0, indeterminate, tone = "accent", classNa
   const color = TONE[tone];
   return (
     <div
-      className={cn("relative h-1 w-full overflow-hidden rounded-pill bg-[var(--paper-200)]", className)}
+      className={cn("relative h-1 w-full overflow-hidden rounded-pill bg-neutral-5", className)}
       role="progressbar"
       aria-valuenow={indeterminate ? undefined : value}
       aria-valuemin={0}

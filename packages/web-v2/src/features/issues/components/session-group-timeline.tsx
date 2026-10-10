@@ -8,8 +8,8 @@
 // `issue.agentSessions` (AC9): no raw claudeSessionId / "sessionGroup" key in
 // the default view (AC8); legacy rows lacking metadata render without a badge
 // rather than erroring.
-import { useState } from "react";
-import { Badge, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, enumLabel, Icon, MonoTag, StatusBadge } from "@/design";
+import { OperatorDetails } from "./live-agent";
+import { Badge, enumLabel, Icon, Section, StatusBadge } from "@/design";
 import {
   deriveSessionTimeline,
   type SessionTimelineEntry,
@@ -31,16 +31,11 @@ export function SessionGroupTimeline({ sessions }: SessionGroupTimelineProps) {
   if (entries.length === 0 || !hasGroup) return null;
 
   return (
-    <PageSection>
-      <PageSectionHeader>
-        <PageSectionTitle>{t("issues.session.continuity")}</PageSectionTitle>
-      </PageSectionHeader>
-      <PageSectionBody>
+    <Section title={t("issues.session.continuity")}>
         {entries.map((entry, i) => (
-          <TimelineRow key={entry.id} entry={entry} isLast={i === entries.length - 1} />
+          <SessionGroupEntry key={entry.id} entry={entry} isLast={i === entries.length - 1} />
         ))}
-      </PageSectionBody>
-    </PageSection>
+      </Section>
   );
 }
 
@@ -50,8 +45,7 @@ const CONTINUITY_META: Record<"resumed" | "fresh", { glyph: string; tone: "neutr
 };
 const KNOWN_GROUPS = new Set(["build", "planning", "verify"]);
 
-function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: boolean }) {
-  const [showOps, setShowOps] = useState(false);
+function SessionGroupEntry({ entry, isLast }: { entry: SessionTimelineEntry; isLast: boolean }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const groupLabel = entry.group && KNOWN_GROUPS.has(entry.group) ? t(`issues.session.group.${entry.group as "build" | "planning" | "verify"}`) : entry.groupLabel;
@@ -64,7 +58,7 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
     <div className="flex gap-3">
       {/* Left rail: dot + connector. Solid when the prior step shares this
           session (one continuous chain); muted when it's a fresh boundary. */}
-      <div className="flex w-[18px] flex-none flex-col items-center">
+      <div className="flex w-4.5 flex-none flex-col items-center">
         <span
           className="mt-0.5 size-3.5 flex-none rounded-full"
           style={{
@@ -74,7 +68,7 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
         />
         {!isLast && (
           <span
-            className="mt-1 min-h-[26px] w-0.5 flex-1"
+            className="mt-1 min-h-6.5 w-0.5 flex-1"
             style={{
               background: "var(--border-default)",
               opacity: 1,
@@ -101,7 +95,7 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
           )}
           {groupLabel && <Badge tone="cobalt">{groupLabel}</Badge>}
           {entry.jobType && (
-            <span className="text-12-5 font-bold text-fg" title={t("issues.session.stepTitle", { step: entry.jobType })}>
+            <span className="text-13 font-bold text-fg" title={t("issues.session.stepTitle", { step: entry.jobType })}>
               {enumLabel("jobType", entry.jobType, language)}
             </span>
           )}
@@ -110,43 +104,16 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
               deviceId UUID). Falls back to the short id on a pre-411 server. */}
           {(entry.deviceName ?? entry.deviceShort) && (
             <span className="fg-caption inline-flex items-center gap-1 text-muted">
-              <Icon name="server" size={11} className="align-[-1px]" />
+              <Icon name="server" size={11} className="" />
               {entry.deviceName ?? entry.deviceShort}
             </span>
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowOps((v) => !v)}
-          className="fg-caption mt-1.5 inline-flex items-center gap-1 text-muted transition-colors hover:text-fg"
-          aria-expanded={showOps}
-        >
-          <Icon name={showOps ? "chevronDown" : "chevronRight"} size={12} />
-          {t("issues.live.operatorDetails")}
-        </button>
-        {showOps && (
-          <div className="mt-2 flex flex-wrap gap-2 border-t border-line-subtle pt-2">
-            {entry.claudeShort && <OpsTag label={t("issues.live.ops.claude")} value={entry.claudeShort} />}
-            {(entry.deviceName ?? entry.deviceShort) && (
-              <OpsTag label={t("issues.live.ops.device")} value={entry.deviceName ?? entry.deviceShort ?? ""} />
-            )}
-            <OpsTag label={t("issues.live.ops.status")} value={entry.status} />
-            {entry.continuity === "fresh" && entry.freshReason && (
-              <span className="fg-caption text-muted">{t(`issues.session.freshReason.${entry.freshReason}`)}</span>
-            )}
-          </div>
-        )}
+        <OperatorDetails tags={[["claude", entry.claudeShort], ["device", entry.deviceName ?? entry.deviceShort], ["status", entry.status]]}>
+          {entry.continuity === "fresh" && entry.freshReason ? <span className="fg-caption text-muted">{t(`issues.session.freshReason.${entry.freshReason}`)}</span> : null}
+        </OperatorDetails>
       </div>
     </div>
-  );
-}
-
-function OpsTag({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="inline-flex items-center gap-1">
-      <span className="fg-caption text-muted">{label}</span>
-      <MonoTag hue="neutral">{value}</MonoTag>
-    </span>
   );
 }

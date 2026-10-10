@@ -19,6 +19,7 @@ import type {
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
 import { changedSincePlan } from '@forge/contracts/requirements';
+import { verdictEarns } from '@forge/contracts/verdict-identity';
 import type { WrittenLang } from '@forge/contracts/written-lang';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -288,8 +289,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     blocks: f.edges.filter((e) => e.fromId === r.id).map((e) => edgeEnd(e, 'to', f.key)),
     criteria: {
       total: mine.length,
-      passing: mine.filter((c) => c.stands && (c.verdict === 'pass' || c.verdict === 'short'))
-        .length,
+      passing: mine.filter((c) => c.stands && verdictEarns(c.verdict)).length,
       failing: mine.filter((c) => c.verdict === 'fail').length,
       skipped: mine.filter((c) => c.verdict === 'skipped').length,
     },

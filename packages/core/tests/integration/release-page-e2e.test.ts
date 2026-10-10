@@ -35,7 +35,7 @@ const asked: ChatMessage[][] = [];
 let answers: string[] = [];
 const draftsHighlights = (messages: readonly ChatMessage[]) =>
   messages.some((m) => typeof m.content === 'string' && /^Claimable: /m.test(m.content));
-register('anthropic', () => ({
+register('openai', () => ({
   id: 'scripted',
   defaultModel: 'scripted-model',
   async *stream(req): AsyncIterable<ChatStreamEvent> {

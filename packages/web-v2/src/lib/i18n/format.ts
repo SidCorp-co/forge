@@ -43,6 +43,35 @@ export function formatNumber(n: number, language: string): string {
   return new Intl.NumberFormat(copyLocale(language)).format(n);
 }
 
+/** `$1.25`, `<$0.01`, `$0`: an estimated cost in the language's digits; "—" when none is known. */
+export function formatUsd(usd: number | null | undefined, language = "en"): string {
+  if (usd == null) return "—";
+  if (usd === 0) return "$0";
+  const digits = (n: number) => new Intl.NumberFormat(copyLocale(language), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  return usd < 0.01 ? `<$${digits(0.01)}` : `$${digits(usd)}`;
+}
+
+/** `820ms`, `4.2s`, `3m 12s`, `1h 04m`: a span that was measured; "—" when none was. */
+export function formatDuration(ms: number | null | undefined, language = "en"): string {
+  if (ms == null || !Number.isFinite(ms)) return "—";
+  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`;
+  const t = productCopy(language);
+  const s = ms / 1000;
+  if (s < 60) return t("common.age.seconds", { n: new Intl.NumberFormat(copyLocale(language), { maximumFractionDigits: 1 }).format(s) });
+  const m = Math.floor(s / 60);
+  if (m < 60) return t("common.elapsed.minutes", { m, s: String(Math.floor(s % 60)).padStart(2, "0") });
+  return t("common.elapsed.hours", { h: Math.floor(m / 60), m: String(m % 60).padStart(2, "0") });
+}
+
+/** `formatDuration` for a span counted in seconds. */
+export const formatDurationSec = (sec: number | null | undefined, language = "en"): string => formatDuration(sec == null ? null : sec * 1000, language);
+
+/** `formatDateTime`, or "—" for an instant that is absent or unreadable. */
+export function formatWhen(at: string | number | null | undefined, language = "en"): string {
+  const ms = at == null || at === "" ? Number.NaN : new Date(at).getTime();
+  return Number.isNaN(ms) ? "—" : formatDateTime(ms, language);
+}
+
 /** `5 min ago` and its Vietnamese reading: the age of an instant; an empty or unreadable one reads as an empty string. */
 export function formatRelative(iso: string | null | undefined, language: string, now: number = Date.now()): string {
   if (!iso) return "";

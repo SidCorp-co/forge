@@ -1,23 +1,15 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { ThemeProvider } from "@/providers/theme-provider";
+import { ThemeProvider, ThemeSync } from "@/providers/theme-provider";
 import { QueryProvider } from "@/providers/query-provider";
 import { AuthProvider } from "@/providers/auth-provider";
 import { WsMount } from "@/providers/ws-mount";
 import { ToastProvider } from "@/providers/toast-provider";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/design";
 import { SentryInit } from "@/providers/sentry-init";
 import { RouteProgress } from "@/design/patterns/route-progress";
 import { productCopy } from "@/lib/i18n/product-copy";
 import "./globals.css";
-
-const hanken = localFont({
-  src: "./fonts/hanken-grotesk-latin-variable.woff2",
-  variable: "--font-hanken",
-  weight: "100 900",
-  style: "normal",
-  display: "swap",
-});
 
 const jetbrainsMono = localFont({
   src: "./fonts/jetbrains-mono-latin-variable.woff2",
@@ -48,8 +40,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      data-theme="light"
-      className={`${hanken.variable} ${jetbrainsMono.variable}`}
+      className={jetbrainsMono.variable}
       suppressHydrationWarning
     >
       <body>
@@ -60,6 +51,7 @@ export default function RootLayout({
               {/* WsMount lives inside Auth + Query so the hook sees both the
                   current user and the QueryClient it invalidates against. */}
               <WsMount />
+              <ThemeSync />
               <ToastProvider>
                 <TooltipProvider delay={0}>
                   <RouteProgress />

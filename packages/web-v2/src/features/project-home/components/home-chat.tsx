@@ -4,11 +4,12 @@
 // dock would open (`openingTarget`), drawn in the page. It mounts `ConversationChat` as it is, so the
 // answers, the decision buttons under a turn and the page actions behave as they do in the dock.
 
+import { cn } from "@/lib/utils/cn";
 import { useState } from "react";
-import { ErrorState } from "@/design";
-import { openingTarget } from "@/features/chat-dock/dock-target";
-import { ConversationChat } from "@/features/conversations/components/conversation-chat";
-import { useProjectConversations } from "@/features/conversations/hooks";
+import { ErrorState, fixedHeight } from "@/design";
+import { openingTarget } from "@/features/chat-dock";
+import { ConversationChat } from "@/features/conversations";
+import { useProjectConversations } from "@/features/conversations";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 
@@ -22,7 +23,7 @@ export function HomeChat({ projectId }: { projectId: string }) {
     setRoom({ id: target.kind === "room" ? target.conversationId : undefined });
   }
   return (
-    <section aria-label={t("home.chat.aria")} data-testid="home-chat" className="flex h-[70dvh] min-h-[26rem] min-w-0 flex-col border border-line bg-surface">
+    <section aria-label={t("home.chat.aria")} data-testid="home-chat" className={cn("flex min-h-104 min-w-0 flex-col border border-line bg-surface lg:flex-1", fixedHeight("pane"))}>
       {q.isError ? (
         <ErrorState title={t("shell.dock.listUnread")} message={formatApiError(q.error)} onRetry={() => void q.refetch()} />
       ) : room ? (

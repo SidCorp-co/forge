@@ -1,4 +1,5 @@
-import type { ProjectDetail } from "@/features/projects/types";
+import type { PluginPinConflict } from "@forge/contracts/plugins";
+import type { ProjectDetail } from "@/features/projects";
 import { apiClient } from "@/lib/api/client";
 import type {
 	LabelCreateInput,
@@ -33,6 +34,10 @@ export const projectSettingsApi = {
 			method: "PATCH",
 			body: JSON.stringify({ plugins }),
 		}),
+
+	/** `GET /api/projects/:id/plugin-conflicts` — pins this project cannot have on a box it shares (REQ-26 BC-2). */
+	getPluginConflicts: (id: string) =>
+		apiClient<{ conflicts: PluginPinConflict[] }>(`/projects/${id}/plugin-conflicts`),
 
 	/** `GET /api/projects/:id/release-readiness` — what this project still owes
 	 *  before its first issue runs. Member-gated. */

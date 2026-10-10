@@ -6,7 +6,7 @@
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useOnboardingState } from "../hooks";
 import type { OnboardingStatus } from "../types";
-import { ThreadStatusChip } from "./marks";
+import { StatusBadge } from "@/design";
 
 export function ThreadSub({
   kind,
@@ -35,7 +35,7 @@ function OverdueLine({ projectId, kind }: { projectId: string; kind: "onboarding
   const batch = kind === "onboarding" ? state?.onboarding?.openBatch : state?.firstRequirements?.openBatch;
   if (!batch?.overdue) return null;
   return (
-    <p className="text-[11.5px] text-[color:var(--red-600)]" data-testid="thread-overdue">
+    <p className="text-12 text-danger-11" data-testid="thread-overdue">
       {t("conversations.sub.overdue", { days: batch.waitingDays, open: batch.open })}
     </p>
   );
@@ -44,9 +44,9 @@ function OverdueLine({ projectId, kind }: { projectId: string; kind: "onboarding
 function ThreadSubLine({ ba, status }: { ba: boolean; status: OnboardingStatus | null | undefined }) {
   const t = useCopy();
   return (
-    <div className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-subtle">
+    <div className="flex flex-wrap items-center gap-1.5 text-12 text-subtle">
       <span>{ba ? t("conversations.sub.withBa") : t("conversations.sub.withAgent")}</span>
-      {status && <ThreadStatusChip status={status} />}
+      {status && <StatusBadge family="thread" value={status} />}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { IssuesScreen } from "@/features/issues/components/issues-screen";
+import { IssuesScreen } from "@/features/issues";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { ProjectRefGate } from "@/features/projects/components/project-gate";
 

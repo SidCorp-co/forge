@@ -1,7 +1,7 @@
 "use client";
 
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, use, useState } from "react";
 import type { ReactNode } from "react";
 import type { RenderBlock } from "./types";
 
@@ -38,7 +38,7 @@ export interface ThreadDisclosures {
   atBottom: boolean;
 }
 
-const Ctx = createContext<ThreadDisclosures | null>(null);
+const ThreadDisclosuresContext = createContext<ThreadDisclosures | null>(null);
 
 /** The turn id a disclosure key belongs to. */
 const turnOf = (key: string) => key.slice(0, key.indexOf(":"));
@@ -57,39 +57,36 @@ export function DisclosureScope({
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set<string>());
   const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set<string>());
 
-  const toggle = useCallback((key: string) => {
+  const toggle = (key: string) => {
     setOpen((prev) => {
       const next = new Set(prev);
       if (!next.delete(key)) next.add(key);
       return next;
     });
     setTouched((prev) => (prev.has(turnOf(key)) ? prev : new Set(prev).add(turnOf(key))));
-  }, []);
+  };
 
-  const value = useMemo<ThreadDisclosures>(
-    () => ({
+  const value: ThreadDisclosures = ({
       isOpen: (key) => open.has(key),
       toggle,
       touched: (turnId) => touched.has(turnId),
       atBottom,
-    }),
-    [open, touched, toggle, atBottom],
-  );
+    });
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <ThreadDisclosuresContext value={value}>{children}</ThreadDisclosuresContext>;
 }
 
 /** The thread's disclosure state where there is a scope, and nothing where there is not. */
 export function useThreadDisclosures(): ThreadDisclosures | null {
-  return useContext(Ctx);
+  return use(ThreadDisclosuresContext);
 }
 
 export function useDisclosure(key?: string): readonly [boolean, () => void] {
   const thread = useThreadDisclosures();
   const [local, setLocal] = useState(false);
-  const toggleLocal = useCallback(() => setLocal((v) => !v), []);
-  const toggleShared = useCallback(() => {
+  const toggleLocal = () => setLocal((v) => !v);
+  const toggleShared = () => {
     if (thread && key) thread.toggle(key);
-  }, [thread, key]);
+  };
   return thread && key ? [thread.isOpen(key), toggleShared] : [local, toggleLocal];
 }

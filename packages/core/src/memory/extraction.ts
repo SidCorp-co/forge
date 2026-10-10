@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type JobType, memories } from '../db/schema.js';
 import { callFastModel, fastModelConfigured } from '../integrations/llm/index.js';
@@ -131,7 +131,14 @@ async function existingMemoriesSection(projectId: string): Promise<string> {
   const existing = await db
     .select({ textContent: memories.textContent })
     .from(memories)
-    .where(and(eq(memories.projectId, projectId), eq(memories.source, 'knowledge')))
+    // a retired memory is not knowledge: it neither guides the model nor blocks the corrected fact (REQ-33 BC-5)
+    .where(
+      and(
+        eq(memories.projectId, projectId),
+        eq(memories.source, 'knowledge'),
+        isNull(memories.archivedAt),
+      ),
+    )
     .orderBy(desc(memories.updatedAt))
     .limit(MAX_EXISTING_FOR_PROMPT);
   return existing.length > 0

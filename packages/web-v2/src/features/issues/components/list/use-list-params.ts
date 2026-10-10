@@ -1,137 +1,64 @@
 "use client";
 
-// URL-as-state (ISS-436): every filter (q / filter / priority / assignee /
-// groupBy / sort / page) is DERIVED from the live query string via
-// `useLocationSearch`, and the setters write back with a shallow
-// `replaceState` MERGE (never a rebuild — the host's `?tab=` and any sibling
-// param survive, ISS-364/331). Because derivation is reactive, an external URL
-// change — a pinned-view click on this same route, back/forward — restores the
-// exact view without a remount (the old hydrate-once useState went stale).
+// The Table's view lives in the query string (ISS-436): every filter is read from it on each render,
+// so a pinned-view click or Back restores the view without a remount, and each write merges into it
+// so the host's `?tab=` survives (ISS-364/331). The search box writes after 300ms of quiet.
 
-import { decodeFilter, decodeNumber } from "@/lib/navigation/deep-link";
-import { notifyLocationChange, useLocationSearch } from "@/lib/utils/use-location-search";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useUrlParams } from "@/design";
 import { statusesFromParam } from "../../derive";
-import {
-  type GroupBy,
-  ISSUE_PRIORITIES,
-  type IssueFilter,
-  type IssuePriority,
-  type IssueSort,
-} from "../../types";
+import { type GroupBy, ISSUE_PRIORITIES, type IssueFilter, type IssuePriority, type IssueSort } from "../../types";
 
-const VALID_FILTERS: IssueFilter[] = ["open", "closed", "all"];
 export const DEFAULT_FILTER: IssueFilter = "open";
-const VALID_GROUP_BY: GroupBy[] = ["none", "status", "priority", "creator"];
+const FILTERS: readonly string[] = ["open", "closed", "all"];
+const GROUPINGS: readonly string[] = ["none", "status", "priority", "creator"];
+const PRIORITIES: readonly string[] = ISSUE_PRIORITIES;
+/** The params Clear all resets; sort and the host's own keys stay. */
+const FILTER_PARAMS = ["q", "filter", "priority", "createdBy", "assignee", "status", "label", "module", "groupBy", "page"];
 
-/** The list's view as the query string holds it, the setter that merges into it, and the debounced search box. */
+const oneOf = <T extends string>(raw: string | null, values: readonly string[], fallback: T): T => (raw && values.includes(raw) ? (raw as T) : fallback);
+
+/** The list's view as the query string holds it, the setter that merges into it, and the search box. */
 export function useIssueListParams(slug: string) {
   const pathname = usePathname() || `/projects/${slug}/issues`;
-  const search = useLocationSearch();
-  const sp = useMemo(() => new URLSearchParams(search), [search]);
-  const q = sp.get("q") ?? "";
-  const rawFilter = decodeFilter<IssueFilter>(sp, "filter", DEFAULT_FILTER);
-  const filter = VALID_FILTERS.includes(rawFilter) ? rawFilter : DEFAULT_FILTER;
-  const rawPriority = sp.get("priority") ?? "";
-  const priority = (ISSUE_PRIORITIES as string[]).includes(rawPriority)
-    ? (rawPriority as IssuePriority)
-    : undefined;
+  const [sp, writeParams] = useUrlParams();
+  const search = sp.toString() ? `?${sp.toString()}` : "";
+  const q = (sp.get("q") ?? "").trim();
+  const filter = oneOf<IssueFilter>(sp.get("filter"), FILTERS, DEFAULT_FILTER);
+  const priority = oneOf<IssuePriority | "">(sp.get("priority"), PRIORITIES, "") || undefined;
   const createdBy = sp.get("createdBy") ?? "";
   const assignee = sp.get("assignee") ?? "";
   const label = sp.get("label") ?? "";
   const moduleId = sp.get("module") ?? "";
   const rawStatus = sp.get("status");
-  const statusParam = useMemo(() => statusesFromParam(rawStatus), [rawStatus]);
-  const rawGroupBy = decodeFilter<GroupBy>(sp, "groupBy", "none");
-  const groupBy = VALID_GROUP_BY.includes(rawGroupBy) ? rawGroupBy : "none";
-  const sort = decodeFilter<IssueSort>(sp, "sort", "createdAt:desc");
-  const page = decodeNumber(sp, "page", 1);
+  const statusParam = statusesFromParam(rawStatus);
+  const groupBy = oneOf<GroupBy>(sp.get("groupBy"), GROUPINGS, "none");
+  const sort = (sp.get("sort") ?? "createdAt:desc") as IssueSort;
+  const page = Math.max(1, Number(sp.get("page")) || 1);
 
-  /** Shallow-merge `patch` into the live query string ("" deletes the key).
-   *  Guarded to the issues route so an in-flight navigation to a child route
-   *  is never clobbered (ISS-332). */
-  const setParams = useCallback(
-    (patch: Record<string, string>) => {
-      if (typeof window === "undefined") return;
-      if (!window.location.pathname.endsWith("/issues")) return;
-      const next = new URLSearchParams(window.location.search);
-      for (const [key, value] of Object.entries(patch)) {
-        if (value) next.set(key, value);
-        else next.delete(key);
-      }
-      const qs = next.toString();
-      window.history.replaceState(
-        window.history.state,
-        "",
-        `${pathname}${qs ? `?${qs}` : ""}`,
-      );
-      notifyLocationChange();
-    },
-    [pathname],
-  );
-
-  const [rawQ, setRawQ] = useState(q);
-  const lastAppliedQ = useRef(q);
-  useEffect(() => {
-    if (q !== lastAppliedQ.current) {
-      lastAppliedQ.current = q;
-      setRawQ(q);
-    }
-  }, [q]);
-  useEffect(() => {
-    const t = setTimeout(() => {
-      const v = rawQ.trim();
-      if (v === q) return;
-      lastAppliedQ.current = v;
-      setParams({ q: v, page: "" });
-    }, 300);
-    return () => clearTimeout(t);
-  }, [rawQ, q, setParams]);
-
-  const isFiltered =
-    q !== "" ||
-    filter !== DEFAULT_FILTER ||
-    !!priority ||
-    !!createdBy ||
-    !!assignee ||
-    !!label ||
-    !!moduleId ||
-    statusParam !== undefined;
-
-  const clearAll = () =>
-    setParams({
-      q: "",
-      filter: "",
-      priority: "",
-      createdBy: "",
-      assignee: "",
-      status: "",
-      label: "",
-      module: "",
-      groupBy: "",
-      page: "",
-    });
-
-  return {
-    pathname,
-    search,
-    q,
-    filter,
-    priority,
-    createdBy,
-    assignee,
-    label,
-    moduleId,
-    rawStatus,
-    statusParam,
-    groupBy,
-    sort,
-    page,
-    setParams,
-    rawQ,
-    setRawQ,
-    isFiltered,
-    clearAll,
+  /** Merges `patch` into the query string ("" deletes a key), only while this route is the one showing (ISS-332). */
+  const setParams = (patch: Record<string, string>) => {
+    if (window.location.pathname.endsWith("/issues")) writeParams(patch);
   };
+
+  // what the box holds; a change to `q` from outside (a pinned view, Back) replaces it
+  const [typed, setTyped] = useState(q);
+  const [seenQ, setSeenQ] = useState(q);
+  if (q !== seenQ) {
+    setSeenQ(q);
+    if (q !== typed.trim()) setTyped(q);
+  }
+  const timerRef = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timerRef.current), []);
+  const setRawQ = (text: string) => {
+    setTyped(text);
+    window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => setParams({ q: text.trim(), page: "" }), 300);
+  };
+
+  const isFiltered = q !== "" || filter !== DEFAULT_FILTER || !!priority || !!createdBy || !!assignee || !!label || !!moduleId || statusParam !== undefined;
+  const clearAll = () => setParams(Object.fromEntries(FILTER_PARAMS.map((k) => [k, ""])));
+
+  return { pathname, search, q, filter, priority, createdBy, assignee, label, moduleId, rawStatus, statusParam, groupBy, sort, page, setParams, rawQ: typed, setRawQ, isFiltered, clearAll };
 }

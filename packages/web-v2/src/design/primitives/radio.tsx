@@ -41,11 +41,11 @@ export function Radio({ value, label, disabled }: RadioProps) {
         className={cn(
           "size-[18px] border-line-strong bg-surface hover:border-strong",
           "data-checked:border-accent data-checked:bg-surface",
-          "focus-visible:ring-0 focus-visible:shadow-[var(--shadow-focus)]",
+          "focus-visible:ring-0 focus-visible:shadow-focus",
           "[&_[data-slot=radio-group-indicator]>span]:size-2.5 [&_[data-slot=radio-group-indicator]>span]:bg-accent",
         )}
       />
-      {label && <span className="fg-body-sm text-fg">{label}</span>}
+      {label ? <span className="fg-body-sm text-fg">{label}</span> : null}
     </label>
   );
 }

@@ -7,7 +7,7 @@
 // not a column: an in_progress card names it ("In progress · Test"). Live via WS (the project room
 // invalidates `['issues','search']` + `['pipeline-runs','list']`).
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   ErrorState,
   KanbanBoard,
@@ -22,23 +22,15 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { boardColumns, cardStatus, formatUsd, groupIssuesByColumn, runsByIssue } from "../derive";
+import { boardColumns, cardStatus, groupIssuesByColumn, runsByIssue } from "../derive";
 import { useProjectIssues, useProjectRuns } from "../hooks";
 import type { PipelineIssueRow } from "../types";
 import { RunDetail } from "./run-detail";
 import { TopBarActions } from "@/design/primitives/top-bar-slot";
+import { formatUsd } from "@/lib/i18n/format";
 
 interface PipelineBoardProps {
   scope: { projectId: string; slug: string };
-  /** When embedded inside another screen (the Issues Board tab, ISS-364) the
-   *  host renders the page header + view switcher, so the board hides its own
-   *  `<header>` and trims its top padding. */
-  embedded?: boolean;
-  /** False for project viewers (read-only). The board itself has no
-   *  drag-and-drop (cards are click-to-open), so this gates the mutation
-   *  affordances in the RunDetail drawer (quick actions + run controls).
-   *  Optional, defaults true so other callers keep their behaviour. */
-  canWrite?: boolean;
 }
 
 interface Selection {
@@ -46,7 +38,7 @@ interface Selection {
   runId: string | null;
 }
 
-export function PipelineBoard({ scope, embedded = false, canWrite = true }: PipelineBoardProps) {
+export function PipelineBoard({ scope }: PipelineBoardProps) {
   const { projectId, slug } = scope;
   const [selected, setSelected] = useState<Selection | null>(null);
 
@@ -56,49 +48,39 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
   const issuesQ = useProjectIssues(projectId);
   const runsQ = useProjectRuns(projectId);
 
-  const runIndex = useMemo(() => runsByIssue(runsQ.data?.items), [runsQ.data]);
+  const runIndex = runsByIssue(runsQ.data?.items);
   const t = useCopy();
   const language = useInterfaceLanguage();
-  const groups = useMemo(() => groupIssuesByColumn(issuesQ.data?.items, language), [issuesQ.data, language]);
+  const groups = groupIssuesByColumn(issuesQ.data?.items, language);
 
   // Keep the open drawer's issue snapshot in sync with the live list: editing
   // status/priority/assignee from the quick-action bar invalidates `['issues']`,
   // so re-derive the freshest row by id (falling back to the snapshot) — the
   // header chip + quick-bar selects then reflect the change without reopening.
-  const selectedIssue = useMemo(() => {
+  const selectedIssue = (() => {
     if (!selected) return null;
     return issuesQ.data?.items.find((i) => i.id === selected.issue.id) ?? selected.issue;
-  }, [selected, issuesQ.data]);
+  })();
 
   return (
-    <div
-      className={
-        embedded
-          ? "flex h-full min-h-0 flex-col px-4 pb-4 sm:px-6"
-          : "flex h-full min-h-0 flex-col px-4 pb-4 pt-5 sm:px-6"
-      }
-    >
-      {!embedded && (
-        <>
-        <PageTitle>{t("pipeline.board.title")}</PageTitle>
-        <TopBarActions>
-          <LiveDot state="live" />
-        </TopBarActions>
-        </>
-      )}
+    <div className="flex h-full min-h-0 flex-col px-4 pb-4 pt-5 sm:px-6">
+      <PageTitle>{t("pipeline.board.title")}</PageTitle>
+      <TopBarActions>
+        <LiveDot state="live" />
+      </TopBarActions>
 
       {issuesQ.isError || runsQ.isError ? (
         <ErrorState
           message={formatApiError(issuesQ.error ?? runsQ.error)}
           onRetry={() => {
-            issuesQ.refetch();
-            runsQ.refetch();
+            void issuesQ.refetch();
+            void runsQ.refetch();
           }}
         />
       ) : issuesQ.isLoading ? (
         <KanbanBoard>
           {boardColumns().map((key) => (
-            <div key={key} className="w-[248px] flex-none">
+            <div key={key} className="w-62 flex-none">
               <KanbanColumnSkeleton />
             </div>
           ))}
@@ -121,12 +103,13 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
                     key={issue.id}
                     id={issue.displayId}
                     title={issue.title}
-                    status={card.status}
-                    statusLabel={card.label}
-                    statusDomain={card.domain}
-                    {...(card.pipelineRun
-                      ? { badge: <StatusBadge family="pipelineRun" value={card.pipelineRun} /> }
-                      : {})}
+                    badge={
+                      card.pipelineRun ? (
+                        <StatusBadge family="pipelineRun" value={card.pipelineRun} />
+                      ) : (
+                        <StatusBadge family="run" value={card.status} label={card.label} />
+                      )
+                    }
                     held={issue.status === "on_hold"}
                     {...(card.waitingReason ? { waitingReason: card.waitingReason } : {})}
                     {...(card.note ? { note: card.note } : {})}
@@ -150,7 +133,6 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
         issue={selectedIssue}
         runId={selected?.runId ?? null}
         slug={slug}
-        canWrite={canWrite}
       />
     </div>
   );

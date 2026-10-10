@@ -15,12 +15,12 @@ import {
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
-import { useDraftReleaseForecast } from "@/features/forecast/hooks";
+import { useDraftReleaseForecast } from "@/features/forecast";
 import { useRelease, useReleasePage, useReleases } from "../hooks";
 import { ContinuedAs, EndedAttempt } from "./release-attempts";
 import { ReleaseBanner } from "./release-bits";
 import { ChecksPane } from "./release-checks";
-import { ReleaseFacts, ReleasePhoneStanding } from "./release-facts";
+import { ReleaseProperties, ReleasePhoneStanding } from "./release-facts";
 import { ReleasePageActions } from "./release-page-actions";
 import { ReleaseReader } from "./release-reader";
 import { CriteriaPane, IssuesPane, NotesPane, OverviewPane, RELEASE_TABS, type ReleaseTab } from "./release-panes";
@@ -86,7 +86,7 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
             dataKey={r.key}
             rail={
               <FactsRail>
-                <ReleaseFacts r={r} forecast={forecastQ.data} besideReader />
+                <ReleaseProperties r={r} forecast={forecastQ.data} besideReader />
               </FactsRail>
             }
           >

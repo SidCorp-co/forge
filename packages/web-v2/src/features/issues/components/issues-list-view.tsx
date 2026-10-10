@@ -5,13 +5,12 @@
 // anything derived from `rows` describes the page and never the project. Live via WS on
 // `['issues','search']`, the one key the event-router invalidates.
 
-import { BoardRowSkeleton, ErrorState, Pagination, type SegmentOption } from "@/design";
+import { LoadingState, ErrorState, Pagination, type SegmentOption } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { useMemo } from "react";
 import { listFilterFromSearch } from "@forge/contracts/ui-list-filters";
 import { useReportShown } from "@/design/hooks/use-page-shown";
 import { writeUrlParams } from "@/design/hooks/use-url-params";
@@ -98,14 +97,15 @@ export function IssuesListView({
     isPending: transitionPending,
   } = useGuardedTransition();
 
-  const rows = useMemo(() => issuesQ.data?.items ?? [], [issuesQ.data]);
+  const rows = issuesQ.data?.items ?? [];
   useReportShown(rows.map((r) => r.displayId));
   // whom an issue waits on is the standing read's, which the grouped views draw; the paged search has none
   const waiting = listFilterFromSearch("issues", view.search).waitingOn;
-  const now = issuesQ.dataUpdatedAt || Date.now();
+  // the rows are as old as the read that brought them
+  const now = issuesQ.dataUpdatedAt;
   const total = issuesQ.data?.totalCount ?? 0;
   const buckets = issuesQ.data?.extra?.buckets;
-  const segments = useMemo(() => withCounts(segmentsOf(t), buckets), [buckets, t]);
+  const segments = withCounts(segmentsOf(t), buckets);
   const pageCount = Math.max(1, Math.ceil(total / ISSUES_PAGE_SIZE));
 
   const actions: RowActions = {
@@ -151,7 +151,7 @@ export function IssuesListView({
       />
 
       {waiting ? (
-        <p className="flex flex-wrap items-center gap-2 border-y border-line-subtle bg-app px-4 py-1.5 text-12-5 text-muted sm:px-6" data-testid="issues-table-no-waiting">
+        <p className="flex flex-wrap items-center gap-2 border-y border-line-subtle bg-app px-4 py-1.5 text-13 text-muted sm:px-6" data-testid="issues-table-no-waiting">
           {t("conversations.list.tableNoWaiting")}
           <button type="button" className="font-semibold text-link hover:underline" onClick={() => writeUrlParams({ group: null })}>
             {t("conversations.list.showGrouped")}
@@ -165,21 +165,14 @@ export function IssuesListView({
         </div>
       )}
 
-      {issuesQ.isLoading && (
-        <div className="border-t border-line">
-          {Array.from({ length: 6 }).map((_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length placeholder list that never reorders
-            <BoardRowSkeleton key={i} />
-          ))}
-        </div>
-      )}
+      {issuesQ.isLoading && <LoadingState label={t("issues.board.loading")} rows={6} />}
 
       {issuesQ.isError && (
         <div className="px-4 sm:px-6">
           <ErrorState
             title={t("issues.list.loadFailed")}
             message={formatApiError(issuesQ.error)}
-            onRetry={() => issuesQ.refetch()}
+            onRetry={() => void issuesQ.refetch()}
           />
         </div>
       )}

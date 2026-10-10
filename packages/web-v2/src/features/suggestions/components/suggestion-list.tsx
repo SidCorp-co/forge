@@ -1,16 +1,13 @@
 "use client";
 
 import { describePicture, draftPictureSchema } from "@forge/contracts/requirement-pictures";
-import { useState } from "react";
-import { AcceptStep, AGENT_TINT, Button } from "@/design";
-import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { labelCopy } from "@/lib/i18n/labels";
 import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
-import { requirementAffected, useSuggestionDecision, useWaitingSuggestions } from "../hooks";
+import { requirementAffected, useWaitingSuggestions } from "../hooks";
 import type { SuggestionKind, SuggestionProducer, SuggestionView as Suggestion } from "../types";
 import { BreakdownSlices } from "./breakdown-slices";
-import { RejectStep } from "./reject-step";
+import { SuggestionDecider } from "./suggestion-decider";
 
 type Payload = Record<string, unknown>;
 const str = (v: unknown) => (typeof v === "string" ? v : null);
@@ -110,33 +107,28 @@ export function PendingBadge() {
   const t = useCopy();
   return (
     <span
-      className="inline-flex items-center gap-[5px] rounded-pill px-2 py-px text-11-5 font-semibold"
-      style={{ color: AGENT_TINT.fg }}
+      className="inline-flex items-center gap-1.25 rounded-pill px-2 py-px text-12 font-semibold text-ai"
       title={t("requirements.suggestion.pendingTitle")}
     >
-      <span aria-hidden className="size-1.5 rounded-full" style={{ background: AGENT_TINT.dot }} />
+      <span aria-hidden className="size-1.5 rounded-pill bg-ai-9" />
       {t("requirements.suggestion.pending")}
     </span>
   );
 }
 
-function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKey: string }) {
+function SuggestionItem({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKey: string }) {
   const t = useCopy();
   const lang = useInterfaceLanguage();
   const time = useTimeFormat();
-  const decide = useSuggestionDecision(projectId, requirementAffected(projectId, reqKey));
-  const [step, setStep] = useState<"accept" | "reject" | null>(null);
   const details = detailLines(s, t);
-  const busy = decide.isPending;
   return (
     <li
-      className="grid gap-1.5 border-l-[3px] px-3 py-[9px] text-12-5"
-      style={{ borderColor: AGENT_TINT.dot, background: AGENT_TINT.bg }}
+      className="grid gap-1.5 border-l-3 border-ai-9 bg-ai-bg px-3 py-2.25 text-13"
       data-testid="requirement-suggestion"
       data-kind={s.kind}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold" style={{ color: AGENT_TINT.fg }} title={tipOf(s, t, time.dateTime)}>
+        <span className="font-semibold text-ai" title={tipOf(s, t, time.dateTime)}>
           {producerLabel(t, s.producerKind)} · {kindLabel(t, s.kind)}
         </span>
         <PendingBadge />
@@ -144,10 +136,10 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
           {time.relative(s.createdAt)}
         </span>
       </div>
-      <p className="text-13-5">{summaryOf(s, lang)}</p>
+      <p className="text-14">{summaryOf(s, lang)}</p>
       {details.length > 0 || s.kind === "breakdown" ? (
         <details className="text-12 text-muted">
-          <summary className="cursor-pointer select-none font-semibold" style={{ color: AGENT_TINT.fg }}>
+          <summary className="cursor-pointer select-none font-semibold text-ai">
             {t("requirements.suggestion.showDetails")}
           </summary>
           {s.kind === "breakdown" ? (
@@ -161,32 +153,7 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
           )}
         </details>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2 pt-0.5">
-        {/* while a step is open its openers are off: a second press would close it and drop the typed reason */}
-        <Button type="button" size="sm" disabled={busy || step !== null} onClick={() => setStep("accept")} aria-expanded={step === "accept"}>
-          {t("requirements.act.accept")}
-        </Button>
-        <Button type="button" size="sm" variant="ghost" disabled={busy || step !== null} onClick={() => setStep("reject")} aria-expanded={step === "reject"}>
-          {t("requirements.act.reject")}
-        </Button>
-      </div>
-      {step === "accept" ? (
-        <AcceptStep
-          confirmLabel={t("requirements.act.accept")}
-          consequence={acceptConsequence(s, lang)}
-          loading={busy}
-          onCancel={() => setStep(null)}
-          onConfirm={(why) => decide.mutate({ kind: "accept", id: s.id, reason: why }, { onSuccess: () => setStep(null) })}
-        />
-      ) : null}
-      {step === "reject" ? (
-        <RejectStep
-          loading={busy}
-          onCancel={() => setStep(null)}
-          onConfirm={(why) => decide.mutate({ kind: "reject", id: s.id, reason: why }, { onSuccess: () => setStep(null) })}
-        />
-      ) : null}
-      <RefusalLine error={decide.error} />
+      <SuggestionDecider projectId={projectId} s={s} affected={requirementAffected(projectId, reqKey)} consequence={acceptConsequence(s, lang)} />
     </li>
   );
 }
@@ -201,7 +168,7 @@ export function RequirementSuggestions({ projectId, reqKey }: { projectId: strin
     <section className="grid gap-2" data-testid="requirement-suggestions">
       <ul className="grid gap-2.5">
         {rows.map((s) => (
-          <Row key={s.id} s={s} projectId={projectId} reqKey={reqKey} />
+          <SuggestionItem key={s.id} s={s} projectId={projectId} reqKey={reqKey} />
         ))}
       </ul>
     </section>

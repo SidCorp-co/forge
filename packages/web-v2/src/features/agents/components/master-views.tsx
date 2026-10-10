@@ -36,14 +36,14 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel, statusReading } from "@/design/vocabulary";
 import { issueHref } from "@/lib/routes/issues";
 import { formatApiError } from "@/lib/api/error";
-import { formatAge, formatDateTime, formatRelative, formatNumber } from "@/lib/i18n/format";
+import { formatAge, formatDateTime, formatNumber, formatRelative, formatWhen } from "@/lib/i18n/format";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { productCopy, type Copy } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
 import { useMasterCharter, useMasterPasses, useMasterStanding, useRunStanding } from "../hooks";
 import { MASTER_KEY, runHref } from "@/lib/routes/agents";
 import type { MasterClosedPass, MasterPassView, MasterStanding, RunStanding } from "../types";
-import { fmtTime, leaseLeft, runName } from "../view";
+import { leaseLeft, runName } from "../view";
 
 export const masterName = (m: MasterStanding, language = "en") => m.name ?? productCopy(language)("agents.master.title");
 
@@ -119,7 +119,7 @@ export const masterRow =
     title: `${masterName(m, language)} · ${doing(m, language)}`,
     facts: [t("agents.master.slotsFact", { slots: slotsText(m, language) }), lastPassText(m, language), m.pass?.issueKey ? t("agents.master.onIssue", { key: m.pass.issueKey }) : null].filter((x): x is string => !!x),
     state: <StatusBadge family="masterState" value={m.state} />,
-    waitingOn: <span className="text-12-5 text-subtle">—</span>,
+    waitingOn: <span className="text-13 text-subtle">—</span>,
     owner: m.device?.name ?? t("agents.master.noBox"),
     age: m.lastBeatAt ? { text: formatAge(m.lastBeatAt, language), title: t("agents.master.lastBeatAt", { at: formatDateTime(m.lastBeatAt, language) }) } : null,
   });
@@ -155,7 +155,7 @@ function SlotMarks({ m }: { m: MasterStanding }) {
   return <MarkStrip marks={marks} />;
 }
 
-export function MasterFacts({ m }: { m: MasterStanding }) {
+export function MasterProperties({ m }: { m: MasterStanding }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
@@ -198,16 +198,16 @@ export function MasterFacts({ m }: { m: MasterStanding }) {
       </FactsGroup>
       <FactsGroup title={t("runs.fact.box")}>
         <Fact label={t("runs.report.device")}>
-          <span className="font-mono text-12-5">{m.device?.name ?? "—"}</span>
+          <span className="font-mono text-13">{m.device?.name ?? "—"}</span>
         </Fact>
         <Fact label={t("agents.master.lastBeat")}>{m.lastBeatAt ? <span title={time.dateTime(m.lastBeatAt)}>{formatRelative(m.lastBeatAt, language)}</span> : "—"}</Fact>
-        <Fact label={t("runs.fact.since")}>{fmtTime(m.since, language)}</Fact>
+        <Fact label={t("runs.fact.since")}>{formatWhen(m.since, language)}</Fact>
         <Fact label={t("agents.master.dialogs")}>{dialogsText(m, language)}</Fact>
       </FactsGroup>
       <FactsGroup title={t("runs.fact.properties")}>
         <Fact label={t("runs.fact.session")}>
           {m.sessionId ? (
-            <span className="font-mono text-12-5" title={m.sessionId}>
+            <span className="font-mono text-13" title={m.sessionId}>
               {m.sessionId.slice(0, 8)}
             </span>
           ) : (
@@ -225,9 +225,9 @@ export function MasterPeek({ m, peek, onOpenFull }: { m: MasterStanding; peek: P
   return (
     <PeekPanel peek={peek} listLabel={t("agents.title")} noun={t("agents.master.title")} onOpenFull={onOpenFull} testId="master-peek">
       <PeekHead noun={t("agents.master.title")} itemKey={t("agents.master.word")} badge={<StatusBadge family="masterState" value={m.state} />} title={masterName(m, language)} />
-      <MasterBanner m={m} className="px-[18px]" />
-      <div className="px-[18px] pb-4 pt-4">
-        <MasterFacts m={m} />
+      <MasterBanner m={m} className="px-4.5" />
+      <div className="px-4.5 pb-4 pt-4">
+        <MasterProperties m={m} />
       </div>
     </PeekPanel>
   );
@@ -237,7 +237,7 @@ export const MASTER_TABS = ["passes", "runs", "charter"] as const;
 
 const keyLink = (slug: string, k: string) =>
   /^[A-Z]+-\d+$/.test(k) ? (
-    <Link href={issueHref(slug, k)} className="font-mono text-12-5 font-semibold text-link hover:underline">
+    <Link href={issueHref(slug, k)} className="font-mono text-13 font-semibold text-link hover:underline">
       {k}
     </Link>
   ) : (
@@ -259,7 +259,7 @@ function Passes({ projectId, slug }: { projectId: string; slug: string }) {
   const t = useCopy();
   const q = useMasterPasses(projectId);
   if (q.isLoading) return <ProjectLoader label={t("agents.master.loadingPasses")} />;
-  if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />;
+  if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => void q.refetch()} />;
   if (q.data.items.length === 0) return <FactsEmpty>{t("agents.master.noPasses")}</FactsEmpty>;
   return <PassesTable items={q.data.items} hasMore={q.data.hasMore} slug={slug} />;
 }
@@ -272,7 +272,7 @@ export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPa
   const closed = (p: MasterPassView) => ("endedAt" in p ? p : null);
   return (
     <section>
-      <ViewHeading right={<span className="text-12-5 text-muted">{hasMore ? t("agents.master.newestN", { n: time.number(items.length) }) : time.number(items.length)}</span>}>{t("agents.master.tab.passes")}</ViewHeading>
+      <ViewHeading right={<span className="text-13 text-muted">{hasMore ? t("agents.master.newestN", { n: time.number(items.length) }) : time.number(items.length)}</span>}>{t("agents.master.tab.passes")}</ViewHeading>
       <Table aria-label={t("agents.master.tab.passes")}>
         <THead className="bg-sunken">
           <TR>
@@ -289,12 +289,12 @@ export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPa
             return (
               <TR key={p.id}>
                 <TD>
-                  <span title={time.dateTime(p.startedAt)}>{fmtTime(p.startedAt, language)}</span>
+                  <span title={time.dateTime(p.startedAt)}>{formatWhen(p.startedAt, language)}</span>
                   {c ? null : <span className="ml-1.5 text-12 font-semibold text-link">{t("agents.master.now")}</span>}
                 </TD>
                 <TD>
                   <EnumBadge family="masterVerb" value={p.verb} />
-                  {p.trigger === "unprompted" ? <span className="ml-1.5 text-12-5 text-muted">{t("agents.master.unprompted")}</span> : null}
+                  {p.trigger === "unprompted" ? <span className="ml-1.5 text-13 text-muted">{t("agents.master.unprompted")}</span> : null}
                   {c?.recovers ? (
                     <>
                       <span className="ml-1.5 text-12 font-semibold text-link">{t("agents.master.recovered")}</span>
@@ -304,7 +304,7 @@ export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPa
                 </TD>
                 <TD>
                   {c?.refused ? (
-                    <span className="grid gap-0.5 text-12-5 text-muted">
+                    <span className="grid gap-0.5 text-13 text-muted">
                       <span>{t("agents.master.refusedBefore", { why: refusalLabel(c.refused, language) })}</span>
                       <span className="text-12 break-words">{t("agents.master.accountSaid", { said: c.refused.detail })}</span>
                     </span>
@@ -321,7 +321,7 @@ export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPa
                     <ul className="grid gap-0.5">
                       {c.skipped.map((s) => (
                         <li key={s.issueKey}>
-                          {keyLink(slug, s.issueKey)} <span className="text-12-5 text-muted">{s.refusal}</span>
+                          {keyLink(slug, s.issueKey)} <span className="text-13 text-muted">{s.refusal}</span>
                         </li>
                       ))}
                     </ul>
@@ -345,14 +345,14 @@ function Leased({ m, projectId, slug }: { m: MasterStanding; projectId: string; 
   const time = useTimeFormat();
   const q = useRunStanding(projectId, "live");
   if (q.isLoading) return <ProjectLoader label={t("agents.loadingRuns")} />;
-  if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />;
+  if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => void q.refetch()} />;
   const rows = q.data.items.filter(
     (r: RunStanding) => r.holder.source === "held" && r.holder.dispatchedBy.source !== "none" && r.holder.dispatchedBy.masterSessionId === m.sessionId,
   );
   if (rows.length === 0) return <FactsEmpty>{t("agents.master.noLeased")}</FactsEmpty>;
   return (
     <section>
-      <ViewHeading right={<span className="text-12-5 text-muted">{time.number(rows.length)}</span>}>{t("agents.master.leasedHeading")}</ViewHeading>
+      <ViewHeading right={<span className="text-13 text-muted">{time.number(rows.length)}</span>}>{t("agents.master.leasedHeading")}</ViewHeading>
       <Table aria-label={t("agents.master.tab.runs")}>
         <THead className="bg-sunken">
           <TR>
@@ -379,7 +379,7 @@ function Leased({ m, projectId, slug }: { m: MasterStanding; projectId: string; 
                 <TD>
                   {d?.source === "pass" ? (
                     <span title={time.dateTime(d.startedAt)}>
-                      {fmtTime(d.startedAt, language)} {enumLabel("masterVerb", d.verb, language).toLowerCase()}
+                      {formatWhen(d.startedAt, language)} {enumLabel("masterVerb", d.verb, language).toLowerCase()}
                     </span>
                   ) : (
                     <span className="text-muted" title={d?.source === "master" ? said(d.says.detail, language) : undefined}>
@@ -401,13 +401,13 @@ function Charter({ projectId }: { projectId: string }) {
   const language = useInterfaceLanguage();
   const q = useMasterCharter(projectId, true);
   if (q.isLoading) return <ProjectLoader label={t("agents.master.loadingCharter")} />;
-  if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />;
+  if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => void q.refetch()} />;
   const c = q.data;
   if (!c.declared) return <FactsEmpty>{t("agents.master.noCharter")}</FactsEmpty>;
   return (
     <section>
-      <ViewHeading right={c.declaredAt ? <span className="text-12-5 text-muted">{t("agents.master.declared", { at: fmtTime(c.declaredAt, language) })}</span> : undefined}>{t("agents.master.charterV", { v: c.version ?? "" })}</ViewHeading>
-      {c.goal ? <p className="text-13-5">{c.goal}</p> : null}
+      <ViewHeading right={c.declaredAt ? <span className="text-13 text-muted">{t("agents.master.declared", { at: formatWhen(c.declaredAt, language) })}</span> : undefined}>{t("agents.master.charterV", { v: c.version ?? "" })}</ViewHeading>
+      {c.goal ? <p className="text-14">{c.goal}</p> : null}
       {c.rules.length > 0 ? (
         <ul className="mt-3 border-t border-line-subtle">
           {c.rules.map((rule) => (
@@ -442,7 +442,7 @@ export function MasterPage({ projectId, slug }: { projectId: string; slug: strin
             dataKey={m.sessionId ?? "none"}
             rail={
               <FactsRail>
-                <MasterFacts m={m} />
+                <MasterProperties m={m} />
               </FactsRail>
             }
           >

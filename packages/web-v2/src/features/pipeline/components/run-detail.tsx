@@ -11,12 +11,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Badge,
   Button,
   EmptyState,
+  enumLabel,
   ErrorState,
   Icon,
   Menu,
+  type MenuItem,
   MonoTag,
   ProgressBar,
   SectionTitle,
@@ -24,28 +25,28 @@ import {
   Spinner,
   Stat,
   StatusBadge,
-  StatusChip,
   Tabs,
-  enumLabel,
-  type MenuItem,
+  EnumBadge,
 } from "@/design";
+import { cn } from "@/lib/utils/cn";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useRecents } from "@/lib/navigation/recents";
-import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
-import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
-import { priorityLabel, runStatusChip, workStepOf } from "@/features/issues/derive";
-import type { IssuePriority, IssueStatus } from "@/features/issues/types";
-import { drawerRunChip, formatDurationMs, formatUsd } from "../derive";
-import { useCancelRun, usePauseRun, useResumeRun } from "@/features/run-control/hooks";
+import { copyShareLink } from "@/lib/navigation/copy-share-link";
+import { IssueQuickActions } from "@/features/issues";
+import { runStatusChip, workStepOf } from "@/features/issues";
+import type { IssuePriority, IssueStatus } from "@/features/issues";
+import { drawerRunChip } from "../derive";
+import { useCancelRun, usePauseRun, useResumeRun } from "@/features/run-control";
 import { useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
-import { AskAboutThis } from "@/features/chat-dock/ask-about-this";
+import { AskAboutThis } from "@/features/chat-dock";
 import type {
   PipelineIssueRow,
   PipelineRunStepSummary,
   PipelineRunSummary,
 } from "../types";
+import { formatDuration, formatUsd } from "@/lib/i18n/format";
 
 interface RunDetailProps {
   open: boolean;
@@ -65,24 +66,12 @@ interface RunDetailProps {
 
 const TABS = ["activity", "timeline", "cost"] as const;
 
-const PRIORITY_TONE: Record<string, "red" | "amber" | "neutral"> = {
-  critical: "red",
-  high: "amber",
-  medium: "neutral",
-  low: "neutral",
-  none: "neutral",
-};
-
 export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }: RunDetailProps) {
   const t = useCopy();
   const [tab, setTab] = useState("activity");
-  const copyShareLink = useCopyShareLink();
   const router = useRouter();
   const { push: pushRecent } = useRecents();
   const runQ = useRun(runId ?? undefined, open);
-  const pause = usePauseRun();
-  const resume = useResumeRun();
-  const cancel = useCancelRun();
 
   const run = runQ.data;
   const taskIssueId = issue?.id ?? run?.issueId ?? null;
@@ -101,44 +90,15 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
 
   function copyLink() {
     if (!runId) return;
-    copyShareLink(`/ops?run=${runId}`);
+    copyShareLink(`/ops?run=${runId}`, t);
   }
   const chipStep = run?.currentStep ?? undefined;
-  const label = issue?.displayId ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
-  const title = issue?.title ?? t("pipeline.run.title");
-  const branch = issue?.metadata?.branchConfig?.branch ?? null;
+  const label = issue?.displayId ?? (runId ? t("pipeline.recent.run", { id: runId.slice(0, 8) }) : t("pipeline.run.title"));
   // A session-styled chip is the run's; the issue's own status is never drawn in it.
   const issueRun = issue ? runStatusChip(issue) : null;
   const chipStatus = run ? drawerRunChip(run.status, issueRun) : issueRun;
   const runBadge = run && chipStatus === null ? run.status : null;
   const issueStatus = issue ? (issue.status as IssueStatus) : null;
-  // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
-  // the running agent — only Cancel does). So a paused run with a step still
-  // `running` is transitional ("Pausing…"); once that step clears it is fully
-  // halted. `useRun` is WS-live, so the UI flips pausing→halted on its own.
-  const activeStep = run?.steps.find((s) => s.status === "running") ?? null;
-  const isPausing = run?.status === "paused" && !!activeStep;
-  const isHalted = run?.status === "paused" && !activeStep;
-
-  // "Stop now" is the only abort path (wired to the existing cancel mutation).
-  // Guard the destructive click with a lightweight inline two-step confirm —
-  // there is no Dialog primitive in the kit and Stop is terminal.
-  const [confirmStop, setConfirmStop] = useState(false);
-  useEffect(() => {
-    if (!confirmStop) return;
-    const timer = setTimeout(() => setConfirmStop(false), 3000);
-    return () => clearTimeout(timer);
-  }, [confirmStop]);
-  function onStopClick() {
-    if (!runId) return;
-    if (!confirmStop) {
-      setConfirmStop(true);
-      return;
-    }
-    setConfirmStop(false);
-    cancel.mutate(runId);
-  }
-
   function openIssue() {
     if (!slug || !taskIssueId) return;
     onClose();
@@ -172,7 +132,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
           {issueStatus && !canWrite && (
             <StatusBadge family="issue" value={issueStatus} step={workStepOf(issue ?? {})} size="sm" />
           )}
-          {chipStatus && <StatusChip status={chipStatus} stage={chipStep} size="sm" domain="session" />}
+          {chipStatus && <StatusBadge family="run" value={chipStatus} stage={chipStep} />}
           {runBadge && <StatusBadge family="pipelineRun" value={runBadge} />}
           {runBadge === "running" && chipStep && (
             <span className="fg-caption text-muted">{enumLabel("jobType", chipStep)}</span>
@@ -206,95 +166,9 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
             </div>
           )}
 
-          {/* Header — title + the issue's own meta (priority / assignee /
-              branch / run cost), so the panel answers "what is this and where
-              does it stand" before offering controls (ISS-436). */}
-          <div className="flex flex-col gap-2.5">
-            <SectionTitle className="leading-tight">{title}</SectionTitle>
-            {slug && runId && (
-              <div>
-                <AskAboutThis about={{ kind: "run", ref: runId }} />
-              </div>
-            )}
-            <div className="flex flex-wrap items-center gap-2.5">
-              {issue && issue.priority !== "none" && (
-                <Badge tone={PRIORITY_TONE[issue.priority] ?? "neutral"}>
-                  {priorityLabel(issue.priority as IssuePriority)}
-                </Badge>
-              )}
-              {branch && (
-                <MonoTag>
-                  <Icon name="branch" size={12} className="mr-1 align-[-1px]" />
-                  {branch}
-                </MonoTag>
-              )}
-              {run && <Stat icon="dollar">{t("pipeline.run.costThisRun", { cost: formatUsd(run.cost.estimatedCost) })}</Stat>}
-            </div>
-          </div>
+          <RunHeading issue={issue} run={run} runId={runId} slug={slug} />
 
-          {/* Controls — Pause (finish-then-halt) and Stop now (abort) are
-              visually + verbally distinct: a primary Pause vs a danger Stop. */}
-          <div className="flex flex-col gap-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              {canWrite && run?.status === "running" && (
-                <Button
-                  variant="primary"
-                  icon="pause"
-                  loading={pause.isPending}
-                  onClick={() => runId && pause.mutate(runId)}
-                >
-                  {t("pipeline.run.pause")}
-                </Button>
-              )}
-              {canWrite && run?.status === "paused" && (
-                <Button
-                  variant="primary"
-                  icon="play"
-                  loading={resume.isPending}
-                  onClick={() => runId && resume.mutate(runId)}
-                >
-                  {t("pipeline.run.resume")}
-                </Button>
-              )}
-              {/* Distinct destructive abort — present whenever an agent could
-                  still be running (running, or the finishing step while pausing). */}
-              {canWrite && runId && (run?.status === "running" || isPausing) && (
-                <Button
-                  variant="danger"
-                  icon="stop"
-                  loading={cancel.isPending}
-                  onClick={onStopClick}
-                >
-                  {confirmStop ? t("pipeline.run.stopConfirm") : t("pipeline.run.stop")}
-                </Button>
-              )}
-              <Menu
-                align="left"
-                trigger={
-                  <Button variant="ghost" icon="more" aria-label={t("pipeline.run.moreActions")} className="px-2.5" />
-                }
-                items={menuItems}
-              />
-            </div>
-
-            {/* Transitional vs fully-halted state for a paused run (ISS-376). */}
-            {isPausing && (
-              <p
-                className="fg-body-sm inline-flex items-center gap-2"
-                style={{ color: "var(--amber-600)" }}
-              >
-                <span
-                  aria-hidden
-                  className="forge-pulse inline-block size-2 flex-none rounded-full"
-                  style={{ background: "var(--amber-500)" }}
-                />
-                {t("pipeline.run.pausing", { step: activeStep ? enumLabel("jobType", activeStep.jobType) : "…" })}
-              </p>
-            )}
-            {isHalted && (
-              <p className="fg-body-sm text-muted">{t("pipeline.run.halted")}</p>
-            )}
-          </div>
+          <RunControls run={run} runId={runId} canWrite={canWrite} menuItems={menuItems} />
 
           {/* Tabs */}
           <div>
@@ -305,10 +179,10 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
                   run={run}
                   loading={runQ.isLoading}
                   error={runQ.isError ? runQ.error : null}
-                  onRetry={() => runQ.refetch()}
+                  onRetry={() => void runQ.refetch()}
                 />
               ) : runQ.isError ? (
-                <ErrorState message={formatApiError(runQ.error)} onRetry={() => runQ.refetch()} />
+                <ErrorState message={formatApiError(runQ.error)} onRetry={() => void runQ.refetch()} />
               ) : tab === "timeline" ? (
                 <TimelineTab run={run} loading={runQ.isLoading} />
               ) : (
@@ -333,12 +207,19 @@ function stepDot(status: PipelineRunStepSummary["status"]): DotState {
   return "todo";
 }
 
-const DOT_COLOR: Record<DotState, string> = {
-  done: "var(--green-500)",
-  // ISS-509 — running uses the pipeline-active (cobalt) token, not flame --accent.
-  running: "var(--pipeline-active)",
-  error: "var(--red-500)",
-  todo: "var(--border-strong)",
+// ISS-509 — running is the info (cobalt) scale, not the flame accent.
+const DOT_CLASS: Record<DotState, string> = {
+  done: "border-ok-9 bg-ok-9",
+  running: "border-info-9 bg-info-9 ring-4 ring-accent-tint",
+  error: "border-danger-9 bg-danger-9",
+  todo: "border-line-strong bg-surface",
+};
+
+const STEP_TEXT: Record<DotState, string> = {
+  done: "text-ok-11",
+  running: "text-accent-text",
+  error: "text-danger-11",
+  todo: "text-subtle",
 };
 
 function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; loading: boolean }) {
@@ -353,45 +234,19 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
         const isLast = i === run.steps.length - 1;
         return (
           <div key={step.jobType} className="flex gap-3">
-            <div className="flex w-[18px] flex-none flex-col items-center">
-              <span
-                className="mt-0.5 size-3.5 flex-none rounded-full"
-                style={{
-                  background: state === "todo" ? "var(--bg-surface)" : DOT_COLOR[state],
-                  border: `2px solid ${DOT_COLOR[state]}`,
-                  boxShadow: state === "running" ? "0 0 0 4px var(--accent-tint)" : "none",
-                }}
-              />
-              {!isLast && (
-                <span
-                  className="mt-1 min-h-[22px] w-0.5 flex-1"
-                  style={{
-                    background: state === "done" ? "var(--green-500)" : "var(--border-default)",
-                  }}
-                />
-              )}
+            <div className="flex w-4.5 flex-none flex-col items-center">
+              <span className={cn("mt-0.5 size-3.5 flex-none rounded-full border-2", DOT_CLASS[state])} />
+              {!isLast && <span className={cn("mt-1 min-h-5.5 w-0.5 flex-1", state === "done" ? "bg-ok-9" : "bg-line")} />}
             </div>
             <div className="min-w-0 flex-1 pb-4">
               <div className="flex items-center gap-2.5">
-                <span
-                  className="font-mono text-12-5 font-bold"
-                  style={{
-                    color:
-                      state === "running"
-                        ? "var(--accent-text)"
-                        : state === "done"
-                          ? "var(--green-600)"
-                          : state === "error"
-                            ? "var(--red-600)"
-                            : "var(--fg-subtle)",
-                  }}
-                >
+                <span className={cn("font-mono text-13 font-bold", STEP_TEXT[state])}>
                   {enumLabel("jobType", step.jobType)}
                 </span>
                 <StatusBadge family="runStep" value={step.status} />
                 {step.durationMs != null && (
                   <span className="ml-auto">
-                    <Stat icon="clock">{formatDurationMs(step.durationMs)}</Stat>
+                    <Stat icon="clock">{formatDuration(step.durationMs)}</Stat>
                   </span>
                 )}
               </div>
@@ -417,7 +272,7 @@ function CostTab({ run, loading }: { run: PipelineRunSummary | undefined; loadin
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-baseline gap-2">
-        <span className="font-sans text-34 font-extrabold leading-none tracking-tight text-fg">
+        <span className="font-sans text-24 font-extrabold leading-none tracking-tight text-fg">
           {formatUsd(c.estimatedCost)}
         </span>
         <span className="fg-body-sm text-subtle">
@@ -446,7 +301,7 @@ function CostTab({ run, loading }: { run: PipelineRunSummary | undefined; loadin
                 tone="cobalt"
               />
               <span className="w-16 flex-none text-right font-mono text-12 text-fg">
-                {formatDurationMs(s.durationMs)}
+                {formatDuration(s.durationMs)}
               </span>
             </div>
           ))}
@@ -469,6 +324,133 @@ function PanelSpinner() {
   return (
     <div className="grid place-items-center py-10">
       <Spinner size={22} />
+    </div>
+  );
+}
+
+/** Title, ask-about link and the issue's own meta (priority, branch, run cost), before any control (ISS-436). */
+function RunHeading({ issue, run, runId, slug }: { issue: PipelineIssueRow | null; run: PipelineRunSummary | undefined; runId: string | null; slug?: string }) {
+  const t = useCopy();
+  const title = issue?.title ?? t("pipeline.run.title");
+  const branch = issue?.metadata?.branchConfig?.branch ?? null;
+  return (
+    <div className="flex flex-col gap-2.5">
+      <SectionTitle className="leading-tight">{title}</SectionTitle>
+      {slug && runId && (
+        <div>
+          <AskAboutThis about={{ kind: "run", ref: runId }} />
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2.5">
+        {issue && issue.priority !== "none" && (
+          <EnumBadge family="priority" value={issue.priority} />
+        )}
+        {branch && (
+          <MonoTag>
+            <Icon name="branch" size={12} className="mr-1" />
+            {branch}
+          </MonoTag>
+        )}
+        {run && <Stat icon="dollar">{t("pipeline.run.costThisRun", { cost: formatUsd(run.cost.estimatedCost) })}</Stat>}
+      </div>
+    </div>
+  );
+}
+
+/** Pause (finish the step, then halt) and Stop now (abort) — distinct in look and word — and the overflow menu. */
+function RunControls({ run, runId, canWrite, menuItems }: { run: PipelineRunSummary | undefined; runId: string | null; canWrite: boolean; menuItems: MenuItem[] }) {
+  const t = useCopy();
+  const pause = usePauseRun();
+  const resume = useResumeRun();
+  const cancel = useCancelRun();
+  // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
+  // the running agent — only Cancel does). So a paused run with a step still
+  // `running` is transitional ("Pausing…"); once that step clears it is fully
+  // halted. `useRun` is WS-live, so the UI flips pausing→halted on its own.
+  const activeStep = run?.steps.find((s) => s.status === "running") ?? null;
+  const isPausing = run?.status === "paused" && !!activeStep;
+  const isHalted = run?.status === "paused" && !activeStep;
+
+  // "Stop now" is the only abort path (wired to the existing cancel mutation).
+  // Guard the destructive click with a lightweight inline two-step confirm —
+  // there is no Dialog primitive in the kit and Stop is terminal.
+  const [confirmStop, setConfirmStop] = useState(false);
+  useEffect(() => {
+    if (!confirmStop) return;
+    const timer = setTimeout(() => setConfirmStop(false), 3000);
+    return () => clearTimeout(timer);
+  }, [confirmStop]);
+  function onStopClick() {
+    if (!runId) return;
+    if (!confirmStop) {
+      setConfirmStop(true);
+      return;
+    }
+    setConfirmStop(false);
+    cancel.mutate(runId);
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        {canWrite && run?.status === "running" && (
+          <Button
+            variant="primary"
+            icon="pause"
+            loading={pause.isPending}
+            onClick={() => runId && pause.mutate(runId)}
+          >
+            {t("pipeline.run.pause")}
+          </Button>
+        )}
+        {canWrite && run?.status === "paused" && (
+          <Button
+            variant="primary"
+            icon="play"
+            loading={resume.isPending}
+            onClick={() => runId && resume.mutate(runId)}
+          >
+            {t("pipeline.run.resume")}
+          </Button>
+        )}
+        {/* Distinct destructive abort — present whenever an agent could
+            still be running (running, or the finishing step while pausing). */}
+        {canWrite && runId && (run?.status === "running" || isPausing) && (
+          <Button
+            variant="danger"
+            icon="stop"
+            loading={cancel.isPending}
+            onClick={onStopClick}
+          >
+            {confirmStop ? t("pipeline.run.stopConfirm") : t("pipeline.run.stop")}
+          </Button>
+        )}
+        <Menu
+          align="left"
+          trigger={
+            <Button variant="ghost" icon="more" aria-label={t("pipeline.run.moreActions")} className="px-2.5" />
+          }
+          items={menuItems}
+        />
+      </div>
+
+      {/* Transitional vs fully-halted state for a paused run (ISS-376). */}
+      {isPausing && (
+        <p
+          className="fg-body-sm inline-flex items-center gap-2"
+          style={{ color: "var(--warn-11)" }}
+        >
+          <span
+            aria-hidden
+            className="forge-pulse inline-block size-2 flex-none rounded-full"
+            style={{ background: "var(--warn-9)" }}
+          />
+          {t("pipeline.run.pausing", { step: activeStep ? enumLabel("jobType", activeStep.jobType) : "…" })}
+        </p>
+      )}
+      {isHalted && (
+        <p className="fg-body-sm text-muted">{t("pipeline.run.halted")}</p>
+      )}
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { Button, Input, Popover } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { usePinnedViews } from "@/lib/navigation/pinned-views";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 /** Pin the list as it is filtered now, under a name; a pinned view unpins in one click. */
 export function PinViewButton({
@@ -17,15 +17,15 @@ export function PinViewButton({
 }) {
   const pinnedViews = usePinnedViews();
   const t = useCopy();
-  const viewHref = useMemo(() => {
+  const viewHref = (() => {
     const p = new URLSearchParams(search);
     p.delete("new");
     const qs = p.toString();
     return `${pathname}${qs ? `?${qs}` : ""}`;
-  }, [pathname, search]);
+  })();
   const isPinned = pinnedViews.isPinned(viewHref);
   const [pinOpen, setPinOpen] = useState(false);
-  const pinAnchor = useRef<HTMLDivElement>(null);
+  const pinAnchorRef = useRef<HTMLDivElement>(null);
   const [pinName, setPinName] = useState("");
 
   function onPinClick() {
@@ -51,7 +51,7 @@ export function PinViewButton({
   }
 
   return (
-    <div ref={pinAnchor} className="relative">
+    <div ref={pinAnchorRef} className="relative">
       <Button
         variant={isPinned ? "secondary" : "ghost"}
         size="sm"
@@ -64,14 +64,14 @@ export function PinViewButton({
       </Button>
       <Popover
         open={pinOpen}
-        anchor={pinAnchor}
+        anchor={pinAnchorRef}
         onDismiss={() => setPinOpen(false)}
         placement="bottom-end"
         gap={8}
         takesFocus
         role="dialog"
         aria-label={t("issues.pin.dialog")}
-        className="w-72 overflow-y-auto rounded-lg border border-line bg-surface p-3 shadow-lg"
+        className="w-72 overflow-y-auto rounded-md p-3"
       >
         <p className="fg-caption mb-2 text-muted">
           {t("issues.pin.lead")}
@@ -81,7 +81,6 @@ export function PinViewButton({
           onChange={(e) => setPinName(e.target.value)}
           placeholder={defaultLabel}
           aria-label={t("issues.pin.name")}
-          autoFocus
           onKeyDown={(e) => {
             if (e.key === "Enter") confirmPin();
             if (e.key === "Escape") setPinOpen(false);

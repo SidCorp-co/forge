@@ -17,7 +17,7 @@ export function ScopeForecastLine({ scope }: { scope: ScopeForecast }) {
   return (
     <span className="fg-body-sm text-muted" title={`${detail}\n${anchored}`} data-testid="scope-forecast-line" data-kind={scope.forecast?.kind ?? "empty"}>
       {line}
-      {honest ? <span className="block text-12-5" data-testid="forecast-honesty">{honest}</span> : null}
+      {honest ? <span className="block text-13" data-testid="forecast-honesty">{honest}</span> : null}
     </span>
   );
 }

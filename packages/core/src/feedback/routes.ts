@@ -30,7 +30,7 @@ import {
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
+import { sendBytes, setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
@@ -401,7 +401,7 @@ feedbackRoutes.get('/:id/feedback/:fb/attachments/:aid', attachmentParam, async 
   if (!file.ok) return refused(c, [file.refusal], 'FEEDBACK_REFUSED');
   setInertAttachmentHeaders(c, file.mime, file.name);
   c.header('Cache-Control', 'private, no-store');
-  return c.body(new Uint8Array(file.bytes), 200);
+  return sendBytes(c, file.bytes);
 });
 
 feedbackRoutes.delete('/:id/feedback/:fb/reporter-data', itemParam, async (c) => {

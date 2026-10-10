@@ -5,19 +5,8 @@
 // `/api/auth/me/preferences`; the feed below lists in-app notifications with
 // mark-all-read. Only real, server-enforced controls are shown — no fake
 // toggles for unimplemented delivery channels.
-import { useEffect, useState } from "react";
-import {
-  Badge,
-  Button,
-  PageSection,
-  PageSectionBody,
-  EmptyState,
-  ErrorState,
-  Pagination,
-  SectionTitle,
-  Skeleton,
-  Toggle,
-} from "@/design";
+import { useState } from "react";
+import { Badge, Button, EmptyState, ErrorState, PageSection, PageSectionBody, Pagination, SectionTitle, Skeleton, Toggle, useBrowserValue } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import {
@@ -35,9 +24,9 @@ import {
   primeAudio,
   setEnabled as setSoundEnabled,
 } from "@/lib/notifications/sound";
-import { deliveryResolved, liveBody } from "@/features/notifications/map";
+import { deliveryResolved, liveBody } from "@/features/notifications";
 import { NOTIFICATIONS_PAGE_SIZE } from "../api";
-import { usePreferences, useUpdatePreferences } from "@/features/preferences/hooks";
+import { usePreferences, useUpdatePreferences } from "@/features/preferences";
 import { useMarkAllRead, useNotifications } from "../hooks";
 import type { NotificationRow } from "../types";
 
@@ -76,7 +65,7 @@ export function NotificationsTab() {
       {notificationsQ.isLoading && (
         <div className="space-y-2.5">
           {SKELETON_ROWS.map((k) => (
-            <Skeleton key={k} className="h-16 w-full rounded-lg" />
+            <Skeleton key={k} className="h-16 w-full" />
           ))}
         </div>
       )}
@@ -85,7 +74,7 @@ export function NotificationsTab() {
         <ErrorState
           title={t("shell.bell.unread")}
           message={formatApiError(notificationsQ.error)}
-          onRetry={() => notificationsQ.refetch()}
+          onRetry={() => void notificationsQ.refetch()}
         />
       )}
 
@@ -96,7 +85,7 @@ export function NotificationsTab() {
       {!notificationsQ.isLoading && !notificationsQ.isError && rows.length > 0 && (
         <div className="space-y-2.5">
           {rows.map((n) => (
-            <NotificationCard key={n.id} row={n} />
+            <NotificationItem key={n.id} row={n} />
           ))}
         </div>
       )}
@@ -130,12 +119,12 @@ function DeliveryPreferences() {
           <ErrorState
             title={t("shell.notify.prefsUnread")}
             message={formatApiError(prefsQ.error)}
-            onRetry={() => prefsQ.refetch()}
+            onRetry={() => void prefsQ.refetch()}
           />
         )}
 
         {prefsQ.data && (
-          <ToggleRow
+          <NotificationToggle
             label={t("shell.notify.mentions")}
             checked={prefsQ.data.notifyOnMention}
             disabled={update.isPending}
@@ -159,15 +148,14 @@ function DeliveryPreferences() {
  *  ON requests permission via this gesture; the control reflects the live
  *  permission state and disables itself when denied or unsupported. */
 function DesktopNotificationsToggle() {
-  const [perm, setPerm] = useState<BrowserPermission>("default");
   const t = useCopy();
-  const [enabled, setEnabledState] = useState(false);
-
-  // Read live permission + opt-in on mount (client-only — Notification API).
-  useEffect(() => {
-    setPerm(getPermission());
-    setEnabledState(isEnabled());
-  }, []);
+  // the browser's permission and the stored opt-in, until a toggle here changes them
+  const livePerm = useBrowserValue(getPermission, "default");
+  const liveEnabled = useBrowserValue(isEnabled, false);
+  const [permState, setPermState] = useState<BrowserPermission | null>(null);
+  const [enabledState, setEnabledState] = useState<boolean | null>(null);
+  const perm = permState ?? livePerm;
+  const enabled = enabledState ?? liveEnabled;
 
   const supported = perm !== "unsupported";
   const denied = perm === "denied";
@@ -186,7 +174,7 @@ function DesktopNotificationsToggle() {
     }
     let p = getPermission();
     if (p === "default") p = await requestPermission();
-    setPerm(p);
+    setPermState(p);
     if (p === "granted") {
       setEnabled(true);
       setEnabledState(true);
@@ -206,12 +194,12 @@ function DesktopNotificationsToggle() {
         : undefined;
 
   return (
-    <ToggleRow
+    <NotificationToggle
       label={t("shell.notify.desktop")}
       helper={helper}
       checked={checked}
       disabled={!supported || denied}
-      onChange={onToggle}
+      onChange={(v) => void onToggle(v)}
       aria-label={t("shell.notify.desktopLabel")}
     />
   );
@@ -223,15 +211,11 @@ function DesktopNotificationsToggle() {
  *  unlocks playback; disables itself with an explanatory caption when the
  *  browser has no Web Audio support. */
 function SoundNotificationsToggle() {
-  const [supported, setSupported] = useState(true);
   const t = useCopy();
-  const [enabled, setEnabledState] = useState(false);
-
-  // Read support + opt-in on mount (client-only — AudioContext / localStorage).
-  useEffect(() => {
-    setSupported(isSoundSupported());
-    setEnabledState(isSoundEnabled());
-  }, []);
+  const supported = useBrowserValue(isSoundSupported, true);
+  const liveEnabled = useBrowserValue(isSoundEnabled, false);
+  const [enabledState, setEnabledState] = useState<boolean | null>(null);
+  const enabled = enabledState ?? liveEnabled;
 
   function onToggle(next: boolean) {
     setSoundEnabled(next);
@@ -245,7 +229,7 @@ function SoundNotificationsToggle() {
   }
 
   return (
-    <ToggleRow
+    <NotificationToggle
       label={t("shell.notify.sound")}
       helper={supported ? undefined : t("shell.notify.soundUnsupported")}
       checked={enabled && supported}
@@ -256,7 +240,7 @@ function SoundNotificationsToggle() {
   );
 }
 
-function ToggleRow({
+function NotificationToggle({
   label,
   helper,
   ...toggle
@@ -279,7 +263,7 @@ function ToggleRow({
   );
 }
 
-function NotificationCard({ row }: { row: NotificationRow }) {
+function NotificationItem({ row }: { row: NotificationRow }) {
   const t = useCopy();
   const time = useTimeFormat();
   const at = new Date(row.createdAt);

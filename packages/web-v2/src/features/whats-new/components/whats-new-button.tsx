@@ -1,20 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Icon } from "@/design";
+import { useState } from "react";
+import { RailButton } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { cn } from "@/lib/utils/cn";
-import { useMarkWhatsNewSeen, useWhatsNew, useWhatsNewSummary } from "../hooks";
-import type { WhatsNewFeed } from "../types";
-import { WhatsNewPanel } from "./whats-new-panel";
+import { useAutoOpenedRelease, useMarkWhatsNewSeen, useWhatsNew, useWhatsNewSummary } from "../hooks";
+import { WhatsNewSheet } from "./whats-new-panel";
 
-/** The releases this tab has already opened What's new on by itself: once each, however many entries mount. */
-const openedByItself = new Set<string>();
-
-/** Test seam: forget what this tab opened. */
-export function forgetOpenedWhatsNew() {
-  openedByItself.clear();
-}
+export { forgetOpenedWhatsNew } from "../hooks";
 
 /**
  * The rail's What's new entry. Where the summary says the serving release is owed, it opens by itself
@@ -23,59 +15,39 @@ export function forgetOpenedWhatsNew() {
  * more on it. Opened by hand with nothing owed, it shows the release and writes nothing.
  */
 export function WhatsNewButton({ compact = false }: { compact?: boolean }) {
-  const summary = useWhatsNewSummary();
-  const markSeen = useMarkWhatsNewSeen();
-  const [open, setOpen] = useState(false);
-  const feedQ = useWhatsNew(open);
-  const [shown, setShown] = useState<WhatsNewFeed | undefined>(undefined);
   const t = useCopy();
-  const owed = summary.data?.release?.owed === true;
+  const summary = useWhatsNewSummary();
+  const { mutate: writeMark } = useMarkWhatsNewSeen();
+  const autoOpened = useAutoOpenedRelease();
+  // opened by hand: when, so only a read taken since shows; closed: on which auto-opened release
+  const [openedAt, setOpenedAt] = useState<number | null>(null);
+  const [closedOn, setClosedOn] = useState<string | null>(null);
+  const open = openedAt !== null || (autoOpened !== null && autoOpened !== closedOn);
+  const feedQ = useWhatsNew(open);
+  // the release as it stood when the panel opened: never an earlier read, nor the mark the close writes
+  const shown = open && feedQ.data && feedQ.dataUpdatedAt >= (openedAt ?? 0) ? feedQ.data : undefined;
   const failure = open && feedQ.error ? "failed" : null;
-  const { mutate: writeMark } = markSeen;
-
-  useEffect(() => {
-    const release = summary.data?.release;
-    if (!release?.owed || !summary.data) return;
-    const key = `${summary.data.environment}:${release.version}`;
-    if (openedByItself.has(key)) return;
-    openedByItself.add(key);
-    setShown(undefined);
-    setOpen(true);
-  }, [summary.data]);
-
-  useEffect(() => {
-    if (open && !shown && feedQ.data && !feedQ.isFetching) setShown(feedQ.data);
-  }, [open, shown, feedQ.data, feedQ.isFetching]);
-
-  function openPanel() {
-    setShown(undefined);
-    setOpen(true);
-  }
+  const owed = summary.data?.release?.owed === true;
 
   function closePanel() {
-    setOpen(false);
+    setOpenedAt(null);
+    setClosedOn(autoOpened);
     if (shown?.release?.owed) writeMark({ environment: shown.environment, version: shown.release.version });
   }
 
   return (
     <>
-      <button
-        type="button"
-        onClick={openPanel}
-        data-tour="nav-whats-new"
-        aria-label={owed ? `${t("whatsNew.nav")}, ${t("whatsNew.unread")}` : t("whatsNew.nav")}
-        className={cn(
-          "relative flex items-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg max-md:min-h-[44px]",
-          compact ? "w-full flex-col gap-0.5 px-1 py-1.5 text-9-5" : "w-full gap-2.5 px-1.5 py-1.5 text-13",
-        )}
-      >
-        <Icon name="star" size={compact ? 15 : 16} />
-        <span className={cn(!compact && "flex-1 text-left")}>{t("whatsNew.nav")}</span>
-        {owed && (
-          <span data-testid="whats-new-dot" aria-hidden className={cn("size-2 rounded-pill bg-accent", compact ? "absolute right-4 top-1" : "flex-none")} />
-        )}
-      </button>
-      <WhatsNewPanel open={open} onClose={closePanel} feed={shown} failure={failure} loading={open && !shown && !failure} />
+      <RailButton
+        icon="star"
+        label={t("whatsNew.nav")}
+        ariaLabel={owed ? `${t("whatsNew.nav")}, ${t("whatsNew.unread")}` : t("whatsNew.nav")}
+        dot={owed}
+        dotTestId="whats-new-dot"
+        compact={compact}
+        tour="nav-whats-new"
+        onClick={() => setOpenedAt(Date.now())}
+      />
+      <WhatsNewSheet open={open} onClose={closePanel} feed={shown} failure={failure} loading={open && !shown && !failure} />
     </>
   );
 }

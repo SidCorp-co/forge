@@ -1,8 +1,8 @@
 "use client";
 
-import { Combobox } from "@base-ui/react/combobox";
 import { useMemo, useState } from "react";
-import { Icon } from "@/design";
+import { Combobox, fixedHeight, Icon } from "@/design";
+import { cn } from "@/lib/utils/cn";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useFeedbackList } from "../hooks";
@@ -71,7 +71,7 @@ export function FeedbackPicker({
       onValueChange={(next: FeedbackPick[]) => onChange(next.at(-1) ?? null)}
       onInputValueChange={(next) => setText(next)}
     >
-      <Combobox.InputGroup className="flex min-h-9 w-full cursor-text flex-wrap items-center gap-1 rounded-md border border-line-strong bg-surface px-2 py-1 focus-within:border-[color:var(--link)] focus-within:shadow-[var(--shadow-focus)]">
+      <Combobox.InputGroup className="flex min-h-9 w-full cursor-text flex-wrap items-center gap-1 rounded-md border border-line-strong bg-surface px-2 py-1 focus-within:border-link focus-within:shadow-focus">
         <Combobox.Chips className="flex w-full flex-wrap items-center gap-1">
           {picked.map((f) => (
             <Combobox.Chip
@@ -99,7 +99,7 @@ export function FeedbackPicker({
       </Combobox.InputGroup>
       <Combobox.Portal>
         <Combobox.Positioner className="z-50 outline-none" sideOffset={4}>
-          <Combobox.Popup className="max-h-[min(var(--available-height),20rem)] w-[var(--anchor-width)] max-w-[var(--available-width)] overflow-y-auto rounded-lg border border-line bg-surface py-1 text-fg shadow-lg">
+          <Combobox.Popup className={cn("w-(--anchor-width) max-w-(--available-width) rounded-md border border-line bg-surface py-1 text-fg", fixedHeight("popup"))}>
             <Combobox.Status className="block px-3 py-1.5 text-12 text-subtle">{status}</Combobox.Status>
             {list.isError ? <RefusalLine error={list.error} testid="feedback-picker-refusal" /> : null}
             <Combobox.List className="divide-y divide-line-subtle">

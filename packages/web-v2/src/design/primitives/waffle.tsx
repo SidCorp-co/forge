@@ -73,7 +73,7 @@ export function Waffle({ categories, perCell, className }: WaffleProps) {
                   type="button"
                   onClick={c.onOpen}
                   aria-label={t("common.openTheList", { what: name })}
-                  className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                  className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
                 >
                   {body}
                 </button>

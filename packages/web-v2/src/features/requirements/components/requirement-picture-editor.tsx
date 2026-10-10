@@ -11,10 +11,9 @@
 
 import type { ExampleTableContent, RequirementPictureView, WritePictureRequest } from "@forge/contracts/requirement-pictures";
 import { parseWireframe, type WireframeDoc } from "@forge/contracts/wireframe";
-import dynamic from "next/dynamic";
 import { type ReactNode, useRef, useState } from "react";
-import { Button, Field, IconButton, Input, NativeSelect, Textarea } from "@/design";
-import { type SceneElement, sceneToWireframe } from "@/features/board/scene-to-wireframe";
+import { Button, Field, IconButton, Input, NativeSelect, Textarea, keyedRows, useListKeys } from "@/design";
+import { type SceneElement, sceneToWireframe, BoardEditor } from "@/features/board";
 import { namedRefusals } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
@@ -32,7 +31,6 @@ import {
 } from "../picture-model";
 import { plainRefusal } from "./requirement-kind-field";
 
-const BoardEditor = dynamic(() => import("@/features/board/board-editor"), { ssr: false });
 
 type Content<K extends WritePictureRequest["kind"]> = Extract<WritePictureRequest, { kind: K }>["content"];
 type Built = { ok: true; body: WritePictureRequest } | { ok: false; field: PictureField; text: string };
@@ -86,12 +84,12 @@ export function PictureEditor({
   const t = useCopy();
   const own = picture?.kind === kind ? picture : null;
   const [alt, setAlt] = useState(own?.alt ?? "");
-  const [title, setTitle] = useState(titleOf(own));
+  const [title, setTitle] = useState(() => titleOf(own));
   const [flow, setFlow] = useState(() => (own?.kind === "flow" ? flowToLines(own.content as Content<"flow">) : { steps: "", links: "" }));
   const [rows, setRows] = useState<ExampleTableContent["rows"]>(() => tableRowsOf(own));
   const storedChart = own?.kind === "chart" ? chartDraftOf(own.content as Content<"chart">) : null;
   const [chart, setChart] = useState<ChartDraft>(storedChart ?? BLANK_CHART);
-  const scene = useRef<readonly SceneElement[] | null>(null);
+  const sceneRef = useRef<readonly SceneElement[] | null>(null);
   const [boardShown, setBoardShown] = useState(false);
   const [startBoard] = useState(() => boardOf(own));
   const [local, setLocal] = useState<{ field: PictureField; text: string } | null>(null);
@@ -120,8 +118,8 @@ export function PictureEditor({
         ? { ok: false, field: "content", text: t("requirements.picture.edit.noFigures") }
         : { ok: false, field: f.field, text: t("requirements.picture.edit.nameAxis") };
     }
-    if (!scene.current) return { ok: false, field: "board", text: t("requirements.picture.edit.boardLoading") };
-    const read = sceneToWireframe(scene.current, named);
+    if (!sceneRef.current) return { ok: false, field: "board", text: t("requirements.picture.edit.boardLoading") };
+    const read = sceneToWireframe(sceneRef.current, named);
     if (!read.ok) return { ok: false, field: "board", text: "unsupported" in read ? unsupportedText(read.unsupported, t) : read.invalid };
     if (read.doc.shapes.length === 0) return { ok: false, field: "board", text: t("requirements.picture.edit.emptyBoard") };
     return { ok: true, body: { kind, alt, content: { board: read.doc } } };
@@ -139,7 +137,7 @@ export function PictureEditor({
   };
 
   return (
-    <div className="mt-4 grid max-w-[880px] gap-4 border-t border-line-subtle pt-4" data-testid="picture-editor" data-picture={kind}>
+    <div className="mt-4 grid max-w-220 gap-4 border-t border-line-subtle pt-4" data-testid="picture-editor" data-picture={kind}>
       <Field label={t("requirements.picture.edit.title")}>
         <Input value={title} onChange={(e) => setTitle(e.target.value)} />
       </Field>
@@ -148,11 +146,11 @@ export function PictureEditor({
       {kind === "chart" ? <ChartFields chart={chart} onChart={setChart} at={at} other={own?.kind === "chart" && !storedChart} t={t} /> : null}
       {kind === "wireframe" ? (
         <Field label={t("requirements.picture.edit.board")} hint={waiting ? t("requirements.picture.edit.boardLoading") : undefined} error={at("board")}>
-          <div className="h-[420px] border border-line-subtle max-md:h-[360px]" data-testid="picture-board-editor">
+          <div className="h-105 border border-line-subtle max-md:h-90" data-testid="picture-board-editor">
             <BoardEditor
               doc={startBoard}
               onScene={(els) => {
-                scene.current = els;
+                sceneRef.current = els;
                 setBoardShown(true);
               }}
             />
@@ -162,14 +160,14 @@ export function PictureEditor({
       <Field label={t("requirements.picture.edit.alt")} error={at("alt")} required>
         <Textarea rows={2} value={alt} onChange={(e) => setAlt(e.target.value)} />
       </Field>
-      {local?.field === "content" ? <p role="alert" className="fg-caption text-[color:var(--red-600)]">{local.text}</p> : null}
+      {local?.field === "content" ? <p role="alert" className="fg-caption text-danger">{local.text}</p> : null}
       {unplaced.map((r) => (
-        <p key={`${r.code}:${r.path}`} role="alert" className="fg-caption text-[color:var(--red-600)]" data-testid="refusal">
+        <p key={`${r.code}:${r.path}`} role="alert" className="fg-caption text-danger" data-testid="refusal">
           {r.detail}
         </p>
       ))}
       {save.error && refusals.length === 0 ? (
-        <p role="alert" className="fg-caption text-[color:var(--red-600)]" data-testid="refusal">
+        <p role="alert" className="fg-caption text-danger" data-testid="refusal">
           {plainRefusal(save.error)}
         </p>
       ) : null}
@@ -208,7 +206,7 @@ function Pair({ children, error, onRemove, removeLabel }: { children: ReactNode;
         <IconButton icon="x" size="sm" aria-label={removeLabel} onClick={onRemove} />
       </div>
       {error ? (
-        <p role="alert" className="fg-caption text-[color:var(--red-600)]">
+        <p role="alert" className="fg-caption text-danger">
           {error}
         </p>
       ) : null}
@@ -218,6 +216,7 @@ function Pair({ children, error, onRemove, removeLabel }: { children: ReactNode;
 
 function TableFields({ rows, onRows, at, t }: { rows: ExampleTableContent["rows"]; onRows: (r: ExampleTableContent["rows"]) => void; at: At; t: Copy }) {
   const set = (i: number, half: "input" | "expected", v: string) => onRows(rows.map((r, j) => (j === i ? { ...r, [half]: v } : r)));
+  const keys = useListKeys(rows.length);
   return (
     <div className="grid gap-2">
       <div className="grid grid-cols-2 gap-2 pr-9 text-12 font-semibold text-subtle max-md:hidden">
@@ -225,16 +224,24 @@ function TableFields({ rows, onRows, at, t }: { rows: ExampleTableContent["rows"
         <span>{t("requirements.picture.table.expected")}</span>
       </div>
       <ul className="grid gap-2">
-        {rows.map((r, i) => (
+        {keyedRows(rows, keys.keys).map(({ key, row: r, index: i }) => (
           // an example row has no key of its own; its place is its name in a refusal (row n)
-          // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
-          <Pair key={i} error={at(`row:${i}`)} onRemove={() => onRows(rows.filter((_, j) => j !== i))} removeLabel={t("requirements.picture.edit.removeRow", { n: i + 1 })}>
+          <Pair
+            key={key}
+            error={at(`row:${i}`)}
+            onRemove={() => {
+              keys.removed(i);
+              onRows(rows.filter((_, j) => j !== i));
+            }} removeLabel={t("requirements.picture.edit.removeRow", { n: i + 1 })}>
             <Input aria-label={t("requirements.picture.edit.rowInput", { n: i + 1 })} value={r.input ?? ""} onChange={(e) => set(i, "input", e.target.value)} />
             <Input aria-label={t("requirements.picture.edit.rowExpected", { n: i + 1 })} value={r.expected ?? ""} onChange={(e) => set(i, "expected", e.target.value)} />
           </Pair>
         ))}
       </ul>
-      <Button type="button" size="sm" variant="secondary" className="w-fit" onClick={() => onRows([...rows, { input: "", expected: "" }])}>
+      <Button type="button" size="sm" variant="secondary" className="w-fit" onClick={() => {
+          keys.added();
+          onRows([...rows, { input: "", expected: "" }]);
+        }}>
         {t("requirements.picture.edit.addRow")}
       </Button>
     </div>
@@ -243,6 +250,7 @@ function TableFields({ rows, onRows, at, t }: { rows: ExampleTableContent["rows"
 
 function ChartFields({ chart, onChart, at, other, t }: { chart: ChartDraft; onChart: (c: ChartDraft) => void; at: At; other: boolean; t: Copy }) {
   const set = (i: number, half: "label" | "value", v: string) => onChart({ ...chart, rows: chart.rows.map((r, j) => (j === i ? { ...r, [half]: v } : r)) });
+  const keys = useListKeys(chart.rows.length);
   return (
     <div className="grid gap-3">
       {other ? <p className="text-13 text-muted">{t("requirements.picture.edit.chartOther")}</p> : null}
@@ -265,15 +273,23 @@ function ChartFields({ chart, onChart, at, other, t }: { chart: ChartDraft; onCh
         </Field>
       </div>
       <ul className="grid gap-2">
-        {chart.rows.map((r, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
-          <Pair key={i} error={undefined} onRemove={() => onChart({ ...chart, rows: chart.rows.filter((_, j) => j !== i) })} removeLabel={t("requirements.picture.edit.removeRow", { n: i + 1 })}>
+        {keyedRows(chart.rows, keys.keys).map(({ key, row: r, index: i }) => (
+          <Pair
+            key={key}
+            error={undefined}
+            onRemove={() => {
+              keys.removed(i);
+              onChart({ ...chart, rows: chart.rows.filter((_, j) => j !== i) });
+            }} removeLabel={t("requirements.picture.edit.removeRow", { n: i + 1 })}>
             <Input aria-label={t("requirements.picture.edit.rowLabel", { n: i + 1 })} value={r.label} onChange={(e) => set(i, "label", e.target.value)} />
             <Input aria-label={t("requirements.picture.edit.rowValue", { n: i + 1 })} inputMode="decimal" value={r.value} onChange={(e) => set(i, "value", e.target.value)} />
           </Pair>
         ))}
       </ul>
-      <Button type="button" size="sm" variant="secondary" className="w-fit" onClick={() => onChart({ ...chart, rows: [...chart.rows, { label: "", value: "" }] })}>
+      <Button type="button" size="sm" variant="secondary" className="w-fit" onClick={() => {
+          keys.added();
+          onChart({ ...chart, rows: [...chart.rows, { label: "", value: "" }] });
+        }}>
         {t("requirements.picture.edit.addRow")}
       </Button>
     </div>

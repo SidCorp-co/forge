@@ -4,9 +4,9 @@
 // phone, what needs you, what is running and what is at risk. Flat tables on hairlines, no cards.
 // Needs you is the one decisions read the chat answers from (`useNeedsYouDecisions`, `DecisionList`).
 
-import { DecisionList } from "@/features/needs-you/components/decision-list";
-import { useNeedsYouDecisions } from "@/features/needs-you/hooks";
-import { useProjectStatus } from "@/features/project-status/hooks";
+import { DecisionList } from "@/features/needs-you";
+import { useNeedsYouDecisions } from "@/features/needs-you";
+import { useProjectStatus } from "@/features/project-status";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { atRiskRows, runningRows } from "../derive";
@@ -19,9 +19,9 @@ export function ProjectHome({ projectId, slug }: { projectId: string; slug: stri
   const statusQ = useProjectStatus(projectId);
   const status = statusQ.data;
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_26rem]" data-testid="project-home">
+    <div className="flex flex-col gap-6 lg:flex-row" data-testid="project-home">
       <HomeChat projectId={projectId} />
-      <div className="flex min-w-0 flex-col gap-6">
+      <div className="flex min-w-0 flex-col gap-6 lg:w-104 lg:flex-none">
         <section aria-label={t("home.needsYou")} data-testid="home-needs-you">
           <HomeSectionTitle count={decisionsQ.data?.total}>{t("home.needsYou")}</HomeSectionTitle>
           {decisionsQ.data ? (

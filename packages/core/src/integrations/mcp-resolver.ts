@@ -1,5 +1,6 @@
 import { logger } from '../lib/logger.js';
 import { listAgentGrantedBindings } from './agent-access-store.js';
+import { httpUpstreamOf, relayEntryFor } from './mcp-relay.js';
 import { directMcpIntegrations, mcpServerNameFor } from './registry.js';
 import { decryptConnectionSecrets, effectiveConfig } from './store.js';
 
@@ -59,7 +60,18 @@ async function resolveGrantedMcpEntries(
           );
           continue;
         }
-        const entry = path.buildEntry(config, secrets);
+        const built = path.buildEntry(config, secrets);
+        // REQ-21 BC-2: an HTTP server is reached through Forge's relay with a ticket for this one
+        // binding, so the provider credential never enters the run's config or environment
+        const entry = httpUpstreamOf(built)
+          ? await relayEntryFor({ projectId, bindingId: pair.binding.id })
+          : built;
+        if (built && !entry) {
+          logger.warn(
+            { projectId, provider: decl.provider, bindingId: pair.binding.id, serverName },
+            'mcp-resolver: no public API origin to relay this server through (set PUBLIC_API_BASE_URL), skipping inject rather than handing the run the provider credential',
+          );
+        }
         if (entry) {
           entries[serverName] = entry;
           produced?.push({ name: serverName, bindingId: pair.binding.id });

@@ -1,9 +1,11 @@
+import { HEALTH_WINDOWS } from '@forge/contracts/project-health';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
+import { projectHealth } from './health.js';
 import { BUCKETS, METRICS, runTimeseries } from './timeseries.js';
 
 /**
@@ -45,5 +47,28 @@ projectMetricsRoutes.get(
       groupByStep: groupBy === 'step',
     });
     return c.json(result);
+  },
+);
+
+const healthQuerySchema = z.object({
+  days: z.coerce
+    .number()
+    .int()
+    .refine((d) => (HEALTH_WINDOWS as readonly number[]).includes(d), {
+      message: `days is one of ${HEALTH_WINDOWS.join(', ')}`,
+    })
+    .default(30),
+});
+
+/** The project dashboard's health panel (REQ-24): four figures per day over the chosen window. */
+projectMetricsRoutes.get(
+  '/:id/metrics/health',
+  zValidator('param', idParamSchema),
+  zValidator('query', healthQuerySchema),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const access = await loadProjectAccess(id, c.get('userId'));
+    requireHeld(access, 'project.read');
+    return c.json(await projectHealth(id, c.req.valid('query').days));
   },
 );

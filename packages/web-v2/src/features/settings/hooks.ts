@@ -30,12 +30,21 @@ export function useRevokeToken() {
   return useMutation({
     mutationFn: settingsApi.revokeToken,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["settings", "tokens"] });
+      void qc.invalidateQueries({ queryKey: ["settings", "tokens"] });
       toast({ title: t("settings.token.revoked"), tone: "success" });
     },
     onError: (err) => {
       toast({ title: t("settings.token.revokeFailed"), description: formatApiError(err), tone: "error" });
     },
+  });
+}
+
+/** A token's project list, changed in place (FB-48). The caller branches on FRESH_AUTH_REQUIRED. */
+export function useSetTokenProjects() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: settingsApi.setTokenProjects,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings", "tokens"] }),
   });
 }
 
@@ -57,7 +66,7 @@ export function useMarkAllRead() {
   return useMutation({
     mutationFn: settingsApi.markAllRead,
     onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["settings", "notifications"] });
+      void qc.invalidateQueries({ queryKey: ["settings", "notifications"] });
       toast({ title: t("settings.notifications.markedRead", { n: res.updated }), tone: "success" });
     },
     onError: (err) => {
@@ -81,7 +90,7 @@ export function useUpdateAssistantPreferences() {
     mutationFn: settingsApi.updateAssistantPreferences,
     onSuccess: (data) => {
       qc.setQueryData(["settings", "assistant-preferences"], data);
-      qc.invalidateQueries({ queryKey: ["settings", "preference-changes"] });
+      void qc.invalidateQueries({ queryKey: ["settings", "preference-changes"] });
       toast({ title: t("settings.answers.saved"), tone: "success" });
     },
     onError: (err) => {
@@ -102,8 +111,8 @@ export function useRestorePreferenceChange() {
   return useMutation({
     mutationFn: settingsApi.restorePreferenceChange,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["settings", "assistant-preferences"] });
-      qc.invalidateQueries({ queryKey: ["settings", "preference-changes"] });
+      void qc.invalidateQueries({ queryKey: ["settings", "assistant-preferences"] });
+      void qc.invalidateQueries({ queryKey: ["settings", "preference-changes"] });
     },
   });
 }

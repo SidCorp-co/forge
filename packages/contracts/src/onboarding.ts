@@ -327,6 +327,10 @@ export interface OnboardingJobView {
 	finishedAt: string | null;
 	/** The job's run as the run read model reads it while it is live; null once it is over. */
 	waitingOn: RunWaitingOn | null;
+	/** Which attempt this is: 1 for the job onboarding queued, one more for each retry core queued after it (ISS-268). */
+	attempt: number;
+	/** Why an attempt that is over without succeeding ended, in the job's own words; null while live or once done. */
+	endedWith: string | null;
 }
 
 /** A thread's answerable batch and its due rule (project-onboarding `expect-answers`, `unanswered`). */

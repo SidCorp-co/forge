@@ -70,8 +70,8 @@ export function useAddOrgMember(orgId: string) {
   return useMutation({
     mutationFn: (input: AddOrgMemberInput) => orgsApi.addMember(orgId, input),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: keys.members(orgId) });
-      qc.invalidateQueries({ queryKey: keys.invitations(orgId) });
+      void qc.invalidateQueries({ queryKey: keys.members(orgId) });
+      void qc.invalidateQueries({ queryKey: keys.invitations(orgId) });
     },
   });
 }

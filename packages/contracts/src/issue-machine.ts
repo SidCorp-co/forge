@@ -187,16 +187,15 @@ export const ISSUE_ADMIT_PERMISSION = "issues.admit";
 
 const MOVE = "project.write";
 
-/** Where a design-only issue may close from once its design revisions are approved: every status
- *  but the terminals and `awaiting_release`, whose own edge to `closed` takes that delivery too. */
+/** Where a design-only issue may close from once its design revisions are approved: every live
+ *  status but the two parks, which return only to the status they left, cross or drop (REQ-2 BC-9),
+ *  and `awaiting_release`, whose own edge to `closed` takes that delivery too. */
 const DESIGN_CLOSABLE_STATUSES: readonly IssueStatus[] = [
 	"draft",
 	"open",
 	"reopen",
 	"in_progress",
 	"approved",
-	"needs_info",
-	"on_hold",
 ];
 
 type IssueEdge = MachineEdge<IssueStatus> & {
@@ -224,7 +223,7 @@ const recovery = (to: IssueStatus, guards: readonly IssueGuard[]): IssueEdge => 
 
 export const ISSUE_MACHINE = defineMachine({
 	entity: "issue",
-	shapes: ["853ac6ba", "23991d04", "5a3cd8b3", "07fda5db", "89cf83a7"],
+	shapes: ["853ac6ba", "23991d04", "5a3cd8b3", "07fda5db", "89cf83a7", "9ee504ee"],
 	design: { flow: "issue-lifecycle", revision: 12 },
 	states: ISSUE_STATUSES,
 	initial: ISSUE_INITIAL_STATUSES,

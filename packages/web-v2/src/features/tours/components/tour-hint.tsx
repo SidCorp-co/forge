@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/design";
-import { useCurrentProject } from "@/features/projects/current-project";
+import { useCurrentProject } from "@/features/projects";
 import { formatRefusal } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useSaveTourState, useStartTour, useTourCopy, useTourStates } from "../hooks";
@@ -29,11 +29,11 @@ export function TourHint({ tourId, projectRole }: { tourId: string; projectRole?
   const count = tour.steps.length;
   return (
     <div
-      className="mb-4 flex flex-wrap items-center gap-2.5 border-y border-line py-2.5 text-13-5 text-fg"
+      className="mb-4 flex flex-wrap items-center gap-2.5 border-y border-line py-2.5 text-14 text-fg"
       data-testid={`tour-hint-${tour.id}`}
       role="note"
     >
-      <span className="min-w-[200px] flex-1">{t(state ? tour.hint.updated : tour.hint.new, { count })}</span>
+      <span className="min-w-50 flex-1">{t(state ? tour.hint.updated : tour.hint.new, { count })}</span>
       <Button variant="primary" size="sm" onClick={() => start(tour)}>
         {t("tours.hint.show", { count })}
       </Button>

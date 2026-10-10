@@ -1,5 +1,6 @@
 import type { IssueStatus } from "./issue-machine.js";
 import type { REGISTRY_ISSUE_PRIORITIES } from "./pipeline-registry.js";
+import { verdictEarns } from "./verdict-identity.js";
 
 /** A run's steps, in order: core's `workSteps`, held equal by core's `pipeline/registry.test.ts`. */
 export const WORK_STEPS = [
@@ -209,7 +210,7 @@ export const CRITERION_STANDING_GLYPHS: Record<CriterionStanding, string> = {
 
 /** Whether a criterion's standing earns it: a pass, or a short (met, short of its wording). */
 export const criterionCountsAsPass = (standing: CriterionStanding): boolean =>
-	standing === "pass" || standing === "short";
+	verdictEarns(standing);
 
 export const CRITERION_STANDING_HINTS: Record<CriterionStanding, string> = {
 	pass: "pass: the latest verdict passed",

@@ -5,14 +5,14 @@
 // burned the three minutes". A run that spent 2m queued and 12s working is the
 // single most actionable shape here, and no step strip can show it.
 
-import { formatDurationMs } from "@/features/pipeline/derive";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { TimeSpanKey, TimeSpend } from "../../run-report";
+import { formatDuration } from "@/lib/i18n/format";
 
 const SPAN_COLOR: Record<TimeSpanKey, string> = {
-  queued: "var(--paper-300)",
-  startup: "var(--slate-500)",
-  agent: "var(--cobalt-500)",
+  queued: "var(--neutral-7)",
+  startup: "var(--muted-9)",
+  agent: "var(--info-9)",
 };
 
 export function TimeSpendBar({ spend }: { spend: TimeSpend }) {
@@ -25,7 +25,7 @@ export function TimeSpendBar({ spend }: { spend: TimeSpend }) {
       <div className="flex items-baseline gap-2.5">
         <span className="fg-overline">{t("runs.report.timeWent")}</span>
         <span className="fg-caption ml-auto">
-          {clockOf(spend.from)} → {clockOf(spend.to)} · {t("runs.report.wall", { d: formatDurationMs(spend.totalMs, language) })}
+          {clockOf(spend.from)} → {clockOf(spend.to)} · {t("runs.report.wall", { d: formatDuration(spend.totalMs, language) })}
         </span>
       </div>
       <div className="mt-2.5 flex h-3 gap-0.5 overflow-hidden rounded-pill">
@@ -34,14 +34,14 @@ export function TimeSpendBar({ spend }: { spend: TimeSpend }) {
             key={span.key}
             className="block"
             style={{ flex: span.ms, background: SPAN_COLOR[span.key] }}
-            title={`${span.label} — ${formatDurationMs(span.ms, language)}`}
+            title={`${span.label} — ${formatDuration(span.ms, language)}`}
           />
         ))}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
         {spend.spans.map((span) => (
           <span key={span.key} className="fg-caption">
-            <b className="fg-body-sm">{formatDurationMs(span.ms, language)}</b> {span.label}{" "}
+            <b className="fg-body-sm">{formatDuration(span.ms, language)}</b> {span.label}{" "}
             <em className="not-italic opacity-70">{clockOf(span.at)}</em>
           </span>
         ))}

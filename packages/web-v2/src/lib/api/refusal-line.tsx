@@ -46,3 +46,14 @@ export function RefusalLine({ error, testid = "refusal", words, onField }: { err
     </p>
   );
 }
+
+/** A write or read refused inline, where it happened: the act's name, then core's words for why. Nothing when there is no error. */
+export function RefusedLine({ label, error, className }: { label?: string; error: unknown; className?: string }) {
+  if (!error) return null;
+  const why = formatApiError(error);
+  return (
+    <p role="alert" className={className ?? "fg-caption text-danger-11"}>
+      {label ? `${label}: ${why}` : why}
+    </p>
+  );
+}

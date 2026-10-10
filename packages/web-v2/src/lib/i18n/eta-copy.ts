@@ -1,15 +1,14 @@
 import { baseOf, copyLocale, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 
-// The ETA column's words, in the project's content language (contracts `content-language.ts`): vi
-// where the project writes Vietnamese, English for every other tag. The words are the `eta.*` keys
-// of the forecast's copy file, `features/forecast/copy.json`, read through `productCopy`.
+// The ETA column's words, in the interface language (`eta-clock.ts:useEtaClock`), never the project's
+// content language (REQ-13 BC-2): vi for a vi tag, English for every other. The words are the `eta.*`
+// keys of the forecast's copy file, `lib/i18n/copy/forecast.json`, read through `productCopy`.
 
-const ETA_LANGS = ["vi", "en"] as const;
-export type EtaLang = (typeof ETA_LANGS)[number];
+export type EtaLang = "vi" | "en";
 
-/** The ETA copy for a project's content language tag: vi for any vi tag, else English. */
-export const etaLangOf = (contentLanguage: string | null | undefined): EtaLang =>
-  baseOf(contentLanguage) === "vi" ? "vi" : "en";
+/** The ETA copy for a language tag: vi for any vi tag, else English. */
+export const etaLangOf = (tag: string | null | undefined): EtaLang =>
+  baseOf(tag) === "vi" ? "vi" : "en";
 
 interface EtaCopy {
   /** The column header and the rail's label. */
@@ -60,6 +59,10 @@ const MONTHS = [
 
 function copyOf(lang: EtaLang): EtaCopy {
   const t = productCopy(lang);
+  const monthWord = (month: number): string => {
+    const key = MONTHS[month - 1];
+    return key ? t(key) : String(month);
+  };
   return {
     header: t("eta.header"),
     locale: copyLocale(lang),
@@ -69,7 +72,7 @@ function copyOf(lang: EtaLang): EtaCopy {
     tomorrowInline: t("eta.tomorrowInline"),
     yesterday: t("eta.yesterday"),
     weekdays: WEEKDAYS.map((k) => t(k)),
-    date: (day, month) => t("eta.date", { d: day, dd: String(day).padStart(2, "0"), month: MONTHS[month - 1] ? t(MONTHS[month - 1] as ProductCopyKey) : String(month) }),
+    date: (day, month) => t("eta.date", { d: day, dd: String(day).padStart(2, "0"), month: monthWord(month) }),
     latest: (when) => t("eta.latest", { when }),
     latestInline: (when) => t("eta.latestInline", { when }),
     shippedLine: (version) => (version ? t("eta.shippedLine", { version }) : t("eta.shippedBare")),

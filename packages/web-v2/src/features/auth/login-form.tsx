@@ -58,7 +58,7 @@ export function LoginForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+    <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-4" noValidate>
       {topError ? (
         <Banner tone="danger">{topError}</Banner>
       ) : (
@@ -76,7 +76,6 @@ export function LoginForm({
           autoComplete="email"
           inputMode="email"
           spellCheck={false}
-          autoFocus={!presetEmail}
           placeholder="you@studio.com"
           value={email}
           onChange={(e) => {
@@ -92,7 +91,6 @@ export function LoginForm({
           icon="lock"
           autoComplete="current-password"
           placeholder="••••••••"
-          autoFocus={!!presetEmail}
           value={password}
           onChange={(e) => {
             setPassword(e.target.value);

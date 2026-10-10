@@ -11,7 +11,7 @@
 // org member gets a read-only drawer that can still drill into projects.
 
 import Link from "next/link";
-import { Suspense, lazy, useMemo, useState } from "react";
+import { Suspense, createElement, lazy, useState } from "react";
 import {
   Banner,
   Button,
@@ -27,8 +27,8 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
-import { useProjectsIncludingArchived } from "@/features/projects/hooks";
-import type { ProjectListItem } from "@/features/projects/types";
+import { useProjectsIncludingArchived } from "@/features/projects";
+import type { ProjectListItem } from "@/features/projects";
 import {
   useCanManageConnection,
   useConnectionBindings,
@@ -41,10 +41,10 @@ import { PROVIDER_MODULES, providerIcon, providerLabel, providerModule, secretPl
 import type { BindingSummary, ConnectionSummary, IntegrationTestResult } from "../types";
 import { DirectoryStatusPill, scopeLabel } from "./status-pill";
 
+// Each provider's connection-tier form, made lazy once here at module scope: the drawer renders the
+// one its provider names, a type that is the same on every render.
 const CONNECTION_SECTIONS = new Map(
-  PROVIDER_MODULES.flatMap((m) =>
-    m.connectionSection ? [[m.provider, lazy(m.connectionSection)] as const] : [],
-  ),
+  PROVIDER_MODULES.flatMap((m) => (m.connectionSection ? [[m.provider, lazy(m.connectionSection)] as const] : [])),
 );
 
 /** Inline rename in the drawer header (AC1). */
@@ -122,7 +122,7 @@ function HeaderTitle({
 }
 
 /** Replace-key (write-only) + Test + truthful last-health line (AC2, AC6). */
-function CredentialSection({
+function CredentialFields({
   connection,
   canManage,
 }: {
@@ -139,8 +139,7 @@ function CredentialSection({
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
   const checked = time.relative(connection.lastHealthAt);
-  const module = providerModule(connection.provider);
-  const secretField = module?.secretField ?? null;
+  const secretField = providerModule(connection.provider)?.secretField ?? null;
 
   const saveKey = () => {
     const next = key.trim();
@@ -198,7 +197,7 @@ function CredentialSection({
       )}
       <div className="flex items-center gap-3">
         {canManage && (
-          <Button variant="secondary" size="sm" loading={test.isPending} onClick={runTest}>
+          <Button variant="secondary" size="sm" loading={test.isPending} onClick={() => void runTest()}>
             {t("integrations.edit.test")}
           </Button>
         )}
@@ -223,18 +222,17 @@ function CredentialSection({
 }
 
 /** The provider's own connection-tier form, or a line saying where its config is edited instead. */
-function ConfigSection({
+function ConfigFields({
   connection,
   canManage,
 }: {
   connection: ConnectionSummary;
   canManage: boolean;
 }) {
-  const module = providerModule(connection.provider);
-  const Section = CONNECTION_SECTIONS.get(connection.provider);
+  const section = CONNECTION_SECTIONS.get(connection.provider);
   const t = useCopy();
 
-  if (!Section) {
+  if (!section) {
     return (
       <section className="flex flex-col gap-2">
         <PageSectionTitle>{t("integrations.detail.config")}</PageSectionTitle>
@@ -247,19 +245,18 @@ function ConfigSection({
 
   return (
     <Suspense fallback={<Skeleton className="h-28 w-full" />}>
-      <Section
-        key={connection.id}
-        connection={{ id: connection.id, config: connection.config ?? {} }}
-        canManage={canManage}
-      />
+      {createElement(section, {
+        key: connection.id,
+        connection: { id: connection.id, config: connection.config ?? {} },
+        canManage,
+      })}
     </Suspense>
   );
 }
 
 /** "Projects using it" — each row drills into that project's settings →
  *  Integrations tab (AC3); archived projects render non-clickable + badge. */
-function ProjectsSection({
-  connection,
+function ProjectFields({
   projects,
   bindings,
   bindingsError,
@@ -267,7 +264,6 @@ function ProjectsSection({
   onRetry,
   onNavigate,
 }: {
-  connection: ConnectionSummary;
   projects: ProjectListItem[];
   bindings: BindingSummary[];
   bindingsError: string | null;
@@ -276,11 +272,7 @@ function ProjectsSection({
   onNavigate: () => void;
 }) {
   const t = useCopy();
-  const byId = useMemo(() => {
-    const map = new Map<string, ProjectListItem>();
-    for (const p of projects) map.set(p.id, p);
-    return map;
-  }, [projects]);
+  const byId = new Map(projects.map((p) => [p.id, p] as const));
 
   return (
     <section className="flex flex-col gap-2">
@@ -435,11 +427,8 @@ export function ConnectionEditDrawer({
   // Distinct PROJECT IDS with a still-resolving binding — dedupe by id (two
   // projects may share a display name) and skip already-disabled bindings,
   // which stopped resolving before any removal.
-  const affectedProjects = useMemo(() => {
-    const byId = new Map(projects.map((p) => [p.id, p.name] as const));
-    const ids = [...new Set(bindings.filter((b) => b.active).map((b) => b.projectId))];
-    return ids.map((id) => byId.get(id) ?? id);
-  }, [bindings, projects]);
+  const nameById = new Map(projects.map((p) => [p.id, p.name] as const));
+  const affectedProjects = [...new Set(bindings.filter((b) => b.active).map((b) => b.projectId))].map((id) => nameById.get(id) ?? id);
 
   if (!connection) return null;
 
@@ -451,9 +440,9 @@ export function ConnectionEditDrawer({
       width={560}
     >
       <div className="flex flex-col gap-5">
-        <CredentialSection connection={connection} canManage={canManage} />
+        <CredentialFields connection={connection} canManage={canManage} />
         <Divider />
-        <ConfigSection connection={connection} canManage={canManage} />
+        <ConfigFields connection={connection} canManage={canManage} />
         {/* ISS-1275 — the connection tier of the release runner label. It renders
             itself away unless some project binds this credential as a LIVE deploy
             target, which is the only place the label decides anything. */}
@@ -463,13 +452,12 @@ export function ConnectionEditDrawer({
           canManage={canManage}
         />
         <Divider />
-        <ProjectsSection
-          connection={connection}
+        <ProjectFields
           projects={projects}
           bindings={bindings}
           bindingsLoading={bindingsQ.isLoading}
           bindingsError={bindingsQ.isError ? formatApiError(bindingsQ.error) : null}
-          onRetry={() => bindingsQ.refetch()}
+          onRetry={() => void bindingsQ.refetch()}
           onNavigate={onClose}
         />
         {canManage && (

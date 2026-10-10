@@ -39,6 +39,7 @@ import {
 } from './read.js';
 import { draftPictureRefusalsIn, revisionDiffRefusalsIn } from './revision-diff.js';
 import {
+  baseRequiredRefusal,
   baseStaleRefusal,
   breakdownOpenRefusal,
   breakdownProposerRefusal,
@@ -165,7 +166,8 @@ export async function createSuggestion(input: {
   producerId: string | null;
   kind: SuggestionKind;
   target: SuggestionTargetRef;
-  baseRevision: number | null;
+  /** The revision the producer read; left out, core reads the target's base now, at creation. */
+  baseRevision?: number | null | undefined;
   payload: unknown;
   model?: string | null | undefined;
   conversationMessageId?: string | null | undefined;
@@ -191,7 +193,11 @@ export async function createSuggestion(input: {
   const refusals = await inTx(async (tx) => {
     await lockTarget(tx, projectId, target);
     const head = await headOf(tx, projectId, target);
-    const stale = baseStaleRefusal(input.baseRevision, head, await openBaseOf(tx, kind, target));
+    const open = await openBaseOf(tx, kind, target);
+    const base = input.baseRevision === undefined ? (open?.revision ?? head) : input.baseRevision;
+    const unbased = baseRequiredRefusal(base, open?.revision ?? head, target.type);
+    if (unbased) return [unbased];
+    const stale = baseStaleRefusal(base, head, open);
     if (stale) return [stale];
     const proposed = await proposeIn(
       tx,
@@ -199,7 +205,7 @@ export async function createSuggestion(input: {
         projectId,
         kind,
         target,
-        baseRevision: input.baseRevision,
+        baseRevision: base,
         payload,
         fingerprint: fingerprintOf(kind, parsed),
         producerKind: input.producerKind,

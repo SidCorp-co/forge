@@ -19,7 +19,7 @@ import type { IssueAgentSession } from "../../types";
 import { ActivityFeed } from "../activity-feed";
 import { CommentThread } from "../comment-thread";
 import { SessionGroupTimeline } from "../session-group-timeline";
-import { StepArtifactCard } from "../step-artifact-card";
+import { StepArtifact } from "../step-artifact";
 import { CheckTimes } from "./check-times";
 
 export type ActivityThread = "comments" | "activity";
@@ -46,7 +46,7 @@ function RunList({ slug, sessions }: { slug: string; sessions: IssueAgentSession
               href={s.pipelineRunId ? runHref(slug, s.pipelineRunId) : `${agentsListHref(slug)}/${encodeURIComponent(s.id)}`}
               className="min-w-0 flex-1 truncate text-link hover:underline"
             >
-              {s.title ?? (s.metadata?.jobType ? enumLabel("jobType", String(s.metadata.jobType)) : s.id.slice(0, 8))}
+              {s.title ?? (typeof s.metadata?.jobType === "string" ? enumLabel("jobType", s.metadata.jobType) : s.id.slice(0, 8))}
             </Link>
             <StatusBadge family="session" value={s.status} />
             {s.deviceName ? <span className="text-12 text-muted">{s.deviceName}</span> : null}
@@ -95,7 +95,7 @@ export function RunsTab({
           <ViewHeading>{t("issues.steps.title")}</ViewHeading>
           <div className="space-y-2">
             {stepOutcomes.map((outcome) => (
-              <StepArtifactCard
+              <StepArtifact
                 key={outcome.step}
                 outcome={outcome}
                 open={expandedStep === outcome.step}
@@ -170,10 +170,10 @@ function TabLoading() {
     <div className="space-y-3" aria-busy>
       {[0, 1, 2].map((i) => (
         <div key={i} className="flex items-start gap-2.5">
-          <Skeleton variant="circle" className="size-[26px] flex-none" />
+          <Skeleton variant="circle" className="size-6.5 flex-none" />
           <div className="min-w-0 flex-1 space-y-1.5">
             <Skeleton variant="text" className="w-32" />
-            <Skeleton variant="text" className="w-full max-w-[24rem]" />
+            <Skeleton variant="text" className="w-full max-w-96" />
           </div>
         </div>
       ))}
@@ -195,7 +195,7 @@ function TabError({
     <ErrorState
       title={title}
       message={formatApiError(query.error)}
-      onRetry={isRetryableApiError(query.error) ? () => query.refetch() : undefined}
+      onRetry={isRetryableApiError(query.error) ? () => void query.refetch() : undefined}
     />
   );
 }

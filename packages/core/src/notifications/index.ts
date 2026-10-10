@@ -6,7 +6,12 @@ export { registerFeedbackNotifications } from './notify-feedback.js';
 export { registerNotifyMentionsSubscriber } from './notify-mentions.js';
 export { registerRequirementNotifications } from './notify-requirements.js';
 export { registerTransitionNotifications } from './notify-transitions.js';
-export { claimOpsAlert, unreadAlertDeliveries } from './ops-alerts.js';
+export {
+  claimOpsAlert,
+  type OpsAlertChange,
+  opsAlertChanges,
+  unreadAlertDeliveries,
+} from './ops-alerts.js';
 export { platformAdminUserIds } from './platform-admins.js';
 export { projectAdminUserIds, projectAdminUserIdsFor } from './project-admins.js';
 export { type ReevaluateResult, reevaluateConditions } from './reevaluate-conditions.js';

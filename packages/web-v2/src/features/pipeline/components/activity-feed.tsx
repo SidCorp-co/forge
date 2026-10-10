@@ -21,6 +21,7 @@ import {
   Tooltip,
 } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
+import { cn } from "@/lib/utils/cn";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import {
@@ -40,12 +41,12 @@ interface ActivityTabProps {
   onRetry: () => void;
 }
 
-const TONE_COLOR: Record<ActivityTone, { dot: string; fg: string }> = {
-  failure: { dot: "var(--red-500)", fg: "var(--red-600)" },
-  swept: { dot: "var(--ink-400)", fg: "var(--fg-muted)" },
-  cleanup: { dot: "var(--ink-400)", fg: "var(--fg-muted)" },
-  success: { dot: "var(--green-500)", fg: "var(--green-600)" },
-  open: { dot: "var(--pipeline-active)", fg: "var(--cobalt-700)" },
+const TONE_CLASS: Record<ActivityTone, { dot: string; fg: string }> = {
+  failure: { dot: "bg-danger-9", fg: "text-danger-11" },
+  swept: { dot: "bg-neutral-8", fg: "text-muted" },
+  cleanup: { dot: "bg-neutral-8", fg: "text-muted" },
+  success: { dot: "bg-ok-9", fg: "text-ok-11" },
+  open: { dot: "bg-info-9", fg: "text-info-11" },
 };
 
 export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) {
@@ -100,7 +101,7 @@ export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) 
       ) : (
         <ol className="flex list-none flex-col divide-y divide-line-subtle p-0">
           {visible.map((entry) => (
-            <ActivityRow key={entry.key} entry={entry} />
+            <ActivityLine key={entry.key} entry={entry} />
           ))}
         </ol>
       )}
@@ -113,8 +114,7 @@ function RetryHeadline({ summary }: { summary: PipelineRunRetrySummary }) {
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-line-subtle pb-2.5">
       <span
-        className="rounded-full px-2 py-0.5 font-mono text-11 font-semibold"
-        style={{ background: "var(--amberw-50)", color: "var(--amberw-600)" }}
+        className="rounded-pill bg-warn-3 px-2 py-0.5 font-mono text-12 font-semibold text-warn-11"
       >
         {t("pipeline.activity.attempt", { n: summary.attempt, max: summary.maxAttempts })}
       </span>
@@ -123,24 +123,23 @@ function RetryHeadline({ summary }: { summary: PipelineRunRetrySummary }) {
   );
 }
 
-function ActivityRow({ entry }: { entry: ActivityEntry }) {
+function ActivityLine({ entry }: { entry: ActivityEntry }) {
   const t = useCopy();
   // which attempts a collapsed line stands for
   const repeats = t("pipeline.activity.repeats", { list: entry.positions.join(", ") });
-  const color = TONE_COLOR[entry.tone];
+  const tone = TONE_CLASS[entry.tone];
   const when = formatRelativeTime(entry.at);
   return (
     <li className="flex gap-3 py-3">
       <span
         aria-hidden
-        className={entry.open ? "forge-pulse mt-1.5 size-2 flex-none rounded-full" : "mt-1.5 size-2 flex-none rounded-full"}
-        style={{ background: color.dot }}
+        className={cn("mt-1.5 size-2 flex-none rounded-full", tone.dot, entry.open && "forge-pulse")}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="fg-body-sm font-semibold text-fg">{entry.verb}</span>
-          <span className="font-mono text-12-5 font-bold text-muted">{entry.object}</span>
-          <span className="fg-body-sm font-semibold" style={{ color: color.fg }}>
+          <span className="font-mono text-13 font-bold text-muted">{entry.object}</span>
+          <span className={cn("fg-body-sm font-semibold", tone.fg)}>
             {entry.outcome}
           </span>
           {entry.repeats > 1 && (
@@ -159,14 +158,14 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
           <p className="fg-caption break-words text-muted">{entry.detail}</p>
         )}
         {entry.action && (
-          <p className="fg-caption break-words" style={{ color: "var(--amberw-600)" }}>
+          <p className="fg-caption break-words text-warn-11">
             {entry.action}
           </p>
         )}
 
         <div className="fg-caption flex flex-wrap items-center gap-x-3 gap-y-1 text-subtle">
           <span className="inline-flex min-w-0 items-center gap-1">
-            <Icon name="server" size={11} className="flex-none align-[-1px]" />
+            <Icon name="server" size={11} className="flex-none" />
             <span className="truncate">{entry.device}</span>
           </span>
           {when && <span>{when}</span>}
@@ -179,10 +178,10 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
 function ActivitySkeleton() {
   return (
     <div className="flex flex-col gap-2.5">
-      <Skeleton variant="text" className="w-[120px]" />
-      <Skeleton className="h-[78px]" />
-      <Skeleton className="h-[78px]" />
-      <Skeleton className="h-[78px]" />
+      <Skeleton variant="text" className="w-30" />
+      <Skeleton className="h-19.5" />
+      <Skeleton className="h-19.5" />
+      <Skeleton className="h-19.5" />
     </div>
   );
 }

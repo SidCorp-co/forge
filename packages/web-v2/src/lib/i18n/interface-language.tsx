@@ -1,49 +1,39 @@
 "use client";
 
-import { createContext, type ReactNode, useContext, useMemo } from "react";
-import { useContentLanguage } from "@/lib/api/content-language";
-import { useCurrentProjectRef } from "@/features/projects/current-project";
-import { usePreferences } from "@/features/preferences/hooks";
-import { formatAge, formatClock, formatClockSeconds, formatCompact, formatCountdown, formatDate, formatDateTime, formatElapsed, formatNumber, formatRelative } from "./format";
+import { createContext, type ReactNode, use, useMemo } from "react";
+import { formatAge, formatClock, formatClockSeconds, formatCompact, formatCountdown, formatDate, formatDateTime, formatDuration, formatElapsed, formatNumber, formatRelative, formatUsd, formatWhen } from "./format";
 import { labelCopy } from "./labels";
 import { baseOf, copyOr, type Copy, copyLocale, productCopy } from "./product-copy";
 
-// The language the product's chrome is written in, one answer for every screen. The person's own
-// choice wins (Account > Preferences > Interface language); with none, the open project's content
-// language; with neither, English. Content a person or an agent wrote stays in the language it was
-// written in: only chrome reads through here.
+// The language the product's chrome is written in, one answer for every screen: the person's own
+// choice (Account > Preferences > Interface language), else English. Forge is English only (owner,
+// 2026-10-08; REQ-13 BC-2): a project's content language governs what agents write and the product's
+// own content, never Forge's chrome, so a Vietnamese project no longer turns the menus Vietnamese.
+// Content a person or an agent wrote stays in the language it was written in.
 
 export const INTERFACE_LANGUAGES = ["en", "vi"] as const;
 export type InterfaceLanguage = (typeof INTERFACE_LANGUAGES)[number];
 
-/** The chosen language, else the project's content language, else English. */
-export function resolveInterfaceLanguage(
-  choice: string | null | undefined,
-  contentLanguage: string | null | undefined,
-): InterfaceLanguage {
-  const picked = choice ?? contentLanguage;
-  return picked && baseOf(picked) === "vi" ? "vi" : "en";
+/**
+ * The chosen language, else English; never the project's content language. The second parameter is
+ * not read: it stays only so interface-language.test.tsx, which the POC room may not edit (owner,
+ * 2026-10-10), still compiles. Amnesty, priced: the signature lies about an input it ignores; it ends
+ * when the review issue rewrites that test, and the parameter is deleted with it.
+ */
+export function resolveInterfaceLanguage(choice: string | null | undefined, _unread?: string | null): InterfaceLanguage {
+  return choice && baseOf(choice) === "vi" ? "vi" : "en";
 }
 
 const InterfaceLanguageContext = createContext<InterfaceLanguage>("en");
 
 /** Pins the language for a subtree; the workspace shell and tests use it. */
 export function InterfaceLanguageScope({ language, children }: { language: InterfaceLanguage; children: ReactNode }) {
-  return <InterfaceLanguageContext.Provider value={language}>{children}</InterfaceLanguageContext.Provider>;
-}
-
-/** Resolves the language for the open project from the person's preference and the project's content language. */
-export function WorkspaceInterfaceLanguage({ children }: { children: ReactNode }) {
-  const projectRef = useCurrentProjectRef();
-  const choice = usePreferences().data?.language;
-  const content = useContentLanguage(projectRef).data?.contentLanguage;
-  const language = resolveInterfaceLanguage(choice, content);
-  return <InterfaceLanguageScope language={language}>{children}</InterfaceLanguageScope>;
+  return <InterfaceLanguageContext value={language}>{children}</InterfaceLanguageContext>;
 }
 
 /** The language chrome is written in on this screen. */
 export function useInterfaceLanguage(): InterfaceLanguage {
-  return useContext(InterfaceLanguageContext);
+  return use(InterfaceLanguageContext);
 }
 
 /** A reader of the chrome in the interface language. */
@@ -84,6 +74,9 @@ export function useTimeFormat() {
       clock: (at: string | number | Date) => formatClock(at, language),
       clockSeconds: (at: string | number | Date) => formatClockSeconds(at, language),
       compact: (n: number) => formatCompact(n, language),
+      duration: (ms: number | null | undefined) => formatDuration(ms, language),
+      usd: (usd: number | null | undefined) => formatUsd(usd, language),
+      when: (at: string | number | null | undefined) => formatWhen(at, language),
     }),
     [language],
   );

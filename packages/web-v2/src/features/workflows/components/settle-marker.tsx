@@ -6,7 +6,7 @@
 import { NODE_DECISION_VERDICTS, type HealthMarker, type HealthNode, type NodeDecisionVerdict } from "@forge/contracts/workflow-health";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/design";
-import { commentsApi } from "@/features/comments/api";
+import { commentsApi } from "@/features/comments";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 
@@ -33,8 +33,8 @@ export function SettleMarker({ projectId, flow, marker, nodes }: { projectId: st
       });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["workflow-health", projectId] });
-      qc.invalidateQueries({ queryKey: ["entity-decisions"] });
+      void qc.invalidateQueries({ queryKey: ["workflow-health", projectId] });
+      void qc.invalidateQueries({ queryKey: ["entity-decisions"] });
     },
   });
   if (!node) return null;

@@ -170,6 +170,7 @@ export function runStandingOf(f: RunFacts, ctx: StandingContext): RunStanding {
   const title = titleOf(f, lane);
   return {
     id: f.run.id,
+    boxRunId: f.run.boxRunId,
     projectId: f.run.projectId,
     lane,
     state: derived.state,

@@ -1,7 +1,7 @@
 import { Button, HelpButton, IconButton, Menu, type MenuItem } from "@/design";
-import { AskAboutThis } from "@/features/chat-dock/ask-about-this";
+import { AskAboutThis } from "@/features/chat-dock";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
+import { copyShareLink } from "@/lib/navigation/copy-share-link";
 import { useRouter } from "next/navigation";
 import type { IssueDetail, IssueStatus } from "../../types";
 import { type StartReading, StartIssueAction } from "../start-issue-action";
@@ -34,14 +34,13 @@ export function IssueActions({
   onStarted: () => void;
 }) {
   const router = useRouter();
-  const copyShareLink = useCopyShareLink();
   const t = useCopy();
   const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
   const openSessions = () => router.push(issueSessionsHref(slug, issue.id));
   const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
 
   function copyLink() {
-    copyShareLink(`/projects/${slug}/issues/${linkId}`);
+    copyShareLink(`/projects/${slug}/issues/${linkId}`, t);
   }
 
   const moreItems: MenuItem[] = [
@@ -94,8 +93,8 @@ export function IssueActions({
   return (
     <span className="flex items-center gap-1.5" data-testid="issue-actions">
       {primary}
-      {/* below 768px the bar holds the back control, the one primary act and the menu; asking and help wait for the room */}
-      <span className="contents max-md:hidden">
+      {/* below 768px of page column the bar holds the back control, the one primary act and the menu; asking and help wait for the room */}
+      <span className="contents max-column-md:hidden">
         <AskAboutThis about={null} />
         <HelpButton
         summary={t("issues.help.summary")}

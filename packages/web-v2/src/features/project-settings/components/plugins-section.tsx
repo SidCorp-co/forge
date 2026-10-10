@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Badge, Banner, Button, PageSectionTitle, ConfirmDialog, EmptyState, ErrorState, Field, Input, Skeleton } from "@/design";
-import { useProject } from "@/features/projects/hooks";
+import { useProject } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { useUpdatePlugins } from "../hooks";
+import { usePluginConflicts, useUpdatePlugins } from "../hooks";
 import type { PluginDesignation, ProjectAgentConfig } from "../types";
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -37,7 +37,7 @@ const stripKey = (r: PluginDesignation): PluginDesignation => ({
 const sameList = (a: DraftRow[], b: PluginDesignation[]) =>
   JSON.stringify(a.map(stripKey)) === JSON.stringify(b.map(stripKey));
 
-export function PluginsSection({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+export function PluginSettings({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const t = useCopy();
   const projectQ = useProject(projectId);
   return (
@@ -45,12 +45,13 @@ export function PluginsSection({ projectId, canEdit }: { projectId: string; canE
       <div>
         <PageSectionTitle className="fg-label text-fg">{t("settings.project.plugins.title")}</PageSectionTitle>
       </div>
+      <PinConflicts projectId={projectId} />
       {projectQ.isError ? (
         <div className="mt-3">
-          <ErrorState message={formatApiError(projectQ.error)} onRetry={() => projectQ.refetch()} />
+          <ErrorState message={formatApiError(projectQ.error)} onRetry={() => void projectQ.refetch()} />
         </div>
       ) : projectQ.data ? (
-        <PluginsEditor projectId={projectId} agentConfig={projectQ.data.agentConfig} canEdit={canEdit} />
+        <PluginsEditor key={JSON.stringify(pluginsOf(projectQ.data.agentConfig))} projectId={projectId} agentConfig={projectQ.data.agentConfig} canEdit={canEdit} />
       ) : (
         <div className="mt-3 space-y-2">
           <Skeleton className="h-16 w-full rounded-md" />
@@ -61,16 +62,32 @@ export function PluginsSection({ projectId, canEdit }: { projectId: string; canE
   );
 }
 
+/** Each pin this project cannot have on a box it shares: who pins what there, and what the box does. */
+function PinConflicts({ projectId }: { projectId: string }) {
+  const t = useCopy();
+  const q = usePluginConflicts(projectId);
+  const conflicts = q.data?.conflicts ?? [];
+  if (conflicts.length === 0) return null;
+  return (
+    <div className="mt-3 space-y-2" data-testid="plugin-pin-conflicts">
+      {conflicts.map((c) => (
+        <Banner key={`${c.device.id}-${c.marketplace}-${c.name}`} tone="attention">
+          <span className="font-semibold">{t("settings.project.plugins.conflict", { name: c.name, box: c.device.name })}</span>{" "}
+          {c.pins.map((p) => `${p.project} ${p.ref.slice(0, 7)}`).join(" · ")}. {t("settings.project.plugins.conflictSo")}
+        </Banner>
+      ))}
+    </div>
+  );
+}
+
 function PluginsEditor({ projectId, agentConfig, canEdit }: { projectId: string; agentConfig: unknown; canEdit: boolean }) {
   const t = useCopy();
   const update = useUpdatePlugins(projectId);
-  const nextKey = useRef(0);
-  const keyed = (p: PluginDesignation): DraftRow => ({ ...p, rowKey: `row-${nextKey.current++}` });
+  // a refetched project remounts this editor (its key is the stored list), so the draft starts from what is stored
+  const nextKeyRef = useRef(0);
+  const keyed = (p: PluginDesignation): DraftRow => ({ ...p, rowKey: `row-${nextKeyRef.current++}` });
   const [draft, setDraft] = useState<DraftRow[]>(() => pluginsOf(agentConfig).map(keyed));
   const [removing, setRemoving] = useState<number | null>(null);
-  // A refetched project resets the draft to what is stored.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `keyed` only mints row keys from a ref.
-  useEffect(() => setDraft(pluginsOf(agentConfig).map(keyed)), [agentConfig]);
 
   const errors = draft.map((p) => rowError(p, t));
   const firstError = errors.find((e): e is string => e !== null) ?? null;
@@ -90,7 +107,7 @@ function PluginsEditor({ projectId, agentConfig, canEdit }: { projectId: string;
       ) : (
         <ul className="mt-3 divide-y divide-line-subtle">
           {draft.map((p, i) => (
-            <PluginRow
+            <PluginItem
               key={p.rowKey}
               row={p}
               error={errors[i] ?? null}
@@ -136,7 +153,7 @@ function PluginsEditor({ projectId, agentConfig, canEdit }: { projectId: string;
   );
 }
 
-function PluginRow({
+function PluginItem({
   row: p,
   error,
   canEdit,

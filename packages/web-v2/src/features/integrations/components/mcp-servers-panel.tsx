@@ -66,17 +66,17 @@ function VerifyResult({ result }: { result: IntegrationTestResult | { errorMessa
   const t = useCopy();
   const language = useInterfaceLanguage();
   if ("errorMessage" in result) {
-    return <p className="fg-body-sm text-[var(--red-600)]">{result.errorMessage}</p>;
+    return <p className="fg-body-sm text-danger-11">{result.errorMessage}</p>;
   }
   const ok = result.status === "ok";
   return (
-    <p className={`fg-body-sm ${ok ? "text-[var(--green-600)]" : "text-[var(--red-600)]"}`}>
+    <p className={`fg-body-sm ${ok ? "text-ok-11" : "text-danger-11"}`}>
       {ok ? t("integrations.mcp.verified") : t("integrations.mcp.verifyFailed", { reason: healthSentence(result, language) ?? result.status })}
     </p>
   );
 }
 
-function McpServerRow({
+function McpServerItem({
   entry,
   projectId,
   binding,
@@ -141,7 +141,7 @@ function McpServerRow({
         </p>
       )}
 
-      {why && <p className="fg-body-sm text-[var(--amberw-600)]">{t(why)}</p>}
+      {why && <p className="fg-body-sm text-warn-11">{t(why)}</p>}
 
       {binding && (
         <AgentAccessControl projectId={projectId} binding={binding} canEdit={canEdit} />
@@ -172,7 +172,7 @@ function McpServerRow({
  * be injected into the next dispatched agent, the exact URL, and a Verify
  * action that runs the provider's real credential healthcheck.
  */
-export function McpServersPanel({
+export function McpServers({
   projectId,
   canEdit = true,
   onConnect,
@@ -196,11 +196,11 @@ export function McpServersPanel({
             <Skeleton className="h-16 w-full" />
           </div>
         ) : preview.isError ? (
-          <ErrorState message={formatApiError(preview.error)} onRetry={() => preview.refetch()} />
+          <ErrorState message={formatApiError(preview.error)} onRetry={() => void preview.refetch()} />
         ) : (
           <ul className="flex flex-col divide-y divide-line-subtle">
             {(preview.data?.servers ?? []).map((entry) => (
-              <McpServerRow
+              <McpServerItem
                 key={`${entry.provider}:${entry.bindingId ?? entry.serverName}`}
                 entry={entry}
                 projectId={projectId}

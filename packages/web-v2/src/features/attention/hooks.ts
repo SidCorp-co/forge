@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useDevices } from "@/features/runners/hooks";
+import { useDevices } from "@/features/runners";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { attentionApi } from "./api";
 import type { AttentionItem, AttentionView } from "./types";
@@ -22,42 +21,19 @@ export function useAttention() {
   const devicesQ = useDevices();
   const t = useCopy();
 
-  const offlineRunners: AttentionItem[] = useMemo(() => {
-    const rows = devicesQ.data ?? [];
-    return rows
-      .filter((d) => d.status === "offline")
-      .map((d) => ({
-        kind: "runner_offline" as const,
-        title: t("attention.runnerOffline", { name: d.name }),
-        link: "/runners",
-        since: d.lastSeenAt ?? d.createdAt,
-        status: "offline",
-      }));
-  }, [devicesQ.data, t]);
-
-  const view: AttentionView = useMemo(() => {
-    const base = attentionQ.data;
-    const needsYou = base?.needsYou ?? [];
-    const mentions = base?.mentions ?? [];
-    const failedJobs = base?.failedJobs ?? [];
-    const channelGates = base?.channelGates ?? [];
-    const statusReports = base?.statusReports ?? [];
-    return {
-      needsYou,
-      mentions,
-      failedJobs,
-      channelGates,
-      statusReports,
-      offlineRunners,
-      total:
-        needsYou.length +
-        mentions.length +
-        failedJobs.length +
-        channelGates.length +
-        statusReports.length +
-        offlineRunners.length,
-    };
-  }, [attentionQ.data, offlineRunners]);
+  const offlineRunners: AttentionItem[] = (devicesQ.data ?? [])
+    .filter((d) => d.status === "offline")
+    .map((d) => ({ kind: "runner_offline" as const, title: t("attention.runnerOffline", { name: d.name }), link: "/runners", since: d.lastSeenAt ?? d.createdAt, status: "offline" }));
+  const base = attentionQ.data;
+  const buckets = {
+    needsYou: base?.needsYou ?? [],
+    mentions: base?.mentions ?? [],
+    failedJobs: base?.failedJobs ?? [],
+    channelGates: base?.channelGates ?? [],
+    statusReports: base?.statusReports ?? [],
+    offlineRunners,
+  };
+  const view: AttentionView = { ...buckets, total: Object.values(buckets).reduce((n, b) => n + b.length, 0) };
 
   return {
     view,
@@ -68,8 +44,8 @@ export function useAttention() {
     isError: attentionQ.isError,
     error: attentionQ.error,
     refetch: () => {
-      attentionQ.refetch();
-      devicesQ.refetch();
+      void attentionQ.refetch();
+      void devicesQ.refetch();
     },
   };
 }

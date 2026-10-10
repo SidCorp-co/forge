@@ -61,7 +61,7 @@ function archivedLine(t: Copy, cause: MemoryArchiveCause | null, date: string): 
 
 const sourceLabel = (t: Copy, source: string) => t(`memory.source.${source}` as ProductCopyKey);
 
-const LINK = "rounded-sm text-link hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
+const LINK = "rounded-sm text-link hover:underline focus-visible:outline-none focus-visible:shadow-focus";
 
 /** A key as the reader reads it: bare in this project, with its project's slug in another. */
 const keyLabel = (ref: string, project: string | null | undefined, slug: string) => (project && project !== slug ? `${project} ${ref}` : ref);
@@ -105,79 +105,28 @@ function needsCheckText(t: Copy, entry: MemoryEntry, slug: string): string | nul
   return parts.length > 0 ? t("memory.check.lead", { why: parts.join("; ") }) : null;
 }
 
-export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, onCorrect, onRetire }: MemoryEntryRowProps) {
+/** Who flagged the memory as possibly untrue, when, and why. */
+function MemoryFlag({ flagged, day }: { flagged: NonNullable<MemoryEntry["flagged"]>; day: (iso: string) => string }) {
   const t = useCopy();
-  const lang = useInterfaceLanguage();
-  const day = (iso: string) => formatDate(iso, lang, timeZone);
-  const [mode, setMode] = useState<Mode>("read");
-  const [text, setText] = useState(entry.text);
-  const [reason, setReason] = useState("");
-  const mirror = (MEMORY_MIRROR_SOURCES as readonly string[]).includes(entry.source);
-  const gone = entry.archivedAt !== null;
-  const canAct = !mirror && !gone;
-  const reasonOk = reason.trim().length >= REASON_MIN;
-  const needsCheck = needsCheckText(t, entry, slug);
-  const close = () => {
-    setMode("read");
-    setReason("");
-    setText(entry.text);
-  };
-
   return (
-    <li className="grid gap-1.5 border-b border-line-subtle px-5 py-3 max-md:px-3" data-testid="memory-entry">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="font-mono text-12-5 text-fg" translate="no">
-          {entry.sourceRef}
-        </span>
-        <span className="text-12 text-subtle">{sourceLabel(t, entry.source)}</span>
-      </div>
-      <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-12 text-muted" data-testid="memory-meta">
-        <span>{t("memory.writtenBy", { name: actorName(t, entry.writtenBy) })}</span>
-        <span>{t("memory.updated", { date: day(entry.updatedAt) })}</span>
-        <span data-testid="memory-checked">
-          {!entry.verifiedAt
-            ? t("memory.neverVerified")
-            : entry.verifiedBy
-              ? t("memory.verifiedBy", { date: day(entry.verifiedAt), name: actorName(t, entry.verifiedBy) })
-              : t("memory.verified", { date: day(entry.verifiedAt) })}
-        </span>
-      </p>
-      {needsCheck ? (
-        <p className="text-12-5 text-amber-700 dark:text-amber-300" data-testid="memory-needs-check">
-          {needsCheck}
-        </p>
-      ) : null}
-      {mode === "correct" ? null : <p className="whitespace-pre-wrap text-13 text-fg">{entry.text}</p>}
-      {entry.cites.length > 0 ? (
-        <p className="flex flex-wrap gap-x-1.5 text-12 text-subtle" data-testid="memory-cites">
-          <span>{t("memory.cites")}</span>
-          {entry.cites.map((c, i) => (
-            <Fragment key={`${c.kind}:${c.project ?? "-"}:${c.ref}`}>
-              {i > 0 ? <span aria-hidden>·</span> : null}
-              <span translate="no">
-                <Cite cite={c} slug={slug} />
-              </span>
-            </Fragment>
-          ))}
-        </p>
-      ) : null}
-      {entry.staleRefs.length > 0 ? (
-        <p className="text-12-5 font-semibold text-danger" data-testid="memory-stale-refs">
-          {t("memory.staleRefs", { refs: entry.staleRefs.map((r) => `${keyLabel(r.ref, r.project, slug)} (${staleWhy(t, r)})`).join(", ") })}
-        </p>
-      ) : null}
-      {entry.flagged ? (
-        <p className="text-12-5 text-amber-700 dark:text-amber-300" data-testid="memory-flagged">
-          {entry.flagged.reason !== null ? (
-            <>
-              {t("memory.flaggedBecause", { by: entry.flagged.by ?? "—", date: day(entry.flagged.since) })} <Written text={entry.flagged.reason} lang={null} />
-              {t("memory.flaggedCheck")}
-            </>
-          ) : (
-            t("memory.flaggedNoReason", { by: entry.flagged.by ?? "—", date: day(entry.flagged.since) })
-          )}
-        </p>
-      ) : null}
+    <p className="text-13 text-amber-700 dark:text-amber-300" data-testid="memory-flagged">
+      {flagged.reason !== null ? (
+        <>
+          {t("memory.flaggedBecause", { by: flagged.by ?? "—", date: day(flagged.since) })} <Written text={flagged.reason} lang={null} />
+          {t("memory.flaggedCheck")}
+        </>
+      ) : (
+        t("memory.flaggedNoReason", { by: flagged.by ?? "—", date: day(flagged.since) })
+      )}
+    </p>
+  );
+}
+
+/** Each correction with its reason, and the earlier texts it replaced. */
+function MemoryHistory({ entry, day }: { entry: MemoryEntry; day: (iso: string) => string }) {
+  const t = useCopy();
+  return (
+    <>
       {entry.corrections.length > 0 ? (
         <ul className="grid gap-0.5 text-12 text-muted" data-testid="memory-corrections">
           {entry.corrections.map((c) => (
@@ -194,42 +143,54 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, onCorrec
             {entry.revisions.map((r) => (
               <li key={r.replacedAt} className="grid gap-0.5" data-testid="memory-revision">
                 <span>{t("memory.replaced", { date: day(r.replacedAt), name: actorName(t, r.writtenBy) })}</span>
-                <p className="whitespace-pre-wrap text-12-5 text-fg">{r.text}</p>
+                <p className="whitespace-pre-wrap text-13 text-fg">{r.text}</p>
               </li>
             ))}
           </ol>
         </details>
       ) : null}
-      {gone ? (
-        <p className="text-12-5 text-muted" data-testid="memory-retired">
-          {entry.retired
-            ? t("memory.retiredBy", { name: actorName(t, entry.retired.by), date: day(entry.retired.at), reason: entry.retired.reason })
-            : archivedLine(t, entry.archivedBy, day(entry.archivedAt as string))}
-        </p>
-      ) : null}
-      {mirror ? (
-        <p className="text-12 text-subtle" data-testid="memory-mirror">
-          {t("memory.mirror", { source: sourceLabel(t, entry.source) })}
-        </p>
-      ) : null}
+    </>
+  );
+}
 
-      {canAct && mode === "read" ? (
+/** Still true, or not: corrected with a new text, or retired, each with a reason. */
+function MemoryActs({
+  entry,
+  mode,
+  onMode,
+  busy,
+  onVerify,
+  onCorrect,
+  onRetire,
+}: Pick<MemoryEntryRowProps, "entry" | "busy" | "onVerify" | "onCorrect" | "onRetire"> & { mode: Mode; onMode: (mode: Mode) => void }) {
+  const t = useCopy();
+  const [text, setText] = useState(entry.text);
+  const [reason, setReason] = useState("");
+  const reasonOk = reason.trim().length >= REASON_MIN;
+  const close = () => {
+    onMode("read");
+    setReason("");
+    setText(entry.text);
+  };
+  return (
+    <>
+      {mode === "read" ? (
         <div className="flex gap-2">
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => onVerify(entry.id)}>
             {t("memory.stillTrue")}
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setMode("untrue")}>
+          <Button size="sm" variant="ghost" onClick={() => onMode("untrue")}>
             {t("memory.notTrue")}
           </Button>
         </div>
       ) : null}
 
-      {canAct && mode === "untrue" ? (
+      {mode === "untrue" ? (
         <div className="flex gap-2">
-          <Button size="sm" variant="ghost" onClick={() => setMode("correct")}>
+          <Button size="sm" variant="ghost" onClick={() => onMode("correct")}>
             {t("memory.correct")}
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setMode("retire")}>
+          <Button size="sm" variant="ghost" onClick={() => onMode("retire")}>
             {t("memory.retire")}
           </Button>
           <Button size="sm" variant="ghost" onClick={close}>
@@ -238,9 +199,9 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, onCorrec
         </div>
       ) : null}
 
-      {canAct && (mode === "correct" || mode === "retire") ? (
+      {(mode === "correct" || mode === "retire") ? (
         <form
-          className="grid max-w-[760px] gap-2"
+          className="grid max-w-190 gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             if (!reasonOk || busy) return;
@@ -267,6 +228,79 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, onCorrec
           </div>
         </form>
       ) : null}
+    </>
+  );
+}
+
+export function MemoryEntryItem({ entry, slug, timeZone, busy, onVerify, onCorrect, onRetire }: MemoryEntryRowProps) {
+  const t = useCopy();
+  const lang = useInterfaceLanguage();
+  const day = (iso: string) => formatDate(iso, lang, timeZone);
+  const [mode, setMode] = useState<Mode>("read");
+  const mirror = (MEMORY_MIRROR_SOURCES as readonly string[]).includes(entry.source);
+  const gone = entry.archivedAt !== null;
+  const canAct = !mirror && !gone;
+  const needsCheck = needsCheckText(t, entry, slug);
+
+  return (
+    <li className="grid gap-1.5 border-b border-line-subtle px-5 py-3 max-md:px-3" data-testid="memory-entry">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="font-mono text-13 text-fg" translate="no">
+          {entry.sourceRef}
+        </span>
+        <span className="text-12 text-subtle">{sourceLabel(t, entry.source)}</span>
+      </div>
+      <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-12 text-muted" data-testid="memory-meta">
+        <span>{t("memory.writtenBy", { name: actorName(t, entry.writtenBy) })}</span>
+        <span>{t("memory.updated", { date: day(entry.updatedAt) })}</span>
+        <span data-testid="memory-checked">
+          {!entry.verifiedAt
+            ? t("memory.neverVerified")
+            : entry.verifiedBy
+              ? t("memory.verifiedBy", { date: day(entry.verifiedAt), name: actorName(t, entry.verifiedBy) })
+              : t("memory.verified", { date: day(entry.verifiedAt) })}
+        </span>
+      </p>
+      {needsCheck ? (
+        <p className="text-13 text-amber-700 dark:text-amber-300" data-testid="memory-needs-check">
+          {needsCheck}
+        </p>
+      ) : null}
+      {mode === "correct" ? null : <p className="whitespace-pre-wrap text-13 text-fg">{entry.text}</p>}
+      {entry.cites.length > 0 ? (
+        <p className="flex flex-wrap gap-x-1.5 text-12 text-subtle" data-testid="memory-cites">
+          <span>{t("memory.cites")}</span>
+          {entry.cites.map((c, i) => (
+            <Fragment key={`${c.kind}:${c.project ?? "-"}:${c.ref}`}>
+              {i > 0 ? <span aria-hidden>·</span> : null}
+              <span translate="no">
+                <Cite cite={c} slug={slug} />
+              </span>
+            </Fragment>
+          ))}
+        </p>
+      ) : null}
+      {entry.staleRefs.length > 0 ? (
+        <p className="text-13 font-semibold text-danger" data-testid="memory-stale-refs">
+          {t("memory.staleRefs", { refs: entry.staleRefs.map((r) => `${keyLabel(r.ref, r.project, slug)} (${staleWhy(t, r)})`).join(", ") })}
+        </p>
+      ) : null}
+      {entry.flagged ? <MemoryFlag flagged={entry.flagged} day={day} /> : null}
+      <MemoryHistory entry={entry} day={day} />
+      {gone ? (
+        <p className="text-13 text-muted" data-testid="memory-retired">
+          {entry.retired
+            ? t("memory.retiredBy", { name: actorName(t, entry.retired.by), date: day(entry.retired.at), reason: entry.retired.reason })
+            : archivedLine(t, entry.archivedBy, day(entry.archivedAt as string))}
+        </p>
+      ) : null}
+      {mirror ? (
+        <p className="text-12 text-subtle" data-testid="memory-mirror">
+          {t("memory.mirror", { source: sourceLabel(t, entry.source) })}
+        </p>
+      ) : null}
+
+      {canAct ? <MemoryActs entry={entry} mode={mode} onMode={setMode} busy={busy} onVerify={onVerify} onCorrect={onCorrect} onRetire={onRetire} /> : null}
     </li>
   );
 }

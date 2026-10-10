@@ -14,6 +14,7 @@ import {
   COMPLEXITY_LABELS,
   PRIORITY_LABELS,
   liveDependencies,
+  otherEnd,
 } from "../derive";
 import type {
   IssueDependencies,
@@ -71,25 +72,11 @@ export function useComplexityOptions(): SelectOption[] {
 const isParentEdge = (k: IssueDependencyEdge["kind"]) =>
   k === "decomposes" || k === "parent";
 
-/** Build a Menu item for the OTHER endpoint of a relation edge. `dir` says which
- *  endpoint is "the other one": for an INCOMING edge it's the `from`, for an
- *  OUTGOING edge the `to`. Falls back to a short id + bare "Issue" label when the
- *  edge wasn't enriched (mirrors the rail's `DepList`). */
-function edgeToMenuItem(
-  e: IssueDependencyEdge,
-  dir: "in" | "out",
-  navigate: (id: string) => void,
-): MenuItem {
-  const isIncoming = dir === "in";
-  const otherId = isIncoming ? e.fromIssueId : e.toIssueId;
-  const displayId =
-    (isIncoming ? e.fromDisplayId : e.toDisplayId) ?? `#${otherId.slice(0, 6)}`;
-  const title = isIncoming ? e.fromTitle : e.toTitle;
-  return {
-    label: title ? `${displayId} · ${title}` : displayId,
-    icon: "arrowRight",
-    onSelect: () => navigate(otherId),
-  };
+/** A Menu item for the issue at the other end of an incoming or outgoing edge; a short id and no title where it was not enriched. */
+function edgeToMenuItem(e: IssueDependencyEdge, dir: "in" | "out", navigate: (id: string) => void): MenuItem {
+  const other = otherEnd(e, dir === "in" ? e.toIssueId : e.fromIssueId);
+  const displayId = other.displayId ?? `#${other.id.slice(0, 6)}`;
+  return { label: other.title ? `${displayId} · ${other.title}` : displayId, icon: "arrowRight", onSelect: () => navigate(other.id) };
 }
 
 /** A single readable relation chip that reveals its related issues on click.
@@ -120,8 +107,8 @@ function RelationChip({
           type="button"
           className={
             danger
-              ? "fg-caption inline-flex items-center gap-1 rounded-pill border border-[color:var(--red-500)] bg-[color:var(--red-50)] px-1.5 py-0.5 font-medium text-[color:var(--red-600)] transition-[filter] hover:brightness-95 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-              : "fg-caption inline-flex items-center gap-1 rounded-pill border border-line px-1.5 py-0.5 text-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+              ? "fg-caption inline-flex items-center gap-1 rounded-pill border border-danger-9 bg-danger-3 px-1.5 py-0.5 font-medium text-danger-11 transition hover:brightness-95 focus-visible:outline-none focus-visible:shadow-focus"
+              : "fg-caption inline-flex items-center gap-1 rounded-pill border border-line px-1.5 py-0.5 text-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-focus"
           }
           title={label}
         >
@@ -167,7 +154,7 @@ export function DepBadges({
     return null;
 
   return (
-    <span className="inline-flex items-center gap-1.5">
+    <span className="inline-flex flex-wrap items-center gap-1.5">
       {openBlockers.length > 0 ? (
         <RelationChip
           icon="lock"

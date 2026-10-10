@@ -1,9 +1,9 @@
 import { type BottomTabItem, type NavEntry, type NavItem, type NavItemGroup, isNavGroup } from "@/design";
-import { joinedEcosystems, needsMe } from "@/features/ecosystem/inbox";
-import { ecosystemRoutes } from "@/features/ecosystem/routes";
-import type { WorkspaceRead } from "@/features/ecosystem/types";
-import { needsYouHint } from "@/features/needs-you/hint";
-import type { NeedsYouAreaKey, NeedsYouResponse } from "@/features/needs-you/types";
+import { joinedEcosystems, needsMe } from "@/features/ecosystem";
+import { ecosystemRoutes } from "@/features/ecosystem";
+import type { WorkspaceRead } from "@/features/ecosystem";
+import { needsYouHint } from "@/features/needs-you";
+import type { NeedsYouAreaKey, NeedsYouResponse } from "@/features/needs-you";
 import { labelCopy } from "@/lib/i18n/labels";
 import { productCopy } from "@/lib/i18n/product-copy";
 

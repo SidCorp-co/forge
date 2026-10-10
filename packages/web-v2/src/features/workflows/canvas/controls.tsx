@@ -1,9 +1,8 @@
 "use client";
 
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
-import { ChevronDown, ChevronUp, CircleHelp, Expand, Maximize, Map as MapIcon, Play, Shrink } from "lucide-react";
 import { useState } from "react";
-import { Button, Input, SegmentedControl, TemplateIcon, Toggle } from "@/design";
+import { Button, Input, SegmentedControl, TemplateIcon, Toggle, Icon } from "@/design";
 import type { HealthLayer } from "../health";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { CanvasChanges, CanvasFocus, CanvasHealth } from "./workflow-canvas";
@@ -53,14 +52,14 @@ export function ViewBar(p: {
             />
           </span>
           <Button type="button" variant="ghost" size="sm" className="wfc-ib" onClick={p.onToggleAll} data-testid="toggle-all">
-            {p.allOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            {p.allOpen ? <Icon name="chevronUp" size={16} /> : <Icon name="chevronDown" size={16} />}
             <span className="wfc-t">{p.allOpen ? t("workflows.canvas.foldAll") : t("workflows.canvas.openAll")}</span>
           </Button>
         </>
       ) : null}
       <span className="wfc-sep" />
       <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={p.onWalk} data-testid="walk-start-bar">
-        <Play size={16} />
+        <Icon name="play" size={16} />
         <span className="wfc-t">{t("workflows.canvas.walk")}</span>
       </Button>
       {p.health ? <HealthBar health={p.health} /> : null}
@@ -81,7 +80,7 @@ export function PageBar({ changes, focus }: { changes?: CanvasChanges | null | u
       {changes ? (
         <>
           <span className="wfc-sep" />
-          <span className="inline-flex items-center gap-1.5 px-1 text-12-5 font-semibold" title={changes.title} data-testid="design-changes-toggle">
+          <span className="inline-flex items-center gap-1.5 px-1 text-13 font-semibold" title={changes.title} data-testid="design-changes-toggle">
             <Toggle checked={changes.on} onChange={changes.onToggle} aria-label={changes.title} />
             {changes.label}
           </span>
@@ -101,7 +100,7 @@ export function PageBar({ changes, focus }: { changes?: CanvasChanges | null | u
             onClick={focus.onToggle}
             data-testid="canvas-focus"
           >
-            {focus.on ? <Shrink size={16} /> : <Expand size={16} />}
+            {focus.on ? <Icon name="shrink" size={16} /> : <Icon name="expand" size={16} />}
             <span className="wfc-t">{focusLabel}</span>
           </Button>
         </>
@@ -118,7 +117,7 @@ export function HealthBar({ health }: { health: CanvasHealth }) {
   return (
     <>
       <span className="wfc-sep" />
-      <span className="inline-flex items-center gap-1.5 px-1 text-12-5 font-semibold" data-testid="health-toggle">
+      <span className="inline-flex items-center gap-1.5 px-1 text-13 font-semibold" data-testid="health-toggle">
         <Toggle checked={health.on} onChange={health.onToggle} aria-label={t("workflows.canvas.healthOverlay")} />
         {t("workflows.col.health")}
       </span>
@@ -210,14 +209,14 @@ export function ZoomBar(p: {
         +
       </Button>
       <Button type="button" variant="ghost" size="sm" className="wfc-ib" title={t("workflows.canvas.fitShortcut")} aria-label={t("workflows.canvas.fit")} onClick={p.onFit}>
-        <Maximize size={16} />
+        <Icon name="maximize" size={16} />
       </Button>
       <span className="wfc-sep" />
       <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-pressed={p.minimap} title={t("workflows.canvas.minimap")} aria-label={t("workflows.canvas.minimap")} onClick={p.onMinimap}>
-        <MapIcon size={16} />
+        <Icon name="map" size={16} />
       </Button>
       <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-pressed={p.legend} title={t("workflows.canvas.legend")} aria-label={t("workflows.canvas.legend")} onClick={p.onLegend}>
-        <CircleHelp size={16} />
+        <Icon name="help" size={16} />
       </Button>
     </div>
   );
@@ -253,7 +252,7 @@ export function WalkBar({ at, total, onWalk, onStop }: { at: number; total: numb
       <Button type="button" variant="ghost" size="sm" className="wfc-ib" disabled={at === 0} aria-label={t("workflows.walk.previousStep")} onClick={() => onWalk(at - 1)}>
         ‹ <span className="wfc-t">{t("workflows.walk.back")}</span>
       </Button>
-      <span className="px-1.5 text-12-5 font-semibold text-muted">
+      <span className="px-1.5 text-13 font-semibold text-muted">
         {at + 1} / {total}
       </span>
       <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" aria-label={t("workflows.walk.nextStep")} onClick={() => onWalk(at + 1)}>

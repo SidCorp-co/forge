@@ -162,7 +162,7 @@ hoisting put them in. ISS-207 declared each in the manifest of the code that use
 | reached from | the package it needs | declared by |
 |---|---|---|
 | `scripts/lib/verify-checks.mjs`, in its `pnpm exec biome check scripts` check | `@biomejs/biome` | root |
-| `scripts/lib/verify-checks.mjs`, running `pnpm --filter web-v2 lint` (`biome check src`) | `@biomejs/biome` | `web-v2` |
+| `scripts/lib/verify-checks.mjs`, running `pnpm --filter web-v2 lint` (`eslint src`) | `eslint` and its plugins | `web-v2` |
 | `scripts/check-integration-declarations.mjs`, spawning `node_modules/.bin/tsx` | `tsx` | root |
 | `.forge/archmap/src/providers/ts.mjs`, walking the root for its bin | `dependency-cruiser` | root |
 | `.arch-tsconfig.json`, mapping `hono/*` to `node_modules/hono/dist/*` | `hono` | `@forge/core` only |

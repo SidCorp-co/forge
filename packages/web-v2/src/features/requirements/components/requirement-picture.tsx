@@ -11,15 +11,15 @@
 // picture here (BC-10); a linked process's picture is its workflow, so nothing is drawn for it. A
 // keyboard user skips past the picture in one step, and the read-only board holds nothing to reach.
 
+import { BoardCanvas } from "@/features/board";
 import { type ExampleTableContent, type KeptPreviewContent, PICTURE_KIND_OF, type RequirementPictureView } from "@forge/contracts/requirement-pictures";
 import { parseWireframe } from "@forge/contracts/wireframe";
-import dynamic from "next/dynamic";
 import { type ReactNode, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/design";
-import { useProjects } from "@/features/projects/hooks";
-import { OpenRoom } from "@/features/previews/room-open";
-import { canWriteProject } from "@/features/projects/write-access";
-import { KeptPreviewPicture } from "@/features/previews/idea-kept-picture";
+import { useProjects } from "@/features/projects";
+import { canWriteProject } from "@/features/projects";
+import { OpenRoom } from "@/features/previews";
+import { KeptPreviewPicture } from "@/features/previews";
 import { BLOCK_RENDERERS } from "@/features/visual-blocks";
 import { namedRefusals } from "@/lib/api/refusals";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -31,7 +31,6 @@ import { KindField } from "./requirement-kind-field";
 import { PictureEditor } from "./requirement-picture-editor";
 import { WorkflowPicture } from "./requirement-workflow-picture";
 
-const BoardCanvas = dynamic(() => import("@/features/board/board-canvas"), { ssr: false });
 
 function DrawnBy({ p }: { p: RequirementPictureView }) {
   const t = useCopy();
@@ -66,7 +65,7 @@ function StoredPicture({ p, projectId, reqKey, slug, canWrite }: { p: Requiremen
     const read = parseWireframe((p.content as { board: unknown }).board);
     return (
       <Figure alt={p.alt} kind={p.kind} by={by}>
-        <div aria-hidden inert className="h-[380px] border border-line-subtle max-md:h-[300px]" data-testid="picture-board">
+        <div aria-hidden inert className="h-95 border border-line-subtle max-md:h-75" data-testid="picture-board">
           {read.ok ? <BoardCanvas doc={read.doc} fit /> : <p className="p-4 text-13 text-muted">{read.message}</p>}
         </div>
       </Figure>
@@ -105,7 +104,7 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
   const linked = kind === "process" && traced.length > 0;
   const save = useWriteRequirementPicture(projectId, d.key);
   const kindRefused = namedRefusals(save.error).find((r) => r.path === "/kind")?.detail;
-  const end = useRef<HTMLSpanElement>(null);
+  const endRef = useRef<HTMLSpanElement>(null);
   const close = () => {
     setEditing(false);
     save.reset();
@@ -116,7 +115,7 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
   else if (picture) body = <StoredPicture p={picture} projectId={projectId} reqKey={d.key} slug={slug} canWrite={writer} />;
   else {
     body = (
-      <p className="max-w-[80ch] border border-dashed border-line-strong px-4 py-6 text-13 text-muted" data-testid="picture-empty">
+      <p className="max-w-2xl border border-dashed border-line-strong px-4 py-6 text-13 text-muted" data-testid="picture-empty">
         {wanted ? t("requirements.picture.empty", { picture: t(`requirements.picture.of.${wanted}`) }) : t("requirements.picture.noKind")}
       </p>
     );
@@ -143,16 +142,16 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
         className="sr-only focus:not-sr-only focus:mb-2 focus:inline-block focus:text-13 focus:font-semibold focus:text-link"
         onClick={(e) => {
           e.preventDefault();
-          end.current?.focus();
+          endRef.current?.focus();
         }}
       >
         {t("requirements.picture.skip")}
       </a>
       {body}
-      <span ref={end} id={`${headingId}-end`} tabIndex={-1} className="outline-none" data-testid="picture-end" />
+      <span ref={endRef} id={`${headingId}-end`} tabIndex={-1} className="outline-none" data-testid="picture-end" />
       {editing && rev && wanted && !linked ? <PictureEditor key={`${rev.revision}:${wanted}`} revision={rev.revision} kind={wanted} picture={picture} save={save} onDone={close} /> : null}
       {kind === null || kind === "screen" ? (
-        <div className="mt-3 max-w-[80ch]">
+        <div className="mt-3 max-w-2xl">
           <OpenRoom projectId={projectId} slug={slug} about={d.key} canWrite={writer} />
         </div>
       ) : null}

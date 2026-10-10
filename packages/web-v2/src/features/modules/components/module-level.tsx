@@ -6,23 +6,19 @@
 // a double click, Enter, a modified click or the peek's open control goes to the module itself.
 
 import { MODULE_ATTENTION_GROUPS, MODULE_ATTENTION_LABELS } from "@forge/contracts/modules";
-import { useRouter } from "next/navigation";
-import { type ReactNode, useCallback, useMemo } from "react";
+import type { ReactNode } from "react";
 import {
   GroupedList,
   type ListGroup,
   type ListRowView,
-  rememberListOrigin,
-  useGroupFold,
-  usePeek,
-  usePeekKeys,
+  useListPage,
   ViewHeading,
   WaitingOn,
+  ListLayout,
 } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { copyOr, type Copy } from "@/lib/i18n/product-copy";
 import { formatAge, formatStamp } from "@/lib/utils/format";
-import { cn } from "@/lib/utils/cn";
 import { MODULES_LIST, moduleHref } from "@/lib/routes/modules";
 import { useCodeTrace } from "../hooks";
 import type { CodeTraceResponse, ModuleRollupResponse, ModuleRollupRow } from "../types";
@@ -74,7 +70,7 @@ const rowOf =
       facts: factsOf(r, trace, all, t),
       state: <OpenBar standing={r.standing} max={max} />,
       waitingOn: <WaitingOn w={moduleWaitingView(r.standing, language)} />,
-      owner: land ? <span className="font-mono text-11-5">{land.issueKey}</span> : <span className="text-subtle">{t("modules.noneYet")}</span>,
+      owner: land ? <span className="font-mono text-12">{land.issueKey}</span> : <span className="text-subtle">{t("modules.noneYet")}</span>,
       age: land ? { text: formatAge(land.landedAt), title: t("modules.landedAt", { when: formatStamp(land.landedAt) }) } : null,
       dim: r.standing.attentionGroup === "quiet",
     };
@@ -107,40 +103,34 @@ export function ModuleLevel({
   /** A strip above the map, drawn by the caller. */
   toolbar?: ReactNode;
 }) {
-  const router = useRouter();
   const t = useCopy();
   const language = useInterfaceLanguage();
   const scopeId = scope?.id ?? null;
-  const rows = useMemo(() => data.modules.filter((r) => (scopeId ? r.parentId === scopeId : r.depth === 0)), [data.modules, scopeId]);
-  const couplings = useMemo(() => data.couplings.filter((c) => c.parentId === scopeId), [data.couplings, scopeId]);
-  const max = useMemo(() => Math.max(1, ...rows.map((r) => r.standing.open)), [rows]);
-  const groups = useMemo(() => [groupOf(scopeId ?? "roots", scope ? t("modules.in", { name: scope.name }) : t("modules.roots"), rows, language)], [scopeId, scope, rows, t, language]);
-  const fold = useGroupFold("web-v2:modules-fold");
-  const keys = useMemo(() => rows.map(keyOf), [rows]);
-  const peek = usePeek(keys);
+  const rows = data.modules.filter((r) => (scopeId ? r.parentId === scopeId : r.depth === 0));
+  const couplings = data.couplings.filter((c) => c.parentId === scopeId);
+  const max = Math.max(1, ...rows.map((r) => r.standing.open));
   const traceQ = useCodeTrace(projectId);
-  const trace = useMemo(() => traceByModule(traceQ.data), [traceQ.data]);
-  const row = useMemo(() => rowOf(slug, max, trace, data.modules, t, language), [slug, max, trace, data.modules, t, language]);
-
-  const open = useCallback(
-    (key: string) => {
-      if (!scope) rememberListOrigin(MODULES_LIST);
-      router.push(moduleHref(slug, key));
-    },
-    [router, slug, scope],
-  );
-  usePeekKeys(peek, open);
-  const toggle = (k: string) => peek.set(k === peek.open ? null : k);
+  const trace = traceByModule(traceQ.data);
+  const list = useListPage({
+    rows,
+    keyOf,
+    groupsOf: (shown) => [groupOf(scopeId ?? "roots", scope ? t("modules.in", { name: scope.name }) : t("modules.roots"), shown, language)],
+    foldKey: "web-v2:modules-fold",
+    stepsOf: (_groups, shown) => shown,
+    hrefOf: (key) => moduleHref(slug, key),
+    // a module's children open from its own page, which is not a list to go back to
+    origin: scope ? null : MODULES_LIST,
+  });
+  const { peek, openFull: open } = list;
 
   const read = data.issuesRead;
   const unread = read.open - read.returned;
 
   return (
-    <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
-      <div className="min-w-0">
+    <ListLayout peek={peek.open ? <ModulePeek key={peek.open} projectId={projectId} slug={slug} moduleSlug={peek.open} peek={peek} onOpenFull={() => open(peek.open as string)} /> : null}>
         {toolbar}
         {unread > 0 ? (
-          <p className="border-b border-line-subtle px-5 py-2 text-12-5 text-muted" data-testid="modules-truncated">
+          <p className="border-b border-line-subtle px-5 py-2 text-13 text-muted" data-testid="modules-truncated">
             {t("modules.truncated", { n: read.returned, open: read.open, older: unread })}
           </p>
         ) : null}
@@ -154,16 +144,14 @@ export function ModuleLevel({
           >
             {scope ? t("modules.inside", { name: scope.name }) : t("modules.business")}
           </ViewHeading>
-          <ModuleMap rows={rows} couplings={couplings} selected={peek.open} onSelect={toggle} onOpen={open} />
+          <ModuleMap rows={rows} couplings={couplings} selected={peek.open} onSelect={list.togglePeek} onOpen={open} />
           {couplings.length === 0 ? (
-            <p className="mt-2 text-12-5 text-subtle" data-testid="module-map-no-couplings">
+            <p className="mt-2 text-13 text-subtle" data-testid="module-map-no-couplings">
               {t("modules.map.noCoupling")}
             </p>
           ) : null}
         </section>
-        <GroupedList ariaLabel={scope ? t("modules.in", { name: scope.name }) : t("modules.business")} groups={groups} fold={fold} row={row} selected={peek.open} onPeek={toggle} columns={columnsIn(t)} />
-      </div>
-      {peek.open ? <ModulePeek key={peek.open} projectId={projectId} slug={slug} moduleSlug={peek.open} peek={peek} onOpenFull={() => open(peek.open as string)} /> : null}
-    </div>
+        <GroupedList ariaLabel={scope ? t("modules.in", { name: scope.name }) : t("modules.business")} groups={list.groups} fold={list.fold} row={rowOf(slug, max, trace, data.modules, t, language)} selected={peek.open} onPeek={list.togglePeek} columns={columnsIn(t)} />
+    </ListLayout>
   );
 }

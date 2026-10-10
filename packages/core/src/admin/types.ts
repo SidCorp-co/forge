@@ -82,5 +82,11 @@ export interface AdminAlert {
   detail: string;
   /** ISO of the oldest contributing entity; null when status is 'ok'. */
   since: string | null;
+  /**
+   * ISO of when the alert's level last changed, as the sweep recorded it (REQ-22 BC-1): crossing
+   * into warn or crit, escalating, or going back to ok. Null where the record does not hold the
+   * level shown yet (the five-minute sweep has not seen it) or the alert never left ok.
+   */
+  changedAt: string | null;
   entities: AdminAlertEntity[];
 }

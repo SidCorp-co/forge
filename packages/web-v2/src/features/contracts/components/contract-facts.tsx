@@ -1,13 +1,13 @@
 "use client";
 import { EnumBadge, Fact, FactsEmpty, FactsGroup, NotAvailable } from "@/design";
-import { FeedbackRailItem } from "@/features/feedback/components/feedback-rail-item";
+import { FeedbackRailItem } from "@/features/feedback";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { formatStamp } from "@/lib/utils/format";
 import type { ContractStandingDetail } from "../types";
 import { WindowText } from "./contract-bits";
 
 /** The contract's rail; the code module behind it is agent text, drawn only in the Developer view (REQ-43 BC-7). */
-export function ContractFacts({ d, slug, developer = false }: { d: ContractStandingDetail; slug: string; developer?: boolean }) {
+export function ContractProperties({ d, slug, developer = false }: { d: ContractStandingDetail; slug: string; developer?: boolean }) {
   const t = useCopy();
   const c = d.contract;
   return (

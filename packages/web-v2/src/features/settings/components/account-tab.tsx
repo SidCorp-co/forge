@@ -2,7 +2,7 @@
 
 // Settings → Account. Identity is read from the hydrated auth session; theme +
 // language preferences save against `/api/auth/me/preferences`.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Button,
   PageSection,
@@ -15,15 +15,15 @@ import {
   type SelectOption,
 } from "@/design";
 import { useAuth } from "@/providers/auth-provider";
-import { usePreferences, useUpdatePreferences } from "@/features/preferences/hooks";
-import { AssistantPreferencesCard } from "./assistant-preferences-card";
-import type { LanguagePref, ThemePref } from "@/features/preferences/types";
+import { usePreferences, useUpdatePreferences } from "@/features/preferences";
+import { AssistantPreferences } from "./assistant-preferences-card";
+import type { LanguagePref, ThemePref } from "@/features/preferences";
 import { useCopy } from "@/lib/i18n/interface-language";
 
 const THEMES = ["system", "light", "dark"] as const;
 // A language is named in its own words wherever the screen is read (`language.*` of the locale file).
-const PROJECT_DEFAULT = "project";
-type LanguageChoice = LanguagePref | typeof PROJECT_DEFAULT;
+// No choice reads as English: a project's content language never sets Forge's chrome (REQ-13 BC-2).
+const DEFAULT_LANGUAGE: LanguagePref = "en";
 
 export function AccountTab() {
   const { user } = useAuth();
@@ -45,34 +45,28 @@ export function AccountTab() {
           </dl>
         </PageSectionBody>
       </PageSection>
-      <PreferencesCard />
-      <AssistantPreferencesCard />
+      <AccountPreferences />
+      <AssistantPreferences />
     </div>
   );
 }
 
-function PreferencesCard() {
+function AccountPreferences() {
   const prefsQ = usePreferences();
   const update = useUpdatePreferences();
-  const [theme, setTheme] = useState<ThemePref>("system");
-  const [language, setLanguage] = useState<LanguageChoice>(PROJECT_DEFAULT);
+  const [themeEdit, setThemeEdit] = useState<ThemePref | null>(null);
+  const [languageEdit, setLanguageEdit] = useState<LanguagePref | null>(null);
+  const theme = themeEdit ?? prefsQ.data?.theme ?? "system";
+  const language = languageEdit ?? prefsQ.data?.language ?? DEFAULT_LANGUAGE;
   const t = useCopy();
   const themeOptions: SelectOption[] = THEMES.map((v) => ({ value: v, label: t(`shell.account.theme.${v}`) }));
   const languageOptions: SelectOption[] = [
-    { value: PROJECT_DEFAULT, label: t("language.project") },
     { value: "en", label: t("language.en") },
     { value: "vi", label: t("language.vi") },
   ];
 
-  // Hydrate the local form once the server preferences load.
-  useEffect(() => {
-    if (prefsQ.data) {
-      setTheme(prefsQ.data.theme);
-      setLanguage(prefsQ.data.language ?? PROJECT_DEFAULT);
-    }
-  }, [prefsQ.data]);
 
-  const dirty = !!prefsQ.data && (theme !== prefsQ.data.theme || language !== (prefsQ.data.language ?? PROJECT_DEFAULT));
+  const dirty = !!prefsQ.data && (theme !== prefsQ.data.theme || language !== (prefsQ.data.language ?? DEFAULT_LANGUAGE));
 
   return (
     <PageSection>
@@ -89,14 +83,14 @@ function PreferencesCard() {
               <Select
                 options={themeOptions}
                 value={theme}
-                onChange={(v) => setTheme(v as ThemePref)}
+                onChange={(v) => setThemeEdit(v as ThemePref)}
               />
             </Field>
             <Field label={t("language.label")}>
               <Select
                 options={languageOptions}
                 value={language}
-                onChange={(v) => setLanguage(v as LanguageChoice)}
+                onChange={(v) => setLanguageEdit(v as LanguagePref)}
               />
             </Field>
             <div>
@@ -104,7 +98,7 @@ function PreferencesCard() {
                 variant="primary"
                 loading={update.isPending}
                 disabled={!dirty}
-                onClick={() => update.mutate({ theme, language: language === PROJECT_DEFAULT ? null : language })}
+                onClick={() => update.mutate({ theme, language })}
                 className="min-h-11"
               >
                 {t("shell.account.save")}

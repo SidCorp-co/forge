@@ -5,3 +5,4 @@ export { BLOCK_RENDERERS, registryParity } from "./registry";
 export { executionFactsIn, runFactsIn } from "./source-facts";
 export { UnsupportedBlock } from "./unsupported";
 export { VisualBlockView } from "./visual-block";
+export { useBlockInstants } from "./instants";

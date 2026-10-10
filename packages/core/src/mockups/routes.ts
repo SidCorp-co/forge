@@ -7,7 +7,7 @@ import {
 } from '@forge/contracts/mockups';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
-import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
+import { sendBytes, setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
@@ -86,7 +86,7 @@ mockupRoutes.get('/:id/mockups/:mk/content', mockupParam, async (c) => {
   if (!file.ok) return refused(c, [file.refusal], 'MOCKUP_REFUSED');
   setInertAttachmentHeaders(c, file.row.mime, file.row.name);
   c.header('Cache-Control', 'private, no-store');
-  return c.body(new Uint8Array(file.bytes), 200);
+  return sendBytes(c, file.bytes);
 });
 
 const decideBody = strictBody(decideMockupRequestSchema, DECIDE_MOCKUP_SHAPE);

@@ -1,11 +1,11 @@
 "use client";
 
-import { Button, Field, Input, Textarea } from "@/design";
+import { Button, Field, Input, keyedRows, Textarea, useListKeys } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { SentryConfig, SentryTarget } from "../../types";
 
 /** Editable Sentry target row — strings only so inputs stay controlled. */
-export interface TargetRow {
+export interface TargetItem {
   label: string;
   organizationSlug: string;
   projectSlug: string;
@@ -15,7 +15,7 @@ export interface TargetRow {
 
 const FIELDS = ["label", "organizationSlug", "projectSlug", "environment", "notes"] as const;
 
-const emptyRow = (): TargetRow => ({
+const emptyRow = (): TargetItem => ({
   label: "",
   organizationSlug: "",
   projectSlug: "",
@@ -24,7 +24,7 @@ const emptyRow = (): TargetRow => ({
 });
 
 /** Seed the editable rows from the stored `targets[]`, else a single blank starter row. */
-export function initialTargets(cfg: Partial<SentryConfig>): TargetRow[] {
+export function initialTargets(cfg: Partial<SentryConfig>): TargetItem[] {
   if (!Array.isArray(cfg.targets) || cfg.targets.length === 0) return [emptyRow()];
   return cfg.targets.map((t) => ({
     label: t.label ?? "",
@@ -35,15 +35,15 @@ export function initialTargets(cfg: Partial<SentryConfig>): TargetRow[] {
   }));
 }
 
-const hasContent = (t: TargetRow) => FIELDS.some((k) => k !== "label" && t[k].trim());
+const hasContent = (t: TargetItem) => FIELDS.some((k) => k !== "label" && t[k].trim());
 
 /** A row carrying any data but no label — must be fixed before save. */
-export function rowInvalid(t: TargetRow): boolean {
+export function rowInvalid(t: TargetItem): boolean {
   return !t.label.trim() && hasContent(t);
 }
 
 /** Trimmed targets, blank rows dropped and empty fields omitted. */
-export function toTargets(rows: TargetRow[]): SentryTarget[] {
+export function toTargets(rows: TargetItem[]): SentryTarget[] {
   return rows
     .filter((t) => t.label.trim() || hasContent(t))
     .map((t) => {
@@ -59,14 +59,15 @@ export function SentryTargetsField({
   onChange,
   disabled,
 }: {
-  targets: TargetRow[];
-  onChange: (next: TargetRow[]) => void;
+  targets: TargetItem[];
+  onChange: (next: TargetItem[]) => void;
   disabled: boolean;
 }) {
   const t = useCopy();
-  const setTarget = (index: number, key: keyof TargetRow, value: string) =>
+  const rows = useListKeys(targets.length);
+  const setTarget = (index: number, key: keyof TargetItem, value: string) =>
     onChange(targets.map((row, i) => (i === index ? { ...row, [key]: value } : row)));
-  const input = (i: number, key: keyof TargetRow, placeholder = t("integrations.sentry.optional")) => (
+  const input = (i: number, key: keyof TargetItem, placeholder = t("integrations.sentry.optional")) => (
     <Input
       value={targets[i]?.[key] ?? ""}
       onChange={(e) => setTarget(i, key, e.target.value)}
@@ -79,7 +80,10 @@ export function SentryTargetsField({
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <span className="fg-label text-muted">{t("integrations.sentry.projects")}</span>
-        <Button variant="secondary" icon="plus" onClick={() => onChange([...targets, emptyRow()])} disabled={disabled}>
+        <Button variant="secondary" icon="plus" onClick={() => {
+            onChange([...targets, emptyRow()]);
+            rows.added();
+          }} disabled={disabled}>
           {t("integrations.sentry.addProject")}
         </Button>
       </div>
@@ -88,15 +92,17 @@ export function SentryTargetsField({
           {t("integrations.sentry.noProjects")}
         </p>
       ) : (
-        targets.map((row, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: rows have no stable id; order is the identity
-          <div key={i} className="flex flex-col gap-3 border-t border-line-subtle pt-3">
+        keyedRows(targets, rows.keys).map(({ key, row, index: i }) => (
+          <div key={key} className="flex flex-col gap-3 border-t border-line-subtle pt-3">
             <div className="flex items-start justify-between gap-2">
               <span className="fg-label text-muted">{t("integrations.sentry.projectN", { n: i + 1 })}</span>
               <Button
                 variant="ghost"
                 icon="trash"
-                onClick={() => onChange(targets.filter((_, j) => j !== i))}
+                onClick={() => {
+                  onChange(targets.filter((_, j) => j !== i));
+                  rows.removed(i);
+                }}
                 disabled={disabled}
                 aria-label={t("integrations.sentry.removeProject", { n: i + 1 })}
               />

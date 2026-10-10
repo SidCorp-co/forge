@@ -1,9 +1,9 @@
 "use client";
 
-import { createContext, type ReactNode, useContext, useMemo } from "react";
+import { createContext, type ReactNode, use } from "react";
 import { Badge } from "@/design";
-import { useProjectMembers } from "@/features/issues/hooks";
-import { useProjects } from "@/features/projects/hooks";
+import { useProjectMembers } from "@/features/issues";
+import { useProjects } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { useAuth } from "@/providers/auth-provider";
@@ -16,26 +16,21 @@ export type Names = (projectId: string) => string;
 export function useProjectNames(projectId: string): Names {
   const mine = useProjects();
   const page = useApiPage(projectId);
-  return useMemo(() => {
-    const names = new Map<string, string>();
-    for (const p of mine.data ?? []) names.set(p.id, p.slug);
-    for (const c of page.data?.consumes ?? []) if (c.provider) names.set(c.provider.id, c.provider.slug);
-    for (const p of page.data?.publishes ?? [])
-      for (const c of p.consumers) if (c.project) names.set(c.project.id, c.project.slug);
-    return (id: string) => names.get(id) ?? `project ${id.slice(0, 8)}`;
-  }, [mine.data, page.data]);
+  const names = new Map<string, string>();
+  for (const p of mine.data ?? []) names.set(p.id, p.slug);
+  for (const c of page.data?.consumes ?? []) if (c.provider) names.set(c.provider.id, c.provider.slug);
+  for (const p of page.data?.publishes ?? [])
+    for (const c of p.consumers) if (c.project) names.set(c.project.id, c.project.slug);
+  return (id: string) => names.get(id) ?? `project ${id.slice(0, 8)}`;
 }
 
-const People = createContext<ReadonlyMap<string, string>>(new Map());
+const PeopleContext = createContext<ReadonlyMap<string, string>>(new Map());
 
 /** Names the reader's project's members, each by display name or else email, for the lines inside it. */
 export function PeopleNames({ projectId, children }: { projectId: string; children: ReactNode }) {
   const members = useProjectMembers(projectId);
-  const names = useMemo(
-    () => new Map((members.data ?? []).map((m) => [m.userId, m.displayName ?? m.email])),
-    [members.data],
-  );
-  return <People.Provider value={names}>{children}</People.Provider>;
+  const names = new Map((members.data ?? []).map((m) => [m.userId, m.displayName ?? m.email]));
+  return <PeopleContext value={names}>{children}</PeopleContext>;
 }
 
 const via = (author: Author, t: Copy): string => t(`ecosystem.people.via.${author.via}`);
@@ -50,7 +45,7 @@ function who(author: Author, me: string | undefined, people: ReadonlyMap<string,
 export function AuthorLine({ author, label, party }: { author: Author; label?: string; party?: string }) {
   const t = useCopy();
   const me = useAuth().user?.id;
-  const people = useContext(People);
+  const people = use(PeopleContext);
   const named = author.kind === "agent" && party !== undefined;
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
@@ -71,7 +66,7 @@ export function AuthorLine({ author, label, party }: { author: Author; label?: s
 export function HoldLine({ hold, names }: { hold: ThreadHold; names: Names }) {
   const t = useCopy();
   const me = useAuth().user?.id;
-  const people = useContext(People);
+  const people = use(PeopleContext);
   const vars = { who: who(hold.by, me, people, t), via: via(hold.by, t), side: names(hold.side) };
   return (
     <span className="break-words">

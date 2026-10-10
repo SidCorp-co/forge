@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { cn } from "@/lib/utils/cn";
 import { assetPath } from "@/lib/asset";
 import { Icon, type IconName } from "@/design/icons/icon";
@@ -59,7 +60,7 @@ export interface NavRailProps {
 
 const countOf = (n: number | undefined) => (n && n > 0 ? n : 0);
 const shown = (n: number) => (n > 99 ? "99+" : String(n));
-const FOCUS = "focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
+const FOCUS = "focus-visible:outline-none focus-visible:shadow-focus";
 
 function Count({ n, compact }: { n: number; compact: boolean }) {
   if (n <= 0) return null;
@@ -299,7 +300,7 @@ function Footer({
           </Tooltip>
         )}
       </div>
-      {version && <div className={compact ? "w-full px-0.5" : "px-1.5 pt-1"}>{version}</div>}
+      {version ? <div className={compact ? "w-full px-0.5" : "px-1.5 pt-1"}>{version}</div> : null}
     </div>
   );
 }
@@ -359,9 +360,10 @@ export function NavRail({
       )}
     >
       <div data-testid="brand-row" className={cn("flex items-center gap-1.5", !compact && "px-1")}>
-        {/* biome-ignore lint/performance/noImgElement: a fixed-size brand mark under the base path; next/image would lazy-load and wrap it */}
-        <img
+        <Image
           src={assetPath("/forge-mark-32.png")}
+          preload
+          unoptimized
           width={28}
           height={28}
           alt={t("common.brand")}

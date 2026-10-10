@@ -13,6 +13,7 @@ import {
   Skeleton,
 } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
 import { useReapJob } from "../hooks";
@@ -94,7 +95,14 @@ function ReapButton({ jobId, label }: { jobId: string; label: string }) {
   );
 }
 
-function AlertRow({ alert }: { alert: AdminAlert }) {
+/** When the level shown was set, as the sweep recorded it; the five-minute sweep may not have seen it yet. */
+function changedLabel(alert: AdminAlert, t: Copy): string {
+  const changed = formatSince(alert.changedAt);
+  if (changed) return changed === "just now" ? t("operator.alerts.changedNow") : t("operator.alerts.changedFor", { since: changed });
+  return alert.status === "ok" ? t("operator.alerts.unchanged") : t("operator.alerts.notRecorded");
+}
+
+function AlertItem({ alert }: { alert: AdminAlert }) {
   const t = useCopy();
   const since = formatSince(alert.since);
   return (
@@ -103,7 +111,10 @@ function AlertRow({ alert }: { alert: AdminAlert }) {
         <span className="fg-label">{isAlertId(alert.id) ? t(`operator.alert.${alert.id}`) : alert.key}</span>
         <StatusBadge family="alert" value={alert.status} />
         {alert.count > 0 && <span className="fg-caption font-mono">{alert.count}</span>}
-        {since && <span className="fg-caption ml-auto">{t("operator.alerts.oldest", { since })}</span>}
+        <span className="fg-caption ml-auto" title={alert.changedAt ?? undefined}>
+          {changedLabel(alert, t)}
+          {since ? ` · ${t("operator.alerts.oldest", { since })}` : ""}
+        </span>
       </div>
       <p className="fg-body-sm pl-4">{alert.detail}</p>
 
@@ -137,7 +148,7 @@ export function AlertFeed({ alerts }: { alerts: readonly AdminAlert[] }) {
       <PageSectionBody>
         <ul className="flex flex-col">
           {sortAlerts(alerts).map((a) => (
-            <AlertRow key={a.id} alert={a} />
+            <AlertItem key={a.id} alert={a} />
           ))}
         </ul>
       </PageSectionBody>

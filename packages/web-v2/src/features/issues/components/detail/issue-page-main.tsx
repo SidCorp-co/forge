@@ -4,19 +4,19 @@ import type { IssueBlocker } from "@forge/contracts/issue-standing";
 import type { ParkThreadQuestion } from "@forge/contracts/park";
 import type { ComponentProps, ReactNode } from "react";
 import { type RecordView, RecordViewSwitch } from "@/design";
-import { useIssueForecast } from "@/features/forecast/hooks";
-import { PreviewPanel } from "@/features/previews/preview-panel";
-import { settingsHref } from "@/features/project-settings/sections";
-import { DecisionPanel } from "@/features/questions/components/decision-panel";
+import { useIssueForecast } from "@/features/forecast";
+import { IssuePreview } from "@/features/previews";
+import { settingsHref } from "@/features/project-settings";
+import { IssueQuestions } from "@/features/questions";
 import type { useActivity, useAttachments, useComments } from "../../detail-hooks";
 import type { useIssueStandingOf, useProjectMembers } from "../../hooks";
 import type { IssueDetail, IssueStatus } from "../../types";
 import { AwaitingReleaseBanner } from "../awaiting-release-banner";
 import { BlockerBanner } from "../blocker-banner";
-import { ChangesRow } from "../changes-row";
-import { CriteriaSection } from "../criteria-section";
-import { type LiveAgentState, LiveAgentPanel } from "../live-agent-panel";
-import { PatternsPanel } from "../patterns-panel";
+import { IssueChanges } from "../issue-changes";
+import { IssueCriteria } from "../issue-criteria";
+import { type LiveAgentState, LiveAgent } from "../live-agent";
+import { IssuePatternList } from "../issue-pattern-list";
 import { IssueDetails } from "./issue-details";
 import { IssueStateHead } from "./issue-state-head";
 
@@ -55,7 +55,7 @@ export function IssuePageMain(props: {
   const developer = view === "developer";
   const standing = standingQ.data?.standing;
   return (
-          <div className="max-w-[900px] px-8 pb-16 pt-5 max-md:px-4" data-testid="issue-page-main">
+          <div className="max-w-225 px-8 pb-16 pt-5 max-md:px-4" data-testid="issue-page-main">
             <div className="mb-3 flex justify-end" data-testid="issue-view-switch">
               <RecordViewSwitch view={view} onView={props.onView} />
             </div>
@@ -63,14 +63,14 @@ export function IssuePageMain(props: {
               {standing ? <IssueStateHead standing={standing} forecast={forecast} act={props.needsYouAct} /> : null}
             </div>
             <div className="grid gap-3 empty:hidden" data-testid="issue-needs-you-panels">
-              <DecisionPanel
+              <IssueQuestions
                 show="now"
                 issueId={issue.id}
                 parkedForInfo={issue.status === "needs_info"}
                 threadQuestion={props.threadQuestion}
                 onAnswerInThread={props.onAnswerInThread}
               />
-              <PatternsPanel issueId={issue.id} projectId={issue.projectId} show="open" />
+              <IssuePatternList issueId={issue.id} projectId={issue.projectId} show="open" />
               {props.reasonDialog}
             </div>
             {developer && blocker ? (
@@ -86,9 +86,9 @@ export function IssuePageMain(props: {
               </div>
             ) : null}
             {developer ? <AwaitingReleaseBanner projectId={issue.projectId} issueId={issue.id} canWrite={canWrite} /> : null}
-            {developer && agentState ? <LiveAgentPanel state={agentState} step={liveStep ?? "—"} slug={slug} issueId={id} /> : null}
+            {developer && agentState ? <LiveAgent state={agentState} step={liveStep ?? "—"} slug={slug} issueId={id} /> : null}
             <div className="border-b border-line-subtle py-4">
-              <CriteriaSection
+              <IssueCriteria
                 issue={issue}
                 projectId={projectId}
                 checklist={props.checklist}
@@ -98,7 +98,7 @@ export function IssuePageMain(props: {
               />
             </div>
             <div className="border-b border-line-subtle py-4" data-highlight="preview">
-              <PreviewPanel
+              <IssuePreview
                 issueId={issue.id}
                 issueLabel={issue.displayId}
                 canWrite={canWrite}
@@ -107,7 +107,7 @@ export function IssuePageMain(props: {
                 row={!developer}
               />
             </div>
-            <ChangesRow issue={issue} slug={slug} developer={developer} />
+            <IssueChanges issue={issue} slug={slug} developer={developer} />
             <div className="pt-4">
               <IssueDetails
                 key={view}

@@ -9,9 +9,9 @@
 import { STATUS_REPORT_DEFAULT_CRON } from "@forge/contracts/status-reports";
 import { type FormEvent, useMemo, useState } from "react";
 import { Button, Checkbox, ConfirmDialog, Field, Input, NativeSelect, ViewHeading } from "@/design";
-import { useCreateSchedule, useDeleteSchedule, useRunSchedule, useSchedules, useUpdateSchedule } from "@/features/automation/schedule-hooks";
-import type { ScheduleRow } from "@/features/automation/schedule-types";
-import { useProjectMembers } from "@/features/issues/hooks";
+import { useCreateSchedule, useDeleteSchedule, useRunSchedule, useSchedules, useUpdateSchedule } from "@/features/automation";
+import type { ScheduleRow } from "@/features/automation";
+import { useProjectMembers } from "@/features/issues";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useReportTemplates } from "../hooks";
 import { TemplateParamFields, type TemplateParamValues, TemplatePicker, templateParamsOf } from "./template-params";

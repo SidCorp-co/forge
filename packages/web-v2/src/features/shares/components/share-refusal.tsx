@@ -13,7 +13,7 @@ export function ShareRefusal({ error, lead }: { error: unknown; lead: string }) 
   const { code, message } = refusalOf(error);
   return (
     <div role="alert" className="flex items-start gap-2 py-2" data-testid="share-refusal" data-code={code ?? undefined}>
-      <Icon name="alert" size={14} className="mt-0.5 flex-none text-[color:var(--red-600)]" />
+      <Icon name="alert" size={14} className="mt-0.5 flex-none text-danger-11" />
       <p className="fg-body-sm text-fg">
         {lead}
         {code && (

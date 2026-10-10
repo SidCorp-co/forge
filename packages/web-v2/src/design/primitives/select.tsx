@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
+import { useFieldControl } from "./field";
 
 export interface SelectOption {
   value: string;
@@ -39,8 +40,9 @@ export function Select({
   options, value, onChange, placeholder = "Select…", disabled, id, invalid,
   className, quiet, ...aria
 }: SelectProps) {
+  const field = useFieldControl();
   const selected = options.find((o) => o.value === value);
-  const isInvalid = invalid || (aria as Record<string, unknown>)["aria-invalid"] === true;
+  const isInvalid = invalid || field["aria-invalid"] === true || (aria as Record<string, unknown>)["aria-invalid"] === true;
   return (
     <div className={cn("relative", className)}>
       <ShadcnSelect
@@ -52,21 +54,21 @@ export function Select({
         }}
       >
         <SelectTrigger
-          id={id}
+          id={id ?? field.id}
           aria-label={aria["aria-label"]}
-          aria-describedby={aria["aria-describedby"]}
+          aria-describedby={aria["aria-describedby"] ?? field["aria-describedby"]}
           aria-description={aria["aria-description"]}
           aria-invalid={isInvalid || undefined}
           className={cn(
             quiet
               ? "h-auto! w-full gap-1.5 rounded-sm border-transparent bg-transparent py-1 pl-1.5 pr-1 text-left text-13 transition-colors hover:bg-hover"
               : "h-auto! w-full gap-2 rounded-md bg-surface py-2 pl-3 pr-2.5 text-left text-sm transition-shadow",
-            "focus-visible:ring-0 focus-visible:shadow-[var(--shadow-focus)]",
+            "focus-visible:ring-0 focus-visible:shadow-focus",
             isInvalid
-              ? "border-[color:var(--red-500)] focus-visible:border-[color:var(--red-500)]"
+              ? "border-danger-9 focus-visible:border-danger-9"
               : quiet
-                ? "focus-visible:border-[color:var(--link)]"
-                : "border-line-strong focus-visible:border-[color:var(--link)]",
+                ? "focus-visible:border-link"
+                : "border-line-strong focus-visible:border-link",
           )}
         >
           {selected?.icon && <Icon name={selected.icon} size={16} className="text-subtle" />}
@@ -78,7 +80,7 @@ export function Select({
           align="start"
           alignItemWithTrigger={false}
           sideOffset={6}
-          className="max-h-[min(256px,var(--available-height))] rounded-lg border border-line bg-surface p-1.5 shadow-lg ring-0"
+          className="max-h-[min(256px,var(--available-height))] rounded-lg border border-line bg-surface p-1.5 shadow-overlay ring-0"
         >
           {options.map((o) => (
             <SelectItem
@@ -104,15 +106,17 @@ export interface NativeSelectProps extends Omit<SelectHTMLAttributes<HTMLSelectE
 /** Plain OS-native select, styled to match Input — preferred where the native
     mobile picker / minimal JS is wanted. */
 export function NativeSelect({ options, className, ...props }: NativeSelectProps) {
+  const field = useFieldControl();
   return (
     <div className="relative inline-flex w-full items-center">
       <select
         className={cn(
           "w-full appearance-none rounded-md border border-line-strong bg-surface py-2 pl-3 pr-9 text-sm text-fg",
-          "transition-shadow focus-visible:border-[color:var(--link)] focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none",
+          "transition-shadow focus-visible:border-link focus-visible:shadow-focus focus-visible:outline-none",
           "disabled:cursor-not-allowed disabled:opacity-50",
           className,
         )}
+        {...field}
         {...props}
       >
         {options.map((o) => (

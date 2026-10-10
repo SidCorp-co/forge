@@ -7,24 +7,24 @@ import { useState } from "react";
 import { AgentAccessControl, agentAccessDeniedReason } from "../../components/agent-access-control";
 import { useIntegrationsList, useOrgConnectionLocked, useUpdateProviderIntegration } from "../../hooks";
 import type { IntegrationSummary } from "../../types";
-import { BindingRowHeader, MultiBindingSection } from "../multi-binding";
+import { BindingRowHeader, MultiBindingSettings } from "../multi-binding";
 import { BindingRowActions, healthBadge, OrgLockedNote, TestOutcome, useBindingTest } from "../shared";
 import { AddEpodsystemForm } from "./add-form";
 import type { EpodsystemReadConfig } from "./config";
-import { ThemePanel } from "./theme-panel";
+import { ThemeSettings } from "./theme-panel";
 
 /** ISS-395 / ISS-558 — one or more storefronts per project, each its own labelled binding. */
-export function EpodsystemSection({ projectId }: { projectId: string }) {
+export function EpodsystemSettings({ projectId }: { projectId: string }) {
   const t = useCopy();
   return (
-    <MultiBindingSection
+    <MultiBindingSettings
       projectId={projectId}
       provider="epodsystem"
       title={t("integrations.epod.title")}
       emptyText={t("integrations.epod.empty")}
       addLabel={t("integrations.epod.add")}
       renderRow={(binding, isDefault) => (
-        <EpodsystemBindingRow key={binding.id} projectId={projectId} binding={binding} isDefault={isDefault} />
+        <EpodsystemBinding key={binding.id} projectId={projectId} binding={binding} isDefault={isDefault} />
       )}
       renderAdd={(hasDefault, onDone) => (
         <AddEpodsystemForm projectId={projectId} hasDefault={hasDefault} onDone={onDone} />
@@ -33,7 +33,7 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
   );
 }
 
-function EpodsystemBindingRow({
+function EpodsystemBinding({
   projectId,
   binding,
   isDefault,
@@ -44,7 +44,7 @@ function EpodsystemBindingRow({
 }) {
   const update = useUpdateProviderIntegration(projectId);
   const list = useIntegrationsList(projectId);
-  const test = useBindingTest(projectId, () => list.refetch());
+  const test = useBindingTest(projectId, () => void list.refetch());
   const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
   const [apiKey, setApiKey] = useState("");
   const [showKeyField, setShowKeyField] = useState(false);
@@ -92,10 +92,10 @@ function EpodsystemBindingRow({
         setRotating={setShowKeyField}
         rotateLabel={t("integrations.epod.rotateKey")}
         saveLabel={t("integrations.edit.saveKey")}
-        onSave={handleSaveKey}
+        onSave={() => void handleSaveKey()}
         saving={update.isPending}
         saveDisabled={!apiKey.trim()}
-        onTest={() => test.run(binding.id)}
+        onTest={() => void test.run(binding.id)}
         testing={test.pending}
         confirmDelete={t("integrations.epod.confirmDelete", { label: binding.label || t("integrations.provider.defaultLabel") })}
       />
@@ -105,7 +105,7 @@ function EpodsystemBindingRow({
         canEdit={true}
         disabledReason={agentAccessDeniedReason("direct-mcp")}
       />
-      <ThemePanel config={config} />
+      <ThemeSettings config={config} />
     </div>
   );
 }

@@ -12,7 +12,7 @@ import { EmptyState } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { shortenPath } from "../../run-report";
 import type { FileDiff } from "../../derive";
-import { InlineDiff } from "../tool-card";
+import { InlineDiff } from "../tool-call";
 
 export function DiffLens({
   files,
@@ -37,10 +37,10 @@ export function DiffLens({
         <span className="fg-caption min-w-0 flex-1 truncate font-mono" title={active.path}>
           {shortenPath(active.path, repoPath)}
         </span>
-        <span className="fg-caption font-mono" style={{ color: "var(--green-600)" }}>
+        <span className="fg-caption font-mono text-ok-11">
           +{time.number(active.added)}
         </span>
-        <span className="fg-caption font-mono" style={{ color: "var(--red-600)" }}>
+        <span className="fg-caption font-mono text-danger-11">
           −{time.number(active.removed)}
         </span>
       </div>

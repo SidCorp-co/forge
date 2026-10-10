@@ -54,7 +54,7 @@ export function RegisterForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+    <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-4" noValidate>
       {topError && <Banner tone="danger">{topError}</Banner>}
 
       <Field label={t('auth.field.email')} error={fieldErrors.email}>
@@ -64,7 +64,6 @@ export function RegisterForm() {
           autoComplete="email"
           inputMode="email"
           spellCheck={false}
-          autoFocus
           placeholder="you@studio.com"
           value={email}
           onChange={(e) => {

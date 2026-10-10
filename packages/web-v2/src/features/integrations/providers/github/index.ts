@@ -14,6 +14,6 @@ export const github: ProviderModule = {
     const repo = text(config, "repo");
     return owner && repo ? `${owner}/${repo}` : null;
   },
-  section: () => import("./section").then((m) => ({ default: m.GitHubSection })),
+  section: () => import("./section").then((m) => ({ default: m.GitHubSettings })),
   connectionSection: null,
 };

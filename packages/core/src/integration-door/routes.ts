@@ -50,6 +50,7 @@ const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 // Owner-scoped connection CRUD lives in its own module; re-exported so
 // `src/index.ts` keeps importing both routers from `./integrations/routes.js`.
 export { integrationConnectionsRoutes } from './connection-routes.js';
+export { mcpRelayRoutes } from './mcp-relay-routes.js';
 
 export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationsRoutes.use('*', requireAuth(), assertEmailVerified());

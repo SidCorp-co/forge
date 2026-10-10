@@ -91,6 +91,6 @@ export async function recordDecision(
 
 /** A suggestion's base names a revision the target has moved past: the refusal names both. */
 export async function movedBaseIn(tx: Tx, row: Row, target: SuggestionTarget, head: number | null) {
-  if (target.type !== 'requirement') return null;
+  if (target.type !== 'requirement' && target.type !== 'workflow') return null;
   return baseStaleRefusal(row.baseRevision, head, await openBaseOf(tx, row.kind, target));
 }

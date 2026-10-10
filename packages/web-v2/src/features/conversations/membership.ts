@@ -44,8 +44,8 @@ export type ClaimKey =
 
 const join = (names: readonly string[], t: Copy): string =>
   names.length === 1
-    ? (names[0] as string)
-    : t("conversations.listAnd", { head: names.slice(0, -1).join(", "), last: names[names.length - 1] as string });
+    ? (names[0])
+    : t("conversations.listAnd", { head: names.slice(0, -1).join(", "), last: names[names.length - 1] });
 
 const list = (projects: readonly ConversationProject[] | undefined, t: Copy): string => {
   const names = (projects ?? []).map((p) => p.name);

@@ -55,7 +55,7 @@ export function AddAutoflowForm({
       title={t("integrations.autoflow.add")}
       submitLabel={t("integrations.autoflow.add")}
       canSubmit={canSubmit}
-      onSubmit={handleCreate}
+      onSubmit={() => void handleCreate()}
       onCancel={onDone}
     >
       {hasDefault && (

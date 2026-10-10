@@ -10,7 +10,7 @@ import {
   PersonChip,
   StatusBadge,
 } from "@/design";
-import { ScopeForecastLine } from "@/features/forecast/components/forecast-line";
+import { ScopeForecastLine } from "@/features/forecast";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ReleaseApprovalView, ReleaseDetail } from "../types";
 import { shortSha } from "./release-bits";
@@ -24,12 +24,12 @@ function Decision({ a }: { a: ReleaseApprovalView }) {
         <StatusBadge family="release" value={a.decision} />
         {a.decidedBy ? <ActorChip name={a.decidedBy.name} kind={a.decidedBy.kind} /> : null}
       </span>
-      {a.reason ? <span className="text-12-5 text-muted">{a.reason}</span> : null}
+      {a.reason ? <span className="text-13 text-muted">{a.reason}</span> : null}
     </span>
   );
 }
 
-export function ApprovalFacts({ r }: { r: ReleaseDetail }) {
+export function ApprovalRecord({ r }: { r: ReleaseDetail }) {
   const t = useCopy();
   const time = useTimeFormat();
   const a = r.approval;
@@ -85,8 +85,32 @@ export function ReleasePhoneStanding({ r, forecast }: { r: ReleaseDetail; foreca
           </Fact>
         </FactsGroup>
       ) : null}
-      {showApproval ? <ApprovalFacts r={r} /> : null}
+      {showApproval ? <ApprovalRecord r={r} /> : null}
     </div>
+  );
+}
+
+/** Where the release runs: the environment, whether it still serves, what verified it and its address. */
+function ReleaseProduction({ r, besideReader }: { r: ReleaseDetail; besideReader: boolean }) {
+  const t = useCopy();
+  if (!r.production) return null;
+  return (
+    <FactsGroup title={t("releases.production")} testId="facts-production">
+      <Fact label={t("releases.environment")}>{r.production.name ?? t("releases.notDeclared")}</Fact>
+      {r.state === "shipped" ? <Fact label={t("releases.serving")}>{r.current ? t("releases.thisRelease") : t("releases.laterRelease")}</Fact> : null}
+      {r.verifiedBy && !besideReader ? (
+        <Fact label={t("releases.verifiedBy")} testId="release-verified-by">
+          {t(`releases.verifiedBy.${r.verifiedBy.kind}`, { provider: r.verifiedBy.provider ?? "" })}
+        </Fact>
+      ) : null}
+      {r.production.url && !besideReader ? (
+        <Fact label={t("releases.address")}>
+          <a className="truncate text-link hover:underline" href={r.production.url} target="_blank" rel="noreferrer">
+            {r.production.url.replace(/^https?:\/\//, "")}
+          </a>
+        </Fact>
+      ) : null}
+    </FactsGroup>
   );
 }
 
@@ -95,7 +119,7 @@ export function ReleasePhoneStanding({ r, forecast }: { r: ReleaseDetail; foreca
  * reader already says the proven count, when it shipped, the build, what verified it and where it
  * runs: the rail leaves those out, so each is said once (REQ-43 BC-5).
  */
-export function ReleaseFacts({ r, forecast, besideReader = false }: { r: ReleaseDetail; forecast?: ScopeForecast | undefined; besideReader?: boolean }) {
+export function ReleaseProperties({ r, forecast, besideReader = false }: { r: ReleaseDetail; forecast?: ScopeForecast | undefined; besideReader?: boolean }) {
   const t = useCopy();
   const label = useLabel();
   const time = useTimeFormat();
@@ -104,30 +128,30 @@ export function ReleaseFacts({ r, forecast, besideReader = false }: { r: Release
   return (
     <div data-testid="release-facts">
       {besideReader ? null : (
-      <FactsGroup title={t("releases.proof")} testId="facts-proof">
-        <Fact label={t("releases.tab.criteria")}>
-          {c.total === 0 ? (
-            <span className="text-muted">{label("releaseProof", "unrecorded")}</span>
-          ) : (
-            <span className="grid w-full gap-1.5">
-              <span className="text-13">{t("releases.provenOf", { proven: c.proven, total: c.total })}</span>
-              <CoverageBar
-                legend={false}
-                segments={[
-                  { key: "proven", label: label("releaseProof", "proven"), count: c.proven, tone: "ready" },
-                  { key: "failing", label: label("releaseProof", "failing"), count: c.failing, tone: "err" },
-                  { key: "open", label: label("releaseProof", "open"), count: c.open, tone: "neutral" },
-                ]}
-              />
-            </span>
-          )}
-        </Fact>
-      </FactsGroup>
+        <FactsGroup title={t("releases.proof")} testId="facts-proof">
+          <Fact label={t("releases.tab.criteria")}>
+            {c.total === 0 ? (
+              <span className="text-muted">{label("releaseProof", "unrecorded")}</span>
+            ) : (
+              <span className="grid w-full gap-1.5">
+                <span className="text-13">{t("releases.provenOf", { proven: c.proven, total: c.total })}</span>
+                <CoverageBar
+                  legend={false}
+                  segments={[
+                    { key: "proven", label: label("releaseProof", "proven"), count: c.proven, tone: "ready" },
+                    { key: "failing", label: label("releaseProof", "failing"), count: c.failing, tone: "err" },
+                    { key: "open", label: label("releaseProof", "open"), count: c.open, tone: "neutral" },
+                  ]}
+                />
+              </span>
+            )}
+          </Fact>
+        </FactsGroup>
       )}
 
       {r.approvalRequired || a ? (
         <div className="max-sm:hidden">
-          <ApprovalFacts r={r} />
+          <ApprovalRecord r={r} />
         </div>
       ) : null}
 
@@ -173,24 +197,7 @@ export function ReleaseFacts({ r, forecast, besideReader = false }: { r: Release
         {r.state === "draft" ? <FactsEmpty>{t("releases.notCutYet")}</FactsEmpty> : null}
       </FactsGroup>
 
-      {r.production ? (
-        <FactsGroup title={t("releases.production")} testId="facts-production">
-          <Fact label={t("releases.environment")}>{r.production.name ?? t("releases.notDeclared")}</Fact>
-          {r.state === "shipped" ? <Fact label={t("releases.serving")}>{r.current ? t("releases.thisRelease") : t("releases.laterRelease")}</Fact> : null}
-          {r.verifiedBy && !besideReader ? (
-            <Fact label={t("releases.verifiedBy")} testId="release-verified-by">
-              {t(`releases.verifiedBy.${r.verifiedBy.kind}`, { provider: r.verifiedBy.provider ?? "" })}
-            </Fact>
-          ) : null}
-          {r.production.url && !besideReader ? (
-            <Fact label={t("releases.address")}>
-              <a className="truncate text-link hover:underline" href={r.production.url} target="_blank" rel="noreferrer">
-                {r.production.url.replace(/^https?:\/\//, "")}
-              </a>
-            </Fact>
-          ) : null}
-        </FactsGroup>
-      ) : null}
+      <ReleaseProduction r={r} besideReader={besideReader} />
     </div>
   );
 }

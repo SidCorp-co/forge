@@ -4,7 +4,8 @@ import type { ReactNode } from "react";
 import { ErrorState, ProjectLoader } from "@/design";
 import { formatApiError, isRetryableApiError } from "./error";
 
-const HEIGHTS = { "30vh": "min-h-[30vh]", "40vh": "min-h-[40vh]", "50vh": "min-h-[50vh]", "60vh": "min-h-[60vh]" } as const;
+// "inline" draws the loader and the failure in the flow, for a section inside a page
+const HEIGHTS = { inline: "", "30vh": "min-h-64", "40vh": "min-h-80", "50vh": "min-h-112", "60vh": "min-h-128" } as const;
 
 interface BoundaryQuery<T> {
   isLoading: boolean;
@@ -30,7 +31,7 @@ export function QueryBoundary<T>({
   retry?: "always" | "retryable";
   children: (data: T) => ReactNode;
 }) {
-  const shell = `grid ${HEIGHTS[height]} place-items-center`;
+  const shell = height === "inline" ? "grid gap-2" : `grid ${HEIGHTS[height]} place-items-center`;
   if (query.isLoading) {
     return (
       <div className={shell}>

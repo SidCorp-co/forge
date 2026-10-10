@@ -2,8 +2,8 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { SignInStopped } from "@/features/auth/components/sign-in-stopped";
-import { useLoginRedirect } from "@/features/auth/use-login-redirect";
+import { SignInStopped } from "@/features/auth";
+import { useLoginRedirect } from "@/features/auth";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { ApiError } from "@/lib/api/client";

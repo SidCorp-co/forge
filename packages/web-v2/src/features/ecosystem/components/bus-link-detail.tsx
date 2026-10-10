@@ -55,7 +55,7 @@ function UsesGroup({ d }: { d: LinkRecord["document"] }) {
       ) : (
         <div className="flex flex-wrap gap-1">
           {d.fieldsUsed.map((f) => (
-            <span key={f} className="rounded-pill bg-[var(--bg-sunken)] px-2 font-mono text-11">
+            <span key={f} className="rounded-pill bg-sunken px-2 font-mono text-11">
               {f}
             </span>
           ))}
@@ -63,7 +63,7 @@ function UsesGroup({ d }: { d: LinkRecord["document"] }) {
       )}
       {d.outsideContract.length > 0 ? (
         <>
-          <h4 className="pt-2 text-11 font-semibold uppercase tracking-[0.07em]" style={{ color: "var(--amberw-600)" }}>
+          <h4 className="pt-2 text-11 font-semibold uppercase tracking-wider" style={{ color: "var(--amberw-600)" }}>
             {t("ecosystem.link.outside")}
           </h4>
           {d.outsideContract.map((o) => (

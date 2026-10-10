@@ -5,8 +5,8 @@
 // route the record's page calls, as the person who presses it.
 
 import { type NeedsYouDecisions, needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
-import { DecisionList } from "@/features/needs-you/components/decision-list";
-import type { CanonicalBlock } from "@/features/session/types";
+import { DecisionList } from "@/features/needs-you";
+import type { CanonicalBlock } from "@/features/session";
 import { toolOutputText } from "@/lib/tool-output";
 
 /** The assistant's read of the decisions waiting on the asker, the one the needs-you route answers. */

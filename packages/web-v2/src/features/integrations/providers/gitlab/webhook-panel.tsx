@@ -1,7 +1,7 @@
 "use client";
 
-import { Banner, Button } from "@/design";
-import { useProject } from "@/features/projects/hooks";
+import { Banner, Button, Property, PropertyList } from "@/design";
+import { useProject } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { CORE_URL } from "@/lib/utils/core-url";
@@ -19,7 +19,7 @@ function webhookUrl(slug: string | undefined): string {
 }
 
 /** How to point the GitLab project's webhook at Forge: the URL, a secret token, the three events. */
-export function GitlabWebhookPanel({ projectId, bindingId }: { projectId: string; bindingId: string }) {
+export function GitlabWebhook({ projectId, bindingId }: { projectId: string; bindingId: string }) {
   const project = useProject(projectId);
   const rotate = useRotateIntegrationSecret(projectId);
   const [secret, setSecret] = useState<string | null>(null);
@@ -41,11 +41,9 @@ export function GitlabWebhookPanel({ projectId, bindingId }: { projectId: string
       <p className="fg-body-sm text-muted">
         <Ticked text={t("integrations.gitlab.webhookHow")} />
       </p>
-      <dl className="fg-body-sm grid grid-cols-1 gap-1 sm:grid-cols-[max-content_1fr] sm:gap-x-3">
-        <dt className="text-muted">{t("integrations.gitlab.url")}</dt>
-        <dd className="min-w-0 break-all font-mono">{webhookUrl(project.data?.slug)}</dd>
-        <dt className="text-muted">{t("integrations.gitlab.secret")}</dt>
-        <dd className="min-w-0">
+      <PropertyList>
+        <Property label={t("integrations.gitlab.url")}><span className="min-w-0 break-all font-mono">{webhookUrl(project.data?.slug)}</span></Property>
+        <Property label={t("integrations.gitlab.secret")}><span className="min-w-0">
           {secret ? (
             <span className="break-all font-mono">{secret}</span>
           ) : (
@@ -53,18 +51,17 @@ export function GitlabWebhookPanel({ projectId, bindingId }: { projectId: string
               {t("integrations.gitlab.secretHidden")}
             </span>
           )}
-        </dd>
-        <dt className="text-muted">{t("integrations.gitlab.trigger")}</dt>
-        <dd>
+        </span></Property>
+        <Property label={t("integrations.gitlab.trigger")}>
           <Ticked text={t("integrations.gitlab.triggerEvents", { events: `\`${GITLAB_WEBHOOK_EVENTS.join(", ")}\`` })} />
-        </dd>
-      </dl>
+        </Property>
+      </PropertyList>
       {secret && (
         <Banner tone="attention">{t("integrations.gitlab.copyNow")}</Banner>
       )}
       {error && <Banner tone="danger">{error}</Banner>}
       <div>
-        <Button variant="secondary" onClick={generate} loading={rotate.isPending}>
+        <Button variant="secondary" onClick={() => void generate()} loading={rotate.isPending}>
           {t("integrations.gitlab.generate")}
         </Button>
       </div>

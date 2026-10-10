@@ -4,7 +4,6 @@
 
 import {
   Avatar,
-  Badge,
   Checkbox,
   EnumBadge,
   enumLabel,
@@ -15,7 +14,6 @@ import {
   MonoTag,
   Spinner,
   StatusBadge,
-  StatusChip,
   TD,
   Tooltip,
   TR,
@@ -23,7 +21,7 @@ import {
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { initials, workStepOf } from "../derive";
 import { useStatusTone } from "../release-approval";
 import {
@@ -39,7 +37,6 @@ import {
   ISSUE_COMPLEXITIES,
   ISSUE_PRIORITIES,
   type IssueFailureInfo,
-  type IssuePriority,
   type IssueRow,
 } from "../types";
 import {
@@ -58,11 +55,11 @@ import { WaitingOnPersonChip } from "./waiting-on-person-chip";
 function useOpenIssue(slug: string, id: string) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const open = useCallback(() => {
+  const open = () => {
     if (pending) return;
     setPending(true);
     router.push(`/projects/${slug}/issues/${id}`);
-  }, [pending, router, slug, id]);
+  };
   return { open, pending };
 }
 
@@ -99,7 +96,7 @@ function AgentChip({
       : agentStatus === "queued"
         ? "queued"
         : "failed";
-  const chip = <StatusChip status={status} domain="session" size="sm" />;
+  const chip = <StatusBadge family="run" value={status} />;
   if (status !== "failed") return chip;
   return (
     <Tooltip label={failureTooltipLabel(t, failureInfo ? L("workStep", failureInfo.failedStep) : "", failureInfo ? time.relative(failureInfo.failedAt) : "", failureInfo)} multiline>
@@ -133,36 +130,13 @@ function QueuedChip({ step }: { step: QueuedStepView }) {
   const language = useInterfaceLanguage();
   const gate = useGateReading(step.gate);
   const chip = (
-    <StatusChip
-      status={queuedChipStatus(step)}
-      domain="session"
-      size="sm"
-      label={gate?.short ?? t("issues.queued")}
-    />
+    <StatusBadge family="run" value={queuedChipStatus(step)} label={gate?.short ?? t("issues.queued")} />
   );
   if (!gate) return chip;
   return (
     <Tooltip label={`${enumLabel("jobType", step.jobType, language)} · ${gate.detail}`} multiline>
       {chip}
     </Tooltip>
-  );
-}
-
-const PRIORITY_TONE: Record<IssuePriority, "red" | "amber" | "neutral"> = {
-  critical: "red",
-  high: "amber",
-  medium: "neutral",
-  low: "neutral",
-  none: "neutral",
-};
-
-/** Read-only priority pill. `none` collapses to a muted dash. */
-function PriorityCell({ priority }: { priority: IssuePriority }) {
-  const L = useLabel();
-  if (priority === "none")
-    return <span className="fg-caption text-subtle">—</span>;
-  return (
-    <Badge tone={PRIORITY_TONE[priority]}>{L("issuePriority", priority)}</Badge>
   );
 }
 
@@ -260,7 +234,7 @@ function AssigneeCell({ assignee }: { assignee: RowAssignee | null }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-2" title={assignee.label}>
       {assignee.agent ? (
-        <span className="inline-flex size-[22px] flex-none items-center justify-center rounded-pill bg-accent-tint text-accent-text">
+        <span className="inline-flex size-5.5 flex-none items-center justify-center rounded-pill bg-accent-tint text-accent-text">
           <Icon name="agent" size={13} />
         </span>
       ) : (
@@ -271,7 +245,7 @@ function AssigneeCell({ assignee }: { assignee: RowAssignee | null }) {
   );
 }
 
-export function IssueTableRow({
+export function IssueTableLine({
   row,
   slug,
   actions,
@@ -304,18 +278,13 @@ export function IssueTableRow({
     >
       {selection && (
         <TD className="w-9 pr-0">
-          {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: wrapper only blocks bubbling; the Checkbox button is the control. */}
-          <span
-            className="inline-flex"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Checkbox
-              checked={selection.selected}
-              onChange={selection.onToggle}
-              disabled={actions.isPending}
-              ariaLabel={t("issues.row.select", { key: row.displayId })}
-            />
-          </span>
+          {/* the row ignores a click that lands on a button, so the checkbox needs no wrapper */}
+          <Checkbox
+            checked={selection.selected}
+            onChange={selection.onToggle}
+            disabled={actions.isPending}
+            ariaLabel={t("issues.row.select", { key: row.displayId })}
+          />
         </TD>
       )}
       <TD className="w-px whitespace-nowrap" data-testid="issue-id-cell">
@@ -324,26 +293,26 @@ export function IssueTableRow({
             type="button"
             onClick={open}
             aria-label={t("issues.row.openKey", { key: row.displayId })}
-            className="cursor-pointer rounded-sm hover:opacity-80 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="cursor-pointer rounded-sm hover:opacity-80 focus-visible:outline-none focus-visible:shadow-focus"
           >
             <MonoTag hue="cobalt">{row.displayId}</MonoTag>
           </button>
           {pending && <Spinner size={14} />}
         </span>
       </TD>
-      <TD className="min-w-[280px] max-w-[560px]">
-        <div className="flex min-w-0 items-center gap-2">
+      <TD className="min-w-70 max-w-140">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <button
             type="button"
             onClick={open}
             aria-label={t("issues.row.openTitled", { key: row.displayId, title: row.title })}
-            className="group/title min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="group/title min-w-0 max-w-full cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-focus"
           >
             <span className="fg-body-sm block truncate text-fg group-hover/title:text-accent-text group-hover/title:underline">
               {row.title}
             </span>
           </button>
-          <span className="flex flex-none items-center gap-1.5">
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
             {row.category && <EnumBadge family="category" value={row.category} />}
             <WaitingOnPersonChip since={row.waitingOnPersonSince} now={now} />
             <DepBadges deps={row.dependencies} slug={slug} />
@@ -354,9 +323,9 @@ export function IssueTableRow({
         <StatusCell row={row} />
       </TD>
       <TD className="whitespace-nowrap">
-        <PriorityCell priority={row.priority} />
+        {row.priority === "none" ? <span className="fg-caption text-subtle">—</span> : <EnumBadge family="priority" value={row.priority} />}
       </TD>
-      <TD className="max-w-[200px]">
+      <TD className="max-w-50">
         <AssigneeCell assignee={assignee} />
       </TD>
       <TD className="whitespace-nowrap">

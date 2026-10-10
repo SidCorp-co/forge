@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Icon } from "@/design/icons/icon";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -13,6 +13,10 @@ export interface SlideOverProps {
   width?: number | string;
   fitBody?: boolean;
   hideHeader?: boolean;
+  /** The edge it slides from: right for a side task, left for a navigation drawer. */
+  side?: "left" | "right";
+  /** Where focus lands on open; absent, the first tabbable control. */
+  initialFocus?: RefObject<HTMLElement | null>;
 }
 
 export function SlideOver({
@@ -23,6 +27,8 @@ export function SlideOver({
   width = 480,
   fitBody = false,
   hideHeader = false,
+  side = "right",
+  initialFocus,
 }: SlideOverProps) {
   const t = useCopy();
   const slideOverWidth = typeof width === "number" ? `${width}px` : width;
@@ -40,9 +46,10 @@ export function SlideOver({
       }}
     >
       <SheetContent
-        side="right"
+        side={side}
         showCloseButton={false}
-        className="gap-0 border-line bg-surface text-fg data-[side=right]:w-full data-[side=right]:max-w-[100vw] data-[side=right]:sm:w-[var(--slide-over-w)] data-[side=right]:sm:max-w-[100vw]"
+        {...(initialFocus ? { initialFocus } : {})}
+        className="gap-0 border-line bg-surface text-fg data-[side=left]:w-[var(--slide-over-w)] data-[side=left]:max-w-[85vw] data-[side=right]:w-full data-[side=right]:max-w-[100vw] data-[side=right]:sm:w-[var(--slide-over-w)] data-[side=right]:sm:max-w-[100vw]"
         style={{ "--slide-over-w": slideOverWidth } as CSSProperties}
       >
         {hideHeader ? (
@@ -52,7 +59,7 @@ export function SlideOver({
             <SheetTitle className="fg-h3">{title}</SheetTitle>
             <SheetClose
               aria-label={t("common.close")}
-              className="rounded-md p-1 text-subtle transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+              className="rounded-md p-1 text-subtle transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-focus"
             >
               <Icon name="x" size={18} />
             </SheetClose>

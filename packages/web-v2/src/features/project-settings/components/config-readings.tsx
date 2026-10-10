@@ -4,8 +4,8 @@ import { Badge, Banner, PageSectionTitle, enumLabel, ErrorState, MonoTag, Status
 import { canonicalJson } from "@forge/contracts/document-patch";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
-import { useEffectiveConfig, useEnvironmentState } from "@/features/project-config/hooks";
-import type { EffectiveLayer, EnvironmentState, ProbeOutcome } from "@/features/project-config/types";
+import { useEffectiveConfig, useEnvironmentState } from "@/features/project-config";
+import type { EffectiveLayer, EnvironmentState, ProbeOutcome } from "@/features/project-config";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 
@@ -13,7 +13,7 @@ const layerText = (t: Copy, layer: EffectiveLayer) => t(`settings.project.raw.la
 
 const clip = (text: string) => (text.length > 160 ? `${text.slice(0, 159)}…` : text);
 
-export function EffectiveSection({ projectId }: { projectId: string }) {
+export function EffectiveConfig({ projectId }: { projectId: string }) {
 	const t = useCopy();
 	const q = useEffectiveConfig(projectId);
 	const heading = (
@@ -22,7 +22,7 @@ export function EffectiveSection({ projectId }: { projectId: string }) {
 		</>
 	);
 	if (q.isLoading) return <Skeleton className="mt-6 h-32 w-full rounded-md" />;
-	if (!q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />;
+	if (!q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => void q.refetch()} />;
 	const e = q.data;
 	return (
 		<section aria-label={t("settings.project.raw.effective")} className="mt-6 border-t border-line pt-5">
@@ -93,7 +93,7 @@ function sourceLine(s: Extract<EnvironmentState, { deployment: unknown }>["sourc
 	return s.kind === "unrecorded" ? t("settings.project.raw.sourceUnrecorded") : t("settings.project.raw.sourceNonGit");
 }
 
-function EnvironmentRow({ env }: { env: EnvironmentState }) {
+function EnvironmentReading({ env }: { env: EnvironmentState }) {
 	const t = useCopy();
 	return (
 		<section className="border-t border-line-subtle pt-3" aria-label={t("settings.project.delivery.environmentNamed", { name: env.environment })}>
@@ -146,7 +146,7 @@ function EnvironmentRow({ env }: { env: EnvironmentState }) {
 	);
 }
 
-export function EnvironmentStateSection({ projectId }: { projectId: string }) {
+export function EnvironmentStates({ projectId }: { projectId: string }) {
 	const t = useCopy();
 	const q = useEnvironmentState(projectId);
 	const noDocument = q.error instanceof ApiError && q.error.code === "PROJECT_DOCUMENT_NOT_FOUND";
@@ -158,14 +158,14 @@ export function EnvironmentStateSection({ projectId }: { projectId: string }) {
 			) : noDocument ? (
 				<Banner tone="attention">{t("settings.project.raw.environmentNone")}</Banner>
 			) : !q.data ? (
-				<ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
+				<ErrorState message={formatApiError(q.error)} onRetry={() => void q.refetch()} />
 			) : q.data.environments.length === 0 ? (
 				<p className="fg-caption text-subtle">{t("settings.project.raw.environmentEmpty", { revision: q.data.revision })}</p>
 			) : (
 				<div className="space-y-2">
 					<p className="fg-caption text-subtle">{t("settings.project.raw.environmentReadAt", { revision: q.data.revision })}</p>
 					{q.data.environments.map((env) => (
-						<EnvironmentRow key={env.environment} env={env} />
+						<EnvironmentReading key={env.environment} env={env} />
 					))}
 				</div>
 			)}

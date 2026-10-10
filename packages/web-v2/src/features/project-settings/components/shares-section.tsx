@@ -9,7 +9,7 @@ import { ShareList } from "@/features/shares";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useMembers } from "../hooks";
 
-export function SharesSection({ projectId, isAdmin }: { projectId: string; isAdmin: boolean }) {
+export function ShareSettings({ projectId, isAdmin }: { projectId: string; isAdmin: boolean }) {
 	const t = useCopy();
 	const membersQ = useMembers(projectId);
 	const nameOf = (userId: string) => {

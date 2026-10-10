@@ -5,7 +5,7 @@
 
 import type { RequirementAreaRef, RequirementSummary } from "@forge/contracts/requirements";
 import { useState } from "react";
-import { Button, Fact, Textarea } from "@/design";
+import { Button, Fact, Select, Textarea } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useAcceptAllPlacements, usePlacement, useProposePlacements, useRequirementAreas, useSetAreas } from "../hooks";
@@ -77,7 +77,7 @@ export function AreasEditor({ projectId, areas }: { projectId: string; areas: Re
 }
 
 /** One requirement's area and short name: change them, or take the assistant's proposal beside them. */
-export function PlacementFacts({ projectId, d }: { projectId: string; d: RequirementSummary }) {
+export function Placement({ projectId, d }: { projectId: string; d: RequirementSummary }) {
   const t = useCopy();
   const areas = useRequirementAreas(projectId).data ?? [];
   const { set, accept } = usePlacement(projectId, d.key);
@@ -86,19 +86,13 @@ export function PlacementFacts({ projectId, d }: { projectId: string; d: Require
   return (
     <>
       <Fact label={t("requirements.placement.area")}>
-        <select
+        <Select
+          quiet
           aria-label={t("requirements.placement.area")}
           value={d.area?.id ?? ""}
-          onChange={(e) => set.mutate({ areaId: e.target.value || null })}
-          className="h-7 max-w-full rounded-md border border-line bg-surface px-1.5 text-13"
-        >
-          <option value="">{t("requirements.noArea")}</option>
-          {areas.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => set.mutate({ areaId: v || null })}
+          options={[{ value: "", label: t("requirements.noArea") }, ...areas.map((a) => ({ value: a.id, label: a.name }))]}
+        />
       </Fact>
       <Fact label={t("requirements.placement.shortName")}>
         <input

@@ -1,6 +1,6 @@
 "use client";
 
-import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type RefObject, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { breakpointWidth } from "@/lib/utils/breakpoint-width";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 
@@ -20,19 +20,25 @@ const anchored = () => typeof window !== "undefined" && window.location.hash ===
 
 /** Focus mode, read from and written to the address's `#canvas` anchor; a hand-edited anchor is followed too. */
 export function useCanvasFocus(): [boolean, (on: boolean) => void] {
-  const [on, setOn] = useState(false);
-  useEffect(() => {
-    const sync = () => setOn(anchored());
-    sync();
-    window.addEventListener("hashchange", sync);
-    return () => window.removeEventListener("hashchange", sync);
-  }, []);
-  const set = useCallback((next: boolean) => {
+  const on = useSyncExternalStore(subscribeAnchor, anchored, () => false);
+  const set = (next: boolean) => {
     const { pathname, search } = window.location;
     window.history.replaceState(window.history.state, "", `${pathname}${search}${next ? CANVAS_ANCHOR : ""}`);
-    setOn(next);
-  }, []);
+    // replaceState fires no hashchange: tell the readers it moved
+    for (const listener of anchorListeners) listener();
+  };
   return [on, set];
+}
+
+const anchorListeners = new Set<() => void>();
+
+function subscribeAnchor(onChange: () => void): () => void {
+  anchorListeners.add(onChange);
+  window.addEventListener("hashchange", onChange);
+  return () => {
+    anchorListeners.delete(onChange);
+    window.removeEventListener("hashchange", onChange);
+  };
 }
 
 /** A per-viewer boolean kept in this browser; storage that throws or holds a non-boolean reads as `false`. */
@@ -84,7 +90,7 @@ export function useDetailSqueezes(
 ): boolean {
   const { active, open } = o;
   const [squeezed, setSqueezed] = useState(false);
-  const lastDetail = useRef(0);
+  const lastDetailRef = useRef(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: opening or folding the detail is a trigger to re-measure, not an input
   useLayoutEffect(() => {
     if (!active) return;
@@ -94,14 +100,14 @@ export function useDetailSqueezes(
       const d = detail.current;
       if (!c || !h) return;
       const shown = Boolean(d && !d.hidden);
-      if (d && shown) lastDetail.current = d.getBoundingClientRect().height;
+      if (d && shown) lastDetailRef.current = d.getBoundingClientRect().height;
       setSqueezed(
         detailSqueezes({
           width: breakpointWidth(c),
           viewportHeight: window.innerHeight,
           column: c.getBoundingClientRect().height,
           head: h.getBoundingClientRect().height,
-          detail: lastDetail.current,
+          detail: lastDetailRef.current,
           detailInFlow: shown && d?.dataset.float !== "true",
         }),
       );

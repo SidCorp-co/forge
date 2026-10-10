@@ -19,7 +19,7 @@ export function LiveCount({ n }: LiveCountProps) {
       )}
     >
       {live && (
-        <span className="forge-pulse inline-block size-[7px] rounded-pill bg-accent" aria-hidden />
+        <span className="forge-pulse inline-block size-1.75 rounded-pill bg-accent" aria-hidden />
       )}
       {t('projects.liveRuns', { n })}
     </span>

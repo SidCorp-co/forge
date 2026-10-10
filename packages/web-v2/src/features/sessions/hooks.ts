@@ -1,62 +1,38 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { useToast } from "@/providers/toast-provider";
-import { formatApiError } from "@/lib/api/error";
+import { useToastWrite } from "@/providers/toast-write";
 import { type ListSessionsOpts, sessionsApi } from "./api";
+import { sessionsKeys, sessionsQueries } from "./queries";
 
 /** Sessions list. Keyed `['agent-sessions','list',opts]` — WS-invalidated. */
 export function useSessions(opts: ListSessionsOpts) {
-  return useQuery({
-    queryKey: ["agent-sessions", "list", opts],
-    queryFn: () => sessionsApi.list(opts),
-  });
+  return useQuery(sessionsQueries.list(opts));
 }
 
 /** Per-project queue stats. Keyed `['agent-sessions','queue-stats',projectId]`. */
 export function useQueueStats(projectId: string | undefined) {
-  return useQuery({
-    queryKey: ["agent-sessions", "queue-stats", projectId],
-    queryFn: () => sessionsApi.queueStats(projectId as string),
-    enabled: !!projectId,
-  });
+  return useQuery(sessionsQueries.queueStats(projectId));
 }
 
 /** Per-session cost rollup. Keyed `['agent-sessions',id,'cost']` — WS-invalidated
  *  on session updates so cost refreshes as usage_records land (ISS-378). */
 export function useSessionCost(sessionId: string | undefined) {
-  return useQuery({
-    queryKey: ["agent-sessions", sessionId, "cost"],
-    queryFn: () => sessionsApi.cost(sessionId as string),
-    enabled: !!sessionId,
-  });
+  return useQuery(sessionsQueries.cost(sessionId));
 }
 
-/** Shared mutation factory: invalidate the list on success, toast on error. */
+/** A sessions write: the list and every session detail are read again; the queue stats too where the write moves the queue. */
 function useSessionMutation<TArgs, TData>(
   fn: (args: TArgs) => Promise<TData>,
   opts: { successMessage?: (data: TData, t: Copy) => string; alsoInvalidateQueueStats?: boolean } = {},
 ) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
   const t = useCopy();
-  return useMutation({
-    mutationFn: fn,
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["agent-sessions"] });
-      qc.invalidateQueries({ queryKey: ["agent-session"] });
-      if (opts.alsoInvalidateQueueStats) {
-        qc.invalidateQueries({ queryKey: ["agent-sessions", "queue-stats"] });
-      }
-      if (opts.successMessage) {
-        toast({ title: opts.successMessage(data, t), tone: "success" });
-      }
-    },
-    onError: (err) => {
-      toast({ title: t("sessions.toast.failed"), description: formatApiError(err), tone: "error" });
-    },
+  return useToastWrite(fn, {
+    touches: [sessionsKeys.all, ["agent-session"], ...(opts.alsoInvalidateQueueStats ? [sessionsKeys.queueStatsAll()] : [])],
+    said: opts.successMessage ? (data: TData) => opts.successMessage?.(data, t) : undefined,
+    failed: t("sessions.toast.failed"),
   });
 }
 

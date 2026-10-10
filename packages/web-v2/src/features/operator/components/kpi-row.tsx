@@ -28,7 +28,7 @@ export function KpiRowSkeleton() {
   );
 }
 
-export function KpiRow({ overview }: { overview: AdminOverview }) {
+export function Kpis({ overview }: { overview: AdminOverview }) {
   const t = useCopy();
   const { counts, kpis } = overview;
   const spendDelta = formatDelta(

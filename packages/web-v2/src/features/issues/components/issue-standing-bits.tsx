@@ -8,26 +8,21 @@ import type { Forecast } from "@forge/contracts/forecast";
 import type { IssueStanding, IssueStandingRow } from "@forge/contracts/issue-standing";
 import { WORK_STEPS } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
-import { type ReactNode, useMemo } from "react";
+import type { ReactNode } from "react";
 import {
   ActorChip,
   type BannerTone,
-  CoverageBar,
   Fact,
-  FactsEmpty,
-  FactsGroup,
   type ListRowView,
   MarkStrip,
   type MarkView,
   StatusBadge,
-  statusReading,
   StepBar,
-  ToneBadge,
   WaitBanner,
   WaitingOn,
 } from "@/design";
-import { EtaCell, EtaInline } from "@/features/forecast/components/eta-cell";
-import { type Eta, type EtaClock, etaOfForecast } from "@/features/forecast/eta";
+import { EtaCell, EtaInline } from "@/features/forecast";
+import { type Eta, type EtaClock, etaOfForecast } from "@/features/forecast";
 import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { requirementHref } from "@/lib/routes/requirements";
@@ -53,7 +48,7 @@ export interface RowWords {
 export function useRowWords(): RowWords {
   const t = useCopy();
   const time = useTimeFormat();
-  return useMemo(() => ({ t, time }), [t, time]);
+  return { t, time };
 }
 
 /** The secondary line: module, the requirement and its criteria, a high priority, where it came from, criteria passing. */
@@ -169,7 +164,7 @@ export function IssueStrip({ standing }: { standing: IssueStanding }) {
             marks={WORK_STEPS.map((step, i) => ({
               key: step,
               label: over || i < at ? t("common.stepDone", { label: L("workStep", step) }) : i === at ? t("common.stepNow", { label: L("workStep", step) }) : t("common.stepNext", { label: L("workStep", step) }),
-              fill: over || i < at ? "var(--ink-600)" : i === at ? undefined : "var(--paper-300)",
+              fill: over || i < at ? "var(--neutral-11)" : i === at ? undefined : "var(--neutral-7)",
               tone: i === at && !over ? (standing.tone === "you" ? "you" : "run") : undefined,
             }))}
           />
@@ -194,7 +189,7 @@ export function IssueStrip({ standing }: { standing: IssueStanding }) {
 /** The peek's facts, each once and each beside where it comes from: whom it waits on, the
  *  requirement it serves, its module, its branch, its owner. State and whose turn are the head's
  *  and the banner's, so they are not repeated here. */
-export function IssuePeekFacts({
+export function IssuePeekProperties({
   row,
   slug,
   forecast,
@@ -232,12 +227,12 @@ export function IssuePeekFacts({
             </Link>
             {s.requirement.criteria.length ? <span className="ml-1.5 font-mono text-12">{s.requirement.criteria.join(", ")}</span> : null}
             {s.requirement.staleCriteria.length ? (
-              <span className="ml-1.5 text-12-5" data-testid="stale-traces">
+              <span className="ml-1.5 text-13" data-testid="stale-traces">
                 · {t("issues.facts.staleShort", { codes: s.requirement.staleCriteria.join(", ") })}
               </span>
             ) : null}
             {s.requirement.changedSincePlan ? (
-              <span className="ml-1.5 text-12-5" data-testid="changed-since-plan">
+              <span className="ml-1.5 text-13" data-testid="changed-since-plan">
                 · {t("issues.facts.plannedOnShort", { planned: s.requirement.plannedRevision ?? "", now: s.requirement.currentRevision ?? "" })}
               </span>
             ) : null}
@@ -291,96 +286,6 @@ export function IssuePeekFacts({
             ))}
           </span>
         </Fact>
-      ) : null}
-    </div>
-  );
-}
-
-export function IssueStandingFacts({ row, slug }: { row: IssueStandingRow; slug: string }) {
-  const s = row.standing;
-  const c = s.criteria;
-  const unjudged = Math.max(0, c.total - c.passing - c.failing - c.skipped);
-  const t = useCopy();
-  const time = useTimeFormat();
-  return (
-    <div data-testid="issue-standing-facts">
-      <FactsGroup title={t("issues.facts.whereItStands")}>
-        <Fact label={t("issues.facts.owner")}>
-          {s.owner ? <ActorChip name={s.owner.name ?? t("issues.facts.unknown")} kind={s.owner.kind} /> : <span className="text-subtle">{t("issues.facts.noOwner")}</span>}
-        </Fact>
-        {s.lease ? (
-          <Fact label={t("issues.facts.lease")}>
-            <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5">
-              <ToneBadge
-                tone={statusReading("lease", s.lease.verdict).tone}
-                label={t(`issues.lease.${s.lease.verdict}`)}
-                title={s.lease.verdict}
-                value={s.lease.verdict}
-              />
-              {s.lease.holder ? <span className="truncate font-mono text-12">{s.lease.holder}</span> : null}
-            </span>
-          </Fact>
-        ) : null}
-        <Fact label={t("issues.facts.lastActivity")}>
-          <span title={time.dateTime(s.touchedAt)}>{time.relative(s.touchedAt)}</span>
-        </Fact>
-        <div className="pt-2.5">
-          <IssueSteps standing={s} />
-        </div>
-      </FactsGroup>
-
-      <FactsGroup title={t("issues.tab.criteria")} count={c.total ? t("issues.crit.passingOf", { passing: c.passing, total: c.total }) : undefined} testId="facts-criteria">
-        {c.total === 0 ? (
-          <FactsEmpty>{t("issues.criteria.empty")}</FactsEmpty>
-        ) : (
-          <CoverageBar
-            segments={[
-              { key: "pass", label: t("issues.crit.passing"), count: c.passing, tone: "ready" },
-              { key: "fail", label: t("issues.crit.failing"), count: c.failing, tone: "err" },
-              { key: "skipped", label: t("issues.crit.skipped"), count: c.skipped, tone: "neutral" },
-              { key: "unjudged", label: t("issues.crit.unjudged"), count: unjudged },
-            ]}
-          />
-        )}
-      </FactsGroup>
-
-      {s.requirement ? (
-        <FactsGroup title={t("issues.facts.requirement")} testId="facts-requirement">
-          <div className="flex min-w-0 items-center gap-1.5 text-13">
-            <Link href={requirementHref(slug, s.requirement.key)} className="flex-none font-mono text-12 font-semibold text-link hover:underline">
-              {s.requirement.key}
-            </Link>
-            <span className="min-w-0 flex-1 truncate" title={s.requirement.title}>
-              {s.requirement.title}
-            </span>
-          </div>
-          {s.requirement.criteria.length ? <p className="mt-1 font-mono text-12 text-muted">{t("issues.facts.tracesTo", { codes: s.requirement.criteria.join(", ") })}</p> : null}
-          {s.requirement.staleCriteria.length ? (
-            <p className="mt-1 text-12-5" data-testid="stale-traces">
-              {t("issues.facts.staleTraces", { codes: s.requirement.staleCriteria.join(", ") })}
-            </p>
-          ) : null}
-          {s.requirement.changedSincePlan ? (
-            <p className="mt-1 text-12-5" data-testid="changed-since-plan">
-              {t("issues.facts.plannedOn", { planned: s.requirement.plannedRevision ?? "", now: s.requirement.currentRevision ?? "" })}
-            </p>
-          ) : null}
-        </FactsGroup>
-      ) : null}
-
-      {s.feedback.length ? (
-        <FactsGroup title={t("issues.facts.feedback")} count={t("issues.facts.reports", { n: s.feedback.length })}>
-          <div className="flex flex-wrap gap-2">
-            {s.feedback.map((k) => (
-              <span key={k} className="inline-flex items-baseline gap-1">
-                <Link href={feedbackHref(slug, k)} className="font-mono text-12 font-semibold text-link hover:underline">
-                  {k}
-                </Link>
-                {s.feedbackDropped.includes(k) ? <span className="text-12 text-muted">{t("issues.facts.dropped")}</span> : null}
-              </span>
-            ))}
-          </div>
-        </FactsGroup>
       ) : null}
     </div>
   );

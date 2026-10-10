@@ -1,5 +1,6 @@
 "use client";
 
+import { keyedByContent } from "@/design";
 import { cellText, type VisualBlockOf } from "@forge/contracts/visual-blocks";
 import { Cell } from "./cells";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -16,24 +17,23 @@ export function StatusListBlockView({ block }: { block: VisualBlockOf<"status-li
   if (!ref || !status) return null;
   return (
     <ul className="m-0 flex list-none flex-col p-0">
-      {block.frame.rows.map((row, i) => {
+      {keyedByContent(block.frame.rows).map(({ key, item: row }) => {
         const on = waiting ? row[waiting.name] : null;
         return (
-          // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
-          <li key={i} className="flex min-w-0 flex-wrap items-center gap-x-3 border-b border-line-subtle py-1.5 text-[12.5px] last:border-b-0" data-testid="status-row">
-            <span className="min-w-[84px]">
+          <li key={key} className="flex min-w-0 flex-wrap items-center gap-x-3 border-b border-line-subtle py-1.5 text-13 last:border-b-0" data-testid="status-row">
+            <span className="min-w-21">
               <Cell field={ref} cell={row[ref.name]} />
             </span>
             <span className="min-w-0">
               <Cell field={status} cell={row[status.name]} />
             </span>
             {waiting && on !== null && on !== undefined && (
-              <span className="text-[11.5px] text-subtle">{t("visual.status.waitingOn", { who: cellText(waiting, on, instants) })}</span>
+              <span className="text-12 text-subtle">{t("visual.status.waitingOn", { who: cellText(waiting, on, instants) })}</span>
             )}
           </li>
         );
       })}
-      {block.frame.rows.length === 0 && <li className="py-1.5 text-[12px] text-subtle">{t("visual.status.empty")}</li>}
+      {block.frame.rows.length === 0 && <li className="py-1.5 text-12 text-subtle">{t("visual.status.empty")}</li>}
     </ul>
   );
 }

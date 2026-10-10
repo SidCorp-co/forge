@@ -117,10 +117,6 @@ const EnvSchema = z.object({
   CHAT_REASONING_EFFORT: z.enum(['none', 'minimal', 'low', 'medium', 'high']).optional(),
   RERANK_MODEL: z.string().min(1).optional(),
   CHAT_CONTEXT_BUDGET_TOKENS: z.coerce.number().int().positive().default(80_000),
-  ANTHROPIC_API_URL: z.url().default('https://api.anthropic.com'),
-  ANTHROPIC_API_KEY: z.string().min(1).optional(),
-  ANTHROPIC_MODEL: z.string().min(1).default('claude-sonnet-5'),
-  ANTHROPIC_MAX_TOKENS: z.coerce.number().int().positive().default(8192),
   OAUTH_REDIRECT_BASE: z.url().optional(),
 
   GITHUB_OAUTH_CLIENT_ID: z.string().min(1).optional(),

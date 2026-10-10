@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { HoverCard, MonoTag } from "@/design";
-import { useModuleDetail } from "@/features/modules/hooks";
+import { useModuleDetail } from "@/features/modules";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { moduleHref } from "@/lib/routes/modules";
 import type { IssueLabel } from "../types";

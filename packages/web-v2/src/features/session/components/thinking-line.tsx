@@ -61,7 +61,7 @@ export function ThinkingLine({
 
   if (!expandable) {
     return (
-      <div data-testid="thinking-line" className="flex items-center gap-1.5 text-subtle" style={{ fontSize: "var(--text-12)" }}>
+      <div data-testid="thinking-line" className="flex items-center gap-1.5 text-subtle text-12">
         <Icon name="cpu" size={12} />
         <span>{label}</span>
       </div>
@@ -75,7 +75,7 @@ export function ThinkingLine({
         data-testid="thinking-line-toggle"
         aria-expanded={open}
         onClick={toggle}
-        className="flex w-fit items-center gap-1.5 rounded text-subtle hover:text-default"
+        className="flex w-fit items-center gap-1.5 rounded-sm text-subtle hover:text-fg"
         style={{ fontSize: "var(--text-12)" }}
       >
         <Icon name="cpu" size={12} />

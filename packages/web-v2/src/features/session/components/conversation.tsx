@@ -6,17 +6,18 @@
 // thinking / text / tool / todos blocks with a streaming caret on the live tail.
 import { useEffect, useRef, useState } from "react";
 import { Button, Icon, StreamingText, Textarea } from "@/design";
+import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { AttachmentList } from "@/features/attachments/components/attachment-list";
+import { AttachmentList } from "@/features/attachments";
 import { UnsupportedBlock, VisualBlockView } from "@/features/visual-blocks";
-import { useBlockInstants } from "@/features/visual-blocks/instants";
+import { useBlockInstants } from "@/features/visual-blocks";
 import { readProseInstants } from "@/lib/i18n/instants";
 import { disclosureKeys, useThreadDisclosures } from "../disclosure";
 import { foldTurn } from "../fold";
 import { AGENT_COLUMN, USER_BUBBLE } from "../layout";
 import type { AgentTodo, ConversationItem, RenderBlock } from "../types";
 import { ThinkingLine } from "./thinking-line";
-import { ToolCard } from "./tool-card";
+import { ToolCall } from "./tool-call";
 
 export interface ConversationActions {
   onRegenerate?: ((turnId: string) => void) | undefined;
@@ -55,29 +56,34 @@ function saidOnly(items: ConversationItem[]): ConversationItem[] {
   });
 }
 
-const TODO_ICON: Record<AgentTodo["status"], { name: "check" | "play" | "dot"; color: string }> = {
-  completed: { name: "check", color: "var(--green-600)" },
-  in_progress: { name: "play", color: "var(--accent)" },
-  pending: { name: "dot", color: "var(--fg-subtle)" },
+const TODO_ICON: Record<AgentTodo["status"], { name: "check" | "play" | "dot"; tone: string }> = {
+  completed: { name: "check", tone: "text-ok-11" },
+  in_progress: { name: "play", tone: "text-accent" },
+  pending: { name: "dot", tone: "text-subtle" },
 };
 
 function TodoList({ todos }: { todos: AgentTodo[] }) {
   const t = useCopy();
   if (todos.length === 0) return null;
+  // the agent rewrites the whole list each turn and two todos may share a content, so a todo is
+  // its content and which time that content appears
+  const seen = new Map<string, number>();
+  const keyed = todos.map((todo) => {
+    const nth = (seen.get(todo.content) ?? 0) + 1;
+    seen.set(todo.content, nth);
+    return { todo, key: `${todo.content}#${nth}` };
+  });
   return (
-    <div className="rounded-md border border-line bg-surface px-3 py-2">
+    <div className="border-l-2 border-line px-3 py-1.5">
       <p className="fg-caption mb-1.5">{t("sessions.thread.taskList")}</p>
       <ul className="space-y-1">
-        {todos.map((todo, i) => {
+        {keyed.map(({ todo, key }) => {
           const ic = TODO_ICON[todo.status];
+          const done = todo.status === "completed";
           return (
-            // biome-ignore lint/suspicious/noArrayIndexKey: the agent rewrites the whole list each turn, and two todos may share a content
-            <li key={`${todo.content}-${i}`} className="flex items-start gap-2">
-              <Icon name={ic.name} size={13} className="mt-0.5 flex-none" style={{ color: ic.color }} />
-              <span
-                className="fg-body-sm"
-                style={{ textDecoration: todo.status === "completed" ? "line-through" : undefined, color: todo.status === "completed" ? "var(--fg-subtle)" : undefined }}
-              >
+            <li key={key} className="flex items-start gap-2">
+              <Icon name={ic.name} size={13} className={cn("mt-0.5 flex-none", ic.tone)} />
+              <span className={cn("fg-body-sm", done && "text-subtle line-through")}>
                 {todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
               </span>
             </li>
@@ -113,7 +119,7 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
 
   return (
     <div className="group flex flex-col items-end">
-      <div className={`${USER_BUBBLE} rounded-lg rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent`}>
+      <div className={`${USER_BUBBLE} rounded-md rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent`}>
         {editing ? (
           <div className="flex w-full flex-col gap-2" style={{ minWidth: 240 }}>
             <Textarea
@@ -168,15 +174,14 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
   );
 }
 
-function FoldRow({ label, onOpen }: { label: string; onOpen: () => void }) {
+function TurnFold({ label, onOpen }: { label: string; onOpen: () => void }) {
   return (
     <button
       type="button"
       data-testid="turn-fold"
       aria-expanded={false}
       onClick={onOpen}
-      className="flex w-fit items-center gap-1.5 rounded text-subtle hover:text-default"
-      style={{ fontSize: "var(--text-12)" }}
+      className="flex w-fit items-center gap-1.5 rounded-sm text-12 text-subtle hover:text-fg"
     >
       <Icon name="chevronRight" size={12} className="flex-none" />
       <span>{label}</span>
@@ -196,12 +201,12 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
   const [latched, setLatched] = useState(
     () => folded === true && disclosures?.atBottom !== false,
   );
-  const wasOld = useRef(folded === true);
+  const wasOldRef = useRef(folded === true);
   useEffect(() => {
     const old = folded === true;
-    if (old && !wasOld.current && disclosures?.atBottom !== false) setLatched(true);
-    if (!old && wasOld.current) setLatched(false);
-    wasOld.current = old;
+    if (old && !wasOldRef.current && disclosures?.atBottom !== false) setLatched(true);
+    if (!old && wasOldRef.current) setLatched(false);
+    wasOldRef.current = old;
   }, [folded, disclosures?.atBottom]);
   const keys = disclosureKeys(item.id, item.blocks);
 
@@ -239,7 +244,7 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
       );
     }
     return (
-      <ToolCard
+      <ToolCall
         key={block.tool.id ?? i}
         tool={block.tool}
         live={streamingTail}
@@ -254,7 +259,7 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
         {fold
           ? fold.rows.map((row) =>
               row.kind === "fold" ? (
-                <FoldRow key="fold" label={row.label} onOpen={() => setUnfolded(true)} />
+                <TurnFold key="fold" label={row.label} onOpen={() => setUnfolded(true)} />
               ) : (
                 renderBlock(row.block, row.index)
               ),

@@ -2,7 +2,7 @@
 import type { ReplyVerdict } from "@forge/contracts/reply-check";
 import { isAssistantTurnFailureCode } from "@forge/contracts/conversations";
 import type { OnboardingStatus, QuestionnaireView } from "@forge/contracts/onboarding";
-import { type CanonicalBlock, type MessageEntry, parseMessages, type RenderBlock } from "@/features/session/types";
+import { type CanonicalBlock, type MessageEntry, parseMessages, type RenderBlock } from "@/features/session";
 import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 import { formatDateTime } from "@/lib/i18n/format";
 
@@ -55,7 +55,7 @@ export type ConversationWindowDecision =
   | "handed-off"
   | "stopped";
 
-export interface ConversationRow {
+export interface ConversationListItem {
   id: string;
   adapter: ConversationAdapter;
   externalId: string;
@@ -209,7 +209,7 @@ export interface ConversationCandidates {
   handles: HandleCandidate[];
 }
 
-export interface ConversationDetail extends ConversationRow, ConversationMembership {
+export interface ConversationDetail extends ConversationListItem, ConversationMembership {
   messages: ConversationMessage[];
   windows: ConversationWindow[];
   agentMode: AgentModeOffer;
@@ -348,6 +348,22 @@ export function silenceSentence(reason: string, t: Copy = productCopy()): string
 }
 
 /**
+ * What a reply window shows where it closed: still pending (unless its reply is arriving live), handed
+ * to onboarding, an agent turn not yet delivered, or a silence; nothing for an answer or a posted status.
+ */
+function windowEntry(w: ConversationWindow, arriving: boolean, turn: AgentTurn | undefined): ThreadEntry | null {
+  if (!w.closedAt) return arriving ? null : { kind: "pending", key: w.id };
+  if (w.decision === "handed-off") {
+    const job = toOnboardingJob(w.decisionDetail);
+    if (job) return { kind: "handed", key: w.id, reason: job };
+    if (!turn) return { kind: "pending", key: w.id };
+    return turn.state === "delivered" ? null : { kind: "agent-turn", key: w.id, turn };
+  }
+  if (w.decision && w.decision !== "answered" && !statusPosted(w.decisionDetail)) return { kind: "silence", key: w.id, decision: w.decision, detail: w.decisionDetail };
+  return null;
+}
+
+/**
  * The thread, with every silence in the place it happened.
  */
 export function threadEntries(
@@ -374,18 +390,8 @@ export function threadEntries(
   for (const message of ordered) {
     out.push({ kind: "said", key: message.id, message });
     for (const w of bySeq.get(message.seq) ?? []) {
-      if (!w.closedAt) {
-        if (w.id !== arriving) out.push({ kind: "pending", key: w.id });
-      }
-      else if (w.decision === "handed-off" && toOnboardingJob(w.decisionDetail)) {
-        out.push({ kind: "handed", key: w.id, reason: toOnboardingJob(w.decisionDetail) as string });
-      } else if (w.decision === "handed-off") {
-        const turn = turnByWindow.get(w.id);
-        if (turn && turn.state !== "delivered")
-          out.push({ kind: "agent-turn", key: w.id, turn });
-        else if (!turn) out.push({ kind: "pending", key: w.id });
-      } else if (w.decision && w.decision !== "answered" && !statusPosted(w.decisionDetail))
-        out.push({ kind: "silence", key: w.id, decision: w.decision, detail: w.decisionDetail });
+      const entry = windowEntry(w, w.id === arriving, turnByWindow.get(w.id));
+      if (entry) out.push(entry);
     }
   }
   const asked = outbox.filter((m) => m.state === "sent");
@@ -398,7 +404,7 @@ export function threadEntries(
 
 /** A conversation's name, or the first thing said in it. */
 /** A room's name: its title, else its first words, else `untitled` (the caller's words for a room with neither). */
-export function conversationTitle(row: ConversationRow, firstSaid?: string | null, untitled = "New conversation"): string {
+export function conversationTitle(row: ConversationListItem, firstSaid?: string | null, untitled = "New conversation"): string {
   const named = row.title?.trim();
   if (named) return named;
   const said = firstSaid?.trim();

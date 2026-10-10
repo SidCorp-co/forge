@@ -49,6 +49,12 @@ describe("the feedback About picker", () => {
     await waitFor(() => expect(options()).toEqual(["Requirement", "Issue", "Release", "Workflow", "API route or tool", "Screen"]));
   });
 
+  it("holds the title to the length core keeps, so a pasted title never reaches the refusal (FB-118)", async () => {
+    core(() => undefined);
+    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    expect(screen.getByLabelText(/^Title/).getAttribute("maxlength")).toBe("300");
+  });
+
   it("does not offer Issue to a reader who is not a member", async () => {
     core((c) => (c.path === "/projects" ? { body: [{ id: "p1", role: "viewer" }] } : undefined));
     renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);

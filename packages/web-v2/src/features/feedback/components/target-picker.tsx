@@ -3,10 +3,10 @@
 import { FEEDBACK_TARGET_TYPES } from "@forge/contracts/feedback";
 import { useEffect, useId, useState } from "react";
 import { enumLabel, Input, NativeSelect } from "@/design";
-import { type IssuePick, IssuePicker } from "@/features/issue-picker/issue-picker";
+import { type IssuePick, IssuePicker } from "@/features/issue-picker";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { useProjects } from "@/features/projects/hooks";
-import { canWriteProject } from "@/features/projects/write-access";
+import { useProjects } from "@/features/projects";
+import { canWriteProject } from "@/features/projects";
 import type { TargetChoice } from "../api";
 import { useFeedbackChoices, useFeedbackEndpoints } from "../hooks";
 import type { FeedbackTargetType } from "../types";

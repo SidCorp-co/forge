@@ -211,7 +211,8 @@ issue (`CLOSE_ONLY_BY_RELEASE`), and needs the merge too (`CLOSE_REQUIRES_SHIPPE
 
 A design-only issue — its mark names design artifacts and nothing else, no commit and no read paths
 (`packages/core/src/issues/design-delivery.ts:designOnlyMarkSql`) — ships nothing a release carries.
-An agent closes it from any live status once every design revision it delivers is approved, the
+An agent closes it from any live status but a park (a park returns first, REQ-2 BC-9) once every
+design revision it delivers is approved, the
 `design_delivered` edge (`DESIGN_NOT_DELIVERED` otherwise); from `awaiting_release` the release guard
 takes the same delivery. The approval itself still moves no status. A release roster leaves such an
 issue out, and a release batch naming only design-only issues is refused `RELEASE_ALL_DESIGN_ONLY`

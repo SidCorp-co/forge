@@ -3,6 +3,7 @@
 import type { ExecutionFacts } from "@forge/contracts/report-executions";
 import type { BlockSource } from "@forge/contracts/visual-blocks";
 import { useState } from "react";
+import { keyedByContent, useNow } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useBlockInstants } from "./instants";
 import type { SourceFacts } from "./context";
@@ -11,15 +12,16 @@ import type { SourceFacts } from "./context";
  * The read time as the thread says a turn's time: the clock alone for a read today, the date and
  * clock for an older one, the full date and time on hover.
  */
-function useReadAt(iso: string, now: Date = new Date()): { label: string; full: string } {
+function useReadAt(iso: string): { label: string; full: string } {
   const time = useTimeFormat();
+  const now = new Date(useNow(60_000));
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return { label: iso, full: iso };
   const today = time.date(at) === time.date(now);
   return { label: today ? time.clock(at) : time.dateTime(at), full: time.dateTime(at) };
 }
 
-const LINE = "mt-1 text-[11px] text-subtle";
+const LINE = "mt-1 text-12 text-subtle";
 
 /** A setting's name as a person reads it: "windowDays" and "window_days" both read "window days". */
 const settingName = (key: string): string =>
@@ -65,12 +67,12 @@ function RunSource({ runId, facts }: { runId: string; facts: SourceFacts }) {
       ? null
       : settings.length === 0
         ? t("visual.source.settings.none")
-        : t("visual.source.settings", { list: settings.map(([k, v]) => `${settingName(k)} ${settingValue(v, instants.instant)}`).join(" · ") });
+        : t("visual.source.settings", { list: settings.map(([k, v]) => `${settingName(k)} ${settingValue(v, (iso) => instants.instant(iso))}`).join(" · ") });
   return (
     <div className={LINE} data-testid="visual-block-source">
       <button
         type="button"
-        className="text-left hover:text-muted focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        className="text-left hover:text-muted focus-visible:outline-none focus-visible:shadow-focus"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         data-testid="visual-block-source-toggle"
@@ -117,7 +119,7 @@ function ExecutionSource({ executionId, execution }: { executionId: string; exec
     <div className={LINE} data-testid="visual-block-source">
       <button
         type="button"
-        className="text-left hover:text-muted focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        className="text-left hover:text-muted focus-visible:outline-none focus-visible:shadow-focus"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         data-testid="visual-block-source-toggle"
@@ -147,10 +149,9 @@ function ExecutionSource({ executionId, execution }: { executionId: string; exec
             <p className="m-0">{t("visual.source.readNothing")}</p>
           ) : (
             <ul className="m-0 list-none p-0 font-mono" data-testid="visual-block-reads">
-              {reads.map((r, i) => (
-                // the same path can be read twice in one run, so the position is part of what a read is
-                // biome-ignore lint/suspicious/noArrayIndexKey: a run's reads are fixed once recorded
-                <li key={i}>
+              {keyedByContent(reads, (r) => `${r.method} ${r.path}`).map(({ key, item: r }) => (
+                // the same path can be read twice in one run: the nth read of it is what a read is
+                <li key={key}>
                   {r.method} {r.path} {r.refused ? t("visual.source.readRefused", { code: r.refused }) : r.status}
                 </li>
               ))}

@@ -3,18 +3,19 @@
 // A project's Sessions index under the Agents shell (ISS-291). Rows link to the
 // session detail (`/projects/:slug/agents/:id`) and back to their issue (ISS-331).
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   EmptyState,
   ErrorState,
   PageContainer,
   Pagination,
   SegmentedControl,
-  SessionRowSkeleton,
+  LoadingState,
+  useNow,
   type SegmentOption,
 } from "@/design";
-import { useIssue } from "@/features/issues/detail-hooks";
-import { useProject } from "@/features/projects/hooks";
+import { useIssue } from "@/features/issues";
+import { useProject } from "@/features/projects";
 import { formatRefusal } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -78,10 +79,7 @@ export function SessionsScreen({
   // A device id resolves to its name through the project's pool; an unknown id renders as a short MonoTag.
   const projectDetailQ = useProject(projectId);
   const slug = projectDetailQ.data?.slug;
-  const deviceNameById = useMemo(
-    () => new Map((projectDetailQ.data?.devicePool ?? []).map((d) => [d.id, d.name] as const)),
-    [projectDetailQ.data],
-  );
+  const deviceNameById = new Map((projectDetailQ.data?.devicePool ?? []).map((d) => [d.id, d.name] as const));
 
   // The event-router invalidates ['agent-sessions'] on this room's events.
   useRoom(projectRoom(projectId));
@@ -93,28 +91,25 @@ export function SessionsScreen({
   const sweep = useSweepZombies();
 
   // ISS-465 — kind counts come from the page before the kind filter.
-  const kindRows = useMemo(() => sessionsQ.data?.items ?? [], [sessionsQ.data]);
-  const rows = useMemo(() => kindRows.filter((r) => matchesKind(kind, r)), [kindRows, kind]);
+  const kindRows = sessionsQ.data?.items ?? [];
+  const rows = kindRows.filter((r) => matchesKind(kind, r));
 
-  const now = Date.now();
-  const displays = useMemo(
-    () => rows.map((r) => deriveSessionDisplayStatus(r, stuck)),
-    [rows, stuck],
-  );
+  const now = useNow(30_000);
+  const displays = rows.map((r) => deriveSessionDisplayStatus(r, stuck));
 
-  const stats = useMemo(() => sessionStats(rows, displays, now), [rows, displays, now]);
-  const counts = useMemo(() => filterCounts(rows, displays), [rows, displays]);
+  const stats = sessionStats(rows, displays, now);
+  const counts = filterCounts(rows, displays);
 
-  const visibleRows = useMemo(() => {
+  const visibleRows = (() => {
     return rows
       .map((r, i) => ({ row: r, display: displays[i] }))
       .filter(({ row, display }) => matchesFilter(filter, row, display))
       .map(({ row }) => row);
-  }, [rows, displays, filter]);
+  })();
 
   // A pure derivation so it can be tested without a browser; session-tree.ts
   // says what happens to a row whose owner a filter excluded.
-  const treeRows = useMemo(() => orderByOwner(visibleRows), [visibleRows]);
+  const treeRows = orderByOwner(visibleRows);
 
   const filterOptions: SegmentOption<SessionFilter>[] = FILTERS.map((f) => ({
     value: f,
@@ -167,20 +162,13 @@ export function SessionsScreen({
         )}
       </div>
 
-      {sessionsQ.isLoading && (
-        <div className="border-t border-line">
-          {Array.from({ length: 6 }).map((_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length placeholder list that never reorders
-            <SessionRowSkeleton key={i} />
-          ))}
-        </div>
-      )}
+      {sessionsQ.isLoading && <LoadingState label={t("sessions.loading")} rows={6} />}
 
       {issueQ.isError && (
         <ErrorState
           title={t("sessions.issueReadFailed")}
           message={formatRefusal(issueQ.error)}
-          onRetry={() => issueQ.refetch()}
+          onRetry={() => void issueQ.refetch()}
         />
       )}
 
@@ -188,7 +176,7 @@ export function SessionsScreen({
         <ErrorState
           title={t("sessions.loadFailed")}
           message={formatRefusal(sessionsQ.error)}
-          onRetry={() => sessionsQ.refetch()}
+          onRetry={() => void sessionsQ.refetch()}
         />
       )}
 

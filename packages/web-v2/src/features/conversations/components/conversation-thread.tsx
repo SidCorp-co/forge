@@ -16,31 +16,18 @@
 import { useState } from "react";
 import { Icon } from "@/design";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
-import { isStructured, StructuredMessage } from "@/features/onboarding/components/thread-blocks";
-import { Conversation } from "@/features/session/components/conversation";
-import { DisclosureScope } from "@/features/session/disclosure";
-import { USER_BUBBLE } from "@/features/session/layout";
-import { settingsHref } from "@/features/project-settings/sections";
+import { isStructured, StructuredMessage } from "@/features/onboarding";
+import { DisclosureScope } from "@/features/session";
+import { USER_BUBBLE } from "@/features/session";
+import { settingsHref } from "@/features/project-settings";
 import { SaveTemplateReport, ShareAction, shareSubjectOf, templateSaveOf } from "@/features/shares";
-import { executionFactsIn, runFactsIn, VisualBlockProvider, VisualBlockView } from "@/features/visual-blocks";
-import { type CanonicalBlock, type MessageEntry, parseMessages } from "@/features/session/types";
-import { type Correction, withoutCorrections } from "../corrections";
+import { executionFactsIn, runFactsIn, VisualBlockProvider } from "@/features/visual-blocks";
+import { type MessageEntry } from "@/features/session";
 import { TurnDecisions } from "../turn-decisions";
-import { TurnReproduce } from "@/features/previews/reproduce-turn";
-import {
-  AGENT_TURN_LABEL,
-  type AgentTurn,
-  type AgentTurnState,
-  type ConversationMessage,
-  type ConversationWindow,
-  type ConversationProgressEntry,
-  type OutboxMessage,
-  silenceDetailSentence,
-  silenceSentence,
-  threadEntries,
-  turnFailureOf,
-  undeliveredReplyOf,
-} from "../types";
+import { TurnReproduce } from "@/features/previews";
+import { type AgentTurn, type ConversationMessage, type ConversationWindow, type ConversationProgressEntry, type OutboxMessage, silenceDetailSentence, silenceSentence, threadEntries, turnFailureOf, undeliveredReplyOf } from "../types";
+import { AgentTurnEntry, LiveTurn } from "./thread-turns";
+import { AssistantTurn, ReplacedDraftNote } from "./assistant-turn";
 
 /**
  * One stored row as the canonical entry every renderer here reads.
@@ -55,67 +42,8 @@ function entryOf(message: ConversationMessage): MessageEntry {
   };
 }
 
-function AssistantTurn({
-  entry,
-  streaming,
-  newestAgentId,
-}: {
-  entry: MessageEntry;
-  streaming?: boolean;
-  /** The thread's newest assistant turn — every turn above it folds its machinery (ISS-1083). */
-  newestAgentId?: string;
-}) {
-  const { entry: prose, corrections } = withoutCorrections(entry);
-  const items = parseMessages([prose]);
-  if (items.length === 0 && corrections.length === 0) return null;
-  return (
-    <>
-      {items.length > 0 && (
-        <Conversation
-          items={items}
-          readOnly
-          streaming={streaming}
-          {...(newestAgentId ? { newestAgentId } : {})}
-        />
-      )}
-      {corrections.map((c) => (
-        <CorrectionLine key={c.line} correction={c} />
-      ))}
-    </>
-  );
-}
 
-function CorrectionLine({ correction }: { correction: Correction }) {
-  const t = useCopy();
-  return (
-    <div
-      role="alert"
-      data-testid="thread-correction"
-      className="flex items-start gap-2 rounded-md border px-3 py-2"
-      style={{ borderColor: "var(--red-500)", background: "var(--red-50)" }}
-    >
-      <Icon name="alert" size={15} className="mt-0.5 flex-none text-[color:var(--red-600)]" />
-      <p className="fg-body-sm text-fg">
-        <span className="font-semibold">{t("shell.thread.correction")}</span> {t("shell.thread.refused", { what: correction.what })} (
-        <span className="font-mono">{correction.code}</span>){t("shell.thread.writtenNothing")}
-      </p>
-    </div>
-  );
-}
 
-/**
- * The one trace a replaced draft leaves: a line saying it was replaced, and by which rule. The
- * draft's words are not here, because nobody in the room is shown what the reply check withdrew.
- */
-function ReplacedDraftNote() {
-  const t = useCopy();
-  return (
-    <p className="fg-caption flex items-start gap-2 text-subtle" data-testid="thread-reply-withdrawn">
-      <Icon name="alert" size={13} className="mt-0.5 flex-none" />
-      <span>{t("shell.thread.withdrawn")}</span>
-    </p>
-  );
-}
 
 /** The clock a reader needs beside a turn: when, in the interface language. */
 function spokenAt(iso: string, time: ReturnType<typeof useTimeFormat>): { label: string; title: string } {
@@ -258,7 +186,7 @@ function Said({
     return (
       <div className="flex flex-col items-end">
         {message.content && (
-          <div className={`${USER_BUBBLE} rounded-lg rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent`}>
+          <div className={`${USER_BUBBLE} rounded-md rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent`}>
             <p className="fg-body whitespace-pre-wrap text-on-accent">{message.content}</p>
           </div>
         )}
@@ -287,7 +215,7 @@ function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string)
     <div className="flex flex-col items-end" data-testid={`thread-outbox-${item.state}`}>
       {item.content && (
         <div
-          className={`${USER_BUBBLE} rounded-lg rounded-br-sm px-3.5 py-2.5 ${
+          className={`${USER_BUBBLE} rounded-md rounded-br-sm px-3.5 py-2.5 ${
             failed
               ? "border border-danger bg-surface"
               : item.state === "sent"
@@ -419,7 +347,7 @@ export function ConversationThread({
             />
             {afterEntry?.(entry.progress.entry.id ?? "live")}
             {entry.progress.verdict && entry.progress.verdict !== "withheld" && (
-              <TurnDecisions blocks={entry.progress.entry.blocks as CanonicalBlock[] | undefined} slug={projectSlug} />
+              <TurnDecisions blocks={entry.progress.entry.blocks} slug={projectSlug} />
             )}
             </div>
           );
@@ -452,138 +380,4 @@ export function ConversationThread({
   );
 }
 
-/** Whether an entry carries prose — in the asker's view before the verdict, a draft. */
-function carriesProse(entry: MessageEntry): boolean {
-  return (entry.blocks ?? []).some((b) => b.type === "text" && !!b.text) || (typeof entry.content === "string" && entry.content.trim() !== "");
-}
 
-/**
- * The turn running right now, in the view core sent this reader. The person it answers sees the
- * draft as it streams, labelled unchecked until the verdict replaces it with the reply or takes it
- * back; every other reader is sent only that it works and the tools it ran (REQ-32 criterion 6).
- */
-function LiveTurn({
-  progress,
-  withdrawn,
-  newestAgentId,
-}: {
-  progress: ConversationProgressEntry;
-  withdrawn?: boolean;
-  newestAgentId?: string;
-}) {
-  const t = useCopy();
-  if (progress.view === "room") return <RoomLiveTurn progress={progress} />;
-  const draft = !progress.verdict && carriesProse(progress.entry);
-  return (
-    <div className="flex flex-col gap-2" data-testid="thread-live-turn" data-live-view="asker">
-      {withdrawn && <ReplacedDraftNote />}
-      {draft && (
-        <p className="fg-caption flex items-center gap-1.5 text-subtle" data-testid="thread-live-draft">
-          <Icon name="alert" size={12} className="flex-none" />
-          {t("conversations.live.draft")}
-        </p>
-      )}
-      {progress.verdict === "withheld" && (
-        <p className="fg-body-sm text-muted" data-testid="thread-live-withheld">
-          {t("conversations.live.withheld")}
-        </p>
-      )}
-      <AssistantTurn
-        entry={progress.entry}
-        streaming={!progress.replaced && !progress.verdict}
-        {...(newestAgentId ? { newestAgentId } : {})}
-      />
-    </div>
-  );
-}
-
-/** A turn somebody else asked: that it works, and the tools it ran by name and time — nothing it said. */
-function RoomLiveTurn({ progress }: { progress: ConversationProgressEntry }) {
-  const t = useCopy();
-  const time = useTimeFormat();
-  const tools = progress.tools ?? [];
-  return (
-    <div className="flex flex-col gap-1" data-testid="thread-live-turn" data-live-view="room">
-      <p className="fg-body-sm text-muted">{t("conversations.live.working")}</p>
-      {tools.length > 0 && (
-        <ul className="flex flex-col divide-y divide-line-subtle border-y border-line-subtle">
-          {tools.map((tool) => (
-            <li key={tool.id} className="flex items-center gap-2 py-1" data-testid="thread-live-tool">
-              <Icon
-                name={tool.isError ? "alert" : "dot"}
-                size={12}
-                className="flex-none"
-                style={{ color: tool.isError ? "var(--red-600)" : "var(--fg-subtle)" }}
-              />
-              <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-12)" }}>{tool.name}</span>
-              <span className="flex-none font-mono text-subtle" style={{ fontSize: "var(--text-11)" }}>
-                {!tool.done
-                  ? t("conversations.live.toolRunning")
-                  : typeof tool.durationMs === "number"
-                    ? tool.durationMs >= 1000
-                      ? t("conversations.live.toolSeconds", { n: time.number(Number((tool.durationMs / 1000).toFixed(1))) })
-                      : t("conversations.live.toolMs", { n: tool.durationMs })
-                    : null}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-/**
- * A runner-hosted turn, in whichever of its states it is in.
- */
-function AgentTurnEntry({ turn, projectSlug }: { turn: AgentTurn; projectSlug?: string | undefined }) {
-  const t = useCopy();
-  const [open, setOpen] = useState(false);
-  const failed = turn.state === "failed";
-  const held = turn.held?.reply ? turn.held : null;
-  return (
-    <div
-      data-testid="thread-agent-turn"
-      data-agent-turn-state={turn.state}
-      className="rounded-md border border-line bg-surface px-3 py-2"
-    >
-      <p className="fg-body-sm text-muted">
-        {t(AGENT_TURN_LABEL[turn.state as Exclude<AgentTurnState, "delivered">])}
-      </p>
-      {failed && turn.reason && <p className="fg-body-sm mt-1 text-fg">{turn.reason}</p>}
-      {failed && (
-        <p className="fg-caption mt-1 text-subtle" data-testid="thread-agent-turn-next">
-          {turn.nextStep ?? t("conversations.agentTurn.askAgain")}
-        </p>
-      )}
-      {held && (
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
-          className="fg-body-sm mt-1 underline underline-offset-2 hover:text-fg"
-          data-testid="thread-held-reply-toggle"
-        >
-          {t(open ? "conversations.agentTurn.hideHeld" : "conversations.agentTurn.showHeld")}
-        </button>
-      )}
-      {held && open && (
-        <div className="mt-2 border-t border-line pt-2" data-testid="thread-held-reply">
-          <p className="fg-caption text-subtle">{t("conversations.agentTurn.heldBy", { reason: held.reason })}</p>
-          <p className="fg-body-sm mt-1 whitespace-pre-wrap text-fg">{held.reply}</p>
-          {held.blocks && held.blocks.length > 0 && (
-            // the blocks the session drew for this reply, held with it: nobody else in the room sees them
-            <VisualBlockProvider value={{ projectSlug, sourceFacts: runFactsIn([{ blocks: held.blocks }]), executionFacts: executionFactsIn([{ blocks: held.blocks }]) }}>
-              <div className="mt-2 flex flex-col gap-3" data-testid="thread-held-blocks">
-                {held.blocks.map((b, i) => (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: the held reply's block order is fixed
-                  <VisualBlockView key={i} block={b.visual} />
-                ))}
-              </div>
-            </VisualBlockProvider>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}

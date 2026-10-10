@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Badge, enumLabel, StatusBadge, statusReading } from "@/design";
-import { AskAboutThis } from "@/features/chat-dock/ask-about-this";
+import { AskAboutThis } from "@/features/chat-dock";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useDocument, useThread } from "../hooks";
@@ -11,7 +11,7 @@ import { ecosystemRoutes } from "../routes";
 import { type DocumentEvent, type DocumentView, TYPE_LABEL, type ThreadHold } from "../types";
 import { DocumentActions, type Role } from "./document-actions";
 import { DocumentBody } from "./document-body";
-import { GatePanel } from "./gate-panel";
+import { EcosystemGate } from "./gate-panel";
 import { Loading, UnreadNotice } from "./notices";
 import { AuthorLine, HoldLine, type Names, PeopleNames, useProjectNames } from "./people";
 
@@ -170,7 +170,7 @@ export function DocumentScreen({ projectId, slug, role, docRef }: { projectId: s
         <StateNotes view={view} slug={slug} held={held} names={names} />
 
         {view.side === "sender" && d.state === "submitted" ? (
-          <GatePanel projectId={projectId} slug={slug} questionId={view.gateQuestionId} />
+          <EcosystemGate projectId={projectId} slug={slug} questionId={view.gateQuestionId} />
         ) : null}
 
         <DocumentActions view={view} projectId={projectId} slug={slug} role={role} />

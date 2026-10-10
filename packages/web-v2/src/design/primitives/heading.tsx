@@ -43,6 +43,10 @@ export function PageTitle({ className, back, after, children, ...props }: PageTi
 }
 
 /** A section heading under the page title — an h2, one step below it. */
-export function SectionTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {
-  return <h2 className={rampOr("fg-h2", className)} {...props} />;
+export function SectionTitle({ className, children, ...props }: HTMLAttributes<HTMLHeadingElement>) {
+  return (
+    <h2 className={rampOr("fg-h2", className)} {...props}>
+      {children}
+    </h2>
+  );
 }

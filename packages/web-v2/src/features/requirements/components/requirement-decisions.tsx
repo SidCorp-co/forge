@@ -5,9 +5,9 @@
 // counted; then the answers its questions and its issues' questions took. Both stay folded until
 // opened (REQ-35 BC-7). Core rolls both up; the composer records a decision on the requirement itself.
 
-import { Collapsible, ErrorState, ProjectLoader } from "@/design";
-import { DecisionComposer, DecisionRow, FoldedDecisions } from "@/features/comments/components/decisions-panel";
-import { DecisionTarget } from "@/features/comments/components/decision-target";
+import { Disclosure, ErrorState, ProjectLoader } from "@/design";
+import { DecisionComposer, Decision, FoldedDecisions } from "@/features/comments";
+import { DecisionTarget } from "@/features/comments";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { DecisionMaker } from "@forge/contracts/comments";
@@ -15,7 +15,7 @@ import type { RequirementAnswerView } from "@forge/contracts/requirements";
 import { useState } from "react";
 import { useRequirementDecisions } from "../hooks";
 
-function AnswerRow({ a, slug }: { a: RequirementAnswerView; slug: string }) {
+function RecordedAnswer({ a, slug }: { a: RequirementAnswerView; slug: string }) {
   const t = useCopy();
   const time = useTimeFormat();
   return (
@@ -43,18 +43,18 @@ export function RequirementDecisions({ projectId, slug, reqKey }: { projectId: s
   const q = useRequirementDecisions(projectId, reqKey, by);
   if (q.isLoading) return <ProjectLoader label={t("common.decisions.loading")} />;
   if (q.isError || !q.data) {
-    return <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />;
+    return <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => void q.refetch() : undefined} />;
   }
   const { decisions, answers } = q.data;
   // the rows shown while a switch of whose decisions show loads are this requirement's previous ones
   const busy = q.isPlaceholderData;
   return (
     <div data-testid="requirement-decisions">
-      <Collapsible title={t("requirements.tab.decisions")} count={decisions.length}>
+      <Disclosure title={t("requirements.tab.decisions")} count={decisions.length}>
         {decisions.length ? (
           <ul className={busy ? "grid opacity-60" : "grid"} aria-busy={busy || undefined} data-testid="decision-rows">
             {decisions.map((c) => (
-              <DecisionRow key={c.id} c={c} onTarget={c.target.key === reqKey ? undefined : <DecisionTarget slug={slug} target={c.target} />} />
+              <Decision key={c.id} c={c} onTarget={c.target.key === reqKey ? undefined : <DecisionTarget slug={slug} target={c.target} />} />
             ))}
           </ul>
         ) : (
@@ -63,19 +63,19 @@ export function RequirementDecisions({ projectId, slug, reqKey }: { projectId: s
         <div className="mt-2">
           <FoldedDecisions by={q.data.by} folded={q.data.folded} onBy={setBy} busy={busy} />
         </div>
-      </Collapsible>
+      </Disclosure>
       <div className="-mt-px">
-        <Collapsible title={t("requirements.decisions.answers")} count={answers.length}>
+        <Disclosure title={t("requirements.decisions.answers")} count={answers.length}>
           {answers.length ? (
             <ul className="grid">
               {answers.map((a) => (
-                <AnswerRow key={a.questionId} a={a} slug={slug} />
+                <RecordedAnswer key={a.questionId} a={a} slug={slug} />
               ))}
             </ul>
           ) : (
             <p className="text-13 text-subtle">{t("requirements.decisions.noAnswers")}</p>
           )}
-        </Collapsible>
+        </Disclosure>
       </div>
       <div className="mt-4">
         <DecisionComposer projectId={projectId} scope="requirement" targetRef={reqKey} />

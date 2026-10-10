@@ -3,7 +3,10 @@
 import { HEALTH_MARKER_KINDS, type WorkflowHealth } from "@forge/contracts/workflow-health";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
-import { Fact, FactsEmpty, FactsGroup, StatusBadge, useRecordView } from "@/design";
+import { useRouter } from "next/navigation";
+import { Button, Fact, FactsEmpty, FactsGroup, StatusBadge, useRecordView } from "@/design";
+import { formatApiError } from "@/lib/api/error";
+import { refusalsOf } from "@/lib/api/refusals";
 import { TONE_META } from "@/design/status";
 import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
@@ -11,6 +14,7 @@ import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i1
 import { said } from "@/lib/i18n/said";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { revisionReason } from "../decision-words";
+import { useDraftRequirementFromDesign } from "../hooks";
 import { markersByKind, sourceHref, targetWords } from "../health";
 import type { WorkflowBody, WorkflowDesign, WorkflowRecord } from "../types";
 import { HealthMark } from "./health-parts";
@@ -30,7 +34,7 @@ function HealthGroup({ health, slug, projectId, canDecide }: { health: WorkflowH
   return (
     <FactsGroup title={t("workflows.col.health")} count={total ? t("workflows.facts.markers", { n: total }) : undefined} testId="facts-health">
       {!health.rooted.rooted ? (
-        <p className="mb-2 text-12-5 text-muted" data-testid="health-unrooted">
+        <p className="mb-2 text-13 text-muted" data-testid="health-unrooted">
           {t("workflows.facts.unrooted", {
             why: health.rooted.missing
               .map((m) => (m === "approved_revision" ? t("workflows.facts.noApproved") : t("workflows.facts.noRequirement")))
@@ -38,25 +42,25 @@ function HealthGroup({ health, slug, projectId, canDecide }: { health: WorkflowH
           })}
         </p>
       ) : health.observation === null ? (
-        <p className="mb-2 text-12-5 text-muted" data-testid="health-not-observed">
+        <p className="mb-2 text-13 text-muted" data-testid="health-not-observed">
           {t("workflows.facts.notObserved")}
         </p>
       ) : (
-        <p className="mb-2 text-12-5 text-muted" title={time.dateTime(health.observation.createdAt)} data-testid="health-observed">
+        <p className="mb-2 text-13 text-muted" title={time.dateTime(health.observation.createdAt)} data-testid="health-observed">
           {t("workflows.facts.observedAt")} <span className="font-mono">{health.observation.atSha.slice(0, 8)}</span>{" "}
           {t("workflows.facts.againstR", { r: health.observation.revision })} · {time.relative(health.observation.createdAt)}
         </p>
       )}
       <ul className="grid grid-cols-2 gap-x-3 gap-y-1" data-testid="health-counts">
         {HEALTH_MARKER_KINDS.map((k) => (
-          <li key={k} className="flex min-w-0 items-center justify-between gap-2 text-12-5" data-kind={k} title={k}>
+          <li key={k} className="flex min-w-0 items-center justify-between gap-2 text-13" data-kind={k} title={k}>
             <span className={health.counts[k] ? "text-fg" : "text-subtle"}>{label("healthMarker", k)}</span>
             <span className={`font-mono tabular-nums ${health.counts[k] ? "font-semibold" : "text-subtle"}`}>{health.counts[k]}</span>
           </li>
         ))}
       </ul>
       {health.needsYou > 0 ? (
-        <p className="mt-2 text-12-5 font-semibold text-accent-text" data-testid="health-needs-you">
+        <p className="mt-2 text-13 font-semibold text-accent-text" data-testid="health-needs-you">
           {t("workflows.facts.needsPerson", { n: health.needsYou })}
         </p>
       ) : null}
@@ -64,14 +68,14 @@ function HealthGroup({ health, slug, projectId, canDecide }: { health: WorkflowH
         <div className="mt-2.5 border-t border-line-subtle" data-testid="health-markers">
           {groups.map((g) => (
             <details key={g.kind} className="border-b border-line-subtle py-1.5" data-kind={g.kind}>
-              <summary className="flex cursor-pointer select-none items-center gap-2 text-12-5">
+              <summary className="flex cursor-pointer select-none items-center gap-2 text-13">
                 <HealthMark kind={g.kind} />
               </summary>
               <ul className="mt-1 grid">
                 {g.markers.map((m) => {
                   const href = sourceHref(slug, health.flow, m.source);
                   return (
-                    <li key={`${m.rule}:${m.source.type}:${m.source.key}:${targetWords(m.target, t)}`} className="grid gap-0.5 border-t border-line-subtle py-1.5 text-12-5 first:border-t-0" data-testid="health-marker">
+                    <li key={`${m.rule}:${m.source.type}:${m.source.key}:${targetWords(m.target, t)}`} className="grid gap-0.5 border-t border-line-subtle py-1.5 text-13 first:border-t-0" data-testid="health-marker">
                       <span className="flex min-w-0 items-center gap-1.5">
                         {href ? (
                           <Link href={href} className="flex-none font-mono text-12 font-semibold text-link hover:underline" title={`${m.source.type} · ${m.rule}`}>
@@ -106,7 +110,7 @@ function ReconciliationGroup({ health, slug }: { health: WorkflowHealth; slug: s
   const r = health.reconciliation;
   return (
     <FactsGroup title={t("workflows.facts.reconciliation")} testId="facts-reconciliation">
-      <p className="mb-2 flex min-w-0 items-start gap-2 text-12-5 text-muted" data-testid="reconciliation-state" data-state={r.state}>
+      <p className="mb-2 flex min-w-0 items-start gap-2 text-13 text-muted" data-testid="reconciliation-state" data-state={r.state}>
         <span className="flex-none">
           <StatusBadge family="reconciliation" value={r.state} />
         </span>
@@ -114,7 +118,7 @@ function ReconciliationGroup({ health, slug }: { health: WorkflowHealth; slug: s
       </p>
       <Fact label={t("workflows.facts.version")} testId="reconciliation-version">
         {r.version ? (
-          <span className="font-mono text-12-5" title={r.version.releasedAt ? t("workflows.facts.releasedAt", { at: time.dateTime(r.version.releasedAt) }) : undefined}>
+          <span className="font-mono text-13" title={r.version.releasedAt ? t("workflows.facts.releasedAt", { at: time.dateTime(r.version.releasedAt) }) : undefined}>
             {r.version.version}
           </span>
         ) : (
@@ -125,7 +129,7 @@ function ReconciliationGroup({ health, slug }: { health: WorkflowHealth; slug: s
         {r.criteria.total === 0 ? (
           <span className="text-muted">{t("workflows.facts.noBc")}</span>
         ) : (
-          <span className="font-mono tabular-nums text-12-5">
+          <span className="font-mono tabular-nums text-13">
             {t("workflows.facts.of", { a: r.criteria.proven, b: r.criteria.total })}
           </span>
         )}
@@ -143,12 +147,38 @@ function ReconciliationGroup({ health, slug }: { health: WorkflowHealth; slug: s
   );
 }
 
-function Requirements({ d, slug, developer }: { d: WorkflowDesign; slug: string; developer: boolean }) {
+/**
+ * FB-86: a design no requirement roots offers to draft one from it: a requirement titled after the
+ * design and linked to it at birth, which the assistant then drafts from the design (REQ-34 BC-10).
+ */
+function DraftFromDesign({ projectId, slug, workflowId, flow, title }: { projectId: string; slug: string; workflowId: string; flow: string; title: string }) {
+  const t = useCopy();
+  const router = useRouter();
+  const create = useDraftRequirementFromDesign(projectId, workflowId);
+  const refused = create.error ? (refusalsOf(create.error)[0]?.detail ?? formatApiError(create.error)) : null;
+  return (
+    <div className="mt-2 grid gap-1">
+      <Button size="sm" variant="secondary" loading={create.isPending} onClick={() => create.mutate({ title, designs: [flow] }, { onSuccess: (r) => router.push(requirementHref(slug, r.key)) })} data-testid="draft-from-design">
+        {t("workflows.facts.draftRequirement")}
+      </Button>
+      {refused ? (
+        <p role="alert" className="text-13 text-danger-11">
+          {refused}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function Requirements({ d, slug, projectId, title, developer }: { d: WorkflowDesign; slug: string; projectId: string | undefined; title: string; developer: boolean }) {
   const t = useCopy();
   return (
     <FactsGroup title={t("workflows.facts.requirement")} count={d.requirements.length > 1 ? t("workflows.facts.linked", { n: d.requirements.length }) : undefined} testId="facts-requirement">
       {d.requirements.length === 0 ? (
-        <FactsEmpty>{t("workflows.facts.noRequirementLinks")}</FactsEmpty>
+        <>
+          <FactsEmpty>{t("workflows.facts.noRequirementLinks")}</FactsEmpty>
+          {projectId ? <DraftFromDesign projectId={projectId} slug={slug} workflowId={d.workflowId} flow={d.flow} title={title} /> : null}
+        </>
       ) : (
         <ul className="grid gap-1.5">
           {d.requirements.map((r) => (
@@ -179,7 +209,7 @@ function Pin({ r, approved }: { r: WorkflowDesign["requirements"][number]; appro
   const lags = approved !== null && pinned < approved;
   return (
     <span
-      className="flex-none font-mono text-11-5"
+      className="flex-none font-mono text-12"
       style={lags ? { color: TONE_META.attention.fg } : undefined}
       title={lags ? t("workflows.facts.pinLags", { key: r.key, r: pinned, approved }) : t("workflows.facts.pinned", { key: r.key, r: pinned })}
       data-testid="rail-requirement-pin"
@@ -197,7 +227,7 @@ function BuiltAgainst({ b, approved }: { b: WorkflowDesign["builds"][number]; ap
   const behind = approved !== null && b.builtAgainst < approved;
   return (
     <span
-      className="flex-none font-mono text-11-5"
+      className="flex-none font-mono text-12"
       style={behind ? { color: TONE_META.attention.fg } : undefined}
       title={behind ? t("workflows.facts.builtBehind", { r: b.builtAgainst, approved }) : t("workflows.facts.builtAgainst", { r: b.builtAgainst })}
       data-testid="rail-build-revision"
@@ -213,7 +243,7 @@ function BuildGate({ d, slug }: { d: WorkflowDesign; slug: string }) {
   const language = useInterfaceLanguage();
   return (
     <FactsGroup title={t("workflows.facts.buildGate")} count={d.builds.length ? t("workflows.facts.issues", { n: d.builds.length }) : undefined} testId="facts-build-gate">
-      <p className="mb-2 flex min-w-0 items-start gap-2 text-12-5 text-muted" data-testid="build-gate" data-open={d.gate.open}>
+      <p className="mb-2 flex min-w-0 items-start gap-2 text-13 text-muted" data-testid="build-gate" data-open={d.gate.open}>
         <span className="flex-none">
           <StatusBadge family="buildGate" value={d.gate.open ? "open" : "held"} />
         </span>
@@ -307,20 +337,48 @@ interface DesignFactsProps {
   projectId?: string | undefined;
 }
 
-export function WorkflowDesignFacts({ d, record, shown, shownRevision, template, slug, health, projectId }: DesignFactsProps) {
+/** Who approved the design: a person's view names them, the developer view the revision and its note too. */
+function ApprovedFact({ d, developer }: { d: WorkflowDesign; developer: boolean }) {
   const t = useCopy();
   const time = useTimeFormat();
   const language = useInterfaceLanguage();
+  const approved = d.revisions.find((r) => r.revision === d.approvedRevision) ?? null;
+  const approvedReason = approved ? revisionReason(approved, language) : null;
+  const approvedAt = approved?.decidedAt ? t("workflows.facts.approvedAt", { at: time.dateTime(approved.decidedAt) }) : undefined;
+  return (
+    <Fact label={t("workflows.facts.approved")} testId="fact-approved">
+      {approved && !developer ? (
+        <span title={approvedAt}>{approved.decidedByName ?? (approved.decidedAt ? time.relative(approved.decidedAt) : t("workflows.facts.approved"))}</span>
+      ) : approved ? (
+        <span className="grid min-w-0 basis-full gap-0.5">
+          <span title={approvedAt}>
+            {approved.decidedByName ? t("workflows.facts.revBy", { r: approved.revision, who: approved.decidedByName }) : t("workflows.facts.rev", { r: approved.revision })}
+          </span>
+          {approvedReason ? (
+            <span className="line-clamp-4 whitespace-pre-wrap break-words text-13 text-muted" title={approvedReason} data-testid="fact-approved-note">
+              {approvedReason}
+            </span>
+          ) : null}
+        </span>
+      ) : d.approvedRevision !== null ? (
+        <span>{developer ? t("workflows.facts.rev", { r: d.approvedRevision }) : t("workflows.facts.approved")}</span>
+      ) : (
+        <span className="text-muted">{t("workflows.facts.notApproved")}</span>
+      )}
+    </Fact>
+  );
+}
+
+export function WorkflowDesignProperties({ d, record, shown, shownRevision, template, slug, health, projectId }: DesignFactsProps) {
+  const t = useCopy();
+  const time = useTimeFormat();
   const [view] = useRecordView();
   const developer = view === "developer";
   const latest = d.revisions[0] ?? null;
-  const approved = d.revisions.find((r) => r.revision === d.approvedRevision) ?? null;
-  const approvedReason = approved ? revisionReason(approved, language) : null;
   const shownState = d.revisions.find((r) => r.revision === shownRevision)?.state ?? null;
   const owned = shown.steps.filter((s) => s.node?.owner).length;
   const deadlines = shown.steps.filter((s) => s.node?.sla).length;
   const unit = shown.kind === "state" ? "states" : "steps";
-  const approvedAt = approved?.decidedAt ? t("workflows.facts.approvedAt", { at: time.dateTime(approved.decidedAt) }) : undefined;
   return (
     <div data-testid="design-facts">
       {shown.summary ? (
@@ -331,35 +389,16 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
         </FactsGroup>
       ) : null}
       <PlainStatus d={d} health={health} />
-      <Requirements d={d} slug={slug} developer={developer} />
+      <Requirements d={d} slug={slug} projectId={projectId} title={shown.title} developer={developer} />
       <FactsGroup title={t("workflows.facts.properties")} testId="facts-properties">
         {/* the header badge says the design's state; the revision number and its state are the Developer view's (REQ-43 BC-5, BC-7) */}
         {developer ? (
           <Fact label={t("workflows.facts.revision")} testId="fact-revision">
-            <span className="font-mono text-12-5">r{shownRevision}</span>
+            <span className="font-mono text-13">r{shownRevision}</span>
             {shownState ? <StatusBadge family="designRevision" value={shownState} /> : null}
           </Fact>
         ) : null}
-        <Fact label={t("workflows.facts.approved")} testId="fact-approved">
-          {approved && !developer ? (
-            <span title={approvedAt}>{approved.decidedByName ?? (approved.decidedAt ? time.relative(approved.decidedAt) : t("workflows.facts.approved"))}</span>
-          ) : approved ? (
-            <span className="grid min-w-0 basis-full gap-0.5">
-              <span title={approvedAt}>
-                {approved.decidedByName ? t("workflows.facts.revBy", { r: approved.revision, who: approved.decidedByName }) : t("workflows.facts.rev", { r: approved.revision })}
-              </span>
-              {approvedReason ? (
-                <span className="line-clamp-4 whitespace-pre-wrap break-words text-12-5 text-muted" title={approvedReason} data-testid="fact-approved-note">
-                  {approvedReason}
-                </span>
-              ) : null}
-            </span>
-          ) : d.approvedRevision !== null ? (
-            <span>{developer ? t("workflows.facts.rev", { r: d.approvedRevision }) : t("workflows.facts.approved")}</span>
-          ) : (
-            <span className="text-muted">{t("workflows.facts.notApproved")}</span>
-          )}
-        </Fact>
+        <ApprovedFact d={d} developer={developer} />
         {developer ? (
           <Fact label={t("workflows.facts.approver")}>
             <span>{t("workflows.facts.approverAnyone")}</span>

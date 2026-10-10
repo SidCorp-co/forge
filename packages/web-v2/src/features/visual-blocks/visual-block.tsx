@@ -2,7 +2,7 @@
 
 import { checkBlock, isVisualBlockKind, type VisualBlockKind } from "@forge/contracts/visual-blocks";
 import { useState } from "react";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog } from "@/design";
 import { readProseInstants } from "@/lib/i18n/instants";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useVisualBlockContext } from "./context";
@@ -21,11 +21,11 @@ function kindOf(raw: unknown): string {
 function RefusedBlock({ kind, untraced = false, reasons }: { kind: string; untraced?: boolean; reasons: string[] }) {
   const t = useCopy();
   return (
-    <div className="text-[12.5px] text-muted" data-testid="visual-block-refused" data-kind={kind}>
+    <div className="text-13 text-muted" data-testid="visual-block-refused" data-kind={kind}>
       <p>
         {untraced ? t("visual.refused.untraced", { kind }) : t("visual.refused.shape", { kind })}
       </p>
-      <ul className="mt-1 list-disc pl-5 font-mono text-[11px] text-subtle">
+      <ul className="mt-1 list-disc pl-5 font-mono text-12 text-subtle">
         {reasons.map((r) => (
           <li key={r}>{r}</li>
         ))}
@@ -41,14 +41,14 @@ function Caption({ title, actions }: { title?: string | undefined; actions: Reac
   if (!title && actions.length === 0) return null;
   return (
     <figcaption className="mb-1 flex min-w-0 items-baseline justify-between gap-3">
-      <span className="min-w-0 text-[12.5px] font-semibold text-fg">{title}</span>
+      <span className="min-w-0 text-13 font-semibold text-fg">{title}</span>
       {actions.length > 0 && <span className="flex flex-none items-baseline gap-3 print:hidden">{actions}</span>}
     </figcaption>
   );
 }
 
 const ACTION =
-  "flex-none text-[11.5px] font-medium text-link hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
+  "flex-none text-12 font-medium text-link hover:underline focus-visible:outline-none focus-visible:shadow-focus";
 
 /** A table's CSV, as the screen showing the block exports it: offered beside the table and again in its wide view. */
 function CsvAction({ onCsv, testId }: { onCsv: () => void; testId: string }) {
@@ -101,24 +101,15 @@ function Frame({
     <figure className="m-0 my-1 min-w-0 max-w-full" data-testid="visual-block" data-kind={kind}>
       <Caption title={title} actions={actions} />
       {said && (
-        <p className="mb-1.5 text-[12.5px] text-muted" data-testid="visual-block-finding">
+        <p className="mb-1.5 text-13 text-muted" data-testid="visual-block-finding">
           {said}
         </p>
       )}
       {children}
       {wide && (
-        <Dialog open onOpenChange={(next) => !next && setWide(false)}>
-          <DialogContent
-            className="flex max-h-[90vh] w-[min(96vw,1200px)] max-w-none flex-col gap-2 overflow-y-auto bg-app p-5 sm:max-w-none"
-            data-testid="visual-block-wide"
-          >
-            <div className="flex items-baseline gap-3 pr-8">
-              <DialogTitle className="min-w-0 flex-1 text-[13px] font-semibold text-fg">{title ?? t("visual.answer")}</DialogTitle>
-              {csv && <CsvAction onCsv={csv} testId="visual-block-wide-csv" />}
-            </div>
-            {said && <p className="text-[12.5px] text-muted">{said}</p>}
-            <div className="min-w-0">{children}</div>
-          </DialogContent>
+        <Dialog open onOpenChange={(next) => !next && setWide(false)} title={title ?? t("visual.answer")} width="lg" testId="visual-block-wide" footer={csv ? <CsvAction onCsv={csv} testId="visual-block-wide-csv" /> : undefined}>
+          {said && <p className="text-13 text-muted">{said}</p>}
+          <div className="max-h-160 min-w-0 overflow-y-auto">{children}</div>
         </Dialog>
       )}
     </figure>
@@ -152,7 +143,7 @@ export function VisualBlockView({ block: raw, onCsv }: { block: unknown; onCsv?:
   }
   return (
     <Frame kind={kind} title={block.title} finding={block.finding} onCsv={onCsv}>
-      <Renderer block={block as never} />
+      <Renderer block={block} />
       <SourceNote source={block.source} facts={facts} execution={block.source ? executionFacts?.(block.source) : undefined} />
     </Frame>
   );

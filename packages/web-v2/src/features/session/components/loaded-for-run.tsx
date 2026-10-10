@@ -1,8 +1,8 @@
 "use client";
 
-import { PageSectionTitle, MonoTag } from "@/design";
+import { FactsGroup, MonoTag } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import type { SessionMetadata } from "@/features/sessions/types";
+import type { SessionMetadata } from "@/features/sessions";
 
 interface LoadedLink {
   link: string;
@@ -32,10 +32,7 @@ export function LoadedForRun({ metadata }: { metadata: SessionMetadata | null })
   const record = contractContextOf(metadata);
   if (!record) return null;
   return (
-    <section>
-      <PageSectionTitle className="fg-caption sticky top-0 z-10 mb-2 bg-app py-1 uppercase tracking-wide">
-        {t("sessions.loaded.title", { n: record.links.length })}
-      </PageSectionTitle>
+    <FactsGroup title={t("sessions.loaded.title", { n: record.links.length })}>
       <ul className="flex flex-col gap-2">
         {record.links.map((l) => (
           <li key={l.link} className="flex flex-col gap-0.5 overflow-hidden">
@@ -63,6 +60,6 @@ export function LoadedForRun({ metadata }: { metadata: SessionMetadata | null })
           </li>
         ))}
       </ul>
-    </section>
+    </FactsGroup>
   );
 }

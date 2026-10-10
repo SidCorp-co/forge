@@ -67,8 +67,8 @@ export const mixed = {
 
 // ── what hides an element at some width ─────────────────────────────────────────────────────────
 
-/** A breakpoint or container variant: `sm:`, `max-md:`, `min-[400px]:`, `@lg:`. */
-const RESPONSIVE = /^(max-|min-)?(sm|md|lg|xl|2xl|\[[^\]]+\])$|^@/;
+/** A breakpoint or container variant: `sm:`, `max-md:`, `min-[400px]:`, `@lg:`, `max-column-md:`. */
+const RESPONSIVE = /^(max-|min-)?(sm|md|lg|xl|2xl|column-md|\[[^\]]+\])$|^@/;
 /** A variant that applies at phone width (390): none, or a `max-` one. `sm:`, `md:`, `min-*` start wider. */
 const AT_PHONE = (variants: readonly string[]) => variants.every((v) => !RESPONSIVE.test(v) || v.startsWith("max-"));
 /** A utility that takes an element out of sight: display, visibility, zero size or opacity, clipped or pushed off-screen. */

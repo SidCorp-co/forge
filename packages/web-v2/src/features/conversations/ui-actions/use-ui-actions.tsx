@@ -3,14 +3,14 @@
 import { highlightTargetOf, type UiSnapshot } from "@forge/contracts/ui-actions";
 import { describeListFilter } from "@forge/contracts/ui-list-filters";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "@/design";
 import { useHighlight } from "@/design/hooks/use-highlight";
 import { useShownKeys } from "@/design/hooks/use-page-shown";
 import { enumLabel, statusReading } from "@/design/vocabulary";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import type { CanonicalBlock } from "@/features/session/types";
+import type { CanonicalBlock } from "@/features/session";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useAuth } from "@/providers/auth-provider";
 import type { ConversationMessage, ConversationProgressEntry } from "../types";
@@ -25,8 +25,8 @@ import {
   shapesText,
   uiSnapshotOf,
 } from "./actions";
-import { issueSelectionBridge, useSelectedIssueKeys } from "@/features/chat-dock/selection-bridge";
-import { useBoard } from "@/features/board/board-store";
+import { issueSelectionBridge, useSelectedIssueKeys } from "@/features/chat-dock";
+import { useBoard } from "@/features/board";
 
 export interface UiCallRecord {
   callId: string;
@@ -128,6 +128,27 @@ export function useUiSnapshot(slug: string | undefined) {
   }, [pathname, search, user?.id, selection, slug, board, shown, highlight, t, language]);
 }
 
+type UiCallRecords = Record<string, UiCallRecord>;
+
+/** One room's call records, held where the effect that applies the calls may write them. */
+function recordStore() {
+  let records: UiCallRecords = {};
+  const listeners = new Set<() => void>();
+  return {
+    get: () => records,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    update: (next: (prev: UiCallRecords) => UiCallRecords) => {
+      records = next(records);
+      for (const listener of listeners) listener();
+    },
+  };
+}
+
 /**
  * Applies each ui_* call the assistant makes in this room, once, as it arrives in the live turn, and
  * keeps what each did so its card can undo it. Only the person a turn answers is sent its live tool
@@ -144,11 +165,11 @@ export function useUiActions(args: {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const { user } = useAuth();
-  const [records, setRecords] = useState<Record<string, UiCallRecord>>({});
-  const history = useRef<Set<string> | null>(null);
-  const applied = useRef(new Set<string>());
-  const live = useRef(records);
-  live.current = records;
+  // what each call did lives outside React: the effect that applies a call writes it there, and the cards read it back
+  const [store] = useState(recordStore);
+  const records = useSyncExternalStore(store.subscribe, store.get, store.get);
+  const historyRef = useRef<Set<string> | null>(null);
+  const appliedRef = useRef(new Set<string>());
 
   const go = useCallback((href: string) => router.push(href), [router]);
   const env = useMemo(
@@ -167,18 +188,18 @@ export function useUiActions(args: {
 
   useEffect(() => {
     if (!args.ready) return;
-    const live = args.progress ? uiCallsOf(args.progress.entry.id ?? "live", args.progress.entry.blocks as CanonicalBlock[]) : [];
+    const live = args.progress ? uiCallsOf(args.progress.entry.id ?? "live", args.progress.entry.blocks) : [];
     const settled = args.messages.flatMap((m) => uiCallsOf(m.id, m.blocks));
-    if (history.current === null) history.current = new Set(live.map((c) => c.callId));
-    const seen = history.current;
+    if (historyRef.current === null) historyRef.current = new Set(live.map((c) => c.callId));
+    const seen = historyRef.current;
     const liveIds = new Set(live.map((c) => c.callId));
     const fresh = [...live, ...settled.filter((c) => !liveIds.has(c.callId))].filter(
-      (c) => !records[c.callId] && !applied.current.has(c.callId),
+      (c) => !store.get()[c.callId] && !appliedRef.current.has(c.callId),
     );
     if (fresh.length === 0) return;
     const added: Record<string, UiCallRecord> = {};
     for (const c of fresh) {
-      applied.current.add(c.callId);
+      appliedRef.current.add(c.callId);
       if (seen.has(c.callId) || !liveIds.has(c.callId)) {
         added[c.callId] = c;
         continue;
@@ -189,25 +210,25 @@ export function useUiActions(args: {
           : { ok: false, code: c.reading.code, message: c.reading.message };
       added[c.callId] = { ...c, outcome };
     }
-    setRecords((prev) => ({ ...prev, ...added }));
-  }, [args.ready, args.messages, args.progress, records, env]);
+    store.update((prev) => ({ ...prev, ...added }));
+  }, [args.ready, args.messages, args.progress, store, env]);
 
   const undo = useCallback((callId: string) => {
-    const r = live.current[callId];
+    const r = store.get()[callId];
     if (!r?.outcome?.ok || r.undone) return;
     r.outcome.undo();
-    setRecords((prev) => ({ ...prev, [callId]: { ...r, undone: true } }));
-  }, []);
+    store.update((prev) => ({ ...prev, [callId]: { ...r, undone: true } }));
+  }, [store]);
 
   const clearChip = useCallback(
     (callId: string, field: string) => {
       go(hrefWithout(env.href(), field as Parameters<typeof hrefWithout>[1]));
-      setRecords((prev) => {
+      store.update((prev) => {
         const r = prev[callId];
         return r ? { ...prev, [callId]: { ...r, cleared: [...(r.cleared ?? []), field] } } : prev;
       });
     },
-    [go, env],
+    [go, env, store],
   );
 
   const cardsFor = useCallback(
@@ -217,7 +238,7 @@ export function useUiActions(args: {
       return (
         <div className="mt-2 flex flex-col gap-2">
           {mine.map((r) => (
-            <UiActionCard key={r.callId} record={r} onUndo={() => undo(r.callId)} onClear={(f) => clearChip(r.callId, f)} />
+            <UiActionNotice key={r.callId} record={r} onUndo={() => undo(r.callId)} onClear={(f) => clearChip(r.callId, f)} />
           ))}
         </div>
       );
@@ -228,7 +249,7 @@ export function useUiActions(args: {
   return { cardsFor };
 }
 
-export function UiActionCard({
+export function UiActionNotice({
   record,
   onUndo,
   onClear,
@@ -247,10 +268,9 @@ export function UiActionCard({
       <div
         role="alert"
         data-testid="ui-action-refused"
-        className="flex items-start gap-2 rounded-md border px-3 py-2"
-        style={{ borderColor: "var(--red-500)", background: "var(--red-50)" }}
+        className="flex items-start gap-2 border-l-2 border-danger-9 bg-danger-2 px-3 py-2"
       >
-        <Icon name="alert" size={14} className="mt-0.5 flex-none text-[color:var(--red-600)]" />
+        <Icon name="alert" size={14} className="mt-0.5 flex-none text-danger" />
         <p className="fg-body-sm text-fg">
           <span className="font-mono font-semibold">{name}</span> {t("conversations.ui.refused", { message })}
         </p>
@@ -282,8 +302,7 @@ export function UiActionCard({
             <span
               key={c.field}
               data-testid="ui-filter-chip"
-              className="inline-flex items-center gap-1 rounded-pill border px-2 py-0.5 text-12-5 font-semibold"
-              style={{ borderColor: "var(--orange-500, #f97316)", color: "var(--orange-700, #c2410c)", background: "var(--orange-50, #fff7ed)" }}
+              className="inline-flex items-center gap-1 rounded-pill border border-warn-9 bg-warn-2 px-2 py-0.5 text-13 font-semibold text-warn-11"
             >
               {c.label}
               <button type="button" aria-label={t("conversations.ui.clear", { label: c.label })} onClick={() => onClear(c.field)} className="leading-none">

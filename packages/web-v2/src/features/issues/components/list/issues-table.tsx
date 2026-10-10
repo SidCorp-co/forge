@@ -13,13 +13,13 @@ import {
   type ColumnDef,
   type SortingState,
 } from "@/design";
-import { Fragment, useMemo } from "react";
+import { Fragment } from "react";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { groupRows } from "../../derive";
 import { hasLiveAgentSession } from "../../waiting";
 import type { GroupBy, IssueRow, IssueSort } from "../../types";
-import { IssueTableRow, type RowAssignee } from "../issue-row-actions";
+import { IssueTableLine, type RowAssignee } from "../issue-row-actions";
 import type { RowActions } from "../issue-table-row";
 
 const columnsOf = (t: Copy): ColumnDef<IssueRow, unknown>[] => [
@@ -52,7 +52,7 @@ function stateToSort(state: SortingState): IssueSort {
 }
 
 export interface TableSelection {
-  selected: Set<string>;
+  selected: ReadonlySet<string>;
   toggleRow: (id: string, next: boolean) => void;
   allOnPageSelected: boolean;
   someOnPageSelected: boolean;
@@ -84,9 +84,9 @@ export function IssuesTable({
 }) {
   const t = useCopy();
   const L = useLabel();
-  const columns = useMemo(() => columnsOf(t), [t]);
-  const sorting = useMemo(() => sortToState(sort), [sort]);
-  const groups = useMemo(() => groupRows(rows, groupBy), [rows, groupBy]);
+  const columns = columnsOf(t);
+  const sorting = sortToState(sort);
+  const groups = groupRows(rows, groupBy);
   const groupLabel = (g: { key: string; label: string }) =>
     groupBy === "status" ? L("issueStatus", g.key) : groupBy === "priority" ? L("issuePriority", g.key) : g.label;
   const sortTable = useReactTable<IssueRow>({
@@ -104,7 +104,7 @@ export function IssuesTable({
 
   return (
     // One table runs edge to edge from the sidebar, scrolling sideways inside itself at phone width; a grouping is a header row in it, not a box per group (ISS-49)
-    <Table aria-label={t("issues.screen.title")} className="min-w-[860px]">
+    <Table aria-label={t("issues.screen.title")} className="min-w-215">
       <THead>
         <TR>
           {selection && (
@@ -142,7 +142,7 @@ export function IssuesTable({
               </TR>
             )}
             {g.rows.map((row) => (
-              <IssueTableRow
+              <IssueTableLine
                 key={row.id}
                 row={row}
                 slug={slug}

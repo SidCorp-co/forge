@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { SessionScreen } from "@/features/session/components/session-screen";
+import { SessionScreen } from "@/features/session";
 
 export default function ProjectAgentSessionPage() {
   const params = useParams<{ slug: string; sessionId: string }>();

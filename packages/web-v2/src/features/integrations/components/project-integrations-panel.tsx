@@ -33,7 +33,7 @@ import { cardProvider, deriveDirectoryStatus, isProviderCard } from "../derive";
 import { connectionTargetFor, providerIcon, providerLabel } from "../providers/registry";
 import type { BindingSummary, StatusCard } from "../types";
 import { ConnectionDetailDrawer } from "./connection-detail-drawer";
-import { McpServersPanel } from "./mcp-servers-panel";
+import { McpServers } from "./mcp-servers-panel";
 import { StatusPill } from "./status-pill";
 
 const ROLE_WORDS = new Set(["Service", "Source", "Deploy"]);
@@ -88,15 +88,19 @@ function rowsOf(cards: StatusCard[], bindings: Map<string, BindingSummary>, word
   const connected = providers.filter((c) => c.configured);
   const open = providers.filter((c) => !c.configured);
   return [
-    ...repository.map((card) => ({
-      card,
-      icon: "branch" as IconName,
-      name: words.t("integrations.github.repository"),
-      sub: metaText(card, "provider") ? providerLabel(metaText(card, "provider") as string, words.language) : null,
-      target: metaText(card, "repository"),
-      targetHref: metaText(card, "remoteUrl")?.startsWith("https://") ? metaText(card, "remoteUrl") : null,
-      health: healthText(card, words),
-    })),
+    ...repository.map((card): Row => {
+      const provider = metaText(card, "provider");
+      const remoteUrl = metaText(card, "remoteUrl");
+      return {
+        card,
+        icon: "branch",
+        name: words.t("integrations.github.repository"),
+        sub: provider ? providerLabel(provider, words.language) : null,
+        target: metaText(card, "repository"),
+        targetHref: remoteUrl?.startsWith("https://") ? remoteUrl : null,
+        health: healthText(card, words),
+      };
+    }),
     ...[...connected, ...open].map((card) => {
       const provider = cardProvider(card.key);
       const bindingId = metaText(card, "bindingId");
@@ -186,7 +190,7 @@ function RepositoryAction({
   );
 }
 
-function IntegrationRow({
+function IntegrationItem({
   row,
   canEdit,
   onOpen,
@@ -225,7 +229,7 @@ function IntegrationRow({
             <span className="sm:hidden">
               <StatusPill card={card} />
             </span>
-            {target && <span className="[overflow-wrap:anywhere] sm:hidden">{target}</span>}
+            {target && <span className="wrap-anywhere sm:hidden">{target}</span>}
             {row.health && <span className="text-subtle sm:hidden">{row.health}</span>}
           </span>
         </span>
@@ -233,8 +237,8 @@ function IntegrationRow({
       <TD className="hidden align-top sm:table-cell">
         <StatusPill card={card} />
       </TD>
-      <TD className="hidden align-top [overflow-wrap:anywhere] sm:table-cell">{target}</TD>
-      <TD className="hidden max-w-[52ch] align-top text-muted sm:table-cell">{row.health}</TD>
+      <TD className="hidden align-top wrap-anywhere sm:table-cell">{target}</TD>
+      <TD className="hidden max-w-prose align-top text-muted sm:table-cell">{row.health}</TD>
       <TD className="text-right align-top whitespace-nowrap" data-tour={tourConnect ? "int-connect" : undefined}>
         {isRepositoryCard(card) ? (
           <RepositoryAction card={card} canEdit={canEdit} owner={owner} />
@@ -261,7 +265,7 @@ function IntegrationRow({
  * Full integrations management for ONE project: the flush table (a row's action opens the provider
  * drawer) and the Agent MCP servers preview. Used by project settings → Integrations.
  */
-export function ProjectIntegrationsPanel({
+export function ProjectIntegrations({
   projectId,
   canEdit = true,
 }: {
@@ -303,7 +307,7 @@ export function ProjectIntegrationsPanel({
               </span>
             )}
           </span>
-          <Button variant="ghost" size="sm" icon="rerun" onClick={() => status.refetch()}>
+          <Button variant="ghost" size="sm" icon="rerun" onClick={() => void status.refetch()}>
             {t("integrations.panel.refresh")}
           </Button>
         </PageSectionHeader>
@@ -314,7 +318,7 @@ export function ProjectIntegrationsPanel({
             ))}
           </div>
         ) : status.isError ? (
-          <ErrorState message={formatApiError(status.error)} onRetry={() => status.refetch()} />
+          <ErrorState message={formatApiError(status.error)} onRetry={() => void status.refetch()} />
         ) : (
           <Table aria-label={t("integrations.title")} data-tour="int-status">
             <THead>
@@ -330,7 +334,7 @@ export function ProjectIntegrationsPanel({
             </THead>
             <TBody>
               {rows.map((row) => (
-                <IntegrationRow
+                <IntegrationItem
                   key={row.card.key}
                   row={row}
                   canEdit={canEdit}
@@ -343,7 +347,7 @@ export function ProjectIntegrationsPanel({
         )}
       </PageSection>
 
-      <McpServersPanel projectId={projectId} canEdit={canEdit} onConnect={connectProvider} />
+      <McpServers projectId={projectId} canEdit={canEdit} onConnect={connectProvider} />
 
       <ConnectionDetailDrawer
         projectId={projectId}

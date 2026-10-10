@@ -8,7 +8,7 @@
 
 import Link from "next/link";
 import { ActorChip, Fact, FactsEmpty, FactsGroup, LEGEND, StatusBadge, Tooltip } from "@/design";
-import { FeedbackRailItem } from "@/features/feedback/components/feedback-rail-item";
+import { FeedbackRailItem } from "@/features/feedback";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref } from "@/lib/routes/issues";
 import { workflowHref } from "@/lib/routes/workflows";
@@ -19,8 +19,8 @@ import { requirementHref } from "@/lib/routes/requirements";
 import type { FeedbackRoute } from "@forge/contracts/feedback";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { LinkIssueControl } from "./link-issue";
-import { PromoteDraftRow } from "./promote-drafts";
-import { PlacementFacts } from "./requirement-placement";
+import { PromotableDraft } from "./promote-drafts";
+import { Placement } from "./requirement-placement";
 import { agreedTitle } from "./standing-bits";
 
 /** "On ISS-4", "On design checkout": where a feedback item reached the requirement from; one about it, or carried by its route, says nothing. */
@@ -37,7 +37,7 @@ function carrierHrefOf(route: FeedbackRoute, slug: string, key: string): string 
   return route === "duplicate" ? feedbackHref(slug, key) : null;
 }
 
-function FeedbackRow({ f, slug }: { f: RequirementFeedbackItem; slug: string }) {
+function LinkedFeedbackItem({ f, slug }: { f: RequirementFeedbackItem; slug: string }) {
   const t = useCopy();
   const label = useLabel();
   const r = f.route;
@@ -62,7 +62,7 @@ function FeedbackRow({ f, slug }: { f: RequirementFeedbackItem; slug: string }) 
   );
 }
 
-function FeedbackFacts({ items, slug }: { items: RequirementFeedbackItem[]; slug: string }) {
+function LinkedFeedback({ items, slug }: { items: RequirementFeedbackItem[]; slug: string }) {
   const t = useCopy();
   const open = items.filter((f) => f.open);
   const closed = items.filter((f) => !f.open);
@@ -75,7 +75,7 @@ function FeedbackFacts({ items, slug }: { items: RequirementFeedbackItem[]; slug
           {open.length ? (
             <ul className="grid gap-1.5">
               {open.map((f) => (
-                <FeedbackRow key={f.id} f={f} slug={slug} />
+                <LinkedFeedbackItem key={f.id} f={f} slug={slug} />
               ))}
             </ul>
           ) : (
@@ -83,10 +83,10 @@ function FeedbackFacts({ items, slug }: { items: RequirementFeedbackItem[]; slug
           )}
           {closed.length ? (
             <details className="mt-2" data-testid="rail-feedback-closed">
-              <summary className="cursor-pointer select-none text-12-5 font-medium text-muted hover:text-fg">{t("requirements.facts.closedN", { n: closed.length })}</summary>
+              <summary className="cursor-pointer select-none text-13 font-medium text-muted hover:text-fg">{t("requirements.facts.closedN", { n: closed.length })}</summary>
               <ul className="mt-1.5 grid gap-1.5">
                 {closed.map((f) => (
-                  <FeedbackRow key={f.id} f={f} slug={slug} />
+                  <LinkedFeedbackItem key={f.id} f={f} slug={slug} />
                 ))}
               </ul>
             </details>
@@ -126,14 +126,55 @@ export function IssueShippedLink({ shippedIn, slug }: { shippedIn: Shipped; slug
       href={releaseHref(slug, shippedIn.version)}
       aria-label={`${t("issues.shippedIn")} ${shippedIn.version}`}
       title={`${t("issues.shippedIn")} ${shippedIn.version}`}
-      className="flex-none font-mono text-11 text-link hover:underline"
+      className="flex-none font-mono text-12 text-link hover:underline"
     >
       {shippedIn.version}
     </Link>
   );
 }
 
-export function RequirementFacts({
+/** Where its design binds a contract element: the step, the element, what broke it, and the issues building it. */
+function RequirementBindings({ d, slug }: { d: RequirementDetail; slug: string }) {
+  const t = useCopy();
+  const label = useLabel();
+  if (d.bindings.length === 0) return null;
+  return (
+    <FactsGroup title={t("requirements.facts.bindings")} count={`${d.bindings.length}`} testId="facts-bindings">
+      <ul className="grid gap-1">
+        {d.bindings.map((b) => (
+          <li
+            key={`${b.workflowId}|${b.step}|${b.contract}|${b.element}`}
+            className="grid min-w-0 gap-0.5 text-13"
+            data-testid="rail-binding"
+          >
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0 flex-1 truncate" title={t("requirements.facts.bindingTitle", { flow: b.flow, r: b.designRevision, step: b.step, contract: `${b.contract}${b.pinnedVersion ? `@${b.pinnedVersion}` : ""}` })}>
+                {b.step} <span className="font-mono text-12 text-subtle">{b.element}</span>
+              </span>
+              {b.brokenBy ? (
+                <span className="flex-none text-12 text-danger" title={t("requirements.facts.brokeTitle", { contract: b.contract, v: b.brokenBy })}>
+                  {t("requirements.facts.brokenBy", { v: b.brokenBy })}
+                </span>
+              ) : null}
+            </span>
+            {b.buildingIssues.length > 0 ? (
+              <span className="flex flex-wrap items-center gap-1 text-12 text-subtle" data-testid="rail-binding-builds">
+                {t("requirements.facts.builtBy")}
+                {b.buildingIssues.map((i) => (
+                  <Link key={i.issueId} href={issueHref(slug, i.displayId)} title={`${i.title} (${label("issueStatus", i.status)})`} className="font-mono text-link hover:underline">
+                    {i.displayId}
+                  </Link>
+                ))}
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </FactsGroup>
+  );
+}
+
+export function RequirementProperties({
   d,
   slug,
   onOpenRevisions,
@@ -150,7 +191,6 @@ export function RequirementFacts({
   onOpenRevisions?: () => void;
 }) {
   const t = useCopy();
-  const label = useLabel();
   const time = useTimeFormat();
   const s = d.standing;
   const f = s.facts;
@@ -163,7 +203,7 @@ export function RequirementFacts({
         <Fact label={t("requirements.facts.owner")}>
           {s.owner ? <ActorChip name={s.owner.name ?? t("requirements.unknown")} kind={s.owner.kind} /> : <span className="text-subtle">{t("requirements.noOwner")}</span>}
         </Fact>
-        <PlacementFacts projectId={projectId} d={d} />
+        <Placement projectId={projectId} d={d} />
         <RequirementShipped releases={d.releases} slug={slug} />
         {developer ? (
           <Fact label={t("requirements.facts.current")}>
@@ -203,11 +243,11 @@ export function RequirementFacts({
                   {i.title}
                 </span>
                 {i.changedSincePlan ? (
-                  <span role="img" aria-label={t("requirements.facts.changedSincePlan")} title={t("requirements.facts.changedSincePlan")} className="size-1.5 flex-none rounded-full" style={{ background: LEGEND.you.dot }} />
+                  <span role="img" aria-label={t("requirements.facts.changedSincePlan")} title={t("requirements.facts.changedSincePlan")} className="size-1.5 flex-none rounded-pill" style={{ background: LEGEND.you.dot }} />
                 ) : null}
                 <StatusBadge family="issue" value={i.status} tone={i.tone} />
                 {i.shippedIn ? <IssueShippedLink shippedIn={i.shippedIn} slug={slug} /> : null}
-                <PromoteDraftRow projectId={projectId} d={d} issue={i} />
+                <PromotableDraft projectId={projectId} d={d} issue={i} />
               </li>
             ))}
           </ul>
@@ -215,7 +255,7 @@ export function RequirementFacts({
         {s.attentionGroup !== "done" ? <LinkIssueControl projectId={projectId} reqKey={d.key} /> : null}
       </FactsGroup>
 
-      <FeedbackFacts items={d.feedback} slug={slug} />
+      <LinkedFeedback items={d.feedback} slug={slug} />
 
       <FactsGroup title={t("requirements.facts.design")} testId="facts-design">
         {d.workflows.length === 0 ? (
@@ -240,40 +280,7 @@ export function RequirementFacts({
         )}
       </FactsGroup>
 
-      {d.bindings.length > 0 ? (
-        <FactsGroup title={t("requirements.facts.bindings")} count={`${d.bindings.length}`} testId="facts-bindings">
-          <ul className="grid gap-1">
-            {d.bindings.map((b) => (
-              <li
-                key={`${b.workflowId}|${b.step}|${b.contract}|${b.element}`}
-                className="grid min-w-0 gap-0.5 text-13"
-                data-testid="rail-binding"
-              >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="min-w-0 flex-1 truncate" title={t("requirements.facts.bindingTitle", { flow: b.flow, r: b.designRevision, step: b.step, contract: `${b.contract}${b.pinnedVersion ? `@${b.pinnedVersion}` : ""}` })}>
-                    {b.step} <span className="font-mono text-12 text-subtle">{b.element}</span>
-                  </span>
-                  {b.brokenBy ? (
-                    <span className="flex-none text-12 text-danger" title={t("requirements.facts.brokeTitle", { contract: b.contract, v: b.brokenBy })}>
-                      {t("requirements.facts.brokenBy", { v: b.brokenBy })}
-                    </span>
-                  ) : null}
-                </span>
-                {b.buildingIssues.length > 0 ? (
-                  <span className="flex flex-wrap items-center gap-1 text-12 text-subtle" data-testid="rail-binding-builds">
-                    {t("requirements.facts.builtBy")}
-                    {b.buildingIssues.map((i) => (
-                      <Link key={i.issueId} href={issueHref(slug, i.displayId)} title={`${i.title} (${label("issueStatus", i.status)})`} className="font-mono text-link hover:underline">
-                        {i.displayId}
-                      </Link>
-                    ))}
-                  </span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </FactsGroup>
-      ) : null}
+      <RequirementBindings d={d} slug={slug} />
 
       {needs.length > 0 ? (
         <FactsGroup title={t("requirements.facts.needs")}>

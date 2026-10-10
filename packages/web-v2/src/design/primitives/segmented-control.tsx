@@ -43,8 +43,8 @@ export function SegmentedControl<T extends string>({
           title={opt.title}
           className={cn(
             "h-auto min-w-0 gap-1.5 rounded-sm px-2.5 py-1 text-13 font-semibold text-muted transition-colors duration-[120ms]",
-            "hover:bg-transparent hover:text-fg focus-visible:ring-0 focus-visible:shadow-[var(--shadow-focus)]",
-            "data-pressed:bg-surface data-pressed:text-fg data-pressed:shadow-xs aria-pressed:bg-surface",
+            "hover:bg-transparent hover:text-fg focus-visible:ring-0 focus-visible:shadow-focus",
+            "data-pressed:bg-surface data-pressed:text-fg data-pressed: aria-pressed:bg-surface",
             "disabled:cursor-not-allowed disabled:opacity-50",
           )}
         >

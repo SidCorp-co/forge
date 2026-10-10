@@ -1,17 +1,17 @@
 
 import { type StageKey, stageColor } from "@/design/stages";
 import { TONE_META, type SemanticTone } from "@/design/status";
-import { jobTypeToStage } from "@/features/pipeline/derive";
-import type { PipelineRunListItem, StepDurationRow } from "@/features/pipeline/types";
+import { jobTypeToStage } from "@/features/pipeline";
+import type { PipelineRunListItem, StepDurationRow } from "@/features/pipeline";
 import {
   type ActiveRunner,
   type ProjectRunner,
   type RunnerLimitDisplay,
   runnerLimitDisplay,
-} from "@/features/runners/types";
+} from "@/features/runners";
 import { LIVE_PIPELINE_RUN_STATUSES } from "@forge/contracts/run-machine";
 import { NON_OPEN_STATUSES as NON_OPEN_ISSUE_STATUSES } from "@forge/contracts/issue-machine";
-import type { QueueStats } from "@/features/sessions/types";
+import type { QueueStats } from "@/features/sessions";
 
 /* ------------------------------------------------------------------ *
  * Open-issues-by-status donut (AC#4)
@@ -60,19 +60,6 @@ export function statusDonut(dist: Record<string, number> | undefined): StatusDon
   return { segments, total };
 }
 
-/** Build a CSS `conic-gradient(...)` from ordered segments. Returns a flat fill
- *  when there are no segments so the ring never renders empty/transparent. */
-export function conicGradient(segments: DonutSegment[]): string {
-  if (segments.length === 0) return "var(--paper-200)";
-  let acc = 0;
-  const stops: string[] = [];
-  for (const s of segments) {
-    const start = acc;
-    acc += s.pct;
-    stops.push(`${s.color} ${start.toFixed(3)}% ${acc.toFixed(3)}%`);
-  }
-  return `conic-gradient(${stops.join(", ")})`;
-}
 
 /* ------------------------------------------------------------------ *
  * 7-day spend by stage (AC#4)
@@ -84,7 +71,7 @@ const SPEND_GROUPS: ReadonlyArray<{ key: SpendGroupKey; color: string }> = [
   { key: "test", color: stageColor("test") },
   { key: "code", color: stageColor("code") },
   { key: "plan", color: stageColor("plan") },
-  { key: "other", color: "var(--ink-400)" },
+  { key: "other", color: "var(--neutral-8)" },
 ];
 
 /** Fold a pipeline stage into one of the four spend groups. `fix` already folds onto `code` via
@@ -189,7 +176,7 @@ export function runnersSummary(
   queue: QueueStats | undefined,
   language: string,
   now: number = Date.now(),
-  active?: ActiveRunner[] | undefined,
+  active?: ActiveRunner[]  ,
 ): RunnersSummary {
   const byDevice = new Map<string, { queued: number; running: number }>();
   for (const d of queue?.devices ?? []) {

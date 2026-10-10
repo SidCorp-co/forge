@@ -36,7 +36,7 @@ const END = "pointer-events-none! opacity-0!";
 function Step({ data }: NodeProps<Node<StepData>>) {
   return (
     <div
-      className="flex size-full items-center justify-center rounded-[6px] border border-line-strong bg-surface px-2 text-center text-[12px] leading-tight text-fg"
+      className="flex size-full items-center justify-center rounded-md border border-line-strong bg-surface px-2 text-center text-12 leading-tight text-fg"
       data-testid="flow-node"
     >
       <Handle type="target" position={Position.Top} isConnectable={false} className={END} />
@@ -54,7 +54,7 @@ function Line({ id, data, markerEnd }: EdgeProps<Edge<LineData>>) {
       {data.label && data.labelAt && (
         <EdgeLabelRenderer>
           <div
-            className="pointer-events-none absolute bg-app px-1 text-[11px] text-muted"
+            className="pointer-events-none absolute bg-app px-1 text-12 text-muted"
             data-testid="flow-edge-label"
             style={{ transform: `translate(-50%, -50%) translate(${data.labelAt.x}px, ${data.labelAt.y}px)` }}
           >
@@ -70,9 +70,10 @@ const NODE_TYPES = { step: Step };
 const EDGE_TYPES = { line: Line };
 const NODE_H_MIN = 36;
 /** The tallest box a diagram is drawn in; a taller diagram scrolls inside it at its own size. */
-const FLOW_BOX = "max-h-[520px]";
+const FLOW_BOX = "max-h-130";
 
-type Laid = { placed: Placed } | { failed: string } | null;
+/** A layout, and the block it was laid out for: another block's layout is no layout. */
+type Laid = ({ placed: Placed } | { failed: string }) & { of: VisualBlockOf<"flow"> };
 
 /** Boxes and lines, from the block's own nodes and edges, placed by the layered layout the workflow canvas uses. */
 function FlowDiagram({ block }: { block: VisualBlockOf<"flow"> }) {
@@ -80,20 +81,20 @@ function FlowDiagram({ block }: { block: VisualBlockOf<"flow"> }) {
     () => new Map(block.nodes.map((n) => [n.id, { width: Math.max(96, labelBox(n.label).width + 16), height: Math.max(NODE_H_MIN, labelBox(n.label).height + 14) }])),
     [block],
   );
-  const [laid, setLaid] = useState<Laid>(null);
+  const [kept, setKept] = useState<Laid | null>(null);
+  const laid = kept?.of === block ? kept : null;
   const t = useCopy();
 
   useEffect(() => {
     let live = true;
-    setLaid(null);
     layoutGraph({
       direction: "down",
       partitioned: false,
       nodes: block.nodes.map((n) => ({ id: n.id, ...(sizes.get(n.id) as { width: number; height: number }) })),
       edges: block.edges.map((e, i) => ({ id: `e${i}`, from: e.from, to: e.to, ...(e.label ? { label: e.label } : {}) })),
     }).then(
-      (placed) => live && setLaid({ placed }),
-      (err: unknown) => live && setLaid({ failed: err instanceof Error ? err.message : String(err) }),
+      (placed) => live && setKept({ placed, of: block }),
+      (err: unknown) => live && setKept({ failed: err instanceof Error ? err.message : String(err), of: block }),
     );
     return () => {
       live = false;
@@ -138,22 +139,22 @@ function FlowDiagram({ block }: { block: VisualBlockOf<"flow"> }) {
   }, [laid, block, sizes]);
 
   // a layered diagram hangs from its root at the centre: a narrow box opens on the middle of it
-  const scroller = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const el = scroller.current;
+    const el = scrollerRef.current;
     if (flow && el) el.scrollLeft = Math.max(0, (el.scrollWidth - el.clientWidth) / 2);
   }, [flow]);
 
   if (laid && "failed" in laid) {
     return (
-      <p className="text-[12.5px] text-muted" data-testid="flow-failed">
+      <p className="text-13 text-muted" data-testid="flow-failed">
         {t("visual.flow.failed")}
       </p>
     );
   }
-  if (!flow) return <p className="text-[12px] text-subtle">{t("visual.flow.laying")}</p>;
+  if (!flow) return <p className="text-12 text-subtle">{t("visual.flow.laying")}</p>;
   return (
-    <div ref={scroller} className={`overflow-auto ${FLOW_BOX} print:max-h-none print:overflow-visible`} data-testid="flow-scroll">
+    <div ref={scrollerRef} className={`overflow-auto ${FLOW_BOX} print:max-h-none print:overflow-visible`} data-testid="flow-scroll">
     <div style={{ height: flow.height, minWidth: flow.width }} className="w-full" data-testid="flow-canvas">
       <ReactFlow
         // the canvas takes no gesture of its own, so a finger on it scrolls the box as anywhere else

@@ -10,18 +10,18 @@
 // it alone — so all six stayed on the session surface, which keeps every
 // run-shaped verb it had.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ThreadDataProvider } from "@/features/onboarding/components/thread-blocks";
-import { useProjects } from "@/features/projects/hooks";
-import { canWriteProject } from "@/features/projects/write-access";
-import { CONVERSATION_ATTACHMENTS } from "@/features/chat/attachments";
-import { ChatComposer, ReadOnlyComposerNote } from "@/features/chat/components/chat-composer";
+import { type ComponentProps, type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { ThreadDataProvider } from "@/features/onboarding";
+import { useProjects } from "@/features/projects";
+import { canWriteProject } from "@/features/projects";
+import { CONVERSATION_ATTACHMENTS } from "@/features/chat";
+import { ChatComposer, ReadOnlyComposerNote } from "@/features/chat";
 import {
   TurnStage,
   turnStageOf,
-} from "@/features/session/components/turn-stage";
-import { NewOutput } from "@/features/session/components/new-output";
-import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
+} from "@/features/session";
+import { NewOutput } from "@/features/session";
+import { useStickToBottom } from "@/features/session";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import {
@@ -45,6 +45,64 @@ import { seesDetail, useUiActions, useUiSnapshot } from "../ui-actions/use-ui-ac
 import { useActOffers } from "../act-offers";
 import { ProposalCards } from "./proposal-cards";
 import { turnDoing } from "../turn-doing";
+
+const NONE: never[] = [];
+
+/** The running turn's stage, and what it is doing while it works. */
+function turnNow(progress: ReturnType<typeof useConversationProgress>, streaming: boolean, t: ReturnType<typeof useCopy>) {
+  const liveBlocks = progress ? liveRenderBlocks(progress) : undefined;
+  const stage = turnStageOf({
+    // `streaming` is `busy || progress != null` and says the same thing for the same reason.
+    live: streaming && !progress?.replaced && !progress?.verdict,
+    ...(progress ? { blocks: liveBlocks } : {}),
+  });
+  return { stage, doing: stage === "working" ? turnDoing(liveBlocks, t) : null };
+}
+
+/** Where the person writes: the composer, or why this room takes nothing from them. */
+function RoomComposer({ refusal, canWrite, composer }: { refusal: ReturnType<typeof composerRefusal> | null; canWrite: boolean; composer: ComponentProps<typeof ChatComposer> }) {
+  if (refusal) {
+    return (
+      <div className="flex-none border-t border-line bg-surface px-4 py-3" data-testid="composer-refused">
+        <p className="fg-body-sm text-fg">{refusal.reason}</p>
+        <p className="fg-caption mt-0.5 text-muted">{refusal.wayOut}</p>
+      </div>
+    );
+  }
+  return canWrite ? <ChatComposer {...composer} /> : <ReadOnlyComposerNote sticky={false} />;
+}
+
+/** The thread as it scrolls: what was said, the turn running now, and a way down to new output. */
+function RoomScroll({
+  scroll,
+  empty,
+  data,
+  thread,
+  stage,
+}: {
+  scroll: { scrollRef: RefObject<HTMLDivElement | null>; bottomRef: RefObject<HTMLDivElement | null>; onScroll: () => void; newOutput: boolean; toBottom: () => void };
+  empty: boolean;
+  data: ComponentProps<typeof ThreadDataProvider>["value"];
+  thread: ComponentProps<typeof ConversationThread>;
+  stage: ReactNode;
+}) {
+  return (
+    <div ref={scroll.scrollRef} onScroll={scroll.onScroll} className="@container min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl px-3 py-3 @2xl:px-8 @2xl:py-8 xl:max-w-4xl">
+        {empty ? (
+          <RoomEmpty />
+        ) : (
+          <ThreadDataProvider value={data}>
+            <ConversationThread {...thread} />
+          </ThreadDataProvider>
+        )}
+        {stage ? <div className="mt-4">{stage}</div> : null}
+        {scroll.newOutput && <NewOutput onGo={scroll.toBottom} />}
+        <div ref={scroll.bottomRef} />
+      </div>
+    </div>
+  );
+}
 
 export function ConversationChat({
   projectId,
@@ -77,12 +135,12 @@ export function ConversationChat({
   const roomQ = useConversation(resolvedId);
   const progress = useConversationProgress(resolvedId);
   const withdrawn = useWithdrawnDrafts(resolvedId);
-  const streamedChars = useMemo(() => JSON.stringify(progress?.entry ?? null).length, [progress]);
+  const streamedChars = JSON.stringify(progress?.entry ?? null).length;
   const stop = useStopConversation();
 
   const [pick, setPick] = useState<ConversationMode>("assistant");
 
-  const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
+  const messages = roomQ.data?.messages ?? NONE;
   const page = useUiSnapshot(projectRow?.slug);
   const pageRef = useRef(page);
   pageRef.current = page;
@@ -93,49 +151,28 @@ export function ConversationChat({
     progress,
   });
   const settled = Boolean(roomQ.data && (roomQ.data.mode !== null || messages.length > 0));
-  const onOpened = useCallback(
-    (id: string) => {
-      setActiveId(id);
-      onConversationActive?.(id);
-    },
-    [onConversationActive],
-  );
-  const snapshot = useCallback(() => pageRef.current, []);
-  const { outbox, enqueue: handleSend, retry, busy } = useOutbox({
-    resolvedId,
-    projectId,
-    ecosystemId,
-    onOpened,
-    messages,
-    settled,
-    pick,
-    snapshot,
-  });
-  const windows = useMemo(() => roomQ.data?.windows ?? [], [roomQ.data]);
-  const agentTurns = useMemo(() => roomQ.data?.agentTurns ?? [], [roomQ.data]);
+  const onOpened = (id: string) => {
+    setActiveId(id);
+    onConversationActive?.(id);
+  };
+  const snapshot = () => pageRef.current;
+  const { outbox, enqueue: handleSend, retry, busy } = useOutbox({ resolvedId, projectId, ecosystemId, onOpened, messages, settled, pick, snapshot });
   const streaming = busy || progress != null;
 
-  const liveBlocks = progress ? liveRenderBlocks(progress) : undefined;
-  const stage = turnStageOf({
-    // `streaming` above is `busy || progress != null` and says the same thing for the same reason.
-    live: streaming && !progress?.replaced && !progress?.verdict,
-    ...(progress ? { blocks: liveBlocks } : {}),
-  });
-  const doing = stage === "working" ? turnDoing(liveBlocks, t) : null;
+  const { stage, doing } = turnNow(progress, streaming, t);
   const acts = useActOffers({ messages, progress });
-  const afterEntry = useCallback(
-    (entryId: string) => {
-      const cards = ui.cardsFor(entryId);
-      const offers = acts.offersFor(entryId);
-      return cards || offers ? (
-        <>
-          {cards}
-          {offers}
-        </>
-      ) : null;
-    },
-    [ui.cardsFor, acts.offersFor],
-  );
+  const { cardsFor } = ui;
+  const { offersFor } = acts;
+  const afterEntry = (entryId: string) => {
+    const cards = cardsFor(entryId);
+    const offers = offersFor(entryId);
+    return cards || offers ? (
+      <>
+        {cards}
+        {offers}
+      </>
+    ) : null;
+  };
 
   const settledMode: ConversationMode | null = settled ? (roomQ.data?.mode ?? "assistant") : null;
   const draftOfferQ = useDraftAgentMode(projectId, !resolvedId);
@@ -166,20 +203,11 @@ export function ConversationChat({
     />
   );
 
-  if (resolvedId && roomQ.isLoading && outbox.length === 0) {
+  if (resolvedId && outbox.length === 0 && (roomQ.isLoading || roomQ.isError)) {
     return (
       <div className="flex h-full min-h-0 flex-col">
         {header}
-        <RoomLoading />
-      </div>
-    );
-  }
-
-  if (resolvedId && roomQ.isError && outbox.length === 0) {
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        {header}
-        <RoomUnreadable error={roomQ.error} onRetry={() => roomQ.refetch()} />
+        {roomQ.isError ? <RoomUnreadable error={roomQ.error} onRetry={() => void roomQ.refetch()} /> : <RoomLoading />}
       </div>
     );
   }
@@ -190,76 +218,38 @@ export function ConversationChat({
 
       {roomQ.data && <ScopeNotice room={roomQ.data} />}
 
-      <div ref={scrollRef} onScroll={onScroll} className="@container min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-3 py-3 @2xl:px-8 @2xl:py-8 xl:max-w-4xl">
-          {messages.length === 0 && outbox.length === 0 ? (
-            <RoomEmpty />
-          ) : (
-            <ThreadDataProvider
-              value={{
-                projectId,
-                projectSlug: projectRow?.slug,
-                conversationId: resolvedId ?? "",
-                kind: roomQ.data?.kind ?? null,
-                questionnaires: roomQ.data?.questionnaires ?? [],
-              }}
-            >
-            <ConversationThread
-              projectId={projectId}
-              projectSlug={projectRow?.slug}
-              atBottom={atBottom}
-              messages={messages}
-              windows={windows}
-              outbox={outbox}
-              progress={progress}
-              withdrawn={withdrawn}
-              agentTurns={agentTurns}
-              onRetry={retry}
-              afterEntry={afterEntry}
-            />
-            </ThreadDataProvider>
-          )}
-          {stage && (
-            <div className="mt-4">
-              <TurnStage stage={stage} detail={doing} />
-            </div>
-          )}
-          {newOutput && <NewOutput onGo={toBottom} />}
-          <div ref={bottomRef} />
-        </div>
-      </div>
+      <RoomScroll
+        scroll={{ scrollRef, bottomRef, onScroll, newOutput, toBottom }}
+        empty={messages.length === 0 && outbox.length === 0}
+        data={{ projectId, projectSlug: projectRow?.slug, conversationId: resolvedId ?? "", kind: roomQ.data?.kind ?? null, questionnaires: roomQ.data?.questionnaires ?? [] }}
+        thread={{ projectId, projectSlug: projectRow?.slug, atBottom, messages, windows: roomQ.data?.windows ?? [], outbox, progress, withdrawn, agentTurns: roomQ.data?.agentTurns ?? [], onRetry: retry, afterEntry }}
+        stage={stage ? <TurnStage stage={stage} detail={doing} /> : null}
+      />
 
       <ProposalCards conversationId={resolvedId} threadLength={messages.length} />
 
-      {refusal ? (
-        <div className="flex-none border-t border-line bg-surface px-4 py-3" data-testid="composer-refused">
-          <p className="fg-body-sm text-fg">{refusal.reason}</p>
-          <p className="fg-caption mt-0.5 text-muted">{refusal.wayOut}</p>
-        </div>
-      ) : canWrite ? (
-        <ChatComposer
-          onSend={handleSend}
-          busy={busy}
-          queueWhileBusy
-          sticky={false}
-          attachments={CONVERSATION_ATTACHMENTS}
-          placeholder={placeholder}
-          {...(progress && resolvedId
-            ? { onStop: () => stop.mutate(resolvedId), stopping: stop.isPending }
-            : {})}
-          {...(initialDraft ? { initialValue: initialDraft } : {})}
-          footerControl={
+      <RoomComposer
+        refusal={refusal}
+        canWrite={canWrite}
+        composer={{
+          onSend: handleSend,
+          busy,
+          queueWhileBusy: true,
+          sticky: false,
+          attachments: CONVERSATION_ATTACHMENTS,
+          placeholder,
+          ...(progress && resolvedId ? { onStop: () => stop.mutate(resolvedId), stopping: stop.isPending } : {}),
+          ...(initialDraft ? { initialValue: initialDraft } : {}),
+          footerControl: (
             <ComposerFooter
               onboarding={onboardingRoom}
               mode={{ value: pick, onChange: setPick, offer: agentOffer, settled: settledMode, disabled: busy }}
               scopeChip={scopeChip}
               sees={page.sees ? { label: page.sees, detail: seesDetail(page.snapshot, { project: projectRow?.name ?? null, scope: ecosystemId ? "ecosystem" : "project" }, t, language) } : null}
             />
-          }
-        />
-      ) : (
-        <ReadOnlyComposerNote sticky={false} />
-      )}
+          ),
+        }}
+      />
 
       {roomQ.data?.participants && resolvedId && (
         <ConversationMembers
@@ -290,53 +280,39 @@ function useOutbox(o: {
   const open = useOpenConversation();
   const send = useSendMessage();
   const upload = useUploadAttachment();
-  const [outbox, setOutbox] = useState<OutboxMessage[]>([]);
-  const sending = useRef(false);
+  const [queue, setQueue] = useState<OutboxMessage[]>([]);
+  const sendingRef = useRef(false);
   /**
    * What a queued message has already put in storage, kept so a retry after a
    * failed send does not upload the same picture twice and leave the first copy
    * stored and cited by nothing.
    */
-  const stored = useRef(new Map<string, string[]>());
+  const storedRef = useRef(new Map<string, string[]>());
 
-  useEffect(() => {
-    const seen = new Set(messages.map((m) => m.id));
-    setOutbox((o) => {
-      let moved = false;
-      const next = o.flatMap((m) => {
-        const ack = accepted[m.id];
-        if (ack && seen.has(ack.messageId)) {
-          moved = true;
-          return [];
-        }
-        if (ack && m.state !== "sent") {
-          moved = true;
-          return [{ ...m, state: "sent" as const, messageId: ack.messageId }];
-        }
-        return [m];
-      });
-      return moved ? next : o;
-    });
-  }, [accepted, messages]);
+  // what the server confirmed reads as sent, and leaves once its row is in the thread
+  const seen = new Set(messages.map((m) => m.id));
+  const outbox = queue.flatMap((m): OutboxMessage[] => {
+    const ack = accepted[m.id];
+    if (ack && seen.has(ack.messageId)) return [];
+    return ack && m.state !== "sent" ? [{ ...m, state: "sent", messageId: ack.messageId }] : [m];
+  });
 
-  const enqueue = async (message: string, files: File[]) => {
-    setOutbox((o) => [
-      ...o,
-      { id: crypto.randomUUID(), content: message, state: "queued", ...(files.length ? { files } : {}) },
-    ]);
+  const enqueue = (message: string, files: File[]) => {
+    setQueue((o) => [...o, { id: crypto.randomUUID(), content: message, state: "queued", ...(files.length ? { files } : {}) }]);
+    return Promise.resolve();
   };
 
   const retry = useCallback((id: string) => {
-    setOutbox((o) => o.map((m) => (m.id === id ? { ...m, state: "queued", error: undefined } : m)));
+    setQueue((o) => o.map((m) => (m.id === id ? { ...m, state: "queued", error: undefined } : m)));
   }, []);
 
   useEffect(() => {
-    if (sending.current) return;
+    if (sendingRef.current) return;
     if (outbox.some((m) => m.state === "failed")) return;
     const next = outbox.find((m) => m.state === "queued");
     if (!next) return;
-    sending.current = true;
-    setOutbox((o) => o.map((m) => (m.id === next.id ? { ...m, state: "sending" } : m)));
+    sendingRef.current = true;
+    setQueue((o) => o.map((m) => (m.id === next.id ? { ...m, state: "sending" } : m)));
     void (async () => {
       try {
         let id = resolvedId;
@@ -345,13 +321,13 @@ function useOutbox(o: {
           onOpened(id);
         }
         const fresh = !settled && messages.length === 0;
-        const attachmentIds = [...(stored.current.get(next.id) ?? [])];
+        const attachmentIds = [...(storedRef.current.get(next.id) ?? [])];
         for (const file of (next.files ?? []).slice(attachmentIds.length)) {
           // one operation per queued message and file position: a retry of this message sends the same id
           const operationId = `${next.id}:${attachmentIds.length}`;
           const put = await upload.mutateAsync({ conversationId: id, file, operationId });
           attachmentIds.push(put.id);
-          stored.current.set(next.id, [...attachmentIds]);
+          storedRef.current.set(next.id, [...attachmentIds]);
         }
         await send.mutateAsync({
           conversationId: id,
@@ -361,16 +337,16 @@ function useOutbox(o: {
           ...(attachmentIds.length ? { attachmentIds } : {}),
           ...(snapshot().sees ? { uiSnapshot: snapshot().snapshot } : {}),
         });
-        stored.current.delete(next.id);
-        setOutbox((o) => o.filter((m) => m.id !== next.id));
+        storedRef.current.delete(next.id);
+        setQueue((o) => o.filter((m) => m.id !== next.id));
       } catch (err) {
-        setOutbox((o) =>
+        setQueue((o) =>
           o.map((m) =>
             m.id === next.id ? { ...m, state: "failed", error: formatApiError(err) } : m,
           ),
         );
       } finally {
-        sending.current = false;
+        sendingRef.current = false;
       }
     })();
   }, [

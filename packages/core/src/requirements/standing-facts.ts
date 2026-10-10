@@ -254,6 +254,50 @@ export async function latestContractPinsOf(ids: readonly string[]) {
   }));
 }
 
+/**
+ * When each requirement's status last moved, from its kernel transitions, else when it was filed: the
+ * start of its time in the state it stands in (REQ-29 BC-5's age). A placement, a short name or any
+ * other edit moves no status, so it never restarts that time.
+ */
+export async function statusSinceOf(ids: readonly string[]): Promise<Map<string, Date>> {
+  if (ids.length === 0) return new Map();
+  const rows = (await db.execute(sql`
+    SELECT r.id, COALESCE(max(kt.created_at), r.created_at) AS at
+      FROM requirements r
+      LEFT JOIN kernel_transitions kt ON kt.entity = 'requirement' AND kt.entity_id = r.id
+     WHERE r.id IN (${sql.join(
+       ids.map((id) => sql`${id}::uuid`),
+       sql`, `,
+     )})
+     GROUP BY r.id, r.created_at`)) as unknown as Array<{ id: string; at: Date | string }>;
+  return new Map([...rows].map((r) => [r.id, new Date(r.at)]));
+}
+
+/** When each linked issue last closed (closed ones only) and first moved past draft and open. */
+export async function issueTimesOf(linked: readonly { id: string; status: string }[]) {
+  const [closedAt, startedAt] = await Promise.all([
+    closedAtOf(linked.filter((i) => i.status === 'closed').map((i) => i.id)),
+    startedAtOf(linked.map((i) => i.id)),
+  ]);
+  return { closedAt, startedAt };
+}
+
+/** When each issue first moved past draft and open: the work on it started. */
+async function startedAtOf(issueIds: readonly string[]): Promise<Map<string, Date>> {
+  if (issueIds.length === 0) return new Map();
+  const rows = (await db.execute(sql`
+    SELECT entity_id, min(created_at) AS at
+      FROM kernel_transitions
+     WHERE entity = 'issue'
+       AND to_status NOT IN ('draft', 'open')
+       AND entity_id IN (${sql.join(
+         issueIds.map((id) => sql`${id}::uuid`),
+         sql`, `,
+       )})
+     GROUP BY entity_id`)) as unknown as Array<{ entity_id: string; at: Date | string }>;
+  return new Map([...rows].map((r) => [r.entity_id, new Date(r.at)]));
+}
+
 /** When each closed issue last moved to closed, from its kernel transitions. */
 export async function closedAtOf(issueIds: readonly string[]): Promise<Map<string, Date>> {
   if (issueIds.length === 0) return new Map();

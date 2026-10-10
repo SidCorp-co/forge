@@ -35,6 +35,7 @@ const held = { source: "held", kind: "run", name: "tho-1", sessionId: "s1", devi
 const run = (n: number, over: Record<string, unknown> = {}): RunStanding =>
   ({
     id: `run-${n}-0000-aaaa`,
+    boxRunId: null,
     projectId: P,
     lane: "issue",
     state: "running",

@@ -1,24 +1,15 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useState } from "react";
 import { Button, IconButton, Input } from "@/design";
-import { fileBase64, mockupsApi } from "@/features/mockups/api";
+import { fileBase64, mockupsApi } from "@/features/mockups";
 import { formatApiError } from "@/lib/api/error";
-import { boardExporter, boardStore, useBoard } from "@/features/board/board-store";
+import { boardExporter, boardStore, useBoard, BoardCanvas } from "@/features/board";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { productCopy } from "@/lib/i18n/product-copy";
 import { describeBoard } from "../ui-actions/actions";
 
-function OpeningBoard() {
-  const t = useCopy();
-  return <p className="fg-body-sm p-4 text-muted">{t("conversations.board.opening")}</p>;
-}
 
-const BoardCanvas = dynamic(() => import("@/features/board/board-canvas"), {
-  ssr: false,
-  loading: () => <OpeningBoard />,
-});
 
 /** The dock's width while a board is open: wide enough to draw in, still inside the dock's own bound. */
 export const BOARD_DOCK_WIDTH = 880;
@@ -36,7 +27,7 @@ const stamp = () => new Date().toISOString().replace(/[-:]/g, "").replace(/\..*$
  * board as a wireframe mockup, with its SVG beside it, on the issue or feedback item named (ISS-78). A requirement key is
  * refused here by name: a requirement's picture is drawn on the requirement, never proposed (REQ-35).
  */
-export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKey?: string | undefined }) {
+export function DockBoard({ projectId, issueKey }: { projectId: string; issueKey?: string | undefined }) {
   const t = useCopy();
   const board = useBoard();
   const [key, setKey] = useState(issueKey ?? "");
@@ -93,21 +84,21 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
           size="sm"
           variant="primary"
           disabled={!validKey || state.busy || !board.doc}
-          onClick={attach}
+          onClick={() => void attach()}
         >
           {state.busy ? t("conversations.board.proposing") : t("conversations.board.proposeOn", { key: validKey ? key.trim() : "…" })}
         </Button>
-        <IconButton icon="x" size="sm" aria-label={t("conversations.board.close")} onClick={boardStore.close} />
+        <IconButton icon="x" size="sm" aria-label={t("conversations.board.close")} onClick={() => boardStore.close()} />
       </header>
       {requirementKey && (
-        <p role="alert" className="fg-caption flex-none px-3 pb-2 text-[color:var(--red-600)]">
+        <p role="alert" className="fg-caption flex-none px-3 pb-2 text-danger">
           {t("conversations.board.notRequirement", { key: key.trim() })}
         </p>
       )}
       {state.said && !requirementKey && (
         <p
           role={state.error ? "alert" : "status"}
-          className={`fg-caption flex-none px-3 pb-2 ${state.error ? "text-[color:var(--red-600)]" : "text-muted"}`}
+          className={`fg-caption flex-none px-3 pb-2 ${state.error ? "text-danger" : "text-muted"}`}
         >
           {state.said}
         </p>

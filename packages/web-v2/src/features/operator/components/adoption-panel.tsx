@@ -16,7 +16,7 @@ export function AdoptionPanelSkeleton() {
         <PageSectionTitle>{t("operator.adoption.title")}</PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody>
-        <Skeleton className="h-[120px] w-full" />
+        <Skeleton className="h-30 w-full" />
       </PageSectionBody>
     </PageSection>
   );
@@ -24,7 +24,7 @@ export function AdoptionPanelSkeleton() {
 
 /** Cumulative users as a line, active workspaces as bars behind it. Both are
     read off the same weekly buckets, so one x-axis serves both. */
-export function AdoptionPanel({ buckets }: { buckets: readonly AdminAdoptionBucket[] }) {
+export function AdoptionChart({ buckets }: { buckets: readonly AdminAdoptionBucket[] }) {
   const t = useCopy();
   if (buckets.length === 0) {
     return (
@@ -39,7 +39,7 @@ export function AdoptionPanel({ buckets }: { buckets: readonly AdminAdoptionBuck
     );
   }
 
-  const last = buckets[buckets.length - 1] as AdminAdoptionBucket;
+  const last = buckets[buckets.length - 1];
   const width = Math.max(buckets.length - 1, 1) * 40;
   const maxUsers = Math.max(...buckets.map((b) => b.cumulativeUsers), 1);
   const maxWorkspaces = Math.max(...buckets.map((b) => b.activeWorkspaces), 1);
@@ -62,7 +62,7 @@ export function AdoptionPanel({ buckets }: { buckets: readonly AdminAdoptionBuck
       <PageSectionBody>
         <svg
           viewBox={`0 0 ${width} ${H}`}
-          className="h-[120px] w-full"
+          className="h-30 w-full"
           preserveAspectRatio="none"
           role="img"
           aria-label={t("operator.adoption.chart", { weeks: buckets.length, users: last.cumulativeUsers, workspaces: last.activeWorkspaces })}

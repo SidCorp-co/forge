@@ -75,11 +75,11 @@ function Facts({ rows }: { rows: [string, ReactNode][] }) {
   const shown = rows.filter(([, v]) => v !== undefined && v !== null && v !== "");
   if (shown.length === 0) return null;
   return (
-    <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-2.5 gap-y-1.5 text-13 max-sm:grid-cols-[90px_minmax(0,1fr)]">
+    <dl className="grid gap-y-1.5 text-13">
       {shown.map(([k, v]) => (
-        <div key={k} className="contents">
-          <dt className="text-subtle">{k}</dt>
-          <dd className="m-0 [overflow-wrap:anywhere]">{v}</dd>
+        <div key={k} className="flex gap-x-2.5">
+          <dt className="w-27.5 flex-none text-subtle max-sm:w-22.5">{k}</dt>
+          <dd className="m-0 min-w-0 flex-1 wrap-anywhere">{v}</dd>
         </div>
       ))}
     </dl>
@@ -150,7 +150,7 @@ function Links({ c, id, onEdge }: { c: Canvas; id: string; onEdge: (id: string) 
   const link = (e: CanvasEdge, out: boolean) => {
     const other = c.steps.get(out ? e.to : e.from);
     return (
-      <Button key={e.id} type="button" variant="secondary" size="sm" onClick={() => onEdge(e.id)} className="h-auto justify-start whitespace-normal rounded-md border-line-subtle bg-app px-2.5 py-1.5 text-left text-12-5 font-normal hover:border-line-strong">
+      <Button key={e.id} type="button" variant="secondary" size="sm" onClick={() => onEdge(e.id)} className="h-auto justify-start whitespace-normal rounded-md border-line-subtle bg-app px-2.5 py-1.5 text-left text-13 font-normal hover:border-line-strong">
         {out ? "→ " : "← "}
         {other ? titleOf(other) : out ? e.to : e.from}
         {edgeText(e) ? <span className="text-subtle"> · {edgeText(e)}</span> : null}
@@ -175,14 +175,14 @@ function Links({ c, id, onEdge }: { c: Canvas; id: string; onEdge: (id: string) 
   );
 }
 
-function StepPanel({ c, step, onEdge }: { c: Canvas; step: WorkflowStep; onEdge: (id: string) => void }) {
+function StepDetail({ c, step, onEdge }: { c: Canvas; step: WorkflowStep; onEdge: (id: string) => void }) {
   const t = useCopy();
   const n = step.node;
   const band = c.bands.find((b) => b.steps.includes(step.id));
   return (
     <>
       <SectionTitle className="fg-h3 mb-1.5 mt-1">{titleOf(step)}</SectionTitle>
-      <p className="mb-3 text-13-5 text-muted">{purposeOf(step)}</p>
+      <p className="mb-3 text-14 text-muted">{purposeOf(step)}</p>
       {n?.wireframe?.svg ? <WireframeThumb attachment={n.wireframe.svg} title={titleOf(step)} /> : null}
       <Facts
         rows={[
@@ -255,7 +255,7 @@ function StepPanel({ c, step, onEdge }: { c: Canvas; step: WorkflowStep; onEdge:
   );
 }
 
-function EdgePanel({ c, edge, onStep }: { c: Canvas; edge: CanvasEdge; onStep: (id: string) => void }) {
+function EdgeDetail({ c, edge, onStep }: { c: Canvas; edge: CanvasEdge; onStep: (id: string) => void }) {
   const t = useCopy();
   const k = edge.contract;
   const name = (id: string) => {
@@ -299,7 +299,7 @@ function EdgePanel({ c, edge, onStep }: { c: Canvas; edge: CanvasEdge; onStep: (
   );
 }
 
-export function DetailPanel(p: PanelProps) {
+export function CanvasDetail(p: PanelProps) {
   const t = useCopy();
   const { canvas: c, selection, walk } = p;
   const stepId = selection && "step" in selection ? selection.step : null;
@@ -314,7 +314,7 @@ export function DetailPanel(p: PanelProps) {
           <Close onClose={p.onClose} />
         </div>
         <SectionTitle className="fg-h3 mb-1.5 mt-1">{t("workflows.walk.seenAll", { n: walk.order.length })}</SectionTitle>
-        <p className="mb-3 text-13-5 text-muted">{c.doc.summary}</p>
+        <p className="mb-3 text-14 text-muted">{c.doc.summary}</p>
         {p.decision}
       </>
     );
@@ -372,7 +372,7 @@ export function DetailPanel(p: PanelProps) {
           <TypeChip type={c.typeOf(step.id)} />
           <Close onClose={p.onClose} />
         </div>
-        <StepPanel c={c} step={step} onEdge={p.onEdge} />
+        <StepDetail c={c} step={step} onEdge={p.onEdge} />
         {p.health?.on ? <StepHealth health={p.health} id={step.id} /> : null}
       </>
     );
@@ -384,14 +384,14 @@ export function DetailPanel(p: PanelProps) {
           <span className="fg-overline">{edge.kind.label}</span>
           <Close onClose={p.onClose} />
         </div>
-        <EdgePanel c={c} edge={edge} onStep={p.onStep} />
+        <EdgeDetail c={c} edge={edge} onStep={p.onStep} />
       </>
     ) : null;
   }
   // With nothing selected the panel is closed: the page's facts rail carries the design's summary and counts, and the canvas toolbar its walk-through
   if (!body) return null;
   return (
-    <aside className="w-[370px] flex-none overflow-y-auto border-l border-line-subtle bg-surface px-4.5 pb-7 pt-4 max-lg:w-full max-lg:border-l-0 max-lg:border-t" aria-live="polite" data-testid="workflow-panel">
+    <aside className="w-92.5 flex-none overflow-y-auto border-l border-line-subtle bg-surface px-4.5 pb-7 pt-4 max-lg:w-full max-lg:border-l-0 max-lg:border-t" aria-live="polite" data-testid="workflow-panel">
       {body}
     </aside>
   );

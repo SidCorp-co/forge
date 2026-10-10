@@ -10,6 +10,7 @@ import {
   type Builders,
   outcomeOf,
   owedOf,
+  reviewCheckViewOf,
   reviewerRefusal,
   reviewRecordFields,
   reviewRefusals,
@@ -46,9 +47,11 @@ const DESIGN = {
 
 const OWED = owedOf({ design: DESIGN, catalog: READ, entries: ENTRIES });
 
+// five minutes before each call: the default clock a refusal reads is the real one
 const whole = (over: Partial<RecordReviewRequest> = {}): RecordReviewRequest => ({
   base: BASE,
   head: HEAD,
+  startedAt: new Date(Date.now() - 300_000).toISOString(),
   checklist: [
     { pattern: 'api-route', line: 1, result: 'pass', note: 'routes call one service' },
     { pattern: 'api-route', line: 2, result: 'pass', note: 'strictBody with its SHAPE' },
@@ -141,6 +144,15 @@ describe('a review is refused by name', () => {
     expect(codes(reviewRefusals(whole({ base: HEAD }), OWED))).toEqual(['REVIEW_REFUSED']);
   });
 
+  it('refuses a start in the future or more than a day ago, naming startedAt', () => {
+    const now = new Date('2026-10-10T12:00:00Z');
+    const at = (startedAt: string) => reviewRefusals(whole({ startedAt }), OWED, now);
+    expect(at('2026-10-10T11:30:00Z')).toEqual([]);
+    expect(at('2026-10-10T12:00:30Z')).toEqual([]);
+    expect(at('2026-10-10T12:05:00Z').map((r) => r.path)).toEqual(['/startedAt']);
+    expect(at('2026-10-09T11:59:00Z')[0]?.detail).toMatch(/more than a day ago/);
+  });
+
   it('carries no rerun: a check, test or probe result is no key of a review', () => {
     for (const key of ['checks', 'tests', 'probes']) {
       const parsed = recordReviewRequestSchema.safeParse({ ...whole(), [key]: [] });
@@ -223,6 +235,22 @@ describe('the record and the mark', () => {
     expect(all('evidence')[0]).toContain('a passing merge check');
     expect(all('reruns')[0]).toMatch(/^none: a review runs no check, test or probe/);
     expect(fields.every((f) => f.value.length <= 400)).toBe(true);
+  });
+
+  it('a review is a check of kind review, timed from its start to its record', () => {
+    const view = reviewCheckViewOf(stored(whole({ startedAt: '2026-10-09T23:48:00Z' })));
+    expect(view).toMatchObject({
+      kind: 'review',
+      result: 'pass',
+      durationMs: 720_000,
+      startedAt: '2026-10-09T23:48:00.000Z',
+      runSessionId: 's-review',
+      note: null,
+    });
+    const legacy = stored(whole());
+    const untimed = reviewCheckViewOf({ ...legacy, startedAt: null });
+    expect(untimed.durationMs).toBe(0);
+    expect(untimed.note).toMatch(/^Untimed/);
   });
 
   it('a fail anywhere fails the review and names the line', () => {

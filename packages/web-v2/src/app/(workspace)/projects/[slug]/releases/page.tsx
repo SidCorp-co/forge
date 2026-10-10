@@ -1,6 +1,6 @@
 "use client";
 
-import { ReleasesScreen } from "@/features/releases/components/releases-screen";
+import { ReleasesScreen } from "@/features/releases";
 import { ProjectRefGate } from "@/features/projects/components/project-gate";
 import { useCopy } from "@/lib/i18n/interface-language";
 

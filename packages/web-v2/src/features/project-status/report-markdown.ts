@@ -5,12 +5,12 @@
 
 import type { ProjectStatus, RoadmapItem, StatusWait, StatusWaitPerson, StatusWaits } from "@forge/contracts/project-status";
 import { ROADMAP_HORIZONS } from "@forge/contracts/project-status";
-import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast/eta";
-import { honestyLine } from "@/features/forecast/honesty";
-import { progressText } from "@/features/forecast/progress";
-import { needsYouKeyLabel } from "@/features/needs-you/routes";
-import { verifiedSentence } from "@/features/releases/verified";
-import { spanText } from "@/features/forecast/text";
+import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast";
+import { honestyLine } from "@/features/forecast";
+import { progressText } from "@/features/forecast";
+import { needsYouKeyLabel } from "@/features/needs-you";
+import { verifiedSentence } from "@/features/releases";
+import { spanText } from "@/features/forecast";
 import { formatDateTime } from "@/lib/i18n/format";
 import type { labelCopy } from "@/lib/i18n/labels";
 import type { Copy } from "@/lib/i18n/product-copy";
@@ -71,13 +71,11 @@ function waitLine(x: StatusWait, s: ProjectStatus, w: ReportWords): string {
   return `- **${needsYouKeyLabel(x, (a) => w.label("needsYouArea", a))}** ${said(x.says.title, w.clock.lang)} — ${waitText(x.waitingOn, w.clock.lang, s.viewer.name)}`;
 }
 
-export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {
-  const { t, label, clock } = w;
+/** What shipped in the window: each release and its issues, and the requirements it shipped or still owes proof for. */
+function shippedPart(s: ProjectStatus, w: ReportWords): string[] {
+  const { t, clock } = w;
   const when = (iso: string) => formatDateTime(iso, clock.lang, clock.timeZone);
   const out: string[] = [];
-  out.push(`# ${s.name} — ${t("status.title")}`, "");
-  out.push(`${t("status.asOf", { at: when(s.asOf) })} · ${t("status.window", { days: s.days })}`, "");
-
   out.push(`## ${t("status.shipped")}`, "");
   if (s.shipped.releases.length === 0) out.push(t("status.shippedNone", { days: s.days }));
   for (const r of s.shipped.releases) {
@@ -94,7 +92,13 @@ export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {
     out.push("", `${t("status.requirementsAwaitingProof")}: ${(s.shipped.requirementsAwaitingProof ?? []).map((r) => `${r.key} ${r.title} (${t("status.criteriaProven", { proven: r.proven, total: r.total })})`).join("; ")}`);
   }
   out.push("", readAt(s.shipped.asOf, w), "");
+  return out;
+}
 
+/** What is open now, by status, and what is running. */
+function inFlightPart(s: ProjectStatus, w: ReportWords): string[] {
+  const { t, label } = w;
+  const out: string[] = [];
   out.push(`## ${t("status.inFlight")}`, "");
   out.push(`${t("status.openIssues", { n: s.inFlight.open })}: ${s.inFlight.byStatus.map((b) => `${label("issueStatus", b.status)} ${b.count}`).join(", ")}`);
   if (s.inFlight.truncated) out.push("", t("status.truncated"));
@@ -102,7 +106,13 @@ export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {
   if (s.inFlight.running.length === 0) out.push(t("status.runningNone"));
   for (const i of s.inFlight.running) out.push(`- **${i.key}** ${i.title} · ${label("issueStatus", i.status)}`);
   out.push("", readAt(s.inFlight.asOf, w), "");
+  return out;
+}
 
+/** Who is waited on, grouped by person. */
+function waitsPart(s: ProjectStatus, w: ReportWords): string[] {
+  const { t, clock } = w;
+  const out: string[] = [];
   out.push(`## ${t("status.waits")}`, "");
   if (s.waits.people.length === 0) out.push(t("status.waitsNone"));
   for (const g of waitGroups(s.waits)) {
@@ -112,7 +122,13 @@ export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {
   }
   if (s.waits.peopleCount > s.waits.people.length) out.push(`- ${t("status.waitsMore", { n: s.waits.peopleCount - s.waits.people.length })}`);
   out.push("", readAt(s.waits.asOf, w), "");
+  return out;
+}
 
+/** Each requirement with its proven criteria, progress and delivery estimate. */
+function requirementsPart(s: ProjectStatus, w: ReportWords): string[] {
+  const { t, label, clock } = w;
+  const out: string[] = [];
   out.push(`## ${t("status.requirements")} — ${t("status.criteriaProven", { proven: s.requirements.proven, total: s.requirements.total })}`, "");
   if (s.requirements.items.length === 0) out.push(t("status.requirementsNone"));
   for (const r of s.requirements.items) {
@@ -126,7 +142,13 @@ export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {
     );
   }
   out.push("", readAt(s.requirements.asOf, w), "");
+  return out;
+}
 
+/** The next release: its state, progress, forecast, whose turn it is and what is behind it. */
+function nextReleasePart(s: ProjectStatus, w: ReportWords): string[] {
+  const { t, label, clock } = w;
+  const out: string[] = [];
   out.push(`## ${t("status.nextRelease")}`, "");
   const n = s.nextRelease;
   if (n.version === null) out.push(t("status.nextReleaseNone"));
@@ -142,12 +164,24 @@ export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {
     );
   }
   out.push("", readAt(n.asOf, w), "");
+  return out;
+}
 
+/** What is late, and why. */
+function latePart(s: ProjectStatus, w: ReportWords): string[] {
+  const { t, clock } = w;
+  const out: string[] = [];
   out.push(`## ${t("status.late")}`, "");
   if (s.late.items.length === 0) out.push(t("status.lateNone"));
   for (const l of s.late.items) out.push(`- **${l.key}** ${l.title} — ${t(`status.late.${l.late.reason}`, { by: spanText(l.late.byMinutes, clock.lang) })}`);
   out.push("", readAt(s.late.asOf, w), "");
+  return out;
+}
 
+/** The roadmap by horizon. */
+function roadmapPart(s: ProjectStatus, w: ReportWords): string[] {
+  const { t } = w;
+  const out: string[] = [];
   out.push(`## ${t("status.roadmap")}`, "");
   for (const h of ROADMAP_HORIZONS) {
     out.push(`### ${t(`status.horizon.${h}`)}`, "");
@@ -157,5 +191,15 @@ export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {
     out.push("");
   }
   out.push(readAt(s.roadmap.asOf, w), "", `_${t("status.forecastNote")}_`, "");
+  return out;
+}
+
+export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {
+  const { t, clock } = w;
+  const when = (iso: string) => formatDateTime(iso, clock.lang, clock.timeZone);
+  const out: string[] = [];
+  out.push(`# ${s.name} — ${t("status.title")}`, "");
+  out.push(`${t("status.asOf", { at: when(s.asOf) })} · ${t("status.window", { days: s.days })}`, "");
+  out.push(...shippedPart(s, w), ...inFlightPart(s, w), ...waitsPart(s, w), ...requirementsPart(s, w), ...nextReleasePart(s, w), ...latePart(s, w), ...roadmapPart(s, w));
   return out.join("\n");
 }

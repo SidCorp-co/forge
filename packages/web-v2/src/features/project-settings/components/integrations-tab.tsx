@@ -13,23 +13,23 @@ import {
   agentAccessBody,
   agentAccessDeniedReason,
   mayWriteAgentAccess,
-} from "@/features/integrations/components/agent-access-control";
-import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
-import { TourHint } from "@/features/tours/components/tour-hint";
+} from "@/features/integrations";
+import { ProjectIntegrations } from "@/features/integrations";
+import { TourHint } from "@/features/tours";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { useBindConnection, useConnections, useIsOrgAdmin } from "@/features/integrations/hooks";
-import { providerLabel, providerModule } from "@/features/integrations/providers/registry";
-import { bindingRefusalText } from "@/features/integrations/bind-actions";
-import { coolify } from "@/features/integrations/providers/coolify";
-import { CoolifyTargetsField } from "@/features/integrations/providers/coolify/targets-field";
+import { useBindConnection, useConnections, useIsOrgAdmin } from "@/features/integrations";
+import { providerLabel, providerModule } from "@/features/integrations";
+import { bindingRefusalText } from "@/features/integrations";
+import { coolify } from "@/features/integrations";
+import { CoolifyTargetsField } from "@/features/integrations";
 import { providerCanDeploy } from "@forge/contracts/deploy-capability";
 import type {
   AgentAccess,
   BindingRole,
   ConnectionSummary,
   CoolifyTargetInput,
-} from "@/features/integrations/types";
+} from "@/features/integrations";
 
 // What the binding is FOR — DECLARED by the person, never derived from the
 // provider: the same epodsystem connection is a deploy target on a storefront
@@ -65,7 +65,7 @@ function applicationsOf(targets: CoolifyTargetInput[]): CoolifyTargetInput[] {
   }));
 }
 
-function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+function ShareExisting({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const connectionsQ = useConnections();
   // Only active connections with a stored credential are eligible to share —
   // a soft-deleted or secret-less row would fail server-side (loadOwnedConnection
@@ -222,9 +222,9 @@ export function IntegrationsTab({ projectId, canEdit }: { projectId: string; can
     <div className="flex flex-col gap-10">
       <div>
         <TourHint tourId="integrations" />
-        <ProjectIntegrationsPanel projectId={projectId} canEdit={canEdit} />
+        <ProjectIntegrations projectId={projectId} canEdit={canEdit} />
       </div>
-      <ShareExistingCard projectId={projectId} canEdit={canEdit} />
+      <ShareExisting projectId={projectId} canEdit={canEdit} />
     </div>
   );
 }

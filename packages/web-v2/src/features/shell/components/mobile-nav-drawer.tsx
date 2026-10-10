@@ -1,13 +1,12 @@
 "use client";
 
 // below md this drawer, opened from the More tab, is the whole of the sidebar: the project tier, the workspace destinations, the project switcher, the bell beside the org picker as the sidebar has it at its top, and the search, account and version the sidebar carries above md
-import { useEffect } from "react";
-import { Icon, type IconName, ProjectMark, isNavGroup } from "@/design";
-import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
-import { projectGlyph, projectInitials } from "@/features/projects/glyph";
-import type { ProjectListItem } from "@/features/projects/types";
+import { Icon, type IconName, isNavGroup, ProjectMark, SlideOver } from "@/design";
+import { OrgSwitcher } from "@/features/orgs";
+import { projectGlyph, projectInitials } from "@/features/projects";
+import type { ProjectListItem } from "@/features/projects";
 import { cn } from "@/lib/utils/cn";
-import { useMyEcosystems } from "@/features/ecosystem/hooks";
+import { useMyEcosystems } from "@/features/ecosystem";
 import { useCopy, useInterfaceLanguage, useNavLabel } from "@/lib/i18n/interface-language";
 import {
   ecosystemMenu,
@@ -46,7 +45,7 @@ function DrawerNavButton({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-13-5 font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+        "flex min-h-11 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-13-5 font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-focus",
         active ? "bg-accent-tint text-accent-text" : "text-muted hover:bg-hover hover:text-fg",
       )}
     >
@@ -113,16 +112,6 @@ export function MobileNavDrawer({
   const t = useCopy();
   const language = useInterfaceLanguage();
   const navLabel = useNavLabel();
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
 
   const navRow = (it: NavRow, active = it.key === activeKey, badge = it.badge) => (
     <DrawerNavButton
@@ -153,7 +142,7 @@ export function MobileNavDrawer({
               <Icon name={e.icon} size={18} />
               {navLabel(e.key, e.label)}
             </span>
-            <div className="ml-[19px] flex flex-col border-l border-line-subtle pl-2">
+            <div className="ml-4.75 flex flex-col border-l border-line-subtle pl-2">
               {e.items.map((it) => navRow(it))}
             </div>
           </div>
@@ -176,20 +165,8 @@ export function MobileNavDrawer({
   );
 
   return (
-    <div className="md:hidden">
-      <button
-        type="button"
-        aria-label={t("shell.drawer.close")}
-        className="fixed inset-0 z-40 cursor-default"
-        style={{ background: "var(--scrim-strong)" }}
-        onClick={onClose}
-      />
-      <div
-        className="forge-slide fixed inset-y-0 left-0 z-50 flex w-[272px] max-w-[82vw] flex-col gap-1 border-r border-line bg-surface p-3 pb-[env(safe-area-inset-bottom)] pt-[max(env(safe-area-inset-top),0.75rem)]"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("shell.drawer.label")}
-      >
+    <SlideOver open={open} onClose={onClose} side="left" width={272} hideHeader fitBody title={t("shell.drawer.label")}>
+      <div className="flex min-h-0 flex-1 flex-col gap-1 px-3 pt-safe pb-safe md:hidden">
         {/* Org context + switcher (ISS-469) — the rail is hidden below md,
             so the drawer carries the current-org control on mobile. */}
         <div className="flex items-center gap-1.5 px-1.5 pb-3">
@@ -199,7 +176,7 @@ export function MobileNavDrawer({
           {bell}
         </div>
 
-        {search && <div className="px-1.5 pb-2">{search}</div>}
+        {search ? <div className="px-1.5 pb-2">{search}</div> : null}
 
         <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
           {thisProjectSection}
@@ -213,10 +190,10 @@ export function MobileNavDrawer({
           />
         </div>
 
-        {footer && <div className="flex flex-col gap-1 border-t border-line-subtle pt-2">{footer}</div>}
-        {version && <div className="px-1.5 pt-2">{version}</div>}
+        {footer ? <div className="flex flex-col gap-1 border-t border-line-subtle pt-2">{footer}</div> : null}
+        {version ? <div className="px-1.5 pt-2">{version}</div> : null}
       </div>
-    </div>
+    </SlideOver>
   );
 }
 
@@ -243,7 +220,7 @@ function DrawerProjects({
           <button
             type="button"
             onClick={onCreateProject}
-            className="fg-caption inline-flex items-center gap-1 rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="fg-caption inline-flex items-center gap-1 rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-focus"
           >
             <Icon name="plus" size={13} />
             {t("shell.projects.create")}
@@ -251,7 +228,7 @@ function DrawerProjects({
           <button
             type="button"
             onClick={onViewAllProjects}
-            className="fg-caption rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="fg-caption rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-focus"
           >
             {t("shell.projects.viewAll")}
           </button>

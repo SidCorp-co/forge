@@ -1,8 +1,7 @@
 "use client";
 
-import { ChevronDown, ChevronUp } from "lucide-react";
-import { type ReactNode, type RefObject, useId, useLayoutEffect, useState } from "react";
-import { type BannerTone, Button, bannerColours } from "@/design";
+import { type ReactNode, type RefObject, useId, useSyncExternalStore } from "react";
+import { type BannerTone, Button, bannerColours, Icon, fixedHeight } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { saidView } from "@/lib/i18n/said";
 import { cn } from "@/lib/utils/cn";
@@ -40,11 +39,18 @@ export function DesignBanner({ d, acts, detail, alert, open, onOpen, float, deta
   const t = useCopy();
   const w = saidView(d.waitingOn, useInterfaceLanguage());
   const id = useId();
-  const [hasDetail, setHasDetail] = useState(false);
   // The detail's parts each decide for themselves whether they have anything to say, so the toggle reads the rendered detail
-  useLayoutEffect(() => {
-    setHasDetail((detailRef.current?.childElementCount ?? 0) > 0);
-  });
+  const hasDetail = useSyncExternalStore(
+    (onChange) => {
+      const el = detailRef.current;
+      if (!el) return () => {};
+      const watch = new MutationObserver(onChange);
+      watch.observe(el, { childList: true });
+      return () => watch.disconnect();
+    },
+    () => (detailRef.current?.childElementCount ?? 0) > 0,
+    () => false,
+  );
   if (w.kind === "none") return null;
   const c = bannerColours(TONE[w.kind]);
   const head = w.kind === "you" ? t("workflows.waitingOnYou") : t("workflows.waitingOn", { who: w.who });
@@ -56,7 +62,7 @@ export function DesignBanner({ d, acts, detail, alert, open, onOpen, float, deta
   return (
     <div className="relative text-13" data-testid="design-banner" data-open={shown} data-float={float}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-6 py-2 max-md:px-4" style={{ background: c.bg }}>
-        <span aria-hidden className="size-2 flex-none rounded-full" style={{ background: c.dot }} />
+        <span aria-hidden className="size-2 flex-none rounded-pill" style={{ background: c.dot }} />
         <span className="min-w-0 flex-1 truncate" title={w.rule} data-testid="design-banner-line">
           <span className="font-bold">{head}</span> {w.act}
         </span>
@@ -66,14 +72,14 @@ export function DesignBanner({ d, acts, detail, alert, open, onOpen, float, deta
             type="button"
             size="sm"
             variant="ghost"
-            className="h-auto w-fit flex-none gap-1 p-0 text-12-5 font-semibold text-muted hover:bg-transparent hover:text-fg"
+            className="h-auto w-fit flex-none gap-1 p-0 text-13 font-semibold text-muted hover:bg-transparent hover:text-fg"
             aria-expanded={shown}
             aria-controls={id}
             onClick={() => onOpen(!shown)}
             data-testid="design-banner-more"
           >
             {shown ? t("workflows.banner.less") : t("workflows.banner.more")}
-            {shown ? <ChevronUp size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
+            {shown ? <Icon name="chevronUp" size={14} /> : <Icon name="chevronDown" size={14} />}
           </Button>
         ) : null}
       </div>
@@ -86,8 +92,8 @@ export function DesignBanner({ d, acts, detail, alert, open, onOpen, float, deta
         hidden={!shown}
         className={cn(
           shown ? "grid" : "hidden",
-          "gap-1.5 px-6 pb-2.5 text-12-5 max-md:px-4",
-          float && "absolute inset-x-0 top-full z-30 max-h-[40dvh] overflow-y-auto border-b border-line-subtle pt-2",
+          "gap-1.5 px-6 pb-2.5 text-13 max-md:px-4",
+          float && ["absolute inset-x-0 top-full z-30 border-b border-line-subtle pt-2", fixedHeight("sheet")],
         )}
         style={float ? overCanvas : { background: c.bg }}
         data-float={float}

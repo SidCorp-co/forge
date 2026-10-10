@@ -7,22 +7,22 @@
 // a sandbox choice is held, so turning it back on finds that choice again. A sandbox choice is set
 // only while computation is on, since `compute` without `enabled` is not a document core accepts.
 
-import { Skeleton, Toggle } from "@/design";
-import { sectionOf } from "@/features/project-config/use-document-draft";
+import { SettingRow, SettingsGroup, Skeleton, Toggle } from "@/design";
+import { sectionOf } from "@/features/project-config";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { UndeclaredNotice, useProjectDraft } from "./general-section";
-import { SaveBar, SettingGroup, SettingRow } from "./setting-controls";
+import { refusalError, SaveBar } from "./setting-controls";
 
 type Compute = { enabled?: unknown; zdrOnly?: unknown; thirdParty?: unknown };
 
-export function ComputeSection({ projectId, slug, canEdit }: { projectId: string; slug: string; canEdit: boolean }) {
+export function ComputeSettings({ projectId, slug, canEdit }: { projectId: string; slug: string; canEdit: boolean }) {
   const t = useCopy();
   const draft = useProjectDraft(projectId);
   const section = sectionOf([draft]);
   if (draft.loading || !draft.ready) return <Skeleton className="h-40 w-full rounded-md" />;
   const off = !canEdit || !draft.declared;
   const raw = draft.get(["compute"]);
-  const compute: Compute = raw !== null && typeof raw === "object" ? (raw as Compute) : {};
+  const compute: Compute = raw !== null && typeof raw === "object" ? raw : {};
   const enabled = compute.enabled === true;
   const setEnabled = (on: boolean) => {
     const { enabled: _was, ...choices } = compute;
@@ -33,23 +33,23 @@ export function ComputeSection({ projectId, slug, canEdit }: { projectId: string
     <SettingRow
       inline
       label={label}
-      refusals={draft.refusedAt(["compute", key])}
+      error={refusalError(draft.refusedAt(["compute", key]))}
       control={<Toggle checked={compute[key] === true} disabled={off || !enabled} aria-label={label} onChange={(v) => draft.set(["compute", key], v ? true : undefined)} />}
     />
   );
   return (
     <div data-testid="compute-section">
       {!draft.declared && <UndeclaredNotice slug={slug} />}
-      <SettingGroup id="compute" title={t("settings.project.compute.title")}>
+      <SettingsGroup id="compute" title={t("settings.project.compute.title")}>
         <SettingRow
           inline
           label={t("settings.project.compute.enabled")}
-          refusals={draft.refusedAt(["compute"]).filter((r) => r.path === "/compute" || r.path === "/compute/enabled")}
+          error={refusalError(draft.refusedAt(["compute"]).filter((r) => r.path === "/compute" || r.path === "/compute/enabled"))}
           control={<Toggle checked={enabled} disabled={off} aria-label={t("settings.project.compute.enabled")} onChange={setEnabled} />}
         />
         {choice("thirdParty", t("settings.project.compute.thirdParty"))}
         {choice("zdrOnly", t("settings.project.compute.zdrOnly"))}
-      </SettingGroup>
+      </SettingsGroup>
       {draft.declared && <SaveBar section={section} canEdit={canEdit} />}
     </div>
   );

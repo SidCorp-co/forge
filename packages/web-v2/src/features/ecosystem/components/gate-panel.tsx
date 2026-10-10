@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button, Input, Textarea } from "@/design";
-import { type AgentQuestion, currentRoundOf } from "@/features/questions/types";
+import { type AgentQuestion, currentRoundOf } from "@/features/questions";
 import { readingOf, refusalsOf } from "@/lib/api/refusals";
 import { useAnswerGate, useGateQuestion } from "../hooks";
 import { Loading, RefusalNotice, UnreadNotice } from "./notices";
@@ -66,7 +66,7 @@ function useGateDecision(projectId: string, questionId: string | null): GateDeci
   };
 }
 
-export function GatePanel({ projectId, slug, questionId }: { projectId: string; slug: string; questionId: string | null }) {
+export function EcosystemGate({ projectId, slug, questionId }: { projectId: string; slug: string; questionId: string | null }) {
   const t = useCopy();
   const gate = useGateDecision(projectId, questionId);
   if (gate.kind === "notice") return gate.notice;

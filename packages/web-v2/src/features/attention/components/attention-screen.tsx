@@ -17,13 +17,13 @@ import {
   PageContainer,
 } from "@/design";
 import { TONE_META, type SemanticTone } from "@/design/status";
-import { TYPE_LABEL } from "@/features/ecosystem/types";
-import { useOrgScopedProjects } from "@/features/projects/hooks";
+import { TYPE_LABEL } from "@/features/ecosystem";
+import { useOrgScopedProjects } from "@/features/projects";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { NeedsYouList } from "@/features/needs-you/components/needs-you-list";
+import { NeedsYouList } from "@/features/needs-you";
 import { useAttention } from "../hooks";
 import type { AttentionItem, AttentionKind, AttentionView } from "../types";
 import { PageTitle, SectionTitle } from "@/design/primitives/heading";
@@ -65,22 +65,22 @@ function KindTag({ kind }: { kind: AttentionKind }) {
   const m = KIND_META[kind];
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2 py-0.5 font-semibold"
-      style={{ color: m.fg, background: m.bg, fontSize: "var(--text-11-5)" }}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2 py-0.5 text-12 font-semibold"
+      style={{ color: m.fg, background: m.bg }}
     >
-      <Icon name={m.icon} size={13} style={{ color: m.fg }} />
+      <Icon name={m.icon} size={13} />
       {t(`attention.kind.${kind}`)}
     </span>
   );
 }
 
-export function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
+export function AttentionItemLine({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
   const t = useCopy();
   return (
     <button
       type="button"
       onClick={() => onOpen(item.link)}
-      className="flex w-full items-center gap-3 px-0.5 py-2.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]"
+      className="flex w-full items-center gap-3 px-0.5 py-2.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus max-md:min-h-11"
     >
       <KindTag kind={item.kind} />
       {item.kind === "channel_gate" ? (
@@ -102,8 +102,7 @@ export function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (l
 function CountBadge({ children }: { children: ReactNode }) {
   return (
     <span
-      className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
-      style={{ fontSize: "var(--text-11)", lineHeight: "16px", color: "var(--fg-muted)", background: "var(--paper-100)" }}
+      className="inline-flex min-w-4.5 items-center justify-center rounded-pill bg-neutral-3 px-1.5 text-12 font-semibold text-muted"
     >
       {children}
     </span>
@@ -142,13 +141,12 @@ function Group({
             type="button"
             aria-expanded={expanded}
             onClick={() => setToggled(!expanded)}
-            className="flex w-full items-center gap-2 rounded-md px-0.5 py-1 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]"
+            className="flex w-full items-center gap-2 rounded-md px-0.5 py-1 text-left focus-visible:outline-none focus-visible:shadow-focus max-md:min-h-11"
           >
             <Icon
               name="chevronRight"
               size={15}
-              className="text-subtle transition-transform duration-[150ms]"
-              style={{ transform: expanded ? "rotate(90deg)" : "none" }}
+              className={expanded ? "rotate-90 text-subtle transition-transform duration-150" : "text-subtle transition-transform duration-150"}
             />
             {title}
             <CountBadge>{matched}</CountBadge>
@@ -163,7 +161,7 @@ function Group({
       {expanded && (
         <div className="flex flex-col divide-y divide-line-subtle">
           {items.map((it) => (
-            <AttentionRow key={`${it.kind}-${it.link}-${it.questionId ?? ""}-${it.since}`} item={it} onOpen={onOpen} />
+            <AttentionItemLine key={`${it.kind}-${it.link}-${it.questionId ?? ""}-${it.since}`} item={it} onOpen={onOpen} />
           ))}
           {matched > items.length && (
             <p className="fg-caption px-0.5 text-muted">
@@ -220,7 +218,7 @@ function Inbox({ view }: { view: AttentionView }) {
       <PageTitle>{t("attention.title")}</PageTitle>
 
       {total === 0 ? (
-        <div className="grid min-h-[40vh] place-items-center">
+        <div className="grid min-h-72 place-items-center">
           <EmptyState message={t("attention.empty")} />
         </div>
       ) : (
@@ -236,11 +234,11 @@ function Inbox({ view }: { view: AttentionView }) {
               />
             </section>
           ))}
-          <Group title={t("attention.group.channelGates")} items={scoped.channelGates} onOpen={router.push} />
-          <Group title={t("attention.group.mentions")} items={scoped.mentions} onOpen={router.push} />
-          <Group title={t("attention.group.failedJobs")} items={scoped.failedJobs} onOpen={router.push} />
-          <Group title={t("attention.group.statusReports")} items={scoped.statusReports} onOpen={router.push} />
-          <Group title={t("attention.group.offlineRunners")} items={scoped.offlineRunners} onOpen={router.push} />
+          <Group title={t("attention.group.channelGates")} items={scoped.channelGates} onOpen={(href) => router.push(href)} />
+          <Group title={t("attention.group.mentions")} items={scoped.mentions} onOpen={(href) => router.push(href)} />
+          <Group title={t("attention.group.failedJobs")} items={scoped.failedJobs} onOpen={(href) => router.push(href)} />
+          <Group title={t("attention.group.statusReports")} items={scoped.statusReports} onOpen={(href) => router.push(href)} />
+          <Group title={t("attention.group.offlineRunners")} items={scoped.offlineRunners} onOpen={(href) => router.push(href)} />
         </div>
       )}
     </PageContainer>

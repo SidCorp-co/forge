@@ -9,10 +9,10 @@ import type { IdeaOffer } from "@forge/contracts/idea-offer";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { Button, Icon } from "@/design";
-import type { CanonicalBlock } from "@/features/session/types";
-import { issuesApi, releaseBatchApi } from "@/features/issues/api";
-import { IdeaOfferCard, ideaOffersOf } from "./components/idea-offers";
-import { useIssue } from "@/features/issues/detail-hooks";
+import type { CanonicalBlock } from "@/features/session";
+import { issuesApi, releaseBatchApi } from "@/features/issues";
+import { IdeaOfferNotice, ideaOffersOf } from "./components/idea-offers";
+import { useIssue } from "@/features/issues";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import type { ConversationMessage, ConversationProgressEntry } from "./types";
@@ -57,7 +57,7 @@ export function useActOffers(args: {
       if (acts.length + ideas.length > 0) map.set(id, { acts, ideas });
     };
     for (const m of args.messages) note(m.id, m.blocks);
-    if (args.progress) note(args.progress.entry.id ?? "live", args.progress.entry.blocks as CanonicalBlock[]);
+    if (args.progress) note(args.progress.entry.id ?? "live", args.progress.entry.blocks);
     return map;
   }, [args.messages, args.progress]);
 
@@ -68,10 +68,10 @@ export function useActOffers(args: {
       return (
         <div className="mt-2 flex flex-col gap-2">
           {offers.acts.map((o) => (
-            <ActOfferCard key={`${o.issueId}:${o.act}`} offer={o} />
+            <ActOfferNotice key={`${o.issueId}:${o.act}`} offer={o} />
           ))}
           {offers.ideas.map((o) => (
-            <IdeaOfferCard key={`${o.about}:${o.brief}`} offer={o} />
+            <IdeaOfferNotice key={`${o.about}:${o.brief}`} offer={o} />
           ))}
         </div>
       );
@@ -81,7 +81,7 @@ export function useActOffers(args: {
   return { offersFor };
 }
 
-function ActOfferCard({ offer }: { offer: ChatActOffer }) {
+function ActOfferNotice({ offer }: { offer: ChatActOffer }) {
   const t = useCopy();
   const L = useLabel();
   const qc = useQueryClient();
@@ -89,9 +89,9 @@ function ActOfferCard({ offer }: { offer: ChatActOffer }) {
   const press = useMutation({
     mutationFn: () => pressAct(offer),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["issues"] });
-      qc.invalidateQueries({ queryKey: ["issue", offer.issueId] });
-      qc.invalidateQueries({ queryKey: ["release-roster"] });
+      void qc.invalidateQueries({ queryKey: ["issues"] });
+      void qc.invalidateQueries({ queryKey: ["issue", offer.issueId] });
+      void qc.invalidateQueries({ queryKey: ["release-roster"] });
     },
   });
   const status = live.data?.status;

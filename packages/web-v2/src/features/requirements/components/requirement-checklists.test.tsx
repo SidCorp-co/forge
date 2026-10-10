@@ -109,11 +109,21 @@ describe("a requirement's checklists on its page", () => {
     expect(row(acceptance as HTMLElement, "shipped").dataset.state).toBe("gap");
   });
 
-  it('reads "No checklist" where the agree was recorded before the checklist (BC-9)', async () => {
+  it("says an agree recorded before the checklist judged nothing, under a heading that reads how it stands now (BC-9, FB-120)", async () => {
     requirementPage([readOf(REQUIREMENT_READY_CHECKLIST, record(REQUIREMENT_READY_CHECKLIST, READY_GIVEN), [passed([], "no_checklist")]), readOf(REQUIREMENT_ACCEPTANCE_CHECKLIST, null)], 1);
     const section = await screen.findByTestId("checklist");
     expect(section.dataset.standing).toBe("no_checklist");
+    expect(section, "a heading must not deny the checklist drawn under it").not.toHaveTextContent("No checklist");
+    expect(section).toHaveTextContent("2 open");
+    expect(within(section).getByTestId("checklist-unrecorded")).toHaveTextContent("Moved on before this checklist existed");
+    expect(row(section, "criteria").dataset.state).toBe("given");
+  });
+
+  it('reads "No checklist" where the agree was recorded before the checklist and nothing stands now (BC-9)', async () => {
+    requirementPage([readOf(REQUIREMENT_READY_CHECKLIST, null, [passed([], "no_checklist")]), readOf(REQUIREMENT_ACCEPTANCE_CHECKLIST, null)], 1);
+    const section = await screen.findByTestId("checklist");
     expect(section).toHaveTextContent("No checklist");
+    expect(within(section).queryByTestId("checklist-unrecorded")).toBeNull();
   });
 });
 

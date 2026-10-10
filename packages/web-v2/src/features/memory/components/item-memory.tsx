@@ -10,7 +10,7 @@ import { Button, ErrorState, ProjectLoader, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useItemMemory, useMemoryActs } from "../hooks";
-import { MemoryEntryRow } from "./memory-entry";
+import { MemoryEntryItem } from "./memory-entry";
 
 /** How many memories name the item, for its tab; undefined until the read answers. */
 export function useItemMemoryCount(projectId: string, cites: string): number | undefined {
@@ -26,20 +26,21 @@ export function ItemMemory({ projectId, slug, cites }: { projectId: string; slug
   const actError = acts.correct.error ?? acts.retire.error ?? acts.verify.error;
   const busy = acts.correct.isPending || acts.retire.isPending || acts.verify.isPending;
   const hidden = q.data ? (retired ? q.data.counts.live : q.data.counts.retired) : 0;
+  const none = retired ? t("memory.itemNoneRetired") : cites === null ? t("memory.projectNone") : t("memory.itemNone", { ref: cites });
   return (
     <section className="grid gap-3" data-testid="item-memory" aria-label={t("memory.title")}>
       <ViewHeading>{t("memory.title")}</ViewHeading>
       {actError ? <p className="text-13 text-danger">{formatApiError(actError)}</p> : null}
       {q.isError ? (
-        <ErrorState title={t("memory.loadFailed")} message={formatApiError(q.error)} onRetry={() => q.refetch()} />
+        <ErrorState title={t("memory.loadFailed")} message={formatApiError(q.error)} onRetry={() => void q.refetch()} />
       ) : !q.data ? (
         <ProjectLoader label={t("memory.loading")} />
       ) : q.data.items.length === 0 ? (
-        <p className="text-13 text-subtle">{retired ? t("memory.itemNoneRetired") : cites === null ? t("memory.projectNone") : t("memory.itemNone", { ref: cites })}</p>
+        <p className="text-13 text-subtle">{none}</p>
       ) : (
         <ul className="-mx-5 border-t border-line-subtle max-md:-mx-3">
           {q.data.items.map((e) => (
-            <MemoryEntryRow
+            <MemoryEntryItem
               key={e.id}
               entry={e}
               slug={slug}
@@ -52,7 +53,7 @@ export function ItemMemory({ projectId, slug, cites }: { projectId: string; slug
         </ul>
       )}
       {q.data && (retired || hidden > 0) ? (
-        <p className="flex flex-wrap items-baseline gap-x-2 text-12-5 text-muted" data-testid="item-memory-retired">
+        <p className="flex flex-wrap items-baseline gap-x-2 text-13 text-muted" data-testid="item-memory-retired">
           <span>{retired ? t("memory.itemShowingRetired") : t("memory.itemRetired", { n: hidden })}</span>
           <Button size="sm" variant="ghost" onClick={() => setRetired((r) => !r)}>
             {retired ? t("memory.itemShowCurrent") : t("memory.itemShowRetired")}

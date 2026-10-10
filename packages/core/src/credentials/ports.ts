@@ -8,7 +8,7 @@ interface CredentialsPorts {
   tokenChanged(change: {
     userId: string;
     tokenId: string;
-    change: 'created' | 'revoked' | 'used';
+    change: 'created' | 'revoked' | 'used' | 'fenced';
     ts: string;
   }): Promise<void>;
 }

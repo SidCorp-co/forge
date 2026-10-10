@@ -32,7 +32,8 @@ import { said } from "@/lib/i18n/said";
 import { useFireDetail } from "../hooks";
 import { fireHref, reportHref, scheduleHref, sessionHref } from "@/lib/routes/automation";
 import type { FireDetailResponse, FireStanding } from "../types";
-import { fireWhy, fmtDuration, producedLine, type RowCtx, shortId } from "../view";
+import { fireWhy, producedLine, type RowCtx, shortId } from "../view";
+import { formatDurationSec } from "@/lib/i18n/format";
 
 export const fireRow =
   (hrefOf: (id: string) => string, { t, language, time }: RowCtx) =>
@@ -43,9 +44,9 @@ export const fireRow =
       keyLabel: `#${shortId(f.id)}`,
       href: hrefOf(f.id),
       title: f.scheduleName,
-      facts: [enumLabel("fireTrigger", f.trigger, language), fmtDuration(f.durationSeconds, t), producedLine(f.produced, t), ...(why ? [why] : [])],
+      facts: [enumLabel("fireTrigger", f.trigger, language), formatDurationSec(f.durationSeconds, language), producedLine(f.produced, t), ...(why ? [why] : [])],
       state: <StatusBadge family="scheduleRun" value={f.status} />,
-      waitingOn: f.waitingOn.kind === "none" ? <span className="text-12-5 text-subtle">—</span> : <WaitingOn w={f.waitingOn} />,
+      waitingOn: f.waitingOn.kind === "none" ? <span className="text-13 text-subtle">—</span> : <WaitingOn w={f.waitingOn} />,
       owner: enumLabel("fireTrigger", f.trigger, language),
       age: { text: time.age(f.startedAt), title: t("schedules.fire.started", { at: time.dateTime(f.startedAt) }) },
       dim: f.attentionGroup === "nothing_produced",
@@ -68,10 +69,10 @@ export function FireLines({ fires, slug }: { fires: readonly FireStanding[]; slu
               <span className="font-mono text-12 font-semibold text-link">#{shortId(f.id)}</span>
               <StatusBadge family="scheduleRun" value={f.status} />
               <span className="text-muted">{enumLabel("fireTrigger", f.trigger, language)}</span>
-              <span className="font-mono text-12 text-subtle">{fmtDuration(f.durationSeconds, t)}</span>
+              <span className="font-mono text-12 text-subtle">{formatDurationSec(f.durationSeconds, language)}</span>
               <span className="text-muted">{producedLine(f.produced, t)}</span>
               {why ? <span className="truncate text-danger">{why}</span> : null}
-              <span className="ml-auto font-mono text-11 text-subtle" title={time.dateTime(f.startedAt)}>
+              <span className="ml-auto font-mono text-12 text-subtle" title={time.dateTime(f.startedAt)}>
                 {time.age(f.startedAt)}
               </span>
             </Link>
@@ -99,7 +100,7 @@ function FireBanner({ f, className }: { f: FireStanding; className?: string }) {
   );
 }
 
-export function FireFacts({ d, slug }: { d: Pick<FireDetailResponse, "fire" | "schedule">; slug: string }) {
+export function FireProperties({ d, slug }: { d: Pick<FireDetailResponse, "fire" | "schedule">; slug: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
@@ -121,7 +122,7 @@ export function FireFacts({ d, slug }: { d: Pick<FireDetailResponse, "fire" | "s
         <Fact label={t("schedules.fire.startedLabel")}>
           <span title={time.dateTime(f.startedAt)}>{t("schedules.ago", { age: time.age(f.startedAt) })}</span>
         </Fact>
-        <Fact label={t("schedules.fire.took")}>{fmtDuration(f.durationSeconds, t)}</Fact>
+        <Fact label={t("schedules.fire.took")}>{formatDurationSec(f.durationSeconds, language)}</Fact>
         <Fact label={t("schedules.fire.trigger")}>
           <EnumBadge family="fireTrigger" value={f.trigger} />
         </Fact>
@@ -145,7 +146,7 @@ export function FireFacts({ d, slug }: { d: Pick<FireDetailResponse, "fire" | "s
         ) : null}
         {f.sessionId ? (
           <Fact label={t("schedules.fire.session")}>
-            <Link href={sessionHref(slug, f.sessionId)} className="font-mono text-12-5 text-link hover:underline">
+            <Link href={sessionHref(slug, f.sessionId)} className="font-mono text-13 text-link hover:underline">
               {shortId(f.sessionId)}
             </Link>
           </Fact>
@@ -164,12 +165,18 @@ export function FireFacts({ d, slug }: { d: Pick<FireDetailResponse, "fire" | "s
 function FireReads({ reads }: { reads: NonNullable<FireStanding["reads"]> }) {
   const t = useCopy();
   if (reads.length === 0) return <span className="text-13 text-subtle">{t("schedules.fire.readNothing")}</span>;
+  // the same path can be read twice in one run, so which time it was read is part of what a read is
+  const seen = new Map<string, number>();
+  const keyed = reads.map((r) => {
+    const base = `${r.method}:${r.path}`;
+    const nth = (seen.get(base) ?? 0) + 1;
+    seen.set(base, nth);
+    return { r, key: `${base}#${nth}` };
+  });
   return (
     <ul className="border-t border-line-subtle" data-testid="fire-reads">
-      {reads.map((r, i) => (
-        // the same path can be read twice in one run, so the position is part of what a read is
-        // biome-ignore lint/suspicious/noArrayIndexKey: a run's reads are fixed once recorded
-        <li key={`${i}:${r.method}:${r.path}`} className="flex flex-wrap items-baseline gap-x-2 border-b border-line-subtle py-1.5 text-12-5">
+      {keyed.map(({ r, key }) => (
+        <li key={key} className="flex flex-wrap items-baseline gap-x-2 border-b border-line-subtle py-1.5 text-13">
           <span className="font-mono font-semibold">{r.method}</span>
           <span className="min-w-0 break-all font-mono text-muted">{r.path}</span>
           {r.refused ? (
@@ -202,9 +209,9 @@ export function FirePeek({
   return (
     <PeekPanel peek={peek} listLabel={t("schedules.title")} noun={t("schedules.noun.fire")} onOpenFull={onOpenFull} testId="fire-peek">
       <PeekHead noun={t("schedules.noun.fire")} itemKey={`#${shortId(f.id)}`} badge={<StatusBadge family="scheduleRun" value={f.status} />} title={f.scheduleName} />
-      <FireBanner f={f} className="px-[18px]" />
-      <div className="px-[18px] pb-4 pt-4">
-        {schedule ? <FireFacts d={{ fire: { ...f, output: null }, schedule }} slug={slug} /> : null}
+      <FireBanner f={f} className="px-4.5" />
+      <div className="px-4.5 pb-4 pt-4">
+        {schedule ? <FireProperties d={{ fire: { ...f, output: null }, schedule }} slug={slug} /> : null}
       </div>
     </PeekPanel>
   );
@@ -223,7 +230,7 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
     <div className="grid gap-8" data-testid="fire-produced-items">
       {p.reports.length ? (
         <section>
-          <ViewHeading right={<span className="text-12-5 text-muted">{p.reports.length}</span>}>{t("schedules.fire.reports")}</ViewHeading>
+          <ViewHeading right={<span className="text-13 text-muted">{p.reports.length}</span>}>{t("schedules.fire.reports")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {p.reports.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
@@ -239,11 +246,11 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
       ) : null}
       {p.issues.length ? (
         <section>
-          <ViewHeading right={<span className="text-12-5 text-muted">{p.issues.length}</span>}>{t("schedules.fire.issues")}</ViewHeading>
+          <ViewHeading right={<span className="text-13 text-muted">{p.issues.length}</span>}>{t("schedules.fire.issues")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {p.issues.map((i) => (
               <li key={i.id} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
-                <Link href={issueHref(slug, i.key)} className="font-mono text-12-5 font-semibold text-link hover:underline">
+                <Link href={issueHref(slug, i.key)} className="font-mono text-13 font-semibold text-link hover:underline">
                   {i.key}
                 </Link>
                 <span>{i.title}</span>
@@ -255,12 +262,12 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
       ) : null}
       {p.proposals.length ? (
         <section>
-          <ViewHeading right={<span className="text-12-5 text-muted">{p.proposals.length}</span>}>{t("schedules.fire.proposals")}</ViewHeading>
+          <ViewHeading right={<span className="text-13 text-muted">{p.proposals.length}</span>}>{t("schedules.fire.proposals")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {p.proposals.map((a) => (
               <li key={`${a.skill}:${a.summary}`} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
                 <StatusBadge family="stewardAction" value={a.kind} />
-                <span className="font-mono text-12-5">{a.skill}</span>
+                <span className="font-mono text-13">{a.skill}</span>
                 <span className="text-muted">{a.summary}</span>
               </li>
             ))}
@@ -269,11 +276,11 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
       ) : null}
       {p.runs.length ? (
         <section>
-          <ViewHeading right={<span className="text-12-5 text-muted">{p.runs.length}</span>}>{t("schedules.fire.runs")}</ViewHeading>
+          <ViewHeading right={<span className="text-13 text-muted">{p.runs.length}</span>}>{t("schedules.fire.runs")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {p.runs.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
-                <span className="font-mono text-12-5">{shortId(r.id)}</span>
+                <span className="font-mono text-13">{shortId(r.id)}</span>
                 <span className="text-muted">{r.kind}</span>
                 <StatusBadge family="pipelineRun" value={r.status} />
               </li>
@@ -283,13 +290,13 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
       ) : null}
       {p.notifications.length ? (
         <section>
-          <ViewHeading right={<span className="text-12-5 text-muted">{p.notifications.length}</span>}>{t("schedules.fire.notifications")}</ViewHeading>
+          <ViewHeading right={<span className="text-13 text-muted">{p.notifications.length}</span>}>{t("schedules.fire.notifications")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {p.notifications.map((n) => (
               <li key={n.id} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
                 <EnumBadge family="notificationType" value={n.type} />
                 <span>{n.title}</span>
-                <span className="ml-auto font-mono text-11 text-subtle" title={time.dateTime(n.createdAt)}>
+                <span className="ml-auto font-mono text-12 text-subtle" title={time.dateTime(n.createdAt)}>
                   {time.age(n.createdAt)}
                 </span>
               </li>
@@ -319,7 +326,7 @@ export function FirePage({ projectId, slug, fireId }: { projectId: string; slug:
             dataKey={d.fire.id}
             rail={
               <FactsRail>
-                <FireFacts d={d} slug={slug} />
+                <FireProperties d={d} slug={slug} />
               </FactsRail>
             }
           >
@@ -330,7 +337,7 @@ export function FirePage({ projectId, slug, fireId }: { projectId: string; slug:
               {tab === "produced" ? (
                 <Produced d={d} slug={slug} />
               ) : d.fire.output ? (
-                <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap break-words bg-sunken p-3 text-12-5" data-testid="fire-output">
+                <pre className="max-h-160 overflow-auto whitespace-pre-wrap break-words bg-sunken p-3 text-13" data-testid="fire-output">
                   {d.fire.output}
                 </pre>
               ) : (

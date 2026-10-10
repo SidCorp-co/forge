@@ -16,9 +16,9 @@ import {
 } from "../../hooks";
 import type { CoolifyTargetInput, IntegrationSummary } from "../../types";
 import { providerLabel } from "../registry";
-import { healthBadge, OrgLockedNote, ProviderCard, TestOutcome, useBindingTest } from "../shared";
+import { healthBadge, OrgLockedNote, ProviderSummary, TestOutcome, useBindingTest } from "../shared";
 import type { CoolifyReadConfig } from "./config";
-import { ProdGateSection } from "./gates";
+import { ProdGate } from "./gates";
 import { CoolifyTargetsField } from "./targets-field";
 
 const NEW_BINDING = "new";
@@ -34,7 +34,7 @@ function badgeFor(existing: IntegrationSummary | undefined, t: Copy) {
   });
 }
 
-export function CoolifySection({ projectId }: { projectId: string }) {
+export function CoolifySettings({ projectId }: { projectId: string }) {
   const list = useIntegrationsList(projectId);
   const rows = useMemo(() => (list.data?.items ?? []).filter((i) => i.provider === "coolify"), [list.data]);
   const [picked, setPicked] = useState<string | null>(null);
@@ -48,11 +48,11 @@ export function CoolifySection({ projectId }: { projectId: string }) {
   ];
 
   return (
-    <ProviderCard title={providerLabel("coolify", language)} badge={badgeFor(existing, t)}>
+    <ProviderSummary title={providerLabel("coolify", language)} badge={badgeFor(existing, t)}>
       {rows.length > 0 && <SegmentedControl<string> value={selected} onChange={setPicked} options={options} />}
       {/* Remount the panel per binding so its form state re-seeds. */}
-      <BindingPanel key={selected} projectId={projectId} existing={existing} onRefetch={() => list.refetch()} />
-    </ProviderCard>
+      <CoolifyBinding key={selected} projectId={projectId} existing={existing} onRefetch={() => void list.refetch()} />
+    </ProviderSummary>
   );
 }
 
@@ -90,7 +90,7 @@ function useCoolifyForm(existing: IntegrationSummary | undefined) {
   return { baseUrl, setBaseUrl, targets, setTargets, apiToken, setApiToken };
 }
 
-function BindingPanel({
+function CoolifyBinding({
   projectId,
   existing,
   onRefetch,
@@ -167,9 +167,9 @@ function BindingPanel({
       <PanelActions
         projectId={projectId}
         existing={existing}
-        onSave={handleSave}
+        onSave={() => void handleSave()}
         saving={create.isPending || update.isPending}
-        onTest={() => existing && test.run(existing.id)}
+        onTest={() => { if (existing) void test.run(existing.id); }}
         testing={test.pending}
       />
     </div>
@@ -282,7 +282,7 @@ function PanelActions({
         )}
       </div>
       {existing && (
-        <ProdGateSection
+        <ProdGate
           integrationId={existing.id}
           confirmPending={confirmProd.isPending}
           onConfirm={() => confirmProd.mutate(existing.id)}

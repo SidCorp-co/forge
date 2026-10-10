@@ -7,7 +7,7 @@
 // item was filed from is the developer view's (BC-7).
 
 import Link from "next/link";
-import { ActorChip, EnumBadge, enumLabel, Fact, FactsEmpty, FactsGroup, StatusBadge, type StatusFamily, StepBar, WaitBanner } from "@/design";
+import { ActorChip, EnumBadge, enumLabel, Fact, FactsEmpty, FactsGroup, StatusBadge, type StatusFamily, StepBar, WaitBanner, keyedByContent } from "@/design";
 import { requirementHref } from "@/lib/routes/requirements";
 import { issueHref } from "@/lib/routes/issues";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -17,11 +17,11 @@ import type { FeedbackPhase, FeedbackRoute, FeedbackView } from "../types";
 import { FEEDBACK_ATTENTION_LABELS } from "@forge/contracts/feedback";
 import type { FeedbackShipNotice } from "@forge/contracts/feedback";
 import type { FeedbackForecast } from "@forge/contracts/forecast";
-import { EtaInline } from "@/features/forecast/components/eta-cell";
-import { ReleaseLine } from "@/features/forecast/components/release-line";
-import { type EtaClock, etaOfFeedback } from "@/features/forecast/eta";
+import { EtaInline } from "@/features/forecast";
+import { ReleaseLine } from "@/features/forecast";
+import { type EtaClock, etaOfFeedback } from "@/features/forecast";
 import { ETA_COPY } from "@/lib/i18n/eta-copy";
-import { feedbackForecastText } from "@/features/forecast/text";
+import { feedbackForecastText } from "@/features/forecast";
 import { releaseHref } from "@/lib/routes/releases";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 
@@ -72,14 +72,14 @@ export function FeedbackBanner({ f, slug, className }: { f: FeedbackView; slug?:
         g === "done" ? null : approving ? (
           <>
             {t("feedback.banner.approveRelease")}{" "}
-            <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug as string, version as string)}>
+            <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug, version)}>
               {version}
             </Link>
           </>
         ) : verifying ? (
           <>
             {t("feedback.banner.verifyShippedIn")}{" "}
-            <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug as string, version as string)}>
+            <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug, version)}>
               {version}
             </Link>
           </>
@@ -177,7 +177,7 @@ function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | 
           {/* the release is the answer line's, at the top of the page */}
           {time.relative(notice.at)}
           {notice.says.told ? (
-            <span className="block text-12-5 text-muted" data-testid="ship-notice-how">
+            <span className="block text-13 text-muted" data-testid="ship-notice-how">
               {said(notice.says.told, language)}
             </span>
           ) : null}
@@ -210,7 +210,7 @@ function VerifiedFact({ f }: { f: FeedbackView }) {
             : t("feedback.fact.verifiedBy", { who: v.byReporter ? t("feedback.fact.theReporter") : (v.byName ?? t("feedback.fact.aMember")) })}
           {" · "}
           {time.relative(v.at)}
-          {v.how === "automatic" && v.says.reason ? <span className="block text-12-5 text-muted">{said(v.says.reason, language)}</span> : null}
+          {v.how === "automatic" && v.says.reason ? <span className="block text-13 text-muted">{said(v.says.reason, language)}</span> : null}
         </span>
       </Fact>
     );
@@ -234,7 +234,45 @@ function VerifiedFact({ f }: { f: FeedbackView }) {
   );
 }
 
-export function FeedbackFacts({
+/** What carries the feedback onward: its route, the records on it, and the feedback it absorbed as duplicates. */
+function WhatCarriesIt({ f, slug }: { f: FeedbackView; slug: string }) {
+  const tr = useCopy();
+  const r = f.route;
+  const carrierType = r?.route === "issue" ? "issue" : r?.route === "new_requirement" ? "requirement" : r?.route === "duplicate" ? "feedback" : "other";
+  return (
+  <FactsGroup title={tr("feedback.fact.carriedBy")} testId="facts-route">
+    {!r ? (
+      <FactsEmpty>{tr("feedback.fact.notRouted")}</FactsEmpty>
+    ) : (
+      <div className="grid gap-1.5 text-13">
+        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <EnumBadge family="feedbackRoute" value={r.route} />
+        </span>
+        {r.carriers.length ? (
+          <ul className="grid gap-1" data-testid="facts-route-carriers">
+            {keyedByContent(r.carriers, (c) => c.key ?? c.status ?? "").map(({ key, item: c }) => (
+              <li key={key} className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid="facts-route-carrier">
+                {c.key && carrierType !== "other" ? <KeyLink type={carrierType} k={c.key} slug={slug} /> : null}
+                {c.status && CARRIER_FAMILY[r.route] ? <StatusBadge family={CARRIER_FAMILY[r.route] as StatusFamily} value={c.status} /> : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {r.answer ? <p className="whitespace-pre-wrap text-13 text-muted">{r.answer}</p> : null}
+      </div>
+    )}
+    {f.duplicates.length > 0 ? (
+      <Fact label={tr("feedback.fact.duplicates")}>
+        {f.duplicates.map((k) => (
+          <KeyLink key={k} type="feedback" k={k} slug={slug} />
+        ))}
+      </Fact>
+    ) : null}
+  </FactsGroup>
+  );
+}
+
+export function LinkedFeedback({
   f,
   slug,
   forecast,
@@ -254,8 +292,7 @@ export function FeedbackFacts({
   const time = useTimeFormat();
   const language = useInterfaceLanguage();
   const t = f.target;
-  const r = f.route;
-  const carrierType = r?.route === "issue" ? "issue" : r?.route === "new_requirement" ? "requirement" : r?.route === "duplicate" ? "feedback" : "other";
+  const stepName = (id: string) => t.stepNames?.[id] ?? id;
   return (
     <div data-testid="feedback-facts">
       <FactsGroup title={tr("feedback.fact.status")}>
@@ -266,7 +303,7 @@ export function FeedbackFacts({
           <Fact label={tr("feedback.fact.snoozed")} testId="facts-snoozed">
             <span className="fg-body-sm" data-testid="snoozed-until">
               {tr("feedback.row.snoozedUntil", { date: time.dateTime(f.snoozed.until) })}
-              {f.snoozed.reason ? <span className="block text-12-5 text-muted">{f.snoozed.reason}</span> : null}
+              {f.snoozed.reason ? <span className="block text-13 text-muted">{f.snoozed.reason}</span> : null}
             </span>
           </Fact>
         ) : null}
@@ -288,42 +325,16 @@ export function FeedbackFacts({
           {t.title ? <span className="min-w-0 truncate text-muted">{t.title}</span> : null}
         </div>
         {t.node ? (
-          <p className="mt-1.5 text-12-5 text-muted" data-testid="facts-node">
-            {"step" in t.node ? tr("feedback.fact.step", { step: t.node.step }) : tr("feedback.fact.link", { from: t.node.edge.from, to: t.node.edge.to })}
+          <p className="mt-1.5 text-13 text-muted" data-testid="facts-node">
+            {"step" in t.node
+              ? tr("feedback.fact.step", { step: stepName(t.node.step) })
+              : tr("feedback.fact.link", { from: stepName(t.node.edge.from), to: stepName(t.node.edge.to) })}
           </p>
         ) : null}
-        {f.whereSeen && t.type !== "screen" ? <p className="mt-1.5 text-12-5 text-muted">{tr("feedback.fact.seenAt", { where: f.whereSeen })}</p> : null}
+        {f.whereSeen && t.type !== "screen" ? <p className="mt-1.5 text-13 text-muted">{tr("feedback.fact.seenAt", { where: f.whereSeen })}</p> : null}
       </FactsGroup>
 
-      <FactsGroup title={tr("feedback.fact.carriedBy")} testId="facts-route">
-        {!r ? (
-          <FactsEmpty>{tr("feedback.fact.notRouted")}</FactsEmpty>
-        ) : (
-          <div className="grid gap-1.5 text-13">
-            <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-              <EnumBadge family="feedbackRoute" value={r.route} />
-            </span>
-            {r.carriers.length ? (
-              <ul className="grid gap-1" data-testid="facts-route-carriers">
-                {r.carriers.map((c, n) => (
-                  <li key={c.key ?? n} className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid="facts-route-carrier">
-                    {c.key && carrierType !== "other" ? <KeyLink type={carrierType} k={c.key} slug={slug} /> : null}
-                    {c.status && CARRIER_FAMILY[r.route] ? <StatusBadge family={CARRIER_FAMILY[r.route] as StatusFamily} value={c.status} /> : null}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {r.answer ? <p className="whitespace-pre-wrap text-12-5 text-muted">{r.answer}</p> : null}
-          </div>
-        )}
-        {f.duplicates.length > 0 ? (
-          <Fact label={tr("feedback.fact.duplicates")}>
-            {f.duplicates.map((k) => (
-              <KeyLink key={k} type="feedback" k={k} slug={slug} />
-            ))}
-          </Fact>
-        ) : null}
-      </FactsGroup>
+      <WhatCarriesIt f={f} slug={slug} />
 
       <FactsGroup title={tr("feedback.fact.reporter")}>
         <Fact label={tr("feedback.fact.sentBy")}>
@@ -338,7 +349,7 @@ export function FeedbackFacts({
               {f.reporters.slice(1).map((r) => (
                 <span key={r.id}>
                   {r.name ?? tr("feedback.unknownReporter")}
-                  {r.from ? <span className="text-12-5 text-muted">{tr("feedback.fact.via", { from: r.from })}</span> : null}
+                  {r.from ? <span className="text-13 text-muted">{tr("feedback.fact.via", { from: r.from })}</span> : null}
                 </span>
               ))}
             </span>
@@ -353,7 +364,7 @@ export function FeedbackFacts({
             >
               {tr("feedback.fact.agentReport", { id: f.source.agentReport.id.slice(0, 8) })}
             </Link>
-            <span className="text-12-5 text-muted">
+            <span className="text-13 text-muted">
               {enumLabel("agentReportKind", f.source.agentReport.kind, language)} · {enumLabel("agentReportTarget", f.source.agentReport.target, language)}
               {f.source.agentReport.targetRef ? ` ${f.source.agentReport.targetRef}` : ""}
             </span>
@@ -363,13 +374,13 @@ export function FeedbackFacts({
           <Fact label={tr("feedback.fact.clarification")}>
             <span className="grid gap-0.5" title={f.clarification.prompt ?? undefined}>
               <StatusBadge family="question" value={f.clarification.status} />
-              {f.clarification.answer ? <span className="text-12-5 text-muted">{f.clarification.answer}</span> : null}
+              {f.clarification.answer ? <span className="text-13 text-muted">{f.clarification.answer}</span> : null}
             </span>
           </Fact>
         ) : null}
         {f.sensitive ? (
           <Fact label={tr("feedback.fact.data")}>
-            <span className="text-12-5">{tr("feedback.fact.sensitive")}</span>
+            <span className="text-13">{tr("feedback.fact.sensitive")}</span>
           </Fact>
         ) : null}
       </FactsGroup>

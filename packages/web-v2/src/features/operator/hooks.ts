@@ -64,7 +64,7 @@ export function useReapJob() {
   return useMutation({
     mutationFn: operatorApi.reapJob,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin", "ops"] });
+      void qc.invalidateQueries({ queryKey: ["admin", "ops"] });
     },
   });
 }

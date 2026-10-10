@@ -5,12 +5,13 @@
 // with the state. An entity that nests (a module under its parent) adds its ancestors between the back
 // control and the title as a trail, "← Modules › Execution › Runs"; nothing else does. Back lands on the list view the page was opened from — its mode,
 // filters and open peek — kept in session storage per list; a page reached by a link goes to the
-// plain list. Below 768px of page the bar is too narrow for the title, so it heads the main column
-// instead, and the back control is its arrow alone, so the page's actions never cover it.
+// plain list. Below 768px of page column (the window less the sidebar, `column-md` in globals.css)
+// the bar is too narrow for the title, so it heads the main column instead, and the back control is
+// its arrow alone, so the page's actions never cover it.
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useBrowserValue } from "../hooks/use-browser-value";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { PageTitle } from "../primitives/heading";
 import { TopBarActions } from "../primitives/top-bar-slot";
@@ -26,16 +27,14 @@ export function rememberListOrigin(list: string): void {
 
 /** Where "← List" goes: the remembered view of `listHref`, else `listHref` itself. */
 export function useListOrigin(list: string, listHref: string): string {
-  const [href, setHref] = useState(listHref);
-  useEffect(() => {
+  const saved = useBrowserValue(() => {
     try {
-      const saved = sessionStorage.getItem(originKey(list));
-      setHref(saved?.startsWith(listHref) ? saved : listHref);
+      return sessionStorage.getItem(originKey(list));
     } catch {
-      setHref(listHref);
+      return null;
     }
-  }, [list, listHref]);
-  return href;
+  }, null);
+  return saved?.startsWith(listHref) ? saved : listHref;
 }
 
 export interface DetailHeaderProps {
@@ -71,10 +70,10 @@ export function DetailHeader({ back, itemKey, title, badge, action, keyTitle, tr
                 ←
               </span>
               {/* below 768px the bar holds the back control and the page's actions: the arrow, named by its label */}
-              <span className="max-md:hidden">{back.label}</span>
+              <span className="max-column-md:hidden">{back.label}</span>
             </Link>
             {trail?.length ? (
-              <nav aria-label={t("common.ancestors")} className="flex min-w-0 flex-none items-center gap-1.5 text-13 max-md:hidden" data-testid="detail-trail">
+              <nav aria-label={t("common.ancestors")} className="flex min-w-0 flex-none items-center gap-1.5 text-13 max-column-md:hidden" data-testid="detail-trail">
                 {trail.map((t) => (
                   <span key={t.href} className="flex items-center gap-1.5">
                     <span aria-hidden className="text-subtle">
@@ -93,7 +92,7 @@ export function DetailHeader({ back, itemKey, title, badge, action, keyTitle, tr
           </>
         }
         after={
-          <span className="flex flex-none items-center gap-2 max-md:hidden">
+          <span className="flex flex-none items-center gap-2 max-column-md:hidden">
             {itemKey ? (
               <span className="font-mono text-12 font-semibold text-muted" title={keyTitle}>
                 {itemKey}
@@ -104,17 +103,17 @@ export function DetailHeader({ back, itemKey, title, badge, action, keyTitle, tr
           </span>
         }
       >
-        <span className="max-md:hidden">{title}</span>
+        <span className="max-column-md:hidden">{title}</span>
       </PageTitle>
       {action ? <TopBarActions>{action}</TopBarActions> : null}
     </>
   );
 }
 
-/** The title block heading the main column below 768px, where the top bar only holds the back control. */
+/** The title block heading the main column below 768px of page column, where the top bar only holds the back control. */
 export function DetailMobileTitle({ itemKey, title, badge }: { itemKey?: string; title: ReactNode; badge?: ReactNode }) {
   return (
-    <div className="px-4 pb-1 pt-4 md:hidden" data-testid="detail-mobile-title">
+    <div className="px-4 pb-1 pt-4 column-md:hidden" data-testid="detail-mobile-title">
       <div className="flex flex-wrap items-center gap-2">
         {itemKey ? <span className="font-mono text-12 font-semibold text-muted">{itemKey}</span> : null}
         {badge}

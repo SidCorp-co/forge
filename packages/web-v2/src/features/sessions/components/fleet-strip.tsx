@@ -10,12 +10,11 @@
 // Data: useProject(projectId).devicePool (project-scoped) ×
 // useQueueStats(projectId) (per-device queued/running). Liveness reads core's stuck runs
 // (runs/standing) through deriveLiveness so the strip, list, and detail never diverge.
-import { useMemo } from "react";
 import { Banner, enumLabel, ErrorState, HealthDot, Icon, MonoTag } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
-import { useProject } from "@/features/projects/hooks";
-import { deviceHealth } from "@/features/runners/types";
+import { useProject } from "@/features/projects";
+import { deviceHealth } from "@/features/runners";
 import { useQueueStats } from "../hooks";
 import {
   deriveLiveness,
@@ -54,13 +53,13 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
 
   // Per-device queue depth from queue-stats (queued sessions waiting on that
   // device). Sessions with no device assigned bucket under the null key.
-  const queuedByDevice = useMemo(() => {
+  const queuedByDevice = (() => {
     const m = new Map<string | null, number>();
     for (const d of queueQ.data?.devices ?? []) m.set(d.deviceId, d.queued);
     return m;
-  }, [queueQ.data]);
+  })();
 
-  const boundByDevice = useMemo(() => {
+  const boundByDevice = (() => {
     const m = new Map<string, { row: SessionRow; display: AgentSessionDisplayStatus }>();
     rows.forEach((row, i) => {
       const d = displays[i];
@@ -69,7 +68,7 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
       }
     });
     return m;
-  }, [rows, displays]);
+  })();
 
   const onlineRunners = devicePool.filter((d) => d.status === "online").length;
   const queuedCount = rows.filter((r) => r.status === "queued" || r.status === "idle").length;
@@ -89,7 +88,7 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
         <ErrorState
           title={t("sessions.fleet.poolFailed")}
           message={formatApiError(projectQ.error)}
-          onRetry={() => projectQ.refetch()}
+          onRetry={() => void projectQ.refetch()}
         />
       ) : !projectQ.isSuccess ? null : devicePool.length === 0 ? (
         <div className="py-3 fg-body-sm text-muted">
@@ -110,7 +109,7 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
             return (
               <div
                 key={d.id}
-                className="min-w-[200px] flex-none px-4 py-1 first:pl-0"
+                className="min-w-50 flex-none px-4 py-1 first:pl-0"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-1.5">
@@ -129,7 +128,7 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <span
                     className="fg-caption font-semibold"
-                    style={{ color: busy ? "var(--cobalt-700)" : "var(--fg-subtle)" }}
+                    style={{ color: busy ? "var(--info-11)" : "var(--fg-subtle)" }}
                   >
                     {busy ? t("sessions.fleet.busy") : t("sessions.fleet.free")}
                   </span>
@@ -148,7 +147,7 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
                       </>
                     )}
                     {stale && (
-                      <span className="fg-caption" style={{ color: "var(--amberw-600)" }}>
+                      <span className="fg-caption text-warn-11">
                         {t("sessions.fleet.stalled")}
                       </span>
                     )}

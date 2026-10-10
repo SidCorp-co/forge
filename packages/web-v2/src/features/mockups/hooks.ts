@@ -1,40 +1,27 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { readOf, useWrite } from "@/lib/api/query-kit";
 import { mockupsApi } from "./api";
 import type { MockupTarget, ProposeMockupRequest } from "./types";
 
 const listKey = (projectId: string, t: MockupTarget) => ["mockups", projectId, t.type, t.key];
 
-export function useMockups(projectId: string, target: MockupTarget) {
-  return useQuery({
-    queryKey: listKey(projectId, target),
-    queryFn: () => mockupsApi.list(projectId, target),
-    staleTime: 15_000,
-  });
-}
+export const useMockups = (projectId: string, target: MockupTarget) => useQuery(readOf(listKey(projectId, target), () => mockupsApi.list(projectId, target)));
 
 export function useMockupBytes(url: string, enabled = true) {
   return useQuery({ queryKey: ["mockup-bytes", url], queryFn: () => mockupsApi.bytes(url), enabled, staleTime: 10 * 60_000 });
 }
 
-function useInvalidate(projectId: string) {
-  const qc = useQueryClient();
-  return () => {
-    qc.invalidateQueries({ queryKey: ["mockups", projectId] });
-    qc.invalidateQueries({ queryKey: ["requirement", projectId] });
-  };
+/** A text mockup's body (a wireframe's JSON, an HTML page), read from the same bytes. */
+export function useMockupText(url: string, enabled = true) {
+  return useQuery({ queryKey: ["mockup-text", url], queryFn: async () => (await mockupsApi.bytes(url)).text(), enabled, staleTime: 10 * 60_000 });
 }
 
-export function useProposeMockup(projectId: string) {
-  const invalidate = useInvalidate(projectId);
-  return useMutation({ mutationFn: (body: ProposeMockupRequest) => mockupsApi.propose(projectId, body), onSettled: invalidate });
-}
+/** The mockups and the requirements they hang on, which every mockup write changes. */
+const touched = (projectId: string) => [["mockups", projectId], ["requirement", projectId]];
 
-export function useMockupAct(projectId: string) {
-  const invalidate = useInvalidate(projectId);
-  return useMutation({
-    mutationFn: (a: { key: string; act: "accept" | "return" | "withdraw"; reason?: string }) => mockupsApi.act(projectId, a.key, a.act, a.reason),
-    onSettled: invalidate,
-  });
-}
+export const useProposeMockup = (projectId: string) => useWrite((body: ProposeMockupRequest) => mockupsApi.propose(projectId, body), { touches: touched(projectId) });
+
+export const useMockupAct = (projectId: string) =>
+  useWrite((a: { key: string; act: "accept" | "return" | "withdraw"; reason?: string }) => mockupsApi.act(projectId, a.key, a.act, a.reason), { touches: touched(projectId) });

@@ -8,6 +8,7 @@
 // a module's parent and description have no control on this screen, so editing
 // one here could only ever be a partial edit.
 
+import { LABEL_DEFAULT_COLOR } from "@/lib/label-color";
 import { type ReactNode, useMemo, useState } from "react";
 import {
 
@@ -27,7 +28,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProjectLabel } from "../types";
 import { useCreateLabel, useDeleteLabel, useLabels } from "../hooks";
 
-const DEFAULT_COLOR = "#6b7280";
+const DEFAULT_COLOR = LABEL_DEFAULT_COLOR;
 
 export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const t = useCopy();
@@ -54,13 +55,13 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
             <Skeleton className="h-9 w-2/3 rounded-md" />
           </div>
         ) : labelsQ.isError ? (
-          <ErrorState message={formatApiError(labelsQ.error)} onRetry={() => labelsQ.refetch()} />
+          <ErrorState message={formatApiError(labelsQ.error)} onRetry={() => void labelsQ.refetch()} />
         ) : plainLabels.length === 0 ? (
           <EmptyState message={t("settings.project.work.noLabels")} mascot={false} />
         ) : (
           <ul className="divide-y divide-line-subtle">
             {plainLabels.map((label) => (
-              <LabelRow
+              <LabelItem
                 key={label.id}
                 label={label}
                 onDelete={canEdit ? () => setPendingDelete(label) : undefined}
@@ -108,7 +109,7 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
   );
 }
 
-function LabelRow({ label, onDelete, deleting }: { label: ProjectLabel; onDelete?: () => void; deleting: boolean }) {
+function LabelItem({ label, onDelete, deleting }: { label: ProjectLabel; onDelete?: () => void; deleting: boolean }) {
   const t = useCopy();
   return (
     <li className="flex items-center justify-between gap-3 py-2">

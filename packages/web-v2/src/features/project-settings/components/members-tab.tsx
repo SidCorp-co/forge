@@ -23,8 +23,8 @@ import {
   type SelectOption,
   Skeleton,
 } from "@/design";
-import { useOrgMembers } from "@/features/orgs/hooks";
-import { useProjectsIncludingArchived } from "@/features/projects/hooks";
+import { useOrgMembers } from "@/features/orgs";
+import { useProjectsIncludingArchived } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
@@ -66,7 +66,7 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
             <Skeleton className="h-9 w-3/4 rounded-md" />
           </div>
         ) : membersQ.isError ? (
-          <ErrorState message={formatApiError(membersQ.error)} onRetry={() => membersQ.refetch()} />
+          <ErrorState message={formatApiError(membersQ.error)} onRetry={() => void membersQ.refetch()} />
         ) : (
           <ul className="divide-y divide-line-subtle">
             {(membersQ.data ?? []).map((m) => (
@@ -128,7 +128,7 @@ function PendingInvitations({ projectId }: { projectId: string }) {
       {invitationsQ.isLoading ? (
         <Skeleton className="h-9 w-full rounded-md" />
       ) : invitationsQ.isError ? (
-        <ErrorState message={formatApiError(invitationsQ.error)} onRetry={() => invitationsQ.refetch()} />
+        <ErrorState message={formatApiError(invitationsQ.error)} onRetry={() => void invitationsQ.refetch()} />
       ) : invitations.length === 0 ? (
         <p className="fg-body-sm text-subtle">{t("settings.project.people.noPending")}</p>
       ) : (
@@ -155,7 +155,7 @@ function PendingInvitations({ projectId }: { projectId: string }) {
 }
 
 /** The two add forms share one shape: who, at which role, and the button that sends it. */
-function AddRow({ who, role, onRole, action }: { who: ReactNode; role: ProjectRole; onRole: (r: ProjectRole) => void; action: ReactNode }) {
+function AddMember({ who, role, onRole, action }: { who: ReactNode; role: ProjectRole; onRole: (r: ProjectRole) => void; action: ReactNode }) {
   const t = useCopy();
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -180,7 +180,7 @@ function AddFromOrg({ projectId, orgId, memberIds }: { projectId: string; orgId:
   if (candidates.length === 0) return null;
   return (
     <Subsection title={t("settings.project.people.addFromOrg")}>
-      <AddRow
+      <AddMember
         who={
           <Field label={t("settings.project.people.orgMember")}>
             <Select
@@ -221,7 +221,7 @@ function InviteByEmail({ projectId }: { projectId: string }) {
   }
   return (
     <Subsection title={t("settings.project.people.invite")}>
-      <AddRow
+      <AddMember
         who={
           <Field label={t("settings.project.people.email")}>
             <Input

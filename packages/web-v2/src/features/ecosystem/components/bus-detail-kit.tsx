@@ -8,8 +8,8 @@ import { type BusBuilder, builderProgress, triggerRef, type StepStatus } from ".
 
 export function Group({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
   return (
-    <section className="grid min-w-0 content-start gap-1.5 border-line-subtle px-4 pb-4 pt-1 sm:border-r sm:pl-7 sm:pr-[22px] sm:last:border-r-0">
-      <h3 className="flex items-center gap-2 pt-2 text-11 font-semibold uppercase tracking-[0.07em] text-subtle">
+    <section className="grid min-w-0 content-start gap-1.5 border-line-subtle px-4 pb-4 pt-1 sm:border-r sm:pl-7 sm:pr-5.5 sm:last:border-r-0">
+      <h3 className="flex items-center gap-2 pt-2 text-11 font-semibold uppercase tracking-wider text-subtle">
         {title}
         {aside ? <span className="ml-auto normal-case tracking-normal">{aside}</span> : null}
       </h3>
@@ -25,7 +25,7 @@ export function Head({ children }: { children: ReactNode }) {
 export const Caption = ({ children }: { children: ReactNode }) => <p className="fg-caption break-words">{children}</p>;
 
 export const PageLink = ({ href, children }: { href: string; children: ReactNode }) => (
-  <Link href={href} className="text-12 font-semibold text-[var(--accent-text)] hover:underline">
+  <Link href={href} className="text-12 font-semibold text-accent-text hover:underline">
     {children}
   </Link>
 );
@@ -53,9 +53,9 @@ export function Steps({ builder }: { builder: BusBuilder }) {
     <ol className="grid gap-1.5">
       {builder.steps.map((s) => {
         const row = (
-          <span className="grid grid-cols-[20px_minmax(0,1fr)] items-start gap-2 text-13">
+          <span className="flex items-start gap-2 text-13">
             <span
-              className={`grid h-[18px] w-[18px] place-items-center rounded-full text-10 font-bold ${s.status === "running" ? "forge-pulse" : ""}`}
+              className={`grid h-4.5 w-4.5 place-items-center rounded-full text-10 font-bold ${s.status === "running" ? "forge-pulse" : ""}`}
               style={STEP_STYLE[s.status]}
             >
               {STEP_ICON[s.status]}

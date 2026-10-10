@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, useTopBarSlotTargets } from "@/design";
-import { dockTitle } from "@/features/conversations/components/chat-dock";
+import { dockTitle } from "@/features/conversations";
 import { useCopy } from "@/lib/i18n/interface-language";
 
 // the page's title and primary actions are portalled in by the page itself (PageTitle, TopBarActions), so the bar has no per-route knowledge

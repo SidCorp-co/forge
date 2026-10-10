@@ -24,17 +24,17 @@ import type { SceneElement } from "./scene-to-wireframe";
 export const NOT_KEPT_TOOLS: ReadonlySet<string> = new Set(["ellipse", "diamond", "line", "image", "frame", "magicframe", "embeddable"]);
 
 export default function BoardEditor({ doc, onScene }: { doc: WireframeDoc | null; onScene: (elements: readonly SceneElement[]) => void }) {
-  const api = useRef<ExcalidrawImperativeAPI | null>(null);
+  const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   return (
     <div className="wf-board-editor h-full w-full" data-testid="board-editor">
       <Excalidraw
         excalidrawAPI={(a) => {
-          api.current = a;
+          apiRef.current = a;
         }}
         initialData={doc ? { elements: toScene(doc), scrollToContent: true } : null}
         onChange={(elements, appState) => {
-          if (NOT_KEPT_TOOLS.has(appState.activeTool.type)) api.current?.setActiveTool({ type: "selection" });
-          onScene(elements as unknown as readonly SceneElement[]);
+          if (NOT_KEPT_TOOLS.has(appState.activeTool.type)) apiRef.current?.setActiveTool({ type: "selection" });
+          onScene(elements);
         }}
         UIOptions={{ tools: { image: false } }}
       />

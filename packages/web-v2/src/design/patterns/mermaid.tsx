@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useId } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 
@@ -11,67 +12,47 @@ interface MermaidDiagramProps {
 
 let mermaidReady = false;
 
-async function initMermaid() {
-  if (mermaidReady) return;
+async function loadMermaid() {
   const m = await import("mermaid");
-  m.default.initialize({
-    startOnLoad: false,
-    securityLevel: "strict",
-    theme: "neutral",
-  });
-  mermaidReady = true;
+  if (!mermaidReady) {
+    m.default.initialize({ startOnLoad: false, securityLevel: "strict", theme: "neutral" });
+    mermaidReady = true;
+  }
+  return m.default;
+}
+
+/** Renders `code` to an SVG element. Mermaid's strict security level sanitizes what it draws. */
+async function renderSvg(id: string, code: string): Promise<SVGElement> {
+  const mermaid = await loadMermaid();
+  await mermaid.parse(code);
+  const { svg } = await mermaid.render(id, code);
+  const root = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
+  if (!(root instanceof SVGElement)) throw new Error("mermaid returned no SVG");
+  return root;
 }
 
 /** Client-only Mermaid diagram renderer. Never enters the SSR bundle (dynamic import). */
 export function MermaidDiagram({ code, className }: MermaidDiagramProps) {
-  const rawId = useId();
-  const id = `mermaid-${rawId.replace(/:/g, "")}`;
-  const [svg, setSvg] = useState<string | null>(null);
+  const id = `mermaid-${useId().replace(/:/g, "")}`;
+  const diagram = useQuery({ queryKey: ["mermaid", id, code], queryFn: () => renderSvg(id, code), staleTime: Infinity, retry: false });
   const t = useCopy();
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    setSvg(null);
-    setError(null);
-
-    (async () => {
-      try {
-        await initMermaid();
-        const m = await import("mermaid");
-        await m.default.parse(code);
-        const { svg: rendered } = await m.default.render(id, code);
-        if (!cancelled) setSvg(rendered);
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [code, id]);
-
-  if (error) {
+  if (diagram.isError) {
     return (
-      <div className={cn("rounded-md border border-line bg-sunken px-3 py-2", className)}>
-        <p className="fg-caption font-mono text-red-600">{t("common.mermaid.parseError", { error })}</p>
+      <div className={cn("border-l-2 border-danger-9 bg-sunken px-3 py-2", className)}>
+        <p className="fg-caption font-mono text-danger-11">{t("common.mermaid.parseError", { error: diagram.error.message })}</p>
         <pre className="mt-1 overflow-x-auto font-mono text-12 text-muted">{code}</pre>
       </div>
     );
   }
-
-  if (!svg) {
-    return (
-      <div className={cn("h-24 animate-pulse rounded-md bg-sunken", className)} />
-    );
-  }
-
+  if (!diagram.data) return <div className={cn("h-24 animate-pulse bg-sunken", className)} />;
+  const svg = diagram.data;
   return (
     <div
       className={cn("overflow-x-auto", className)}
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: mermaid produces sanitized SVG under securityLevel:strict
-      dangerouslySetInnerHTML={{ __html: svg }}
+      ref={(node) => {
+        node?.replaceChildren(svg.cloneNode(true));
+      }}
     />
   );
 }

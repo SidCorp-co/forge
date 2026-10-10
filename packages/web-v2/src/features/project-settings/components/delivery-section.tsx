@@ -7,17 +7,17 @@
 // right now is read underneath, from core's release readiness.
 import { withArticle } from "@forge/contracts/articles";
 import { useState } from "react";
-import { Button, IconButton, Input, Skeleton } from "@/design";
-import { useBindingDocuments, usePolicyDocument, useWritePolicy } from "@/features/project-config/hooks";
-import { type DocumentDraft, sectionOf, useDocumentDraft } from "@/features/project-config/use-document-draft";
-import { useProviderLabel } from "@/features/integrations/providers/registry";
-import type { ProjectDetail } from "@/features/projects/types";
+import { Button, IconButton, Input, keyedRows, SettingRow, SettingsGroup, Skeleton, useListKeys } from "@/design";
+import { useBindingDocuments, usePolicyDocument, useWritePolicy } from "@/features/project-config";
+import { type DocumentDraft, sectionOf, useDocumentDraft } from "@/features/project-config";
+import { useProviderLabel } from "@/features/integrations";
+import type { ProjectDetail } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { policyTemplate } from "../config-templates";
-import { ChoiceSetting, optionsOf, Picker, SaveBar, SettingGroup, SettingRow, SwitchSetting, TextSetting } from "./setting-controls";
+import { ChoiceSetting, optionsOf, Picker, refusalError, SaveBar, SwitchSetting, TextSetting } from "./setting-controls";
 import { UndeclaredNotice, useProjectDraft } from "./general-section";
-import { ReleaseSection } from "./release-section";
+import { ReleaseSettings } from "./release-section";
 
 const TIERS = ["production", "staging", "preview", "dev"] as const;
 const TRIGGERS = ["on-land", "on-request", "provider"] as const;
@@ -41,7 +41,7 @@ function CommaList({ draft, path, label, disabled }: { draft: DocumentDraft; pat
 	return (
 		<SettingRow
 			label={label}
-			refusals={draft.refusedAt(path)}
+			error={refusalError(draft.refusedAt(path))}
 			control={
 				<Input
 					aria-label={label}
@@ -64,7 +64,7 @@ function RepositoryGroup({ draft, off }: { draft: DocumentDraft; off: boolean })
 	const source = obj(draft.get(["source"]));
 	const gateType = str(obj(obj(draft.get(["validation"])).gate).type) || "none";
 	return (
-		<SettingGroup id="repository" title={t("settings.project.delivery.repository")}>
+		<SettingsGroup id="repository" title={t("settings.project.delivery.repository")}>
 			{source.type === "git" ? (
 				<>
 					<TextSetting draft={draft} path={["source", "git", "repository"]} label={t("settings.project.delivery.repo")} placeholder="github.com/owner/repo" mono disabled={off} />
@@ -89,7 +89,7 @@ function RepositoryGroup({ draft, off }: { draft: DocumentDraft; off: boolean })
 			<ChoiceSetting draft={draft} path={["workspace", "isolation"]} options={optionsOf(t, "settings.project.delivery.isolation", ISOLATIONS)} label={t("settings.project.delivery.isolationLabel")} disabled={off} />
 			<SettingRow
 				label={t("settings.project.delivery.gate")}
-				refusals={draft.refusedAt(["validation"])}
+				error={refusalError(draft.refusedAt(["validation"]))}
 				control={
 					<div className="flex flex-col gap-2 sm:flex-row">
 						<Picker
@@ -112,7 +112,7 @@ function RepositoryGroup({ draft, off }: { draft: DocumentDraft; off: boolean })
 					</div>
 				}
 			/>
-		</SettingGroup>
+		</SettingsGroup>
 	);
 }
 
@@ -133,19 +133,19 @@ function Probes({ draft, base, off }: { draft: DocumentDraft; base: string[]; of
 	const t = useCopy();
 	const path = [...base, "verification", "runtime"];
 	const probes = list(draft.get(path));
+	const rows = useListKeys(probes.length);
 	const setProbes = (next: unknown[]) => draft.set([...base, "verification"], next.length ? { runtime: next } : undefined);
 	return (
 		<SettingRow
 			label={t("settings.project.delivery.probes")}
-			refusals={draft.refusedAt([...base, "verification"])}
+			error={refusalError(draft.refusedAt([...base, "verification"]))}
 			control={
 				<div className="space-y-2">
-					{probes.map((p, i) => {
+					{keyedRows(probes, rows.keys).map(({ key, row: p, index: i }) => {
 						const probe = obj(p);
 						const at = [...path, String(i)];
 						return (
-							// biome-ignore lint/suspicious/noArrayIndexKey: a probe is its position in the document's list; it has no identity of its own to key by
-							<div key={`probe-${i}`} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+							<div key={key} className="flex flex-col gap-2 sm:flex-row sm:items-center">
 								<Input aria-label={t("settings.project.delivery.probeUrl")} placeholder="https://example.com/version" value={str(probe.url)} disabled={off} className="font-mono" onChange={(e) => draft.set([...at, "url"], e.target.value)} />
 								<Input aria-label={t("settings.project.delivery.probePath")} placeholder={t("settings.project.delivery.probePathPlaceholder")} value={str(probe.path)} disabled={off} className="font-mono sm:max-w-40" onChange={(e) => draft.set([...at, "path"], e.target.value)} />
 								<Picker
@@ -156,12 +156,18 @@ function Probes({ draft, base, off }: { draft: DocumentDraft; base: string[]; of
 									options={optionsOf(t, "settings.project.delivery.identifies", ["source", "artifact"])}
 									onChange={(e) => draft.set([...at, "identifies"], e.target.value)}
 								/>
-								{!off && <IconButton icon="trash" aria-label={t("settings.project.delivery.probeRemove")} onClick={() => setProbes(probes.filter((_, n) => n !== i))} />}
+								{!off && <IconButton icon="trash" aria-label={t("settings.project.delivery.probeRemove")} onClick={() => {
+									setProbes(probes.filter((_, n) => n !== i));
+									rows.removed(i);
+								}} />}
 							</div>
 						);
 					})}
 					{!off && probes.length < 3 && (
-						<Button variant="ghost" size="sm" icon="plus" onClick={() => setProbes([...probes, { type: "http", url: "", path: "", identifies: "source" }])}>
+						<Button variant="ghost" size="sm" icon="plus" onClick={() => {
+							setProbes([...probes, { type: "http", url: "", path: "", identifies: "source" }]);
+							rows.added();
+						}}>
 							{t("settings.project.delivery.probeAdd")}
 						</Button>
 					)}
@@ -171,7 +177,7 @@ function Probes({ draft, base, off }: { draft: DocumentDraft; base: string[]; of
 	);
 }
 
-function EnvironmentRow({ draft, name, options, off }: { draft: DocumentDraft; name: string; options: { value: string; label: string }[]; off: boolean }) {
+function EnvironmentChoice({ draft, name, options, off }: { draft: DocumentDraft; name: string; options: { value: string; label: string }[]; off: boolean }) {
 	const t = useCopy();
 	const base = ["environments", name];
 	const env = obj(draft.get(base));
@@ -201,7 +207,7 @@ function EnvironmentRow({ draft, name, options, off }: { draft: DocumentDraft; n
 			<TextSetting draft={draft} path={[...base, "deploysFrom"]} optional mono label={t("settings.project.delivery.deploysFrom")} disabled={off} />
 			<SettingRow
 				label={t("settings.project.delivery.deployBy")}
-				refusals={draft.refusedAt([...base, "deployment"])}
+				error={refusalError(draft.refusedAt([...base, "deployment"]))}
 				control={
 					<Picker
 						aria-label={t("settings.project.delivery.deployBy")}
@@ -231,23 +237,23 @@ function EnvironmentsGroup({ draft, projectId, off }: { draft: DocumentDraft; pr
 	const t = useCopy();
 	const providerLabel = useProviderLabel();
 	const bindings = useBindingDocuments(projectId);
-	const options = bindingOptions((bindings.data?.bindings ?? []) as { document: Obj }[], providerLabel, t);
+	const options = bindingOptions(bindings.data?.bindings ?? [], providerLabel, t);
 	const environments = obj(draft.get(["environments"]));
 	const names = Object.keys(environments);
 	const [adding, setAdding] = useState("");
 	const valid = /^[a-z][a-z0-9-]{0,62}$/.test(adding) && !names.includes(adding);
 	return (
-		<SettingGroup id="environments" title={t("settings.project.delivery.environments")}>
+		<SettingsGroup id="environments" title={t("settings.project.delivery.environments")}>
 			{names.length === 0 && <p className="fg-body-sm text-muted">{t("settings.project.delivery.noEnvironments")}</p>}
 			{names.map((name) => (
-				<EnvironmentRow key={name} draft={draft} name={name} options={options} off={off} />
+				<EnvironmentChoice key={name} draft={draft} name={name} options={options} off={off} />
 			))}
 			{!off && (
 				<div className="flex flex-col gap-2 border-t border-line-subtle pt-4 sm:flex-row sm:items-end">
 					<div className="flex-1">
 						<SettingRow
 							label={t("settings.project.delivery.environmentNew")}
-							effect={adding && !valid ? t("settings.project.delivery.environmentNameRule") : undefined}
+							hint={adding && !valid ? t("settings.project.delivery.environmentNameRule") : undefined}
 							control={<Input aria-label={t("settings.project.delivery.environmentNew")} value={adding} placeholder={t("settings.project.delivery.environmentPlaceholder")} className="font-mono" onChange={(e) => setAdding(e.target.value)} />}
 						/>
 					</div>
@@ -265,7 +271,7 @@ function EnvironmentsGroup({ draft, projectId, off }: { draft: DocumentDraft; pr
 					</Button>
 				</div>
 			)}
-		</SettingGroup>
+		</SettingsGroup>
 	);
 }
 
@@ -286,20 +292,20 @@ function pathSentence(draft: DocumentDraft, t: Copy): string {
 function ReleasePathGroup({ draft, off }: { draft: DocumentDraft; off: boolean }) {
 	const t = useCopy();
 	const promotions = list(draft.get(["promotions"]));
+	const rows = useListKeys(promotions.length);
 	return (
-		<SettingGroup id="release-path" title={t("settings.project.delivery.releasePath")} lead={pathSentence(draft, t)}>
+		<SettingsGroup id="release-path" title={t("settings.project.delivery.releasePath")} summary={pathSentence(draft, t)}>
 			<SettingRow
 				label={t("settings.project.delivery.promotions")}
-				refusals={draft.refusedAt(["promotions"])}
+				error={refusalError(draft.refusedAt(["promotions"]))}
 				control={
 					<div className="space-y-2">
 						{promotions.length === 0 && <p className="fg-body-sm text-muted">{t("settings.project.delivery.noPromotions")}</p>}
-						{promotions.map((p, i) => {
+						{keyedRows(promotions, rows.keys).map(({ key, row: p, index: i }) => {
 							const promotion = obj(p);
 							const at = ["promotions", String(i)];
 							return (
-								// biome-ignore lint/suspicious/noArrayIndexKey: a promotion is its position in the document's list; it has no identity of its own to key by
-								<div key={`promotion-${i}`} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+								<div key={key} className="flex flex-col gap-2 sm:flex-row sm:items-center">
 									<Input aria-label={t("settings.project.delivery.promotionFrom")} value={str(promotion.from)} disabled={off} className="font-mono" onChange={(e) => draft.set([...at, "from"], e.target.value)} />
 									<span aria-hidden className="hidden text-subtle sm:inline">→</span>
 									<Input aria-label={t("settings.project.delivery.promotionTo")} value={str(promotion.to)} disabled={off} className="font-mono" onChange={(e) => draft.set([...at, "to"], e.target.value)} />
@@ -312,13 +318,19 @@ function ReleasePathGroup({ draft, off }: { draft: DocumentDraft; off: boolean }
 										onChange={(e) => draft.set([...at, "via"], e.target.value)}
 									/>
 									{!off && (
-										<IconButton icon="trash" aria-label={t("settings.project.delivery.promotionRemove")} onClick={() => draft.set(["promotions"], promotions.filter((_, n) => n !== i))} />
+										<IconButton icon="trash" aria-label={t("settings.project.delivery.promotionRemove")} onClick={() => {
+											draft.set(["promotions"], promotions.filter((_, n) => n !== i));
+											rows.removed(i);
+										}} />
 									)}
 								</div>
 							);
 						})}
 						{!off && promotions.length < 5 && (
-							<Button variant="ghost" size="sm" icon="plus" onClick={() => draft.set(["promotions"], [...promotions, { from: "", to: "", via: "merge" }])}>
+							<Button variant="ghost" size="sm" icon="plus" onClick={() => {
+								draft.set(["promotions"], [...promotions, { from: "", to: "", via: "merge" }]);
+								rows.added();
+							}}>
 								{t("settings.project.delivery.promotionAdd")}
 							</Button>
 						)}
@@ -327,19 +339,19 @@ function ReleasePathGroup({ draft, off }: { draft: DocumentDraft; off: boolean }
 			/>
 			<ChoiceSetting draft={draft} path={["rollback", "strategy"]} options={optionsOf(t, "settings.project.delivery.rollback", ROLLBACKS)} label={t("settings.project.delivery.rollbackLabel")} disabled={off} />
 			<SwitchSetting draft={draft} path={["release", "approval", "required"]} fallback={false} label={t("settings.project.delivery.releaseApproval")} disabled={off} />
-		</SettingGroup>
+		</SettingsGroup>
 	);
 }
 
 function AutomationGroup({ policy, off }: { policy: DocumentDraft; off: boolean }) {
 	const t = useCopy();
 	return (
-		<SettingGroup id="automation" title={t("settings.project.delivery.automation")} lead={policy.declared ? undefined : t("settings.project.delivery.automationUndeclared")}>
+		<SettingsGroup id="automation" title={t("settings.project.delivery.automation")} summary={policy.declared ? undefined : t("settings.project.delivery.automationUndeclared")}>
 			<ChoiceSetting draft={policy} path={["qa"]} options={optionsOf(t, "settings.project.delivery.qa", ["self", "independent"])} label={t("settings.project.delivery.qaLabel")} disabled={off} />
 			<SettingRow
 				inline
 				label={t("settings.project.delivery.intake")}
-				refusals={policy.refusedAt(["intake"])}
+				error={refusalError(policy.refusedAt(["intake"]))}
 				control={
 					<Picker
 						aria-label={t("settings.project.delivery.intake")}
@@ -351,11 +363,11 @@ function AutomationGroup({ policy, off }: { policy: DocumentDraft; off: boolean 
 					/>
 				}
 			/>
-		</SettingGroup>
+		</SettingsGroup>
 	);
 }
 
-export function DeliverySection({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
+export function DeliverySettings({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
 	const draft = useProjectDraft(project.id);
 	const policyQ = usePolicyDocument(project.id);
 	const policy = useDocumentDraft(policyQ.data, useWritePolicy(project.id), () => policyQ.refetch(), policyTemplate());
@@ -371,7 +383,7 @@ export function DeliverySection({ project, canEdit }: { project: ProjectDetail; 
 			{policy.ready && <AutomationGroup policy={policy} off={!canEdit} />}
 			<SaveBar section={section} canEdit={canEdit} />
 			<div id="release-state" className="scroll-mt-24 border-t border-line pt-6">
-				<ReleaseSection projectId={project.id} slug={project.slug} />
+				<ReleaseSettings projectId={project.id} slug={project.slug} />
 			</div>
 		</div>
 	);

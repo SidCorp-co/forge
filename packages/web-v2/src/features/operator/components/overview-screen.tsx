@@ -13,10 +13,10 @@ import {
   useOperatorWorkspaces,
 } from "../hooks";
 import type { OperatorWindow, OperatorWorkspaceSort } from "../types";
-import { AdoptionPanel, AdoptionPanelSkeleton } from "./adoption-panel";
+import { AdoptionChart, AdoptionPanelSkeleton } from "./adoption-panel";
 import { AlertFeed, AlertFeedSkeleton } from "./alert-feed";
 import { GlanceCards, GlanceCardsSkeleton } from "./glance-cards";
-import { KpiRow, KpiRowSkeleton } from "./kpi-row";
+import { Kpis, KpiRowSkeleton } from "./kpi-row";
 import { WorkspacesTable, WorkspacesTableSkeleton } from "./workspaces-table";
 import { SectionTitle, PageTitle } from "@/design/primitives/heading";
 
@@ -67,14 +67,14 @@ export function OperatorOverviewScreen() {
   useOperatorLiveRooms(workspaces.data?.items.map((w) => w.projectId) ?? []);
 
   return (
-    <div className="mx-auto flex max-w-[1200px] flex-col gap-5">
+    <div className="mx-auto flex max-w-300 flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageTitle className="fg-h2">{t("operator.overview.title")}</PageTitle>
         <SegmentedControl options={WINDOWS} value={window} onChange={setWindow} />
       </div>
 
       <Panel query={overview} skeleton={<KpiRowSkeleton />}>
-        {(data) => <KpiRow overview={data} />}
+        {(data) => <Kpis overview={data} />}
       </Panel>
 
       <Panel query={alerts} skeleton={<AlertFeedSkeleton />}>
@@ -90,7 +90,7 @@ export function OperatorOverviewScreen() {
 
       <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
         <Panel query={adoption} skeleton={<AdoptionPanelSkeleton />}>
-          {(data) => <AdoptionPanel buckets={data} />}
+          {(data) => <AdoptionChart buckets={data} />}
         </Panel>
         <Panel query={workspaces} skeleton={<WorkspacesTableSkeleton />}>
           {(data) => <WorkspacesTable rows={data.items} sort={sort} onSortChange={setSort} />}

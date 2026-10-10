@@ -6,6 +6,8 @@
 
 import Link from "next/link";
 import {
+  RowItem,
+  RowList,
   CoverageBar,
   DetailLayout,
   DetailMobileTitle,
@@ -23,7 +25,7 @@ import { formatAge, formatStamp } from "@/lib/utils/format";
 import { moduleHref } from "@/lib/routes/modules";
 import type { ModuleCoupling, ModuleDetail, ModuleLanding } from "../types";
 import { ActivityBars, AttentionBadge, ModuleBanner, openSegments } from "./module-bits";
-import { ModuleFacts } from "./module-facts";
+import { ModuleProperties } from "./module-facts";
 
 const MODULE_TABS = ["overview", "code", "landings"] as const;
 type ModuleTab = (typeof MODULE_TABS)[number];
@@ -38,9 +40,9 @@ function Purpose({ d }: { d: ModuleDetail }) {
       <ViewHeading right={p.available ? <span className="text-12 text-subtle">{t("modules.purpose.from", { entry: p.value.entrySlug })}</span> : undefined}>{t("modules.purpose.title")}</ViewHeading>
       {p.available ? (
         <>
-          <p className="max-w-[80ch] text-15 leading-relaxed text-fg">{p.value.summary}</p>
+          <p className="max-w-2xl text-14 leading-relaxed text-fg">{p.value.summary}</p>
           {p.value.body.trim() !== p.value.summary ? (
-            <details className="mt-2 max-w-[80ch]">
+            <details className="mt-2 max-w-2xl">
               <summary className="cursor-pointer select-none text-13 font-medium text-muted hover:text-fg">{t("modules.purpose.readAll")}</summary>
               <div className="mt-2">
                 <Markdown>{p.value.body}</Markdown>
@@ -73,7 +75,7 @@ function Overview({ d }: { d: ModuleDetail }) {
       <section>
         <ViewHeading right={<span className="text-12 text-subtle">{t("modules.activity.summary", { n: d.activity.total, days: d.activity.days.length })}</span>}>{t("modules.activity.title")}</ViewHeading>
         <ActivityBars days={d.activity.days} height={44} barWidth={18} />
-        <div className="mt-1 flex max-w-[330px] justify-between font-mono text-11 text-subtle">
+        <div className="mt-1 flex max-w-82.5 justify-between font-mono text-12 text-subtle">
           <span>{first}</span>
           <span>{last}</span>
         </div>
@@ -83,11 +85,11 @@ function Overview({ d }: { d: ModuleDetail }) {
   );
 }
 
-function CouplingRow({ c, slug }: { c: ModuleCoupling; slug: string }) {
+function CouplingLine({ c, slug }: { c: ModuleCoupling; slug: string }) {
   const t = useCopy();
   return (
     <li className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-line-subtle py-2 text-13" data-testid="coupling-row">
-      <Link href={moduleHref(slug, c.module.slug)} className="font-mono text-12-5 font-semibold text-link hover:underline">
+      <Link href={moduleHref(slug, c.module.slug)} className="font-mono text-13 font-semibold text-link hover:underline">
         {c.module.path}
       </Link>
       <span className="text-muted">{c.module.name}</span>
@@ -95,7 +97,7 @@ function CouplingRow({ c, slug }: { c: ModuleCoupling; slug: string }) {
         {t("modules.coupling.shared", { n: c.issueCount })}
       </span>
       {c.recentIssueKeys.map((k) => (
-        <Link key={k} href={issueHref(slug, k)} className="font-mono text-11-5 text-link hover:underline">
+        <Link key={k} href={issueHref(slug, k)} className="font-mono text-12 text-link hover:underline">
           {k}
         </Link>
       ))}
@@ -131,12 +133,12 @@ function Code({ d, slug }: { d: ModuleDetail; slug: string }) {
           <p className="text-13 text-subtle">{t("modules.code.noCoupling")}</p>
         ) : (
           <div>
-            <h3 className="mb-1 text-12-5 font-medium text-muted" title={t("modules.code.seenTitle")}>
+            <h3 className="mb-1 text-13 font-medium text-muted" title={t("modules.code.seenTitle")}>
               {t("modules.code.seen")}
             </h3>
             <ul className="border-t border-line-subtle">
               {c.map((x) => (
-                <CouplingRow key={x.module.id} c={x} slug={slug} />
+                <CouplingLine key={x.module.id} c={x} slug={slug} />
               ))}
             </ul>
           </div>
@@ -146,27 +148,25 @@ function Code({ d, slug }: { d: ModuleDetail; slug: string }) {
   );
 }
 
-const LANDING_COLS = "grid grid-cols-[96px_minmax(0,1fr)_110px_96px_minmax(0,150px)] gap-x-3.5 px-3 max-md:grid-cols-[84px_minmax(0,1fr)_88px]";
-
-function LandingRow({ l, slug, here }: { l: ModuleLanding; slug: string; here: string }) {
+function LandingLine({ l, slug, here }: { l: ModuleLanding; slug: string; here: string }) {
   const t = useCopy();
   const where = [l.commitSha ? l.commitSha.slice(0, 7) : null, l.target ? t("modules.landing.on", { target: l.target }) : null, l.landing].filter(Boolean).join(" · ");
   return (
-    <li className={`${LANDING_COLS} items-baseline border-b border-line-subtle py-2.5 text-13`} data-testid="landing-row">
-      <Link href={issueHref(slug, l.issueKey)} className="font-mono text-12 font-semibold text-link hover:underline">
-        {l.issueKey}
-      </Link>
-      <span className="min-w-0 truncate" title={l.title}>
-        {l.title}
-      </span>
-      <span className="text-12 text-muted" title={`${formatStamp(l.landedAt)}${where ? ` · ${where}` : ""}`}>
-        {t("modules.landing.ago", { age: formatAge(l.landedAt) })}
-      </span>
-      <span className="font-mono text-12 max-md:hidden">{l.release ?? <span className="font-sans text-subtle" title={t("modules.landing.notReleasedTitle")}>{t("modules.landing.notYet")}</span>}</span>
-      <span className="truncate font-mono text-12 text-subtle max-md:hidden" title={l.modulePath}>
-        {l.modulePath === here ? "" : l.modulePath}
-      </span>
-    </li>
+    <RowItem
+      testId="landing-row"
+      href={issueHref(slug, l.issueKey)}
+      lead={l.issueKey}
+      title={<span title={l.title}>{l.title}</span>}
+      facts={[
+        <span key="landed" title={`${formatStamp(l.landedAt)}${where ? ` · ${where}` : ""}`}>
+          {t("modules.landing.ago", { age: formatAge(l.landedAt) })}
+        </span>,
+        ...(l.modulePath === here ? [] : [<span key="module" className="font-mono">{l.modulePath}</span>]),
+      ]}
+      trailing={
+        <span className="font-mono text-12">{l.release ?? <span className="font-sans text-subtle" title={t("modules.landing.notReleasedTitle")}>{t("modules.landing.notYet")}</span>}</span>
+      }
+    />
   );
 }
 
@@ -180,18 +180,11 @@ function Landings({ d, slug }: { d: ModuleDetail; slug: string }) {
         <p className="text-13 text-subtle">{t("modules.landings.none")}</p>
       ) : (
         <>
-          <div className={`${LANDING_COLS} h-8 items-center border-y border-line-subtle bg-sunken text-11-5 font-semibold text-subtle`} aria-hidden>
-            <span>{t("modules.landings.colIssue")}</span>
-            <span>{t("modules.landings.colTitle")}</span>
-            <span>{t("modules.landings.colLanded")}</span>
-            <span className="max-md:hidden">{t("modules.landings.colRelease")}</span>
-            <span className="max-md:hidden">{t("modules.landings.colModule")}</span>
-          </div>
-          <ul>
+          <RowList label={t("modules.landings.title")}>
             {l.recent.map((x) => (
-              <LandingRow key={x.issueKey} l={x} slug={slug} here={d.module.path} />
+              <LandingLine key={x.issueKey} l={x} slug={slug} here={d.module.path} />
             ))}
-          </ul>
+          </RowList>
           {l.total > l.recent.length ? <p className="mt-2 text-12 text-subtle">{t("modules.landings.latest", { n: l.recent.length, total: l.total })}</p> : null}
         </>
       )}
@@ -213,7 +206,7 @@ export function ModulePage({ d, slug, tab, onTab }: { d: ModuleDetail; slug: str
       dataKey={d.module.slug}
       rail={
         <FactsRail testId="relations-rail">
-          <ModuleFacts d={d} slug={slug} />
+          <ModuleProperties d={d} slug={slug} />
         </FactsRail>
       }
     >

@@ -8,7 +8,7 @@ import { Tabs } from "../primitives/tabs";
 
 /** `?tab=` over a fixed set of views; the first is the default and is not written to the URL. */
 export function useUrlTab<T extends string>(tabs: readonly T[]): [T, (t: T) => void] {
-  return useUrlChoice("tab", tabs, tabs[0] as T);
+  return useUrlChoice("tab", tabs, tabs[0]);
 }
 
 export interface DetailTabItem<T extends string> {
@@ -25,11 +25,11 @@ export interface DetailTabsProps<T extends string> {
 }
 
 export function DetailTabs<T extends string>({ tabs, value, onChange, testId }: DetailTabsProps<T>) {
-  const top = useRef<HTMLDivElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
   const go = useCallback(
     (t: string) => {
       onChange(t as T);
-      const el = top.current;
+      const el = topRef.current;
       const floor = el?.closest("main")?.getBoundingClientRect().top ?? 0;
       if (el && el.getBoundingClientRect().top < floor) el.scrollIntoView({ block: "start" });
     },
@@ -37,7 +37,7 @@ export function DetailTabs<T extends string>({ tabs, value, onChange, testId }: 
   );
   return (
     <>
-      <div ref={top} />
+      <div ref={topRef} />
       {/* the tabs wrap onto a second row where the page is too narrow for them, never scrolling sideways (REQ-31 BC-3) */}
       <div className="sticky top-0 z-10 bg-app px-6 max-md:px-2" data-testid={testId ?? "detail-tabs"}>
         <Tabs tabs={tabs.map((t) => ({ ...t }))} value={value} onChange={go} />

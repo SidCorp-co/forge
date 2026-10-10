@@ -50,7 +50,7 @@ export function AddEpodsystemForm({
       title={t("integrations.epod.add")}
       submitLabel={t("integrations.epod.add")}
       canSubmit={canSubmit}
-      onSubmit={handleCreate}
+      onSubmit={() => void handleCreate()}
       onCancel={onDone}
     >
       {hasDefault && (

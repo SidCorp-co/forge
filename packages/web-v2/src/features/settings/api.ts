@@ -1,4 +1,4 @@
-import type { Preferences } from "@/features/preferences/types";
+import type { Preferences } from "@/features/preferences";
 import { apiClient, apiClientList } from "@/lib/api/client";
 import type {
   AssistantPreferences,
@@ -32,6 +32,10 @@ export const settingsApi = {
   /** `POST /api/pat` → row + one-time `plaintext`. May 403 FRESH_AUTH_REQUIRED. */
   createToken: (input: CreatePatInput) =>
     apiClient<PatTokenCreated>(`/pat`, { method: "POST", body: JSON.stringify(input) }),
+
+  /** `PATCH /api/pat/:id` — the token's new project list, whole; the secret stays. May 403 FRESH_AUTH_REQUIRED. */
+  setTokenProjects: ({ id, projectIds }: { id: string; projectIds: string[] }) =>
+    apiClient<PatToken>(`/pat/${id}`, { method: "PATCH", body: JSON.stringify({ projectIds }) }),
 
   /** `DELETE /api/pat/:id` — revoke. */
   revokeToken: (id: string) => apiClient<PatToken>(`/pat/${id}`, { method: "DELETE" }),

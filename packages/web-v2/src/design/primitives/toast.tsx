@@ -51,7 +51,7 @@ export function Toaster() {
       }}
       toastOptions={{
         classNames: {
-          toast: "!w-[320px] !rounded-lg !border-line !bg-surface !px-4 !py-3 !shadow-lg !font-sans",
+          toast: "!w-[320px] !rounded-lg !border-line !bg-surface !px-4 !py-3 !shadow-overlay !font-sans",
           title: "fg-label",
           description: "fg-caption !text-subtle",
           actionButton: "!bg-accent !text-on-accent !font-semibold",

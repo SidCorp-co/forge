@@ -9,10 +9,10 @@
 import Link from "next/link";
 import { type ReactNode, useMemo, useState } from "react";
 import { NativeSelect } from "@/design";
-import { templateFor } from "@/features/workflows/canvas/model";
-import { presentTrace } from "@/features/workflows/canvas/step-focus";
-import { WorkflowCanvas } from "@/features/workflows/canvas/workflow-canvas";
-import { useWorkflowTemplates, useWorkflows } from "@/features/workflows/hooks";
+import { templateFor } from "@/features/workflows";
+import { presentTrace } from "@/features/workflows";
+import { WorkflowCanvas } from "@/features/workflows";
+import { useWorkflowTemplates, useWorkflows } from "@/features/workflows";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { workflowHref } from "@/lib/routes/workflows";
 import type { TracedWorkflow } from "../picture-model";
@@ -22,7 +22,7 @@ import { Figure } from "./picture-figure";
 export function WorkflowPicture({ projectId, slug, traced }: { projectId: string; slug: string; traced: TracedWorkflow[] }) {
   const t = useCopy();
   const [chosen, setChosen] = useState<string | null>(null);
-  const w = traced.find((x) => x.workflowId === chosen) ?? (traced[0] as TracedWorkflow);
+  const w = traced.find((x) => x.workflowId === chosen) ?? (traced[0]);
   const list = useWorkflows(projectId);
   const templates = useWorkflowTemplates(projectId);
   const record = list.data?.workflows.find((r) => r.document.id === w.workflowId) ?? null;
@@ -62,7 +62,7 @@ export function WorkflowPicture({ projectId, slug, traced }: { projectId: string
   return (
     <Figure alt={alt} kind="workflow" by={head}>
       {traced.length > 1 ? (
-        <div className="w-full max-w-[320px]">
+        <div className="w-full max-w-80">
           <NativeSelect
             aria-label={t("requirements.picture.workflow.choose")}
             value={w.workflowId}
@@ -71,7 +71,7 @@ export function WorkflowPicture({ projectId, slug, traced }: { projectId: string
           />
         </div>
       ) : null}
-      <div className="flex h-[460px] min-w-0 overflow-hidden border border-line-subtle max-md:h-[420px]" data-testid="picture-workflow" data-flow={w.flow}>
+      <div className="flex h-115 min-w-0 overflow-hidden border border-line-subtle max-md:h-105" data-testid="picture-workflow" data-flow={w.flow}>
         {canvas}
       </div>
     </Figure>

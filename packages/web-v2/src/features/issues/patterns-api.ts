@@ -1,4 +1,5 @@
 import type { IssuePatternResponse, IssuePatterns, PatternDecision } from "@forge/contracts/patterns";
+import { issueKeys } from "./queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { issueKeySegment } from "@/lib/api/ref-bridge";
@@ -23,7 +24,7 @@ export const patternsApi = {
 
 export function useIssuePatterns(issueId: string | undefined, projectId?: string) {
   return useQuery({
-    queryKey: ["issue", issueKeySegment(issueId, projectId), "patterns"],
+    queryKey: issueKeys.patterns(issueId, projectId),
     queryFn: () => patternsApi.list(issueId as string, projectId),
     enabled: !!issueId,
   });
@@ -37,9 +38,9 @@ export function useDecidePattern(issueId: string, projectId?: string) {
     // settled, not only succeeded: a decision refused because another reviewer already decided
     // (409) leaves the line showing a pending pattern until the patterns are read again
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["issue", issueKeySegment(issueId, projectId)] });
+      void qc.invalidateQueries({ queryKey: ["issue", issueKeySegment(issueId, projectId)] });
       // a return posts its reason on the issue
-      qc.invalidateQueries({ queryKey: ["comments", issueId] });
+      void qc.invalidateQueries({ queryKey: ["comments", issueId] });
     },
   });
 }
