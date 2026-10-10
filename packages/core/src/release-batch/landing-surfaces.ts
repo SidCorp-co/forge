@@ -377,11 +377,9 @@ export function releaseChangesOf(
     if (gap) gaps.push({ key, ...gap });
     if (reading.kind === 'unclassified') continue;
     for (const a of reading.artifacts) {
-      gathered.add(
-        a.surface,
-        { ref: a.ref, change: a.change, carriedBy: a.carriedBy ?? null },
-        [key],
-      );
+      gathered.add(a.surface, { ref: a.ref, change: a.change, carriedBy: a.carriedBy ?? null }, [
+        key,
+      ]);
     }
   }
   return assembled(gathered, gaps, boxRead);
@@ -412,7 +410,8 @@ export function rangeChangesOf(
     named.set(ref, held);
   };
   for (const s of landed.surfaces) for (const a of s.artifacts) name(a.ref, a.issues);
-  for (const u of landed.unclassified) if (u.key !== null) for (const p of u.paths) name(p, [u.key]);
+  for (const u of landed.unclassified)
+    if (u.key !== null) for (const p of u.paths) name(p, [u.key]);
 
   const gathered = new Gathered();
   for (const s of landed.surfaces) {
@@ -427,7 +426,11 @@ export function rangeChangesOf(
   }
   const { artifacts, unmapped } = classifyChanges(map, changed);
   for (const a of artifacts) {
-    gathered.add(a.surface, { ref: a.ref, change: a.change, carriedBy: null }, named.get(a.ref) ?? []);
+    gathered.add(
+      a.surface,
+      { ref: a.ref, change: a.change, carriedBy: null },
+      named.get(a.ref) ?? [],
+    );
   }
   const gaps = unmapped.length > 0 ? [{ key: null, why: RANGE_UNMAPPED, paths: unmapped }] : [];
   return assembled(gathered, gaps, []);

@@ -435,7 +435,10 @@ export async function readRange(
   head: string | null,
   runId: string | null,
 ): Promise<RangeReading> {
-  const unread = (why: string): RangeReading => ({ shipped: { state: 'unread', why }, changed: null });
+  const unread = (why: string): RangeReading => ({
+    shipped: { state: 'unread', why },
+    changed: null,
+  });
   if (head === null) return unread('the release has no cut build to read a range up to');
   const start = await rangeBaseOf(projectId, version);
   if (start.base === null) return unread(start.why);

@@ -83,7 +83,10 @@ const iso = (d: Date | null) => (d ? d.toISOString() : null);
  * later round, which this release did not ship (J9 on 0.4.0-dev.224: ISS-455's dev.225 retry fix read
  * as a dev.224 fix). A draft has claimed nothing yet.
  */
-export function reworkedSince(p: Pick<Part, 'openedAt'>, i: Pick<IssueFact, 'reopenedAt'>): boolean {
+export function reworkedSince(
+  p: Pick<Part, 'openedAt'>,
+  i: Pick<IssueFact, 'reopenedAt'>,
+): boolean {
   return p.openedAt !== null && i.reopenedAt !== null && i.reopenedAt > p.openedAt;
 }
 

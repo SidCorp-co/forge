@@ -271,11 +271,19 @@ describe('an issue reopened after the release claimed it (BC-6, J9 on 0.4.0-dev.
     const later = s.facts.issues.get('i1');
     const earlier = s.facts.issues.get('i2');
     if (later) {
-      later.releaseNotes = { section: 'Fixed', userFacing: 'Drafts are tried again.', technical: 'retry' };
+      later.releaseNotes = {
+        section: 'Fixed',
+        userFacing: 'Drafts are tried again.',
+        technical: 'retry',
+      };
       later.reopenedAt = new Date(OPENED + DAY);
     }
     if (earlier) {
-      earlier.releaseNotes = { section: 'Fixed', userFacing: 'Feedback says why.', technical: null };
+      earlier.releaseNotes = {
+        section: 'Fixed',
+        userFacing: 'Feedback says why.',
+        technical: null,
+      };
       earlier.reopenedAt = new Date(OPENED - DAY);
     }
     return s;
