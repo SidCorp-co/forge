@@ -2,7 +2,7 @@
 
 // The Dashboard's figures for a BA or PM, one flat row on a hairline: requirements by state,
 // feedback open and aging, the next release and when it is in people's hands. Every figure links to
-// the list it counts. Development's figures (runs, runners, spend, open issues) are not here.
+// the list it counts. Delivery's health over a window is `health-panel.tsx`, beside it.
 
 import Link from "next/link";
 import { EtaInline } from "@/features/forecast/components/eta-cell";

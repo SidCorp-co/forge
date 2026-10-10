@@ -1,1 +1,1 @@
-**Invitations are mailed or refused by name, token writes are recorded, and an issue's rail shows its traces, workflow, feedback, release and lease.** Review time counts with checks; passing has one definition.
+**The project dashboard shows its health over a window, invitations are mailed or refused by name, and token writes are recorded.** An issue's rail shows its traces, workflow, feedback, release and lease.
