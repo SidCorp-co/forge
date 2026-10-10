@@ -5,7 +5,7 @@
 // page in the app (a member, with links into the project) and a frozen page a share link opens (no
 // links, tickets for its media), so the two cannot read differently.
 
-import type { ReleasePage, ReleasePageCriteria, ReleasePageProven, ReleasePageRequirement } from "@forge/contracts/release-page";
+import { actionSaysRef, type ReleasePage, type ReleasePageCriteria, type ReleasePageProven, type ReleasePageRequirement } from "@forge/contracts/release-page";
 import Link from "next/link";
 import { useState } from "react";
 import { ViewHeading } from "@/design";
@@ -236,7 +236,7 @@ function ActionRequired({ page }: { page: ReleasePage }) {
           {page.actionRequired.map((a) => (
             <li key={`${a.kind}:${a.ref}`} className="grid gap-0.5 py-2.5 text-13" data-testid="page-action" data-kind={a.kind}>
               <span className="text-13-5">{a.sentence}</span>
-              <span className="font-mono text-12 text-muted">{a.ref}</span>
+              {actionSaysRef(a) ? null : <span className="font-mono text-12 text-muted">{a.ref}</span>}
             </li>
           ))}
         </ul>

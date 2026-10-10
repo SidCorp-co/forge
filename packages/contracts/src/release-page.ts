@@ -450,6 +450,10 @@ export interface ReleaseActionItem {
 	issues: string[];
 }
 
+/** Whether an ask's sentence already names its artifact, so a reader prints the ref once. */
+export const actionSaysRef = (a: Pick<ReleaseActionItem, "sentence" | "ref">): boolean =>
+	a.sentence.includes(a.ref);
+
 export interface ReleaseKnownIssue {
 	issueKey: string;
 	requirementKey: string | null;

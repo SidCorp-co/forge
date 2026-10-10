@@ -127,6 +127,14 @@ describe("the sections the release page reads (BC-5..8)", () => {
     expect(screen.getByTestId("page-actions")).toHaveTextContent("Nothing is required of you.");
   });
 
+  // J10 on 0.4.0-dev.227: each ask printed its migration path twice, in the sentence and under it
+  it("names an ask's artifact once where its sentence already says it", () => {
+    const ref = "packages/core/drizzle/migrations/0495_intake_retry.sql";
+    const sentence = `Back up the database before this release deploys: ${ref} changes its schema.`;
+    renderWithQuery(<ReleaseReader page={releasePage({ actionRequired: [{ kind: "migration", sentence, ref, issues: ["ISS-455"] }] })} authed={false} />);
+    expect(screen.getByTestId("page-action").textContent?.split(ref)).toHaveLength(2);
+  });
+
   it("lists each criterion not proven on the build as what it is: short, not judged and where it was judged instead", () => {
     renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
     const rows = screen.getAllByTestId("page-known-issue");
