@@ -1,0 +1,1 @@
+**Detail pages keep their title readable at every width.** Activity no longer runs under the side rail, "Nothing to ask" says why again, viewing a page never rewrites your organization, and /agents/runs opens the Runs list.
