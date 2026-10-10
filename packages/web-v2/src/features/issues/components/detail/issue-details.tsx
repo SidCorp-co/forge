@@ -5,7 +5,7 @@
 // only a developer reads (runs, mockups, memory), so a person's page is the same page folded.
 
 import { type ReactNode, useState } from "react";
-import { Markdown, ViewHeading } from "@/design";
+import { Disclosure, Markdown, ViewHeading } from "@/design";
 import { AttachmentList } from "@/features/attachments";
 import { IssueQuestions } from "@/features/questions";
 import { MockupList } from "@/features/mockups";
@@ -16,7 +16,6 @@ import type { useIssueStandingOf, useProjectMembers } from "../../hooks";
 import type { IssueDetail } from "../../types";
 import { IssueRetiredCriteria } from "../criteria-list";
 import { IssueDescription } from "../issue-description";
-import { DetailFold } from "./detail-fold";
 import { IssueDecisionsTab, IssueMemoryTab } from "./issue-record-tabs";
 import { ActivityTab, type ActivityThread, RunsTab, runsTabCount } from "./issue-sections";
 
@@ -63,9 +62,9 @@ export function IssueDetails({
   const sessions = issue.agentSessions ?? [];
   const stepOutcomes = standingQ.data?.stepOutcomes ?? [];
   const row = (key: string, label: string, summary: ReactNode, body: ReactNode, highlight?: string) => (
-    <DetailFold key={key} label={label} summary={summary} open={isOpen(key)} onToggle={() => toggle(key)} testId={`details-${key}`} highlight={highlight}>
+    <Disclosure key={key} title={label} summary={summary} open={isOpen(key)} onOpenChange={() => toggle(key)} testId={`details-${key}`} highlight={highlight}>
       {body}
-    </DetailFold>
+    </Disclosure>
   );
   return (
     <section aria-label={t("issues.details.title")} data-testid="issue-details">
