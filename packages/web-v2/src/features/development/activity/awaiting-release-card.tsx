@@ -10,12 +10,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   Button,
+  Checkbox,
+  Icon,
   PageSection,
   PageSectionBody,
   PageSectionTitle,
-  Checkbox,
-  Icon,
-  StatusChip,
+  StatusBadge,
 } from "@/design";
 import { useDraftReleaseForecast } from "@/features/forecast/hooks";
 import { spanText } from "@/features/forecast/text";
@@ -135,7 +135,7 @@ export function AwaitingReleaseCard({ slug, projectId }: { slug: string; project
                     onClick={() => router.push(issueHref(slug, i.displayId))}
                     className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
                   >
-                    <StatusChip status="passed" domain="session" size="sm" />
+                    <StatusBadge family="run" value="passed" />
                     <span className="fg-body-sm min-w-0 flex-1 truncate text-muted">
                       <span className="font-mono text-fg">{i.displayId}</span> {i.title}
                     </span>

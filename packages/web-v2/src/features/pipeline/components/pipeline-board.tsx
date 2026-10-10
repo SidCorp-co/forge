@@ -121,12 +121,13 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
                     key={issue.id}
                     id={issue.displayId}
                     title={issue.title}
-                    status={card.status}
-                    statusLabel={card.label}
-                    statusDomain={card.domain}
-                    {...(card.pipelineRun
-                      ? { badge: <StatusBadge family="pipelineRun" value={card.pipelineRun} /> }
-                      : {})}
+                    badge={
+                      card.pipelineRun ? (
+                        <StatusBadge family="pipelineRun" value={card.pipelineRun} />
+                      ) : (
+                        <StatusBadge family="run" value={card.status} label={card.label} />
+                      )
+                    }
                     held={issue.status === "on_hold"}
                     {...(card.waitingReason ? { waitingReason: card.waitingReason } : {})}
                     {...(card.note ? { note: card.note } : {})}

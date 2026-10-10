@@ -6,6 +6,9 @@ const basePath = process.env.WEB_V2_BASE_PATH ?? "";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // React Compiler memoises components and hooks at build time (react.dev/learn/react-compiler);
+  // hand-written useMemo/useCallback kept only for an identity an outside system needs.
+  reactCompiler: true,
   // Type checking is `pnpm tc:changed` / `tsc`, not the image build. Next bundles @forge/* from
   // their package exports (dist/): Turbopack does not map a `.js` import to its `.ts` source in
   // files reached through tsconfig.json's @forge `paths`. tsconfig.next.json is tsconfig.json

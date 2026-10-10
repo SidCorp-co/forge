@@ -18,7 +18,7 @@ export interface BadgeProps {
 }
 
 /** Small count / label pill (e.g. unread counts, "12 open"). For run status
-    use StatusChip; for IDs use MonoTag. */
+    use StatusBadge; for IDs use MonoTag. */
 export function Badge({ children, tone = "neutral" }: BadgeProps) {
   const t = TONE[tone];
   return (

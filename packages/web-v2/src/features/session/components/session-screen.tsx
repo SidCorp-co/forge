@@ -11,7 +11,7 @@ import {
   PageTitle,
   ProjectLoader,
   SlideOver,
-  StatusChip,
+  StatusBadge,
   useElapsed,
 } from "@/design";
 import { isJobDriven } from "@/features/sessions/types";
@@ -401,12 +401,7 @@ function SessionHeader({
             <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>
           </div>
           <div className="mt-1 flex items-center gap-2">
-            <StatusChip
-              status={statusToChip(display)}
-              stage={sessionStep(session.metadata) ?? undefined}
-              size="sm"
-              domain="session"
-            />
+            <StatusBadge family="run" value={statusToChip(display)} stage={sessionStep(session.metadata)} />
             {taskCount > 0 && (
               <Badge tone="neutral">
                 {taskCount === 1 ? t("sessions.detail.taskOne") : t("sessions.detail.taskMany", { n: taskCount })}

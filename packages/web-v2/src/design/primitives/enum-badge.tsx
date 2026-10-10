@@ -67,16 +67,25 @@ export interface StatusBadgeProps {
   value: string;
   /** An issue `in_progress` at a step reads "In progress · Test". */
   step?: WorkStep | null;
+  /** A running `run` reads its job type after it: "Running · Code". */
+  stage?: string | null;
+  /** Words a caller derived for this value (a queued step's gate), over the family's own. */
+  label?: string;
   /** A tone core derived for this project (an issue's `standing.tone`), over the family's default. */
   tone?: LegendTone;
   size?: "sm" | "md";
 }
 
-export function StatusBadge({ family, value, step, tone, size }: StatusBadgeProps) {
+export function StatusBadge({ family, value, step, stage, label: words, tone, size }: StatusBadgeProps) {
   const language = useInterfaceLanguage();
   const stepLabel = useLabel();
   const r = statusReading(family, value, language);
-  const label = family === "issue" && value === "in_progress" && step ? `${r.label} · ${stepLabel("workStep", step)}` : r.label;
+  const label = words ??
+    (family === "issue" && value === "in_progress" && step
+      ? `${r.label} · ${stepLabel("workStep", step)}`
+      : family === "run" && value === "running" && stage
+        ? `${r.label} · ${enumLabel("jobType", stage, language)}`
+        : r.label);
   const shown = tone ?? r.tone;
   return (
     <ToneBadge

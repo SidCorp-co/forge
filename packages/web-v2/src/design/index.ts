@@ -7,7 +7,6 @@ export { STAGES } from "./stages";
 export { AGENT_TINT, type HealthKey, type AvatarHue } from "./status";
 
 export { Button, SecondaryRegion } from "./primitives/button";
-export { StatusChip } from "./primitives/status-chip";
 export { MonoTag } from "./primitives/mono-tag";
 export { Avatar } from "./primitives/avatar";
 export { ProjectMark } from "./primitives/project-mark";
@@ -28,9 +27,8 @@ export { DotStrip } from "./primitives/dot-strip";
 export { BulletBar } from "./primitives/bullet-bar";
 export { StreamBand } from "./primitives/stream-band";
 export { SankeyFlow } from "./primitives/sankey-flow";
-export { EmptyState } from "./primitives/empty-state";
+export { EmptyState, LoadingState, ErrorState } from "./primitives/states";
 export { EmptyPanelLine } from "./primitives/empty-panel-line";
-export { ErrorState } from "./primitives/error-state";
 export { LiveDot } from "./primitives/live-dot";
 export { showToast, type ToastView } from "./primitives/toast";
 export { Input } from "./primitives/input";
@@ -52,7 +50,11 @@ export { Tabs, type TabItem } from "./primitives/tabs";
 export { ScreenTabs } from "./patterns/screen-tabs";
 export { PageContainer } from "./patterns/page-container";
 export { Pagination } from "./primitives/pagination";
-export { Collapsible } from "./primitives/collapsible";
+export { Disclosure } from "./primitives/disclosure";
+// Collapsible is Disclosure's old name, kept until the sweep renames its last callers.
+export { Disclosure as Collapsible } from "./primitives/disclosure";
+export { Dialog } from "./primitives/dialog";
+export { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "./primitives/resizable";
 export { Table, THead, TBody, TR, TH, TD, SortableTH, useReactTable, getCoreRowModel, type ColumnDef, type SortingState } from "./primitives/table";
 export { HelpButton } from "./primitives/help-button";
 
@@ -109,3 +111,8 @@ export { useDebounced } from "./hooks/use-debounced";
 export { useElapsed } from "./hooks/use-elapsed";
 export { useNow } from "./hooks/use-now";
 export { useMediaQuery } from "./hooks/use-media-query";
+
+export {
+  ListPage, DetailPage, SettingsPage, BoardPage, ReportPage,
+  type ListPageProps, type DetailPageProps, type SettingsPageProps, type BoardPageProps, type ReportPageProps,
+} from "./templates/page-templates";

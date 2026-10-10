@@ -14,9 +14,11 @@ import {
   Badge,
   Button,
   EmptyState,
+  enumLabel,
   ErrorState,
   Icon,
   Menu,
+  type MenuItem,
   MonoTag,
   ProgressBar,
   SectionTitle,
@@ -24,11 +26,8 @@ import {
   Spinner,
   Stat,
   StatusBadge,
-  StatusChip,
   Tabs,
   Tooltip,
-  enumLabel,
-  type MenuItem,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useRecents } from "@/lib/navigation/recents";
@@ -175,7 +174,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
           {issueStatus && !canWrite && (
             <StatusBadge family="issue" value={issueStatus} step={workStepOf(issue ?? {})} size="sm" />
           )}
-          {chipStatus && <StatusChip status={chipStatus} stage={chipStep} size="sm" domain="session" />}
+          {chipStatus && <StatusBadge family="run" value={chipStatus} stage={chipStep} />}
           {runBadge && <StatusBadge family="pipelineRun" value={runBadge} />}
           {runBadge === "running" && chipStep && (
             <span className="fg-caption text-muted">{enumLabel("jobType", chipStep)}</span>

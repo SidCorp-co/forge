@@ -1,6 +1,6 @@
 import { useRouter } from "next/navigation";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { Badge, HealthDot, Icon, MonoTag, StatusChip, Tooltip } from "@/design";
+import { Badge, HealthDot, Icon, MonoTag, StatusBadge, Tooltip } from "@/design";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
 import {
@@ -158,10 +158,10 @@ export function StatusCell({
     <div className="flex flex-col items-start gap-1">
       {!awaitingReply && outcome.tooltip ? (
         <Tooltip label={outcome.tooltip}>
-          <StatusChip status={chipStatus} stage={stage} domain="session" />
+          <StatusBadge family="run" value={chipStatus} stage={stage} size="md" />
         </Tooltip>
       ) : (
-        <StatusChip status={chipStatus} stage={stage} domain="session" />
+        <StatusBadge family="run" value={chipStatus} stage={stage} size="md" />
       )}
       {subLine && (
         <span className="fg-caption" style={{ color: reasonColor }}>

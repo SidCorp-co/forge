@@ -165,7 +165,7 @@ export function groupIssuesByColumn(issues: PipelineIssueRow[] | undefined, lang
 interface CardStatusView {
   status: StatusKey;
   pipelineRun?: PipelineRunStatus;
-  /** Undefined lets `StatusChip` use the run vocabulary's own label. */
+  /** Undefined lets `StatusBadge` use the run vocabulary's own label. */
   label: string | undefined;
   domain: "session" | "issue";
   /** The gate sentence, for the card's tooltip + aria-label; "" when none. */

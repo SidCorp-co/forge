@@ -14,14 +14,14 @@ import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Banner,
-  PageSectionTitle,
+  enumLabel,
   HealthDot,
   Icon,
   MonoTag,
+  PageSectionTitle,
   Stat,
-  StatusChip,
+  StatusBadge,
   useElapsed,
-  enumLabel,
 } from "@/design";
 import {
   deriveSessionDisplayStatus,
@@ -207,13 +207,13 @@ export function ContextRail({
 
       {isPipeline && (
         <Section title={t("sessions.rail.pipeline")}>
-          <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
+          <StatusBadge family="run" value={statusToChip(display)} stage={stage} />
         </Section>
       )}
 
       <Section title={t("sessions.rail.stats")}>
         <div className="flex flex-col gap-2.5">
-          {!isPipeline && <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />}
+          {!isPipeline && <StatusBadge family="run" value={statusToChip(display)} stage={stage} />}
           <Stat icon="activity" title={t("sessions.rail.turnsTitle")}>{usage.turns != null ? t("sessions.rail.turns", { n: time.number(usage.turns) }) : "—"}</Stat>
           <Stat icon="clock" title={t("sessions.rail.durationTitle")}>{duration}</Stat>
           <Stat icon="cpu" title={t("sessions.rail.contextTitle")}>{t("sessions.rail.ctx", { n: fmtNum(usage.contextUsed, time.number) })}</Stat>
@@ -354,7 +354,7 @@ function SiblingRow({ row, onOpen }: { row: SessionRow; onOpen?: () => void }) {
       <span className="flex-1 truncate fg-body-sm" title={label}>
         {row.title && label === row.title ? label : enumLabel("jobType", label, language)}
       </span>
-      <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
+      <StatusBadge family="run" value={statusToChip(display)} stage={stage} />
     </>
   );
 
