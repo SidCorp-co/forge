@@ -3,7 +3,7 @@
 import { useIssueForecast } from "@/features/forecast/hooks";
 import { useMockups } from "@/features/mockups/hooks";
 import { usePreview } from "@/features/previews/hooks";
-import { useIssueQuestions } from "@/features/questions/hooks";
+import { useIssueQuestions } from "@/features/questions";
 import { issueRekey, isUuid, useBridgedRef } from "@/lib/api/ref-bridge";
 import { useCriteria } from "../criteria";
 import { useActivity, useAttachments, useComments, useIssue } from "../detail-hooks";
