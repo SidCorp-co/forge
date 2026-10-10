@@ -32,14 +32,14 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { useRecents } from "@/lib/navigation/recents";
 import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
-import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
-import { priorityLabel, runStatusChip, workStepOf } from "@/features/issues/derive";
-import type { IssuePriority, IssueStatus } from "@/features/issues/types";
+import { IssueQuickActions } from "@/features/issues";
+import { priorityLabel, runStatusChip, workStepOf } from "@/features/issues";
+import type { IssuePriority, IssueStatus } from "@/features/issues";
 import { drawerRunChip, formatDurationMs, formatUsd } from "../derive";
-import { useCancelRun, usePauseRun, useResumeRun } from "@/features/run-control/hooks";
+import { useCancelRun, usePauseRun, useResumeRun } from "@/features/run-control";
 import { useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
-import { AskAboutThis } from "@/features/chat-dock/ask-about-this";
+import { AskAboutThis } from "@/features/chat-dock";
 import type {
   PipelineIssueRow,
   PipelineRunStepSummary,
@@ -311,10 +311,10 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
                   run={run}
                   loading={runQ.isLoading}
                   error={runQ.isError ? runQ.error : null}
-                  onRetry={() => runQ.refetch()}
+                  onRetry={() => void runQ.refetch()}
                 />
               ) : runQ.isError ? (
-                <ErrorState message={formatApiError(runQ.error)} onRetry={() => runQ.refetch()} />
+                <ErrorState message={formatApiError(runQ.error)} onRetry={() => void runQ.refetch()} />
               ) : tab === "timeline" ? (
                 <TimelineTab run={run} loading={runQ.isLoading} />
               ) : (

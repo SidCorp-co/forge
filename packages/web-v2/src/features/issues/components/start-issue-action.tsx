@@ -1,9 +1,9 @@
 "use client";
 
 import { Button } from "@/design";
-import type { V1Read } from "@/features/project-config/types";
+import type { V1Read } from "@/features/project-config";
 import type { ProjectMember } from "@/features/projects/types";
-import { canWriteProject } from "@/features/projects/write-access";
+import { canWriteProject } from "@/features/projects";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useRunPipelineStep } from "../hooks";
 import type { IssueStatus } from "../types";

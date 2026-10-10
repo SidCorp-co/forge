@@ -37,9 +37,9 @@ export function useDecidePattern(issueId: string, projectId?: string) {
     // settled, not only succeeded: a decision refused because another reviewer already decided
     // (409) leaves the line showing a pending pattern until the patterns are read again
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["issue", issueKeySegment(issueId, projectId)] });
+      void qc.invalidateQueries({ queryKey: ["issue", issueKeySegment(issueId, projectId)] });
       // a return posts its reason on the issue
-      qc.invalidateQueries({ queryKey: ["comments", issueId] });
+      void qc.invalidateQueries({ queryKey: ["comments", issueId] });
     },
   });
 }

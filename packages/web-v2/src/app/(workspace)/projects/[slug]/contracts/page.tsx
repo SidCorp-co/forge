@@ -2,7 +2,7 @@
 
 import { ContractsScreen } from "@/features/contracts/components/contracts-screen";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { ProjectGate } from "@/features/projects/components/project-gate";
+import { ProjectGate } from "@/features/projects";
 
 export default function ProjectContractsPage() {
   const t = useCopy();

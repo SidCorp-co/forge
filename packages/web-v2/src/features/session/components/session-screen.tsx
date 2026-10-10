@@ -14,12 +14,12 @@ import {
   StatusBadge,
   useElapsed,
 } from "@/design";
-import { isJobDriven } from "@/features/sessions/types";
+import { isJobDriven } from "@/features/sessions";
 import {
   deriveSessionDisplayStatus,
   sessionStep,
   statusToChip,
-} from "@/features/sessions/types";
+} from "@/features/sessions";
 import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
 import { useRecents } from "@/lib/navigation/recents";
 import { formatRefusal } from "@/lib/api/error";
@@ -33,8 +33,8 @@ import { useCopy } from "@/lib/i18n/interface-language";
 // Subscribes to the project WS room so persisted-turn invalidations stream the
 // caret + live updates (ISS-291 model — no client-side stream reducer).
 import { useEffect, useState } from "react";
-import { useStuckRuns } from "@/features/agents/hooks";
-import { useCancelSession, useRerunSession } from "@/features/sessions/hooks";
+import { useStuckRuns } from "@/features/agents";
+import { useCancelSession, useRerunSession } from "@/features/sessions";
 import {
   useEditTurn,
   useForkSession,
@@ -165,7 +165,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
           <ErrorState
             title={t("sessions.detail.loadFailed")}
             message={formatRefusal(sessionQ.error)}
-            onRetry={() => sessionQ.refetch()}
+            onRetry={() => void sessionQ.refetch()}
           />
         </div>
       </div>
@@ -176,7 +176,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
     <ErrorState
       title={items.length ? t("sessions.detail.turnsRefreshFailed") : t("sessions.detail.turnsLoadFailed")}
       message={formatRefusal(turnsQ.error)}
-      onRetry={() => turnsQ.refetch()}
+      onRetry={() => void turnsQ.refetch()}
       mascot={items.length === 0}
     />
   ) : null;

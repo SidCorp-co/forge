@@ -23,8 +23,8 @@ export function useTriageAgentReport(projectId: string | undefined) {
   return useMutation({
     mutationFn: ({ id, act }: { id: string; act: TriageAgentReportRequest }) => agentReportsApi.triage(id, act),
     onSuccess: ({ effect }, { act }) => {
-      qc.invalidateQueries({ queryKey: ["agent-reports", projectId] });
-      qc.invalidateQueries({ queryKey: automationKey(projectId) });
+      void qc.invalidateQueries({ queryKey: ["agent-reports", projectId] });
+      void qc.invalidateQueries({ queryKey: automationKey(projectId) });
       toast({ title: effect.issue ? t("schedules.report.doneAs", { done: t(DONE[act.act]), key: effect.issue.key }) : t(DONE[act.act]), tone: "success" });
     },
     onError: (err) => {

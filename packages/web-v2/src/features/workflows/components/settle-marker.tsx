@@ -6,7 +6,7 @@
 import { NODE_DECISION_VERDICTS, type HealthMarker, type HealthNode, type NodeDecisionVerdict } from "@forge/contracts/workflow-health";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/design";
-import { commentsApi } from "@/features/comments/api";
+import { commentsApi } from "@/features/comments";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 

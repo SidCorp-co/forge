@@ -1,7 +1,7 @@
 "use client";
 
 import { DetailHeader, ErrorState, ProjectLoader, useListOrigin } from "@/design";
-import { useEntityDecisions } from "@/features/comments/hooks";
+import { useEntityDecisions } from "@/features/comments";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { templateFor } from "../canvas/model";

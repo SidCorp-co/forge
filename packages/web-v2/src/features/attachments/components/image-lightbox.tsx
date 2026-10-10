@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import Image from "next/image";
 import { MediaOverlay } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -47,9 +48,9 @@ function useZoomPan(index: number, go: (delta: number) => void) {
 
   // Active pointers (for pinch) keyed by pointerId, plus drag bookkeeping. Kept
   // in refs so the move handler reads live values without re-subscribing.
-  const pointers = useRef(new Map<number, { x: number; y: number }>());
-  const pinchStart = useRef<{ dist: number; scale: number } | null>(null);
-  const dragStart = useRef<{
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchStartRef = useRef<{ dist: number; scale: number } | null>(null);
+  const dragStartRef = useRef<{
     x: number;
     y: number;
     ox: number;
@@ -82,13 +83,13 @@ function useZoomPan(index: number, go: (delta: number) => void) {
   // fingers, swipe-to-navigate when at fit scale, double-tap/click to toggle.
   const onPointerDown = (e: ReactPointerEvent) => {
       (e.target as Element).setPointerCapture?.(e.pointerId);
-      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pointers.current.size === 2) {
-        const [a, b] = [...pointers.current.values()];
-        pinchStart.current = { dist: dist(a, b), scale };
-        dragStart.current = null;
-      } else if (pointers.current.size === 1) {
-        dragStart.current = {
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointersRef.current.size === 2) {
+        const [a, b] = [...pointersRef.current.values()];
+        pinchStartRef.current = { dist: dist(a, b), scale };
+        dragStartRef.current = null;
+      } else if (pointersRef.current.size === 1) {
+        dragStartRef.current = {
           x: e.clientX,
           y: e.clientY,
           ox: offset.x,
@@ -99,19 +100,19 @@ function useZoomPan(index: number, go: (delta: number) => void) {
     };
 
   const onPointerMove = (e: ReactPointerEvent) => {
-      if (!pointers.current.has(e.pointerId)) return;
-      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (!pointersRef.current.has(e.pointerId)) return;
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
       // Pinch-zoom.
-      if (pointers.current.size === 2 && pinchStart.current) {
-        const [a, b] = [...pointers.current.values()];
-        const ratio = dist(a, b) / (pinchStart.current.dist || 1);
-        setScale(clamp(pinchStart.current.scale * ratio, MIN_SCALE, MAX_SCALE));
+      if (pointersRef.current.size === 2 && pinchStartRef.current) {
+        const [a, b] = [...pointersRef.current.values()];
+        const ratio = dist(a, b) / (pinchStartRef.current.dist || 1);
+        setScale(clamp(pinchStartRef.current.scale * ratio, MIN_SCALE, MAX_SCALE));
         return;
       }
 
       // Single-pointer drag → pan (only meaningful when zoomed).
-      const d = dragStart.current;
+      const d = dragStartRef.current;
       if (!d) return;
       const dx = e.clientX - d.x;
       const dy = e.clientY - d.y;
@@ -120,10 +121,10 @@ function useZoomPan(index: number, go: (delta: number) => void) {
     };
 
   const endPointer = (e: ReactPointerEvent) => {
-      const d = dragStart.current;
-      const wasPinching = pointers.current.size === 2;
-      pointers.current.delete(e.pointerId);
-      if (pointers.current.size < 2) pinchStart.current = null;
+      const d = dragStartRef.current;
+      const wasPinching = pointersRef.current.size === 2;
+      pointersRef.current.delete(e.pointerId);
+      if (pointersRef.current.size < 2) pinchStartRef.current = null;
       // Snap an over-pinched-down image back to fit.
       if (wasPinching) {
         setScale((s) => {
@@ -137,7 +138,7 @@ function useZoomPan(index: number, go: (delta: number) => void) {
         const dx = e.clientX - d.x;
         if (Math.abs(dx) > SWIPE_THRESHOLD) go(dx < 0 ? 1 : -1);
       }
-      dragStart.current = null;
+      dragStartRef.current = null;
     };
 
   // Ctrl/Cmd + wheel zooms; plain wheel is left alone (page is scroll-locked).
@@ -156,7 +157,7 @@ function useZoomPan(index: number, go: (delta: number) => void) {
     scale,
     offset,
     zoomed,
-    moving: dragStart.current?.moved ?? false,
+    moving: dragStartRef.current?.moved ?? false,
     zoomBy,
     resetZoom,
     onPointerDown,
@@ -262,12 +263,8 @@ function Thumbnails({ images, index, onPick }: { images: LightboxImage[]; index:
           aria-current={i === index}
           className={cn("flex-none overflow-hidden rounded-md border-2 transition-colors", i === index ? "border-info-8" : "border-transparent opacity-60 hover:opacity-100")}
         >
-          {/* biome-ignore lint/performance/noImgElement: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
-          <img
-            src={img.href}
-            alt={img.alt ?? img.name}
-            className="size-11 object-cover sm:size-14"
-          />
+          {/* unoptimized: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
+          <Image unoptimized src={img.href} alt={img.alt ?? img.name} width={56} height={56} className="size-11 object-cover sm:size-14" />
         </button>
       ))}
     </div>
@@ -305,16 +302,7 @@ export function ImageLightbox({
   if (!current) return null;
 
   return (
-    <MediaOverlay open onOpenChange={(open) => !open && onClose()} label={t("issues.image.position", { at: index + 1, of: count, name: current.name })}>
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: the gallery's keys (arrows, zoom); Escape is the dialog's own */}
-      <div
-        className="flex min-h-0 flex-1 flex-col"
-        onKeyDown={onKey}
-        // A press on the backdrop itself closes; a press inside the content goes no further.
-        onClick={(e) => {
-          if (e.target === e.currentTarget) onClose();
-        }}
-      >
+    <MediaOverlay open onOpenChange={(open) => !open && onClose()} onKeyDown={onKey} label={t("issues.image.position", { at: index + 1, of: count, name: current.name })}>
       <LightboxHeader image={current} index={index} count={count} scale={scale} zoomBy={zoomBy} resetZoom={resetZoom} onClose={onClose} />
 
       {/* Stage. */}
@@ -331,7 +319,7 @@ export function ImageLightbox({
         )}
         {/* biome-ignore lint/a11y/noStaticElementInteractions: the pointer pan and zoom surface; the header's zoom buttons are its keyboard equivalent */}
         <div
-          className="flex h-full w-full touch-none select-none items-center justify-center"
+          className="relative h-full w-full touch-none select-none"
           onPointerDown={gesture.onPointerDown}
           onPointerMove={gesture.onPointerMove}
           onPointerUp={gesture.endPointer}
@@ -339,12 +327,15 @@ export function ImageLightbox({
           onWheel={gesture.onWheel}
           onDoubleClick={gesture.toggleZoom}
         >
-          {/* biome-ignore lint/performance/noImgElement: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
-          <img
+          {/* unoptimized: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
+          <Image
+            unoptimized
+            fill
+            sizes="100vw"
             src={current.href}
             alt={current.alt ?? current.name}
             draggable={false}
-            className="max-h-full max-w-full object-contain will-change-transform"
+            className="object-contain will-change-transform"
             style={{
               transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
               transition: moving ? "none" : "transform 120ms ease-out",
@@ -365,7 +356,6 @@ export function ImageLightbox({
       </div>
 
       {count > 1 && <Thumbnails images={images} index={index} onPick={onIndexChange} />}
-      </div>
     </MediaOverlay>
   );
 }

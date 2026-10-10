@@ -25,7 +25,7 @@ function foldLabel(tools: number, pauses: number, t: Copy): string {
   const parts: string[] = [];
   if (tools > 0) parts.push(tools === 1 ? t("sessions.fold.toolOne") : t("sessions.fold.toolMany", { n: tools }));
   if (pauses > 0) parts.push(pauses === 1 ? t("sessions.fold.pauseOne") : t("sessions.fold.pauseMany", { n: pauses }));
-  return parts.length === 2 ? t("sessions.fold.and", { a: parts[0] as string, b: parts[1] as string }) : (parts[0] ?? "");
+  return parts.length === 2 ? t("sessions.fold.and", { a: parts[0], b: parts[1] }) : (parts[0] ?? "");
 }
 
 /**

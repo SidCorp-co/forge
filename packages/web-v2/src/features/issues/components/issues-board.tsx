@@ -45,12 +45,12 @@ import { statusesFromParam } from "../derive";
 import { issueBadge, issueEta, issueRowView, useRowWords } from "./issue-standing-bits";
 import { IssuePeek } from "./issue-peek";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
-import { useEtaSort, useProjectForecast } from "@/features/forecast/hooks";
-import { etaSortValue } from "@/features/forecast/eta";
+import { useEtaSort, useProjectForecast } from "@/features/forecast";
+import { etaSortValue } from "@/features/forecast";
 import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { Written } from "@/lib/i18n/written";
 import { useReportShown } from "@/design/hooks/use-page-shown";
-import { WaitingFilter } from "@/features/chat-dock/list-filter-bar";
+import { WaitingFilter } from "@/features/chat-dock";
 
 type BoardMode = "attention" | "module" | "waves";
 

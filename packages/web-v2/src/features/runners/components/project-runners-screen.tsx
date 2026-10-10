@@ -24,8 +24,8 @@ import {
 	Skeleton,
 	enumLabel,
 } from "@/design";
-import { useProjectDocument } from "@/features/project-config/hooks";
-import { useProject } from "@/features/projects/hooks";
+import { useProjectDocument } from "@/features/project-config";
+import { useProject } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -201,7 +201,7 @@ export function ProjectRunnersScreen({
 					) : runners.isError ? (
 						<ErrorState
 							message={formatApiError(runners.error)}
-							onRetry={() => runners.refetch()}
+							onRetry={() => void runners.refetch()}
 						/>
 					) : rows.length === 0 ? (
 						<EmptyState

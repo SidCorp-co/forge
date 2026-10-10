@@ -7,7 +7,7 @@ import { placeRefusals } from "@/lib/api/field-refusals";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
-import { StagedFileList } from "@/features/attachments/components/staged-files";
+import { StagedFileList } from "@/features/attachments";
 import { AttachFailed } from "../api";
 import { useAttachFeedback, useCreateFeedback, usePromoteFeedback } from "../hooks";
 import type { CreateFeedbackRequest, FeedbackKind, FeedbackSeverity } from "../types";

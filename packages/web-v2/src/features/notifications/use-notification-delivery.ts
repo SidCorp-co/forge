@@ -65,9 +65,9 @@ export function useNotificationDelivery(
 ): void {
   const { toast } = useToast();
   // the latest handler, read when a delivery lands, so the socket subscription is made once
-  const navigate = useRef(onNavigate);
+  const navigateRef = useRef(onNavigate);
   useEffect(() => {
-    navigate.current = onNavigate;
+    navigateRef.current = onNavigate;
   });
 
   useEffect(() => {
@@ -92,7 +92,7 @@ export function useNotificationDelivery(
           title: d.title,
           description: d.body ?? undefined,
           tone: plan.tone,
-          onClick: () => navigate.current(d),
+          onClick: () => navigateRef.current(d),
           slot: "notification",
         });
       }
@@ -101,7 +101,7 @@ export function useNotificationDelivery(
           title: d.title,
           body: d.body ?? undefined,
           tag: d.notificationId,
-          onClick: () => navigate.current(d),
+          onClick: () => navigateRef.current(d),
         });
       }
     });

@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon, Spinner } from "@/design";
-import type { AgentSessionDisplayStatus } from "@/features/sessions/types";
+import type { AgentSessionDisplayStatus } from "@/features/sessions";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { ConversationItem, RenderBlock } from "../types";

@@ -13,8 +13,8 @@ import {
   SessionRowSkeleton,
   type SegmentOption,
 } from "@/design";
-import { useIssue } from "@/features/issues/detail-hooks";
-import { useProject } from "@/features/projects/hooks";
+import { useIssue } from "@/features/issues";
+import { useProject } from "@/features/projects";
 import { formatRefusal } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -174,7 +174,7 @@ export function SessionsScreen({
         <ErrorState
           title={t("sessions.issueReadFailed")}
           message={formatRefusal(issueQ.error)}
-          onRetry={() => issueQ.refetch()}
+          onRetry={() => void issueQ.refetch()}
         />
       )}
 
@@ -182,7 +182,7 @@ export function SessionsScreen({
         <ErrorState
           title={t("sessions.loadFailed")}
           message={formatRefusal(sessionsQ.error)}
-          onRetry={() => sessionsQ.refetch()}
+          onRetry={() => void sessionsQ.refetch()}
         />
       )}
 

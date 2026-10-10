@@ -1,19 +1,19 @@
 import { ISSUE_STATUSES } from "@forge/contracts/issue-machine";
-import { deriveQueuedStep, hasLiveAgentSession, queuedChipStatus } from "@/features/issues/waiting";
+import { deriveQueuedStep, hasLiveAgentSession, queuedChipStatus } from "@/features/issues";
 import {
   statusToChip,
   statusToTone,
   workStepOf,
-} from "@/features/issues/derive";
+} from "@/features/issues";
 import { type SemanticTone, STATUS_KEY_TONE, type StatusKey, TONE_META } from "@/design/status";
-import type { IssueStatus } from "@/features/issues/types";
+import type { IssueStatus } from "@/features/issues";
 import type { StageKey } from "@/design/stages";
-import { gateReasonLine } from "@/features/runners/types";
+import { gateReasonLine } from "@/features/runners";
 import { formatElapsed } from "@/lib/utils/format";
 import { formatElapsed as formatElapsedIn } from "@/lib/i18n/format";
 import { copyLocale, productCopy } from "@/lib/i18n/product-copy";
 import { labelCopy } from "@/lib/i18n/labels";
-import { gateReadingIn } from "@/features/issues/gate-reading";
+import { gateReadingIn } from "@/features/issues";
 import { BOARD_EXCLUDED_STATUSES, type PipelineIssueRow, type PipelineRunListItem, type PipelineRunStatus, type RunGate } from "./types";
 
 export function jobTypeToStage(jobType: string | null | undefined): StageKey | null {

@@ -105,7 +105,7 @@ export function OpsMonitor() {
       <div className="grid min-h-128 place-items-center">
         <ErrorState
           message={formatApiError(projectsError ?? healthQ.error)}
-          onRetry={() => healthQ.refetch()}
+          onRetry={() => void healthQ.refetch()}
         />
       </div>
     );
@@ -143,8 +143,8 @@ export function OpsMonitor() {
             loading={throughputQ.isLoading || durationsQ.isLoading}
             isError={throughputQ.isError || durationsQ.isError}
             onRetry={() => {
-              if (throughputQ.isError) throughputQ.refetch();
-              if (durationsQ.isError) durationsQ.refetch();
+              if (throughputQ.isError) void throughputQ.refetch();
+              if (durationsQ.isError) void durationsQ.refetch();
             }}
           />
         )}
@@ -154,7 +154,7 @@ export function OpsMonitor() {
             durations={durations}
             loading={durationsQ.isLoading}
             isError={durationsQ.isError}
-            onRetry={() => durationsQ.refetch()}
+            onRetry={() => void durationsQ.refetch()}
             nameById={nameById}
             onOpen={setRunId}
           />

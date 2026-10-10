@@ -4,8 +4,8 @@ import type { IssueBlocker } from "@forge/contracts/issue-standing";
 import type { ParkThreadQuestion } from "@forge/contracts/park";
 import type { ComponentProps, ReactNode } from "react";
 import { SegmentedControl } from "@/design";
-import { useIssueForecast } from "@/features/forecast/hooks";
-import { PreviewPanel } from "@/features/previews/preview-panel";
+import { useIssueForecast } from "@/features/forecast";
+import { IssuePreview } from "@/features/previews";
 import { settingsHref } from "@/features/project-settings/sections";
 import { IssueQuestions } from "@/features/questions";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -106,7 +106,7 @@ export function IssuePageMain(props: {
               />
             </div>
             <div className="border-b border-line-subtle py-4" data-highlight="preview">
-              <PreviewPanel
+              <IssuePreview
                 issueId={issue.id}
                 issueLabel={issue.displayId}
                 canWrite={canWrite}

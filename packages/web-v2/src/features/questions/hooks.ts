@@ -27,16 +27,16 @@ export function useAnswerQuestion(issueId: string) {
   return useMutation({
     mutationFn: questionsApi.answer,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: questionKeys.issue(issueId) });
-      qc.invalidateQueries({ queryKey: ["issue", issueId] });
-      qc.invalidateQueries({ queryKey: ["attention"] });
+      void qc.invalidateQueries({ queryKey: questionKeys.issue(issueId) });
+      void qc.invalidateQueries({ queryKey: ["issue", issueId] });
+      void qc.invalidateQueries({ queryKey: ["attention"] });
       toast({
         title: t("agents.question.recorded"),
         tone: "success",
       });
     },
     onError: (err) => {
-      qc.invalidateQueries({ queryKey: questionKeys.issue(issueId) });
+      void qc.invalidateQueries({ queryKey: questionKeys.issue(issueId) });
       toast({ title: t("agents.question.notRecorded"), description: formatApiError(err), tone: "error" });
     },
   });
@@ -86,15 +86,15 @@ export function useAnswerProjectQuestion(projectId: string) {
   return useMutation({
     mutationFn: questionsApi.answer,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: projectQuestionsKey(projectId) });
-      qc.invalidateQueries({ queryKey: ["attention"] });
+      void qc.invalidateQueries({ queryKey: projectQuestionsKey(projectId) });
+      void qc.invalidateQueries({ queryKey: ["attention"] });
       toast({
         title: t("agents.question.recorded"),
         tone: "success",
       });
     },
     onError: (err) => {
-      qc.invalidateQueries({ queryKey: projectQuestionsKey(projectId) });
+      void qc.invalidateQueries({ queryKey: projectQuestionsKey(projectId) });
       toast({ title: t("agents.question.notRecorded"), description: formatApiError(err), tone: "error" });
     },
   });

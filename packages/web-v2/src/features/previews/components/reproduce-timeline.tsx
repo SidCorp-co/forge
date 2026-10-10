@@ -6,6 +6,7 @@
 
 import type { TimelineEntry } from "@forge/contracts/reproduce";
 import { useCopy } from "@/lib/i18n/interface-language";
+import { cn } from "@/lib/utils/cn";
 
 type Copy = ReturnType<typeof useCopy>;
 
@@ -39,19 +40,17 @@ function keyed(entries: readonly TimelineEntry[]): { key: string; entry: Timelin
   });
 }
 
-export function TimelineTable({ entries, compact = false, testId = "recording-timeline" }: { entries: readonly TimelineEntry[]; compact?: boolean; testId?: string }) {
+export function Timeline({ entries, compact = false, testId = "recording-timeline" }: { entries: readonly TimelineEntry[]; compact?: boolean; testId?: string }) {
   const t = useCopy();
   return (
-    <table className={`w-full border-collapse ${compact ? "text-13" : "text-13"}`} data-testid={testId}>
-      <tbody>
-        {keyed(entries).map(({ key, entry: e }) => (
-          <tr key={key} className="border-b border-line-subtle align-top" data-kind={e.kind}>
-            <td className="w-16 py-1 pr-3 font-mono text-muted">{atOf(e.at)}</td>
-            {compact ? null : <td className={`w-36 py-1 pr-3 ${BAD.has(e.kind) ? "font-medium text-danger" : "text-muted"}`}>{t(KIND_KEYS[e.kind])}</td>}
-            <td className={`break-words py-1 ${compact && BAD.has(e.kind) ? "text-danger" : ""}`}>{e.text}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <ol className="w-full text-13" data-testid={testId}>
+      {keyed(entries).map(({ key, entry: e }) => (
+        <li key={key} className="flex items-start gap-3 border-b border-line-subtle py-1" data-kind={e.kind}>
+          <span className="w-16 flex-none font-mono text-muted">{atOf(e.at)}</span>
+          {compact ? null : <span className={cn("w-36 flex-none", BAD.has(e.kind) ? "font-medium text-danger" : "text-muted")}>{t(KIND_KEYS[e.kind])}</span>}
+          <span className={cn("min-w-0 flex-1 break-words", compact && BAD.has(e.kind) && "text-danger")}>{e.text}</span>
+        </li>
+      ))}
+    </ol>
   );
 }

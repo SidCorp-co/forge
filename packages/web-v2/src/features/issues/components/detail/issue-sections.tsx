@@ -195,7 +195,7 @@ function TabError({
     <ErrorState
       title={title}
       message={formatApiError(query.error)}
-      onRetry={isRetryableApiError(query.error) ? () => query.refetch() : undefined}
+      onRetry={isRetryableApiError(query.error) ? () => void query.refetch() : undefined}
     />
   );
 }

@@ -3,7 +3,7 @@
 import type { TourStateValue } from "@forge/contracts/product-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { useCurrentProject } from "@/features/projects/current-project";
+import { useCurrentProject } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { toursApi } from "./api";
 import { tourHref } from "./links";

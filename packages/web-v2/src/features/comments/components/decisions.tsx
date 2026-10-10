@@ -19,7 +19,7 @@ function Line({ label, children }: { label: string; children: string }) {
 }
 
 /** One decision; `onTarget` names what it sits on when a list holds more than one target's. */
-export function DecisionRow({ c, onTarget }: { c: EntityCommentView; onTarget?: ReactNode }) {
+export function Decision({ c, onTarget }: { c: EntityCommentView; onTarget?: ReactNode }) {
   const d = c.decision;
   const t = useCopy();
   const time = useTimeFormat();
@@ -136,7 +136,7 @@ export function DecisionComposer({ projectId, scope, targetRef }: { projectId: s
  * The decisions recorded on one item, oldest first, through the one entity decisions read. A
  * requirement, workflow or feedback item records one here; an issue records one in its thread.
  */
-export function DecisionsPanel({ projectId, scope, targetRef }: { projectId: string; scope: DecisionReadScope; targetRef: string }) {
+export function Decisions({ projectId, scope, targetRef }: { projectId: string; scope: DecisionReadScope; targetRef: string }) {
   const q = useEntityDecisions(projectId, scope, targetRef);
   const t = useCopy();
   return (
@@ -146,7 +146,7 @@ export function DecisionsPanel({ projectId, scope, targetRef }: { projectId: str
           {data.comments.length ? (
             <ul className="grid">
               {[...data.comments].reverse().map((c) => (
-                <DecisionRow key={c.id} c={c} />
+                <Decision key={c.id} c={c} />
               ))}
             </ul>
           ) : (

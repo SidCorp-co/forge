@@ -17,7 +17,7 @@ export function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 		return (
 			<ErrorState
 				message={formatApiError(activity.error)}
-				onRetry={() => activity.refetch()}
+				onRetry={() => void activity.refetch()}
 			/>
 		);
 	}

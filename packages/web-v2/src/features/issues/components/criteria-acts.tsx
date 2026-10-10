@@ -15,7 +15,7 @@ import { formatApiError } from "@/lib/api/error";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { formatSize } from "@/features/attachments/components/staged-files";
+import { formatSize } from "@/features/attachments";
 import {
   type CriterionRow,
   EVIDENCE_FILE_ACCEPT,

@@ -5,11 +5,11 @@
 // change. The page names the issue in its path, so nothing has to register with the dock; no preview
 // of the issue, or any other page, draws nothing.
 
-import { useIssue } from "@/features/issues/detail-hooks";
-import { settingsHref } from "@/features/project-settings/sections";
-import { useProjects } from "@/features/projects/hooks";
-import { canWriteProject } from "@/features/projects/write-access";
-import { PreviewPanel } from "@/features/previews/preview-panel";
+import { useIssue } from "@/features/issues";
+import { settingsHref } from "@/features/project-settings";
+import { useProjects } from "@/features/projects";
+import { canWriteProject } from "@/features/projects";
+import { IssuePreview as LivePreview } from "@/features/previews";
 
 const ISSUE_PAGE = /^\/projects\/[^/]+\/issues\/([^/?#]+)/;
 
@@ -33,7 +33,7 @@ function IssuePreview({ id, projectId }: { id: string; projectId: string }) {
   const project = projectsQ.data?.find((p) => p.id === projectId);
   const role = project?.role;
   return (
-    <PreviewPanel
+    <LivePreview
       compact
       className="max-h-3/5 flex-none overflow-y-auto border-b border-line px-3 py-3"
       issueId={issue.id}

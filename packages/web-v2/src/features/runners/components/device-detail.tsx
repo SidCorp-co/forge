@@ -287,7 +287,7 @@ export function DeviceDetail({
 						) : runners.isError ? (
 							<ErrorState
 								message={formatApiError(runners.error)}
-								onRetry={() => runners.refetch()}
+								onRetry={() => void runners.refetch()}
 							/>
 						) : rows.length === 0 ? (
 							<EmptyState

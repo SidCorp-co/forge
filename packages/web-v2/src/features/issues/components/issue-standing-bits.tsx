@@ -26,8 +26,8 @@ import {
   WaitBanner,
   WaitingOn,
 } from "@/design";
-import { EtaCell, EtaInline } from "@/features/forecast/components/eta-cell";
-import { type Eta, type EtaClock, etaOfForecast } from "@/features/forecast/eta";
+import { EtaCell, EtaInline } from "@/features/forecast";
+import { type Eta, type EtaClock, etaOfForecast } from "@/features/forecast";
 import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { requirementHref } from "@/lib/routes/requirements";

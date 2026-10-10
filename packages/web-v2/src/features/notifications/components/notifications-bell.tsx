@@ -4,7 +4,7 @@ import { type RefObject, useState } from "react";
 import { useRouter } from "next/navigation";
 import { keptReportHref } from "@/lib/routes/status";
 import { NotificationsMenu, Popover } from "@/design";
-import { useProjects } from "@/features/projects/hooks";
+import { useProjects } from "@/features/projects";
 import { BELL_PAGE_SIZE } from "../api";
 import { useMarkAllRead, useMarkRead, useNotificationMembers, useOpenCount, useOpenNotifications } from "../hooks";
 import { toMemberItem, toNotificationItem } from "../map";
@@ -118,8 +118,8 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
           loading={notificationsQuery.isLoading || invitations.query.isLoading}
           error={notificationsQuery.isError || invitations.query.isError}
           onRetry={() => {
-            notificationsQuery.refetch();
-            invitations.query.refetch();
+            void notificationsQuery.refetch();
+            void invitations.query.refetch();
           }}
           onSelect={(id) => {
             const row = rows.find((n) => n.id === id);

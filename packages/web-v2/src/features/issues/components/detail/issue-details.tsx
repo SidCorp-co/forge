@@ -6,10 +6,10 @@
 
 import { type ReactNode, useState } from "react";
 import { Markdown, ViewHeading } from "@/design";
-import { AttachmentList } from "@/features/attachments/components/attachment-list";
+import { AttachmentList } from "@/features/attachments";
 import { IssueQuestions } from "@/features/questions";
-import { MockupList } from "@/features/mockups/components/mockups-panel";
-import type { MockupTarget } from "@/features/mockups/types";
+import { MockupList } from "@/features/mockups";
+import type { MockupTarget } from "@/features/mockups";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { useActivity, useAttachments, useComments } from "../../detail-hooks";
 import type { useIssueStandingOf, useProjectMembers } from "../../hooks";

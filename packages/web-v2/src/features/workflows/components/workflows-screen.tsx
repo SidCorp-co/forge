@@ -8,7 +8,7 @@ import { Button, EmptyState, PageTitle, RowItem, rememberListOrigin } from "@/de
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useAskForDesigns } from "@/features/onboarding";
 import { useOnboardingState } from "@/features/onboarding";
-import { useProjectDocument } from "@/features/project-config/hooks";
+import { useProjectDocument } from "@/features/project-config";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
@@ -80,7 +80,7 @@ function Designs({
   );
   const groups = catalogue(narrowed, t);
   useReportShown(groups.flatMap((g) => g.rows.map((r) => r.document.flow)));
-  const pad = narrow ? "px-5 max-md:px-4" : "px-7 max-md:px-4";
+  const pad = "px-3";
   return (
     <section aria-labelledby="designs-title" className={cn(narrow ? "pt-3.5" : "pt-5")} data-testid="designs">
       <header className={cn("flex flex-wrap items-center gap-x-4 gap-y-2.5 pb-3", pad)}>

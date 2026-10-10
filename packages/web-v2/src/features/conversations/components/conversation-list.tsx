@@ -13,8 +13,8 @@ import {
   type MenuItem,
   SessionRowSkeleton,
 } from "@/design";
-import { useProjects } from "@/features/projects/hooks";
-import { useProjectEcosystems } from "@/features/ecosystem/hooks";
+import { useProjects } from "@/features/projects";
+import { useProjectEcosystems } from "@/features/ecosystem";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";

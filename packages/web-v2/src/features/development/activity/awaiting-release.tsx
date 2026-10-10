@@ -8,10 +8,10 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { Button, Checkbox, Icon, Section, StatusBadge } from "@/design";
-import { useDraftReleaseForecast } from "@/features/forecast/hooks";
-import { spanText } from "@/features/forecast/text";
-import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues/components/batch-release-dialog";
-import { useIssues } from "@/features/issues/hooks";
+import { useDraftReleaseForecast } from "@/features/forecast";
+import { spanText } from "@/features/forecast";
+import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues";
+import { useIssues } from "@/features/issues";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import { issueHref, issuesHref } from "@/lib/routes/issues";
@@ -153,7 +153,7 @@ export function AwaitingRelease({ slug, projectId }: { slug: string; projectId: 
       onClose={() => setBatchDialogOpen(false)}
       onSuccess={() => {
         setSelected(new Set());
-        qc.invalidateQueries({ queryKey: ["issues"] });
+        void qc.invalidateQueries({ queryKey: ["issues"] });
       }}
     />
     </>

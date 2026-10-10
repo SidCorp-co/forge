@@ -259,7 +259,7 @@ function Passes({ projectId, slug }: { projectId: string; slug: string }) {
   const t = useCopy();
   const q = useMasterPasses(projectId);
   if (q.isLoading) return <ProjectLoader label={t("agents.master.loadingPasses")} />;
-  if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />;
+  if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => void q.refetch()} />;
   if (q.data.items.length === 0) return <FactsEmpty>{t("agents.master.noPasses")}</FactsEmpty>;
   return <PassesTable items={q.data.items} hasMore={q.data.hasMore} slug={slug} />;
 }
@@ -345,7 +345,7 @@ function Leased({ m, projectId, slug }: { m: MasterStanding; projectId: string; 
   const time = useTimeFormat();
   const q = useRunStanding(projectId, "live");
   if (q.isLoading) return <ProjectLoader label={t("agents.loadingRuns")} />;
-  if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />;
+  if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => void q.refetch()} />;
   const rows = q.data.items.filter(
     (r: RunStanding) => r.holder.source === "held" && r.holder.dispatchedBy.source !== "none" && r.holder.dispatchedBy.masterSessionId === m.sessionId,
   );
@@ -401,7 +401,7 @@ function Charter({ projectId }: { projectId: string }) {
   const language = useInterfaceLanguage();
   const q = useMasterCharter(projectId, true);
   if (q.isLoading) return <ProjectLoader label={t("agents.master.loadingCharter")} />;
-  if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />;
+  if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => void q.refetch()} />;
   const c = q.data;
   if (!c.declared) return <FactsEmpty>{t("agents.master.noCharter")}</FactsEmpty>;
   return (

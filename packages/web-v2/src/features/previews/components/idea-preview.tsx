@@ -5,7 +5,7 @@
 // picture. Core decides every move; this draws the record and says by name what core refused. Flat,
 // no card: a hairline at the left and type for the hierarchy.
 
-import { PREVIEW_FAILURE_REASONS, type PreviewFailureReason, type PreviewRecord } from "@forge/contracts/preview";
+import type { PreviewFailureReason, PreviewRecord } from "@forge/contracts/preview";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRef, useState } from "react";
@@ -13,10 +13,10 @@ import { Button, Field, Input } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
-import { ideaApi } from "./idea-api";
-import { askPageSnapshot, SnapshotUnavailable } from "./idea-snapshot";
+import { ideaApi } from "../idea-api";
+import { askPageSnapshot, SnapshotUnavailable } from "../idea-snapshot";
 import { PreviewFrame } from "./preview-frame";
-import { MessageBox } from "./preview-panel";
+import { MessageBox } from "./issue-preview";
 
 type Copy = ReturnType<typeof useCopy>;
 type CopyKey = Parameters<Copy>[0];
@@ -36,29 +36,29 @@ export function useIdeaPreview(initial: PreviewRecord) {
 const reasonKeys = (r: PreviewFailureReason) => ({ name: `previews.failed.reason.${r}` as CopyKey, fix: `previews.failed.fix.${r}` as CopyKey });
 
 /** Keeps the idea: the page's own snapshot, taken in this browser, then core's keep. */
-function useKeepIdea(preview: PreviewRecord, frame: React.RefObject<HTMLIFrameElement | null>) {
+function useKeepIdea(preview: PreviewRecord, frameRef: React.RefObject<HTMLIFrameElement | null>) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (alt: string) => {
-      if (!frame.current) throw new SnapshotUnavailable("silent", "the preview frame is not on the page");
-      const snapshot = await askPageSnapshot(frame.current, new URL(preview.url).origin);
+      if (!frameRef.current) throw new SnapshotUnavailable("silent", "the preview frame is not on the page");
+      const snapshot = await askPageSnapshot(frameRef.current, new URL(preview.url).origin);
       return ideaApi.keep(preview.id, { alt, snapshot });
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["requirements"] });
-      qc.invalidateQueries({ queryKey: ["requirement"] });
-      qc.invalidateQueries({ queryKey: ["suggestions"] });
+      void qc.invalidateQueries({ queryKey: ["requirements"] });
+      void qc.invalidateQueries({ queryKey: ["requirement"] });
+      void qc.invalidateQueries({ queryKey: ["suggestions"] });
     },
   });
 }
 
-/** `canWrite` and `slug` come from the page that mounts the panel, which reads the project; no feature above this one is imported here. */
-export function IdeaPanel({ preview: initial, about, canWrite, slug }: { preview: PreviewRecord; about: string; canWrite: boolean; slug: string | undefined }) {
+/** `canWrite` and `slug` come from the page that mounts it, which reads the project; no feature above this one is imported here. */
+export function IdeaPreview({ preview: initial, about, canWrite, slug }: { preview: PreviewRecord; about: string; canWrite: boolean; slug: string | undefined }) {
   const t = useCopy();
   const preview = useIdeaPreview(initial).data;
-  const frame = useRef<HTMLIFrameElement | null>(null);
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
   const [alt, setAlt] = useState("");
-  const keep = useKeepIdea(preview, frame);
+  const keep = useKeepIdea(preview, frameRef);
   const kept = keep.data;
 
   return (
@@ -78,7 +78,7 @@ export function IdeaPanel({ preview: initial, about, canWrite, slug }: { preview
         </p>
       ) : null}
       {preview.state === "abandoned" || preview.state === "idle_closed" ? <p className="fg-body-sm text-muted">{t("previews.idea.closed")}</p> : null}
-      {preview.state === "live" ? <PreviewFrame preview={preview} issueLabel={about} height={360} frameRef={frame} /> : null}
+      {preview.state === "live" ? <PreviewFrame preview={preview} issueLabel={about} height={360} frameRef={frameRef} /> : null}
       {preview.state === "live" || preview.state === "starting" ? <MessageBox preview={preview} canWrite={canWrite} /> : null}
 
       {preview.state === "live" && canWrite && !kept ? (
@@ -126,6 +126,3 @@ export function IdeaPanel({ preview: initial, about, canWrite, slug }: { preview
     </div>
   );
 }
-
-/** Whether `reason` is one this copy names, so a drifted core reason is shown as the lead sentence, not as a missing key. */
-export const knowsFailureReason = (r: string): r is PreviewFailureReason => (PREVIEW_FAILURE_REASONS as readonly string[]).includes(r);

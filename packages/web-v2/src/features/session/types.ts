@@ -228,7 +228,7 @@ function todoWriteToTodos(input: Record<string, unknown> | undefined): RenderBlo
     type: "todos",
     todos: raw.map((t) => ({
       content: t.content,
-      status: (t.status as AgentTodo["status"]) ?? "pending",
+      status: (t.status) ?? "pending",
       activeForm: t.activeForm,
     })),
   };
@@ -257,7 +257,7 @@ function entryText(content: unknown): string {
 /** Unwrap the `{ value }` wrapper (older/forked rows may store the entry flat). */
 function unwrapEntry(content: TurnRow["content"]): MessageEntry {
   if (content && typeof content === "object" && "value" in content && content.value) {
-    return content.value as MessageEntry;
+    return content.value;
   }
   return (content as MessageEntry) ?? { role: "assistant" };
 }

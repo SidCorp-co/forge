@@ -71,7 +71,7 @@ export function toScene(doc: WireframeDoc) {
         ...("id" in s.from ? { start: { id: s.from.id } } : {}),
         ...("id" in s.to ? { end: { id: s.to.id } } : {}),
         ...(s.label ? { label: { text: s.label } } : {}),
-      } as ExcalidrawElementSkeleton);
+      });
     } else if (s.type === "pen") {
       const xs = s.points.map((p) => p[0]);
       const ys = s.points.map((p) => p[1]);
@@ -105,7 +105,7 @@ export function toScene(doc: WireframeDoc) {
         ...(text
           ? { label: { text, fontSize: 16, verticalAlign: s.type === "frame" || s.type === "list" ? "top" : "middle" } }
           : {}),
-      } as ExcalidrawElementSkeleton);
+      });
     }
   }
   return [

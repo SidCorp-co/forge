@@ -12,7 +12,7 @@ import {
   StatusBadge,
   useUrlTab,
   ViewHeading, Icon } from "@/design";
-import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
+import { Decisions } from "@/features/comments";
 import { ItemMemory, useItemMemoryCount } from "@/features/memory";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
@@ -287,7 +287,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
           <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("workflows.tab.design")}>
             {tab === "steps" ? <StepsPane shown={shown} template={template} diff={fullDiff} revision={shownRevision} /> : null}
             {tab === "revisions" ? <RevisionsPane d={d} /> : null}
-            {tab === "decisions" ? <DecisionsPanel projectId={projectId} scope="workflow" targetRef={record.document.id} /> : null}
+            {tab === "decisions" ? <Decisions projectId={projectId} scope="workflow" targetRef={record.document.id} /> : null}
             {tab === "memory" ? <ItemMemory projectId={projectId} slug={slug} cites={record.document.flow} /> : null}
           </DetailPane>
         </>

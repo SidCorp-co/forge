@@ -31,7 +31,7 @@ import {
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel, statusReading } from "@/design/vocabulary";
 import { useTriageAgentReport } from "@/features/automation/report-hooks";
-import { FeedbackForm } from "@/features/feedback/components/feedback-form";
+import { FeedbackForm } from "@/features/feedback";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref } from "@/lib/routes/issues";
 import { formatRefusal } from "@/lib/api/error";

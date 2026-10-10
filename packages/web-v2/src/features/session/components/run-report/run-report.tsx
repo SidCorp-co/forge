@@ -12,12 +12,12 @@
 
 import { useState } from "react";
 import { Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, EmptyState } from "@/design";
-import { formatDurationMs, formatUsd } from "@/features/pipeline/derive";
+import { formatDurationMs, formatUsd } from "@/features/pipeline";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
-import { useRun } from "@/features/pipeline/hooks";
-import { useSessionCost } from "@/features/sessions/hooks";
-import type { SessionRow } from "@/features/sessions/types";
+import { useRun } from "@/features/pipeline";
+import { useSessionCost } from "@/features/sessions";
+import type { SessionRow } from "@/features/sessions";
 import {
   deriveActivityGroups,
   deriveNarration,
@@ -98,7 +98,7 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
         <StepStrip
           run={runQ.data}
           currentStep={
-            (session.metadata?.step as string | undefined) ??
+            (session.metadata?.step) ??
             (session.metadata?.jobType as string | undefined)
           }
         />

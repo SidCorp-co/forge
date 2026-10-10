@@ -9,8 +9,8 @@ import type { DevelopmentOverview } from "../types";
 import { IssueFlow } from "./issue-flow";
 import { LeaseLanes } from "./lease-lanes";
 import { ModuleBars } from "./module-bars";
-import { NeedsYouList } from "@/features/needs-you/components/needs-you-list";
-import { useNeedsYou } from "@/features/needs-you/hooks";
+import { NeedsYouList } from "@/features/needs-you";
+import { useNeedsYou } from "@/features/needs-you";
 import { DevelopmentSignals } from "./development-signals";
 import { StuckChains } from "./stuck-chains";
 

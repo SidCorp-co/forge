@@ -20,9 +20,9 @@ import { formatApiError } from "@/lib/api/error";
 import { toolOutputText } from "@/lib/tool-output";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { feedbackHref } from "@/lib/routes/feedback";
-import { reproduceApi } from "./reproduce-api";
-import { REPRODUCE_PARAM } from "./reproduce-section";
-import { TimelineTable } from "./reproduce-timeline";
+import { reproduceApi } from "../reproduce-api";
+import { REPRODUCE_PARAM } from "./reproduce";
+import { Timeline } from "./reproduce-timeline";
 
 /** The blocks a turn holds, as far as this reads them: its tool calls and what they answered. */
 interface ToolBlock {
@@ -74,7 +74,7 @@ function ReproduceRead({ read, slug }: { read: RecordingToolResult; slug?: strin
         <span className="font-semibold">{fb}</span> <span className="text-muted">{read.feedback.title}</span>
       </p>
       {shown.length > 0 ? (
-        <TimelineTable entries={shown} compact testId="turn-timeline" />
+        <Timeline entries={shown} compact testId="turn-timeline" />
       ) : (
         <p className="fg-caption text-muted">{t("previews.turn.noRecording")}</p>
       )}

@@ -29,8 +29,8 @@ function useScheduleMutation<TArgs>(
   const { toast } = useToast();
   const t = useCopy();
   const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["schedules", projectId] });
-    qc.invalidateQueries({ queryKey: automationKey(projectId) });
+    void qc.invalidateQueries({ queryKey: ["schedules", projectId] });
+    void qc.invalidateQueries({ queryKey: automationKey(projectId) });
   };
   return useMutation({
     mutationFn: fn,
