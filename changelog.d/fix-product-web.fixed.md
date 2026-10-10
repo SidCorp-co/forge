@@ -1,1 +1,0 @@
-**Product pages close ten gaps.** An issue adds blockers, a Decision settles its question, drafts are editable, triage shows what it files, Mark verified takes evidence, late dates show, markers settle, drafts start from designs, modules hover.

@@ -1,1 +1,0 @@
-**Chat page actions land as the model sends them.** Filters and highlights core accepted were refused again in the browser; empty or placeholder slots now read as absent. Claims to open, filter or highlight are cut unless accepted.

@@ -9,6 +9,60 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.222] - 2026-10-10
+
+Issues record their design and pattern; Ask Agent sizes; feedback opens on evidence
+
+### Added
+
+- **The progress report counts gated moves.** For each gate it shows moves passed, refused and sent through by exception; moves made before the gate existed read "no checklist" and never count as passed.
+- **A requirement or feedback item written in one sentence is drafted as it is created, with no chat.** Each filled answer names its source, related items are linked, and at most three questions come with a recommended answer.
+- **Requirement and feedback pages show their checklist answers.** Each answer reads under its question with where it came from, each gap as a question to answer, and an assumed answer stays marked until a later revision corrects it.
+- **A feedback item opens on its screenshots, recordings and the workflow step it hits.** A recording can be attached and played in the page, and each screenshot and recording is read aloud by a description, not its file name.
+- **An issue records its design before build.** Each criterion names whether QA or the review judges it, its catalogued pattern and its proof. Moving into build without a complete design is refused, naming what is missing.
+- **A verdict keeps the probe it ran.** A verdict on an observable criterion carries the request or command it ran and the result expected, read back under the criterion. A pass with no probe kept is refused.
+- **Each release re-checks what already passed.** After a verified deploy, every kept probe of a passed criterion runs again on the served build. One that now fails records a failed verdict and sends its issue back to reopen.
+- **Changes are reviewed against their patterns' checklists.** Another run records one result per checklist line and code-property criterion, rerunning nothing; where a project declares the merge check, a merge without a passing review is refused.
+- **A POC room builds a requirement live with its owner, and settles only what was settled.** Members chat beside one preview on a POC branch with no gate; settling merges into dev and files a follow-up issue.
+
+### Changed
+
+- **The status menu offers a close only on a design-only issue.** The leftover verdict checks behind awaiting release are removed, and the guides say verdicts are judged on the release.
+- **Landed work moves on without waiting for verdicts.** An agent moves a merged issue to awaiting release with no verdicts, closes a design-only issue once its revisions are approved, and releases skip design-only issues.
+- **Feedback is triaged only once its checklist is answered.** Each missing answer is named; a bug against a criterion needs three answers; Accept is gone; an unconfirmed fix is verified only when its criterion passes live.
+- **Agreeing, accepting, admitting and approving now stop only on a named gap.** Each step reads its checklist; a person is asked only where project settings turn that step on. Release approvals carry a reason. Revisions list criteria changes.
+- **The project menu groups Requirements, Workflows, Releases and Feedback under Product.** The Development group now reads Delivery.
+- **Two runs no longer work the same module or contract at once.** A run over an issue whose design overlaps a live run's is refused by name, and the issue leaves the master's list until that run ends.
+
+### Fixed
+
+- **Chat answers show what they could check, and page actions take the natural call.** A held reply keeps the clauses that passed; highlight takes one key-and-section target; list filters set only named fields; a planned feedback item can be dropped.
+- **Chat page actions land as the model sends them.** Filters and highlights core accepted were refused again in the browser; empty or placeholder slots now read as absent. Claims to open, filter or highlight are cut unless accepted.
+- **Issue pages read as state, not prose.** An issue opens on Now, Needs you and Done by, criteria as one-line rows and folded Details, in at most 300 words; a copy gate refuses new web strings over 12 words.
+- **Core and runner:** waits name who can act where no runner is bound; token project lists are editable; install.sh checks sha256; no provider key asked.
+- **Product pages close ten gaps.** An issue adds blockers, a Decision settles its question, drafts are editable, triage shows what it files, Mark verified takes evidence, late dates show, markers settle, drafts start from designs, modules hover.
+- **Forge previews itself on demo data.** `pnpm preview:demo` starts a throwaway Postgres, a seeded demo core and the web, signs the demo member in with no credential, and removes it all on stop, which waits for the whole process group.
+- **Promote and bulk status changes now say why an issue could not open.** Each draft is named once with Forge's own words for every gap. A checklist answer you typed is no longer resent after the issue moved another way.
+- **A refused requirement or feedback save now shows why on the field to fix.** Only a refusal about the whole save stays under the form.
+- **A learning written about an issue no longer replaces that issue's search entry.** It is kept as its own note linked to the issue; a write over a comment or job copy is refused by name.
+- **A new pattern's catalog page is checked whichever comes first, the pattern or the merge.** Approving or releasing an issue whose marked change lacks the page is refused with what was read.
+- **A probe aimed at the wrong origin is refused when written.** On a project whose production declares services, a kept request probe must name the service that answers its path, as the environment's new `routes` declare.
+- **A red full test run now points at the right changes.** It ignores checks the full run skips on purpose and finds the last green run on merged-in history too. The release tag hint names the deployed commit.
+- **Dev's push check measures what landed.** Runner formatting, lints, lockfile and migration order are now checked over the pushed commits, not an empty change. The opt-in pre-push build builds the shared contracts first.
+- **Half and Large on the Ask Agent panel's size switch each go where they say.** A click on either moves the panel to that size, the current one reads as pressed, and Tab follows the header's rows.
+- **The page beside Ask Agent reflows instead of being squeezed.** It lays out for the width it keeps; where the window cannot hold 480px of page beside the panel, the panel opens over the page with a way back.
+- **Onboarding work goes only to a box that can write to its project.** A box whose credential reaches no project is no longer handed it, and the waiting job says why.
+- **Today's merges, repaired.** Merged work stays on the release roster; a POC room merges only on its box's report; an area in use is never deleted; core-minted tokens keep their reach; saving a draft keeps its reason.
+- **A design revision whose only change is re-pins now approves by itself.** Forge approves it as the kernel, naming each pin moved, and the requirement re-pin follows; any other change still waits on a person. Waiting rows clear at boot.
+- **A preview of Forge opens in Safari and in its own tab without looping on sign-in.** The demo web signs in on the server, a cookie-less frame offers "Allow this preview", a second bounce to /login stops.
+- **A release page says what its range requires and counts its criteria once.** The release run reports its range, so migrations and settings show without a repository binding; header, Proof panel and list count the same criteria on the build.
+- **Requirements read as one line each, by area, with a Map view.** The assistant proposes areas and short names; a person accepts. The Map shows stages and Now, Next, Later. Shipped work no longer shows a date as an ETA.
+- **A change asked right after an idea preview goes live is kept with the picture.** A chat turn and a runner's ack now merge their own keys into the session record instead of writing an older copy over it.
+- **An idea preview stays open after its sketch run ends its turn.** Only keep, abandon, idle close or the box releasing the checkout end it, so chat edits land in it. An issue run's preview still closes with its run.
+- **A park's question ends when its issue leaves the park.** Any move out of Needs info withdraws the question that park asked, naming why, so a moved-on issue stops waiting on a person; migration 0484 withdraws those already left behind.
+- **A question with no recommended answer gets one from the assistant.** Core drafts it in the background from the issue's product record and shows it as "Suggested by the assistant", one click to send; a draft that fails records why.
+- **A preview page loads in full instead of refusing requests.** A request past a preview's 64 open connections waits its turn, and is refused only after 15 seconds with its reason in a header; closed pages give their connection back.
+
 ## [0.4.0-dev.220] - 2026-10-09
 
 Chat tells you what needs you, moves the Product pages, and previews ideas live
