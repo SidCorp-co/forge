@@ -65,7 +65,7 @@ and which block to use) is in [`src/design/README.md`](src/design/README.md).
   - Source: [React: you might not need an effect](https://react.dev/learn/you-might-not-need-an-effect).
 - Use an effect only to sync with something outside React: a socket, the DOM, a timer. Source: [React: synchronizing with effects](https://react.dev/learn/synchronizing-with-effects).
 - To reset state when an id changes, use `key={id}`, not an effect. Source: [React: resetting state with a key](https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes).
-- A list key is the item's stable id, never its index. Source: [React: rendering lists](https://react.dev/learn/rendering-lists#keeping-list-items-in-order-with-key).
+- A list key is the item's stable id, never its index. A list without ids takes `useListKeys` (editable) or `keyedByContent` (read-only) from `@/design`. Source: [React: rendering lists](https://react.dev/learn/rendering-lists#keeping-list-items-in-order-with-key).
 - The React Compiler is on (`reactCompiler` in `next.config.ts`). Write no `useMemo`, `useCallback` or `memo` for speed. Keep one only where an outside system needs a stable identity. Source: [React Compiler](https://react.dev/learn/react-compiler).
 - Follow the Rules of Hooks and the Rules of React; lint checks both. Source: [React: rules](https://react.dev/reference/rules).
 
@@ -78,6 +78,7 @@ and which block to use) is in [`src/design/README.md`](src/design/README.md).
 ## Forms
 
 - Build a form from `Field` plus `placeRefusals` (`@/lib/api/field-refusals`). Core's refusal is the source of truth, shown on the field it names.
+- `Field` hands its id and descriptions to the design control inside it through context; a control of your own reads them with `useFieldControl()`.
 - On the client, check only input shape (required, number, length). Never re-implement core's rules.
 - Use no form library.
 

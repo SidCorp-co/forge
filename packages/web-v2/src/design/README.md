@@ -48,6 +48,18 @@ A page that fits none of the five is a design question, not a sixth layout. Ask 
 | `RailButton` | an act at the foot of the navigation rail: icon, name, a dot while something is owed |
 | `fixedHeight(size, at)` | a scrolling region's viewport height by name: `pane`, `page`, `sticky`, `sheet`, `popup`, optionally from one width |
 
+## Hooks
+
+| Hook | What it gives |
+|---|---|
+| `useUrlParams` / `useUrlChoice` | filters, sort, tab and peek in the URL |
+| `useNow(ms)` / `useElapsed(start)` | the time, from one shared clock per interval; never `Date.now()` in render |
+| `useBrowserValue(read, server)` | a browser-only value (storage, `window`) without an effect |
+| `useListKeys(n)` + `keyedRows` | stable keys for an editable list whose rows have no id |
+| `keyedByContent` / `keyedNodes` | keys for a read-only list that never reorders |
+| `useMediaQuery` | a media query, as a store |
+| `useFieldControl` | the enclosing `Field`'s id and descriptions; the design controls read it already |
+
 ## Naming
 
 - Name a component for what it shows: `IssueEvidence`, `RunOutcome`.
