@@ -1137,6 +1137,11 @@
       "owns": ["downloadTickets", "uploadTickets"],
       "serves": ["personal-data-flow#ds-uploads", "core-components#door-mcp"]
     },
+    "web-host": {
+      "kind": "door",
+      "context": "platform",
+      "serves": ["core-components#door-rest", "REQ-23", "REQ-39"]
+    },
     "whats-new": {
       "kind": "domain",
       "context": "release",

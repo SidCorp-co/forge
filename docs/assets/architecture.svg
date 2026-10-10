@@ -46,7 +46,7 @@
   <!-- ══ CLIENTS ══ -->
   <rect x="34" y="34" width="228" height="48" rx="7" fill="#ffffff" stroke="#8250df" stroke-opacity=".5"/>
   <text x="52" y="56" fill="#8250df" font-size="13" font-weight="700">browser</text>
-  <text x="52" y="73" fill="#8c959f" font-size="11.5">web-v2 · Next.js dashboard</text>
+  <text x="52" y="73" fill="#8c959f" font-size="11.5">web-v2 · Vite SPA dashboard</text>
 
   <rect x="34" y="94" width="228" height="48" rx="7" fill="#ffffff" stroke="#8250df" stroke-opacity=".5"/>
   <text x="52" y="116" fill="#8250df" font-size="13" font-weight="700">MCP client</text>

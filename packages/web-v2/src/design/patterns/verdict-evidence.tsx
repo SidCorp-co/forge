@@ -31,8 +31,8 @@ function Player({ file, kind }: { file: VerdictEvidenceFile; kind: "clip" | "pic
     // muted: a QA screen recording has no spoken track, so there is nothing to caption
     <video className="mt-1 aspect-video w-full max-w-xl border border-line bg-sunken" src={src.src} controls muted preload="metadata" playsInline aria-label={file.name} data-testid="verdict-clip" />
   ) : (
-    // A blob address of no known size: unoptimized, with Next's documented form for unknown dimensions.
-    <img className="mt-1 max-h-96 w-auto max-w-full border border-line" src={src.src} alt={file.name} width={0} height={0} sizes="100vw" style={{ width: "auto", height: "auto" }} data-testid="verdict-picture" />
+    // a blob address of no known size: drawn at its own
+    <img className="mt-1 max-h-96 w-auto max-w-full border border-line" src={src.src} alt={file.name} data-testid="verdict-picture" />
   );
 }
 

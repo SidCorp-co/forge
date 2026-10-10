@@ -261,7 +261,6 @@ function Thumbnails({ images, index, onPick }: { images: LightboxImage[]; index:
           aria-current={i === index}
           className={cn("flex-none overflow-hidden rounded-md border-2 transition-colors", i === index ? "border-info-8" : "border-transparent opacity-60 hover:opacity-100")}
         >
-          {/* unoptimized: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
           <img src={img.href} alt={img.alt ?? img.name} width={56} height={56} className="size-11 object-cover sm:size-14" />
         </button>
       ))}

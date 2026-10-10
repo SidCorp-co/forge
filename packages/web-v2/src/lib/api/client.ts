@@ -4,8 +4,7 @@ import { reportTransportFailure } from './transport-failure';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-
-/** WebSocket URL. Prefer `NEXT_PUBLIC_WS_URL`; otherwise derive from the API
+/** WebSocket URL. Prefer `VITE_WS_URL`; otherwise derive from the API
  *  URL. With the relative default this resolves to `/ws` (same-origin). */
 export const WS_URL =
   import.meta.env.VITE_WS_URL || `${CORE_URL.replace(/^http/, 'ws')}/ws`;

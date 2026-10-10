@@ -49,7 +49,6 @@ export function AttachmentList({ rows }: { rows: AttachmentListItem[] }) {
                   title={`${a.name} · ${formatSize(a.size)}`}
                   className="block overflow-hidden rounded-md border border-line transition-colors hover:border-line-strong focus-visible:outline-none focus-visible:shadow-focus"
                 >
-                  {/* unoptimized: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
                   <img src={href} alt={a.name} width={112} height={112} className="size-28 object-cover" />
                 </button>
               ) : (

@@ -6,8 +6,6 @@
 //   pnpm --filter web-v2 witness witness/record-pages.witness.tsx --out <dir>
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { PathnameContext, PathParamsContext, SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { Component, type ReactNode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
@@ -23,6 +21,7 @@ import { SCREENS as REQUIREMENT_SCREENS } from "@/test/vi-chrome-requirements";
 import { SCREENS as SESSION_SCREENS } from "@/test/vi-chrome-sessions";
 import { firstScreenWords } from "./first-screen";
 import "./entry";
+import { InRouter } from "./router";
 
 /** REQ-43 BC-3: the most words a record page's first screen shows. */
 const MOST_WORDS = 300;
@@ -58,7 +57,6 @@ const PAGES = [
   { name: "report", path: "/projects/hop/automation/reports/a-report-0001", screen: named(AUTOMATION_SCREENS, "Automation · report page") },
 ] as const;
 
-const router = { push() {}, replace() {}, prefetch() {}, back() {}, forward() {}, refresh() {}, hmrRefresh() {} };
 const at: { show: (i: number) => void } = { show: () => {} };
 
 /** A page that throws is named by the stage that drew it, never read as a page with few words. */
@@ -79,25 +77,19 @@ function Shell() {
   });
   const p = PAGES[page] ?? PAGES[0];
   return (
-    <AppRouterContext.Provider value={router as never}>
-      <PathnameContext.Provider value={p.path}>
-        <PathParamsContext.Provider value={{ slug: "hop" }}>
-          <SearchParamsContext.Provider value={new URLSearchParams() as never}>
-            <TopBarSlotProvider>
-              <div className="flex h-dvh overflow-hidden bg-app" data-shell>
-                <div className="hidden h-full flex-none border-r border-line bg-surface md:block" style={{ width: 280 }} />
-                <div className="flex min-w-0 flex-1 flex-col" data-witness="page" data-witness-page={p.name} data-page>
-                  <ShellTopBar chatOpen={false} onToggleChat={() => {}} />
-                  <main className="min-h-0 flex-1 overflow-y-auto" data-witness="main">
-                    <Caught key={p.name}>{p.screen.render()}</Caught>
-                  </main>
-                </div>
-              </div>
-            </TopBarSlotProvider>
-          </SearchParamsContext.Provider>
-        </PathParamsContext.Provider>
-      </PathnameContext.Provider>
-    </AppRouterContext.Provider>
+    <InRouter key={p.path} at={p.path} pattern="/projects/$slug/$">
+      <TopBarSlotProvider>
+        <div className="flex h-dvh overflow-hidden bg-app" data-shell>
+          <div className="hidden h-full flex-none border-r border-line bg-surface md:block" style={{ width: 280 }} />
+          <div className="flex min-w-0 flex-1 flex-col" data-witness="page" data-witness-page={p.name} data-page>
+            <ShellTopBar chatOpen={false} onToggleChat={() => {}} />
+            <main className="min-h-0 flex-1 overflow-y-auto" data-witness="main">
+              <Caught key={p.name}>{p.screen.render()}</Caught>
+            </main>
+          </div>
+        </div>
+      </TopBarSlotProvider>
+    </InRouter>
   );
 }
 

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { HELP_DOCS } from "@/features/docs/help-content.generated";
-import { HELP_SLUGS } from "@/features/docs/help-slugs.generated";
+import { HELP_SLUGS } from "@/features/docs/help-slugs";
 import { fetchGuideCorpus } from "@/features/guides/api";
 import { DOORS } from "@/features/guides/audience";
 import { buildCorpus, helpPageHref, searchPlaceholder } from "@/features/guides/corpus";

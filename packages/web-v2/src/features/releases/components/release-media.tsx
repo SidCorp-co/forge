@@ -26,7 +26,6 @@ export function ReleaseMedia({ media, label, authed }: { media: ReleaseMediaRef;
       <track kind="captions" src={captionsOf(label)} label={label} default />
     </video>
   ) : (
-    // unoptimized: a blob or ticket address, which the Next image optimizer cannot fetch
-    <img className="h-auto max-h-96 w-auto max-w-full rounded-md border border-line" src={src.src} alt={label} width={0} height={0} sizes="100vw" data-testid="release-media-picture" />
+    <img className="h-auto max-h-96 w-auto max-w-full rounded-md border border-line" src={src.src} alt={label} data-testid="release-media-picture" />
   );
 }

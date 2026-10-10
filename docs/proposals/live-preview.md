@@ -280,8 +280,7 @@ The failure reasons (`PREVIEW_FAILURE_REASONS`) are the three BC-10 names first 
   `allow-storage-access-by-user-activation`.
 - **Forge previewing itself** runs on demo data, never on the instance it is served from:
   `pnpm preview:demo` (`scripts/preview-demo.mjs`) starts a throwaway Postgres, a seeded demo core
-  (`FORGE_DEMO_MODE`, which a deployed `NODE_ENV` refuses at boot) and the web, which signs the
-  seeded member in on the server: `web-v2 src/middleware.ts` sends every `/api` request on to the
-  demo core with that member's credential (`lib/demo-signin.ts`, taken from the core's own
-  `GET /api/auth/demo`), so the browser holds no cookie and a frame on another site is signed in as
-  a tab is.
+  (`FORGE_DEMO_MODE`, which a deployed `NODE_ENV` refuses at boot) serving the web, and signs the
+  seeded member in on the server: a demo core answers every request that carries no credential as
+  that member (`packages/core/src/web-host/demo-credential.ts`), so the browser holds no cookie and a
+  frame on another site is signed in as a tab is.

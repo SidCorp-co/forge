@@ -4,20 +4,19 @@ The UI face is **Inter Variable**, from the `@fontsource-variable/inter` package
 FB-36): `../globals.css` imports `@fontsource-variable/inter/wght.css`, whose `@font-face` rules
 carry every subset Inter ships (latin, latin-ext, Vietnamese, Cyrillic, Greek) behind
 `unicode-range`, so Vietnamese content draws in Inter rather than a system fallback. The package
-is installed from the lockfile, never fetched while `next build` runs, so the rule below holds.
+is installed from the lockfile, never fetched while the build runs, so the rule below holds.
 
-The mono face is committed here rather than fetched at build time. `next/font/google`
-downloads the binaries while `next build` runs, so a font host that does not answer fails
-the build — and one Coolify application builds `core` and `web-v2` together, which means a
-web-only font fetch takes the **backend** deploy down with it. That happened on 2026-08-13
+The mono face is committed here rather than fetched at build time. A font fetched while the
+build runs fails the build when the font host does not answer — and the core image builds
+`web-v2` inside it, so a web-only font fetch takes the **backend** deploy down with it. That happened on 2026-08-13
 (deploy `zs4ocksc8sokkcw0g0g0w4s0`, exit 1; a core-only fix sat merged-but-not-live for
 ~90 minutes and needed a hand re-dispatch). ISS-854.
 
-`../layout.tsx` declares JetBrains Mono through `next/font/local`.
+`../globals.css` declares JetBrains Mono with an `@font-face` rule over the file here.
 
 ## What these files are
 
-This is the exact binary Google serves to `next/font/google` for the weights web-v2 uses — not a
+This is the exact binary Google Fonts serves for the weights web-v2 uses — not a
 re-export, not a re-subset. Google returns **one variable woff2 per family for the `latin`
 subset**; every requested weight resolves to the same URL.
 
@@ -39,7 +38,7 @@ its own `name` id 14. Inter (OFL 1.1) carries its licence in its package.
 
 ## Refreshing them
 
-Ask Google for the CSS the build would have asked for, take the `/* latin */` block's URL,
+Ask Google Fonts for the CSS of the weights in use, take the `/* latin */` block's URL,
 and download it. The User-Agent decides the format — without a modern one you get TTF
 instead of woff2.
 
@@ -50,8 +49,8 @@ curl -sS -A "$UA" \
   | awk '/\/\* latin \*\//{f=1} f&&/src: url/{print;exit}'
 ```
 
-Refreshing means new binaries: re-check the axis range against the `weight` string in
-`../layout.tsx` (an axis that no longer spans a weight in use renders that weight
+Refreshing means new binaries: re-check the axis range against the `font-weight` range in
+`../globals.css` (an axis that no longer spans a weight in use renders that weight
 synthesised), and update the table above.
 
 ## Verifying on a live page

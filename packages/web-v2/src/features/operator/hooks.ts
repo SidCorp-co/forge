@@ -11,9 +11,8 @@ const ADOPTION_WEEKS = 12;
 
 const opsKey = (...rest: (string | number)[]) => ["admin", "ops", ...rest] as const;
 
-/** `initialData` is the verdict the RSC gate already resolved for this render
- *  (app/admin/layout.tsx), so a cold load costs no second round-trip and the
- *  rail paints with the page instead of flashing a skeleton. */
+/** `initialData` is a verdict already resolved for this render, so the rail paints with the
+ *  page instead of flashing a skeleton. */
 export function useOperatorWhoami(initialData?: OperatorWhoami) {
   return useQuery({
     queryKey: ["operator", "whoami"],

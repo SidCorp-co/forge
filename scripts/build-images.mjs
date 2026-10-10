@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * Builds both shipped images against a clean `git archive` export.
+ * Builds the shipped image (core, with the web it serves) against a clean `git archive` export.
  *
- * The images COPY a narrow set of paths, so a dependency the repo grows outside that set is
+ * The image COPYs a narrow set of paths, so a dependency the repo grows outside that set is
  * invisible to every checker that measures the source tree and surfaces first on the deploy.
  * The export is what makes this check mean anything: a build over the working tree succeeds on
  * any file the host holds and the image does not, which is the defect class being tested for.
@@ -16,10 +16,7 @@ import { join } from 'node:path';
 import process from 'node:process';
 import { ROOT } from './lib/gate.mjs';
 
-const IMAGES = [
-  { name: 'core', dockerfile: 'packages/core/Dockerfile' },
-  { name: 'web-v2', dockerfile: 'packages/web-v2/Dockerfile' },
-];
+const IMAGES = [{ name: 'core', dockerfile: 'packages/core/Dockerfile' }];
 
 function run(command, args, options = {}) {
   return spawnSync(command, args, { encoding: 'utf8', stdio: 'inherit', ...options });

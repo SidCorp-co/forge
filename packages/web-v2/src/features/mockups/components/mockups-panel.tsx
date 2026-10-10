@@ -45,8 +45,8 @@ function Preview({ m }: { m: MockupView }) {
   if (q.isError) return <p className="text-13 text-muted">{formatApiError(q.error)}</p>;
   if (m.kind === "image" || m.kind === "sketch") {
     if (!url) return <p className="text-13 text-muted">{t("common.mockups.loading")}</p>;
-    // unoptimized: a blob URL of a stored mockup, which the Next image optimizer cannot fetch; its size is its own
-    return <img src={url} alt={m.caption ?? m.name} width={0} height={0} sizes="100vw" className="h-auto max-h-105 w-auto max-w-full border border-line-subtle object-contain" data-testid="mockup-image" />;
+    // a blob URL of a stored mockup: its size is its own
+    return <img src={url} alt={m.caption ?? m.name} className="h-auto max-h-105 w-auto max-w-full border border-line-subtle object-contain" data-testid="mockup-image" />;
   }
   if (text === null) return <p className="text-13 text-muted">{t("common.mockups.loading")}</p>;
   if (m.kind === "wireframe") {

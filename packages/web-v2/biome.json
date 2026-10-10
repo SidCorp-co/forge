@@ -9,7 +9,7 @@
     "includes": [
       "**",
       "!**/*.css",
-      "!**/.next",
+      "!**/dist",
       "!**/coverage",
       "!**/node_modules"
     ]

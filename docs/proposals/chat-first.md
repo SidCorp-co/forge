@@ -162,7 +162,7 @@ cannot be compared is refused `WORKFLOW_DESIGN_UNCOMPARABLE`, never approved.
 
 ## The home opens on chat (BC-13)
 
-The project home (`app/(workspace)/projects/[slug]/page.tsx`) leads with the conversation: the
+The project home (`packages/web-v2/src/routes/_workspace/projects/$slug/index.tsx`) leads with the conversation: the
 composer and its thread, full width. Beside it, or below it on a phone, are three flat sections:
 
 - **Needs you:** the decisions read, grouped, with their buttons.

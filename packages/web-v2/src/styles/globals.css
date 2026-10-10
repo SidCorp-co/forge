@@ -247,7 +247,7 @@
   }
 
   /* the page column is always the `column` container, and the `page` one too while the Ask Agent panel
-     stands beside it (app/(workspace)/layout.tsx) */
+     stands beside it (routes/_workspace/route.tsx) */
   [data-page] { container: column / inline-size; }
   [data-shell]:has([data-dock-placement="beside"]) [data-page] { container: page column / inline-size; }
 

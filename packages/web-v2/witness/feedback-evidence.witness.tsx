@@ -15,6 +15,7 @@ import { FeedbackPage } from "@/features/feedback/components/feedback-detail";
 import type { FeedbackView } from "@/features/feedback/types";
 import { RULE, say, waitingOn } from "@/test/said";
 import "./entry";
+import { InRouter } from "./router";
 
 const P = "22222222-2222-4222-8222-222222222222";
 const ANN = "66666666-6666-4666-8666-666666666666";
@@ -116,9 +117,11 @@ window.fetch = async (input: RequestInfo | URL) => {
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 client.setQueryData(["feedback-item", P, item.key], { feedback: item });
 createRoot(document.getElementById("root") as HTMLElement).render(
-  <QueryClientProvider client={client}>
-    <FeedbackPage projectId={P} slug="hop" fbKey={item.key} tab="overview" onTab={() => {}} />
-  </QueryClientProvider>,
+  <InRouter>
+    <QueryClientProvider client={client}>
+      <FeedbackPage projectId={P} slug="hop" fbKey={item.key} tab="overview" onTab={() => {}} />
+    </QueryClientProvider>
+  </InRouter>,
 );
 
 const q = <T extends Element = HTMLElement>(sel: string) => document.querySelector<T>(sel);

@@ -7,7 +7,7 @@ let installed = false;
 
 /**
  * The browser's own error reporting, behind the error-tracking port: installs @sentry/react as the
- * port's tracker when NEXT_PUBLIC_SENTRY_DSN is set. False when it is not, and the port then drops
+ * port's tracker when VITE_SENTRY_DSN is set. False when it is not, and the port then drops
  * every report. The one module in web-v2 that imports the SDK.
  */
 export function installSentryErrorTracking(): boolean {

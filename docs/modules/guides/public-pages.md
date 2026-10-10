@@ -4,7 +4,8 @@
 pages from two homes, behind two doors named for the reader. Both homes are unauthenticated —
 `guideRoutes` in `packages/core/src/guides/routes.ts` applies `requireAuth()` only to its
 `/projects` sub-tree, and the help pages are a static module bundled into the web build — and the routes sit
-outside the `(workspace)` group, whose layout redirects a signed-out visitor to `/login`.
+outside the `_workspace` layout (`packages/web-v2/src/routes/_workspace/route.tsx`), which sends a
+signed-out visitor to `/login`.
 
 | Home | Audience | Read at |
 |---|---|---|
@@ -27,85 +28,46 @@ two doors. `/guides?for=<audience>` is a door. `/guides?path=<slug>` is a help p
 `/guides/<slug>` is an agent guide at the address it always had. The reader is the in-app `/docs`
 screen's own furniture, `packages/web-v2/src/features/docs/components/docs-reader.tsx`, not a second reading UI.
 
-The pages render per request rather than prerendered. A prerender would bake the
-index into the image and make the image build fail wherever core is unreachable.
-
-## Two things about Next that this shape is built around
-
-Both were measured on the production standalone server the deploy runs
-(`node .next/standalone/packages/web-v2/server.js`), against a core that delayed
-every reply, during ISS-1124. Neither is inferable from the source.
-
-<!-- doc-citation: unchecked `loading.tsx` `src/app/loading.tsx` — Next's filename convention, and where the loading file USED to sit; this paragraph is about moving it away from there. -->
-**A `loading.tsx` is an ancestor Suspense boundary for every route beneath it,
-and the shell it streams commits the HTTP status.** With the app's loading file
-at `src/app/loading.tsx`, `/guides/<unknown-slug>` answered **200**: the shell
-had gone out before the page awaited anything, so the later `notFound()` could
-render a 404 page but not set a 404 status. Moving it to
-`packages/web-v2/src/app/(workspace)/loading.tsx` — the routes that want it — makes the same
-request answer **404**. Anything public added outside that group inherits this,
-so a new boundary goes next to the routes that need one.
-
-**`notFound()` raised in a dynamic route never server-renders its body.** Next
-emits `<html id="__next_error__">` with an empty `<body>` and streams the
-not-found UI as flight data, discarding the page's own `generateMetadata` with
-it — the title and description come from the root layout. A browser renders the
-<!-- doc-citation: unchecked `not-found.tsx` — Next's filename convention, not one file. -->
-page after hydration; curl, a crawler and a link preview get the status and
-nothing else. Three shapes were tried and all three behaved the same: a client
-`not-found.tsx` using `usePathname`, a synchronous server one, and `notFound()`
-raised from `generateMetadata`. A middleware `rewrite` carrying `{ status: 404 }`
-was also tried; the status is ignored and the response is 200.
+The pages are drawn in the browser: the web is a single-page app core serves, and the agent pages
+are fetched by the route's loader when it is entered.
 
 ## What answers an unknown slug, page or door
 
-`packages/web-v2/src/middleware.ts`, because it is the only layer that can set a status and a
-body together. Its `/guides` branch gates nobody. On `/guides` itself it reads the query with
-`readPublicRequest` (`packages/web-v2/src/features/guides/requested-page.ts`): a `path` naming no help
-page, a `for` naming no door, or an address carrying both, answers 404 with `refusalDocument`. It
-learns the help slugs from `packages/web-v2/src/features/docs/help-slugs.generated.ts` rather than from `HELP_DOCS`, so the middleware
-does not bundle every page body. The page reads the same function, so a client-side navigation to
-the same address shows the same words in the content pane. On `/guides/<slug>` it refuses a slug
-`GUIDE_SLUG` rejects without asking core, asks core about the rest, and answers
-a 404 with `missingGuideDocument` — a styleless HTML page naming the slug and
-linking the index, with the slug escaped because it comes off the URL. The price
-of that shape is one extra core request per guide view on the happy path, paid so
-that a reader without JavaScript gets the refusal instead of a blank document. It
-ends when Next server-renders a `notFound()` body.
+A plain request (a reader opening the address, curl, a crawler, a link preview) is answered by core
+before the web loads: `guidesGate` in `packages/core/src/web-host/gates.ts`, because a single-page
+app's every address is the same 200 document and only the server can set a status and a body
+together. It gates nobody. On `/guides` it reads the query with `readPublicRequest`
+(`packages/contracts/src/guide-addresses.ts`): a `path` naming no help page, a `for` naming no door,
+or an address carrying both, answers 404 with `refusalDocument`. It learns the help slugs from the
+web build's `web-host.json` (written by `packages/web-v2/vite.config.ts` from
+`packages/web-v2/src/features/docs/help-slugs.generated.json`), so core carries no help page. On
+`/guides/<slug>` it refuses a slug `GUIDE_SLUG` rejects, looks the rest up in core's own guide
+registry in-process, and answers a 404 with `refusalDocument` naming the slug — a styleless HTML page
+linking the index, with the slug escaped because it comes off the URL.
 
-A client-side navigation is left alone: the router refetches the same URL with an
-`RSC` header and would choke on an HTML document, and it has JavaScript by
-definition, so `packages/web-v2/src/app/guides/[slug]/not-found.tsx` serves it. Both renderers read
-one set of strings from `packages/web-v2/src/features/guides/missing.ts`.
+A navigation inside the web never reaches core: the route's loader finds no guide and the page
+shows `packages/web-v2/src/routes/guides/$slug/-not-found.tsx`, and `/guides` shows the refusal in
+its content pane. Both renderers read one set of strings from
+`packages/contracts/src/guide-addresses.ts`, which `packages/web-v2/src/features/guides/missing.ts`
+re-exports.
 
-`GUIDE_SLUG` lives in `packages/web-v2/src/features/guides/requested-path.ts` and is read by the
-middleware and by `packages/web-v2/src/features/guides/api.ts`. One test of what a slug is, because
-two that disagree is a slug one passes and the other refuses:
-`/guides/what-is-an-issue.md` was exactly that — core answers 200 for it, having
-stripped the suffix, so it cleared the middleware and was then refused by the
-page, landing back on the blank body.
+`GUIDE_SLUG` is read by core's gate and by `packages/web-v2/src/features/guides/api.ts`. One test of
+what a slug is, because two that disagree is a slug one passes and the other refuses:
+`/guides/what-is-an-issue.md` was exactly that. An address whose last segment names a file
+(`/guides/<slug>.md`) is never a page: core's web host passes it to core's own routes, which answer
+the markdown.
 
-`slugFromGuidePath` returns the slug exactly as the page's own route param will
-hold it, for the same reason: it does not trim, because `/guides/%20what-is-an-issue%20`
-trimmed looks like a real guide to the middleware and does not to the page. A
-suffix that will not decode is kept raw for `GUIDE_SLUG` to refuse, rather than
-thrown over — `/guides/%ZZ` was a 500 from edge middleware before that.
+`slugFromGuidePath` returns the slug exactly as the page's own route param will hold it, for the
+same reason: it does not trim, because `/guides/%20what-is-an-issue%20` trimmed looks like a real
+guide to the gate and does not to the page. A suffix that will not decode is kept raw for
+`GUIDE_SLUG` to refuse, rather than thrown over.
 
-<!-- doc-citation: unchecked `not-found.tsx` — Next's filename convention, not one file. -->
-The requested path reaches `not-found.tsx` on the `x-forge-guide-path` header the
-middleware sets, because Next hands a not-found boundary no params and `headers()`
-there carries only what the client sent.
+## The markdown address
 
-## The markdown address is absolute
-
-The guide pages are served by web-v2 and the markdown by core, on two different origins. A bare
-`/api/guides` in the page's own prose reads as the web host, where it answers 404 — measured
-2026-09-21 against `forge-beta.sidcorp.co` (404) and `forge-beta-api.sidcorp.co` (200). The
-footer in `packages/web-v2/src/features/guides/components/guide-shell.tsx`, the agent door and each agent
-page's notice (`guideMarkdownUrl` in `packages/web-v2/src/features/guides/corpus.ts`), and `MISSING_GUIDE_BODY` in
-`packages/web-v2/src/features/guides/missing.ts` build the address with `coreFileUrl`, the browser-facing helper in
-`packages/web-v2/src/lib/utils/core-url.ts`. `resolveServerApiBase` is not that helper and says so: its origin is the
-one the web server process sees, never the browser.
-
-This is the same two-host confusion that pointed the GitHub App's webhook at the web host and cost
-three days of silent 404s (ISS-1140).
+The guide pages and the markdown are served by the same core, so a bare `/api/guides` in the
+page's own prose answers on the reader's origin. The footer in
+`packages/web-v2/src/features/guides/components/guide-shell.tsx`, the agent door and each agent
+page's notice (`guideMarkdownUrl` in `packages/web-v2/src/features/guides/corpus.ts`), and
+`MISSING_GUIDE_BODY` in `packages/web-v2/src/features/guides/missing.ts` still build the address
+with `coreFileUrl` (`packages/web-v2/src/lib/utils/core-url.ts`), which stays right if the web is
+ever built to call a core on another origin (`VITE_API_URL`).

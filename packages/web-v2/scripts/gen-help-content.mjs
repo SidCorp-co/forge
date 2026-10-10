@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // Generate a bundled TS module from the end-user help docs in content/help/.
 // Markdown → a static module the web app imports, so the content ships inside
-// the Next build (no runtime fs, no API, no output-tracing needed under
-// `output: standalone`). Run by `dev`/`build` (see package.json). Skips README.md
+// the bundle (no runtime fs, no API). Run by `dev`/`build` (see package.json). Skips README.md
 // (the authoring-rules doc) and refuses, by name, any other file without frontmatter.
 
 import { promises as fs } from "node:fs";
@@ -14,8 +13,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
 const CONTENT_DIR = path.join(root, "content", "help");
 const OUT_FILE = path.join(root, "src", "features", "docs", "help-content.generated.ts");
-// The slugs alone, for the middleware, which would otherwise bundle every page body to learn them.
-const SLUGS_FILE = path.join(root, "src", "features", "docs", "help-slugs.generated.ts");
+// The slugs alone, for the guides index and core's web host, which would otherwise read every page body to learn them.
+const SLUGS_FILE = path.join(root, "src", "features", "docs", "help-slugs.generated.json");
 
 async function walk(dir) {
   const out = [];
@@ -78,7 +77,7 @@ await fs.mkdir(path.dirname(OUT_FILE), { recursive: true });
 await fs.writeFile(OUT_FILE, out, "utf8");
 await fs.writeFile(
   SLUGS_FILE,
-  `${banner}export const HELP_SLUGS: readonly string[] = ${JSON.stringify(docs.map((d) => d.slug), null, 2)};\n`,
+  `${JSON.stringify(docs.map((d) => d.slug), null, 2)}\n`,
   "utf8",
 );
 console.log(`gen-help-content: wrote ${docs.length} docs → ${path.relative(root, OUT_FILE)}`);

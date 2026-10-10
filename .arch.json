@@ -185,6 +185,9 @@
     "core-uploads": [
       "packages/core/src/uploads/**"
     ],
+    "core-web-host": [
+      "packages/core/src/web-host/**"
+    ],
     "core-workflows": [
       "packages/core/src/workflows/**"
     ],
@@ -192,7 +195,8 @@
       "packages/core/src/ws/**"
     ],
     "web-app": [
-      "packages/web-v2/src/app/**"
+      "packages/web-v2/src/routes/**",
+      "packages/web-v2/src/main.tsx"
     ],
     "web-design": [
       "packages/web-v2/src/design/**"
@@ -393,7 +397,6 @@
     "**/.worktrees/**",
     "**/dist/**",
     "**/build/**",
-    "**/.next/**",
     "**/.turbo/**",
     "**/coverage/**",
     "**/.forge/**",
@@ -409,8 +412,8 @@
     "packages/core/src/integration-registry.ts",
     "packages/core/src/timer-registry.ts",
     "packages/core/src/outbox-consumers.ts",
-    "packages/web-v2/src/app/(workspace)/layout.tsx",
-    "packages/web-v2/src/app/(workspace)/projects/[slug]/page.tsx",
+    "packages/web-v2/src/routes/_workspace/route.tsx",
+    "packages/web-v2/src/routes/_workspace/projects/$slug/index.tsx",
     "packages/web-v2/src/lib/i18n/copy-files.ts"
   ],
   "contracts": [

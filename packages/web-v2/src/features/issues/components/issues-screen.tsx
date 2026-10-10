@@ -2,7 +2,7 @@
 import { Button, PageTitle, TopBarActions, useViewMode, type ViewMode, ViewModeSwitcher } from "@/design";
 import { useProjects } from "@/features/projects";
 import { canWriteProject } from "@/features/projects";
-import { usePathname, useSearchParams } from "@/lib/navigation/router";
+import { useSearchParams } from "@/lib/navigation/router";
 import { useState } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useProjectModules } from "../hooks";
@@ -45,16 +45,15 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   const t = useCopy();
   const [mode, setMode] = useViewMode(modes);
   // New-issue dialog — opened locally or by `?new=1`, which ⌘K pushes onto this
-  // route. On this route Next keeps the screen mounted, so the query is followed, not read once.
+  // route. The router keeps the screen mounted on this route, so the query is followed, not read once.
   const [newOpen, setNewOpen] = useState(false);
   const searchParams = useSearchParams();
-  const pathname = usePathname() || "";
   const wantsNew = searchParams.get("new") === "1";
 
   const showNew = newOpen || wantsNew;
 
-  // Closing drops `new` from this entry and keeps the rest, so Back and reload stay shut. The state
-  // is `null` because Next skips syncing `useSearchParams` for a state carrying its `__NA` mark.
+  // Closing drops `new` from this entry and keeps the rest, so Back and reload stay shut. The
+  // router hears the replace and keeps its own entry state, which Back reads.
   const closeNew = () => {
     setNewOpen(false);
     if (typeof window === "undefined") return;
@@ -62,7 +61,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
     if (!sp.has("new")) return;
     sp.delete("new");
     const qs = sp.toString();
-    window.history.replaceState(null, "", `${pathname}${qs ? `?${qs}` : ""}`);
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
   };
 
   // the Table draws its rows from the issue list, which carries no project rule; the standing read

@@ -5,10 +5,9 @@ import { userByEmail } from './read.js';
 export const DEMO_MEMBER_EMAIL = 'demo.member@demo.forge.local';
 
 /**
- * The demo member a demo core takes a credential-less socket for, null anywhere that is not a demo
- * core. The demo web signs its HTTP requests in on the server (web-v2 lib/demo-signin.ts), but a
- * browser cannot set a header on a WebSocket, and holds no cookie to send, so the socket is the one
- * door that has no credential to read.
+ * The demo member a demo core signs in a request that carries no credential for, null anywhere that
+ * is not a demo core: HTTP through web-host/demo-credential.ts, and the socket through attachWs's
+ * `credentialless`, since a browser cannot set a header on a WebSocket and holds no cookie to send.
  */
 export async function demoMemberId(): Promise<string | null> {
   if (!env.FORGE_DEMO_MODE) return null;

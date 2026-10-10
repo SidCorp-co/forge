@@ -6,11 +6,11 @@
 //   pnpm --filter web-v2 witness witness/field-refusals.witness.tsx --out <dir>
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { createRoot } from "react-dom/client";
 import { FeedbackForm } from "@/features/feedback/components/feedback-form";
 import { CreateRequirementForm } from "@/features/requirements/components/requirements-screen";
 import "./entry";
+import { InRouter } from "./router";
 
 const REQUIREMENT_REFUSALS = [
   { code: "CRITERION_SCENARIO_UNPARSEABLE", path: "/criteria/0/body", detail: "A scenario criterion reads Given, When, Then." },
@@ -34,21 +34,20 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
 };
 
 const noop = () => {};
-const router = { push: noop, replace: noop, prefetch: noop, back: noop, forward: noop, refresh: noop, hmrRefresh: noop };
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 createRoot(document.getElementById("root") as HTMLElement).render(
-  <QueryClientProvider client={client}>
-    <AppRouterContext.Provider value={router as never}>
-      <div className="grid gap-6 p-4 lg:grid-cols-2">
-        <section data-witness="requirement">
-          <CreateRequirementForm projectId="p1" onDone={noop} />
-        </section>
-        <section data-witness="feedback">
-          <FeedbackForm projectId="p1" onDone={noop} />
-        </section>
-      </div>
-    </AppRouterContext.Provider>
-  </QueryClientProvider>,
+  <InRouter>
+    <QueryClientProvider client={client}>
+        <div className="grid gap-6 p-4 lg:grid-cols-2">
+          <section data-witness="requirement">
+            <CreateRequirementForm projectId="p1" onDone={noop} />
+          </section>
+          <section data-witness="feedback">
+            <FeedbackForm projectId="p1" onDone={noop} />
+          </section>
+        </div>
+    </QueryClientProvider>
+  </InRouter>,
 );
 
 const q = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel);

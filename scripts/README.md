@@ -344,8 +344,8 @@ Four contracts:
 then `verify`, so verify's own `core typecheck` checked core twice on every dev merge. Types are
 `pnpm typecheck` (tsgo, each package's `tsconfig.json`, which is its source alone) and `tc-changed`
 inside `test:changed` and `merge-check`. Test files are `pnpm typecheck:test` (`tsconfig.test.json`),
-which runs in CI's `core` and `web` jobs — on main and nightly, never on a dev merge. `next build`
-checks no types and runs no lint (`packages/web-v2/next.config.ts`: `ignoreBuildErrors`).
+which runs in CI's `core` and `web` jobs — on main and nightly, never on a dev merge. The web's
+`vite build` checks no types and runs no lint.
 
 ### One proposition per verdict
 

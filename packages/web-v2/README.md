@@ -7,14 +7,14 @@ The Forge cloud UI — canonical at root `/` since ISS-397 (2026-06-07; legacy
   rendered at `/dev/design`.
 - **Brand:** warm neutrals, a flame-orange accent, one hue per staged job type. Inter Variable for
   the UI and JetBrains Mono for keys and code. Light and dark, following the member's preference.
-- **Stack:** Next.js 16 (App Router, React Compiler) · React 19 · Tailwind v4 (CSS `@theme`, no
+- **Stack:** Vite (React Compiler through Babel) · TanStack Router (file routes) · React 19 · Tailwind v4 (CSS `@theme`, no
   config file) · Base UI through shadcn (`src/components/ui`, wrapped by `src/design`) · lucide ·
   TanStack Query, Table and Virtual · Recharts · react-resizable-panels. It consumes the `core`
   REST/WS contract through `@forge/contracts`.
 
 ## Tokens
 
-`src/styles/tokens.css` is the one source. `app/globals.css` maps it into Tailwind with `@theme`.
+`src/styles/tokens.css` is the one source. `src/styles/globals.css` maps it into Tailwind with `@theme`.
 
 1. **Scales:** OKLCH, 12 steps each, in the Radix manner, defined for light and dark. Both themes
    meet WCAG AA.
@@ -28,7 +28,8 @@ The Forge cloud UI — canonical at root `/` since ISS-397 (2026-06-07; legacy
 ```
 src/
 ├─ styles/tokens.css        # the one token source
-├─ app/                     # routes (thin) · globals.css · layout.tsx (fonts, providers)
+├─ main.tsx                 # the router, rendered into index.html's #app
+├─ routes/                  # file routes (thin) · __root.tsx (providers); `-name` files are not routes
 ├─ components/ui/           # shadcn (Base UI); imported only by src/design
 ├─ design/                  # primitives · patterns (blocks) · templates · icons; import from "@/design"
 ├─ features/<domain>/       # api.ts · hooks.ts · components/ · types.ts (copy: lib/i18n/copy/<domain>.json)
@@ -42,7 +43,9 @@ src/
 pnpm --filter web-v2 dev      # http://localhost:3100  → Overview dashboard
 ```
 
-`/` renders the Overview dashboard.
+`/` renders the Overview dashboard. The dev server proxies `/api` and `/ws` to a core at
+`VITE_CORE_PROXY_URL` (default `http://localhost:8080`). `pnpm --filter web-v2 build` writes
+`dist/`, which core serves itself when `WEB_DIST_DIR` names it (`packages/core/src/web-host`).
 
 ## Screen witness
 

@@ -263,10 +263,10 @@ export async function handleCallback(c: Context, providerId: ProviderId, query: 
   setAuthCookie(c, token);
 
   // Build the post-callback URL against `APP_BASE_URL` — the web frontend
-  // origin, NOT the API origin. A bare `c.redirect("/projects")` resolves
-  // relative to the current host (the API), landing the user on
-  // localhost:8080/projects which has no Next.js. `payload.r` was already
-  // narrowed to a safe relative path at /start.
+  // origin, which need not be this API's. A bare `c.redirect("/projects")`
+  // resolves relative to the current host, which serves no web unless it was
+  // given one (WEB_DIST_DIR). `payload.r` was already narrowed to a safe
+  // relative path at /start.
   const target = `${appBase}${payload.r}`;
   return c.redirect(target, 302);
 }

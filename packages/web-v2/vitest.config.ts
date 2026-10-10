@@ -21,10 +21,10 @@ function workers(share: number, { cap = Number.POSITIVE_INFINITY, min = 1 } = {}
   return Math.max(min, Math.min(cap, Math.floor((cpus().length || 1) / share) || 1));
 }
 
-const src = (p: string) => resolve(__dirname, p);
+const src = (p: string) => resolve(import.meta.dirname, p);
 
 // The aliases mirror tsconfig.json `paths`, so a test resolves `@/` and the workspace sources the
-// way `next build` does — `@forge/contracts` from its sources, since its dist is a build output.
+// way `vite build` does (vite.config.ts) — `@forge/contracts` from its sources, since its dist is a build output.
 export default defineConfig({
   resolve: {
     alias: [

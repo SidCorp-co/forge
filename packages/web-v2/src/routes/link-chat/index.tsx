@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 // Confirm that a chat account is yours — the target of the link every unlinked-speaker
-// refusal carries (`/link-chat?projectId=…&source=…&externalId=…`). Outside (auth), whose
-// layout bounces signed-in users, and outside (workspace), which wraps a shell: like
+// refusal carries (`/link-chat?projectId=…&source=…&externalId=…`). Outside _auth, whose
+// layout bounces signed-in users, and outside _workspace, which wraps a shell: like
 // /invite/accept this page must serve both auth states.
 //
 // Adapter-agnostic on purpose. `source` is whatever the channel called itself and is only

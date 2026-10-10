@@ -12,11 +12,10 @@ and which block to use) is in [`src/design/README.md`](src/design/README.md).
 - A feature imports another feature only through that feature's `index.ts`. Never reach into its files.
   - ✗ `import { x } from "@/features/issues/components/issue-row"`
   - ✓ `import { x } from "@/features/issues"`
-- `app/` routes stay thin: read params, then render one feature screen.
+- `src/routes/` files stay thin: read params, then render one feature screen. A file or folder there whose name starts with `-` is not a route. Source: [TanStack Router: file-based routing](https://tanstack.com/router/latest/docs/framework/react/routing/file-based-routing).
 
 ## Components
 
-- Components are server components by default. Add `"use client"` only to the file that holds state, effects or handlers, and keep that file small. Source: [Next: server and client components](https://nextjs.org/docs/app/getting-started/server-and-client-components).
 - A component is a pure function of its props and its queries. Never mutate during render. Source: [React: keeping components pure](https://react.dev/learn/keeping-components-pure).
 - Prefer composition over prop explosion: pass `children` or slots, never ten boolean flags. Source: [React: passing JSX as children](https://react.dev/learn/passing-props-to-a-component#passing-jsx-as-children).
   - ✗ `<Panel showHeader showFooter compact bordered />`
@@ -66,12 +65,12 @@ and which block to use) is in [`src/design/README.md`](src/design/README.md).
 - Use an effect only to sync with something outside React: a socket, the DOM, a timer. Source: [React: synchronizing with effects](https://react.dev/learn/synchronizing-with-effects).
 - To reset state when an id changes, use `key={id}`, not an effect. Source: [React: resetting state with a key](https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes).
 - A list key is the item's stable id, never its index. A list without ids takes `useListKeys` (editable) or `keyedByContent` (read-only) from `@/design`. Source: [React: rendering lists](https://react.dev/learn/rendering-lists#keeping-list-items-in-order-with-key).
-- The React Compiler is on (`reactCompiler` in `next.config.ts`). Write no `useMemo`, `useCallback` or `memo` for speed. Keep one only where an outside system needs a stable identity. Source: [React Compiler](https://react.dev/learn/react-compiler).
+- The React Compiler is on (`reactCompilerPreset` in `vite.config.ts`). Write no `useMemo`, `useCallback` or `memo` for speed. Keep one only where an outside system needs a stable identity. Source: [React Compiler](https://react.dev/learn/react-compiler).
 - Follow the Rules of Hooks and the Rules of React; lint checks both. Source: [React: rules](https://react.dev/reference/rules).
 
 ## State
 
-- Filters, sort, the selected tab and the open peek go in URL search params (`useUrlParams`, `useUrlChoice` from `@/design`), so a view can be shared. Source: [Next: useSearchParams](https://nextjs.org/docs/app/api-reference/functions/use-search-params).
+- Filters, sort, the selected tab and the open peek go in URL search params (`useUrlParams`, `useUrlChoice` from `@/design`), so a view can be shared. Source: [TanStack Router: search params](https://tanstack.com/router/latest/docs/framework/react/guide/search-params).
 - Keep ephemeral UI state local: a hover, an open menu, a draft.
 - Add no global store. Share server state through the query cache, and session state through the existing providers.
 

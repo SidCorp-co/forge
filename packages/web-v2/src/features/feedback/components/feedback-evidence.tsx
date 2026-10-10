@@ -50,8 +50,7 @@ function Screenshots({ images }: { images: LightboxImage[] }) {
   return (
     <div className="grid min-w-0 gap-2" data-testid="feedback-screenshots">
       <button type="button" onClick={() => setOpen(0)} className={`${frame} w-fit max-w-full`}>
-        {/* unoptimized: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
-        <img src={lead.href} alt={lead.alt ?? lead.name} width={0} height={0} sizes="100vw" className="block h-auto max-h-90 w-auto max-w-full object-contain max-md:max-h-65" />
+        <img src={lead.href} alt={lead.alt ?? lead.name} className="block h-auto max-h-90 w-auto max-w-full object-contain max-md:max-h-65" />
       </button>
       {rest.length > 0 ? (
         <ul className="flex flex-wrap gap-2">

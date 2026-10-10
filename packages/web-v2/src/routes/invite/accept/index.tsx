@@ -7,8 +7,8 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { useAuth } from "@/providers/auth-provider";
 // Invitation accept landing — the target of every invitation email
-// (`/invite/accept?token=…[&kind=org]`). Lives OUTSIDE the (auth) group (its
-// layout bounces signed-in users to /) and outside (workspace) (no shell):
+// (`/invite/accept?token=…[&kind=org]`). Lives OUTSIDE the _auth layout (it
+// bounces signed-in users to /) and outside _workspace (no shell):
 // the page must serve both auth states — show the invite, then either accept
 // (signed in) or hand off to login/register (signed out).
 import { Link, useRouter, useSearchParams } from "@/lib/navigation/router";
