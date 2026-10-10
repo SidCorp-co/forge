@@ -5,7 +5,7 @@
 // column holds only what the reporter said, the acts, and the history.
 
 import Link from "next/link";
-import { ActorChip, EnumBadge, enumLabel, Fact, FactsEmpty, FactsGroup, StatusBadge, type StatusFamily, StepBar, WaitBanner, WaitingOn } from "@/design";
+import { ActorChip, EnumBadge, enumLabel, Fact, FactsEmpty, FactsGroup, StatusBadge, type StatusFamily, StepBar, WaitBanner, WaitingOn, keyedByContent } from "@/design";
 import { requirementHref } from "@/lib/routes/requirements";
 import { issueHref } from "@/lib/routes/issues";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -319,8 +319,8 @@ export function LinkedFeedback({
             </span>
             {r.carriers.length ? (
               <ul className="grid gap-1" data-testid="facts-route-carriers">
-                {r.carriers.map((c, n) => (
-                  <li key={c.key ?? n} className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid="facts-route-carrier">
+                {keyedByContent(r.carriers, (c) => c.key ?? c.status ?? "").map(({ key, item: c }) => (
+                  <li key={key} className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid="facts-route-carrier">
                     {c.key && carrierType !== "other" ? <KeyLink type={carrierType} k={c.key} slug={slug} /> : null}
                     {c.status && CARRIER_FAMILY[r.route] ? <StatusBadge family={CARRIER_FAMILY[r.route] as StatusFamily} value={c.status} /> : null}
                   </li>

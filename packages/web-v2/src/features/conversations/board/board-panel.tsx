@@ -1,24 +1,15 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useState } from "react";
 import { Button, IconButton, Input } from "@/design";
 import { fileBase64, mockupsApi } from "@/features/mockups";
 import { formatApiError } from "@/lib/api/error";
-import { boardExporter, boardStore, useBoard } from "@/features/board";
+import { boardExporter, boardStore, useBoard, BoardCanvas } from "@/features/board";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { productCopy } from "@/lib/i18n/product-copy";
 import { describeBoard } from "../ui-actions/actions";
 
-function OpeningBoard() {
-  const t = useCopy();
-  return <p className="fg-body-sm p-4 text-muted">{t("conversations.board.opening")}</p>;
-}
 
-const BoardCanvas = dynamic(() => import("@/features/board/board-canvas"), {
-  ssr: false,
-  loading: () => <OpeningBoard />,
-});
 
 /** The dock's width while a board is open: wide enough to draw in, still inside the dock's own bound. */
 export const BOARD_DOCK_WIDTH = 880;

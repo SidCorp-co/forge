@@ -7,6 +7,7 @@
 // scrubbed events with rrweb's own player while they are kept. Reproduce recordings are for members
 // only: core refuses anyone else by name, RECORDING_FORBIDDEN, and that refusal is what this draws.
 
+import { captionsOf } from "@/lib/utils/captions";
 import type { RecordingRecord } from "@forge/contracts/reproduce";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
@@ -163,10 +164,6 @@ function RecordingFile({ file }: { file: Attachment }) {
  * cannot decode, or decodes with no picture, is said so with a way to download it, never a black box.
  */
 /** A recording attached with no captions file carries its text alternative as one caption over its whole length. */
-function captionsOf(alt: string): string {
-  return `data:text/vtt;charset=utf-8,${encodeURIComponent(`WEBVTT\n\n00:00:00.000 --> 99:59:59.000\n${alt}\n`)}`;
-}
-
 function UploadedVideo({ file, alt }: { file: Attachment; alt: string }) {
   const t = useCopy();
   const [unplayable, setUnplayable] = useState(false);
