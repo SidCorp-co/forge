@@ -1,9 +1,10 @@
 "use client";
 
 // The intake assistant's draft of a requirement or feedback item (REQ-34 BC-12..BC-16), as core keeps
-// it: what the item duplicates, conflicts with, affects and relates to, each a link; the gaps it filled,
-// each with the record it came from; and at most three questions, each option with what it changes and
-// the recommended one marked, or that it has nothing to ask. Rows, not prose; nothing shows before a
+// it: what the item duplicates, conflicts with, affects and relates to, each a link, and each workflow it
+// touches but does not affect, with why; the gaps it filled, each with the record it came from; and at
+// most three questions, each option with what it changes and the recommended one marked, or that it has
+// nothing to ask and why. Rows, not prose; nothing shows before a
 // draft exists.
 
 import Link from "next/link";
@@ -100,7 +101,7 @@ export function IntakeDraftBody({ draft, slug, assumptions }: { draft: IntakeDra
     <div className="grid gap-5">
       <div>
         <FieldLabel>{t("intake.links")}</FieldLabel>
-        {draft.links.length === 0 ? (
+        {draft.links.length === 0 && draft.notAffected.length === 0 ? (
           <p className="text-13 text-subtle">{t("intake.none")}</p>
         ) : (
           <ul className="grid gap-1.5">
@@ -109,6 +110,13 @@ export function IntakeDraftBody({ draft, slug, assumptions }: { draft: IntakeDra
                 <span className="mr-1.5 font-medium text-fg">{t(`intake.relation.${l.relation}`)}</span>
                 <IntakeRefLink slug={slug} target={l.ref} /> <span className="text-muted">{l.ref.title}</span>
                 <span className="text-subtle"> · {l.why}</span>
+              </li>
+            ))}
+            {draft.notAffected.map((n) => (
+              <li key={`not ${n.ref.kind} ${n.ref.key}`} className="text-13 leading-snug" data-testid="intake-not-affected">
+                <span className="mr-1.5 font-medium text-fg">{t("intake.notAffected")}</span>
+                <IntakeRefLink slug={slug} target={n.ref} /> <span className="text-muted">{n.ref.title}</span>
+                <span className="text-subtle"> · {n.why}</span>
               </li>
             ))}
           </ul>
@@ -136,8 +144,9 @@ export function IntakeDraftBody({ draft, slug, assumptions }: { draft: IntakeDra
       <div>
         <FieldLabel>{t("intake.questions")}</FieldLabel>
         {draft.questions.length === 0 ? (
-          <p className="text-13 text-subtle" data-testid="intake-nothing-to-ask">
-            {t("intake.nothingToAsk")}
+          <p className="text-13 leading-snug" data-testid="intake-nothing-to-ask">
+            <span className="font-medium text-fg">{t("intake.nothingToAsk")}</span>
+            {draft.nothingToAsk ? <span className="text-subtle"> · {draft.nothingToAsk}</span> : null}
           </p>
         ) : (
           <ul className="grid">

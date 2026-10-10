@@ -88,8 +88,15 @@ describe("the intake draft on an item's page", () => {
 
   it("says it has nothing to ask where it asks nothing (BC-16)", async () => {
     shown(draft({ questions: [], nothingToAsk: "The record settles the triage." }));
-    expect((await screen.findByTestId("intake-nothing-to-ask")).textContent).toBe("Nothing to ask");
+    expect((await screen.findByTestId("intake-nothing-to-ask")).textContent).toBe("Nothing to ask · The record settles the triage.");
     expect(screen.queryByTestId("intake-question")).toBeNull();
+  });
+
+  it("names each workflow it touches but does not affect, with why (BC-12, FB-127)", async () => {
+    shown(draft({ links: [], notAffected: [{ ref: { kind: "workflow", key: "intake", title: "Intake" }, why: "It changes the label only, no step." }] }));
+    const row = await screen.findByTestId("intake-not-affected");
+    expect(row.textContent).toBe("Not affectedintake Intake · It changes the label only, no step.");
+    expect(within(row).getByRole("link").getAttribute("href")).toContain("/workflows/intake");
   });
 
   it("leaves the assumptions to the page that already shows them", async () => {

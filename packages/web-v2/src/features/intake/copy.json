@@ -13,6 +13,7 @@
     "intake.changes.outcome": "Outcome",
     "intake.recommended": "Recommended",
     "intake.nothingToAsk": "Nothing to ask",
+    "intake.notAffected": "Not affected",
     "intake.none": "None",
     "intake.failed.INTAKE_MODEL_UNCONFIGURED": "Not drafted: no model",
     "intake.failed.INTAKE_WITHHELD": "Not drafted: data policy",
