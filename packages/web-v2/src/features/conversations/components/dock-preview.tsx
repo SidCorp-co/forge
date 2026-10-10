@@ -6,7 +6,7 @@
 // of the issue, or any other page, draws nothing.
 
 import { useIssue } from "@/features/issues";
-import { settingsHref } from "@/features/project-settings/sections";
+import { settingsHref } from "@/features/project-settings";
 import { useProjects } from "@/features/projects";
 import { canWriteProject } from "@/features/projects";
 import { IssuePreview as LivePreview } from "@/features/previews";

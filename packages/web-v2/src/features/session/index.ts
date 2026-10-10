@@ -1,3 +1,4 @@
+// The face of the session feature: what other features import of it (CODE-STANDARD.md, Structure).
 export { Conversation } from "./components/conversation";
 export { NewOutput } from "./components/new-output";
 export { SessionScreen } from "./components/session-screen";

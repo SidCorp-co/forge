@@ -10,11 +10,11 @@
 import type { RecordingRecord } from "@forge/contracts/reproduce";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
-import { Button, ViewHeading } from "@/design";
+import { Button, ViewHeading, Table, THead, TBody, TR, TH, TD } from "@/design";
+import { formatSize } from "@/features/attachments";
 import { reproduceApi } from "@/features/previews";
 import { recordingsKey } from "@/features/previews";
 import { Timeline } from "@/features/previews";
-import { formatSize } from "@/features/attachments";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { coreFileUrl } from "@/lib/utils/core-url";
@@ -62,19 +62,19 @@ export function Recordings({ projectId, f }: { projectId: string; f: FeedbackVie
         </p>
       ) : null}
       {rows.length > 0 ? (
-        <table className="w-full border-collapse text-13" data-testid="recordings-table">
-          <thead>
-            <tr className="border-b border-line text-left text-muted">
-              <th className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.started")}</th>
-              <th className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.by")}</th>
-              <th className="py-1.5 pr-3 font-medium max-md:hidden">{t("previews.recordings.col.build")}</th>
-              <th className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.state")}</th>
-              <th className="py-1.5 font-medium" />
-            </tr>
-          </thead>
-          <tbody>
+        <Table className="w-full border-collapse text-13" data-testid="recordings-table">
+          <THead>
+            <TR className="border-b border-line text-left text-muted">
+              <TH className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.started")}</TH>
+              <TH className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.by")}</TH>
+              <TH className="py-1.5 pr-3 font-medium max-md:hidden">{t("previews.recordings.col.build")}</TH>
+              <TH className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.state")}</TH>
+              <TH className="py-1.5 font-medium" />
+            </TR>
+          </THead>
+          <TBody>
             {rows.map((r) => (
-              <tr
+              <TR
                 key={r.id}
                 className="border-b border-line-subtle"
                 data-testid="recording-row"
@@ -82,25 +82,25 @@ export function Recordings({ projectId, f }: { projectId: string; f: FeedbackVie
                 data-state={r.kind === "reproduce" ? r.recording.state : undefined}
                 aria-current={open?.id === r.id ? "true" : undefined}
               >
-                <td className="py-1.5 pr-3" title={time.dateTime(r.at)}>
+                <TD className="py-1.5 pr-3" title={time.dateTime(r.at)}>
                   {time.relative(r.at)}
-                </td>
-                <td className="py-1.5 pr-3">{by(r)}</td>
-                <td className="py-1.5 pr-3 font-mono max-md:hidden">{r.kind === "reproduce" ? (r.recording.build.release ?? r.recording.build.sha.slice(0, 12)) : null}</td>
-                <td className="py-1.5 pr-3">
+                </TD>
+                <TD className="py-1.5 pr-3">{by(r)}</TD>
+                <TD className="py-1.5 pr-3 font-mono max-md:hidden">{r.kind === "reproduce" ? (r.recording.build.release ?? r.recording.build.sha.slice(0, 12)) : null}</TD>
+                <TD className="py-1.5 pr-3">
                   {r.kind === "upload" ? <RecordingFile file={r.file} /> : <ReproduceState recording={r.recording} />}
-                </td>
-                <td className="py-1.5 text-right">
+                </TD>
+                <TD className="py-1.5 text-right">
                   {open?.id === r.id ? null : (
                     <Button size="sm" variant="ghost" onClick={() => setOpenId(r.id)}>
                       {t("previews.recordings.show")}
                     </Button>
                   )}
-                </td>
-              </tr>
+                </TD>
+              </TR>
             ))}
-          </tbody>
-        </table>
+          </TBody>
+        </Table>
       ) : null}
       {open?.kind === "upload" ? <UploadedVideo key={open.file.id} file={open.file} alt={alt(open)} /> : null}
       {open?.kind === "reproduce" ? <RecordingDetail recording={open.recording} projectId={projectId} fbKey={f.key} /> : null}
@@ -162,6 +162,11 @@ function RecordingFile({ file }: { file: Attachment }) {
  * A video attached to the item, played in the page and read by its text alternative. One this browser
  * cannot decode, or decodes with no picture, is said so with a way to download it, never a black box.
  */
+/** A recording attached with no captions file carries its text alternative as one caption over its whole length. */
+function captionsOf(alt: string): string {
+  return `data:text/vtt;charset=utf-8,${encodeURIComponent(`WEBVTT\n\n00:00:00.000 --> 99:59:59.000\n${alt}\n`)}`;
+}
+
 function UploadedVideo({ file, alt }: { file: Attachment; alt: string }) {
   const t = useCopy();
   const [unplayable, setUnplayable] = useState(false);
@@ -176,7 +181,6 @@ function UploadedVideo({ file, alt }: { file: Attachment; alt: string }) {
           </a>
         </p>
       ) : (
-        // biome-ignore lint/a11y/useMediaCaption: a screen recording someone attached comes with no captions file; its text alternative is its label
         <video
           src={src}
           controls
@@ -189,7 +193,9 @@ function UploadedVideo({ file, alt }: { file: Attachment; alt: string }) {
             const v = e.currentTarget;
             if (v.videoWidth === 0 && v.videoHeight === 0) setUnplayable(true);
           }}
-        />
+        >
+          <track kind="captions" src={captionsOf(alt)} label={alt} />
+        </video>
       )}
     </div>
   );
@@ -238,7 +244,7 @@ function RecordingDetail({ recording, projectId, fbKey }: { recording: Recording
 function Replay({ recordingId, describedBy }: { recordingId: string; describedBy: string }) {
   const t = useCopy();
   const [asked, setAsked] = useState(false);
-  const root = useRef<HTMLElement>(null);
+  const rootRef = useRef<HTMLElement>(null);
   const eventsQ = useQuery({
     queryKey: ["recordings", "events", recordingId],
     queryFn: () => reproduceApi.events(recordingId),
@@ -248,7 +254,7 @@ function Replay({ recordingId, describedBy }: { recordingId: string; describedBy
   const [failure, setFailure] = useState<unknown>(null);
 
   useEffect(() => {
-    const el = root.current;
+    const el = rootRef.current;
     const events = eventsQ.data;
     if (!el || !events) return;
     let player: { destroy(): void } | null = null;
@@ -288,7 +294,7 @@ function Replay({ recordingId, describedBy }: { recordingId: string; describedBy
       ) : null}
       {eventsQ.isLoading ? <p role="status" className="fg-body-sm text-muted">{t("previews.recordings.replayLoading")}</p> : null}
       <figure
-        ref={root}
+        ref={rootRef}
         aria-label={t("previews.recordings.replayAlt")}
         aria-describedby={describedBy}
         className="m-0 max-w-full overflow-auto rounded-md border border-line bg-surface"

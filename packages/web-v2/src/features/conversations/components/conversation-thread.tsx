@@ -20,7 +20,7 @@ import { isStructured, StructuredMessage } from "@/features/onboarding";
 import { Conversation } from "@/features/session";
 import { DisclosureScope } from "@/features/session";
 import { USER_BUBBLE } from "@/features/session";
-import { settingsHref } from "@/features/project-settings/sections";
+import { settingsHref } from "@/features/project-settings";
 import { SaveTemplateReport, ShareAction, shareSubjectOf, templateSaveOf } from "@/features/shares";
 import { executionFactsIn, runFactsIn, VisualBlockProvider, VisualBlockView } from "@/features/visual-blocks";
 import { type CanonicalBlock, type MessageEntry, parseMessages } from "@/features/session";

@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { type RefObject, useCallback, useRef, useState } from "react";
 import { Icon, IconButton, SecondaryRegion, SlideOver, useMediaQuery } from "@/design";
-import { useProjectEcosystems } from "@/features/ecosystem/hooks";
+import { useProjectEcosystems } from "@/features/ecosystem";
 import { useProjects } from "@/features/projects";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
