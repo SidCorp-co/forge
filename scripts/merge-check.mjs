@@ -2,18 +2,26 @@
 // The merge check, dev's whole gate before a merge (Issue to release r20 `rule-merge`; REQ-36 BC-9,
 // BC-15, BC-17; ISS-472). On the change as it would land — HEAD containing the latest base — it runs
 // only: the typecheck, the direct tests of the touched files in every package, the direct core
-// integration tests, and `pnpm verify`. No import-graph widening, no whole-suite fallback. It writes
+// integration tests, the issue's kept probes run against the change (`lib/merge-probes.mjs`), and
+// `pnpm verify`. No import-graph widening, no whole-suite fallback. It writes
 // the report the tracker records on the issue — each check with its kind and duration, recorded once
 // (ISS-474) — which the merge mark then asks for. On the fast lane (REQ-39 BC-7: a change a person
 // approved in its live preview) it runs the typecheck and the direct tests only, and the report names
 // the change's patch id, which core holds to the one the approved preview served.
 //
-//   pnpm merge-check                     against the latest origin/<base>, fetched first
+//   pnpm merge-check --probes <file>     against the latest origin/<base>, fetched first, running the
+//                                        kept probes of the issue whose criteria read <file> holds
+//                                        (`GET /api/issues/:id/criteria`, saved)
+//   pnpm merge-check --probes none       a run that names no issue (CI's): it runs no probe, and core
+//                                        refuses MERGE_PROBE_MISSING where the issue keeps one
+//   pnpm merge-check --probe-origin <url>  the origin serving a build of the change: a command probe
+//                                        reads it as FORGE_PROBE_ORIGIN, a request probe is sent to it
 //   pnpm merge-check --since <sha>       a landing already on its base: the change since <sha>
 //   pnpm merge-check --report <path>     where the report goes (default: the OS temp directory)
-//   pnpm merge-check --lane fast         the fast lane: no integration tests, no verify
+//   pnpm merge-check --lane fast         the fast lane: no integration tests, no probes, no verify
 //
-// Exit 0: every check passed. 1: a check is red or the change is behind its base. 2: it could not run.
+// Exit 0: every check passed. 1: a check or probe is red, a probe is missing, or the change is behind
+// its base. 2: it could not run.
 
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -44,14 +52,17 @@ import {
   verifyCommand,
   verifyEnv,
 } from './lib/merge-check.mjs';
+import { originOf, probeRefusalLines, readProbesFlag, runProbes } from './lib/merge-probes.mjs';
 
 const die = dieAs('merge-check');
 
 const args = process.argv.slice(2);
-const takes = new Set(['--since', '--report', '--lane']);
+const takes = new Set(['--since', '--report', '--lane', '--probes', '--probe-origin']);
 for (const [i, a] of args.entries()) {
   if (a.startsWith('--') && !takes.has(a))
-    die(`unknown flag ${a}; takes --since <sha>, --report <path>, --lane <${LANES.join(' | ')}>`);
+    die(
+      `unknown flag ${a}; takes --probes <criteria.json | none>, --probe-origin <url>, --since <sha>, --report <path>, --lane <${LANES.join(' | ')}>`,
+    );
   if (!a.startsWith('--') && !takes.has(args[i - 1])) die(`unexpected argument ${a}`);
 }
 const flagValue = (flag) => {
@@ -64,6 +75,31 @@ const flagValue = (flag) => {
 const since = flagValue('--since');
 const lane = flagValue('--lane') ?? 'full';
 if (!LANES.includes(lane)) die(`--lane ${lane} is not a lane; the lanes are ${LANES.join(', ')}`);
+
+// The kept probes, read before anything runs: a full-lane merge needs them (REQ-36 BC-9), and a run
+// that cannot say whose they are says so with `none` rather than passing them by silence.
+const probesFlag = flagValue('--probes');
+const originFlag = flagValue('--probe-origin');
+let criteria = null;
+let origin = null;
+if (lane === 'fast') {
+  if (probesFlag !== null || originFlag !== null)
+    die('the fast lane runs no probes (REQ-39 BC-7); drop --probes and --probe-origin');
+} else {
+  if (probesFlag === null)
+    die(
+      'a merge runs its issue\'s kept probes: pass --probes <file>, the saved answer of ' +
+        '`GET /api/issues/<issue id>/criteria`, or --probes none for a run that names no issue',
+    );
+  const read = readProbesFlag(probesFlag);
+  if (read.refusal) die(read.refusal);
+  criteria = read.criteria;
+  if (originFlag !== null) {
+    const o = originOf(originFlag);
+    if (o.refusal) die(o.refusal);
+    origin = o.origin;
+  }
+}
 
 const git = (...a) => {
   const out = gitOut(a, ROOT);
@@ -156,6 +192,12 @@ checks.push(...runTypecheck(ROOT, { baseRef: baseSha, touched: touched.map((t) =
 const direct = runDirectTests(ROOT, { touched, integration: lane === 'full' });
 checks.push(...direct.checks);
 
+const probeRun =
+  lane === 'full'
+    ? await runProbes(criteria, { root: ROOT, origin })
+    : { checks: [], bindings: [], missing: [], red: [] };
+checks.push(...probeRun.checks);
+
 if (lane === 'full') {
   // A landed run hands verify the landing's base: the base branch's tip is HEAD there, and every
   // delta-scoped gate would otherwise measure an empty change (ISS-472 round 3).
@@ -190,6 +232,7 @@ const report = reportOf({
   mode: since ? 'landed' : 'pre-merge',
   touched,
   checks,
+  probes: probeRun.bindings,
   lane,
   patchId,
 });
@@ -207,10 +250,12 @@ if (direct.untested.length) {
 }
 
 const red = redChecks(checks);
+const probeFaults = probeRefusalLines(probeRun);
+for (const line of probeFaults) console.error(`\nmerge-check: ${line}. Report: ${path}`);
 if (red.length) {
   console.error(
     `\nmerge-check: MERGE_CHECK_RED — ${red.map((c) => `${c.name} (${c.scope})`).join(', ')}. Report: ${path}`,
   );
-  process.exit(1);
 }
+if (red.length || probeFaults.length) process.exit(1);
 console.log(`\n${passedMessage({ mode: report.mode, branch, baseSha, head, path })}`);

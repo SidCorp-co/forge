@@ -74,6 +74,19 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
       ],
     ],
     [
+      "a merge check runs the issue's kept probes and is refused by name without them (REQ-36 BC-9)",
+      [
+        '`pnpm merge-check --probes <file>`',
+        '`GET /api/issues/:id/criteria`',
+        'MERGE_PROBE_MISSING',
+        'MERGE_PROBE_RED',
+      ],
+    ],
+    [
+      'a probe expects lists of strings, never one string',
+      ['`bodyIncludes` and `stdoutIncludes` are lists of strings', '`["held"]`, never `"held"`'],
+    ],
+    [
       'a run records each check it made with its kind and duration, once',
       ['POST /api/issues/:id/checks', 'durationMs', '`probes`', '`review`', 'CHECK_RUN_CONFLICT'],
     ],

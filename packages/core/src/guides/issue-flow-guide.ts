@@ -167,11 +167,15 @@ condition holds, so carry on. A wait on a mark is never also \`about\` a require
   or the issue introduces an approved new pattern — run the project's merge check on the change
   rebased onto the latest base, and record what it wrote before you land:
   \`POST /api/issues/:id/merge-check\` with its report
-  \`{ base: { branch, sha }, head, mode, touched, checks }\`. A report missing a check every merge
-  needs is refused \`MERGE_CHECK_INCOMPLETE\`, one filing a check under another kind
-  \`MERGE_CHECK_KIND_MISMATCH\`, one behind its base \`MERGE_BEHIND_BASE\`, one with a red check
-  \`MERGE_CHECK_RED\`, and an approved new pattern whose catalog page the touched files lack
-  \`PATTERN_ENTRY_MISSING\`. Land the commit you checked: a rebase after it is a new check.
+  \`{ base: { branch, sha }, head, mode, touched, checks, probes }\`. The check runs each kept probe
+  of the issue against the change (here \`pnpm merge-check --probes <file>\`, the file holding
+  \`GET /api/issues/:id/criteria\`), and \`probes\` names the check that ran each one. A report
+  missing a check every merge needs is refused \`MERGE_CHECK_INCOMPLETE\`, one filing a check under
+  another kind \`MERGE_CHECK_KIND_MISMATCH\`, one behind its base \`MERGE_BEHIND_BASE\`, one with a
+  red check \`MERGE_CHECK_RED\`, one that did not run a kept probe, or whose observable criterion
+  keeps none, \`MERGE_PROBE_MISSING\`, one whose probe ran red \`MERGE_PROBE_RED\`, and an approved
+  new pattern whose catalog page the touched files lack \`PATTERN_ENTRY_MISSING\`. Land the commit
+  you checked: a rebase after it is a new check.
 - **The fast lane.** Where a person approved the issue's live preview, \`GET /api/issues/:id/lane\`
   reads \`lane: 'fast'\` or says, in \`refusal\`, why the change is on the full lane — the file and
   the rule that caught it. On the fast lane run the merge check's fast lane (here
@@ -210,7 +214,9 @@ says what was out of reach.
 
 A verdict on a criterion the design classes \`observable\` sends the probe it ran, \`probe\` on the same
 body: \`{ kind: 'request', request: { method, path, headers?, body?, as, service? }, expect: { status, bodyIncludes? } }\`
-or \`{ kind: 'command', command: { argv, cwd? }, expect: { exitCode, stdoutIncludes? } }\`. The path is
+or \`{ kind: 'command', command: { argv, cwd? }, expect: { exitCode, stdoutIncludes? } }\`.
+\`bodyIncludes\` and \`stdoutIncludes\` are lists of strings, each one the output must contain:
+\`["held"]\`, never \`"held"\`. The path is
 on the production environment's \`url\`, or on the \`service\` it names: each verified deploy replays it
 there and records the result on the served build, and a fail reopens the issue. The environment's
 \`routes\` say which path prefixes each service answers, and \`url\` answers the rest; a request the

@@ -2,6 +2,7 @@
 // @direct-test-of packages/contracts/src/merge-check.ts
 // @direct-test-of packages/contracts/src/fast-lane.ts
 // @direct-test-of scripts/merge-check.mjs
+// @direct-test-of scripts/lib/merge-probes.mjs
 //
 // The merge check's rules (lib/merge-check.mjs) and where dev's CI runs it (Issue to release r20
 // `rule-merge`; REQ-36 BC-9, BC-15, BC-17; ISS-472): a change behind its base is refused by name,
@@ -91,11 +92,30 @@ describe('what a merge needs', () => {
     ).toEqual([{ name: 'typecheck', result: 'fail' }]);
   });
 
-  it('says probes and review are not run here, each with what owns it', () => {
+  it('runs the kept probes, and says only the review is not run here', () => {
+    expect(REQUIRED_CHECKS).toContain('probes');
     expect(NOT_RUN_HERE.map((n) => [n.name, n.owner])).toEqual([
-      ['probes', 'REQ-36 BC-9'],
       ['review', 'POST /api/issues/:id/review'],
     ]);
+  });
+
+  it('refuses a full-lane run that does not say whose probes it runs, before it runs anything', () => {
+    const askedAt = CLI.indexOf("die(\n      'a merge runs its issue\\'s kept probes");
+    expect(askedAt).toBeGreaterThan(-1);
+    expect(askedAt).toBeLessThan(CLI.indexOf("spawnSync('git', ['fetch'"));
+    expect(CLI.indexOf('await runProbes(criteria')).toBeLessThan(CLI.indexOf("run(['pnpm', 'verify']"));
+    expect(CLI).toContain('probes: probeRun.bindings');
+  });
+
+  it('leaves a red probe to MERGE_PROBE_RED, as core does, and every other red to MERGE_CHECK_RED', () => {
+    expect(
+      redChecks([
+        { name: 'probes', kind: 'probes', result: 'fail' },
+        { name: 'typecheck', kind: 'typecheck', result: 'fail' },
+      ]).map((c) => c.name),
+    ).toEqual(['typecheck']);
+    expect(CLI).toContain('probeRefusalLines(probeRun)');
+    expect(CLI).toContain('if (red.length || probeFaults.length) process.exit(1)');
   });
 
   it('a pre-merge pass asks for its record before the mark; a landed push says it is already on its base', () => {
@@ -127,9 +147,11 @@ describe('what a merge needs', () => {
       'mode',
       'touched',
       'checks',
+      'probes',
       'lane',
       'patchId',
     ]);
+    expect(report.probes).toEqual([]);
     expect(report.base).toEqual({ branch: 'dev', sha: TIP });
     expect(report.lane).toBe('full');
   });
@@ -150,7 +172,7 @@ describe('the fast lane (REQ-39 BC-7)', () => {
     expect(missingCheck(fast, 'fast')).toBeNull();
     expect(missingCheck(fast, 'full')).toBe('integration-tests');
     expect(missingCheck(fast.slice(0, 2), 'fast')).toBe('direct-tests');
-    expect(notRunOnLane('fast').map((n) => n.name)).toEqual(['integration-tests', 'verify']);
+    expect(notRunOnLane('fast').map((n) => n.name)).toEqual(['integration-tests', 'probes', 'verify']);
     expect(notRunOnLane('full')).toEqual([]);
   });
 
@@ -216,6 +238,10 @@ describe("dev's CI is the merge check, and main's is as it was", () => {
   it('runs merge-check only there, under its own name, before ci-passed', () => {
     expect(job('merge-check')).toContain("if: needs.changes.outputs.scoped == 'true'");
     expect(job('merge-check')).toContain('pnpm merge-check');
+    // CI names no issue, so it says so rather than passing the probes by silence
+    const runs = job('merge-check').match(/pnpm merge-check[^\n]*/g) ?? [];
+    expect(runs.length).toBe(2);
+    for (const line of runs) expect(line).toContain('--probes none');
     expect(job('merge-check')).toContain('github.event.pull_request.head.sha');
     const needs = /ci-passed:[\s\S]*?needs:\s*\[([^\]]*)\]/.exec(CI)?.[1] ?? '';
     expect(needs.split(',').map((s) => s.trim())).toContain('merge-check');

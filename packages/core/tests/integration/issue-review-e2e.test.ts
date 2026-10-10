@@ -33,7 +33,7 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
-import { passingChecks, passingReport } from '../helpers/merge-check-report.js';
+import { passingChecksRunning, passingReport } from '../helpers/merge-check-report.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 const HEAD = 'a'.repeat(40);
@@ -122,8 +122,8 @@ async function runOnBox(projectId: string, hold?: string): Promise<string> {
 
 /**
  * An issue at in_progress with two criteria and its design recorded: criterion 1 observable,
- * criterion 2 a code property, both to `api-route` where the project reads the catalog. Its building
- * run holds it on the box and records a passing merge check at HEAD.
+ * criterion 2 a code property, both to `api-route` where the project reads the catalog. Criterion 1
+ * keeps a probe, which the passing merge check its building run records at HEAD ran.
  */
 async function builtIssue(projectId: string): Promise<{ id: string; builder: string }> {
   seq += 1;
@@ -146,6 +146,14 @@ async function builtIssue(projectId: string): Promise<{ id: string; builder: str
     contracts: [],
   });
   expect(design.status).toBe(200);
+  const proved = await call(personToken, 'POST', `/api/issues/${issue.id}/verdicts`, {
+    criterion: 1,
+    verdict: 'pass',
+    reason: 'ran it',
+    identity: { kind: 'commit', sha: HEAD },
+    probe: { kind: 'command', command: { argv: ['node', 'probe.mjs'] }, expect: { exitCode: 0 } },
+  });
+  expect(proved.status).toBe(201);
   const builder = await runOnBox(projectId, issue.key);
   const check = await call(
     boxToken,
@@ -155,7 +163,7 @@ async function builtIssue(projectId: string): Promise<{ id: string; builder: str
       base: { branch: 'dev', sha: BASE },
       head: HEAD,
       touched: [{ path: 'packages/core/src/issues/x.ts', change: 'changed' }],
-      checks: passingChecks(),
+      ...passingChecksRunning([{ criterion: 1, probe: proved.body.criterion.probe.id }]),
     }),
   );
   expect(check.status).toBe(201);

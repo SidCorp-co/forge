@@ -1,12 +1,14 @@
 /**
  * The merge check's rules (Issue to release r20 `rule-merge`; REQ-36 BC-9, BC-15, BC-17; ISS-472),
  * pure: which report a merge may rely on, the record it is kept as, and whether a mark finds one at
- * the commit it marks. A fast-lane report (REQ-39 BC-7) needs only the fast checks here; whether the
+ * the commit it marks, and whether it ran every kept probe of its issue (REQ-36 BC-1, BC-9;
+ * `probeRefusals`). A fast-lane report (REQ-39 BC-7) needs only the fast checks here; whether the
  * change may take that lane is the fast lane's own rule (`fast-lane/rules.ts`), asked through a port.
  * `merge-check.ts` reads and writes around them.
  */
 
 import type { CheckRun } from '@forge/contracts/check-runs';
+import type { CriterionClass } from '@forge/contracts/issue-design';
 import {
   MERGE_CHECK_KINDS,
   MERGE_CHECK_RECORD,
@@ -18,9 +20,9 @@ import {
   requiredMergeChecksOf,
 } from '@forge/contracts/merge-check';
 
-/** Not run by the check: what owns each names it in every record. */
+/** Not run by the check: what owns it is named in every record. */
 export const NOT_YET_CHECKED =
-  'kept probes, replayed on deploy (ISS-470) and not yet at merge (REQ-36 BC-9); the review, recorded by another run (POST /api/issues/:id/review) and asked by the mark';
+  'the review, recorded by another run (POST /api/issues/:id/review) and asked by the mark';
 
 export interface CheckRefusal {
   code: MergeCheckRefusalCode;
@@ -74,7 +76,8 @@ export function checkRefusal(report: MergeCheckReport): CheckRefusal | null {
       detail: `${report.head.slice(0, 12)} does not contain the latest ${report.base.branch} (${report.base.sha.slice(0, 12)}), so its checks do not describe what would land. Rebase it onto ${report.base.branch} and run the merge check again. Nothing was recorded`,
     };
   }
-  const red = report.checks.filter((c) => c.result === 'fail');
+  // a red probe is refused by its own name (`probeRefusals`), which reads it against the kept probe
+  const red = report.checks.filter((c) => c.result === 'fail' && c.kind !== 'probes');
   if (red.length) {
     return {
       code: 'MERGE_CHECK_RED',
@@ -83,6 +86,78 @@ export function checkRefusal(report: MergeCheckReport): CheckRefusal | null {
     };
   }
   return null;
+}
+
+/** One live criterion of the issue as the merge reads it: its class and the probe it keeps. */
+export interface MergeCriterion {
+  n: number;
+  class: CriterionClass | null;
+  probe: { id: string } | null;
+}
+
+/**
+ * Why the report's probes cannot let a merge through, each by name, or none (REQ-36 BC-1, BC-9).
+ * Every kept probe of a criterion not classed a code property must have run in this report and
+ * passed: one the report did not run, ran with result `none`, or ran in an older version is
+ * MERGE_PROBE_MISSING, as is an observable criterion keeping no probe; any `probes` check that ended
+ * red is MERGE_PROBE_RED. A code property, or a criterion no design classes, keeping none owes none.
+ * The fast lane runs no probes (REQ-39 BC-7), so its report is not asked.
+ */
+export function probeRefusals(
+  report: MergeCheckReport,
+  criteria: readonly MergeCriterion[],
+): CheckRefusal[] {
+  if (report.lane === 'fast') return [];
+  const bindings = report.probes ?? [];
+  const checkOf = (id: string) => report.checks.find((c) => c.id === id);
+  const missing: string[] = [];
+  for (const c of criteria) {
+    if (c.class === 'code_property') continue;
+    if (!c.probe) {
+      if (c.class === 'observable') missing.push(`criterion ${c.n} is observable and keeps no probe`);
+      continue;
+    }
+    const keptId = c.probe.id;
+    const bound = bindings.find((b) => b.probe === keptId);
+    if (!bound) {
+      const older = bindings.find((b) => b.criterion === c.n);
+      missing.push(
+        older
+          ? `criterion ${c.n} keeps probe ${keptId}, and the report ran ${older.probe}`
+          : `criterion ${c.n}'s kept probe ${keptId} was not run`,
+      );
+      continue;
+    }
+    const ran = checkOf(bound.check);
+    if (ran?.result === 'none') {
+      missing.push(`criterion ${c.n}'s kept probe did not run${ran.note ? ` (${ran.note})` : ''}`);
+    }
+  }
+  const out: CheckRefusal[] = [];
+  if (missing.length) {
+    out.push({
+      code: 'MERGE_PROBE_MISSING',
+      path: '/probes',
+      detail: `${missing.join('; ')}. Run the merge check with --probes <the issue's criteria read>, keep a probe on each observable criterion, and record it again. Nothing was recorded`,
+    });
+  }
+  const red = report.checks.filter((c) => c.kind === 'probes' && c.result === 'fail');
+  if (red.length) {
+    out.push({
+      code: 'MERGE_PROBE_RED',
+      path: '/checks',
+      detail: `${red.map((c) => `${described(c)}${c.note ? ` (${c.note})` : ''}`).join('; ')} ended red at ${report.head.slice(0, 12)}. Fix the change or the probe, then run the merge check again. Nothing was recorded`,
+    });
+  }
+  return out;
+}
+
+/** What the record says of the probes the check ran: how many, for which criteria. */
+export function probesRan(report: MergeCheckReport): string {
+  const ran = report.checks.filter((c) => c.kind === 'probes' && c.result !== 'none');
+  if (ran.length === 0) return 'no kept probe to run';
+  const criteria = [...new Set((report.probes ?? []).map((b) => b.criterion))].sort((a, b) => a - b);
+  return `${ran.length} kept probe(s) ran and held, for criteria ${criteria.join(', ')}`.slice(0, 400);
 }
 
 /** At most this many characters in one record field. */
@@ -130,6 +205,7 @@ export function recordFields(report: MergeCheckReport): { key: string; value: st
     { key: 'head', value: report.head },
     { key: 'touched', value: `${report.touched.length} file(s)` },
     { key: 'checks', value: namedChecks(report.checks) },
+    { key: 'probes', value: probesRan(report) },
     { key: 'not-checked', value: NOT_YET_CHECKED },
   ];
 }

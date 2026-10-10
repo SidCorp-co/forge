@@ -28,9 +28,11 @@ Then run `pnpm test:changed`: `pnpm tc:changed`'s typecheck and only the DIRECT 
 touched, in every package — a test you touched, a test importing a file you touched, and a test
 declaring `@direct-test-of <path>` over it; `--integration` adds the core integration tests chosen
 the same way. It never follows the import graph further and never falls back to a whole suite. Not
-the whole suites. Before you land on `dev`, `GITHUB_BASE_REF=dev pnpm merge-check` runs the same on
-the change rebased onto the latest `dev`, with those integration tests and `pnpm verify` — the
-conformance entrypoint — and refuses a branch behind its base (`MERGE_BEHIND_BASE`); record the
+the whole suites. Before you land on `dev`, `GITHUB_BASE_REF=dev pnpm merge-check --probes <file>`
+runs the same on the change rebased onto the latest `dev`, with those integration tests, the issue's
+kept probes (`<file>` holds `GET /api/issues/:id/criteria`) and `pnpm verify` — the conformance
+entrypoint — and refuses a branch behind its base (`MERGE_BEHIND_BASE`) and a kept probe missing or
+red (`MERGE_PROBE_MISSING`, `MERGE_PROBE_RED`); record the
 report it writes with `POST /api/issues/:id/merge-check`. The whole suite runs nightly and on each
 release cut's commit. A red there that the merge check missed widens the selection — a
 `@direct-test-of` line on the test that caught it — never the suite.

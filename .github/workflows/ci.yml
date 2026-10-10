@@ -707,7 +707,8 @@ jobs:
   # stale branch out. On a push to dev it checks the landing, `github.event.before`..HEAD. It runs
   # the typecheck, the direct tests of the touched files in every package, their direct core
   # integration tests and `pnpm verify` — never a package's whole suite, which runs nightly and on a
-  # release cut's commit (`whole-suite`). Its check run is named `merge-check`, never a package job's
+  # release cut's commit (`whole-suite`). It names no issue (`--probes none`), so it runs no kept
+  # probe: the run recorded on an issue runs that issue's. Its check run is named `merge-check`, never a package job's
   # name, so `scripts/lib/whole-suite.mjs:evidenceOf` never reads a scoped pass as a whole suite's.
   merge-check:
     needs: changes
@@ -760,9 +761,9 @@ jobs:
           BEFORE: ${{ github.event.before }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = push ]; then
-            pnpm merge-check --since "$BEFORE" --report "$RUNNER_TEMP/merge-check.json"
+            pnpm merge-check --probes none --since "$BEFORE" --report "$RUNNER_TEMP/merge-check.json"
           else
-            pnpm merge-check --report "$RUNNER_TEMP/merge-check.json"
+            pnpm merge-check --probes none --report "$RUNNER_TEMP/merge-check.json"
           fi
 
   # ───────────────────────────────────────────────────────────────────────

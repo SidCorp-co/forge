@@ -222,7 +222,8 @@ describe('a passing check is recorded on its issue', () => {
       checks: 2,
       totalMs: 2400,
     });
-    expect(read.totalMs).toBe(6000);
+    expect(read.kinds.find((k: Doc) => k.kind === 'probes')).toMatchObject({ checks: 1 });
+    expect(read.totalMs).toBe(1200 * REQUIRED_MERGE_CHECKS.length);
 
     // an open Runs tab refetches its Checks section on the issue's own event
     const events = await rows<{ fields: string[] }>(sql`

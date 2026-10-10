@@ -11,6 +11,7 @@ import type { CheckRun } from '@forge/contracts/check-runs';
 import {
   MERGE_CHECK_KINDS,
   type MergeCheckReport,
+  type MergeProbeBinding,
   REQUIRED_MERGE_CHECKS,
   type RequiredMergeCheck,
 } from '@forge/contracts/merge-check';
@@ -33,6 +34,22 @@ export function passingCheck(name: RequiredMergeCheck): CheckRun {
 /** Every check a merge needs, each passed. */
 export function passingChecks(): CheckRun[] {
   return REQUIRED_MERGE_CHECKS.map((name) => passingCheck(name));
+}
+
+/**
+ * Every check a merge needs, each passed, with a `probes` check per kept probe in `kept` bound to
+ * it: what a report on an issue keeping probes carries (REQ-36 BC-9), or core refuses it
+ * MERGE_PROBE_MISSING.
+ */
+export function passingChecksRunning(
+  kept: readonly { criterion: number; probe: string }[],
+): { checks: CheckRun[]; probes: MergeProbeBinding[] } {
+  const ran = kept.map((k) => ({ ...k, run: { ...passingCheck('probes'), scope: `criterion ${k.criterion}` } }));
+  const rest = passingChecks().filter((c) => c.name !== 'probes' || ran.length === 0);
+  return {
+    checks: [...rest, ...ran.map((r) => r.run)],
+    probes: ran.map((r) => ({ criterion: r.criterion, probe: r.probe, check: r.run.id })),
+  };
 }
 
 /** The patch id a report names unless a test names its own: any 40-hex id will do. */

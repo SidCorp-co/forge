@@ -299,7 +299,7 @@ describe('a merge check on the fast lane (BC-7)', () => {
     const { lane: _lane, ...full } = fastReport();
     const res = await check(issue, full);
     expect([res.status, codes(res)]).toEqual([422, ['MERGE_CHECK_INCOMPLETE']]);
-    expect(detail(res)).toContain('`integration-tests`, `verify`');
+    expect(detail(res)).toContain('`integration-tests`, `probes`, `verify`');
   });
 
   it('still takes a full report with every check, as before the fast lane', async () => {

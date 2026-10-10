@@ -117,7 +117,7 @@ export const criterionProbeSchema = z.discriminatedUnion("kind", [
 ]);
 export type CriterionProbe = z.infer<typeof criterionProbeSchema>;
 
-export const PROBE_SHAPE = `{ kind: "request", request: { method, path: "/…" on the running build's origin, headers?, body?: text, as: "anonymous" | "replayer", service?: a service the environment declares }, expect: { status, bodyIncludes?: [text] } } or { kind: "command", command: { argv: [program, …args], cwd?: an in-tree directory }, expect: { exitCode, stdoutIncludes?: [text] } }; a command reads the build's origin from ${PROBE_ORIGIN_ENV}, and a probe carries no credential`;
+export const PROBE_SHAPE = `{ kind: "request", request: { method, path: "/…" on the running build's origin, headers?, body?: text, as: "anonymous" | "replayer", service?: a service the environment declares }, expect: { status, bodyIncludes?: [text, …] } } or { kind: "command", command: { argv: [program, …args], cwd?: an in-tree directory }, expect: { exitCode, stdoutIncludes?: [text, …] } }; bodyIncludes and stdoutIncludes are lists of strings, never one string; a command reads the build's origin from ${PROBE_ORIGIN_ENV}, and a probe carries no credential`;
 
 /** A probe as the criteria read answers it: what it runs, what it expects, and when it was kept. */
 export type CriterionProbeView = CriterionProbe & {

@@ -10,9 +10,8 @@ import { z } from "zod";
 /**
  * What a check is, in the order the issue page lists them. `conformance` is the project's
  * conformance gate (`pnpm verify` here); `base` is the check that the change contains its base's
- * latest commit. `probes` and `review` are kinds a run records when it made one, and no script here
- * runs either at merge yet: kept probes are replayed on each verified deploy (ISS-470), replaying
- * them at merge is REQ-36 BC-9's, and the review is ISS-473's.
+ * latest commit; `probes` is one kept probe run against the change, which the merge check makes
+ * for each probe its issue keeps (REQ-36 BC-9). `review` is a kind a run records when it made one.
  */
 export const CHECK_KINDS = [
 	"tests",

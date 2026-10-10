@@ -2,8 +2,9 @@
  * The merge check's record half (Issue to release r20 `rule-merge`; REQ-36 BC-9, BC-15, BC-17;
  * ISS-472). A project's own check runs the code half — on this repository `scripts/merge-check.mjs`:
  * the typecheck, the direct tests of the touched files, their direct integration tests and the
- * conformance gate, on the change rebased onto the latest base — and sends its report here. Core
- * refuses a report a merge may not rely on, asks the issue's approved new patterns for their catalog
+ * conformance gate, on the change rebased onto the latest base, and the issue's kept probes run
+ * against it — and sends its report here. Core refuses a report a merge may not rely on, holds its
+ * probes to the ones the issue keeps now (`probeRefusals`), asks the issue's approved new patterns for their catalog
  * pages in the change, and records a passing check on the issue: each of its checks once, with its
  * kind and duration, as a check run of the run that sent it (`check-runs.ts`, ISS-474), and the
  * verification record naming them and the catalog pages the change carried (`pattern-entry.ts`). The merge mark then asks for that record (`uncheckedMergeRefusal`).
@@ -22,6 +23,7 @@ import { db } from '../db/client.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import type { Actor } from './activity.js';
 import { checkRunSessionOf, writeCheckRuns } from './check-runs.js';
+import { readCriteriaWithDrafts } from './criteria/service.js';
 import { issueDisplayIds } from './display-ids.js';
 import {
   type CheckOwedBy,
@@ -29,6 +31,7 @@ import {
   headMatches,
   missingCheckDetail,
   passingHeads,
+  probeRefusals,
   recordFields,
 } from './merge-check-rules.js';
 import { catalogPageFields, hasApprovedNewPattern, patternEntryRefusal } from './pattern-entry.js';
@@ -51,6 +54,8 @@ export async function recordMergeCheck(args: {
   const { issue, report } = args;
   const fault = checkRefusal(report);
   if (fault) throw refuse(fault.code, fault.detail, fault.path);
+  const probes = probeRefusals(report, await readCriteriaWithDrafts(issue));
+  if (probes.length) throw new RefusalError(probes, 'MERGE_CHECK_REFUSED');
   if (report.lane === 'fast') {
     const lane = await fastLaneMergeRefusal({
       issueId: issue.id,

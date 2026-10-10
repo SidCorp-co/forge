@@ -4,12 +4,16 @@
 
 import { LANDED_SINCE } from './base-branch.mjs';
 
-/** Every check a merge needs, in the order they run. Probes and review are the tracker's half. */
+/**
+ * Every check a merge needs, in the order they run. `probes` is the issue's kept probes, run against
+ * the change (`lib/merge-probes.mjs`); the review is the tracker's half, which the mark asks.
+ */
 export const REQUIRED_CHECKS = [
   'rebased-on-base',
   'typecheck',
   'direct-tests',
   'integration-tests',
+  'probes',
   'verify',
 ];
 
@@ -34,7 +38,10 @@ export function notRunOnLane(lane) {
   return REQUIRED_CHECKS.filter((n) => !FAST_LANE_CHECKS.includes(n)).map((name) => ({
     name,
     owner: 'REQ-39 BC-7',
-    why: 'the fast lane runs the typecheck and the touched tests only; the whole suite runs nightly and at each cut',
+    why:
+      name === 'probes'
+        ? 'the fast lane runs the typecheck and the touched tests only, and no kept probe'
+        : 'the fast lane runs the typecheck and the touched tests only; the whole suite runs nightly and at each cut',
   }));
 }
 
@@ -56,11 +63,6 @@ export function patchIdOf(printed) {
 
 /** Named in every report as not run here, with what owns each. */
 export const NOT_RUN_HERE = [
-  {
-    name: 'probes',
-    owner: 'REQ-36 BC-9',
-    why: 'kept probes are replayed on each verified deploy (ISS-470); nothing replays them at merge yet',
-  },
   {
     name: 'review',
     owner: 'POST /api/issues/:id/review',
@@ -111,19 +113,36 @@ export function missingCheck(checks, lane = 'full') {
   return requiredChecks(lane).find((name) => !checks.some((c) => c.name === name)) ?? null;
 }
 
-/** The checks that ended red. */
+/**
+ * The checks that ended red, a probe's excepted: a red probe is refused MERGE_PROBE_RED by name
+ * (`lib/merge-probes.mjs:probeRefusalLines`), as core refuses it.
+ */
 export function redChecks(checks) {
-  return checks.filter((c) => c.result === 'fail');
+  return checks.filter((c) => c.result === 'fail' && c.kind !== 'probes');
 }
 
-/** The body `POST /api/issues/:id/merge-check` takes, as this run made it. */
-export function reportOf({ branch, baseSha, head, mode, touched, checks, lane = 'full', patchId }) {
+/**
+ * The body `POST /api/issues/:id/merge-check` takes, as this run made it. `probes` binds each probe
+ * check to the kept probe it ran, which core holds to the probes the issue keeps.
+ */
+export function reportOf({
+  branch,
+  baseSha,
+  head,
+  mode,
+  touched,
+  checks,
+  probes = [],
+  lane = 'full',
+  patchId,
+}) {
   return {
     base: { branch, sha: baseSha },
     head,
     mode,
     touched,
     checks,
+    probes,
     lane,
     patchId,
   };
