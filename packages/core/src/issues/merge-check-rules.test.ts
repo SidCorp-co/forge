@@ -94,35 +94,33 @@ describe('which report a merge may rely on', () => {
   });
 });
 
-describe("the change's kept probes (REQ-36 BC-1, BC-9)", () => {
-  const PROBE_A = '11111111-1111-4111-8111-111111111111';
-  const PROBE_B = '22222222-2222-4222-8222-222222222222';
-  /** A report whose `probes` checks are `ran`, each bound to its criterion's probe. */
-  const withProbes = (
-    ran: { criterion: number; probe: string; over?: Doc }[],
-  ): MergeCheckReport => {
-    const probeChecks = ran.map((r) =>
-      run('probes', { scope: `criterion ${r.criterion}`, ...r.over }),
-    );
-    const others = REQUIRED_MERGE_CHECKS.filter((n) => n !== 'probes').map((n) => run(n));
-    return {
-      ...report([
-        ...others,
-        ...(probeChecks.length ? probeChecks : [run('probes', { result: 'none' })]),
-      ]),
-      probes: ran.map((r, i) => ({
-        criterion: r.criterion,
-        probe: r.probe,
-        check: probeChecks[i]?.id ?? '',
-      })),
-    };
+const PROBE_A = '11111111-1111-4111-8111-111111111111';
+const PROBE_B = '22222222-2222-4222-8222-222222222222';
+/** A report whose `probes` checks are `ran`, each bound to its criterion's probe. */
+const withProbes = (ran: { criterion: number; probe: string; over?: Doc }[]): MergeCheckReport => {
+  const probeChecks = ran.map((r) =>
+    run('probes', { scope: `criterion ${r.criterion}`, ...r.over }),
+  );
+  const others = REQUIRED_MERGE_CHECKS.filter((n) => n !== 'probes').map((n) => run(n));
+  return {
+    ...report([
+      ...others,
+      ...(probeChecks.length ? probeChecks : [run('probes', { result: 'none' })]),
+    ]),
+    probes: ran.map((r, i) => ({
+      criterion: r.criterion,
+      probe: r.probe,
+      check: probeChecks[i]?.id ?? '',
+    })),
   };
-  const observable = (n: number, probe: string | null) => ({
-    n,
-    class: 'observable' as const,
-    probe: probe ? { id: probe } : null,
-  });
+};
+const observable = (n: number, probe: string | null) => ({
+  n,
+  class: 'observable' as const,
+  probe: probe ? { id: probe } : null,
+});
 
+describe("the change's kept probes (REQ-36 BC-1, BC-9)", () => {
   it('takes a report that ran every kept probe green', () => {
     const r = withProbes([
       { criterion: 1, probe: PROBE_A },
@@ -214,6 +212,111 @@ describe("the change's kept probes (REQ-36 BC-1, BC-9)", () => {
       lane: 'fast',
     };
     expect(probeRefusals(fast, [observable(1, PROBE_A)])).toEqual([]);
+  });
+});
+
+describe("owes the change's probes only (ISS-472 round 5, comment 826f551d)", () => {
+  const JUDGED = 'c'.repeat(40);
+  const verdictId = (n: number) => `${String(n).padStart(8, '0')}-0000-4000-8000-000000000000`;
+  const latest = (n: number, verdict: string, commitSha: string | null = JUDGED) => ({
+    id: verdictId(n),
+    verdict,
+    identityKind: commitSha ? 'commit' : 'runtime',
+    commitSha,
+  });
+  /** ISS-439 round 6 at 1714005e3: 23 observable criteria judged before probes, one claimed code property. */
+  const iss439Round6 = () => [
+    ...Array.from({ length: 23 }, (_, i) => ({
+      ...observable(i + 1, null),
+      latest: latest(i + 1, 'pass'),
+    })),
+    { n: 27, class: 'code_property' as const, probe: null, latest: latest(27, 'fail', HEAD) },
+  ];
+  const standingAll = Array.from({ length: 23 }, (_, i) => ({
+    criterion: i + 1,
+    verdict: verdictId(i + 1),
+  }));
+
+  it('takes ISS-439 round 6: 23 criteria standing on verdicts the base carries, one code property', () => {
+    const r = { ...withProbes([]), standing: standingAll };
+    expect(probeRefusals(r, iss439Round6())).toEqual([]);
+    expect(recordFields(r).find((f) => f.key === 'probes')?.value).toBe(
+      `no kept probe to run; criteria ${standingAll.map((s) => s.criterion).join(', ')} stand on verdicts their base carries`,
+    );
+  });
+
+  it('was refused before: a report naming nothing standing owes every observable criterion', () => {
+    const out = probeRefusals(withProbes([]), iss439Round6());
+    expect(out.map((x) => x.code)).toEqual(['MERGE_PROBE_MISSING']);
+    expect(out[0]?.detail).toContain('criterion 23 is observable and keeps no probe');
+  });
+
+  it('owes nothing for a criterion whose latest verdict is skipped: only the live build shows it', () => {
+    const skipped = [{ ...observable(5, null), latest: latest(5, 'skipped', HEAD) }];
+    expect(probeRefusals(withProbes([]), skipped)).toEqual([]);
+  });
+
+  it('refuses a standing reading core does not hold, naming the criterion and why', () => {
+    const criteria = [
+      { ...observable(1, null), latest: latest(1, 'fail') },
+      { ...observable(2, null), latest: latest(2, 'pass', HEAD) },
+      { ...observable(3, null), latest: latest(3, 'pass', null) },
+      { ...observable(4, null), latest: latest(4, 'short') },
+      { ...observable(6, null), latest: null },
+    ];
+    const r = {
+      ...withProbes([]),
+      standing: [
+        { criterion: 1, verdict: verdictId(1) },
+        { criterion: 2, verdict: verdictId(2) },
+        { criterion: 3, verdict: verdictId(3) },
+        { criterion: 4, verdict: verdictId(44) },
+        { criterion: 6, verdict: verdictId(6) },
+        { criterion: 9, verdict: verdictId(9) },
+      ],
+    };
+    const out = probeRefusals(r, criteria);
+    expect(out.map((x) => x.code)).toEqual(['MERGE_PROBE_MISSING']);
+    const detail = out[0]?.detail ?? '';
+    expect(detail).toContain(
+      'criterion 1: the report reads it standing, and its latest verdict is fail',
+    );
+    expect(detail).toContain(
+      `criterion 2: the report reads it standing, and its latest verdict is at the head checked, ${HEAD.slice(0, 12)}`,
+    );
+    expect(detail).toContain(
+      'criterion 3: the report reads it standing, and its latest verdict names no commit',
+    );
+    expect(detail).toContain(
+      `criterion 4: the report reads it standing on verdict ${verdictId(44)}, and its latest verdict is ${verdictId(4)}`,
+    );
+    expect(detail).toContain('criterion 6: the report reads it standing, and it has no verdict');
+    expect(detail).toContain(
+      'criterion 9: the report reads it standing, and the issue has no live criterion 9',
+    );
+  });
+
+  it('keeps J9 red: a claimed criterion with no probe, a red probe, and a head behind its base', () => {
+    const claimed = probeRefusals(
+      { ...withProbes([]), standing: standingAll.slice(1) },
+      iss439Round6(),
+    );
+    expect(claimed.map((x) => x.code)).toEqual(['MERGE_PROBE_MISSING']);
+    expect(claimed[0]?.detail).toContain('criterion 1 is observable and keeps no probe');
+    expect(claimed[0]?.detail).not.toContain('criterion 2 ');
+    const red = probeRefusals(
+      {
+        ...withProbes([{ criterion: 24, probe: PROBE_A, over: { result: 'fail' } }]),
+        standing: standingAll,
+      },
+      [...iss439Round6(), { ...observable(24, PROBE_A), latest: null }],
+    );
+    expect(red.map((x) => x.code)).toEqual(['MERGE_PROBE_RED']);
+    const behind = report([
+      ...REQUIRED_MERGE_CHECKS.filter((n) => n !== 'rebased-on-base').map((n) => run(n)),
+      run('rebased-on-base', { result: 'fail' }),
+    ]);
+    expect(checkRefusal({ ...behind, standing: standingAll })?.code).toBe('MERGE_BEHIND_BASE');
   });
 });
 

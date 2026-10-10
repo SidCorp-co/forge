@@ -180,6 +180,20 @@ describe("a release page as Markdown (BC-11)", () => {
 			"- Release page (complete): The page shows the version and date.; The page names who approved it.; Highlights open it. (short of its wording) (1 not yet proven on this build)",
 		);
 	});
+	// J10 on 0.4.0-dev.227: each ask printed its migration path twice, in the sentence and after it
+	it("names an ask's artifact once, adding it only where the sentence does not say it", () => {
+		const ref = "packages/core/drizzle/migrations/0495_intake_retry.sql";
+		const asks = releasePageMarkdown(
+			page({
+				actionRequired: [
+					{ kind: "migration", ref, issues: ["ISS-455"], sentence: `Back up the database before this release deploys: ${ref} changes its schema.` },
+					{ kind: "setting", ref: "VAULT_KEY", issues: [], sentence: "Set the vault key." },
+				],
+			}),
+		);
+		expect(asks.split(ref)).toHaveLength(2);
+		expect(asks).toContain("- Set the vault key. (VAULT_KEY)");
+	});
 	it("says an empty Action required reads empty, and never names an issue key", () => {
 		expect(md).toContain("## Action required\nNothing is required of you.");
 		expect(md).not.toContain("ISS-");

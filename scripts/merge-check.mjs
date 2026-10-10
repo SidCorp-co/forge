@@ -10,8 +10,10 @@
 // the change's patch id, which core holds to the one the approved preview served.
 //
 //   pnpm merge-check --probes <file>     against the latest origin/<base>, fetched first, running the
-//                                        kept probes of the issue whose criteria read <file> holds
-//                                        (`GET /api/issues/:id/criteria`, saved)
+//                                        kept probes of the criteria the change claims, from the
+//                                        issue's criteria read <file> (`GET /api/issues/:id/criteria`,
+//                                        saved after the builder's verdicts); a criterion standing on
+//                                        a pass or short at a commit the base carries owes none
 //   pnpm merge-check --probes none       a run that names no issue (CI's): it runs no probe, and core
 //                                        refuses MERGE_PROBE_MISSING where the issue keeps one
 //   pnpm merge-check --probe-origin <url>  the origin serving a build of the change: a command probe
@@ -192,10 +194,14 @@ checks.push(...runTypecheck(ROOT, { baseRef: baseSha, touched: touched.map((t) =
 const direct = runDirectTests(ROOT, { touched, integration: lane === 'full' });
 checks.push(...direct.checks);
 
+// A criterion stands on a verdict at a commit this base carries (ISS-472 round 5): a commit git does
+// not know, or one off the base, is not carried, so the criterion stays the change's and owes its probe.
+const carried = (sha) =>
+  spawnSync('git', ['merge-base', '--is-ancestor', sha, baseSha], { cwd: ROOT }).status === 0;
 const probeRun =
   lane === 'full'
-    ? await runProbes(criteria, { root: ROOT, origin })
-    : { checks: [], bindings: [], missing: [], red: [] };
+    ? await runProbes(criteria, { root: ROOT, origin, carried })
+    : { checks: [], bindings: [], missing: [], red: [], standing: [] };
 checks.push(...probeRun.checks);
 
 if (lane === 'full') {
@@ -233,6 +239,7 @@ const report = reportOf({
   touched,
   checks,
   probes: probeRun.bindings,
+  standing: probeRun.standing,
   lane,
   patchId,
 });
@@ -243,6 +250,11 @@ console.log('\nmerge-check: what ran');
 for (const line of describeChecks(checks)) console.log(line);
 for (const n of [...notRunOnLane(lane), ...NOT_RUN_HERE])
   console.log(`  not run here: ${n.name} — ${n.why} (${n.owner})`);
+if (probeRun.standing.length) {
+  console.log(
+    `  owes no probe, standing on a verdict ${branch} at ${baseSha.slice(0, 12)} carries: ${probeRun.standing.map((s) => `criterion ${s.criterion} (${s.reading})`).join(', ')}`,
+  );
+}
 if (direct.untested.length) {
   console.log(
     `  no direct test reaches: ${direct.untested.join(', ')}\n  (a test guarding one by path declares it with \`@direct-test-of <path>\`)`,

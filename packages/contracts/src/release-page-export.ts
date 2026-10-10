@@ -4,14 +4,15 @@
 // a page that carries them is exported without them. A clip or picture is a link, never an embedded
 // file; an in-app link needs the reader's session, so what is exported says so rather than hiding it.
 
-import type {
-	ReleaseHighlights,
-	ReleaseMediaRef,
-	ReleasePage,
-	ReleasePageChange,
-	ReleasePageCriteria,
-	ReleasePageProven,
-	ReleasePageRequirement,
+import {
+	actionSaysRef,
+	type ReleaseHighlights,
+	type ReleaseMediaRef,
+	type ReleasePage,
+	type ReleasePageChange,
+	type ReleasePageCriteria,
+	type ReleasePageProven,
+	type ReleasePageRequirement,
 } from "./release-page.js";
 
 export interface ReleasePageExportOptions {
@@ -149,7 +150,7 @@ function sectionsOf(page: ReleasePage, origin: string | undefined): Section[] {
 	out.push({
 		title: "Action required",
 		items: page.actionRequired.map((a) => ({
-			text: `${a.sentence} (${a.ref})`,
+			text: actionSaysRef(a) ? a.sentence : `${a.sentence} (${a.ref})`,
 		})),
 		none:
 			page.shipped.state === "unread"

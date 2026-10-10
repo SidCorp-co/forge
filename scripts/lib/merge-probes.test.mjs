@@ -50,15 +50,133 @@ describe('the probes a merge owes', () => {
       { n: 5, class: null, probe },
     ]);
     expect(owed.runs.map((r) => r.criterion)).toEqual([1, 5]);
-    expect(owed.missing).toEqual([{ criterion: 2, why: 'it is observable and keeps no probe' }]);
+    expect(owed.missing).toEqual([
+      { criterion: 2, why: 'it is observable, it has no verdict yet, and it keeps no probe' },
+    ]);
   });
 
+  it('reads the saved criteria read, keeping each latest verdict, and refuses a malformed one', () => {
+    const latest = { id: 'v-1', verdict: 'pass', identityKind: 'commit', commitSha: JUDGED, x: 1 };
+    const ok = criteriaOf(
+      JSON.stringify({ criteria: [{ n: 1, class: 'observable', probe: null, latest }] }),
+      'c.json',
+    );
+    expect(ok.criteria[0].latest).toEqual({
+      id: 'v-1',
+      verdict: 'pass',
+      identityKind: 'commit',
+      commitSha: JUDGED,
+    });
+    expect(
+      criteriaOf('{"criteria":[{"n":2,"latest":{"verdict":"pass"}}]}', 'c.json').refusal,
+    ).toContain("criterion 2's latest verdict has no `id` or no `verdict`");
+  });
+});
+
+// ISS-472 round 5 (comment 826f551d): at 1714005e3 ISS-439 round 6 touched only criterion 27, a code
+// property, and the merge check refused MERGE_PROBE_MISSING on 23 observable criteria judged before
+// probes existed. The probes a merge owes are the change's: a criterion stands, owing none, where its
+// latest verdict is a pass or short at a commit the base already carries.
+const JUDGED = 'c'.repeat(40);
+const REBASED_AWAY = 'd'.repeat(40);
+const carried = (sha) => sha === JUDGED;
+const verdict = (v, commitSha = JUDGED, identityKind = 'commit') => ({
+  id: `v-${Math.random().toString(16).slice(2)}`,
+  verdict: v,
+  identityKind,
+  commitSha,
+});
+
+describe("the probes a merge owes are its change's (round 5)", () => {
+  const iss439Round6 = () => [
+    ...Array.from({ length: 23 }, (_, i) => ({
+      n: i + 1,
+      class: 'observable',
+      probe: null,
+      latest: verdict('pass'),
+    })),
+    { n: 27, class: 'code_property', probe: null, latest: verdict('fail', REBASED_AWAY) },
+  ];
+
+  it("owes nothing for ISS-439 round 6's 23 standing criteria, and names each as standing", () => {
+    const owed = probesOwed(iss439Round6(), { carried });
+    expect(owed.missing).toEqual([]);
+    expect(owed.runs).toEqual([]);
+    expect(owed.standing.map((s) => s.criterion)).toEqual(
+      Array.from({ length: 23 }, (_, i) => i + 1),
+    );
+    expect(owed.standing[0]).toMatchObject({ verdict: expect.stringMatching(/^v-/) });
+  });
+
+  it('refuses a criterion the change claims and keeps no probe for, saying why it is claimed', () => {
+    const owed = probesOwed(
+      [
+        { n: 1, class: 'observable', probe: null, latest: null },
+        { n: 2, class: 'observable', probe: null, latest: verdict('fail') },
+        { n: 3, class: 'observable', probe: null, latest: verdict('pass', REBASED_AWAY) },
+        { n: 4, class: 'observable', probe: null, latest: verdict('pass', null, 'runtime') },
+      ],
+      { carried },
+    );
+    expect(owed.standing).toEqual([]);
+    expect(owed.missing.map((m) => m.criterion)).toEqual([1, 2, 3, 4]);
+    expect(owed.missing[0].why).toBe(
+      'it is observable, it has no verdict yet, and it keeps no probe',
+    );
+    expect(owed.missing[1].why).toContain('its latest verdict is fail');
+    expect(owed.missing[2].why).toContain(
+      `pass at ${REBASED_AWAY.slice(0, 12)}, a commit the base does not carry`,
+    );
+    expect(owed.missing[3].why).toContain('pass on a runtime identity, not a commit');
+  });
+
+  it('runs the kept probe of a criterion a builder judged at a head the base does not carry', () => {
+    const probe = node('1');
+    const owed = probesOwed(
+      [{ n: 4, class: 'observable', probe, latest: verdict('pass', REBASED_AWAY) }],
+      { carried },
+    );
+    expect(owed.runs).toEqual([{ criterion: 4, probe }]);
+  });
+
+  it('owes nothing for a skipped criterion: only the live build can show it', () => {
+    const owed = probesOwed(
+      [{ n: 5, class: 'observable', probe: null, latest: verdict('skipped', REBASED_AWAY) }],
+      { carried },
+    );
+    expect(owed).toEqual({ runs: [], missing: [], standing: [] });
+  });
+
+  it('reads nothing as standing where it is not told what the base carries', () => {
+    const owed = probesOwed([{ n: 1, class: 'observable', probe: null, latest: verdict('pass') }]);
+    expect(owed.missing.map((m) => m.criterion)).toEqual([1]);
+  });
+
+  it('keeps J9 red: a red probe on a claimed criterion, and a claimed one keeping none', async () => {
+    const out = await runProbes(
+      [
+        ...iss439Round6(),
+        { n: 24, class: 'observable', probe: node('process.exit(3)'), latest: null },
+        { n: 25, class: 'observable', probe: null, latest: verdict('fail') },
+      ],
+      { root: ROOT, origin: null, carried },
+    );
+    expect(out.standing).toHaveLength(23);
+    expect(probeRefusalLines(out)).toEqual([
+      'MERGE_PROBE_MISSING — criterion 25: it is observable, its latest verdict is fail at ' +
+        `${JUDGED.slice(0, 12)}, and it keeps no probe`,
+      'MERGE_PROBE_RED — criterion 24: it exited 3, expected 0',
+    ]);
+  });
+});
+
+describe('the saved criteria read', () => {
   it('reads the saved criteria read, and refuses any other file by name', () => {
     const ok = criteriaOf(
       JSON.stringify({ criteria: [{ n: 3, class: 'observable', probe: null, statement: 'x' }] }),
       'c.json',
     );
-    expect(ok.criteria).toEqual([{ n: 3, class: 'observable', probe: null }]);
+    expect(ok.criteria).toEqual([{ n: 3, class: 'observable', probe: null, latest: null }]);
     expect(criteriaOf('{', 'c.json').refusal).toContain('is not JSON');
     expect(criteriaOf('{"items":[]}', 'c.json').refusal).toContain('holds no `criteria` list');
     expect(criteriaOf('{"criteria":[{"class":null}]}', 'c.json').refusal).toContain(
@@ -241,7 +359,7 @@ describe('a probe run, as the report carries it', () => {
     expect(out.red.map((r) => r.criterion)).toEqual([2]);
     const lines = probeRefusalLines(out);
     expect(lines[0]).toMatch(
-      /^MERGE_PROBE_MISSING — criterion 3: it is observable and keeps no probe; criterion 4: could not run/,
+      /^MERGE_PROBE_MISSING — criterion 3: it is observable, it has no verdict yet, and it keeps no probe; criterion 4: could not run/,
     );
     expect(lines[1]).toBe('MERGE_PROBE_RED — criterion 2: it exited 1, expected 0');
   });

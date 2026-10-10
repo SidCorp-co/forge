@@ -944,7 +944,7 @@ their own.
 | Command | When | What it runs | Exit |
 |---|---|---|---|
 | `pnpm test:changed [--integration] [--report <path>]` | before a push | `tc-changed`'s typecheck (and `cargo check` when the runner is touched), the direct tests of what changed against the merge-base with the target, committed or not, each timed; writes the checks' report | 0 · 1 a check red · 2 could not run |
-| `GITHUB_BASE_REF=dev pnpm merge-check --probes <file>` | before landing on dev (`--probes none` in `ci.yml`'s `merge-check` job, which names no issue) | refuses a full-lane run naming neither; fetches the base, refuses `MERGE_BEHIND_BASE` unless HEAD holds its tip and a dirty checkout by name; then the typecheck, the direct tests, the direct core integration tests, each kept probe of the issue whose criteria read `<file>` holds (`lib/merge-probes.mjs`; `--probe-origin <url>` names a build of the change for them), and `pnpm verify`, each timed; refuses `MERGE_PROBE_MISSING` and `MERGE_PROBE_RED` by name; writes the report, which on either lane carries the change's `patchId` (`git diff --binary <base> <head> \| git patch-id --stable`) — core records it and matches a feedback reporter's Fixed / Not fixed to it (REQ-41 BC-20). **Priced amnesty (REQ-41 BC-20):** a full-lane report from a checkout whose script predates patch ids is still taken, recorded `patch-id: absent (script predates patch ids)`, and answered with a `warnings` entry naming `PATCH_ID_ABSENT`. Traded: a full-lane fix landed from an old checkout cannot close a reporter's confirm. Cost: one extra ask of the reporter. Ends when no open dev branch's merge-base predates this merge — check on 2026-10-23, then make `patchId` required on every lane in `mergeCheckReportSchema` and drop `PATCH_ID_ABSENT` | 0 · 1 red or behind · 2 could not run |
+| `GITHUB_BASE_REF=dev pnpm merge-check --probes <file>` | before landing on dev (`--probes none` in `ci.yml`'s `merge-check` job, which names no issue) | refuses a full-lane run naming neither; fetches the base, refuses `MERGE_BEHIND_BASE` unless HEAD holds its tip and a dirty checkout by name; then the typecheck, the direct tests, the direct core integration tests, the kept probe of each criterion the change claims, from the issue's criteria read `<file>` (`lib/merge-probes.mjs`; a criterion standing on a pass or short at a commit the base carries, or skipped, owes none; `--probe-origin <url>` names a build of the change for them), and `pnpm verify`, each timed; refuses `MERGE_PROBE_MISSING` and `MERGE_PROBE_RED` by name; writes the report, which on either lane carries the change's `patchId` (`git diff --binary <base> <head> \| git patch-id --stable`) — core records it and matches a feedback reporter's Fixed / Not fixed to it (REQ-41 BC-20). **Priced amnesty (REQ-41 BC-20):** a full-lane report from a checkout whose script predates patch ids is still taken, recorded `patch-id: absent (script predates patch ids)`, and answered with a `warnings` entry naming `PATCH_ID_ABSENT`. Traded: a full-lane fix landed from an old checkout cannot close a reporter's confirm. Cost: one extra ask of the reporter. Ends when no open dev branch's merge-base predates this merge — check on 2026-10-23, then make `patchId` required on every lane in `mergeCheckReportSchema` and drop `PATCH_ID_ABSENT` | 0 · 1 red or behind · 2 could not run |
 | `pnpm merge-check --since <sha>` | a push run on dev | the same over a landing already on the base, `<sha>..HEAD`, recorded as `landed`; its `verify` runs under `FORGE_LANDED_SINCE=<sha>`, so the cargo gates, migration order and the baseline ratchets measure that range too (`lib/base-branch.mjs`) | as above |
 | `pnpm merge-check --lane fast` | a change a person approved in its live preview (REQ-39 BC-7) | the fast lane: `rebased-on-base`, the typecheck and the direct tests only — no integration tests, no `verify`; the report carries `lane: 'fast'`, and its `patchId`, which core also holds to the approved preview's and refuses `FAST_LANE_*` by name | as above |
 
@@ -954,7 +954,7 @@ check run as `packages/contracts/src/check-runs.ts` declares it: an id of its ow
 started and how long it took. `test:changed`'s report (`{ head, checks }`, `--report <path>`, the OS
 temp directory by default; a check run on a dirty checkout says so in its note) is the body of
 `POST /api/issues/:id/checks`, which records each on the run session holding the issue on the box
-that sent it; a resend adds nothing. The merge check runs a `probes` check per kept probe; the review
+that sent it; a resend adds nothing. The merge check runs a `probes` check per kept probe of a criterion the change claims; the review
 is a kind no script here runs, and a check run by hand outside these scripts is timed only if its run
 sends it.
 
@@ -966,13 +966,18 @@ core's `verification` record naming them — never a second copy of a duration. 
 checks every merge needs are `REQUIRED_MERGE_CHECKS` in `packages/contracts/src/merge-check.ts`,
 and `lib/merge-check.test.mjs` holds `lib/merge-check.mjs`'s copy to it, as it holds `FAST_LANE_CHECKS`
 to `FAST_LANE_MERGE_CHECKS` in `packages/contracts/src/fast-lane.ts`. `probes` is on that list
-(REQ-36 BC-9): the script reads the issue's kept probes from `--probes <file>`, the saved
-`GET /api/issues/:id/criteria`, and runs each — a command by its argv in the checkout, with
+(REQ-36 BC-9): the script reads the issue's criteria from `--probes <file>`, the saved
+`GET /api/issues/:id/criteria`, and runs the kept probe of each criterion the change claims (ISS-472
+round 5). A criterion stands, owing none, where its latest verdict is a pass or short at a commit the
+base carries (`git merge-base --is-ancestor`); a skipped one owes none; every other is the change's.
+The report's `standing` names each standing criterion and the verdict it read, and core holds that to
+the criterion's live latest verdict. Each probe runs — a command by its argv in the checkout, with
 `FORGE_PROBE_ORIGIN` set to `--probe-origin` where one is given; an anonymous request naming no
 service against that origin. A replayer request, a service's request, or any request with no origin
 cannot run here and is reported `none` with why. The report's `probes` binds each check to its kept
-probe, and core holds it to the probes the issue keeps when it is recorded: one not run, or an
-observable criterion keeping none, is `MERGE_PROBE_MISSING`; one red is `MERGE_PROBE_RED`. The fast
+probe, and core holds it to the probes the claimed criteria keep when it is recorded: one not run, a
+claimed observable criterion keeping none, or a standing reading core does not hold, is
+`MERGE_PROBE_MISSING`; one red is `MERGE_PROBE_RED`. The fast
 lane runs none (REQ-39 BC-7). The review is the mark's to ask, and each report names it as not run. A mark the project's `validation.mergeCheck: required` or an approved new pattern owes a
 check is refused `MERGE_CHECK_MISSING` until a passing one stands at the commit marked.
 

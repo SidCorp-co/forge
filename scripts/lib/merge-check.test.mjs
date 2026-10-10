@@ -157,6 +157,23 @@ describe('what a merge needs', () => {
     expect(report.base).toEqual({ branch: 'dev', sha: TIP });
     expect(report.lane).toBe('full');
   });
+
+  it('names the criteria it read as standing, and the verdict each stands on, only where one does', () => {
+    const at = {
+      branch: 'dev',
+      baseSha: TIP,
+      head: HEAD,
+      mode: 'pre-merge',
+      touched: [{ path: 'a.ts', change: 'changed' }],
+      checks: [],
+      patchId: 'c'.repeat(40),
+    };
+    const standing = [{ criterion: 3, verdict: 'v-3', reading: 'pass at cccccccccccc' }];
+    const report = reportOf({ ...at, standing });
+    expect(Object.keys(report).slice(5, 7)).toEqual(['probes', 'standing']);
+    expect(report.standing).toEqual([{ criterion: 3, verdict: 'v-3' }]);
+    expect(CLI).toContain('standing: probeRun.standing');
+  });
 });
 
 describe('the fast lane (REQ-39 BC-7)', () => {

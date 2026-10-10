@@ -2,7 +2,7 @@
 // known issues in plain words, the clip played from the bytes the session may fetch, and the
 // technical notes only where the page carries them.
 
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { releasePage, TECHNICAL } from "@/test/release-page";
 import { renderWithQuery } from "@/test/render";
@@ -125,6 +125,14 @@ describe("the sections the release page reads (BC-5..8)", () => {
     unmount();
     renderWithQuery(<ReleaseReader page={releasePage({ actionRequired: [] })} authed={false} />);
     expect(screen.getByTestId("page-actions")).toHaveTextContent("Nothing is required of you.");
+  });
+
+  // J10 on 0.4.0-dev.227: each ask printed its migration path twice, in the sentence and under it
+  it("names an ask's artifact once where its sentence already says it", () => {
+    const ref = "packages/core/drizzle/migrations/0495_intake_retry.sql";
+    const sentence = `Back up the database before this release deploys: ${ref} changes its schema.`;
+    renderWithQuery(<ReleaseReader page={releasePage({ actionRequired: [{ kind: "migration", sentence, ref, issues: ["ISS-455"] }] })} authed={false} />);
+    expect(screen.getByTestId("page-action").textContent?.split(ref)).toHaveLength(2);
   });
 
   it("lists each criterion not proven on the build as what it is: short, not judged and where it was judged instead", () => {
@@ -250,6 +258,25 @@ describe("the developer view (BC-9)", () => {
     );
     expect(screen.getByTestId("page-technical-range")).toHaveAttribute("data-read", "unread");
     expect(screen.getByTestId("page-technical-range")).toHaveTextContent(`The range was not read: ${why}.`);
+  });
+
+  // J10 on 0.4.0-dev.227: "Deploys UI, API, Logic and Config." read beside the toggle and again under
+  // a heading, whose hint said the list was each issue's landing though it is the range's files
+  it("says what the release deploys once under its toggle, with no hint that the list is the landings", () => {
+    const surface = (s: "ui" | "api") => ({
+      surface: s,
+      count: 1,
+      shipsNothing: false,
+      issues: [],
+      artifacts: [{ ref: `packages/${s}/a.ts`, change: "changed" as const, issues: [], carriedBy: null }],
+    });
+    const changes = { ...TECHNICAL.changes, surfaces: [surface("ui"), surface("api")] };
+    renderWithQuery(<ReleaseReader page={releasePage({ view: "developer", technical: { ...TECHNICAL, changes } })} slug="forge" authed />);
+    const tech = screen.getByTestId("release-technical");
+    fireEvent.click(within(tech).getByTestId("release-technical-toggle"));
+    expect(within(tech).getAllByText("Deploys UI and API.")).toHaveLength(1);
+    expect(within(tech).getAllByTestId("release-surface")).toHaveLength(2);
+    expect(tech).not.toHaveTextContent("landing names");
   });
 
   it("draws nothing technical for the user view", () => {

@@ -1,8 +1,8 @@
 /**
  * The merge check's rules (Issue to release r20 `rule-merge`; REQ-36 BC-9, BC-15, BC-17; ISS-472),
  * pure: which report a merge may rely on, the record it is kept as, and whether a mark finds one at
- * the commit it marks, and whether it ran every kept probe of its issue (REQ-36 BC-1, BC-9;
- * `probeRefusals`). A fast-lane report (REQ-39 BC-7) needs only the fast checks here; whether the
+ * the commit it marks, and whether it ran the kept probe of every criterion its change claims (REQ-36
+ * BC-1, BC-9, BC-15; `probeRefusals`). A fast-lane report (REQ-39 BC-7) needs only the fast checks here; whether the
  * change may take that lane is the fast lane's own rule (`fast-lane/rules.ts`), asked through a port.
  * `merge-check.ts` reads and writes around them.
  */
@@ -88,20 +88,59 @@ export function checkRefusal(report: MergeCheckReport): CheckRefusal | null {
   return null;
 }
 
-/** One live criterion of the issue as the merge reads it: its class and the probe it keeps. */
+/** One live criterion of the issue as the merge reads it: its class, its kept probe, its latest verdict. */
 export interface MergeCriterion {
   n: number;
   class: CriterionClass | null;
   probe: { id: string } | null;
+  latest?: {
+    id: string;
+    verdict: string;
+    identityKind: string | null;
+    commitSha: string | null;
+  } | null;
+}
+
+/** The verdicts a criterion stands on (`short` counts as a pass, contracts `criterionCountsAsPass`). */
+const STANDING_VERDICTS = ['pass', 'short'];
+
+/**
+ * Why core does not hold the report's reading that criterion `n` stands on `verdict`, or null where
+ * it does: the criterion is live, the verdict is its latest, a pass or short, on a commit, and not on
+ * the head checked (which a base the change is merged onto cannot already carry).
+ */
+function standingFault(
+  n: number,
+  verdict: string,
+  criterion: MergeCriterion | undefined,
+  head: string,
+): string | null {
+  const lead = `criterion ${n}: the report reads it standing`;
+  if (!criterion) return `${lead}, and the issue has no live criterion ${n}`;
+  const latest = criterion.latest ?? null;
+  if (!latest) return `${lead}, and it has no verdict`;
+  if (latest.id !== verdict)
+    return `${lead} on verdict ${verdict}, and its latest verdict is ${latest.id}`;
+  if (!STANDING_VERDICTS.includes(latest.verdict))
+    return `${lead}, and its latest verdict is ${latest.verdict}`;
+  if (latest.identityKind !== 'commit' || !latest.commitSha)
+    return `${lead}, and its latest verdict names no commit a base could carry`;
+  if (head.toLowerCase().startsWith(latest.commitSha.toLowerCase()))
+    return `${lead}, and its latest verdict is at the head checked, ${head.slice(0, 12)}`;
+  return null;
 }
 
 /**
- * Why the report's probes cannot let a merge through, each by name, or none (REQ-36 BC-1, BC-9).
- * Every kept probe of a criterion not classed a code property must have run in this report and
- * passed: one the report did not run, ran with result `none`, or ran in an older version is
- * MERGE_PROBE_MISSING, as is an observable criterion keeping no probe; any `probes` check that ended
- * red is MERGE_PROBE_RED. A code property, or a criterion no design classes, keeping none owes none.
- * The fast lane runs no probes (REQ-39 BC-7), so its report is not asked.
+ * Why the report's probes cannot let a merge through, each by name, or none (REQ-36 BC-1, BC-9,
+ * BC-15). The probes a merge owes are its change's (ISS-472 round 5). A criterion the report names
+ * `standing` owes none where core holds that reading (`standingFault`): its latest verdict is a pass
+ * or short on a commit the base carries, judged before this change. A criterion whose latest verdict
+ * is `skipped` owes none: only the live build can show it. Every other criterion not classed a code
+ * property is the change's, and its kept probe must have run in this report and passed: one the
+ * report did not run, ran with result `none`, or ran in an older version is MERGE_PROBE_MISSING, as
+ * is a claimed observable criterion keeping no probe and a standing reading core does not hold; any
+ * `probes` check that ended red is MERGE_PROBE_RED. A code property, or a criterion no design
+ * classes, keeping none owes none. The fast lane runs no probes (REQ-39 BC-7), so it is not asked.
  */
 export function probeRefusals(
   report: MergeCheckReport,
@@ -111,8 +150,20 @@ export function probeRefusals(
   const bindings = report.probes ?? [];
   const checkOf = (id: string) => report.checks.find((c) => c.id === id);
   const missing: string[] = [];
+  const standing = new Set<number>();
+  for (const s of report.standing ?? []) {
+    const fault = standingFault(
+      s.criterion,
+      s.verdict,
+      criteria.find((c) => c.n === s.criterion),
+      report.head,
+    );
+    if (fault) missing.push(fault);
+    else standing.add(s.criterion);
+  }
   for (const c of criteria) {
-    if (c.class === 'code_property') continue;
+    if (c.class === 'code_property' || standing.has(c.n)) continue;
+    if (c.latest?.verdict === 'skipped') continue;
     if (!c.probe) {
       if (c.class === 'observable')
         missing.push(`criterion ${c.n} is observable and keeps no probe`);
@@ -139,7 +190,7 @@ export function probeRefusals(
     out.push({
       code: 'MERGE_PROBE_MISSING',
       path: '/probes',
-      detail: `${missing.join('; ')}. Run the merge check with --probes <the issue's criteria read>, keep a probe on each observable criterion, and record it again. Nothing was recorded`,
+      detail: `${missing.join('; ')}. Run the merge check with --probes <the issue's criteria read, saved after the builder's verdicts>, keep a probe on each observable criterion the change claims, and record it again. Nothing was recorded`,
     });
   }
   const red = report.checks.filter((c) => c.kind === 'probes' && c.result === 'fail');
@@ -153,17 +204,20 @@ export function probeRefusals(
   return out;
 }
 
-/** What the record says of the probes the check ran: how many, for which criteria. */
+/** What the record says of the probes the check ran, for which criteria, and which stood. */
 export function probesRan(report: MergeCheckReport): string {
   const ran = report.checks.filter((c) => c.kind === 'probes' && c.result !== 'none');
-  if (ran.length === 0) return 'no kept probe to run';
   const criteria = [...new Set((report.probes ?? []).map((b) => b.criterion))].sort(
     (a, b) => a - b,
   );
-  return `${ran.length} kept probe(s) ran and held, for criteria ${criteria.join(', ')}`.slice(
-    0,
-    400,
-  );
+  const lead = ran.length
+    ? `${ran.length} kept probe(s) ran and held, for criteria ${criteria.join(', ')}`
+    : 'no kept probe to run';
+  const stood = (report.standing ?? []).map((s) => s.criterion).sort((a, b) => a - b);
+  const tail = stood.length
+    ? `; criteria ${stood.join(', ')} stand on verdicts their base carries`
+    : '';
+  return `${lead}${tail}`.slice(0, FIELD_MAX);
 }
 
 /** At most this many characters in one record field. */

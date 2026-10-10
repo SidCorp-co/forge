@@ -331,3 +331,96 @@ describe('the requirements a release completes and the criteria of its issues', 
     expect(r).toMatchObject({ completes: false, remaining: { criteria: ['BC-2'] } });
   });
 });
+
+describe('an issue reopened between two releases reads as the rework of the one that shipped it (BC-6)', () => {
+  // J10 on 0.4.0-dev.227, ISS-455's real timeline: dev.224 shipped round 1 and released at 02:01;
+  // dev.225's run started at 02:17; J8 reopened the issue at 02:21; its retry fix, with migration
+  // 0495, was closed into dev.225 when that release shipped at 03:12. dev.225 read it as "reworked in
+  // a later release", left its note out of Fixes, and asked for 0495's backup naming no issue.
+  const RETRY = 'An assistant draft the model missed is tried again, up to three tries.';
+  const MIGRATION = 'packages/core/drizzle/migrations/0495_intake_retry.sql';
+  const day = (hms: string) => `2026-10-10T${hms}Z`;
+
+  async function shippedRun(
+    version: string,
+    started: string,
+    released: string,
+    roster: { issueIds: string[]; rosterClosed: string[] },
+  ) {
+    const meta = {
+      source: 'release-batch',
+      ...roster,
+      finish: { requestId: version, state: 'finished', commit: BETA_SHA, version: 1 },
+    };
+    await db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, release_version, release_released_at, metadata)
+      VALUES (gen_random_uuid(), ${projectId}, 'system', 'completed', ${day(started)}, ${version},
+              ${day(released)}, ${JSON.stringify(meta)}::jsonb)
+    `);
+  }
+
+  async function moved(issueId: string, from: string, to: string, at: string) {
+    await db.execute(sql`
+      INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, actor_agency, actor_id, source, created_at)
+      VALUES ('issue', ${issueId}, ${from}, ${to}, 'user', 'agent', ${agentId}, 'planted', ${day(at)})
+    `);
+  }
+
+  type Page = {
+    fixes: Array<{ issueKey: string; kind: string; line: string }>;
+    withoutNotes: Array<{ issueKey: string; why: string }>;
+    actionRequired: Array<{ kind: string; ref: string; issues: string[] }>;
+  };
+  const page = async (version: string) => {
+    const r = await call('member', 'GET', `/releases/${version}/page?view=developer`);
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    return r.body as unknown as Page;
+  };
+
+  /** ISS-455 shipped by dev.224, then reopened inside dev.225's window. */
+  async function iss455() {
+    const id = await fx.insertIssue('closed', { section: 'Fixed', userFacing: RETRY });
+    await db.execute(sql`
+      UPDATE issues SET merged_artifacts = ${JSON.stringify([
+        { surface: 'data', ref: MIGRATION, change: 'added' },
+      ])}::jsonb WHERE id = ${id}
+    `);
+    await shippedRun('0.4.0-dev.224', '01:19:11.380', '02:01:10.033', {
+      issueIds: [id],
+      rosterClosed: [],
+    });
+    await shippedRun('0.4.0-dev.225', '02:17:16.051', '03:12:04.688', {
+      issueIds: [],
+      rosterClosed: [id],
+    });
+    await moved(id, 'awaiting_release', 'closed', '02:01:10.040');
+    await moved(id, 'closed', 'reopen', '02:21:48.000');
+    return id;
+  }
+
+  it('lists the rework under dev.225 Fixes and names the issue on its migration ask, and keeps dev.224 reworked', async () => {
+    const id = await iss455();
+    await moved(id, 'awaiting_release', 'closed', '03:12:04.690');
+    const dev225 = await page('0.4.0-dev.225');
+    expect(dev225.withoutNotes).toEqual([]);
+    const key = dev225.fixes[0]?.issueKey;
+    expect(dev225.fixes).toEqual([{ issueKey: key, kind: 'fixed', line: RETRY }]);
+    expect(dev225.actionRequired).toEqual([
+      expect.objectContaining({ kind: 'migration', ref: MIGRATION, issues: [key] }),
+    ]);
+
+    const dev224 = await page('0.4.0-dev.224');
+    expect(dev224.fixes).toEqual([]);
+    expect(dev224.withoutNotes).toEqual([
+      expect.objectContaining({ issueKey: key, why: 'reworked' }),
+    ]);
+    expect(dev224.actionRequired).toEqual([]);
+  });
+
+  it('reads it reworked on dev.225 as well where dev.225 never closed it', async () => {
+    await iss455();
+    const dev225 = await page('0.4.0-dev.225');
+    expect(dev225.fixes).toEqual([]);
+    expect(dev225.withoutNotes.map((w) => w.why)).toEqual(['reworked']);
+  });
+});

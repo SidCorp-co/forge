@@ -79,15 +79,31 @@ export interface Shared {
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
 /**
+ * When this release claimed the issue. A shipped release claims at its own close of it, the first
+ * since its cut; any other release, or one that never closed it, at its cut. A draft claims nothing.
+ */
+export function claimedAt(
+  p: Pick<Part, 'openedAt' | 'releasedAt'>,
+  i: Pick<IssueFact, 'closedAt'>,
+): Date | null {
+  const cut = p.openedAt;
+  if (cut === null) return null;
+  const close = p.releasedAt === null ? undefined : i.closedAt.find((at) => at >= cut);
+  return close ?? cut;
+}
+
+/**
  * True where the issue was reopened after this release claimed it: its note and its mark now say a
  * later round, which this release did not ship (J9 on 0.4.0-dev.224: ISS-455's dev.225 retry fix read
- * as a dev.224 fix). A draft has claimed nothing yet.
+ * as a dev.224 fix). Read against the run's start instead, a reopen inside the window of the release
+ * that went on to ship the rework hid that release's own note (J10 on 0.4.0-dev.227: dev.225).
  */
 export function reworkedSince(
-  p: Pick<Part, 'openedAt'>,
-  i: Pick<IssueFact, 'reopenedAt'>,
+  p: Pick<Part, 'openedAt' | 'releasedAt'>,
+  i: Pick<IssueFact, 'reopenedAt' | 'closedAt'>,
 ): boolean {
-  return p.openedAt !== null && i.reopenedAt !== null && i.reopenedAt > p.openedAt;
+  const claimed = claimedAt(p, i);
+  return claimed !== null && i.reopenedAt !== null && i.reopenedAt > claimed;
 }
 
 function inFlightStage(attempts: readonly ReleaseAttemptRow[]) {

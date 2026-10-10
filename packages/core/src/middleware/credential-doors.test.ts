@@ -1,139 +1,66 @@
-// Every door a credential is admitted at, and what a chat credential meets there (REQ-30 BC-4,
+// Every door a credential is presented at, and what a chat credential meets there (REQ-30 BC-4,
 // ISS-439). A chat credential is a token core minted for a chat — an Agent session's turn token, the
 // Assistant's turn token, an agreed proposal's token — and every one is a PAT, so it is never a
 // session JWT, and the one chat write rule has to run wherever a PAT is admitted. The integration
 // suite (`tests/integration/chat-agreement-default-e2e.test.ts`) presents a real turn token at each
 // door.
 //
-// A door is found by where a credential ARRIVES, not by how it is checked (round 6: the review judge
-// admitted a bearer with timingSafeEqual, a digest lookup, hono/jwt and a verifier in a slot, and a
-// walk seeded only on argon2 and jose saw none of them). So every read of a request input in core —
-// a header, a query key, a cookie — names an input this file classifies, a credential or not, and
-// a read this file has not classified is red. A credential read seeds the walk, beside the
-// primitives a secret is checked with; the walk then follows bindings as before (any alias, a
-// namespace or default import, a dynamic import, a re-export or `export *`, `export default`), and
-// only the gates named below stop it, because the routes behind a gate are behind its door. A
-// verifier handed to another module's function as a value is refused, since nothing can follow it
-// from there: a door is where its verifier is called.
+// Default-deny, read by type (round 7). Rounds 5 and 6 recognised a door by the forms they had been
+// shown (verifier names, then request-read syntax), and each reviewer found a form outside the list.
+// Here credential-access.fixture.ts type-checks core's src and visits every expression whose static
+// type is a request carrier, whatever it is named: each use is a member credential-inputs.fixture.ts
+// classifies, a typed flow read as a slice, or a refusal naming what cannot be read. Every input
+// read by name, every whole read and every hono-family import is classified there as a credential
+// or not; anything unclassified is red, naming its module. A credential access seeds the binding
+// walk of rounds 5 and 6 (credential-walk.fixture.ts), beside the primitives a secret is checked
+// with, and every module the walk reaches is named below in exactly one list.
 //
-// Not walked: a secret in a validated body, path or query field (`c.req.valid`). Such a door is
-// named only when it reaches a primitive below.
+// What the walk does not read, exactly:
+//   - a value whose static type is no carrier and that no typed flow reached from one: what a
+//     package parses out of a carrier handed to it (the MCP transport's tool arguments, ws frames
+//     after handleUpgrade) is one classified whole read at the hand-off, not field by field;
+//   - what a module does with a value after reading it: an input classified plain and compared by
+//     hand with a secret is misclassified, and the classification is the claim a reviewer checks;
+//   - a module handed a credential string by a door and checking it by hand, through no seed: the
+//     door that read it is named, the checker is not;
+//   - a field nested inside a validated object: it is classified under its top-level field;
+//   - bytes on an upgraded socket after the handshake (a Duplex is not a carrier);
+//   - code outside core's src, and test and fixture files.
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { computedKey, inputKey } from './credential-inputs.fixture.js';
+import { scanAccesses } from './credential-access.fixture.js';
+import type { Access } from './credential-ast.fixture.js';
+import {
+  CREDENTIAL_INPUTS,
+  CREDENTIAL_READS,
+  FRAMEWORK_IMPORTS,
+  PLAIN_INPUTS,
+  PLAIN_READS,
+  SURFACE,
+} from './credential-inputs.fixture.js';
 import { readDoors } from './credential-walk.fixture.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** What a presented secret is checked with, or read through, by the package exporting it. */
+/** What a presented secret is checked with, by the package exporting it. */
 const PRIMITIVES: Readonly<Record<string, readonly string[]>> = {
   argon2: ['verify'],
   jose: ['jwtVerify', 'jwtDecrypt', 'compactVerify', 'flattenedVerify', 'generalVerify'],
   'hono/jwt': ['verify'],
-  'hono/cookie': ['getCookie', 'getSignedCookie'],
-  'hono/bearer-auth': ['bearerAuth'],
-  'hono/basic-auth': ['basicAuth'],
   'node:crypto': ['timingSafeEqual', 'verify', 'createVerify'],
   crypto: ['timingSafeEqual', 'verify', 'createVerify'],
 };
 
-/**
- * Every request input core reads, by `<kind>:<name>`: what it carries. A credential input seeds the
- * walk; a plain one says why no credential arrives in it.
- */
-const CREDENTIAL_INPUTS: Readonly<Record<string, string>> = {
-  'header:authorization': 'a bearer token: a PAT, a session JWT, a box token',
-  'header:cookie': 'the session, refresh and preview viewer cookies',
-  'header:sec-websocket-protocol': 'a browser socket’s bearer, as forge.bearer.<token>',
-  'query:ticket': 'a preview ticket, spent once for the viewer cookie',
+/** Core's own digests a presented secret is looked up by. */
+const CORE_SEEDS: Readonly<Record<string, readonly string[]>> = {
+  'lib/token-digest.ts': ['digestToken'],
+  'shares/token.ts': ['hashShareToken'],
 };
 
-const PLAIN_INPUTS: Readonly<Record<string, string>> = {
-  'header:accept': 'the media types a browser takes',
-  'header:cf-ray': 'the edge’s trace id',
-  'header:content-encoding': 'how a preview’s answer is compressed',
-  'header:content-length': 'a chat server’s answer size',
-  'header:content-type': 'the body’s media type',
-  'header:host': 'the host a request names',
-  'header:link': 'Sentry’s next page',
-  'header:origin': 'the page a request came from',
-  'header:referer': 'the page a request came from',
-  'header:sec-fetch-dest': 'what a browser is loading',
-  'header:user-agent': 'the client’s name',
-  'header:x-forge-capabilities': 'what a client renders',
-  'header:x-forge-project-slug': 'which project an /mcp call names',
-  'header:x-forge-unresolved-ref': 'a route reference left unresolved',
-  'header:x-forwarded-for': 'the client address the proxy saw',
-  'header:x-forwarded-host': 'the host the proxy saw',
-  'header:x-forwarded-proto': 'the scheme the proxy saw',
-  'header:x-github-delivery': 'a GitHub delivery id, read after its signature verified',
-  'header:x-github-event': 'a GitHub event name, read after its signature verified',
-  'header:x-gitlab-event': 'a GitLab event name, read after its token verified',
-  'header:x-gitlab-event-uuid': 'a GitLab event id, read after its token verified',
-  'header:x-gitlab-webhook-uuid': 'a GitLab hook id, read after its token verified',
-  'header:x-next-page': 'GitLab’s next page',
-  'header:x-real-ip': 'the client address the proxy saw',
-  'header:x-request-id': 'a trace id',
-  'query:projectid': 'which project a route reference names',
-};
-
-const UPSTREAM = 'the headers of an answer core received, never a request to core';
-const DATA = 'a headers field of a stored or declared shape, never a request to core';
-
-/**
- * A read whose name is computed, or that takes the whole header set, by `<module> <expression>`:
- * whether a credential arrives through it, and what it is.
- */
-const COMPUTED_READS: Readonly<Record<string, { credential: boolean; why: string }>> = {
-  'assistant/agreement/execute.ts call.headers': { credential: false, why: DATA },
-  'assistant/agreement/rest-hold.ts c.req.header(name)': {
-    credential: false,
-    why: 'KEPT_HEADERS: x-forge-capabilities only',
-  },
-  'ecosystem/contract/openapi-schema-slots.ts v.headers': { credential: false, why: DATA },
-  'integration-door/webhook-inbound-routes.ts c.req.header(m.header)': {
-    credential: false,
-    why: 'which provider’s event header is present',
-  },
-  'integration-door/webhook-inbound-routes.ts c.req.header(map.signatureHeader)': {
-    credential: true,
-    why: 'a provider’s signature or shared token',
-  },
-  'integration-door/webhook-inbound-routes.ts c.req.raw.headers': {
-    credential: false,
-    why: 'handed to the adapter after the signature verified; it reads event headers by name',
-  },
-  'integrations/deploy/kept-probe-request.ts request.headers': { credential: false, why: DATA },
-  'integrations/github/client.ts answered.headers': { credential: false, why: UPSTREAM },
-  'integrations/github/client.ts args.headers': { credential: false, why: UPSTREAM },
-  'integrations/github/client.ts err.headers': { credential: false, why: UPSTREAM },
-  'integrations/github/octokit.ts answered.headers': { credential: false, why: UPSTREAM },
-  'integrations/github/octokit.ts response.headers': { credential: false, why: UPSTREAM },
-  'integrations/github/publish-refusal.ts err.headers?.get(name)': {
-    credential: false,
-    why: UPSTREAM,
-  },
-  'issues/criteria/probe-rules.ts probe.request.headers': { credential: false, why: DATA },
-  'pipeline/failure-classifier.ts (meta as { headers?: unknown }).headers': {
-    credential: false,
-    why: UPSTREAM,
-  },
-  'pipeline/failure-classifier.ts err.headers': { credential: false, why: UPSTREAM },
-  'pipeline/failure-classifier.ts err?.headers': { credential: false, why: UPSTREAM },
-  'pipeline/failure-classifier.ts resp.headers': { credential: false, why: UPSTREAM },
-  'pipeline/failure-classifier.ts resp?.headers': { credential: false, why: UPSTREAM },
-  'previews/relay.ts answer.headers': { credential: false, why: UPSTREAM },
-  'previews/relay.ts req.headers': {
-    credential: true,
-    why: 'a viewer’s request forwarded to the preview, Forge’s cookies cut out',
-  },
-  'release-batch/probe-run.ts probe.request.headers': { credential: false, why: DATA },
-};
-
-/** Each module that admits a presented credential, and what a chat credential meets in it. */
+/** Each module a chat credential can be presented at, and what it meets there. */
 const DOORS: Readonly<Record<string, string>> = {
   'credentials/pat.ts': 'defines verifyPat, the one PAT verification every door below calls',
   'credentials/jwt.ts':
@@ -176,6 +103,17 @@ const DOORS: Readonly<Record<string, string>> = {
     'reads the Authorization header and session cookies and admits nothing; each caller is named here',
   'credentials/cookie.ts':
     'requestCookieValues reads forge_auth cookies, which carry only sessions core wrote, never a PAT',
+  'auth/register.ts':
+    'sign-up takes an email and a new password and stores its hash; a chat credential is neither',
+  'auth/oauth/routes.ts':
+    'the OAuth callback hands the provider’s code and state to handleCallback; a PAT is neither',
+};
+
+/**
+ * Each module another secret is presented at, looked up its own way, and why a PAT never matches.
+ * Each is a door R2 found unnamed, or one the default-deny scan found beside them.
+ */
+const SECRET_DOORS: Readonly<Record<string, string>> = {
   'lib/hmac.ts':
     'checks a provider’s body signature or shared webhook token; a chat credential is neither',
   'integration-door/webhook-inbound-routes.ts':
@@ -184,6 +122,47 @@ const DOORS: Readonly<Record<string, string>> = {
     'verifyConnectState checks an HMAC-signed connect state, which a PAT never is',
   'integration-door/github-connect-routes.ts':
     'the GitHub callbacks check their connect state behind requireAuth, where the chat write rule runs',
+  'integrations/identity/github.ts':
+    'exchanges GitHub’s code at its token endpoint; a PAT is no OAuth code',
+  'integrations/identity/oidc.ts':
+    'exchanges the provider’s code at its token endpoint; a PAT is no OAuth code',
+  'devices/login-routes.ts':
+    'GET /login/poll answers a box credential, with no session, to whoever holds a pairing code core minted for that login and looks up by digest; a PAT is never one. Approving a code sits behind requireAuth, where the chat write rule runs',
+  'lib/token-digest.ts':
+    'defines digestToken, the SHA-256 a pairing code, an invitation or a verification token is looked up by',
+  'lib/invitation.ts': 'invitationDigest digests an invitation token for its lookup',
+  'orgs/invitations-routes.ts':
+    'GET /:token reads an org invitation by its token, with no session; accepting sits behind requireAuth',
+  'projects/invitations-routes.ts':
+    'GET /:token reads a project invitation by its token, with no session; accepting sits behind requireAuth',
+  'orgs/read.ts': 'orgInvitationByToken looks an org invitation up by its token’s digest',
+  'projects/read.ts':
+    'projectInvitationByToken looks a project invitation up by its token’s digest',
+  'orgs/invitations.ts':
+    'issues an org invitation token, storing its digest, and consumes it by that digest',
+  'projects/invitation-token.ts':
+    'issues a project invitation token, storing its digest, and consumes it by that digest',
+  'orgs/service.ts': 'declineOrgInvitation finds the invitation by its token’s digest',
+  'projects/service.ts': 'declineProjectInvitation finds the invitation by its token’s digest',
+  'auth/verify.ts':
+    'GET /verify consumes an email verification token from the query, with no session',
+  'auth/verification-token.ts':
+    'issues a verification token, storing its digest, and consumes it by that digest',
+  'shares/routes.ts':
+    'POST /open opens one share for whoever holds its token, with no session; a PAT is never a share token',
+  'shares/service.ts': 'openShare looks a share up by its token’s SHA-256',
+  'shares/token.ts': 'defines hashShareToken, the SHA-256 a share token is looked up by',
+  'uploads/routes.ts':
+    'an upload or download ticket, a uuid core minted for one file, is the only authority there; a PAT is never one',
+};
+
+/** Each module the walk reaches that admits nobody, and why. */
+const ADMITS_NOTHING: Readonly<Record<string, string>> = {
+  'orgs/routes.ts': 'issues an org invitation token behind requireAuth; it checks none',
+  'projects/members-routes.ts':
+    'issues a project invitation token behind requireAuth; it checks none',
+  'shares/forge-link.ts': 'publishes a share, minting its token; it checks none',
+  'root-routes.ts': 'GET /pair passes a pairing code on to the web app’s pair page unread',
 };
 
 /**
@@ -198,50 +177,76 @@ const GATES: Readonly<Record<string, readonly string[]>> = {
   'previews/relay.ts': ['withPreviewHosts', 'relayPreviewRequest', 'relayPreviewUpgrade'],
   'ws/server.ts': ['attachWs'],
 };
+
+const plainInputs = new Set(Object.values(PLAIN_INPUTS).flat());
+const plainReads = new Set(Object.values(PLAIN_READS).flat());
+const isSeed = (a: Access) =>
+  a.kind === 'input' ? a.key in CREDENTIAL_INPUTS : a.kind === 'whole' && a.key in CREDENTIAL_READS;
+const frameworkSeeds: Record<string, string[]> = {};
+for (const [key, entry] of Object.entries(FRAMEWORK_IMPORTS)) {
+  const [spec = '', name = ''] = key.split(/:(?=[^:]*$)/);
+  if (entry.credential) frameworkSeeds[spec] = [...(frameworkSeeds[spec] ?? []), name];
+}
+
+const scan = scanAccesses(SRC, SURFACE);
+const all = [...scan.accesses].flatMap(([mod, list]) => list.map((a) => ({ mod, ...a })));
 const read = readDoors({
-  src: SRC,
-  primitives: PRIMITIVES,
-  credentialInputs: CREDENTIAL_INPUTS,
-  computedReads: COMPUTED_READS,
+  files: scan.files,
+  accesses: scan.accesses,
+  isSeed,
+  primitives: { ...PRIMITIVES, ...frameworkSeeds },
+  coreSeeds: CORE_SEEDS,
   gates: GATES,
 });
 
 describe('every door a credential is admitted at is named, with what a chat credential meets there', () => {
-  it('classifies every request input core reads, as a credential or not', () => {
-    const unclassified: string[] = [];
-    for (const mod of read.modules) {
-      for (const r of read.reads.get(mod.key) ?? []) {
-        const known =
-          r.name === null
-            ? computedKey(mod, r) in COMPUTED_READS
-            : inputKey(r) in CREDENTIAL_INPUTS || inputKey(r) in PLAIN_INPUTS;
-        if (!known)
-          unclassified.push(r.name === null ? computedKey(mod, r) : `${mod.key} ${inputKey(r)}`);
-      }
-    }
-    expect(unclassified.sort()).toEqual([]);
+  it('reads every request access by type, and refuses none', () => {
+    expect(all.filter((a) => a.kind === 'refused').map((a) => a.key)).toEqual([]);
   });
 
-  it('classifies no input core does not read', () => {
-    const seen = new Set<string>();
-    for (const mod of read.modules) {
-      for (const r of read.reads.get(mod.key) ?? []) {
-        seen.add(r.name === null ? computedKey(mod, r) : inputKey(r));
-      }
-    }
+  it('classifies every input read by name, naming the module that reads it', () => {
+    const unclassified = all
+      .filter((a) => a.kind === 'input' && !(a.key in CREDENTIAL_INPUTS) && !plainInputs.has(a.key))
+      .map((a) => `${a.mod} reads ${a.key}`);
+    expect([...new Set(unclassified)].sort()).toEqual([]);
+  });
+
+  it('classifies every whole read', () => {
+    const unclassified = all
+      .filter((a) => a.kind === 'whole' && !(a.key in CREDENTIAL_READS) && !plainReads.has(a.key))
+      .map((a) => a.key);
+    expect([...new Set(unclassified)].sort()).toEqual([]);
+  });
+
+  it('classifies each input and read once, and none that core does not make', () => {
+    const seen = new Set(all.map((a) => a.key));
     const listed = [
       ...Object.keys(CREDENTIAL_INPUTS),
-      ...Object.keys(PLAIN_INPUTS),
-      ...Object.keys(COMPUTED_READS),
+      ...plainInputs,
+      ...Object.keys(CREDENTIAL_READS),
+      ...plainReads,
     ];
     expect(listed.filter((k) => !seen.has(k))).toEqual([]);
+    expect(listed.filter((k, i) => listed.indexOf(k) !== i)).toEqual([]);
   });
 
-  it('names exactly the modules a credential arrives at or is checked in, however it is bound', () => {
-    expect(read.doors).toEqual(Object.keys(DOORS).sort());
+  it('lists every hono, hono/* and @hono/* import as reading a credential or not', () => {
+    const imports = [...scan.frameworkImports].flatMap(([mod, list]) =>
+      list.map((i) => ({ mod, key: i.key })),
+    );
+    const unlisted = imports.filter((i) => !(i.key in FRAMEWORK_IMPORTS));
+    expect(unlisted.map((i) => `${i.mod} imports ${i.key}`).sort()).toEqual([]);
+    const used = new Set(imports.map((i) => i.key));
+    expect(Object.keys(FRAMEWORK_IMPORTS).filter((k) => !used.has(k))).toEqual([]);
   });
 
-  it('hands no verifier to another module as a value, where no walk can follow it', () => {
+  it('names every module a credential reaches in exactly one list', () => {
+    const lists = [DOORS, SECRET_DOORS, ADMITS_NOTHING].flatMap((l) => Object.keys(l));
+    expect(read.doors).toEqual([...lists].sort());
+    expect(lists.filter((k, i) => lists.indexOf(k) !== i)).toEqual([]);
+  });
+
+  it('hands no check primitive to another module as a value, where no walk can follow it', () => {
     expect([...read.handoffs.values()].flat().sort()).toEqual([]);
   });
 

@@ -1,23 +1,24 @@
-// The walk credential-doors.test.ts runs over core's source: every request input read, and every
-// module a credential arrives at or is checked in, followed by binding. The declarations it walks
-// with (which packages verify, which inputs carry a credential, which gates stop it) are the
-// test's, passed in, so this file holds the machinery and the test holds every claim.
+// The walk credential-doors.test.ts runs over core's source: every module a credential arrives at
+// or is checked in, followed by binding from the accesses credential-access.fixture.ts read. The
+// declarations it walks with (which accesses bring a credential, which functions check one, which
+// gates stop it) are the test's, passed in, so this file holds machinery and the test the claims.
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { posix } from 'node:path';
 import ts from 'typescript';
-import { computedKey, type InputRead, inputKey, inputReads } from './credential-inputs.fixture.js';
+import type { Access } from './credential-ast.fixture.js';
 
 /** What the test declares and the walk reads. */
 export interface WalkConfig {
-  /** core's `src`, the root every module key is relative to. */
-  readonly src: string;
+  /** Each module of core's src by its key, parsed by the scan's program. */
+  readonly files: ReadonlyMap<string, ts.SourceFile>;
+  /** Each module's request accesses. */
+  readonly accesses: ReadonlyMap<string, readonly Access[]>;
+  /** Whether an access brings a presented credential in. */
+  readonly isSeed: (access: Access) => boolean;
   /** What a presented secret is checked with, or read through, by the package exporting it. */
   readonly primitives: Readonly<Record<string, readonly string[]>>;
-  /** Each request input a credential arrives in, by `<kind>:<name>`. */
-  readonly credentialInputs: Readonly<Record<string, string>>;
-  /** Each computed or whole-set read, by `<module> <expression>`, and whether a credential arrives in it. */
-  readonly computedReads: Readonly<Record<string, { credential: boolean; why: string }>>;
+  /** Core's own functions a presented secret is checked through, by module. */
+  readonly coreSeeds: Readonly<Record<string, readonly string[]>>;
   /** Exported bindings mounted as middleware, where the walk stops. */
   readonly gates: Readonly<Record<string, readonly string[]>>;
 }
@@ -39,15 +40,6 @@ export interface Module {
   owners?: Map<ts.Node, string>;
 }
 
-function sources(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) return sources(path);
-    const support = name.endsWith('.test.ts') || name.endsWith('.fixture.ts');
-    return name.endsWith('.ts') && !support ? [path] : [];
-  });
-}
-
 const ALIASES: Readonly<Record<string, string>> = { '@forge/core/public': 'public.ts' };
 
 /** The module a specifier names: a path under src, a package we follow, or null. */
@@ -60,7 +52,7 @@ function resolveSpecifier(
   if (specifier in cfg.primitives) return specifier;
   if (specifier in ALIASES) return ALIASES[specifier] ?? null;
   if (!specifier.startsWith('.')) return null;
-  const base = relative(cfg.src, resolve(cfg.src, dirname(fromKey), specifier));
+  const base = posix.normalize(posix.join(posix.dirname(fromKey), specifier));
   const stem = base.replace(/\.(js|ts)$/, '');
   return [`${stem}.ts`, `${base}/index.ts`].find((k) => keys.has(k)) ?? null;
 }
@@ -68,9 +60,7 @@ function resolveSpecifier(
 const hasModifier = (node: ts.Node, kind: ts.SyntaxKind) =>
   ts.canHaveModifiers(node) && (ts.getModifiers(node) ?? []).some((m) => m.kind === kind);
 
-function readModule(cfg: WalkConfig, path: string, keys: Set<string>): Module {
-  const key = relative(cfg.src, path);
-  const file = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true);
+function readModule(cfg: WalkConfig, key: string, file: ts.SourceFile, keys: Set<string>): Module {
   const mod: Module = {
     key,
     file,
@@ -152,12 +142,6 @@ function ownerOf(mod: Module, node: ts.Node): string {
   return '';
 }
 
-/** Whether a read brings a credential in: by its classified name, or its computed entry. */
-function isCredentialRead(cfg: WalkConfig, mod: Module, read: InputRead): boolean {
-  if (read.name === null) return cfg.computedReads[computedKey(mod, read)]?.credential ?? false;
-  return inputKey(read) in cfg.credentialInputs;
-}
-
 /** The identifier at the root of a callee: `a` in `a(…)`, `a.b.c(…)` and `a.b()(…)`. */
 function calleeRoot(expr: ts.Expression): ts.Identifier | null {
   let at: ts.Expression = expr;
@@ -213,8 +197,10 @@ const PASS_THROUGH = (n: ts.Node) =>
   ts.isAwaitExpression(n);
 
 /**
- * How an imported verifier is used where it appears: called, aliased by a top-level declaration or
- * a default export (both followed by the walk), named only in a type, or handed on as a value.
+ * How an imported verifier is used where it appears: called (itself or a member of it), aliased by
+ * a top-level declaration or a default export (both followed by the walk), named only in a type, or
+ * used as a value: placed in a literal or a local binding is followed through the declaration that
+ * holds it; handed to a call as an argument is a hand-off no walk can follow.
  */
 function useOf(mod: Module, ref: ts.Expression): 'call' | 'alias' | 'type' | 'value' {
   if (ts.findAncestor(ref, (n) => ts.isTypeNode(n) && !ts.isExpressionWithTypeArguments(n))) {
@@ -230,7 +216,6 @@ function useOf(mod: Module, ref: ts.Expression): 'call' | 'alias' | 'type' | 'va
   if (
     ts.isPropertyAccessExpression(parent) &&
     parent.expression === at &&
-    ['call', 'apply'].includes(parent.name.text) &&
     ts.isCallExpression(parent.parent) &&
     parent.parent.expression === parent
   ) {
@@ -253,12 +238,7 @@ function useOf(mod: Module, ref: ts.Expression): 'call' | 'alias' | 'type' | 'va
  * ('' for module-level code), the local declarations each one references, and each carried value
  * handed to another module's function.
  */
-function touches(
-  cfg: WalkConfig,
-  mod: Module,
-  carried: Map<string, Set<string>>,
-  reads: InputRead[],
-) {
+function touches(cfg: WalkConfig, mod: Module, carried: Map<string, Set<string>>) {
   const hits = new Set<string>();
   const refs = new Map<string, Set<string>>();
   const handoffs: Handoff[] = [];
@@ -273,7 +253,11 @@ function touches(
     return bound && !(bound.from in cfg.primitives) ? root : null;
   };
 
-  for (const read of reads) if (isCredentialRead(cfg, mod, read)) hit(read.node);
+  for (const access of cfg.accesses.get(mod.key) ?? []) if (cfg.isSeed(access)) hit(access.node);
+  for (const name of cfg.coreSeeds[mod.key] ?? []) {
+    const decl = mod.decls.get(name);
+    if (decl) hit(decl.node);
+  }
 
   const visit = (node: ts.Node): void => {
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
@@ -332,8 +316,10 @@ function touches(
     if (!carriedHere) return;
     const use = useOf(mod, ref);
     if (use === 'type') return;
-    if (use === 'value') {
-      const how = receiver ? `handed to ${receiver.text}(…)` : 'used as a value';
+    if (use === 'value' && call) {
+      const how = receiver
+        ? `handed to ${receiver.text}(…)`
+        : `handed to ${call.expression.getText(mod.file)}(…)`;
       handoffs.push({ owner: ownerOf(mod, id), name: ref.getText(mod.file), local: false, how });
       return;
     }
@@ -359,12 +345,10 @@ function isDeclarationName(id: ts.Identifier): boolean {
   );
 }
 
-/** Each door, the bindings each module exports that reach one, every input read, and each hand-off. */
+/** Each module a credential reaches, the bindings each module exports that reach one, each hand-off. */
 export function readDoors(cfg: WalkConfig) {
-  const paths = sources(cfg.src);
-  const keys = new Set(paths.map((p) => relative(cfg.src, p)));
-  const modules = paths.map((p) => readModule(cfg, p, keys));
-  const reads = new Map(modules.map((m) => [m.key, inputReads(m)]));
+  const keys = new Set(cfg.files.keys());
+  const modules = [...cfg.files].map(([key, file]) => readModule(cfg, key, file, keys));
   const carried = new Map<string, Set<string>>(
     Object.entries(cfg.primitives).map(([pkg, names]) => [pkg, new Set(names)]),
   );
@@ -377,7 +361,7 @@ export function readDoors(cfg: WalkConfig) {
     changed = false;
     doors.clear();
     for (const mod of modules) {
-      const touched = touches(cfg, mod, carried, reads.get(mod.key) ?? []);
+      const touched = touches(cfg, mod, carried);
       const reach = new Set(touched.hits);
       for (let grew = true; grew; ) {
         grew = false;
@@ -418,5 +402,5 @@ export function readDoors(cfg: WalkConfig) {
       }
     }
   }
-  return { doors: [...doors].sort(), reaching, modules, reads, handoffs };
+  return { doors: [...doors].sort(), reaching, modules, handoffs };
 }

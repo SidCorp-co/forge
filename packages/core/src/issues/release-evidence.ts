@@ -28,6 +28,31 @@ export async function reopenedAtOf(
 }
 
 /**
+ * Every move of each issue into `closed`, oldest first, from the move history (`kernel_transitions`);
+ * an issue never closed is absent. Only a release closes an issue (`CLOSE_ONLY_BY_RELEASE`), so each
+ * is the moment some release shipped it: the release page reads its own among them.
+ */
+export async function closedAtOf(
+  executor: Pick<Tx, 'execute'>,
+  issueIds: readonly string[],
+): Promise<Map<string, Date[]>> {
+  if (issueIds.length === 0) return new Map();
+  const rows = (await executor.execute(sql`
+    SELECT entity_id::text AS issue_id, created_at AS at
+      FROM kernel_transitions
+     WHERE entity = 'issue'
+       AND to_status = 'closed'
+       AND entity_id IN (${sql.join(
+         issueIds.map((id) => sql`${id}::uuid`),
+         sql`, `,
+       )})
+     ORDER BY created_at ASC`)) as unknown as Array<{ issue_id: string; at: Date | string }>;
+  const out = new Map<string, Date[]>();
+  for (const r of rows) out.set(r.issue_id, [...(out.get(r.issue_id) ?? []), new Date(r.at)]);
+  return out;
+}
+
+/**
  * The issues whose ship was withdrawn: the newest move touching `closed` (`kernel_transitions`)
  * took the issue out of it. A release that closed such an issue shipped work its reopen rejected,
  * so no reader takes that release as where the issue's work is until a release closes it again.
