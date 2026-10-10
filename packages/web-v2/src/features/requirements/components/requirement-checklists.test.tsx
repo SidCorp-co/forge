@@ -103,7 +103,7 @@ describe("a requirement's checklists on its page", () => {
     expect(section.dataset.standing).toBe("no_checklist");
     expect(section, "a heading must not deny the checklist drawn under it").not.toHaveTextContent("No checklist");
     expect(section).toHaveTextContent("2 open");
-    expect(within(section).getByTestId("checklist-unrecorded")).toHaveTextContent("It moved on before this checklist existed");
+    expect(within(section).getByTestId("checklist-unrecorded")).toHaveTextContent("Moved on before this checklist existed");
     expect(row(section, "criteria").dataset.state).toBe("given");
   });
 
