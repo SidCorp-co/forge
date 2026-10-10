@@ -14,7 +14,7 @@ export function NewOutput({ onGo }: { onGo: () => void }) {
         type="button"
         data-testid="new-output"
         onClick={onGo}
-        className="pointer-events-auto flex min-h-9 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 py-1.5 text-muted hover:bg-hover hover:text-default focus-visible:outline-none focus-visible:shadow-focus"
+        className="pointer-events-auto flex min-h-9 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 py-1.5 text-muted hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-focus"
         style={{ fontSize: "var(--text-12)" }}
       >
         <Icon name="chevronDown" size={12} className="flex-none" />

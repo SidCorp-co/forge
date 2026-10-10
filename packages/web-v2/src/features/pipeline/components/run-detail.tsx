@@ -287,12 +287,12 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
             {isPausing && (
               <p
                 className="fg-body-sm inline-flex items-center gap-2"
-                style={{ color: "var(--amber-600)" }}
+                style={{ color: "var(--warn-11)" }}
               >
                 <span
                   aria-hidden
                   className="forge-pulse inline-block size-2 flex-none rounded-full"
-                  style={{ background: "var(--amber-500)" }}
+                  style={{ background: "var(--warn-9)" }}
                 />
                 Pausing — finishing current step: {activeStep?.jobType ?? "the in-flight step"}…
               </p>
@@ -340,10 +340,10 @@ function stepDot(status: PipelineRunStepSummary["status"]): DotState {
 }
 
 const DOT_COLOR: Record<DotState, string> = {
-  done: "var(--green-500)",
+  done: "var(--ok-9)",
   // ISS-509 — running uses the pipeline-active (cobalt) token, not flame --accent.
   running: "var(--pipeline-active)",
-  error: "var(--red-500)",
+  error: "var(--danger-9)",
   todo: "var(--border-strong)",
 };
 
@@ -373,7 +373,7 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
                 <span
                   className="mt-1 min-h-5.5 w-0.5 flex-1"
                   style={{
-                    background: state === "done" ? "var(--green-500)" : "var(--border-default)",
+                    background: state === "done" ? "var(--ok-9)" : "var(--border-default)",
                   }}
                 />
               )}
@@ -387,9 +387,9 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
                       state === "running"
                         ? "var(--accent-text)"
                         : state === "done"
-                          ? "var(--green-600)"
+                          ? "var(--ok-11)"
                           : state === "error"
-                            ? "var(--red-600)"
+                            ? "var(--danger-11)"
                             : "var(--fg-subtle)",
                   }}
                 >

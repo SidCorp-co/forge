@@ -1,4 +1,4 @@
-// The failure card. It sits above the fold because on a failed run it is the
+// The failure notice. It sits above the fold because on a failed run it is the
 // only thing the reader came for, and the transcript below is 400 rows deep.
 
 import {
@@ -11,17 +11,13 @@ import type { RunBlocker } from "../../run-report";
 
 const MAX_LINES = 8;
 
-export function BlockerCard({ blocker, onOpenIssue }: { blocker: RunBlocker; onOpenIssue?: () => void }) {
+export function BlockerNotice({ blocker, onOpenIssue }: { blocker: RunBlocker; onOpenIssue?: () => void }) {
   const t = useCopy();
   const time = useTimeFormat();
   const lines = blocker.output.split("\n").filter((l) => l.trim().length > 0);
   const shown = lines.slice(0, MAX_LINES);
   return (
-    <section
-      className="rounded-md border px-5 py-4"
-      style={{ borderColor: "var(--red-500)", background: "var(--red-50)" }}
-      aria-labelledby="run-blocker-title"
-    >
+    <section className="border-l-2 border-danger-9 bg-danger-3 px-5 py-4" aria-labelledby="run-blocker-title">
       <div className="flex items-start gap-2.5">
         <Icon name="alert" size={16} className="mt-0.5 flex-none text-danger-11" />
         <div className="min-w-0 flex-1">

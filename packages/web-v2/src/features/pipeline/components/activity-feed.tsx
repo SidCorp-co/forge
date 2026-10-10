@@ -40,11 +40,11 @@ interface ActivityTabProps {
 }
 
 const TONE_COLOR: Record<ActivityTone, { dot: string; fg: string }> = {
-  failure: { dot: "var(--red-500)", fg: "var(--red-600)" },
-  swept: { dot: "var(--ink-400)", fg: "var(--fg-muted)" },
-  cleanup: { dot: "var(--ink-400)", fg: "var(--fg-muted)" },
-  success: { dot: "var(--green-500)", fg: "var(--green-600)" },
-  open: { dot: "var(--pipeline-active)", fg: "var(--cobalt-700)" },
+  failure: { dot: "var(--danger-9)", fg: "var(--danger-11)" },
+  swept: { dot: "var(--neutral-8)", fg: "var(--fg-muted)" },
+  cleanup: { dot: "var(--neutral-8)", fg: "var(--fg-muted)" },
+  success: { dot: "var(--ok-9)", fg: "var(--ok-11)" },
+  open: { dot: "var(--pipeline-active)", fg: "var(--info-11)" },
 };
 
 const FILTERS: { value: ActivityFilter; label: string }[] = [
@@ -123,7 +123,7 @@ function RetryHeadline({ summary }: { summary: PipelineRunRetrySummary }) {
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-line-subtle pb-2.5">
       <span
         className="rounded-full px-2 py-0.5 font-mono text-12 font-semibold"
-        style={{ background: "var(--amberw-50)", color: "var(--amberw-600)" }}
+        style={{ background: "var(--warn-3)", color: "var(--warn-11)" }}
       >
         attempt {summary.attempt}/{summary.maxAttempts}
       </span>

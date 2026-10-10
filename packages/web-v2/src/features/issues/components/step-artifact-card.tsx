@@ -15,9 +15,9 @@ interface StepArtifactCardProps {
 }
 
 const STATE_DOT: Record<StepState, string> = {
-  done: "var(--green-500)",
+  done: "var(--ok-9)",
   running: "var(--pipeline-active)",
-  failed: "var(--red-500)",
+  failed: "var(--danger-9)",
 };
 
 const SKIP_KEYS = new Set(["step", "schema_version", "schemaVersion"]);

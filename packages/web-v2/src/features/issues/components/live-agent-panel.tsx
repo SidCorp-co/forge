@@ -35,9 +35,9 @@ interface LiveAgentPanelProps {
 }
 
 const HEARTBEAT_DOT: Record<IssueAgentSession["heartbeat"], string> = {
-  alive: "var(--green-500)",
-  stale: "var(--red-500)",
-  unknown: "var(--ink-400)",
+  alive: "var(--ok-9)",
+  stale: "var(--danger-9)",
+  unknown: "var(--neutral-8)",
 };
 
 export function LiveAgentPanel({ state, step, slug, issueId }: LiveAgentPanelProps) {
