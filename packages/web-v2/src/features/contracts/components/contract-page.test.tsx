@@ -45,6 +45,13 @@ describe("the contract page folds agent text behind the Developer view (REQ-43 B
     expect(screen.getByTestId("record-view-switch")).toBeTruthy();
   });
 
+  it("names the version the wait is for, and not how core measured the change", () => {
+    page("");
+    const banner = screen.getByText(/approve or return/);
+    expect(banner.textContent).toContain("approve or return 2.0.0");
+    expect(banner.textContent, "the wait prints core's measure code").not.toMatch(/measured|breaking/);
+  });
+
   it("draws the change paths, kinds and the code module in the Developer view", () => {
     page("?tab=versions&view=developer");
     const versions = screen.getByTestId("view-versions");

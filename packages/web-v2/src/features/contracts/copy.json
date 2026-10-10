@@ -89,7 +89,6 @@
   "vi": {
     "contracts.act.adaptBy": "thích ứng với {v} trước {date}",
     "contracts.act.adoptBy": "chuyển sang {v} trước {date}",
-    "contracts.act.approveOrReturn": "duyệt hoặc trả lại {v} · đo được {measured}",
     "contracts.act.behind": "{n}/{total} bên dùng đang chậm, không có thời hạn nào mở",
     "contracts.act.builtAgainst": "xây dựng theo {ours}; {v} là bản hiện hành",
     "contracts.act.builtAgainstNone": "không xây dựng theo phiên bản nào; {v} là bản hiện hành",

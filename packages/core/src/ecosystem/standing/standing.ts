@@ -150,10 +150,7 @@ function providedTurn(
   adoption: readonly ContractAdoption[],
 ): Turn {
   if (pending) {
-    const act = say('contracts.act.approveOrReturn', {
-      v: pending.version,
-      measured: pending.classification,
-    });
+    const act = say('contracts.act.approveOrReturn', { v: pending.version });
     const rule = say('contracts.rule.proposed');
     return v.decides(pending.classification)
       ? turn('needs_you', 'you', { who: YOU, act, rule }, { ref: pending.version })

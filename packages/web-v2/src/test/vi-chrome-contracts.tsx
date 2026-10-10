@@ -44,7 +44,7 @@ const contract: ContractStandingRow = {
   state: "proposed",
   touchedAt: AT,
   attentionGroup: "needs_you",
-  waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("contracts.act.approveOrReturn", { v: "2.0.0", measured: "breaking" }), rule: RULE }, { ref: "2.0.0" }),
+  waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("contracts.act.approveOrReturn", { v: "2.0.0" }), rule: RULE }, { ref: "2.0.0" }),
 };
 
 const detail: ContractStandingDetail = {

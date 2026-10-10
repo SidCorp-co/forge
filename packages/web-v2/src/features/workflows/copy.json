@@ -319,7 +319,6 @@
     "workflows.wireframeOf": "Wireframe of {title}"
   },
   "vi": {
-    "designs.act.approveOrReturn": "duyệt hoặc trả lại bản sửa {r}",
     "designs.act.finish": "hoàn thành và đề xuất nó",
     "designs.act.repin": "ghim lại basedOn",
     "designs.act.repinBatch": "duyệt {n} bản chỉ đổi ghim → r{r}",

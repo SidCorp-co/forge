@@ -73,7 +73,7 @@ export const RUNS: RunStanding[] = [
   run(1, { state: "waiting_person", attentionGroup: "needs_you", waitingOn: wait("you", say("standing.who.you"), say("issues.standing.act.answer"), { ref: "q1" }), holder: none }),
   run(2, { state: "stuck", attentionGroup: "stuck", stuck: stuckRule("lease_expired"), waitingOn: wait("run", RUN, say("issues.standing.act.stepFor", { step: "build", n: 3 }), { dueAt: NEAR }) }),
   run(3, { state: "waiting_gate", attentionGroup: "waiting_gate", waitingOn: { kind: "gate", gate: "retry_cooldown", resumesAt: NEAR, rule: "r", says: { rule: RULE } }, holder: none }),
-  run(4, { state: "waiting_person", attentionGroup: "waiting", waitingOn: wait("person", say("standing.who.named", { name: "Lan" }), say("designs.act.approveOrReturn", { r: 2 })), holder: none }),
+  run(4, { state: "waiting_person", attentionGroup: "waiting", waitingOn: wait("person", say("standing.who.named", { name: "Lan" }), say("designs.act.approveOrReturn")), holder: none }),
   run(5, { state: "queued", attentionGroup: "queued", waitingOn: wait("master", say("standing.who.master"), say("issues.standing.act.dispatch")), holder: none, device: null, lastBeatAt: null, attempt: none }),
   run(6, { lane: "release", state: "running", release: { version: "0.1.0", stage: "deploying", verdict: null, attemptAt: AT }, deployLocks: [{ environment: "production", subject: "0.1.0", acquiredAt: AT, expiresAt: NEAR, reclaimedFromRunId: null }], issue: null, issues: ["ISS-1", "ISS-2"] }),
   run(7, { state: "done", attentionGroup: "finished", outcome: { kind: "done", at: AT, by }, finishedAt: AT, waitingOn: wait("none", say("standing.who.nobody"), say("standing.act.none")), holder: none, liveJobs: 0 }),

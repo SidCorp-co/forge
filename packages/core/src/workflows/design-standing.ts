@@ -44,7 +44,7 @@ const NOBODY = say('standing.who.nobody');
 const NO_ACT = say('standing.act.none');
 
 function proposedWait(input: DesignStandingInput, revision: number): DesignWaitingOn {
-  const act = say('designs.act.approveOrReturn', { r: revision });
+  const act = say('designs.act.approveOrReturn');
   if (input.canDecide) {
     return wait(
       'you',
