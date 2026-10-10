@@ -45,7 +45,7 @@ import {
 } from './write-tx.js';
 
 /** The requirement-ready checklist read for `revision`, the head-to-be of an agreed requirement. */
-async function readyRefusalsAt(
+export async function readyRefusalsAt(
   tx: Tx,
   row: { id: string; reqSeq: number },
   revision: number,

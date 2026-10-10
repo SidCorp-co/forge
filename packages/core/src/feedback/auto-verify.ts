@@ -33,7 +33,7 @@ import { goneByRecord, loopCloseFactsOf } from './loop-close.js';
 import { type FeedbackActor, type Row, rowIn } from './read.js';
 import { tellReporters } from './reporter-language.js';
 import { autoVerifiedNotice } from './reporter-notices.js';
-import { reportersOf, withBell } from './reporters.js';
+import { reportersOf, tellStepToReporters, withBell } from './reporters.js';
 import { personalActRefusal, reopenRefusal, verifyRefusal } from './rules.js';
 import { decide, feedbackKernelActor, inTx, lockFeedback, roleFacts } from './service.js';
 import { autoVerifyAt, verifyWindowDays } from './verify-window.js';
@@ -130,6 +130,7 @@ async function closeByConfirm(
       key: feedbackKey(now.fbSeq),
       decision: act,
     });
+    await tellStepToReporters(tx, now, act, confirm.by);
     moved = act;
     return null;
   });

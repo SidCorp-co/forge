@@ -123,8 +123,12 @@ export function AssumptionsSection({ assumptions, revision, slug }: { assumption
       ) : (
         <ul className="grid">
           {assumptions.map((a) => (
-            <li key={a.text} className="grid gap-1 border-t border-line-subtle py-3 first:border-t-0 first:pt-0" data-testid="assumption">
-              <p className="text-14 leading-snug text-fg">{a.text}</p>
+            <li key={a.text} className="grid gap-1 border-t border-line-subtle py-3 first:border-t-0 first:pt-0" data-testid="assumption" data-corrected={a.corrected || undefined}>
+              {/* a later edit replaced what was assumed: it stays readable, struck and marked (REQ-34 BC-26) */}
+              <p className="flex flex-wrap items-baseline gap-x-2 text-14 leading-snug">
+                <span className={a.corrected ? "text-subtle line-through" : "text-fg"}>{a.text}</span>
+                {a.corrected ? <span className="text-12 font-medium text-muted">{t("requirements.assumptions.corrected")}</span> : null}
+              </p>
               <span className="text-12 text-subtle">
                 {t("requirements.assumptions.owner", { who: a.owner })} · {t("requirements.assumptions.confirmBy", { how: a.confirmBy })}
                 {a.source && slug ? (

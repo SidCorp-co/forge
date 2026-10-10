@@ -782,6 +782,14 @@ export interface RequirementAssumption {
 	confirmBy: string;
 	/** The record it was taken from, by its intake ref (REQ-n, FB-n, workflow:<flow>, release:<version>), where one is named. */
 	source?: string | undefined;
+	/** The answer the assistant filled (an intake field) and the value it assumed there. */
+	field?: string | undefined;
+	value?: string | undefined;
+	/**
+	 * Derived on read (REQ-34 BC-26): the revision shown no longer holds the assumed value in that
+	 * field, so a later edit corrected it. The assumption stays visible, marked, never silently gone.
+	 */
+	corrected?: boolean | undefined;
 }
 
 export interface RequirementSpec {

@@ -87,6 +87,7 @@
     "requirements.assistant.name": "BA assistant",
     "requirements.assistant.review": "Review",
     "requirements.assumptions.confirmBy": "Confirmed by: {how}",
+    "requirements.assumptions.corrected": "Corrected",
     "requirements.assumptions.heading": "Assumptions",
     "requirements.assumptions.none": "No assumptions written.",
     "requirements.assumptions.owner": "Owned by {who}",

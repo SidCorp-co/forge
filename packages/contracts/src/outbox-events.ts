@@ -470,8 +470,9 @@ export interface OutboxEventPayloads {
 	"feedback.reporterTold": {
 		projectId: string;
 		feedbackId: string;
-		/** What the notice is about; the only kinds that reach a reporter. */
-		kind: "declined" | "duplicate" | "message" | "verified";
+		/** What the notice is about; the only kinds that reach a reporter. `step` is a move somebody
+		 *  else made on their item: triaged, verified on their behalf, or reopened (REQ-34 BC-21). */
+		kind: "declined" | "duplicate" | "message" | "verified" | "step";
 		/** Reporters with a bell to tell, one notice for all. */
 		recipients: string[];
 		title: string;
