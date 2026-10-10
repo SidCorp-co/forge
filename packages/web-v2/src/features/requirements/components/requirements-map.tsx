@@ -32,9 +32,9 @@ export function RequirementsMap({ rows, areas, slug, onPeek }: { rows: Requireme
     .filter((a) => a.own.length > 0);
   return (
     <div className="px-5 pb-16 max-md:px-3" data-testid="requirements-map">
-      <div className="flex min-w-0 flex-wrap gap-x-[3px] gap-y-3 pt-4" data-testid="flow-strip">
+      <div className="flex min-w-0 flex-wrap gap-x-0.75 gap-y-3 pt-4" data-testid="flow-strip">
         {strip.map((s) => (
-          <div key={s} className="flex min-w-[88px] flex-col gap-1" style={{ flex: Math.max(count(s), 0.0001) }} data-stage={s}>
+          <div key={s} className="flex min-w-22 flex-col gap-1" style={{ flex: Math.max(count(s), 0.0001) }} data-stage={s}>
             <span className={cn("h-2 rounded-sm", BAR[s])} />
             {/* a label wraps rather than being cut; the counts below line up across the strip */}
             <span className="flex-1 break-words text-12 leading-tight text-muted" data-testid="flow-strip-label">
@@ -52,14 +52,14 @@ export function RequirementsMap({ rows, areas, slug, onPeek }: { rows: Requireme
           </div>
         ))}
         {lanes.map((a) => (
-          <MapRow key={a.id} name={a.name} own={a.own} slug={slug} onPeek={onPeek} />
+          <AreaLane key={a.id} name={a.name} own={a.own} slug={slug} onPeek={onPeek} />
         ))}
       </div>
     </div>
   );
 }
 
-function MapRow({ name, own, slug, onPeek }: { name: string; own: { r: RequirementSummary; stage: RequirementStage }[]; slug: string; onPeek: (key: string) => void }) {
+function AreaLane({ name, own, slug, onPeek }: { name: string; own: { r: RequirementSummary; stage: RequirementStage }[]; slug: string; onPeek: (key: string) => void }) {
   const t = useCopy();
   return (
     <>

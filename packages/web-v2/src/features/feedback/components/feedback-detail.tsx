@@ -35,7 +35,7 @@ import { FeedbackActions, Proposals } from "./feedback-actions";
 import { FeedbackAnswer } from "./feedback-answer";
 import { FeedbackAttachments } from "./feedback-attachments";
 import { FeedbackEvidence } from "./feedback-evidence";
-import { FeedbackBanner, FeedbackFacts } from "./feedback-facts";
+import { FeedbackBanner, LinkedFeedback } from "./feedback-facts";
 import { Messages } from "./feedback-messages";
 import { FeedbackRoom } from "./feedback-room";
 
@@ -142,7 +142,7 @@ export function FeedbackPage({
             dataKey={f.key}
             rail={
               <FactsRail>
-                <FeedbackFacts f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} />
+                <LinkedFeedback f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} />
               </FactsRail>
             }
           >

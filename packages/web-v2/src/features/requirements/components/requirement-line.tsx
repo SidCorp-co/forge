@@ -21,7 +21,7 @@ const STAGE_DOT: Record<RequirementStage, string> = {
 
 export function StageDot({ stage }: { stage: RequirementStage | null }) {
   if (!stage) return null;
-  return <span className={cn("inline-block size-2 flex-none rounded-full", STAGE_DOT[stage])} title={REQUIREMENT_STAGE_LABELS[stage]} data-stage={stage} />;
+  return <span className={cn("inline-block size-2 flex-none rounded-pill", STAGE_DOT[stage])} title={REQUIREMENT_STAGE_LABELS[stage]} data-stage={stage} />;
 }
 
 /** Passing and failing criteria as one thin bar and the count; a draft or a dropped one says so instead. */
@@ -35,7 +35,7 @@ export function Passing({ r, wide = true }: { r: RequirementSummary; wide?: bool
   const failing = failingOf(s);
   return (
     <span className="inline-flex items-center gap-2 tabular-nums" data-testid="req-passing">
-      <span className={cn("flex h-[5px] flex-none overflow-hidden rounded-sm bg-sunken", wide ? "w-[84px]" : "w-12")}>
+      <span className={cn("flex h-1.25 flex-none overflow-hidden rounded-sm bg-sunken", wide ? "w-21" : "w-12")}>
         <i className="block h-full bg-green" style={{ width: `${(100 * passing) / criteria}%` }} />
         <i className="block h-full bg-danger" style={{ width: `${(100 * failing) / criteria}%` }} />
       </span>

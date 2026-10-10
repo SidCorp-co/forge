@@ -54,7 +54,7 @@ export function KindField({
   const kindName = (k: RequirementKind) => t(`requirements.picture.kind.${k}`).toLowerCase();
 
   return (
-    <div className="w-[220px]">
+    <div className="w-55">
       <Field label={t("requirements.picture.edit.kind")} hint={held ? t("requirements.picture.edit.kindHeld") : undefined} error={plainRefusal(write.error) ?? refused}>
         <NativeSelect
           value={kind ?? ""}

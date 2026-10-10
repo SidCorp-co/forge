@@ -66,7 +66,7 @@ function StoredPicture({ p, projectId, reqKey, slug, canWrite }: { p: Requiremen
     const read = parseWireframe((p.content as { board: unknown }).board);
     return (
       <Figure alt={p.alt} kind={p.kind} by={by}>
-        <div aria-hidden inert className="h-[380px] border border-line-subtle max-md:h-[300px]" data-testid="picture-board">
+        <div aria-hidden inert className="h-95 border border-line-subtle max-md:h-75" data-testid="picture-board">
           {read.ok ? <BoardCanvas doc={read.doc} fit /> : <p className="p-4 text-13 text-muted">{read.message}</p>}
         </div>
       </Figure>
@@ -116,7 +116,7 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
   else if (picture) body = <StoredPicture p={picture} projectId={projectId} reqKey={d.key} slug={slug} canWrite={writer} />;
   else {
     body = (
-      <p className="max-w-[80ch] border border-dashed border-line-strong px-4 py-6 text-13 text-muted" data-testid="picture-empty">
+      <p className="max-w-2xl border border-dashed border-line-strong px-4 py-6 text-13 text-muted" data-testid="picture-empty">
         {wanted ? t("requirements.picture.empty", { picture: t(`requirements.picture.of.${wanted}`) }) : t("requirements.picture.noKind")}
       </p>
     );
@@ -152,7 +152,7 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
       <span ref={end} id={`${headingId}-end`} tabIndex={-1} className="outline-none" data-testid="picture-end" />
       {editing && rev && wanted && !linked ? <PictureEditor key={`${rev.revision}:${wanted}`} revision={rev.revision} kind={wanted} picture={picture} save={save} onDone={close} /> : null}
       {kind === null || kind === "screen" ? (
-        <div className="mt-3 max-w-[80ch]">
+        <div className="mt-3 max-w-2xl">
           <OpenRoom projectId={projectId} slug={slug} about={d.key} canWrite={writer} />
         </div>
       ) : null}

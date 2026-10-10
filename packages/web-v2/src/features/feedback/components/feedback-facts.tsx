@@ -241,7 +241,7 @@ function VerifiedFact({ f }: { f: FeedbackView }) {
   );
 }
 
-export function FeedbackFacts({
+export function LinkedFeedback({
   f,
   slug,
   forecast,

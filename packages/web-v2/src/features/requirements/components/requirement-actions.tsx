@@ -389,7 +389,7 @@ export function ProposalDecision({ projectId, d, revision }: { projectId: string
             placeholder={t("requirements.act.returnWhy")}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="min-w-[16rem] flex-1"
+            className="min-w-64 flex-1"
             autoFocus
           />
           <Button type="submit" size="sm" disabled={!reason.trim()} loading={busy}>
