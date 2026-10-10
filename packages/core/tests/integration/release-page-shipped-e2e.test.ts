@@ -31,7 +31,7 @@ import { declareProductionDocument, releaseWorld } from '../helpers/release-worl
 // the gateway model, faked at the provider seam behind the same `completeOnce` a chat turn uses
 const asked: ChatMessage[][] = [];
 let answers: string[] = [];
-register('anthropic', () => ({
+register('openai', () => ({
   id: 'scripted',
   defaultModel: 'scripted-model',
   async *stream(req): AsyncIterable<ChatStreamEvent> {

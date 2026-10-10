@@ -42,7 +42,6 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.72",
     "@ai-sdk/openai-compatible": "^3.0.63",
     "@forge/contracts": "workspace:*",
     "@forge/observability": "workspace:*",

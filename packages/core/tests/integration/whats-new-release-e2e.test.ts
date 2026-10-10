@@ -39,7 +39,7 @@ import { BUILD, CLIP_BYTES, releasePageWorld } from '../helpers/release-page-wor
 import { declareProductionDocument, releaseWorld } from '../helpers/release-world.js';
 
 let answers: string[] = [];
-register('anthropic', () => ({
+register('openai', () => ({
   id: 'scripted',
   defaultModel: 'scripted-model',
   async *stream(): AsyncIterable<ChatStreamEvent> {
