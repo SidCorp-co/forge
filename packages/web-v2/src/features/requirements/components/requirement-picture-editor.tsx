@@ -91,7 +91,7 @@ export function PictureEditor({
   const [rows, setRows] = useState<ExampleTableContent["rows"]>(() => tableRowsOf(own));
   const storedChart = own?.kind === "chart" ? chartDraftOf(own.content as Content<"chart">) : null;
   const [chart, setChart] = useState<ChartDraft>(storedChart ?? BLANK_CHART);
-  const scene = useRef<readonly SceneElement[] | null>(null);
+  const sceneRef = useRef<readonly SceneElement[] | null>(null);
   const [boardShown, setBoardShown] = useState(false);
   const [startBoard] = useState(() => boardOf(own));
   const [local, setLocal] = useState<{ field: PictureField; text: string } | null>(null);
@@ -120,8 +120,8 @@ export function PictureEditor({
         ? { ok: false, field: "content", text: t("requirements.picture.edit.noFigures") }
         : { ok: false, field: f.field, text: t("requirements.picture.edit.nameAxis") };
     }
-    if (!scene.current) return { ok: false, field: "board", text: t("requirements.picture.edit.boardLoading") };
-    const read = sceneToWireframe(scene.current, named);
+    if (!sceneRef.current) return { ok: false, field: "board", text: t("requirements.picture.edit.boardLoading") };
+    const read = sceneToWireframe(sceneRef.current, named);
     if (!read.ok) return { ok: false, field: "board", text: "unsupported" in read ? unsupportedText(read.unsupported, t) : read.invalid };
     if (read.doc.shapes.length === 0) return { ok: false, field: "board", text: t("requirements.picture.edit.emptyBoard") };
     return { ok: true, body: { kind, alt, content: { board: read.doc } } };
@@ -152,7 +152,7 @@ export function PictureEditor({
             <BoardEditor
               doc={startBoard}
               onScene={(els) => {
-                scene.current = els;
+                sceneRef.current = els;
                 setBoardShown(true);
               }}
             />

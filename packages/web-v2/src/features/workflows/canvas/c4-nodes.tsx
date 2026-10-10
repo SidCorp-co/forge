@@ -90,14 +90,14 @@ function Members({ box }: { box: DBox }) {
 function C4Box({ data }: NodeProps & { data: C4BoxData }) {
   const t = useCopy();
   const { box: b } = data;
-  const anchor = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const card = useHoverCard();
   const group = b.node.kind === "group";
   const focal = b.node.kind === "focal";
   return (
     <>
       <div
-        ref={anchor}
+        ref={anchorRef}
         className="wfc-c4"
         data-kind={b.node.kind}
         data-state={b.node.node?.integration ?? undefined}
@@ -138,7 +138,7 @@ function C4Box({ data }: NodeProps & { data: C4BoxData }) {
       {group ? (
         <Popover
           open={card.open}
-          anchor={anchor}
+          anchor={anchorRef}
           onDismiss={card.close}
           placement="right-start"
           role="dialog"
@@ -190,7 +190,7 @@ function C4Frame({ data }: NodeProps & { data: C4FrameData }) {
 function C4Line({ id, data, markerEnd, markerStart }: EdgeProps & { data: C4LineData }) {
   const t = useCopy();
   const l = data.line;
-  const anchor = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const card = useHoverCard();
   const colour = data.on ? "var(--accent)" : l.colour;
   const label = l.label;
@@ -207,7 +207,7 @@ function C4Line({ id, data, markerEnd, markerStart }: EdgeProps & { data: C4Line
       {label ? (
         <EdgeLabelRenderer>
           <div
-            ref={anchor}
+            ref={anchorRef}
             className="wfc-c4-label nodrag nopan"
             data-edge={id}
             data-on={data.on}
@@ -227,7 +227,7 @@ function C4Line({ id, data, markerEnd, markerStart }: EdgeProps & { data: C4Line
               </span>
             ) : null}
           </div>
-          <Popover open={card.open} anchor={anchor} onDismiss={card.close} placement="bottom-start" role="tooltip" maxWidth={420} className="rounded-md border border-line bg-surface px-3 py-2 " {...card.card}>
+          <Popover open={card.open} anchor={anchorRef} onDismiss={card.close} placement="bottom-start" role="tooltip" maxWidth={420} className="rounded-md border border-line bg-surface px-3 py-2 " {...card.card}>
             <ul className="m-0 grid list-none gap-1 p-0" data-testid="c4-line-card">
               {data.rows.map((r) => (
                 <li key={r} className="text-13 leading-relaxed-1-6">

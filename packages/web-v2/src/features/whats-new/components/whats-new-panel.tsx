@@ -8,11 +8,11 @@ import type { WhatsNewChange, WhatsNewFeed } from "../types";
 
 function Change({ change, kindLabel }: { change: WhatsNewChange; kindLabel: string }) {
   return (
-    <li className="grid grid-cols-[76px_minmax(0,1fr)] gap-x-2.5 border-b border-line py-2.5" data-testid="whats-new-change">
-      <span className={cn("pt-0.5 text-12 uppercase tracking-wider", change.kind === "new" ? "font-semibold text-accent-text" : "text-subtle")}>
+    <li className="flex gap-x-2.5 border-b border-line py-2.5" data-testid="whats-new-change">
+      <span className={cn("w-19 flex-none pt-0.5 text-12 uppercase tracking-wider", change.kind === "new" ? "font-semibold text-accent-text" : "text-subtle")}>
         {kindLabel}
       </span>
-      <span className="text-14 text-fg">{change.line}</span>
+      <span className="min-w-0 flex-1 text-14 text-fg">{change.line}</span>
     </li>
   );
 }

@@ -16,7 +16,7 @@ export interface StagedFile {
 export function useStagedFiles(attachments: AttachmentPolicy | undefined, dropDisabled: boolean) {
   const [files, setFiles] = useState<StagedFile[]>([]);
   const [refusals, setRefusals] = useState<StagingRefusal[]>([]);
-  const nextId = useRef(0);
+  const nextIdRef = useRef(0);
 
   const take = useCallback(
     (picked: readonly File[]) => {
@@ -24,7 +24,7 @@ export function useStagedFiles(attachments: AttachmentPolicy | undefined, dropDi
       const outcome = stageFiles(picked, attachments, files.length);
       setRefusals(outcome.refused);
       if (outcome.accepted.length === 0) return;
-      setFiles((prev) => [...prev, ...outcome.accepted.map((file) => ({ id: `file-${nextId.current++}`, file }))]);
+      setFiles((prev) => [...prev, ...outcome.accepted.map((file) => ({ id: `file-${nextIdRef.current++}`, file }))]);
     },
     [attachments, files.length],
   );

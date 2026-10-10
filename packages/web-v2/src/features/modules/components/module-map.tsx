@@ -164,9 +164,9 @@ export function ModuleMap({
     };
   }, [rows, drawn, cols, measured]);
 
-  const act = useRef({ select: onSelect, open: onOpen });
-  act.current = { select: onSelect, open: onOpen };
-  const stableAct = useMemo(() => ({ select: (k: string) => act.current.select(k), open: (k: string) => act.current.open(k) }), []);
+  const actRef = useRef({ select: onSelect, open: onOpen });
+  actRef.current = { select: onSelect, open: onOpen };
+  const stableAct = useMemo(() => ({ select: (k: string) => actRef.current.select(k), open: (k: string) => actRef.current.open(k) }), []);
 
   const selectedId = rows.find((r) => keyOf(r) === selected)?.id ?? null;
   const near = useMemo(

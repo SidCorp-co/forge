@@ -70,9 +70,9 @@ function RecordedAnswer({ row, revision }: { row: Extract<Row, { kind: "answer" 
   const corrected = correctedBy(answer, row.now);
   const state = corrected ? "corrected" : answer.provenance;
   return (
-    <div className="grid gap-x-6 gap-y-1 border-t border-line-subtle py-2.5 first:border-t-0 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" data-testid="checklist-row" data-question={field.name} data-state={state}>
-      <dt className="text-13 text-muted">{field.label}</dt>
-      <dd className="grid min-w-0 gap-1">
+    <div className="grid gap-x-6 gap-y-1 border-t border-line-subtle py-2.5 first:border-t-0 md:flex" data-testid="checklist-row" data-question={field.name} data-state={state}>
+      <dt className="min-w-0 text-13 text-muted md:flex-2">{field.label}</dt>
+      <dd className="grid min-w-0 gap-1 md:flex-3">
         <span className="flex flex-wrap items-center gap-2">
           <span className={`whitespace-pre-wrap break-words text-14 ${corrected ? "text-muted line-through" : "text-fg"}`}>{shownValue(field, answer.value)}</span>
           {answer.provenance === "assumed" ? <ToneBadge tone={corrected ? "done" : "neutral"} label={t("checklist.assumed")} title={t("checklist.assumed")} /> : null}
@@ -90,12 +90,12 @@ function RecordedAnswer({ row, revision }: { row: Extract<Row, { kind: "answer" 
   );
 }
 
-function GapRow({ row, answerAt }: { row: Extract<Row, { kind: "gap" }>; answerAt?: ((field: ChecklistFormField) => ReactNode) | undefined }) {
+function UnansweredQuestion({ row, answerAt }: { row: Extract<Row, { kind: "gap" }>; answerAt?: ((field: ChecklistFormField) => ReactNode) | undefined }) {
   const { field, gap } = row;
   return (
-    <div className="grid gap-x-6 gap-y-1 border-t border-line-subtle py-2.5 first:border-t-0 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" data-testid="checklist-row" data-question={field.name} data-state="gap">
-      <dt className="text-14 font-medium text-fg">{field.label}</dt>
-      <dd className="grid min-w-0 gap-1.5">
+    <div className="grid gap-x-6 gap-y-1 border-t border-line-subtle py-2.5 first:border-t-0 md:flex" data-testid="checklist-row" data-question={field.name} data-state="gap">
+      <dt className="min-w-0 text-14 font-medium text-fg md:flex-2">{field.label}</dt>
+      <dd className="grid min-w-0 gap-1.5 md:flex-3">
         <span className="text-13 leading-relaxed text-muted" data-testid="checklist-gap">
           {gapWords(field, gap)}
         </span>
@@ -147,7 +147,7 @@ export function ChecklistAnswers({
           {t("checklist.movedBefore")}
         </p>
       ) : null}
-      {rows.length > 0 ? <dl className="grid">{rows.map((r) => (r.kind === "answer" ? <RecordedAnswer key={r.field.name} row={r} revision={revision} /> : <GapRow key={r.field.name} row={r} answerAt={answerAt} />))}</dl> : null}
+      {rows.length > 0 ? <dl className="grid">{rows.map((r) => (r.kind === "answer" ? <RecordedAnswer key={r.field.name} row={r} revision={revision} /> : <UnansweredQuestion key={r.field.name} row={r} answerAt={answerAt} />))}</dl> : null}
     </section>
   );
 }

@@ -145,10 +145,10 @@ export function useUiActions(args: {
   const language = useInterfaceLanguage();
   const { user } = useAuth();
   const [records, setRecords] = useState<Record<string, UiCallRecord>>({});
-  const history = useRef<Set<string> | null>(null);
-  const applied = useRef(new Set<string>());
-  const live = useRef(records);
-  live.current = records;
+  const historyRef = useRef<Set<string> | null>(null);
+  const appliedRef = useRef(new Set<string>());
+  const liveRef = useRef(records);
+  liveRef.current = records;
 
   const go = useCallback((href: string) => router.push(href), [router]);
   const env = useMemo(
@@ -169,16 +169,16 @@ export function useUiActions(args: {
     if (!args.ready) return;
     const live = args.progress ? uiCallsOf(args.progress.entry.id ?? "live", args.progress.entry.blocks) : [];
     const settled = args.messages.flatMap((m) => uiCallsOf(m.id, m.blocks));
-    if (history.current === null) history.current = new Set(live.map((c) => c.callId));
-    const seen = history.current;
+    if (historyRef.current === null) historyRef.current = new Set(live.map((c) => c.callId));
+    const seen = historyRef.current;
     const liveIds = new Set(live.map((c) => c.callId));
     const fresh = [...live, ...settled.filter((c) => !liveIds.has(c.callId))].filter(
-      (c) => !records[c.callId] && !applied.current.has(c.callId),
+      (c) => !records[c.callId] && !appliedRef.current.has(c.callId),
     );
     if (fresh.length === 0) return;
     const added: Record<string, UiCallRecord> = {};
     for (const c of fresh) {
-      applied.current.add(c.callId);
+      appliedRef.current.add(c.callId);
       if (seen.has(c.callId) || !liveIds.has(c.callId)) {
         added[c.callId] = c;
         continue;
@@ -193,7 +193,7 @@ export function useUiActions(args: {
   }, [args.ready, args.messages, args.progress, records, env]);
 
   const undo = useCallback((callId: string) => {
-    const r = live.current[callId];
+    const r = liveRef.current[callId];
     if (!r?.outcome?.ok || r.undone) return;
     r.outcome.undo();
     setRecords((prev) => ({ ...prev, [callId]: { ...r, undone: true } }));

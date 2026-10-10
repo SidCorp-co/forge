@@ -3,7 +3,7 @@
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
 import { type FormEvent, useMemo, useState } from "react";
-import { Button, HoverCard, Icon, Input, rememberListOrigin } from "@/design";
+import { Button, HoverCard, Icon, Input, rememberListOrigin, fixedHeight } from "@/design";
 import { useAskForDesigns } from "@/features/onboarding";
 import { useOnboardingState } from "@/features/onboarding";
 import { useWriteProjectDocument } from "@/features/project-config";
@@ -293,7 +293,7 @@ export function SystemOverviewRegion({ records, templates, projectId, slug, proj
         {graph.isPending ? null : <Description o={o} graph={graph.data ?? null} projectId={projectId} projectDocument={projectDocument} canEdit={canEdit} />}
         <Facts o={o} graph={graph.data ?? null} slug={slug} projectDocument={projectDocument} />
       </div>
-      <div className={cn("flex min-h-0 flex-1", compact ? "h-155 flex-none max-md:h-[64vh]" : "min-h-105 max-lg:h-[64vh] max-lg:flex-none")} data-testid="overview-diagram">
+      <div className={cn("flex min-h-0 flex-1", compact ? ["h-155 flex-none", fixedHeight("pane", "max-md")] : ["min-h-105 max-lg:flex-none", fixedHeight("pane", "max-lg")])} data-testid="overview-diagram">
         <WorkflowCanvas doc={design.document} template={template} graph={graphRef} health={overlay} compact />
       </div>
     </section>

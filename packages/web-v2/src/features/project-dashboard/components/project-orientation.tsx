@@ -33,9 +33,9 @@ export interface OrientationProps {
 
 function Line({ name, label, children }: { name: string; label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-4 border-b border-line-subtle py-2 text-13 max-sm:grid-cols-1" data-testid={`orient-${name}`}>
-      <dt className="font-semibold text-subtle">{label}</dt>
-      <dd className="m-0 min-w-0 text-fg">{children}</dd>
+    <div className="flex gap-x-4 border-b border-line-subtle py-2 text-13 max-sm:flex-col" data-testid={`orient-${name}`}>
+      <dt className="w-28 flex-none font-semibold text-subtle">{label}</dt>
+      <dd className="m-0 min-w-0 flex-1 text-fg">{children}</dd>
     </div>
   );
 }

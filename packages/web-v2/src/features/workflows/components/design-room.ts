@@ -84,7 +84,7 @@ export function useDetailSqueezes(
 ): boolean {
   const { active, open } = o;
   const [squeezed, setSqueezed] = useState(false);
-  const lastDetail = useRef(0);
+  const lastDetailRef = useRef(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: opening or folding the detail is a trigger to re-measure, not an input
   useLayoutEffect(() => {
     if (!active) return;
@@ -94,14 +94,14 @@ export function useDetailSqueezes(
       const d = detail.current;
       if (!c || !h) return;
       const shown = Boolean(d && !d.hidden);
-      if (d && shown) lastDetail.current = d.getBoundingClientRect().height;
+      if (d && shown) lastDetailRef.current = d.getBoundingClientRect().height;
       setSqueezed(
         detailSqueezes({
           width: breakpointWidth(c),
           viewportHeight: window.innerHeight,
           column: c.getBoundingClientRect().height,
           head: h.getBoundingClientRect().height,
-          detail: lastDetail.current,
+          detail: lastDetailRef.current,
           detailInFlow: shown && d?.dataset.float !== "true",
         }),
       );

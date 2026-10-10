@@ -53,6 +53,9 @@ function Marks({ item, axis }: { item: TimelineItem; axis: { min: number; max: n
 }
 
 /** A timeline block: each item a row on one linear time axis that runs exactly from the earliest date the frame holds to the latest. */
+/** The label column: up to 10rem, giving way first on a narrow block. */
+const LABEL = "w-40 min-w-0 shrink truncate py-1.5 pr-3 text-fg";
+
 export function TimelineBlockView({ block }: { block: VisualBlockOf<"timeline"> }) {
   const instants = useBlockInstants();
   const m = timelineModel(block, instants);
@@ -76,32 +79,32 @@ export function TimelineBlockView({ block }: { block: VisualBlockOf<"timeline"> 
           )}
         </ul>
       )}
-      <div aria-hidden className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] text-13">
+      <div aria-hidden className="grid text-13">
         {m.items.map((item, i) => (
-          // two items may share a label; position is their identity
-          // biome-ignore lint/suspicious/noArrayIndexKey: items are positional
-          <div key={i} className="contents" data-testid="timeline-item">
+          <div key={item.row} className="contents" data-testid="timeline-item">
             {item.lane !== null && item.lane !== m.items[i - 1]?.lane && (
-              <div className="col-span-2 mt-2 text-12 font-semibold text-subtle first:mt-0" title={item.lane} data-testid="timeline-lane">
+              <div className="mt-2 text-12 font-semibold text-subtle first:mt-0" title={item.lane} data-testid="timeline-lane">
                 {laneField ? words(laneField, item.lane) : item.lane}
               </div>
             )}
-            <div className="truncate border-b border-line-subtle py-1.5 pr-3 text-fg" title={item.label}>
-              {item.label}
-            </div>
-            <div className="relative h-7 border-b border-line-subtle">
-              <Marks item={item} axis={m} />
+            <div className="flex border-b border-line-subtle">
+              <div className={LABEL} title={item.label}>
+                {item.label}
+              </div>
+              <div className="relative h-7 min-w-0 flex-1">
+                <Marks item={item} axis={m} />
+              </div>
             </div>
           </div>
         ))}
         {m.items.length > 0 && (
-          <>
-            <div />
-            <div className="flex justify-between pt-1 font-mono text-12 tabular-nums text-subtle" data-testid="timeline-axis">
+          <div className="flex">
+            <div className={LABEL} />
+            <div className="flex min-w-0 flex-1 justify-between pt-1 font-mono text-12 tabular-nums text-subtle" data-testid="timeline-axis">
               <span>{m.minText}</span>
               {m.maxText !== m.minText && <span>{m.maxText}</span>}
             </div>
-          </>
+          </div>
         )}
       </div>
       {m.undated.length > 0 && (

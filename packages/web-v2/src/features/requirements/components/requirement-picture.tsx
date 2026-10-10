@@ -105,7 +105,7 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
   const linked = kind === "process" && traced.length > 0;
   const save = useWriteRequirementPicture(projectId, d.key);
   const kindRefused = namedRefusals(save.error).find((r) => r.path === "/kind")?.detail;
-  const end = useRef<HTMLSpanElement>(null);
+  const endRef = useRef<HTMLSpanElement>(null);
   const close = () => {
     setEditing(false);
     save.reset();
@@ -143,13 +143,13 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
         className="sr-only focus:not-sr-only focus:mb-2 focus:inline-block focus:text-13 focus:font-semibold focus:text-link"
         onClick={(e) => {
           e.preventDefault();
-          end.current?.focus();
+          endRef.current?.focus();
         }}
       >
         {t("requirements.picture.skip")}
       </a>
       {body}
-      <span ref={end} id={`${headingId}-end`} tabIndex={-1} className="outline-none" data-testid="picture-end" />
+      <span ref={endRef} id={`${headingId}-end`} tabIndex={-1} className="outline-none" data-testid="picture-end" />
       {editing && rev && wanted && !linked ? <PictureEditor key={`${rev.revision}:${wanted}`} revision={rev.revision} kind={wanted} picture={picture} save={save} onDone={close} /> : null}
       {kind === null || kind === "screen" ? (
         <div className="mt-3 max-w-2xl">
