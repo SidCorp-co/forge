@@ -2,7 +2,7 @@
  * Facts a box reports and core judges or serves (ADR 0009). Migration 0430: a box reports what each
  * scratch filesystem has left on its heartbeat, core judges it against its own thresholds and shows
  * the verdict on `/api/me/devices`. Core serves the checkout orientation on `me/runners`, so the box
- * writes what it is sent. The lease answer carries only the lease, now that no paired box reads the
+ * writes what it is sent, the project's always-applied knowledge entries among it. The lease answer carries only the lease, now that no paired box reads the
  * issue's standing off it.
  */
 
@@ -137,15 +137,28 @@ describe('a box reporting its facts', () => {
     expect(row?.disk_report).toBeNull();
   });
 
-  it("serves each assigned project's checkout orientation on me/runners", async () => {
+  it("serves each assigned project's checkout orientation on me/runners, carrying its always-applied rules (REQ-43 BC-12)", async () => {
     const project = await createTestProject(ownerId);
     await bindTestRunner(project.id, deviceId);
+    const rule = 'Every page reads as state, not prose.';
+    await rows(sql`
+      INSERT INTO knowledge_entries (id, project_id, slug, title, body, kind, injection)
+      VALUES (${randomUUID()}, ${project.id}, 'ui-copy-rule', 'UI copy', ${rule}, 'rule', 'always'),
+             (${randomUUID()}, ${project.id}, 'build-commands', 'Build', 'pnpm build', 'rule', 'on_demand')
+      RETURNING id
+    `);
 
     const res = await api(boxToken, 'GET', '/api/devices/me/runners');
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const [row] = res.body as unknown as Array<{ slug: string; orientation: string }>;
-    expect(row?.orientation).toBe(checkoutOrientation(project.id, project.slug));
+    expect(row?.orientation).toBe(
+      checkoutOrientation(project.id, project.slug, {
+        entries: [{ key: 'ui-copy-rule', text: rule }],
+      }),
+    );
+    expect(row?.orientation).toContain(`### ui-copy-rule\n${rule}`);
+    expect(row?.orientation).not.toContain('pnpm build');
   });
 
   it('answers a lease read with the lease alone, no issue standing beside it', async () => {

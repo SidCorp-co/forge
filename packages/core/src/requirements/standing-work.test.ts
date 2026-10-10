@@ -89,7 +89,7 @@ describe('whom a requirement waits on while its issues are worked', () => {
       refers: 'release',
       ref: '0.1.0',
     });
-    expect(s.waitingOn.rule).toMatch(/^every issue of it not yet shipped has landed \(2\)/);
+    expect(s.waitingOn.rule).toMatch(/^every unshipped issue landed \(2\)/);
     // the workflow design's last turn condition groups it moving; only the wait is named (BC-19)
     expect(s.attentionGroup).toBe('moving');
     expect(s.waitingOn.who).not.toBe('Issues');
@@ -211,9 +211,7 @@ describe('whom a requirement waits on while its issues are worked', () => {
       who: 'Master',
       act: 'take ISS-1, ISS-3 next',
     });
-    expect(s.waitingOn.rule).toBe(
-      'none of its issues is being worked: ISS-1, ISS-3 wait for the master to take them',
-    );
+    expect(s.waitingOn.rule).toBe('no issue is being worked: ISS-1, ISS-3 wait for the master');
     expect(s.attentionGroup).toBe('moving');
   });
 

@@ -1,18 +1,19 @@
 #!/usr/bin/env node
 
 // Language axis: no web copy string is long, explains, or pads an empty state (REQ-43 BC-1, BC-2,
-// BC-4, BC-6). Every English string in the copy files — packages/web-v2/src/**/copy*.json and
-// lib/i18n/copy/** — is at most `budget` words, a refusal or confirmation at most `refusalBudget`,
-// an empty state at most `emptyBudget`, and a string whose key names an explanation is refused at
-// any length. What a key is comes from the segment conventions `.forge/conformance.json` declares;
-// a convention it does not declare stops the check, since reading nothing as an explanation would
-// pass every page.
+// BC-4, BC-6), and neither is a sentence core writes for a page (BC-11). Every English string in the
+// copy files — packages/web-v2/src/**/copy*.json and lib/i18n/copy/** — and every English template
+// of the sentence registries `sentences` names is at most `budget` words, a refusal or confirmation
+// at most `refusalBudget`, an empty state at most `emptyBudget`, and a string whose key names an
+// explanation is refused at any length. What a key is comes from the segment conventions
+// `.forge/conformance.json` declares; a convention it does not declare stops the check, since reading
+// nothing as an explanation would pass every page.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { checkerConfig } from './lib/checker-config.mjs';
-import { faults, overBudget } from './lib/copy-budget.mjs';
+import { faults, overBudget, sentencesOf } from './lib/copy-budget.mjs';
 import { dieAs, ROOT, walkFiles } from './lib/gate.mjs';
 
 const die = dieAs('copy-budget');
@@ -24,18 +25,22 @@ const DEFAULTS = {
   emptyBudget: 2,
 };
 const CFG = checkerConfig(ROOT, 'copy-budget', DEFAULTS, die);
-const segments = {};
-for (const name of ['refusalSegments', 'emptySegments', 'explainSegments']) {
-  if (typeof CFG[name] !== 'string' || CFG[name] === '')
-    die(
-      `.forge/conformance.json checkers.copy-budget declares no ${name}: a key's kind cannot be read`,
-    );
+const pattern = (where, value) => {
+  if (typeof value !== 'string' || value === '')
+    die(`.forge/conformance.json ${where} is not declared: a key's kind cannot be read`);
   try {
-    segments[name] = new RegExp(CFG[name]);
+    return new RegExp(value);
   } catch (err) {
-    die(`checkers.copy-budget.${name} is not a valid pattern: ${err.message}`);
+    die(`${where} is not a valid pattern: ${err.message}`);
   }
-}
+};
+const segments = {};
+for (const name of ['refusalSegments', 'emptySegments', 'explainSegments'])
+  segments[name] = pattern(`checkers.copy-budget.${name}`, CFG[name]);
+if (!Array.isArray(CFG.sentences) || CFG.sentences.length === 0)
+  die(
+    'checkers.copy-budget declares no sentences: the sentences core writes for pages would go unread',
+  );
 if ('baseline' in CFG)
   die(
     'checkers.copy-budget declares a baseline; the copy budget holds every string and carries none',
@@ -64,9 +69,37 @@ for (const file of files) {
   }
 }
 
-const found = faults(overBudget(entries, { ...CFG, ...segments }));
+const over = overBudget(entries, { ...CFG, ...segments });
+
+// A registry's own `emptySegments` replaces the copy files' one for its keys: core names a sentence
+// by the reason it gives (`noRunner`, `noToken`), so `no<X>` there is a reason, not an empty state.
+let sentences = 0;
+for (const [i, registry] of CFG.sentences.entries()) {
+  const where = `checkers.copy-budget.sentences[${i}]`;
+  if (typeof registry?.file !== 'string' || typeof registry?.symbol !== 'string')
+    die(`${where} must name a \`file\` and the \`symbol\` of its registry`);
+  if (!existsSync(join(ROOT, registry.file)))
+    die(`${where}.file ${registry.file} does not exist: its sentences would go unread`);
+  let read;
+  try {
+    read = sentencesOf(
+      readFileSync(join(ROOT, registry.file), 'utf8'),
+      registry.file,
+      registry.symbol,
+    );
+  } catch (err) {
+    die(err.message);
+  }
+  const own = { ...segments };
+  if ('emptySegments' in registry)
+    own.emptySegments = pattern(`${where}.emptySegments`, registry.emptySegments);
+  for (const [k, v] of overBudget(read, { ...CFG, ...own })) over.set(k, v);
+  sentences += read.length;
+}
+
+const found = faults(over);
 console.log(
-  `copy-budget: ${entries.length} string(s) in ${files.length} file(s) read, ${found.length} over budget`,
+  `copy-budget: ${entries.length} string(s) in ${files.length} file(s) and ${sentences} sentence(s) in ${CFG.sentences.length} registry file(s) read, ${found.length} over budget`,
 );
 if (found.length === 0) process.exit(0);
 console.error(

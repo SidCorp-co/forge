@@ -1,6 +1,9 @@
-// The copy budget (REQ-43 BC-1, BC-2, BC-4, BC-6): every English string in the web copy files is
-// short, an empty state is a word or two, and no string explains. Pure functions over already-read
-// strings, so a test can plant a string without a file.
+// The copy budget (REQ-43 BC-1, BC-2, BC-4, BC-6, BC-11): every English string in the web copy files,
+// and every English sentence core writes for a page, is short, an empty state is a word or two, and
+// no string explains. Pure functions over already-read text, so a test can plant a string without a
+// file.
+
+import ts from 'typescript';
 
 /** A `{name}` or `{{name}}` placeholder; it is one word whatever it expands to. */
 const PLACEHOLDER = /\{\{[^}]*\}\}|\{[^}]*\}/g;
@@ -75,4 +78,56 @@ export function faults(over) {
             : 'a copy string';
       return `${o.file} · ${o.key}: ${o.words} words, budget ${o.budget} for ${what}`;
     });
+}
+
+/**
+ * The English sentences a registry of core's sentences declares (`export const <symbol> = { key: {
+ * en: "…" }, … }`, as `packages/contracts/src/said-keys.ts` holds them), as `{file, key, text}`
+ * entries. Read from the source's syntax, so nothing has to be built first. A registry this cannot
+ * read whole throws naming the key and what is wrong, since a sentence skipped here is one the
+ * budget never holds.
+ */
+export function sentencesOf(source, file, symbol) {
+  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+  let registry = null;
+  for (const statement of sf.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const decl of statement.declarationList.declarations)
+      if (ts.isIdentifier(decl.name) && decl.name.text === symbol) registry = decl.initializer;
+  }
+  while (registry && (ts.isSatisfiesExpression(registry) || ts.isAsExpression(registry)))
+    registry = registry.expression;
+  if (!registry || !ts.isObjectLiteralExpression(registry))
+    throw new Error(
+      `${file} declares no \`const ${symbol} = { … }\` object literal to read sentences from`,
+    );
+  const text = (node) =>
+    node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
+      ? node.text
+      : null;
+  const nameOf = (node) => (ts.isIdentifier(node) ? node.text : text(node));
+  const entries = [];
+  for (const prop of registry.properties) {
+    const key = ts.isPropertyAssignment(prop)
+      ? (nameOf(prop.name) ?? prop.name.getText(sf))
+      : prop.getText(sf);
+    if (!ts.isPropertyAssignment(prop) || !ts.isObjectLiteralExpression(prop.initializer))
+      throw new Error(
+        `${file} · ${key}: an entry of ${symbol} must be \`{ en: "…" }\`, so its sentence can be read`,
+      );
+    const en = prop.initializer.properties.find(
+      (q) => ts.isPropertyAssignment(q) && nameOf(q.name) === 'en',
+    );
+    const sentence = en ? text(en.initializer) : null;
+    if (sentence === null)
+      throw new Error(
+        `${file} · ${key}: its \`en\` must be a string literal, so its sentence can be read`,
+      );
+    entries.push({ file, key, text: sentence });
+  }
+  if (entries.length === 0)
+    throw new Error(
+      `${file} · ${symbol} declares no sentence: the scan read nothing, which is not a pass`,
+    );
+  return entries;
 }

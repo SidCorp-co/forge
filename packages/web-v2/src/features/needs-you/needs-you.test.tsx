@@ -62,7 +62,7 @@ describe("the needs-you inbox", () => {
   it("says under a row what doing its act changes, where core gave one", () => {
     const w = waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.splitRelease"), rule: RULE, effect: say("releases.effect.split", { limit: 50, left: say("releases.effect.splitOthers") }) });
     render(<NeedsYouList slug="hop" foldKey="t2b" empty="" items={[item({ area: "releases", entity: "release", key: "0.1.0", waitingOn: w })]} />);
-    expect(within(screen.getByTestId("list-row")).getByTestId("row-note")).toHaveTextContent("Cuts the oldest 50 merged issues as this release and leaves the others at the release gate for the next one.");
+    expect(within(screen.getByTestId("list-row")).getByTestId("row-note")).toHaveTextContent("Cuts the oldest 50 merged issues; the others wait for the next release.");
   });
 
   it("words a row core says itself in the reader's language: one row for a base's pin-only dependents", () => {

@@ -46,7 +46,9 @@ it touched.
 ## Copy rule
 
 Every person-facing page reads as state, not prose (owner, 2026-10-10: "UI full of text is garbage").
-The same rule is project knowledge `ui-copy-rule`, which every agent run reads.
+The same rule is project knowledge `ui-copy-rule`, which every agent run reads: a core-built prompt
+carries it, and so does the checkout orientation a box writes for the runs a master declares
+(`packages/core/src/prompt/checkout-orientation.ts:checkoutOrientation`).
 
 1. A page opens on what is true now: properties and short rows. A label is 1-3 words; a row or value at most 12 words.
 2. No explaining copy. No sentence tells the reader what a section is, what a button does, who can see something, or what will happen later. If a control needs a sentence, change the control.
@@ -58,7 +60,8 @@ The same rule is project knowledge `ui-copy-rule`, which every agent run reads.
 8. Budget: the first screen at 1440x900 shows at most 300 words; a copy string is at most 12 words (refusals and confirmations 20). A longer string is a defect, not a style choice.
 
 Held by `scripts/check-copy-budget.mjs` (the `language` axis): a copy string over budget is refused
-naming its file, key and word count, with no baseline. What a key is comes from its name, by the
+naming its file, key and word count, with no baseline. The sentences core writes for pages
+(`packages/contracts/src/said-keys.ts`) are held to the same budget. What a key is comes from its name, by the
 conventions `checkers.copy-budget` in `.forge/conformance.json` declares: a refusal or
 confirmation when a segment matches `refusalSegments` (20 words); an empty state when its last
 segment matches `emptySegments` (2 words, rule 4); an explanation when its last segment matches

@@ -71,7 +71,7 @@ passed, because the external record of what shipped belonged to none of them.
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | selection | `check-whole-tree-gates` — `whole-tree`, after the merge | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case or failed to load, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
-| language | `check-source-language` — `lang-check`, `check-copy-budget` | English-only source policy; length of web copy strings, empty states, no explaining copy | everything else |
+| language | `check-source-language` — `lang-check`, `check-copy-budget` | English-only source policy; length of web copy strings and of the sentences core writes for pages, empty states, no explaining copy | everything else |
 | record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, whether a published entry can leave without a declared reason, and what an added or corrected entry may spend | whether an entry is TRUE, or whether a change deserved one — that is review's |
 
 ### Why `core` lint prints every diagnostic
@@ -1104,18 +1104,24 @@ Exit codes: `0` clean, `1` violations found, `2` invalid invocation.
 
 CI cannot be bypassed — translate the offending strings or add an `i18n-allow:` directive with a reason.
 
-## check-copy-budget.mjs — web copy strings are short
+## check-copy-budget.mjs — web copy strings and core's sentences are short
 
 Every English string in `packages/web-v2/src/**/copy*.json` and `lib/i18n/copy/**` is at most 12
-words, a placeholder counting as one (REQ-43 BC-1, BC-2, BC-4, BC-6). What a key is comes from
+words, a placeholder counting as one (REQ-43 BC-1, BC-2, BC-4, BC-6). So is every English template of
+a sentence registry `sentences` names: `packages/contracts/src/said-keys.ts` (`SAID`), the sentences
+core writes for pages (BC-11). A registry is read from its source's syntax, and one entry whose `en`
+is not a string literal stops the check naming its key, since a sentence skipped is never held. What a key is comes from
 conventions declared in `.forge/conformance.json` (`checkers.copy-budget`), never guessed from its
 sentence:
 - a refusal or confirmation is a key with a segment that matches `refusalSegments`, and holds at most 20 words;
 - an empty state is a key whose last segment matches `emptySegments`, and holds at most 2;
 - an explanation is a key whose last segment matches `explainSegments` (`hint`, `intro`, `help`,
   `emptyMessage`, …), and is refused at any length.
-A convention the manifest does not declare stops the check with exit 2, and so does a declared
-`baseline`. Each string over budget is refused naming file, key, count and the budget for its
+A registry may declare its own `emptySegments`, which replaces the copy files' one for its keys:
+core names a sentence by its reason (`noRunner`, `noToken`), so `no<X>` there is not an empty
+state, and `SAID` holds only `empty`, `none` and `nothing` to two words.
+A convention the manifest does not declare stops the check with exit 2, and so do a declared
+`baseline` and a missing `sentences`. Each string over budget is refused naming file, key, count and the budget for its
 kind. There is no baseline and no amnesty. Only English is read, since the other languages
 translate it. The rule's text is the Copy rule in `docs/patterns/screen.md`.
 

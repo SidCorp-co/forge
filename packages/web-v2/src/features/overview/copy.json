@@ -325,15 +325,12 @@
     "overview.signal.adaptBy": "thích ứng trước {at}",
     "overview.signal.andMore": "và {n} cửa sổ nữa",
     "overview.signal.ci": "CI trên dev",
-    "overview.signal.ciNote": "Core chỉ lưu kết quả kiểm tra của pull request, không bao giờ của đầu một nhánh, nên không có số đo nào cho chính dev.",
     "overview.signal.contracts": "Hợp đồng",
     "overview.signal.master": "Master",
     "overview.signal.mastersLive": "Master đang chạy",
     "overview.signal.next": "kế tiếp {contract} {version} {when}",
-    "overview.signal.noSlotsNote": "Không Master nào đang phục vụ project này, nên chưa máy nào khai báo suất cho nó.",
     "overview.signal.of": "trên {max}",
     "overview.signal.postMerge": "Sau merge",
-    "overview.signal.postMergeNote": "Một lần đẩy lên nhánh có cổng chạy các tác vụ sau merge trên GitHub; core không nhận sự kiện nào về chúng và không lưu gì.",
     "overview.signal.signals": "Tín hiệu",
     "overview.signal.slotsInUse": "Suất đang dùng",
     "overview.signal.toApprove": "Cần duyệt",
@@ -358,11 +355,6 @@
     "overview.spend.trendSoon": "Biểu đồ chi phí theo thời gian sắp có (ISS-380)",
     "overview.title": "Tổng quan",
     "overview.welcome": "Chào mừng đến với Forge",
-    "pulse.gap.all": "{parts}",
-    "pulse.gap.cut": "{base} đi trước {live} {ahead} commit nhưng lần đọc chỉ liệt kê {listed}, nên issue đã đóng nào nó không nêu tên thì chưa xác định được vị trí",
-    "pulse.gap.lateMany": "{n} issue đã đóng được merge sau lần đọc lúc {at}, lần đọc kế tiếp sẽ xác định vị trí của chúng",
-    "pulse.gap.lateOne": "1 issue đã đóng được merge sau lần đọc lúc {at}, lần đọc kế tiếp sẽ xác định vị trí của nó",
-    "pulse.gap.ownerlessMany": "{n} commit đang chờ trên {base} không thuộc issue nào, nên issue đã đóng mà các commit đó là phần việc của nó sẽ hiện như không có gì đang chờ",
-    "pulse.gap.ownerlessOne": "1 commit đang chờ trên {base} không thuộc issue nào, nên issue đã đóng mà commit đó là phần việc của nó sẽ hiện như không có gì đang chờ"
+    "pulse.gap.all": "{parts}"
   }
 }

@@ -74,7 +74,7 @@ describe("a person's turn names who can take it", () => {
     expect(s.attentionGroup).toBe('stuck');
     expect(s.waitingOn).toMatchObject({ kind: 'none', who: 'Nobody' });
     expect(s.waitingOn.act).toBe(
-      'take on or drop: no person on this project holds project.write until it is granted under Settings → Members',
+      'take on or drop: nobody holds project.write; grant it under Settings → Members',
     );
   });
 

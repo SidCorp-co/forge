@@ -167,7 +167,7 @@ describe('whose turn an open draft revision is', () => {
       who: 'Master',
       act: 'revise returned r1, then propose or drop it',
     });
-    expect(s.waitingOn.rule).toMatch(/core wakes it on the return/);
+    expect(s.waitingOn.rule).toMatch(/the master running its agent revises it/);
   });
 });
 
