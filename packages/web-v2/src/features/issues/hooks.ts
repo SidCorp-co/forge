@@ -7,6 +7,7 @@ import { formatApiError } from "@/lib/api/error";
 import { type Refusal, refusalFact, refusalsOf } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
+import { useToastWrite } from "@/providers/toast-write";
 import { issueKeys, issueQueries } from "./queries";
 import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, releaseBatchApi } from "./api";
 import type { IssueStandingScope } from "@forge/contracts/issue-standing";
@@ -116,17 +117,11 @@ function useIssueMutation<TArgs, TData>(
   fn: (args: TArgs) => Promise<TData>,
   opts: { success?: string; failure?: string; touches?: (args: TArgs) => readonly unknown[][] } = {},
 ) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
   const t = useCopy();
-  return useMutation({
-    mutationFn: fn,
-    onSuccess: (_data, args) => {
-      void qc.invalidateQueries({ queryKey: issueKeys.all });
-      for (const queryKey of opts.touches?.(args) ?? []) void qc.invalidateQueries({ queryKey });
-      if (opts.success) toast({ title: opts.success, tone: "success" });
-    },
-    onError: (err) => toast({ title: opts.failure ?? t("issues.toast.updateFailed"), description: formatApiError(err), tone: "error" }),
+  return useToastWrite(fn, {
+    touches: (args) => [issueKeys.all, ...(opts.touches?.(args) ?? [])],
+    said: opts.success,
+    failed: opts.failure ?? t("issues.toast.updateFailed"),
   });
 }
 

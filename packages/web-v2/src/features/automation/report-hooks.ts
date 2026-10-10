@@ -1,12 +1,11 @@
 "use client";
 
 import type { TriageAgentReportRequest } from "@forge/contracts/agent-reports";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { automationKeys } from "./queries";
 import { formatRefusal } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
-import { useToast } from "@/providers/toast-provider";
+import { useToastWrite } from "@/providers/toast-write";
 import { agentReportsApi } from "./report-api";
 
 const DONE: Record<TriageAgentReportRequest["act"], ProductCopyKey> = {
@@ -17,18 +16,11 @@ const DONE: Record<TriageAgentReportRequest["act"], ProductCopyKey> = {
 };
 
 export function useTriageAgentReport(projectId: string | undefined) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
   const t = useCopy();
-  return useMutation({
-    mutationFn: ({ id, act }: { id: string; act: TriageAgentReportRequest }) => agentReportsApi.triage(id, act),
-    onSuccess: ({ effect }, { act }) => {
-      void qc.invalidateQueries({ queryKey: automationKeys.agentReports(projectId) });
-      void qc.invalidateQueries({ queryKey: automationKeys.project(projectId) });
-      toast({ title: effect.issue ? t("schedules.report.doneAs", { done: t(DONE[act.act]), key: effect.issue.key }) : t(DONE[act.act]), tone: "success" });
-    },
-    onError: (err) => {
-      toast({ title: t("schedules.report.refused"), description: formatRefusal(err), tone: "error" });
-    },
+  return useToastWrite(({ id, act }: { id: string; act: TriageAgentReportRequest }) => agentReportsApi.triage(id, act), {
+    touches: [automationKeys.agentReports(projectId), automationKeys.project(projectId)],
+    said: ({ effect }, { act }) => (effect.issue ? t("schedules.report.doneAs", { done: t(DONE[act.act]), key: effect.issue.key }) : t(DONE[act.act])),
+    failed: t("schedules.report.refused"),
+    describe: formatRefusal,
   });
 }
