@@ -16,6 +16,19 @@ function clockOf(intervalMs: number): Clock {
 	return clock;
 }
 
+// One subscribe function per interval, the same on every render: a new one each render would make
+// React unsubscribe and resubscribe, and a resubscribe to an idle clock moves its instant, which
+// renders again, for ever.
+const subscribers = new Map<number, (listener: () => void) => () => void>();
+function subscriberOf(intervalMs: number): (listener: () => void) => () => void {
+	let subscriber = subscribers.get(intervalMs);
+	if (!subscriber) {
+		subscriber = (listener) => subscribe(intervalMs, listener);
+		subscribers.set(intervalMs, subscriber);
+	}
+	return subscriber;
+}
+
 function subscribe(intervalMs: number, listener: () => void): () => void {
 	const clock = clockOf(intervalMs);
 	if (clock.listeners.size === 0) {
@@ -42,7 +55,7 @@ export function useNow(intervalMs = 1000, active = true): number {
 	const [mounted] = useState(() => Date.now());
 	const clock = clockOf(intervalMs);
 	const live = useSyncExternalStore(
-		active ? (listener: () => void) => subscribe(intervalMs, listener) : idle,
+		active ? subscriberOf(intervalMs) : idle,
 		() => clock.now,
 		() => clock.now,
 	);
