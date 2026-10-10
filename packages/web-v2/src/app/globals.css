@@ -406,3 +406,11 @@
   thead { display: table-header-group; }
   figure[data-kind="chart"], figure[data-kind="kpi"], figure[data-kind="timeline"] { break-inside: avoid; }
 }
+
+/* the notch and home-indicator insets, for an edge-to-edge drawer or bar on a phone */
+@utility pt-safe {
+  padding-top: max(env(safe-area-inset-top), 0.75rem);
+}
+@utility pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+}

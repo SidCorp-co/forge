@@ -68,19 +68,19 @@ export function Popover({
   children,
   ...rest
 }: PopoverProps) {
-  const panel = useRef<HTMLDivElement | null>(null);
+  const ownPanelRef = useRef<HTMLDivElement | null>(null);
   const dismissRef = useRef(onDismiss);
   dismissRef.current = onDismiss;
 
   const setPanel = useCallback(
     (node: HTMLDivElement | null) => {
-      panel.current = node;
+      ownPanelRef.current = node;
       assignRef(panelRef, node);
     },
     [panelRef],
   );
 
-  useScrollLock(open && lockScroll, [panel]);
+  useScrollLock(open && lockScroll, [ownPanelRef]);
 
   const { side, align } = splitPlacement(placement);
   const placed: CSSProperties = {
@@ -118,7 +118,7 @@ export function Popover({
             finalFocus={takesFocus ? anchor : false}
             {...rest}
             role={role}
-            className={cn("outline-none", className)}
+            className={cn("border border-line bg-surface shadow-overlay outline-none", className)}
             style={placed}
           >
             {children}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import {
   Banner,
   Button,
@@ -14,36 +14,36 @@ import {
   PageTitle,
   ProjectCardSkeleton,
   Stat,
+  useNow,
+  useUrlChoice,
+  useUrlParams,
 } from '@/design';
-import { useActiveOrg } from '@/features/orgs/active-org';
+import { useActiveOrg } from '@/features/orgs';
 import { formatApiError } from '@/lib/api/error';
 import { filterProjects, formatSpend, isAttention, sortProjects } from '../derive';
 import { useProjectsConsole } from '../hooks';
 import type { ProjectConsoleItem, ProjectSort, ProjectView, WorkspaceTotals } from '../types';
 import { NewProjectDialog } from './new-project-dialog';
-import { ProjectCard } from './project-card';
+import { ProjectTile } from './project-card';
 import { ProjectList } from './project-list';
 import { ProjectsToolbar } from './projects-toolbar';
 
-const GRID = 'grid gap-x-8 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(326px,1fr))]';
+const GRID = 'grid gap-x-8 gap-y-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4';
 const SKELETONS = ['a', 'b', 'c', 'd', 'e', 'f'];
 
 export function ProjectsConsole() {
   const { items, totals, isLoading, isError, error, refetch, toggle } = useProjectsConsole();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [createOpen, setCreateOpen] = useState(false);
-  const onNewProject = () => setCreateOpen(true);
-
-  // The rail switcher's "New project" deep-links here with `?new=1`. Honour it,
-  // then strip the param so a refresh/back doesn't reopen the dialog. `/` is the
-  // Overview dashboard (ISS-355), so replace to `/projects`.
-  useEffect(() => {
-    if (searchParams.get('new') === '1') {
-      setCreateOpen(true);
-      router.replace('/projects');
-    }
-  }, [searchParams, router]);
+  const [opened, setOpened] = useState(false);
+  // The rail switcher's "New project" deep-links here with `?new=1`: the dialog reads it as open,
+  // and closing strips it so a refresh or back does not reopen it.
+  const createOpen = opened || searchParams.get('new') === '1';
+  const onNewProject = () => setOpened(true);
+  const onCloseCreate = () => {
+    setOpened(false);
+    if (searchParams.get('new') === '1') router.replace('/projects');
+  };
 
   return (
     <PageContainer>
@@ -64,7 +64,7 @@ export function ProjectsConsole() {
       ) : (
         <ConsoleBody items={items} totals={totals} onTogglePin={toggle} onNewProject={onNewProject} />
       )}
-      <NewProjectDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+      <NewProjectDialog open={createOpen} onClose={onCloseCreate} />
     </PageContainer>
   );
 }
@@ -80,26 +80,22 @@ function ConsoleBody({
   onTogglePin: (id: string) => void;
   onNewProject: () => void;
 }) {
-  const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<ProjectSort>('recent');
-  const [view, setView] = useState<ProjectView>('cards');
-  const [attentionOnly, setAttentionOnly] = useState(false);
+  const [params, setParams] = useUrlParams();
+  const query = params.get('q') ?? '';
+  const setQuery = (q: string) => setParams({ q });
+  const [sort, setSort] = useUrlChoice<ProjectSort>('sort', ['recent', 'name', 'health'], 'recent');
+  const [view, setView] = useUrlChoice<ProjectView>('view', ['cards', 'list'], 'cards');
+  const attentionOnly = params.get('attention') === '1';
+  const setAttentionOnly = (on: boolean) => setParams({ attention: on ? '1' : null });
   // The console is HARD-SCOPED to the global active org (ISS-469/470), never a
   // local filter, so the chrome and the console cannot contradict. null only
   // while orgs load → show all for one tick (no flash of empty), then scope.
   const { activeOrg, activeOrgId } = useActiveOrg();
   const scopeLabel = activeOrg ? (activeOrg.isPersonal ? 'Personal' : activeOrg.name) : null;
 
-  // Relative timestamps: 0 on the server + first paint (renders "just now"),
-  // then the real clock after mount — hydration-safe.
-  const [now, setNow] = useState(0);
-  useEffect(() => setNow(Date.now()), []);
-
-  const attentionCount = useMemo(() => items.filter(isAttention).length, [items]);
-  const visible = useMemo(
-    () => sortProjects(filterProjects(items, query, attentionOnly, activeOrgId), sort),
-    [items, query, attentionOnly, sort, activeOrgId],
-  );
+  const now = useNow(60_000);
+  const attentionCount = items.filter(isAttention).length;
+  const visible = sortProjects(filterProjects(items, query, attentionOnly, activeOrgId), sort);
 
   return (
     <>
@@ -119,7 +115,7 @@ function ConsoleBody({
           <Banner
             tone="attention"
             action={
-              <Button variant="ghost" size="sm" onClick={() => setAttentionOnly((a) => !a)}>
+              <Button variant="ghost" size="sm" onClick={() => setAttentionOnly(!attentionOnly)}>
                 {attentionOnly ? 'Show all' : 'Show only these'}
               </Button>
             }
@@ -172,7 +168,7 @@ function ProjectSections({
     ) : (
       <div className={GRID}>
         {rows.map((p) => (
-          <ProjectCard key={p.id} project={p} now={now} onTogglePin={onTogglePin} />
+          <ProjectTile key={p.id} project={p} now={now} onTogglePin={onTogglePin} />
         ))}
       </div>
     );

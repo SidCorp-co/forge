@@ -4,14 +4,14 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useEffect, useState } from 'react';
 import { Banner, Button, Field, Input, Select, SlideOver } from '@/design';
-import { useActiveOrg } from '@/features/orgs/active-org';
-import { useOrgs } from '@/features/orgs/hooks';
+import { useActiveOrg } from '@/features/orgs';
+import { useOrgs } from '@/features/orgs';
 import { ApiError } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
 import { SLUG_RE, slugify } from '@/lib/slug';
 import { useSubmitGuard } from '@/lib/utils/use-submit-guard';
 import { useToast } from '@/providers/toast-provider';
-import { useAskForDesigns } from '@/features/onboarding/components/ask-for-designs';
+import { useAskForDesigns } from '@/features/onboarding';
 import { useCreateProject } from '../hooks';
 import type { CreatedProject } from '../types';
 

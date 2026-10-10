@@ -165,15 +165,15 @@ export function ProjectSwitcher(props: ProjectSwitcherProps) {
   const { compact, project, projects, activeSlug } = props;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const anchor = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const rows = useMemo(() => switcherRows(projects, query), [projects, query]);
   const t = useCopy();
 
   if (!project) return projects.length === 0 ? <AddProject compact={compact} onClick={props.onNewProject} /> : null;
 
   const hold = () => {
-    if (timer.current) clearTimeout(timer.current);
+    if (timerRef.current) clearTimeout(timerRef.current);
   };
   const show = () => {
     hold();
@@ -186,7 +186,7 @@ export function ProjectSwitcher(props: ProjectSwitcherProps) {
   };
   const leave = () => {
     hold();
-    timer.current = setTimeout(close, 150);
+    timerRef.current = setTimeout(close, 150);
   };
   const then = (act: () => void) => () => {
     close();
@@ -195,17 +195,17 @@ export function ProjectSwitcher(props: ProjectSwitcherProps) {
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover only keeps the list open for a pointer; the button inside opens it from the keyboard
-    <div ref={anchor} className={compact ? "relative" : "relative w-full"} onMouseEnter={show} onMouseLeave={leave}>
+    <div ref={anchorRef} className={compact ? "relative" : "relative w-full"} onMouseEnter={show} onMouseLeave={leave}>
       <Trigger compact={compact} project={project} open={open} onClick={() => (open ? close() : show())} />
       <Popover
         open={open}
-        anchor={anchor}
+        anchor={anchorRef}
         onDismiss={close}
         placement="right-start"
         gap={compact ? 10 : 6}
         role="dialog"
         aria-label={t("shell.switcher.label")}
-        className="flex w-75 flex-col border border-line bg-surface shadow-[var(--shadow-lg)]"
+        className="flex w-75 flex-col"
       >
         <div className="flex items-center gap-2 border-b border-line-subtle px-3 py-2">
           <Icon name="search" size={14} className="text-subtle" />

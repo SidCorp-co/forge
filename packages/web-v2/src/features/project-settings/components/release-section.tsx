@@ -136,7 +136,7 @@ export function ReleaseSettings({ projectId, slug }: { projectId: string; slug: 
 	return (
 		<section aria-label={t("settings.project.release.title")}>
 			{heading}
-			<p className="fg-body-sm mt-1 max-w-[68ch] text-muted">{stateLine(r, t)}</p>
+			<p className="fg-body-sm mt-1 max-w-prose text-muted">{stateLine(r, t)}</p>
 			{r.declarationRead && <ChannelDetails r={r} />}
 			{r.gates.length > 0 && (
 				<>

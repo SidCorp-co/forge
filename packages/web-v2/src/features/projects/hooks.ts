@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { useActiveOrg } from '@/features/orgs/active-org';
+import { useActiveOrg } from '@/features/orgs';
 import { projectApi } from './api';
 import { inActiveOrg, mergeProjects, workspaceTotals } from './derive';
 import { usePinnedProjects } from './pins';
