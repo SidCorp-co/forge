@@ -26,7 +26,7 @@ export function SidebarSearch({ onOpen, compact = false, icon = false }: { onOpe
         onClick={onOpen}
         aria-label={label}
         title={label}
-        className="inline-flex w-[76px] flex-col items-center gap-1 rounded-md py-1.5 text-subtle transition-colors hover:bg-hover hover:text-fg"
+        className="inline-flex w-19 flex-col items-center gap-1 rounded-md py-1.5 text-subtle transition-colors hover:bg-hover hover:text-fg"
       >
         <Icon name="search" size={18} />
         <span className="text-10 font-semibold text-muted">{t("shell.search.short")}</span>
@@ -38,7 +38,7 @@ export function SidebarSearch({ onOpen, compact = false, icon = false }: { onOpe
       type="button"
       onClick={onOpen}
       aria-label={label}
-      className="flex h-9 w-full items-center gap-2 rounded-md border border-line-strong bg-surface px-2.5 text-subtle transition-colors hover:border-[color:var(--link)] hover:bg-hover max-md:min-h-[44px]"
+      className="flex h-9 w-full items-center gap-2 rounded-md border border-line-strong bg-surface px-2.5 text-subtle transition-colors hover:border-link hover:bg-hover max-md:min-h-11"
     >
       <Icon name="search" size={15} />
       <span className="fg-body-sm flex-1 truncate text-left">{t("shell.search.placeholder")}</span>

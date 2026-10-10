@@ -75,7 +75,7 @@ export function timelineModel(b: VisualBlockOf<"timeline">, reading?: InstantRea
     items.push({
       label,
       lane: b.lane === undefined ? null : laneOf(row),
-      span: span as never,
+      span: span,
       forecast,
       key: span?.from ?? forecast?.p50 ?? 0,
     });

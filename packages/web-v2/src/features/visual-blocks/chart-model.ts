@@ -63,7 +63,7 @@ export function chartModel(b: VisualBlockOf<"chart">, reading?: InstantReading):
   const ys = b.y.map((n) => fieldOf(b, n));
   if (!x || ys.some((y) => !y)) return { unsupported: "a field it names is not in the frame" };
   const yFields = ys as ReportField[];
-  const yField = yFields[0] as ReportField;
+  const yField = yFields[0];
   if (yFields.some((y) => unitOf(y) !== unitOf(yField))) {
     return { unsupported: "its value fields differ in kind or unit, so they cannot share one scale" };
   }
@@ -98,7 +98,7 @@ export function chartModel(b: VisualBlockOf<"chart">, reading?: InstantReading):
       const id = `${index}\u0000${key}`;
       if (seen.has(id)) return { unsupported: `${x.label} ${label} appears twice${sname ? ` for ${sname}` : ""}` };
       seen.add(id);
-      (cells[index] as Map<string, number | null>).set(key, num(row[y.name]));
+      (cells[index]).set(key, num(row[y.name]));
     }
   }
 
@@ -116,7 +116,7 @@ export function chartModel(b: VisualBlockOf<"chart">, reading?: InstantReading):
   const all = series.flatMap((s) => s.values.filter((v): v is number => v !== null));
   const { domain, ticks } = reached(all);
   const xs = [...new Set(points.map((p) => p.at))].sort((a, c) => a - c);
-  const xTicks = scale === "category" ? null : xs.length <= 6 ? xs : [xs[0] as number, xs[xs.length - 1] as number];
+  const xTicks = scale === "category" ? null : xs.length <= 6 ? xs : [xs[0], xs[xs.length - 1]];
   const unit = yFields.every((y) => y.unit === yField.unit) ? yField.unit : undefined;
   const yLabel = yFields.length === 1 ? (unit ? `${yField.label} (${unit})` : yField.label) : unit ?? "";
   return { variant: b.variant, scale, points, series, xLabel: x.label, yLabel, yField, domain, yTicks: ticks, xTicks };

@@ -14,7 +14,7 @@ export function splitCorrections(text: string): { prose: string; corrections: Co
   const kept: string[] = [];
   for (const line of text.split("\n")) {
     const m = line.trim().match(CORRECTION);
-    if (m) corrections.push({ line: line.trim(), what: m[1] as string, code: m[2] as string });
+    if (m) corrections.push({ line: line.trim(), what: m[1], code: m[2] });
     else kept.push(line);
   }
   if (corrections.length === 0) return { prose: text, corrections };

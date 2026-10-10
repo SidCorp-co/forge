@@ -10,8 +10,8 @@
 import { useId } from "react";
 import { PREVIEW_LIMITS } from "@forge/contracts/preview";
 import { Input, Select, type SelectOption, Skeleton } from "@/design";
-import type { DocumentDraft } from "@/features/project-config/use-document-draft";
-import { sectionOf } from "@/features/project-config/use-document-draft";
+import type { DocumentDraft } from "@/features/project-config";
+import { sectionOf } from "@/features/project-config";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { UndeclaredNotice, useProjectDraft } from "./general-section";
 import { SaveBar, SettingGroup, SettingRow } from "./setting-controls";

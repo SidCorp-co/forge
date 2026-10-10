@@ -9,7 +9,7 @@ import { Button, Fact, FactsEmpty, FactsGroup, StatusBadge } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
 import { TONE_META } from "@/design/status";
-import { DisclosureToggle } from "@/features/releases/components/release-bits";
+import { DisclosureToggle } from "@/features/releases";
 import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";

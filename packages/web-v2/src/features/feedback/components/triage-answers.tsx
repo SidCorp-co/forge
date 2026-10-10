@@ -25,7 +25,7 @@ export function answersOf(draft: TriageAnswerDraft): TriageAnswers {
     Object.entries(draft)
       .map(([k, v]) => [k, v.trim()] as const)
       .filter(([, v]) => v !== ""),
-  ) as TriageAnswers;
+  );
 }
 
 export function TriageAnswerFields({

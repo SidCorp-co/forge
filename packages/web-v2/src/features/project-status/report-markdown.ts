@@ -5,12 +5,12 @@
 
 import type { ProjectStatus, RoadmapItem, StatusWait, StatusWaitPerson, StatusWaits } from "@forge/contracts/project-status";
 import { ROADMAP_HORIZONS } from "@forge/contracts/project-status";
-import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast/eta";
-import { honestyLine } from "@/features/forecast/honesty";
-import { progressText } from "@/features/forecast/progress";
-import { needsYouKeyLabel } from "@/features/needs-you/routes";
-import { verifiedSentence } from "@/features/releases/verified";
-import { spanText } from "@/features/forecast/text";
+import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast";
+import { honestyLine } from "@/features/forecast";
+import { progressText } from "@/features/forecast";
+import { needsYouKeyLabel } from "@/features/needs-you";
+import { verifiedSentence } from "@/features/releases";
+import { spanText } from "@/features/forecast";
 import { formatDateTime } from "@/lib/i18n/format";
 import type { labelCopy } from "@/lib/i18n/labels";
 import type { Copy } from "@/lib/i18n/product-copy";

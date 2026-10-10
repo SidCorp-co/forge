@@ -10,7 +10,7 @@ import {
   PersonChip,
   StatusBadge,
 } from "@/design";
-import { ScopeForecastLine } from "@/features/forecast/components/forecast-line";
+import { ScopeForecastLine } from "@/features/forecast";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ReleaseApprovalView, ReleaseDetail } from "../types";
 import { shortSha } from "./release-bits";

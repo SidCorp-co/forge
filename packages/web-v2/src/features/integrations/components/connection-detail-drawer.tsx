@@ -10,7 +10,7 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { useProjectsIncludingArchived } from "@/features/projects/hooks";
+import { useProjectsIncludingArchived } from "@/features/projects";
 import { useConnectionBindings, useConnections, useIntegrationsList } from "../hooks";
 import { cardProvider, getCapabilities } from "../derive";
 import { PROVIDER_MODULES, providerLabel } from "../providers/registry";

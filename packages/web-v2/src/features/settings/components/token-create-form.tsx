@@ -17,9 +17,9 @@ import {
   SectionTitle,
   Select,
 } from "@/design";
-import { isFreshAuthError } from "@/features/auth/fresh-auth";
-import { reauthStartUrl } from "@/features/auth/oauth-api";
-import { useProjects } from "@/features/projects/hooks";
+import { isFreshAuthError } from "@/features/auth";
+import { reauthStartUrl } from "@/features/auth";
+import { useProjects } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";

@@ -7,7 +7,7 @@
 import type { FeedbackForecast } from "@forge/contracts/forecast";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { type EtaClock, etaOfFeedback, whenText } from "@/features/forecast/eta";
+import { type EtaClock, etaOfFeedback, whenText } from "@/features/forecast";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { releaseHref } from "@/lib/routes/releases";
 import type { FeedbackView } from "../types";

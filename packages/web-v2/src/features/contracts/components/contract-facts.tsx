@@ -1,6 +1,6 @@
 "use client";
 import { EnumBadge, Fact, FactsEmpty, FactsGroup, NotAvailable } from "@/design";
-import { FeedbackRailItem } from "@/features/feedback/components/feedback-rail-item";
+import { FeedbackRailItem } from "@/features/feedback";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { formatStamp } from "@/lib/utils/format";
 import type { ContractStandingDetail } from "../types";

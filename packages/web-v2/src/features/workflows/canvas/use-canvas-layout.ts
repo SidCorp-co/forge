@@ -245,7 +245,7 @@ export function useCanvasLayout(input: {
       const keys = [...new Set(ids.map((id) => view.keyOf.get(id) ?? id))];
       const ns = keys.map((k) => rf.getNode(k)).filter((n): n is Node => Boolean(n));
       if (ns.length === 0) return null;
-      const n = ns[0] as Node;
+      const n = ns[0];
       return { ids, sx: (n.position.x + (n.measured?.width ?? 250) / 2) * vp.zoom + vp.x, sy: n.position.y * vp.zoom + vp.y };
     },
     [rf, view],

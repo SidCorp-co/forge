@@ -5,8 +5,8 @@
 // the list it counts. Delivery's health over a window is `health-panel.tsx`, beside it.
 
 import Link from "next/link";
-import { EtaInline } from "@/features/forecast/components/eta-cell";
-import type { Eta, EtaClock } from "@/features/forecast/eta";
+import { EtaInline } from "@/features/forecast";
+import type { Eta, EtaClock } from "@/features/forecast";
 import { feedbackListHref } from "@/lib/routes/feedback";
 import { releaseHref, releasesListHref } from "@/lib/routes/releases";
 import { requirementsHref } from "@/lib/routes/requirements";

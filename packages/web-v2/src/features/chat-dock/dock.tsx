@@ -166,7 +166,7 @@ export function usePageRoom(page: RefObject<HTMLElement | null>): number {
 }
 
 export function ChatDockProvider({ value, children }: { value: ChatDockApi; children: React.ReactNode }) {
-  return <ChatDockContext.Provider value={value}>{children}</ChatDockContext.Provider>;
+  return <ChatDockContext value={value}>{children}</ChatDockContext>;
 }
 
 export function useChatDock(): ChatDockApi | null {

@@ -35,9 +35,9 @@ import {
   primeAudio,
   setEnabled as setSoundEnabled,
 } from "@/lib/notifications/sound";
-import { deliveryResolved, liveBody } from "@/features/notifications/map";
+import { deliveryResolved, liveBody } from "@/features/notifications";
 import { NOTIFICATIONS_PAGE_SIZE } from "../api";
-import { usePreferences, useUpdatePreferences } from "@/features/preferences/hooks";
+import { usePreferences, useUpdatePreferences } from "@/features/preferences";
 import { useMarkAllRead, useNotifications } from "../hooks";
 import type { NotificationRow } from "../types";
 
@@ -76,7 +76,7 @@ export function NotificationsTab() {
       {notificationsQ.isLoading && (
         <div className="space-y-2.5">
           {SKELETON_ROWS.map((k) => (
-            <Skeleton key={k} className="h-16 w-full rounded-lg" />
+            <Skeleton key={k} className="h-16 w-full" />
           ))}
         </div>
       )}

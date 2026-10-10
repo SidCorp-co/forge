@@ -64,7 +64,7 @@ function OwedDecision({ d, slug }: { d: NeedsYouDecision; slug: string | undefin
       needsYouApi.press(answer.path, pressBody(answer, text)),
     onSuccess: () => {
       setTyping(null);
-      qc.invalidateQueries({ queryKey: NEEDS_YOU_ROOT });
+      void qc.invalidateQueries({ queryKey: NEEDS_YOU_ROOT });
     },
   });
   const href = slug ? decisionHref(slug, d.opens) : null;

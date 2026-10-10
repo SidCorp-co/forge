@@ -26,8 +26,8 @@ export function useMockupText(url: string, enabled = true) {
 function useInvalidate(projectId: string) {
   const qc = useQueryClient();
   return () => {
-    qc.invalidateQueries({ queryKey: ["mockups", projectId] });
-    qc.invalidateQueries({ queryKey: ["requirement", projectId] });
+    void qc.invalidateQueries({ queryKey: ["mockups", projectId] });
+    void qc.invalidateQueries({ queryKey: ["requirement", projectId] });
   };
 }
 

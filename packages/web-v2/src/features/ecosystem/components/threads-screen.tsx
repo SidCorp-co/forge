@@ -140,7 +140,7 @@ function MasterLine({ row, draft, ctx }: { row: InboxRow; draft: WorkspaceDraft 
     <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-12 text-muted">
       <ProjectMark {...projectMarkProps(ctx.slug(draft.from))} size={18} />
       {draft.state === "draft" && draft.authoredBy.kind === "agent" ? (
-        <i className="forge-pulse inline-block h-[7px] w-[7px] flex-none rounded-full" style={{ background: "var(--green-500)" }} />
+        <i className="forge-pulse inline-block h-1.75 w-1.75 flex-none rounded-full" style={{ background: "var(--green-500)" }} />
       ) : null}
       <span className="truncate">
         {drafted}
@@ -156,7 +156,7 @@ function Row({ row, ctx }: { row: InboxRow; ctx: Ctx }) {
   return (
     <li
       className={cn(
-        "grid grid-cols-1 items-center gap-x-3.5 gap-y-1.5 border-b border-line-subtle py-[11px] last:border-b-0 sm:grid-cols-[110px_minmax(0,1fr)_auto]",
+        "grid grid-cols-1 items-center gap-x-3.5 gap-y-1.5 border-b border-line-subtle py-2.75 last:border-b-0 sm:grid-cols-[110px_minmax(0,1fr)_auto]",
         row.hold?.action === "hold" && "opacity-75",
       )}
     >
@@ -170,7 +170,7 @@ function Row({ row, ctx }: { row: InboxRow; ctx: Ctx }) {
           <span className="font-mono text-11 text-subtle">{row.number}</span>
         )}
       </span>
-      <span className="grid min-w-0 gap-[3px]">
+      <span className="grid min-w-0 gap-0.75">
         <b className="truncate text-13-5 font-semibold">{row.subject}</b>
         <span className="fg-caption truncate">
           {ctx.slug(row.from)} → {row.to.map(ctx.slug).join(", ")}
@@ -198,7 +198,7 @@ function Select({
 }) {
   const t = useCopy();
   return (
-    <span className="w-[150px]">
+    <span className="w-37.5">
       <NativeSelect
         aria-label={label}
         className="py-1 pl-2.5 text-12 font-semibold"
@@ -214,7 +214,7 @@ function Header({ action }: { action?: React.ReactNode }) {
   const t = useCopy();
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-3">
-      <PageTitle className="text-[22px] font-bold">{t("ecosystem.threads.title")}</PageTitle>
+      <PageTitle className="text-20 font-bold">{t("ecosystem.threads.title")}</PageTitle>
       {action ? <span className="ml-auto">{action}</span> : null}
     </div>
   );

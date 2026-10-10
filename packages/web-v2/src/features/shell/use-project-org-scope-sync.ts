@@ -6,9 +6,9 @@
 // it. The layout calls this once and consumes { activeOrgId, lastSlug }.
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useActiveOrg } from "@/features/orgs/active-org";
-import { inActiveOrg } from "@/features/projects/derive";
-import type { ProjectListItem } from "@/features/projects/types";
+import { useActiveOrg } from "@/features/orgs";
+import { inActiveOrg } from "@/features/projects";
+import type { ProjectListItem } from "@/features/projects";
 import { usePerTabState } from "@/lib/utils/use-persisted-state";
 
 export function useProjectOrgScopeSync(opts: {

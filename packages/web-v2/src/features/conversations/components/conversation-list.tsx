@@ -28,7 +28,7 @@ import {
   usePinConversation,
   useRenameConversation,
 } from "../hooks";
-import type { ChatTarget } from "@/features/chat-dock/dock-target";
+import type { ChatTarget } from "@/features/chat-dock";
 import { conversationTitle } from "../types";
 import { ConversationListItem } from "./conversation-row";
 

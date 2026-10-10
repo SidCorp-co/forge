@@ -11,7 +11,7 @@ import { ActorChip, AGENT_TINT, LEGEND, SegmentedControl, StatusBadge, VerdictEv
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
-import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
+import type { SuggestionView as Suggestion } from "@/features/suggestions";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
 import { issueHref } from "@/lib/routes/issues";
 import { agreedTitle, diffColours, VerdictDot, VerdictWord } from "./standing-bits";
@@ -149,7 +149,7 @@ const VERDICT_WORD: Record<NonNullable<CoverageIssue["verdict"]>, ProductCopyKey
 function byIssue(links: CoverageIssue[]) {
   const seen = new Map<string, CoverageIssue[]>();
   for (const l of links) seen.set(l.issueId, [...(seen.get(l.issueId) ?? []), l]);
-  return [...seen.values()].map((ls) => ({ i: ls[0] as CoverageIssue, links: ls, stale: ls.every((l) => l.stale) }));
+  return [...seen.values()].map((ls) => ({ i: ls[0], links: ls, stale: ls.every((l) => l.stale) }));
 }
 
 /** Each business criterion once, as a checklist: its verdict's glyph dot, its code and the verdict's word,

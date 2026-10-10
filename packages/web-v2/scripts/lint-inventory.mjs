@@ -1,13 +1,28 @@
 #!/usr/bin/env node
 // The UI sweep's worklist: every ESLint violation in web-v2 (frozen or not), counted per rule and
-// per feature, as markdown. Reads ESLint's JSON report from stdin or a file argument.
-//   eslint -f json --suppressions-location /dev/null src | node scripts/lint-inventory.mjs
-//   node scripts/lint-inventory.mjs report.json > inventory.md
+// per feature, as markdown. With no argument it lints src itself against an empty suppressions
+// file; with one it reads that ESLint JSON report.
+//   node scripts/lint-inventory.mjs [report.json] > inventory.md
 
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-const raw = readFileSync(process.argv[2] ?? 0, "utf8");
-const report = JSON.parse(raw);
+function lintEverything() {
+  const dir = mkdtempSync(join(tmpdir(), "web-lint-inventory-"));
+  const none = join(dir, "none.json");
+  writeFileSync(none, "{}");
+  const r = spawnSync("eslint", ["-f", "json", "--suppressions-location", none, "src"], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+  rmSync(dir, { recursive: true, force: true });
+  if (r.status !== 0 && r.status !== 1) {
+    console.error(r.stderr || "eslint could not run");
+    process.exit(2);
+  }
+  return r.stdout;
+}
+
+const report = JSON.parse(process.argv[2] ? readFileSync(process.argv[2], "utf8") : lintEverything());
 
 const area = (path) => {
   const rel = path.slice(path.indexOf("/src/") + 5);

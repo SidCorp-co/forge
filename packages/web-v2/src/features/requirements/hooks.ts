@@ -31,7 +31,7 @@ export function useCreateRequirement(projectId: string) {
     mutationFn: (body: CreateRequirementBody) => requirementsApi.create(projectId, body),
     // started, not awaited: a returned refetch keeps the form pending until the whole list is read again
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      void qc.invalidateQueries({ queryKey: ["requirements", projectId] });
     },
   });
 }
@@ -43,8 +43,8 @@ export function useRequirementAction(projectId: string, req: string) {
     mutationFn: (action: RequirementAction) => requirementsApi.act(projectId, req, action),
     onSuccess: (detail: RequirementDetail) => qc.setQueryData(["requirement", projectId, req], detail),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
-      qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
+      void qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      void qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
     },
   });
 }
@@ -56,8 +56,8 @@ export function usePromoteDrafts(projectId: string, req: string) {
     mutationFn: (issues: string[] | undefined) => requirementsApi.promoteDrafts(projectId, req, issues),
     onSuccess: (answer) => qc.setQueryData(["requirement", projectId, req], answer.requirement),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
-      qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
+      void qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      void qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
     },
   });
 }
@@ -77,10 +77,10 @@ export function useRequirementDecisions(projectId: string | undefined, req: stri
 
 /** What a link or unlink touches: the requirement, the list, and the issue whose standing names it. */
 function invalidateLinked(qc: ReturnType<typeof useQueryClient>, projectId: string, req: string) {
-  qc.invalidateQueries({ queryKey: ["requirements", projectId] });
-  qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
-  qc.invalidateQueries({ queryKey: ["issues", "standing"] });
-  qc.invalidateQueries({ queryKey: ["issue"] });
+  void qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+  void qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
+  void qc.invalidateQueries({ queryKey: ["issues", "standing"] });
+  void qc.invalidateQueries({ queryKey: ["issue"] });
 }
 
 /** Links (or, given `unlink`, unlinks) an existing issue; the detail it answers with is the one the screen shows next. */
@@ -100,9 +100,9 @@ export function useAnswerRequirementQuestion(projectId: string, req: string) {
   return useMutation({
     mutationFn: (a: { questionId: string; round: number; text: string }) => questionsApi.answer(a),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
-      qc.invalidateQueries({ queryKey: ["requirement-decisions", projectId, req] });
-      qc.invalidateQueries({ queryKey: ["entity-decisions", projectId, "requirement", req] });
+      void qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
+      void qc.invalidateQueries({ queryKey: ["requirement-decisions", projectId, req] });
+      void qc.invalidateQueries({ queryKey: ["entity-decisions", projectId, "requirement", req] });
     },
   });
 }
@@ -113,8 +113,8 @@ function useShowWritten(projectId: string, req: string) {
   return {
     onSuccess: (d: RequirementDetail) => qc.setQueryData(["requirement", projectId, req], d),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
-      qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
+      void qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      void qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
     },
   };
 }
@@ -152,10 +152,10 @@ export function useSetAreas(projectId: string) {
   return useMutation({
     mutationFn: (names: string[]) => requirementsApi.setAreas(projectId, names),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["requirement-areas", projectId] });
-      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      void qc.invalidateQueries({ queryKey: ["requirement-areas", projectId] });
+      void qc.invalidateQueries({ queryKey: ["requirements", projectId] });
       // an open requirement shows its area by name, which a rename changes
-      qc.invalidateQueries({ queryKey: ["requirement", projectId] });
+      void qc.invalidateQueries({ queryKey: ["requirement", projectId] });
     },
   });
 }
@@ -164,8 +164,8 @@ export function useSetAreas(projectId: string) {
 export function usePlacement(projectId: string, req: string) {
   const qc = useQueryClient();
   const done = () => {
-    qc.invalidateQueries({ queryKey: ["requirements", projectId] });
-    qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
+    void qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+    void qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
   };
   const set = useMutation({
     mutationFn: (body: { areaId?: string | null; shortName?: string | null }) => requirementsApi.setPlacement(projectId, req, body),
@@ -183,8 +183,8 @@ export function useAcceptAllPlacements(projectId: string) {
       for (const k of keys) await requirementsApi.acceptPlacement(projectId, k);
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
-      qc.invalidateQueries({ queryKey: ["requirement", projectId] });
+      void qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      void qc.invalidateQueries({ queryKey: ["requirement", projectId] });
     },
   });
 }

@@ -20,15 +20,14 @@ import {
   useUrlTab,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { FeedbackChecklists } from "@/features/checklists/components/item-checklists";
-import { IntakeDraft } from "@/features/intake/components/intake-draft";
-import { MockupList } from "@/features/mockups/components/mockups-panel";
+import { FeedbackChecklists } from "@/features/checklists";
+import { IntakeDraft } from "@/features/intake";
+import { MockupList, useMockups } from "@/features/mockups";
 import { Reproduction } from "@/features/previews";
-import { useMockups } from "@/features/mockups/hooks";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
-import { useFeedbackForecasts } from "@/features/forecast/hooks";
+import { useFeedbackForecasts } from "@/features/forecast";
 import { useFeedbackItem } from "../hooks";
 import type { FeedbackView } from "../types";
 import { FeedbackActions, Proposals } from "./feedback-actions";

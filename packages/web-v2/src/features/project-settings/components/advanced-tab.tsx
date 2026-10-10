@@ -6,9 +6,9 @@
 // archiving it (ISS-353), both org-admin only and both confirmed first.
 import { useState } from "react";
 import { Button, PageSection, PageSectionBody, Field, Input, SectionTitle, Select } from "@/design";
-import { useOrgs } from "@/features/orgs/hooks";
-import type { ProjectDetail } from "@/features/projects/types";
-import { isOrgAdmin } from "@/features/projects/write-access";
+import { useOrgs } from "@/features/orgs";
+import type { ProjectDetail } from "@/features/projects";
+import { isOrgAdmin } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useArchiveProject, useUnarchiveProject, useUpdateProject } from "../hooks";
 import { ComputeSection } from "./compute-section";

@@ -13,7 +13,7 @@ interface AuthShellProps {
 export function AuthShell({ title, subtitle, children, footer }: AuthShellProps) {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-app px-4 py-10">
-      <div className="w-[380px] max-w-full">
+      <div className="w-95 max-w-full">
         {/* Brand */}
         <div className="mb-7 flex flex-col items-center gap-4">
           {/* biome-ignore lint/performance/noImgElement: a fixed-size brand mark under the base path; next/image would lazy-load and wrap it */}
@@ -25,7 +25,7 @@ export function AuthShell({ title, subtitle, children, footer }: AuthShellProps)
         </div>
 
         {/* Card */}
-        <div className="rounded-xl border border-line bg-surface p-6 shadow-md">
+        <div className="border border-line bg-surface p-6">
           <PageTitle className="fg-h3">{title}</PageTitle>
           <p className="fg-body-sm mb-5 mt-1">{subtitle}</p>
           {children}

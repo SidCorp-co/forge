@@ -10,7 +10,7 @@ import { FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_TO
 import type { StandingGroupLabels } from "@forge/contracts/standing";
 import { needsViewer } from "@forge/contracts/standing";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
-import { ListFilterBar, useListNarrowing } from "@/features/chat-dock/list-filter-bar";
+import { ListFilterBar, useListNarrowing } from "@/features/chat-dock";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import {
@@ -44,11 +44,11 @@ import {
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { EtaCell } from "@/features/forecast/components/eta-cell";
-import { type Eta, type EtaClock, etaOfFeedback, etaSortValue } from "@/features/forecast/eta";
+import { EtaCell } from "@/features/forecast";
+import { type Eta, type EtaClock, etaOfFeedback, etaSortValue } from "@/features/forecast";
 import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
-import { useEtaSort, useFeedbackForecasts } from "@/features/forecast/hooks";
+import { useEtaSort, useFeedbackForecasts } from "@/features/forecast";
 import { useFeedbackList } from "../hooks";
 import { FEEDBACK_LIST, feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackListResponse, FeedbackSummary } from "../types";
@@ -142,7 +142,7 @@ function groupsOf(rows: FeedbackSummary[], by: Grouping, label: ReturnType<typeo
     const you = list.filter(needsViewer).length;
     return {
       id: `subject:${id}`,
-      label: aboutLine(list[0] as FeedbackSummary, t, language),
+      label: aboutLine(list[0], t, language),
       tone: you ? ("you" as const) : null,
       summary: you ? [{ label: label("feedbackAttention", "needs_you"), count: you, tone: "you" as const }] : undefined,
       rows: list,

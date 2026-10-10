@@ -24,13 +24,13 @@ import {
   Skeleton,
   Tabs,
 } from "@/design";
-import { useProjects } from "@/features/projects/hooks";
-import { useCurrentProject } from "@/features/projects/current-project";
+import { useProjects } from "@/features/projects";
+import { useCurrentProject } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { useToast } from "@/providers/toast-provider";
-import type { ProjectListItem } from "@/features/projects/types";
+import type { ProjectListItem } from "@/features/projects";
 import {
   CLIENTS,
   type ClientKind,
@@ -63,9 +63,9 @@ export function McpTab() {
   if (projectsQ.isLoading)
     return (
       <div className="space-y-3">
-        <Skeleton className="h-24 w-full rounded-lg" />
+        <Skeleton className="h-24 w-full" />
         <Skeleton className="h-12 w-full rounded-md" />
-        <Skeleton className="h-48 w-full rounded-lg" />
+        <Skeleton className="h-48 w-full" />
       </div>
     );
   if (projectsQ.isError)

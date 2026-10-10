@@ -11,7 +11,7 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { AcceptStep, Button, Input, showToast, Tooltip } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
-import { type DockDoor, useChatDock } from "@/features/chat-dock/dock";
+import { type DockDoor, useChatDock } from "@/features/chat-dock";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";

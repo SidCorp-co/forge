@@ -1,7 +1,7 @@
 "use client";
 
 import { DetailHeader, StatusBadge, useListOrigin } from "@/design";
-import { useChatDockDoor } from "@/features/chat-dock/dock";
+import { useChatDockDoor } from "@/features/chat-dock";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useRequirement } from "../hooks";
 import { REQUIREMENTS_LIST, requirementsHref } from "@/lib/routes/requirements";

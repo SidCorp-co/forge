@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import { Button, IconButton, Input } from "@/design";
-import { fileBase64, mockupsApi } from "@/features/mockups/api";
+import { fileBase64, mockupsApi } from "@/features/mockups";
 import { formatApiError } from "@/lib/api/error";
 import { boardExporter, boardStore, useBoard } from "@/features/board/board-store";
 import { useCopy } from "@/lib/i18n/interface-language";

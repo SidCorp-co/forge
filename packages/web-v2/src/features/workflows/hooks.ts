@@ -96,9 +96,9 @@ export function useDraftRequirementFromDesign(projectId: string, workflowId: str
   return useMutation({
     mutationFn: (body: { title: string; designs: string[] }) => workflowsApi.draftRequirement(projectId, body),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["workflow-design", projectId, workflowId] });
-      qc.invalidateQueries({ queryKey: ["workflow-health", projectId, workflowId] });
-      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      void qc.invalidateQueries({ queryKey: ["workflow-design", projectId, workflowId] });
+      void qc.invalidateQueries({ queryKey: ["workflow-health", projectId, workflowId] });
+      void qc.invalidateQueries({ queryKey: ["requirements", projectId] });
     },
   });
 }
@@ -108,11 +108,11 @@ export function useDesignDecision(projectId: string, workflowId: string) {
   return useMutation({
     mutationFn: (body: DesignDecisionBody) => workflowsApi.decide(projectId, workflowId, body),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["workflows", projectId] });
-      qc.invalidateQueries({ queryKey: ["workflow-design", projectId, workflowId] });
-      qc.invalidateQueries({ queryKey: ["workflow-health", projectId, workflowId] });
+      void qc.invalidateQueries({ queryKey: ["workflows", projectId] });
+      void qc.invalidateQueries({ queryKey: ["workflow-design", projectId, workflowId] });
+      void qc.invalidateQueries({ queryKey: ["workflow-health", projectId, workflowId] });
       // approving a base, or one of its dependents, changes what the re-pin act would take
-      qc.invalidateQueries({ queryKey: ["workflow-repins", projectId] });
+      void qc.invalidateQueries({ queryKey: ["workflow-repins", projectId] });
     },
   });
 }
@@ -133,10 +133,10 @@ export function useRepinAct(projectId: string, workflowId: string) {
   return useMutation({
     mutationFn: (body: RepinActBody) => workflowsApi.repin(projectId, workflowId, body),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["workflows", projectId] });
-      qc.invalidateQueries({ queryKey: ["workflow-design", projectId] });
-      qc.invalidateQueries({ queryKey: ["workflow-health", projectId] });
-      qc.invalidateQueries({ queryKey: ["workflow-repins", projectId] });
+      void qc.invalidateQueries({ queryKey: ["workflows", projectId] });
+      void qc.invalidateQueries({ queryKey: ["workflow-design", projectId] });
+      void qc.invalidateQueries({ queryKey: ["workflow-health", projectId] });
+      void qc.invalidateQueries({ queryKey: ["workflow-repins", projectId] });
     },
   });
 }

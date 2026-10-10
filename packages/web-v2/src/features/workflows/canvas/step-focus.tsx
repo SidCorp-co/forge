@@ -30,7 +30,7 @@ export function useStepFocus(c: Canvas) {
       setSelection(null);
       return null;
     }
-    const id = order[i] as string;
+    const id = order[i];
     setWalk(i);
     setVisited((prev) => new Set([...prev, id]));
     return id;

@@ -15,9 +15,9 @@ import {
   type SelectOption,
 } from "@/design";
 import { useAuth } from "@/providers/auth-provider";
-import { usePreferences, useUpdatePreferences } from "@/features/preferences/hooks";
+import { usePreferences, useUpdatePreferences } from "@/features/preferences";
 import { AssistantPreferencesCard } from "./assistant-preferences-card";
-import type { LanguagePref, ThemePref } from "@/features/preferences/types";
+import type { LanguagePref, ThemePref } from "@/features/preferences";
 import { useCopy } from "@/lib/i18n/interface-language";
 
 const THEMES = ["system", "light", "dark"] as const;

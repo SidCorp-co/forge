@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon, Tooltip } from "@/design";
-import { ForgeVersion } from "@/features/version/components/forge-version";
+import { ForgeVersion } from "@/features/version";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 

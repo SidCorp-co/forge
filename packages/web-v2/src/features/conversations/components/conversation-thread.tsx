@@ -418,7 +418,7 @@ export function ConversationThread({
             />
             {afterEntry?.(entry.progress.entry.id ?? "live")}
             {entry.progress.verdict && entry.progress.verdict !== "withheld" && (
-              <TurnDecisions blocks={entry.progress.entry.blocks as CanonicalBlock[] | undefined} slug={projectSlug} />
+              <TurnDecisions blocks={entry.progress.entry.blocks} slug={projectSlug} />
             )}
             </div>
           );

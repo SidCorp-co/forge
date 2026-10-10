@@ -4,9 +4,9 @@
 // phone, what needs you, what is running and what is at risk. Flat tables on hairlines, no cards.
 // Needs you is the one decisions read the chat answers from (`useNeedsYouDecisions`, `DecisionList`).
 
-import { DecisionList } from "@/features/needs-you/components/decision-list";
-import { useNeedsYouDecisions } from "@/features/needs-you/hooks";
-import { useProjectStatus } from "@/features/project-status/hooks";
+import { DecisionList } from "@/features/needs-you";
+import { useNeedsYouDecisions } from "@/features/needs-you";
+import { useProjectStatus } from "@/features/project-status";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { atRiskRows, runningRows } from "../derive";

@@ -33,8 +33,8 @@ export function SettleMarker({ projectId, flow, marker, nodes }: { projectId: st
       });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["workflow-health", projectId] });
-      qc.invalidateQueries({ queryKey: ["entity-decisions"] });
+      void qc.invalidateQueries({ queryKey: ["workflow-health", projectId] });
+      void qc.invalidateQueries({ queryKey: ["entity-decisions"] });
     },
   });
   if (!node) return null;

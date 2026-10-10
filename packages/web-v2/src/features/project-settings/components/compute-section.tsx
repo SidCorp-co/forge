@@ -8,7 +8,7 @@
 // only while computation is on, since `compute` without `enabled` is not a document core accepts.
 
 import { Skeleton, Toggle } from "@/design";
-import { sectionOf } from "@/features/project-config/use-document-draft";
+import { sectionOf } from "@/features/project-config";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { UndeclaredNotice, useProjectDraft } from "./general-section";
 import { SaveBar, SettingGroup, SettingRow } from "./setting-controls";

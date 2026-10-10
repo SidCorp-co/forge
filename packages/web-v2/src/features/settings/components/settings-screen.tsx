@@ -9,8 +9,8 @@ import {
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
-import { AgentsTab } from "@/features/agent-accounts/components/agents-tab";
-import { OrgsTab } from "@/features/orgs/components/orgs-tab";
+import { AgentsTab } from "@/features/agent-accounts";
+import { OrgsTab } from "@/features/orgs";
 import { AccountTab } from "./account-tab";
 import { McpTab } from "./mcp-tab";
 import { NotificationsTab } from "./notifications-tab";

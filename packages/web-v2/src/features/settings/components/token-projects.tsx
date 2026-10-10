@@ -5,8 +5,8 @@
 // the password (or the sign-in provider) and then sends the same act again. Core records each change.
 import { useState } from "react";
 import { Button, Field, Input, Select } from "@/design";
-import { isFreshAuthError } from "@/features/auth/fresh-auth";
-import { reauthStartUrl } from "@/features/auth/oauth-api";
+import { isFreshAuthError } from "@/features/auth";
+import { reauthStartUrl } from "@/features/auth";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useAuth } from "@/providers/auth-provider";

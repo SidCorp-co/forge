@@ -42,12 +42,12 @@ export function ConnectionGroupSection({
           aria-expanded={open}
           aria-controls={rowsId}
           onClick={onToggle}
-          className="flex w-full items-center gap-2 px-4 py-3 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          className="flex w-full items-center gap-2 px-4 py-3 text-left focus-visible:outline-none focus-visible:shadow-focus"
         >
           <Icon
             name="chevronRight"
             size={16}
-            className="shrink-0 text-subtle transition-transform duration-[150ms]"
+            className="shrink-0 text-subtle transition-transform duration-150"
             style={{ transform: open ? "rotate(90deg)" : "none" }}
           />
           <Icon

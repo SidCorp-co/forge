@@ -22,7 +22,7 @@ import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { NeedsYouList } from "@/features/needs-you/components/needs-you-list";
+import { NeedsYouList } from "@/features/needs-you";
 import { useAttention } from "../hooks";
 import type { AttentionItem, AttentionKind, AttentionView } from "../types";
 import { PageTitle, SectionTitle } from "@/design/primitives/heading";

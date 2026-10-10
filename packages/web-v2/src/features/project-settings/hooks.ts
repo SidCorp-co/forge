@@ -5,9 +5,9 @@
 // private key updates none.
 
 import { useQuery } from "@tanstack/react-query";
-import type { ProjectDetail } from "@/features/projects/types";
+import type { ProjectDetail } from "@/features/projects";
 import { projectSettingsApi } from "./api";
-import { releaseReadinessKey, useToastedMutation } from "@/features/project-config/hooks";
+import { releaseReadinessKey, useToastedMutation } from "@/features/project-config";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { LabelCreateInput, LabelPatchInput, PluginDesignation, ProjectRole, ProjectUpdateInput } from "./types";
 

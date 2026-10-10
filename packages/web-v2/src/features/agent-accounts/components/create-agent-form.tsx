@@ -22,7 +22,7 @@ import {
   Input,
   MonoTag,
 } from "@/design";
-import { useOrgScopedProjects } from "@/features/projects/hooks";
+import { useOrgScopedProjects } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";

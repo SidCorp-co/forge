@@ -13,23 +13,23 @@ import {
   agentAccessBody,
   agentAccessDeniedReason,
   mayWriteAgentAccess,
-} from "@/features/integrations/components/agent-access-control";
-import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
-import { TourHint } from "@/features/tours/components/tour-hint";
+} from "@/features/integrations";
+import { ProjectIntegrationsPanel } from "@/features/integrations";
+import { TourHint } from "@/features/tours";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { useBindConnection, useConnections, useIsOrgAdmin } from "@/features/integrations/hooks";
-import { providerLabel, providerModule } from "@/features/integrations/providers/registry";
-import { bindingRefusalText } from "@/features/integrations/bind-actions";
-import { coolify } from "@/features/integrations/providers/coolify";
-import { CoolifyTargetsField } from "@/features/integrations/providers/coolify/targets-field";
+import { useBindConnection, useConnections, useIsOrgAdmin } from "@/features/integrations";
+import { providerLabel, providerModule } from "@/features/integrations";
+import { bindingRefusalText } from "@/features/integrations";
+import { coolify } from "@/features/integrations";
+import { CoolifyTargetsField } from "@/features/integrations";
 import { providerCanDeploy } from "@forge/contracts/deploy-capability";
 import type {
   AgentAccess,
   BindingRole,
   ConnectionSummary,
   CoolifyTargetInput,
-} from "@/features/integrations/types";
+} from "@/features/integrations";
 
 // What the binding is FOR — DECLARED by the person, never derived from the
 // provider: the same epodsystem connection is a deploy target on a storefront

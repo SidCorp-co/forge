@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Markdown, Skeleton } from "@/design";
 import { ApiError } from "@/lib/api/client";
 import { type SourceFacts, VisualBlockProvider, VisualBlockView } from "@/features/visual-blocks";
-import { useBlockInstants } from "@/features/visual-blocks/instants";
+import { useBlockInstants } from "@/features/visual-blocks";
 import { readProseInstants } from "@/lib/i18n/instants";
 import { openShare } from "../api";
 
