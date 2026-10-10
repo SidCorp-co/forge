@@ -9,23 +9,23 @@ import { PIPELINE_RUN_STATUSES, type PipelineRunStatus } from "@forge/contracts/
 
 export { PIPELINE_RUN_STATUSES, type PipelineRunStatus };
 
-const PIPELINE_RUN_KINDS = REGISTRY_PIPELINE_RUN_KINDS;
-export type PipelineRunKind = (typeof PIPELINE_RUN_KINDS)[number];
+export type PipelineRunKind = (typeof REGISTRY_PIPELINE_RUN_KINDS)[number];
 
-const PIPELINE_JOB_TYPES = [
-  "triage",
-  "clarify",
-  "plan",
-  "code",
-  "review",
-  "test",
-  "release",
-  "fix",
-  "custom",
-  "smoke",
-  "release_batch",
-] as const satisfies readonly (typeof REGISTRY_JOB_TYPES)[number][];
-type PipelineJobType = (typeof PIPELINE_JOB_TYPES)[number];
+/** Names every job type must take from the registry; one the registry lacks fails to compile. */
+type FromRegistry<T extends (typeof REGISTRY_JOB_TYPES)[number]> = T;
+type PipelineJobType = FromRegistry<
+  "triage"
+  | "clarify"
+  | "plan"
+  | "code"
+  | "review"
+  | "test"
+  | "release"
+  | "fix"
+  | "custom"
+  | "smoke"
+  | "release_batch"
+>;
 
 /** Per-step status precedence computed by the read-side rollup. */
 export type PipelineStepStatus = "pending" | "running" | "completed" | "failed" | "cancelled" | "skipped";

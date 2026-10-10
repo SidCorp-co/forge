@@ -21,6 +21,7 @@ import {
   Tooltip,
 } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
+import { cn } from "@/lib/utils/cn";
 import { formatApiError } from "@/lib/api/error";
 import {
   type ActivityEntry,
@@ -39,12 +40,12 @@ interface ActivityTabProps {
   onRetry: () => void;
 }
 
-const TONE_COLOR: Record<ActivityTone, { dot: string; fg: string }> = {
-  failure: { dot: "var(--danger-9)", fg: "var(--danger-11)" },
-  swept: { dot: "var(--neutral-8)", fg: "var(--fg-muted)" },
-  cleanup: { dot: "var(--neutral-8)", fg: "var(--fg-muted)" },
-  success: { dot: "var(--ok-9)", fg: "var(--ok-11)" },
-  open: { dot: "var(--pipeline-active)", fg: "var(--info-11)" },
+const TONE_CLASS: Record<ActivityTone, { dot: string; fg: string }> = {
+  failure: { dot: "bg-danger-9", fg: "text-danger-11" },
+  swept: { dot: "bg-neutral-8", fg: "text-muted" },
+  cleanup: { dot: "bg-neutral-8", fg: "text-muted" },
+  success: { dot: "bg-ok-9", fg: "text-ok-11" },
+  open: { dot: "bg-info-9", fg: "text-info-11" },
 };
 
 const FILTERS: { value: ActivityFilter; label: string }[] = [
@@ -110,7 +111,7 @@ export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) 
       ) : (
         <ol className="flex list-none flex-col divide-y divide-line-subtle p-0">
           {visible.map((entry) => (
-            <ActivityRow key={entry.key} entry={entry} />
+            <ActivityLine key={entry.key} entry={entry} />
           ))}
         </ol>
       )}
@@ -122,8 +123,7 @@ function RetryHeadline({ summary }: { summary: PipelineRunRetrySummary }) {
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-line-subtle pb-2.5">
       <span
-        className="rounded-full px-2 py-0.5 font-mono text-12 font-semibold"
-        style={{ background: "var(--warn-3)", color: "var(--warn-11)" }}
+        className="rounded-pill bg-warn-3 px-2 py-0.5 font-mono text-12 font-semibold text-warn-11"
       >
         attempt {summary.attempt}/{summary.maxAttempts}
       </span>
@@ -137,21 +137,20 @@ function repeatLabel(positions: number[]): string {
   return `Attempts ${positions.join(", ")} were identical.`;
 }
 
-function ActivityRow({ entry }: { entry: ActivityEntry }) {
-  const color = TONE_COLOR[entry.tone];
+function ActivityLine({ entry }: { entry: ActivityEntry }) {
+  const tone = TONE_CLASS[entry.tone];
   const when = formatRelativeTime(entry.at);
   return (
     <li className="flex gap-3 py-3">
       <span
         aria-hidden
-        className={entry.open ? "forge-pulse mt-1.5 size-2 flex-none rounded-full" : "mt-1.5 size-2 flex-none rounded-full"}
-        style={{ background: color.dot }}
+        className={cn("mt-1.5 size-2 flex-none rounded-full", tone.dot, entry.open && "forge-pulse")}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="fg-body-sm font-semibold text-fg">{entry.verb}</span>
           <span className="font-mono text-13 font-bold text-muted">{entry.object}</span>
-          <span className="fg-body-sm font-semibold" style={{ color: color.fg }}>
+          <span className={cn("fg-body-sm font-semibold", tone.fg)}>
             {entry.outcome}
           </span>
           {entry.repeats > 1 && (

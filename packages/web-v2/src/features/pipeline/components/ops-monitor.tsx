@@ -6,7 +6,6 @@
 // events only arrive on subscribed rooms, so we fan out a `useRoom` per project
 // (bounded list) — `pipeline_run.status_changed` then refreshes
 // `['projects','health']` + `['pipeline-runs','list']`.
-import { useEffect, useState } from "react";
 import {
   Badge,
   PageSection,
@@ -30,10 +29,11 @@ import {
   TH,
   THead,
   TR,
+  TopBarActions,
+  useUrlChoice,
+  useUrlParams,
 } from "@/design";
-import { deriveHealth } from "@/features/projects/derive";
-import { useOrgScopedProjects, useProjectHealth } from "@/features/projects/hooks";
-import type { ProjectHealthRow } from "@/features/projects/types";
+import { deriveHealth, type ProjectHealthRow, useOrgScopedProjects, useProjectHealth } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
@@ -41,9 +41,11 @@ import { formatDurationSec, formatUsd } from "../derive";
 import { useStepDurations, useThroughput } from "../hooks";
 import type { StepDurationRow, ThroughputRow } from "../types";
 import { RunDetail } from "./run-detail";
-import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
-const TABS = [
+
+const TAB_VALUES = ["monitor", "progress", "health", "runs"] as const;
+type OpsTab = (typeof TAB_VALUES)[number];
+const TABS: { value: OpsTab; label: string }[] = [
   { value: "monitor", label: "Monitor" },
   { value: "progress", label: "Progress" },
   { value: "health", label: "Health" },
@@ -58,18 +60,11 @@ function RoomSub({ room }: { room: string }) {
 }
 
 export function OpsMonitor() {
-  const [tab, setTab] = useState("monitor");
-  const [runId, setRunId] = useState<string | null>(null);
-
-  // Open a run directly from a shared deep-link (`/ops?run=<id>`).
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const shared = new URLSearchParams(window.location.search).get("run");
-    if (shared) {
-      setRunId(shared);
-      setTab("runs");
-    }
-  }, []);
+  // The tab and the open run live in the URL, so `/ops?run=<id>` is a shareable deep link.
+  const [tab, setTab] = useUrlChoice<OpsTab>("tab", TAB_VALUES, "monitor");
+  const [params, setParams] = useUrlParams();
+  const runId = params.get("run");
+  const setRunId = (id: string | null) => setParams({ run: id });
 
   // ISS-477 — scope the whole monitor to the active org's projects. The health
   // rollup (AC #4) filters by project id; the step-duration/throughput rows also
@@ -131,7 +126,7 @@ export function OpsMonitor() {
       </TopBarActions>
 
       <div className="overflow-x-auto">
-        <Tabs tabs={TABS} value={tab} onChange={setTab} />
+        <Tabs tabs={TABS} value={tab} onChange={(v) => setTab(v as OpsTab)} />
       </div>
 
       <div className="pt-5">
