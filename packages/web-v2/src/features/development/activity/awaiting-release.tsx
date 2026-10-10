@@ -153,7 +153,7 @@ export function AwaitingRelease({ slug, projectId }: { slug: string; projectId: 
       onClose={() => setBatchDialogOpen(false)}
       onSuccess={() => {
         setSelected(new Set());
-        qc.invalidateQueries({ queryKey: ["issues"] });
+        void qc.invalidateQueries({ queryKey: ["issues"] });
       }}
     />
     </>

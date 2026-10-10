@@ -60,8 +60,8 @@ export async function fetchAllTurns(id: string, pages: number = TURN_PAGE_CAP): 
 function useInvalidateSession(id: string) {
   const qc = useQueryClient();
   return () => {
-    qc.invalidateQueries({ queryKey: ["agent-session", id] });
-    qc.invalidateQueries({ queryKey: ["agent-sessions"] });
+    void qc.invalidateQueries({ queryKey: ["agent-session", id] });
+    void qc.invalidateQueries({ queryKey: ["agent-sessions"] });
   };
 }
 

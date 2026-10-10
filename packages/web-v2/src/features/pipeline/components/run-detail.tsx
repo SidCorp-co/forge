@@ -311,10 +311,10 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
                   run={run}
                   loading={runQ.isLoading}
                   error={runQ.isError ? runQ.error : null}
-                  onRetry={() => runQ.refetch()}
+                  onRetry={() => void runQ.refetch()}
                 />
               ) : runQ.isError ? (
-                <ErrorState message={formatApiError(runQ.error)} onRetry={() => runQ.refetch()} />
+                <ErrorState message={formatApiError(runQ.error)} onRetry={() => void runQ.refetch()} />
               ) : tab === "timeline" ? (
                 <TimelineTab run={run} loading={runQ.isLoading} />
               ) : (

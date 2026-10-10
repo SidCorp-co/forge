@@ -26,9 +26,9 @@ export const usePendingInvitations = (enabled = true) => useQuery(notificationQu
 function useInvalidate(invitations = false) {
   const qc = useQueryClient();
   return () => {
-    if (invitations) qc.invalidateQueries({ queryKey: notificationKeys.invitations });
-    qc.invalidateQueries({ queryKey: notificationKeys.all });
-    qc.invalidateQueries({ queryKey: notificationKeys.openCount });
+    if (invitations) void qc.invalidateQueries({ queryKey: notificationKeys.invitations });
+    void qc.invalidateQueries({ queryKey: notificationKeys.all });
+    void qc.invalidateQueries({ queryKey: notificationKeys.openCount });
   };
 }
 

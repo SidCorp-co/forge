@@ -11,8 +11,8 @@ import { Button } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useMutation } from "@tanstack/react-query";
-import { ideaApi } from "./idea-api";
-import { IdeaPanel } from "./idea-panel";
+import { ideaApi } from "../idea-api";
+import { IdeaPreview } from "./idea-preview";
 
 /**
  * Draw `events` (Meta then FullSnapshot) into `root` as one still. rrweb is a heavy bundle, so it is
@@ -22,21 +22,21 @@ export async function drawStill(root: HTMLElement, events: KeptPreviewContent["s
   const { Replayer } = await import("rrweb");
   await import("rrweb/dist/style.css");
   root.replaceChildren();
-  const replayer = new Replayer(events as never, { root, mouseTail: false, skipInactive: false, UNSAFE_replayCanvas: false, speed: 1 });
+  const replayer = new Replayer(events, { root, mouseTail: false, skipInactive: false, UNSAFE_replayCanvas: false, speed: 1 });
   replayer.pause(0);
   return () => replayer.destroy();
 }
 
 export function KeptPreviewPicture({ content, alt, projectId, reqKey, slug, canWrite }: { content: KeptPreviewContent; alt: string; projectId: string; reqKey: string; slug: string; canWrite: boolean }) {
   const t = useCopy();
-  const stage = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const [drawn, setDrawn] = useState<"drawing" | "drawn" | "failed">("drawing");
   const reopen = useMutation({
     mutationFn: () => ideaApi.open(projectId, { about: reqKey, brief: t("previews.idea.reopen.brief", { alt }), from: content.previewId }),
   });
 
   useEffect(() => {
-    const root = stage.current;
+    const root = stageRef.current;
     if (!root) return;
     let undo: (() => void) | null = null;
     let gone = false;
@@ -61,7 +61,7 @@ export function KeptPreviewPicture({ content, alt, projectId, reqKey, slug, canW
   return (
     <div className="grid gap-2" data-testid="kept-preview">
       <div
-        ref={stage}
+        ref={stageRef}
         aria-hidden
         data-testid="kept-preview-still"
         data-drawn={drawn}
@@ -87,7 +87,7 @@ export function KeptPreviewPicture({ content, alt, projectId, reqKey, slug, canW
           {t("previews.idea.reopen.failed")}: {formatApiError(reopen.error)}
         </p>
       ) : null}
-      {reopen.data ? <IdeaPanel preview={reopen.data} about={reqKey} canWrite={canWrite} slug={slug} /> : null}
+      {reopen.data ? <IdeaPreview preview={reopen.data} about={reqKey} canWrite={canWrite} slug={slug} /> : null}
     </div>
   );
 }

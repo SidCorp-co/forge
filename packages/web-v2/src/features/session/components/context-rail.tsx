@@ -343,8 +343,8 @@ function SiblingRow({ row, onOpen }: { row: SessionRow; onOpen?: () => void }) {
   const display = deriveSessionDisplayStatus(row, stuck);
   const stage = sessionStep(row.metadata) ?? undefined;
   const label =
-    (row.metadata?.step as string | undefined) ??
-    (row.metadata?.stage as string | undefined) ??
+    (row.metadata?.step) ??
+    (row.metadata?.stage) ??
     row.title ??
     t("sessions.detail.sessionShort", { id: row.id.slice(0, 8) });
 

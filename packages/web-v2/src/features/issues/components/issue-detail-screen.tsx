@@ -83,8 +83,8 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   // globally unique on `id` alone), so an invalidation naming only the
   // canonical uuid this mutation reports misses that entry; name both.
   const refreshIssue = () => {
-    qc.invalidateQueries({ queryKey: ["issue", issue?.id ?? id] });
-    qc.invalidateQueries({ queryKey: issueQueryKey(id, projectId) });
+    void qc.invalidateQueries({ queryKey: ["issue", issue?.id ?? id] });
+    void qc.invalidateQueries({ queryKey: issueQueryKey(id, projectId) });
   };
   const onResumeRun = (runId: string) => resumeRun.mutate(runId, { onSuccess: refreshIssue });
   const pending = patch.isPending || transitionPending || resumeRun.isPending;
@@ -276,7 +276,7 @@ function IssueUnread({ query, switching = false }: { query: ReturnType<typeof us
         <ErrorState
           title={t("issues.detail.loadFailed")}
           message={formatApiError(query.error)}
-          onRetry={isRetryableApiError(query.error) ? () => query.refetch() : undefined}
+          onRetry={isRetryableApiError(query.error) ? () => void query.refetch() : undefined}
         />
       )}
     </div>

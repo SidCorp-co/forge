@@ -11,9 +11,9 @@ import type { RecordingRecord } from "@forge/contracts/reproduce";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, ViewHeading } from "@/design";
-import { reproduceApi } from "@/features/previews/reproduce-api";
-import { recordingsKey } from "@/features/previews/reproduce-section";
-import { TimelineTable } from "@/features/previews/reproduce-timeline";
+import { reproduceApi } from "@/features/previews";
+import { recordingsKey } from "@/features/previews";
+import { Timeline } from "@/features/previews";
 import { formatSize } from "@/features/attachments/components/staged-files";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -224,7 +224,7 @@ function RecordingDetail({ recording, projectId, fbKey }: { recording: Recording
         {recording.timeline.length === 0 ? (
           <p className="fg-body-sm text-muted">{t("previews.recordings.timelineEmpty")}</p>
         ) : (
-          <TimelineTable entries={recording.timeline} />
+          <Timeline entries={recording.timeline} />
         )}
       </div>
       {recording.state === "expired" ? <p className="fg-caption text-muted">{t("previews.recordings.expired")}</p> : null}

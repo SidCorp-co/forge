@@ -179,7 +179,7 @@ export function runnersSummary(
   queue: QueueStats | undefined,
   language: string,
   now: number = Date.now(),
-  active?: ActiveRunner[] | undefined,
+  active?: ActiveRunner[]  ,
 ): RunnersSummary {
   const byDevice = new Map<string, { queued: number; running: number }>();
   for (const d of queue?.devices ?? []) {

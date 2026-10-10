@@ -43,9 +43,9 @@ export function useIssueRequirementLink(projectId: string, issueKey: string) {
         ? apiClient<unknown>(`${linksOf(projectId, a.req)}/${encodeURIComponent(issueKey)}`, { method: "DELETE" })
         : apiClient<unknown>(linksOf(projectId, a.req), { method: "POST", body: JSON.stringify({ issue: issueKey }) }),
     onSettled: (_d, _e, a) => {
-      qc.invalidateQueries({ queryKey: ["issues", "standing"] });
-      qc.invalidateQueries({ queryKey: ["requirement", projectId, a.req] });
-      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      void qc.invalidateQueries({ queryKey: ["issues", "standing"] });
+      void qc.invalidateQueries({ queryKey: ["requirement", projectId, a.req] });
+      void qc.invalidateQueries({ queryKey: ["requirements", projectId] });
     },
   });
 }

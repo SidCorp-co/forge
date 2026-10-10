@@ -2,8 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { feedbackForecastKey } from "@/features/forecast/hooks";
-import { reproduceApi } from "@/features/previews/reproduce-api";
-import { recordingsKey } from "@/features/previews/reproduce-section";
+import { reproduceApi } from "@/features/previews";
+import { recordingsKey } from "@/features/previews";
 import { feedbackApi } from "./api";
 import type { CreateFeedbackRequest, FeedbackAction, FeedbackMessageAudience, FeedbackResponse, PromoteAgentReportRequest } from "./types";
 

@@ -18,9 +18,9 @@ export function usePostEntityComment(projectId: string, scope: EntityCommentScop
   return useMutation({
     mutationFn: (body: CreateEntityCommentRequest) => commentsApi.post(projectId, scope, ref, body),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: commentKeys.decisions(projectId, scope, ref) });
-      qc.invalidateQueries({ queryKey: commentKeys.list(projectId, scope, ref) });
-      qc.invalidateQueries({ queryKey: ["requirement-decisions", projectId] });
+      void qc.invalidateQueries({ queryKey: commentKeys.decisions(projectId, scope, ref) });
+      void qc.invalidateQueries({ queryKey: commentKeys.list(projectId, scope, ref) });
+      void qc.invalidateQueries({ queryKey: ["requirement-decisions", projectId] });
     },
   });
 }

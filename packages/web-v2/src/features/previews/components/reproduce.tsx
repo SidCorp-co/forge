@@ -14,9 +14,9 @@ import { useState } from "react";
 import { Banner, Button, Textarea, useUrlParams, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { usePreview } from "./hooks";
+import { usePreview } from "../hooks";
 import { PreviewFrame } from "./preview-frame";
-import { reproduceApi } from "./reproduce-api";
+import { reproduceApi } from "../reproduce-api";
 
 type Copy = ReturnType<typeof useCopy>;
 
@@ -47,7 +47,7 @@ const isServing = (p: PreviewRecord | null) => p?.state === "starting" || p?.sta
 const buildOf = (p: PreviewRecord) =>
   p.subject.kind === "reproduce" ? (p.subject.build.release ? `${p.subject.build.release} (${shortSha(p.subject.build.sha)})` : shortSha(p.subject.build.sha)) : null;
 
-export interface ReproduceSectionProps {
+export interface ReproductionProps {
   projectId: string;
   fbKey: string;
   /** The issue keys that carry the item's issue route: whose live preview serves the fix. */
@@ -56,7 +56,7 @@ export interface ReproduceSectionProps {
   redacted: boolean;
 }
 
-export function ReproduceSection({ projectId, fbKey, carriers, redacted }: ReproduceSectionProps) {
+export function Reproduction({ projectId, fbKey, carriers, redacted }: ReproductionProps) {
   const t = useCopy();
   const qc = useQueryClient();
   const [params, setParams] = useUrlParams();

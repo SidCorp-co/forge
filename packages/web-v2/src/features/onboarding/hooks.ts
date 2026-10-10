@@ -31,8 +31,8 @@ export function useStartOnboarding(projectId: string) {
   return useMutation({
     mutationFn: (request?: string) => onboardingApi.start(projectId, request),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: onboardingKey(projectId) });
-      qc.invalidateQueries({ queryKey: ["conversations", "list"] });
+      void qc.invalidateQueries({ queryKey: onboardingKey(projectId) });
+      void qc.invalidateQueries({ queryKey: ["conversations", "list"] });
     },
   });
 }
@@ -50,8 +50,8 @@ export function useReanalyze(projectId: string, conversationId: string | undefin
   return useMutation({
     mutationFn: (reason?: string) => onboardingApi.reanalyze(projectId, reason),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: onboardingKey(projectId) });
-      if (conversationId) qc.invalidateQueries({ queryKey: ["conversations", conversationId] });
+      void qc.invalidateQueries({ queryKey: onboardingKey(projectId) });
+      if (conversationId) void qc.invalidateQueries({ queryKey: ["conversations", conversationId] });
     },
   });
 }
@@ -62,9 +62,9 @@ export function useSubmitAnswers(projectId: string, conversationId: string) {
     mutationFn: (v: { batchId: string; answers: QuestionnaireAnswer[]; skip?: boolean }) =>
       onboardingApi.submit(projectId, v.batchId, { answers: v.answers, ...(v.skip ? { skip: true } : {}) }),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["conversations", conversationId] });
-      qc.invalidateQueries({ queryKey: ["conversations", "list"] });
-      qc.invalidateQueries({ queryKey: onboardingKey(projectId) });
+      void qc.invalidateQueries({ queryKey: ["conversations", conversationId] });
+      void qc.invalidateQueries({ queryKey: ["conversations", "list"] });
+      void qc.invalidateQueries({ queryKey: onboardingKey(projectId) });
     },
   });
 }

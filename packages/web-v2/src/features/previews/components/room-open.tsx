@@ -12,7 +12,7 @@ import { Button, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { roomHref } from "@/lib/routes/rooms";
-import { roomApi } from "./room-api";
+import { roomApi } from "../room-api";
 
 export function OpenRoom({ projectId, slug, about, brief: initial = "", canWrite }: { projectId: string; slug: string | undefined; about: string; brief?: string; canWrite: boolean }) {
   const t = useCopy();

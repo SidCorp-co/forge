@@ -89,7 +89,7 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
         <ErrorState
           title={t("sessions.fleet.poolFailed")}
           message={formatApiError(projectQ.error)}
-          onRetry={() => projectQ.refetch()}
+          onRetry={() => void projectQ.refetch()}
         />
       ) : !projectQ.isSuccess ? null : devicePool.length === 0 ? (
         <div className="py-3 fg-body-sm text-muted">

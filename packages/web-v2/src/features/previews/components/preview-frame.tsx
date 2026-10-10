@@ -9,11 +9,12 @@
 // answers `frame-ancestors` for Forge's origin itself (core).
 
 import { PREVIEW_FRAME_MESSAGES, type PreviewRecord } from "@forge/contracts/preview";
+import { useQuery } from "@tanstack/react-query";
 import { type Ref, useEffect, useRef, useState } from "react";
 import { Button } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { previewsApi } from "./api";
+import { previewsApi } from "../api";
 
 /**
  * What the frame may do: run scripts as its own origin, post forms, open popups, and ask the browser
@@ -41,39 +42,36 @@ export async function openPreviewInTab(previewId: string): Promise<void> {
   }
 }
 
-export function PreviewFrame({ preview, issueLabel, height = 520, frameRef }: { preview: PreviewRecord; issueLabel: string; height?: number; frameRef?: Ref<HTMLIFrameElement> }) {
+type FrameProps = { preview: PreviewRecord; issueLabel: string; height?: number; frameRef?: Ref<HTMLIFrameElement> };
+
+/** A reload by hand enters again from nothing: the entry below is keyed by the preview and the round. */
+export function PreviewFrame(props: FrameProps) {
+  const [round, setRound] = useState(0);
+  return <FrameEntry key={`${props.preview.id}|${props.preview.url}|${round}`} {...props} round={round} onReload={() => setRound((n) => n + 1)} />;
+}
+
+function FrameEntry({ preview, issueLabel, height = 520, frameRef, round, onReload }: FrameProps & { round: number; onReload: () => void }) {
   const t = useCopy();
-  const [src, setSrc] = useState<string | null>(null);
+  // a ticket is single-use: one per entry, read once and never cached past it
+  const ticket = useQuery({
+    queryKey: ["previews", "ticket", preview.id, round],
+    queryFn: () => previewsApi.ticketUrl(preview.id),
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: 0,
+    retry: false,
+  });
+  const src = ticket.data ?? null;
   const [failure, setFailure] = useState<unknown>(null);
   const [loaded, setLoaded] = useState(false);
   const [slow, setSlow] = useState(false);
-  const [round, setRound] = useState(0);
   const [tabFailure, setTabFailure] = useState<unknown>(null);
   const [cookieRefused, setCookieRefused] = useState(false);
-  const iframe = useRef<HTMLIFrameElement | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const setIframe = (el: HTMLIFrameElement | null) => {
-      iframe.current = el;
-      if (typeof frameRef === "function") frameRef(el);
-      else if (frameRef) (frameRef as { current: HTMLIFrameElement | null }).current = el;
-    };
-
-  // A ticket is single-use: one per entry, and a new one whenever the frame is reloaded by hand.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `round` is the reload trigger, not an input.
-  useEffect(() => {
-    let current = true;
-    setSrc(null);
-    setLoaded(false);
-    setSlow(false);
-    setFailure(null);
-    setCookieRefused(false);
-    previewsApi.ticketUrl(preview.id).then(
-      (url) => current && setSrc(url),
-      (err) => current && setFailure(err),
-    );
-    return () => {
-      current = false;
-    };
-  }, [preview.id, preview.url, round]);
+    iframeRef.current = el;
+    if (typeof frameRef === "function") frameRef(el);
+    else if (frameRef) (frameRef as { current: HTMLIFrameElement | null }).current = el;
+  };
 
   useEffect(() => {
     if (!src || loaded) return;
@@ -85,13 +83,13 @@ export function PreviewFrame({ preview, issueLabel, height = 520, frameRef }: { 
   useEffect(() => {
     const origin = new URL(preview.url).origin;
     const onMessage = (event: MessageEvent) => {
-      const frame = iframe.current?.contentWindow;
+      const frame = iframeRef.current?.contentWindow;
       if (!frame || event.source !== frame || event.origin !== origin) return;
       const type = (event.data as { type?: unknown } | null)?.type;
       if (type === PREVIEW_FRAME_MESSAGES.ticketRequest) {
         previewsApi.ticketUrl(preview.id).then(
           (url) => frame.postMessage({ type: PREVIEW_FRAME_MESSAGES.ticket, url }, origin),
-          (err) => setFailure(err),
+          (err: unknown) => setFailure(err),
         );
       } else if (type === PREVIEW_FRAME_MESSAGES.storageRefused) {
         setCookieRefused(true);
@@ -110,46 +108,45 @@ export function PreviewFrame({ preview, issueLabel, height = 520, frameRef }: { 
     }
   };
 
-  const problem = failure ?? tabFailure;
+  const problem = ticket.error ?? failure ?? tabFailure;
   return (
     <div data-testid="preview-frame">
       <div className="flex flex-wrap items-center gap-2 pb-2">
         <Button size="sm" variant={cookieRefused ? "primary" : "secondary"} onClick={() => void openInTab()}>
           {t("previews.openInTab")}
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => setRound((n) => n + 1)}>
+        <Button size="sm" variant="ghost" onClick={onReload}>
           {t("previews.reload")}
         </Button>
       </div>
       {problem ? (
-        <p role="alert" className="fg-body-sm pb-2 text-danger-11">
+        <p role="alert" className="pb-2 text-13 text-danger-11">
           {t("previews.frame.ticketFailed")}: {formatApiError(problem)}
         </p>
       ) : null}
       {cookieRefused ? (
-        <p role="status" data-testid="preview-frame-cookie-refused" className="fg-body-sm pb-2 text-muted">
+        <p role="status" data-testid="preview-frame-cookie-refused" className="pb-2 text-13 text-muted">
           {t("previews.frame.cookieRefused")}
         </p>
       ) : null}
       {slow && !loaded && !cookieRefused ? (
-        <p role="status" data-testid="preview-frame-slow" className="fg-body-sm pb-2 text-muted">
+        <p role="status" data-testid="preview-frame-slow" className="pb-2 text-13 text-muted">
           {t("previews.frame.slow")}
         </p>
       ) : null}
       {src ? (
         <iframe
-          key={src}
           ref={setIframe}
           src={src}
           title={t("previews.frame.title", { issue: issueLabel })}
           sandbox={PREVIEW_SANDBOX}
           referrerPolicy="no-referrer"
           onLoad={() => setLoaded(true)}
-          className="w-full rounded-md border border-line bg-surface"
+          className="w-full border border-line bg-surface"
           style={{ height }}
         />
       ) : problem ? null : (
-        <p role="status" className="fg-body-sm text-muted">
+        <p role="status" className="text-13 text-muted">
           {t("previews.frame.entering")}
         </p>
       )}

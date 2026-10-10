@@ -34,7 +34,7 @@ export default function BoardEditor({ doc, onScene }: { doc: WireframeDoc | null
         initialData={doc ? { elements: toScene(doc), scrollToContent: true } : null}
         onChange={(elements, appState) => {
           if (NOT_KEPT_TOOLS.has(appState.activeTool.type)) api.current?.setActiveTool({ type: "selection" });
-          onScene(elements as unknown as readonly SceneElement[]);
+          onScene(elements);
         }}
         UIOptions={{ tools: { image: false } }}
       />

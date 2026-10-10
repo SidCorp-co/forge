@@ -15,9 +15,9 @@ import { Button, Field, Input, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
-import { askPageSnapshot, SnapshotUnavailable } from "./idea-snapshot";
+import { askPageSnapshot, SnapshotUnavailable } from "../idea-snapshot";
 import { PreviewFrame } from "./preview-frame";
-import { roomApi } from "./room-api";
+import { roomApi } from "../room-api";
 
 /** Members read the room again on this clock: what one asks, the other sees within it. */
 export const ROOM_POLL_MS = 1500;
@@ -35,7 +35,7 @@ function useRoomAct<A>(id: string, act: (a: A) => Promise<Room>) {
 
 const short = (sha: string) => sha.slice(0, 7);
 
-function TurnRow({ room, turn, settled, onSettle, settling }: { room: Room; turn: RoomTurn; settled: boolean; onSettle: () => void; settling: boolean }) {
+function TurnEntry({ room, turn, settled, onSettle, settling }: { room: Room; turn: RoomTurn; settled: boolean; onSettle: () => void; settling: boolean }) {
   const t = useCopy();
   const who = turn.kind === "trim" ? t("previews.room.turn.agent") : (turn.by?.name ?? t("previews.room.turn.agent"));
   return (
@@ -210,16 +210,17 @@ export function RoomScreen({ roomId, slug }: { roomId: string; slug: string | un
   const t = useCopy();
   const roomQ = useRoom(roomId);
   const qc = useQueryClient();
-  const frame = useRef<HTMLIFrameElement | null>(null);
-  const join = useMutation({ mutationFn: () => roomApi.join(roomId), onSuccess: (room) => qc.setQueryData(roomKey(roomId), room) });
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const joinRoom = useMutation({ mutationFn: () => roomApi.join(roomId), onSuccess: (room) => qc.setQueryData(roomKey(roomId), room) });
+  const { mutate: join } = joinRoom;
   const settleItem = useRoomAct(roomId, (turnId: string) => roomApi.settleItem(roomId, turnId));
   const abandon = useRoomAct(roomId, () => roomApi.abandon(roomId));
-  const joined = useRef(false);
+  const joinedRef = useRef(false);
   // opening the room's link is joining it: the member is listed, and a sleeping preview wakes
   useEffect(() => {
-    if (joined.current) return;
-    joined.current = true;
-    join.mutate();
+    if (joinedRef.current) return;
+    joinedRef.current = true;
+    join();
   }, [join]);
 
   const room = roomQ.data;
@@ -234,8 +235,8 @@ export function RoomScreen({ roomId, slug }: { roomId: string; slug: string | un
   const settledTurns = new Set(room.items.map((i) => i.turnId));
   const asleep = room.preview.state === "idle_closed";
   return (
-    <div data-testid="room" data-state={room.state} className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-      <section aria-label={t("previews.room.title", { key: room.about.key })} className="grid content-start gap-3">
+    <div data-testid="room" data-state={room.state} className="grid gap-6 lg:grid-cols-5">
+      <section aria-label={t("previews.room.title", { key: room.about.key })} className="grid content-start gap-3 lg:col-span-2">
         <header className="grid gap-1 border-b border-line pb-3">
           <h1 className="fg-h3 text-fg">{t("previews.room.title", { key: room.about.key })}</h1>
           <p className="fg-body-sm text-muted">{room.about.title}</p>
@@ -248,7 +249,7 @@ export function RoomScreen({ roomId, slug }: { roomId: string; slug: string | un
         </header>
         <ol className="grid">
           {room.turns.map((turn) => (
-            <TurnRow key={turn.id} room={room} turn={turn} settled={settledTurns.has(turn.id)} settling={settleItem.isPending && settleItem.variables === turn.id} onSettle={() => settleItem.mutate(turn.id)} />
+            <TurnEntry key={turn.id} room={room} turn={turn} settled={settledTurns.has(turn.id)} settling={settleItem.isPending && settleItem.variables === turn.id} onSettle={() => settleItem.mutate(turn.id)} />
           ))}
         </ol>
         {settleItem.isError ? (
@@ -257,7 +258,7 @@ export function RoomScreen({ roomId, slug }: { roomId: string; slug: string | un
           </p>
         ) : null}
         {room.state === "open" ? <AskBox room={room} /> : null}
-        <SettledList room={room} frame={frame} />
+        <SettledList room={room} frame={frameRef} />
         <SettleOutcome room={room} slug={slug} />
         {room.canWrite && (room.state === "open" || room.state === "settling") ? (
           <div className="border-t border-line pt-3">
@@ -272,13 +273,13 @@ export function RoomScreen({ roomId, slug }: { roomId: string; slug: string | un
           </div>
         ) : null}
       </section>
-      <section aria-label={t("previews.title")} className="grid content-start gap-2">
-        {room.preview.state === "live" ? <PreviewFrame preview={room.preview} issueLabel={room.about.key} height={640} frameRef={frame} /> : null}
+      <section aria-label={t("previews.title")} className="grid content-start gap-2 lg:col-span-3">
+        {room.preview.state === "live" ? <PreviewFrame preview={room.preview} issueLabel={room.about.key} height={640} frameRef={frameRef} /> : null}
         {asleep ? (
           <div className="grid gap-2">
             <p className="fg-body-sm text-muted">{t("previews.room.asleep")}</p>
             <div>
-              <Button size="sm" loading={join.isPending} onClick={() => join.mutate()}>
+              <Button size="sm" loading={joinRoom.isPending} onClick={() => join()}>
                 {t("previews.room.join")}
               </Button>
             </div>
@@ -290,9 +291,9 @@ export function RoomScreen({ roomId, slug }: { roomId: string; slug: string | un
             {room.preview.reason} {room.preview.detail}
           </p>
         ) : null}
-        {join.isError ? (
+        {joinRoom.isError ? (
           <p role="alert" className="fg-caption text-danger">
-            {t("previews.room.joinFailed")}: {formatApiError(join.error)}
+            {t("previews.room.joinFailed")}: {formatApiError(joinRoom.error)}
           </p>
         ) : null}
       </section>

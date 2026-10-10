@@ -98,7 +98,7 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
         <StepStrip
           run={runQ.data}
           currentStep={
-            (session.metadata?.step as string | undefined) ??
+            (session.metadata?.step) ??
             (session.metadata?.jobType as string | undefined)
           }
         />

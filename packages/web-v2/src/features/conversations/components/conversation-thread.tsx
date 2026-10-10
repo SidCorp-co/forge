@@ -26,7 +26,7 @@ import { executionFactsIn, runFactsIn, VisualBlockProvider, VisualBlockView } fr
 import { type CanonicalBlock, type MessageEntry, parseMessages } from "@/features/session/types";
 import { type Correction, withoutCorrections } from "../corrections";
 import { TurnDecisions } from "../turn-decisions";
-import { TurnReproduce } from "@/features/previews/reproduce-turn";
+import { TurnReproduce } from "@/features/previews";
 import {
   AGENT_TURN_LABEL,
   type AgentTurn,

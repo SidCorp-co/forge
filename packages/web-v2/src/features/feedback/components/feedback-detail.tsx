@@ -23,7 +23,7 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { FeedbackChecklists } from "@/features/checklists/components/item-checklists";
 import { IntakeDraft } from "@/features/intake/components/intake-draft";
 import { MockupList } from "@/features/mockups/components/mockups-panel";
-import { ReproduceSection } from "@/features/previews/reproduce-section";
+import { Reproduction } from "@/features/previews";
 import { useMockups } from "@/features/mockups/hooks";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
@@ -164,7 +164,7 @@ export function FeedbackPage({
                     </section>
                   ) : null}
                   <Body projectId={projectId} f={f} />
-                  <ReproduceSection
+                  <Reproduction
                     projectId={projectId}
                     fbKey={f.key}
                     carriers={f.route?.route === "issue" ? f.route.carriers.flatMap((c) => (c.key ? [c.key] : [])) : []}

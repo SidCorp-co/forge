@@ -179,7 +179,7 @@ export function IssuesListView({
           <ErrorState
             title={t("issues.list.loadFailed")}
             message={formatApiError(issuesQ.error)}
-            onRetry={() => issuesQ.refetch()}
+            onRetry={() => void issuesQ.refetch()}
           />
         </div>
       )}
