@@ -107,6 +107,8 @@ const DOORS: Readonly<Record<string, string>> = {
     'sign-up takes an email and a new password and stores its hash; a chat credential is neither',
   'auth/oauth/routes.ts':
     'the OAuth callback hands the provider’s code and state to handleCallback; a PAT is neither',
+  'web-host/demo-credential.ts':
+    'a request presenting any credential passes untouched to the doors above; only a credentialless one on a demo core gets the demo member’s session',
 };
 
 /**
@@ -167,6 +169,12 @@ const ADMITS_NOTHING: Readonly<Record<string, string>> = {
     'issues a project invitation token behind requireAuth; it checks none',
   'shares/forge-link.ts': 'publishes a share, minting its token; it checks none',
   'root-routes.ts': 'GET /pair passes a pairing code on to the web app’s pair page unread',
+  'web-host/host.ts':
+    'the /admin page gate hands every forge_auth value to core’s own /api/admin/whoami, where requireAuth decides',
+  'web-host/mount.ts':
+    'puts the web host and the demo credential in front of the router; checks none',
+  'route-registry.ts': 'mounts the web host ahead of every route; checks none',
+  'index.ts': 'serves app.fetch, which a demo core wraps in the demo credential; checks none',
 };
 
 /**

@@ -106,6 +106,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     header:referer header:sec-fetch-dest header:user-agent header:x-forwarded-for
     header:x-forwarded-host header:x-forwarded-proto header:x-next-page header:x-real-ip
     header:x-request-id`,
+  'whether a sign-in page follows a sign-out (`session=ended`), so a demo core shows its form': words`
+    query:session`,
   'a header core’s own clients send: what they render, the project an /mcp call names': words`
     header:x-forge-capabilities header:x-forge-project-slug header:x-forge-unresolved-ref`,
   [ROW_KEYS]: words`
@@ -305,13 +307,21 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     workflows/routes.ts HonoRequest.valid(json) in module code`,
   'the request handed to core’s own router, gates and body checks, which read it here': lines`
     index.ts Request handed to hono:fetch in module code
+    web-host/mount.ts Request handed to hono:fetch in hostTheWeb
     middleware/route-refs.ts Request handed to hono:dispatch in resolvingRouteRefs
     middleware/route-refs.ts Context handed to hono:authenticate in refuseUnresolvedRefs
     middleware/zod-validator.ts Context handed to hono:middleware in refuseUndeclaredBodyType
     lib/upload-body-limit.ts Context handed to hono:limiter in uploadBodyLimit
     middleware/chat-write-hold.ts Context handed to hono:matchedRoutes in chatWriteRouteOf
     middleware/pat-rest-surface.ts Context handed to hono:matchedRoutes in routeIsServed`,
+  'a file of the web build core serves, found by its path and gzipped by Accept-Encoding': lines`
+    web-host/host.ts Context handed to hono:serve in webHost
+    web-host/host.ts Context handed to hono:squeeze in webHost`,
+  'a request that presented no credential, given the demo member’s session on a demo core and handed to core’s own router': lines`
+    web-host/demo-credential.ts Headers handed to undici-types:Request in withDemoCredential`,
   'the path, the query or the origin, read for a route reference, a link back or a route id': lines`
+    web-host/host.ts HonoRequest.url in publicOrigin
+    web-host/host.ts HonoRequest.url in webHost
     middleware/route-refs.ts Request.url in resolveRouteRefs
     devices/install-routes.ts HonoRequest.url in module code
     guides/routes.ts HonoRequest.url in module code
@@ -371,6 +381,11 @@ export const FRAMEWORK_IMPORTS: Readonly<Record<string, { credential: boolean; w
   'hono/utils/handler:findTargetHandler': { credential: false, why: 'a route’s own handler' },
   'hono/utils/handler:isMiddleware': { credential: false, why: 'whether a handler is middleware' },
   '@hono/node-server:serve': { credential: false, why: 'serves app.fetch on a Node server' },
+  '@hono/node-server/serve-static:serveStatic': {
+    credential: false,
+    why: 'serves a file of the web build by its path',
+  },
+  'hono/compress:compress': { credential: false, why: 'gzips an answer by Accept-Encoding' },
   '@hono/zod-validator:zValidator': {
     credential: false,
     why: 'fills valid(); each field it yields is classified above',
