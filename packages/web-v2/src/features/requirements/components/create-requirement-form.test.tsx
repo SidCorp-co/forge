@@ -73,6 +73,12 @@ describe("the New requirement form", () => {
     expect(calls.find((c) => c.method === "POST")?.body).toEqual({ title: "Staff open the root page" });
   });
 
+  it("holds the title to the length core keeps, so a pasted title never reaches the refusal (FB-118)", () => {
+    core();
+    mount();
+    expect(screen.getByRole("textbox", { name: /Title/ }).getAttribute("maxlength")).toBe("500");
+  });
+
   it("shows a refused create's plain words on the title it names, and only the rest under the form (REQ-34 BC-18)", async () => {
     const refusals = [
       { code: "BAD_REQUEST", path: "/title", detail: "The title is too long." },

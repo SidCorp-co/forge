@@ -1,6 +1,6 @@
 "use client";
 
-import { FEEDBACK_KINDS, FEEDBACK_SEVERITIES } from "@forge/contracts/feedback";
+import { FEEDBACK_KINDS, FEEDBACK_LIMITS, FEEDBACK_SEVERITIES } from "@forge/contracts/feedback";
 import { useState } from "react";
 import { Button, enumLabel, Field, Input, NativeSelect, statusReading, Textarea } from "@/design";
 import { placeRefusals } from "@/lib/api/field-refusals";
@@ -87,7 +87,7 @@ export function FeedbackForm({
       }}
     >
       <Field label={t("feedback.form.title")} error={refused.at("title")} required>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={FEEDBACK_LIMITS.title} autoFocus />
       </Field>
       <div className="grid gap-3 sm:grid-cols-[10rem_10rem_minmax(0,1fr)]">
         <Field label={t("feedback.form.kind")} error={refused.at("kind")}>
