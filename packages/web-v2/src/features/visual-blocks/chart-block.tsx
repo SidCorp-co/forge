@@ -2,7 +2,7 @@
 
 import { cellText, type VisualBlockOf } from "@forge/contracts/visual-blocks";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from "recharts";
-import { type ChartConfig, ChartContainer } from "@/components/ui/chart";
+import { type ChartConfig, ChartContainer } from "@/design";
 import { type ChartModel, chartModel } from "./chart-model";
 import { useBlockInstants } from "./instants";
 import { TextAlternative } from "./text-alternative";
@@ -26,10 +26,10 @@ const TIP = {
 function Legend({ model }: { model: ChartModel }) {
   if (model.series.length < 2) return null;
   return (
-    <ul className="m-0 mb-1 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-[11.5px] text-muted" data-testid="chart-legend">
+    <ul className="m-0 mb-1 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-12 text-muted" data-testid="chart-legend">
       {model.series.map((s, i) => (
         <li key={s.key} className="flex items-center gap-1.5">
-          <span aria-hidden className="inline-block h-[3px] w-3 rounded-full" style={{ background: COLOUR(i) }} />
+          <span aria-hidden className="inline-block h-0.75 w-3 rounded-pill" style={{ background: COLOUR(i) }} />
           {s.name}
         </li>
       ))}
@@ -92,7 +92,7 @@ export function ChartBlockView({ block }: { block: VisualBlockOf<"chart"> }) {
     <div className="min-w-0" data-testid="chart-block" data-variant={model.variant} data-scale={model.scale}>
       <Legend model={model} />
       <div aria-hidden>
-        <ChartContainer config={config} className="aspect-auto h-[240px] w-full" initialDimension={{ width: 480, height: 240 }}>
+        <ChartContainer config={config} className="aspect-auto h-60 w-full" initialDimension={{ width: 480, height: 240 }}>
           {model.variant === "bar" ? (
             <BarChart {...common}>
               <CartesianGrid vertical={false} stroke="var(--border-subtle)" />

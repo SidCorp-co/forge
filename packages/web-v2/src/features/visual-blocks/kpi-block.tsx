@@ -12,10 +12,10 @@ export function KpiBlockView({ block }: { block: VisualBlockOf<"kpi"> }) {
         // two figures may share a label; position is their identity
         // biome-ignore lint/suspicious/noArrayIndexKey: figures are positional
         <div key={i} className="min-w-0" data-testid="kpi-figure">
-          <dt className="text-[11.5px] text-subtle">{fig.label}</dt>
+          <dt className="text-12 text-subtle">{fig.label}</dt>
           <dd className="m-0 flex items-baseline gap-1.5">
-            <span className="text-[22px] font-semibold leading-tight tabular-nums text-fg">{fig.value}</span>
-            {fig.delta !== undefined && <span className="text-[12px] tabular-nums text-muted">{fig.delta}</span>}
+            <span className="text-24 font-semibold leading-tight tabular-nums text-fg">{fig.value}</span>
+            {fig.delta !== undefined && <span className="text-12 tabular-nums text-muted">{fig.delta}</span>}
           </dd>
         </div>
       ))}
