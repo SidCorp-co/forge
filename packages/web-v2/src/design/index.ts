@@ -106,7 +106,7 @@ export { Section, PropertyList, Property } from "./patterns/section";
 export { RowList, RowItem, type RowItemProps } from "./patterns/row-list";
 export { StatRow, StatCell } from "./patterns/stat-row";
 export { SettingsGroup, SettingRow, FormActions } from "./patterns/settings-form";
-export { useUrlParams, useUrlChoice } from "./hooks/use-url-params";
+export { useUrlChoice, useUrlFlags, useUrlParams } from "./hooks/use-url-params";
 export { useListPage, type ListPageSpec, type ListPageState } from "./hooks/use-list-page";
 export { pageShown, useReportShown, useShownKeys } from "./hooks/use-page-shown";
 export { highlightOnPage, highlightStore, useHighlight, type HighlightState } from "./hooks/use-highlight";

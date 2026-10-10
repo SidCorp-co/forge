@@ -19,6 +19,7 @@ import {
   StatusBadge,
   useListPage,
   useUrlChoice,
+  useUrlFlags,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel } from "@/design/vocabulary";
@@ -45,7 +46,6 @@ const isRun = (i: Item): i is RunStanding => "lane" in i;
 const keyOf = (i: Item) => (isRun(i) ? i.id : MASTER_KEY);
 
 const FILTERS = ["you", "stuck"] as const;
-type Filter = (typeof FILTERS)[number];
 
 function Signals({ d }: { d: RunStandingList }) {
   const t = useCopy();
@@ -90,13 +90,12 @@ export function RunsList({ access }: { access: AgentsAccess }) {
   const [mode, setMode] = useUrlChoice<GroupMode>("group", GROUP_MODES, "attention");
   const q = useRunStanding(projectId, scope);
   const d = q.data;
-  const filtersOf = (params: URLSearchParams) => new Set((params.get("f") ?? "").split(",").filter((x): x is Filter => (FILTERS as readonly string[]).includes(x)));
+  const [on, toggle] = useUrlFlags(FILTERS);
   const list = useListPage<Item>({
     rows: d ? [d.master, ...d.items] : [],
     keyOf,
     searchOf: (i) => (isRun(i) ? [i.id, i.boxRunId, i.title, i.issue?.key, i.device?.name, i.release?.version, ...i.issues].join(" ") : ""),
-    narrow: (i, params) => {
-      const on = filtersOf(params);
+    narrow: (i) => {
       if (!isRun(i)) return scope !== "finished" && on.size === 0;
       return (!on.has("you") || needsViewer(i)) && (!on.has("stuck") || i.state === "stuck");
     },
@@ -111,13 +110,7 @@ export function RunsList({ access }: { access: AgentsAccess }) {
     hrefOf: (key) => (key === MASTER_KEY ? masterHref(slug) : runHref(slug, key)),
     origin: AGENTS_LIST,
   });
-  const { peek, params, setParams } = list;
-  const on = filtersOf(params);
-  const toggle = (f: Filter) => {
-    const next = new Set(on);
-    if (!next.delete(f)) next.add(f);
-    setParams({ f: next.size ? [...next].join(",") : null });
-  };
+  const { peek } = list;
   return (
     <QueryBoundary query={q} loadingLabel={t("agents.loadingRuns")} height="50vh" retry="always">
       {(d) => {

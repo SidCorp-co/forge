@@ -17,8 +17,7 @@ import {
   type IssueStandingScope,
 } from "@forge/contracts/issue-standing";
 import { listFilterFromSearch, type UiWaitingFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
-import { useRouter } from "next/navigation";
-import { type ReactNode, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import {
   EmptyState,
   GroupedList,
@@ -26,14 +25,13 @@ import {
   LEGEND,
   type LegendTone,
   type ListGroup,
-  rememberListOrigin,
   SegmentedControl,
   sortGroupsBy,
-  useGroupFold,
-  usePeek,
-  usePeekKeys,
   useUrlParams,
-  visibleRows,
+  useUrlFlags,
+  useListPage,
+  FilterChip,
+  ListToolbar,
   ListLayout,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
@@ -55,18 +53,13 @@ import { WaitingFilter } from "@/features/chat-dock";
 
 type BoardMode = "attention" | "module" | "waves";
 
-const QUICK = [
-  { id: "you", mono: false },
-  { id: "blocked", mono: true },
-  { id: "blocking", mono: true },
-] as const;
-type Quick = (typeof QUICK)[number]["id"];
+const QUICK = ["you", "blocked", "blocking"] as const;
+type Quick = (typeof QUICK)[number];
 
 const scopeOf = (raw: string | null): IssueStandingScope =>
   (ISSUE_STANDING_SCOPES as readonly string[]).includes(raw ?? "") ? (raw as IssueStandingScope) : "open";
 
 interface Narrowing {
-  q: string;
   quick: Set<Quick>;
   statuses: string[];
   priority: string;
@@ -75,20 +68,15 @@ interface Narrowing {
   waiting: UiWaitingFilter | null;
 }
 
-function narrow(rows: IssueStandingRow[], n: Narrowing): IssueStandingRow[] {
-  const t = n.q.trim().toLowerCase();
-  return rows.filter((r) => {
-    if (t && !`${r.key} ${r.title}`.toLowerCase().includes(t)) return false;
-    if (n.quick.has("you") && r.standing.attentionGroup !== "needs_you") return false;
-    if (n.quick.has("blocked") && r.standing.blockedBy.length === 0) return false;
-    if (n.quick.has("blocking") && r.standing.blocks.length === 0) return false;
-    if (n.statuses.length && !n.statuses.includes(r.status)) return false;
-    if (n.priority && r.priority !== n.priority) return false;
-    if (n.createdBy && r.createdById !== n.createdBy) return false;
-    if (n.assignee && r.assigneeId !== n.assignee) return false;
-    if (n.waiting && waitingFilterOf(r.standing) !== n.waiting) return false;
-    return true;
-  });
+function narrows(r: IssueStandingRow, n: Narrowing): boolean {
+  if (n.quick.has("you") && r.standing.attentionGroup !== "needs_you") return false;
+  if (n.quick.has("blocked") && r.standing.blockedBy.length === 0) return false;
+  if (n.quick.has("blocking") && r.standing.blocks.length === 0) return false;
+  if (n.statuses.length && !n.statuses.includes(r.status)) return false;
+  if (n.priority && r.priority !== n.priority) return false;
+  if (n.createdBy && r.createdById !== n.createdBy) return false;
+  if (n.assignee && r.assigneeId !== n.assignee) return false;
+  return !n.waiting || waitingFilterOf(r.standing) === n.waiting;
 }
 
 function attentionGroups(rows: IssueStandingRow[], t: Copy): ListGroup<IssueStandingRow>[] {
@@ -185,7 +173,7 @@ function Waves({ rows, onPeek, selected }: { rows: IssueStandingRow[]; onPeek: (
   const outside = rows.length - inWave.length;
   const max = Math.max(-1, ...inWave.map((r) => r.standing.wave as number));
   const rank = (r: IssueStandingRow) => ISSUE_ATTENTION_GROUPS.indexOf(r.standing.attentionGroup);
-  const edges = useMemo(() => waveEdges(rows), [rows]);
+  const edges = waveEdges(rows);
   const { ref, paths } = useEdgePaths(edges);
   const t = useCopy();
   const card = (r: IssueStandingRow, compact?: boolean) => {
@@ -289,52 +277,39 @@ function Waves({ rows, onPeek, selected }: { rows: IssueStandingRow[]; onPeek: (
   );
 }
 
-function Toolbar({ data, scope, n, children }: { data: IssueStandingList | undefined; scope: IssueStandingScope; n: Narrowing; children?: ReactNode }) {
+function Toolbar({ data, scope, search, quick, onQuick, waiting, children }: {
+  data: IssueStandingList | undefined;
+  scope: IssueStandingScope;
+  search: { value: string; onChange: (text: string) => void };
+  quick: Set<Quick>;
+  onQuick: (id: Quick) => void;
+  waiting: UiWaitingFilter | null;
+  children?: ReactNode;
+}) {
   const [, set] = useUrlParams();
   const t = useCopy();
-  const quickLabel: Record<Quick, string> = { you: t("issues.board.waitingOnYou"), blocked: t("issues.board.quickBlocked"), blocking: t("issues.board.quickBlocking") };
-  const toggle = (id: Quick) => {
-    const next = new Set(n.quick);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    set({ f: [...next].join(",") || null });
-  };
   const counts = data?.counts;
-  const quickCount: Record<Quick, number | undefined> = { you: counts?.needsYou, blocked: counts?.blocked, blocking: counts?.blocking };
+  const chips: { id: Quick; label: ReactNode; count: number | undefined }[] = [
+    { id: "you", label: t("issues.board.waitingOnYou"), count: counts?.needsYou },
+    { id: "blocked", label: <span className="font-mono text-12">{t("issues.board.quickBlocked")}</span>, count: counts?.blocked },
+    { id: "blocking", label: <span className="font-mono text-12">{t("issues.board.quickBlocking")}</span>, count: counts?.blocking },
+  ];
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3" data-testid="issues-toolbar">
+    <ListToolbar testId="issues-toolbar">
       {children}
       <SegmentedControl
         options={ISSUE_STANDING_SCOPES.map((s) => ({ value: s, label: t(`issues.segment.${s}`), count: counts?.[s] }))}
         value={scope}
         onChange={(v) => set({ filter: v === "open" ? null : v, peek: null })}
       />
-      <ListSearch noun={t("issues.board.searchNoun")} value={n.q} onChange={(q) => set({ q: q || null })} />
-      <WaitingFilter value={n.waiting ?? undefined} />
-      {QUICK.map((c) => {
-        const on = n.quick.has(c.id);
-        return (
-          <button
-            key={c.id}
-            type="button"
-            aria-pressed={on}
-            onClick={() => toggle(c.id)}
-            data-testid={`quick-${c.id}`}
-            className={cn(
-              "inline-flex h-7.5 items-center gap-1.5 rounded-pill border px-2.5 text-13 font-semibold",
-              on ? "border-link bg-info-2 text-fg" : "border-line bg-surface text-muted hover:text-fg",
-            )}
-          >
-            <span className={c.mono ? "font-mono text-12" : undefined}>{quickLabel[c.id]}</span>
-            {quickCount[c.id] !== undefined ? (
-              <span className="rounded-full px-1.5 text-12 tabular-nums" style={c.id === "you" && quickCount[c.id] ? { background: LEGEND.you.bg, color: LEGEND.you.fg } : undefined}>
-                {quickCount[c.id]}
-              </span>
-            ) : null}
-          </button>
-        );
-      })}
-    </div>
+      <ListSearch noun={t("issues.board.searchNoun")} {...search} />
+      <WaitingFilter value={waiting ?? undefined} />
+      {chips.map((c) => (
+        <FilterChip key={c.id} on={quick.has(c.id)} onToggle={() => onQuick(c.id)} count={c.count ?? 0} tone={c.id === "you" ? "you" : undefined} testId={`quick-${c.id}`}>
+          {c.label}
+        </FilterChip>
+      ))}
+    </ListToolbar>
   );
 }
 
@@ -367,41 +342,41 @@ function WavesShown({ keys }: { keys: readonly string[] }) {
 }
 
 export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { projectId: string; slug: string }; mode: BoardMode; toolbarLead?: ReactNode }) {
-  const router = useRouter();
   const [params] = useUrlParams();
   const t = useCopy();
   const words = useRowWords();
   const scope = scopeOf(params.get("filter"));
   const q = useIssueStanding(project.projectId, scope);
+  const [quick, toggleQuick] = useUrlFlags(QUICK);
   const n: Narrowing = {
-    q: params.get("q") ?? "",
-    quick: new Set((params.get("f") ?? "").split(",").filter((x): x is Quick => QUICK.some((c) => c.id === x))),
+    quick,
     statuses: statusesFromParam(params.get("status")) ?? [],
     priority: params.get("priority") ?? "",
     createdBy: params.get("createdBy") ?? "",
     assignee: params.get("assignee") ?? "",
     waiting: listFilterFromSearch("issues", params).waitingOn ?? null,
   };
-  const rows = narrow(q.data?.issues ?? [], n);
   const forecastQ = useProjectForecast(project.projectId);
   const forecasts = new Map((forecastQ.data?.issues ?? []).map((i) => [i.key, i.forecast]));
   const clock = useEtaClock();
   const [etaSorted, toggleEtaSort] = useEtaSort();
   const etaOf = (k: string) => issueEta(forecasts.get(k), clock);
-  const groups = (() => {
-    const plain = mode === "module" ? moduleGroups(rows, t) : attentionGroups(rows, t);
-    return etaSorted ? sortGroupsBy(plain, (r) => etaSortValue(etaOf(r.key))) : plain;
-  })();
-  const fold = useGroupFold(`web-v2:issues-fold:${mode}`);
-  const visible = (mode === "waves" ? rows.filter((r) => r.standing.wave !== null).map((r) => r.key) : visibleRows(groups, fold).map((r) => r.key));
-  const allKeys = (q.data?.issues ?? []).map((r) => r.key);
-  const peek = usePeek(visible, allKeys);
+  const list = useListPage<IssueStandingRow>({
+    rows: q.data?.issues ?? [],
+    keyOf: (r) => r.key,
+    searchOf: (r) => `${r.key} ${r.title}`,
+    narrow: (r) => narrows(r, n),
+    groupsOf: (rows) => {
+      const plain = mode === "module" ? moduleGroups(rows, t) : attentionGroups(rows, t);
+      return etaSorted ? sortGroupsBy(plain, (r) => etaSortValue(etaOf(r.key))) : plain;
+    },
+    stepsOf: mode === "waves" ? (_groups, rows) => rows.filter((r) => r.standing.wave !== null) : undefined,
+    foldKey: `web-v2:issues-fold:${mode}`,
+    hrefOf: (k) => issueHref(project.slug, k),
+    origin: ISSUES_LIST,
+  });
+  const { peek, rows, openFull } = list;
   const row = issueRowView(project.slug, words, { of: etaOf, clock });
-  const openFull = (k: string) => {
-      rememberListOrigin(ISSUES_LIST);
-      router.push(issueHref(project.slug, k));
-    };
-  usePeekKeys(peek, openFull);
   const openRow = q.data?.issues.find((r) => r.key === peek.open) ?? null;
   const truncated = q.data && q.data.returned >= q.data.limit && q.data.counts[scope] > q.data.returned;
 
@@ -414,7 +389,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
           ) : undefined
         }
       >
-          <Toolbar data={q.data} scope={scope} n={n}>
+          <Toolbar data={q.data} scope={scope} search={list.search} quick={quick} onQuick={toggleQuick} waiting={n.waiting}>
             {toolbarLead}
           </Toolbar>
           <AssistantNarrowing n={n} />
@@ -431,18 +406,18 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
                 </div>
               ) : mode === "waves" ? (
                 <>
-                  <WavesShown keys={visible} />
-                  <Waves rows={rows} selected={peek.open} onPeek={(k) => peek.set(k === peek.open ? null : k)} />
+                  <WavesShown keys={rows.filter((r) => r.standing.wave !== null).map((r) => r.key)} />
+                  <Waves rows={rows} selected={peek.open} onPeek={list.togglePeek} />
                 </>
               ) : (
                 <GroupedList
                   ariaLabel={t("issues.screen.title")}
-                  groups={groups}
-                  fold={fold}
+                  groups={list.groups}
+                  fold={list.fold}
                   row={row}
                   eta={{ label: ETA_COPY[clock.lang].header, sortLabel: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort }}
                   selected={peek.open}
-                  onPeek={(k) => peek.set(k === peek.open ? null : k)}
+                  onPeek={list.togglePeek}
                   empty={t("issues.board.noMatch")}
                 />
               )
