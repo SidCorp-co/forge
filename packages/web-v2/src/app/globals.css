@@ -45,6 +45,12 @@
    which is `[data-page]` in the shell and the window outside it. */
 @custom-variant column-md (@container column (width >= 48rem));
 @custom-variant max-column-md (@container column (width < 48rem));
+/* The column a detail title fits in beside the bar's acts. On an issue the bar carries the back control,
+   key, badge, Run pipeline, Ask about this, Help, the menu and Ask Agent, about 820px before the title
+   gets any room, so at 48-64rem of column the title kept 0-190px (FB-114 again on 0.4.0-dev.231). Below
+   72rem the title heads the main column instead, and at 72rem it keeps about 330px in the bar. */
+@custom-variant column-wide (@container column (width >= 72rem));
+@custom-variant max-column-wide (@container column (width < 72rem));
 
 /* ============================================================
    Tailwind v4 theme mapping — utilities reference the SEMANTIC
