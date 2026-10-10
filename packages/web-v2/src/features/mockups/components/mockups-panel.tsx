@@ -11,7 +11,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { fileBase64, targetInput } from "../api";
-import { useMockupAct, useMockupBytes, useMockups, useProposeMockup } from "../hooks";
+import { useMockupAct, useMockupBytes, useMockups, useMockupText, useProposeMockup } from "../hooks";
 import type { MockupTarget, MockupView } from "../types";
 
 function OpeningBoard() {
@@ -35,11 +35,7 @@ function Preview({ m }: { m: MockupView }) {
   const t = useCopy();
   const q = useMockupBytes(m.url, open);
   const url = useObjectUrl(q.data);
-  const [text, setText] = useState<string | null>(null);
-  useEffect(() => {
-    if (!q.data || m.kind === "image" || m.kind === "sketch") return;
-    q.data.text().then(setText);
-  }, [q.data, m.kind]);
+  const text = useMockupText(m.url, open && m.kind !== "image" && m.kind !== "sketch").data ?? null;
   const parsed = useMemo(() => {
     if (m.kind !== "wireframe" || text === null) return null;
     try {
@@ -59,19 +55,19 @@ function Preview({ m }: { m: MockupView }) {
   if (m.kind === "image" || m.kind === "sketch") {
     if (!url) return <p className="text-13 text-muted">{t("common.mockups.loading")}</p>;
     // biome-ignore lint/performance/noImgElement: a blob URL of a stored mockup with no known intrinsic size; `next/image` cannot optimise it
-    return <img src={url} alt={m.caption ?? m.name} className="max-h-[420px] max-w-full border border-line-subtle object-contain" data-testid="mockup-image" />;
+    return <img src={url} alt={m.caption ?? m.name} className="max-h-105 max-w-full border border-line-subtle object-contain" data-testid="mockup-image" />;
   }
   if (text === null) return <p className="text-13 text-muted">{t("common.mockups.loading")}</p>;
   if (m.kind === "wireframe") {
     if (!parsed?.ok) return <p className="text-13 text-muted">{t("common.mockups.unreadable")}</p>;
     return (
-      <div className="h-[420px] border border-line-subtle" data-testid="mockup-board">
+      <div className="h-105 border border-line-subtle" data-testid="mockup-board">
         <BoardCanvas doc={parsed.doc} />
       </div>
     );
   }
   if (m.kind === "html") {
-    return <iframe title={m.name} sandbox="" srcDoc={text} className="h-[420px] w-full border border-line-subtle bg-white" data-testid="mockup-html" />;
+    return <iframe title={m.name} sandbox="" srcDoc={text} className="h-105 w-full border border-line-subtle bg-white" data-testid="mockup-html" />;
   }
   let shown = text;
   try {
@@ -79,7 +75,7 @@ function Preview({ m }: { m: MockupView }) {
   } catch {
     shown = text;
   }
-  return <pre className="max-h-[420px] overflow-auto bg-sunken p-3 font-mono text-12 leading-relaxed">{shown}</pre>;
+  return <pre className="max-h-105 overflow-auto bg-sunken p-3 font-mono text-12 leading-relaxed">{shown}</pre>;
 }
 
 /** Whose words a mockup's reason is: the accept's or the return's. */
@@ -101,7 +97,7 @@ function Row({ projectId, m }: { projectId: string; m: MockupView }) {
         <EnumBadge family="mockupKind" value={m.kind} />
         <StatusBadge family="mockup" value={m.status} />
         {m.pinned ? <span className="text-12 text-muted">{t("common.mockups.pinnedIn", { r: m.pinned.revision })}</span> : null}
-        <span className="ml-auto inline-flex items-center gap-2 text-12-5 text-muted">
+        <span className="ml-auto inline-flex items-center gap-2 text-13 text-muted">
           <ActorChip name={m.proposedByName ?? t("standing.who.itsAuthor")} kind={m.proposedAgency} size={16} />
           <span title={`${m.key} · ${m.name}${m.target.revision ? ` · ${t("common.mockups.against", { r: m.target.revision })}` : ""} · ${time.dateTime(m.createdAt)}`}>
             {time.relative(m.createdAt)}
@@ -210,7 +206,7 @@ function Propose({ projectId, target }: { projectId: string; target: MockupTarge
  * The Mockups tab of a requirement, a feedback item or an issue; who may act and what is pinned are core's. A
  * requirement's tab is its earlier mockups as history and takes no proposal: its picture is each revision's own (REQ-35).
  */
-export function MockupsPanel({ projectId, target, canPropose = true }: { projectId: string; target: MockupTarget; canPropose?: boolean }) {
+export function MockupList({ projectId, target, canPropose = true }: { projectId: string; target: MockupTarget; canPropose?: boolean }) {
   const proposes = canPropose && target.type !== "requirement";
   const q = useMockups(projectId, target);
   const rows = q.data?.mockups ?? [];

@@ -12,7 +12,7 @@ export function EtaCell({ eta, clock }: { eta: Eta | null; clock: EtaClock }) {
     <span className="flex min-w-0 flex-col items-end text-right tabular-nums" title={eta.detail} data-testid="eta-cell" data-kind={eta.kind}>
       <span
         className={cn(
-          "inline-flex max-w-full items-center gap-1 truncate text-12-5",
+          "inline-flex max-w-full items-center gap-1 truncate text-13",
           eta.kind === "range" && !late && "font-semibold text-fg",
           late && "font-semibold text-danger",
           (eta.kind === "waits" || eta.kind === "landed") && "text-muted",
@@ -24,7 +24,7 @@ export function EtaCell({ eta, clock }: { eta: Eta | null; clock: EtaClock }) {
         <span className="truncate">{line}</span>
       </span>
       {sub ? (
-        <span className="max-w-full truncate text-11 text-subtle" data-testid="eta-sub">
+        <span className="max-w-full truncate text-12 text-subtle" data-testid="eta-sub">
           {sub}
         </span>
       ) : null}

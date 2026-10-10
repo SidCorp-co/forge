@@ -18,6 +18,11 @@ export function useMockupBytes(url: string, enabled = true) {
   return useQuery({ queryKey: ["mockup-bytes", url], queryFn: () => mockupsApi.bytes(url), enabled, staleTime: 10 * 60_000 });
 }
 
+/** A text mockup's body (a wireframe's JSON, an HTML page), read from the same bytes. */
+export function useMockupText(url: string, enabled = true) {
+  return useQuery({ queryKey: ["mockup-text", url], queryFn: async () => (await mockupsApi.bytes(url)).text(), enabled, staleTime: 10 * 60_000 });
+}
+
 function useInvalidate(projectId: string) {
   const qc = useQueryClient();
   return () => {

@@ -25,7 +25,7 @@ import {
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { EntityCommentThread } from "@/features/comments/components/entity-comment-thread";
-import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
+import { MockupList } from "@/features/mockups/components/mockups-panel";
 import { useMockups } from "@/features/mockups/hooks";
 import { PendingBadge } from "@/features/suggestions/components/suggestion-list";
 import { useWaitingSuggestions } from "@/features/suggestions/hooks";
@@ -209,7 +209,7 @@ export function RequirementPage({
               {tab === "overview" ? <RequirementOverview d={d} projectId={projectId} slug={slug} onRevise={() => onTab("revisions")} /> : null}
               {tab === "criteria" ? <Criteria d={d} projectId={projectId} slug={slug} /> : null}
               {tab === "revisions" ? <Revisions d={d} projectId={projectId} /> : null}
-              {tab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}
+              {tab === "mockups" ? <MockupList projectId={projectId} target={mockupTarget} /> : null}
               {tab === "decisions" ? (
                 <section data-testid="view-decisions" aria-label={t("requirements.tab.decisions")}>
                   <RequirementDecisions key={d.key} projectId={projectId} slug={slug} reqKey={d.key} />

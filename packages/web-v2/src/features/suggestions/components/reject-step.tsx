@@ -26,7 +26,7 @@ export function RejectStep({ loading = false, onConfirm, onCancel }: { loading?:
         placeholder={t("requirements.suggestion.rejectWhy")}
         value={reason}
         onChange={(e) => setReason(e.target.value)}
-        className="min-w-[16rem] flex-1"
+        className="min-w-64 flex-1"
         autoFocus
       />
       <Button type="submit" size="sm" disabled={!reason.trim()} loading={loading}>

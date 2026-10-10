@@ -22,7 +22,7 @@ import {
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { FeedbackChecklists } from "@/features/checklists/components/item-checklists";
 import { IntakeDraft } from "@/features/intake/components/intake-draft";
-import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
+import { MockupList } from "@/features/mockups/components/mockups-panel";
 import { ReproduceSection } from "@/features/previews/reproduce-section";
 import { useMockups } from "@/features/mockups/hooks";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -151,7 +151,7 @@ export function FeedbackPage({
             <FeedbackBanner f={f} slug={slug} className="px-8 py-2.5 max-md:px-4" />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="feedback-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("feedback.tab.overview")}>
-              {tab === "mockups" ? <MockupsPanel projectId={projectId} target={{ type: "feedback", key: f.key }} canPropose={!f.redacted} /> : null}
+              {tab === "mockups" ? <MockupList projectId={projectId} target={{ type: "feedback", key: f.key }} canPropose={!f.redacted} /> : null}
               {tab === "overview" ? (
                 <div className="grid gap-8" data-testid="view-overview">
                   <FeedbackEvidence projectId={projectId} slug={slug} f={f} />
