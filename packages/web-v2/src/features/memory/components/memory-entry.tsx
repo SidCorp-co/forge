@@ -105,23 +105,142 @@ function needsCheckText(t: Copy, entry: MemoryEntry, slug: string): string | nul
   return parts.length > 0 ? t("memory.check.lead", { why: parts.join("; ") }) : null;
 }
 
+/** Who flagged the memory as possibly untrue, when, and why. */
+function MemoryFlag({ flagged, day }: { flagged: NonNullable<MemoryEntry["flagged"]>; day: (iso: string) => string }) {
+  const t = useCopy();
+  return (
+    <p className="text-13 text-amber-700 dark:text-amber-300" data-testid="memory-flagged">
+      {flagged.reason !== null ? (
+        <>
+          {t("memory.flaggedBecause", { by: flagged.by ?? "—", date: day(flagged.since) })} <Written text={flagged.reason} lang={null} />
+          {t("memory.flaggedCheck")}
+        </>
+      ) : (
+        t("memory.flaggedNoReason", { by: flagged.by ?? "—", date: day(flagged.since) })
+      )}
+    </p>
+  );
+}
+
+/** Each correction with its reason, and the earlier texts it replaced. */
+function MemoryHistory({ entry, day }: { entry: MemoryEntry; day: (iso: string) => string }) {
+  const t = useCopy();
+  return (
+    <>
+      {entry.corrections.length > 0 ? (
+        <ul className="grid gap-0.5 text-12 text-muted" data-testid="memory-corrections">
+          {entry.corrections.map((c) => (
+            <li key={c.at}>{t("memory.corrected", { name: actorName(t, c.by), date: day(c.at), reason: c.reason })}</li>
+          ))}
+        </ul>
+      ) : null}
+      {entry.revisions.length > 0 ? (
+        <details className="text-12 text-muted" data-testid="memory-revisions">
+          <summary className="cursor-pointer select-none">
+            {entry.revisionCount > entry.revisions.length ? t("memory.earlierShown", { shown: entry.revisions.length, n: entry.revisionCount }) : t("memory.earlier", { n: entry.revisionCount })}
+          </summary>
+          <ol className="mt-1 grid gap-2 border-l border-line-subtle pl-3">
+            {entry.revisions.map((r) => (
+              <li key={r.replacedAt} className="grid gap-0.5" data-testid="memory-revision">
+                <span>{t("memory.replaced", { date: day(r.replacedAt), name: actorName(t, r.writtenBy) })}</span>
+                <p className="whitespace-pre-wrap text-13 text-fg">{r.text}</p>
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
+    </>
+  );
+}
+
+/** Still true, or not: corrected with a new text, or retired, each with a reason. */
+function MemoryActs({
+  entry,
+  mode,
+  onMode,
+  busy,
+  onVerify,
+  onCorrect,
+  onRetire,
+}: Pick<MemoryEntryRowProps, "entry" | "busy" | "onVerify" | "onCorrect" | "onRetire"> & { mode: Mode; onMode: (mode: Mode) => void }) {
+  const t = useCopy();
+  const [text, setText] = useState(entry.text);
+  const [reason, setReason] = useState("");
+  const reasonOk = reason.trim().length >= REASON_MIN;
+  const close = () => {
+    onMode("read");
+    setReason("");
+    setText(entry.text);
+  };
+  return (
+    <>
+      {mode === "read" ? (
+        <div className="flex gap-2">
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => onVerify(entry.id)}>
+            {t("memory.stillTrue")}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => onMode("untrue")}>
+            {t("memory.notTrue")}
+          </Button>
+        </div>
+      ) : null}
+
+      {mode === "untrue" ? (
+        <div className="flex gap-2">
+          <Button size="sm" variant="ghost" onClick={() => onMode("correct")}>
+            {t("memory.correct")}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => onMode("retire")}>
+            {t("memory.retire")}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={close}>
+            {t("memory.cancel")}
+          </Button>
+        </div>
+      ) : null}
+
+      {(mode === "correct" || mode === "retire") ? (
+        <form
+          className="grid max-w-190 gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!reasonOk || busy) return;
+            if (mode === "correct") onCorrect(entry.id, { text: text.trim(), reason: reason.trim() });
+            else onRetire(entry.id, { reason: reason.trim() });
+            close();
+          }}
+        >
+          {mode === "correct" ? (
+            <Field label={t("memory.correctedText")}>
+              <Textarea rows={6} value={text} onChange={(e) => setText(e.target.value)} />
+            </Field>
+          ) : null}
+          <Field label={t("memory.why")}>
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+          </Field>
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" variant={mode === "retire" ? "danger" : "primary"} disabled={!reasonOk || (mode === "correct" && !text.trim())} loading={busy}>
+              {mode === "correct" ? t("memory.saveCorrection") : t("memory.retireConfirm")}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={close}>
+              {t("memory.cancel")}
+            </Button>
+          </div>
+        </form>
+      ) : null}
+    </>
+  );
+}
+
 export function MemoryEntryItem({ entry, slug, timeZone, busy, onVerify, onCorrect, onRetire }: MemoryEntryRowProps) {
   const t = useCopy();
   const lang = useInterfaceLanguage();
   const day = (iso: string) => formatDate(iso, lang, timeZone);
   const [mode, setMode] = useState<Mode>("read");
-  const [text, setText] = useState(entry.text);
-  const [reason, setReason] = useState("");
   const mirror = (MEMORY_MIRROR_SOURCES as readonly string[]).includes(entry.source);
   const gone = entry.archivedAt !== null;
   const canAct = !mirror && !gone;
-  const reasonOk = reason.trim().length >= REASON_MIN;
   const needsCheck = needsCheckText(t, entry, slug);
-  const close = () => {
-    setMode("read");
-    setReason("");
-    setText(entry.text);
-  };
 
   return (
     <li className="grid gap-1.5 border-b border-line-subtle px-5 py-3 max-md:px-3" data-testid="memory-entry">
@@ -166,40 +285,8 @@ export function MemoryEntryItem({ entry, slug, timeZone, busy, onVerify, onCorre
           {t("memory.staleRefs", { refs: entry.staleRefs.map((r) => `${keyLabel(r.ref, r.project, slug)} (${staleWhy(t, r)})`).join(", ") })}
         </p>
       ) : null}
-      {entry.flagged ? (
-        <p className="text-13 text-amber-700 dark:text-amber-300" data-testid="memory-flagged">
-          {entry.flagged.reason !== null ? (
-            <>
-              {t("memory.flaggedBecause", { by: entry.flagged.by ?? "—", date: day(entry.flagged.since) })} <Written text={entry.flagged.reason} lang={null} />
-              {t("memory.flaggedCheck")}
-            </>
-          ) : (
-            t("memory.flaggedNoReason", { by: entry.flagged.by ?? "—", date: day(entry.flagged.since) })
-          )}
-        </p>
-      ) : null}
-      {entry.corrections.length > 0 ? (
-        <ul className="grid gap-0.5 text-12 text-muted" data-testid="memory-corrections">
-          {entry.corrections.map((c) => (
-            <li key={c.at}>{t("memory.corrected", { name: actorName(t, c.by), date: day(c.at), reason: c.reason })}</li>
-          ))}
-        </ul>
-      ) : null}
-      {entry.revisions.length > 0 ? (
-        <details className="text-12 text-muted" data-testid="memory-revisions">
-          <summary className="cursor-pointer select-none">
-            {entry.revisionCount > entry.revisions.length ? t("memory.earlierShown", { shown: entry.revisions.length, n: entry.revisionCount }) : t("memory.earlier", { n: entry.revisionCount })}
-          </summary>
-          <ol className="mt-1 grid gap-2 border-l border-line-subtle pl-3">
-            {entry.revisions.map((r) => (
-              <li key={r.replacedAt} className="grid gap-0.5" data-testid="memory-revision">
-                <span>{t("memory.replaced", { date: day(r.replacedAt), name: actorName(t, r.writtenBy) })}</span>
-                <p className="whitespace-pre-wrap text-13 text-fg">{r.text}</p>
-              </li>
-            ))}
-          </ol>
-        </details>
-      ) : null}
+      {entry.flagged ? <MemoryFlag flagged={entry.flagged} day={day} /> : null}
+      <MemoryHistory entry={entry} day={day} />
       {gone ? (
         <p className="text-13 text-muted" data-testid="memory-retired">
           {entry.retired
@@ -213,60 +300,7 @@ export function MemoryEntryItem({ entry, slug, timeZone, busy, onVerify, onCorre
         </p>
       ) : null}
 
-      {canAct && mode === "read" ? (
-        <div className="flex gap-2">
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => onVerify(entry.id)}>
-            {t("memory.stillTrue")}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setMode("untrue")}>
-            {t("memory.notTrue")}
-          </Button>
-        </div>
-      ) : null}
-
-      {canAct && mode === "untrue" ? (
-        <div className="flex gap-2">
-          <Button size="sm" variant="ghost" onClick={() => setMode("correct")}>
-            {t("memory.correct")}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setMode("retire")}>
-            {t("memory.retire")}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={close}>
-            {t("memory.cancel")}
-          </Button>
-        </div>
-      ) : null}
-
-      {canAct && (mode === "correct" || mode === "retire") ? (
-        <form
-          className="grid max-w-190 gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!reasonOk || busy) return;
-            if (mode === "correct") onCorrect(entry.id, { text: text.trim(), reason: reason.trim() });
-            else onRetire(entry.id, { reason: reason.trim() });
-            close();
-          }}
-        >
-          {mode === "correct" ? (
-            <Field label={t("memory.correctedText")}>
-              <Textarea rows={6} value={text} onChange={(e) => setText(e.target.value)} />
-            </Field>
-          ) : null}
-          <Field label={t("memory.why")}>
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} />
-          </Field>
-          <div className="flex gap-2">
-            <Button type="submit" size="sm" variant={mode === "retire" ? "danger" : "primary"} disabled={!reasonOk || (mode === "correct" && !text.trim())} loading={busy}>
-              {mode === "correct" ? t("memory.saveCorrection") : t("memory.retireConfirm")}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={close}>
-              {t("memory.cancel")}
-            </Button>
-          </div>
-        </form>
-      ) : null}
+      {canAct ? <MemoryActs entry={entry} mode={mode} onMode={setMode} busy={busy} onVerify={onVerify} onCorrect={onCorrect} onRetire={onRetire} /> : null}
     </li>
   );
 }

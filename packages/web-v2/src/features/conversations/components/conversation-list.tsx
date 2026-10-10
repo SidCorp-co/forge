@@ -112,48 +112,24 @@ function FilterTrigger({ filtered, label }: { filtered: boolean; label: string }
   );
 }
 
-export function ConversationList({
+/** The scope a new chat starts in, and the menu that picks it: a project, one of its ecosystems, or people. */
+function useNewChatScope({
+  projects,
   projectId,
-  conversationId,
-  pageKey = null,
+  current,
+  ecosystems,
+  ecosystemsNote,
   onSelect,
 }: {
+  projects: readonly { id: string; name: string }[];
   projectId: string | null;
-  conversationId: string | null;
-  /** The record the page under the dock shows (`REQ-1`), whose rooms are listed as This page. */
-  pageKey?: string | null;
+  current: { id: string; name: string } | undefined;
+  ecosystems: readonly { id: string; name: string }[];
+  ecosystemsNote: string | null;
   onSelect: (target: ChatTarget) => void;
 }) {
-  // every project the person holds a role on, whatever org is active: a room is theirs to find wherever its project sits, and core still fences each read by role (ISS-34 F-4)
-  const { data: allProjects } = useProjects();
-  const projects = useMemo(() => allProjects ?? [], [allProjects]);
-  const projectIds = useMemo(() => projects.map((p) => p.id).sort(), [projects]);
-  const current = projects.find((p) => p.id === projectId);
   const t = useCopy();
-  const untitled = t("shell.dock.newConversation");
-  const { ecosystems, note: ecosystemsNote } = ecosystemsReading(useProjectEcosystems(current?.id ?? ""), current !== undefined, t);
-
-  const [archived, setArchived] = useState(false);
-  const list = useConversationsAcrossProjects(projectIds, archived);
   const [ecosystemScope, setEcosystemScope] = useState<EcosystemScope | null>(null);
-  const [search, setSearch] = useState("");
-  // the list opens on the project the dock is in; every project is one pick away in the filter
-  const [picked, setPicked] = useState<ConversationFilter | null>(null);
-  const filter: ConversationFilter =
-    picked ?? (current ? { kind: "project", id: current.id, name: current.name } : EVERY_PROJECT);
-  const [confirming, setConfirming] = useState<ListedConversation | null>(null);
-  const rename = useRenameConversation();
-  const archive = useArchiveConversation();
-  const remove = useDeleteConversation();
-  const pin = usePinConversation();
-
-  const byId = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
-  const rows = filterConversations(list.rows, { filter, search, untitled });
-  const filtered = picked !== null || archived;
-  const leave = (id: string) => {
-    if (id === conversationId) onSelect(current ? { kind: "draft", projectId: current.id } : { kind: "people" });
-  };
-
   const startProject = (id: string) => {
     setEcosystemScope(null);
     onSelect({ kind: "draft", projectId: id });
@@ -190,6 +166,83 @@ export function ConversationList({
       },
     },
   ];
+  return { scopeName, startInScope, scopeItems };
+}
+
+function NewChat({ scopeName, onStart, items }: { scopeName: string | undefined; onStart: () => void; items: MenuItem[] }) {
+  const t = useCopy();
+  return (
+    <div className="flex" data-testid="new-chat">
+      <Button
+        variant="secondary"
+        size="sm"
+        icon="plus"
+        className="min-w-0 flex-1 rounded-r-none"
+        onClick={onStart}
+      >
+        <span className="truncate">{scopeName ? t("shell.list.newChatIn", { name: scopeName }) : t("shell.cmd.newChat")}</span>
+      </Button>
+      <Menu
+        align="right"
+        trigger={
+          <Button
+            variant="secondary"
+            size="sm"
+            aria-label={t("shell.list.chooseScope")}
+            className="h-full rounded-l-none border-l-0 px-2"
+          >
+            <Icon name="chevronDown" size={15} />
+          </Button>
+        }
+        items={items}
+        triggerClassName="flex h-full"
+      />
+    </div>
+  );
+}
+
+export function ConversationList({
+  projectId,
+  conversationId,
+  pageKey = null,
+  onSelect,
+}: {
+  projectId: string | null;
+  conversationId: string | null;
+  /** The record the page under the dock shows (`REQ-1`), whose rooms are listed as This page. */
+  pageKey?: string | null;
+  onSelect: (target: ChatTarget) => void;
+}) {
+  // every project the person holds a role on, whatever org is active: a room is theirs to find wherever its project sits, and core still fences each read by role (ISS-34 F-4)
+  const { data: allProjects } = useProjects();
+  const projects = useMemo(() => allProjects ?? [], [allProjects]);
+  const projectIds = useMemo(() => projects.map((p) => p.id).sort(), [projects]);
+  const current = projects.find((p) => p.id === projectId);
+  const t = useCopy();
+  const untitled = t("shell.dock.newConversation");
+  const { ecosystems, note: ecosystemsNote } = ecosystemsReading(useProjectEcosystems(current?.id ?? ""), current !== undefined, t);
+
+  const [archived, setArchived] = useState(false);
+  const list = useConversationsAcrossProjects(projectIds, archived);
+  const [search, setSearch] = useState("");
+  // the list opens on the project the dock is in; every project is one pick away in the filter
+  const [picked, setPicked] = useState<ConversationFilter | null>(null);
+  const filter: ConversationFilter =
+    picked ?? (current ? { kind: "project", id: current.id, name: current.name } : EVERY_PROJECT);
+  const [confirming, setConfirming] = useState<ListedConversation | null>(null);
+  const rename = useRenameConversation();
+  const archive = useArchiveConversation();
+  const remove = useDeleteConversation();
+  const pin = usePinConversation();
+
+  const byId = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
+  const rows = filterConversations(list.rows, { filter, search, untitled });
+  const filtered = picked !== null || archived;
+  const leave = (id: string) => {
+    if (id === conversationId) onSelect(current ? { kind: "draft", projectId: current.id } : { kind: "people" });
+  };
+
+  const { scopeName, startInScope, scopeItems } = useNewChatScope({ projects, projectId, current, ecosystems, ecosystemsNote, onSelect });
 
   const filterItems = filterMenu({ projects, ecosystems, filter, archived, onPick: setPicked, onArchived: () => setArchived((v) => !v), t });
   const filterLabel = [filter.kind === "all" ? t("shell.list.everyProjectLower") : filter.name, archived ? t("shell.list.archivedLower") : null]
@@ -199,32 +252,7 @@ export function ConversationList({
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col" data-testid="conversation-list">
       <div className="flex flex-none flex-col gap-2 border-b border-line-subtle bg-surface px-3 py-2.5">
-        <div className="flex" data-testid="new-chat">
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="plus"
-            className="min-w-0 flex-1 rounded-r-none"
-            onClick={startInScope}
-          >
-            <span className="truncate">{scopeName ? t("shell.list.newChatIn", { name: scopeName }) : t("shell.cmd.newChat")}</span>
-          </Button>
-          <Menu
-            align="right"
-            trigger={
-              <Button
-                variant="secondary"
-                size="sm"
-                aria-label={t("shell.list.chooseScope")}
-                className="h-full rounded-l-none border-l-0 px-2"
-              >
-                <Icon name="chevronDown" size={15} />
-              </Button>
-            }
-            items={scopeItems}
-            triggerClassName="flex h-full"
-          />
-        </div>
+        <NewChat scopeName={scopeName} onStart={startInScope} items={scopeItems} />
 
         <div className="flex items-center gap-1.5">
           <Input

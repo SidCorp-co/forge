@@ -82,6 +82,48 @@ export function folds(b: Boundary, g: SystemGraph): boolean {
   return b.side === "people" && g.nodes.filter((n) => n.kind === "person").length > PEOPLE_AT_A_GLANCE;
 }
 
+/** The system in scope: one box at Context, its parts framed inside it at Container. */
+function placeFocal(
+  focal: NonNullable<SystemGraph["focal"]>,
+  parts: GraphNode[],
+  level: Level,
+  { nodes, frames, box }: { nodes: ViewNode[]; frames: ViewFrame[]; box: Map<string, string> },
+): void {
+  if (level === "context") {
+    nodes.push({ id: FOCAL, kind: "focal", column: 1, name: focal.title, tip: [focal.title, focal.tip].filter(Boolean).join("\n"), steps: focal.parts, frame: null, members: parts, count: parts.length, node: null });
+    for (const p of parts) box.set(p.id, FOCAL);
+  } else {
+    frames.push({ id: FOCAL, column: 1, label: focal.title, tip: focal.tip, folds: false });
+    for (const p of parts) {
+      nodes.push(leaf(p, FOCAL));
+      box.set(p.id, p.id);
+    }
+  }
+}
+
+/** Each relationship lifted to the boxes that stand for its ends, merged once per pair; one inside a single box is not drawn. */
+function liftedEdges(relationships: readonly Relationship[], box: ReadonlyMap<string, string>): ViewEdge[] {
+  const edges: ViewEdge[] = [];
+  const byPair = new Map<string, ViewEdge>();
+  for (const r of relationships) {
+    const from = box.get(r.from);
+    const to = box.get(r.to);
+    if (!from || !to || from === to) continue;
+    const key = [from, to].sort().join("|");
+    const seen = byPair.get(key);
+    if (seen) {
+      seen.rels.push(r);
+      if (seen.from === from) seen.forward = true;
+      else seen.back = true;
+      continue;
+    }
+    const e: ViewEdge = { id: `rel:${key}`, from, to, rels: [r], back: false, forward: true };
+    byPair.set(key, e);
+    edges.push(e);
+  }
+  return edges;
+}
+
 /**
  * The graph as one C4 view. `level` folds or opens the system in scope; `detail` folds or opens every
  * other boundary, except those in `open`. A relationship is lifted to the boxes that now stand for its
@@ -96,16 +138,7 @@ export function viewOf(g: SystemGraph, level: Level, detail: Detail, open: Reado
   const node = new Map(g.nodes.map((n) => [n.id, n]));
   const parts = focal.parts.map((id) => node.get(id)).filter((n): n is GraphNode => Boolean(n));
 
-  if (level === "context") {
-    nodes.push({ id: FOCAL, kind: "focal", column: 1, name: focal.title, tip: [focal.title, focal.tip].filter(Boolean).join("\n"), steps: focal.parts, frame: null, members: parts, count: parts.length, node: null });
-    for (const p of parts) box.set(p.id, FOCAL);
-  } else {
-    frames.push({ id: FOCAL, column: 1, label: focal.title, tip: focal.tip, folds: false });
-    for (const p of parts) {
-      nodes.push(leaf(p, FOCAL));
-      box.set(p.id, p.id);
-    }
-  }
+  placeFocal(focal, parts, level, { nodes, frames, box });
 
   const byBoundary = new Map(g.boundaries.flatMap((b) => b.members.map((id) => [id, b] as const)));
   const placed = new Set<string>();
@@ -135,25 +168,7 @@ export function viewOf(g: SystemGraph, level: Level, detail: Detail, open: Reado
     }
   }
 
-  const edges: ViewEdge[] = [];
-  const byPair = new Map<string, ViewEdge>();
-  for (const r of g.relationships) {
-    const from = box.get(r.from);
-    const to = box.get(r.to);
-    if (!from || !to || from === to) continue;
-    const key = [from, to].sort().join("|");
-    const seen = byPair.get(key);
-    if (seen) {
-      seen.rels.push(r);
-      if (seen.from === from) seen.forward = true;
-      else seen.back = true;
-      continue;
-    }
-    const e: ViewEdge = { id: `rel:${key}`, from, to, rels: [r], back: false, forward: true };
-    byPair.set(key, e);
-    edges.push(e);
-  }
-  return { level, nodes, frames, edges };
+  return { level, nodes, frames, edges: liftedEdges(g.relationships, box) };
 }
 
 /** Whether a Boundaries view of this graph folds anything, so the toggle has something to do. */

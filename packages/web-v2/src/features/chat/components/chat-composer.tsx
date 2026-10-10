@@ -164,7 +164,7 @@ export function ChatComposer(props: ChatComposerProps) {
             <MessageBox
               value={value}
               onChange={setValue}
-              onEnter={submit}
+              onEnter={() => void submit()}
               disabled={disabled}
               placeholder={disabled ? t("shell.composer.offline") : (props.placeholder ?? t("shell.composer.placeholder"))}
             />
@@ -179,7 +179,7 @@ export function ChatComposer(props: ChatComposerProps) {
               onStop={props.onStop}
               stopping={props.stopping}
               canSend={canSend}
-              onSend={submit}
+              onSend={() => void submit()}
             />
           </div>
 

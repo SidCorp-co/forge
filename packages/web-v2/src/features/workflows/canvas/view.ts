@@ -34,6 +34,34 @@ export interface View {
 
 const bandKey = (band: string) => `band:${band}`;
 
+/**
+ * Each design line drawn between the boxes that show its ends: as itself where both ends show, merged
+ * once per pair of folded bands otherwise, a return line into a folded band left out.
+ */
+function drawnEdges(lines: readonly CanvasEdge[], keyOf: ReadonlyMap<string, string>): ViewEdge[] {
+  const edges: ViewEdge[] = [];
+  const merged = new Map<string, ViewEdge>();
+  for (const e of lines) {
+    const from = keyOf.get(e.from);
+    const to = keyOf.get(e.to);
+    if (!from || !to || from === to) continue;
+    if (from === e.from && to === e.to) {
+      edges.push({ key: e.id, from, to, src: [e], merged: false });
+      continue;
+    }
+    if (e.kind.direction === "return") continue;
+    const key = `agg:${from}>${to}`;
+    const seen = merged.get(key);
+    if (seen) seen.src.push(e);
+    else {
+      const m = { key, from, to, src: [e], merged: true };
+      merged.set(key, m);
+      edges.push(m);
+    }
+  }
+  return edges;
+}
+
 export function buildView(c: Canvas, s: ViewState): View {
   const nodes: ViewNode[] = [];
   const keyOf = new Map<string, string>();
@@ -53,27 +81,7 @@ export function buildView(c: Canvas, s: ViewState): View {
       }
     }
   }
-  const edges: ViewEdge[] = [];
-  const merged = new Map<string, ViewEdge>();
-  for (const e of c.edges) {
-    const from = keyOf.get(e.from);
-    const to = keyOf.get(e.to);
-    if (!from || !to || from === to) continue;
-    if (from === e.from && to === e.to) {
-      edges.push({ key: e.id, from, to, src: [e], merged: false });
-      continue;
-    }
-    if (e.kind.direction === "return") continue;
-    const key = `agg:${from}>${to}`;
-    const seen = merged.get(key);
-    if (seen) seen.src.push(e);
-    else {
-      const m = { key, from, to, src: [e], merged: true };
-      merged.set(key, m);
-      edges.push(m);
-    }
-  }
-  return { nodes, edges, keyOf };
+  return { nodes, edges: drawnEdges(c.edges, keyOf), keyOf };
 }
 
 /**

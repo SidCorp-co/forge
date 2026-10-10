@@ -316,8 +316,10 @@ function ResizeHandle({
   const held = (px: number) => dockWidth(sizeFromDrag(px, room), room);
   const fromPointer = (e: React.PointerEvent) => window.innerWidth - e.clientX;
   return (
-    <hr
-      aria-orientation="vertical"
+    // a slider over the panel's width: the focusable splitter the arrows and a drag move, its value the width in px
+    <div
+      role="slider"
+      aria-orientation="horizontal"
       aria-label={t("shell.dock.resize", { title: dockTitle(t) })}
       aria-valuenow={width}
       aria-valuemin={half}
@@ -326,7 +328,8 @@ function ResizeHandle({
       data-testid="chat-dock-resize"
       onKeyDown={(e) => {
         const step = e.shiftKey ? 64 : 16;
-        const delta = e.key === "ArrowLeft" ? step : e.key === "ArrowRight" ? -step : 0;
+        // the handle is the panel's left edge: left widens it, as up does on any slider
+        const delta = e.key === "ArrowLeft" || e.key === "ArrowUp" ? step : e.key === "ArrowRight" || e.key === "ArrowDown" ? -step : 0;
         if (delta === 0) return;
         e.preventDefault();
         onCommit(sizeFromDrag(width + delta, room));
@@ -350,7 +353,7 @@ function ResizeHandle({
         onDrag(null);
       }}
       title={t("shell.dock.drag")}
-      className="absolute left-0 top-0 z-10 m-0 h-full w-1.5 -translate-x-1/2 cursor-col-resize touch-none border-0 bg-transparent transition-colors hover:bg-link focus-visible:bg-link focus-visible:outline-none"
+      className="absolute left-0 top-0 z-10 m-0 h-full w-1.5 -translate-x-1/2 cursor-col-resize touch-none bg-transparent transition-colors hover:bg-link focus-visible:bg-link focus-visible:outline-none"
     />
   );
 }
