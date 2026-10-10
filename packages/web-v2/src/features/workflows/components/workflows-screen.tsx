@@ -7,8 +7,8 @@ import { ListFilterBar, useListFilter } from "@/features/chat-dock/list-filter-b
 import Link from "next/link";
 import { Button, EmptyState, PageTitle, rememberListOrigin } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { useAskForDesigns } from "@/features/onboarding/components/ask-for-designs";
-import { useOnboardingState } from "@/features/onboarding/hooks";
+import { useAskForDesigns } from "@/features/onboarding";
+import { useOnboardingState } from "@/features/onboarding";
 import { useProjectDocument } from "@/features/project-config/hooks";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";

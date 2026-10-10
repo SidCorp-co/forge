@@ -7,31 +7,10 @@ import { ConfirmDialog, Textarea } from "@/design";
 import { useChatDock } from "@/features/chat-dock/dock";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useJoinOnboarding, useReanalyze, useStartOnboarding } from "../hooks";
 
 type Spend = "start" | "reanalyze";
-
-const COPY: Record<Spend, { title: string; does: string; field: string; placeholder: string; confirm: string }> = {
-  start: {
-    title: "Ask for the first designs",
-    does:
-      "One analysis job reads the project's code on its default branch, writes a code map, and drafts the key designs: the system context, the main journey and the central entity's states, plus an integration or data-flow design where the code calls for one. Every design arrives proposed for your review; nothing is approved for you. Then it asks what the code cannot tell, in one questionnaire in the onboarding chat.",
-    field: "What should the drafts cover? (optional)",
-    placeholder: "For example: draw against REQ-1, and leave every design proposed for my review.",
-    confirm: "Start the analysis",
-  },
-  reanalyze: {
-    title: "Ask for a re-analysis",
-    does:
-      "One new analysis job reads the code again and proposes new revisions of the designs. An approved revision is never overwritten, and an open questionnaire is replaced by the new one.",
-    field: "Why, or what to look at again (optional)",
-    placeholder: "For example: the order module was rewritten last week.",
-    confirm: "Start the re-analysis",
-  },
-};
-
-const COST =
-  "It runs one job on the project's runner box, up to an hour of an agent's time. Nothing starts until you confirm; you can keep writing to the job in the onboarding chat while it runs.";
 
 /** The refusal a start, join or re-analysis came back with, by name. */
 export function refusalLine(error: unknown): string | null {
@@ -51,6 +30,7 @@ export function useAskForDesigns(projectId: string, opts: { onOpened?: () => voi
   const [asking, setAsking] = useState<Spend | null>(null);
   const [text, setText] = useState("");
   const fieldId = useId();
+  const t = useCopy();
 
   const show = (conversationId: string) => {
     dock?.show({ kind: "room", projectId, conversationId });
@@ -81,7 +61,15 @@ export function useAskForDesigns(projectId: string, opts: { onOpened?: () => voi
     });
   };
 
-  const copy = asking ? COPY[asking] : null;
+  const copy = asking
+    ? {
+        title: t(`onboarding.ask.${asking}.title`),
+        does: t(`onboarding.ask.${asking}.does`),
+        field: t(`onboarding.ask.${asking}.field`),
+        placeholder: t(`onboarding.ask.${asking}.placeholder`),
+        confirm: t(`onboarding.ask.${asking}.confirm`),
+      }
+    : null;
   const refused = refusalLine(spend.error);
   const dialog: ReactNode = copy ? (
     <ConfirmDialog
@@ -94,7 +82,7 @@ export function useAskForDesigns(projectId: string, opts: { onOpened?: () => voi
       message={
         <div className="grid gap-3" data-testid="ask-for-designs">
           <p className="m-0">{copy.does}</p>
-          <p className="m-0 text-muted">{COST}</p>
+          <p className="m-0 text-muted">{t("onboarding.ask.cost")}</p>
           <label htmlFor={fieldId} className="grid gap-1.5">
             <span className="fg-label">{copy.field}</span>
             <Textarea

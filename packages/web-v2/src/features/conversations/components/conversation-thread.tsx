@@ -16,7 +16,7 @@
 import { useState } from "react";
 import { Icon } from "@/design";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
-import { isStructured, StructuredMessage } from "@/features/onboarding/components/thread-blocks";
+import { isStructured, StructuredMessage } from "@/features/onboarding";
 import { Conversation } from "@/features/session/components/conversation";
 import { DisclosureScope } from "@/features/session/disclosure";
 import { USER_BUBBLE } from "@/features/session/layout";
