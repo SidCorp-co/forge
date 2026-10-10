@@ -102,6 +102,28 @@ describe("the issue's new patterns", () => {
   });
 });
 
+describe("a returned pattern's reason, as the person wrote it (judge J1 on 0.4.0-dev.222)", () => {
+  it("keeps a reason ending in a full stop whole, and says the hold apart from it", async () => {
+    core([view({ decision: "returned", pending: false, unanswered: true, decisionReason: "Use the api-route task." })], []);
+    renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" />);
+    const row = await screen.findByTestId("pattern-queue-door");
+    expect(row).toHaveTextContent("was returned: Use the api-route task.");
+    expect(row.textContent).not.toContain("..");
+    expect(within(row).getByTestId("pattern-follow")).toHaveTextContent(
+      "Held from build until a catalogued or revised pattern is named.",
+    );
+  });
+
+  it("says a later pattern answered the return apart from the reason too", async () => {
+    core([view({ decision: "returned", pending: false, unanswered: false, decisionReason: "No." })], []);
+    renderWithQuery(<PatternsPanel issueId="i1" projectId="pr1" />);
+    const row = await screen.findByTestId("pattern-queue-door");
+    expect(row).toHaveTextContent("was returned: No.");
+    expect(row.textContent).not.toContain("..");
+    expect(within(row).getByTestId("pattern-follow")).toHaveTextContent("A later pattern answered the return.");
+  });
+});
+
 describe("what the issue page says around a review (judge at 9988a9335, comment 1000c87f)", () => {
   it("says in words who may review a pending pattern, and shows no permission key", async () => {
     core([view({})], []);

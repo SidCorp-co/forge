@@ -75,9 +75,14 @@ function PatternRow({
     ? t("issues.patterns.pending")
     : pattern.decision === "approved"
       ? t("issues.patterns.approved", { reason: pattern.decisionReason ?? "" })
+      : t("issues.patterns.returned", { reason: pattern.decisionReason ?? "" });
+  // what follows a return stands on its own line, so the reason ends where its writer ended it
+  const follow =
+    pattern.decision !== "returned"
+      ? null
       : pattern.unanswered
-        ? t("issues.patterns.returned", { reason: pattern.decisionReason ?? "" })
-        : t("issues.patterns.answered", { reason: pattern.decisionReason ?? "" });
+        ? t("issues.patterns.returnedHold")
+        : t("issues.patterns.returnedAnswered");
   return (
     <div className="grid gap-2" data-testid={`pattern-${pattern.pattern}`}>
       <Banner
@@ -92,6 +97,11 @@ function PatternRow({
       >
         <span className="font-medium">{t("issues.patterns.title", { pattern: pattern.pattern })}</span>{" "}
         {state}
+        {follow ? (
+          <span className="mt-1 block" data-testid="pattern-follow">
+            {follow}
+          </span>
+        ) : null}
         {pattern.summary ? <span className="mt-1 block">{pattern.summary}</span> : null}
       </Banner>
       {/* the form outlives the pending state: a decision taken first elsewhere is said there, the reason kept */}
