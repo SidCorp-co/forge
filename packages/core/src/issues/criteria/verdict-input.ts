@@ -9,6 +9,7 @@
  *   a runtime is a whole object id               VERDICT_RUNTIME_NOT_FULL
  *   a design is `<flow or id> rev <n>`           VERDICT_DESIGN_SHAPE
  *   a contract is `<project>/<contract>@<version>`  VERDICT_CONTRACT_SHAPE
+ *   its reason and evidence carry no secret      VERDICT_SECRET
  *
  * A storefront draft names a workflow id, a draft version and an environment key (VERDICT_STOREFRONT_DRAFT_SHAPE).
  * `commit_unresolved` is not an identity a writer can name: it exists only on backfilled rows.
@@ -23,6 +24,7 @@ import {
   STOREFRONT_ENVIRONMENT,
   STOREFRONT_WORKFLOW_ID,
 } from '@forge/contracts/verdict-identity';
+import { containsSecret } from '@forge/observability';
 import { verdictValues } from '../../db/schema-issue-criteria.js';
 import {
   type CriterionBlock,
@@ -59,6 +61,8 @@ export interface VerdictRefusal {
   readonly code: Exclude<VerdictRefusalCode, 'VERDICT_REFUSED'>;
   readonly criterion: number;
   readonly detail: string;
+  /** Where in the draft the refused value sits, where its code alone does not say. */
+  readonly path?: string;
 }
 
 const WHOLE_COMMIT = /^[0-9a-f]{40}$/iu;
@@ -134,6 +138,25 @@ function identityFault(criterion: number, identity: VerdictIdentity): VerdictRef
   }
 }
 
+/**
+ * A verdict's words are stored and shown as written, so a secret in them is refused by the one
+ * detector every screen asks (`@forge/observability:containsSecret`), as a comment's is.
+ */
+function secretFault(draft: VerdictDraft): VerdictRefusal | null {
+  const fields: [string, string, string | null][] = [
+    ['/reason', 'reason', draft.reason],
+    ...draft.evidence.map((e, i): [string, string, string] => [
+      `/evidence/${i}`,
+      `evidence ${i}`,
+      e,
+    ]),
+  ];
+  const hit = fields.find(([, , text]) => text !== null && containsSecret(text));
+  if (!hit) return null;
+  const detail = `criterion ${draft.criterion}'s ${hit[1]} carries a token, key or connection string. Name the credential entry instead.`;
+  return { ...refuse('VERDICT_SECRET', draft.criterion, detail), path: hit[0] };
+}
+
 /** Why this verdict cannot be written, or null where it can. */
 export function verdictDraftFault(draft: VerdictDraft): VerdictRefusal | null {
   const { criterion, verdict } = draft;
@@ -144,6 +167,8 @@ export function verdictDraftFault(draft: VerdictDraft): VerdictRefusal | null {
       `criterion ${criterion}'s verdict is \`${verdict}\`; a verdict is one of ${verdictValues.map((v) => `\`${v}\``).join(', ')}.`,
     );
   }
+  const secret = secretFault(draft);
+  if (secret) return secret;
   if (verdict === 'skipped' && blank(draft.reason)) {
     return refuse(
       'VERDICT_SKIP_REASON_REQUIRED',

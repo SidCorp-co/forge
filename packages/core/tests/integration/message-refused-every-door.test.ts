@@ -12,6 +12,8 @@
  * @direct-test-of packages/core/src/issues/record-events/routes.ts
  * @direct-test-of packages/core/src/issues/record-events/write.ts
  * @direct-test-of packages/core/src/issues/merge-marker.ts
+ * @direct-test-of packages/core/src/issues/criteria/verdict-input.ts
+ * @direct-test-of packages/core/src/issues/criteria/verdict-record.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -28,8 +30,8 @@ import {
 } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
-/** Wording the secret scrubber redacts: `Bearer` and a word of eight letters or more. */
-const SCRUBBED = 'The door admits a Bearer credential through an aliased import.';
+/** Wording the secret scrubber redacts: a bearer token, told from prose by its shape. */
+const SCRUBBED = 'The probe sent Bearer 4f9c2a7e1b8d3c6f0a5e as its header.';
 const LANDED = 'e65b54a38943ea78135b2e1c61fab9dfa5881c8e';
 
 let projectId: string;
@@ -121,6 +123,27 @@ describe('a message the screen refuses', () => {
     expect(res.body.code).toBe('MESSAGE_REFUSED');
     expect(ruleOf(res)).toBe('no-redacted-secret');
     expect(pathOf(res)).toBe('/body');
+  });
+
+  it('is refused by name as a verdict reason, and no verdict is written', async () => {
+    const id = await issueAt('in_progress');
+    const criteria = await api(token, 'PATCH', `/api/issues/${id}`, {
+      acceptanceCriteria: '1. A reminder reaches the nurse.',
+    });
+    expect(criteria.status, JSON.stringify(criteria.body)).toBe(200);
+    const res = await api(token, 'POST', `/api/issues/${id}/verdicts`, {
+      criterion: 1,
+      verdict: 'skipped',
+      reason: SCRUBBED,
+    });
+
+    expect(res.status).toBe(422);
+    const error = res.body.error as { refusals?: { code: string; path: string }[] } | undefined;
+    expect(error?.refusals?.map((r) => [r.code, r.path])).toEqual([['VERDICT_SECRET', '/reason']]);
+    const [row] = await rows<{ verdicts: number }>(
+      sql`SELECT count(*)::int AS verdicts FROM criterion_verdicts WHERE issue_id = ${id}`,
+    );
+    expect(row?.verdicts).toBe(0);
   });
 
   it('is refused by name as a record event field, at the fields it sent', async () => {

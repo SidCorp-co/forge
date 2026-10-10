@@ -93,7 +93,7 @@ function verdictRefused(refusal: VerdictRefusal): RefusalError {
     [
       {
         code: refusal.code,
-        path: VERDICT_PATHS[refusal.code] ?? '/identity',
+        path: refusal.path ?? VERDICT_PATHS[refusal.code] ?? '/identity',
         detail: refusal.detail,
       },
     ],

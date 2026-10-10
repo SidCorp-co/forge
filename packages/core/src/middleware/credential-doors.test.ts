@@ -1,31 +1,136 @@
-// Every door a bearer credential is admitted at, and what a chat credential meets there (REQ-30 BC-4,
+// Every door a credential is admitted at, and what a chat credential meets there (REQ-30 BC-4,
 // ISS-439). A chat credential is a token core minted for a chat — an Agent session's turn token, the
 // Assistant's turn token, an agreed proposal's token — and every one is a PAT, so it is never a
 // session JWT, and the one chat write rule has to run wherever a PAT is admitted. The integration
 // suite (`tests/integration/chat-agreement-default-e2e.test.ts`) presents a real turn token at each
 // door.
 //
-// The list is closed against the source by binding, not by call text (round 5: the release judge
-// admitted a credential through `import { verifyPat as checkPresented }` and a text match never saw
-// it). Every module is parsed; a module is a door when any of its code reaches a verifier however
-// it is bound — a named import under any alias, a namespace or default import, a dynamic import, a
-// re-export or `export *`, a module importing from such a barrel — or reaches the primitives a
-// credential is verified with directly. A verifier is any exported binding that reaches one, so a
-// wrapper exported under a new name is followed to its importers too; only the gates named below
-// stop the walk, because the routes behind a gate are behind its door.
+// A door is found by where a credential ARRIVES, not by how it is checked (round 6: the review judge
+// admitted a bearer with timingSafeEqual, a digest lookup, hono/jwt and a verifier in a slot, and a
+// walk seeded only on argon2 and jose saw none of them). So every read of a request input in core —
+// a header, a query key, a cookie — names an input this file classifies, a credential or not, and
+// a read this file has not classified is red. A credential read seeds the walk, beside the
+// primitives a secret is checked with; the walk then follows bindings as before (any alias, a
+// namespace or default import, a dynamic import, a re-export or `export *`, `export default`), and
+// only the gates named below stop it, because the routes behind a gate are behind its door. A
+// verifier handed to another module's function as a value is refused, since nothing can follow it
+// from there: a door is where its verifier is called.
+//
+// Not walked: a secret in a validated body, path or query field (`c.req.valid`). Such a door is
+// named only when it reaches a primitive below.
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { computedKey, inputKey } from './credential-inputs.fixture.js';
+import { readDoors } from './credential-walk.fixture.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** What a presented credential is checked with, by the package exporting it. */
+/** What a presented secret is checked with, or read through, by the package exporting it. */
 const PRIMITIVES: Readonly<Record<string, readonly string[]>> = {
   argon2: ['verify'],
-  jose: ['jwtVerify'],
+  jose: ['jwtVerify', 'jwtDecrypt', 'compactVerify', 'flattenedVerify', 'generalVerify'],
+  'hono/jwt': ['verify'],
+  'hono/cookie': ['getCookie', 'getSignedCookie'],
+  'hono/bearer-auth': ['bearerAuth'],
+  'hono/basic-auth': ['basicAuth'],
+  'node:crypto': ['timingSafeEqual', 'verify', 'createVerify'],
+  crypto: ['timingSafeEqual', 'verify', 'createVerify'],
+};
+
+/**
+ * Every request input core reads, by `<kind>:<name>`: what it carries. A credential input seeds the
+ * walk; a plain one says why no credential arrives in it.
+ */
+const CREDENTIAL_INPUTS: Readonly<Record<string, string>> = {
+  'header:authorization': 'a bearer token: a PAT, a session JWT, a box token',
+  'header:cookie': 'the session, refresh and preview viewer cookies',
+  'header:sec-websocket-protocol': 'a browser socket’s bearer, as forge.bearer.<token>',
+  'query:ticket': 'a preview ticket, spent once for the viewer cookie',
+};
+
+const PLAIN_INPUTS: Readonly<Record<string, string>> = {
+  'header:accept': 'the media types a browser takes',
+  'header:cf-ray': 'the edge’s trace id',
+  'header:content-encoding': 'how a preview’s answer is compressed',
+  'header:content-length': 'a chat server’s answer size',
+  'header:content-type': 'the body’s media type',
+  'header:host': 'the host a request names',
+  'header:link': 'Sentry’s next page',
+  'header:origin': 'the page a request came from',
+  'header:referer': 'the page a request came from',
+  'header:sec-fetch-dest': 'what a browser is loading',
+  'header:user-agent': 'the client’s name',
+  'header:x-forge-capabilities': 'what a client renders',
+  'header:x-forge-project-slug': 'which project an /mcp call names',
+  'header:x-forge-unresolved-ref': 'a route reference left unresolved',
+  'header:x-forwarded-for': 'the client address the proxy saw',
+  'header:x-forwarded-host': 'the host the proxy saw',
+  'header:x-forwarded-proto': 'the scheme the proxy saw',
+  'header:x-github-delivery': 'a GitHub delivery id, read after its signature verified',
+  'header:x-github-event': 'a GitHub event name, read after its signature verified',
+  'header:x-gitlab-event': 'a GitLab event name, read after its token verified',
+  'header:x-gitlab-event-uuid': 'a GitLab event id, read after its token verified',
+  'header:x-gitlab-webhook-uuid': 'a GitLab hook id, read after its token verified',
+  'header:x-next-page': 'GitLab’s next page',
+  'header:x-real-ip': 'the client address the proxy saw',
+  'header:x-request-id': 'a trace id',
+  'query:projectid': 'which project a route reference names',
+};
+
+const UPSTREAM = 'the headers of an answer core received, never a request to core';
+const DATA = 'a headers field of a stored or declared shape, never a request to core';
+
+/**
+ * A read whose name is computed, or that takes the whole header set, by `<module> <expression>`:
+ * whether a credential arrives through it, and what it is.
+ */
+const COMPUTED_READS: Readonly<Record<string, { credential: boolean; why: string }>> = {
+  'assistant/agreement/execute.ts call.headers': { credential: false, why: DATA },
+  'assistant/agreement/rest-hold.ts c.req.header(name)': {
+    credential: false,
+    why: 'KEPT_HEADERS: x-forge-capabilities only',
+  },
+  'ecosystem/contract/openapi-schema-slots.ts v.headers': { credential: false, why: DATA },
+  'integration-door/webhook-inbound-routes.ts c.req.header(m.header)': {
+    credential: false,
+    why: 'which provider’s event header is present',
+  },
+  'integration-door/webhook-inbound-routes.ts c.req.header(map.signatureHeader)': {
+    credential: true,
+    why: 'a provider’s signature or shared token',
+  },
+  'integration-door/webhook-inbound-routes.ts c.req.raw.headers': {
+    credential: false,
+    why: 'handed to the adapter after the signature verified; it reads event headers by name',
+  },
+  'integrations/deploy/kept-probe-request.ts request.headers': { credential: false, why: DATA },
+  'integrations/github/client.ts answered.headers': { credential: false, why: UPSTREAM },
+  'integrations/github/client.ts args.headers': { credential: false, why: UPSTREAM },
+  'integrations/github/client.ts err.headers': { credential: false, why: UPSTREAM },
+  'integrations/github/octokit.ts answered.headers': { credential: false, why: UPSTREAM },
+  'integrations/github/octokit.ts response.headers': { credential: false, why: UPSTREAM },
+  'integrations/github/publish-refusal.ts err.headers?.get(name)': {
+    credential: false,
+    why: UPSTREAM,
+  },
+  'issues/criteria/probe-rules.ts probe.request.headers': { credential: false, why: DATA },
+  'pipeline/failure-classifier.ts (meta as { headers?: unknown }).headers': {
+    credential: false,
+    why: UPSTREAM,
+  },
+  'pipeline/failure-classifier.ts err.headers': { credential: false, why: UPSTREAM },
+  'pipeline/failure-classifier.ts err?.headers': { credential: false, why: UPSTREAM },
+  'pipeline/failure-classifier.ts resp.headers': { credential: false, why: UPSTREAM },
+  'pipeline/failure-classifier.ts resp?.headers': { credential: false, why: UPSTREAM },
+  'previews/relay.ts answer.headers': { credential: false, why: UPSTREAM },
+  'previews/relay.ts req.headers': {
+    credential: true,
+    why: 'a viewer’s request forwarded to the preview, Forge’s cookies cut out',
+  },
+  'release-batch/probe-run.ts probe.request.headers': { credential: false, why: DATA },
 };
 
 /** Each module that admits a presented credential, and what a chat credential meets in it. */
@@ -67,6 +172,18 @@ const DOORS: Readonly<Record<string, string>> = {
     'a preview ticket and viewer cookie are JWTs under their own issuers; a PAT verifies as neither',
   'previews/relay.ts':
     'the preview host admits a viewer by its cookie or a ticket it spends, never a bearer token',
+  'middleware/bearer.ts':
+    'reads the Authorization header and session cookies and admits nothing; each caller is named here',
+  'credentials/cookie.ts':
+    'requestCookieValues reads forge_auth cookies, which carry only sessions core wrote, never a PAT',
+  'lib/hmac.ts':
+    'checks a provider’s body signature or shared webhook token; a chat credential is neither',
+  'integration-door/webhook-inbound-routes.ts':
+    'a webhook verified against its binding’s secret; a chat credential in that header verifies as nothing',
+  'integrations/github/connect.ts':
+    'verifyConnectState checks an HMAC-signed connect state, which a PAT never is',
+  'integration-door/github-connect-routes.ts':
+    'the GitHub callbacks check their connect state behind requireAuth, where the chat write rule runs',
 };
 
 /**
@@ -81,266 +198,51 @@ const GATES: Readonly<Record<string, readonly string[]>> = {
   'previews/relay.ts': ['withPreviewHosts', 'relayPreviewRequest', 'relayPreviewUpgrade'],
   'ws/server.ts': ['attachWs'],
 };
-
-type ImportBinding = { from: string; name: string } | { from: string; namespace: true };
-
-interface Module {
-  key: string;
-  file: ts.SourceFile;
-  /** Local name → what it is bound to, for value imports of a module or package we follow. */
-  bindings: Map<string, ImportBinding>;
-  /** Top-level declarations by name, and whether each is exported. */
-  decls: Map<string, { node: ts.Node; exported: boolean }>;
-  /** `export { local as exported }` with no `from`. */
-  localExports: Map<string, string>;
-  /** `export { name as exported } from` (a name map) and `export * from` ('*'). */
-  reexports: { from: string; names: Map<string, string> | '*' }[];
-  /** Each top-level declaration's node → its name, built on first use. */
-  owners?: Map<ts.Node, string>;
-}
-
-function sources(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) return sources(path);
-    return name.endsWith('.ts') && !name.endsWith('.test.ts') ? [path] : [];
-  });
-}
-
-const ALIASES: Readonly<Record<string, string>> = { '@forge/core/public': 'public.ts' };
-
-/** The module a specifier names: a path under src, a package we follow, or null. */
-function resolveSpecifier(fromKey: string, specifier: string, keys: Set<string>): string | null {
-  if (specifier in PRIMITIVES) return specifier;
-  if (specifier in ALIASES) return ALIASES[specifier] ?? null;
-  if (!specifier.startsWith('.')) return null;
-  const base = relative(SRC, resolve(SRC, dirname(fromKey), specifier));
-  const stem = base.replace(/\.(js|ts)$/, '');
-  return [`${stem}.ts`, `${base}/index.ts`].find((k) => keys.has(k)) ?? null;
-}
-
-function isExported(node: ts.Node): boolean {
-  return (
-    ts.canHaveModifiers(node) &&
-    (ts.getModifiers(node) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
-  );
-}
-
-function readModule(path: string, keys: Set<string>): Module {
-  const key = relative(SRC, path);
-  const file = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true);
-  const mod: Module = {
-    key,
-    file,
-    bindings: new Map(),
-    decls: new Map(),
-    localExports: new Map(),
-    reexports: [],
-  };
-  for (const stmt of file.statements) {
-    if (ts.isImportDeclaration(stmt) && ts.isStringLiteral(stmt.moduleSpecifier)) {
-      const from = resolveSpecifier(key, stmt.moduleSpecifier.text, keys);
-      const clause = stmt.importClause;
-      if (!from || !clause || clause.isTypeOnly) continue;
-      if (clause.name) mod.bindings.set(clause.name.text, { from, namespace: true });
-      const named = clause.namedBindings;
-      if (named && ts.isNamespaceImport(named)) {
-        mod.bindings.set(named.name.text, { from, namespace: true });
-      } else if (named) {
-        for (const el of named.elements) {
-          if (el.isTypeOnly) continue;
-          mod.bindings.set(el.name.text, { from, name: (el.propertyName ?? el.name).text });
-        }
-      }
-    } else if (ts.isExportDeclaration(stmt) && !stmt.isTypeOnly) {
-      const spec = stmt.moduleSpecifier;
-      const clause = stmt.exportClause;
-      const pairs = new Map<string, string>();
-      if (clause && ts.isNamedExports(clause)) {
-        for (const el of clause.elements) {
-          if (!el.isTypeOnly) pairs.set(el.name.text, (el.propertyName ?? el.name).text);
-        }
-      }
-      if (!spec || !ts.isStringLiteral(spec)) {
-        for (const [exported, local] of pairs) mod.localExports.set(exported, local);
-        continue;
-      }
-      const from = resolveSpecifier(key, spec.text, keys);
-      if (from) mod.reexports.push({ from, names: clause ? pairs : '*' });
-    } else if (ts.isVariableStatement(stmt)) {
-      for (const d of stmt.declarationList.declarations) {
-        for (const name of boundNames(d.name)) {
-          mod.decls.set(name, { node: d, exported: isExported(stmt) });
-        }
-      }
-    } else if (
-      (ts.isFunctionDeclaration(stmt) || ts.isClassDeclaration(stmt)) &&
-      stmt.name !== undefined
-    ) {
-      mod.decls.set(stmt.name.text, { node: stmt, exported: isExported(stmt) });
-    }
-  }
-  return mod;
-}
-
-function boundNames(name: ts.BindingName): string[] {
-  if (ts.isIdentifier(name)) return [name.text];
-  return name.elements.flatMap((el) => (ts.isOmittedExpression(el) ? [] : boundNames(el.name)));
-}
-
-/** The top-level statement or declaration a node sits in: its name, or '' for module-level code. */
-function ownerOf(mod: Module, node: ts.Node): string {
-  mod.owners ??= new Map([...mod.decls].map(([name, decl]) => [decl.node, name]));
-  for (let at: ts.Node | undefined = node; at; at = at.parent) {
-    const name = mod.owners.get(at);
-    if (name !== undefined) return name;
-  }
-  return '';
-}
-
-/**
- * Where the module's code touches a carried name: each owning declaration ('' for module-level
- * code), and the local declarations each one references, for the walk inside the module.
- */
-function touches(mod: Module, carried: Map<string, Set<string>>) {
-  const hits = new Set<string>();
-  const refs = new Map<string, Set<string>>();
-  const carries = (from: string, name?: string) =>
-    name === undefined
-      ? (carried.get(from)?.size ?? 0) > 0
-      : (carried.get(from)?.has(name) ?? false);
-  const hit = (node: ts.Node) => hits.add(ownerOf(mod, node));
-
-  const visit = (node: ts.Node): void => {
-    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
-    if (
-      ts.isCallExpression(node) &&
-      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
-      node.arguments[0] &&
-      ts.isStringLiteralLike(node.arguments[0])
-    ) {
-      const from = resolveSpecifier(mod.key, node.arguments[0].text, new Set(carried.keys()));
-      if (from && carries(from)) dynamicImport(node, from);
-    }
-    if (ts.isIdentifier(node)) identifier(node);
-    ts.forEachChild(node, visit);
-  };
-
-  const dynamicImport = (call: ts.CallExpression, from: string) => {
-    let at: ts.Node = call.parent;
-    while (ts.isAwaitExpression(at) || ts.isParenthesizedExpression(at)) at = at.parent;
-    if (ts.isVariableDeclaration(at) && ts.isObjectBindingPattern(at.name)) {
-      const names = at.name.elements.map((el) => (el.propertyName ?? el.name).getText(mod.file));
-      if (names.some((n) => carries(from, n))) hit(call);
-    } else if (ts.isVariableDeclaration(at) && ts.isIdentifier(at.name)) {
-      mod.bindings.set(at.name.text, { from, namespace: true });
-    } else {
-      hit(call);
-    }
-  };
-
-  const identifier = (id: ts.Identifier) => {
-    const parent = id.parent;
-    if (ts.isPropertyAccessExpression(parent) && parent.name === id) return;
-    if (ts.isPropertyAssignment(parent) && parent.name === id) return;
-    if (ts.isBindingElement(parent) && parent.propertyName === id) return;
-    const local = mod.decls.has(id.text) && !isDeclarationName(id);
-    if (local) {
-      const owner = ownerOf(mod, id);
-      const set = refs.get(owner) ?? new Set<string>();
-      set.add(id.text);
-      refs.set(owner, set);
-    }
-    const binding = mod.bindings.get(id.text);
-    if (!binding || isDeclarationName(id)) return;
-    if (!('namespace' in binding)) {
-      if (carries(binding.from, binding.name)) hit(id);
-      return;
-    }
-    if (ts.isPropertyAccessExpression(parent) && parent.expression === id) {
-      if (carries(binding.from, parent.name.text)) hit(id);
-    } else if (carries(binding.from)) {
-      hit(id);
-    }
-  };
-
-  visit(mod.file);
-  return { hits, refs };
-}
-
-function isDeclarationName(id: ts.Identifier): boolean {
-  const p = id.parent;
-  return (
-    ((ts.isVariableDeclaration(p) ||
-      ts.isFunctionDeclaration(p) ||
-      ts.isClassDeclaration(p) ||
-      ts.isParameter(p) ||
-      ts.isBindingElement(p)) &&
-      p.name === id) ||
-    ts.isImportSpecifier(p) ||
-    ts.isImportClause(p) ||
-    ts.isNamespaceImport(p)
-  );
-}
-
-/** Each door, and the bindings each module exports that reach a verifier. */
-function readDoors() {
-  const paths = sources(SRC);
-  const keys = new Set(paths.map((p) => relative(SRC, p)));
-  const modules = paths.map((p) => readModule(p, keys));
-  const carried = new Map<string, Set<string>>(
-    Object.entries(PRIMITIVES).map(([pkg, names]) => [pkg, new Set(names)]),
-  );
-  for (const k of keys) carried.set(k, new Set());
-
-  const doors = new Set<string>();
-  const reaching = new Map<string, Set<string>>();
-  for (let changed = true; changed; ) {
-    changed = false;
-    for (const mod of modules) {
-      const { hits, refs } = touches(mod, carried);
-      const reach = new Set(hits);
-      for (let grew = true; grew; ) {
-        grew = false;
-        for (const [owner, names] of refs) {
-          if (!reach.has(owner) && [...names].some((n) => reach.has(n))) {
-            reach.add(owner);
-            grew = true;
-          }
-        }
-      }
-      const exported = new Set<string>();
-      for (const [name, decl] of mod.decls)
-        if (decl.exported && reach.has(name)) exported.add(name);
-      for (const [name, local] of mod.localExports) {
-        const b = mod.bindings.get(local);
-        const viaImport = b && !('namespace' in b) && carried.get(b.from)?.has(b.name);
-        if (reach.has(local) || viaImport) exported.add(name);
-      }
-      for (const { from, names } of mod.reexports) {
-        const theirs = carried.get(from) ?? new Set<string>();
-        if (names === '*') for (const n of theirs) exported.add(n);
-        else for (const [name, imported] of names) if (theirs.has(imported)) exported.add(name);
-      }
-      if (reach.size > 0 || exported.size > 0) doors.add(mod.key);
-      reaching.set(mod.key, exported);
-      const gates = new Set(GATES[mod.key] ?? []);
-      const next = new Set([...exported].filter((n) => !gates.has(n)));
-      const before = carried.get(mod.key) ?? new Set<string>();
-      if (next.size !== before.size || [...next].some((n) => !before.has(n))) {
-        carried.set(mod.key, next);
-        changed = true;
-      }
-    }
-  }
-  return { doors: [...doors].sort(), reaching, modules };
-}
-
-const read = readDoors();
+const read = readDoors({
+  src: SRC,
+  primitives: PRIMITIVES,
+  credentialInputs: CREDENTIAL_INPUTS,
+  computedReads: COMPUTED_READS,
+  gates: GATES,
+});
 
 describe('every door a credential is admitted at is named, with what a chat credential meets there', () => {
-  it('names exactly the modules that reach a credential verifier, however it is bound', () => {
+  it('classifies every request input core reads, as a credential or not', () => {
+    const unclassified: string[] = [];
+    for (const mod of read.modules) {
+      for (const r of read.reads.get(mod.key) ?? []) {
+        const known =
+          r.name === null
+            ? computedKey(mod, r) in COMPUTED_READS
+            : inputKey(r) in CREDENTIAL_INPUTS || inputKey(r) in PLAIN_INPUTS;
+        if (!known)
+          unclassified.push(r.name === null ? computedKey(mod, r) : `${mod.key} ${inputKey(r)}`);
+      }
+    }
+    expect(unclassified.sort()).toEqual([]);
+  });
+
+  it('classifies no input core does not read', () => {
+    const seen = new Set<string>();
+    for (const mod of read.modules) {
+      for (const r of read.reads.get(mod.key) ?? []) {
+        seen.add(r.name === null ? computedKey(mod, r) : inputKey(r));
+      }
+    }
+    const listed = [
+      ...Object.keys(CREDENTIAL_INPUTS),
+      ...Object.keys(PLAIN_INPUTS),
+      ...Object.keys(COMPUTED_READS),
+    ];
+    expect(listed.filter((k) => !seen.has(k))).toEqual([]);
+  });
+
+  it('names exactly the modules a credential arrives at or is checked in, however it is bound', () => {
     expect(read.doors).toEqual(Object.keys(DOORS).sort());
+  });
+
+  it('hands no verifier to another module as a value, where no walk can follow it', () => {
+    expect([...read.handoffs.values()].flat().sort()).toEqual([]);
   });
 
   it('names each gate as a binding its door exports that reaches a verifier', () => {

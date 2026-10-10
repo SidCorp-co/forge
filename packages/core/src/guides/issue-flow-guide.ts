@@ -210,7 +210,8 @@ the sha whole (40 hex). A \`pass\`, \`fail\` or \`short\` cites what it was take
 name (\`POST /api/issues/:id/attachments\`, multipart, field \`file\`, uploaded first — on a runner
 box \`forge-runner api issues/<id>/attachments -F file=@<path>\`), a URL, or a path inside the
 repository at that commit. A path on your own machine is refused. \`skipped\` cites nothing and
-says what was out of reach.
+says what was out of reach. A token, key or connection string in the reason or evidence is refused
+\`VERDICT_SECRET\` at its path, as a comment holding one is refused.
 
 A verdict on a criterion the design classes \`observable\` sends the probe it ran, \`probe\` on the same
 body: \`{ kind: 'request', request: { method, path, headers?, body?, as, service? }, expect: { status, bodyIncludes? } }\`

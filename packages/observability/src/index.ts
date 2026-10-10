@@ -77,8 +77,15 @@ const JWT_PATTERN =
 const PREFIXED_TOKEN_PATTERN =
 	/whsec_[A-Za-z0-9+/=_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-(?:ant|proj)-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9]{20,}[A-Za-z0-9_-]*/g;
 
-/** `Bearer <token>`: the scheme stays, the credential goes. */
-const BEARER_PATTERN = /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi;
+/**
+ * `Bearer <token>`: the scheme stays, the credential goes. A token is told from a word by its shape:
+ * a digit, a capital after a small letter, or 24 characters or more. `Bearer credential` is prose.
+ */
+const BEARER_TOKEN = "[A-Za-z0-9._~+/=-]";
+const BEARER_PATTERN = new RegExp(
+	`\\b((?:Bearer|bearer|BEARER)\\s+)(?:(?=${BEARER_TOKEN}*(?:\\d|[a-z][A-Z]))${BEARER_TOKEN}{8,}|${BEARER_TOKEN}{24,})`,
+	"g",
+);
 
 /** A connection URL's password: `scheme://user:password@host` keeps the scheme, user and host. */
 const URL_PASSWORD_PATTERN = /\b([a-z][a-z0-9+.-]*:\/\/[^\s:/@]*:)[^\s@/]+@/gi;
