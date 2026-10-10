@@ -26,7 +26,7 @@ const SECTION_COPY: Record<PlaceholderSection, { title: string; message: string 
   },
 };
 
-export function OperatorSection({ section }: { section: PlaceholderSection }) {
+export function OperatorGroup({ section }: { section: PlaceholderSection }) {
   const copy = SECTION_COPY[section];
   return <EmptyState title={copy.title} message={copy.message} />;
 }

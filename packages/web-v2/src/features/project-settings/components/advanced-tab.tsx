@@ -11,37 +11,37 @@ import type { ProjectDetail } from "@/features/projects";
 import { isOrgAdmin } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useArchiveProject, useUnarchiveProject, useUpdateProject } from "../hooks";
-import { ComputeSection } from "./compute-section";
-import { BindingsSection, PolicyDocumentSection, ProjectDocumentSection, TestingProfilesSection } from "./config-documents";
-import { EffectiveSection, EnvironmentStateSection } from "./config-readings";
-import { PluginsSection } from "./plugins-section";
-import { SecretsSection } from "./secrets-section";
+import { ComputeSettings } from "./compute-section";
+import { BindingDocuments, PolicyDocumentEditor, ProjectDocumentEditor, TestingProfiles } from "./config-documents";
+import { EffectiveConfig, EnvironmentStates } from "./config-readings";
+import { PluginSettings } from "./plugins-section";
+import { SecretSettings } from "./secrets-section";
 
-export function AdvancedSection({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
+export function AdvancedSettings({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
   const t = useCopy();
   return (
     <div className="space-y-6">
-      <ComputeSection projectId={project.id} slug={project.slug} canEdit={canEdit} />
+      <ComputeSettings projectId={project.id} slug={project.slug} canEdit={canEdit} />
       <section id="documents" aria-label={t("settings.project.advanced.technical")} className="scroll-mt-24">
         <h3 className="fg-h3 text-accent-text!">{t("settings.project.advanced.technical")}</h3>
-        <ProjectDocumentSection project={project} canEdit={canEdit} />
-        <PolicyDocumentSection projectId={project.id} canEdit={canEdit} />
-        <TestingProfilesSection projectId={project.id} canEdit={canEdit} />
-        <SecretsSection projectId={project.id} canEdit={canEdit} />
-        <BindingsSection projectId={project.id} canEdit={canEdit} />
-        <EnvironmentStateSection projectId={project.id} />
-        <EffectiveSection projectId={project.id} />
-        <PluginsSection projectId={project.id} canEdit={canEdit} />
+        <ProjectDocumentEditor project={project} canEdit={canEdit} />
+        <PolicyDocumentEditor projectId={project.id} canEdit={canEdit} />
+        <TestingProfiles projectId={project.id} canEdit={canEdit} />
+        <SecretSettings projectId={project.id} canEdit={canEdit} />
+        <BindingDocuments projectId={project.id} canEdit={canEdit} />
+        <EnvironmentStates projectId={project.id} />
+        <EffectiveConfig projectId={project.id} />
+        <PluginSettings projectId={project.id} canEdit={canEdit} />
       </section>
       <div className="border-t border-line pt-2">
-        {canEdit && <MoveToOrgCard project={project} />}
-        <ArchiveCard project={project} canEdit={canEdit} />
+        {canEdit && <MoveToOrg project={project} />}
+        <ArchiveProject project={project} canEdit={canEdit} />
       </div>
     </div>
   );
 }
 
-function ArchiveCard({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
+function ArchiveProject({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
   const t = useCopy();
   const archive = useArchiveProject(project.id);
   const unarchive = useUnarchiveProject(project.id);
@@ -109,7 +109,7 @@ function ArchiveCard({ project, canEdit }: { project: ProjectDetail; canEdit: bo
 
 /** Move the project to another org the caller administers (owner/admin on the
  *  destination; core also requires admin on the current org). */
-function MoveToOrgCard({ project }: { project: ProjectDetail }) {
+function MoveToOrg({ project }: { project: ProjectDetail }) {
   const t = useCopy();
   const orgsQ = useOrgs();
   const update = useUpdateProject(project.id);

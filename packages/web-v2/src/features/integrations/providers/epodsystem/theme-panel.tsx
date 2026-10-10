@@ -6,7 +6,7 @@ import type { EpodsystemReadConfig } from "./config";
 const REQUIRED_SCOPES = ["products:write", "webstore:write", "settings:write"];
 
 /** The store, its themes and the key's scopes as the last Test read them. */
-export function ThemePanel({ config }: { config: EpodsystemReadConfig }) {
+export function ThemeSettings({ config }: { config: EpodsystemReadConfig }) {
   const storefrontUrl = config.domain
     ? `https://${config.domain}`
     : config.storeSlug

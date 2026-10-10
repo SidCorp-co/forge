@@ -16,7 +16,7 @@ import {
 } from "@/design";
 import { useAuth } from "@/providers/auth-provider";
 import { usePreferences, useUpdatePreferences } from "@/features/preferences";
-import { AssistantPreferencesCard } from "./assistant-preferences-card";
+import { AssistantPreferences } from "./assistant-preferences-card";
 import type { LanguagePref, ThemePref } from "@/features/preferences";
 import { useCopy } from "@/lib/i18n/interface-language";
 
@@ -45,13 +45,13 @@ export function AccountTab() {
           </dl>
         </PageSectionBody>
       </PageSection>
-      <PreferencesCard />
-      <AssistantPreferencesCard />
+      <AccountPreferences />
+      <AssistantPreferences />
     </div>
   );
 }
 
-function PreferencesCard() {
+function AccountPreferences() {
   const prefsQ = usePreferences();
   const update = useUpdatePreferences();
   const [theme, setTheme] = useState<ThemePref>("system");

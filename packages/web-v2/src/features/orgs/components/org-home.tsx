@@ -3,7 +3,7 @@
 // Org home (ISS-470) — the "something changed" screen for the active org. Shows
 // the org name, its projects, and (for team orgs) its members, all bound to the
 // active org from the chrome switcher. Members management reuses the ISS-468
-// OrgMembersCard verbatim, so role-gating / add / remove / invite / rename /
+// OrgMembers verbatim, so role-gating / add / remove / invite / rename /
 // delete behave identically to Settings → Organizations. For a personal org we
 // suppress the team-member panel (there is no team to manage) and show a
 // projects-only view so single-org users never hit an empty dead-end.
@@ -14,7 +14,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useActiveOrg } from "../active-org";
 import { useOrgProjects } from "../hooks";
-import { OrgMembersCard } from "./org-members-card";
+import { OrgMembers } from "./org-members-card";
 import { SectionTitle, PageTitle } from "@/design/primitives/heading";
 import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
@@ -53,7 +53,7 @@ export function OrgHome() {
       ) : (
         // Team org — the full members card also renders the org's project list,
         // pending invitations, and (owner) rename/delete.
-        <OrgMembersCard org={activeOrg} onDeleted={() => router.push("/projects")} />
+        <OrgMembers org={activeOrg} onDeleted={() => router.push("/projects")} />
       )}
     </PageContainer>
   );
@@ -72,7 +72,7 @@ function PersonalOrgProjects({ orgId }: { orgId: string }) {
         {projectsQ.isLoading ? (
           <Skeleton className="h-9 w-full rounded-md" />
         ) : projectsQ.isError ? (
-          <ErrorState message={formatApiError(projectsQ.error)} onRetry={() => projectsQ.refetch()} />
+          <ErrorState message={formatApiError(projectsQ.error)} onRetry={() => void projectsQ.refetch()} />
         ) : (projectsQ.data ?? []).length === 0 ? (
           <EmptyState message={t("settings.orgs.noProjectsTitle")} />
         ) : (

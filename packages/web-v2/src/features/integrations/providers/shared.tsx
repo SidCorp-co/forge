@@ -50,7 +50,7 @@ export function healthBadge(
 }
 
 /** A provider's card: title, an optional badge, and its content stacked. */
-export function ProviderCard({
+export function ProviderSummary({
   title,
   badge,
   children,

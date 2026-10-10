@@ -184,9 +184,9 @@ export function AgentsTab() {
                               onChange={(e) =>
                                 setRenaming({ userId: agent.userId, value: e.target.value })
                               }
-                              onBlur={() => onRename(agent, renaming.value)}
+                              onBlur={() => void onRename(agent, renaming.value)}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") onRename(agent, renaming.value);
+                                if (e.key === "Enter") void onRename(agent, renaming.value);
                                 if (e.key === "Escape") setRenaming(null);
                               }}
                             />
@@ -225,14 +225,14 @@ export function AgentsTab() {
                           <Button
                             variant="secondary"
                             disabled={busy}
-                            onClick={() => onMint(agent)}
+                            onClick={() => void onMint(agent)}
                           >
                             {agent.activeTokens > 0 ? t("settings.agents.mintAnother") : t("settings.agents.give")}
                           </Button>
                           <Button
                             variant="ghost"
                             disabled={busy || agent.activeTokens === 0}
-                            onClick={() => onRevoke(agent)}
+                            onClick={() => void onRevoke(agent)}
                           >
                             {t("settings.agents.revoke")}
                           </Button>

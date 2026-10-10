@@ -66,7 +66,7 @@ function useGateDecision(projectId: string, questionId: string | null): GateDeci
   };
 }
 
-export function GatePanel({ projectId, slug, questionId }: { projectId: string; slug: string; questionId: string | null }) {
+export function EcosystemGate({ projectId, slug, questionId }: { projectId: string; slug: string; questionId: string | null }) {
   const gate = useGateDecision(projectId, questionId);
   if (gate.kind === "notice") return gate.notice;
   const { question: q, note } = gate;

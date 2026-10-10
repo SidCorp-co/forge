@@ -56,7 +56,7 @@ export function LoginForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+    <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-4" noValidate>
       {topError ? (
         <Banner tone="danger">{topError}</Banner>
       ) : (

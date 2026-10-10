@@ -5,16 +5,16 @@ import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import type { IntegrationSummary, SentryConfig } from "../../types";
-import { activeBadge, OrgLockedNote, ProviderCard, TestOutcome, Ticked } from "../shared";
+import { activeBadge, OrgLockedNote, ProviderSummary, TestOutcome, Ticked } from "../shared";
 import { providerLabel } from "../registry";
 import { SingleBindingFooter, useSingleBinding } from "../single-binding";
 import { sentry } from "./index";
-import { initialTargets, rowInvalid, SentryTargetsField, type TargetRow, toTargets } from "./targets-field";
+import { initialTargets, rowInvalid, SentryTargetsField, type TargetItem, toTargets } from "./targets-field";
 
 interface FormState {
   authToken: string;
   host: string;
-  targets: TargetRow[];
+  targets: TargetItem[];
 }
 
 /** The top-level slugs ISS-526 retired that a stored config still carries. Core refuses such a
@@ -37,7 +37,7 @@ function initialForm(existing: IntegrationSummary | undefined): FormState {
  * targets. The official `@sentry/mcp-server` tools reach the project's agents only where the
  * binding's `agentAccess` grant is on; the target list is surfaced in the agent's prompt.
  */
-export function SentrySection({ projectId }: { projectId: string }) {
+export function SentrySettings({ projectId }: { projectId: string }) {
   const b = useSingleBinding(projectId, sentry, initialForm);
   const { existing, form, set, orgLocked } = b;
   const retired = retiredSlugs((existing?.config ?? {}) as Record<string, unknown>);
@@ -60,7 +60,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
   }
 
   return (
-    <ProviderCard title={providerLabel("sentry", language)} badge={activeBadge(existing, t)}>
+    <ProviderSummary title={providerLabel("sentry", language)} badge={activeBadge(existing, t)}>
       {retired.length > 0 && (
         <Banner tone="danger">
           <Ticked text={oldShapeText(retired, t)} />
@@ -95,7 +95,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
       {!existing && <ConnectionOwnerField projectId={projectId} value={b.ownerOrgId} onChange={b.setOwnerOrgId} />}
       <SentryTargetsField targets={form.targets} onChange={(next) => set("targets", next)} disabled={orgLocked} />
       <TestOutcome error={b.test.error} result={b.test.result} okFallback={t("integrations.provider.connectedDot")} />
-      <SingleBindingFooter b={b} canSave={canSave} onSave={handleSave} />
-    </ProviderCard>
+      <SingleBindingFooter b={b} canSave={canSave} onSave={() => void handleSave()} />
+    </ProviderSummary>
   );
 }

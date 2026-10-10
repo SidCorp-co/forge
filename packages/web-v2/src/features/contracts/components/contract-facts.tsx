@@ -6,7 +6,7 @@ import { formatStamp } from "@/lib/utils/format";
 import type { ContractStandingDetail } from "../types";
 import { WindowText } from "./contract-bits";
 
-export function ContractFacts({ d, slug }: { d: ContractStandingDetail; slug: string }) {
+export function ContractProperties({ d, slug }: { d: ContractStandingDetail; slug: string }) {
   const t = useCopy();
   const c = d.contract;
   return (

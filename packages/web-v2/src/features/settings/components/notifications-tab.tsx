@@ -85,7 +85,7 @@ export function NotificationsTab() {
         <ErrorState
           title={t("shell.bell.unread")}
           message={formatApiError(notificationsQ.error)}
-          onRetry={() => notificationsQ.refetch()}
+          onRetry={() => void notificationsQ.refetch()}
         />
       )}
 
@@ -96,7 +96,7 @@ export function NotificationsTab() {
       {!notificationsQ.isLoading && !notificationsQ.isError && rows.length > 0 && (
         <div className="space-y-2.5">
           {rows.map((n) => (
-            <NotificationCard key={n.id} row={n} />
+            <NotificationItem key={n.id} row={n} />
           ))}
         </div>
       )}
@@ -130,12 +130,12 @@ function DeliveryPreferences() {
           <ErrorState
             title={t("shell.notify.prefsUnread")}
             message={formatApiError(prefsQ.error)}
-            onRetry={() => prefsQ.refetch()}
+            onRetry={() => void prefsQ.refetch()}
           />
         )}
 
         {prefsQ.data && (
-          <ToggleRow
+          <NotificationToggle
             label={t("shell.notify.mentions")}
             checked={prefsQ.data.notifyOnMention}
             disabled={update.isPending}
@@ -206,12 +206,12 @@ function DesktopNotificationsToggle() {
         : undefined;
 
   return (
-    <ToggleRow
+    <NotificationToggle
       label={t("shell.notify.desktop")}
       helper={helper}
       checked={checked}
       disabled={!supported || denied}
-      onChange={onToggle}
+      onChange={(v) => void onToggle(v)}
       aria-label={t("shell.notify.desktopLabel")}
     />
   );
@@ -245,7 +245,7 @@ function SoundNotificationsToggle() {
   }
 
   return (
-    <ToggleRow
+    <NotificationToggle
       label={t("shell.notify.sound")}
       helper={supported ? undefined : t("shell.notify.soundUnsupported")}
       checked={enabled && supported}
@@ -256,7 +256,7 @@ function SoundNotificationsToggle() {
   );
 }
 
-function ToggleRow({
+function NotificationToggle({
   label,
   helper,
   ...toggle
@@ -279,7 +279,7 @@ function ToggleRow({
   );
 }
 
-function NotificationCard({ row }: { row: NotificationRow }) {
+function NotificationItem({ row }: { row: NotificationRow }) {
   const t = useCopy();
   const time = useTimeFormat();
   const at = new Date(row.createdAt);

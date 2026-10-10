@@ -70,7 +70,7 @@ export function McpTab() {
     );
   if (projectsQ.isError)
     return (
-      <ErrorState title={t("settings.mcp.loadFailed")} message={formatApiError(projectsQ.error)} onRetry={() => projectsQ.refetch()} />
+      <ErrorState title={t("settings.mcp.loadFailed")} message={formatApiError(projectsQ.error)} onRetry={() => void projectsQ.refetch()} />
     );
   if (projects.length === 0)
     return (
@@ -109,8 +109,8 @@ export function McpTab() {
 
       {selectedProject ? (
         <>
-          <SnippetPanel project={selectedProject} currentProject={currentProject} endpoint={endpoint} />
-          <TestConnectionPanel mcpUrl={endpoint} projectSlug={selectedProject.slug} />
+          <McpSnippet project={selectedProject} currentProject={currentProject} endpoint={endpoint} />
+          <TestConnection mcpUrl={endpoint} projectSlug={selectedProject.slug} />
         </>
       ) : (
         <EmptyState message={t("settings.mcp.chooseProject")} />
@@ -119,7 +119,7 @@ export function McpTab() {
   );
 }
 
-function SnippetPanel({
+function McpSnippet({
   project,
   currentProject,
   endpoint,
@@ -158,7 +158,7 @@ function SnippetPanel({
             <Button
               variant="secondary"
               size="sm"
-              onClick={copySnippet}
+              onClick={() => void copySnippet()}
               className="min-h-11"
               aria-live="polite"
             >
@@ -286,7 +286,7 @@ function TestOutcome({ test }: { test: TestState }) {
 
 /** Live connection test. The token is typed by the user per-test and is never
  *  stored or rendered back — it only rides the one request to `/mcp`. */
-function TestConnectionPanel({ mcpUrl, projectSlug }: { mcpUrl: string; projectSlug: string }) {
+function TestConnection({ mcpUrl, projectSlug }: { mcpUrl: string; projectSlug: string }) {
   const [token, setToken] = useState("");
   const [test, setTest] = useState<TestState>({ status: "idle" });
   const t = useCopy();

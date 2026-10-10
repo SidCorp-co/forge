@@ -16,7 +16,7 @@ import { AddRocketchatForm } from "./add-form";
 import type { RocketchatReadConfig } from "./config";
 import { RoomsField } from "./rooms-field";
 
-export function RocketchatSection({ projectId }: { projectId: string }) {
+export function RocketchatSettings({ projectId }: { projectId: string }) {
   const list = useIntegrationsList(projectId);
   const binding = useMemo(() => (list.data?.items ?? []).find((i) => i.provider === "rocketchat"), [list.data]);
   const t = useCopy();
@@ -25,15 +25,15 @@ export function RocketchatSection({ projectId }: { projectId: string }) {
   if (!binding) return <AddRocketchatForm projectId={projectId} />;
   return (
     <div className="flex flex-col gap-4">
-      <RocketchatBindingPanel projectId={projectId} binding={binding} />
+      <RocketchatBinding projectId={projectId} binding={binding} />
     </div>
   );
 }
 
-function RocketchatBindingPanel({ projectId, binding }: { projectId: string; binding: IntegrationSummary }) {
+function RocketchatBinding({ projectId, binding }: { projectId: string; binding: IntegrationSummary }) {
   const update = useUpdateProviderIntegration(projectId);
   const list = useIntegrationsList(projectId);
-  const test = useBindingTest(projectId, () => list.refetch());
+  const test = useBindingTest(projectId, () => void list.refetch());
   const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
   const cfg = binding.config as RocketchatReadConfig;
   const savedRids = useMemo(() => cfg.rids ?? [], [cfg.rids]);
@@ -90,10 +90,10 @@ function RocketchatBindingPanel({ projectId, binding }: { projectId: string; bin
         setRotating={setShowRotate}
         rotateLabel={t("integrations.rocket.rotate")}
         saveLabel={t("integrations.rocket.save")}
-        onSave={saveCredential}
+        onSave={() => void saveCredential()}
         saving={update.isPending}
         saveDisabled={!authToken.trim() && !botUserId.trim()}
-        onTest={() => test.run(binding.id)}
+        onTest={() => void test.run(binding.id)}
         testing={test.pending}
         confirmDelete={t("integrations.rocket.confirmDisconnect")}
         deleteLabel={t("integrations.rocket.disconnect")}

@@ -5,7 +5,7 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useContractDetail } from "../hooks";
 import { AdoptionStrip, ContractAction, ContractBanner } from "./contract-bits";
-import { ContractFacts } from "./contract-facts";
+import { ContractProperties } from "./contract-facts";
 
 export function ContractPeek({
   projectId,
@@ -40,7 +40,7 @@ export function ContractPeek({
               <AdoptionStrip consumers={d.consumers} latest={d.contract.current?.version ?? null} />
             </div>
             <div className="px-4.5 pb-4 pt-3">
-              <ContractFacts d={d} slug={slug} />
+              <ContractProperties d={d} slug={slug} />
             </div>
           </>
         )}

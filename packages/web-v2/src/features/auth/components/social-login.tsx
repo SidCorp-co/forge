@@ -23,7 +23,7 @@ export function SocialLogin({ redirectTo = '/' }: { redirectTo?: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetchOAuthProviders().then((list) => {
+    void fetchOAuthProviders().then((list) => {
       if (!cancelled) setProviders(list);
     });
     return () => {

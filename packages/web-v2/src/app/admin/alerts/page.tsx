@@ -1,5 +1,5 @@
-import { OperatorSection } from "@/features/operator";
+import { OperatorGroup } from "@/features/operator";
 
 export default function AdminAlertsPage() {
-  return <OperatorSection section="alerts" />;
+  return <OperatorGroup section="alerts" />;
 }

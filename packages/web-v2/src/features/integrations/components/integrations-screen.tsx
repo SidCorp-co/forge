@@ -35,7 +35,7 @@ import { useConnections } from "../hooks";
 import { matchesQuery } from "../connection-identity";
 import { groupConnectionsByApp } from "../connection-groups";
 import { ConnectionEditDrawer } from "./connection-edit-drawer";
-import { ConnectionGroupSection } from "./connection-group";
+import { ConnectionGroupList } from "./connection-group";
 import { providerLabel } from "../providers/registry";
 import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
@@ -271,7 +271,7 @@ export function IntegrationsScreen() {
       ) : connections.isError ? (
         <ErrorState
           message={formatApiError(connections.error)}
-          onRetry={() => connections.refetch()}
+          onRetry={() => void connections.refetch()}
         />
       ) : items.length === 0 ? (
         <PageSection>
@@ -280,7 +280,7 @@ export function IntegrationsScreen() {
       ) : (
         <div className="flex flex-col gap-3">
           {groups.map((g) => (
-            <ConnectionGroupSection
+            <ConnectionGroupList
               key={g.provider}
               group={g}
               open={isOpen(g.provider)}
