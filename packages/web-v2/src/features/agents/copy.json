@@ -539,6 +539,7 @@
     "masters.refusal.passName": "lượt {verb} bắt đầu lúc {at}{on}",
     "masters.refusal.passOn": " trên {key}",
     "masters.refusal.passOpenNow": " Lượt đang mở là {pass}, id {id}.",
+    "masters.refusal.slotsNotDeclared": "{device} chưa khai báo max_job_panes, nên chưa biết giới hạn",
     "masters.refusal.versionUnknown": "không rõ phiên bản",
     "masters.verdict.childClosed": "một lượt chạy con đã đóng {m} phút trước",
     "masters.verdict.childrenClosed": "cả {n} lượt chạy con nó khai báo đều đã đóng{last}",

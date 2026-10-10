@@ -71,7 +71,7 @@ passed, because the external record of what shipped belonged to none of them.
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | selection | `check-whole-tree-gates` — `whole-tree`, after the merge | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case or failed to load, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
-| language | `check-source-language` — `lang-check`, `check-copy-budget` | English-only source policy; length of web copy strings and of the sentences core writes for pages, empty states, no explaining copy | everything else |
+| language | `check-source-language` — `lang-check`; `check-copy-budget` — `conformance` | English-only source policy; length of web copy strings and of the sentences core writes for pages, empty states, no explaining copy | everything else |
 | record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, whether a published entry can leave without a declared reason, and what an added or corrected entry may spend | whether an entry is TRUE, or whether a change deserved one — that is review's |
 
 ### Why `core` lint prints every diagnostic
