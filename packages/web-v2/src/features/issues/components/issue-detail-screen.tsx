@@ -251,27 +251,12 @@ function IssueUnread({ query, switching = false }: { query: ReturnType<typeof us
   );
 }
 
-function liveAgentState(
-  sessions: IssueAgentSession[] | undefined,
-  health: Parameters<typeof deriveQueuedStep>[0],
-): LiveAgentState | null {
-  const live = pickActiveSession(sessions);
+/** The live-agent panel's subject: a running session, else a queued one, else the step queued with no session yet. */
+function liveAgentState(sessions: IssueAgentSession[] | undefined, health: Parameters<typeof deriveQueuedStep>[0]): LiveAgentState | null {
+  const live = sessions?.find((s) => s.status === "running") ?? sessions?.find((s) => s.status === "queued");
   if (live) return { kind: "live", session: live };
   const queued = deriveQueuedStep(health, false);
   return queued ? { kind: "queued", step: queued } : null;
-}
-
-/** Pick the agent session to surface in the live-agent panel: a running one
- *  wins, else a queued one. Returns null when none is active (no false signal). */
-function pickActiveSession(
-  sessions: IssueAgentSession[] | undefined,
-): IssueAgentSession | null {
-  if (!sessions || sessions.length === 0) return null;
-  return (
-    sessions.find((s) => s.status === "running") ??
-    sessions.find((s) => s.status === "queued") ??
-    null
-  );
 }
 
 /** The properties rail beside the page: the issue's fields, edges and, for a developer, its engineering facts. */
@@ -321,14 +306,9 @@ function IssueRail({
 }
 
 /** The page's header: back to the list, key and title, the status control and the issue's acts. */
-function IssueHeader({
-  issue,
-  back,
-  badge,
-  ...acts
-}: ComponentProps<typeof IssueActions> & { back: string; badge: ReactNode }) {
+function IssueHeader({ back, badge, ...acts }: ComponentProps<typeof IssueActions> & { back: string; badge: ReactNode }) {
   const t = useCopy();
-  const { slug, linkId, canWrite, pending, start, isRunActive, exitsHere, onTransition, onStarted } = acts;
+  const { issue } = acts;
   return (
     <DetailHeader
       back={{ href: back, label: t("issues.screen.title") }}
@@ -336,20 +316,7 @@ function IssueHeader({
       keyTitle={issue.id}
       title={<Written text={issue.title} lang={issue.writtenLang} />}
       badge={badge}
-      action={
-        <IssueActions
-          issue={issue}
-          slug={slug}
-          linkId={linkId}
-          canWrite={canWrite}
-          pending={pending}
-          start={start}
-          isRunActive={isRunActive}
-          exitsHere={exitsHere}
-          onTransition={onTransition}
-          onStarted={onStarted}
-        />
-      }
+      action={<IssueActions {...acts} />}
     />
   );
 }
