@@ -89,7 +89,7 @@ class ForgeWebSocket {
 
     ws.onmessage = (e) => {
       try {
-        const env = JSON.parse(e.data) as WsFrame;
+        const env = JSON.parse(String(e.data)) as WsFrame;
         if (env.event === 'replay.done' || env.event === 'subscribe.denied') {
           this.settleReplay(env.data.room, env.event === 'subscribe.denied' || env.data.complete);
         }

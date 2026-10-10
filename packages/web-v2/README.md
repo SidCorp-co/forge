@@ -31,7 +31,7 @@ src/
 ├─ app/                     # routes (thin) · globals.css · layout.tsx (fonts, providers)
 ├─ components/ui/           # shadcn (Base UI); imported only by src/design
 ├─ design/                  # primitives · patterns (blocks) · templates · icons; import from "@/design"
-├─ features/<domain>/       # api.ts · hooks.ts · components/ · copy.json · types.ts
+├─ features/<domain>/       # api.ts · hooks.ts · components/ · types.ts (copy: lib/i18n/copy/<domain>.json)
 ├─ lib/                     # api client, i18n copy, utils
 └─ providers/               # theme, query, auth
 ```

@@ -6,7 +6,7 @@ and which block to use) is in [`src/design/README.md`](src/design/README.md).
 
 ## Structure
 
-- A feature is `src/features/<domain>/` and holds `components/`, `api.ts`, `hooks.ts`, `copy.json` and `types.ts`. Split `api.ts` and `hooks.ts` into folders only once they outgrow one file.
+- A feature is `src/features/<domain>/` and holds `components/`, `api.ts`, `hooks.ts` and `types.ts`; its copy is `src/lib/i18n/copy/<domain>.json`. Split `api.ts` and `hooks.ts` into folders only once they outgrow one file.
 - `src/design` holds tokens (the variables in `src/styles/tokens.css`), primitives, blocks and templates. A feature imports them only from `@/design`.
 - `src/components/ui/*` is the shadcn layer (generated code). Only `src/design` imports it.
 - A feature imports another feature only through that feature's `index.ts`. Never reach into its files.
@@ -84,7 +84,7 @@ and which block to use) is in [`src/design/README.md`](src/design/README.md).
 
 ## Copy
 
-- Every string lives in the feature's `copy.json` and is read with `useCopy()`. Copy is English and stays inside the copy budget (`check-copy-budget`).
+- Every string lives in the feature's copy file, `src/lib/i18n/copy/<domain>.json`, and is read with `useCopy()`. Copy is English and stays inside the copy budget (`check-copy-budget`).
 - The page reads as state: a row is a fact, 15 words or fewer, and never an instruction or an explanation.
 
 ## Styling

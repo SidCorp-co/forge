@@ -15,8 +15,8 @@ import { tourStatesOf } from "./state";
 export const TOUR_STATES_KEY = ["me", "product-state"] as const;
 
 export function useTourStates() {
-  const query = useQuery({ queryKey: TOUR_STATES_KEY, queryFn: toursApi.states, staleTime: 5 * 60_000 });
-  return { ...query, states: tourStatesOf(query.data?.items ?? []) };
+  const { data, isSuccess } = useQuery({ queryKey: TOUR_STATES_KEY, queryFn: toursApi.states, staleTime: 5 * 60_000 });
+  return { isSuccess, states: tourStatesOf(data?.items ?? []) };
 }
 
 export function useSaveTourState() {
@@ -45,7 +45,7 @@ export function useTourTarget() {
 /** Start a tour on the page in front of the person, recording what happens and storing how it ended. */
 export function useStartTour() {
   const t = useTourCopy();
-  const save = useSaveTourState();
+  const { mutate: save } = useSaveTourState();
   return useCallback(
     (tour: TourDefinition) =>
       runTour(tour, t, {
@@ -53,7 +53,7 @@ export function useStartTour() {
           toursApi.record({ tourId: tour.id, revision: tour.revision, kind, ...(step ? { step } : {}) }).catch(() => {});
         },
         onOutcome: (outcome, step) => {
-          save.mutate({
+          save({
             id: tour.id,
             value: { revision: tour.revision, outcome, ...(step ? { step } : {}), at: new Date().toISOString() },
           });

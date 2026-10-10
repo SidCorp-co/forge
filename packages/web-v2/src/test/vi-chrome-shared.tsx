@@ -1,6 +1,6 @@
 import { EnumBadge, StatusBadge } from "@/design";
-import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
-import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
+import { Decisions as DecisionsPanel } from "@/features/comments/components/decisions";
+import { MockupList as MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { GateLine } from "@/features/releases/components/release-bits";
 import { WhatChanges } from "@/features/releases/components/release-changes";
 import type { Said } from "@forge/contracts/said";

@@ -46,7 +46,7 @@ export { IconButton } from "./primitives/icon-button";
 export { Badge, type BadgeProps } from "./primitives/badge";
 export { Divider } from "./primitives/divider";
 export { Banner } from "./primitives/banner";
-export { Tooltip } from "./primitives/tooltip";
+export { Tooltip, TooltipProvider } from "./primitives/tooltip";
 export { Popover } from "./primitives/popover";
 export { ConfirmDialog } from "./primitives/confirm-dialog";
 export { Tabs, type TabItem } from "./primitives/tabs";
@@ -116,6 +116,7 @@ export { useElapsed } from "./hooks/use-elapsed";
 export { useNow } from "./hooks/use-now";
 export { useMediaQuery } from "./hooks/use-media-query";
 export { useBrowserValue } from "./hooks/use-browser-value";
+export { focusOnMount } from "./hooks/focus-on-mount";
 export { keyedByContent, keyedNodes, keyedRows, useListKeys, type ListKeys } from "./hooks/use-list-keys";
 
 export {

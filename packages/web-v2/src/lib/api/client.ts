@@ -60,13 +60,14 @@ async function parseErrorBody(res: Response): Promise<{
   body?: unknown;
 }> {
   try {
-    const body = await res.json();
+    const body: unknown = await res.json();
     if (body && typeof body === 'object') {
-      const refused = refusalOf(body.error);
-      if (refused) return { ...refused, details: body.details, body };
-      const msg = typeof body.message === 'string' ? body.message : res.statusText;
-      const code = typeof body.code === 'string' ? body.code : undefined;
-      return { message: msg, code, details: body.details, body };
+      const b = body as { error?: unknown; details?: unknown; message?: unknown; code?: unknown };
+      const refused = refusalOf(b.error);
+      if (refused) return { ...refused, details: b.details, body };
+      const msg = typeof b.message === 'string' ? b.message : res.statusText;
+      const code = typeof b.code === 'string' ? b.code : undefined;
+      return { message: msg, code, details: b.details, body };
     }
     return { message: res.statusText, body };
   } catch {
@@ -90,7 +91,7 @@ async function sendRequest(endpoint: string, init: RequestInit): Promise<Respons
 
 async function fetchRaw(endpoint: string, options: RequestInit = {}): Promise<Response> {
   const hasBody = options.body !== undefined && options.body !== null;
-  const headers = new Headers(options.headers as HeadersInit | undefined);
+  const headers = new Headers(options.headers);
   if (hasBody && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
@@ -217,9 +218,7 @@ export async function apiClientCursorAll<T>(
     const res = await fetchRaw(url, options);
     if (res.status === 204) return { items, totalCount };
 
-    const body = (await res.json()) as
-      | { items: T[]; total: number; nextCursor: string | null }
-      | unknown;
+    const body: unknown = await res.json();
     if (!isCursorPage<T>(body)) {
       throw new Error(`${endpoint}: answered no cursor envelope — cannot page this list`);
     }

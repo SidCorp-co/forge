@@ -98,17 +98,17 @@ export function useBridgedRef(
   rekeyFor: (provisional: string, resolved: string) => Rekey,
 ): string | undefined {
   const qc = useQueryClient();
-  const usedProvisional = useRef(new Set<string>());
+  const usedProvisionalRef = useRef(new Set<string>());
   const [bridged, setBridged] = useState<string | null>(null);
-  if (provisional && resolved === undefined) usedProvisional.current.add(provisional);
+  if (provisional && resolved === undefined) usedProvisionalRef.current.add(provisional);
   const pair = provisional && resolved ? `${provisional}\u0000${resolved}` : null;
-  const owed = pair !== null && usedProvisional.current.has(provisional as string) && bridged !== pair;
-  const rekey = useRef(rekeyFor);
-  rekey.current = rekeyFor;
+  const owed = pair !== null && usedProvisionalRef.current.has(provisional as string) && bridged !== pair;
+  const rekeyRef = useRef(rekeyFor);
+  rekeyRef.current = rekeyFor;
 
   useEffect(() => {
     if (!owed || !pair || !provisional || !resolved) return;
-    bridgeQueries(qc, rekey.current(provisional, resolved));
+    bridgeQueries(qc, rekeyRef.current(provisional, resolved));
     setBridged(pair);
   }, [owed, pair, provisional, resolved, qc]);
 

@@ -4,6 +4,9 @@ import type { ReactNode } from "react";
 import { Tooltip as TooltipRoot, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils/cn";
 
+/** The app root's one tooltip provider, so tooltips share their open delay. */
+export { TooltipProvider } from "@/components/ui/tooltip";
+
 export interface TooltipProps {
   label: string;
   children: ReactNode;

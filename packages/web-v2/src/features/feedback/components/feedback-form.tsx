@@ -2,7 +2,7 @@
 
 import { FEEDBACK_KINDS, FEEDBACK_LIMITS, FEEDBACK_SEVERITIES } from "@forge/contracts/feedback";
 import { useState } from "react";
-import { Button, enumLabel, Field, Input, NativeSelect, statusReading, Textarea } from "@/design";
+import { Button, enumLabel, Field, Input, NativeSelect, statusReading, Textarea, focusOnMount } from "@/design";
 import { placeRefusals } from "@/lib/api/field-refusals";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
@@ -87,7 +87,7 @@ export function FeedbackForm({
       }}
     >
       <Field label={t("feedback.form.title")} error={refused.at("title")} required>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={FEEDBACK_LIMITS.title} ref={(el) => el?.focus()} />
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={FEEDBACK_LIMITS.title} ref={focusOnMount} />
       </Field>
       <div className="grid gap-3 sm:flex">
         <div className="sm:w-40 sm:flex-none">

@@ -1,5 +1,5 @@
-/* The workflow canvas (features/workflows/canvas). Every colour is a token: a node type's or edge
-   kind's hue arrives as --tc from its template, the rest is the semantic layer. */
+/* The canvas skin every React Flow picture shares: the workflow canvas (features/workflows/canvas) and
+   the module map. Every colour is a token: a node type's or edge kind's hue arrives as --tc from its template. */
 
 .wfc { position: relative; min-height: 420px; background: var(--bg-app); }
 /* React Flow sizes itself to 100% of a height no ancestor makes definite, which reads as 0: pin it to the frame instead. Its own inline style says relative, so this one must win. */

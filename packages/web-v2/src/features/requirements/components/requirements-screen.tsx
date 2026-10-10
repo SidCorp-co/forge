@@ -8,7 +8,7 @@
 // The URL carries the view (`?group=…&q=…&peek=REQ-n`), so back from the full page restores it.
 
 import { useMemo, useState } from "react";
-import { Button, EmptyState, Field, Input, ListPage, ListSearch, PageTitle, StatusBadge, ToolbarSelect, useListPage, useViewMode, ViewModeSwitcher } from "@/design";
+import { Button, EmptyState, Field, Input, ListPage, ListSearch, PageTitle, StatusBadge, ToolbarSelect, useListPage, useViewMode, ViewModeSwitcher, focusOnMount } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { placeRefusals } from "@/lib/api/field-refusals";
 import { RefusalLine } from "@/lib/api/refusal-line";
@@ -55,7 +55,7 @@ export function CreateRequirementForm({ projectId, onDone }: { projectId: string
       }}
     >
       <Field label={t("requirements.form.title")} error={refused.at("title")} required>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={REQUIREMENT_TITLE_MAX} ref={(el) => el?.focus()} />
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={REQUIREMENT_TITLE_MAX} ref={focusOnMount} />
       </Field>
       <RefusalLine error={create.error} onField={refused.onField} />
       <div className="flex gap-2">

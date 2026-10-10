@@ -32,7 +32,7 @@ import {
 import { cn } from "@/lib/utils/cn";
 import { formatApiError } from "@/lib/api/error";
 import { useRecents } from "@/lib/navigation/recents";
-import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
+import { copyShareLink } from "@/lib/navigation/copy-share-link";
 import { IssueQuickActions } from "@/features/issues";
 import { priorityLabel, runStatusChip, workStepOf } from "@/features/issues";
 import type { IssuePriority, IssueStatus } from "@/features/issues";
@@ -79,7 +79,6 @@ const PRIORITY_TONE: Record<string, "red" | "amber" | "neutral"> = {
 
 export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }: RunDetailProps) {
   const [tab, setTab] = useState("activity");
-  const copyShareLink = useCopyShareLink();
   const router = useRouter();
   const { push: pushRecent } = useRecents();
   const runQ = useRun(runId ?? undefined, open);

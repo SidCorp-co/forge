@@ -39,7 +39,7 @@ function Live({ projectId, slug }: { projectId: string; slug: string }) {
   if (q.isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState title={t("status.loadFailed")} message={formatApiError(q.error)} onRetry={() => q.refetch()} />
+        <ErrorState title={t("status.loadFailed")} message={formatApiError(q.error)} onRetry={() => void q.refetch()} />
       </div>
     );
   }

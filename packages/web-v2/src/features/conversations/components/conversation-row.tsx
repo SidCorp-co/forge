@@ -6,7 +6,7 @@
 // this row and two copies of a destructive control can disagree about what a press means (ISS-1028).
 
 import { useState } from "react";
-import { IconButton, Input, ProjectMark, StatusBadge } from "@/design";
+import { IconButton, Input, ProjectMark, StatusBadge, focusOnMount } from "@/design";
 import { projectGlyph, projectInitials } from "@/features/projects";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ListedConversation } from "../hooks";
@@ -117,7 +117,7 @@ function RenameConversation({ mark, title, onDone }: { mark: React.ReactNode; ti
     <div className="flex min-h-11 w-full items-center gap-2 border-b border-line-subtle bg-surface px-3 py-1.5">
       {mark}
       <Input
-        autoFocus
+        ref={focusOnMount}
         value={draft}
         aria-label={t("shell.row.name")}
         onFocus={(e) => e.currentTarget.select()}

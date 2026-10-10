@@ -3,7 +3,7 @@
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
 import { type FormEvent, useMemo, useState } from "react";
-import { Button, HoverCard, Icon, Input, rememberListOrigin, fixedHeight } from "@/design";
+import { Button, HoverCard, Icon, Input, rememberListOrigin, fixedHeight, focusOnMount } from "@/design";
 import { useAskForDesigns } from "@/features/onboarding";
 import { useOnboardingState } from "@/features/onboarding";
 import { useWriteProjectDocument } from "@/features/project-config";
@@ -54,7 +54,7 @@ function DescriptionEditor({ projectId, held, initial, onDone }: { projectId: st
           value={text}
           onChange={(e) => setText(e.target.value)}
           className="min-w-0 flex-1"
-          autoFocus
+          ref={focusOnMount}
         />
         <Button type="submit" size="sm" variant="primary" disabled={!text.trim()} loading={write.isPending}>
           {t("workflows.save")}

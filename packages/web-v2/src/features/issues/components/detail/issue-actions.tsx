@@ -1,7 +1,7 @@
 import { Button, HelpButton, IconButton, Menu, type MenuItem } from "@/design";
 import { AskAboutThis } from "@/features/chat-dock";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
+import { copyShareLink } from "@/lib/navigation/copy-share-link";
 import { useRouter } from "next/navigation";
 import type { IssueDetail, IssueStatus } from "../../types";
 import { type StartReading, StartIssueAction } from "../start-issue-action";
@@ -34,7 +34,6 @@ export function IssueActions({
   onStarted: () => void;
 }) {
   const router = useRouter();
-  const copyShareLink = useCopyShareLink();
   const t = useCopy();
   const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
   const openSessions = () => router.push(issueSessionsHref(slug, issue.id));

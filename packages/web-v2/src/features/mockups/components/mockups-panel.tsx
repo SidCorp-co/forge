@@ -1,8 +1,9 @@
 "use client";
 
+import { BoardCanvas } from "@/features/board";
+import Image from "next/image";
 import { mockupKindOfFile } from "@forge/contracts/mockups";
 import { parseWireframe } from "@forge/contracts/wireframe";
-import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AcceptStep, ActorChip, Button, EnumBadge, Input, StatusBadge, ViewHeading } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
@@ -14,15 +15,7 @@ import { fileBase64, targetInput } from "../api";
 import { useMockupAct, useMockupBytes, useMockups, useMockupText, useProposeMockup } from "../hooks";
 import type { MockupTarget, MockupView } from "../types";
 
-function OpeningBoard() {
-  const t = useCopy();
-  return <p className="p-4 text-13 text-muted">{t("common.mockups.openingBoard")}</p>;
-}
 
-const BoardCanvas = dynamic(() => import("@/features/board/board-canvas"), {
-  ssr: false,
-  loading: () => <OpeningBoard />,
-});
 
 function useObjectUrl(blob: Blob | undefined) {
   const url = useMemo(() => (blob ? URL.createObjectURL(blob) : null), [blob]);
@@ -54,8 +47,8 @@ function Preview({ m }: { m: MockupView }) {
   if (q.isError) return <p className="text-13 text-muted">{formatApiError(q.error)}</p>;
   if (m.kind === "image" || m.kind === "sketch") {
     if (!url) return <p className="text-13 text-muted">{t("common.mockups.loading")}</p>;
-    // biome-ignore lint/performance/noImgElement: a blob URL of a stored mockup with no known intrinsic size; `next/image` cannot optimise it
-    return <img src={url} alt={m.caption ?? m.name} className="max-h-105 max-w-full border border-line-subtle object-contain" data-testid="mockup-image" />;
+    // unoptimized: a blob URL of a stored mockup, which the Next image optimizer cannot fetch; its size is its own
+    return <Image unoptimized src={url} alt={m.caption ?? m.name} width={0} height={0} sizes="100vw" className="h-auto max-h-105 w-auto max-w-full border border-line-subtle object-contain" data-testid="mockup-image" />;
   }
   if (text === null) return <p className="text-13 text-muted">{t("common.mockups.loading")}</p>;
   if (m.kind === "wireframe") {

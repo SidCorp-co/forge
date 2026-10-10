@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { Badge, Button, IconButton, Menu, type MenuItem, MonoTag, PageTitle, StatusBadge } from "@/design";
 import { type deriveSessionDisplayStatus, sessionStep, statusToChip, useCancelSession, useRerunSession } from "@/features/sessions";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
+import { copyShareLink } from "@/lib/navigation/copy-share-link";
 import type { useSession } from "../hooks";
 
 type SessionDetail = NonNullable<ReturnType<typeof useSession>["data"]>;
@@ -38,7 +38,6 @@ export function SessionHeader({
 }) {
   const router = useRouter();
   const t = useCopy();
-  const copyShareLink = useCopyShareLink();
   const goBack = projectSlug ? () => router.push(`/projects/${projectSlug}/agents`) : undefined;
   function copyLink() {
     if (!projectSlug) return;

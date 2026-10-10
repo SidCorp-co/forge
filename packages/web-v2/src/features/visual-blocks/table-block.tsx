@@ -2,9 +2,8 @@
 
 import type { ReportField } from "@forge/contracts/report-queries";
 import { cellText, type VisualBlockOf, tableRows } from "@forge/contracts/visual-blocks";
-import { type ReactNode, useEffect, useState } from "react";
-import { flushSync } from "react-dom";
-import { Table, TBody, TD, TH, THead, TR } from "@/design";
+import { type ReactNode, useState, useSyncExternalStore } from "react";
+import { Table, TBody, TD, TH, THead, TR, keyedByContent } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { Cell } from "./cells";
 import { useBlockInstants } from "./instants";
@@ -54,18 +53,31 @@ function ClampedText({ text, children }: { text: string; children: ReactNode }) 
  * rendered synchronously so the printed copy already holds what the flag shows.
  */
 function usePrinting(): boolean {
-  const [printing, setPrinting] = useState(false);
-  useEffect(() => {
-    const on = () => flushSync(() => setPrinting(true));
-    const off = () => setPrinting(false);
-    window.addEventListener("beforeprint", on);
-    window.addEventListener("afterprint", off);
-    return () => {
-      window.removeEventListener("beforeprint", on);
-      window.removeEventListener("afterprint", off);
-    };
-  }, []);
-  return printing;
+  // an external store's change renders synchronously, so the printed copy already holds the flag
+  return useSyncExternalStore(subscribePrinting, () => printing, () => false);
+}
+
+let printing = false;
+const printListeners = new Set<() => void>();
+const setPrintingTo = (on: boolean) => () => {
+  printing = on;
+  for (const listener of printListeners) listener();
+};
+const startPrinting = setPrintingTo(true);
+const endPrinting = setPrintingTo(false);
+
+function subscribePrinting(onChange: () => void): () => void {
+  if (printListeners.size === 0) {
+    window.addEventListener("beforeprint", startPrinting);
+    window.addEventListener("afterprint", endPrinting);
+  }
+  printListeners.add(onChange);
+  return () => {
+    printListeners.delete(onChange);
+    if (printListeners.size > 0) return;
+    window.removeEventListener("beforeprint", startPrinting);
+    window.removeEventListener("afterprint", endPrinting);
+  };
 }
 
 /** The first column stays put while the rest scroll sideways, on the page's own ground so nothing shows through it. */
@@ -108,10 +120,9 @@ export function TableBlockView({ block }: { block: VisualBlockOf<"table"> }) {
             </TR>
           </THead>
           <TBody>
-            {shown.map((row, i) => (
-              // a frame row has no key of its own; the order is the block's and never changes under a reader
-              // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
-              <TR key={i} className="hover:bg-transparent">
+            {keyedByContent(shown).map(({ key, item: row }) => (
+              // a frame row has no key of its own: its cells, and which repeat of them it is
+              <TR key={key} className="hover:bg-transparent">
                 {fields.map((f, c) => (
                   <TD key={f.name} className={cn("py-1.5 pl-0 pr-4 align-top text-13", cellClass(f), c === 0 && STICKY)} data-type={f.type}>
                     {f.type === "string" ? (
