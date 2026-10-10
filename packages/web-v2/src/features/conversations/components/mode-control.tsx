@@ -217,7 +217,7 @@ export function ConversationModeControl({
   disabled?: boolean;
 }) {
   const [blockedOpen, setBlockedOpen] = useState(false);
-  const holder = useRef<HTMLDivElement>(null);
+  const holderRef = useRef<HTMLDivElement>(null);
   const composerWidth = useContext(ComposerWidthContext);
   const t = useCopy();
   const asMenu = narrow ?? (composerWidth !== null && composerWidth < TRACK_MIN_WIDTH);
@@ -236,7 +236,7 @@ export function ConversationModeControl({
 
   const blocked = !offer.available;
   return (
-    <div className="relative" ref={holder}>
+    <div className="relative" ref={holderRef}>
       {asMenu ? (
         <ModeMenu
           value={value}
@@ -255,7 +255,7 @@ export function ConversationModeControl({
           describedBy={blockedOpen ? "conversation-mode-blocked" : undefined}
         />
       )}
-      {blockedOpen ? <BlockedNote anchor={holder} reason={offer.reason} onClose={() => setBlockedOpen(false)} /> : null}
+      {blockedOpen ? <BlockedNote anchor={holderRef} reason={offer.reason} onClose={() => setBlockedOpen(false)} /> : null}
     </div>
   );
 }

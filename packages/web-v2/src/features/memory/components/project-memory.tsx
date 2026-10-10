@@ -10,13 +10,13 @@ import { ItemMemory } from "./item-memory";
 export const PROJECT_MEMORY_ANCHOR = "project-memory";
 
 export function ProjectMemory({ projectId, slug }: { projectId: string; slug: string }) {
-  const at = useRef<HTMLDivElement>(null);
+  const atRef = useRef<HTMLDivElement>(null);
   // the section draws after the project resolves, later than the browser looks for the anchor
   useEffect(() => {
-    if (window.location.hash === `#${PROJECT_MEMORY_ANCHOR}`) at.current?.scrollIntoView?.({ block: "start" });
+    if (window.location.hash === `#${PROJECT_MEMORY_ANCHOR}`) atRef.current?.scrollIntoView?.({ block: "start" });
   }, []);
   return (
-    <div id={PROJECT_MEMORY_ANCHOR} ref={at} className="scroll-mt-16">
+    <div id={PROJECT_MEMORY_ANCHOR} ref={atRef} className="scroll-mt-16">
       <ItemMemory projectId={projectId} slug={slug} cites={null} />
     </div>
   );

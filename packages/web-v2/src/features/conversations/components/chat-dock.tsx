@@ -310,7 +310,7 @@ function ResizeHandle({
   onDrag: (w: number | null) => void;
   onCommit: (size: DockSize) => void;
 }) {
-  const dragging = useRef(false);
+  const draggingRef = useRef(false);
   const t = useCopy();
   const { large, half } = dockSizes(room);
   const held = (px: number) => dockWidth(sizeFromDrag(px, room), room);
@@ -333,20 +333,20 @@ function ResizeHandle({
       }}
       onPointerDown={(e) => {
         e.preventDefault();
-        dragging.current = true;
+        draggingRef.current = true;
         (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
       }}
       onPointerMove={(e) => {
-        if (dragging.current) onDrag(held(fromPointer(e)));
+        if (draggingRef.current) onDrag(held(fromPointer(e)));
       }}
       onPointerUp={(e) => {
-        if (!dragging.current) return;
-        dragging.current = false;
+        if (!draggingRef.current) return;
+        draggingRef.current = false;
         onDrag(null);
         onCommit(sizeFromDrag(fromPointer(e), room));
       }}
       onPointerCancel={() => {
-        dragging.current = false;
+        draggingRef.current = false;
         onDrag(null);
       }}
       title={t("shell.dock.drag")}

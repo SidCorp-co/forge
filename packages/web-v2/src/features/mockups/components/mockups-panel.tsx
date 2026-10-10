@@ -158,7 +158,7 @@ function Row({ projectId, m }: { projectId: string; m: MockupView }) {
 
 function Propose({ projectId, target }: { projectId: string; target: MockupTarget }) {
   const propose = useProposeMockup(projectId);
-  const picker = useRef<HTMLInputElement>(null);
+  const pickerRef = useRef<HTMLInputElement>(null);
   const [caption, setCaption] = useState("");
   const [sketching, setSketching] = useState(false);
   const t = useCopy();
@@ -179,7 +179,7 @@ function Propose({ projectId, target }: { projectId: string; target: MockupTarge
     <div className="flex flex-wrap items-center gap-2">
       <Input aria-label={t("common.mockups.caption")} placeholder={t("common.mockups.captionPlaceholder")} value={caption} onChange={(e) => setCaption(e.target.value)} className="w-56" />
       <input
-        ref={picker}
+        ref={pickerRef}
         type="file"
         hidden
         accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,.html,.htm,.json,.txt,.http"
@@ -190,7 +190,7 @@ function Propose({ projectId, target }: { projectId: string; target: MockupTarge
           if (file) void send(file, mockupKindOfFile(file.name, file.type));
         }}
       />
-      <Button type="button" size="sm" variant="secondary" loading={propose.isPending} onClick={() => picker.current?.click()}>
+      <Button type="button" size="sm" variant="secondary" loading={propose.isPending} onClick={() => pickerRef.current?.click()}>
         {t("common.mockups.upload")}
       </Button>
       <Button type="button" size="sm" variant="secondary" onClick={() => setSketching(true)}>

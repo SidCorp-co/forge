@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, type RefObject, useId, useLayoutEffect, useState } from "react";
-import { type BannerTone, Button, bannerColours, Icon } from "@/design";
+import { type BannerTone, Button, bannerColours, Icon, fixedHeight } from "@/design";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { saidView } from "@/lib/i18n/said";
 import { cn } from "@/lib/utils/cn";
@@ -92,7 +92,7 @@ export function DesignBanner({ d, acts, detail, alert, open, onOpen, float, deta
         className={cn(
           shown ? "grid" : "hidden",
           "gap-1.5 px-6 pb-2.5 text-13 max-md:px-4",
-          float && "absolute inset-x-0 top-full z-30 max-h-[40dvh] overflow-y-auto border-b border-line-subtle pt-2",
+          float && ["absolute inset-x-0 top-full z-30 border-b border-line-subtle pt-2", fixedHeight("sheet")],
         )}
         style={float ? overCanvas : { background: c.bg }}
         data-float={float}

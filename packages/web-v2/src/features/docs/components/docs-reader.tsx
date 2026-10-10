@@ -5,7 +5,7 @@
 // and the public `/guides` pages both compose these, so there is one reading UI, not two.
 import Link from "next/link";
 import { type ReactNode, useEffect, useRef } from "react";
-import { PageSection, PageSectionBody, Icon, Input, Markdown } from "@/design";
+import { PageSection, PageSectionBody, Icon, Input, Markdown, fixedHeight } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { slugify } from "../reader";
 import type { TocEntry } from "../types";
@@ -221,19 +221,14 @@ export function DocsLayout({
   contentFirst?: boolean;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)_220px]">
-      <PageSection
-        className={cn(
-          "lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto",
-          contentFirst && "order-2 lg:order-none",
-        )}
-      >
+    <div className="flex flex-col gap-4 lg:flex-row">
+      <PageSection className={cn("lg:sticky lg:top-4 lg:w-65 lg:flex-none lg:self-start", fixedHeight("sticky", "lg"), contentFirst && "order-2 lg:order-none")}>
         <PageSectionBody>{sidebar}</PageSectionBody>
       </PageSection>
-      <PageSection className={contentFirst ? "order-1 lg:order-none" : undefined}>
+      <PageSection className={cn("min-w-0 flex-1", contentFirst && "order-1 lg:order-none")}>
         <PageSectionBody>{children}</PageSectionBody>
       </PageSection>
-      <div className="hidden lg:block">
+      <div className="hidden lg:block lg:w-55 lg:flex-none">
         <DocsToc toc={toc} />
       </div>
     </div>

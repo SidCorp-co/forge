@@ -48,9 +48,9 @@ flowchart LR
   re --> prog
   open -.-> drop[Dropped]:::over
 
-  classDef you fill:#fdf0d5,stroke:#a9822c,color:#5c4410
-  classDef bot fill:#eef3fb,stroke:#5a7fb8,color:#24405f
-  classDef over fill:#ececea,stroke:#9b9791,color:#4a4741
+  classDef you fill:var(--warn-3),stroke:var(--warn-9),color:var(--warn-11)
+  classDef bot fill:var(--info-3),stroke:var(--info-9),color:var(--info-11)
+  classDef over fill:var(--neutral-3),stroke:var(--neutral-9),color:var(--neutral-11)
 ```
 
 Amber is yours. Blue is the agent's. Grey is over.

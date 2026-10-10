@@ -25,17 +25,17 @@ export function SketchPad({
   onClose: () => void;
   onAttach: (file: File) => void;
 }) {
-  const exporter = useRef<SketchExport | null>(null);
+  const exporterRef = useRef<SketchExport | null>(null);
   const [state, setState] = useState<{ busy: boolean; said: string | null }>({ busy: false, said: null });
   const onReady = useCallback((fn: SketchExport | null) => {
-    exporter.current = fn;
+    exporterRef.current = fn;
   }, []);
 
   const attach = async () => {
-    if (!exporter.current) return;
+    if (!exporterRef.current) return;
     setState({ busy: true, said: null });
     try {
-      const png = await exporter.current();
+      const png = await exporterRef.current();
       if (!png) {
         setState({ busy: false, said: "Nothing is drawn yet." });
         return;

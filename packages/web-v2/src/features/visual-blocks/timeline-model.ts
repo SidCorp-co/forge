@@ -2,6 +2,8 @@ import { cellText, type InstantReading, type VisualBlockOf } from "@forge/contra
 
 /** One roadmap item: where it sits on the shared time axis, as fractions of the axis's span. */
 export interface TimelineItem {
+  /** The row of the frame it was read from: its identity, since two items may share a label. */
+  row: number;
   label: string;
   /** The lane's stored value (a state's own token, which the block names in words and keeps in its tooltip). */
   lane: string | null;
@@ -31,58 +33,57 @@ const at = (cell: unknown): number | null => {
   return Number.isNaN(t) ? null : t;
 };
 
-/** What a timeline block draws: each row's dates read from its frame and placed on one linear time axis. */
-export function timelineModel(b: VisualBlockOf<"timeline">, reading?: InstantReading & { day?(iso: string): string }): TimelineModel {
+type Row = Record<string, unknown>;
+type Reading = InstantReading & { day?(iso: string): string };
+
+/** How one block reads a row: a named field's cell as an instant, as words, and as a lane. */
+function rowReader(b: VisualBlockOf<"timeline">, reading: Reading | undefined) {
   const field = (n: string | undefined) => (n === undefined ? undefined : b.frame.fields.find((f) => f.name === n));
-  const labelF = field(b.label);
-  const text = (name: string | undefined, row: Record<string, unknown>) => {
+  const text = (name: string | undefined, row: Row) => {
     const f = field(name);
     return f ? cellText(f, row[f.name] as never, reading) : "—";
   };
-  const laneOf = (row: Record<string, unknown>) => {
+  const instant = (name: string | undefined, row: Row) => (name === undefined ? null : at(row[name]));
+  const lane = (row: Row) => {
     const f = field(b.lane);
     const cell = f ? row[f.name] : undefined;
     return f?.type === "status" && typeof cell === "string" && cell !== "" ? cell : text(b.lane, row);
   };
-  const items: (TimelineItem & { key: number })[] = [];
+  return { text, instant, lane };
+}
+
+/** A row's planned span: a point when it has a start and no end, or an end before its start. */
+function spanOf(b: VisualBlockOf<"timeline">, row: Row, read: ReturnType<typeof rowReader>): TimelineItem["span"] {
+  const start = read.instant(b.start, row);
+  if (start === null) return null;
+  const end = read.instant(b.end, row);
+  const ends = end !== null && end >= start;
+  return { from: start, to: ends ? end : start, fromText: read.text(b.start, row), toText: ends ? read.text(b.end, row) : null };
+}
+
+/** A row's forecast range, from its p50 to its p85, when both read and run forward. */
+function forecastOf(b: VisualBlockOf<"timeline">, row: Row, read: ReturnType<typeof rowReader>): TimelineItem["forecast"] {
+  const p50 = read.instant(b.p50, row);
+  const p85 = read.instant(b.p85, row);
+  return p50 !== null && p85 !== null && p85 >= p50 ? { p50, p85, p50Text: read.text(b.p50, row), p85Text: read.text(b.p85, row) } : null;
+}
+
+/** What a timeline block draws: each row's dates read from its frame and placed on one linear time axis. */
+export function timelineModel(b: VisualBlockOf<"timeline">, reading?: Reading): TimelineModel {
+  const read = rowReader(b, reading);
+  const items: TimelineItem[] = [];
   const undated: string[] = [];
-  const values: number[] = [];
-  for (const row of b.frame.rows) {
-    const label = labelF ? cellText(labelF, row[labelF.name], reading) : "—";
-    const start = b.start === undefined ? null : at(row[b.start]);
-    const end = b.end === undefined ? null : at(row[b.end]);
-    const p50 = b.p50 === undefined ? null : at(row[b.p50]);
-    const p85 = b.p85 === undefined ? null : at(row[b.p85]);
-    const span =
-      start === null
-        ? null
-        : {
-            from: start,
-            to: end !== null && end >= start ? end : start,
-            fromText: text(b.start, row),
-            toText: end !== null && end >= start ? text(b.end, row) : null,
-          };
-    const forecast =
-      p50 !== null && p85 !== null && p85 >= p50
-        ? { p50, p85, p50Text: text(b.p50, row), p85Text: text(b.p85, row) }
-        : null;
-    if (!span && !forecast) {
-      undated.push(label);
-      continue;
-    }
-    if (span) values.push(span.from, span.to);
-    if (forecast) values.push(forecast.p50, forecast.p85);
-    items.push({
-      label,
-      lane: b.lane === undefined ? null : laneOf(row),
-      span: span,
-      forecast,
-      key: span?.from ?? forecast?.p50 ?? 0,
-    });
+  for (const [rowAt, row] of b.frame.rows.entries()) {
+    const label = b.label === undefined ? "—" : read.text(b.label, row);
+    const span = spanOf(b, row, read);
+    const forecast = forecastOf(b, row, read);
+    if (span || forecast) items.push({ row: rowAt, label, lane: b.lane === undefined ? null : read.lane(row), span, forecast });
+    else undated.push(label);
   }
-  const lanes: string[] = [];
-  for (const i of items) if (i.lane !== null && !lanes.includes(i.lane)) lanes.push(i.lane);
-  items.sort((a, c) => lanes.indexOf(a.lane ?? "") - lanes.indexOf(c.lane ?? "") || a.key - c.key);
+  const values = items.flatMap((i) => [...(i.span ? [i.span.from, i.span.to] : []), ...(i.forecast ? [i.forecast.p50, i.forecast.p85] : [])]);
+  const lanes = [...new Set(items.flatMap((i) => (i.lane === null ? [] : [i.lane])))];
+  const startOf = (i: TimelineItem) => i.span?.from ?? i.forecast?.p50 ?? 0;
+  items.sort((a, c) => lanes.indexOf(a.lane ?? "") - lanes.indexOf(c.lane ?? "") || startOf(a) - startOf(c));
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 0;
   const day = (t: number) => (reading?.day ?? ((iso: string) => iso.slice(0, 10)))(new Date(t).toISOString());
@@ -91,7 +92,7 @@ export function timelineModel(b: VisualBlockOf<"timeline">, reading?: InstantRea
     max,
     minText: values.length ? day(min) : "",
     maxText: values.length ? day(max) : "",
-    items: items.map(({ key: _k, ...rest }) => rest),
+    items,
     undated,
     hasSpan: items.some((i) => i.span !== null),
     hasForecast: items.some((i) => i.forecast !== null),

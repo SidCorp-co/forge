@@ -19,18 +19,18 @@ const DECIDE_WITH_REASON: Record<Decided, { opens: CopyKey; why: CopyKey; placeh
 function DecideWithReason({ projectId, runId, approvalId, decision }: { projectId: string; runId: string; approvalId: string; decision: Decided }) {
   const t = useCopy();
   const decide = useReleaseDecision(projectId);
-  const anchor = useRef<HTMLSpanElement>(null);
+  const anchorRef = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const c = DECIDE_WITH_REASON[decision];
   return (
     <>
-      <span ref={anchor} className="inline-flex">
+      <span ref={anchorRef} className="inline-flex">
         <Button type="button" size="sm" variant={c.primary ? "primary" : undefined} aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid={c.testid}>
           {t(c.opens)}
         </Button>
       </span>
-      <Popover open={open} anchor={anchor} onDismiss={() => setOpen(false)} placement="bottom-end" takesFocus className="w-80 bg-surface p-3 ">
+      <Popover open={open} anchor={anchorRef} onDismiss={() => setOpen(false)} placement="bottom-end" takesFocus className="w-80 bg-surface p-3 ">
         <form
           className="grid gap-2"
           onSubmit={(e) => {
