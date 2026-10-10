@@ -112,6 +112,34 @@ function useShellProject(pathname: string) {
   return { selectedProject, activeOrgId, scopedProjects, pinnedIds, railSlug, railProject, railRef };
 }
 
+/** ⌘K / Ctrl+K anywhere in the workspace toggles the command palette. */
+function usePaletteShortcut(toggle: () => void) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        toggle();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggle]);
+}
+
+/** Where a navigation key goes: docs, an ecosystem, a project page under the rail's project, or a workspace page. */
+function navigateTo(router: ReturnType<typeof useRouter>, key: string, railSlug: string | null | undefined): void {
+  if (key === "docs") return router.push("/docs");
+  const eco = ecosystemHref(key);
+  if (eco) return router.push(eco);
+  if (key.startsWith("proj-") && railSlug) {
+    const item = PROJECT_ITEMS.find((it) => it.key === key);
+    if (item) router.push(`/projects/${railSlug}${item.sub}`);
+    return;
+  }
+  const dest = WORKSPACE_ITEMS.find((it) => it.key === key) ?? SECONDARY_DESTINATIONS.find((it) => it.key === key);
+  if (dest) router.push(dest.href);
+}
+
 function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() || "/";
@@ -129,7 +157,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { selectedProject, activeOrgId, scopedProjects, pinnedIds, railSlug, railProject, railRef } =
     useShellProject(pathname);
   const dock = useChatDockState(railProject?.id ?? null);
-  const pageColumn = useRef<HTMLDivElement>(null);
+  const pageColumnRef = useRef<HTMLDivElement>(null);
   const releases = useReleases(railRef).data?.releases;
   const tourRelease = (releases?.find((r) => r.current) ?? releases?.[0])?.version ?? null; // any release carries a tour's anchors
   const needsYou = useNeedsYou(railRef).data;
@@ -140,55 +168,22 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const sidebarBellRef = useRef<HTMLButtonElement>(null);
   const drawerBellRef = useRef<HTMLButtonElement>(null);
   const [bellAnchor, setBellAnchor] = useState(sidebarBellRef);
-  const [moreOpen, setMoreOpen] = useState(false);
-  const closeMore = useCallback(() => setMoreOpen(false), []);
-  const closeNotifications = useCallback(() => setNotificationsOpen(false), []);
+  // The More sheet stands open on the page it was opened on: a navigation closes it.
+  const [moreOpenOn, setMoreOpenOn] = useState<string | null>(null);
+  const moreOpen = moreOpenOn === pathname;
+  const closeMore = () => setMoreOpenOn(null);
+  const closeNotifications = () => setNotificationsOpen(false);
+  usePaletteShortcut(() => setPaletteOpen((o) => !o));
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a navigation closes the More sheet, so pathname is the trigger rather than an input.
-  useEffect(() => {
-    setMoreOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setPaletteOpen((o) => !o);
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  const activeKey = useMemo(
-    () => buildActiveKey(pathname, slug),
-    [pathname, slug],
-  );
+  const activeKey = buildActiveKey(pathname, slug);
   const rail = useRailProjectData({ railSlug, railProject, activeOrgId });
-
-  const navigate = useCallback(
-    (key: string) => {
-      if (key === "docs") return router.push("/docs");
-      const eco = ecosystemHref(key);
-      if (eco) return router.push(eco);
-      if (key.startsWith("proj-") && railSlug) {
-        const item = PROJECT_ITEMS.find((it) => it.key === key);
-        if (item) router.push(`/projects/${railSlug}${item.sub}`);
-        return;
-      }
-      const dest =
-        WORKSPACE_ITEMS.find((it) => it.key === key) ??
-        SECONDARY_DESTINATIONS.find((it) => it.key === key);
-      if (dest) router.push(dest.href);
-    },
-    [router, railSlug],
-  );
+  const navigate = (key: string) => navigateTo(router, key, railSlug);
 
   function onBottomSelect(key: string) {
     if (key === "home") router.push("/");
     else if (key === "chat") dock.toggle();
     else if (key === "attention") router.push("/attention");
-    else if (key === "more") setMoreOpen(true);
+    else if (key === "more") setMoreOpenOn(pathname);
   }
 
   const openPalette = () => setPaletteOpen(true);
@@ -222,7 +217,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           badges={{ needsYou }}
           onNavigate={navigate}
           onRoute={(href) => router.push(href)}
-          onSignOut={logout}
+          onSignOut={() => void logout()}
           userInitials={userInitials}
           search={(variant) => <SidebarSearch onOpen={openPalette} compact={variant === "compact"} icon={variant === "icon"} />}
           bell={<SidebarBell ref={sidebarBellRef} count={bellCount} onToggle={() => toggleBell(sidebarBellRef)} />}
@@ -255,12 +250,12 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         }
         search={<SidebarSearch onOpen={openPalette} />}
         bell={<SidebarBell ref={drawerBellRef} count={bellCount} onToggle={() => toggleBell(drawerBellRef)} />}
-        footer={<DrawerAccount onAccount={() => router.push("/settings")} onSignOut={logout} />}
+        footer={<DrawerAccount onAccount={() => router.push("/settings")} onSignOut={() => void logout()} />}
       />
       <NotificationsBell open={notificationsOpen} onClose={closeNotifications} anchor={bellAnchor} />
 
       {/* data-page: the container the page's breakpoints read while the Ask Agent panel is beside it (globals.css) */}
-      <div ref={pageColumn} className="flex min-w-0 flex-1 flex-col" data-print="frame" data-page>
+      <div ref={pageColumnRef} className="flex min-w-0 flex-1 flex-col" data-print="frame" data-page>
         <div className="contents" data-print="chrome">
           <ShellTopBar chatOpen={dock.open} onToggleChat={dock.toggle} />
           <PinnedTabBar
@@ -278,7 +273,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className="contents" data-print="chrome">
-        <ChatDock dock={dock} page={pageColumn} />
+        <ChatDock dock={dock} page={pageColumnRef} />
 
         <BottomTabBar
           items={bottomTabItems(attentionCount)}
