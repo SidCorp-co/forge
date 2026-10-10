@@ -1,14 +1,12 @@
 "use client";
 
-// One requirement as the Requirements list and its map draw it: a short name, how many of its
-// criteria pass, and the stage it stands at. The stage and the wait come from contracts, once.
+// The cells a requirement fills in the shared list and its map: a short name, how many of its
+// criteria pass, the stage it stands at, and its wait. The stage and the wait come from contracts, once.
 
 import { failingOf, REQUIREMENT_STAGE_LABELS, type RequirementStage, requirementStageOf, waitsLineOf } from "@forge/contracts/requirement-roadmap";
 import type { RequirementSummary } from "@forge/contracts/requirements";
-import Link from "next/link";
 import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { requirementHref } from "@/lib/routes/requirements";
 
 const STAGE_DOT: Record<RequirementStage, string> = {
   draft: "border-[1.5px] border-subtle bg-transparent",
@@ -93,41 +91,4 @@ export function ageShort(iso: string, now: number): string {
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
   return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
-}
-
-export function RequirementLine({ r, slug, now, selected, onPeek }: { r: RequirementSummary; slug: string; now: number; selected: boolean; onPeek: (key: string) => void }) {
-  const href = requirementHref(slug, r.key);
-  return (
-    <Link
-      href={href}
-      title={r.title}
-      data-testid="list-row"
-      data-key={r.key}
-      aria-current={selected || undefined}
-      onClick={(e) => {
-        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-        e.preventDefault();
-        onPeek(r.key);
-      }}
-      className={cn(
-        "grid min-h-9 items-center gap-x-4 gap-y-0.5 rounded-md px-1 py-1.5 hover:bg-hover",
-        "grid-cols-[52px_minmax(0,1fr)_auto] [grid-template-areas:'k_t_a'_'._p_p'_'._w_w']",
-        "md:grid-cols-[56px_minmax(0,1fr)_190px_220px_44px] md:[grid-template-areas:none]",
-        selected && "bg-hover",
-      )}
-    >
-      <span className="font-mono text-12 text-subtle [grid-area:k] md:[grid-area:auto]">{r.key}</span>
-      <span className="flex min-w-0 items-center gap-2.5 [grid-area:t] md:[grid-area:auto]">
-        <span className="truncate">{nameOf(r)}</span>
-        <RowState r={r} />
-      </span>
-      <span className="text-12-5 [grid-area:p] md:[grid-area:auto]">
-        <Passing r={r} />
-      </span>
-      <span className="flex min-w-0 [grid-area:w] md:[grid-area:auto]">
-        <WaitsText r={r} />
-      </span>
-      <span className="text-right font-mono text-12 text-subtle [grid-area:a] md:[grid-area:auto]">{ageShort(r.standing.stateSince, now)}</span>
-    </Link>
-  );
 }

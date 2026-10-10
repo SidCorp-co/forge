@@ -1,0 +1,1 @@
+**One component set for every screen begins.** The design layer gains the list toolbar, flush row list, sections, property rows, stat rows and settings groups, and the Requirements list draws through the shared grouped list.
