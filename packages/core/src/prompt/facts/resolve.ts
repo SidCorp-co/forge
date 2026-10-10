@@ -30,6 +30,7 @@ import {
   loadActiveIntegrationRows,
   renderIntegrations,
 } from './integration-facts.js';
+import { projectRulesText } from './project-rules.js';
 import {
   CANONICAL_LADDER,
   type FactRenderContext,
@@ -240,13 +241,7 @@ export function renderStageFactsText(
         'always-inject knowledge entries exceed the char budget — every prompt for this project carries the overflow',
       );
     }
-    projectParts.push(
-      [
-        '### Project rules (always applied)',
-        'Hard rules for this project — always-injected by the project owner. Follow them exactly.',
-        ...alwaysInject.map((f) => `#### ${f.key}\n${f.text}`),
-      ].join('\n\n'),
-    );
+    projectParts.push(projectRulesText(alwaysInject, 3));
   }
 
   const integrations = inputs.project('integrations');

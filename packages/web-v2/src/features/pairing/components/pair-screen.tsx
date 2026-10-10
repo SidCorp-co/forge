@@ -2,13 +2,11 @@
 
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Banner, Button, EmptyState, enumLabel, Field, HelpButton, Icon, MonoTag, PageTitle, Property, PropertyList, Section, Select, TopBarActions } from "@/design";
-import { agentAddress, agentLabel, useAgentAccounts } from "@/features/agent-accounts";
-import { useActiveOrg } from "@/features/orgs";
-import { isOrgAdmin } from "@/features/projects";
+import { Banner, Button, EmptyState, enumLabel, Field, Icon, PageTitle, Property, PropertyList, Section, Select } from "@/design";
+import { agentAddress, agentLabel } from "@/features/agent-accounts";
 import { formatApiError } from "@/lib/api/error";
-import { useAuth } from "@/providers/auth-provider";
-import { useApproveDevice } from "../hooks";
+import { useCopy } from "@/lib/i18n/interface-language";
+import { useApproveDevice, usePairIdentities } from "../hooks";
 
 /** The value the picker carries for "this box is mine", which is not an agent id. */
 const AS_MYSELF = "";
@@ -23,41 +21,36 @@ const AS_MYSELF = "";
  * (ISS-1093): the credential then belongs to the agent account, is fenced to
  * that agent's projects, and everything the box files is filed as the agent.
  */
-type AgentAccount = ReturnType<typeof useAgentAccounts>["data"] extends (infer A)[] | undefined ? A : never;
+type AgentsRead = ReturnType<typeof usePairIdentities>["agentsQ"];
+type AgentAccount = AgentsRead["data"] extends (infer A)[] | undefined ? A : never;
 
 export function PairScreen() {
+  const t = useCopy();
   const code = useSearchParams().get("code")?.trim() ?? "";
   const approve = useApproveDevice();
   const [denied, setDenied] = useState(false);
   const [picked, setPicked] = useState<{ orgId: string | null; agentUserId: string }>({ orgId: null, agentUserId: AS_MYSELF });
-  const { activeOrg } = useActiveOrg();
-  const orgAdmin = isOrgAdmin(activeOrg?.role);
-  const agentsQ = useAgentAccounts(orgAdmin ? (activeOrg?.id ?? null) : null);
+  const { user, activeOrg, orgAdmin, agentsQ } = usePairIdentities();
   const activeOrgId = activeOrg?.id ?? null;
   const asAgent = picked.orgId === activeOrgId ? picked.agentUserId : AS_MYSELF;
   const chosen = (agentsQ.data ?? []).find((a) => a.userId === asAgent);
 
   return (
     <div className="mx-auto flex w-full max-w-140 flex-col gap-4 px-6 py-8">
-      <PageTitle>Approve a device</PageTitle>
-      <TopBarActions>
-        <HelpButton
-          summary="A device running `forge-runner setup` (or `login`) is asking to pair with your account. Confirm the code matches what the CLI printed, then approve. Approving mints a device-scoped token the runner uses to accept jobs."
-          actions={["Approve — bind this pairing code to your account", "Deny — ignore the request (the code expires on its own)"]}
-        />
-      </TopBarActions>
+      <PageTitle>{t("pairing.title")}</PageTitle>
       {!code ? (
-        <EmptyState title="No pairing code" message="Open this page from the link printed by `forge-runner setup` or `forge-runner login`." />
+        <EmptyState message={t("pairing.noCode")} />
       ) : approve.data?.approved === true ? (
         <PairApproved chosen={chosen} device={approve.data.device} />
       ) : denied ? (
-        <EmptyState title="Request denied" message="The pairing code was not approved. It will expire on its own. You can close this tab." />
+        <EmptyState message={t("pairing.denied")} />
       ) : (
         <PairRequest
           code={code}
           orgAdmin={orgAdmin}
           orgResolved={activeOrg != null}
           agentsQ={agentsQ}
+          user={user}
           asAgent={asAgent}
           chosen={chosen}
           onPick={(v) => setPicked({ orgId: activeOrgId, agentUserId: v })}
@@ -67,27 +60,24 @@ export function PairScreen() {
       )}
       <p className="fg-body-sm flex items-center gap-1.5 text-subtle">
         <Icon name="lock" size={13} />
-        Only approve devices you started yourself.
+        {t("pairing.ownOnly")}
       </p>
     </div>
   );
 }
 
 function PairApproved({ chosen, device }: { chosen: AgentAccount | undefined; device: { label: string; platform: string; hostname?: string | null } | null | undefined }) {
+  const t = useCopy();
   return (
-    <Section title="Device approved">
+    <Section title={t("pairing.approved.title")}>
       <div className="flex flex-col gap-3">
-        <Banner tone="success">Return to your terminal — the runner will finish pairing automatically.</Banner>
-        {chosen && (
-          <Banner tone="attention">
-            Paired as {agentLabel(chosen)} ({agentAddress(chosen)}). Everything this box files is filed as that agent.
-          </Banner>
-        )}
+        <Banner tone="success">{t("pairing.approved.back")}</Banner>
+        {chosen && <Banner tone="attention">{t("pairing.approved.as", { name: agentLabel(chosen), address: agentAddress(chosen) })}</Banner>}
         {device && (
           <PropertyList>
-            <Property label="Label">{device.label}</Property>
-            <Property label="Platform">{enumLabel("platform", device.platform)}</Property>
-            {device.hostname ? <Property label="Hostname">{device.hostname}</Property> : null}
+            <Property label={t("pairing.device.label")}>{device.label}</Property>
+            <Property label={t("pairing.device.platform")}>{enumLabel("platform", device.platform)}</Property>
+            {device.hostname ? <Property label={t("pairing.device.hostname")}>{device.hostname}</Property> : null}
           </PropertyList>
         )}
       </div>
@@ -100,6 +90,7 @@ function PairRequest({
   orgAdmin,
   orgResolved,
   agentsQ,
+  user,
   asAgent,
   chosen,
   onPick,
@@ -109,66 +100,65 @@ function PairRequest({
   code: string;
   orgAdmin: boolean;
   orgResolved: boolean;
-  agentsQ: ReturnType<typeof useAgentAccounts>;
+  agentsQ: AgentsRead;
+  user: ReturnType<typeof usePairIdentities>["user"];
   asAgent: string;
   chosen: AgentAccount | undefined;
   onPick: (agentUserId: string) => void;
   onDeny: () => void;
   approve: ReturnType<typeof useApproveDevice>;
 }) {
-  const { user } = useAuth();
+  const t = useCopy();
   const agents = agentsQ.data ?? [];
   const waiting = !orgResolved || (orgAdmin && agentsQ.isLoading);
   return (
-    <Section title="Pairing request">
+    <Section title={t("pairing.request.title")}>
       <div className="flex flex-col gap-4">
-        <p className="fg-body-sm text-muted">
-          Confirm this code matches what <MonoTag>forge-runner setup</MonoTag> printed in your terminal before approving.
-        </p>
+        <p className="fg-body-sm text-muted">{t("pairing.request.check")}</p>
         <div className="flex items-center justify-center border-y border-line py-5">
           <span className="font-mono text-24 font-semibold tracking-widest text-fg">{code}</span>
         </div>
         {orgAdmin && (
-          <Field label="Pair this device as">
+          <Field label={t("pairing.pairAs")}>
             <Select
               value={asAgent}
               onChange={onPick}
               disabled={agentsQ.isLoading}
               options={[
-                { value: AS_MYSELF, label: `Me — ${user?.email ?? "this account"}` },
+                { value: AS_MYSELF, label: t("pairing.asMe", { email: user?.email ?? t("pairing.thisAccount") }) },
                 ...agents.map((a) => ({ value: a.userId, label: `${agentLabel(a)} (${agentAddress(a)})` })),
               ]}
             />
           </Field>
         )}
-        {waiting && <Banner tone="info">Looking for the agents you could pair this box as — approving waits until the choice is on screen.</Banner>}
+        {waiting && <Banner tone="info">{t("pairing.agentsLoading")}</Banner>}
         {orgAdmin && agentsQ.isError && (
           <Banner
             tone="danger"
             action={
               <Button variant="secondary" onClick={() => void agentsQ.refetch()}>
-                Try again
+                {t("pairing.retry")}
               </Button>
             }
           >
-            The agents of this organization could not be loaded, so there is nothing to pick from yet. Approving now pairs the box as you.
+            {t("pairing.agentsFailed")}
           </Banner>
         )}
         {orgAdmin && !agentsQ.isLoading && !agentsQ.isError && agents.length === 0 && (
-          <Banner tone="info">This organization has no agents yet. Make one in Settings → Agents to give a box an identity of its own.</Banner>
+          <Banner tone="info">{t("pairing.noAgents")}</Banner>
         )}
         <Banner tone={chosen ? "attention" : "info"}>
           {chosen
-            ? `This box will act as ${agentLabel(chosen)} (${agentAddress(chosen)}) — not as you — and reach that agent's ${chosen.projects.length} project(s).`
-            : "This box will act as you. Its credential reaches no project: it can run the daemon, not read or write a project's work."}
+            ? t("pairing.actsAsAgent", { name: agentLabel(chosen), address: agentAddress(chosen), n: chosen.projects.length })
+            : t("pairing.actsAsYou")}
         </Banner>
         {approve.isError && <Banner tone="danger">{formatApiError(approve.error)}</Banner>}
         <div className="flex items-center justify-end gap-2">
           <Button variant="ghost" icon="x" onClick={onDeny}>
-            Deny
+            {t("pairing.deny")}
           </Button>
           <Button variant="primary" icon="check" disabled={waiting} loading={approve.isPending} onClick={() => approve.mutate({ pairingCode: code, agentUserId: chosen?.userId ?? null })}>
-            Approve device
+            {t("pairing.approve")}
           </Button>
         </div>
       </div>

@@ -19,7 +19,7 @@ export function SharedReleaseView({ snapshot }: { snapshot: ShareReleaseSnapshot
         <p className="fg-caption text-subtle">{t("releases.page.shared.lead")}</p>
         <h1 className="fg-h3 mt-1 font-semibold text-fg">{t("releases.releaseVersion", { version: page.header.version })}</h1>
         <p className="fg-caption mt-1 text-subtle">
-          {snapshot.audience === "members" ? "Shared with the project's members" : "Shared by link"} · {t("releases.page.shared.until", { at: time.dateTime(snapshot.expiresAt) })}
+          {snapshot.audience === "members" ? t("releases.page.shared.members") : t("releases.page.shared.link")} · {t("releases.page.shared.until", { at: time.dateTime(snapshot.expiresAt) })}
         </p>
       </header>
       <ReleaseReader page={page} authed={false} />

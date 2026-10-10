@@ -226,7 +226,7 @@ describe('outdated: replace once nothing it holds is working', () => {
       'no admissible work',
       'r2 (ISS-2)',
       'a turn is running',
-      'recorded no conversation',
+      'no conversation recorded',
     ]) {
       expect(v.because).toContain(said);
     }
@@ -297,7 +297,7 @@ describe('outdated: kept and driven while it holds runs, draining toward its rep
       online,
     );
     expect(v).toMatchObject({ act: 'keep', nudge: true, drain: false });
-    expect(v.because).toContain('recorded no conversation');
+    expect(v.because).toContain('no conversation recorded');
   });
 
   it('a current master is never drained', () => {

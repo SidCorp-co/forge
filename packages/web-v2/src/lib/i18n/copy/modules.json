@@ -171,7 +171,6 @@
     "modules.purpose.truncated": "Mục này dài hơn phần hiển thị ở đây.",
     "modules.requirementsCount": "Yêu cầu {n}",
     "modules.roots": "Module gốc",
-    "modules.rule.quiet": "Không issue nào trong module này chờ bạn, bị kẹt, hay giữ quyền làm đang sống",
     "modules.tab.code": "Code",
     "modules.tab.landings": "Lần land",
     "modules.tab.overview": "Tổng quan",

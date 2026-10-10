@@ -18,7 +18,7 @@ const wait = (kind: 'you' | 'person') =>
       kind === 'you'
         ? say('standing.who.you')
         : say('standing.who.holderOf', { perm: 'workflow-designs.approve' }),
-    act: say('designs.act.approveOrReturn', { r: 3 }),
+    act: say('designs.act.approveOrReturn'),
     rule: verbatim('r'),
   });
 
@@ -57,7 +57,7 @@ describe('the design row on Needs you', () => {
       touchedAt: '2026-10-06T08:00:00.000Z',
       standing: {
         attentionGroup: 'needs_you',
-        waitingOn: { kind: 'you', act: 'approve or return revision 3' },
+        waitingOn: { kind: 'you', act: 'approve or return the design' },
       },
     });
   });

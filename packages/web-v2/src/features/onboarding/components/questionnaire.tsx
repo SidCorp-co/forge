@@ -59,7 +59,7 @@ function Control({ item, value, onChange }: { item: QuestionnaireItemView; value
         options={(item.options ?? []).map((o) => ({
           value: o.id,
           label: o.label,
-          mark: item.inferredDefault === o.id ? <AiMark title={t("onboarding.q.inferredTitle")}>{t("onboarding.q.inferred")}</AiMark> : undefined,
+          mark: item.inferredDefault === o.id ? <AiMark>{t("onboarding.q.inferred")}</AiMark> : undefined,
         }))}
       />
     );

@@ -23,7 +23,7 @@ const P = "p-agents";
 const AT = "2026-10-07T08:00:00.000Z";
 const NEAR = new Date(Date.now() + 5 * 60_000).toISOString();
 const noop = () => {};
-const access = { projectId: P, slug: "hop", canWrite: true };
+export const access = { projectId: P, slug: "hop", canWrite: true };
 const peek = { open: "x", position: { at: 1, of: 3 }, set: noop, move: noop };
 const device = { id: "d1", name: "may-1" };
 const RUN = say("issues.standing.who.run");
@@ -69,11 +69,12 @@ const run = (n: number, over: Record<string, unknown> = {}): RunStanding =>
 const stuckRule = (rule: string) => ({ source: "stuck", rule, disagreement: null, since: AT, evidence: { table: "jobs", id: "j1", column: "last_heartbeat_at", value: AT, at: AT }, failsAt: NEAR, failsBy: "r", detail: "r", says: { failsBy: RULE, detail: RULE } });
 const by = { type: "user", agency: "human", userId: "u1", name: "Lan", reason: "Trung", at: AT };
 
-const RUNS: RunStanding[] = [
+/** The runs every state a run stands in, for the run page tests as well. */
+export const RUNS: RunStanding[] = [
   run(1, { state: "waiting_person", attentionGroup: "needs_you", waitingOn: wait("you", say("standing.who.you"), say("issues.standing.act.answer"), { ref: "q1" }), holder: none }),
   run(2, { state: "stuck", attentionGroup: "stuck", stuck: stuckRule("lease_expired"), waitingOn: wait("run", RUN, say("issues.standing.act.stepFor", { step: "build", n: 3 }), { dueAt: NEAR }) }),
   run(3, { state: "waiting_gate", attentionGroup: "waiting_gate", waitingOn: { kind: "gate", gate: "retry_cooldown", resumesAt: NEAR, rule: "r", says: { rule: RULE } }, holder: none }),
-  run(4, { state: "waiting_person", attentionGroup: "waiting", waitingOn: wait("person", say("standing.who.named", { name: "Lan" }), say("designs.act.approveOrReturn", { r: 2 })), holder: none }),
+  run(4, { state: "waiting_person", attentionGroup: "waiting", waitingOn: wait("person", say("standing.who.named", { name: "Lan" }), say("designs.act.approveOrReturn")), holder: none }),
   run(5, { state: "queued", attentionGroup: "queued", waitingOn: wait("master", say("standing.who.master"), say("issues.standing.act.dispatch")), holder: none, device: null, lastBeatAt: null, attempt: none }),
   run(6, { lane: "release", state: "running", release: { version: "0.1.0", stage: "deploying", verdict: null, attemptAt: AT }, deployLocks: [{ environment: "production", subject: "0.1.0", acquiredAt: AT, expiresAt: NEAR, reclaimedFromRunId: null }], issue: null, issues: ["ISS-1", "ISS-2"] }),
   run(7, { state: "done", attentionGroup: "finished", outcome: { kind: "done", at: AT, by }, finishedAt: AT, waitingOn: wait("none", say("standing.who.nobody"), say("standing.act.none")), holder: none, liveJobs: 0 }),
@@ -164,7 +165,8 @@ const answered = (id: string) =>
   question(id, { status: "answered", locked: false, steps: [{ round: 1, prompt: "Ghi ro?", askedAt: AT, answerShape: "free_text", needed: "x", answeredAt: AT, answerText: "luong mot", hold: { reason: "Cho thiet ke", blockedBy: { id: "i2", key: "ISS-12" } }, resume: { kind: "held", at: AT } } as never] });
 const voided = (id: string) => question(id, { status: "void", voidReason: "r", endedReason: "park_unanswered", locked: false });
 
-const data = (): [QueryKey, unknown][] => [
+/** Every read the Agents screens make, seeded. */
+export const data = (): [QueryKey, unknown][] => [
   [["runs-standing", P, "list", "live"], list("live", RUNS.filter((r) => r.attentionGroup !== "finished"))],
   [["runs-standing", P, "list", "finished"], list("finished", RUNS.filter((r) => r.attentionGroup === "finished"), MASTERS_IDLE)],
   [["runs-standing", P, "list", "all"], list("all" as never, RUNS)],

@@ -44,12 +44,13 @@ export function landBlocks(rows: readonly PlanRow[]): Block[] {
 }
 
 function PlanItem({ r, clock }: { r: PlanRow; clock: EtaClock }) {
+  const t = useCopy();
   return (
     <li className="flex min-h-11 items-center gap-x-3.5 border-b border-line-subtle py-1.5 max-md:flex-wrap" data-testid="plan-row" data-key={r.key}>
       <span className="w-21 flex-none max-md:w-auto">
         <Key row={r} />
       </span>
-      <span className="min-w-0 flex-1 truncate text-13 text-fg max-md:order-last max-md:basis-full">{r.title}</span>
+      <span className="min-w-0 flex-1 truncate text-13 text-fg max-md:order-last max-md:basis-full">{r.title || t(KIND_KEY[r.kind])}</span>
       <span className="w-50 min-w-0 shrink">
         <EtaCell eta={r.eta} clock={clock} />
       </span>

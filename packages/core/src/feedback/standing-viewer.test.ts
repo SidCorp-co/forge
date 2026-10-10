@@ -98,7 +98,7 @@ describe('an item planned on an issue at the release gate names who releases it'
     const s = planned('manual', viewer(), []);
     expect(s.waitingOn).toMatchObject({ kind: 'none', who: 'Nobody' });
     expect(s.waitingOn.act).toBe(
-      'cut the release that carries ISS-9: no person on this project holds project.admin until it is granted under Settings → Members',
+      'cut the release that carries ISS-9: nobody holds project.admin; grant it under Settings → Members',
     );
   });
 

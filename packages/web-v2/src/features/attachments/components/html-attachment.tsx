@@ -9,6 +9,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { HtmlArtifact, Icon, Spinner } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import { attachmentQueries } from "../api";
 
@@ -23,6 +24,7 @@ export function HtmlAttachment({
   url: string;
   size: number;
 }) {
+  const t = useCopy();
   const oversize = size > MAX_BYTES;
   const q = useQuery(attachmentQueries.html(url, !oversize));
 
@@ -39,7 +41,7 @@ export function HtmlAttachment({
           {name}
         </span>
         <span className="fg-caption flex-none">
-          {oversize ? "too large to preview" : "preview failed"}
+          {oversize ? t("attachments.tooLarge") : t("attachments.previewFailed")}
         </span>
       </a>
     );

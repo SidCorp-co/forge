@@ -15,32 +15,22 @@ import {
 import Link from "next/link";
 import { useState } from "react";
 import { Button, EnumBadge, Field, Input, Radio, RadioGroup, SlideOver, useNow } from "@/design";
-import { useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useCreateShare, useShareAudiences } from "../hooks";
 import type { ShareSubject } from "../subject";
 import { ShareRefusal } from "./share-refusal";
 
 const DAY_MS = 86_400_000;
 
-const AUDIENCE_LABEL: Record<ShareAudience, string> = {
-  members: "Project members",
-  link: "Anyone with the link",
-};
-
-const SUBJECT_TITLE: Record<ShareSubject["kind"], string> = {
-  message: "Share this answer",
-  "status-report": "Share this status report",
-  release: "Share this release page",
-};
-
-/** The days field read as a share's expiry, or the sentence saying what a valid one is. */
-export function expiryOf(raw: string): { days: number } | { error: string } {
+/** The days field read as a share's expiry, or the refusal saying what a valid one is. */
+export function expiryOf(raw: string, t: Copy): { days: number } | { error: string } {
   const days = Number(raw);
   if (raw.trim() === "" || !Number.isInteger(days) || days < 1) {
-    return { error: `Choose a whole number of days, from 1 to ${SHARE_MAX_EXPIRY_DAYS}.` };
+    return { error: t("shares.expiry.refused.whole", { max: SHARE_MAX_EXPIRY_DAYS }) };
   }
   if (days > SHARE_MAX_EXPIRY_DAYS) {
-    return { error: `A share expires within ${SHARE_MAX_EXPIRY_DAYS} days at most.` };
+    return { error: t("shares.expiry.refused.max", { max: SHARE_MAX_EXPIRY_DAYS }) };
   }
   return { days };
 }
@@ -68,8 +58,9 @@ export function ShareDialog({
   const [created, setCreated] = useState<ShareCreated | null>(null);
   const time = useTimeFormat();
   const now = useNow(60_000);
+  const t = useCopy();
 
-  const expiry = expiryOf(rawDays);
+  const expiry = expiryOf(rawDays, t);
   const options = audiencesQ.data;
   const pickedRefusal = refusalFor(options, audience);
   // the link option is offered only once core has answered that it is open to this person
@@ -85,7 +76,7 @@ export function ShareDialog({
   };
 
   return (
-    <SlideOver open onClose={onClose} title={SUBJECT_TITLE[subject.kind]} width={460}>
+    <SlideOver open onClose={onClose} title={t(`shares.subject.${subject.kind}`)} width={460}>
       {created ? (
         <CreatedLink created={created} manageHref={manageHref} onClose={onClose} />
       ) : (
@@ -98,14 +89,14 @@ export function ShareDialog({
           }}
         >
           <fieldset className="flex flex-col gap-2.5">
-            <legend className="fg-label mb-2">Who can open it</legend>
+            <legend className="fg-label mb-2">{t("shares.dialog.audience")}</legend>
             <RadioGroup name="share-audience" value={audience} onChange={(v) => setAudience(v as ShareAudience)}>
               {(["members", "link"] as const).map((a) => {
                 const refusal = refusalFor(options, a);
                 const disabled = refusal !== null || (a === "link" && !linkOpen);
                 return (
                   <div key={a} className="flex flex-col gap-0.5" data-testid={`share-audience-${a}`}>
-                    <Radio value={a} label={AUDIENCE_LABEL[a]} disabled={disabled} />
+                    <Radio value={a} label={t(`shares.audience.${a}`)} disabled={disabled} />
                     {refusal && (
                       <p className="fg-caption pl-7 text-fg" data-testid={`share-audience-${a}-reason`} data-code={refusal.code}>
                         <span className="font-mono" translate="no">
@@ -115,25 +106,21 @@ export function ShareDialog({
                       </p>
                     )}
                     {a === "link" && !options && audiencesQ.isLoading && (
-                      <p className="fg-caption pl-7 text-subtle">Checking whether you can share outside the project…</p>
+                      <p className="fg-caption pl-7 text-subtle">{t("shares.dialog.checking")}</p>
                     )}
                   </div>
                 );
               })}
             </RadioGroup>
             {audiencesQ.isError && (
-              <ShareRefusal error={audiencesQ.error} lead="Couldn't read which audiences you can share with, so only project members are offered" />
+              <ShareRefusal error={audiencesQ.error} lead={t("shares.dialog.audiencesError")} />
             )}
           </fieldset>
 
           <Field
-            label="Expires after (days)"
+            label={t("shares.dialog.expires")}
             error={"error" in expiry ? expiry.error : undefined}
-            hint={
-              "days" in expiry
-                ? `Expires ${time.date(now + expiry.days * DAY_MS)}. At most ${SHARE_MAX_EXPIRY_DAYS} days.`
-                : undefined
-            }
+            hint={"days" in expiry ? t("shares.dialog.expiresOn", { date: time.date(now + expiry.days * DAY_MS) }) : undefined}
           >
             <Input
               type="number"
@@ -147,14 +134,14 @@ export function ShareDialog({
             />
           </Field>
 
-          {create.isError && <ShareRefusal error={create.error} lead="Core refused the share" />}
+          {create.isError && <ShareRefusal error={create.error} lead={t("shares.dialog.refused")} />}
 
           <div className="flex justify-end gap-2.5">
             <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
+              {t("shares.dialog.cancel")}
             </Button>
             <Button type="submit" variant="primary" disabled={!canCreate} loading={create.isPending}>
-              Create link
+              {t("shares.dialog.create")}
             </Button>
           </div>
         </form>
@@ -175,6 +162,7 @@ function CreatedLink({
 }) {
   const [copy, setCopy] = useState<"idle" | "copied" | "failed">("idle");
   const time = useTimeFormat();
+  const t = useCopy();
   const { share, url } = created;
   const doCopy = () => {
     if (!navigator.clipboard) {
@@ -193,47 +181,39 @@ function CreatedLink({
           {share.title}
         </p>
       )}
-      <p className="fg-body-sm text-fg">
-        This link is shown once. Copy it now.
-      </p>
+      <p className="fg-body-sm text-fg">{t("shares.created.once")}</p>
       <div className="flex items-center gap-2">
         <Input
           readOnly
           value={url}
-          aria-label="Share link"
+          aria-label={t("shares.created.link")}
           data-testid="share-link"
           onFocus={(e) => e.currentTarget.select()}
           className="font-mono"
         />
         <Button type="button" variant="primary" icon="link" onClick={doCopy}>
-          {copy === "copied" ? "Copied" : "Copy link"}
+          {copy === "copied" ? t("shares.created.copied") : t("shares.created.copy")}
         </Button>
       </div>
       {copy === "failed" && (
         <p className="fg-caption text-fg" role="status">
-          Couldn't copy the link here. Select it and copy it by hand.
+          {t("shares.created.copyFailed")}
         </p>
       )}
       <p className="fg-caption flex flex-wrap items-center gap-1.5 text-muted">
         <EnumBadge family="shareAudience" value={share.audience} />
         <span>
-          until <time dateTime={share.expiresAt} title={time.dateTime(share.expiresAt)}>{time.date(share.expiresAt)}</time>.
+          {t("shares.created.until")} <time dateTime={share.expiresAt} title={time.dateTime(share.expiresAt)}>{time.date(share.expiresAt)}</time>
         </span>
-        {manageHref ? (
-          <span>
-            Revoke it any time from{" "}
-            <Link href={manageHref} className="underline underline-offset-2 hover:text-fg">
-              the project's share links
-            </Link>
-            .
-          </span>
-        ) : (
-          <span>Revoke it any time from the project's share links, under settings.</span>
+        {manageHref && (
+          <Link href={manageHref} className="underline underline-offset-2 hover:text-fg">
+            {t("shares.created.manage")}
+          </Link>
         )}
       </p>
       <div className="flex justify-end">
         <Button type="button" variant="ghost" onClick={onClose}>
-          Done
+          {t("shares.created.done")}
         </Button>
       </div>
     </div>

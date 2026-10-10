@@ -27,7 +27,7 @@ export { DotStrip } from "./primitives/dot-strip";
 export { BulletBar } from "./primitives/bullet-bar";
 export { StreamBand } from "./primitives/stream-band";
 export { SankeyFlow } from "./primitives/sankey-flow";
-export { EmptyState, ErrorState, LoadingState, RefusedLine } from "./primitives/states";
+export { EmptyState, ErrorState, LoadingState } from "./primitives/states";
 export { EmptyPanelLine } from "./primitives/empty-panel-line";
 export { LiveDot } from "./primitives/live-dot";
 export { showToast, type ToastView } from "./primitives/toast";
@@ -109,6 +109,7 @@ export { SettingsGroup, SettingRow, FormActions } from "./patterns/settings-form
 export { useUrlChoice, useUrlFlags, useUrlParams } from "./hooks/use-url-params";
 export { useIdSet } from "./hooks/use-id-set";
 export { useListPage, type ListPageSpec, type ListPageState } from "./hooks/use-list-page";
+export { RECORD_VIEWS, RecordViewSwitch, type RecordView, useRecordView } from "./patterns/record-view";
 export { pageShown, useReportShown, useShownKeys } from "./hooks/use-page-shown";
 export { highlightOnPage, highlightStore, useHighlight, type HighlightState } from "./hooks/use-highlight";
 

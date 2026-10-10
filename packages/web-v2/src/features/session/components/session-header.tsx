@@ -1,9 +1,10 @@
 "use client";
 
-// The session page's sticky header: back, title and id, status and task count, and its acts.
+// The session page's sticky header: back, title and status, and its acts. The id, the task count and
+// the rail toggles are the developer view's (REQ-43 BC-7), switched beside the acts.
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { Badge, Button, IconButton, Menu, type MenuItem, MonoTag, PageTitle, StatusBadge } from "@/design";
+import { Badge, Button, IconButton, Menu, type MenuItem, MonoTag, PageTitle, type RecordView, RecordViewSwitch, StatusBadge } from "@/design";
 import { type deriveSessionDisplayStatus, sessionStep, statusToChip, useCancelSession, useRerunSession } from "@/features/sessions";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { copyShareLink } from "@/lib/navigation/copy-share-link";
@@ -16,6 +17,8 @@ export function SessionHeader({
   display,
   live,
   taskCount,
+  developer,
+  onView,
   projectSlug,
   lastTurnId,
   onFork,
@@ -28,6 +31,8 @@ export function SessionHeader({
   display: ReturnType<typeof deriveSessionDisplayStatus>;
   live: boolean;
   taskCount: number;
+  developer: boolean;
+  onView: (v: RecordView) => void;
   projectSlug: string | undefined;
   lastTurnId: string | undefined;
   onFork: (turnId: string) => void;
@@ -41,7 +46,7 @@ export function SessionHeader({
   const goBack = projectSlug ? () => router.push(`/projects/${projectSlug}/agents`) : undefined;
   function copyLink() {
     if (!projectSlug) return;
-    copyShareLink(`/projects/${projectSlug}/agents/${session.id}`);
+    copyShareLink(`/projects/${projectSlug}/agents/${session.id}`, t);
   }
 
   // Overflow menu — Branch/View runner machine/Copy link (ISS-351). Branching forks from the
@@ -98,7 +103,7 @@ export function SessionHeader({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <PageTitle className="fg-h3 truncate">{session.title ?? t("sessions.detail.session")}</PageTitle>
-            <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>
+            {developer && <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>}
           </div>
           <div className="mt-1 flex items-center gap-2">
             <StatusBadge family="run" value={statusToChip(display)} stage={sessionStep(session.metadata)} />
@@ -112,6 +117,8 @@ export function SessionHeader({
         <SessionActs
           session={session}
           live={live}
+          developer={developer}
+          onView={onView}
           projectSlug={projectSlug}
           menuItems={menuItems}
           onOpenSession={onOpenSession}
@@ -123,10 +130,12 @@ export function SessionHeader({
   );
 }
 
-/** Stop or rerun, open the issue, the overflow menu and the rail toggles. */
+/** The person / developer switch, stop or rerun, open the issue, the overflow menu and, in the developer view, the rail toggles. */
 function SessionActs({
   session,
   live,
+  developer,
+  onView,
   projectSlug,
   menuItems,
   onOpenSession,
@@ -135,6 +144,8 @@ function SessionActs({
 }: {
   session: SessionDetail;
   live: boolean;
+  developer: boolean;
+  onView: (v: RecordView) => void;
   projectSlug: string | undefined;
   menuItems: MenuItem[];
   onOpenSession: (id: string) => void;
@@ -148,6 +159,7 @@ function SessionActs({
   const issueId = session.metadata?.issueId;
   return (
         <div className="flex items-center gap-1.5">
+          <RecordViewSwitch view={developer ? "developer" : "person"} onView={onView} />
           {live ? (
             <Button
               variant="danger"
@@ -199,13 +211,17 @@ function SessionActs({
               />
             }
           />
-          <IconButton
-            icon="rows"
-            aria-label={t("sessions.detail.showContext")}
-            className="min-h-11 min-w-11 lg:hidden"
-            onClick={onOpenRail}
-          />
-          {railToggle}
+          {developer && (
+            <>
+              <IconButton
+                icon="rows"
+                aria-label={t("sessions.detail.showContext")}
+                className="min-h-11 min-w-11 lg:hidden"
+                onClick={onOpenRail}
+              />
+              {railToggle}
+            </>
+          )}
         </div>
   );
 }

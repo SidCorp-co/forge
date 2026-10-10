@@ -2,13 +2,19 @@
 
 import type { ReactNode } from "react";
 import { keyedByContent } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 const words = (key: string) =>
   key.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
 
+function Flag({ on }: { on: boolean }) {
+  const t = useCopy();
+  return <span>{on ? t("ecosystem.doc.yes") : t("ecosystem.doc.no")}</span>;
+}
+
 function Value({ value }: { value: unknown }): ReactNode {
   if (value === null || value === undefined) return <span className="text-muted">—</span>;
-  if (typeof value === "boolean") return <span>{value ? "yes" : "no"}</span>;
+  if (typeof value === "boolean") return <Flag on={value} />;
   if (typeof value === "string" || typeof value === "number") {
     return <span className="whitespace-pre-wrap break-words">{String(value)}</span>;
   }

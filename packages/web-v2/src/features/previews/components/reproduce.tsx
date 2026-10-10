@@ -12,7 +12,8 @@ import { PREVIEW_FAILURE_REASONS, type PreviewFailureReason, type PreviewRecord 
 import type { FixConfirmation } from "@forge/contracts/reproduce";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Banner, Button, Textarea, useUrlParams, ViewHeading, RefusedLine } from "@/design";
+import { Banner, Button, Textarea, useUrlParams, ViewHeading } from "@/design";
+import { RefusedLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { usePreview } from "../hooks";
 import { PreviewFrame } from "./preview-frame";

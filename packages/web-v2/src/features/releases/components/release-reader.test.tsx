@@ -24,7 +24,7 @@ afterEach(() => {
 
 describe("the reader's header (BC-1, BC-12)", () => {
   it("heads with when it was released, where it runs, the build, how it was verified and who approved it", () => {
-    renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed={false} />);
+    renderWithQuery(<ReleaseReader page={releasePage({ view: "developer" })} slug="forge" authed={false} />);
     const h = screen.getByTestId("page-header");
     expect(within(h).getByTestId("page-header-runs-at")).toHaveTextContent("https://forge.example");
     expect(within(h).getByTestId("page-header-build")).toHaveTextContent("aaaaaaa");
@@ -33,8 +33,14 @@ describe("the reader's header (BC-1, BC-12)", () => {
     expect(within(h).getByTestId("page-header-released")).not.toHaveTextContent("Not released yet");
   });
 
+  it("leaves the build, a sha, to the developer view (REQ-43 BC-7)", () => {
+    renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed={false} />);
+    expect(screen.queryByTestId("page-header-build")).toBeNull();
+    expect(screen.getByTestId("page-header")).not.toHaveTextContent("aaaaaaa");
+  });
+
   it("says approval was not asked, and that a draft has no build, rather than leaving the rows blank", () => {
-    const page = releasePage();
+    const page = releasePage({ view: "developer" });
     renderWithQuery(
       <ReleaseReader
         page={{ ...page, header: { ...page.header, state: "draft", releasedAt: null, environment: null, build: null, approval: { required: false, state: "not_asked", by: null, at: null } } }}
@@ -49,8 +55,24 @@ describe("the reader's header (BC-1, BC-12)", () => {
 });
 
 describe("the sections the release page reads (BC-5..8)", () => {
+  it("marks each requirement's outcome and each proven criterion, counts them in the pills, and names no code, in a user's view (REQ-43 BC-7, BC-10)", () => {
+    const base = releasePage();
+    const page = { ...base, requirements: [...base.requirements, { ...base.requirements[0], key: "REQ-41", title: "Moves one", completes: false } as (typeof base.requirements)[number]] };
+    renderWithQuery(<ReleaseReader page={page} slug="forge" authed={false} />);
+    const r = screen.getAllByTestId("page-requirement")[0] as HTMLElement;
+    expect(within(r).getByTestId("page-requirement-mark")).toHaveAccessibleName("Completes it");
+    expect(r).not.toHaveTextContent("Completes it");
+    expect(within(r).queryByTestId("page-requirement-count")).toBeNull();
+    for (const c of within(r).getAllByTestId("page-proven-code")) expect(c.textContent).not.toMatch(/BC-\d/);
+    expect(within(r).getAllByTestId("page-proven-row")[0]).toHaveTextContent(/^✓The page shows the version and date\.$/);
+    const pills = within(screen.getByTestId("page-requirements-filter")).getAllByRole("button");
+    expect(pills.map((b) => b.textContent)).toEqual(["All2", "Completes it1", "Moves it forward1"]);
+    fireEvent.click(screen.getByTestId("page-requirements-filter-advances"));
+    expect(screen.getAllByTestId("page-requirement").map((e) => within(e).getByRole("link").textContent)).toEqual(["REQ-41"]);
+  });
+
   it("lists the requirement with the criterion it proves live and what is not yet proven", () => {
-    renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed={false} />);
+    renderWithQuery(<ReleaseReader page={releasePage({ view: "developer" })} slug="forge" authed={false} />);
     const r = screen.getByTestId("page-requirement");
     expect(r).toHaveTextContent("REQ-40");
     // counted in the requirement's own criteria, each proven one said once with the rows proving it
@@ -59,12 +81,13 @@ describe("the sections the release page reads (BC-5..8)", () => {
     expect(codes.map((c) => c.getAttribute("data-code"))).toEqual(["BC-1", "BC-2"]);
     expect(codes[0]).toHaveTextContent("BC-1Each release has a page.");
     expect(within(codes[0] as HTMLElement).getAllByTestId("page-proven-row").map((row) => row.textContent)).toEqual([
-      "ISS-1 #1The page shows the version and date.",
-      "ISS-1 #2The page names who approved it.",
+      "✓ISS-1 #1The page shows the version and date.",
+      "✓ISS-1 #2The page names who approved it.",
     ]);
     // a criterion met but short of its wording is proven and says so, beside it
     expect(within(r).getAllByTestId("page-proven-short")).toHaveLength(1);
-    expect(codes[1]).toHaveTextContent("ISS-1 #3Each release opens on highlights.short of its wording");
+    expect(within(codes[1] as HTMLElement).getByTestId("page-proven-short")).toHaveAccessibleName("short of its wording");
+    expect(codes[1]).toHaveTextContent("≈ISS-1 #3Each release opens on highlights.");
     expect(within(r).queryByTestId("page-unproven")).toBeNull();
     expect(within(r).getByRole("link", { name: "REQ-40" })).toHaveAttribute("href", "/projects/forge/requirements/REQ-40");
   });
@@ -75,6 +98,7 @@ describe("the sections the release page reads (BC-5..8)", () => {
     const seven = Array.from({ length: 7 }, (_, i) => ({ code: "BC-18", statement: `refusal ${i + 1} names its field`, short: false, issueKey: "ISS-451", n: i + 1 }));
     const page = {
       ...base,
+      view: "developer" as const,
       requirements: [
         { key: "REQ-34", title: "Refusals", completes: false, proven: seven, unproven: 30, business: { total: 26, proven: [{ code: "BC-18", statement: "A refusal says in plain words what to fix, on that field." }] } },
       ],

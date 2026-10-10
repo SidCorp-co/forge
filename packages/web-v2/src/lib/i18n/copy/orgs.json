@@ -44,7 +44,9 @@
     "settings.orgs.slugChars": "Slug may use lowercase letters, digits, and hyphens only.",
     "settings.orgs.slugLong": "Slug must be 64 characters or fewer.",
     "settings.orgs.slugShort": "Slug must be at least 3 characters.",
-    "settings.orgs.title": "Organizations"
+    "settings.orgs.switchFailed": "Couldn't switch organization",
+    "settings.orgs.title": "Organizations",
+    "settings.orgs.newNamePlaceholder": "Acme Inc"
   },
   "vi": {
     "settings.orgs.add": "Thêm",

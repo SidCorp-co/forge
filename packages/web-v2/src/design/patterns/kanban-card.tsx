@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { AvatarHue } from "@/design/status";
 import { MonoTag } from "@/design/primitives/mono-tag";
 import { Avatar } from "@/design/primitives/avatar";
@@ -22,17 +23,26 @@ export interface KanbanCardProps {
 
 /** One item on a board column: key, title, state. A hairline tile, flat, no shadow. */
 export function KanbanCard({ id, title, badge, cost, held, waitingReason, note, assignee, onClick }: KanbanCardProps) {
+  const t = useCopy();
+  const label = [
+    t("common.kanban.open", { id, title }),
+    held ? t("common.kanban.held") : null,
+    waitingReason ? t("common.kanban.waiting", { reason: waitingReason }) : null,
+    note ?? null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`Open ${id} — ${title}${held ? " (on manual hold)" : ""}${waitingReason ? ` (waiting: ${waitingReason})` : ""}${note ? ` (${note})` : ""}`}
+      aria-label={label}
       className="flex w-full flex-col gap-2 border border-line-subtle bg-surface p-3 text-left transition-colors duration-150 hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
     >
       <div className="flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-1.5">
           <MonoTag>{id}</MonoTag>
-          {held && <ToneBadge tone="you" glyph="⏸" label="Hold" title="On manual hold — dispatcher won't pick up new jobs" />}
+          {held && <ToneBadge tone="you" glyph="⏸" label={t("common.kanban.hold")} title={t("common.kanban.held")} />}
         </span>
         {assignee && <Avatar initials={assignee.initials} hue={assignee.hue} size={20} />}
       </div>

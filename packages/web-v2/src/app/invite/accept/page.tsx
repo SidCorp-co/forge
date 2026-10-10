@@ -4,6 +4,8 @@ import { Banner, Button, EnumBadge, Skeleton } from "@/design";
 import { AuthShell } from "@/features/auth/components/auth-shell";
 import { ApiError, apiClient } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useAuth } from "@/providers/auth-provider";
 // Invitation accept landing — the target of every invitation email
 // (`/invite/accept?token=…[&kind=org]`). Lives OUTSIDE the (auth) group (its
@@ -25,21 +27,20 @@ interface InviteInfo {
   expiresAt: string;
 }
 
-const ERROR_COPY: Record<string, string> = {
-  INVALID_TOKEN: "This invitation link is invalid or was revoked.",
-  EXPIRED_TOKEN: "This invitation has expired — ask for a new one.",
-  ALREADY_ACCEPTED: "This invitation was already accepted.",
-  INVITATION_EMAIL_MISMATCH:
-    "You are signed in with a different email than the one this invitation was sent to.",
+const ERROR_COPY: Record<string, (t: Copy) => string> = {
+  INVALID_TOKEN: (t) => t("auth.inviteRefused.invalid"),
+  EXPIRED_TOKEN: (t) => t("auth.inviteRefused.expired"),
+  ALREADY_ACCEPTED: (t) => t("auth.inviteRefused.alreadyAccepted"),
+  INVITATION_EMAIL_MISMATCH: (t) => t("auth.inviteRefused.emailMismatch"),
 };
 
-function inviteCopy(err: unknown): string {
-  if (err instanceof ApiError && err.code && ERROR_COPY[err.code])
-    return ERROR_COPY[err.code];
-  return formatApiError(err);
+function inviteCopy(err: unknown, t: Copy): string {
+  const said = err instanceof ApiError && err.code ? ERROR_COPY[err.code] : undefined;
+  return said ? said(t) : formatApiError(err);
 }
 
 function AcceptInvite() {
+  const t = useCopy();
   const params = useSearchParams();
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
@@ -55,11 +56,7 @@ function AcceptInvite() {
     retry: false,
   });
   const info = infoQ.data ?? null;
-  const loadError = !token
-    ? (ERROR_COPY.INVALID_TOKEN ?? "Missing invitation token.")
-    : infoQ.isError
-      ? inviteCopy(infoQ.error)
-      : null;
+  const loadError = !token ? t("auth.inviteRefused.invalid") : infoQ.isError ? inviteCopy(infoQ.error, t) : null;
   const [acceptError, setAcceptError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
 
@@ -72,33 +69,32 @@ function AcceptInvite() {
       });
       router.push(isOrg ? "/settings?tab=orgs" : "/projects");
     } catch (err) {
-      setAcceptError(inviteCopy(err));
+      setAcceptError(inviteCopy(err, t));
       setAccepting(false);
     }
   }
 
   const targetName = info?.orgName ?? info?.projectName ?? "";
-  const kindLabel = isOrg ? "organization" : "project";
 
   return (
     <AuthShell
-      title="You're invited"
+      title={t("auth.invite.title")}
       subtitle={
         info
-          ? `Join the ${targetName} ${kindLabel} on Forge.`
-          : "Checking your invitation…"
+          ? t(isOrg ? "auth.invite.joinOrg" : "auth.invite.joinProject", { name: targetName })
+          : t("auth.invite.checking")
       }
       footer={
         !user ? (
           <>
-            New to Forge?{" "}
+            {t("auth.login.newHere")}{" "}
             <Link
               href={`/register${info ? `?email=${encodeURIComponent(info.email)}` : ""}`}
               className="text-link font-semibold"
             >
-              Create an account
+              {t("auth.login.createAccount")}
             </Link>{" "}
-            with the invited email, then reopen this link.
+            {t("auth.invite.registerThen")}
           </>
         ) : undefined
       }
@@ -114,13 +110,11 @@ function AcceptInvite() {
         <div className="space-y-4">
           <div className="space-y-2 rounded-md border border-line bg-surface px-4 py-3">
             <p className="text-fg">
-              <strong>{info.inviterEmail}</strong> invited{" "}
-              <strong>{info.email}</strong> to join{" "}
-              <strong>{targetName}</strong> as{" "}
+              {t("auth.invite.line", { inviter: info.inviterEmail, email: info.email, name: targetName })}{" "}
               <EnumBadge family="role" value={info.role} />
             </p>
             <p className="fg-body-sm text-muted">
-              Valid until {new Date(info.expiresAt).toLocaleDateString()}.
+              {t("auth.invite.validUntil", { date: new Date(info.expiresAt).toLocaleDateString() })}
             </p>
           </div>
 
@@ -135,7 +129,7 @@ function AcceptInvite() {
               loading={accepting}
               onClick={() => void accept()}
             >
-              Accept invitation
+              {t("auth.invite.accept")}
             </Button>
           ) : (
             <Link
@@ -143,7 +137,7 @@ function AcceptInvite() {
               className="block"
             >
               <Button variant="primary" className="w-full">
-                Sign in to accept
+                {t("auth.invite.signInToAccept")}
               </Button>
             </Link>
           )}

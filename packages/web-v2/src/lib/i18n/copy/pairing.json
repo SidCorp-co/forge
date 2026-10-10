@@ -1,0 +1,27 @@
+{
+  "en": {
+    "pairing.actsAsAgent": "Acts as {name} ({address}) on {n} project(s).",
+    "pairing.actsAsYou": "Acts as you. Reaches no project; runs the daemon only.",
+    "pairing.agentsFailed": "Agents could not load. Approving now pairs the box as you.",
+    "pairing.agentsLoading": "Loading agents…",
+    "pairing.approve": "Approve device",
+    "pairing.approved.as": "Paired as {name} ({address}).",
+    "pairing.approved.back": "Return to your terminal.",
+    "pairing.approved.title": "Device approved",
+    "pairing.asMe": "Me — {email}",
+    "pairing.deny": "Deny",
+    "pairing.denied": "Request denied",
+    "pairing.device.hostname": "Hostname",
+    "pairing.device.label": "Label",
+    "pairing.device.platform": "Platform",
+    "pairing.noAgents": "No agents",
+    "pairing.noCode": "No code",
+    "pairing.ownOnly": "Approve only devices you started.",
+    "pairing.pairAs": "Pair this device as",
+    "pairing.request.check": "Check it matches your terminal before approving.",
+    "pairing.request.title": "Pairing request",
+    "pairing.retry": "Try again",
+    "pairing.thisAccount": "this account",
+    "pairing.title": "Approve a device"
+  }
+}

@@ -25,7 +25,7 @@ describe("an old Decisions, Roadmap or Memory link", () => {
   it("names where each record is read now, keeping the record an old decision-log filter named", () => {
     const none = new URLSearchParams();
     expect(movedTarget("hop", "decisions", none)).toBe("/projects/hop/requirements?moved=decisions");
-    expect(movedTarget("hop", "decisions", new URLSearchParams("requirement=REQ-14"))).toBe("/projects/hop/requirements/REQ-14?tab=decisions&moved=decisions");
+    expect(movedTarget("hop", "decisions", new URLSearchParams("requirement=REQ-14"))).toBe("/projects/hop/requirements/REQ-14?tab=activity&moved=decisions");
     expect(movedTarget("hop", "decisions", new URLSearchParams("workflow=intake"))).toBe("/projects/hop/workflows/intake?tab=decisions&moved=decisions");
     expect(movedTarget("hop", "decisions", new URLSearchParams("issue=ISS-110"))).toBe("/projects/hop/issues/ISS-110?view=developer&moved=decisions");
     expect(movedTarget("hop", "roadmap", none)).toBe("/projects/hop/requirements?group=roadmap&moved=roadmap");
@@ -35,7 +35,7 @@ describe("an old Decisions, Roadmap or Memory link", () => {
   it("replaces the old page with the place that holds its record", () => {
     at("/projects/hop/decisions?requirement=REQ-14");
     render(<DecisionsPage />);
-    expect(replace).toHaveBeenCalledWith("/projects/hop/requirements/REQ-14?tab=decisions&moved=decisions");
+    expect(replace).toHaveBeenCalledWith("/projects/hop/requirements/REQ-14?tab=activity&moved=decisions");
     at("/projects/hop/roadmap");
     render(<RoadmapPage />);
     expect(replace).toHaveBeenLastCalledWith("/projects/hop/requirements?group=roadmap&moved=roadmap");

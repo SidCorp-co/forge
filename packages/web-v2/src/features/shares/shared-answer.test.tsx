@@ -180,6 +180,6 @@ describe("a shared answer", () => {
       body: { code: "SHARE_NOT_AVAILABLE", message: "not available", error: { code: "SHARE_NOT_AVAILABLE", message: "not available", refusals: [] } },
     }));
     renderWithQuery(<SharedAnswer release={() => null} token={TOKEN} signedIn={false} />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("This link is not available.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This link is not available: expired, revoked");
   });
 });

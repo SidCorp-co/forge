@@ -41,12 +41,12 @@ const PROBE_TIMEOUT_MS = 15_000;
 const CONTEXT_QUERY =
   'query ForgeAutoflowContext { apiKeyContext { organization_id stores { id slug name commerce_enabled active_theme_id } } }';
 
-/** How to get a fresh token, said wherever a token is refused. */
-function mintHint(config: AutoflowConfig): Said {
+/** Where to store a fresh token, said wherever a token is refused. */
+function signIn(config: AutoflowConfig): Said {
   const at = { base: autoflowBaseUrl(config), mcp: autoflowMcpUrl(config) };
   return config.shop
-    ? say('integrations.health.autoflow.mintHintShop', { ...at, shop: config.shop })
-    : say('integrations.health.autoflow.mintHint', at);
+    ? say('integrations.health.autoflow.signInShop', { ...at, shop: config.shop })
+    : say('integrations.health.autoflow.signIn', at);
 }
 
 async function settle(
@@ -85,7 +85,7 @@ const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, Autoflow
             ? reauthDetail(fresh.reason, autoflowBaseUrl(ctx.config))
             : say('integrations.health.autoflow.expired', {
                 reason: fresh.reason,
-                hint: mintHint(ctx.config),
+                hint: signIn(ctx.config),
               }),
           { refresh: fresh.reason },
         ),
@@ -137,7 +137,7 @@ const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, Autoflow
             'needs_reauth',
             say('integrations.health.autoflow.refused', {
               why: verbatim(probe.message),
-              hint: mintHint(ctx.config),
+              hint: signIn(ctx.config),
             }),
             { httpStatus: probe.status },
           ),
@@ -176,7 +176,7 @@ const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, Autoflow
             'needs_reauth',
             say('integrations.health.autoflow.sites', {
               n: stores.length,
-              hint: mintHint(ctx.config),
+              hint: signIn(ctx.config),
             }),
           ),
         );
@@ -191,7 +191,7 @@ const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, Autoflow
             say('integrations.health.autoflow.otherSite', {
               site: store.slug ? verbatim(store.slug) : say('integrations.health.autoflow.noSlug'),
               shop: ctx.config.shop,
-              hint: mintHint(ctx.config),
+              hint: signIn(ctx.config),
             }),
             { tokenSite: store.slug ?? null, bindingShop: ctx.config.shop },
           ),

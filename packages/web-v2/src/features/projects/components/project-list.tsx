@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { HealthDot, ProjectMark, Stat, TBody, TD, TH, THead, TR, Table } from '@/design';
+import { useCopy } from '@/lib/i18n/interface-language';
 import { formatRelativeTime, formatSpend } from '../derive';
 import { projectGlyph, projectInitials } from '../glyph';
 import type { ProjectConsoleItem } from '../types';
@@ -17,18 +18,19 @@ interface ProjectListProps {
 
 export function ProjectList({ items, now, onTogglePin }: ProjectListProps) {
   const router = useRouter();
+  const t = useCopy();
   return (
     <Table>
       <THead>
         <TR className="hover:bg-transparent">
           <TH className="w-px" />
-          <TH>Project</TH>
-          <TH>Health</TH>
-          <TH>Runs</TH>
-          <TH>Issues</TH>
-          <TH>Runners</TH>
-          <TH className="text-right">Spend</TH>
-          <TH className="text-right">Team</TH>
+          <TH>{t('projects.col.project')}</TH>
+          <TH>{t('projects.col.health')}</TH>
+          <TH>{t('projects.col.runs')}</TH>
+          <TH>{t('projects.col.issues')}</TH>
+          <TH>{t('projects.col.runners')}</TH>
+          <TH className="text-right">{t('projects.col.spend')}</TH>
+          <TH className="text-right">{t('projects.col.team')}</TH>
         </TR>
       </THead>
       <TBody>

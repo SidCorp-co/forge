@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "@/design/icons/icon";
 import { cn } from "@/lib/utils/cn";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { IconButton } from "./icon-button";
 
 type Tone = "info" | "attention" | "danger" | "success";
@@ -22,12 +23,13 @@ export interface BannerProps {
 /** A notice line in the flow of the page: a tone rule at its left, the tone's icon and text, never a box. */
 export function Banner({ tone = "info", children, action, onDismiss }: BannerProps) {
   const t = TONE[tone];
+  const copy = useCopy();
   return (
     <div className={cn("flex items-center gap-2.5 border-l-2 py-1 pl-3", t.line)}>
       <Icon name={t.icon} size={16} className={cn("flex-none", t.text)} />
       <div className={cn("fg-body-sm min-w-0 flex-1", t.text)}>{children}</div>
       {action}
-      {onDismiss ? <IconButton icon="x" size="sm" aria-label="Dismiss" onClick={onDismiss} /> : null}
+      {onDismiss ? <IconButton icon="x" size="sm" aria-label={copy("common.dismiss")} onClick={onDismiss} /> : null}
     </div>
   );
 }

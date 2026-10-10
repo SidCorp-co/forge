@@ -146,20 +146,30 @@ export interface StepView {
 // Vietnamese step name does not fit one line, and a cut one reads as a different word
 const WRAP = "block leading-tight [overflow-wrap:anywhere]";
 
-/** A lifecycle as one segmented bar with its step names under it, each read whole; the current step is toned. */
-export function StepBar({ steps, caption }: { steps: readonly StepView[]; caption?: ReactNode }) {
+/**
+ * A lifecycle as one segmented bar with its step names under it, each read whole; the current step is
+ * toned. With `named={false}` each step's name is its segment's accessible name and tooltip, not drawn:
+ * a page whose header already says the state draws the bar alone, so it is not said twice (REQ-43 BC-5).
+ */
+export function StepBar({ steps, caption, named = true }: { steps: readonly StepView[]; caption?: ReactNode; named?: boolean }) {
   const t = useCopy();
   return (
     <div data-testid="step-bar">
       <ol className="flex gap-[3px]" aria-label={t("common.lifecycle")}>
         {steps.map((s) => (
-          <li key={s.key} className="min-w-0 flex-1" aria-current={s.state === "now" ? "step" : undefined} title={t(s.state === "done" ? "common.stepDone" : s.state === "now" ? "common.stepNow" : "common.stepNext", { label: s.label })}>
+          <li
+            key={s.key}
+            className="min-w-0 flex-1"
+            aria-current={s.state === "now" ? "step" : undefined}
+            aria-label={named ? undefined : s.label}
+            title={t(s.state === "done" ? "common.stepDone" : s.state === "now" ? "common.stepNow" : "common.stepNext", { label: s.label })}
+          >
             <span
               aria-hidden
               className="block h-1.5 rounded-pill"
               style={{ background: s.state === "now" ? LEGEND[s.tone ?? "run"].dot : s.state === "done" ? "var(--ink-600)" : "var(--paper-300)" }}
             />
-            <span className={cn(WRAP, "mt-1 text-11-5", s.state === "now" ? "font-semibold text-fg" : "text-subtle")}>{s.label}</span>
+            {named ? <span className={cn(WRAP, "mt-1 text-11-5", s.state === "now" ? "font-semibold text-fg" : "text-subtle")}>{s.label}</span> : null}
             {s.meta ? <span className={cn(WRAP, "font-mono text-11 text-subtle")}>{s.meta}</span> : null}
           </li>
         ))}

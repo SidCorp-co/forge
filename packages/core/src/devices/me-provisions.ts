@@ -64,7 +64,7 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
     if (built) {
       provisions.push({
         ...built,
-        orientation: devicesPorts().checkoutOrientation(built.projectId, built.slug),
+        orientation: await devicesPorts().checkoutOrientation(built.projectId, built.slug),
       });
     }
     reports.push(...outcome.value.reports);

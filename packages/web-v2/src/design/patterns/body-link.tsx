@@ -4,6 +4,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { addressesAFile, type BodyHref, classifyBodyHref } from "@/lib/utils/body-href";
 import { COMPACT_TAG_CLASS, LINK_CLASS } from "./body-tags";
 
@@ -11,25 +13,26 @@ import { COMPACT_TAG_CLASS, LINK_CLASS } from "./body-tags";
  *  rather than in a `title` a hover reveals: a keyboard, touch or screen-reader
  *  reader gets the same answer as a mouse one. */
 function Refused({ noun, target, reason, children }: {
-  noun: string;
+  noun: "link" | "image";
   target: string;
   reason: string;
   children: ReactNode;
 }) {
+  const t = useCopy();
   return (
     <span className="text-muted">
       {children}
       <span className="fg-caption ml-1 rounded-sm border border-line-subtle bg-sunken px-1 py-0.5 text-muted">
-        {noun} not shown: {target || "(empty)"} — {reason}
+        {t("common.body.notShown", { noun: t(`common.body.${noun}`), target: target || t("common.body.targetEmpty"), reason })}
       </span>
     </span>
   );
 }
 
 /** Why a classification does not name an image. */
-function imageRefusal(target: BodyHref): string {
-  if (target.kind === "anchor") return "this names a place on the page, not an image";
-  if (target.kind === "external") return `${target.scheme} names a person, not an image`;
+function imageRefusal(target: BodyHref, t: Copy): string {
+  if (target.kind === "anchor") return t("common.body.anchorNotImage");
+  if (target.kind === "external") return t("common.body.schemeNotImage", { scheme: target.scheme });
   return target.kind === "unresolvable" ? target.reason : "";
 }
 
@@ -68,11 +71,12 @@ export function BodyLink({ href, children }: { href?: string; children: ReactNod
 /** An image in a body. Every classification that addresses a file draws an
  *  `<img>` from it; everything else draws the refusal, from the alt text. */
 export function BodyImage({ src, alt }: { src?: string; alt?: string }): ReactNode {
+  const t = useCopy();
   const target: BodyHref = classifyBodyHref(src ?? "");
   if (!addressesAFile(target)) {
     return (
-      <Refused noun="image" target={src ?? ""} reason={imageRefusal(target)}>
-        {alt || "image"}
+      <Refused noun="image" target={src ?? ""} reason={imageRefusal(target, t)}>
+        {alt || t("common.body.image")}
       </Refused>
     );
   }

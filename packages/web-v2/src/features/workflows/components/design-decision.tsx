@@ -4,7 +4,7 @@ import type { OrphanedTrace } from "@forge/contracts/workflow-health";
 import type { DesignApprovalBlock, DesignLeftStale } from "@forge/contracts/workflows";
 import Link from "next/link";
 import { useState } from "react";
-import { Button, LEGEND, Textarea, Tooltip } from "@/design";
+import { Button, LEGEND, Textarea, Tooltip, useRecordView } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
@@ -29,10 +29,11 @@ function useBlockedReason(block: DesignApprovalBlock | null | undefined): string
 export function ApproveAction({ revision, decide, block }: { revision: number | null; decide: Decide; block?: DesignApprovalBlock | null }) {
   const t = useCopy();
   const blocked = useBlockedReason(block);
+  const [view] = useRecordView();
   if (revision === null) return null;
   const button = (
     <Button size="sm" variant="primary" onClick={() => decide.mutate({ revision, decision: "approve" })} disabled={decide.isPending || blocked !== null} aria-description={blocked ?? undefined} data-testid="design-approve">
-      {t("workflows.approveRev", { r: revision })}
+      {view === "developer" ? t("workflows.approveRev", { r: revision }) : t("workflows.act.approve")}
     </Button>
   );
   return blocked ? (
@@ -72,12 +73,13 @@ export function ApprovalReading({ revision, block, leavesStale }: { revision: nu
 
 type NoteMode = "approve" | "return";
 
-const NOTE_MODES: Record<NoteMode, { open: ProductCopyKey; label: ProductCopyKey; placeholder: ProductCopyKey; submit: ProductCopyKey; testid: string }> = {
+const NOTE_MODES: Record<NoteMode, { open: ProductCopyKey; label: ProductCopyKey; placeholder: ProductCopyKey; submit: ProductCopyKey; act: ProductCopyKey; testid: string }> = {
   approve: {
     open: "workflows.note.approveOpen",
     label: "workflows.note.approveLabel",
     placeholder: "workflows.note.approvePlaceholder",
     submit: "workflows.note.approveSubmit",
+    act: "workflows.act.approve",
     testid: "design-approve-note",
   },
   return: {
@@ -85,6 +87,7 @@ const NOTE_MODES: Record<NoteMode, { open: ProductCopyKey; label: ProductCopyKey
     label: "workflows.note.returnLabel",
     placeholder: "workflows.note.returnPlaceholder",
     submit: "workflows.note.returnSubmit",
+    act: "workflows.act.return",
     testid: "design-return",
   },
 };
@@ -94,6 +97,7 @@ export function DecisionNoteControl({ revision, decide, approveBlocked = false }
   const t = useCopy();
   const [mode, setMode] = useState<NoteMode | null>(null);
   const [drafts, setDrafts] = useState<Record<NoteMode, string>>({ approve: "", return: "" });
+  const [view] = useRecordView();
   if (revision === null) return null;
   if (mode === null) {
     const modes: NoteMode[] = approveBlocked ? ["return"] : ["approve", "return"];
@@ -132,7 +136,7 @@ export function DecisionNoteControl({ revision, decide, approveBlocked = false }
           onClick={() => decide.mutate(body)}
           data-testid={`${m.testid}-submit`}
         >
-          {t(m.submit, { r: revision })}
+          {view === "developer" ? t(m.submit, { r: revision }) : t(m.act)}
         </Button>
       </span>
     </span>

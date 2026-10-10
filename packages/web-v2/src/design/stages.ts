@@ -1,12 +1,13 @@
 
+// each pipeline stage's colour; its word is the jobType label (`enumLabel("jobType", key)`)
 export const STAGES = [
-  { key: "triage", label: "triage", color: "var(--stage-triage)", desc: "Intake & label" },
-  { key: "clarify", label: "clarify", color: "var(--stage-clarify)", desc: "Resolve ambiguity" },
-  { key: "plan", label: "plan", color: "var(--stage-plan)", desc: "Break into tasks" },
-  { key: "code", label: "code", color: "var(--stage-code)", desc: "Implement" },
-  { key: "review", label: "review", color: "var(--stage-review)", desc: "Self-review diff" },
-  { key: "test", label: "test", color: "var(--stage-test)", desc: "Run the suite" },
-  { key: "release", label: "release", color: "var(--stage-release)", desc: "Open PR / ship" },
+  { key: "triage", color: "var(--stage-triage)" },
+  { key: "clarify", color: "var(--stage-clarify)" },
+  { key: "plan", color: "var(--stage-plan)" },
+  { key: "code", color: "var(--stage-code)" },
+  { key: "review", color: "var(--stage-review)" },
+  { key: "test", color: "var(--stage-test)" },
+  { key: "release", color: "var(--stage-release)" },
 ] as const;
 
 export type StageKey = (typeof STAGES)[number]["key"];

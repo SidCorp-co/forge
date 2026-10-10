@@ -9,9 +9,14 @@
 //
 // Interactive chat sessions keep the Conversation thread; `SessionScreen`
 // picks between the two on `metadata.type`.
+//
+// A person reads where the run stands — its steps, what the agent concluded and
+// what it cost. The failing command and its output, the tool calls, files, tokens
+// and the box it ran on are the Developer view's (REQ-43 BC-7), and each fact is
+// said once on the page (BC-5): the issue opens from the header alone.
 
 import { useState } from "react";
-import { Button, EmptyState, Property, PropertyList, Section, SegmentedControl, useUrlChoice } from "@/design";
+import { EmptyState, Property, PropertyList, Section, SegmentedControl, useUrlChoice } from "@/design";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useRun } from "@/features/pipeline";
@@ -51,7 +56,8 @@ const LENS_LABEL: Record<Lens, ProductCopyKey> = {
 export interface RunReportProps {
   session: SessionRow;
   items: ConversationItem[];
-  onOpenIssue?: () => void;
+  /** The Developer view (`?view=developer`): the whole report. Off, the person's summary. */
+  developer: boolean;
 }
 
 /** The files the run edited, each opening its diff. */
@@ -59,7 +65,7 @@ function FilesChanged({ files, repoPath, onOpen }: { files: FileDiff[]; repoPath
   const t = useCopy();
   const time = useTimeFormat();
   return (
-    <Section title={t("runs.report.files")} right={<span className="fg-caption">{time.number(files.length)}</span>}>
+    <Section title={t("runs.report.files")}>
       {files.length === 0 ? (
         <p className="fg-caption">{t("runs.report.noEdits")}</p>
       ) : (
@@ -125,7 +131,28 @@ function RunWhere({ session, attempts }: { session: SessionRow; attempts: number
   );
 }
 
-export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
+/** The person's view of a run: what the agent concluded and what the run cost. */
+function RunSummary({ session, items, meta }: { session: SessionRow; items: ConversationItem[]; meta: ReturnType<typeof readTranscriptMeta> }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const cost = useSessionCost(session.id).data;
+  const { closing } = deriveNarration(items);
+  return (
+    <Section testId="session-summary">
+      {closing && (
+        <>
+          <p className="fg-caption">{t("runs.story.concluded")}</p>
+          <p className="fg-body-sm mb-2 whitespace-pre-wrap">{closing}</p>
+        </>
+      )}
+      <PropertyList>
+        <Property label={t("session.report.cost")}>{formatUsd(meta.totals?.totalCostUsd ?? cost?.estimatedCost, language)}</Property>
+      </PropertyList>
+    </Section>
+  );
+}
+
+export function RunReport({ session, items, developer }: RunReportProps) {
   const t = useCopy();
   const time = useTimeFormat();
   const [lens, setLens] = useUrlChoice<Lens>("lens", LENSES, "story");
@@ -155,45 +182,44 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 sm:px-6">
       {runQ.data && <StepStrip run={runQ.data} currentStep={session.metadata?.step ?? (session.metadata?.jobType as string | undefined)} />}
-      {blocker && <BlockerNotice blocker={blocker} onOpenIssue={onOpenIssue} />}
+      {!developer && <RunSummary session={session} items={items} meta={meta} />}
+      {developer && (
+        <>
+          {blocker && <BlockerNotice blocker={blocker} />}
 
-      <div className="flex min-h-0 flex-col gap-6 lg:flex-row">
-        <div className="lg:w-60 lg:flex-none">
-          <FilesChanged files={files} repoPath={session.repoPath} onOpen={openFile} />
-        </div>
-
-        <Section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label={t("runs.report.view")}>
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <SegmentedControl options={LENSES.map((l) => ({ value: l, label: t(LENS_LABEL[l]) }))} value={lens} onChange={setLens} />
-            <span className="fg-caption ml-auto">
-              {t("runs.report.toolCalls", { n: time.number(rows.filter((r) => r.kind === "tool").length) })}
-              {blocker ? t("runs.report.errors", { n: time.number(blocker.errorCount) }) : ""}
-            </span>
-          </div>
-          <div className="flex min-h-0 flex-1 gap-2">
-            <div className="min-w-0 flex-1 overflow-y-auto">
-              {lens === "story" && (
-                <StoryLens groups={groups} thinkingPauses={meta.thinkingPauses} narration={deriveNarration(items)} onOpenTranscript={() => setLens("transcript")} />
-              )}
-              {lens === "diff" && <DiffLens files={files} selectedPath={selectedPath} onSelect={setSelectedPath} repoPath={session.repoPath} />}
-              {lens === "transcript" && <TranscriptLens rows={rows} />}
+          <div className="flex min-h-0 flex-col gap-6 lg:flex-row">
+            <div className="lg:w-60 lg:flex-none">
+              <FilesChanged files={files} repoPath={session.repoPath} onOpen={openFile} />
             </div>
-            <Tape ticks={deriveTape(items)} />
+
+            <Section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label={t("runs.report.view")}>
+              <div className="mb-3 flex flex-wrap items-center gap-3">
+                <SegmentedControl options={LENSES.map((l) => ({ value: l, label: t(LENS_LABEL[l]) }))} value={lens} onChange={setLens} />
+                <span className="fg-caption ml-auto">
+                  {t("runs.report.toolCalls", { n: time.number(rows.filter((r) => r.kind === "tool").length) })}
+                </span>
+              </div>
+              <div className="flex min-h-0 flex-1 gap-2">
+                <div className="min-w-0 flex-1 overflow-y-auto">
+                  {lens === "story" && (
+                    <StoryLens groups={groups} thinkingPauses={meta.thinkingPauses} narration={deriveNarration(items)} onOpenTranscript={() => setLens("transcript")} />
+                  )}
+                  {lens === "diff" && <DiffLens files={files} selectedPath={selectedPath} onSelect={setSelectedPath} repoPath={session.repoPath} />}
+                  {lens === "transcript" && <TranscriptLens rows={rows} />}
+                </div>
+                <Tape ticks={deriveTape(items)} />
+              </div>
+            </Section>
+
+            <div className="flex flex-col gap-4 lg:w-70 lg:flex-none">
+              <RunCost session={session} meta={meta} />
+              <RunWhere session={session} attempts={runQ.data?.retrySummary?.totalAttempts} />
+            </div>
           </div>
-        </Section>
 
-        <div className="flex flex-col gap-4 lg:w-70 lg:flex-none">
-          <RunCost session={session} meta={meta} />
-          <RunWhere session={session} attempts={runQ.data?.retrySummary?.totalAttempts} />
-          {onOpenIssue && (
-            <Button variant="secondary" size="sm" icon="list" onClick={onOpenIssue}>
-              {t("runs.report.openIssue")}
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {spend && <TimeSpendBar spend={spend} />}
+          {spend && <TimeSpendBar spend={spend} />}
+        </>
+      )}
     </div>
   );
 }

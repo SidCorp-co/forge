@@ -43,7 +43,8 @@ export function IssueStateHead({
   return (
     <div className="grid gap-1.5 border-b border-line-subtle pb-4" data-testid="issue-state-head">
       <Line label={t("issues.now.now")} testId="issue-now">
-        {done ? t("issues.attention.done") : [w.who, w.act].filter(Boolean).join(" · ")}
+        {/* a wait on you says its act once, under Needs you; Now names who holds it */}
+        {done ? t("issues.attention.done") : owesYou ? w.who : [w.who, w.act].filter(Boolean).join(" · ")}
       </Line>
       <Line label={t("issues.attention.needs_you")} testId="issue-needs-you">
         {owesYou ? (
@@ -64,7 +65,8 @@ export function IssueStateHead({
         </Line>
       )}
       <div className="pt-3">
-        <IssueSteps standing={standing} caption={false} />
+        {/* the bar shows where the work stands; Now says it in words, so the bar names no step (REQ-43 BC-5) */}
+        <IssueSteps standing={standing} caption={false} named={false} />
       </div>
     </div>
   );

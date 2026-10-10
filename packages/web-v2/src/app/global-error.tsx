@@ -3,6 +3,10 @@
 import { useEffect } from "react";
 import { PageTitle } from "@/design";
 import { reportFailure } from "@/lib/error-tracking";
+import { productCopy } from "@/lib/i18n/product-copy";
+
+// the root layout failed, so no interface language is known here: English
+const t = productCopy();
 
 export default function GlobalError({ error }: { error: Error & { digest?: string } }) {
   useEffect(() => {
@@ -16,13 +20,10 @@ export default function GlobalError({ error }: { error: Error & { digest?: strin
     <html lang="en">
       <body>
         <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", lineHeight: 1.6 }}>
-          <PageTitle style={{ fontSize: "1.25rem", margin: 0 }}>Something broke while loading Forge.</PageTitle>
-          <p style={{ color: "#6b7280" }}>
-            The error was reported. Reloading is usually enough; if it keeps happening, the report
-            carries what we need.
-          </p>
+          <PageTitle style={{ fontSize: "1.25rem", margin: 0 }}>{t("common.crash.title")}</PageTitle>
+          <p style={{ color: "#6b7280" }}>{t("common.crash.reported")}</p>
           <button type="button" onClick={() => window.location.reload()}>
-            Reload
+            {t("common.crash.reload")}
           </button>
         </main>
       </body>

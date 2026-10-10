@@ -46,7 +46,9 @@ it touched.
 ## Copy rule
 
 Every person-facing page reads as state, not prose (owner, 2026-10-10: "UI full of text is garbage").
-The same rule is project knowledge `ui-copy-rule`, which every agent run reads.
+The same rule is project knowledge `ui-copy-rule`, which every agent run reads: a core-built prompt
+carries it, and so does the checkout orientation a box writes for the runs a master declares
+(`packages/core/src/prompt/checkout-orientation.ts:checkoutOrientation`).
 
 1. A page opens on what is true now: properties and short rows. A label is 1-3 words; a row or value at most 12 words.
 2. No explaining copy. No sentence tells the reader what a section is, what a button does, who can see something, or what will happen later. If a control needs a sentence, change the control.
@@ -57,13 +59,19 @@ The same rule is project knowledge `ui-copy-rule`, which every agent run reads.
 7. Past and voided items go to Activity, not the top.
 8. Budget: the first screen at 1440x900 shows at most 300 words; a copy string is at most 12 words (refusals and confirmations 20). A longer string is a defect, not a style choice.
 
-Held by `scripts/check-copy-budget.mjs` (the `language` axis): a copy string over budget, in the web
-copy files or in what core says (`packages/contracts/src/said-keys.ts`), is refused naming its file,
-key and word count, with no baseline. What a key is comes from its name, by the
+Held by `scripts/check-copy-budget.mjs` (the `language` axis): a copy string over budget is refused
+naming its file, key and word count, with no baseline. The sentences core writes for pages
+(`packages/contracts/src/said-keys.ts`) are held to the same budget. What a key is comes from its name, by the
 conventions `checkers.copy-budget` in `.forge/conformance.json` declares: a refusal or
 confirmation when a segment matches `refusalSegments` (20 words); an empty state when its last
 segment matches `emptySegments` (2 words, rule 4); an explanation when its last segment matches
 `explainSegments` (`hint`, `intro`, `help` and the like), refused at any length (rule 2). A label
-is never keyed as a hint. `ViewHeading`, `ListGroup` and `PageTitle` take no explaining line. The first-screen budget is held for the issue page
-by `packages/web-v2/src/features/issues/components/issue-detail-screen.test.tsx`, whose page is the
-reference for rules 1, 3, 5, 6 and 7.
+is never keyed as a hint. `ViewHeading`, `ListGroup` and `PageTitle` take no explaining line. A
+person-facing English string written inline in source (JSX text, a `title`, `label` or
+`placeholder` literal, a `{x || "Document"}` fallback, a `{ label: "Runs" }` table entry) is refused naming its file and line, so every
+word a page shows passes through a copy file the budget reads. The first-screen budget is held for the
+nine record pages — issue, requirement, feedback item, release, run, session, workflow design,
+contract and agent report — by `packages/web-v2/witness/record-pages.witness.tsx`, each with the
+Developer view `packages/web-v2/src/design/patterns/record-view.tsx` draws, and for the issue page
+also by `packages/web-v2/src/features/issues/components/issue-detail-screen.test.tsx`. The issue page
+is the reference for rules 1, 3, 5, 6 and 7.

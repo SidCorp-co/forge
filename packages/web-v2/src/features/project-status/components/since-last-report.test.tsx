@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { PRODUCT_STRINGS as copy } from "@/lib/i18n/product-copy";
 import { renderWithQuery } from "@/test/render";
-import { AT, STATUS } from "../status-fixture";
+import { AT, STATUS } from "@/test/project-status";
 import { weeklyCron, weeklyOf } from "./report-schedule";
 import { SinceLastReport } from "./since-last-report";
 

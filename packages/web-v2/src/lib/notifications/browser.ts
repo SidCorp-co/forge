@@ -1,3 +1,5 @@
+import { productCopy } from "@/lib/i18n/product-copy";
+
 
 const OPT_IN_KEY = "forge:browser-notify";
 
@@ -68,10 +70,7 @@ export function fireBrowserNotification(opts: FireBrowserNotificationOptions): v
 export function showTestNotification(): void {
   if (!isSupported() || Notification.permission !== "granted" || !isEnabled()) return;
   try {
-    const n = new Notification("Desktop notifications enabled", {
-      body: "You'll get a notification here for high-signal events when this tab is in the background.",
-      tag: "forge:notify-test",
-    });
+    const n = new Notification(productCopy()("common.notify.enabled"), { tag: "forge:notify-test" });
     n.onclick = () => {
       try {
         window.focus();

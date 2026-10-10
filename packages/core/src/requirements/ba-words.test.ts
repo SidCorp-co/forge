@@ -55,7 +55,7 @@ describe('the act a requirement waits on reads in a BA’s words', () => {
     });
     expect(s.waitingOn.act).toBe('Update to the approved design: Order handling (revision 4)');
     expect(s.waitingOn.act).not.toContain('order-flow');
-    expect(s.waitingOn.rule).toMatch(/newer approved revision/);
+    expect(s.waitingOn.rule).toMatch(/newer design revision/);
     expect(s.waitingOn.act).not.toMatch(KERNEL);
   });
 
@@ -65,7 +65,7 @@ describe('the act a requirement waits on reads in a BA’s words', () => {
       stalePins: [{ flow: 'order-flow', title: 'Order handling', pinned: 2, approved: 4 }],
     });
     expect(s.waitingOn.effect).toBe(
-      'Records that this requirement follows Order handling revision 4 from now on. Its wording and criteria do not change, and its delivery is not offered for acceptance until then.',
+      'Follows Order handling revision 4 from now on; wording and criteria stay.',
     );
     expect(s.waitingOn.effect).not.toMatch(KERNEL);
     expect(s.waitingOn.rule).not.toMatch(/re-checks/);
@@ -169,7 +169,7 @@ describe('the release gate speaks in plain words', () => {
     expect(v?.sentence).toContain('63 issues are waiting');
     expect(v?.sentence).toContain('at most 50');
     expect(v?.owner.effect).toBe(
-      'Cuts the oldest 50 merged issues as this release and leaves the other 13 at the release gate for the next one.',
+      'Cuts the oldest 50 merged issues; the other 13 wait for the next release.',
     );
   });
 
@@ -186,8 +186,7 @@ describe('the release gate speaks in plain words', () => {
             kind: 'person',
             who: 'A project admin',
             act: 'split this release into smaller releases',
-            effect:
-              'Cuts the oldest 50 merged issues as this release and leaves the others at the release gate for the next one.',
+            effect: 'Cuts the oldest 50 merged issues; the others wait for the next release.',
             says: {
               who: say('standing.who.named', { name: 'A project admin' }),
               act: say('standing.act.splitRelease'),
@@ -202,7 +201,7 @@ describe('the release gate speaks in plain words', () => {
       inFlight: null,
     } as never);
     expect(turn.waitingOn.effect).toBe(
-      'Cuts the oldest 50 merged issues as this release and leaves the others at the release gate for the next one.',
+      'Cuts the oldest 50 merged issues; the others wait for the next release.',
     );
     expect(turn.waitingOn.says.effect?.key).toBe('releases.effect.split');
   });

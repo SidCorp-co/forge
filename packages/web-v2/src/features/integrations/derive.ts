@@ -52,18 +52,17 @@ export function deriveDirectoryStatus(card: Pick<StatusCard, "status" | "meta">)
   }
 }
 
-/** Icon + text + tinted-pill metadata for each directory state. Never
- *  color-only — every state pairs an icon and a label (a11y AC). */
+/** Icon and tinted-pill metadata for each directory state. Never color-only: the pill pairs the
+ *  icon with the state's word, `integrations.status.<state>` (a11y AC). */
 export const DIRECTORY_STATUS_META: Record<
   DirectoryStatus,
-  { icon: IconName; label: string; fg: string; bg: string }
+  { icon: IconName; fg: string; bg: string }
 > = {
-  connected: { icon: "check", label: "Connected", fg: "var(--green-600)", bg: "var(--green-50)" },
-  degraded: { icon: "alert", label: "Degraded", fg: "var(--amberw-600)", bg: "var(--amberw-50)" },
-  error: { icon: "alert", label: "Error", fg: "var(--red-600)", bg: "var(--red-50)" },
+  connected: { icon: "check", fg: "var(--green-600)", bg: "var(--green-50)" },
+  degraded: { icon: "alert", fg: "var(--amberw-600)", bg: "var(--amberw-50)" },
+  error: { icon: "alert", fg: "var(--red-600)", bg: "var(--red-50)" },
   not_connected: {
     icon: "dot",
-    label: "Not connected",
     fg: "var(--fg-subtle)",
     bg: "var(--bg-sunken)",
   },
@@ -72,13 +71,11 @@ export const DIRECTORY_STATUS_META: Record<
   // amber-700 fg so it reads as actionable, not telemetry like Degraded.
   needs_reauth: {
     icon: "lock",
-    label: "Needs re-auth",
     fg: "var(--amberw-700)",
     bg: "var(--amberw-50)",
   },
   needs_scope: {
     icon: "lock",
-    label: "Permission needed",
     fg: "var(--amberw-700)",
     bg: "var(--amberw-50)",
   },
@@ -86,7 +83,6 @@ export const DIRECTORY_STATUS_META: Record<
   // label says the truth (there IS a configured integration here).
   disabled: {
     icon: "dot",
-    label: "Disabled",
     fg: "var(--fg-subtle)",
     bg: "var(--bg-sunken)",
   },
@@ -94,7 +90,6 @@ export const DIRECTORY_STATUS_META: Record<
   // not a live problem, just an unproven one.
   unverified: {
     icon: "dot",
-    label: "Not verified",
     fg: "var(--fg-muted)",
     bg: "var(--bg-sunken)",
   },

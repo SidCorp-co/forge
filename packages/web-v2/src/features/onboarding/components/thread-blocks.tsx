@@ -117,7 +117,7 @@ function LinkedItemsNote({ design }: { design: OnboardingDesignView }) {
         {design.linkedItems.map((i) => (
           <span key={i.questionId}>
             {i.prompt} · {i.state}
-            {i.citedRevision !== null ? ` · rev ${i.citedRevision}` : ""}
+            {i.citedRevision !== null ? ` · ${t("onboarding.items.rev", { n: i.citedRevision })}` : ""}
           </span>
         ))}
       </span>
@@ -149,14 +149,14 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
                 <Link
                   href={href}
                   className="min-w-0 flex-1 truncate font-semibold text-link hover:underline"
-                  title={design ? `${design.template ?? "design"} · rev ${design.revision}` : id}
+                  title={design ? t("onboarding.design.revTitle", { template: design.template ?? t("onboarding.design.fallback"), n: design.revision }) : id}
                 >
                   {design?.title ?? id}
                 </Link>
               ) : (
                 <span className="min-w-0 flex-1 truncate font-semibold text-muted">{design?.title ?? id}</span>
               )}
-              <ToneChip tone="neutral" glyph="⌂" label={t("onboarding.thread.planFromCode")} title={t("onboarding.thread.planFromCodeTitle")} />
+              <ToneChip tone="neutral" glyph="⌂" label={t("onboarding.thread.planFromCode")} />
               {design && design.linkedItems.length > 0 && <LinkedItemsNote design={design} />}
               <DesignStatus status={design?.designStatus ?? null} />
               {block.approve && href && design?.designStatus === "proposed" && (
@@ -176,7 +176,7 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
           <span className="w-21 flex-none pt-px text-12 text-subtle">{t("onboarding.thread.analysis")}</span>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-12 text-muted">
-              {t("onboarding.thread.job", { status: onboarding.job?.status ?? "none" })}
+              {t("onboarding.thread.job", { status: onboarding.job?.status ?? t("onboarding.analysis.none") })}
               {onboarding.job && onboarding.job.attempt > 1 ? ` · ${t("onboarding.thread.attempt", { n: onboarding.job.attempt })}` : ""}
             </span>
             {onboarding.job?.endedWith ? (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import { masterStandDown, masterStandUp } from "@/lib/utils/runner-commands";
 import type { ResidentMaster as ResidentMasterRow } from "../types";
 
 /**
@@ -38,8 +39,8 @@ export function ResidentMaster({
 			)}
 
 			<p className="fg-caption text-muted">
-				{t("runners.master.toStop")} <code>forge-runner master stand-down {named}</code> {where}.{" "}
-				<code>--force</code> {t("runners.master.force")} <code>forge-runner master stand-up {named}</code> {t("runners.master.standUp")}
+				{t("runners.master.toStop")} <code>{masterStandDown(named)}</code> {where}.{" "}
+				<code>--force</code> {t("runners.master.force")} <code>{masterStandUp(named)}</code> {t("runners.master.standUp")}
 			</p>
 		</div>
 	);

@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Button, DetailLayout, DetailMobileTitle, DetailPane, DetailTabs, EnumBadge, FactsRail, FieldLabel, RowItem, RowList, StatusBadge, Textarea, ViewHeading } from "@/design";
+import { Button, DetailLayout, DetailMobileTitle, DetailPane, DetailTabs, EnumBadge, FactsRail, RecordViewSwitch, RowItem, RowList, StatusBadge, Textarea, useRecordView, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { formatStamp } from "@/lib/utils/format";
 import { useDecideVersion } from "../hooks";
-import type { ContractConsumerView, ContractStandingDetail, ContractVersionView } from "../types";
+import type { ContractStandingDetail, ContractVersionView } from "../types";
 import { AdoptionStrip, ContractBanner } from "./contract-bits";
 import { ContractProperties } from "./contract-facts";
 import { VersionTimeline } from "./version-timeline";
@@ -14,27 +14,10 @@ import { VersionTimeline } from "./version-timeline";
 export const CONTRACT_TABS = ["overview", "versions", "adoption"] as const;
 type ContractTab = (typeof CONTRACT_TABS)[number];
 
-function Party({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="min-w-0 flex-1">
-      <FieldLabel>{label}</FieldLabel>
-      <div className="grid gap-2 border-t border-line-subtle pt-2">{children}</div>
-    </div>
-  );
-}
-
-function ConsumerLine({ c }: { c: ContractConsumerView }) {
-  const t = useCopy();
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-13" data-testid="pcc-consumer">
-      <b className="font-semibold">{c.project.slug}</b>
-      {c.self ? <span className="text-12 text-subtle">{t("contracts.thisProject")}</span> : null}
-      <span className="font-mono text-12-5 text-muted">{t("contracts.onVersion", { v: c.builtAgainst })}</span>
-      <StatusBadge family="contractAdoption" value={c.adoption} />
-    </div>
-  );
-}
-
+// The overview is the contract's state beside the header and the rail (REQ-43 BC-5): its summary, how
+// many consumers are on the latest version, and its versions in time. The provider, the state and the
+// current version are the rail's and the header's; the consumer rows and the version table are their
+// tabs', so none is said here a second time.
 function Overview({ d }: { d: ContractStandingDetail }) {
   const t = useCopy();
   const c = d.contract;
@@ -42,35 +25,10 @@ function Overview({ d }: { d: ContractStandingDetail }) {
     <div className="grid gap-8" data-testid="view-overview">
       {c.summary ? <p className="max-w-prose text-15 leading-relaxed text-fg">{c.summary}</p> : null}
       <section>
-        <ViewHeading>{t("contracts.pcc.heading")}</ViewHeading>
-        <div className="flex items-start gap-x-4 max-md:flex-col max-md:gap-y-4" data-testid="pcc">
-          <Party label={t("contracts.pcc.provider")}>
-            <div className="text-13">
-              <b className="font-semibold">{c.provider.slug}</b>
-              {c.direction === "provided" ? <span className="ml-2 text-12 text-subtle">{t("contracts.thisProject")}</span> : c.provider.name !== c.provider.slug ? <span className="ml-2 text-12 text-subtle">{c.provider.name}</span> : null}
-            </div>
-          </Party>
-          <span aria-hidden className="pt-8 text-muted max-md:hidden">→</span>
-          <Party label={t("contracts.pcc.contract")}>
-            <div className="grid gap-1 text-13">
-              <span className="font-mono font-semibold">{c.slug}</span>
-              <span className="font-mono text-12-5 text-muted">
-                {c.current?.version ?? t("contracts.version.noneLower")}
-                {c.pending ? ` → ${t("contracts.version.proposed", { v: c.pending.version })}` : ""}
-              </span>
-              <span>
-                <StatusBadge family="contractState" value={c.state} />
-              </span>
-            </div>
-          </Party>
-          <span aria-hidden className="pt-8 text-muted max-md:hidden">→</span>
-          <Party label={t("contracts.pcc.consumers")}>
-            {d.consumers.length === 0 ? <span className="text-13 text-subtle">{t("contracts.consumers.none")}</span> : d.consumers.map((x) => <ConsumerLine key={x.project.id} c={x} />)}
-          </Party>
-        </div>
+        <ViewHeading right={<AdoptionStrip consumers={d.consumers} latest={c.current?.version ?? null} />}>{t("contracts.pcc.consumers")}</ViewHeading>
       </section>
       <section>
-        <ViewHeading right={<span className="text-12 text-subtle">{t("contracts.versions.recorded", { n: d.versions.length })}</span>}>{t("contracts.tab.versions")}</ViewHeading>
+        <ViewHeading>{t("contracts.tab.versions")}</ViewHeading>
         <VersionTimeline row={c} versions={d.versions} />
       </section>
     </div>
@@ -110,13 +68,13 @@ function Decide({ d, v, projectId }: { d: ContractStandingDetail; v: ContractVer
   );
 }
 
-function Versions({ d, projectId }: { d: ContractStandingDetail; projectId: string }) {
+function Versions({ d, projectId, developer }: { d: ContractStandingDetail; projectId: string; developer: boolean }) {
   const t = useCopy();
   const c = d.contract;
   const decidable = c.attentionGroup === "needs_you" && c.waitingOn.kind === "you" && c.pending?.version === c.waitingOn.ref;
   return (
     <div data-testid="view-versions">
-      <ViewHeading right={<span className="text-12 text-subtle">{c.direction === "consumed" ? t("contracts.versions.approvedOnly") : t("contracts.versions.everyRecorded")}</span>}>{t("contracts.versions.history")}</ViewHeading>
+      <ViewHeading>{t("contracts.versions.history")}</ViewHeading>
       {d.versions.length === 0 ? (
         <p className="text-13 text-subtle">{t("contracts.versions.none")}</p>
       ) : (
@@ -146,8 +104,13 @@ function Versions({ d, projectId }: { d: ContractStandingDetail; projectId: stri
                       </summary>
                       <ul className="mt-1 grid gap-1">
                         {v.changes.map((ch) => (
-                          <li key={`${ch.element}${ch.kind}${ch.text}`} className="break-words text-12-5">
-                            <code className="font-mono">{ch.element}</code> <EnumBadge family="changeKind" value={ch.kind} /> <StatusBadge family="changeLevel" value={ch.level} /> {ch.text}
+                          <li key={`${ch.element}${ch.kind}${ch.text}`} className="break-words text-12-5" data-testid="version-change">
+                            {developer ? (
+                              <>
+                                <code className="font-mono">{ch.element}</code> <EnumBadge family="changeKind" value={ch.kind} /> <StatusBadge family="changeLevel" value={ch.level} />{" "}
+                              </>
+                            ) : null}
+                            {ch.text}
                           </li>
                         ))}
                       </ul>
@@ -197,6 +160,8 @@ function Adoption({ d }: { d: ContractStandingDetail }) {
 
 export function ContractPage({ d, slug, projectId, tab, onTab }: { d: ContractStandingDetail; slug: string; projectId: string; tab: ContractTab; onTab: (t: ContractTab) => void }) {
   const t = useCopy();
+  const [view, onView] = useRecordView();
+  const developer = view === "developer";
   const c = d.contract;
   const tabs = [
     { value: "overview" as const, label: t("contracts.tab.overview") },
@@ -210,16 +175,19 @@ export function ContractPage({ d, slug, projectId, tab, onTab }: { d: ContractSt
       dataKey={c.ref}
       rail={
         <FactsRail testId="relations-rail">
-          <ContractProperties d={d} slug={slug} />
+          <ContractProperties d={d} slug={slug} developer={developer} />
         </FactsRail>
       }
     >
       <DetailMobileTitle itemKey={c.ref} title={c.title} badge={<StatusBadge family="contractState" value={c.state} />} />
       <ContractBanner row={c} slug={slug} className="px-8 py-2.5 max-md:px-4" />
+      <div className="flex justify-end px-8 pt-3 max-md:px-4" data-testid="contract-view-bar">
+        <RecordViewSwitch view={view} onView={onView} />
+      </div>
       <DetailTabs tabs={tabs} value={shown} onChange={onTab} testId="contract-tabs" />
       <DetailPane label={tabs.find((x) => x.value === shown)?.label ?? t("contracts.tab.overview")}>
         {shown === "overview" ? <Overview d={d} /> : null}
-        {shown === "versions" ? <Versions d={d} projectId={projectId} /> : null}
+        {shown === "versions" ? <Versions d={d} projectId={projectId} developer={developer} /> : null}
         {shown === "adoption" ? <Adoption d={d} /> : null}
       </DetailPane>
     </DetailLayout>

@@ -132,17 +132,18 @@ describe("the header, the Proof panel and the list say one count (BC-5)", () => 
     renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
     const header = await screen.findByTestId("page-header-verified");
     expect(header).toHaveTextContent("Partly verified: 4 of 6 criteria proven");
-    expect(within(screen.getByTestId("facts-proof")).getByText("4 of 6 proven")).toBeTruthy();
+    // said once: the rail beside the reader carries no Proof panel (REQ-43 BC-5)
+    expect(screen.queryByTestId("facts-proof")).toBeNull();
+    expect(screen.queryByTestId("release-verified-by")).toBeNull();
     // every proven issue criterion is a row; the rest are the known issues
     const rows = screen.getAllByTestId("page-proven-row");
     expect(rows).toHaveLength(4);
     expect(rows.length + screen.getAllByTestId("page-known-issue").length).toBe(6);
-    // the requirement counts in its own criteria, said as such (J7 on 0.4.0-dev.222)
-    expect(screen.getByTestId("page-requirement-count")).toHaveTextContent("2 of its 3 criteria proven on this build");
-    // the short is proven and marked; the criterion tracing no code is listed under its issue's key
+    // a user's view counts in the pills, marks each row, and names no issue, number or code (REQ-43 BC-7, BC-10)
+    expect(screen.queryByTestId("page-requirement-count")).toBeNull();
     expect(screen.getAllByTestId("page-proven-short")).toHaveLength(1);
-    expect(rows[2]).toHaveTextContent("ISS-2 #1(REQ-1 BC-2) the reminder names the patient");
-    expect(within(screen.getByTestId("page-untraced")).getByTestId("page-proven-row")).toHaveTextContent("ISS-3 #1the list loads in a second");
+    expect(rows[2]).toHaveTextContent(/^✓the reminder names the patient$/);
+    expect(within(screen.getByTestId("page-untraced")).getByTestId("page-proven-row")).toHaveTextContent(/^✓the list loads in a second$/);
   });
 });
 

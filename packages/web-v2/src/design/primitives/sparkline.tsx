@@ -20,7 +20,7 @@ export function Sparkline({
   className,
 }: SparklineProps) {
   if (points.length < 2) return null;
-  const config: ChartConfig = { value: { label: "Value", color: stroke } };
+  const config: ChartConfig = { value: { color: stroke } };
   const data = points.map((value, i) => ({ i, value }));
   return (
     <ChartContainer

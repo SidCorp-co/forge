@@ -4,12 +4,10 @@ import { HEALTH_MARKER_KINDS, type WorkflowHealth } from "@forge/contracts/workf
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Button, Fact, FactsEmpty, FactsGroup, StatusBadge } from "@/design";
+import { Button, Fact, FactsEmpty, FactsGroup, StatusBadge, useRecordView } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
 import { TONE_META } from "@/design/status";
-import { DisclosureToggle } from "@/features/releases";
 import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -172,7 +170,7 @@ function DraftFromDesign({ projectId, slug, workflowId, flow, title }: { project
   );
 }
 
-function Requirements({ d, slug, projectId, title }: { d: WorkflowDesign; slug: string; projectId: string | undefined; title: string }) {
+function Requirements({ d, slug, projectId, title, developer }: { d: WorkflowDesign; slug: string; projectId: string | undefined; title: string; developer: boolean }) {
   const t = useCopy();
   return (
     <FactsGroup title={t("workflows.facts.requirement")} count={d.requirements.length > 1 ? t("workflows.facts.linked", { n: d.requirements.length }) : undefined} testId="facts-requirement">
@@ -191,7 +189,7 @@ function Requirements({ d, slug, projectId, title }: { d: WorkflowDesign; slug: 
               <span className="min-w-0 flex-1 truncate" title={r.title}>
                 {r.title}
               </span>
-              {r.pinnedRevision !== null ? <Pin r={r} approved={d.approvedRevision} /> : null}
+              {developer && r.pinnedRevision !== null ? <Pin r={r} approved={d.approvedRevision} /> : null}
               <StatusBadge family="requirement" value={r.state} />
             </li>
           ))}
@@ -316,22 +314,14 @@ function PlainStatus({ d, health }: { d: WorkflowDesign; health: WorkflowHealth 
   );
 }
 
-/** The kernel's own terms for the same facts (markers, reconciliation state, build gate), collapsed. */
+/** The kernel's own terms for the same facts (markers, reconciliation state, build gate): the Developer view's (REQ-43 BC-7). */
 function TechnicalDetail({ d, slug, health, projectId }: { d: WorkflowDesign; slug: string; health: WorkflowHealth | undefined; projectId: string | undefined }) {
   const t = useCopy();
-  const [open, setOpen] = useState(false);
   return (
     <section aria-label={t("workflows.technicalDetail")} data-testid="design-technical">
-      <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="px-0 py-2 text-13" testId="design-technical-toggle">
-        {t("workflows.technicalDetail")}
-      </DisclosureToggle>
-      {open ? (
-        <div>
-          {health ? <HealthGroup health={health} slug={slug} projectId={projectId} canDecide={d.canDecide} /> : null}
-          {health ? <ReconciliationGroup health={health} slug={slug} /> : null}
-          <BuildGate d={d} slug={slug} />
-        </div>
-      ) : null}
+      {health ? <HealthGroup health={health} slug={slug} projectId={projectId} canDecide={d.canDecide} /> : null}
+      {health ? <ReconciliationGroup health={health} slug={slug} /> : null}
+      <BuildGate d={d} slug={slug} />
     </section>
   );
 }
@@ -347,13 +337,44 @@ interface DesignFactsProps {
   projectId?: string | undefined;
 }
 
-export function WorkflowDesignProperties({ d, record, shown, shownRevision, template, slug, health, projectId }: DesignFactsProps) {
+/** Who approved the design: a person's view names them, the developer view the revision and its note too. */
+function ApprovedFact({ d, developer }: { d: WorkflowDesign; developer: boolean }) {
   const t = useCopy();
   const time = useTimeFormat();
   const language = useInterfaceLanguage();
-  const latest = d.revisions[0] ?? null;
   const approved = d.revisions.find((r) => r.revision === d.approvedRevision) ?? null;
   const approvedReason = approved ? revisionReason(approved, language) : null;
+  const approvedAt = approved?.decidedAt ? t("workflows.facts.approvedAt", { at: time.dateTime(approved.decidedAt) }) : undefined;
+  return (
+    <Fact label={t("workflows.facts.approved")} testId="fact-approved">
+      {approved && !developer ? (
+        <span title={approvedAt}>{approved.decidedByName ?? (approved.decidedAt ? time.relative(approved.decidedAt) : t("workflows.facts.approved"))}</span>
+      ) : approved ? (
+        <span className="grid min-w-0 basis-full gap-0.5">
+          <span title={approvedAt}>
+            {approved.decidedByName ? t("workflows.facts.revBy", { r: approved.revision, who: approved.decidedByName }) : t("workflows.facts.rev", { r: approved.revision })}
+          </span>
+          {approvedReason ? (
+            <span className="line-clamp-4 whitespace-pre-wrap break-words text-13 text-muted" title={approvedReason} data-testid="fact-approved-note">
+              {approvedReason}
+            </span>
+          ) : null}
+        </span>
+      ) : d.approvedRevision !== null ? (
+        <span>{developer ? t("workflows.facts.rev", { r: d.approvedRevision }) : t("workflows.facts.approved")}</span>
+      ) : (
+        <span className="text-muted">{t("workflows.facts.notApproved")}</span>
+      )}
+    </Fact>
+  );
+}
+
+export function WorkflowDesignProperties({ d, record, shown, shownRevision, template, slug, health, projectId }: DesignFactsProps) {
+  const t = useCopy();
+  const time = useTimeFormat();
+  const [view] = useRecordView();
+  const developer = view === "developer";
+  const latest = d.revisions[0] ?? null;
   const shownState = d.revisions.find((r) => r.revision === shownRevision)?.state ?? null;
   const owned = shown.steps.filter((s) => s.node?.owner).length;
   const deadlines = shown.steps.filter((s) => s.node?.sla).length;
@@ -368,43 +389,28 @@ export function WorkflowDesignProperties({ d, record, shown, shownRevision, temp
         </FactsGroup>
       ) : null}
       <PlainStatus d={d} health={health} />
-      <Requirements d={d} slug={slug} projectId={projectId} title={shown.title} />
+      <Requirements d={d} slug={slug} projectId={projectId} title={shown.title} developer={developer} />
       <FactsGroup title={t("workflows.facts.properties")} testId="facts-properties">
-        <Fact label={t("workflows.facts.revision")} testId="fact-revision">
-          <span className="font-mono text-13">r{shownRevision}</span>
-          {shownState ? <StatusBadge family="designRevision" value={shownState} /> : null}
-        </Fact>
-        <Fact label={t("workflows.facts.approved")} testId="fact-approved">
-          {approved ? (
-            <span className="grid min-w-0 basis-full gap-0.5">
-              <span title={approved.decidedAt ? t("workflows.facts.approvedAt", { at: time.dateTime(approved.decidedAt) }) : undefined}>
-                {approved.decidedByName ? t("workflows.facts.revBy", { r: approved.revision, who: approved.decidedByName }) : t("workflows.facts.rev", { r: approved.revision })}
-              </span>
-              {approvedReason ? (
-                <span className="line-clamp-4 whitespace-pre-wrap break-words text-13 text-muted" title={approvedReason} data-testid="fact-approved-note">
-                  {approvedReason}
-                </span>
-              ) : null}
-            </span>
-          ) : d.approvedRevision !== null ? (
-            <span>{t("workflows.facts.rev", { r: d.approvedRevision })}</span>
-          ) : (
-            <span className="text-muted">{t("workflows.facts.notApproved")}</span>
-          )}
-        </Fact>
-        <Fact label={t("workflows.facts.approver")}>
-          <span>{t("workflows.facts.approverAnyone")}</span>
-        </Fact>
+        {/* the header badge says the design's state; the revision number and its state are the Developer view's (REQ-43 BC-5, BC-7) */}
+        {developer ? (
+          <Fact label={t("workflows.facts.revision")} testId="fact-revision">
+            <span className="font-mono text-13">r{shownRevision}</span>
+            {shownState ? <StatusBadge family="designRevision" value={shownState} /> : null}
+          </Fact>
+        ) : null}
+        <ApprovedFact d={d} developer={developer} />
+        {developer ? (
+          <Fact label={t("workflows.facts.approver")}>
+            <span>{t("workflows.facts.approverAnyone")}</span>
+          </Fact>
+        ) : null}
         <Fact label={t("workflows.facts.template")}>
           <span title={template ? `${template.id}@${template.version}` : undefined}>{template?.title ?? t("workflows.facts.none")}</span>
         </Fact>
-        <Fact label={unit === "states" ? t("workflows.tab.states") : t("workflows.tab.steps")}>
+        {/* the Steps tab counts them; the rail says only how many have an owner and a deadline (REQ-43 BC-5) */}
+        <Fact label={unit === "states" ? t("workflows.tab.states") : t("workflows.tab.steps")} testId="fact-steps">
           <span>
-            {shown.steps.length}
-            <span className="text-muted">
-              {" "}
-              · {t("workflows.facts.withOwner", { n: owned })} · {t(deadlines === 1 ? "workflows.count.deadline.one" : "workflows.count.deadline.many", { n: deadlines })}
-            </span>
+            {t("workflows.facts.withOwner", { n: owned })} · {t(deadlines === 1 ? "workflows.count.deadline.one" : "workflows.count.deadline.many", { n: deadlines })}
           </span>
         </Fact>
         <Fact label={t("workflows.facts.drawnBy")}>
@@ -414,7 +420,7 @@ export function WorkflowDesignProperties({ d, record, shown, shownRevision, temp
           <span title={time.dateTime(record.document.updatedAt)}>{time.relative(record.document.updatedAt)}</span>
         </Fact>
       </FactsGroup>
-      <TechnicalDetail d={d} slug={slug} health={health} projectId={projectId} />
+      {developer ? <TechnicalDetail d={d} slug={slug} health={health} projectId={projectId} /> : null}
     </div>
   );
 }

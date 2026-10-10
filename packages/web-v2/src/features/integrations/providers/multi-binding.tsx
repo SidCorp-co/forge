@@ -75,7 +75,7 @@ export function BindingRowHeader({
     <div className="flex items-center justify-between gap-2">
       <div className="flex items-center gap-2">
         {label || monoDefault ? (
-          <span className="font-mono text-sm font-semibold">{label || "default"}</span>
+          <span className="font-mono text-sm font-semibold">{label || t("integrations.provider.defaultLabel")}</span>
         ) : (
           <span className="fg-body-sm font-semibold text-muted">{t("integrations.provider.default")}</span>
         )}

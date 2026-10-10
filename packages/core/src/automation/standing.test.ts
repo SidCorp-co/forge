@@ -101,6 +101,6 @@ describe('a report whose schedule has no owner', () => {
   it('says nobody holds write, and where it is granted, when nobody does', () => {
     const w = reportStandingOf(facts, reader([])).waitingOn;
     expect(w).toMatchObject({ kind: 'none', who: 'Nobody' });
-    expect(w.rule).toContain('no person on this project holds project.write');
+    expect(w.rule).toContain('nobody holds project.write; grant it under Settings → Members');
   });
 });

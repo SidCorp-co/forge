@@ -100,7 +100,7 @@ export function QualityFigures({ quality }: QualitySectionProps) {
             <ul className="flex flex-col gap-0.5">
               {sessionFailures.map((r) => (
                 <li key={r.reason} className="fg-body-sm flex justify-between gap-2">
-                  <span className={r.reason === "unclassified" ? "text-subtle" : ""} title={`reason: ${r.reason}`}>
+                  <span className={r.reason === "unclassified" ? "text-subtle" : ""} title={t("overview.quality.reasonTitle", { reason: r.reason })}>
                     {failureReasonLabel(r.reason, language) ?? sentenceCase(r.reason)}
                   </span>
                   <span className="tabular-nums text-muted">{r.count}</span>

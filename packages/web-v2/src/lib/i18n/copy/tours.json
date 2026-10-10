@@ -20,6 +20,7 @@
     "tour.release-what-changes.title": "Release page: What users get",
     "tours.done": "Done",
     "tours.hint.later": "Later",
+    "tours.hint.saveRefused": "Could not remember that",
     "tours.hint.show": "Show {count} steps",
     "tours.meta": "{count} steps · revision {revision} · {state}",
     "tours.next": "Next",

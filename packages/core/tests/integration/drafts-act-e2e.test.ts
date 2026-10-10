@@ -263,7 +263,7 @@ describe('BC-1, BC-12: a stale draft is asked once, filed under merge_or_drop wi
     expect(w).toMatchObject({
       kind: 'you',
       act: 'answer whether to merge, drop or keep this draft',
-      rule: 'Forge asked about a 9-day-old draft whether to merge, drop or keep it',
+      rule: 'Forge asked whether to merge, drop or keep this 9-day-old draft',
     });
   });
 });

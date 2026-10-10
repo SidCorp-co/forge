@@ -117,7 +117,7 @@ describe("release state reads as a state, not an alarm", () => {
       </Seeded>,
     );
     expect(screen.queryByText(/RELEASE_ROSTER_EMPTY/), "the raw code is shown as text").toBeNull();
-    const line = screen.getByText(/No issue is waiting at the release gate/).closest("[data-code]");
+    const line = screen.getByText("Nothing waiting").closest("[data-code]");
     expect(line?.getAttribute("data-tone"), "the empty roster is drawn with a problem's severity").toBe("state");
   });
 

@@ -3,12 +3,11 @@
 import type { IssueBlocker } from "@forge/contracts/issue-standing";
 import type { ParkThreadQuestion } from "@forge/contracts/park";
 import type { ComponentProps, ReactNode } from "react";
-import { SegmentedControl } from "@/design";
+import { type RecordView, RecordViewSwitch } from "@/design";
 import { useIssueForecast } from "@/features/forecast";
 import { IssuePreview } from "@/features/previews";
 import { settingsHref } from "@/features/project-settings";
 import { IssueQuestions } from "@/features/questions";
-import { useCopy } from "@/lib/i18n/interface-language";
 import type { useActivity, useAttachments, useComments } from "../../detail-hooks";
 import type { useIssueStandingOf, useProjectMembers } from "../../hooks";
 import type { IssueDetail, IssueStatus } from "../../types";
@@ -21,10 +20,6 @@ import { IssuePatternList } from "../issue-pattern-list";
 import { IssueDetails } from "./issue-details";
 import { IssueStateHead } from "./issue-state-head";
 
-/** The two ways to read the page: a person's, and a developer's with every fold open. */
-export const ISSUE_PAGE_VIEWS = ["person", "developer"] as const;
-export type IssuePageView = (typeof ISSUE_PAGE_VIEWS)[number];
-
 /** The main column of the page: the state head, what needs a person, the criteria, the preview, the change and the Details. */
 export function IssuePageMain(props: {
   issue: IssueDetail;
@@ -33,8 +28,9 @@ export function IssuePageMain(props: {
   id: string;
   canWrite: boolean;
   pending: boolean;
-  view: IssuePageView;
-  onView: (view: IssuePageView) => void;
+  /** A person's view, or a developer's with every fold open and the agent text drawn. */
+  view: RecordView;
+  onView: (view: RecordView) => void;
   standingQ: ReturnType<typeof useIssueStandingOf>;
   blocker: IssueBlocker | null;
   needsYouAct: ReactNode;
@@ -55,18 +51,13 @@ export function IssuePageMain(props: {
   reasonDialog: ReactNode;
 }) {
   const { issue, projectId, slug, id, canWrite, pending, view, standingQ, blocker, agentState, liveStep } = props;
-  const t = useCopy();
   const forecast = useIssueForecast(issue.projectId, issue.displayId).data?.forecast;
   const developer = view === "developer";
   const standing = standingQ.data?.standing;
   return (
           <div className="max-w-225 px-8 pb-16 pt-5 max-md:px-4" data-testid="issue-page-main">
             <div className="mb-3 flex justify-end" data-testid="issue-view-switch">
-              <SegmentedControl
-                options={ISSUE_PAGE_VIEWS.map((v) => ({ value: v, label: t(`issues.view.${v}`) }))}
-                value={view}
-                onChange={props.onView}
-              />
+              <RecordViewSwitch view={view} onView={props.onView} />
             </div>
             <div data-highlight="waiting question">
               {standing ? <IssueStateHead standing={standing} forecast={forecast} act={props.needsYouAct} /> : null}
@@ -79,7 +70,7 @@ export function IssuePageMain(props: {
                 threadQuestion={props.threadQuestion}
                 onAnswerInThread={props.onAnswerInThread}
               />
-              <IssuePatternList issueId={issue.id} projectId={issue.projectId} />
+              <IssuePatternList issueId={issue.id} projectId={issue.projectId} show="open" />
               {props.reasonDialog}
             </div>
             {developer && blocker ? (
@@ -103,6 +94,7 @@ export function IssuePageMain(props: {
                 checklist={props.checklist}
                 canWrite={canWrite}
                 requirementKey={standingQ.data?.standing.requirement?.key ?? null}
+                developer={developer}
               />
             </div>
             <div className="border-b border-line-subtle py-4" data-highlight="preview">

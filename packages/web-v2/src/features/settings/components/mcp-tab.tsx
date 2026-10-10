@@ -118,7 +118,7 @@ function McpSnippet({
 
   const [copied, setCopied] = useState(false);
   const t = useCopy();
-  const clients = CLIENTS.map((c) => (c.value === "generic" ? { ...c, label: t("settings.mcp.generic") } : c));
+  const clients = CLIENTS.map((c) => ({ value: c.value, label: t(c.labelKey) }));
   useEffect(() => {
     if (!copied) return;
     const timer = setTimeout(() => setCopied(false), 2000);

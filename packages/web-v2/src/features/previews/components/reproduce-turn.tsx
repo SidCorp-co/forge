@@ -15,7 +15,8 @@ import {
 } from "@forge/contracts/reproduce";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { Button, RefusedLine } from "@/design";
+import { Button } from "@/design";
+import { RefusedLine } from "@/lib/api/refusal-line";
 import { toolOutputText } from "@/lib/tool-output";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { feedbackHref } from "@/lib/routes/feedback";

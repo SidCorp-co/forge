@@ -3,14 +3,13 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { NavRail, ScreenTabs, type NavItem } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useAuth } from "@/providers/auth-provider";
 import { useOperatorWhoami } from "../hooks";
 import { OPERATOR_SECTIONS, activeSectionFromPath, hrefForSection } from "../nav-model";
 import type { OperatorSectionKey, OperatorWhoami } from "../types";
 import { OperatorTopbar } from "./operator-topbar";
 
-const NAV_ITEMS: NavItem[] = OPERATOR_SECTIONS.map(({ key, label, icon }) => ({ key, label, icon }));
-const TAB_ITEMS = OPERATOR_SECTIONS.map(({ key, label }) => ({ value: key, label }));
 
 /** Layer-2 nav gate: the middleware already refused non-admins before this
  *  render, and the query is seeded from that same server verdict, so an
@@ -24,7 +23,10 @@ export function OperatorShell({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const t = useCopy();
   const { logout } = useAuth();
+  const NAV_ITEMS: NavItem[] = OPERATOR_SECTIONS.map(({ key, icon }) => ({ key, label: t(`operator.section.${key}`), icon }));
+  const TAB_ITEMS = OPERATOR_SECTIONS.map(({ key }) => ({ value: key, label: t(`operator.section.${key}`) }));
   const pathname = usePathname() || "/admin";
   const active = activeSectionFromPath(pathname);
   const { data } = useOperatorWhoami(initialWhoami);

@@ -1,9 +1,11 @@
 // REQ-35 BC-5, BC-6, BC-7, BC-13 (ISS-461): a requirement's state reads from its first screen. One
-// strip at the top of the main column, on every width, says whom it waits on, the lifecycle step and
-// the one after, and k/n verified over a count per verdict; the criteria read as a checklist whose
-// every verdict is a glyph dot beside its word, never a colour alone; revisions, decisions and activity
-// stay folded until opened. The strip's steps are the lifecycle's own and its words the verdicts' own,
-// and the page reads one waiting-on, the strip's, so nothing else on it can disagree.
+// strip at the top of the main column, on every width, says whom it waits on, where it stands on the
+// lifecycle and the step after, and k/n verified; the criteria read as a checklist whose every verdict
+// is a glyph dot named on it, never a colour alone; revisions, decisions and activity stay folded until
+// opened. The strip's steps are the lifecycle's own, and the page reads one waiting-on, the strip's, so
+// nothing else on it can disagree. REQ-43 BC-5, BC-8, BC-10 (ISS-496 part C): the header's badge says
+// the state, so the bar names no step and an ended one's banner says only that nothing is owed; the
+// counts per verdict live in the criteria's filter pills; past revisions and decisions sit in Activity.
 
 
 import { BC_VERDICT_LABELS, type BcVerdict } from "@forge/contracts/requirements";
@@ -27,11 +29,12 @@ describe("the top of a requirement page", () => {
     const strip = screen.getByTestId("requirement-progress");
     expect(strip.compareDocumentPosition(screen.getByTestId("requirement-tabs")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(strip).getByTestId("wait-banner")).toHaveTextContent("Waiting on you: accept r2");
-    expect(within(strip).getByTestId("step-bar")).toHaveTextContent("Step 2 of 5 · next In delivery");
-    expect(within(strip).getByRole("listitem", { current: "step" })).toHaveTextContent("Agreed");
+    // the header's badge says Agreed: the bar draws its place and names it only on its segment
+    expect(within(strip).getByTestId("step-bar")).toHaveTextContent(/^Next: In delivery$/);
+    expect(within(strip).getByRole("listitem", { current: "step" })).toHaveAccessibleName("Agreed");
     // 1 of the 3 criteria core lists is passing (BC-1); BC-2 fails and BC-3 has no issue
-    expect(within(strip).getByTestId("progress-verified")).toHaveTextContent("1/3 verified");
-    expect([...within(strip).getByTestId("progress-verdicts").children].map((li) => li.textContent)).toEqual(["✓1Passing", "×1Failing", "!1Gap"]);
+    expect(within(strip).getByTestId("progress-verified")).toHaveTextContent(/^1\/3 verified$/);
+    expect(within(strip).queryByTestId("progress-verdicts")).toBeNull();
   });
 
   it("stands on every width: nothing in, on or around it hides at a breakpoint", () => {
@@ -99,11 +102,10 @@ describe("the top of a requirement page", () => {
   });
 
   it("reads one waiting-on on the whole page, the strip's: a forecast paused on someone else is said nowhere", async () => {
-    const calls = core();
+    core();
     page("overview");
-    await vi.waitFor(() => expect(calls.some((c) => c.path.endsWith("/forecast/requirements/REQ-1"))).toBe(true));
-    // the forecast's own progress count has arrived, so everything the rail reads from it is drawn
-    expect(await within(screen.getByTestId("facts-issues")).findByText("1 shipped · 0 landed, awaiting release · 1 to do")).toBeInTheDocument();
+    // how many issues shipped is the strip's wait and each row's status: the rail counts none (REQ-43 BC-5)
+    expect(within(screen.getByTestId("facts-issues")).queryByText(/shipped ·/)).toBeNull();
     const strip = screen.getByTestId("requirement-progress");
     const outside = document.body.cloneNode(true) as HTMLElement;
     outside.querySelector('[data-testid="requirement-progress"]')?.remove();
@@ -115,9 +117,9 @@ describe("the top of a requirement page", () => {
   it("says nothing is owed on an accepted one, at the lifecycle's last step with no next", () => {
     const accepted = { ...reqDetail, standing: { ...reqDetail.standing, state: "accepted", next: null, attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.empty"), rule: RULE }) } } as RequirementDetail;
     render(<RequirementProgress standing={accepted.standing} slug="hop" inset="px-4" />);
-    expect(screen.getByTestId("wait-banner")).toHaveTextContent("Accepted. Nothing owed");
-    expect(screen.getByTestId("step-bar")).toHaveTextContent("Step 5 of 5");
-    expect(screen.getByTestId("step-bar")).not.toHaveTextContent("next");
+    expect(screen.getByTestId("wait-banner")).toHaveTextContent(/^Nothing owed$/);
+    expect(screen.getByTestId("step-bar")).toHaveTextContent(/^$/);
+    expect(screen.getAllByRole("listitem").at(-1)).toHaveAccessibleName("Accepted");
     expect(strayInStrip(screen.getByTestId("requirement-progress"), accepted.standing)).toBeNull();
   });
 
@@ -125,7 +127,7 @@ describe("the top of a requirement page", () => {
     const deferred = { ...reqDetail.standing, state: "deferred", next: "agreed" } as RequirementDetail["standing"];
     render(<RequirementProgress standing={deferred} slug="hop" inset="px-4" />);
     expect(screen.queryByTestId("step-bar")).toBeNull();
-    expect(screen.getByTestId("step-off-line")).toHaveTextContent("Deferred · next Agreed");
+    expect(screen.getByTestId("step-off-line")).toHaveTextContent(/^Next: Agreed$/);
     expect(screen.getByTestId("progress-verified")).toHaveTextContent("1/3 verified");
   });
 
@@ -143,17 +145,17 @@ describe("the verified count", () => {
   it("counts passing criteria only: stale, not judged, failing and gap are not verified", () => {
     core();
     page("criteria", mixed);
-    expect(within(screen.getByTestId("requirement-progress")).getByTestId("progress-verified")).toHaveTextContent(/^1\/5 verified/);
-    expect(screen.getByTestId("criteria-verified")).toHaveTextContent(/^1\/5 verified$/);
-    expect([...screen.getByTestId("progress-verdicts").children].map((li) => li.getAttribute("data-verdict"))).toEqual(["passing", "failing", "stale", "not_judged", "gap"]);
+    expect(within(screen.getByTestId("requirement-progress")).getByTestId("progress-verified")).toHaveTextContent(/^1\/5 verified$/);
+    // said once: the criteria view does not count it again (REQ-43 BC-5)
+    expect(screen.getAllByText(/verified/)).toHaveLength(1);
   });
 });
 
 describe("the criteria", () => {
-  it("read as a checklist headed k/n verified, a glyph dot leading each criterion", () => {
+  it("read as a checklist under verdict pills, a glyph dot leading each criterion", () => {
     core();
     page("criteria");
-    expect(screen.getByTestId("criteria-verified")).toHaveTextContent("1/3 verified");
+    expect(screen.getByTestId("criteria-filter")).toBeInTheDocument();
     const rows = within(screen.getByTestId("criteria-checklist")).getAllByTestId("criterion-row");
     expect(rows.map((r) => [r.querySelector('[data-testid="verdict-dot"]') === r.firstElementChild?.firstElementChild, within(r).getByTestId("verdict-dot").textContent])).toEqual([
       [true, "✓"],
@@ -162,24 +164,22 @@ describe("the criteria", () => {
     ]);
   });
 
-  it("say each verdict in a word a sighted reader sees on a phone, never by colour alone", () => {
+  it("mark each verdict with its own glyph named on it, never by colour alone, and count them only in the pills (REQ-43 BC-10)", async () => {
     core();
     page("criteria", mixed);
     const rows = within(screen.getByTestId("criteria-checklist")).getAllByTestId("criterion-row");
-    expect(rows.map((r) => within(r).getByTestId("verdict-word").textContent)).toEqual(["Passing", "Failing", "Stale", "Not judged", "Gap"]);
     for (const r of rows) {
-      const word = within(r).getByTestId("verdict-word");
-      // the word is text, not a label only a screen reader or a hover reads
-      expect(word.closest("[aria-hidden]")).toBeNull();
-      expect(hidingOf(word)).toBeNull();
-      expect(BC_VERDICT_LABELS[r.getAttribute("data-verdict") as BcVerdict]).toBe(word.textContent);
+      const dot = within(r).getByTestId("verdict-dot");
+      expect(dot).toHaveAccessibleName(BC_VERDICT_LABELS[r.getAttribute("data-verdict") as BcVerdict]);
+      // the mark is the row's one verdict: no row says its verdict's word
+      expect(r.textContent).not.toContain(BC_VERDICT_LABELS[r.getAttribute("data-verdict") as BcVerdict]);
     }
     // every dot draws its own glyph, so two verdicts of one colour never look alike
     expect(new Set(rows.map((r) => within(r).getByTestId("verdict-dot").textContent)).size).toBe(5);
-    for (const li of screen.getByTestId("progress-verdicts").children) {
-      expect(within(li as HTMLElement).getByTestId("verdict-word").textContent).toBe(BC_VERDICT_LABELS[li.getAttribute("data-verdict") as BcVerdict]);
-      expect(hidingOf(li as HTMLElement)).toBeNull();
-    }
+    const pills = within(screen.getByTestId("criteria-filter")).getAllByRole("button");
+    expect(pills.map((b) => b.textContent)).toEqual(["All5", "Passing1", "Failing1", "Stale1", "Not judged1", "Gap1"]);
+    await userEvent.click(within(screen.getByTestId("criteria-filter")).getByTestId("criteria-filter-failing"));
+    expect(within(screen.getByTestId("criteria-checklist")).getAllByTestId("criterion-row").map((r) => r.getAttribute("data-verdict"))).toEqual(["failing"]);
   });
 });
 
@@ -189,7 +189,7 @@ describe("the strip's words", () => {
     page("criteria", mixed);
     const strip = screen.getByTestId("requirement-progress");
     expect(strayInStrip(strip, mixed.standing)).toBeNull();
-    const steps = [...within(strip).getByTestId("step-bar").querySelectorAll("ol > li")].map((li) => li.querySelector("span:not([aria-hidden])")?.textContent);
+    const steps = [...within(strip).getByTestId("step-bar").querySelectorAll("ol > li")].map((li) => li.getAttribute("aria-label"));
     expect(steps).toEqual(STEP_WORDS);
   });
 
@@ -210,7 +210,7 @@ describe("the strip's words", () => {
     expect(plant('<div data-testid="step-bar"><ol><li><span>Draft</span></li></ol></div>')).toMatch(/^a second step list/);
     expect(plant("<span>3 broken · 2 untested</span>")).toBe('the text "3 broken · 2 untested"');
     expect(plant("<span>2/3 verified</span>")).toBe('the text "2/3 verified"');
-    expect(plant('<li data-verdict="passing"><span data-testid="verdict-word">Done</span></li>', within(strip).getByTestId("progress-verdicts"))).toMatch(/^a verdict count/);
+    expect(plant('<ul data-testid="progress-verdicts"><li data-verdict="passing">1 Passing</li></ul>')).toMatch(/^a list of its own/);
     expect(plant("<span>Verified</span>", within(strip).getByTestId("wait-banner"))).toBe('the text "Waiting on you: accept r2Verified" in the banner');
     expect(strayInStrip(strip, reqDetail.standing)).toBeNull();
   });
@@ -219,21 +219,27 @@ describe("the strip's words", () => {
 // ISS-461 round 3, REQ-35 BC-5: the strip names whom the requirement actually waits on, as core's
 // standing says it (`requirements/standing-work.ts`), and links what that wait is about.
 describe("revisions, decisions and activity", () => {
-  it("fold a proposal's diff and the revision list until opened", async () => {
+  it("fold a proposal's diff until opened, and keep the revisions that stood for Activity (REQ-43 BC-8)", async () => {
     core();
     page("revisions");
     expect(screen.getByTestId("open-revision")).toHaveTextContent("Thay doi 2");
     expect(screen.queryByTestId("revision-diff")).toBeNull();
-    expect(screen.queryByTestId("revision-list")).toBeNull();
+    expect(screen.queryByRole("button", { name: /All revisions/ })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /Changes against r1/ }));
     expect(screen.getByTestId("revision-diff")).toBeInTheDocument();
+  });
+
+  it("fold every revision under Activity until opened", async () => {
+    core();
+    page("activity");
+    expect(screen.queryByTestId("revision-list")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /All revisions/ }));
     expect(within(screen.getByTestId("revision-list")).getAllByRole("listitem")).toHaveLength(2);
   });
 
-  it("fold the decisions and the answers, and leave the composer open", async () => {
+  it("fold the decisions and the answers under Activity, and leave the composer open", async () => {
     core();
-    page("decisions");
+    page("activity");
     const open = await screen.findByRole("button", { name: /Decisions/ });
     expect(screen.queryByTestId("decision-row")).toBeNull();
     expect(screen.queryByTestId("requirement-answer")).toBeNull();

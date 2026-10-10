@@ -135,7 +135,7 @@ describe('project-onboarding checkout: a queued job names the run read model wai
     if (nobody.waitingOn.kind === 'gate') throw new Error('checkout_unbound reads a person');
     expect(nobody.waitingOn).toMatchObject({ kind: 'none', who: 'Nobody' });
     expect(nobody.waitingOn.act).toBe(
-      'bind a checkout on the box: no person on this project holds project.write until it is granted under Settings → Members',
+      'bind a checkout on the box: nobody holds project.write; grant it under Settings → Members',
     );
   });
 });

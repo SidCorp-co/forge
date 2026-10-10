@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import { productCopy } from "@/lib/i18n/product-copy";
 import { ShareBody } from "./share-body";
 
 // A share link's page: one frozen answer, read-only, outside the workspace shell, with no navigation
 // into the project. It is never indexed and never names itself to the next page it links to.
 export const metadata: Metadata = {
-  title: "Shared answer — Forge",
+  title: productCopy()("common.meta.sharedAnswer"),
   robots: { index: false, follow: false },
   referrer: "no-referrer",
 };

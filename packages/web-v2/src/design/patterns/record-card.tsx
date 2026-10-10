@@ -11,6 +11,7 @@
 
 import type { ForgeRecordFieldView, ForgeRecordView, RecordLens } from "@forge/contracts/forge-record";
 import { type ReactNode, useState } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 
 export interface RecordCardProps {
@@ -26,16 +27,18 @@ function fieldLabel(key: string): string {
 }
 
 function Kind({ record }: { record: ForgeRecordView }): ReactNode {
+  const t = useCopy();
   if (!record.kind) return null;
   return (
     <span className="fg-caption rounded-sm border border-line-subtle bg-sunken px-1.5 py-0.5 font-mono text-muted">
       {record.kind}
-      {record.contract === null ? null : ` · contract ${record.contract}`}
+      {record.contract === null ? null : ` · ${t("common.record.contract", { contract: record.contract })}`}
     </span>
   );
 }
 
 function Field({ field, open }: { field: ForgeRecordFieldView; open: boolean }): ReactNode {
+  const t = useCopy();
   const [shown, setShown] = useState(open);
   const body = (
     <div className="fg-body-sm whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">
@@ -54,7 +57,7 @@ function Field({ field, open }: { field: ForgeRecordFieldView; open: boolean }):
           onToggle={(e) => setShown(e.currentTarget.open)}
         >
           <summary className="fg-caption cursor-pointer text-muted">
-            {shown ? "Fold" : `Show all — ${field.over} character(s) over budget`}
+            {shown ? t("common.record.fold") : t("common.record.showAll", { n: field.over })}
           </summary>
           <div className="mt-1">{body}</div>
         </details>

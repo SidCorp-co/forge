@@ -39,7 +39,7 @@ const groupsOf = (rows: ReleaseSummary[], label: Label): ListGroup<ReleaseSummar
     Object.fromEntries(
       RELEASE_ATTENTION_GROUPS.map((g) => {
         const v = RELEASE_ATTENTION_LABELS[g];
-        return [g, { ...v, label: label("releaseAttention", g), hint: v.hint ? label("releaseAttentionHint", g) : null }];
+        return [g, { ...v, label: label("releaseAttention", g) }];
       }),
     ) as typeof RELEASE_ATTENTION_LABELS,
   );

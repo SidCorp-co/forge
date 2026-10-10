@@ -29,19 +29,16 @@ export type ContractAttentionGroup = (typeof CONTRACT_ATTENTION_GROUPS)[number];
 export const CONTRACT_ATTENTION_LABELS: StandingGroupLabels<ContractAttentionGroup> = {
 	needs_you: {
 		label: "Needs you",
-		hint: "A breaking version to adapt to before its window ends, a version to decide, or a request to reply to",
 		tone: "you",
 		collapsed: false,
 	},
 	waiting: {
 		label: "Waiting on others",
-		hint: "An issue here waits on a version not yet published, a request waits on its provider, or consumers have not adopted a breaking version",
 		tone: "blocked",
 		collapsed: false,
 	},
 	steady: {
 		label: "Steady",
-		hint: "Nothing is owed on it by anyone",
 		tone: "done",
 		collapsed: false,
 	},

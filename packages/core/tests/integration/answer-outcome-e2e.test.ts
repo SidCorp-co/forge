@@ -220,7 +220,7 @@ describe('what an answer did to its park is recorded and named (ISS-258)', () =>
     expect(park.threadQuestion).toBeNull();
     expect(park.asks).toBe(false);
     const standing = ok(await standingOf(issue.key));
-    expect(standing.blocker.reason).toContain('nothing recorded the status this park left');
+    expect(standing.blocker.reason).toContain('no left status was recorded');
     expect(standing.blocker.reason).not.toContain('an answer to a question');
     expect(standing.standing.waitingOn.act).toBe('move it on');
   });
@@ -292,7 +292,7 @@ describe('what an answer did to its park is recorded and named (ISS-258)', () =>
     const [q] = await questionsOn(issue.id);
     expect(q?.step.resume).toMatchObject({ kind: 'staged' });
     const standing = ok(await standingOf(issue.key, stagedId));
-    expect(standing.blocker.reason).toContain('not autonomous');
+    expect(standing.blocker.reason).toContain('on a staged project that moves nothing');
   });
 });
 

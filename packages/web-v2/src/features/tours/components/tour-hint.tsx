@@ -45,7 +45,7 @@ export function TourHint({ tourId, projectRole }: { tourId: string; projectRole?
           save.mutate(
             { id: tour.id, value: { revision: tour.revision, outcome: "dismissed", at: new Date().toISOString() } },
             // a refusal is said, never swallowed: unsaid, the hint comes back on the next visit and nothing explains why
-            { onError: (err) => toast({ title: "Could not remember that", description: `${formatRefusal(err)} It will be offered again on your next visit.`, tone: "error" }) },
+            { onError: (err) => toast({ title: t("tours.hint.saveRefused"), description: formatRefusal(err), tone: "error" }) },
           );
         }}
       >

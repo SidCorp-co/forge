@@ -1,6 +1,6 @@
 "use client";
 
-import { DetailHeader, ErrorState, ProjectLoader, useListOrigin } from "@/design";
+import { DetailHeader, ErrorState, ProjectLoader, RecordViewSwitch, useListOrigin, useRecordView } from "@/design";
 import { useEntityDecisions } from "@/features/comments";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -14,7 +14,7 @@ import { DesignPill } from "./workflow-parts";
 
 const centred = (node: React.ReactNode) => <div className="grid min-h-72 place-items-center">{node}</div>;
 
-// The shell's top bar is the page's sticky header (the shared DetailHeader): the named back control to Workflows, the flow, the title and the design's status; its one primary act is Approve while the design waits on the viewer
+// The shell's top bar is the page's sticky header (the shared DetailHeader): the named back control to Workflows, the flow, the title, the design's status and the person / developer switch (REQ-43 BC-7); its one primary act is Approve while the design waits on the viewer
 export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: string; slug: string; flow: string }) {
   const t = useCopy();
   const list = useWorkflows(projectId);
@@ -24,6 +24,7 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
   const decisions = useEntityDecisions(projectId, "workflow", record?.document.id);
   const decide = useDesignDecision(projectId, record?.document.id ?? "");
   const [tab, setTab] = useDesignTab();
+  const [view, setView] = useRecordView();
   const back = useListOrigin(WORKFLOWS_LIST, workflowsHref(slug));
   const d = design.data;
   const shown = d && record ? shownDesign(d, record).shown : (record?.document ?? null);
@@ -84,6 +85,7 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
         keyTitle={record?.document.id}
         title={shown?.title ?? flow}
         badge={d?.status ? <DesignPill status={d.status} reason={d.status === "returned" ? d.revisions[0]?.reason : null} /> : null}
+        views={record ? <RecordViewSwitch view={view} onView={setView} /> : null}
         action={<ApproveAction revision={revision} decide={decide} block={d?.approvalBlocked} />}
       />
       {body}

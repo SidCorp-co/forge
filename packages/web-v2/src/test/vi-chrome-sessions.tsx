@@ -131,7 +131,12 @@ const data = (): [QueryKey, unknown][] => [
   [["sessions", "list", { projectId: P, issueId: "i1", page: 1 }], { items: ROWS.slice(0, 2), totalCount: 2 }],
 ];
 
-const wrap = (children: React.ReactNode) => <Seeded data={data()}>{children}</Seeded>;
+const wrap = (children: React.ReactNode, search = "") => {
+  window.history.replaceState(null, "", `/${search}`);
+  return <Seeded data={data()}>{children}</Seeded>;
+};
+// the agent's working — tool calls, the rail, the report's lenses — is drawn in the Developer view (REQ-43 BC-7)
+const DEV = "?view=developer";
 const stuck = new Set(["s12", "run-1"]);
 const clickNth = (selector: string, n: number) => () => {
   const hit = document.querySelectorAll(selector)[n];
@@ -148,10 +153,12 @@ export const SCREENS = [
   { name: "Sessions · row menu", render: () => wrap(<SessionsScreen projectId={P} issueFilter={null} stuck={stuck} />), act: clickAll("button[aria-haspopup]") },
   { name: "Sessions · empty", render: () => wrap(<SessionsScreen projectId="p-empty" issueFilter={null} stuck={stuck} />) },
   { name: "Session · chat", render: () => wrap(<SessionScreen sessionId="s-chat" projectSlug="hop" />) },
+  { name: "Session · chat · developer", render: () => wrap(<SessionScreen sessionId="s-chat" projectSlug="hop" />, DEV) },
   { name: "Session · chat failed and empty", render: () => wrap(<SessionScreen sessionId="s-fail" projectSlug="hop" />) },
   { name: "Session · run report", render: () => wrap(<SessionScreen sessionId="s-run" projectSlug="hop" />) },
-  { name: "Session · run report diff", render: () => wrap(<SessionScreen sessionId="s-run" projectSlug="hop" />), act: clickNth('[role="tab"]', 1) },
-  { name: "Session · run report transcript", render: () => wrap(<SessionScreen sessionId="s-run" projectSlug="hop" />), act: clickNth('[role="tab"]', 2) },
+  { name: "Session · run report · developer", render: () => wrap(<SessionScreen sessionId="s-run" projectSlug="hop" />, DEV) },
+  { name: "Session · run report diff", render: () => wrap(<SessionScreen sessionId="s-run" projectSlug="hop" />, DEV), act: clickNth('[role="tab"]', 1) },
+  { name: "Session · run report transcript", render: () => wrap(<SessionScreen sessionId="s-run" projectSlug="hop" />, DEV), act: clickNth('[role="tab"]', 2) },
   { name: "Session · box run with later turns", render: () => wrap(<SessionScreen sessionId="s-box" projectSlug="hop" />) },
   { name: "Session · missing", render: () => wrap(<SessionScreen sessionId="s-none" projectSlug="hop" />) },
 ];

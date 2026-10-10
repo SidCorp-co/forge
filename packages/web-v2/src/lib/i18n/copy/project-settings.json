@@ -355,7 +355,18 @@
     "settings.project.work.noModules": "No modules",
     "settings.project.work.noParent": "No parent",
     "settings.project.work.parentOf": "Parent of {name}",
-    "settings.project.raw.writeFailed": "Nothing was written: {error}"
+    "settings.project.raw.writeFailed": "Nothing was written: {error}",
+    "settings.project.delivery.probePathPlaceholder": "commit",
+    "settings.project.delivery.environmentPlaceholder": "staging",
+    "settings.project.document.jsonLabel": "{title} (JSON)",
+    "settings.project.document.at": "at",
+    "settings.project.document.null": "null",
+    "settings.project.plugins.namePlaceholder": "forge",
+    "settings.project.people.shareLinks": "Share links",
+    "settings.project.raw.json": "JSON",
+    "settings.project.release.gap.buildCommandsPlaceholder": "pnpm install\npnpm build",
+    "settings.project.release.gap.testCommandsPlaceholder": "pnpm test",
+    "settings.project.release.gap.releaseProcedurePlaceholder": "1. …"
   },
   "vi": {
     "settings.project.advanced.archive": "Lưu trữ project",

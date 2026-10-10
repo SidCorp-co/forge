@@ -1,5 +1,6 @@
 "use client";
 
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
 
@@ -23,6 +24,7 @@ export interface PinnedTabBarProps {
  *  when empty; horizontally scrollable on overflow. Presentational — the shell
  *  feeds it `usePinnedViews()` + a router push. */
 export function PinnedTabBar({ tabs, activeHref, onSelect, onRemove }: PinnedTabBarProps) {
+  const copy = useCopy();
   if (tabs.length === 0) return null;
   return (
     <div className="flex flex-none items-center gap-1.5 overflow-x-auto border-b border-line bg-surface px-4 py-1.5">
@@ -54,7 +56,7 @@ export function PinnedTabBar({ tabs, activeHref, onSelect, onRemove }: PinnedTab
               <button
                 type="button"
                 onClick={() => onRemove(t.id)}
-                aria-label={`Unpin ${t.label}`}
+                aria-label={copy("common.unpinTab", { label: t.label })}
                 className="inline-flex size-4 items-center justify-center rounded-sm text-subtle transition-colors hover:bg-hover hover:text-fg"
               >
                 <Icon name="x" size={12} />

@@ -163,43 +163,36 @@ export type RunGroup = (typeof RUN_GROUPS)[number];
 export const RUN_GROUP_LABELS: StandingGroupLabels<RunGroup> = {
 	needs_you: {
 		label: "Needs you",
-		hint: "Answer or approve; the run holds no slot meanwhile",
 		tone: "you",
 		collapsed: false,
 	},
 	waiting: {
 		label: "Waiting on someone else",
-		hint: "A named person owes the next act",
 		tone: "neutral",
 		collapsed: false,
 	},
 	stuck: {
 		label: "Stuck",
-		hint: "Silent, lease expired, or the box and core disagree",
 		tone: "err",
 		collapsed: false,
 	},
 	running: {
 		label: "Running",
-		hint: "Holds the lease and beats",
 		tone: "run",
 		collapsed: false,
 	},
 	waiting_gate: {
 		label: "Waiting on a gate",
-		hint: "Resumes by itself",
 		tone: "blocked",
 		collapsed: false,
 	},
 	queued: {
 		label: "Queued",
-		hint: "Admitted; waits for the master or a slot",
 		tone: "ready",
 		collapsed: false,
 	},
 	finished: {
 		label: "Finished",
-		hint: "Done, failed, cancelled or handed back",
 		tone: "done",
 		collapsed: true,
 	},
@@ -208,7 +201,6 @@ export const RUN_GROUP_LABELS: StandingGroupLabels<RunGroup> = {
 /** The row the list draws above every run group, read from `master` beside the items. */
 export const RUN_MASTER_GROUP: StandingGroupLabel = {
 	label: "Project master",
-	hint: "What the master is doing now",
 	tone: "neutral",
 	collapsed: false,
 };

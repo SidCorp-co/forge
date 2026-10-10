@@ -45,9 +45,11 @@ export async function listDeviceAssignments(deviceId: string) {
   ]);
   // `bind --path` installs the same credential helper a provision does, so it is told the
   // declared repository (whose host it checks the checkout's origin against) and whether core mints for it
-  return declared.map((r) => ({
-    ...r,
-    hostCredential: credentialed.has(r.projectId),
-    orientation: devicesPorts().checkoutOrientation(r.projectId, r.slug),
-  }));
+  return Promise.all(
+    declared.map(async (r) => ({
+      ...r,
+      hostCredential: credentialed.has(r.projectId),
+      orientation: await devicesPorts().checkoutOrientation(r.projectId, r.slug),
+    })),
+  );
 }

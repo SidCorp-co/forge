@@ -1,6 +1,6 @@
 import { RUN_GROUP_LABELS, RUN_GROUPS, RUN_LANES, type RunActor, type RunLane, type RunNone } from "@forge/contracts/run-standing";
 import type { BannerTone, ListGroup, WaitingOnView } from "@/design";
-import { enumLabel, statusReading } from "@/design/vocabulary";
+import { enumLabel } from "@/design/vocabulary";
 import { formatCountdown, formatRelative } from "@/lib/i18n/format";
 import { copyOr, productCopy } from "@/lib/i18n/product-copy";
 import { said, saidView } from "@/lib/i18n/said";
@@ -50,40 +50,34 @@ export function waitingView(r: RunStanding, language = "en"): WaitingOnView {
 export const actorName = (by: RunActor | RunNone, language = "en"): string | null =>
   "type" in by ? (by.name ?? enumLabel("runActorType", by.type, language)) : null;
 
-/** The tinted line at the top of a run's peek and page: its state, and what decides the next move. */
-export function runBanner(r: RunStanding, language = "en"): { tone: BannerTone; head: string; body: string; detail: string | null; rule: string } {
+/**
+ * The tinted line at the top of a run's peek and page: what the header's badge does not say (REQ-43
+ * BC-5) — whom it waits on and for what, why it stopped, or its last beat. `detail` is a person's
+ * (the reason a cancel gave); `agent` and `rule` are core's own sentences and codes, drawn only in the
+ * developer view (BC-7). An empty `body` says nothing the page lacks, so no line is drawn.
+ */
+export function runBanner(r: RunStanding, language = "en"): { tone: BannerTone; head: string; body: string; detail: string | null; agent: string | null; rule: string } {
   const t = productCopy(language);
-  const label = statusReading("runStanding", r.state, language).label;
   const stuck = r.stuck.source === "stuck" ? r.stuck : null;
   const rule = said(r.says.rule, language);
-  if (stuck) {
-    return { tone: "err", head: `${label} ·`, body: said(stuck.says.detail, language), detail: said(stuck.says.failsBy, language), rule: `${stuck.rule}: ${rule}` };
-  }
+  if (stuck) return { tone: "err", head: "", body: said(stuck.says.detail, language), detail: null, agent: said(stuck.says.failsBy, language), rule: `${stuck.rule}: ${rule}` };
   const o = r.outcome;
-  if (o?.kind === "failed") {
-    return { tone: "err", head: `${label} ·`, body: enumLabel("failureCause", o.cause, language), detail: o.detail, rule };
-  }
+  if (o?.kind === "failed") return { tone: "err", head: "", body: enumLabel("failureCause", o.cause, language), detail: null, agent: o.detail, rule };
   if (o?.kind === "cancelled") {
     const by = actorName(o.by, language);
-    return { tone: "calm", head: `${label} ·`, body: by ? t("runs.byWho", { who: by }) : rule, detail: "type" in o.by ? o.by.reason : null, rule };
+    return { tone: "calm", head: "", body: by ? t("runs.byWhoCap", { who: by }) : "", detail: "type" in o.by ? o.by.reason : null, agent: null, rule };
   }
-  if (o?.kind === "handed_back") return { tone: "calm", head: `${label} ·`, body: said(o.says.detail, language), detail: null, rule };
-  if (o?.kind === "done") return { tone: "calm", head: `${label} ·`, body: rule, detail: null, rule };
+  if (o?.kind === "handed_back") return { tone: "calm", head: "", body: said(o.says.detail, language), detail: null, agent: null, rule };
+  if (o?.kind === "done") return { tone: "calm", head: "", body: t("runs.banner.nothingOwed"), detail: null, agent: null, rule };
   const w = waitingView(r, language);
   if (w.kind === "you" || w.kind === "person") {
-    return {
-      tone: "you",
-      head: w.kind === "you" ? t("runs.waitingOnYou") : t("runs.waitingOnWho", { who: w.who }),
-      body: w.act,
-      detail: w.rule ?? null,
-      rule,
-    };
+    return { tone: "you", head: w.kind === "you" ? t("runs.waitingOnYou") : t("runs.waitingOnWho", { who: w.who }), body: w.act, detail: null, agent: w.rule ?? null, rule };
   }
-  if (w.kind === "gate") return { tone: "blocked", head: `${label} ·`, body: `${w.who}, ${w.act}`, detail: null, rule };
-  const beat = r.lastBeatAt ? t("runs.beat", { when: formatRelative(r.lastBeatAt, language) }) : null;
-  const step = stepLabel(r, language);
-  const body = [step ? t("runs.stepWord", { step }) : null, beat].filter(Boolean).join(" · ") || rule;
-  return { tone: r.state === "queued" ? "calm" : "run", head: `${label} ·`, body, detail: null, rule };
+  if (w.kind === "gate") return { tone: "blocked", head: "", body: `${w.who}, ${w.act}`, detail: null, agent: null, rule };
+  // the run holding itself names its step and lease, which the facts rail says: the banner says its last beat
+  const beat = r.lastBeatAt ? t("runs.lastBeat", { when: formatRelative(r.lastBeatAt, language) }) : "";
+  const body = w.kind === "none" || w.kind === "run" ? beat : [`${w.who} · ${w.act}`, beat].filter(Boolean).join(" · ");
+  return { tone: r.state === "queued" ? "calm" : "run", head: "", body, detail: null, agent: null, rule };
 }
 
 const laneLabel = (l: RunLane, language: string) => (l === "job" ? productCopy(language)("runs.lane.jobs") : l === "issue" ? productCopy(language)("runs.lane.issueRuns") : enumLabel("runLane", l, language));

@@ -172,7 +172,8 @@
     "runners.toast.unassigned": "Device unassigned",
     "runners.toast.updateFailed": "Couldn't update device",
     "runners.version.notReported": "version not reported",
-    "runners.version.runner": "Runner v{v}"
+    "runners.version.runner": "Runner v{v}",
+    "runners.labels.placeholder": "release, gpu"
   },
   "vi": {
     "runners.activity.history": "Lịch sử trạng thái",

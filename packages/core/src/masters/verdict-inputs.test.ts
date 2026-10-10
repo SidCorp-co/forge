@@ -101,11 +101,9 @@ describe('outdated: by what the pane runs on, not by the runner build, and judge
   });
 
   it('a pane the box holds no record for, or cannot read the record of, is outdated by name', () => {
-    expect(outdatedWhy(placement(null, handed))).toContain(
-      'holds no record of what it was placed with',
-    );
+    expect(outdatedWhy(placement(null, handed))).toContain('no record of what it was placed with');
     const unreadable = { placement: { placed: null, unreadable: 'not json', now: handed } };
-    expect(outdatedWhy(unreadable)).toContain('(not json), so whether it runs on');
+    expect(outdatedWhy(unreadable)).toContain('its placement record is unreadable here (not json)');
     expect(masterVerdict(alive({ ...busy, ...placement(null, handed) }), online)).toMatchObject({
       act: 'keep',
       drain: true,

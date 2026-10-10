@@ -3,7 +3,6 @@ import { text } from "../config-read";
 
 export const github: ProviderModule = {
   provider: "github",
-  label: "GitHub",
   icon: "github",
   secretField: null,
   secretPlaceholder: null,

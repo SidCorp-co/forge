@@ -80,7 +80,7 @@ function Editor({
             <Input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="release"
+              placeholder={t("integrations.releaseRunner.placeholder")}
               aria-label={heading}
               disabled={busy}
             />

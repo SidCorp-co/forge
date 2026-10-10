@@ -6,13 +6,14 @@
 import type { IssueStatusTone } from "@forge/contracts/issue-vocabulary";
 import type { ReactNode } from "react";
 import { HoverCard, StatusBadge, ToneBadge } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 
 /** A dotted-underline word whose hover card carries a sentence and its evidence. */
-export function HoverNote({ label, children, className }: { label: ReactNode; children: ReactNode; className?: string }) {
+export function HoverNote({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
     <HoverCard
-      label={typeof label === "string" ? label : "Details"}
+      label={label}
       content={<span className="block max-w-70 text-12 leading-normal">{children}</span>}
       placement="top"
       className={cn("whitespace-nowrap underline decoration-dotted decoration-line-strong underline-offset-3", className)}
@@ -48,7 +49,8 @@ export function ToneChip({
 }
 
 export function DesignStatus({ status }: { status: string | null }) {
-  return status ? <StatusBadge family="design" value={status} /> : <ToneChip tone="neutral" label="Not a design" />;
+  const t = useCopy();
+  return status ? <StatusBadge family="design" value={status} /> : <ToneChip tone="neutral" label={t("onboarding.notDesign")} />;
 }
 
 /** The agent's own marks: Inferred beside a default it read from the code, New on a question it just raised. */

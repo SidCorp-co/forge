@@ -11,21 +11,20 @@
 // "Sessions for this issue" list (sibling sessions via the existing list API).
 
 import { useRouter } from "next/navigation";
-import { Banner, enumLabel, HealthDot, Icon, MonoTag, FactsGroup, Stat, StatusBadge, useElapsed } from "@/design";
+import { Banner, enumLabel, Icon, MonoTag, FactsGroup, Stat, StatusBadge, useElapsed } from "@/design";
 import { deriveSessionDisplayStatus, failureReasonAction, failureReasonLabel, sessionStep, statusToChip, type SessionRow } from "@/features/sessions";
 import { useStuckRuns } from "@/features/agents";
 import { useSessionCost, useSessions } from "@/features/sessions";
-import { isJobDriven, sessionKind } from "@/features/sessions";
+import { sessionKind } from "@/features/sessions";
 import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/pipeline";
 import { formatRefusal } from "@/lib/api/error";
 import { useRailCopy, useRailLanguage, useRailTime } from "../chrome-language";
 import { useRun } from "@/features/pipeline";
-import { useDeviceVersionLabel, useDevices } from "@/features/runners";
-import { deviceHealth } from "@/features/runners";
 import { deriveAgentTasks, deriveFilesChanged } from "../derive";
 import type { ConversationItem } from "../types";
 import { HeldReplyForRun } from "./held-reply-for-run";
 import { LoadedForRun } from "./loaded-for-run";
+import { RailRunner } from "./rail-runner";
 import { formatDuration, formatUsd } from "@/lib/i18n/format";
 
 const GATE_TONE: Record<RunGateNote["verdict"], "info" | "attention" | "success"> = {
@@ -44,7 +43,6 @@ export function ContextRail({ session, items, projectSlug }: { session: SessionR
   const display = deriveSessionDisplayStatus(session, stuck);
   const live = display === "running" || display === "stalled";
   const agentTasks = deriveAgentTasks(items);
-  const isPipeline = isJobDriven(session);
   // Only a run session's run is opened by the box with its gate condition (ISS-1192).
   const isRunSession = sessionKind(session) === "run_session";
   const runQ = useRun(session.pipelineRunId ?? undefined, isRunSession && !!session.pipelineRunId);
@@ -81,13 +79,7 @@ export function ContextRail({ session, items, projectSlug }: { session: SessionR
         </FactsGroup>
       )}
 
-      {isPipeline && (
-        <FactsGroup title={t("sessions.rail.pipeline")}>
-          <StatusBadge family="run" value={statusToChip(display)} stage={sessionStep(session.metadata) ?? undefined} />
-        </FactsGroup>
-      )}
-
-      <RailStats session={session} display={display} live={live} isPipeline={isPipeline} />
+      <RailStats session={session} live={live} />
 
       {/* Agents & tasks — elevated directly under Run stats (ISS-391) so a
           session's task breakdown is the first thing seen after the headline
@@ -131,62 +123,8 @@ export function ContextRail({ session, items, projectSlug }: { session: SessionR
   );
 }
 
-/** The runner the session is bound to; one outside the viewer's owner-scoped list shows its short id. */
-function RailRunner({ session, deviceId }: { session: SessionRow; deviceId: string }) {
-  const t = useRailCopy();
-  const language = useRailLanguage();
-  const versionLabel = useDeviceVersionLabel();
-  const devicesQ = useDevices();
-  const device = devicesQ.data?.find((d) => d.id === deviceId);
-  const repo = session.repoPath ? (
-    <div className="flex items-center gap-2 overflow-hidden">
-      <Icon name="folder" size={13} className="flex-none text-subtle" />
-      <span className="flex-1 truncate font-mono text-12" title={session.repoPath}>
-        {session.repoPath}
-      </span>
-    </div>
-  ) : null;
-  return (
-    <FactsGroup title={t("sessions.rail.runner")}>
-      <div className="flex flex-col gap-2">
-        {device ? (
-          <>
-            <div className="flex items-center gap-2 overflow-hidden">
-              <Icon name="server" size={14} className="flex-none text-subtle" />
-              <span className="flex-1 truncate fg-body-sm" title={device.name}>
-                {device.name}
-              </span>
-              <HealthDot health={deviceHealth(device.status)} />
-            </div>
-            <span className="fg-caption">
-              {enumLabel("platform", device.platform, language)}
-              {` · ${versionLabel(device.agentVersion)}`}
-            </span>
-          </>
-        ) : (
-          <div className="flex items-center gap-2 overflow-hidden">
-            <Icon name="server" size={14} className="flex-none text-subtle" />
-            <MonoTag hue="neutral">{deviceId.slice(0, 8)}</MonoTag>
-          </div>
-        )}
-        {repo}
-      </div>
-    </FactsGroup>
-  );
-}
-
 /** Turns, duration, context, tokens, cache, cost and models; the cost is the session's usage_records rollup (ISS-378). */
-function RailStats({
-  session,
-  display,
-  live,
-  isPipeline,
-}: {
-  session: SessionRow;
-  display: ReturnType<typeof deriveSessionDisplayStatus>;
-  live: boolean;
-  isPipeline: boolean;
-}) {
+function RailStats({ session, live }: { session: SessionRow; live: boolean }) {
   const t = useRailCopy();
   const language = useRailLanguage();
   const time = useRailTime();
@@ -202,11 +140,9 @@ function RailStats({
     : otherModels.length === 0
       ? firstModel.model
       : t("sessions.rail.models", { n: otherModels.length + 1 });
-  const stage = sessionStep(session.metadata) ?? undefined;
   return (
     <FactsGroup title={t("sessions.rail.stats")}>
       <div className="flex flex-col gap-2.5">
-        {!isPipeline && <StatusBadge family="run" value={statusToChip(display)} stage={stage} />}
         <Stat icon="activity" title={t("sessions.rail.turnsTitle")}>
           {usage.turns != null ? t("sessions.rail.turns", { n: time.number(usage.turns) }) : "—"}
         </Stat>

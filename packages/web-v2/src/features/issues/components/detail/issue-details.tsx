@@ -2,7 +2,9 @@
 
 // The Details of an issue page: folded rows, one per kind of long record. A row shows its label and
 // one short summary; the body opens under it. The developer view opens every row and adds the ones
-// only a developer reads (runs, mockups, memory), so a person's page is the same page folded.
+// only a developer reads (the plan, runs, mockups, memory: agent text, REQ-43 BC-7), so a person's
+// page is the same page folded. Past items — decided patterns, past decisions, retired criteria —
+// sit in Activity (BC-8).
 
 import { type ReactNode, useState } from "react";
 import { Disclosure, Markdown, ViewHeading } from "@/design";
@@ -16,6 +18,7 @@ import type { useIssueStandingOf, useProjectMembers } from "../../hooks";
 import type { IssueDetail } from "../../types";
 import { IssueRetiredCriteria } from "../criteria-list";
 import { IssueDescription } from "../issue-description";
+import { IssuePatternList } from "../issue-pattern-list";
 import { IssueDecisionsTab, IssueMemoryTab } from "./issue-record-tabs";
 import { ActivityTab, type ActivityThread, RunsTab, runsTabCount } from "./issue-sections";
 
@@ -70,13 +73,15 @@ export function IssueDetails({
     <section aria-label={t("issues.details.title")} data-testid="issue-details">
       <ViewHeading>{t("issues.details.title")}</ViewHeading>
       <div>
-        {row(
-          "plan",
-          t("issues.plan.title"),
-          issue.plan ? (steps > 0 ? t("issues.plan.steps", { n: steps }) : t("issues.plan.written")) : t("issues.now.none"),
-          issue.plan ? <Markdown>{issue.plan}</Markdown> : <p className="text-13 text-subtle">{t("issues.now.none")}</p>,
-          "plan",
-        )}
+        {developer
+          ? row(
+              "plan",
+              t("issues.plan.title"),
+              issue.plan ? (steps > 0 ? t("issues.plan.steps", { n: steps }) : t("issues.plan.written")) : t("issues.now.none"),
+              issue.plan ? <Markdown>{issue.plan}</Markdown> : <p className="text-13 text-subtle">{t("issues.now.none")}</p>,
+              "plan",
+            )
+          : null}
         {row("description", t("issues.description.title"), null, <IssueDescription issue={issue} attachments={files} canWrite={canWrite} />)}
         {row(
           "files",
@@ -98,6 +103,7 @@ export function IssueDetails({
             canWrite={canWrite}
             past={
               <>
+                <IssuePatternList issueId={issue.id} projectId={projectId} show="decided" />
                 <IssueQuestions issueId={issue.id} show="past" />
                 <IssueDecisionsTab projectId={projectId} issueKey={issue.displayId} />
                 <IssueRetiredCriteria issueId={issue.id} />

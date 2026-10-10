@@ -13,11 +13,15 @@ const STAGE_LABEL: Record<ReleaseAttemptView["stage"], ProductCopyKey> = {
   verify: "releases.stage.verify",
 };
 
+// the tooltip is the badge's own word: the verdict code it was read from is not a second fact to show
 function verdictBadge(a: ReleaseAttemptView, t: Copy) {
-  if (a.verdict === "ok") return <ToneBadge tone="ready" label={t("releases.verdict.passed")} title="ok" />;
-  if (a.verdict === "failed") return <ToneBadge tone="err" label={t("releases.verdict.failed")} title="failed" />;
-  if (a.verdict === "unverified") return <ToneBadge tone="you" label={t("releases.verdict.unverified")} title="unverified" />;
-  return <ToneBadge tone="run" label={t("releases.verdict.running")} title="running" pulse />;
+  const badge = (tone: "ready" | "err" | "you" | "run", label: string, pulse?: boolean) => (
+    <ToneBadge tone={tone} label={label} title={label} pulse={pulse} />
+  );
+  if (a.verdict === "ok") return badge("ready", t("releases.verdict.passed"));
+  if (a.verdict === "failed") return badge("err", t("releases.verdict.failed"));
+  if (a.verdict === "unverified") return badge("you", t("releases.verdict.unverified"));
+  return badge("run", t("releases.verdict.running"), true);
 }
 
 function Attempt({ a }: { a: ReleaseAttemptView }) {

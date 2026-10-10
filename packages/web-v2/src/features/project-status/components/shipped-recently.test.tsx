@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { renderWithQuery } from "@/test/render";
-import { AT, STATUS } from "../status-fixture";
+import { AT, STATUS } from "@/test/project-status";
 import { ShippedRecently } from "./shipped-recently";
 
 // JU-3: after hop 0.2.0 shipped 50 issues the dashboard still led with "Next release 0.3.0"; it now

@@ -25,10 +25,10 @@ const toneOf = (g: ReleaseReadiness["gates"][number]): GateTone =>
 	STATE_CODES.has(g.code) ? "state" : g.kind === "blocker" ? "problem" : "warning";
 
 /** The knowledge entries a release owes, each written here by a person. */
-const KNOWLEDGE_GAPS: Partial<Record<Gap, { name: ProductCopyKey; why: ProductCopyKey; placeholder: string }>> = {
-	"build-commands": { name: "settings.project.release.gap.buildCommands", why: "settings.project.release.gap.buildCommandsWhy", placeholder: "pnpm install\npnpm build" },
-	"test-commands": { name: "settings.project.release.gap.testCommands", why: "settings.project.release.gap.testCommandsWhy", placeholder: "pnpm test" },
-	"release-procedure": { name: "settings.project.release.gap.releaseProcedure", why: "settings.project.release.gap.releaseProcedureWhy", placeholder: "1. …" },
+const KNOWLEDGE_GAPS: Partial<Record<Gap, { name: ProductCopyKey; why: ProductCopyKey; placeholder: ProductCopyKey }>> = {
+	"build-commands": { name: "settings.project.release.gap.buildCommands", why: "settings.project.release.gap.buildCommandsWhy", placeholder: "settings.project.release.gap.buildCommandsPlaceholder" },
+	"test-commands": { name: "settings.project.release.gap.testCommands", why: "settings.project.release.gap.testCommandsWhy", placeholder: "settings.project.release.gap.testCommandsPlaceholder" },
+	"release-procedure": { name: "settings.project.release.gap.releaseProcedure", why: "settings.project.release.gap.releaseProcedureWhy", placeholder: "settings.project.release.gap.releaseProcedurePlaceholder" },
 };
 
 /** The gaps a field elsewhere on this page or on Connections closes. */
@@ -65,7 +65,7 @@ function KnowledgeGap({ projectId, slug, gap }: { projectId: string; slug: Gap; 
 				</p>
 				{open ? (
 					<div className="mt-2 space-y-2">
-						<Textarea aria-label={name} value={body} rows={5} className="font-mono" translate="no" placeholder={gap.placeholder} onChange={(e) => setBody(e.target.value)} />
+						<Textarea aria-label={name} value={body} rows={5} className="font-mono" translate="no" placeholder={t(gap.placeholder)} onChange={(e) => setBody(e.target.value)} />
 						{write.isError && (
 							<p role="alert" className="fg-caption" style={{ color: "var(--red-600)" }}>
 								{formatApiError(write.error)}

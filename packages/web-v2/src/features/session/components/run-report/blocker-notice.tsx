@@ -1,17 +1,13 @@
 // The failure notice. It sits above the fold because on a failed run it is the
 // only thing the reader came for, and the transcript below is 400 rows deep.
 
-import {
-  Button,
-  Icon,
-  SectionTitle,
-} from "@/design";
+import { Icon, SectionTitle } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { RunBlocker } from "../../run-report";
 
 const MAX_LINES = 8;
 
-export function BlockerNotice({ blocker, onOpenIssue }: { blocker: RunBlocker; onOpenIssue?: () => void }) {
+export function BlockerNotice({ blocker }: { blocker: RunBlocker }) {
   const t = useCopy();
   const time = useTimeFormat();
   const lines = blocker.output.split("\n").filter((l) => l.trim().length > 0);
@@ -36,11 +32,6 @@ export function BlockerNotice({ blocker, onOpenIssue }: { blocker: RunBlocker; o
             </pre>
           )}
         </div>
-        {onOpenIssue && (
-          <Button variant="secondary" size="sm" icon="list" className="flex-none" onClick={onOpenIssue}>
-            {t("runs.report.openIssue")}
-          </Button>
-        )}
       </div>
     </section>
   );

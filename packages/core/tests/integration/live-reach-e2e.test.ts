@@ -269,7 +269,7 @@ describe('a reading that cannot place every closed issue (ISS-1217)', () => {
 
     expect(read.work.notOnLive.total).toBe(1);
     expect(read.work.liveUnmeasured.shown[0]?.reason).toMatch(
-      /500 commits ahead of master and the reading listed only 8/,
+      /500 commits ahead of master; the reading listed 8/,
     );
     // core's own gap is said by key, so the pulse reads it in the reader's language
     expect(gapKeys(read.work.liveUnmeasured.shown[0]?.says.reason)).toContain('pulse.gap.cut');
@@ -296,7 +296,7 @@ describe('a reading that cannot place every closed issue (ISS-1217)', () => {
       reason: expect.stringMatching(/merged after the last reading of staging against master/),
     });
     const gaps = (await pulse()).work.liveUnmeasured.shown;
-    expect(gaps[0]?.reason).toMatch(/^1 closed issue merged after the reading/);
+    expect(gaps[0]?.reason).toMatch(/^1 closed issue merged after the \S+ reading/);
     expect(gapKeys(gaps[0]?.says.reason)).toContain('pulse.gap.lateOne');
     expect(saidDisagreements(gaps)).toEqual([]);
   });

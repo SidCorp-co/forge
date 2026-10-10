@@ -1,6 +1,8 @@
 "use client";
 
-// A report's full page: what the agent wrote, where it came from, and its triage history.
+// A report's full page: what the agent wrote, where it came from, and its triage history. The person
+// view is its state and its summary, which the header cuts to one line; the agent's detail and
+// suggestion, its signal, ids and source sit in the Developer view (REQ-43 BC-7).
 import Link from "next/link";
 import {
   DetailLayout,
@@ -11,7 +13,9 @@ import {
   Section,
   Property,
   PropertyList,
+  RecordViewSwitch,
   StatusBadge,
+  useRecordView,
   useUrlTab,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
@@ -110,14 +114,17 @@ function History({ r }: { r: ReportStanding }) {
 export function ReportPage({ projectId, slug, reportId, canWrite }: { projectId: string; slug: string; reportId: string; canWrite: boolean }) {
   const t = useCopy();
   const q = useReportDetail(projectId, reportId);
-  const [tab, setTab] = useUrlTab(REPORT_TABS);
+  const [chosen, setTab] = useUrlTab(REPORT_TABS);
+  const [view, onView] = useRecordView();
+  const developer = view === "developer";
+  const tab = chosen === "source" && !developer ? "report" : chosen;
   return (
     <QueryBoundary query={q} loadingLabel={t("schedules.report.loading")}>
       {(data) => {
         const r = data.report;
         const tabs = [
           { value: "report" as const, label: t("schedules.report.tabReport") },
-          { value: "source" as const, label: t("schedules.report.tabSource") },
+          ...(developer ? [{ value: "source" as const, label: t("schedules.report.tabSource") }] : []),
           { value: "history" as const, label: t("schedules.report.tabHistory") },
         ];
         return (
@@ -126,20 +133,27 @@ export function ReportPage({ projectId, slug, reportId, canWrite }: { projectId:
             dataKey={r.id}
             rail={
               <FactsRail>
-                <ReportProperties r={r} slug={slug} />
+                <ReportProperties r={r} slug={slug} developer={developer} />
               </FactsRail>
             }
           >
-            <DetailMobileTitle itemKey={shortId(r.id)} title={<Written text={r.summary} lang={r.writtenLang} />} badge={<StatusBadge family="reportTriage" value={r.triage} />} />
+            <DetailMobileTitle itemKey={developer ? shortId(r.id) : undefined} title={<Written text={r.summary} lang={r.writtenLang} />} badge={<StatusBadge family="reportTriage" value={r.triage} />} />
             <ReportBanner r={r} className="px-8 py-2.5 max-md:px-4" />
+            <div className="flex justify-end px-8 pt-3 max-md:px-4" data-testid="report-view-bar">
+              <RecordViewSwitch view={view} onView={onView} />
+            </div>
             <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="report-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("schedules.report.tabReport")}>
               {tab === "report" ? (
                 <div data-testid="view-report">
                   <Prose title={t("schedules.report.summary")} lang={r.writtenLang}>{r.summary}</Prose>
-                  <Prose title={t("schedules.report.detail")} lang={r.writtenLang}>{r.detail}</Prose>
-                  <Prose title={t("schedules.report.suggestion")} lang={r.writtenLang}>{r.suggestion}</Prose>
-                  {canWrite ? <ReportTriage r={r} projectId={projectId} slug={slug} /> : null}
+                  {canWrite ? <ReportTriage r={r} projectId={projectId} /> : null}
+                  {developer ? (
+                    <>
+                      <Prose title={t("schedules.report.detail")} lang={r.writtenLang}>{r.detail}</Prose>
+                      <Prose title={t("schedules.report.suggestion")} lang={r.writtenLang}>{r.suggestion}</Prose>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
               {tab === "source" ? <Source r={r} slug={slug} /> : null}

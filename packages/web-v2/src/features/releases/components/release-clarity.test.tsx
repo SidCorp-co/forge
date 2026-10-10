@@ -19,13 +19,13 @@ const release = {
   approvalRequired: true,
   approval: null,
   approvers: [],
-  waitingOn: { kind: "you", who: "You", act: "split this release into smaller releases", rule: "r", effect: "Cuts the oldest 50 merged issues as this release and leaves the other 13 at the release gate for the next one.", ref: null, dueAt: null },
+  waitingOn: { kind: "you", who: "You", act: "split this release into smaller releases", rule: "r", effect: "Cuts the oldest 50 merged issues; the other 13 wait for the next release.", ref: null, dueAt: null },
 };
 
 describe("a release that has to be split", () => {
   it("says what splitting does under the banner", () => {
     render(<ReleaseBanner r={release as never} />);
-    expect(screen.getByTestId("wait-effect")).toHaveTextContent("Cuts the oldest 50 merged issues as this release and leaves the other 13 at the release gate for the next one.");
+    expect(screen.getByTestId("wait-effect")).toHaveTextContent("Cuts the oldest 50 merged issues; the other 13 wait for the next release.");
   });
 });
 

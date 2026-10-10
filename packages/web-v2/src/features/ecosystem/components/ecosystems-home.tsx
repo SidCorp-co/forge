@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Badge, Button, Icon, MonoTag } from "@/design";
 import { readingOf, refusalsOf } from "@/lib/api/refusals";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { ecosystemApi } from "../api";
 import { useChannelWrite, useMyEcosystems } from "../hooks";
 import { joinedEcosystems, needsMe } from "../inbox";
@@ -11,6 +12,7 @@ import type { WorkspaceInvitation, WorkspaceRead } from "../types";
 import { Loading, RefusalNotice, UnreadNotice } from "./notices";
 
 function Invitation({ inv, read }: { inv: WorkspaceInvitation; read: WorkspaceRead }) {
+  const t = useCopy();
   const decide = useChannelWrite((verb: "accept" | "decline") => ecosystemApi.decide(inv.membership, verb));
   const eco = read.ecosystems.find((e) => e.id === inv.ecosystem);
   const project = read.projects.find((p) => p.id === inv.project);
@@ -19,13 +21,14 @@ function Invitation({ inv, read }: { inv: WorkspaceInvitation; read: WorkspaceRe
       <div className="flex items-center gap-2.5">
         <MonoTag hue="cobalt">{eco?.code ?? "··"}</MonoTag>
         <div className="min-w-0 flex-1 truncate">
-          <b>{eco?.name ?? "An ecosystem"}</b> <span className="text-muted">→ {project?.slug ?? "your project"}</span>
+          <b>{eco?.name ?? t("ecosystem.home.anEcosystem")}</b>{" "}
+          <span className="text-muted">→ {project?.slug ?? t("ecosystem.home.yourProject")}</span>
         </div>
         <Button size="sm" loading={decide.isPending && decide.variables === "decline"} onClick={() => decide.mutate("decline")}>
-          Decline
+          {t("ecosystem.home.decline")}
         </Button>
         <Button size="sm" variant="primary" loading={decide.isPending && decide.variables === "accept"} onClick={() => decide.mutate("accept")}>
-          Accept
+          {t("ecosystem.home.accept")}
         </Button>
       </div>
       {decide.isError ? <RefusalNotice refusals={refusalsOf(decide.error)} /> : null}
@@ -34,10 +37,11 @@ function Invitation({ inv, read }: { inv: WorkspaceInvitation; read: WorkspaceRe
 }
 
 function Requests({ read }: { read: WorkspaceRead }) {
+  const t = useCopy();
   if (read.invitations.length === 0) return null;
   return (
-    <section aria-label="Requests to join" className="w-full max-w-130 rounded-sm border border-line-subtle bg-surface text-left">
-      <h2 className="border-b border-line-subtle px-4 py-3 text-14 font-semibold">Requests to join</h2>
+    <section aria-label={t("ecosystem.home.requests")} className="w-full max-w-130 rounded-sm border border-line-subtle bg-surface text-left">
+      <h2 className="border-b border-line-subtle px-4 py-3 text-14 font-semibold">{t("ecosystem.home.requests")}</h2>
       <ul>
         {read.invitations.map((inv) => (
           <Invitation key={inv.membership} inv={inv} read={read} />
@@ -47,21 +51,25 @@ function Requests({ read }: { read: WorkspaceRead }) {
   );
 }
 
-const NewButton = () => (
-  <Link
-    href={ecosystemRoutes.create()}
-    className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-13 font-semibold text-on-accent"
-  >
-    <Icon name="plus" size={14} />
-    New ecosystem
-  </Link>
-);
+function NewButton() {
+  const t = useCopy();
+  return (
+    <Link
+      href={ecosystemRoutes.create()}
+      className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-13 font-semibold text-on-accent"
+    >
+      <Icon name="plus" size={14} />
+      {t("ecosystem.form.new")}
+    </Link>
+  );
+}
 
 /** `/ecosystems`: the empty state with the requests to join, or the ecosystems the person is in. */
 export function EcosystemsHome() {
+  const t = useCopy();
   const reading = readingOf(useMyEcosystems());
-  if (reading.kind === "loading") return <Loading what="your ecosystems" />;
-  if (reading.kind === "unread") return <UnreadNotice what="Your ecosystems" refusals={reading.refusals} />;
+  if (reading.kind === "loading") return <Loading what={t("ecosystem.home.what")} />;
+  if (reading.kind === "unread") return <UnreadNotice what={t("ecosystem.home.what")} refusals={reading.refusals} />;
   const read = reading.value;
   const joined = joinedEcosystems(read);
   if (joined.length === 0) {
@@ -70,8 +78,7 @@ export function EcosystemsHome() {
         <div className="grid h-21 w-21 place-items-center rounded-sm" style={{ background: "var(--cobalt-50)", color: "var(--cobalt-700)" }}>
           <Icon name="ecosystem" size={40} />
         </div>
-        <h1 className="fg-h3">No ecosystem yet</h1>
-        <p className="max-w-prose text-muted">Projects from any organization that share contracts and documents.</p>
+        <h1 className="fg-h3">{t("ecosystem.home.noEcosystem")}</h1>
         <NewButton />
         <div className="mt-2.5 w-full max-w-130">
           <Requests read={read} />
@@ -82,7 +89,7 @@ export function EcosystemsHome() {
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-20 font-bold">Ecosystems</h1>
+        <h1 className="text-20 font-bold">{t("ecosystem.api.ecosystems")}</h1>
         <span className="ml-auto">
           <NewButton />
         </span>
@@ -95,7 +102,7 @@ export function EcosystemsHome() {
               <Link href={ecosystemRoutes.ecosystem(e.id)} className="flex items-center gap-3 py-3 hover:bg-hover">
                 <MonoTag hue="cobalt">{e.code}</MonoTag>
                 <b className="min-w-0 truncate">{e.name}</b>
-                {e.steward.name ? <span className="fg-caption truncate">Steward · {e.steward.name}</span> : null}
+                {e.steward.name ? <span className="fg-caption truncate">{t("ecosystem.screen.steward", { name: e.steward.name })}</span> : null}
                 {owed > 0 ? (
                   <span className="ml-auto">
                     <Badge tone="accent">{owed}</Badge>
