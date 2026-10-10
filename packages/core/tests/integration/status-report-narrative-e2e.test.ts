@@ -1,4 +1,9 @@
-import { shownFrame, type VisualBlock } from '@forge/contracts/visual-blocks';
+import {
+  readInstantsIn,
+  shownFrame,
+  UTC_READING,
+  type VisualBlock,
+} from '@forge/contracts/visual-blocks';
 import { sql } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -122,8 +127,21 @@ describe('a scheduled template report writes its narrative', () => {
       const shown = shownFrame(block);
       if (!shown) continue;
       expect(String(input?.content)).toContain(`### ${block.kind} "${block.title}"`);
-      expect(String(input?.content)).toContain(`Rows: ${JSON.stringify(shown.rows)}`);
+      // Each instant reaches the model as its UTC words, never its ISO (ISS-488 c5).
+      const types = new Map(shown.fields.map((f) => [f.name, f.type]));
+      const asWords = shown.rows.map((row) =>
+        Object.fromEntries(
+          Object.entries(row).map(([name, cell]) => [
+            name,
+            typeof cell === 'string' && ['date', 'string'].includes(String(types.get(name)))
+              ? readInstantsIn(cell, UTC_READING)
+              : cell,
+          ]),
+        ),
+      );
+      expect(String(input?.content)).toContain(`Rows: ${JSON.stringify(asWords)}`);
     }
+    expect(String(input?.content)).not.toMatch(/\d{4}-\d{2}-\d{2}/);
     expect(String(input?.content)).not.toContain(w.projectId);
     for (const body of notices) {
       expect(body).toContain('Work is under way.');
