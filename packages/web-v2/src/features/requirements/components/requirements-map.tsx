@@ -36,7 +36,10 @@ export function RequirementsMap({ rows, areas, slug, onPeek }: { rows: Requireme
         {strip.map((s) => (
           <div key={s} className="flex min-w-[88px] flex-col gap-1" style={{ flex: Math.max(count(s), 0.0001) }} data-stage={s}>
             <span className={cn("h-2 rounded-sm", BAR[s])} />
-            <span className="truncate text-12 text-muted">{REQUIREMENT_STAGE_LABELS[s]}</span>
+            {/* a label wraps rather than being cut; the counts below line up across the strip */}
+            <span className="flex-1 break-words text-12 leading-tight text-muted" data-testid="flow-strip-label">
+              {REQUIREMENT_STAGE_LABELS[s]}
+            </span>
             <span className="text-lg font-semibold leading-none tabular-nums">{count(s)}</span>
           </div>
         ))}
