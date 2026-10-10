@@ -80,7 +80,7 @@ function Designs({
   );
   const groups = catalogue(narrowed, t);
   useReportShown(groups.flatMap((g) => g.rows.map((r) => r.document.flow)));
-  const pad = narrow ? "px-5 max-md:px-4" : "px-7 max-md:px-4";
+  const pad = "px-3";
   return (
     <section aria-labelledby="designs-title" className={cn(narrow ? "pt-3.5" : "pt-5")} data-testid="designs">
       <header className={cn("flex flex-wrap items-center gap-x-4 gap-y-2.5 pb-3", pad)}>
