@@ -65,6 +65,7 @@ export { KanbanCard } from "./patterns/kanban-card";
 export { KanbanBoard } from "./patterns/kanban-board";
 export { KanbanColumn } from "./patterns/kanban-column";
 export { NavRail, isNavGroup, type NavEntry, type NavItem, type NavItemGroup } from "./patterns/nav-rail";
+export { RailButton } from "./patterns/rail-button";
 export { BottomTabBar, type BottomTabItem } from "./patterns/bottom-tab-bar";
 export { CommandPalette, type Command } from "./patterns/command-palette";
 export { PinnedTabBar } from "./patterns/pinned-tab-bar";
@@ -107,6 +108,7 @@ export { RowList, RowItem, type RowItemProps } from "./patterns/row-list";
 export { StatRow, StatCell } from "./patterns/stat-row";
 export { SettingsGroup, SettingRow, FormActions } from "./patterns/settings-form";
 export { useUrlParams, useUrlChoice } from "./hooks/use-url-params";
+export { useListPage, type ListPageSpec, type ListPageState } from "./hooks/use-list-page";
 export { pageShown, useReportShown, useShownKeys } from "./hooks/use-page-shown";
 export { highlightOnPage, highlightStore, useHighlight, type HighlightState } from "./hooks/use-highlight";
 

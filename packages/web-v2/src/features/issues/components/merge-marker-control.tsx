@@ -111,7 +111,7 @@ export function MergeMarkerControl({
               <p
                 role="alert"
                 className="fg-body-sm rounded-md border border-line bg-surface-subtle px-3 py-2"
-                style={{ color: "var(--red-600)" }}
+                style={{ color: "var(--danger-11)" }}
               >
                 {refusal}
               </p>

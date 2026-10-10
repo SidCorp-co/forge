@@ -73,7 +73,7 @@ const SPEND_GROUPS: ReadonlyArray<{ key: SpendGroupKey; label: string; color: st
   { key: "test", label: "test", color: stageColor("test") },
   { key: "code", label: "code", color: stageColor("code") },
   { key: "plan", label: "plan", color: stageColor("plan") },
-  { key: "other", label: "other", color: "var(--ink-400)" },
+  { key: "other", label: "other", color: "var(--neutral-8)" },
 ];
 
 /** Fold a pipeline stage into one of the four spend groups. `fix` already folds onto `code` via

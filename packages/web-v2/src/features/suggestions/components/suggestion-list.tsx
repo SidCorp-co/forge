@@ -1,16 +1,13 @@
 "use client";
 
 import { describePicture, draftPictureSchema } from "@forge/contracts/requirement-pictures";
-import { useState } from "react";
-import { AcceptStep, Button } from "@/design";
-import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { labelCopy } from "@/lib/i18n/labels";
 import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
-import { requirementAffected, useSuggestionDecision, useWaitingSuggestions } from "../hooks";
+import { requirementAffected, useWaitingSuggestions } from "../hooks";
 import type { SuggestionKind, SuggestionProducer, SuggestionView as Suggestion } from "../types";
 import { BreakdownSlices } from "./breakdown-slices";
-import { RejectStep } from "./reject-step";
+import { SuggestionDecider } from "./suggestion-decider";
 
 type Payload = Record<string, unknown>;
 const str = (v: unknown) => (typeof v === "string" ? v : null);
@@ -123,10 +120,7 @@ function SuggestionItem({ s, projectId, reqKey }: { s: Suggestion; projectId: st
   const t = useCopy();
   const lang = useInterfaceLanguage();
   const time = useTimeFormat();
-  const decide = useSuggestionDecision(projectId, requirementAffected(projectId, reqKey));
-  const [step, setStep] = useState<"accept" | "reject" | null>(null);
   const details = detailLines(s, t);
-  const busy = decide.isPending;
   return (
     <li
       className="grid gap-1.5 border-l-3 border-ai-9 bg-ai-bg px-3 py-2.25 text-13"
@@ -159,32 +153,7 @@ function SuggestionItem({ s, projectId, reqKey }: { s: Suggestion; projectId: st
           )}
         </details>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2 pt-0.5">
-        {/* while a step is open its openers are off: a second press would close it and drop the typed reason */}
-        <Button type="button" size="sm" disabled={busy || step !== null} onClick={() => setStep("accept")} aria-expanded={step === "accept"}>
-          {t("requirements.act.accept")}
-        </Button>
-        <Button type="button" size="sm" variant="ghost" disabled={busy || step !== null} onClick={() => setStep("reject")} aria-expanded={step === "reject"}>
-          {t("requirements.act.reject")}
-        </Button>
-      </div>
-      {step === "accept" ? (
-        <AcceptStep
-          confirmLabel={t("requirements.act.accept")}
-          consequence={acceptConsequence(s, lang)}
-          loading={busy}
-          onCancel={() => setStep(null)}
-          onConfirm={(why) => decide.mutate({ kind: "accept", id: s.id, reason: why }, { onSuccess: () => setStep(null) })}
-        />
-      ) : null}
-      {step === "reject" ? (
-        <RejectStep
-          loading={busy}
-          onCancel={() => setStep(null)}
-          onConfirm={(why) => decide.mutate({ kind: "reject", id: s.id, reason: why }, { onSuccess: () => setStep(null) })}
-        />
-      ) : null}
-      <RefusalLine error={decide.error} />
+      <SuggestionDecider projectId={projectId} s={s} affected={requirementAffected(projectId, reqKey)} consequence={acceptConsequence(s, lang)} />
     </li>
   );
 }

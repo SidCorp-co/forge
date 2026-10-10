@@ -168,7 +168,7 @@ export function IssueStrip({ standing }: { standing: IssueStanding }) {
             marks={WORK_STEPS.map((step, i) => ({
               key: step,
               label: over || i < at ? t("common.stepDone", { label: L("workStep", step) }) : i === at ? t("common.stepNow", { label: L("workStep", step) }) : t("common.stepNext", { label: L("workStep", step) }),
-              fill: over || i < at ? "var(--ink-600)" : i === at ? undefined : "var(--paper-300)",
+              fill: over || i < at ? "var(--neutral-11)" : i === at ? undefined : "var(--neutral-7)",
               tone: i === at && !over ? (standing.tone === "you" ? "you" : "run") : undefined,
             }))}
           />

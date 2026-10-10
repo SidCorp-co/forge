@@ -1,8 +1,9 @@
 "use client";
 
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { formatApiError } from "@/lib/api/error";
+import { readOf, useWrite } from "@/lib/api/query-kit";
 import { useToast } from "@/providers/toast-provider";
 import { conversationsApi } from "./api";
 import type {
@@ -87,42 +88,20 @@ export function useConversation(id: string | undefined) {
 /**
  * Whether a NEW room in this project could be opened in Agent mode.
  */
-export function useDraftAgentMode(projectId: string | undefined, enabled: boolean) {
-  return useQuery({
-    queryKey: ["conversations", "agent-mode", projectId],
-    queryFn: () => conversationsApi.agentMode(projectId as string),
-    enabled: !!projectId && enabled,
-    staleTime: 30_000,
-  });
-}
+export const useDraftAgentMode = (projectId: string | undefined, enabled: boolean) =>
+  useQuery({ ...readOf(["conversations", "agent-mode", projectId], () => conversationsApi.agentMode(projectId as string), 30_000), enabled: !!projectId && enabled });
 
-export function useOpenConversation() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: conversationsApi.open,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
-  });
-}
+export const useOpenConversation = () => useWrite(conversationsApi.open, { touches: [["conversations"]] });
 
 /**
  * Who this caller could still put in this room.
  */
-export function useConversationCandidates(id: string | undefined, enabled: boolean) {
-  return useQuery({
-    queryKey: ["conversations", id, "candidates"],
-    queryFn: () => conversationsApi.candidates(id as string),
-    enabled: !!id && enabled,
-  });
-}
+export const useConversationCandidates = (id: string | undefined, enabled: boolean) =>
+  useQuery({ ...readOf(["conversations", id, "candidates"], () => conversationsApi.candidates(id as string), 0), enabled: !!id && enabled });
 
 /** The same question for a room that does not exist yet. */
-export function useProjectCandidates(projectId: string | undefined, enabled: boolean) {
-  return useQuery({
-    queryKey: ["conversations", "candidates", projectId],
-    queryFn: () => conversationsApi.candidatesForProject(projectId as string),
-    enabled: !!projectId && enabled,
-  });
-}
+export const useProjectCandidates = (projectId: string | undefined, enabled: boolean) =>
+  useQuery({ ...readOf(["conversations", "candidates", projectId], () => conversationsApi.candidatesForProject(projectId as string), 0), enabled: !!projectId && enabled });
 
 /**
  * Put what a membership change answered with straight into the room's cache.
@@ -273,17 +252,11 @@ export function useArchiveConversation() {
 function useSocketWrittenKey<T>(key: readonly unknown[], empty: T): T {
   const qc = useQueryClient();
   const flat = JSON.stringify(key);
-  const subscribe = useCallback(
-    (onChange: () => void) =>
-      qc.getQueryCache().subscribe((event) => {
-        if (JSON.stringify(event.query.queryKey) === flat) onChange();
-      }),
-    [qc, flat],
-  );
-  const read = useCallback(
-    () => (qc.getQueryData(JSON.parse(flat) as unknown[]) as T | undefined) ?? empty,
-    [qc, flat, empty],
-  );
+  const subscribe = (onChange: () => void) =>
+    qc.getQueryCache().subscribe((event) => {
+      if (JSON.stringify(event.query.queryKey) === flat) onChange();
+    });
+  const read = () => qc.getQueryData<T>(JSON.parse(flat) as unknown[]) ?? empty;
   return useSyncExternalStore(subscribe, read, read);
 }
 
@@ -328,13 +301,9 @@ export function useConversationProposals(id: string | undefined, threadLength: n
 }
 
 /** Record a held write, or decline it; either way the thread gains core's line about it. */
-export function useDecideProposal(id: string | undefined) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (args: { proposalId: string; decision: "agree" | "decline" }) =>
-      args.decision === "agree"
-        ? conversationsApi.agreeProposal(id as string, args.proposalId)
-        : conversationsApi.declineProposal(id as string, args.proposalId),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["conversations", id] }),
-  });
-}
+export const useDecideProposal = (id: string | undefined) =>
+  useWrite(
+    (args: { proposalId: string; decision: "agree" | "decline" }) =>
+      args.decision === "agree" ? conversationsApi.agreeProposal(id as string, args.proposalId) : conversationsApi.declineProposal(id as string, args.proposalId),
+    { touches: [["conversations", id]] },
+  );

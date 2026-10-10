@@ -10,7 +10,6 @@
 // Data: useProject(projectId).devicePool (project-scoped) ×
 // useQueueStats(projectId) (per-device queued/running). Liveness reads core's stuck runs
 // (runs/standing) through deriveLiveness so the strip, list, and detail never diverge.
-import { useMemo } from "react";
 import { Banner, enumLabel, ErrorState, HealthDot, Icon, MonoTag } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -129,7 +128,7 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <span
                     className="fg-caption font-semibold"
-                    style={{ color: busy ? "var(--cobalt-700)" : "var(--fg-subtle)" }}
+                    style={{ color: busy ? "var(--info-11)" : "var(--fg-subtle)" }}
                   >
                     {busy ? t("sessions.fleet.busy") : t("sessions.fleet.free")}
                   </span>

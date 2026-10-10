@@ -76,11 +76,11 @@ export function summarizeResult(
     const n = result.length;
     return { label: n === 1 ? t("sessions.result.textOne") : t("sessions.result.textMany", { n }), hasBody: true, pending: false };
   }
-  if (typeof result === "object") {
+  if (typeof result === "object" && result !== null) {
     const n = Object.keys(result).length;
     return { label: n === 1 ? t("sessions.result.objectOne") : t("sessions.result.objectMany", { n }), hasBody: true, pending: false };
   }
-  return { label: String(result), hasBody: false, pending: false };
+  return { label: typeof result === "number" || typeof result === "boolean" ? String(result) : typeof result, hasBody: false, pending: false };
 }
 
 /**

@@ -16,26 +16,27 @@
 // calls is the point of this lens; folding away the agent's voice was not, and
 // for one release it did exactly that.
 
+import { cn } from "@/lib/utils/cn";
 import { useState } from "react";
 import { Icon, type IconName } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ActivityGroup, ActivityKind, Narration } from "../../run-report";
 
 const GLYPH: Record<ActivityKind, { icon: IconName; color: string }> = {
-  errors: { icon: "alert", color: "var(--red-600)" },
+  errors: { icon: "alert", color: "var(--danger-11)" },
   ran: { icon: "play", color: "var(--fg-muted)" },
-  edited: { icon: "branch", color: "var(--flame-600)" },
-  forge: { icon: "agent", color: "var(--cobalt-500)" },
+  edited: { icon: "branch", color: "var(--accent-10)" },
+  forge: { icon: "agent", color: "var(--info-9)" },
   explored: { icon: "search", color: "var(--fg-subtle)" },
 };
 
-const TONE_COLOR = {
-  ok: "var(--green-600)",
-  bad: "var(--red-600)",
-  muted: "var(--fg-subtle)",
+const TONE_CLASS = {
+  ok: "text-ok-11",
+  bad: "text-danger-11",
+  muted: "text-subtle",
 } as const;
 
-function GroupRow({ group, defaultOpen }: { group: ActivityGroup; defaultOpen: boolean }) {
+function ActivityGroupItem({ group, defaultOpen }: { group: ActivityGroup; defaultOpen: boolean }) {
   const t = useCopy();
   const time = useTimeFormat();
   const [open, setOpen] = useState(defaultOpen);
@@ -59,10 +60,7 @@ function GroupRow({ group, defaultOpen }: { group: ActivityGroup; defaultOpen: b
           {group.children.map((child) => (
             <li key={child.id} className="flex items-baseline gap-2">
               <span className="fg-body-sm min-w-0 flex-1 truncate">{child.label}</span>
-              <span
-                className="fg-caption flex-none font-mono"
-                style={{ color: TONE_COLOR[child.outcome.tone] }}
-              >
+              <span className={cn("fg-caption flex-none font-mono", TONE_CLASS[child.outcome.tone])}>
                 {child.outcome.text}
               </span>
             </li>
@@ -106,7 +104,7 @@ export function StoryLens({
       )}
       <ul>
         {groups.map((group, i) => (
-          <GroupRow key={group.kind} group={group} defaultOpen={i === 0} />
+          <ActivityGroupItem key={group.kind} group={group} defaultOpen={i === 0} />
         ))}
       </ul>
       {thinkingPauses > 0 && (

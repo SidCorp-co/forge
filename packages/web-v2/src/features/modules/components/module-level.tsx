@@ -6,16 +6,12 @@
 // a double click, Enter, a modified click or the peek's open control goes to the module itself.
 
 import { MODULE_ATTENTION_GROUPS, MODULE_ATTENTION_LABELS } from "@forge/contracts/modules";
-import { useRouter } from "next/navigation";
-import { type ReactNode, useCallback, useMemo } from "react";
+import type { ReactNode } from "react";
 import {
   GroupedList,
   type ListGroup,
   type ListRowView,
-  rememberListOrigin,
-  useGroupFold,
-  usePeek,
-  usePeekKeys,
+  useListPage,
   ViewHeading,
   WaitingOn,
   ListLayout,
@@ -107,30 +103,25 @@ export function ModuleLevel({
   /** A strip above the map, drawn by the caller. */
   toolbar?: ReactNode;
 }) {
-  const router = useRouter();
   const t = useCopy();
   const language = useInterfaceLanguage();
   const scopeId = scope?.id ?? null;
-  const rows = useMemo(() => data.modules.filter((r) => (scopeId ? r.parentId === scopeId : r.depth === 0)), [data.modules, scopeId]);
-  const couplings = useMemo(() => data.couplings.filter((c) => c.parentId === scopeId), [data.couplings, scopeId]);
-  const max = useMemo(() => Math.max(1, ...rows.map((r) => r.standing.open)), [rows]);
-  const groups = useMemo(() => [groupOf(scopeId ?? "roots", scope ? t("modules.in", { name: scope.name }) : t("modules.roots"), rows, language)], [scopeId, scope, rows, t, language]);
-  const fold = useGroupFold("web-v2:modules-fold");
-  const keys = useMemo(() => rows.map(keyOf), [rows]);
-  const peek = usePeek(keys);
+  const rows = data.modules.filter((r) => (scopeId ? r.parentId === scopeId : r.depth === 0));
+  const couplings = data.couplings.filter((c) => c.parentId === scopeId);
+  const max = Math.max(1, ...rows.map((r) => r.standing.open));
   const traceQ = useCodeTrace(projectId);
-  const trace = useMemo(() => traceByModule(traceQ.data), [traceQ.data]);
-  const row = useMemo(() => rowOf(slug, max, trace, data.modules, t, language), [slug, max, trace, data.modules, t, language]);
-
-  const open = useCallback(
-    (key: string) => {
-      if (!scope) rememberListOrigin(MODULES_LIST);
-      router.push(moduleHref(slug, key));
-    },
-    [router, slug, scope],
-  );
-  usePeekKeys(peek, open);
-  const toggle = (k: string) => peek.set(k === peek.open ? null : k);
+  const trace = traceByModule(traceQ.data);
+  const list = useListPage({
+    rows,
+    keyOf,
+    groupsOf: (shown) => [groupOf(scopeId ?? "roots", scope ? t("modules.in", { name: scope.name }) : t("modules.roots"), shown, language)],
+    foldKey: "web-v2:modules-fold",
+    stepsOf: (_groups, shown) => shown,
+    hrefOf: (key) => moduleHref(slug, key),
+    // a module's children open from its own page, which is not a list to go back to
+    origin: scope ? null : MODULES_LIST,
+  });
+  const { peek, openFull: open } = list;
 
   const read = data.issuesRead;
   const unread = read.open - read.returned;
@@ -153,14 +144,14 @@ export function ModuleLevel({
           >
             {scope ? t("modules.inside", { name: scope.name }) : t("modules.business")}
           </ViewHeading>
-          <ModuleMap rows={rows} couplings={couplings} selected={peek.open} onSelect={toggle} onOpen={open} />
+          <ModuleMap rows={rows} couplings={couplings} selected={peek.open} onSelect={list.togglePeek} onOpen={open} />
           {couplings.length === 0 ? (
             <p className="mt-2 text-13 text-subtle" data-testid="module-map-no-couplings">
               {t("modules.map.noCoupling")}
             </p>
           ) : null}
         </section>
-        <GroupedList ariaLabel={scope ? t("modules.in", { name: scope.name }) : t("modules.business")} groups={groups} fold={fold} row={row} selected={peek.open} onPeek={toggle} columns={columnsIn(t)} />
+        <GroupedList ariaLabel={scope ? t("modules.in", { name: scope.name }) : t("modules.business")} groups={list.groups} fold={list.fold} row={rowOf(slug, max, trace, data.modules, t, language)} selected={peek.open} onPeek={list.togglePeek} columns={columnsIn(t)} />
     </ListLayout>
   );
 }

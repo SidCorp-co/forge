@@ -151,7 +151,7 @@ export interface ConversationItem {
   thinkingCount: number;
 }
 
-/** Coarse tool classification driving the tool-card layout. */
+/** Coarse tool classification driving how a tool call is drawn. */
 export type ToolKind = "edit" | "read" | "search" | "run" | "task" | "generic";
 
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
@@ -205,7 +205,7 @@ export function getToolLabel(tc: ToolCallData, t: Copy = productCopy()): string 
       return t("sessions.tool.ran", { command: ((input.command as string) ?? "").slice(0, 80) });
     case "Grep":
       return input.path
-        ? t("sessions.tool.searchedIn", { pattern: (input.pattern as string) ?? "", path: String(input.path) })
+        ? t("sessions.tool.searchedIn", { pattern: (input.pattern as string) ?? "", path: typeof input.path === "string" ? input.path : JSON.stringify(input.path) })
         : t("sessions.tool.searched", { pattern: (input.pattern as string) ?? "" });
     case "Glob":
       return t("sessions.tool.found", { pattern: (input.pattern as string) ?? "" });
@@ -278,48 +278,54 @@ function toToolCallData(tc: CanonicalToolCall): ToolCallData {
 
 const STRUCTURED_ELSEWHERE: ReadonlySet<string> = new Set(["questionnaire", "questionnaire_answers", "designs"]);
 
-function assistantBlocks(entry: MessageEntry): RenderBlock[] {
-  const out: RenderBlock[] = [];
-  if (entry.blocks?.length) {
-    // Canonical CLI-runner shape: ordered text/tool/todos blocks. Preserving
-    // order keeps assistant text interleaved between tool calls (ISS-348).
-    for (const b of entry.blocks) {
-      if (b.type === "tool" && b.toolCall) {
-        const tool = toToolCallData(b.toolCall);
-        out.push(tool.name === "TodoWrite" ? todoWriteToTodos(tool.input) : { type: "tool", tool });
-      } else if (b.type === "todos") {
-        out.push({ type: "todos", todos: b.todos ?? [] });
-      } else if (b.type === "thinking") {
-        out.push({
-          type: "thinking",
-          ...(b.thinking ? { text: b.thinking } : {}),
-          ...(b.durationMs !== undefined ? { durationMs: b.durationMs } : {}),
-        });
-      } else if (b.type === "text") {
-        if (b.text) out.push({ type: "text", text: b.text });
-      } else if (b.type === "visual") {
-        out.push({ type: "visual", block: b.visual });
-      } else if (STRUCTURED_ELSEWHERE.has(b.type)) {
-        // a questionnaire, its answers and a designs list are drawn by features/onboarding, off the thread's live data
-      } else {
-        // a stored block of a kind this screen does not know is named, never left out
-        const named = b.type === "unsupported" ? b.unsupported : b.type;
-        out.push({ type: "unsupported", name: typeof named === "string" && named !== "" ? named : "nameless" });
-      }
+type StoredBlock = NonNullable<MessageEntry["blocks"]>[number];
+
+/** One stored block as the blocks it renders as: none for one drawn elsewhere, a named stand-in for one this screen does not know. */
+function renderBlock(b: StoredBlock): RenderBlock | null {
+  switch (b.type) {
+    case "tool": {
+      if (!b.toolCall) return null;
+      const tool = toToolCallData(b.toolCall);
+      return tool.name === "TodoWrite" ? todoWriteToTodos(tool.input) : { type: "tool", tool };
     }
-  } else {
-    if (entry.toolCalls?.length) {
-      for (const tc of entry.toolCalls) {
-        out.push(
-          tc.name === "TodoWrite"
-            ? todoWriteToTodos(tc.input)
-            : { type: "tool", tool: toToolCallData(tc) },
-        );
-      }
+    case "todos":
+      return { type: "todos", todos: b.todos ?? [] };
+    case "thinking":
+      return {
+        type: "thinking",
+        ...(b.thinking ? { text: b.thinking } : {}),
+        ...(b.durationMs !== undefined ? { durationMs: b.durationMs } : {}),
+      };
+    case "text":
+      return b.text ? { type: "text", text: b.text } : null;
+    case "visual":
+      return { type: "visual", block: b.visual };
+    default: {
+      // a questionnaire, its answers and a designs list are drawn by features/onboarding, off the thread's live data
+      if (STRUCTURED_ELSEWHERE.has(b.type)) return null;
+      // a stored block of a kind this screen does not know is named, never left out
+      const named = b.type === "unsupported" ? b.unsupported : b.type;
+      return { type: "unsupported", name: typeof named === "string" && named !== "" ? named : "nameless" };
     }
-    const text = entryText(entry.content);
-    if (text) out.push({ type: "text", text });
   }
+}
+
+/** The older flat shape: tool calls, then the entry's text. */
+function flatBlocks(entry: MessageEntry): RenderBlock[] {
+  const out: RenderBlock[] = (entry.toolCalls ?? []).map((tc) =>
+    tc.name === "TodoWrite" ? todoWriteToTodos(tc.input) : { type: "tool", tool: toToolCallData(tc) },
+  );
+  const text = entryText(entry.content);
+  if (text) out.push({ type: "text", text });
+  return out;
+}
+
+function assistantBlocks(entry: MessageEntry): RenderBlock[] {
+  // Canonical CLI-runner shape: ordered text/tool/todos blocks. Preserving
+  // order keeps assistant text interleaved between tool calls (ISS-348).
+  const out = entry.blocks?.length
+    ? entry.blocks.map(renderBlock).filter((b): b is RenderBlock => b !== null)
+    : flatBlocks(entry);
   return withPauseCount(entry, dedupeTodos(out));
 }
 

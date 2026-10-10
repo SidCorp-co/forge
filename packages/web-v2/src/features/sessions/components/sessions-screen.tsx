@@ -10,7 +10,8 @@ import {
   PageContainer,
   Pagination,
   SegmentedControl,
-  SessionRowSkeleton,
+  LoadingState,
+  useNow,
   type SegmentOption,
 } from "@/design";
 import { useIssue } from "@/features/issues";
@@ -93,7 +94,7 @@ export function SessionsScreen({
   const kindRows = sessionsQ.data?.items ?? [];
   const rows = kindRows.filter((r) => matchesKind(kind, r));
 
-  const now = Date.now();
+  const now = useNow(30_000);
   const displays = rows.map((r) => deriveSessionDisplayStatus(r, stuck));
 
   const stats = sessionStats(rows, displays, now);
@@ -161,14 +162,7 @@ export function SessionsScreen({
         )}
       </div>
 
-      {sessionsQ.isLoading && (
-        <div className="border-t border-line">
-          {Array.from({ length: 6 }).map((_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length placeholder list that never reorders
-            <SessionRowSkeleton key={i} />
-          ))}
-        </div>
-      )}
+      {sessionsQ.isLoading && <LoadingState label={t("sessions.loading")} rows={6} />}
 
       {issueQ.isError && (
         <ErrorState

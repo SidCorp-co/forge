@@ -15,6 +15,7 @@ import { type DockDoor, useChatDock } from "@/features/chat-dock";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { draftIssuesToPromote } from "@forge/contracts/requirements";
 import { requirementsApi } from "../api";
 import { useRequirementAction } from "../hooks";
@@ -48,16 +49,80 @@ export function ProposeChange({ projectId, reqKey }: { projectId: string; reqKey
       type="button"
       size="sm"
       loading={busy}
-      onClick={async () => {
+      onClick={() => {
         setBusy(true);
-        const target = await door();
-        setBusy(false);
-        if (target) dock.show(target);
+        void door().then((target) => {
+          setBusy(false);
+          if (target) dock.show(target);
+        });
       }}
     >
       {t("requirements.act.proposeChange")}
     </Button>
   );
+}
+
+/** What moved under the requirement's pins: each design and contract, from what it was pinned at. */
+function movedPins(facts: RequirementDetail["standing"]["facts"], t: Copy): string {
+  const was = (pinned: unknown, line: string) => (pinned === null ? t("requirements.act.notFollowedYet") : line);
+  return [
+    ...facts.stalePins.map((p) => t("requirements.act.pinMovedDesign", { title: p.title, approved: p.approved, was: was(p.pinned, t("requirements.act.pinWas", { r: p.pinned ?? 0 })) })),
+    ...facts.staleContractPins.map((p) => t("requirements.act.pinMovedContract", { contract: p.contract, current: p.current, was: was(p.pinned, t("requirements.act.pinWasVersion", { v: p.pinned ?? "" })) })),
+  ].join(", ");
+}
+
+/** "Review proposal": the full page's revisions in the peek (`href`), the revisions view on the full page. */
+function ReviewProposal({ href, revision, onReview }: { href: string | null; revision: number; onReview?: () => void }) {
+  const t = useCopy();
+  const words = t("requirements.act.reviewProposal", { r: revision });
+  return href ? (
+    <Link href={href} onClick={onReview} className="inline-flex h-8 items-center rounded-md bg-accent px-3 text-13 font-semibold text-on-accent hover:bg-accent-hover">
+      {words}
+    </Link>
+  ) : (
+    <Button type="button" size="sm" variant="primary" onClick={onReview}>
+      {words}
+    </Button>
+  );
+}
+
+/** Agree a draft's current revision; held, and saying why, while a design it pins is not approved. */
+function AgreeAct({ projectId, reqKey, revision, held }: { projectId: string; reqKey: string; revision: number; held: RequirementDetail["standing"]["facts"]["unapprovedDesigns"] }) {
+  const t = useCopy();
+  const { designWord } = useStateWords();
+  if (held.length > 0) {
+    const designs = held.map((x) => `${x.title} (${designWord(x.designStatus)})`).join(", ");
+    return (
+      <Tooltip label={t("requirements.act.agreeHeldTip", { designs })} multiline>
+        <Button type="button" size="sm" variant="primary" disabled data-testid="agree-held">
+          {t("requirements.act.agreeR", { r: revision })}
+        </Button>
+      </Tooltip>
+    );
+  }
+  return (
+    <SignOff
+      projectId={projectId}
+      reqKey={reqKey}
+      label={t("requirements.act.agreeR", { r: revision })}
+      consequence={t("requirements.act.agreeConsequence", { r: revision })}
+      reasonLabel={t("requirements.act.agreeWhyLabel")}
+      reasonRequired
+      act={(reason) => ({ kind: "agree", revision, reason })}
+    />
+  );
+}
+
+/** Core's raw state names stay as written in English, as they always read there; another language reads their label. */
+function useStateWords() {
+  const t = useCopy();
+  const label = useLabel();
+  const lang = useInterfaceLanguage();
+  const word = (family: "requirementState" | "designStatus", st: string) => (lang === "en" ? st : label(family, st).toLowerCase());
+  return {
+    statusWord: (st: string | undefined) => (st ? word("requirementState", st) : undefined),
+    designWord: (st: string | null) => (st ? word("designStatus", st) : t("requirements.act.noDesignYet")),
+  };
 }
 
 export function PrimaryActions({
@@ -75,11 +140,8 @@ export function PrimaryActions({
   onReview?: () => void;
 }) {
   const t = useCopy();
-  const label = useLabel();
   const lang = useInterfaceLanguage();
-  // core's raw state names stay as written in English, as they always read there; another language reads their label
-  const statusWord = (st: string) => (lang === "en" ? st : label("requirementState", st).toLowerCase());
-  const designWord = (st: string) => (lang === "en" ? st : label("designStatus", st).toLowerCase());
+  const { statusWord } = useStateWords();
   const act = useRequirementAction(projectId, d.key);
   const proposed = d.revisions.find((r) => r.state === "proposed");
   const draft = d.revisions.find((r) => r.state === "draft");
@@ -89,26 +151,19 @@ export function PrimaryActions({
   let primary: React.ReactNode = null;
   if (d.status === "deferred") {
     primary = d.canSignOff ? (
-      <UndeferAct
+      <ReasonAct
         projectId={projectId}
         reqKey={d.key}
-        tip={t("requirements.act.undeferTip", { reason: d.deferral?.reason ?? "", from: d.deferral?.from ? statusWord(d.deferral.from) : t("requirements.act.itsStatus") })}
+        label={t("requirements.act.undefer")}
+        primary
+        tip={t("requirements.act.undeferTip", { reason: d.deferral?.reason ?? "", from: statusWord(d.deferral?.from) ?? t("requirements.act.itsStatus") })}
+        whyLabel={t("requirements.act.undeferWhyLabel")}
+        whyHint={t("requirements.act.undeferWhy")}
+        build={(reason) => ({ kind: "undefer", reason })}
       />
     ) : null;
   } else if (proposed) {
-    primary = inPeek ? (
-      <Link
-        href={`${requirementHref(slug, d.key)}?tab=revisions`}
-        onClick={onReview}
-        className="inline-flex h-8 items-center rounded-md bg-accent px-3 text-13 font-semibold text-on-accent hover:bg-accent-hover"
-      >
-        {t("requirements.act.reviewProposal", { r: proposed.revision })}
-      </Link>
-    ) : (
-      <Button type="button" size="sm" variant="primary" onClick={onReview}>
-        {t("requirements.act.reviewProposal", { r: proposed.revision })}
-      </Button>
-    );
+    primary = <ReviewProposal href={inPeek ? `${requirementHref(slug, d.key)}?tab=revisions` : null} revision={proposed.revision} onReview={onReview} />;
   } else if (draft && s.waitingOn.kind === "you") {
     primary = (
       <>
@@ -119,11 +174,7 @@ export function PrimaryActions({
       </>
     );
   } else if (d.canSignOff && d.status === "agreed" && head && s.facts.stalePins.length + s.facts.staleContractPins.length > 0) {
-    const notYet = t("requirements.act.notFollowedYet");
-    const moved = [
-      ...s.facts.stalePins.map((p) => t("requirements.act.pinMovedDesign", { title: p.title, approved: p.approved, was: p.pinned === null ? notYet : t("requirements.act.pinWas", { r: p.pinned }) })),
-      ...s.facts.staleContractPins.map((p) => t("requirements.act.pinMovedContract", { contract: p.contract, current: p.current, was: p.pinned === null ? notYet : t("requirements.act.pinWasVersion", { v: p.pinned }) })),
-    ].join(", ");
+    const moved = movedPins(s.facts, t);
     primary = (
       <SignOff
         projectId={projectId}
@@ -136,27 +187,8 @@ export function PrimaryActions({
         act={(reason) => ({ kind: "repin", revision: head.revision, reason })}
       />
     );
-  } else if (d.canSignOff && d.status === "draft" && head && !draft && s.facts.unapprovedDesigns.length > 0) {
-    const designs = s.facts.unapprovedDesigns.map((x) => `${x.title} (${x.designStatus ? designWord(x.designStatus) : t("requirements.act.noDesignYet")})`).join(", ");
-    primary = (
-      <Tooltip label={t("requirements.act.agreeHeldTip", { designs })} multiline>
-        <Button type="button" size="sm" variant="primary" disabled data-testid="agree-held">
-          {t("requirements.act.agreeR", { r: head.revision })}
-        </Button>
-      </Tooltip>
-    );
   } else if (d.canSignOff && d.status === "draft" && head && !draft) {
-    primary = (
-      <SignOff
-        projectId={projectId}
-        reqKey={d.key}
-        label={t("requirements.act.agreeR", { r: head.revision })}
-        consequence={t("requirements.act.agreeConsequence", { r: head.revision })}
-        reasonLabel={t("requirements.act.agreeWhyLabel")}
-        reasonRequired
-        act={(reason) => ({ kind: "agree", revision: head.revision, reason })}
-      />
-    );
+    primary = <AgreeAct projectId={projectId} reqKey={d.key} revision={head.revision} held={s.facts.unapprovedDesigns} />;
   } else if (s.state === "delivered" && d.canSignOff && head) {
     primary = (
       <SignOff
@@ -178,8 +210,28 @@ export function PrimaryActions({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {primary}
-      {deferrable ? <DeferAct projectId={projectId} reqKey={d.key} /> : null}
-      {droppable ? <DropAct projectId={projectId} reqKey={d.key} /> : null}
+      {deferrable ? (
+        <ReasonAct
+          projectId={projectId}
+          reqKey={d.key}
+          label={t("requirements.act.defer")}
+          whyLabel={t("requirements.act.deferWhyLabel")}
+          whyHint={t("requirements.act.deferWhy")}
+          extra={{ label: t("requirements.act.meantForLabel"), hint: t("requirements.act.meantFor") }}
+          build={(reason, targetPhase) => ({ kind: "defer", reason, targetPhase: targetPhase || undefined })}
+        />
+      ) : null}
+      {droppable ? (
+        <ReasonAct
+          projectId={projectId}
+          reqKey={d.key}
+          label={t("requirements.act.drop")}
+          submitVariant="danger"
+          whyLabel={t("requirements.act.dropWhyLabel")}
+          whyHint={t("requirements.act.dropWhy")}
+          build={(reason) => ({ kind: "drop", reason })}
+        />
+      ) : null}
       <RefusalLine error={act.error} />
     </div>
   );
@@ -241,103 +293,95 @@ function SignOff({
   );
 }
 
-/** Drops a requirement that is not going to be built, saying why; core refuses it while a live issue links to it. */
-function DropAct({ projectId, reqKey }: { projectId: string; reqKey: string }) {
+/** The reason an act must give, typed and sent: and, given `extra`, a second optional line beside it. */
+function ReasonForm({
+  whyLabel,
+  whyHint,
+  submit,
+  submitVariant,
+  extra,
+  busy,
+  error,
+  onSend,
+  onCancel,
+}: {
+  whyLabel: string;
+  whyHint: string;
+  submit: string;
+  submitVariant?: "primary" | "danger";
+  extra?: { label: string; hint: string };
+  busy: boolean;
+  /** The act's refusal, where no caller shows it. */
+  error?: unknown;
+  onSend: (reason: string, extra: string) => void;
+  onCancel: () => void;
+}) {
   const t = useCopy();
-  const act = useRequirementAction(projectId, reqKey);
-  const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
-  if (!open) {
-    return (
-      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(true)}>
-        {t("requirements.act.drop")}
-      </Button>
-    );
-  }
+  const [more, setMore] = useState("");
   return (
     <form
       className="flex flex-wrap items-center gap-2"
       onSubmit={(e) => {
         e.preventDefault();
-        act.mutate({ kind: "drop", reason: reason.trim() }, { onSuccess: () => setOpen(false) });
+        onSend(reason.trim(), more.trim());
       }}
     >
-      <Input aria-label={t("requirements.act.dropWhyLabel")} placeholder={t("requirements.act.dropWhy")} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
-      <Button type="submit" size="sm" variant="danger" disabled={!reason.trim()} loading={act.isPending}>
-        {t("requirements.act.drop")}
+      <Input aria-label={whyLabel} placeholder={whyHint} value={reason} onChange={(e) => setReason(e.target.value)} className="min-w-64 flex-1" ref={(el) => el?.focus()} />
+      {extra ? <Input aria-label={extra.label} placeholder={extra.hint} value={more} onChange={(e) => setMore(e.target.value)} /> : null}
+      <Button type="submit" size="sm" variant={submitVariant} disabled={!reason.trim()} loading={busy}>
+        {submit}
       </Button>
-      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
+      <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={onCancel}>
         {t("common.cancel")}
       </Button>
-      <RefusalLine error={act.error} />
+      {error ? <RefusalLine error={error} /> : null}
     </form>
   );
 }
 
-/** Takes the requirement out of the current release, saying why and, optionally, where it is meant to go. */
-function DeferAct({ projectId, reqKey }: { projectId: string; reqKey: string }) {
-  const t = useCopy();
+/** An act that must say why: its button opens the reason form, which sends what `build` makes of it. */
+function ReasonAct({
+  projectId,
+  reqKey,
+  label,
+  tip,
+  primary = false,
+  build,
+  ...form
+}: {
+  projectId: string;
+  reqKey: string;
+  label: string;
+  tip?: string;
+  primary?: boolean;
+  build: (reason: string, extra: string) => RequirementAction;
+} & Pick<Parameters<typeof ReasonForm>[0], "whyLabel" | "whyHint" | "submitVariant" | "extra">) {
   const act = useRequirementAction(projectId, reqKey);
   const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
-  const [targetPhase, setTargetPhase] = useState("");
-  if (!open) {
+  if (open) {
     return (
-      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(true)}>
-        {t("requirements.act.defer")}
-      </Button>
+      <ReasonForm
+        {...form}
+        submit={label}
+        busy={act.isPending}
+        error={act.error}
+        onSend={(reason, extra) => act.mutate(build(reason, extra), { onSuccess: () => setOpen(false) })}
+        onCancel={() => setOpen(false)}
+      />
     );
   }
-  return (
-    <form
-      className="flex flex-wrap items-center gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        act.mutate({ kind: "defer", reason: reason.trim(), targetPhase: targetPhase.trim() || undefined }, { onSuccess: () => setOpen(false) });
-      }}
-    >
-      <Input aria-label={t("requirements.act.deferWhyLabel")} placeholder={t("requirements.act.deferWhy")} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
-      <Input aria-label={t("requirements.act.meantForLabel")} placeholder={t("requirements.act.meantFor")} value={targetPhase} onChange={(e) => setTargetPhase(e.target.value)} />
-      <Button type="submit" size="sm" disabled={!reason.trim()} loading={act.isPending}>
-        {t("requirements.act.defer")}
-      </Button>
-      <RefusalLine error={act.error} />
-    </form>
+  const button = (
+    <Button type="button" size="sm" variant={primary ? "primary" : "ghost"} onClick={() => setOpen(true)}>
+      {label}
+    </Button>
   );
-}
-
-/** Puts a deferred requirement back at the status it left, saying why it comes back, as its defer said why it left. */
-function UndeferAct({ projectId, reqKey, tip }: { projectId: string; reqKey: string; tip: string }) {
-  const t = useCopy();
-  const act = useRequirementAction(projectId, reqKey);
-  const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
-  if (!open) {
-    return (
-      <Tooltip label={tip} multiline>
-        <Button type="button" size="sm" variant="primary" onClick={() => setOpen(true)}>
-          {t("requirements.act.undefer")}
-        </Button>
-      </Tooltip>
-    );
-  }
-  return (
-    <form
-      className="flex flex-wrap items-center gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        act.mutate({ kind: "undefer", reason: reason.trim() }, { onSuccess: () => setOpen(false) });
-      }}
-    >
-      <Input aria-label={t("requirements.act.undeferWhyLabel")} placeholder={t("requirements.act.undeferWhy")} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
-      <Button type="submit" size="sm" disabled={!reason.trim()} loading={act.isPending}>
-        {t("requirements.act.undefer")}
-      </Button>
-      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
-        {t("common.cancel")}
-      </Button>
-      <RefusalLine error={act.error} />
-    </form>
+  return tip ? (
+    <Tooltip label={tip} multiline>
+      {button}
+    </Tooltip>
+  ) : (
+    button
   );
 }
 
@@ -346,7 +390,6 @@ export function ProposalDecision({ projectId, d, revision }: { projectId: string
   const t = useCopy();
   const act = useRequirementAction(projectId, d.key);
   const [step, setStep] = useState<"accept" | "return" | null>(null);
-  const [reason, setReason] = useState("");
   if (!d.canSignOff) return null;
   const busy = act.isPending;
   return (
@@ -369,36 +412,14 @@ export function ProposalDecision({ projectId, d, revision }: { projectId: string
         />
       ) : null}
       {step === "return" ? (
-        <form
-          className="flex flex-wrap items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            act.mutate(
-              { kind: "return", revision, reason: reason.trim() },
-              {
-                onSuccess: () => {
-                  setStep(null);
-                  setReason("");
-                },
-              },
-            );
-          }}
-        >
-          <Input
-            aria-label={t("requirements.act.returnWhyLabel")}
-            placeholder={t("requirements.act.returnWhy")}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            className="min-w-64 flex-1"
-            autoFocus
-          />
-          <Button type="submit" size="sm" disabled={!reason.trim()} loading={busy}>
-            {t("requirements.act.returnR", { r: revision })}
-          </Button>
-          <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setStep(null)}>
-            {t("common.cancel")}
-          </Button>
-        </form>
+        <ReasonForm
+          whyLabel={t("requirements.act.returnWhyLabel")}
+          whyHint={t("requirements.act.returnWhy")}
+          submit={t("requirements.act.returnR", { r: revision })}
+          busy={busy}
+          onSend={(why) => act.mutate({ kind: "return", revision, reason: why }, { onSuccess: () => setStep(null) })}
+          onCancel={() => setStep(null)}
+        />
       ) : null}
       <RefusalLine error={act.error} />
     </div>

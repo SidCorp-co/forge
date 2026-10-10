@@ -7,18 +7,15 @@
 // derives whose turn it is.
 // The URL carries the view (`?group=…&q=…&peek=REQ-n`), so back from the full page restores it.
 
-import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
-import { AcceptStep, Button, EmptyState, Field, Input, ListLayout, ListSearch, ListToolbar, PageTitle, rememberListOrigin, StatusBadge, ToolbarSelect, TopBarActions, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, } from "@/design";
+import { useMemo, useState } from "react";
+import { Button, EmptyState, Field, Input, ListPage, ListSearch, PageTitle, StatusBadge, ToolbarSelect, useListPage, useViewMode, ViewModeSwitcher } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { placeRefusals } from "@/lib/api/field-refusals";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage, } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
-import { RejectStep } from "@/features/suggestions";
-import { acceptConsequence, PendingBadge, summaryOf } from "@/features/suggestions";
-import { requirementAffected, useProjectWaitingSuggestions, useSuggestionDecision } from "@/features/suggestions";
+import { acceptConsequence, PendingBadge, requirementAffected, SuggestionDecider, summaryOf, useProjectWaitingSuggestions } from "@/features/suggestions";
 import type { SuggestionView as Suggestion } from "@/features/suggestions";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useCreateRequirement, useRequirementAreas, useRequirements } from "../hooks";
@@ -53,12 +50,12 @@ export function CreateRequirementForm({ projectId, onDone }: { projectId: string
         if (!submitting.claim()) return;
         create.mutate(
           { title: title.trim() },
-          { onSuccess: (d) => onDone(d.key), onSettled: submitting.release },
+          { onSuccess: (d) => onDone(d.key), onSettled: () => submitting.release() },
         );
       }}
     >
       <Field label={t("requirements.form.title")} error={refused.at("title")} required>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={REQUIREMENT_TITLE_MAX} autoFocus />
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={REQUIREMENT_TITLE_MAX} ref={(el) => el?.focus()} />
       </Field>
       <RefusalLine error={create.error} onField={refused.onField} />
       <div className="flex gap-2">
@@ -127,8 +124,6 @@ function AssistantStrip({
 function WaitingSuggestion({ s, r, projectId, onPeek }: { s: Suggestion; r: RequirementSummary; projectId: string; onPeek: (k: string) => void }) {
   const t = useCopy();
   const lang = useInterfaceLanguage();
-  const decide = useSuggestionDecision(projectId, requirementAffected(projectId, r.key));
-  const [step, setStep] = useState<"accept" | "reject" | null>(null);
   return (
     <div className="flex flex-wrap items-center gap-2 py-0.75" data-testid="assistant-strip-row">
       <span className="font-mono text-12 font-semibold text-link">{r.key}</span>
@@ -136,151 +131,108 @@ function WaitingSuggestion({ s, r, projectId, onPeek }: { s: Suggestion; r: Requ
       <span className="min-w-0 truncate">{summaryOf(s, lang)}</span>
       <span className="flex-1" />
       <PendingBadge />
-      {/* while a step is open its openers are off: a second press would close it and drop the typed reason */}
-      <Button type="button" size="sm" disabled={decide.isPending || step !== null} onClick={() => setStep("accept")} aria-expanded={step === "accept"}>
-        {t("requirements.assistant.accept")}
-      </Button>
-      <Button type="button" size="sm" variant="ghost" disabled={decide.isPending || step !== null} onClick={() => setStep("reject")} aria-expanded={step === "reject"}>
-        {t("requirements.act.reject")}
-      </Button>
-      <Button type="button" size="sm" variant="ghost" onClick={() => onPeek(r.key)}>
-        {t("requirements.assistant.review")}
-      </Button>
-      {step === "accept" ? (
-        <div className="basis-full">
-          <AcceptStep
-            confirmLabel={t("requirements.assistant.accept")}
-            consequence={acceptConsequence(s, lang)}
-            loading={decide.isPending}
-            onCancel={() => setStep(null)}
-            onConfirm={(why) => decide.mutate({ kind: "accept", id: s.id, reason: why }, { onSuccess: () => setStep(null) })}
-          />
-        </div>
-      ) : null}
-      {step === "reject" ? (
-        <div className="basis-full">
-          <RejectStep
-            loading={decide.isPending}
-            onCancel={() => setStep(null)}
-            onConfirm={(why) => decide.mutate({ kind: "reject", id: s.id, reason: why }, { onSuccess: () => setStep(null) })}
-          />
-        </div>
-      ) : null}
-      {decide.error ? (
-        <span className="basis-full">
-          <RefusalLine error={decide.error} />
-        </span>
-      ) : null}
+      <SuggestionDecider projectId={projectId} s={s} affected={requirementAffected(projectId, r.key)} consequence={acceptConsequence(s, lang)}>
+        <Button type="button" size="sm" variant="ghost" onClick={() => onPeek(r.key)}>
+          {t("requirements.assistant.review")}
+        </Button>
+      </SuggestionDecider>
     </div>
   );
 }
 
+/** Whether a row sits in the area the toolbar picked: "" any, "none" the rows without one. */
+const inArea = (r: RequirementSummary, area: string) => !area || (area === "none" ? !r.area : r.area?.id === area);
+
 export function RequirementsScreen({ projectId, slug }: { projectId: string; slug: string }) {
   const t = useCopy();
   const label = useAttentionLabel();
-  const modes = useMemo(() => modesIn(t), [t]);
+  const modes = modesIn(t);
   const q = useRequirements(projectId);
   useProjectWaitingSuggestions(projectId);
-  const router = useRouter();
-  const [params, setParams] = useUrlParams();
   const [mode, setMode] = useViewMode(modes);
-  const text = params.get("q") ?? "";
-  const areaFilter = params.get("area") ?? "";
   const [creating, setCreating] = useState(false);
   const dock = useChatDock();
   const approvedDesigns = (useWorkflows(projectId).data?.workflows ?? []).filter((w) => w.design.status === "approved").length;
   const areas = useRequirementAreas(projectId).data ?? [];
   const clock = useEtaClock();
-
-  const all = q.data?.requirements ?? [];
-  // the search box reads q; whom a row waits on and its state are the list filter the chat sets too (REQ-41 BC-5)
+  // whom a row waits on and its state are the list filter the chat sets too (REQ-41 BC-5)
   const filter = useListNarrowing("requirements");
-  const rows = useMemo(() => {
-    const needle = text.trim().toLowerCase();
-    return all.filter(
-      (r) =>
-        (!needle || `${r.key} ${r.title} ${r.shortName ?? ""}`.toLowerCase().includes(needle)) &&
-        (!areaFilter || (areaFilter === "none" ? !r.area : r.area?.id === areaFilter)) &&
-        matchesListFilter(filter, { waiting: waitingFilterOf(r.standing), text: "", state: r.standing.state }),
-    );
-  }, [all, text, areaFilter, filter]);
-  const groups = useMemo(() => listGroupsOf(rows, mode === "area" ? "area" : "attention", areas, label, t("requirements.noArea")), [rows, mode, areas, label, t]);
-  const visible = useMemo(() => (mode === "map" ? rows : groups.filter((g) => g.id !== "done").flatMap((g) => g.rows)).map((r) => r.key), [rows, groups, mode]);
-  const allKeys = useMemo(() => all.map((r) => r.key), [all]);
-  const peek = usePeek(visible, allKeys);
+  const all = q.data?.requirements ?? [];
+  const list = useListPage({
+    rows: all,
+    keyOf: (r) => r.key,
+    searchOf: (r) => `${r.key} ${r.title} ${r.shortName ?? ""}`,
+    narrow: (r, params) =>
+      inArea(r, params.get("area") ?? "") &&
+      matchesListFilter(filter, { waiting: waitingFilterOf(r.standing), text: "", state: r.standing.state }),
+    groupsOf: (rows) => listGroupsOf(rows, mode === "area" ? "area" : "attention", areas, label, t("requirements.noArea")),
+    foldKey: "web-v2:requirements-fold",
+    stepsOf: (groups, rows) => (mode === "map" ? rows : groups.filter((g) => g.id !== "done").flatMap((g) => g.rows)),
+    hrefOf: (key) => requirementHref(slug, key),
+    origin: REQUIREMENTS_LIST,
+  });
+  const areaFilter = list.params.get("area") ?? "";
+  const { peek } = list;
+  const switcher = (placement: "header" | "toolbar") => <ViewModeSwitcher modes={modes} value={mode} onChange={setMode} placement={placement} />;
 
-  const openFull = useCallback(
-    (key: string) => {
-      rememberListOrigin(REQUIREMENTS_LIST);
-      router.push(requirementHref(slug, key));
-    },
-    [router, slug],
-  );
-  usePeekKeys(peek, openFull);
-
-  const title = (
-    <>
-      <PageTitle after={<ViewModeSwitcher modes={modes} value={mode} onChange={setMode} placement="header" />}>{t("requirements.title")}</PageTitle>
-      <TopBarActions>
-        <Button type="button" variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)} disabled={creating}>
-          {t("requirements.new")}
-        </Button>
-      </TopBarActions>
-    </>
-  );
   return (
-    <QueryBoundary query={q} loadingLabel={t("requirements.loadingList")} title={title} height="60vh" retry="always">
+    <QueryBoundary query={q} loadingLabel={t("requirements.loadingList")} title={<PageTitle>{t("requirements.title")}</PageTitle>} height="60vh" retry="always">
       {() => (
-        <div className="grid min-h-full content-start bg-app" data-testid="requirements-screen">
-          {title}
-          {creating ? (
-            <CreateRequirementForm
-              projectId={projectId}
-              onDone={(key) => {
-                setCreating(false);
-                if (key) peek.set(key);
-              }}
-            />
-          ) : null}
-          <ListLayout
-            peek={
-              peek.open ? (
-                <RequirementPeek key={peek.open} projectId={projectId} slug={slug} reqKey={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} />
-              ) : null
-            }
-          >
-              <ListToolbar>
-                <ViewModeSwitcher modes={modes} value={mode} onChange={setMode} placement="toolbar" />
-                <ListSearch noun={t("requirements.searchNoun")} value={text} onChange={(v) => setParams({ q: v || null })} />
-                <ToolbarSelect
-                  label={t("requirements.filter.area")}
-                  value={areaFilter}
-                  onChange={(v) => setParams({ area: v || null })}
-                  options={[{ value: "", label: t("requirements.filter.anyArea") }, ...areas.map((a) => ({ value: a.id, label: a.name })), { value: "none", label: t("requirements.noArea") }]}
-                />
-                <ListFilterBar list="requirements" />
-                <AreasEditor projectId={projectId} areas={areas} />
-              </ListToolbar>
-              <AssistantStrip projectId={projectId} rows={all} onPeek={(k) => peek.set(k)} />
-              <PlacementBanner projectId={projectId} rows={all} hasAreas={areas.length > 0} />
-              {all.length === 0 ? (
-                <div className="px-5 py-10">
-                  <EmptyState
-                    message={t("requirements.empty")}
-                    action={
-                      dock && approvedDesigns > 0
-                        ? { label: t("requirements.draftFromDesigns", { n: approvedDesigns }), onClick: () => dock.show({ kind: "draft", projectId, draft: t("requirements.draftFromDesignsAsk") }) }
-                        : undefined
-                    }
-                  />
-                </div>
-              ) : mode === "map" ? (
-                <RequirementsMap rows={rows} areas={areas} slug={slug} onPeek={(k) => peek.set(k === peek.open ? null : k)} />
-              ) : (
-                <RequirementsList groups={groups} slug={slug} now={clock.now} selected={peek.open} onPeek={(k) => peek.set(k === peek.open ? null : k)} />
-              )}
-          </ListLayout>
-        </div>
+        <ListPage
+          testId="requirements-screen"
+          title={t("requirements.title")}
+          titleAfter={switcher("header")}
+          actions={
+            <Button type="button" variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)} disabled={creating}>
+              {t("requirements.new")}
+            </Button>
+          }
+          lead={
+            creating ? (
+              <CreateRequirementForm
+                projectId={projectId}
+                onDone={(key) => {
+                  setCreating(false);
+                  if (key) peek.set(key);
+                }}
+              />
+            ) : null
+          }
+          toolbar={
+            <>
+              {switcher("toolbar")}
+              <ListSearch noun={t("requirements.searchNoun")} {...list.search} />
+              <ToolbarSelect
+                label={t("requirements.filter.area")}
+                value={areaFilter}
+                onChange={(v) => list.setParams({ area: v || null })}
+                options={[{ value: "", label: t("requirements.filter.anyArea") }, ...areas.map((a) => ({ value: a.id, label: a.name })), { value: "none", label: t("requirements.noArea") }]}
+              />
+              <ListFilterBar list="requirements" />
+              <AreasEditor projectId={projectId} areas={areas} />
+            </>
+          }
+          peek={peek.open ? <RequirementPeek key={peek.open} projectId={projectId} slug={slug} reqKey={peek.open} peek={peek} onOpenFull={() => list.openFull(peek.open as string)} /> : null}
+        >
+          <AssistantStrip projectId={projectId} rows={all} onPeek={(k) => peek.set(k)} />
+          <PlacementBanner projectId={projectId} rows={all} hasAreas={areas.length > 0} />
+          {all.length === 0 ? (
+            <div className="px-5 py-10">
+              <EmptyState
+                message={t("requirements.empty")}
+                action={
+                  dock && approvedDesigns > 0
+                    ? { label: t("requirements.draftFromDesigns", { n: approvedDesigns }), onClick: () => dock.show({ kind: "draft", projectId, draft: t("requirements.draftFromDesignsAsk") }) }
+                    : undefined
+                }
+              />
+            </div>
+          ) : mode === "map" ? (
+            <RequirementsMap rows={list.rows} areas={areas} slug={slug} onPeek={list.togglePeek} />
+          ) : (
+            <RequirementsList groups={list.groups} slug={slug} now={clock.now} selected={peek.open} onPeek={list.togglePeek} />
+          )}
+        </ListPage>
       )}
     </QueryBoundary>
   );

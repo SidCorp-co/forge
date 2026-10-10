@@ -1,7 +1,7 @@
 "use client";
 
 
-import { createContext, useContext, useState } from "react";
+import { createContext, use, useState } from "react";
 import type { ReactNode } from "react";
 import type { RenderBlock } from "./types";
 
@@ -38,7 +38,7 @@ export interface ThreadDisclosures {
   atBottom: boolean;
 }
 
-const Ctx = createContext<ThreadDisclosures | null>(null);
+const ThreadDisclosuresContext = createContext<ThreadDisclosures | null>(null);
 
 /** The turn id a disclosure key belongs to. */
 const turnOf = (key: string) => key.slice(0, key.indexOf(":"));
@@ -73,12 +73,12 @@ export function DisclosureScope({
       atBottom,
     });
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <ThreadDisclosuresContext value={value}>{children}</ThreadDisclosuresContext>;
 }
 
 /** The thread's disclosure state where there is a scope, and nothing where there is not. */
 export function useThreadDisclosures(): ThreadDisclosures | null {
-  return useContext(Ctx);
+  return use(ThreadDisclosuresContext);
 }
 
 export function useDisclosure(key?: string): readonly [boolean, () => void] {
