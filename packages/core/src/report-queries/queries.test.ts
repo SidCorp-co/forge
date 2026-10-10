@@ -187,7 +187,7 @@ describe('roadmap-eta', () => {
       p50At: 'h50',
       p85At: 'h85',
       basis:
-        "in people's hands; 3 ahead (ISS-1, ISS-2, …); waits on ISS-2 to land first; read from 21 issues landed in the last 60 days; release lag read from 9 releases",
+        "in people's hands; 3 issues ahead (ISS-1, ISS-2, …); waits on ISS-2 to land first; read from 21 issues landed in the last 60 days; release lag read from 9 releases",
     });
     expect(
       etaOf(
@@ -218,7 +218,7 @@ describe('roadmap-eta', () => {
       p50At: span.p50At,
       p85At: span.p85At,
       basis:
-        'lands by then; then Ana to cut the release; 3 ahead (ISS-1, ISS-2, …); waits on ISS-2 to land first; read from 21 issues landed in the last 60 days',
+        'lands by then; then Ana to cut the release; 3 issues ahead (ISS-1, ISS-2, …); waits on ISS-2 to land first; read from 21 issues landed in the last 60 days',
     });
     expect(
       etaOf(

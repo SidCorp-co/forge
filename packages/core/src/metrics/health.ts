@@ -48,7 +48,6 @@ export async function projectHealth(
 ): Promise<ProjectHealth> {
   const buckets = bucketBoundaries('day', days, now);
   const first = buckets[0] ?? now.toISOString();
-  const from = sql`${first}::timestamptz`;
   const before = sql`${first}::timestamptz - (${days}::int * interval '1 day')`;
   const byDay = new Map<string, HealthDay>(buckets.map((d) => [d, { day: d, ...zero() }]));
   const totals = zero();

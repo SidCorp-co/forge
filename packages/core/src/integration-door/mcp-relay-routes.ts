@@ -7,22 +7,16 @@
 
 import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import { Hono } from 'hono';
-import { readRelayTicket, relayedBinding, relayUpstreamOf } from '../integrations/index.js';
+import {
+  readRelayTicket,
+  relayedBinding,
+  relayToUpstream,
+  relayUpstreamOf,
+} from '../integrations/index.js';
 import { refuser } from '../lib/refusal.js';
 import { rawBody } from '../middleware/zod-validator.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
-
-/** Request headers the MCP transport reads, passed upstream as sent. */
-const FORWARDED = [
-  'content-type',
-  'accept',
-  'mcp-session-id',
-  'mcp-protocol-version',
-  'last-event-id',
-];
-/** Response headers the client reads, passed back as the provider sent them. */
-const RETURNED = ['content-type', 'mcp-session-id', 'cache-control', 'www-authenticate'];
 
 export const mcpRelayRoutes = new Hono();
 
@@ -57,22 +51,11 @@ mcpRelayRoutes.on(['GET', 'POST', 'DELETE'], '/:bindingId', relayedMessage, asyn
       `the ${pair.binding.provider} connection holds no usable credential (its health on Settings → Integrations names why), so nothing was sent`,
     );
   }
-  const headers = new Headers(upstream.headers);
-  for (const name of FORWARDED) {
-    const v = c.req.header(name);
-    if (v) headers.set(name, v);
-  }
   const method = c.req.method;
-  const answer = await fetch(upstream.url, {
+  return relayToUpstream(upstream, {
     method,
-    headers,
+    header: (name) => c.req.header(name),
     ...(method === 'POST' ? { body: await c.req.arrayBuffer() } : {}),
     signal: c.req.raw.signal,
   });
-  const out = new Headers();
-  for (const name of RETURNED) {
-    const v = answer.headers.get(name);
-    if (v) out.set(name, v);
-  }
-  return new Response(answer.body, { status: answer.status, headers: out });
 });

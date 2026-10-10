@@ -43,6 +43,8 @@ const job = (over: Partial<NonNullable<OnboardingView['job']>> = {}) => ({
   dispatchedAt: null,
   finishedAt: null,
   waitingOn: null,
+  attempt: 1,
+  endedWith: null,
   ...over,
 });
 
@@ -51,6 +53,22 @@ describe('project-onboarding reanalyze: the dashboard hint offers a re-analysis'
     const h = hintOf(view({ job: job({ status: 'failed' }) }), 'none');
     expect(h?.action).toBe('reanalyze');
     expect(h?.mayReanalyze).toBe(true);
+    expect(h?.text).toBe('Attempt 1 drew nothing');
+  });
+
+  it('names the attempt that failed and why it ended, where the job recorded why (ISS-268)', () => {
+    const h = hintOf(
+      view({ job: job({ status: 'failed', attempt: 3, endedWith: 'the runner went offline' }) }),
+      'none',
+    );
+    expect(h?.text).toBe('Attempt 3 drew nothing: the runner went offline');
+  });
+
+  it('heads a live retry with its attempt number, and leaves a first attempt unnumbered', () => {
+    const first = hintOf(view({ job: job({ status: 'queued' }) }), 'none')?.text ?? '';
+    const third = hintOf(view({ job: job({ status: 'queued', attempt: 3 }) }), 'none')?.text ?? '';
+    expect(first).not.toMatch(/^Attempt/);
+    expect(third).toBe(`Attempt 3: ${first}`);
   });
 
   it('never offers it while a job of the onboarding is live (ONBOARDING_ALREADY_RUNNING)', () => {

@@ -51,6 +51,7 @@ export {
   httpUpstreamOf,
   readRelayTicket,
   relayedBinding,
+  relayToUpstream,
   relayUpstreamOf,
   relayUrlFor,
 } from './mcp-relay.js';

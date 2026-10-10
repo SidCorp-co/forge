@@ -77,7 +77,10 @@ describe('each cap stops the script and names itself', () => {
   it('stops runaway recursion at the stack limit', async () => {
     const r = await run('const f = (n) => f(n + 1) + 1; f(0)');
     expect(r.status).toBe('failed');
-    expect(r.error?.message).toBe('stack overflow');
+    expect(r.stopped).toBe('stackBytes');
+    expect(r.error?.message).toMatch(
+      /^the script nested calls past its stack cap of \d+ bytes \(stackBytes\) and was stopped$/,
+    );
   });
 
   it('cuts the log at its cap and says so', async () => {
@@ -85,7 +88,7 @@ describe('each cap stops the script and names itself', () => {
       logChars: 500,
     });
     expect(r.status).toBe('success');
-    expect(r.output).toContain('[log cut at 500 characters]');
+    expect(r.output).toContain('[log cut at its cap of 500 characters (logChars)]');
     expect(r.output.length).toBeLessThan(700);
   });
 

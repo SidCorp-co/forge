@@ -31,7 +31,6 @@ import { refuser } from '../lib/refusal.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { requireHeld } from '../permissions/index.js';
 import { type PreviewActor, rowOf, siteOrRefuse, userActor, view } from './access.js';
-import { previewOrigin } from './domain.js';
 import { OPEN_STATES } from './rules.js';
 import { closeAbandoned, reopenForViewer } from './service.js';
 import { deliverToSketch, openIdeaPreview } from './subjects.js';
@@ -448,9 +447,4 @@ export async function listRooms(projectId: string, actor: PreviewActor) {
     .orderBy(desc(pocRooms.createdAt))
     .limit(100);
   return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
-}
-
-/** Where the room's preview is served: what the agent's brief and a settle name. */
-export function roomPreviewUrl(preview: PreviewRow): string {
-  return `${previewOrigin(siteOrRefuse(), preview.slug)}/`;
 }

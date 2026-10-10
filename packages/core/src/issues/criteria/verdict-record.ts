@@ -126,7 +126,7 @@ async function clipFault(
   return {
     code: 'VERDICT_CLIP_REQUIRED',
     criterion: draft.criterion,
-    detail: `criterion ${draft.criterion} is observable on the running build, and a \`pass\` on it cites a screen clip of the run that shows it: attach a WebM or MP4 to the issue and name it in \`evidence\`, or say in \`reason\` why it was judged without one`,
+    detail: `criterion ${draft.criterion} is observable on the running build, and a \`pass\` on it cites a screen clip of the run that shows it: attach a WebM or MP4 to the issue and name it in \`evidence\`, or say why it was judged without one (a \`why\` line, or \`reason\`)`,
   };
 }
 

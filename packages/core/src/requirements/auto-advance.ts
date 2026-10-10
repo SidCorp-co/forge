@@ -59,7 +59,7 @@ export async function advanceRequirement(
     .select()
     .from(requirements)
     .where(and(eq(requirements.id, requirementId), eq(requirements.projectId, projectId)));
-  if (!row || row.status !== 'draft') return { stopped: 'not_draft' };
+  if (row?.status !== 'draft') return { stopped: 'not_draft' };
   const actor = await actorOf(row.id, row.ownerId);
   if (!actor) return { stopped: 'no_actor' };
   const approvals = await readApprovals(projectId);
