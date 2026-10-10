@@ -134,7 +134,7 @@ function ScheduleBanner({ s, className }: { s: ScheduleStanding; className?: str
   );
 }
 
-export function ScheduleProperties({ s, slug, failStreak }: { s: ScheduleStanding; slug: string; failStreak?: number }) {
+export function ScheduleProperties({ s, slug }: { s: ScheduleStanding; slug: string }) {
   const t = useCopy();
   const time = useTimeFormat();
   const language = useInterfaceLanguage();
@@ -147,7 +147,6 @@ export function ScheduleProperties({ s, slug, failStreak }: { s: ScheduleStandin
         <Fact label={t("schedules.facts.streak")}>
           <span title={said(s.says.rule, language)}>
             {s.streak}
-            {failStreak ? <span className="text-subtle"> {t("schedules.facts.ofToFailing", { n: failStreak })}</span> : null}
           </span>
         </Fact>
         <Fact label={t("schedules.facts.lastFire")} testId="schedule-last-fire">

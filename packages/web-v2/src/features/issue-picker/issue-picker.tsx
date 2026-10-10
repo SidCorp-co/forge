@@ -32,14 +32,12 @@ export function IssuePicker({
   onChange,
   ariaLabel,
   single = false,
-  id,
 }: {
   projectId: string;
   value: IssuePick[];
   onChange: (next: IssuePick[]) => void;
   ariaLabel: string;
   single?: boolean;
-  id?: string;
 }) {
   const t = useCopy();
   const [text, setText] = useState("");
@@ -54,7 +52,6 @@ export function IssuePicker({
 
   return (
     <ChipPicker
-      id={id}
       value={value}
       onChange={onChange}
       items={items}

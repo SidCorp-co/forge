@@ -19,16 +19,9 @@ export const POOL_READ_STALE_MS = 5 * 60_000;
  * status came back. A report the box stopped renewing is kept and dated, never
  * stated in the present tense.
  */
-export function PoolReadBanner({
-	poolRead,
-	now: given,
-}: {
-	poolRead: RunnerPoolRead | null | undefined;
-	now?: number;
-}) {
+export function PoolReadBanner({ poolRead }: { poolRead: RunnerPoolRead | null | undefined }) {
 	// An open page must see a report go stale without a re-render from above.
-	const ticking = useNow(30_000, Boolean(poolRead) && given === undefined);
-	const now = given ?? ticking;
+	const now = useNow(30_000, Boolean(poolRead));
 	const t = useCopy();
 	const time = useTimeFormat();
 	if (!poolRead) return null;

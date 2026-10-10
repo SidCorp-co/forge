@@ -7,11 +7,11 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { partSegments, partsLine } from "../derive";
 import type { OverviewFlow } from "../types";
 
-function AttentionLegend({ groups = ISSUE_ATTENTION_GROUPS }: { groups?: readonly (typeof ISSUE_ATTENTION_GROUPS)[number][] }) {
+function AttentionLegend() {
   const t = useCopy();
   return (
     <ul className="mt-2 flex flex-wrap gap-x-3.5 gap-y-1 text-12 text-muted" aria-label={t("overview.dev.legend")}>
-      {groups.map((g) => (
+      {ISSUE_ATTENTION_GROUPS.map((g) => (
         <li key={g} className="inline-flex items-center gap-1.5">
           <span aria-hidden className="size-2 rounded-xs" style={{ background: LEGEND[ISSUE_ATTENTION_LABELS[g].tone].dot }} />
           {t(`issues.attention.${g}`)}
