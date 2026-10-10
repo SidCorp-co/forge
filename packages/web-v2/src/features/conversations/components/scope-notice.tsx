@@ -29,20 +29,19 @@ export function ScopeNotice({
     <div
       data-testid="scope-notice"
       className={`flex-none border-b px-4 py-2 ${
-        spans ? "border-line bg-[color:var(--accent-tint)]" : "border-line-subtle bg-surface"
+        spans ? "border-line bg-accent-tint" : "border-line-subtle bg-surface"
       }`}
     >
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        className="flex w-full items-center gap-2 text-left focus-visible:outline-none focus-visible:shadow-focus"
       >
         <Icon
           name="chevronRight"
           size={13}
-          className="flex-none text-subtle transition-transform duration-[150ms]"
-          style={{ transform: open ? "rotate(90deg)" : "none" }}
+          className={open ? "flex-none rotate-90 text-subtle transition-transform duration-150" : "flex-none text-subtle transition-transform duration-150"}
         />
         <span className="fg-caption truncate text-muted">
           {spans
@@ -51,7 +50,7 @@ export function ScopeNotice({
         </span>
       </button>
       {open && (
-        <div className="forge-fade mt-1.5 pl-[21px]">
+        <div className="forge-fade mt-1.5 pl-5.25">
           <p className="fg-caption text-subtle">{scopeDerivation({ scopeProjects }, t)}</p>
           {refusal && (
             <p className="fg-caption mt-1 text-muted" data-testid="scope-notice-refusal">

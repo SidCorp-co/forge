@@ -30,7 +30,7 @@ export function ideaOffersOf(blocks: readonly CanonicalBlock[] | null | undefine
   return out;
 }
 
-export function IdeaOfferCard({ offer }: { offer: IdeaOffer }) {
+export function IdeaOfferNotice({ offer }: { offer: IdeaOffer }) {
   const t = useCopy();
   const project = useProjects().data?.find((p) => p.id === offer.projectId);
   const open = useMutation<PreviewRecord>({ mutationFn: () => ideaApi.open(offer.projectId, { about: offer.about, brief: offer.brief }) });

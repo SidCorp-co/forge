@@ -9,11 +9,11 @@ import type {
   ConversationDetail,
   ConversationMembership,
   ConversationProgressEntry,
-  ConversationRow,
+  ConversationListItem,
 } from "./types";
 
 /** A room in a list that spans projects — the project is the query it came from, not a column. */
-export interface ListedConversation extends ConversationRow {
+export interface ListedConversation extends ConversationListItem {
   projectId: string;
 }
 

@@ -11,7 +11,7 @@ import { useCallback, useMemo } from "react";
 import { Button, Icon } from "@/design";
 import type { CanonicalBlock } from "@/features/session/types";
 import { issuesApi, releaseBatchApi } from "@/features/issues/api";
-import { IdeaOfferCard, ideaOffersOf } from "./components/idea-offers";
+import { IdeaOfferNotice, ideaOffersOf } from "./components/idea-offers";
 import { useIssue } from "@/features/issues/detail-hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
@@ -68,10 +68,10 @@ export function useActOffers(args: {
       return (
         <div className="mt-2 flex flex-col gap-2">
           {offers.acts.map((o) => (
-            <ActOfferCard key={`${o.issueId}:${o.act}`} offer={o} />
+            <ActOfferNotice key={`${o.issueId}:${o.act}`} offer={o} />
           ))}
           {offers.ideas.map((o) => (
-            <IdeaOfferCard key={`${o.about}:${o.brief}`} offer={o} />
+            <IdeaOfferNotice key={`${o.about}:${o.brief}`} offer={o} />
           ))}
         </div>
       );
@@ -81,7 +81,7 @@ export function useActOffers(args: {
   return { offersFor };
 }
 
-function ActOfferCard({ offer }: { offer: ChatActOffer }) {
+function ActOfferNotice({ offer }: { offer: ChatActOffer }) {
   const t = useCopy();
   const L = useLabel();
   const qc = useQueryClient();

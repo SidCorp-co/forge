@@ -30,7 +30,7 @@ import {
 } from "../hooks";
 import type { ChatTarget } from "@/features/chat-dock/dock-target";
 import { conversationTitle } from "../types";
-import { ConversationRow } from "./conversation-row";
+import { ConversationListItem } from "./conversation-row";
 
 const SKELETON_ROWS = ["s1", "s2", "s3", "s4"];
 
@@ -277,11 +277,11 @@ export function ConversationList({
           words: { project: t("common.nav.project"), page: t("shell.dock.thisPage") },
         }).map((section) => (
           <section key={section.key} aria-label={section.label}>
-            <h3 className="bg-sunken px-3 py-1 text-11-5 font-bold text-muted">{section.label}</h3>
+            <h3 className="bg-sunken px-3 py-1 text-12 font-bold text-muted">{section.label}</h3>
             {section.rows.map((row) => {
               const p = byId.get(row.projectId);
               return (
-                <ConversationRow
+                <ConversationListItem
                   key={row.id}
                   row={row}
                   project={p}
