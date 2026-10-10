@@ -1,7 +1,7 @@
 import { namedRefusals, type Refusal } from "./refusals";
 
 /** A refused save read onto its form: each field's plain words, and which refusals a field shows. */
-export interface PlacedRefusals<F extends string> {
+interface PlacedRefusals<F extends string> {
   /** The plain words of every refusal on `field`, joined; undefined while none is. */
   at: (field: F) => string | undefined;
   /** Whether a field shows `r`, so the line under the form leaves it out. */

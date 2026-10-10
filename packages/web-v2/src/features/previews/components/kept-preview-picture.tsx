@@ -18,7 +18,7 @@ import { IdeaPreview } from "./idea-preview";
  * Draw `events` (Meta then FullSnapshot) into `root` as one still. rrweb is a heavy bundle, so it is
  * read when a kept picture is first drawn, not with the page.
  */
-export async function drawStill(root: HTMLElement, events: KeptPreviewContent["snapshot"]): Promise<() => void> {
+async function drawStill(root: HTMLElement, events: KeptPreviewContent["snapshot"]): Promise<() => void> {
   const { Replayer } = await import("rrweb");
   await import("rrweb/dist/style.css");
   root.replaceChildren();

@@ -19,7 +19,7 @@ export interface SelectOption {
   disabled?: boolean;
 }
 
-export interface SelectProps {
+interface SelectProps {
   options: SelectOption[];
   value: string;
   onChange?: (value: string) => void;
@@ -99,7 +99,7 @@ export function Select({
   );
 }
 
-export interface NativeSelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, "children"> {
+interface NativeSelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, "children"> {
   options: SelectOption[];
 }
 

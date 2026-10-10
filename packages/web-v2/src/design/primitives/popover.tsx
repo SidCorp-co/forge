@@ -21,7 +21,7 @@ export type PopoverPlacement =
 
 const GUTTER = 8;
 
-export interface PopoverProps extends Omit<HTMLAttributes<HTMLDivElement>, "children"> {
+interface PopoverProps extends Omit<HTMLAttributes<HTMLDivElement>, "children"> {
   open: boolean;
   anchor: RefObject<HTMLElement | null>;
   onDismiss?: () => void;

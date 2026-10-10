@@ -22,7 +22,7 @@ export interface ToastInput extends ToastView {
   slot?: string;
 }
 
-export const MAX_VISIBLE_TOASTS = 3;
+const MAX_VISIBLE_TOASTS = 3;
 
 export function showToast({ title, description, tone = "default", onClick, duration = 4000, slot }: ToastInput) {
   const options = {

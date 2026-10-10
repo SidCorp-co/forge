@@ -101,46 +101,44 @@ export function TableBlockView({ block }: { block: VisualBlockOf<"table"> }) {
   const hidden = block.frame.rows.length - rows.length;
   return (
     <div className="min-w-0">
-      <div data-testid="table-scroll">
-        <Table className="text-13">
-          <THead>
-            <TR>
+      <Table className="text-13">
+        <THead>
+          <TR>
+            {fields.map((f, c) => (
+              <TH
+                key={f.name}
+                scope="col"
+                className={cn(
+                  "py-1.5 pl-0 pr-4 align-bottom font-sans text-12 font-semibold normal-case tracking-normal text-subtle",
+                  NUMERIC.has(f.type) && "text-right",
+                  c === 0 && STICKY,
+                )}
+                data-type={f.type}
+              >
+                {f.label}
+              </TH>
+            ))}
+          </TR>
+        </THead>
+        <TBody>
+          {keyedByContent(shown).map(({ key, item: row }) => (
+            // a frame row has no key of its own: its cells, and which repeat of them it is
+            <TR key={key} className="hover:bg-transparent">
               {fields.map((f, c) => (
-                <TH
-                  key={f.name}
-                  scope="col"
-                  className={cn(
-                    "py-1.5 pl-0 pr-4 align-bottom font-sans text-12 font-semibold normal-case tracking-normal text-subtle",
-                    NUMERIC.has(f.type) && "text-right",
-                    c === 0 && STICKY,
+                <TD key={f.name} className={cn("py-1.5 pl-0 pr-4 align-top text-13", cellClass(f), c === 0 && STICKY)} data-type={f.type}>
+                  {f.type === "string" ? (
+                    <ClampedText text={cellText(f, row[f.name], instants)}>
+                      <Cell field={f} cell={row[f.name]} />
+                    </ClampedText>
+                  ) : (
+                    <Cell field={f} cell={row[f.name]} />
                   )}
-                  data-type={f.type}
-                >
-                  {f.label}
-                </TH>
+                </TD>
               ))}
             </TR>
-          </THead>
-          <TBody>
-            {keyedByContent(shown).map(({ key, item: row }) => (
-              // a frame row has no key of its own: its cells, and which repeat of them it is
-              <TR key={key} className="hover:bg-transparent">
-                {fields.map((f, c) => (
-                  <TD key={f.name} className={cn("py-1.5 pl-0 pr-4 align-top text-13", cellClass(f), c === 0 && STICKY)} data-type={f.type}>
-                    {f.type === "string" ? (
-                      <ClampedText text={cellText(f, row[f.name], instants)}>
-                        <Cell field={f} cell={row[f.name]} />
-                      </ClampedText>
-                    ) : (
-                      <Cell field={f} cell={row[f.name]} />
-                    )}
-                  </TD>
-                ))}
-              </TR>
-            ))}
-          </TBody>
-        </Table>
-      </div>
+          ))}
+        </TBody>
+      </Table>
       {rows.length === 0 && <p className="py-1.5 text-12 text-subtle">{t("visual.table.empty")}</p>}
       {rows.length > TABLE_ROW_CAP && (
         <button

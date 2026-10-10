@@ -8,7 +8,7 @@ const HUES: Record<Hue, CSSProperties> = {
   neutral: { color: "var(--fg-muted)", background: "var(--paper-50)", borderColor: "var(--border-default)" },
 };
 
-export interface MonoTagProps {
+interface MonoTagProps {
   children: ReactNode;
   hue?: Hue;
   style?: CSSProperties;

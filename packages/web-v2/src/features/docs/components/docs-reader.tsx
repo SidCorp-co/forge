@@ -22,7 +22,7 @@ export interface DocsNavItem {
   tag?: string;
 }
 
-export interface DocsNavSection {
+interface DocsNavSection {
   name: string;
   items: DocsNavItem[];
 }
@@ -49,7 +49,7 @@ function ItemBody({ item }: { item: DocsNavItem }) {
   );
 }
 
-export function DocsNavEntry({ item }: { item: DocsNavItem }) {
+function DocsNavEntry({ item }: { item: DocsNavItem }) {
   const current = item.active ? "page" : undefined;
   if (item.href !== undefined) {
     return (
@@ -181,7 +181,7 @@ export function DocsArticle({
 /** A heading's indent in the table of contents, by its level. */
 const TOC_INDENT = ["pl-2", "pl-4.5", "pl-7"] as const;
 
-export function DocsToc({ toc }: { toc: TocEntry[] }) {
+function DocsToc({ toc }: { toc: TocEntry[] }) {
   function scrollToHeading(slug: string) {
     const target = document.getElementById(slug);
     if (!target) return;

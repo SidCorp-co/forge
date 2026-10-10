@@ -18,7 +18,7 @@ declare global {
 }
 
 /** Every file's screens; a file registering none, or two screens sharing a name, is refused by name. */
-export function gatherScreens(files: Record<string, { SCREENS?: ChromeScreen[] }>): ChromeScreen[] {
+function gatherScreens(files: Record<string, { SCREENS?: ChromeScreen[] }>): ChromeScreen[] {
   const where = new Map<string, string>();
   const out: ChromeScreen[] = [];
   for (const [file, mod] of Object.entries(files)) {

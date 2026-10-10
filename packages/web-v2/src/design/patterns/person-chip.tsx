@@ -10,7 +10,7 @@ import { Icon, type IconName } from "../icons/icon";
 import { AGENT_TINT } from "../status";
 import { LEGEND } from "../vocabulary";
 
-export type WhoKind = Exclude<WaitingMark, "none">;
+type WhoKind = Exclude<WaitingMark, "none">;
 
 const SYSTEM_ICON: Partial<Record<WhoKind, IconName>> = { system: "settings", issue: "rows", release: "rocket", project: "ecosystem" };
 
@@ -43,7 +43,7 @@ export function WhoMark({ kind, who, size = 16 }: { kind: WhoKind; who: string; 
   );
 }
 
-export interface PersonChipProps {
+interface PersonChipProps {
   name: string;
   size?: number;
   /** The viewer themself: their mark wears the "waiting on you" amber. */

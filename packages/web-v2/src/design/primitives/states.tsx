@@ -29,7 +29,7 @@ function StateFrame({ figure, title, titleId, message, action }: { figure?: Reac
   );
 }
 
-export interface EmptyStateProps {
+interface EmptyStateProps {
   title?: string;
   /** One calm line: never cute, never apologetic. */
   message: string;
@@ -59,7 +59,7 @@ export function EmptyState({ title, message, action, mascot = true, titleId }: E
   );
 }
 
-export interface LoadingStateProps {
+interface LoadingStateProps {
   /** What is being read, when it is worth saying. */
   label?: string;
   /** Mirror a list: this many row-high placeholders in place of the spinner. */
@@ -84,7 +84,7 @@ export function LoadingState({ label, rows }: LoadingStateProps) {
   return <StateFrame figure={<Spinner size={20} />} message={label} />;
 }
 
-export interface ErrorStateProps {
+interface ErrorStateProps {
   title?: string;
   /** Plain cause and remedy, never apologetic. */
   message: string;

@@ -31,7 +31,7 @@ interface AnsweredCard {
   index: number;
 }
 
-export interface QuestionsPaneProps {
+interface QuestionsPaneProps {
   scope: { projectId: string; slug: string };
   /** The question a run row linked to, from `?q=`. */
   focusQuestionId?: string | null;

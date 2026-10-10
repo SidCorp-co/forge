@@ -6,7 +6,7 @@ import { useScrollEdges } from "../hooks/use-scroll-edges";
 import { EdgeCue } from "../primitives/edge-cue";
 import { Tabs, type TabsProps } from "../primitives/tabs";
 
-export interface ScreenTabsProps extends TabsProps {
+interface ScreenTabsProps extends TabsProps {
   /** Max-width utility for the strip column. Defaults to the shared wide
    *  shell width (matches PageContainer). */
   width?: string;

@@ -133,7 +133,7 @@ export function ChecklistAnswers({
   const rows = rowsOf(read, move);
   const open = rows.filter((r) => r.kind === "gap").length;
   // a move recorded before the checklist judged nothing, but the item's own reading still stands:
-  // the heading says how it reads now, and the line under it why no move is shown
+  // the heading says how it reads now
   const state = move ? (
     <span title={time.dateTime(move.at)}>{t("checklist.passed", { at: time.relative(move.at) })}</span>
   ) : rows.length === 0 ? (

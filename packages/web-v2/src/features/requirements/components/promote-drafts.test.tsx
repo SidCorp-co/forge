@@ -11,7 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { RequirementDetail } from "../types";
-import { PromoteDraftRow } from "./promote-drafts";
+import { PromotableDraft } from "./promote-drafts";
 import { PrimaryActions } from "./requirement-actions";
 
 const row = (n: number, status: string) => ({
@@ -200,7 +200,7 @@ describe("a draft row's promote", () => {
     const calls = fakeCore(() => ({ body: { requirement: detail(["open", "draft"]), promoted: [], refused: [] } }));
     const user = userEvent.setup();
     const d = detail(["draft", "draft"]);
-    renderWithQuery(<PromoteDraftRow projectId="p1" d={d} issue={d.issues[0] as RequirementDetail["issues"][number]} />);
+    renderWithQuery(<PromotableDraft projectId="p1" d={d} issue={d.issues[0]} />);
     await user.click(screen.getByRole("button", { name: "Promote ISS-10" }));
     await waitFor(() =>
       expect(calls).toContainEqual({ method: "POST", path: "/projects/p1/requirements/REQ-2/promote", body: { issues: ["i10"] } }),
@@ -213,9 +213,9 @@ describe("a draft row's promote", () => {
     const unadmitted = detail(["draft"], true, false);
     const { container } = renderWithQuery(
       <>
-        <PromoteDraftRow projectId="p1" d={d} issue={d.issues[0] as RequirementDetail["issues"][number]} />
-        <PromoteDraftRow projectId="p1" d={unsigned} issue={unsigned.issues[0] as RequirementDetail["issues"][number]} />
-        <PromoteDraftRow projectId="p1" d={unadmitted} issue={unadmitted.issues[0] as RequirementDetail["issues"][number]} />
+        <PromotableDraft projectId="p1" d={d} issue={d.issues[0]} />
+        <PromotableDraft projectId="p1" d={unsigned} issue={unsigned.issues[0]} />
+        <PromotableDraft projectId="p1" d={unadmitted} issue={unadmitted.issues[0]} />
       </>,
     );
     expect(container.querySelector("button")).toBeNull();

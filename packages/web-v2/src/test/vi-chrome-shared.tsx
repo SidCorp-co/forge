@@ -1,6 +1,6 @@
 import { EnumBadge, StatusBadge } from "@/design";
-import { Decisions as DecisionsPanel } from "@/features/comments/components/decisions";
-import { MockupList as MockupsPanel } from "@/features/mockups/components/mockups-panel";
+import { Decisions } from "@/features/comments/components/decisions";
+import { MockupList } from "@/features/mockups/components/mockups-panel";
 import { GateLine } from "@/features/releases/components/release-bits";
 import { WhatChanges } from "@/features/releases/components/release-changes";
 import type { Said } from "@forge/contracts/said";
@@ -46,8 +46,8 @@ const decisions = () => (
       [["entity-decisions", P, "feedback", "FB-1"], { comments: [], returned: 0 }],
     ]}
   >
-    <DecisionsPanel projectId={P} scope="requirement" targetRef="REQ-1" />
-    <DecisionsPanel projectId={P} scope="feedback" targetRef="FB-1" />
+    <Decisions projectId={P} scope="requirement" targetRef="REQ-1" />
+    <Decisions projectId={P} scope="feedback" targetRef="FB-1" />
   </Seeded>
 );
 
@@ -81,8 +81,8 @@ const mockups = () => (
       [["mockups", P, "feedback", "FB-1"], { mockups: [], returned: 0, open: 0 }],
     ]}
   >
-    <MockupsPanel projectId={P} target={{ type: "requirement", key: "REQ-1", revision: 2 }} />
-    <MockupsPanel projectId={P} target={{ type: "feedback", key: "FB-1" }} />
+    <MockupList projectId={P} target={{ type: "requirement", key: "REQ-1", revision: 2 }} />
+    <MockupList projectId={P} target={{ type: "feedback", key: "FB-1" }} />
   </Seeded>
 );
 
@@ -148,7 +148,7 @@ export const gateOf = (x: GateSaid, ownerKind?: string) =>
 
 /** Core's risk sentences as `release-batch/landing-surfaces.ts` says them. */
 const risk = (r: string, ref: string, s: Said) => ({ risk: r, ref, sentence: sentence(s), says: { sentence: s } });
-export const RISK_SENTENCES = [
+const RISK_SENTENCES = [
   risk("data_removed", "orders.note", say("standing.risk.dataRemoved", { ref: "orders.note" })),
   risk("data_changed", "orders.total", say("standing.risk.dataChanged", { ref: "orders.total" })),
   risk("api_removed", "GET /v1/orders", say("standing.risk.apiRemoved", { ref: "GET /v1/orders" })),

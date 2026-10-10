@@ -4,9 +4,9 @@
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { boardStore } from "@/features/board/board-store";
+import { boardStore } from "@/features/board";
 import { fakeCore, renderWithQuery } from "@/test/render";
-import { BoardPanel } from "./board-panel";
+import { DockBoard } from "./board-panel";
 
 vi.mock("@/features/board/board-canvas", () => ({ default: () => null }));
 
@@ -17,7 +17,7 @@ function board() {
   const calls = fakeCore((c) =>
     c.method === "POST" ? { status: 201, body: { mockup: { key: "MK-1", target: { key: (c.body as { target: Record<string, string> }).target.issue ?? "FB-2" } } } } : undefined,
   );
-  renderWithQuery(<BoardPanel projectId="p1" />);
+  renderWithQuery(<DockBoard projectId="p1" />);
   const field = screen.getByRole("textbox", { name: "Issue or feedback item to propose the board on" });
   const type = (key: string) => fireEvent.change(field, { target: { value: key } });
   return { calls, field, type };

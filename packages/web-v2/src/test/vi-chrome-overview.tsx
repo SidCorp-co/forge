@@ -5,20 +5,20 @@ import type { QueryKey } from "@tanstack/react-query";
 import type { DevelopmentOverview } from "@forge/contracts/development-overview";
 import type { PulseResponse } from "@forge/contracts/pulse";
 import { fireEvent } from "@testing-library/react";
-import { AwaitingRelease as AwaitingReleaseCard } from "@/features/development/activity/awaiting-release";
-import { StatRow as KpiBand } from "@/design";
-import { LiveRuns as LiveRunsCard } from "@/features/development/activity/live-runs";
-import { RunnerLoad as RunnersCard } from "@/features/development/activity/runner-load";
-import { SpendByStage as SpendCard } from "@/features/development/activity/spend-by-stage";
+import { AwaitingRelease } from "@/features/development/activity/awaiting-release";
+import { DevelopmentActivity } from "@/features/development/activity/development-activity";
+import { LiveRuns } from "@/features/development/activity/live-runs";
+import { RunnerLoad } from "@/features/development/activity/runner-load";
+import { SpendByStage } from "@/features/development/activity/spend-by-stage";
 import { StatusDonut } from "@/features/development/activity/status-donut";
 import { DevelopmentOverviewScreen } from "@/features/development/components/development-overview-screen";
 import { LeaseLanes } from "@/features/development/components/lease-lanes";
 import { ModuleBars } from "@/features/development/components/module-bars";
 import { needsYouKey } from "@/features/needs-you/hooks";
 import { ActionQueue } from "@/features/overview/components/action-queue";
-import { FlowFigures as FlowSection } from "@/features/overview/components/flow-section";
+import { FlowFigures } from "@/features/overview/components/flow-section";
 import { LivenessBand } from "@/features/overview/components/liveness-band";
-import { QualityFigures as QualitySection } from "@/features/overview/components/quality-section";
+import { QualityFigures } from "@/features/overview/components/quality-section";
 import { WorkSitting } from "@/features/overview/components/work-sitting";
 import type { PipelineRunListItem } from "@/features/pipeline/types";
 import { Seeded } from "./vi-chrome-requirements";
@@ -98,7 +98,7 @@ const DEV: DevelopmentOverview = {
     unassigned: { id: null, path: "", name: "No module", open: 1, parts: [{ group: "queued", count: 1 }], shipped: 0, lastLandingAt: null },
   },
   coverage: { open: 300, openRead: 200, limit: 200, flowTruncated: false },
-} as DevelopmentOverview;
+};
 
 const run = (n: number, over: Partial<PipelineRunListItem> = {}): PipelineRunListItem =>
   ({
@@ -226,18 +226,17 @@ export const SCREENS = [
     name: "Development activity",
     render: () => (
       <Seeded data={AWAITING_SEED}>
-        <KpiBand liveRuns={2} busyRunners={1} onlineRunners={2} openIssues={9} spendTodayUsd={4.2} inFlightUsd={1.1} />
-        <KpiBand liveRuns={0} busyRunners={0} onlineRunners={0} openIssues={0} spendTodayUsd={0} inFlightUsd={0} />
-        <LiveRunsCard runs={[run(1), run(2, { issueRef: null, kind: "system" })]} slug="hop" idle={[run(3), run(4)]} />
-        <LiveRunsCard runs={[]} slug="hop" idle={[run(3)]} />
-        <AwaitingReleaseCard slug="hop" projectId={P} />
-        <AwaitingReleaseCard slug="hop" projectId="p-empty" />
+        <DevelopmentActivity projectId={P} slug="hop" />
+        <LiveRuns runs={[run(1), run(2, { issueRef: null, kind: "system" })]} slug="hop" idle={[run(3), run(4)]} />
+        <LiveRuns runs={[]} slug="hop" idle={[run(3)]} />
+        <AwaitingRelease slug="hop" projectId={P} />
+        <AwaitingRelease slug="hop" projectId="p-empty" />
         <StatusDonut data={{ total: 6, segments: (["active", "attention", "queued", "blocked"] as const).map((key) => ({ key, label: key, color: "red", count: 1, pct: 25 })) }} />
         <StatusDonut data={{ total: 0, segments: [] }} />
-        <SpendCard data={{ total: 3, segments: (["test", "code", "plan", "other"] as const).map((key) => ({ key, label: key, color: "red", cost: 0.75, pct: 25 })) }} inFlightUsd={0.5} />
-        <SpendCard data={{ total: 0, segments: [] }} inFlightUsd={0} />
-        <RunnersCard summary={runners as never} slug="hop" />
-        <RunnersCard summary={{ lines: [], onlineCount: 0, busyCount: 0, total: 0 }} slug="hop" />
+        <SpendByStage data={{ total: 3, segments: (["test", "code", "plan", "other"] as const).map((key) => ({ key, label: key, color: "red", cost: 0.75, pct: 25 })) }} inFlightUsd={0.5} />
+        <SpendByStage data={{ total: 0, segments: [] }} inFlightUsd={0} />
+        <RunnerLoad summary={runners as never} slug="hop" />
+        <RunnerLoad summary={{ lines: [], onlineCount: 0, busyCount: 0, total: 0 }} slug="hop" />
       </Seeded>
     ),
   },
@@ -250,10 +249,10 @@ export const SCREENS = [
         <WorkSitting pulse={PULSE} nowMs={Date.parse(NOW)} />
         <ActionQueue pulse={PULSE} />
         <ActionQueue pulse={{ ...PULSE, actions: [] }} />
-        <FlowSection flow={PULSE.flow} />
-        <FlowSection flow={[]} />
-        <QualitySection quality={PULSE.quality} />
-        <QualitySection quality={{ ...PULSE.quality, finished: { merged: 0, closedUnmerged: 0, dropped: 0 }, pipelineFlow: [] }} />
+        <FlowFigures flow={PULSE.flow} />
+        <FlowFigures flow={[]} />
+        <QualityFigures quality={PULSE.quality} />
+        <QualityFigures quality={{ ...PULSE.quality, finished: { merged: 0, closedUnmerged: 0, dropped: 0 }, pipelineFlow: [] }} />
       </>
     ),
   },

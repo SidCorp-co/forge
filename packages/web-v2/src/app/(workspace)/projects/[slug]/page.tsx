@@ -15,7 +15,8 @@ import {
 } from "@/design";
 import { feedbackFigures, landsThisWeek, planRows, requirementsByState } from "@/features/project-dashboard/ba-derive";
 import { BaFigures } from "@/features/project-dashboard/components/ba-figures";
-import { ProjectHealthFigures } from "@/features/project-dashboard/components/health-panel";
+import { ProjectHealthFigures, useHealthWindow } from "@/features/project-dashboard/components/health-panel";
+import { useProjectHealth } from "@/features/project-dashboard/health-api";
 import { LandsThisWeek } from "@/features/project-dashboard/components/plan-sections";
 import { ProjectMemory } from "@/features/memory";
 import { ProjectOrientation } from "@/features/project-dashboard/components/project-orientation";
@@ -70,6 +71,8 @@ export default function ProjectOverviewPage() {
   const projectDocumentQ = useProjectDocument(projectId);
   const modulesQ = useModuleRollup(projectId);
   useOnboardingState(projectId);
+  // the health panel draws only once the project is known; its read leaves now, by the slug, with the rest
+  useProjectHealth(projectId, useHealthWindow().days);
   const clock = useEtaClock();
 
   if (projectsQ.isLoading || (row && !project)) {

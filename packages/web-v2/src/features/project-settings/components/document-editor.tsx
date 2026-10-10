@@ -44,7 +44,7 @@ function at(document: unknown, pointer: string): unknown {
 }
 
 /** The first fixed key `next` changes or removes from `held`, dotted as a reader names it. */
-export function fixedChanged(held: unknown, next: unknown, fixed: readonly string[]): string | null {
+function fixedChanged(held: unknown, next: unknown, fixed: readonly string[]): string | null {
 	const moved = fixed.find((p) => at(held, p) !== undefined && JSON.stringify(at(held, p)) !== JSON.stringify(at(next, p)));
 	return moved ? moved.slice(1).replaceAll("/", ".") : null;
 }

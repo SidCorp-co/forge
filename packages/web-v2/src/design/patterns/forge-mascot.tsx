@@ -18,7 +18,7 @@ function reducedMotion() {
   return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 }
 
-export interface ForgeMascotProps {
+interface ForgeMascotProps {
   size?: number;
   mode?: "blink" | "track" | "both";
   /** 0..1 — drives eye target + the active ring stage. */

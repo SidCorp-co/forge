@@ -7,7 +7,7 @@
 import { useEffect, useRef } from "react";
 import { ItemMemory } from "./item-memory";
 
-export const PROJECT_MEMORY_ANCHOR = "project-memory";
+const PROJECT_MEMORY_ANCHOR = "project-memory";
 
 export function ProjectMemory({ projectId, slug }: { projectId: string; slug: string }) {
   const atRef = useRef<HTMLDivElement>(null);

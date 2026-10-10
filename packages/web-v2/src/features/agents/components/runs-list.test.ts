@@ -3,20 +3,20 @@
 
 import type { RunStanding } from "@forge/contracts/run-standing";
 import { describe, expect, it } from "vitest";
-import { matches } from "./runs-list";
+import { runSearchText } from "./runs-list";
 
 const run = (over: Partial<RunStanding>) => ({ id: "0f6c1e2a-0000-4000-8000-000000000001", boxRunId: null, title: "Build", issue: null, device: null, release: null, issues: [], ...over }) as RunStanding;
 
 describe("the Runs search", () => {
   it("finds a run by the box run id a refusal names", () => {
-    expect(matches("iss-12-r2-a7f3", run({ boxRunId: "iss-12-r2-a7f3" }))).toBe(true);
+    expect(runSearchText(run({ boxRunId: "iss-12-r2-a7f3" }))).toContain("iss-12-r2-a7f3");
   });
 
   it("finds a run by core's id too", () => {
-    expect(matches("0f6c1e2a", run({}))).toBe(true);
+    expect(runSearchText(run({}))).toContain("0f6c1e2a");
   });
 
   it("finds nothing for an id no run carries", () => {
-    expect(matches("iss-99-r1", run({ boxRunId: "iss-12-r2-a7f3" }))).toBe(false);
+    expect(runSearchText(run({ boxRunId: "iss-12-r2-a7f3" }))).not.toContain("iss-99-r1");
   });
 });

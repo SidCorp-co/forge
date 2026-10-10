@@ -11,7 +11,7 @@ import type {
   ConversationListItem,
 } from "./types";
 
-export interface OpenConversationArgs {
+interface OpenConversationArgs {
   projectId: string;
   title?: string | null;
   people?: string[];
@@ -19,7 +19,7 @@ export interface OpenConversationArgs {
   ecosystemId?: string | null;
 }
 
-export interface SendArgs {
+interface SendArgs {
   conversationId: string;
   content: string;
   /** Sent on the FIRST message of a room and never again; the server refuses it after that. */
@@ -32,7 +32,7 @@ export interface SendArgs {
   uiSnapshot?: UiSnapshot | undefined;
 }
 
-export interface SendResult
+interface SendResult
   extends Pick<ConversationDetail, "messages" | "windows" | "agentTurns"> {
   conversationId: string;
   windowId: string;
@@ -42,7 +42,7 @@ export interface SendResult
   mode: ConversationMode;
 }
 
-export interface UploadTicket {
+interface UploadTicket {
   uploadId: string;
   method: "PUT";
   uploadPath: string;
@@ -51,7 +51,7 @@ export interface UploadTicket {
 }
 
 /** One stored file, as the PUT answers and as a message then cites it. */
-export interface ConversationAttachment {
+interface ConversationAttachment {
   id: string;
   conversationId: string;
   name: string;

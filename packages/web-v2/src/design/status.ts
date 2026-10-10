@@ -80,7 +80,7 @@ export const STATUS_KEY_TONE: Record<StatusKey, SemanticTone> = {
 };
 
 /** Resolve a StatusKey's colors through its tone — the single derivation. */
-export function statusKeyMeta(key: StatusKey): ColorMeta {
+function statusKeyMeta(key: StatusKey): ColorMeta {
   const tone = TONE_META[STATUS_KEY_TONE[key]];
   return { fg: tone.fg, bg: tone.bg, dot: tone.dot };
 }
@@ -104,7 +104,7 @@ export const STATUS_META: Record<StatusKey, ColorMeta> = {
 export type HealthKey = "healthy" | "attention" | "down" | "idle";
 
 /** Health rolls up onto the same tones: down → `infra` (offline ≠ failure). */
-export const HEALTH_KEY_TONE: Record<HealthKey, SemanticTone> = {
+const HEALTH_KEY_TONE: Record<HealthKey, SemanticTone> = {
   healthy: "success",
   attention: "attention",
   down: "infra",

@@ -11,7 +11,7 @@ import { Icon } from "@/design/icons/icon";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 
-export interface PreviewPaneProps {
+interface PreviewPaneProps {
   children: ReactNode;
   label?: string;
   open: boolean;

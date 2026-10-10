@@ -104,7 +104,7 @@ export const LEGEND: Record<LegendTone, ColorMeta> = {
   err: TONE_META.failure,
 };
 
-export interface StatusReading {
+interface StatusReading {
   label: string;
   tone: LegendTone;
   glyph: string | null;
@@ -285,7 +285,7 @@ export function statusReading(family: StatusFamily, value: string, language?: st
 }
 
 /** Non-state families: a neutral badge with an icon, never a status colour. */
-export const ENUM_FAMILIES = {
+const ENUM_FAMILIES = {
   priority: ISSUE_PRIORITY_LABELS,
   category: ISSUE_CATEGORY_LABELS,
   feedbackKind: FEEDBACK_KIND_LABELS,

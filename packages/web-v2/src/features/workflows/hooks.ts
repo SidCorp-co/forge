@@ -13,7 +13,7 @@ import { builtinTemplateWords } from "./template-words";
 import type { DesignDecisionBody, RepinActBody, SystemGraphRef, WorkflowTemplateList } from "./types";
 
 /** Every query key the workflows feature reads under; a key without its workflow is the prefix of every design's. */
-export const workflowKeys = {
+const workflowKeys = {
   list: (projectId: string | undefined) => ["workflows", projectId] as const,
   design: (projectId: string | undefined, workflowId?: string) => ["workflow-design", projectId, ...(workflowId === undefined ? [] : [workflowId])] as const,
   health: (projectId: string | undefined, workflowId?: string) => ["workflow-health", projectId, ...(workflowId === undefined ? [] : [workflowId])] as const,

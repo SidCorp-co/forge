@@ -5,7 +5,7 @@ import { WS_URL } from '@/lib/api/client';
 
 type Listener = (env: WsFrame) => void;
 
-export interface SocketOpen {
+interface SocketOpen {
   first: boolean;
   openedAt: number;
 }

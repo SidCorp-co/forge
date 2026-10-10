@@ -17,7 +17,7 @@ const VARIANT = {
 
 const SIZE = { sm: "sm", md: "default" } as const;
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
   icon?: IconName;

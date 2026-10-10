@@ -19,7 +19,7 @@ export interface FeedbackPick {
  * first, then those whose key or title holds the text, in the list's order. The item itself and a
  * declined item are never offered (core refuses a duplicate of either).
  */
-export function feedbackMatches(rows: readonly FeedbackSummary[], text: string, self: string): FeedbackPick[] {
+function feedbackMatches(rows: readonly FeedbackSummary[], text: string, self: string): FeedbackPick[] {
   const q = text.trim().toLowerCase();
   if (!q) return [];
   const open = rows.filter((r) => r.key !== self && r.phase !== "declined");

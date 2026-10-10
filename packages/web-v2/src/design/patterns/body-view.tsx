@@ -55,7 +55,7 @@ function AttrChips({ attrs }: { attrs: Record<string, string> }) {
   );
 }
 
-export interface BodyViewProps {
+interface BodyViewProps {
   /** The stored bytes. Rendered as markdown whenever `nodes` is absent. */
   body: string;
   format?: string | null;

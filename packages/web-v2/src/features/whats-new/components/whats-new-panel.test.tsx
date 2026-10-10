@@ -2,9 +2,9 @@ import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { renderWithQuery } from "@/test/render";
 import { feedOf, releaseOf } from "../fixtures";
-import { WhatsNewPanel } from "./whats-new-panel";
+import { WhatsNewSheet } from "./whats-new-panel";
 
-const open = (feed: ReturnType<typeof feedOf>) => renderWithQuery(<WhatsNewPanel open onClose={() => {}} failure={null} feed={feed} />);
+const open = (feed: ReturnType<typeof feedOf>) => renderWithQuery(<WhatsNewSheet open onClose={() => {}} failure={null} feed={feed} />);
 
 describe("the What's new panel", () => {
   it("leads with the release, then its highlights, then its lines", () => {
@@ -35,7 +35,7 @@ describe("the What's new panel", () => {
   });
 
   it("says the read failed instead of an empty release", () => {
-    renderWithQuery(<WhatsNewPanel open onClose={() => {}} failure="failed" feed={undefined} />);
+    renderWithQuery(<WhatsNewSheet open onClose={() => {}} failure="failed" feed={undefined} />);
     expect(screen.getByText("What's new could not be read.")).toBeInTheDocument();
   });
 });

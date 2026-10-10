@@ -3,7 +3,7 @@
 
 import type { ChecklistMove, ChecklistRead } from "@forge/contracts/checklist-read";
 import { type Checklist, type ChecklistAnswer, checklistFormOf, evaluateChecklist, type RecordAnswers } from "@forge/contracts/checklists";
-import { screen, within } from "@testing-library/react";
+import { within } from "@testing-library/react";
 
 const AT = "2026-10-09T10:00:00.000Z";
 
@@ -53,4 +53,3 @@ export const optionLabel = (checklist: Checklist, question: string, value: strin
 /** One question's row in a drawn checklist. */
 export const row = (section: HTMLElement, question: string) => within(section).getAllByTestId("checklist-row").find((r) => r.dataset.question === question) as HTMLElement;
 
-export const checklistSections = () => screen.findAllByTestId("checklist");

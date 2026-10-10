@@ -54,7 +54,6 @@
     "operator.topbar.account": "Account & Settings",
     "operator.topbar.accountMenu": "Account menu",
     "operator.topbar.kicker": "Operator",
-    "operator.topbar.overview": "Overview",
     "operator.topbar.signOut": "Sign out",
     "operator.whoami.reachFailed": "Couldn't reach the server. Check your connection and retry.",
     "operator.whoami.requestFailed": "Request failed ({status})",

@@ -12,14 +12,14 @@ import { spanText } from "./text";
 type Lang = EtaClock["lang"];
 
 /** "moved 2 h later because …", or null where the dates have not moved. */
-export function movedText(m: ForecastMove | null | undefined, t: Copy, lang: Lang): string | null {
+function movedText(m: ForecastMove | null | undefined, t: Copy, lang: Lang): string | null {
   if (!m || m.byMinutes === 0) return null;
   const vars = { by: spanText(Math.abs(m.byMinutes), lang), because: said(m.because, lang) };
   return t(m.byMinutes > 0 ? "fc.moved.later" : "fc.moved.earlier", vars);
 }
 
 /** The confidence and target release a delivery's forecast carries, each where core gave one. */
-export function forecastFacts(d: DeliveryForecast | null | undefined, t: Copy): string[] {
+function forecastFacts(d: DeliveryForecast | null | undefined, t: Copy): string[] {
   if (!d) return [];
   const out: string[] = [];
   if (d.landing.kind === "forecast") out.push(t(`fc.confidence.${d.landing.confidence.level}`));

@@ -3,7 +3,7 @@
 import { useCopy } from "@/lib/i18n/interface-language";
 import { IconButton } from "./icon-button";
 
-export interface PaginationProps {
+interface PaginationProps {
   page: number;
   pageCount: number;
   onChange?: (page: number) => void;

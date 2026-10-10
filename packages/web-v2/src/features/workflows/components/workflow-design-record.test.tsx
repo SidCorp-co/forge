@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RULE, say, waitingOn } from "@/test/said";
 import type { DesignRevision, WorkflowDesign, WorkflowRecord } from "../types";
 import { ApproveAction, DecisionNoteControl } from "./design-decision";
-import { WorkflowDesignFacts } from "./workflow-design-facts";
+import { WorkflowDesignProperties } from "./workflow-design-facts";
 import { WorkflowDesignPage } from "./workflow-design-page";
 
 const AT = "2026-10-07T10:00:00.000Z";
@@ -72,7 +72,7 @@ const atView = (view: "person" | "developer") => window.history.replaceState(nul
 const withQueries = (node: React.ReactNode) =>
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{node}</QueryClientProvider>);
 const facts = () =>
-  withQueries(<WorkflowDesignFacts d={proposed()} record={record} shown={body as never} shownRevision={2} template={null} slug="acme" health={undefined} />);
+  withQueries(<WorkflowDesignProperties d={proposed()} record={record} shown={body as never} shownRevision={2} template={null} slug="acme" health={undefined} />);
 
 afterEach(() => atView("person"));
 

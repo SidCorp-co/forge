@@ -22,11 +22,11 @@ import { previewQueries } from "../queries";
  * for its cookie back (`allow-storage-access-by-user-activation`: without it `requestStorageAccess()`
  * is refused in a sandboxed frame). Never navigate Forge.
  */
-export const PREVIEW_SANDBOX =
+const PREVIEW_SANDBOX =
   "allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-storage-access-by-user-activation";
 
 /** A framed page that has not loaded by now is probably held back by the browser, not slow. */
-export const FRAME_SLOW_MS = 12_000;
+const FRAME_SLOW_MS = 12_000;
 
 /** Opens the preview in its own tab, entered with a ticket; throws what the ticket's read refused with. */
 export async function openPreviewInTab(previewId: string): Promise<void> {

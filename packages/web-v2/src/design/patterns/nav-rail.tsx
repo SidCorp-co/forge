@@ -36,7 +36,7 @@ export type NavEntry = NavItem | NavItemGroup;
 
 export const isNavGroup = <E extends NavEntry>(e: E): e is Extract<E, NavItemGroup> => "items" in e;
 
-export interface NavRailProps {
+interface NavRailProps {
   /** The 88px rail of icons over short labels; otherwise the 280px labelled rail. Both draw the same entries. */
   compact?: boolean;
   workspaceItems: NavEntry[];

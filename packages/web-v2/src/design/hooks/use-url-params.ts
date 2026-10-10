@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { notifyLocationChange, useLocationSearch } from "@/lib/utils/use-location-search";
 
-export type UrlPatch = Record<string, string | null | undefined>;
+type UrlPatch = Record<string, string | null | undefined>;
 
 /** Writes `patch` over the current query (`null` or `""` deletes a key), keeping every other key and the anchor. */
 export function writeUrlParams(patch: UrlPatch): void {

@@ -5,13 +5,13 @@ import { breakpointWidth } from "@/lib/utils/breakpoint-width";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 
 /** The bare anchor a focused canvas keeps in the address, so it can be linked and survives a reload. */
-export const CANVAS_ANCHOR = "#canvas";
+const CANVAS_ANCHOR = "#canvas";
 
 /** Out of focus mode, the canvas keeps at least this share of the viewport's height. */
 export const CANVAS_SHARE = 0.6;
 
 /** Below this width the page stacks and scrolls (the `lg` breakpoint), so no share is held. */
-export const ROOM_MIN_WIDTH = 1024;
+const ROOM_MIN_WIDTH = 1024;
 
 const BANNER_OPEN_KEY = "web-v2:workflows.design-banner-open";
 const RAIL_COLLAPSED_KEY = "web-v2:workflows.design-rail-collapsed";
@@ -53,7 +53,7 @@ export const useBannerOpen = () => useViewerFlag(BANNER_OPEN_KEY);
 /** Whether the design's facts rail is folded away, giving the canvas the page's full width. */
 export const useRailCollapsed = () => useViewerFlag(RAIL_COLLAPSED_KEY);
 
-export interface RoomMeasure {
+interface RoomMeasure {
   /** The width the page's `lg` breakpoint reads (breakpointWidth): the window's, or the page's while the Ask Agent panel is beside it. */
   width: number;
   viewportHeight: number;

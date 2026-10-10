@@ -4,8 +4,8 @@ import { CurrentProjectProvider } from "@/features/projects/current-project";
 import type { ProjectListItem } from "@/features/projects/types";
 import { LandsThisWeek } from "@/features/project-dashboard/components/plan-sections";
 import { fakeCore, renderWithQuery } from "@/test/render";
-import { resolveInterfaceLanguage, WorkspaceInterfaceLanguage } from "./interface-language";
-import { PRODUCT_STRINGS as product } from "./product-copy";
+import { PRODUCT_STRINGS as product } from "@/lib/i18n/product-copy";
+import { WorkspaceInterfaceLanguage } from "./interface-language-provider";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
@@ -27,15 +27,7 @@ function screenWith(choice: "en" | "vi" | null, content: string) {
   );
 }
 
-describe("the interface language a screen renders in", () => {
-  it("resolves the explicit choice, then the project's content language, then English", () => {
-    expect(resolveInterfaceLanguage("vi", "en")).toBe("vi");
-    expect(resolveInterfaceLanguage("en", "vi-VN")).toBe("en");
-    expect(resolveInterfaceLanguage(null, "vi-VN")).toBe("vi");
-    expect(resolveInterfaceLanguage(null, "fr")).toBe("en");
-    expect(resolveInterfaceLanguage(undefined, undefined)).toBe("en");
-  });
-
+describe("the interface language a workspace screen renders in", () => {
   it("renders vi when the person picks vi on a project that writes English", async () => {
     screenWith("vi", "en");
     expect(await screen.findByText(product.vi["dash.landsThisWeek"])).toBeInTheDocument();
@@ -47,8 +39,10 @@ describe("the interface language a screen renders in", () => {
     expect(screen.queryByText(product.vi["dash.landsThisWeek"])).toBeNull();
   });
 
-  it("follows the project's content language when the person chose nothing", async () => {
+  // Forge is English only (owner, 2026-10-08): a project's content language never turns the chrome
+  it("renders English when the person chose nothing, even on a project that writes Vietnamese", async () => {
     screenWith(null, "vi");
-    expect(await screen.findByText(product.vi["dash.landsThisWeek"])).toBeInTheDocument();
+    expect(await screen.findByText(product.en["dash.landsThisWeek"])).toBeInTheDocument();
+    expect(screen.queryByText(product.vi["dash.landsThisWeek"])).toBeNull();
   });
 });

@@ -124,7 +124,7 @@ export const masterRow =
     age: m.lastBeatAt ? { text: formatAge(m.lastBeatAt, language), title: t("agents.master.lastBeatAt", { at: formatDateTime(m.lastBeatAt, language) }) } : null,
   });
 
-export function MasterBanner({ m, className }: { m: MasterStanding; className?: string }) {
+function MasterBanner({ m, className }: { m: MasterStanding; className?: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const tone = m.state === "silent" ? "err" : m.state === "none" || m.state === "waiting_person" ? "you" : m.state === "in_pass" || m.state === "runs_out" ? "run" : "calm";
@@ -155,7 +155,7 @@ function SlotMarks({ m }: { m: MasterStanding }) {
   return <MarkStrip marks={marks} />;
 }
 
-export function MasterProperties({ m }: { m: MasterStanding }) {
+function MasterProperties({ m }: { m: MasterStanding }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
@@ -233,7 +233,7 @@ export function MasterPeek({ m, peek, onOpenFull }: { m: MasterStanding; peek: P
   );
 }
 
-export const MASTER_TABS = ["passes", "runs", "charter"] as const;
+const MASTER_TABS = ["passes", "runs", "charter"] as const;
 
 const keyLink = (slug: string, k: string) =>
   /^[A-Z]+-\d+$/.test(k) ? (

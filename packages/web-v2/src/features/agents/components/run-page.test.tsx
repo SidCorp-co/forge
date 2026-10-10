@@ -19,8 +19,8 @@ vi.mock("next/navigation", () => ({
 
 afterEach(() => window.history.replaceState(null, "", "/"));
 
-const STUCK = RUNS[1] as RunStanding;
-const HANDED = RUNS[9] as RunStanding;
+const STUCK = RUNS[1];
+const HANDED = RUNS[9];
 
 function page(r: RunStanding, qs = "") {
   window.history.replaceState(null, "", `/projects/hop/agents/runs/${r.id}${qs}`);

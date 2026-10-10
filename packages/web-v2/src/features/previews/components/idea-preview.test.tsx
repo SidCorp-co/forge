@@ -8,21 +8,20 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
 import { PROJECT } from "@/test/requirement-pictures";
-import { HOST, PREVIEW_ID, previewOf, ticketBody } from "./fixtures";
+import { HOST, PREVIEW_ID, previewOf, ticketBody } from "@/test/previews";
 
-const asked = vi.hoisted(() => ({ calls: 0, answer: null as unknown }));
-vi.mock("./idea-snapshot", async (orig) => {
-  const real = await orig<typeof import("./idea-snapshot")>();
+const asked = vi.hoisted((): { calls: number; answer: unknown } => ({ calls: 0, answer: null }));
+vi.mock("@/features/previews/idea-snapshot", async (orig) => {
+  const real = await orig<typeof import("@/features/previews/idea-snapshot")>();
   return {
     ...real,
-    askPageSnapshot: async () => {
+    askPageSnapshot: () => {
       asked.calls += 1;
-      if (asked.answer instanceof Error) throw asked.answer;
-      return asked.answer;
+      return asked.answer instanceof Error ? Promise.reject(asked.answer) : Promise.resolve(asked.answer);
     },
   };
 });
-const replayed = vi.hoisted(() => ({ events: null as unknown, paused: [] as unknown[], destroyed: 0 }));
+const replayed = vi.hoisted((): { events: unknown; paused: unknown[]; destroyed: number } => ({ events: null, paused: [], destroyed: 0 }));
 vi.mock("rrweb", () => ({
   Replayer: class {
     constructor(events: unknown) {
@@ -40,9 +39,9 @@ vi.mock("rrweb/dist/style.css", () => ({}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/projects/hop", useParams: () => ({ slug: "hop" }) }));
 vi.mock("@/features/projects/hooks", () => ({ useProjects: () => ({ data: [{ id: "7f1c1d1e-0000-4000-8000-000000000001", slug: "hop", role: "member" }] }) }));
 
-const { IdeaPanel } = await import("./idea-panel");
-const { KeptPreviewPicture } = await import("./idea-kept-picture");
-const { SnapshotUnavailable } = await import("./idea-snapshot");
+const { IdeaPreview } = await import("@/features/previews/components/idea-preview");
+const { KeptPreviewPicture } = await import("@/features/previews/components/kept-preview-picture");
+const { SnapshotUnavailable } = await import("@/features/previews/idea-snapshot");
 
 const SHA = "c".repeat(40);
 const idea = (over = {}) =>
@@ -80,7 +79,7 @@ describe("keeping the idea (BC-16)", () => {
         body: { requirement: "REQ-41", revision: 1, pictureId: "8df98619-9f7c-46b8-8e65-a67f2fcdce74", startedFrom: null, suggestionId: "1df98619-9f7c-46b8-8e65-a67f2fcdce74", suggestionRefusal: null },
       }),
     });
-    renderWithQuery(<IdeaPanel preview={idea()} about="REQ-41" canWrite slug="hop" />);
+    renderWithQuery(<IdeaPreview preview={idea()} about="REQ-41" canWrite slug="hop" />);
     const keepBtn = await screen.findByRole("button", { name: "Keep as the picture" });
     expect(keepBtn).toBeDisabled();
     fireEvent.change(screen.getByLabelText("What this page shows"), { target: { value: "The home with a larger chat box" } });
@@ -96,7 +95,7 @@ describe("keeping the idea (BC-16)", () => {
   it("says by name when the page gave no snapshot, and keeps nothing", async () => {
     asked.answer = new SnapshotUnavailable("silent", "the preview page did not answer: reload it and try again");
     const calls = live();
-    renderWithQuery(<IdeaPanel preview={idea()} about="REQ-41" canWrite slug="hop" />);
+    renderWithQuery(<IdeaPreview preview={idea()} about="REQ-41" canWrite slug="hop" />);
     fireEvent.change(await screen.findByLabelText("What this page shows"), { target: { value: "x" } });
     fireEvent.click(screen.getByRole("button", { name: "Keep as the picture" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't keep the preview: the preview page did not answer");
@@ -105,7 +104,7 @@ describe("keeping the idea (BC-16)", () => {
 
   it("names core's refusal of the keep", async () => {
     live({ [`POST /previews/${PREVIEW_ID}/keep`]: () => ({ status: 409, body: refusal("PREVIEW_KEEP_NOT_IDEA", "preview serves an issue's run") }) });
-    renderWithQuery(<IdeaPanel preview={idea()} about="REQ-41" canWrite slug="hop" />);
+    renderWithQuery(<IdeaPreview preview={idea()} about="REQ-41" canWrite slug="hop" />);
     fireEvent.change(await screen.findByLabelText("What this page shows"), { target: { value: "x" } });
     fireEvent.click(screen.getByRole("button", { name: "Keep as the picture" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("preview serves an issue's run");
@@ -118,7 +117,7 @@ describe("keeping the idea (BC-16)", () => {
         body: { requirement: "REQ-41", revision: 1, pictureId: "8df98619-9f7c-46b8-8e65-a67f2fcdce74", startedFrom: "FB-61", suggestionId: null, suggestionRefusal: { code: "SUGGESTION_QUEUE_FULL", detail: "too many proposals wait" } },
       }),
     });
-    renderWithQuery(<IdeaPanel preview={idea()} about="FB-61" canWrite slug="hop" />);
+    renderWithQuery(<IdeaPreview preview={idea()} about="FB-61" canWrite slug="hop" />);
     fireEvent.change(await screen.findByLabelText("What this page shows"), { target: { value: "x" } });
     fireEvent.click(screen.getByRole("button", { name: "Keep as the picture" }));
     const kept = await screen.findByTestId("idea-kept");
@@ -131,7 +130,7 @@ describe("a kept preview on the requirement (BC-16)", () => {
   const content = { previewId: PREVIEW_ID, branch: "sketch/req-41-abcdef", head: SHA, base: "a".repeat(40), patchId: "d".repeat(40), files: ["a.tsx", "b.tsx"], asked: ["A larger chat box"], snapshot: PAIR };
 
   it("draws the stored snapshot still, paused on it, and names the branch and head it was built on", async () => {
-    renderWithQuery(<KeptPreviewPicture content={content as never} alt="The home with a larger chat box" projectId={PROJECT} reqKey="REQ-41" slug="hop" canWrite />);
+    renderWithQuery(<KeptPreviewPicture content={content} alt="The home with a larger chat box" projectId={PROJECT} reqKey="REQ-41" slug="hop" canWrite />);
     await waitFor(() => expect(screen.getByTestId("kept-preview-still")).toHaveAttribute("data-drawn", "drawn"));
     expect(replayed.events).toEqual(PAIR);
     expect(replayed.paused).toEqual([0]);
@@ -144,7 +143,7 @@ describe("a kept preview on the requirement (BC-16)", () => {
       [`POST /projects/${PROJECT}/previews`]: () => ({ status: 201, body: { preview: idea({ id: "9df98619-9f7c-46b8-8e65-a67f2fcdce74", state: "starting", liveAt: null }) } }),
       "GET /previews/9df98619-9f7c-46b8-8e65-a67f2fcdce74": () => ({ body: { preview: idea({ id: "9df98619-9f7c-46b8-8e65-a67f2fcdce74", state: "starting", liveAt: null }) } }),
     });
-    renderWithQuery(<KeptPreviewPicture content={content as never} alt="The home with a larger chat box" projectId={PROJECT} reqKey="REQ-41" slug="hop" canWrite />);
+    renderWithQuery(<KeptPreviewPicture content={content} alt="The home with a larger chat box" projectId={PROJECT} reqKey="REQ-41" slug="hop" canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Reopen live" }));
     await screen.findByTestId("idea-panel");
     const post = calls.find((c) => c.method === "POST");
@@ -167,8 +166,8 @@ describe("a kept preview on the requirement (BC-16)", () => {
         }
       },
     }));
-    const { KeptPreviewPicture: Fresh } = await import("./idea-kept-picture");
-    renderWithQuery(<Fresh content={content as never} alt="x" projectId={PROJECT} reqKey="REQ-41" slug="hop" canWrite />);
+    const { KeptPreviewPicture: Fresh } = await import("@/features/previews/components/kept-preview-picture");
+    renderWithQuery(<Fresh content={content} alt="x" projectId={PROJECT} reqKey="REQ-41" slug="hop" canWrite />);
     expect(await screen.findByRole("alert")).toHaveTextContent("The kept page could not be drawn here.");
     expect(orig).toEqual([]);
     vi.doUnmock("rrweb");

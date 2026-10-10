@@ -29,7 +29,7 @@ export const ComposerWidthContext = createContext<number | null>(null);
 /** Narrower than this, the composer's footer has no room left for a hint line worth reading. */
 const HINT_ROW_MIN_WIDTH = 560;
 
-export interface ChatComposerProps {
+interface ChatComposerProps {
   /**
    * Deliver the message and its staged files. MUST reject on failure — the box
    * clears only when this resolves, so a failed send keeps the text and the

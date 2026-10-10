@@ -25,10 +25,15 @@ function Bars({ series, figure }: { series: HealthDay[]; figure: HealthFigure })
   );
 }
 
+/** The health window the URL names (`?window=`), 30 days where it names none. */
+export function useHealthWindow() {
+  const [span, setSpan] = useUrlChoice("window", HEALTH_WINDOWS.map(String), "30");
+  return { span, setSpan, days: Number(span) as HealthWindow };
+}
+
 export function ProjectHealthFigures({ projectId }: { projectId: string }) {
   const t = useCopy();
-  const [span, setSpan] = useUrlChoice("window", HEALTH_WINDOWS.map(String), "30");
-  const days = Number(span) as HealthWindow;
+  const { span, setSpan, days } = useHealthWindow();
   const q = useProjectHealth(projectId, days);
   return (
     <section aria-label={t("dash.health")} data-testid="project-health" className="border-y border-line-subtle py-4">

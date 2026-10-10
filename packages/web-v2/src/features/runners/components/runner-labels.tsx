@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useSetRunnerLabels } from "../hooks";
 
-export function parseLabels(raw: string): string[] {
+function parseLabels(raw: string): string[] {
 	const seen = new Set<string>();
 	for (const part of raw.split(/[,\s]+/)) {
 		const label = part.trim();

@@ -24,7 +24,7 @@ export function useSession(id: string | undefined) {
  * `['agent-session', id, 'turns', pages]` — the WS prefix invalidation still reaches it. A non-null
  * `nextCursor` means later turns exist and were not loaded; raise `pages` to load them.
  */
-export function useSessionTurns(id: string | undefined, pages: number = TURN_PAGE_CAP) {
+function useSessionTurns(id: string | undefined, pages: number = TURN_PAGE_CAP) {
   return useQuery(sessionQueries.turns(id, pages));
 }
 

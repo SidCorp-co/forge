@@ -10,7 +10,7 @@ import type { WaitingKind } from "@forge/contracts/standing";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { highlightStore } from "@/design/hooks/use-highlight";
-import { assistantFilters } from "@/features/chat-dock/assistant-filters";
+import { assistantFilters } from "@/features/chat-dock";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { notifyLocationChange, useLocationSearch } from "@/lib/utils/use-location-search";
 import { fakeCore, renderWithQuery } from "@/test/render";
@@ -35,8 +35,8 @@ vi.mock("@/features/forecast/hooks", () => ({
 }));
 
 const { useUiActions, useUiSnapshot } = await import("./use-ui-actions");
-const { RequirementsScreen } = await import("@/features/requirements/components/requirements-screen");
-const { FeedbackScreen } = await import("@/features/feedback/components/feedback-screen");
+const { RequirementsScreen } = await import("@/features/requirements");
+const { FeedbackScreen } = await import("@/features/feedback");
 
 const wait = (kind: WaitingKind) => waitingOn(kind, { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE });
 
@@ -51,6 +51,7 @@ const requirement = (seq: number, title: string, kind: WaitingKind, attentionGro
     waitingOn: wait(kind),
     owner: null,
     touchedAt: "2026-10-08T10:00:00.000Z",
+    stateSince: "2026-10-08T10:00:00.000Z",
     facts: { criteria: 2, passing: 0, judged: 0, issuesTotal: 0, proposedRevision: null, draftRevision: null },
   },
 });
@@ -130,7 +131,7 @@ const turn = (...calls: { name: string; args: Record<string, unknown> }[]): Conv
   },
 });
 
-const snapshot = () => JSON.parse(screen.getByTestId("snapshot").textContent ?? "{}");
+const snapshot = () => JSON.parse(screen.getByTestId("snapshot").textContent ?? "{}") as Record<string, unknown>;
 const shownRows = () => screen.queryAllByTestId("list-row").map((r) => r.getAttribute("data-key"));
 
 function page(screenEl: React.ReactElement, path: string) {
@@ -251,7 +252,7 @@ describe("chat filters a Product list by whom a row waits on (BC-4, BC-5, BC-7, 
     expect(new URLSearchParams(window.location.search).has("state")).toBe(false);
   });
 
-  it("navigates to the Requirements and Feedback routes", async () => {
+  it("navigates to the Requirements and Feedback routes", () => {
     const p = page(<div />, "/projects/demo");
     p.send(turn());
     p.send(turn({ name: "ui_navigate", args: { route: "feedback" } }));
@@ -284,7 +285,7 @@ describe("chat opens any record by key and highlights on it (BC-6)", () => {
     await waitFor(() => expect(shownRows()).toEqual(["REQ-34"]));
     p.send(turn());
     p.send(turn({ name: "ui_highlight", args: { target: { key: "REQ-34" } } }));
-    const row = screen.getAllByTestId("list-row")[0] as HTMLElement;
+    const row = screen.getAllByTestId("list-row")[0];
     expect(row).toHaveClass("forge-highlight");
     expect(row).toHaveAttribute("data-highlighted", "true");
     await waitFor(() => expect(snapshot().highlight).toEqual({ target: "row", key: "REQ-34" }));
@@ -334,7 +335,7 @@ describe("chat opens any record by key and highlights on it (BC-6)", () => {
   // ISS-495, QA of dev.220: the model filled every slot (`step: "x"` beside the section), and the
   // browser read back what core forwarded with the input schema and refused it. The real calls, in the
   // form core forwards them, land on the page.
-  it("marks the plan for the real calls the model made, a placeholder step beside the section included", async () => {
+  it("marks the plan for the real calls the model made, a placeholder step beside the section included", () => {
     const real = REAL_UI_CALLS.filter((c) => c.name === "ui_highlight" && c.expect === "ok" && JSON.stringify(c.input).includes('"section":"plan"'));
     expect(real.length).toBeGreaterThanOrEqual(3);
     for (const call of real) {
@@ -360,7 +361,7 @@ describe("chat opens any record by key and highlights on it (BC-6)", () => {
     expect(screen.getByTestId("ui-action-refused")).toHaveTextContent("names ISS-495, but the page beside the chat shows ISS-493");
   });
 
-  it("marks the question a requirement page asks, and step check of an open workflow", async () => {
+  it("marks the question a requirement page asks, and step check of an open workflow", () => {
     const p = page(<section data-testid="requirement-unclear">question</section>, "/projects/demo/requirements/REQ-34");
     p.send(turn());
     p.send(turn({ name: "ui_highlight", args: { target: { section: "question" } } }));

@@ -10,7 +10,7 @@ import { Checkbox, Field, Input, NativeSelect } from "@/design";
 import type { TemplateListing } from "../api";
 
 export type TemplateParamValues = Record<string, string | boolean>;
-export type TemplateParams = Record<string, string | number | boolean>;
+type TemplateParams = Record<string, string | number | boolean>;
 
 /** The params a template run or schedule sends: only those filled, each as the type the template declares. */
 export function templateParamsOf(templateId: string, values: TemplateParamValues): TemplateParams {

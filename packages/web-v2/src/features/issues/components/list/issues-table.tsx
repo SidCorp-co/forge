@@ -51,7 +51,7 @@ function stateToSort(state: SortingState): IssueSort {
   return `${first.id}:${first.desc ? "desc" : "asc"}` as IssueSort;
 }
 
-export interface TableSelection {
+interface TableSelection {
   selected: ReadonlySet<string>;
   toggleRow: (id: string, next: boolean) => void;
   allOnPageSelected: boolean;

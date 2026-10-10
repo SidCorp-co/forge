@@ -21,7 +21,7 @@ export interface Call {
 }
 
 /** A reply that is a file rather than JSON: its text as sent and its own headers (a download's type and name). */
-export interface FileReply {
+interface FileReply {
   status?: number;
   file: string;
   headers: Record<string, string>;

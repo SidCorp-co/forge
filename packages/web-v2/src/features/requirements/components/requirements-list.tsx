@@ -10,7 +10,7 @@ import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language"
 import { requirementHref } from "@/lib/routes/requirements";
 import { ageShort, nameOf, Passing, RowState, WaitsText } from "./requirement-line";
 
-export type ListGrouping = "attention" | "area";
+type ListGrouping = "attention" | "area";
 
 export function listGroupsOf(rows: RequirementSummary[], by: ListGrouping, areas: { id: string; name: string }[], label: (g: string) => string, noArea: string): ListGroup<RequirementSummary>[] {
   const newest = (a: RequirementSummary, b: RequirementSummary) => b.standing.touchedAt.localeCompare(a.standing.touchedAt);

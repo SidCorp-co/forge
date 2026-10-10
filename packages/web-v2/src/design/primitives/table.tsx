@@ -29,7 +29,7 @@ export type { ColumnDef, Header, OnChangeFn, SortingState };
 const DEFAULT_REGION_NAME = "Table, scrolls sideways";
 
 /** Always flush, edge to edge of its column: a top rule only, never a frame. */
-export type TableProps = HTMLAttributes<HTMLTableElement>;
+type TableProps = HTMLAttributes<HTMLTableElement>;
 
 export function Table({
   className,
@@ -43,10 +43,10 @@ export function Table({
     ? { "aria-labelledby": ariaLabelledBy }
     : { "aria-label": ariaLabel ?? DEFAULT_REGION_NAME };
   return (
-    <div className={cn("relative overflow-hidden bg-surface has-[>[role=region]:focus-visible]:outline-2 has-[>[role=region]:focus-visible]:outline-offset-2 has-[>[role=region]:focus-visible]:outline-cobalt border-t border-line")}>
+    <div className={cn("relative overflow-hidden print:overflow-visible bg-surface has-[>[role=region]:focus-visible]:outline-2 has-[>[role=region]:focus-visible]:outline-offset-2 has-[>[role=region]:focus-visible]:outline-cobalt border-t border-line")}>
       <div
         ref={scrollerRef}
-        className="relative overflow-x-auto [contain:inline-size] focus-visible:shadow-none"
+        className="relative overflow-x-auto [contain:inline-size] focus-visible:shadow-none print:overflow-visible"
         {...(overflows ? { role: "region", tabIndex: 0, ...regionName } : {})}
       >
         <table
@@ -102,7 +102,7 @@ export function TD({ className, style, ...props }: TdHTMLAttributes<HTMLTableCel
   );
 }
 
-export interface SortableTHProps<TData> extends ThHTMLAttributes<HTMLTableCellElement> {
+interface SortableTHProps<TData> extends ThHTMLAttributes<HTMLTableCellElement> {
   header: Header<TData, unknown>;
 }
 

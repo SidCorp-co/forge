@@ -20,7 +20,7 @@ const MARK_TEXT: Record<string, string> = {
   alarm: "text-danger-11",
 };
 
-export interface LivenessBandProps {
+interface LivenessBandProps {
   liveness: PulseLiveness;
   thresholds: PulseThresholds;
 }

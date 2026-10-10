@@ -8,7 +8,7 @@ import { issueKeySegment } from "@/lib/api/ref-bridge";
 // review a new one waits on. Keyed under `['issue', id]`, which the event router invalidates, and
 // read with the page's first reads (`use-issue-reads.ts`), the key moving to the uuid once known.
 
-export const patternsApi = {
+const patternsApi = {
   /** `GET /api/issues/:id/patterns` — its patterns, the hold, and which the caller may decide. */
   list: (issueId: string, projectId?: string) =>
     apiClient<IssuePatterns>(

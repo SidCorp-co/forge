@@ -63,6 +63,7 @@ const standing = {
   ],
   owner: { id: "u1", name: "Lan", kind: "human" },
   touchedAt: at,
+  stateSince: at,
 } as unknown as RequirementSummary["standing"];
 
 const criterion = (code: string, body: string, since: number) => ({ id: code, code, body, form: "statement" as const, sinceRevision: since, retiredRevision: null });
@@ -92,7 +93,7 @@ const revision = (n: number, state: string, over: Record<string, unknown> = {}) 
   ...over,
 });
 
-export const reqSummary = (key: string, over: Partial<RequirementSummary> = {}): RequirementSummary =>
+const reqSummary = (key: string, over: Partial<RequirementSummary> = {}): RequirementSummary =>
   ({ id: `id-${key}`, key, title: `Muc ${key}`, status: "agreed", currentRevision: 1, latestRevision: { revision: 2, state: "proposed" }, delivery: standing.delivery, createdAt: at, updatedAt: at, standing, ...over }) as RequirementSummary;
 
 // a rule's picture (REQ-35, ISS-460): its example table, drawn by hand and named for a screen reader
@@ -208,9 +209,9 @@ const suggestion = (id: string, kind: SuggestionView["kind"], payload: unknown):
     reason: null,
     createdAt: at,
     payloadPurgedAt: null,
-  }) as SuggestionView;
+  });
 
-export const reqSuggestions: SuggestionView[] = [
+const reqSuggestions: SuggestionView[] = [
   suggestion("s1", "revision_diff", { changeSummary: "Doi ten", criteria: [{ code: "BC-1", body: "Moi" }] }),
   suggestion("s2", "readiness", { checks: [{ check: "Ro rang", passed: true }, { check: "Do duoc", passed: false, detail: "Thieu so" }] }),
   {
@@ -226,13 +227,15 @@ export const reqSuggestions: SuggestionView[] = [
   } as unknown as SuggestionView,
 ];
 
+function seededClient(data: [QueryKey, unknown][]): QueryClient {
+  const c = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } } });
+  for (const [key, value] of data) c.setQueryData(key, value);
+  return c;
+}
+
 /** The screens' queries answered from the cache and never refetched; a query left out (the forecast) reaches no core and draws nothing. */
 export function Seeded({ children, data }: { children: ReactNode; data: [QueryKey, unknown][] }) {
-  const [client] = useState(() => {
-    const c = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } } });
-    for (const [key, value] of data) c.setQueryData(key, value);
-    return c;
-  });
+  const [client] = useState(() => seededClient(data));
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 

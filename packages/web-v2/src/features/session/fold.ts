@@ -3,7 +3,7 @@ import { type Copy, productCopy } from "@/lib/i18n/product-copy";
 import type { RenderBlock } from "./types";
 
 /** A block that stays visible, under the index it holds in the unfolded turn. */
-export interface FoldKeptBlock {
+interface FoldKeptBlock {
   kind: "block";
   block: RenderBlock;
   /** Its index in the turn's own `blocks`, so the renderer keys and reads it unchanged. */
@@ -11,12 +11,12 @@ export interface FoldKeptBlock {
 }
 
 /** The one row standing in for everything this turn collapsed. */
-export interface FoldRow {
+interface FoldRow {
   kind: "fold";
   label: string;
 }
 
-export interface FoldedTurn {
+interface FoldedTurn {
   rows: (FoldKeptBlock | FoldRow)[];
 }
 

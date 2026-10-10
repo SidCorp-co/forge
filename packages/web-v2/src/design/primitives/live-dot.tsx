@@ -10,7 +10,7 @@ const META: Record<State, { color: string; pulse: boolean }> = {
   offline: { color: "var(--ink-400)", pulse: false },
 };
 
-export interface LiveDotProps {
+interface LiveDotProps {
   state: State;
   withLabel?: boolean;
 }

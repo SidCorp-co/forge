@@ -5,11 +5,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { say, sayEn, verbatim } from "@forge/contracts/said";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { revisionReason } from "../decision-words";
 import type { DesignRevision, WorkflowDesign, WorkflowRecord } from "../types";
-import { WorkflowDesignFacts } from "./workflow-design-facts";
+import { WorkflowDesignProperties } from "./workflow-design-facts";
 import { WorkflowDesignPage } from "./workflow-design-page";
+
+// a design no requirement roots offers to draft one, which navigates on success
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/" }));
 
 const NOTE = "Approved as drawn.\nThe SLA step is owed in rev 2.";
 
@@ -70,14 +73,14 @@ describe("an approval's note where the design is read", () => {
   afterEach(() => window.history.replaceState(null, "", "/"));
 
   it("shows the approved revision's note beneath who approved it", () => {
-    withQueries(<WorkflowDesignFacts d={design(revision({}))} record={record} shown={record.document} shownRevision={1} template={null} slug="acme" health={undefined} />);
+    withQueries(<WorkflowDesignProperties d={design(revision({}))} record={record} shown={record.document} shownRevision={1} template={null} slug="acme" health={undefined} />);
     const fact = screen.getByTestId("fact-approved");
     expect(fact).toHaveTextContent("Rev 1 by Bo");
     expect(within(fact).getByTestId("fact-approved-note").textContent).toBe(NOTE);
   });
 
   it("shows no note line when the approval carried none", () => {
-    withQueries(<WorkflowDesignFacts d={design(revision({ reason: null }))} record={record} shown={record.document} shownRevision={1} template={null} slug="acme" health={undefined} />);
+    withQueries(<WorkflowDesignProperties d={design(revision({ reason: null }))} record={record} shown={record.document} shownRevision={1} template={null} slug="acme" health={undefined} />);
     expect(screen.getByTestId("fact-approved")).toHaveTextContent("Rev 1 by Bo");
     expect(screen.queryByTestId("fact-approved-note")).toBeNull();
   });

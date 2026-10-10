@@ -16,7 +16,7 @@ export interface DeviceGate {
 	receivedAt: string;
 }
 
-export interface DeviceGateBanner {
+interface DeviceGateBanner {
 	count: number;
 	rate: string;
 	window: string;
@@ -97,7 +97,7 @@ export interface DeviceBinaries {
 }
 
 /** What a device screen says about its pane binaries. */
-export interface DeviceBinariesRead {
+interface DeviceBinariesRead {
 	/** `unreported` is a box whose build sends no report, never one that resolves everything. */
 	state: "unreported" | "resolved" | "missing";
 	missing: DeviceBinaries["missing"];
@@ -119,10 +119,10 @@ export function deviceBinariesRead(
 	};
 }
 
-export type DiskVerdict = "clear" | "unmeasurable" | "tight" | "critical";
+type DiskVerdict = "clear" | "unmeasurable" | "tight" | "critical";
 
 /** One scratch root as core judged it: the box's figures, or why it had none. */
-export interface DiskRootRead {
+interface DiskRootRead {
 	root: string;
 	bytesFree?: number;
 	bytesTotal?: number;

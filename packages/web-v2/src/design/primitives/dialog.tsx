@@ -7,7 +7,8 @@ import type { ReactNode } from "react";
 import { Dialog as Root, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils/cn";
 
-const WIDTH = { sm: "sm:max-w-sm", md: "sm:max-w-lg", lg: "sm:max-w-2xl" } as const;
+// `wide` shows a reading at full width (a table opened wide), within the viewport's margin
+const WIDTH = { sm: "sm:max-w-sm", md: "sm:max-w-lg", lg: "sm:max-w-2xl", wide: "sm:max-w-6xl" } as const;
 
 export interface DialogProps {
   open: boolean;

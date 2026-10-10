@@ -22,7 +22,7 @@ function spent(ms: number, locale: string): string {
 /**
  * The collapsed label, in its four forms.
  */
-export function thinkingLabel(b: {
+function thinkingLabel(b: {
   text?: string | undefined;
   durationMs?: number | undefined;
   count?: number | undefined;

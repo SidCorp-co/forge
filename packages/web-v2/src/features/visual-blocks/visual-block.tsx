@@ -107,7 +107,7 @@ function Frame({
       )}
       {children}
       {wide && (
-        <Dialog open onOpenChange={(next) => !next && setWide(false)} title={title ?? t("visual.answer")} width="lg" testId="visual-block-wide" footer={csv ? <CsvAction onCsv={csv} testId="visual-block-wide-csv" /> : undefined}>
+        <Dialog open onOpenChange={(next) => !next && setWide(false)} title={title ?? t("visual.answer")} width="wide" testId="visual-block-wide" footer={csv ? <CsvAction onCsv={csv} testId="visual-block-wide-csv" /> : undefined}>
           {said && <p className="text-13 text-muted">{said}</p>}
           <div className="max-h-160 min-w-0 overflow-y-auto">{children}</div>
         </Dialog>

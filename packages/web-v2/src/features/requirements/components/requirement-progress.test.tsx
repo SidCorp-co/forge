@@ -101,7 +101,7 @@ describe("the top of a requirement page", () => {
     expect(railRepeats(rail)).toBeNull();
   });
 
-  it("reads one waiting-on on the whole page, the strip's: a forecast paused on someone else is said nowhere", async () => {
+  it("reads one waiting-on on the whole page, the strip's: a forecast paused on someone else is said nowhere", () => {
     core();
     page("overview");
     // how many issues shipped is the strip's wait and each row's status: the rail counts none (REQ-43 BC-5)

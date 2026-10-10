@@ -4,7 +4,7 @@ import { extendTailwindMerge } from "tailwind-merge";
 /** The `text-<step>` suffixes of the ramp `@theme` declares in `src/app/globals.css`.
  *  tailwind-merge does not read `@theme`, so without this every step falls through to
  *  the text-COLOUR group and a size is deleted by a colour beside it (ISS-1119). */
-export const TEXT_RAMP_STEPS = [
+const TEXT_RAMP_STEPS = [
 	"8-5",
 	"9",
 	"9-5",

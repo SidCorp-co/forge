@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils/cn";
 
-export interface DotStripItem {
+interface DotStripItem {
   key: string;
   /** Drives the dot's position along the strip. */
   value: number;
@@ -9,7 +9,7 @@ export interface DotStripItem {
   onOpen?: () => void;
 }
 
-export interface DotStripProps {
+interface DotStripProps {
   items: DotStripItem[];
   /** Ticks under the axis, low → high. */
   axisLabels?: [string, string];

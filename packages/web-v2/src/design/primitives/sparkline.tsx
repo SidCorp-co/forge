@@ -4,7 +4,7 @@ import { Line, LineChart, YAxis } from "recharts";
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import { cn } from "@/lib/utils/cn";
 
-export interface SparklineProps {
+interface SparklineProps {
   points: number[];
   width?: number;
   height?: number;

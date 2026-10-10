@@ -8,7 +8,7 @@ import { showToast } from "@/design/primitives/toast";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
 import { TOUR_STATES_KEY } from "../hooks";
 import { TourHint } from "./tour-hint";
-import { ToursPanel } from "./tours-panel";
+import { ToursSheet } from "./tours-panel";
 
 vi.mock("@forge/contracts/tours", async (actual) => {
   const real = await actual<typeof import("@forge/contracts/tours")>();
@@ -36,7 +36,7 @@ function serve(items: unknown[]): Call[] {
 describe("Help → Tours", () => {
   it("reads Not seen, and Updated with a dot for a tour finished at an older revision", async () => {
     serve([{ key: "tour:integrations", value: { revision: 1, outcome: "completed", at }, updatedAt: at }]);
-    renderWithQuery(<ToursPanel open onClose={() => {}} />);
+    renderWithQuery(<ToursSheet open onClose={() => {}} />);
     const integrations = await screen.findByTestId("tour-row-integrations");
     await within(integrations).findByText(/revision 2 · Updated/);
     expect(within(integrations).getByTestId("tour-updated-dot")).toBeInTheDocument();
@@ -47,7 +47,7 @@ describe("Help → Tours", () => {
 
   it("reads Seen for a tour finished at its revision", async () => {
     serve([{ key: "tour:release-what-changes", value: { revision: 3, outcome: "completed", at }, updatedAt: at }]);
-    renderWithQuery(<ToursPanel open onClose={() => {}} />);
+    renderWithQuery(<ToursSheet open onClose={() => {}} />);
     expect(await screen.findByText(/revision 3 · Seen/)).toBeInTheDocument();
   });
 });

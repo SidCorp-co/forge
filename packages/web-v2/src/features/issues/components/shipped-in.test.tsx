@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { IssueAgentSession, IssueDetail } from "../types";
 import { RunsTab, runsTabCount } from "./detail/issue-sections";
-import { ChangesRow } from "./changes-row";
+import { IssueChanges } from "./issue-changes";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -22,7 +22,7 @@ const issue = (over: Partial<IssueDetail>) =>
   ({ id: "i-294", projectId: "p1", displayId: "ISS-294", title: "t", status: "closed", priority: "medium", labels: [], ...over }) as IssueDetail;
 
 function changes(detail: IssueDetail) {
-  renderWithQuery(<ChangesRow issue={detail} slug="forge" developer={false} />);
+  renderWithQuery(<IssueChanges issue={detail} slug="forge" developer={false} />);
 }
 
 const RUN: IssueAgentSession = {

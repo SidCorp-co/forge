@@ -27,7 +27,7 @@ export function ageText(seconds: number | null, t: Copy): string | null {
   return seconds === Number.MAX_SAFE_INTEGER ? t("overview.neverRan") : formatElapsed(seconds, t);
 }
 
-export type SilenceMark = "calm" | "warn" | "alarm";
+type SilenceMark = "calm" | "warn" | "alarm";
 
 /**
  * Which of the response's two marks the silence has passed.
@@ -43,12 +43,12 @@ export function silenceMark(
 }
 
 /** Where a figure's records are listed. */
-export type Destination =
+type Destination =
   | { kind: "route"; href: string }
   | { kind: "panel"; panel: PanelKey }
   | { kind: "anchor"; anchorId: string };
 
-export type PanelKey = "liveJobs" | PulseActionKey;
+type PanelKey = "liveJobs" | PulseActionKey;
 
 export const BUCKET_ORDER: Array<keyof PulseWorkBuckets> = [
   "open",
@@ -69,7 +69,7 @@ export function bucketHref(slug: string, bucket: keyof PulseWorkBuckets): string
   return `/projects/${slug}/issues?status=${PULSE_BUCKET_STATUSES[bucket].join(",")}`;
 }
 
-export interface WaffleCell {
+interface WaffleCell {
   key: keyof PulseWorkBuckets;
   label: string;
   count: number;
@@ -88,7 +88,7 @@ export function waffleCells(buckets: PulseWorkBuckets, t: Copy): WaffleCell[] {
   }));
 }
 
-export interface ProjectSilenceRow {
+interface ProjectSilenceRow {
   id: string;
   slug: string;
   name: string;
@@ -136,7 +136,7 @@ export function projectSilenceRows(pulse: PulseResponse, nowMs: number): Project
     });
 }
 
-export interface QualityRates {
+interface QualityRates {
   finishedTotal: number;
   mergedShare: number;
   reworkRatio: number | null;

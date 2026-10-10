@@ -19,14 +19,14 @@ import type { Said } from "@forge/contracts/said";
 
 type Label = ReturnType<typeof labelCopy>;
 
-export interface ReportWords {
+interface ReportWords {
   t: Copy;
   label: Label;
   clock: EtaClock;
 }
 
 /** Whom a row waits on and the act, read from what core said in the interface language; `you` names the viewer when `viewerName` is given. */
-export function waitText(w: { kind: string; says: { who: Said; act: Said } }, lang: string, viewerName?: string | null): string {
+function waitText(w: { kind: string; says: { who: Said; act: Said } }, lang: string, viewerName?: string | null): string {
   const who = w.kind === "you" && viewerName ? viewerName : said(w.says.who, lang);
   const act = said(w.says.act, lang);
   return act ? `${who} — ${act}` : who;

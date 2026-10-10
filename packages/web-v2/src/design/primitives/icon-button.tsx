@@ -11,7 +11,7 @@ const SIZES: Record<Size, { size: "icon-sm" | "icon"; icon: number }> = {
   md: { size: "icon", icon: 18 },
 };
 
-export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon: IconName;
   variant?: Variant;
   size?: Size;

@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils/cn";
 import { Markdown } from "./markdown";
 
-export interface StreamingTextProps {
+interface StreamingTextProps {
   text: string;
   /** While true, a blinking caret trails the text (agent is still emitting). */
   streaming?: boolean;

@@ -3,9 +3,9 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { ProjectDetail } from "@/features/projects/types";
+import type { ProjectDetail } from "@/features/projects";
 import { Seeded } from "@/test/vi-chrome-requirements";
-import { GeneralSection } from "./general-section";
+import { GeneralSettings } from "./general-section";
 
 const P = "11111111-1111-4111-8111-111111111111";
 const DETAIL = { id: P, slug: "hop", name: "Hop", orgId: "o1", baseBranch: "dev", members: [], labels: [], archivedAt: null } as unknown as ProjectDetail;
@@ -24,10 +24,10 @@ describe("the person gates on General", () => {
   it("shows one switch per step, on only where the document turns it on", () => {
     render(
       <Seeded data={[[["project", P, "config"], { declared: true, revision: 3, document: DOC }]]}>
-        <GeneralSection project={DETAIL} canEdit />
+        <GeneralSettings project={DETAIL} canEdit />
       </Seeded>,
     );
-    const on = LABELS.map((l) => (screen.getByRole("switch", { name: l }) as HTMLInputElement).getAttribute("aria-checked"));
+    const on = LABELS.map((l) => screen.getByRole("switch", { name: l }).getAttribute("aria-checked"));
     expect(on).toEqual(["false", "false", "false", "false", "false", "true"]);
     expect(screen.queryByText("Requirement readiness check")).toBeNull();
     fireEvent.click(screen.getByRole("switch", { name: LABELS[0] }));

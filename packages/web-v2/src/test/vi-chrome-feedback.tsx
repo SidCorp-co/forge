@@ -3,7 +3,7 @@ import { forecastWait, RULE, say, sentence, waitingOn } from "./said";
 import type { QueryKey } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { feedbackForecastKey } from "@/features/forecast/hooks";
-import { FeedbackBanner, FeedbackFacts } from "@/features/feedback/components/feedback-facts";
+import { FeedbackBanner, LinkedFeedback } from "@/features/feedback/components/feedback-facts";
 import { FeedbackHistory } from "@/features/feedback/components/feedback-detail";
 import { FeedbackForm } from "@/features/feedback/components/feedback-form";
 import { FeedbackItemScreen } from "@/features/feedback/components/feedback-item-screen";
@@ -55,10 +55,10 @@ const summary = (n: number, over: Partial<FeedbackSummary> = {}): FeedbackSummar
 const ROWS: FeedbackSummary[] = [
   summary(1),
   summary(2, { target: { type: "screen", key: "Bang dieu khien", title: null }, snoozed: { until: "2026-10-10T09:00:00.000Z", reason: "cho" } }),
-  summary(3, { phase: "planned", status: "triaged", attentionGroup: "moving", waitingOn: waitingOn("issue", { who: say("standing.who.linkedIssue"), act: say("standing.act.beResolved"), rule: RULE }, { ref: "ISS-4" }) as never }),
-  summary(4, { phase: "resolved", status: "triaged", attentionGroup: "waiting", waitingOn: waitingOn("person", { who: LAN, act: say("standing.act.verifyFixIn", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) as never }),
-  summary(5, { phase: "verified", status: "verified", attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }) as never }),
-  summary(6, { phase: "declined", status: "declined", attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }) as never }),
+  summary(3, { phase: "planned", status: "triaged", attentionGroup: "moving", waitingOn: waitingOn("issue", { who: say("standing.who.linkedIssue"), act: say("standing.act.beResolved"), rule: RULE }, { ref: "ISS-4" }) }),
+  summary(4, { phase: "resolved", status: "triaged", attentionGroup: "waiting", waitingOn: waitingOn("person", { who: LAN, act: say("standing.act.verifyFixIn", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) }),
+  summary(5, { phase: "verified", status: "verified", attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }) }),
+  summary(6, { phase: "declined", status: "declined", attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }) }),
   summary(7, { phase: "reopened", status: "reopened" }),
 ];
 
@@ -119,7 +119,7 @@ const Seeded = ({ children }: { children: ReactNode }) => <SeededQueries data={S
 
 const peek = { open: ITEM.key, position: { at: 2, of: 7 }, set: () => {}, move: () => {} };
 
-export const feedbackList = () => (
+const feedbackList = () => (
   <Seeded>
     <FeedbackScreen projectId={P} slug="hop" />
   </Seeded>
@@ -132,7 +132,7 @@ export const feedbackDetail = (over: Partial<FeedbackView> = {}) => (
   </SeededQueries>
 );
 
-export const feedbackPeek = () => (
+const feedbackPeek = () => (
   <Seeded>
     <FeedbackPeek projectId={P} slug="hop" fbKey={ITEM.key} peek={peek} onOpenFull={() => {}} />
   </Seeded>
@@ -142,13 +142,13 @@ export const feedbackPeek = () => (
 function FactsWithForecast({ f }: { f: FeedbackView }) {
   const lang = useInterfaceLanguage();
   const forecast = { key: f.key, triage: { label: "forecast", asOf: AT, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "project.write" }), say("standing.act.triageIt"), say("feedback.rule.triagerTriages", { phase: "new" })), ref: null, since: null, late: null }, delivery: null };
-  return <FeedbackFacts slug="hop" f={f} forecast={forecast as never} clock={{ lang, now: Date.parse(AT), timeZone: "UTC" }} />;
+  return <LinkedFeedback slug="hop" f={f} forecast={forecast as never} clock={{ lang, now: Date.parse(AT), timeZone: "UTC" }} />;
 }
 
-export const feedbackFacts = () => (
+const feedbackFacts = () => (
   <Seeded>
     <FactsWithForecast f={view({ phase: "new", attentionGroup: "needs_you" })} />
-    <FeedbackFacts
+    <LinkedFeedback
       slug="hop"
       f={view({
         phase: "resolved",
@@ -160,34 +160,35 @@ export const feedbackFacts = () => (
         source: { agentReport: { id: "0123456789ab", kind: "bug", severity: "high", target: "issue", targetRef: "ISS-4", createdAt: AT } },
         sensitive: true,
       } as never)}
+      developer
     />
-    <FeedbackFacts slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "automatic", by: null, byName: null, byReporter: false, ...noted(say("feedback.notice.autoVerified", { n: 14 })) }, shipNotice: { state: "told", how: "notice", at: AT, release: "0.2.0", by: null, shipped: { at: AT, release: "0.2.0" }, told: null, says: { told: null } }, route: null })} />
-    <FeedbackFacts slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "person", by: "u1", byName: "Lan", byReporter: true, reason: null, says: { reason: null } }, autoVerify: null })} />
-    <FeedbackFacts slug="hop" f={view({ verified: { at: AT, how: "person", by: "u2", byName: null, byReporter: false, reason: null, says: { reason: null } }, shipNotice: { state: "not_told", ...noted(say("feedback.notice.noRelease")), shipped: { at: null, release: null }, beforeNotices: false, noticesBegan: null } })} />
-    <FeedbackBanner slug="hop" f={view({ phase: "verified", attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }) as never })} />
-    <FeedbackBanner slug="hop" f={view({ attentionGroup: "needs_you", route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null }, waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.approveReleaseV", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) as never })} />
-    <FeedbackBanner slug="hop" f={view({ attentionGroup: "waiting", route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null }, waitingOn: waitingOn("person", { who: LAN, act: say("standing.act.verifyFixIn", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) as never })} />
+    <LinkedFeedback slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "automatic", by: null, byName: null, byReporter: false, ...noted(say("feedback.notice.autoVerified", { n: 14 })) }, shipNotice: { state: "told", how: "notice", at: AT, release: "0.2.0", by: null, shipped: { at: AT, release: "0.2.0" }, told: null, says: { told: null } }, route: null })} />
+    <LinkedFeedback slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "person", by: "u1", byName: "Lan", byReporter: true, reason: null, says: { reason: null } }, autoVerify: null })} />
+    <LinkedFeedback slug="hop" f={view({ verified: { at: AT, how: "person", by: "u2", byName: null, byReporter: false, reason: null, says: { reason: null } }, shipNotice: { state: "not_told", ...noted(say("feedback.notice.noRelease")), shipped: { at: null, release: null }, beforeNotices: false, noticesBegan: null } })} />
+    <FeedbackBanner slug="hop" f={view({ phase: "verified", attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }) })} />
+    <FeedbackBanner slug="hop" f={view({ attentionGroup: "needs_you", route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null }, waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.approveReleaseV", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) })} />
+    <FeedbackBanner slug="hop" f={view({ attentionGroup: "waiting", route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null }, waitingOn: waitingOn("person", { who: LAN, act: say("standing.act.verifyFixIn", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) })} />
     <FeedbackBanner
       slug="hop"
       f={view({
         attentionGroup: "waiting",
         route: { route: "answer", carriers: [], answer: "Tra loi" },
         decisions: [{ decision: "triaged", route: "answer", carrier: null, reason: null, says: { reason: null }, decidedBy: "u2", decidedByName: "Minh", decidedAgency: "human", decidedAt: AT, fromSuggestionId: null, acceptReason: null }],
-        waitingOn: waitingOn("person", { who: LAN, act: say("standing.act.confirmAnswer"), rule: RULE }) as never,
+        waitingOn: waitingOn("person", { who: LAN, act: say("standing.act.confirmAnswer"), rule: RULE }),
       })}
     />
     <FeedbackHistory f={ITEM} />
   </Seeded>
 );
 
-export const feedbackFilingForm = () => (
+const feedbackFilingForm = () => (
   <Seeded>
     <FeedbackForm projectId={P} onDone={() => {}} />
     <FeedbackForm projectId={P} onDone={() => {}} agentReport="0123456789ab" />
   </Seeded>
 );
 
-export const feedbackForms = () => (
+const feedbackForms = () => (
   <Seeded>
     <DeclineForm projectId={P} f={ITEM} done={() => {}} />
     <DuplicateForm projectId={P} f={ITEM} done={() => {}} />

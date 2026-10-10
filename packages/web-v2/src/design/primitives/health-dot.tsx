@@ -3,7 +3,7 @@
 import { HEALTH_META, type HealthKey } from "@/design/status";
 import { useCopy } from "@/lib/i18n/interface-language";
 
-export interface HealthDotProps {
+interface HealthDotProps {
   health: HealthKey;
   withLabel?: boolean;
 }

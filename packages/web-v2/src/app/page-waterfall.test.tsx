@@ -9,7 +9,7 @@ import { createQueryClient } from "@/providers/query-provider";
 import { renderWithQuery } from "@/test/render";
 import { depthOf, samePlace, type Sent, slowCore } from "@/test/waterfall";
 
-const nav = vi.hoisted(() => ({ pathname: "/projects/forge", params: { slug: "forge" } as Record<string, string> }));
+const nav = vi.hoisted((): { pathname: string; params: Record<string, string> } => ({ pathname: "/projects/forge", params: { slug: "forge" } }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),

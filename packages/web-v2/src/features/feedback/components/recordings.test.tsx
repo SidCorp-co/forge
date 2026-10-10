@@ -8,7 +8,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { FeedbackView } from "../types";
-import { atOf } from "@/features/previews/reproduce-timeline";
+import { atOf } from "@/features/previews";
 import { clockOf, Recordings } from "./recordings";
 
 const replayed = vi.hoisted(() => ({ events: [] as unknown[], played: 0 }));
@@ -83,7 +83,7 @@ describe("the item's recordings", () => {
     expect(row).toHaveTextContent("1.4.0");
     expect(row).toHaveTextContent("Stopped");
     const timeline = screen.getByTestId("recording-timeline");
-    const lines = within(timeline).getAllByRole("row");
+    const lines = within(timeline).getAllByRole("listitem");
     expect(lines.map((l) => l.getAttribute("data-kind"))).toEqual(["navigate", "click", "request_failed", "console_error"]);
     expect(lines[2]).toHaveTextContent("0:03.5Request failedPOST https://shop.test/api/orders answered 500");
   });
@@ -118,7 +118,7 @@ describe("the item's recordings", () => {
     renderWithQuery(<Recordings projectId={PROJECT_ID} f={item} />);
     const rows = await screen.findAllByTestId("recording-row");
     expect(rows[0]).toHaveTextContent("Failed · the app's own security policy kept the recorder out");
-    fireEvent.click(within(rows[1] as HTMLElement).getByRole("button", { name: "Show" }));
+    fireEvent.click(within(rows[1]).getByRole("button", { name: "Show" }));
     expect(await screen.findByText("Its events were deleted after 30 days. The timeline stays.")).toBeInTheDocument();
     expect(screen.getByTestId("recording-timeline")).toHaveTextContent("Clicked Save order");
     expect(screen.queryByTestId("recording-replay")).toBeNull();
@@ -137,7 +137,7 @@ describe("the item's recordings", () => {
 
   it("lists an uploaded video and a reproduce recording as one list, newest first, each naming who made it", async () => {
     fakeCore((c) => (c.path === LIST ? { body: { recordings: [recording()] } } : undefined));
-    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: [upload(), { ...upload({ id: "i1", name: "shot.png", mime: "image/png" }) }] } as unknown as FeedbackView} />);
+    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: [upload(), { ...upload({ id: "i1", name: "shot.png", mime: "image/png" }) }] }} />);
     await screen.findByText("1.4.0");
     const rows = screen.getAllByTestId("recording-row");
     expect(rows.map((r) => r.getAttribute("data-kind")), "a screenshot is not a recording").toEqual(["upload", "reproduce"]);
@@ -148,14 +148,14 @@ describe("the item's recordings", () => {
   it("names each uploaded video by its file, format and size, so two uploads read apart", async () => {
     fakeCore((c) => (c.path === LIST ? { body: { recordings: [] } } : undefined));
     const two = [upload(), upload({ id: "v2", name: "checkout.webm", mime: "video/webm", size: 3_400_000, createdAt: "2026-10-09T09:00:00.000Z" })];
-    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: two } as unknown as FeedbackView} />);
+    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: two }} />);
     const files = await screen.findAllByTestId("recording-file");
     expect(files.map((f) => f.textContent)).toEqual(["spinner.mp4MP4 · 878.9 KB", "checkout.webmWebM · 3.2 MB"]);
   });
 
   it("says a video this browser cannot play is unplayable, with a download, never a black player", async () => {
     fakeCore((c) => (c.path === LIST ? { body: { recordings: [] } } : undefined));
-    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: [upload({ name: "phone.mov", mime: "video/quicktime" })] } as unknown as FeedbackView} />);
+    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: [upload({ name: "phone.mov", mime: "video/quicktime" })] }} />);
     fireEvent.error(await screen.findByTestId("recording-video"));
     const said = await screen.findByTestId("recording-unplayable");
     expect(said).toHaveTextContent("This browser cannot play this MOV file. Download phone.mov");
@@ -165,7 +165,7 @@ describe("the item's recordings", () => {
 
   it("says a video that decodes with no picture is unplayable", async () => {
     fakeCore((c) => (c.path === LIST ? { body: { recordings: [] } } : undefined));
-    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: [upload()] } as unknown as FeedbackView} />);
+    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: [upload()] }} />);
     fireEvent.loadedMetadata(await screen.findByTestId("recording-video"));
     expect(await screen.findByTestId("recording-unplayable")).toHaveTextContent("MP4");
   });
@@ -178,7 +178,7 @@ describe("the item's recordings", () => {
 
   it("plays an uploaded video in the page, read by its text alternative, not its file name", async () => {
     fakeCore((c) => (c.path === LIST ? { body: { recordings: [] } } : undefined));
-    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: [upload({ uploadedBy: REPORTER, uploadedByName: "Ann" })] } as unknown as FeedbackView} />);
+    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: [upload({ uploadedBy: REPORTER, uploadedByName: "Ann" })] }} />);
     const video = await screen.findByTestId("recording-video");
     expect(video.tagName).toBe("VIDEO");
     expect(video.getAttribute("src")).toBe(upload().url);
@@ -189,10 +189,10 @@ describe("the item's recordings", () => {
 
   it("opens a reproduce recording from the list in place of the video", async () => {
     fakeCore((c) => (c.path === LIST ? { body: { recordings: [recording()] } } : undefined));
-    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: [upload()] } as unknown as FeedbackView} />);
+    renderWithQuery(<Recordings projectId={PROJECT_ID} f={{ ...item, attachments: [upload()] }} />);
     await screen.findByText("1.4.0");
     expect(screen.getByTestId("recording-video"), "the newest, the upload, is open first").toBeTruthy();
-    fireEvent.click(within(screen.getAllByTestId("recording-row")[1] as HTMLElement).getByRole("button", { name: "Show" }));
+    fireEvent.click(within(screen.getAllByTestId("recording-row")[1]).getByRole("button", { name: "Show" }));
     expect(await screen.findByTestId("recording-timeline")).toHaveTextContent("Clicked Save order");
     expect(screen.queryByTestId("recording-video")).toBeNull();
   });

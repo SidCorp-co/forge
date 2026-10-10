@@ -30,7 +30,7 @@ const TRACK_MIN_WIDTH = 480;
  * Where a pairing starts. `/pair` is only the approval half and, reached with
  * no code, tells the person to go and run the CLI.
  */
-export const PAIR_A_RUNNER = "/runners";
+const PAIR_A_RUNNER = "/runners";
 
 interface ModeMeta {
   mode: ConversationMode;
@@ -38,7 +38,7 @@ interface ModeMeta {
 }
 
 /** Each mode by its label (the product copy's keys). */
-export const MODES: ModeMeta[] = [
+const MODES: ModeMeta[] = [
   { mode: "assistant", label: "shell.mode.assistant" },
   { mode: "agent", label: "shell.mode.agent" },
 ];

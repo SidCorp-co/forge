@@ -14,7 +14,7 @@ function unseen(el: Element): boolean {
 /** A word is a run of letters or digits, with the joins a word keeps inside it (it's, ISS-496, 0.4.0). */
 const WORD = /[\p{L}\p{N}]+(?:['’.\-/:][\p{L}\p{N}]+)*/gu;
 
-export interface FirstScreen {
+interface FirstScreen {
   count: number;
   words: string[];
 }

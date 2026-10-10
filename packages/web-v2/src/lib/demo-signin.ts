@@ -12,7 +12,7 @@ const AUTH_COOKIE = "forge_auth";
 const RENEW_BEFORE_MS = 60_000;
 
 /** Whether this web server is a demo web: set by the demo stack (tests/helpers/demo-stack.ts) only. */
-export const isDemoWeb = () => process.env.FORGE_DEMO_SIGNIN === "1";
+const isDemoWeb = () => process.env.FORGE_DEMO_SIGNIN === "1";
 
 interface Held {
   token: string;

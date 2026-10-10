@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
 import { useFieldControl } from "./field";
 
-export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   icon?: IconName;
   variant?: "default" | "bare";
   ref?: Ref<HTMLInputElement>;

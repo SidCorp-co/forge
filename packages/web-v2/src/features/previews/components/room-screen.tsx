@@ -21,7 +21,7 @@ import { PreviewFrame } from "./preview-frame";
 import { roomApi } from "../room-api";
 
 /** Members read the room again on this clock: what one asks, the other sees within it. */
-export const ROOM_POLL_MS = 1500;
+const ROOM_POLL_MS = 1500;
 
 const roomKey = (id: string) => ["poc-room", id] as const;
 

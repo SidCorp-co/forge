@@ -39,7 +39,7 @@ export function AssistantTurn({
   );
 }
 
-export function CorrectionLine({ correction }: { correction: Correction }) {
+function CorrectionLine({ correction }: { correction: Correction }) {
   const t = useCopy();
   return (
     <div

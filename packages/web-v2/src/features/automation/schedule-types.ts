@@ -1,7 +1,7 @@
 import type { ScheduleKind, ScheduleRunStatus } from "@forge/contracts/schedules";
 
 export type { ScheduleKind } from "@forge/contracts/schedules";
-export type ScheduleLastStatus = ScheduleRunStatus | null;
+type ScheduleLastStatus = ScheduleRunStatus | null;
 
 export interface ScheduleRow {
   id: string;

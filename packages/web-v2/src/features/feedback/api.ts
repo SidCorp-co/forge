@@ -26,7 +26,7 @@ function actionRequest(projectId: string, key: string, a: FeedbackAction): [stri
 }
 
 /** A file as core's feedback attachment route takes it: its name, its type and its bytes as base64. */
-export function attachmentBody(file: File): Promise<{ name: string; mime: string; contentBase64: string }> {
+function attachmentBody(file: File): Promise<{ name: string; mime: string; contentBase64: string }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error ?? new Error(`${file.name} could not be read`));

@@ -28,7 +28,7 @@ describe("an old Decisions, Roadmap or Memory link", () => {
     expect(movedTarget("hop", "decisions", new URLSearchParams("requirement=REQ-14"))).toBe("/projects/hop/requirements/REQ-14?tab=activity&moved=decisions");
     expect(movedTarget("hop", "decisions", new URLSearchParams("workflow=intake"))).toBe("/projects/hop/workflows/intake?tab=decisions&moved=decisions");
     expect(movedTarget("hop", "decisions", new URLSearchParams("issue=ISS-110"))).toBe("/projects/hop/issues/ISS-110?view=developer&moved=decisions");
-    expect(movedTarget("hop", "roadmap", none)).toBe("/projects/hop/requirements?group=roadmap&moved=roadmap");
+    expect(movedTarget("hop", "roadmap", none)).toBe("/projects/hop/requirements?group=map&moved=roadmap");
     expect(movedTarget("hop", "memory", none)).toBe("/projects/hop?moved=memory#project-memory");
   });
 
@@ -38,19 +38,19 @@ describe("an old Decisions, Roadmap or Memory link", () => {
     expect(replace).toHaveBeenCalledWith("/projects/hop/requirements/REQ-14?tab=activity&moved=decisions");
     at("/projects/hop/roadmap");
     render(<RoadmapPage />);
-    expect(replace).toHaveBeenLastCalledWith("/projects/hop/requirements?group=roadmap&moved=roadmap");
+    expect(replace).toHaveBeenLastCalledWith("/projects/hop/requirements?group=map&moved=roadmap");
     at("/projects/hop/memory");
     render(<MemoryPage />);
     expect(replace).toHaveBeenLastCalledWith("/projects/hop?moved=memory#project-memory");
   });
 
   it("says on the page it lands on where the record went, once, and goes when dismissed", async () => {
-    at("/projects/hop/requirements?group=roadmap&moved=roadmap");
+    at("/projects/hop/requirements?group=map&moved=roadmap");
     render(<MovedNotice />);
-    expect(screen.getByTestId("moved-notice")).toHaveTextContent("Roadmap moved: Now, Next and Later group the Requirements list.");
+    expect(screen.getByTestId("moved-notice")).toHaveTextContent("Roadmap moved: Now, Next and Later are the Requirements Map.");
     await userEvent.setup().click(screen.getByRole("button", { name: "Dismiss" }));
     expect(screen.queryByTestId("moved-notice")).toBeNull();
-    expect(window.location.search).toBe("?group=roadmap");
+    expect(window.location.search).toBe("?group=map");
   });
 
   it("says nothing on a page no old link led to, nor for a moved value no page had", () => {

@@ -182,7 +182,7 @@ function Stat({
 }
 
 /** Which id an operator tag names: the last segment of its copy key, `issues.live.ops.<tag>`. */
-export type OperatorTag = "session" | "run" | "claude" | "device" | "job" | "gate" | "status";
+type OperatorTag = "session" | "run" | "claude" | "device" | "job" | "gate" | "status";
 
 /** The ids an operator reads a run by, folded under one quiet toggle; an absent value is left out. */
 export function OperatorDetails({ tags, children }: { tags: [tag: OperatorTag, value: string | null | undefined][]; children?: ReactNode }) {

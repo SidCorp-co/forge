@@ -8,7 +8,7 @@ import { STATUS_REPORTS_ROOT } from "@/features/shares";
 import { projectStatusApi } from "./api";
 
 /** Every key of this read starts here, so an issue or question event refreshes it in one call. */
-export const PROJECT_STATUS_ROOT = ["project-status"] as const;
+const PROJECT_STATUS_ROOT = ["project-status"] as const;
 
 export const useProjectStatus = (projectId: string | undefined, days: number = PROJECT_STATUS_DAYS_DEFAULT) =>
   useQuery(readOf([...PROJECT_STATUS_ROOT, projectId, days], () => projectStatusApi.read(projectId as string, days)));

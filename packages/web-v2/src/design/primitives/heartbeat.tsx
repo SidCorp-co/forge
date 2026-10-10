@@ -1,11 +1,11 @@
 import { cn } from "@/lib/utils/cn";
 
-export interface HeartbeatDay {
+interface HeartbeatDay {
   date: string;
   value: number;
 }
 
-export interface HeartbeatProps {
+interface HeartbeatProps {
   /** Oldest → newest, one entry per day of the window. */
   days: HeartbeatDay[];
   width?: number;

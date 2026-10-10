@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { coreFileUrl } from "@/lib/utils/core-url";
 
-export type Src = { state: "loading" } | { state: "ready"; src: string } | { state: "lost" };
+type Src = { state: "loading" } | { state: "ready"; src: string } | { state: "lost" };
 
 /** The address a media file plays from, or why it cannot. */
 export function useMediaSrc(url: string | undefined, authed: boolean): Src {

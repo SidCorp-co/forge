@@ -26,7 +26,7 @@ export interface AgentTodo {
  * `ToolCallData` in two field names: the captured output lives on `output`
  * (string) rather than `result`. Normalize via `result ?? output` when mapping.
  */
-export interface CanonicalToolCall {
+interface CanonicalToolCall {
   id: string;
   name: string;
   input?: Record<string, unknown>;
@@ -101,7 +101,7 @@ export interface MessageEntry {
   subtype?: string;
 }
 
-export type TurnRole = "user" | "assistant" | "tool";
+type TurnRole = "user" | "assistant" | "tool";
 
 export interface TurnRow {
   id: string;

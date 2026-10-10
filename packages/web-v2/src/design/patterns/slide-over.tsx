@@ -5,7 +5,7 @@ import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/she
 import { Icon } from "@/design/icons/icon";
 import { useCopy } from "@/lib/i18n/interface-language";
 
-export interface SlideOverProps {
+interface SlideOverProps {
   open: boolean;
   onClose: () => void;
   title?: ReactNode;

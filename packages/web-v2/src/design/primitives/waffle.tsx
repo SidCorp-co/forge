@@ -3,7 +3,7 @@
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 
-export interface WaffleCategory {
+interface WaffleCategory {
   key: string;
   label: string;
   count: number;
@@ -12,7 +12,7 @@ export interface WaffleCategory {
   onOpen?: () => void;
 }
 
-export interface WaffleProps {
+interface WaffleProps {
   categories: WaffleCategory[];
   /** Records one cell stands for. One cell per record where the total is small. */
   perCell?: number;

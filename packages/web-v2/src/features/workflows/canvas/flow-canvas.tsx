@@ -65,8 +65,11 @@ function openingView(el: HTMLElement, size: { width: number; height: number }, l
 /** What a relayout is keyed on: the language, and each node with whether a step shows in full. */
 const structureOf = (language: Language, view: View) => `${language}|${view.nodes.map((n) => (n.kind === "step" ? `${n.key}:${n.full ? 1 : 0}` : n.key)).join(",")}`;
 
+/** The parts of the step focus a node's marks read; never the whole focus, which is a new object each render. */
+type FocusMarks = Pick<ReturnType<typeof useStepFocus>, "step" | "edge" | "hits" | "walk" | "visited">;
+
 /** What the canvas marks on its nodes: the selection, what relates to it, the walk, the diff and health. */
-function decorationOf(f: ReturnType<typeof useStepFocus>, lit: Lit | null, o: Pick<WorkflowCanvasProps, "highlight" | "diff" | "health"> & { language: Language }) {
+function decorationOf(f: FocusMarks, lit: Lit | null, o: Pick<WorkflowCanvasProps, "highlight" | "diff" | "health"> & { language: Language }) {
   return {
     selected: f.step,
     selectedEdge: f.edge,
@@ -79,6 +82,17 @@ function decorationOf(f: ReturnType<typeof useStepFocus>, lit: Lit | null, o: Pi
     diff: o.diff ?? null,
     health: o.health ?? null,
   };
+}
+
+/**
+ * The decoration, kept while what it reads holds. Keyed on the parts of the focus it reads, never on
+ * the focus itself: a new decoration each render re-sets the nodes, which renders again.
+ */
+function useDecoration({ step, edge, hits, walk, visited }: FocusMarks, lit: Lit | null, { highlight, language, diff, health }: Parameters<typeof decorationOf>[2]) {
+  return useMemo(
+    () => decorationOf({ step, edge, hits, walk, visited }, lit, { highlight, language, diff, health }),
+    [step, edge, hits, walk, visited, lit, highlight, language, diff, health],
+  );
 }
 
 /** The viewport a level of detail opens at, zoomed about the canvas's centre. */
@@ -105,7 +119,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
 
   const view = useMemo(() => buildView(c, { lod, expanded, open }), [c, lod, expanded, open]);
   const structure = useMemo(() => structureOf(language, view), [language, view]);
-  const decoration = useMemo(() => decorationOf(f, lit, { highlight, language, diff, health }), [f, lit, highlight, language, diff, health]);
+  const decoration = useDecoration(f, lit, { highlight, language, diff, health });
 
   const layout = useCanvasLayout({
     c,

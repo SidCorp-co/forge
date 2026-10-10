@@ -68,7 +68,7 @@ function projectPath(pathname: string): { slug: string; rest: string } | null {
 }
 
 /** The Issues filter a URL holds, in the registry's closed fields; "me" only where the id is the reader's. */
-export function filterFromSearch(search: string, userId: string | null): UiIssueFilter {
+function filterFromSearch(search: string, userId: string | null): UiIssueFilter {
   const sp = new URLSearchParams(search);
   const out: UiIssueFilter = {};
   const statuses = (sp.get("status") ?? "")
@@ -93,7 +93,7 @@ export function filterFromSearch(search: string, userId: string | null): UiIssue
 const isProductList = (route: string): route is UiProductList => (UI_PRODUCT_LISTS as readonly string[]).includes(route);
 
 /** A Product list's filter as its URL holds it, for the snapshot; absent where nothing narrows it. */
-export function listFilterOf(list: UiProductList, search: string): UiListFilterSnapshot | undefined {
+function listFilterOf(list: UiProductList, search: string): UiListFilterSnapshot | undefined {
   const filter = listFilterFromSearch(list, search);
   return Object.keys(filter).length ? ({ list, filter } as UiListFilterSnapshot) : undefined;
 }
@@ -184,7 +184,7 @@ export const pageHighlighter = {
   unmark: () => highlightStore.clear(),
 };
 
-export interface UiFilterChip {
+interface UiFilterChip {
   field: UiFilterField;
   label: string;
 }
@@ -232,7 +232,7 @@ function markSet(set: Record<string, unknown>, next: URLSearchParams, mode: "mer
 }
 
 /** The page a record is opened on, by its kind. */
-export function recordHref(slug: string, target: UiOpenTarget): string {
+function recordHref(slug: string, target: UiOpenTarget): string {
   switch (target.kind) {
     case "issue":
       return issueHref(slug, target.key);

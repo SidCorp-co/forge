@@ -4,25 +4,24 @@
 // Core is stood in for over `fetch` with the contracts' own routes.
 
 import { IDEA_OFFER_TOOL } from "@forge/contracts/idea-offer";
-import { fireEvent, screen, } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
 import { PROJECT } from "@/test/requirement-pictures";
-import { HOST, PREVIEW_ID, previewOf, } from "@/features/previews/fixtures";
+import { HOST, PREVIEW_ID, previewOf } from "@/test/previews";
 
-const asked = vi.hoisted(() => ({ calls: 0, answer: null as unknown }));
+const asked = vi.hoisted((): { calls: number; answer: unknown } => ({ calls: 0, answer: null }));
 vi.mock("@/features/previews/idea-snapshot", async (orig) => {
   const real = await orig<typeof import("@/features/previews/idea-snapshot")>();
   return {
     ...real,
-    askPageSnapshot: async () => {
+    askPageSnapshot: () => {
       asked.calls += 1;
-      if (asked.answer instanceof Error) throw asked.answer;
-      return asked.answer;
+      return asked.answer instanceof Error ? Promise.reject(asked.answer) : Promise.resolve(asked.answer);
     },
   };
 });
-const replayed = vi.hoisted(() => ({ events: null as unknown, paused: [] as unknown[], destroyed: 0 }));
+const replayed = vi.hoisted((): { events: unknown; paused: unknown[]; destroyed: number } => ({ events: null, paused: [], destroyed: 0 }));
 vi.mock("rrweb", () => ({
   Replayer: class {
     constructor(events: unknown) {
@@ -40,7 +39,7 @@ vi.mock("rrweb/dist/style.css", () => ({}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/projects/hop", useParams: () => ({ slug: "hop" }) }));
 vi.mock("@/features/projects/hooks", () => ({ useProjects: () => ({ data: [{ id: "7f1c1d1e-0000-4000-8000-000000000001", slug: "hop", role: "member" }] }) }));
 
-const { ideaOffersOf, IdeaOfferCard } = await import("./idea-offers");
+const { ideaOffersOf, IdeaOfferNotice } = await import("./idea-offers");
 const _SHA = "c".repeat(40);
 const idea = (over = {}) =>
   previewOf({ subject: { kind: "idea", about: { kind: "requirement", key: "REQ-41" }, branch: "sketch/req-41-abcdef" }, issueId: null, ...over });
@@ -85,7 +84,7 @@ describe("the assistant's offer (BC-14)", () => {
       [`POST /projects/${PROJECT}/previews`]: () => ({ status: 201, body: { preview: idea({ state: "starting", liveAt: null }) } }),
       [`GET /previews/${PREVIEW_ID}`]: () => ({ body: { preview: idea({ state: "starting", liveAt: null }) } }),
     });
-    renderWithQuery(<IdeaOfferCard offer={OFFER} />);
+    renderWithQuery(<IdeaOfferNotice offer={OFFER} />);
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
     fireEvent.click(screen.getByRole("button", { name: "Build the preview" }));
     await screen.findByTestId("idea-panel");
@@ -97,7 +96,7 @@ describe("the assistant's offer (BC-14)", () => {
 
   it("names a refusal of core in its own words", async () => {
     core({ [`POST /projects/${PROJECT}/previews`]: () => ({ status: 503, body: refusal("PREVIEW_RUNNER_UNSUPPORTED", "no box bound to this project is online") }) });
-    renderWithQuery(<IdeaOfferCard offer={OFFER} />);
+    renderWithQuery(<IdeaOfferNotice offer={OFFER} />);
     fireEvent.click(screen.getByRole("button", { name: "Build the preview" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("no box bound to this project is online");
   });

@@ -15,7 +15,7 @@ const sameUrl = (url: string) => url;
 /** A relative link to another doc page (not scheme:/protocol-relative/absolute/
  *  anchor). Covers the viewer's own `?path=<slug>` form, slug links
  *  (`pair-a-runner`) and legacy `.md` links. */
-export function isRelativeDocLink(href: string): boolean {
+function isRelativeDocLink(href: string): boolean {
   return !/^([a-z][a-z0-9+.-]*:|\/\/|\/|#)/i.test(href);
 }
 
@@ -23,7 +23,7 @@ export function isRelativeDocLink(href: string): boolean {
  *  viewer can open via `?path=`. A `?path=<slug>` href names its slug outright;
  *  anything else is a path, with a legacy `.md` extension tolerated. An empty
  *  result is a link to no page, which the viewer answers as a missing page. */
-export function resolveDocPath(baseFile: string, href: string): string {
+function resolveDocPath(baseFile: string, href: string): string {
   if (href.startsWith("?")) {
     return new URLSearchParams(href.split("#")[0]).get("path") ?? "";
   }
@@ -151,7 +151,7 @@ const proseComponents: Components = {
   hr: () => <hr className="my-6 border-line" />,
 };
 
-export interface MarkdownProps {
+interface MarkdownProps {
   children: string;
   className?: string;
   /** `compact` (default) for inline embeds; `prose` for long-form doc reading. */

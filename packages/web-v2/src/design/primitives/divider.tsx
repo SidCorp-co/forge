@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils/cn";
 
-export interface DividerProps {
+interface DividerProps {
   orientation?: "horizontal" | "vertical";
   className?: string;
 }

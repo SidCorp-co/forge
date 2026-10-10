@@ -12,10 +12,10 @@ import { assetPath } from "@/lib/asset";
 const KEY = "forge.loginBounce";
 const NAME_PREFIX = "forge.loginBounce:";
 
-export type BounceCause = "frame-cookies" | "sign-in-refused";
+type BounceCause = "frame-cookies" | "sign-in-refused";
 
 /** Whether this page is shown inside another page, whose site may be a different one. */
-export function isFramed(): boolean {
+function isFramed(): boolean {
   try {
     return window.self !== window.top;
   } catch {

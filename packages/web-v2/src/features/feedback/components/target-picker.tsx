@@ -27,7 +27,7 @@ function useChoices(projectId: string, type: PickableTarget): { choices: Choice[
 }
 
 /** The choice a typed text names: its title (any case) or its key. */
-export function choiceOf(choices: readonly Choice[], text: string): Choice | null {
+function choiceOf(choices: readonly Choice[], text: string): Choice | null {
   const t = text.trim().toLowerCase();
   if (!t) return null;
   return choices.find((c) => c.title.toLowerCase() === t || c.key.toLowerCase() === t) ?? null;

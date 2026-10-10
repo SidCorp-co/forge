@@ -2,7 +2,7 @@ import type { ParkThreadQuestion } from "@forge/contracts/park";
 import { fireEvent } from "@testing-library/react";
 import type { QueryKey } from "@tanstack/react-query";
 import { AgentsScreen } from "@/features/agents/components/agents-screen";
-import { IssueQuestions as DecisionPanel } from "@/features/questions/components/issue-questions";
+import { IssueQuestions } from "@/features/questions/components/issue-questions";
 import { projectQuestionsKey } from "@/features/questions/hooks";
 import type { AgentQuestion, QuestionOption, QuestionStep } from "@/features/questions/types";
 import { Seeded } from "./vi-chrome-requirements";
@@ -61,8 +61,8 @@ const choice = question({
   recommendedOptionId: "a",
   round: 2,
   steps: [
-    { round: 1, prompt: "Cau hoi 1", askedAt: AT, answerShape: "choice", options: choiceOptions, recommendedOptionId: "a", chosenOptionId: "a", answeredAt: AT } as QuestionStep,
-    { round: 2, prompt: "Cau hoi 2", askedAt: AT, answerShape: "choice", options: choiceOptions, recommendedOptionId: "a" } as QuestionStep,
+    { round: 1, prompt: "Cau hoi 1", askedAt: AT, answerShape: "choice", options: choiceOptions, recommendedOptionId: "a", chosenOptionId: "a", answeredAt: AT },
+    { round: 2, prompt: "Cau hoi 2", askedAt: AT, answerShape: "choice", options: choiceOptions, recommendedOptionId: "a" },
   ],
 });
 
@@ -91,9 +91,9 @@ const answered = [
 ];
 
 const seed = (questions: AgentQuestion[]): [QueryKey, unknown][] => [[["questions", I], { questions }]];
-const panel = (questions: AgentQuestion[], extra: Partial<Parameters<typeof DecisionPanel>[0]> = {}) => () => (
+const panel = (questions: AgentQuestion[], extra: Partial<Parameters<typeof IssueQuestions>[0]> = {}) => () => (
   <Seeded data={seed(questions)}>
-    <DecisionPanel issueId={I} {...extra} />
+    <IssueQuestions issueId={I} {...extra} />
   </Seeded>
 );
 
@@ -116,7 +116,7 @@ export const SCREENS = [
   { name: "Decision · choice and earlier round", render: panel([choice]) },
   { name: "Decision · earlier rounds", render: panel([earlier, hidden]) },
   { name: "Decision · settled", render: panel(answered) },
-  { name: "Decision · asked in the thread", render: panel([], { parkedForInfo: true, threadQuestion: thread, onAnswerInThread: async () => undefined }) },
+  { name: "Decision · asked in the thread", render: panel([], { parkedForInfo: true, threadQuestion: thread, onAnswerInThread: () => Promise.resolve() }) },
   { name: "Decision · answered in the thread", render: panel([], { parkedForInfo: true, threadQuestion: { ...thread, answer: { text: "Tra loi" } as never } }) },
   { name: "Decision · none on the issue", render: panel([], { parkedForInfo: true }) },
   {

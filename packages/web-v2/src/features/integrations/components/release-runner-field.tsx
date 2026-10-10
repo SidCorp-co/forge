@@ -15,7 +15,7 @@ import { useUpdateConnection, useUpdateProviderIntegration } from "../hooks";
 import type { BindingSummary, ConnectionSummary, IntegrationSummary } from "../types";
 
 /** The config key itself, so no screen spells it differently from the API. */
-export const RELEASE_RUNNER_LABEL_KEY = "releaseRunnerLabel";
+const RELEASE_RUNNER_LABEL_KEY = "releaseRunnerLabel";
 
 function declaredIn(config: Record<string, unknown> | undefined | null): string | null {
   const value = config?.[RELEASE_RUNNER_LABEL_KEY];
@@ -26,7 +26,7 @@ function declaredIn(config: Record<string, unknown> | undefined | null): string 
  *  binding the project document's production environment names — which no binding knows of
  *  itself, so every deploy binding offers it and a service binding, which no environment
  *  names, does not. */
-export function labelDecidesFor(binding: Pick<IntegrationSummary, "role">): boolean {
+function labelDecidesFor(binding: Pick<IntegrationSummary, "role">): boolean {
   return binding.role === "deploy";
 }
 

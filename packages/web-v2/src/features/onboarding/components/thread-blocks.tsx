@@ -16,7 +16,7 @@ import type { OnboardingDesignView, QuestionnaireView } from "../types";
 import { DesignStatus, HoverNote, ToneChip } from "./marks";
 import { Questionnaire, QuestionnaireSummary } from "./questionnaire";
 
-export interface ThreadBlock {
+interface ThreadBlock {
   type: string;
   text?: string;
   batchId?: string;
@@ -53,7 +53,7 @@ function spoken(iso: string) {
 }
 
 /** One message in the prototype's frame: an avatar, who, when, and the body. A wide one gives the card the full width. */
-export function ThreadMessage({
+function ThreadMessage({
   who,
   name,
   at,

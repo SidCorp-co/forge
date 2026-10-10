@@ -4,11 +4,11 @@
 import type { FeedbackForecast } from "@forge/contracts/forecast";
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { EtaClock } from "@/features/forecast/eta";
+import type { EtaClock } from "@/features/forecast";
 import { renderWithQuery } from "@/test/render";
 import { forecastWait, RULE, say, sentence, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
-import { FeedbackFacts } from "./feedback-facts";
+import { LinkedFeedback } from "./feedback-facts";
 
 const NOW = Date.parse("2026-10-07T12:00:00Z");
 const at = (min: number) => new Date(NOW + min * 60_000).toISOString();
@@ -58,7 +58,7 @@ const forecast: FeedbackForecast = { key: "FB-4", triage: null, delivery };
 
 describe("feedback follows its work to the release", () => {
   it("shows the ETA row, links the release and names who owes the cut", () => {
-    renderWithQuery(<FeedbackFacts f={view()} slug="hop" forecast={forecast} clock={clock} />);
+    renderWithQuery(<LinkedFeedback f={view()} slug="hop" forecast={forecast} clock={clock} />);
     expect(screen.getByTestId("facts-feedback-eta").textContent).toContain("ETA");
     const line = screen.getByTestId("feedback-forecast-line");
     expect(line.textContent).toBe("Fixed · waits on Dana Lee to cut 0.1.0, then approve it");
@@ -67,7 +67,7 @@ describe("feedback follows its work to the release", () => {
 
   it("says when the reporter was told; the release is the answer line's, said once (REQ-43 BC-5)", () => {
     const f = view({ shipNotice: { state: "told", how: "notice", at: at(-5), release: "0.1.0", by: null, shipped: { at: at(-6), release: "0.1.0" }, told: null, says: { told: null } } });
-    renderWithQuery(<FeedbackFacts f={f} slug="hop" />);
+    renderWithQuery(<LinkedFeedback f={f} slug="hop" />);
     const fact = screen.getByTestId("facts-ship-notice");
     expect(fact.textContent).toContain("Reporter told");
     expect(within(fact).queryByRole("link", { name: "0.1.0" })).toBeNull();
@@ -85,7 +85,7 @@ describe("feedback follows its work to the release", () => {
         noticesBegan: null,
       },
     });
-    renderWithQuery(<FeedbackFacts f={f} slug="hop" />);
+    renderWithQuery(<LinkedFeedback f={f} slug="hop" />);
     expect(screen.getByTestId("ship-notice-not-told").textContent).toContain("The reporter is an agent");
   });
 
@@ -100,7 +100,7 @@ describe("feedback follows its work to the release", () => {
         noticesBegan: "2026-10-07T07:39:54.217Z",
       },
     });
-    renderWithQuery(<FeedbackFacts f={f} slug="hop" />);
+    renderWithQuery(<LinkedFeedback f={f} slug="hop" />);
     const line = screen.getByTestId("ship-notice-not-told");
     expect(line.textContent).toContain("Shipped in 0.4.0-dev.89 on ");
     expect(screen.getByTestId("ship-notice-before").textContent).toBe("Shipped before release notices existed on this project (2026-10-07).");
@@ -109,7 +109,7 @@ describe("feedback follows its work to the release", () => {
   });
 
   it("shows no told row before the work has shipped", () => {
-    renderWithQuery(<FeedbackFacts f={view({ phase: "planned" })} slug="hop" />);
+    renderWithQuery(<LinkedFeedback f={view({ phase: "planned" })} slug="hop" />);
     expect(screen.queryByTestId("facts-ship-notice")).toBeNull();
   });
 });

@@ -16,7 +16,7 @@ import { RULE, say, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
 import { FeedbackPage } from "./feedback-detail";
 import { FeedbackEvidence } from "./feedback-evidence";
-import { FeedbackFacts } from "./feedback-facts";
+import { LinkedFeedback } from "./feedback-facts";
 
 // the page's room entry (REQ-44) reads the router to open the room it starts; nothing here navigates
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
@@ -182,17 +182,17 @@ describe("the workflow step a report hits", () => {
   });
 
   it("names the step in the item's About fact by the words its design gives it", () => {
-    renderWithQuery(<FeedbackFacts f={onWorkflow({ step: "pay" }, { pay: "Pay" })} slug="hop" />);
+    renderWithQuery(<LinkedFeedback f={onWorkflow({ step: "pay" }, { pay: "Pay" })} slug="hop" />);
     expect(screen.getByTestId("facts-about")).toHaveTextContent("Step: Pay");
   });
 
   it("names the link in the item's About fact by its steps' words", () => {
-    renderWithQuery(<FeedbackFacts f={onWorkflow({ edge: { from: "cart", to: "pay" } }, { cart: "Cart", pay: "Pay" })} slug="hop" />);
+    renderWithQuery(<LinkedFeedback f={onWorkflow({ edge: { from: "cart", to: "pay" } }, { cart: "Cart", pay: "Pay" })} slug="hop" />);
     expect(screen.getByTestId("facts-about")).toHaveTextContent("Link: Cart to Pay");
   });
 
   it("reads a step the design no longer names by its id", () => {
-    renderWithQuery(<FeedbackFacts f={onWorkflow({ step: "pay" }, {})} slug="hop" />);
+    renderWithQuery(<LinkedFeedback f={onWorkflow({ step: "pay" }, {})} slug="hop" />);
     expect(screen.getByTestId("facts-about")).toHaveTextContent("Step: pay");
   });
 });

@@ -17,7 +17,7 @@ export interface HighlightState {
 }
 
 /** How long a highlight waits for its element (a tab switching, a list loading) before it gives up. */
-export const HIGHLIGHT_WAIT_MS = 4000;
+const HIGHLIGHT_WAIT_MS = 4000;
 const MARK = "data-highlighted";
 
 let state: HighlightState | null = null;

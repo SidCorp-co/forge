@@ -3,7 +3,7 @@
 // on — sits behind the Developer view (BC-7), and each fact is said once (BC-5).
 
 import { render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SCREENS } from "@/test/vi-chrome-sessions";
 
 vi.mock("next/navigation", () => ({
@@ -14,6 +14,9 @@ vi.mock("next/navigation", () => ({
 
 // jsdom lays nothing out, so the thread's stick-to-bottom has nothing to scroll
 Element.prototype.scrollIntoView = () => {};
+// a session's reads are stale at once, so the seeded page reads again on mount: that read stays in
+// flight, or its failure would replace the page with the error state (the setup unstubs after each test)
+beforeEach(() => vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {}))));
 afterEach(() => window.history.replaceState(null, "", "/"));
 
 type Fixture = "Session · run report" | "Session · run report · developer" | "Session · chat" | "Session · chat · developer";
@@ -39,7 +42,7 @@ describe("a run session's page, person's view", () => {
     expect(screen.getByTestId("session-summary")).toHaveTextContent("$1.25");
     for (const agentText of ["src/dang-nhap.ts", "that bai: 1 loi", "s-run", "/srv/hop", "Tokens in / out", "Ran pnpm test"])
       expect(within(page).queryByText(agentText, { exact: false }), agentText).toBeNull();
-    expect(screen.queryByRole("tab", { name: "Transcript" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Transcript" })).toBeNull();
   });
 
   it("says each fact once: one Open issue, one status, one cost (BC-5)", async () => {
@@ -54,7 +57,7 @@ describe("a run session's page, person's view", () => {
 describe("a run session's page, developer view", () => {
   it("draws the files, the lenses, the raw output and the id (BC-7)", async () => {
     await open("Session · run report · developer");
-    expect(await screen.findByRole("tab", { name: "Transcript" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Transcript" })).toBeInTheDocument();
     expect(screen.getAllByText("src/dang-nhap.ts").length).toBeGreaterThan(0);
     expect(screen.getAllByText("that bai: 1 loi", { exact: false }).length).toBeGreaterThan(0);
     expect(screen.getByText("s-run")).toBeInTheDocument();
@@ -62,7 +65,7 @@ describe("a run session's page, developer view", () => {
 
   it("still says each fact once: one Open issue, and the error count only where the error is shown (BC-5)", async () => {
     await open("Session · run report · developer");
-    await screen.findByRole("tab", { name: "Transcript" });
+    await screen.findByRole("button", { name: "Transcript" });
     expect(screen.getAllByRole("button", { name: "Open issue" })).toHaveLength(1);
     expect(screen.queryByText(/· 1 errors/)).toBeNull();
     expect(screen.getAllByText("$1.25")).toHaveLength(1);

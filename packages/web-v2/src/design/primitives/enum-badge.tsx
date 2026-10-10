@@ -19,7 +19,7 @@ import {
 } from "../vocabulary";
 import type { WorkStep } from "@forge/contracts/issue-vocabulary";
 
-export interface ToneBadgeProps {
+interface ToneBadgeProps {
   tone: LegendTone;
   label: ReactNode;
   glyph?: string | null;
@@ -62,7 +62,7 @@ export function ToneBadge({ tone, label, glyph, title, value, size = "sm", pulse
   );
 }
 
-export interface StatusBadgeProps {
+interface StatusBadgeProps {
   family: StatusFamily;
   value: string;
   /** An issue `in_progress` at a step reads "In progress · Test". */
@@ -136,7 +136,7 @@ const FIELD: Partial<Record<EnumFamily, string>> = {
   scheduleKind: "kind",
 };
 
-export interface EnumBadgeProps {
+interface EnumBadgeProps {
   family: EnumFamily;
   value: string;
   /** Overrides the label (e.g. "High priority" on a facts line). */

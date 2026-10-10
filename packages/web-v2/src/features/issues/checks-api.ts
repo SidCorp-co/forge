@@ -6,7 +6,7 @@ import { apiClient } from "@/lib/api/client";
 // The checks an issue's runs made, each with its kind and duration, and the time spent per kind
 // (REQ-36 BC-14; ISS-474). Keyed under `['issue', id]`, which the event router invalidates.
 
-export const checksApi = {
+const checksApi = {
   /** `GET /api/issues/:id/checks` — every recorded check, newest first, and the time per kind. */
   list: (issueId: string) => apiClient<IssueChecksView>(`/issues/${issueId}/checks`),
 };

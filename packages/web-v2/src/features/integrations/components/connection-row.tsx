@@ -48,7 +48,7 @@ function UsageLine({
   );
 }
 
-export function connectionRowLabel(
+function connectionRowLabel(
   connection: ConnectionDirectoryItem,
   projectName: (id: string) => string,
   t: Copy,

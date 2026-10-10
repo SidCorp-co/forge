@@ -3,21 +3,21 @@
 import type { Copy } from "@/lib/i18n/product-copy";
 import { projectGlyph } from "@/features/projects";
 
-export type LinkState = "building" | "current" | "behind" | "breaking" | "unverified";
+type LinkState = "building" | "current" | "behind" | "breaking" | "unverified";
 
 export type StepStatus = "pending" | "running" | "succeeded" | "failed" | "skipped" | "superseded";
 
 /** A repository run names the commit it reads; a storefront run has none, and says where it reads instead. */
-export type BuilderTrigger =
+type BuilderTrigger =
   | { kind: "joined" | "push" | "manual"; sha: string }
   | { kind: "joined" | "push" | "manual"; sha: null; source: "storefront" };
 
-export interface SupersededBy {
+interface SupersededBy {
   run: string;
   reason: string;
 }
 
-export interface BuilderStep {
+interface BuilderStep {
   name: string;
   status: StepStatus;
   detail?: string;
@@ -43,7 +43,7 @@ export interface BusProject {
   builder: BusBuilder | null;
 }
 
-export interface BusContract {
+interface BusContract {
   provider: string;
   slug: string;
   title: string;
@@ -52,7 +52,7 @@ export interface BusContract {
   currentVersion: string | null;
 }
 
-export interface ContractRef {
+interface ContractRef {
   provider: string;
   slug: string;
 }
@@ -69,7 +69,7 @@ export interface BusLink {
   updatedAt: string;
 }
 
-export interface ImpactBreak {
+interface ImpactBreak {
   element: string;
   check: string | null;
   text: string;
@@ -78,7 +78,7 @@ export interface ImpactBreak {
   outsideContract: string[];
 }
 
-export interface LinkImpact {
+interface LinkImpact {
   link: string;
   version: string;
   verdict: "passes" | "breaks";
@@ -94,7 +94,7 @@ export interface Bus {
 }
 
 /** A git consumer's call site is a file and line; a storefront consumer's is an artefact its provider holds. */
-export interface CallSite {
+interface CallSite {
   path?: string;
   line?: number;
   artefact?: { kind: string; id: string };
@@ -104,7 +104,7 @@ export interface CallSite {
 export const callSiteAt = (s: CallSite): string =>
   s.artefact ? `${s.artefact.kind}:${s.artefact.id}` : `${s.path}:${s.line}`;
 
-export interface LinkDocument {
+interface LinkDocument {
   id: string;
   ecosystem: string;
   consumer: { project: string; module: string };
@@ -128,7 +128,7 @@ export interface LinkRecord {
   currentVersion: string | null;
 }
 
-export type Finding =
+type Finding =
   | { classification: "matched"; site: CallSite; contract: ContractRef }
   | { classification: "outside_ecosystem"; site: CallSite; host: string }
   | { classification: "unknown"; site: CallSite; note?: string };

@@ -22,7 +22,7 @@ interface Kept {
 const kept = new Map<string, Kept>();
 
 /** The checklist the issue machine's edge `from → to` asks, or null where the move asks none. */
-export function checklistOfMove(from: IssueStatus, to: IssueStatus): string | null {
+function checklistOfMove(from: IssueStatus, to: IssueStatus): string | null {
   const id = edgeBetween(ISSUE_MACHINE, from, to)?.checklist;
   return id !== undefined && isChecklistId(id) ? id : null;
 }

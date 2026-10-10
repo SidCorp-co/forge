@@ -40,7 +40,7 @@ import { leaseLeft, runKey, runName } from "../view";
 import { RunGivenView } from "./run-given";
 import { RunBanner, RunPath, RunProperties } from "./run-views";
 
-export const RUN_TABS = ["overview", "given", "attempts", "events", "lease"] as const;
+const RUN_TABS = ["overview", "given", "attempts", "events", "lease"] as const;
 
 function Overview({ r, developer }: { r: RunStanding; developer: boolean }) {
   const t = useCopy();

@@ -22,7 +22,7 @@ export interface SentryConfig {
 
 export type { BindingSummary as IntegrationSummary } from "@forge/contracts/integrations";
 
-export interface InstallationRepo {
+interface InstallationRepo {
   installationId: number;
   account: string;
   owner: string;

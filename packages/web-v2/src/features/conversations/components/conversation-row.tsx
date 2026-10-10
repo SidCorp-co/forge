@@ -17,7 +17,7 @@ interface ProjectInfo {
   slug: string;
 }
 
-export interface ConversationRowActions {
+interface ConversationRowActions {
   /** Commit a new title. Absent = the row shows no rename control. */
   onRename?: (title: string) => void;
   /** File it away, or bring it back — the row reads which from `row.archivedAt`. */

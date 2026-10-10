@@ -144,7 +144,6 @@
     "releases.page.header.runsAt": "Runs at",
     "releases.page.header.verified": "Verified",
     "releases.page.highlights.failed": "Highlights could not be drafted for this build.",
-    "releases.page.highlights.mediaLoading": "Loading the clip.",
     "releases.page.highlights.mediaLost": "The clip or picture could not be loaded.",
     "releases.page.highlights.mediaGap": "No clip: {why}",
     "releases.page.highlights.pending": "Drafting highlights from what this release proves.",

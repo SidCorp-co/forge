@@ -22,7 +22,7 @@ interface ContractContextRecord {
 }
 
 /** The `contractContext` core stamped on the session: which link contracts the run was given, and why. */
-export function contractContextOf(metadata: SessionMetadata | null): ContractContextRecord | null {
+function contractContextOf(metadata: SessionMetadata | null): ContractContextRecord | null {
   const raw = metadata?.contractContext as ContractContextRecord | undefined;
   return raw && Array.isArray(raw.links) && raw.links.length > 0 ? raw : null;
 }

@@ -47,7 +47,7 @@ export function ProjectGate({ label, notFound, children }: GateProps<ProjectList
  * page's first reads leave with it. `row` is the list's entry once the page has switched to the
  * uuid, absent before; whatever a role or a name decides waits for it.
  */
-export interface GatedProject {
+interface GatedProject {
   ref: string;
   slug: string;
   row: ProjectListItem | null;

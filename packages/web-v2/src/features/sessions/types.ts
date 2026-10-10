@@ -1,8 +1,6 @@
 import {
   FAILURE_CAUSE_PRESENTATION,
-  type FailureCause,
   LEGACY_NEUTRAL_REASONS,
-  type LegacyNeutralReason,
   resolveFailureCause,
 } from "@forge/contracts/failure-causes";
 import {
@@ -40,7 +38,7 @@ function isStuck(session: Pick<SessionRow, "id" | "pipelineRunId">, stuck: Stuck
 
 export type Liveness = "alive" | "stale" | "reaping" | "na";
 
-export interface LivenessResult {
+interface LivenessResult {
   state: Liveness;
   /** Time since the last heartbeat signal, or null when not gradable. */
   sinceHeartbeatMs: number | null;
@@ -49,10 +47,8 @@ export interface LivenessResult {
   reapInMs: number | null;
 }
 
-export type SessionFailureReason = FailureCause | LegacyNeutralReason;
-
 /** Usage telemetry jsonb — every key is optional (older rows omit fields). */
-export interface SessionUsage {
+interface SessionUsage {
   turns?: number;
   contextUsed?: number;
   inputTotal?: number;
@@ -89,7 +85,7 @@ export interface SessionRow {
   parentSessionId?: string | null;
   usage: SessionUsage | null;
   metadata: SessionMetadata | null;
-  /** A SessionFailureReason, or a code newer than this client knows. */
+  /** A FailureCause or LegacyNeutralReason, or a code newer than this client knows. */
   failureReason: string | null;
   dispatchedAt: string | null;
   startedAt: string | null;
@@ -172,7 +168,7 @@ export function isJobDriven(
 }
 
 /** Whether a session is an interactive chat (not driven by a pipeline job). */
-export function isInteractiveSession(
+function isInteractiveSession(
   session: Pick<SessionRow, "metadata"> & { kind?: AgentSessionKind | null },
 ): boolean {
   return sessionKind(session) === "chat";
@@ -200,7 +196,7 @@ export function failureReasonAction(reason: string | null | undefined, language 
   return read(reason) || read(resolveFailureCause(reason)) || null;
 }
 
-export function heartbeatReapMs(
+function heartbeatReapMs(
   session: Pick<SessionRow, "metadata"> & { kind?: AgentSessionKind | null },
 ): number {
   const kind = sessionKind(session);
@@ -264,14 +260,14 @@ export function statusToChip(display: AgentSessionDisplayStatus): StatusKey {
   }
 }
 
-export type SessionOutcomeBucket = "success" | "failed" | "cleanup" | "swept" | "active";
+type SessionOutcomeBucket = "success" | "failed" | "cleanup" | "swept" | "active";
 
 function presentationOf(reason: string): "cleanup" | "swept" | "failure" {
   if (LEGACY_NEUTRAL_REASONS.has(reason)) return "swept";
   return FAILURE_CAUSE_PRESENTATION[resolveFailureCause(reason)];
 }
 
-export interface SessionOutcome {
+interface SessionOutcome {
   bucket: SessionOutcomeBucket;
   /** Design-kit token to colour the chip — `swept`/`done` are neutral/green,
    *  only `failed` is red. */

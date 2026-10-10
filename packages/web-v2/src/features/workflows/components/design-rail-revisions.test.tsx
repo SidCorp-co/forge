@@ -7,7 +7,7 @@ import type { WorkflowHealth } from "@forge/contracts/workflow-health";
 import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { WorkflowDesign } from "../types";
-import { WorkflowDesignFacts } from "./workflow-design-facts";
+import { WorkflowDesignProperties } from "./workflow-design-facts";
 
 const OPEN = say("designs.gate.open", { r: "2" });
 const design = {
@@ -28,7 +28,7 @@ const design = {
 
 function rail() {
   render(
-    <WorkflowDesignFacts
+    <WorkflowDesignProperties
       d={design}
       record={{ writerName: "Ba", document: { updatedAt: "2026-10-01T00:00:00Z" } } as never}
       shown={{ steps: [], kind: "flow", summary: null } as never}
@@ -63,8 +63,8 @@ describe("the design rail's revisions", () => {
   it("says which revision each build was linked against, marking one behind (R-22)", () => {
     rail();
     const builds = screen.getAllByTestId("rail-build");
-    expect(within(builds[0] as HTMLElement).getByTestId("rail-build-revision")).toHaveAttribute("data-behind", "true");
-    expect(within(builds[1] as HTMLElement).getByTestId("rail-build-revision")).toHaveTextContent("r7");
-    expect(within(builds[2] as HTMLElement).queryByTestId("rail-build-revision")).toBeNull();
+    expect(within(builds[0]).getByTestId("rail-build-revision")).toHaveAttribute("data-behind", "true");
+    expect(within(builds[1]).getByTestId("rail-build-revision")).toHaveTextContent("r7");
+    expect(within(builds[2]).queryByTestId("rail-build-revision")).toBeNull();
   });
 });

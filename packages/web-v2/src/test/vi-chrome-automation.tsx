@@ -154,13 +154,13 @@ const fireDetail = {
 
 const data = (): [QueryKey, unknown][] => [
   [["automation", P, "standing"], standing],
-  [["automation", P, "schedule", "s1"], scheduleDetail(SCHEDULES[0] as ScheduleStanding)],
-  [["automation", P, "schedule", "s3"], scheduleDetail(SCHEDULES[2] as ScheduleStanding)],
+  [["automation", P, "schedule", "s1"], scheduleDetail(SCHEDULES[0])],
+  [["automation", P, "schedule", "s3"], scheduleDetail(SCHEDULES[2])],
   [["automation", P, "fire", "a-fire-0001"], fireDetail],
   [["automation", P, "fire", "x"], { ...fireDetail, fire: { ...FIRES[1], output: null } }],
   [["automation", P, "report", "a-report-0001"], { report: REPORTS[0] }],
   [["automation", P, "report", "b-report-0001"], { report: REPORTS[1] }],
-  [["schedules", P, "list"], SCHEDULES.map((s) => config(s as ScheduleStanding))],
+  [["schedules", P, "list"], SCHEDULES.map((s) => config(s))],
 ];
 
 const wrap = (children: React.ReactNode) => <Seeded data={data()}>{children}</Seeded>;
@@ -177,20 +177,20 @@ export const SCREENS = [
     render: () => (
       <>
         <ScheduleForm submitLabel="x" pending={false} error={null} testId="a" onSubmit={noop} onCancel={noop} />
-        {wrap(<ScheduleForm initial={config(SCHEDULES[1] as ScheduleStanding)} submitLabel="x" pending={false} error={null} testId="b" onSubmit={noop} onCancel={noop} />)}
+        {wrap(<ScheduleForm initial={config(SCHEDULES[1])} submitLabel="x" pending={false} error={null} testId="b" onSubmit={noop} onCancel={noop} />)}
       </>
     ),
   },
-  { name: "Automation · schedule peek", render: () => wrap(<SchedulePeek s={SCHEDULES[0] as ScheduleStanding} access={access} peek={peek} onOpenFull={noop} />) },
-  { name: "Automation · schedule peek · off", render: () => wrap(<SchedulePeek s={SCHEDULES[2] as ScheduleStanding} access={access} peek={peek} onOpenFull={noop} />) },
+  { name: "Automation · schedule peek", render: () => wrap(<SchedulePeek s={SCHEDULES[0]} access={access} peek={peek} onOpenFull={noop} />) },
+  { name: "Automation · schedule peek · off", render: () => wrap(<SchedulePeek s={SCHEDULES[2]} access={access} peek={peek} onOpenFull={noop} />) },
   { name: "Automation · schedule page", render: () => wrap(<ScheduleItemScreen access={access} scheduleId="s1" />) },
   { name: "Automation · schedule page · controls", render: () => wrap(<ScheduleItemScreen access={access} scheduleId="s3" />), act: clickAll('[data-testid="schedule-edit-open"],[data-testid="schedule-take-over"],[data-testid="schedule-delete"]') },
   { name: "Automation · schedule fires and reports", render: () => wrap(<SchedulePage access={access} scheduleId="s1" />) },
-  { name: "Automation · fire peek", render: () => wrap(<FirePeek f={FIRES[0] as FireStanding} schedule={SCHEDULES[0] as ScheduleStanding} slug="hop" peek={peek} onOpenFull={noop} />) },
+  { name: "Automation · fire peek", render: () => wrap(<FirePeek f={FIRES[0]} schedule={SCHEDULES[0]} slug="hop" peek={peek} onOpenFull={noop} />) },
   { name: "Automation · fire page", render: () => wrap(<FireItemScreen access={access} fireId="a-fire-0001" />) },
   { name: "Automation · fire page · empty", render: () => wrap(<FirePage projectId={P} slug="hop" fireId="x" />) },
-  { name: "Automation · report peek", render: () => wrap(<ReportPeek r={REPORTS[0] as ReportStanding} projectId={P} slug="hop" canWrite peek={peek} onOpenFull={noop} />), act: clickAll('[data-testid="report-dismiss-open"],[data-testid="report-duplicate-open"]') },
-  { name: "Automation · report peek · filed", render: () => wrap(<ReportPeek r={REPORTS[1] as ReportStanding} projectId={P} slug="hop" canWrite peek={peek} onOpenFull={noop} />) },
+  { name: "Automation · report peek", render: () => wrap(<ReportPeek r={REPORTS[0]} projectId={P} slug="hop" canWrite peek={peek} onOpenFull={noop} />), act: clickAll('[data-testid="report-dismiss-open"],[data-testid="report-duplicate-open"]') },
+  { name: "Automation · report peek · filed", render: () => wrap(<ReportPeek r={REPORTS[1]} projectId={P} slug="hop" canWrite peek={peek} onOpenFull={noop} />) },
   { name: "Automation · report page", render: () => wrap(<ReportItemScreen access={access} reportId="a-report-0001" />) },
   { name: "Automation · report page · filed", render: () => wrap(<ReportPage projectId={P} slug="hop" reportId="b-report-0001" canWrite={false} />) },
 ];

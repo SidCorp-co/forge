@@ -94,7 +94,7 @@ describe("a requirement's checklists on its page", () => {
     const [ready, acceptance] = await screen.findAllByTestId("checklist");
     expect(ready?.dataset.standing).toBe("passed");
     expect(ready).toHaveTextContent("Passed");
-    const kind = row(ready as HTMLElement, "kind");
+    const kind = row(ready, "kind");
     expect(kind.dataset.state).toBe("corrected");
     expect(kind).toHaveTextContent("Not stated.");
     expect(kind).toHaveTextContent("Assumed");
@@ -102,20 +102,21 @@ describe("a requirement's checklists on its page", () => {
     expect(within(kind).getByTestId("checklist-correction")).toHaveTextContent("Now, from r2");
     expect(within(kind).getByTestId("checklist-correction")).toHaveTextContent("rule");
     // an assumed answer nothing has answered since stays as the move recorded it
-    expect(row(ready as HTMLElement, "outOfScope").dataset.state).toBe("assumed");
+    expect(row(ready, "outOfScope").dataset.state).toBe("assumed");
 
     expect(acceptance?.dataset.checklist).toBe("requirement_acceptance");
     expect(acceptance).toHaveTextContent("1 open");
-    expect(row(acceptance as HTMLElement, "shipped").dataset.state).toBe("gap");
+    expect(row(acceptance, "shipped").dataset.state).toBe("gap");
   });
 
-  it("says an agree recorded before the checklist judged nothing, under a heading that reads how it stands now (BC-9, FB-120)", async () => {
+  it("heads an agree recorded before the checklist judged nothing with how it stands now, and explains nothing (BC-9, FB-120, REQ-43)", async () => {
     requirementPage([readOf(REQUIREMENT_READY_CHECKLIST, record(REQUIREMENT_READY_CHECKLIST, READY_GIVEN), [passed([], "no_checklist")]), readOf(REQUIREMENT_ACCEPTANCE_CHECKLIST, null)], 1);
     const section = await screen.findByTestId("checklist");
     expect(section.dataset.standing).toBe("no_checklist");
     expect(section, "a heading must not deny the checklist drawn under it").not.toHaveTextContent("No checklist");
     expect(section).toHaveTextContent("2 open");
-    expect(within(section).getByTestId("checklist-unrecorded")).toHaveTextContent("Moved on before this checklist existed");
+    // no line explains why no move is shown: the heading reads how it stands
+    expect(section).not.toHaveTextContent("Moved on before this checklist existed");
     expect(row(section, "criteria").dataset.state).toBe("given");
   });
 
@@ -123,7 +124,6 @@ describe("a requirement's checklists on its page", () => {
     requirementPage([readOf(REQUIREMENT_READY_CHECKLIST, null, [passed([], "no_checklist")]), readOf(REQUIREMENT_ACCEPTANCE_CHECKLIST, null)], 1);
     const section = await screen.findByTestId("checklist");
     expect(section).toHaveTextContent("No checklist");
-    expect(within(section).queryByTestId("checklist-unrecorded")).toBeNull();
   });
 });
 

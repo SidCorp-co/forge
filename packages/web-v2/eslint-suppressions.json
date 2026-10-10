@@ -1,113 +1,7 @@
 {
-  "src/app/(workspace)/layout.tsx": {
-    "@eslint-react/naming-convention-ref-name": {
-      "count": 1
-    },
-    "@eslint-react/set-state-in-effect": {
-      "count": 1
-    },
-    "@typescript-eslint/no-misused-promises": {
-      "count": 2
-    },
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
-  "src/app/(workspace)/projects/[slug]/page.tsx": {
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    }
-  },
-  "src/app/(workspace)/projects/[slug]/status/page.tsx": {
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    }
-  },
-  "src/app/forge-config/route.ts": {
-    "@typescript-eslint/require-await": {
-      "count": 1
-    }
-  },
-  "src/app/invite/accept/page.tsx": {
-    "@eslint-react/set-state-in-effect": {
-      "count": 1
-    },
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    }
-  },
-  "src/app/layout.tsx": {
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/app/link-chat/page.tsx": {
-    "@eslint-react/set-state-in-effect": {
-      "count": 2
-    },
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "react-hooks/preserve-manual-memoization": {
-      "count": 2
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/app/page-waterfall.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
   "src/design/vocabulary-common.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 2
-    }
-  },
-  "src/features/attention/components/attention-screen.tsx": {
-    "@typescript-eslint/unbound-method": {
-      "count": 5
-    }
-  },
-  "src/features/chat-dock/assistant-filters.ts": {
-    "@typescript-eslint/unbound-method": {
-      "count": 1
-    }
-  },
-  "src/features/chat-dock/dock.tsx": {
-    "@eslint-react/no-use-context": {
-      "count": 1
-    },
-    "@eslint-react/set-state-in-effect": {
-      "count": 2
-    },
-    "@eslint-react/use-state": {
-      "count": 1
-    }
-  },
-  "src/features/chat/components/chat-composer.tsx": {
-    "@typescript-eslint/no-misused-promises": {
-      "count": 2
-    }
-  },
-  "src/features/chat/components/sketch/sketch-canvas.tsx": {
-    "@typescript-eslint/no-unsafe-call": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-return": {
-      "count": 1
-    },
-    "@typescript-eslint/require-await": {
-      "count": 1
-    }
-  },
-  "src/features/chat/components/sketch/sketch-pad.tsx": {
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
     }
   },
   "src/features/comments/components/entity-comment-thread.test.tsx": {
@@ -120,113 +14,8 @@
       "count": 3
     }
   },
-  "src/features/conversations/board/board-panel.test.tsx": {
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/conversations/board/board-panel.tsx": {
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    },
-    "@typescript-eslint/unbound-method": {
-      "count": 1
-    },
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/conversations/components/add-member-dialog.tsx": {
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    }
-  },
   "src/features/conversations/components/block-hosts.test.tsx": {
     "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/conversations/components/chat-dock.test.tsx": {
-    "@eslint-react/naming-convention-ref-name": {
-      "count": 1
-    },
-    "@eslint-react/use-state": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/require-await": {
-      "count": 1
-    },
-    "boundaries/dependencies": {
-      "count": 4
-    }
-  },
-  "src/features/conversations/components/chat-dock.tsx": {
-    "jsx-a11y/no-noninteractive-element-interactions": {
-      "count": 1
-    },
-    "jsx-a11y/no-noninteractive-tabindex": {
-      "count": 1
-    }
-  },
-  "src/features/conversations/components/conversation-chat.tsx": {
-    "@eslint-react/exhaustive-deps": {
-      "count": 1
-    },
-    "@eslint-react/set-state-in-effect": {
-      "count": 1
-    },
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    },
-    "@typescript-eslint/require-await": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/features/conversations/components/conversation-list.tsx": {
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
-  "src/features/conversations/components/conversation-row.tsx": {
-    "jsx-a11y/no-autofocus": {
-      "count": 1
-    }
-  },
-  "src/features/conversations/components/conversation-thread.tsx": {
-    "@eslint-react/no-array-index-key": {
-      "count": 1
-    },
-    "max-lines": {
-      "count": 1
-    }
-  },
-  "src/features/conversations/components/dock-preview.test.tsx": {
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/conversations/components/idea-offers.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "@typescript-eslint/require-await": {
-      "count": 1
-    },
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/conversations/components/mode-control.tsx": {
-    "@eslint-react/no-use-context": {
       "count": 1
     }
   },
@@ -240,25 +29,12 @@
       "count": 1
     }
   },
-  "src/features/conversations/components/start-conversation.tsx": {
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    }
-  },
   "src/features/conversations/membership.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     }
   },
-  "src/features/conversations/types.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
   "src/features/conversations/ui-actions/actions.ts": {
-    "@typescript-eslint/no-base-to-string": {
-      "count": 2
-    },
     "sonarjs/cognitive-complexity": {
       "count": 1
     }
@@ -271,66 +47,8 @@
       "count": 2
     }
   },
-  "src/features/conversations/ui-actions/page-actions.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 3
-    },
-    "@typescript-eslint/no-unsafe-return": {
-      "count": 1
-    },
-    "@typescript-eslint/require-await": {
-      "count": 3
-    },
-    "boundaries/dependencies": {
-      "count": 3
-    }
-  },
-  "src/features/conversations/ui-actions/release-workflow-lists.test.tsx": {
-    "@typescript-eslint/no-unsafe-return": {
-      "count": 1
-    },
-    "boundaries/dependencies": {
-      "count": 3
-    }
-  },
-  "src/features/conversations/ui-actions/use-ui-actions.tsx": {
-    "@eslint-react/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "src/features/development/activity/runners-card.test.tsx": {
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/feedback/api.ts": {
-    "@typescript-eslint/no-base-to-string": {
-      "count": 1
-    }
-  },
   "src/features/feedback/components/feedback-accept.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/features/feedback/components/feedback-evidence.tsx": {
-    "@next/next/no-img-element": {
-      "count": 2
-    }
-  },
-  "src/features/feedback/components/feedback-facts.tsx": {
-    "@eslint-react/no-array-index-key": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/features/feedback/components/feedback-follow.test.tsx": {
-    "boundaries/dependencies": {
       "count": 1
     }
   },
@@ -342,69 +60,13 @@
       "count": 1
     }
   },
-  "src/features/feedback/components/feedback-verbs.test.tsx": {
-    "@typescript-eslint/require-await": {
-      "count": 1
-    }
-  },
-  "src/features/feedback/components/recordings.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 8
-    }
-  },
   "src/features/integrations/components/integrations-screen.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 2
     }
   },
-  "src/features/issues/api.ts": {
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/batch-release-dialog.tsx": {
-    "@eslint-react/set-state-in-effect": {
-      "count": 1
-    },
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/body-editor.tsx": {
-    "@eslint-react/naming-convention-ref-name": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/changes-row.tsx": {
-    "ui-grammar/no-layout-name": {
-      "count": 1
-    }
-  },
   "src/features/issues/components/comment-thread.test.tsx": {
     "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/criteria-acts.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/criteria-acts.tsx": {
-    "@eslint-react/set-state-in-effect": {
-      "count": 2
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/criteria-evidence-note.test.tsx": {
-    "@typescript-eslint/no-base-to-string": {
-      "count": 2
-    }
-  },
-  "src/features/issues/components/criteria-section.tsx": {
-    "ui-grammar/no-layout-name": {
       "count": 1
     }
   },
@@ -413,142 +75,8 @@
       "count": 4
     }
   },
-  "src/features/issues/components/detail/check-times.tsx": {
-    "ui-grammar/no-layout-name": {
-      "count": 2
-    }
-  },
-  "src/features/issues/components/detail/fold-row.tsx": {
-    "ui-grammar/no-layout-name": {
-      "count": 1
-    }
-  },
   "src/features/issues/components/detail/issue-actions.test.tsx": {
     "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/detail/issue-page-main.tsx": {
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/detail/issue-sections.tsx": {
-    "@typescript-eslint/no-base-to-string": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/issue-detail-screen.tsx": {
-    "@eslint-react/naming-convention-ref-name": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/issue-row-actions.tsx": {
-    "jsx-a11y/click-events-have-key-events": {
-      "count": 1
-    },
-    "jsx-a11y/no-static-element-interactions": {
-      "count": 1
-    },
-    "ui-grammar/no-layout-name": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/issue-standing-bits.tsx": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 5
-    },
-    "ui-grammar/no-layout-name": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/issue-trace-truth.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/issues-board.tsx": {
-    "@eslint-react/set-state-in-effect": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    },
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/issues-list-view.tsx": {
-    "@eslint-react/no-array-index-key": {
-      "count": 1
-    },
-    "@eslint-react/purity": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/issues-screen.tsx": {
-    "@eslint-react/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/issues-toolbar.tsx": {
-    "@eslint-react/naming-convention-ref-name": {
-      "count": 1
-    },
-    "no-restricted-syntax": {
-      "count": 4
-    }
-  },
-  "src/features/issues/components/list/pin-view-button.tsx": {
-    "@eslint-react/naming-convention-ref-name": {
-      "count": 1
-    },
-    "jsx-a11y/no-autofocus": {
-      "count": 1
-    },
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/list/use-filter-options.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/list/use-list-params.ts": {
-    "@eslint-react/naming-convention-ref-name": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/list/use-page-selection.ts": {
-    "@eslint-react/set-state-in-effect": {
-      "count": 1
-    },
-    "@eslint-react/use-state": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/live-agent-panel.tsx": {
-    "ui-grammar/no-layout-name": {
-      "count": 3
-    }
-  },
-  "src/features/issues/components/merge-marker-control.tsx": {
-    "@eslint-react/set-state-in-effect": {
-      "count": 3
-    }
-  },
-  "src/features/issues/components/module-picker.tsx": {
-    "@eslint-react/set-state-in-effect": {
-      "count": 2
-    },
-    "@eslint-react/use-state": {
       "count": 1
     }
   },
@@ -557,134 +85,14 @@
       "count": 1
     }
   },
-  "src/features/issues/components/new-issue-dialog.tsx": {
-    "@eslint-react/set-state-in-effect": {
-      "count": 8
-    },
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    },
-    "jsx-a11y/no-autofocus": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/patterns-panel.tsx": {
-    "ui-grammar/no-layout-name": {
-      "count": 2
-    }
-  },
-  "src/features/issues/components/properties-rail.tsx": {
-    "max-lines": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/rail-trace.tsx": {
-    "ui-grammar/no-layout-name": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/session-group-timeline.tsx": {
-    "ui-grammar/no-layout-name": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/start-issue-action.tsx": {
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/step-artifact-card.tsx": {
-    "ui-grammar/no-layout-name": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/transition-reason-dialog.tsx": {
-    "@eslint-react/set-state-in-effect": {
-      "count": 5
-    }
-  },
   "src/features/issues/components/use-guarded-transition.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/features/issues/components/use-guarded-transition.tsx": {
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
-  "src/features/issues/hooks.ts": {
-    "@tanstack/query/no-rest-destructuring": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unused-vars": {
       "count": 1
     }
   },
   "src/features/issues/identity-phrase.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 3
-    }
-  },
-  "src/features/issues/park.ts": {
-    "@eslint-react/naming-convention-ref-name": {
-      "count": 1
-    }
-  },
-  "src/features/issues/release-approval.tsx": {
-    "@eslint-react/naming-convention-context-name": {
-      "count": 1
-    },
-    "@eslint-react/no-use-context": {
-      "count": 1
-    }
-  },
-  "src/features/issues/types.ts": {
-    "max-lines": {
-      "count": 1
-    }
-  },
-  "src/features/memory/components/item-memory.tsx": {
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/features/memory/components/memory-entry.tsx": {
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/features/mockups/components/mockups-panel.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/features/mockups/components/mockups-panel.tsx": {
-    "@next/next/no-img-element": {
-      "count": 1
-    },
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/modules/components/module-map.tsx": {
-    "boundaries/dependencies": {
-      "count": 1
     }
   },
   "src/features/needs-you/decision-list.test.tsx": {
@@ -697,25 +105,6 @@
       "count": 2
     }
   },
-  "src/features/overview/components/overview-screen.tsx": {
-    "@eslint-react/no-array-index-key": {
-      "count": 1
-    },
-    "@eslint-react/set-state-in-effect": {
-      "count": 1
-    },
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    }
-  },
-  "src/features/previews/idea-panel.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "@typescript-eslint/require-await": {
-      "count": 1
-    }
-  },
   "src/features/previews/idea-snapshot.test.ts": {
     "@typescript-eslint/no-unsafe-assignment": {
       "count": 1
@@ -724,16 +113,6 @@
       "count": 1
     },
     "@typescript-eslint/no-unsafe-return": {
-      "count": 1
-    }
-  },
-  "src/features/previews/preview-panel.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 4
-    }
-  },
-  "src/features/previews/reproduce-section.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     }
   },
@@ -750,78 +129,11 @@
       "count": 2
     }
   },
-  "src/features/project-home/project-home.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 4
-    },
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/project-settings/components/compute-section.test.tsx": {
-    "@typescript-eslint/require-await": {
-      "count": 1
-    },
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/project-settings/components/general-approvals.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/project-settings/components/preview-section.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/project-settings/settings-ux.test.tsx": {
-    "@tanstack/query/stable-query-client": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/require-await": {
-      "count": 1
-    },
-    "boundaries/dependencies": {
-      "count": 2
-    }
-  },
   "src/features/project-status/components/status-history.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 3
     },
     "max-lines-per-function": {
-      "count": 1
-    }
-  },
-  "src/features/project-status/components/status-report.tsx": {
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/features/project-status/components/template-run.tsx": {
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    }
-  },
-  "src/features/project-status/report-markdown.ts": {
-    "sonarjs/cognitive-complexity": {
       "count": 1
     }
   },
@@ -840,14 +152,6 @@
       "count": 1
     }
   },
-  "src/features/releases/components/release-media.tsx": {
-    "@next/next/no-img-element": {
-      "count": 1
-    },
-    "jsx-a11y/media-has-caption": {
-      "count": 1
-    }
-  },
   "src/features/releases/components/release-note-reads.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 3
@@ -861,14 +165,6 @@
   "src/features/releases/components/release-page.test.tsx": {
     "@typescript-eslint/require-await": {
       "count": 1
-    }
-  },
-  "src/features/releases/components/release-reader.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/require-await": {
-      "count": 2
     }
   },
   "src/features/releases/components/release-requirements.test.tsx": {
@@ -887,47 +183,13 @@
       "count": 1
     }
   },
-  "src/features/requirements/components/progress-vocabulary.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/features/requirements/components/promote-drafts.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 4
-    }
-  },
   "src/features/requirements/components/readiness.test.tsx": {
     "boundaries/dependencies": {
       "count": 1
     }
   },
-  "src/features/requirements/components/requirement-checklists.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
-    }
-  },
-  "src/features/requirements/components/requirement-facts.tsx": {
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
   "src/features/requirements/components/requirement-inside.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/features/requirements/components/requirement-picture-editor.tsx": {
-    "@eslint-react/no-array-index-key": {
-      "count": 2
-    },
-    "@eslint-react/use-state": {
-      "count": 1
-    },
-    "boundaries/dependencies": {
       "count": 1
     }
   },
@@ -947,11 +209,6 @@
       "count": 1
     }
   },
-  "src/features/requirements/components/requirement-picture.tsx": {
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
   "src/features/requirements/components/requirement-revision-changes.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 5
@@ -959,12 +216,7 @@
   },
   "src/features/requirements/components/requirement-strip-waits.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    }
-  },
-  "src/features/requirements/components/requirement-unclear.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 5
+      "count": 1
     }
   },
   "src/features/requirements/components/requirements-screen.test.tsx": {
@@ -985,11 +237,6 @@
       "count": 1
     }
   },
-  "src/features/suggestions/components/reject-step.tsx": {
-    "jsx-a11y/no-autofocus": {
-      "count": 1
-    }
-  },
   "src/features/suggestions/components/suggestion-list.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 5
@@ -1000,47 +247,9 @@
       "count": 1
     }
   },
-  "src/features/tours/hooks.ts": {
-    "@tanstack/query/no-rest-destructuring": {
-      "count": 1
-    },
-    "@tanstack/query/no-unstable-deps": {
-      "count": 1
-    }
-  },
-  "src/features/tours/release-context.tsx": {
-    "@eslint-react/no-use-context": {
-      "count": 1
-    }
-  },
-  "src/features/visual-blocks/chart-model.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/features/visual-blocks/context.tsx": {
-    "@eslint-react/no-use-context": {
-      "count": 1
-    }
-  },
   "src/features/visual-blocks/dates.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 2
-    }
-  },
-  "src/features/visual-blocks/flow-block.tsx": {
-    "@eslint-react/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "src/features/visual-blocks/kpi-block.tsx": {
-    "@eslint-react/no-array-index-key": {
-      "count": 1
-    }
-  },
-  "src/features/visual-blocks/narrow.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 11
     }
   },
   "src/features/visual-blocks/renderers.test.tsx": {
@@ -1048,129 +257,14 @@
       "count": 4
     }
   },
-  "src/features/visual-blocks/source-note.tsx": {
-    "@eslint-react/no-array-index-key": {
-      "count": 1
-    },
-    "@eslint-react/purity": {
-      "count": 1
-    },
-    "@typescript-eslint/unbound-method": {
-      "count": 1
-    }
-  },
-  "src/features/visual-blocks/status-list-block.tsx": {
-    "@eslint-react/no-array-index-key": {
-      "count": 1
-    }
-  },
-  "src/features/visual-blocks/table-block.tsx": {
-    "@eslint-react/dom-no-flush-sync": {
-      "count": 1
-    },
-    "@eslint-react/no-array-index-key": {
-      "count": 1
-    }
-  },
-  "src/features/workflows/c4/view.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/features/workflows/canvas/c4-canvas.tsx": {
-    "@eslint-react/exhaustive-deps": {
-      "count": 1
-    },
-    "@eslint-react/set-state-in-effect": {
-      "count": 4
-    },
-    "@eslint-react/use-state": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
-  "src/features/workflows/canvas/c4-nodes.tsx": {
-    "@typescript-eslint/no-unused-expressions": {
-      "count": 1
-    }
-  },
-  "src/features/workflows/canvas/flow-canvas.tsx": {
-    "@eslint-react/use-state": {
-      "count": 2
-    },
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
   "src/features/workflows/canvas/step-focus.test.tsx": {
     "@typescript-eslint/no-floating-promises": {
       "count": 2
     }
   },
-  "src/features/workflows/canvas/step-focus.tsx": {
-    "@eslint-react/use-state": {
-      "count": 1
-    }
-  },
-  "src/features/workflows/canvas/view.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/features/workflows/canvas/wireframe-thumb.tsx": {
-    "@next/next/no-img-element": {
-      "count": 1
-    }
-  },
-  "src/features/workflows/components/design-banner.tsx": {
-    "@eslint-react/exhaustive-deps": {
-      "count": 1
-    }
-  },
-  "src/features/workflows/components/design-rail-revisions.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
-    }
-  },
-  "src/features/workflows/components/design-repins.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/features/workflows/components/design-room.ts": {
-    "@eslint-react/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "src/features/workflows/components/system-overview.tsx": {
-    "jsx-a11y/no-autofocus": {
-      "count": 1
-    }
-  },
-  "src/features/workflows/components/workflow-design-screen.tsx": {
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    }
-  },
   "src/features/workflows/template-words.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 3
-    }
-  },
-  "src/lib/api/client.ts": {
-    "@typescript-eslint/no-redundant-type-constituents": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 5
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 7
     }
   },
   "src/lib/api/error.test.ts": {
@@ -1186,11 +280,6 @@
       "count": 2
     }
   },
-  "src/lib/api/ref-bridge.ts": {
-    "@eslint-react/naming-convention-ref-name": {
-      "count": 2
-    }
-  },
   "src/lib/demo-signin.test.ts": {
     "@typescript-eslint/no-unsafe-assignment": {
       "count": 1
@@ -1202,53 +291,9 @@
       "count": 7
     }
   },
-  "src/lib/graph/layout.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
-    }
-  },
-  "src/lib/i18n/copy-files.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/lib/i18n/copy-files.ts": {
-    "boundaries/dependencies": {
-      "count": 35
-    }
-  },
   "src/lib/i18n/copy-readers.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 2
-    }
-  },
-  "src/lib/i18n/eta-copy.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "src/lib/i18n/instants.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
-    }
-  },
-  "src/lib/i18n/interface-language.test.tsx": {
-    "boundaries/dependencies": {
-      "count": 3
-    }
-  },
-  "src/lib/i18n/interface-language.tsx": {
-    "@eslint-react/no-context-provider": {
-      "count": 1
-    },
-    "@eslint-react/no-use-context": {
-      "count": 1
-    },
-    "boundaries/dependencies": {
-      "count": 1
     }
   },
   "src/lib/i18n/labels.test.ts": {
@@ -1256,40 +301,9 @@
       "count": 3
     }
   },
-  "src/lib/i18n/product-copy.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
   "src/lib/i18n/said.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 4
-    }
-  },
-  "src/lib/navigation/use-copy-share-link.ts": {
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/lib/ws/client.ts": {
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 1
-    }
-  },
-  "src/lib/ws/event-router.ts": {
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/lib/ws/invalidate-through-inflight.ts": {
-    "@typescript-eslint/no-floating-promises": {
-      "count": 2
-    },
-    "prefer-const": {
-      "count": 1
     }
   },
   "src/lib/ws/replaced-draft.test.tsx": {
@@ -1298,46 +312,6 @@
     },
     "boundaries/dependencies": {
       "count": 2
-    }
-  },
-  "src/lib/ws/replay.test.tsx": {
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 3
-    },
-    "@typescript-eslint/no-unsafe-return": {
-      "count": 5
-    },
-    "@typescript-eslint/require-await": {
-      "count": 1
-    }
-  },
-  "src/lib/ws/use-room.ts": {
-    "@eslint-react/naming-convention-ref-name": {
-      "count": 1
-    },
-    "@eslint-react/purity": {
-      "count": 1
-    }
-  },
-  "src/lib/ws/use-websocket.ts": {
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
-  "src/providers/auth-provider.tsx": {
-    "@eslint-react/no-context-provider": {
-      "count": 1
-    },
-    "@eslint-react/no-use-context": {
-      "count": 1
-    }
-  },
-  "src/providers/toast-provider.tsx": {
-    "@eslint-react/no-unnecessary-use-prefix": {
-      "count": 1
     }
   },
   "src/test/checklist-reads.ts": {
@@ -1359,87 +333,6 @@
     },
     "sonarjs/cognitive-complexity": {
       "count": 1
-    }
-  },
-  "src/test/vi-chrome-agents.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 4
-    }
-  },
-  "src/test/vi-chrome-automation.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 10
-    }
-  },
-  "src/test/vi-chrome-conversations.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/test/vi-chrome-dashboard.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/test/vi-chrome-feedback.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 8
-    }
-  },
-  "src/test/vi-chrome-integrations.fixture.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 4
-    }
-  },
-  "src/test/vi-chrome-issues.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
-    }
-  },
-  "src/test/vi-chrome-memory.tsx": {
-    "@eslint-react/dom-no-flush-sync": {
-      "count": 1
-    }
-  },
-  "src/test/vi-chrome-overview.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/test/vi-chrome-questions.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "@typescript-eslint/require-await": {
-      "count": 1
-    }
-  },
-  "src/test/vi-chrome-requirements.tsx": {
-    "@tanstack/query/stable-query-client": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/test/vi-chrome-runners.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 5
-    }
-  },
-  "src/test/vi-chrome-sessions.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/test/vi-chrome-shell.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/test/vi-chrome.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
     }
   },
   "src/test/waterfall.ts": {

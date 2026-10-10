@@ -37,7 +37,7 @@ export function useListOrigin(list: string, listHref: string): string {
   return saved?.startsWith(listHref) ? saved : listHref;
 }
 
-export interface DetailHeaderProps {
+interface DetailHeaderProps {
   back: { href: string; label: string };
   itemKey?: string;
   title: ReactNode;

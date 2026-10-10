@@ -39,7 +39,7 @@ export const HELP_SECTION_ORDER: readonly string[] = [
   "Troubleshooting",
 ];
 
-export interface Groupable {
+interface Groupable {
   section: string;
   order: number;
   title: string;

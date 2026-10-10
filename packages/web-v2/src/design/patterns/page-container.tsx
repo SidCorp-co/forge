@@ -2,7 +2,7 @@
 import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/utils/cn";
 
-export type PageContainerProps = HTMLAttributes<HTMLDivElement>;
+type PageContainerProps = HTMLAttributes<HTMLDivElement>;
 
 export function PageContainer({ className, children, ...props }: PageContainerProps) {
   return (

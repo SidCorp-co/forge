@@ -27,7 +27,7 @@ export const REPRODUCE_PARAM = "reproduce";
 /** A reproduce still starting is read again on a short clock, as the issue's preview is. */
 const STARTING_POLL_MS = 3000;
 
-export const reproduceKey = (id: string | null) => ["preview", "reproduce", id] as const;
+const reproduceKey = (id: string | null) => ["preview", "reproduce", id] as const;
 export const recordingsKey = previewKeys.recordings;
 
 const REASONS = Object.fromEntries(
@@ -39,7 +39,7 @@ const isServing = (p: PreviewRecord | null) => p?.state === "starting" || p?.sta
 const buildOf = (p: PreviewRecord) =>
   p.subject.kind === "reproduce" ? (p.subject.build.release ? `${p.subject.build.release} (${shortSha(p.subject.build.sha)})` : shortSha(p.subject.build.sha)) : null;
 
-export interface ReproductionProps {
+interface ReproductionProps {
   projectId: string;
   fbKey: string;
   /** The issue keys that carry the item's issue route: whose live preview serves the fix. */

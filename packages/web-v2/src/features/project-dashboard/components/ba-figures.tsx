@@ -32,7 +32,7 @@ const Figure = ({ href, label, value, accent }: { href: string; label: string; v
   </Link>
 );
 
-export interface BaFiguresProps {
+interface BaFiguresProps {
   slug: string;
   requirements: ReturnType<typeof requirementsByState>;
   feedback: FeedbackFigures;

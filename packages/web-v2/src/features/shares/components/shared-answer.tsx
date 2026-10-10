@@ -42,7 +42,7 @@ const CHAT_ANSWER = "chat-answer";
  * template's title. Never a template id: a chat answer frozen before it carried its question is a
  * "Shared answer".
  */
-export function documentTitle(document: Pick<ReportDocument, "templateId" | "title">, t: Copy): string {
+function documentTitle(document: Pick<ReportDocument, "templateId" | "title">, t: Copy): string {
   if (document.title?.trim()) return document.title;
   const template = builtinReportTemplate(document.templateId);
   if (template) return template.title;

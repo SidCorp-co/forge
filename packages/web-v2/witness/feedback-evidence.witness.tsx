@@ -5,11 +5,13 @@
 // nothing, so this is where "opens on" and "plays" go red.
 //
 // The files the item holds are read from `<out>` beside the page, since Chrome reaches no network
-// here: put `shot.png` and `spinner.webm` there before the run.
+// here: put `IMG_0042.png` and `spinner.webm` there before the run.
 //
 //   pnpm --filter web-v2 witness witness/feedback-evidence.witness.tsx --out <dir>
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import { PathnameContext, SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { createRoot } from "react-dom/client";
 import { FeedbackPage } from "@/features/feedback/components/feedback-detail";
 import type { FeedbackView } from "@/features/feedback/types";
@@ -113,12 +115,20 @@ window.fetch = async (input: RequestInfo | URL) => {
   return new Promise<Response>(() => {});
 };
 
+const router = { push() {}, replace() {}, prefetch() {}, back() {}, forward() {}, refresh() {}, hmrRefresh() {} };
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 client.setQueryData(["feedback-item", P, item.key], { feedback: item });
 createRoot(document.getElementById("root") as HTMLElement).render(
-  <QueryClientProvider client={client}>
-    <FeedbackPage projectId={P} slug="hop" fbKey={item.key} tab="overview" onTab={() => {}} />
-  </QueryClientProvider>,
+  // the page keeps its view in the URL, so it is mounted under a router as the app mounts it
+  <AppRouterContext.Provider value={router as never}>
+    <PathnameContext.Provider value={`/projects/hop/feedback/${item.key}`}>
+      <SearchParamsContext.Provider value={new URLSearchParams() as never}>
+        <QueryClientProvider client={client}>
+          <FeedbackPage projectId={P} slug="hop" fbKey={item.key} tab="overview" onTab={() => {}} />
+        </QueryClientProvider>
+      </SearchParamsContext.Provider>
+    </PathnameContext.Provider>
+  </AppRouterContext.Provider>,
 );
 
 const q = <T extends Element = HTMLElement>(sel: string) => document.querySelector<T>(sel);

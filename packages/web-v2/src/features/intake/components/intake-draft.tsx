@@ -26,7 +26,7 @@ function hrefOf(slug: string, ref: Pick<IntakeDraftRef, "kind" | "key">): string
 }
 
 /** One record a draft names, linked to its page. */
-export function IntakeRefLink({ slug, target: r }: { slug: string; target: Pick<IntakeDraftRef, "kind" | "key"> }) {
+function IntakeRefLink({ slug, target: r }: { slug: string; target: Pick<IntakeDraftRef, "kind" | "key"> }) {
   return (
     <Link href={hrefOf(slug, r)} className="font-mono text-13 text-accent-text hover:underline" data-testid="intake-ref">
       {r.key}
@@ -83,7 +83,7 @@ function Applied({ draft }: { draft: IntakeDraftView }) {
 }
 
 /** The draft's rows. `assumptions` is false where the page already shows them, as a requirement's spec does. */
-export function IntakeDraftBody({ draft, slug, assumptions }: { draft: IntakeDraftView; slug: string; assumptions: boolean }) {
+function IntakeDraftBody({ draft, slug, assumptions }: { draft: IntakeDraftView; slug: string; assumptions: boolean }) {
   const t = useCopy();
   if (draft.outcome === "failed") {
     return (
@@ -144,9 +144,8 @@ export function IntakeDraftBody({ draft, slug, assumptions }: { draft: IntakeDra
       <div>
         <FieldLabel>{t("intake.questions")}</FieldLabel>
         {draft.questions.length === 0 ? (
-          <p className="text-13 leading-snug" data-testid="intake-nothing-to-ask">
-            <span className="font-medium text-fg">{t("intake.nothingToAsk")}</span>
-            {draft.nothingToAsk ? <span className="text-subtle"> · {draft.nothingToAsk}</span> : null}
+          <p className="text-13 text-subtle" data-testid="intake-nothing-to-ask">
+            {t("intake.nothingToAsk")}
           </p>
         ) : (
           <ul className="grid">

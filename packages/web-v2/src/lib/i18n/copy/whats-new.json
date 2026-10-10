@@ -1,6 +1,5 @@
 {
   "en": {
-    "whatsNew.close": "Close",
     "whatsNew.failed": "What's new could not be read.",
     "whatsNew.kind.fixed": "Fixed",
     "whatsNew.kind.improved": "Improved",
@@ -13,7 +12,6 @@
     "whatsNew.unread": "a new release"
   },
   "vi": {
-    "whatsNew.close": "Đóng",
     "whatsNew.failed": "Không đọc được mục Có gì mới.",
     "whatsNew.kind.fixed": "Đã sửa",
     "whatsNew.kind.improved": "Cải thiện",

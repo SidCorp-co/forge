@@ -9,7 +9,7 @@ import { MasterItemScreen, RunItemScreen } from "@/features/agents/components/ag
 import { MasterPeek } from "@/features/agents/components/master-views";
 import { RunPeek } from "@/features/agents/components/run-views";
 import { QuestionsPane } from "@/features/agents/components/questions-pane";
-import { DecisionPanel } from "@/features/questions/components/decision-panel";
+import { IssueQuestions } from "@/features/questions/components/issue-questions";
 import type { AgentQuestion } from "@/features/questions/types";
 import { Seeded } from "./vi-chrome-requirements";
 
@@ -200,18 +200,18 @@ export const SCREENS = [
     render: () => wrap(<RunPeek r={r} slug="hop" canWrite peek={peek} onOpenFull={noop} />),
   })),
   ...[0, 1, 5, 7, 9, 10, 12].map((i) => ({
-    name: `Run page · ${(RUNS[i] as RunStanding).state} ${i}`,
-    render: () => withUrl("", <RunItemScreen access={access} runId={(RUNS[i] as RunStanding).id} />),
+    name: `Run page · ${RUNS[i].state} ${i}`,
+    render: () => withUrl("", <RunItemScreen access={access} runId={RUNS[i].id} />),
   })),
   ...(["attempts", "events", "lease"] as const).map((tab) => ({
     name: `Run page · ${tab}`,
-    render: () => withUrl(`?tab=${tab}`, <RunItemScreen access={access} runId={(RUNS[5] as RunStanding).id} />),
+    render: () => withUrl(`?tab=${tab}`, <RunItemScreen access={access} runId={RUNS[5].id} />),
   })),
-  { name: "Run page · lease with no holder", render: () => withUrl("?tab=lease", <RunItemScreen access={access} runId={(RUNS[6] as RunStanding).id} />) },
+  { name: "Run page · lease with no holder", render: () => withUrl("?tab=lease", <RunItemScreen access={access} runId={RUNS[6].id} />) },
   { name: "Master page · passes", render: () => withUrl("", <MasterItemScreen access={access} />) },
   { name: "Master page · runs", render: () => withUrl("?tab=runs", <MasterItemScreen access={access} />) },
   { name: "Master page · charter", render: () => withUrl("?tab=charter", <MasterItemScreen access={access} />) },
   { name: "Master peek", render: () => wrap(<MasterPeek m={MASTER} peek={peek} onOpenFull={noop} />) },
   { name: "Master peek · none", render: () => wrap(<MasterPeek m={MASTERS_IDLE} peek={peek} onOpenFull={noop} />) },
-  { name: "Issue decisions", render: () => wrap(<DecisionPanel issueId="i1" />) },
+  { name: "Issue decisions", render: () => wrap(<IssueQuestions issueId="i1" />) },
 ];

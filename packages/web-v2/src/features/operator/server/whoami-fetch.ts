@@ -5,7 +5,7 @@
 import { resolveServerApiBase } from "@/lib/utils/server-api-base";
 import type { OperatorWhoamiResult } from "../types";
 
-export const AUTH_COOKIE_NAME = "forge_auth";
+const AUTH_COOKIE_NAME = "forge_auth";
 
 /** Where a session core no longer honours is sent; the login page shows the one quiet line. */
 export const SESSION_ENDED_LOGIN = "/login?session=ended";

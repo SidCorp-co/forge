@@ -10,9 +10,6 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { formatApiError } from "@/lib/api/error";
 import { readRefusal, type Refusal } from "@/lib/api/refusals";
 
-/** A section's heading: the primary colour, a clear step above its fields (fg-h3 sets its own colour, so this one wins). */
-export const SETTINGS_HEADING = "fg-h3 text-accent-text!";
-
 /** A native picker as wide as `width` says, its chevron at its own edge rather than the column's. */
 export function Picker({ width, ...props }: ComponentProps<typeof NativeSelect> & { width?: string }) {
 	return (

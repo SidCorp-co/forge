@@ -12,9 +12,9 @@ import { FeedbackForm } from "@/features/feedback/components/feedback-form";
 import { CreateRequirementForm } from "@/features/requirements/components/requirements-screen";
 import "./entry";
 
+// a requirement is created from its title alone (ISS-456), so its one field is the title
 const REQUIREMENT_REFUSALS = [
-  { code: "CRITERION_SCENARIO_UNPARSEABLE", path: "/criteria/0/body", detail: "A scenario criterion reads Given, When, Then." },
-  { code: "BAD_REQUEST", path: "/reason", detail: "The reason is too long." },
+  { code: "BAD_REQUEST", path: "/title", detail: "The requirement title is too long." },
   { code: "REQUIREMENT_HELD", path: "", detail: "The project is read-only." },
 ];
 const FEEDBACK_REFUSALS = [
@@ -90,21 +90,19 @@ async function send(): Promise<string[]> {
   const req = q("[data-witness=requirement] form") as HTMLElement;
   const fb = q("[data-witness=feedback] form") as HTMLElement;
   type(q<HTMLInputElement>("input", field(req, "Title") ?? req) as HTMLInputElement, "Staff open the root page");
-  type(q<HTMLTextAreaElement>("textarea", field(req, "Criteria") ?? req) as HTMLTextAreaElement, "Given a page");
   type(q<HTMLInputElement>("input", field(fb, "Title") ?? fb) as HTMLInputElement, "Cards vanish");
   type(q<HTMLInputElement>("input[aria-label=Target]", fb) as HTMLInputElement, "The board keeps its cards");
   await pause(200);
   for (const form of [req, fb]) (q<HTMLButtonElement>("button[type=submit]", form) as HTMLButtonElement).click();
-  for (let i = 0; i < 40 && document.querySelectorAll("[role=alert]").length < 4; i += 1) await pause(50);
+  for (let i = 0; i < 40 && document.querySelectorAll("[role=alert]").length < 3; i += 1) await pause(50);
   const wrong = [
-    ...onField(req, "Criteria", "A scenario criterion reads Given, When, Then."),
-    ...onField(req, "Reason", "The reason is too long."),
+    ...onField(req, "Title", "The requirement title is too long."),
     ...onField(fb, "Title", "The title is too long."),
     ...onField(fb, "About", "REQ-3 is not in this project."),
   ];
   const line = q("[data-testid=refusal]", req);
   if (!line?.textContent?.includes("The project is read-only.")) wrong.push("the line under the requirement form does not name the refusal no field owns");
-  if (line && /Given, When, Then|too long/.test(line.textContent ?? "")) wrong.push("the line under the requirement form repeats a refusal drawn on its field");
+  if (line && /too long/.test(line.textContent ?? "")) wrong.push("the line under the requirement form repeats a refusal drawn on its field");
   if (q("[data-testid=refusal]", fb)) wrong.push("the feedback form draws a line under it though every refusal is on a field");
   if (document.documentElement.scrollWidth > window.innerWidth) wrong.push(`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`);
   return wrong;

@@ -96,7 +96,7 @@ const ICONS = {
 
 export type IconName = keyof typeof ICONS;
 
-export interface IconProps {
+interface IconProps {
   name: IconName;
   size?: number;
   strokeWidth?: number;

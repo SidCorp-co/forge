@@ -13,7 +13,7 @@ interface HeldRefusal {
 }
 
 /** The rules the reply check held this session's conversation reply on, as core stamped them on its marker. */
-export function heldRefusalsOf(metadata: SessionMetadata | null): HeldRefusal[] {
+function heldRefusalsOf(metadata: SessionMetadata | null): HeldRefusal[] {
   const held = (metadata?.conversationAgent as { held?: { refusals?: unknown } } | undefined)?.held;
   if (!held || !Array.isArray(held.refusals)) return [];
   return (held.refusals as unknown[]).filter((r): r is HeldRefusal => {

@@ -19,7 +19,7 @@ import type { AgentTodo, ConversationItem, RenderBlock } from "../types";
 import { ThinkingLine } from "./thinking-line";
 import { ToolCall } from "./tool-call";
 
-export interface ConversationActions {
+interface ConversationActions {
   onRegenerate?: ((turnId: string) => void) | undefined;
   onFork?: ((turnId: string) => void) | undefined;
   onEditTurn?:

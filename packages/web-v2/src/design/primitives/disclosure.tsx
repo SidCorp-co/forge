@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Icon } from "@/design/icons/icon";
 
-export interface DisclosureProps {
+interface DisclosureProps {
   title: ReactNode;
   /** How many the fold holds, beside its title. */
   count?: number;

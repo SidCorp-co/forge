@@ -78,7 +78,7 @@ export type LabelKind = "label" | "module";
 export type { IssuePark, IssueParkResponse, ParkOwes, ParkResume } from "@forge/contracts/park";
 
 /** One step a run entered inside its status, as core's `issue_work_state.steps` log holds it. */
-export interface WorkStepEntry {
+interface WorkStepEntry {
   step: WorkStep;
   startedAt: string;
   endedAt: string | null;
@@ -105,7 +105,7 @@ interface IssueWorkState extends IssueWorkStateRow {
 }
 
 
-export interface IssueCarriage {
+interface IssueCarriage {
   carriedBy: Array<{ ref: string; issue: string }>;
   carries: Array<{ ref: string; from: string }>;
 }
@@ -187,7 +187,7 @@ export interface IssueCostSummary {
   sampleCount: number;
 }
 
-export type IssueDependencyKind =
+type IssueDependencyKind =
   | "blocks"
   | "relates"
   | "duplicates"
@@ -313,7 +313,7 @@ export interface CommentAttachment {
   createdAt: string;
 }
 
-export interface ResolvedActor {
+interface ResolvedActor {
   type: "user" | "device";
   id: string;
   displayName: string;
@@ -379,7 +379,7 @@ export interface ActivityItem {
 /** Per-file failure from the inline create's `attachments[]`, as core returns it
  *  on the 201 body (`issues/routes.ts` sets `attachmentErrors`). Mirrors core's
  *  `AttachmentErrorEntry`. */
-export interface AttachmentErrorEntry {
+interface AttachmentErrorEntry {
   index: number;
   name: string;
   code: string;
@@ -431,7 +431,7 @@ export interface LiveReachCommit {
   subject: string;
 }
 
-export interface LiveReachEvidence extends LiveReachCommit {
+interface LiveReachEvidence extends LiveReachCommit {
   via: "merged_commit" | "declares_issue" | "merged_in" | "recorded_head";
 }
 

@@ -34,6 +34,8 @@ export interface RowItemProps {
   selected?: boolean;
   dim?: boolean;
   testId?: string;
+  /** The record the row draws (`data-row-key`), which a chat highlight finds it by. */
+  rowKey?: string;
   /** Whatever opens under the row in place (an editor, a confirm step). */
   children?: ReactNode;
 }
@@ -51,7 +53,7 @@ function Facts({ facts }: { facts: ReactNode[] }) {
   );
 }
 
-export function RowItem({ title, lead, facts, note, trailing, href, onClick, selected, dim, testId, children }: RowItemProps) {
+export function RowItem({ title, lead, facts, note, trailing, href, onClick, selected, dim, testId, rowKey, children }: RowItemProps) {
   const body = (
     <>
       {lead ? <span className="flex flex-none items-center font-mono text-11-5 font-semibold text-link">{lead}</span> : null}
@@ -69,7 +71,7 @@ export function RowItem({ title, lead, facts, note, trailing, href, onClick, sel
     selected && "bg-sel",
   );
   return (
-    <li className="border-b border-line-subtle" data-testid={testId ?? "row-item"} aria-current={selected || undefined}>
+    <li className="border-b border-line-subtle" data-testid={testId ?? "row-item"} data-row-key={rowKey} aria-current={selected || undefined}>
       {href ? (
         <Link href={href} onClick={onClick} className={row}>
           {body}

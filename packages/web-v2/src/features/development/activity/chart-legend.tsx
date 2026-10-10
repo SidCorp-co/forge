@@ -1,7 +1,7 @@
 // The legend under or beside an activity chart: a swatch, the series, its value and, where it has
 // one, its share. The swatch colour is the series' own, the data.
 
-export interface LegendRow {
+interface LegendRow {
   key: string;
   color: string;
   label: string;

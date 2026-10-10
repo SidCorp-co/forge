@@ -7,7 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { IssueDetail } from "../types";
-import { CriteriaSection } from "./criteria-section";
+import { IssueCriteria } from "./issue-criteria";
 
 const ATTACHMENT = "00000000-0000-4000-8000-0000000000bb";
 
@@ -64,11 +64,12 @@ describe("a criterion's verdict on the issue Criteria tab", () => {
     URL.revokeObjectURL = vi.fn();
     // the clip's bytes come from the download address; everything else is the fake core's
     const core = globalThis.fetch;
+    const urlOf = (input: RequestInfo | URL) => (typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
-      String(input).endsWith("/download") ? new Response("webm", { headers: { "content-type": "video/webm" } }) : core(input, init),
+      urlOf(input).endsWith("/download") ? new Response("webm", { headers: { "content-type": "video/webm" } }) : core(input, init),
     );
     vi.stubGlobal("fetch", fetchMock);
-    renderWithQuery(<CriteriaSection issue={issue} projectId="p1" checklist={[]} canWrite={false} requirementKey="REQ-40" />);
+    renderWithQuery(<IssueCriteria issue={issue} projectId="p1" checklist={[]} canWrite={false} requirementKey="REQ-40" />);
     // the row is one line; its evidence is on the open row
     await userEvent.click((await screen.findByTestId("criterion-1-verdict")).closest("button") as HTMLElement);
     const evidence = await screen.findByTestId("verdict-evidence");
@@ -78,7 +79,7 @@ describe("a criterion's verdict on the issue Criteria tab", () => {
     await userEvent.click(within(evidence).getByRole("button", { name: /Watch the clip: iss492-bc1-release-header.webm/ }));
     const video = await within(evidence).findByTestId("verdict-clip");
     expect(video).toHaveAttribute("src", "blob:clip-1");
-    expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith(`/api/attachments/${ATTACHMENT}/download`))).toBe(true);
+    expect(fetchMock.mock.calls.some((c) => urlOf(c[0]).endsWith(`/api/attachments/${ATTACHMENT}/download`))).toBe(true);
   });
 
   it("draws no evidence block under a verdict that wrote no note and kept no file", async () => {
@@ -89,7 +90,7 @@ describe("a criterion's verdict on the issue Criteria tab", () => {
           ? { body: [] }
           : undefined,
     );
-    renderWithQuery(<CriteriaSection issue={issue} projectId="p1" checklist={[]} canWrite={false} requirementKey="REQ-40" />);
+    renderWithQuery(<IssueCriteria issue={issue} projectId="p1" checklist={[]} canWrite={false} requirementKey="REQ-40" />);
     await userEvent.click((await screen.findByTestId("criterion-1-verdict")).closest("button") as HTMLElement);
     expect(await screen.findAllByText("Each release has a page.")).not.toHaveLength(0);
     expect(screen.queryByTestId("verdict-evidence")).toBeNull();

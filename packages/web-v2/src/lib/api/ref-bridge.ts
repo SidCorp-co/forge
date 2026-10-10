@@ -37,7 +37,7 @@ function rekeyed(key: QueryKey, rekey: Rekey): QueryKey | null {
 }
 
 /** How long an invalidation that found no read is remembered for a read bridged to its key later. */
-export const MISSED_INVALIDATION_MS = 60_000;
+const MISSED_INVALIDATION_MS = 60_000;
 
 const missed = new WeakMap<QueryClient, { key: QueryKey; at: number }[]>();
 

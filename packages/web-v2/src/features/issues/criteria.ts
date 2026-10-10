@@ -83,7 +83,7 @@ export type PersonVerdict = "pass" | "short" | "fail" | "skipped";
 /** What a verdict cites: nothing, a file the issue already holds, or a new one uploaded as `as`. */
 export type VerdictEvidence = { kind: "none" } | { kind: "attached"; name: string } | { kind: "upload"; file: File; as: string };
 
-export interface VerdictDraft {
+interface VerdictDraft {
   criterion: number;
   verdict: PersonVerdict;
   /** Blank only on `skipped`, which may name no build. */

@@ -29,13 +29,13 @@ export interface SystemGraphRef {
   against?: number | null;
 }
 
-export type WorkflowKind = "flow" | "state";
+type WorkflowKind = "flow" | "state";
 export type DesignStatus = "draft" | "proposed" | "approved" | "returned";
 
 /** A node type is whatever the design's template declares (EVENT, STATE, SCREEN …). */
 type NodeType = string;
 
-export interface WorkflowNode {
+interface WorkflowNode {
   type: NodeType;
   /** The short business title on the card; absent, the step's title. */
   label?: string;
@@ -98,7 +98,7 @@ export interface WorkflowEdgeContract {
   protocol?: string;
 }
 
-export interface WorkflowLane {
+interface WorkflowLane {
   id: string;
   label: string;
   tooltip?: string;
@@ -120,7 +120,7 @@ export interface WorkflowBody {
   writtenBy: { runId?: string; sessionId?: string; sha?: string };
 }
 
-export interface WorkflowDocument extends WorkflowBody {
+interface WorkflowDocument extends WorkflowBody {
   id: string;
   createdAt: string;
   updatedAt: string;

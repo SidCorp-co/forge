@@ -31,7 +31,7 @@ const rowView =
   });
 
 /** The groups a list of rows is drawn as, one per area in the contract's order. A row whose area the contract does not name is refused by name, so the count over `items` is always the count of rows drawn. */
-export function needsYouGroups(items: readonly NeedsYouItem[], label: (area: string) => string = (a) => a): ListGroup<NeedsYouItem>[] {
+function needsYouGroups(items: readonly NeedsYouItem[], label: (area: string) => string = (a) => a): ListGroup<NeedsYouItem>[] {
   const known: ReadonlySet<string> = new Set(NEEDS_YOU_AREAS);
   const stray = items.find((n) => !known.has(n.area));
   if (stray) throw new Error(`needs-you row ${stray.entity}:${stray.key} names area "${stray.area}", which is none of ${NEEDS_YOU_AREAS.join(", ")}`);

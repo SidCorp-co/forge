@@ -8,7 +8,7 @@ import { ToastProvider } from "@/providers/toast-provider";
 import { useScheduleDetail } from "../hooks";
 import { useRunSchedule } from "../schedule-hooks";
 import type { FireDetailResponse } from "../types";
-import { FireFacts } from "./fire-views";
+import { FireProperties } from "./fire-views";
 
 // REQ-37 BC-9 on the page: a fire says who ran it, by name, and every read it made with its status,
 // a refused one named; and a Run now whose script failed is a fire the Fires tab lists at once.
@@ -47,7 +47,7 @@ const detail = (fire: Partial<FireDetailResponse["fire"]>): Pick<FireDetailRespo
 describe("a fire page", () => {
   it("names who ran it and lists each read, a refused one with its code", () => {
     renderWithQuery(
-      <FireFacts
+      <FireProperties
         slug="hop"
         d={detail({
           runAs: { id: "u1", name: "Orchestrator" },
@@ -67,11 +67,11 @@ describe("a fire page", () => {
   });
 
   it("says a script that read nothing read nothing, and shows no read list for a fire that ran no script", () => {
-    const { unmount } = renderWithQuery(<FireFacts slug="hop" d={detail({ runAs: { id: "u1", name: "Orchestrator" }, reads: [] })} />);
+    const { unmount } = renderWithQuery(<FireProperties slug="hop" d={detail({ runAs: { id: "u1", name: "Orchestrator" }, reads: [] })} />);
     expect(screen.getByText("Read nothing from Forge")).toBeInTheDocument();
     expect(screen.queryByTestId("fire-reads")).toBeNull();
     unmount();
-    renderWithQuery(<FireFacts slug="hop" d={detail({})} />);
+    renderWithQuery(<FireProperties slug="hop" d={detail({})} />);
     expect(screen.queryByTestId("fire-ran-as")).toBeNull();
     expect(screen.queryByText("Read nothing from Forge")).toBeNull();
     expect(screen.queryByTestId("fire-reads")).toBeNull();

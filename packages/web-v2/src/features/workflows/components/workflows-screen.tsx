@@ -40,6 +40,7 @@ function DesignItem({ r, slug, templates }: { r: WorkflowRecord; slug: string; t
       href={workflowHref(slug, w.flow)}
       onClick={() => rememberListOrigin(WORKFLOWS_LIST)}
       testId="workflow-row"
+      rowKey={w.flow}
       title={<span title={w.summary}>{w.title}</span>}
       facts={[<span key="t" data-testid="workflow-template">{templateTitle(templateIdOf(r), templates, label)}</span>, size(r, t), <span key="u" title={`${time.dateTime(w.updatedAt)} · ${r.writerName}`}>{time.relative(w.updatedAt)}</span>]}
       trailing={

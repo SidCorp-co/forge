@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
 
-export interface EmptyPanelLineProps {
+interface EmptyPanelLineProps {
   title: string;
   status: string;
   /** Yields first: truncates, with its full wording as the hover text. */

@@ -20,7 +20,7 @@ import { requirementHref } from "@/lib/routes/requirements";
  * Figures
  * ------------------------------------------------------------------ */
 
-export type RequirementCounts = Partial<Record<RequirementState, number>>;
+type RequirementCounts = Partial<Record<RequirementState, number>>;
 
 /** Requirements by lifecycle state, the states a BA reads, in lifecycle order; deferred only where there is one. */
 export function requirementsByState(list: readonly Pick<RequirementSummary, "standing">[] | undefined): { state: RequirementState; count: number }[] {
@@ -31,7 +31,7 @@ export function requirementsByState(list: readonly Pick<RequirementSummary, "sta
 }
 
 /** Feedback this old, still open, is aging. */
-export const FEEDBACK_AGING_DAYS = 7;
+const FEEDBACK_AGING_DAYS = 7;
 const CLOSED_PHASES: ReadonlySet<string> = new Set(["verified", "declined"]);
 
 export interface FeedbackFigures {
@@ -65,7 +65,7 @@ export interface PlanRow {
   release: { version: string; who: Said } | null;
 }
 
-export interface PlanInputs {
+interface PlanInputs {
   slug: string;
   requirements: RequirementForecasts | undefined;
   feedback: FeedbackForecasts | undefined;

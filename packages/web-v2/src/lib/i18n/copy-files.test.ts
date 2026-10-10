@@ -31,7 +31,7 @@ function strayWords(files: Record<string, Record<string, Record<string, string>>
   for (const [file, part] of Object.entries(files)) {
     const en = part.en ?? {};
     for (const [key, text] of Object.entries(part.vi ?? {})) {
-      const english = key in en ? en[key] : SAID_ENTRIES[key as keyof typeof SAID_ENTRIES]?.en;
+      const english = key in en ? en[key] : SAID_ENTRIES[key]?.en;
       if (english === undefined) wrong.push(`${file}: ${key} has vi and no en`);
       else if (!text.trim() && english.trim()) wrong.push(`${file}: ${key} is blank in vi and not in en`);
     }
@@ -81,9 +81,9 @@ describe("the product copy files", () => {
       const run = splitCheck(old);
       expect(run.status).toBe(1);
       expect(run.stderr).toContain("is retired");
-      expect(run.stderr).toContain("en issues.brandNew → src/features/issues/copy.json (new)");
-      expect(run.stderr).toContain("en settings.project.brandNew → src/features/project-settings/copy.json (new)");
-      expect(run.stderr).toContain("vi issues.brandNew → src/features/issues/copy.json (new)");
+      expect(run.stderr).toContain("en issues.brandNew → src/lib/i18n/copy/issues.json (new)");
+      expect(run.stderr).toContain("en settings.project.brandNew → src/lib/i18n/copy/project-settings.json (new)");
+      expect(run.stderr).toContain("vi issues.brandNew → src/lib/i18n/copy/issues.json (new)");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

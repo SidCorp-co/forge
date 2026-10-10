@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "@/design/icons/icon";
 
-export interface StatProps {
+interface StatProps {
   icon?: IconName;
   children: ReactNode;
   /** Render the value in the mono face (default) — for metrics, IDs, money. */

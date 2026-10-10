@@ -1,6 +1,6 @@
 import { AVATAR_HUE, type AvatarHue } from "@/design/status";
 
-export interface AvatarProps {
+interface AvatarProps {
   initials: string;
   hue?: AvatarHue;
   size?: number;

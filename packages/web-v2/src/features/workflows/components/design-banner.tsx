@@ -14,7 +14,7 @@ const TONE: Record<WorkflowDesign["waitingOn"]["kind"], BannerTone> = {
   none: "calm",
 };
 
-export interface DesignBannerProps {
+interface DesignBannerProps {
   d: WorkflowDesign;
   /** The decision's acts, on the line itself: approve with a note, return with a reason. */
   acts?: ReactNode;

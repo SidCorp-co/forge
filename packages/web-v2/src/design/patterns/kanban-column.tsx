@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export interface KanbanColumnProps {
+interface KanbanColumnProps {
   title: string;
   /** The column's dot, from the same semantic tone the cards' chips resolve through. */
   color: string;

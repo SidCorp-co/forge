@@ -33,7 +33,7 @@ export function useListFilter<L extends UiList>(list: L): UiListFilter<L> {
 }
 
 /** Writes one field of the list's filter, or drops it with null; the page number goes with any change. */
-export function setListParam(field: UiFilterField, value: string | null): void {
+function setListParam(field: UiFilterField, value: string | null): void {
   writeUrlParams({ [UI_FILTER_PARAMS[field]]: value, page: null });
 }
 
@@ -78,7 +78,7 @@ export function WaitingFilter({ value }: { value: UiWaitingFilter | undefined })
 }
 
 /** Every field but whom a row waits on, as a chip the person can remove; orange while the assistant's value stands (BC-7). */
-export function ListFilterChips({ filter }: { filter: Record<string, unknown> }) {
+function ListFilterChips({ filter }: { filter: Record<string, unknown> }) {
   const t = useCopy();
   const search = useLocationSearch();
   const assistantSet = useAssistantSetFilter();
