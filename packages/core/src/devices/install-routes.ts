@@ -42,20 +42,27 @@ os=$(uname -s); arch=$(uname -m)
 case "$os" in
   Linux) plat="unknown-linux-gnu";;
   Darwin) plat="apple-darwin";;
-  *) echo "unsupported OS: $os" >&2; exit 1;;
+  *) echo "INSTALL_PLATFORM_UNSUPPORTED: forge-runner is built for Linux and macOS, and this box runs $os; nothing was installed." >&2; exit 1;;
 esac
 case "$arch" in
   x86_64|amd64) cpu="x86_64";;
   aarch64|arm64) cpu="aarch64";;
-  *) echo "unsupported arch: $arch" >&2; exit 1;;
+  *) echo "INSTALL_PLATFORM_UNSUPPORTED: forge-runner is built for x86_64 and aarch64, and this box is $arch ($os); nothing was installed." >&2; exit 1;;
 esac
 target="$cpu-$plat"
 dest="$HOME/.local/bin"
 mkdir -p "$dest"
+# Read what core publishes first: a platform with no build is refused by name, never a bare 404.
+manifest=$(curl -fsSL "$BASE$PREFIX/install/latest.json" | tr -d ' \\n')
+published=$(printf '%s' "$manifest" | grep -o '"[^"]*":{"url"' | sed 's/":{"url"//; s/"//g' | tr '\\n' ' ')
+case " $published " in
+  *" $target "*) ;;
+  *) echo "INSTALL_PLATFORM_UNPUBLISHED: no forge-runner build is published for $target ($os $arch); published: $published. Nothing was installed." >&2; exit 1;;
+esac
 echo "Downloading forge-runner ($target)..."
 curl -fsSL "$BASE$PREFIX/install/bin/$target" -o "$dest/forge-runner.new"
 # Refuse by name unless the download matches the sha256 core publishes for this target.
-want=$(curl -fsSL "$BASE$PREFIX/install/latest.json" | tr -d ' \\n' | sed -n 's/.*"'"$target"'":{[^}]*"sha256":"\\([0-9a-f]*\\)".*/\\1/p')
+want=$(printf '%s' "$manifest" | sed -n 's/.*"'"$target"'":{[^}]*"sha256":"\\([0-9a-f]*\\)".*/\\1/p')
 [ -n "$want" ] || { rm -f "$dest/forge-runner.new"; echo "INSTALL_SHA256_UNPUBLISHED: core publishes no sha256 for $target, so the download cannot be verified; nothing was installed." >&2; exit 1; }
 if command -v sha256sum >/dev/null 2>&1; then got=$(sha256sum "$dest/forge-runner.new" | cut -d' ' -f1); else got=$(shasum -a 256 "$dest/forge-runner.new" | cut -d' ' -f1); fi
 [ "$got" = "$want" ] || { rm -f "$dest/forge-runner.new"; echo "INSTALL_SHA256_MISMATCH: forge-runner for $target hashed $got, core publishes $want; nothing was installed." >&2; exit 1; }
@@ -136,6 +143,16 @@ installRoutes.get('/install/bin/:target', async (c) => {
       'content-disposition': `attachment; filename="forge-runner-${target}"`,
     });
   } catch {
-    return c.json({ error: 'unknown target' }, 404);
+    const files = await readdir(RELEASE_DIR).catch(() => [] as string[]);
+    const published = files
+      .filter((f) => f.startsWith(ASSET_PREFIX))
+      .map((f) => f.slice(ASSET_PREFIX.length));
+    return c.json(
+      {
+        code: 'INSTALL_PLATFORM_UNPUBLISHED',
+        error: `no forge-runner build is published for ${target}; published: ${published.join(', ') || 'none'}`,
+      },
+      404,
+    );
   }
 });
