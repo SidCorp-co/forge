@@ -76,7 +76,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const [zoom, setZoom] = useState(1);
-  const wrap = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
 
   const view = useMemo(() => buildView(c, { lod, expanded, open }), [c, lod, expanded, open]);
   const structure = useMemo(
@@ -108,15 +108,15 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
     openBands: expanded,
     onToggleBand: toggleBand,
     onLaidOut: (first, size, positions) => {
-      if (!first || !wrap.current) return;
-      const vp = openingView(wrap.current, size, [...(highlight?.steps ?? [])].flatMap((id) => positions.get(view.keyOf.get(id) ?? id) ?? []));
+      if (!first || !wrapRef.current) return;
+      const vp = openingView(wrapRef.current, size, [...(highlight?.steps ?? [])].flatMap((id) => positions.get(view.keyOf.get(id) ?? id) ?? []));
       void rf.setViewport(vp);
       setZoom(vp.zoom);
     },
   });
 
   const centerAnchor = useCallback(() => {
-    const el = wrap.current;
+    const el = wrapRef.current;
     if (!el || !layout.positions) return null;
     const best = nearestCentre(layout.positions, rf.getViewport(), el);
     if (!best) return null;
@@ -205,7 +205,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
 
   const setLevel = (l: Lod) => {
     if (l === lod) return;
-    const el = wrap.current;
+    const el = wrapRef.current;
     if (l > 0 && expanded.size === 0) setExpanded(new Set(c.bands.map((b) => b.id)));
     layout.keep(centerAnchor());
     setLod(l);
@@ -232,7 +232,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
     <Frame
       layout="flow"
       compact={props.compact ?? false}
-      wrap={wrap}
+      wrap={wrapRef}
       template={template}
       nodes={layout.nodes}
       edges={layout.edges}

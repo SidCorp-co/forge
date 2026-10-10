@@ -10,10 +10,6 @@
 import {
 	Banner,
 	Button,
-	PageSection,
-	PageSectionBody,
-	PageSectionHeader,
-	PageSectionTitle,
 	EmptyState,
 	ErrorState,
 	Field,
@@ -23,6 +19,7 @@ import {
 	Select,
 	Skeleton,
 	enumLabel,
+  Section,
 } from "@/design";
 import { useProjectDocument } from "@/features/project-config";
 import { useProject } from "@/features/projects";
@@ -32,7 +29,7 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useState } from "react";
 import { CopyButton } from "./runners-screen";
-import { RunnerRow } from "./runner-row/runner-row";
+import { RunnerAssignment } from "./assignment/runner-assignment";
 import {
 	useActiveRunners,
 	useAssignDeviceToProject,
@@ -80,11 +77,7 @@ function AssignDevice({
 	const picked = available.find((d) => d.id === deviceId) ?? null;
 
 	return (
-		<PageSection>
-			<PageSectionHeader>
-				<PageSectionTitle>{t("runners.assign.title")}</PageSectionTitle>
-			</PageSectionHeader>
-			<PageSectionBody>
+		<Section title={t("runners.assign.title")}>
 				<div className="flex flex-col gap-4">
 					<div className="grid gap-3 sm:grid-cols-2">
 						<Field label={t("runners.col.device")}>
@@ -142,8 +135,7 @@ function AssignDevice({
 						<p className="fg-body-sm mt-1.5 text-subtle">{t("runners.assign.setupBody")}</p>
 					</div>
 				</div>
-			</PageSectionBody>
-		</PageSection>
+			</Section>
 	);
 }
 
@@ -188,11 +180,7 @@ export function ProjectRunnersScreen({
 				/>
 			)}
 
-			<PageSection>
-				<PageSectionHeader>
-					<PageSectionTitle>{t("runners.project.assigned")}</PageSectionTitle>
-				</PageSectionHeader>
-				<PageSectionBody>
+			<Section title={t("runners.project.assigned")}>
 					{runners.isLoading ? (
 						<div className="flex flex-col gap-2">
 							<Skeleton className="h-28 w-full" />
@@ -211,7 +199,7 @@ export function ProjectRunnersScreen({
 					) : (
 						<div className="flex flex-col divide-y divide-line-subtle">
 							{rows.map((r) => (
-								<RunnerRow
+								<RunnerAssignment
 									key={r.runnerId}
 									runner={r}
 									current={currentByRunner.get(r.runnerId) ?? null}
@@ -222,8 +210,7 @@ export function ProjectRunnersScreen({
 							))}
 						</div>
 					)}
-				</PageSectionBody>
-			</PageSection>
+				</Section>
 		</>
 	);
 

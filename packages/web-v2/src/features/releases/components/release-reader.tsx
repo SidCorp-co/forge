@@ -5,6 +5,7 @@
 // page in the app (a member, with links into the project) and a frozen page a share link opens (no
 // links, tickets for its media), so the two cannot read differently.
 
+import { cn } from "@/lib/utils/cn";
 import { actionSaysRef, type ReleasePage, type ReleasePageCriteria, type ReleasePageProven, type ReleasePageRequirement } from "@forge/contracts/release-page";
 import Link from "next/link";
 import { useState } from "react";
@@ -40,11 +41,11 @@ function ReleaseHeader({ page }: { page: ReleasePage }) {
   ];
   return (
     <section aria-label={`${t("releases.page.header.released")} ${h.version}`} className={RULED} data-testid="page-header">
-      <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-1.5 text-13">
+      <dl className="grid gap-y-1.5 text-13">
         {rows.map(([key, label, value]) => (
-          <div key={key} className="contents" data-testid={`page-header-${key}`}>
-            <dt className="text-muted">{label}</dt>
-            <dd className={key === "build" ? "font-mono text-13" : undefined} data-level={key === "verified" ? h.verified.level : undefined} data-state={key === "approval" ? a.state : undefined}>
+          <div key={key} className="flex gap-x-6" data-testid={`page-header-${key}`}>
+            <dt className="w-24 flex-none text-muted">{label}</dt>
+            <dd className={cn("min-w-0 flex-1", key === "build" && "font-mono text-13")} data-level={key === "verified" ? h.verified.level : undefined} data-state={key === "approval" ? a.state : undefined}>
               {value}
             </dd>
           </div>

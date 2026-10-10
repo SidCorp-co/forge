@@ -6,7 +6,7 @@
 import { StatCell, StatRow, useNow } from "@/design";
 import { formatUsd } from "@/features/pipeline";
 import { useProjectRuns, useStepDurations } from "@/features/pipeline";
-import { useProjectHealth } from "@/features/projects/hooks";
+import { useProjectHealth } from "@/features/projects";
 import { useActiveRunners, useProjectRunners } from "@/features/runners";
 import { useQueueStats } from "@/features/sessions";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
@@ -28,14 +28,15 @@ export function DevelopmentActivity({ projectId, slug }: { projectId: string; sl
   // Tick once a second while some runner is limited, so its countdown to the next try stays live
   // (the next try, never the reset its account printed: ISS-276).
   const anyLimited = (projectRunnersQ.data ?? []).some((r) => r.limitReason);
-  const tick = useNow(1000, anyLimited);
+  // the limited badge counts down each second; otherwise a minute is fine enough for "idle for"
+  const tick = useNow(anyLimited ? 1000 : 60_000);
   const language = useInterfaceLanguage();
 
   const health = healthQ.data?.find((h) => h.projectSlug === slug);
   const runItems = runsQ.data?.items;
   const live = activeRuns(runItems);
   const inFlight = activeSpend(runItems);
-  const runners = runnersSummary(projectRunnersQ.data, queueQ.data, language, anyLimited ? tick : Date.now(), activeRunnersQ.data?.runners);
+  const runners = runnersSummary(projectRunnersQ.data, queueQ.data, language, tick, activeRunnersQ.data?.runners);
   const donut = statusDonut(health?.statusDistribution);
   const t = useCopy();
 

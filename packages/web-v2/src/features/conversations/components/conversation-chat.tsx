@@ -291,13 +291,13 @@ function useOutbox(o: {
   const send = useSendMessage();
   const upload = useUploadAttachment();
   const [outbox, setOutbox] = useState<OutboxMessage[]>([]);
-  const sending = useRef(false);
+  const sendingRef = useRef(false);
   /**
    * What a queued message has already put in storage, kept so a retry after a
    * failed send does not upload the same picture twice and leave the first copy
    * stored and cited by nothing.
    */
-  const stored = useRef(new Map<string, string[]>());
+  const storedRef = useRef(new Map<string, string[]>());
 
   useEffect(() => {
     const seen = new Set(messages.map((m) => m.id));
@@ -331,11 +331,11 @@ function useOutbox(o: {
   }, []);
 
   useEffect(() => {
-    if (sending.current) return;
+    if (sendingRef.current) return;
     if (outbox.some((m) => m.state === "failed")) return;
     const next = outbox.find((m) => m.state === "queued");
     if (!next) return;
-    sending.current = true;
+    sendingRef.current = true;
     setOutbox((o) => o.map((m) => (m.id === next.id ? { ...m, state: "sending" } : m)));
     void (async () => {
       try {
@@ -345,13 +345,13 @@ function useOutbox(o: {
           onOpened(id);
         }
         const fresh = !settled && messages.length === 0;
-        const attachmentIds = [...(stored.current.get(next.id) ?? [])];
+        const attachmentIds = [...(storedRef.current.get(next.id) ?? [])];
         for (const file of (next.files ?? []).slice(attachmentIds.length)) {
           // one operation per queued message and file position: a retry of this message sends the same id
           const operationId = `${next.id}:${attachmentIds.length}`;
           const put = await upload.mutateAsync({ conversationId: id, file, operationId });
           attachmentIds.push(put.id);
-          stored.current.set(next.id, [...attachmentIds]);
+          storedRef.current.set(next.id, [...attachmentIds]);
         }
         await send.mutateAsync({
           conversationId: id,
@@ -361,7 +361,7 @@ function useOutbox(o: {
           ...(attachmentIds.length ? { attachmentIds } : {}),
           ...(snapshot().sees ? { uiSnapshot: snapshot().snapshot } : {}),
         });
-        stored.current.delete(next.id);
+        storedRef.current.delete(next.id);
         setOutbox((o) => o.filter((m) => m.id !== next.id));
       } catch (err) {
         setOutbox((o) =>
@@ -370,7 +370,7 @@ function useOutbox(o: {
           ),
         );
       } finally {
-        sending.current = false;
+        sendingRef.current = false;
       }
     })();
   }, [

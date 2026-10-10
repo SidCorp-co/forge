@@ -1,5 +1,6 @@
 "use client";
 
+import { fixedHeight } from "@/design";
 import "@xyflow/react/dist/base.css";
 import "./canvas.css";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
@@ -95,7 +96,7 @@ export function Frame(p: FrameProps) {
     <div className={cn("flex min-h-0 flex-1", !p.compact && "max-lg:flex-col lg:[contain:size]")} data-testid="workflow-canvas" data-layout={p.layout} data-focus={Boolean(p.focus?.on)}>
       <div
         ref={p.wrap}
-        className={cn("wfc min-w-0 flex-1", !p.compact && !p.focus?.on && "max-lg:h-[72vh] max-lg:flex-none")}
+        className={cn("wfc min-w-0 flex-1", !p.compact && !p.focus?.on && [fixedHeight("pane", "max-lg"), "max-lg:flex-none"])}
         data-ready={p.ready}
         data-dim={p.dim}
         data-compact={Boolean(p.compact)}

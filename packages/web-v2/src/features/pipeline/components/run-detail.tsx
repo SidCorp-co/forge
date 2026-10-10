@@ -29,6 +29,7 @@ import {
   Tabs,
   Tooltip,
 } from "@/design";
+import { cn } from "@/lib/utils/cn";
 import { formatApiError } from "@/lib/api/error";
 import { useRecents } from "@/lib/navigation/recents";
 import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
@@ -82,9 +83,6 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
   const router = useRouter();
   const { push: pushRecent } = useRecents();
   const runQ = useRun(runId ?? undefined, open);
-  const pause = usePauseRun();
-  const resume = useResumeRun();
-  const cancel = useCancelRun();
 
   const run = runQ.data;
   const taskIssueId = issue?.id ?? run?.issueId ?? null;
@@ -107,40 +105,11 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
   }
   const chipStep = run?.currentStep ?? undefined;
   const label = issue?.displayId ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
-  const title = issue?.title ?? "Pipeline run";
-  const branch = issue?.metadata?.branchConfig?.branch ?? null;
   // A session-styled chip is the run's; the issue's own status is never drawn in it.
   const issueRun = issue ? runStatusChip(issue) : null;
   const chipStatus = run ? drawerRunChip(run.status, issueRun) : issueRun;
   const runBadge = run && chipStatus === null ? run.status : null;
   const issueStatus = issue ? (issue.status as IssueStatus) : null;
-  // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
-  // the running agent — only Cancel does). So a paused run with a step still
-  // `running` is transitional ("Pausing…"); once that step clears it is fully
-  // halted. `useRun` is WS-live, so the UI flips pausing→halted on its own.
-  const activeStep = run?.steps.find((s) => s.status === "running") ?? null;
-  const isPausing = run?.status === "paused" && !!activeStep;
-  const isHalted = run?.status === "paused" && !activeStep;
-
-  // "Stop now" is the only abort path (wired to the existing cancel mutation).
-  // Guard the destructive click with a lightweight inline two-step confirm —
-  // there is no Dialog primitive in the kit and Stop is terminal.
-  const [confirmStop, setConfirmStop] = useState(false);
-  useEffect(() => {
-    if (!confirmStop) return;
-    const t = setTimeout(() => setConfirmStop(false), 3000);
-    return () => clearTimeout(t);
-  }, [confirmStop]);
-  function onStopClick() {
-    if (!runId) return;
-    if (!confirmStop) {
-      setConfirmStop(true);
-      return;
-    }
-    setConfirmStop(false);
-    cancel.mutate(runId);
-  }
-
   function openIssue() {
     if (!slug || !taskIssueId) return;
     onClose();
@@ -208,99 +177,9 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
             </div>
           )}
 
-          {/* Header — title + the issue's own meta (priority / assignee /
-              branch / run cost), so the panel answers "what is this and where
-              does it stand" before offering controls (ISS-436). */}
-          <div className="flex flex-col gap-2.5">
-            <SectionTitle className="leading-tight">{title}</SectionTitle>
-            {slug && runId && (
-              <div>
-                <AskAboutThis about={{ kind: "run", ref: runId }} />
-              </div>
-            )}
-            <div className="flex flex-wrap items-center gap-2.5">
-              {issue && issue.priority !== "none" && (
-                <Badge tone={PRIORITY_TONE[issue.priority] ?? "neutral"}>
-                  {priorityLabel(issue.priority as IssuePriority)}
-                </Badge>
-              )}
-              {branch && (
-                <MonoTag>
-                  <Icon name="branch" size={12} className="mr-1" />
-                  {branch}
-                </MonoTag>
-              )}
-              {run && <Stat icon="dollar">{formatUsd(run.cost.estimatedCost)} this run</Stat>}
-            </div>
-          </div>
+          <RunHeading issue={issue} run={run} runId={runId} slug={slug} />
 
-          {/* Controls — Pause (finish-then-halt) and Stop now (abort) are
-              visually + verbally distinct: a primary Pause vs a danger Stop. */}
-          <div className="flex flex-col gap-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              {canWrite && run?.status === "running" && (
-                <Tooltip label="Finishes the in-flight step, then halts before the next step. Does NOT stop the running agent.">
-                  <Button
-                    variant="primary"
-                    icon="pause"
-                    loading={pause.isPending}
-                    onClick={() => runId && pause.mutate(runId)}
-                  >
-                    Pause run
-                  </Button>
-                </Tooltip>
-              )}
-              {canWrite && run?.status === "paused" && (
-                <Button
-                  variant="primary"
-                  icon="play"
-                  loading={resume.isPending}
-                  onClick={() => runId && resume.mutate(runId)}
-                >
-                  Resume run
-                </Button>
-              )}
-              {/* Distinct destructive abort — present whenever an agent could
-                  still be running (running, or the finishing step while pausing). */}
-              {canWrite && runId && (run?.status === "running" || isPausing) && (
-                <Tooltip label="Aborts the running agent immediately (cancellationRequested + agent:abort). Terminal — the run cannot be resumed.">
-                  <Button
-                    variant="danger"
-                    icon="stop"
-                    loading={cancel.isPending}
-                    onClick={onStopClick}
-                  >
-                    {confirmStop ? "Confirm stop" : "Stop now"}
-                  </Button>
-                </Tooltip>
-              )}
-              <Menu
-                align="left"
-                trigger={
-                  <Button variant="ghost" icon="more" aria-label="More run actions" className="px-2.5" />
-                }
-                items={menuItems}
-              />
-            </div>
-
-            {/* Transitional vs fully-halted state for a paused run (ISS-376). */}
-            {isPausing && (
-              <p
-                className="fg-body-sm inline-flex items-center gap-2"
-                style={{ color: "var(--warn-11)" }}
-              >
-                <span
-                  aria-hidden
-                  className="forge-pulse inline-block size-2 flex-none rounded-full"
-                  style={{ background: "var(--warn-9)" }}
-                />
-                Pausing — finishing current step: {activeStep?.jobType ?? "the in-flight step"}…
-              </p>
-            )}
-            {isHalted && (
-              <p className="fg-body-sm text-muted">Run halted — no active session.</p>
-            )}
-          </div>
+          <RunControls run={run} runId={runId} canWrite={canWrite} menuItems={menuItems} />
 
           {/* Tabs */}
           <div>
@@ -339,12 +218,19 @@ function stepDot(status: PipelineRunStepSummary["status"]): DotState {
   return "todo";
 }
 
-const DOT_COLOR: Record<DotState, string> = {
-  done: "var(--ok-9)",
-  // ISS-509 — running uses the pipeline-active (cobalt) token, not flame --accent.
-  running: "var(--pipeline-active)",
-  error: "var(--danger-9)",
-  todo: "var(--border-strong)",
+// ISS-509 — running is the info (cobalt) scale, not the flame accent.
+const DOT_CLASS: Record<DotState, string> = {
+  done: "border-ok-9 bg-ok-9",
+  running: "border-info-9 bg-info-9 ring-4 ring-accent-tint",
+  error: "border-danger-9 bg-danger-9",
+  todo: "border-line-strong bg-surface",
+};
+
+const STEP_TEXT: Record<DotState, string> = {
+  done: "text-ok-11",
+  running: "text-accent-text",
+  error: "text-danger-11",
+  todo: "text-subtle",
 };
 
 function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; loading: boolean }) {
@@ -361,38 +247,12 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
         return (
           <div key={step.jobType} className="flex gap-3">
             <div className="flex w-4.5 flex-none flex-col items-center">
-              <span
-                className="mt-0.5 size-3.5 flex-none rounded-full"
-                style={{
-                  background: state === "todo" ? "var(--bg-surface)" : DOT_COLOR[state],
-                  border: `2px solid ${DOT_COLOR[state]}`,
-                  boxShadow: state === "running" ? "0 0 0 4px var(--accent-tint)" : "none",
-                }}
-              />
-              {!isLast && (
-                <span
-                  className="mt-1 min-h-5.5 w-0.5 flex-1"
-                  style={{
-                    background: state === "done" ? "var(--ok-9)" : "var(--border-default)",
-                  }}
-                />
-              )}
+              <span className={cn("mt-0.5 size-3.5 flex-none rounded-full border-2", DOT_CLASS[state])} />
+              {!isLast && <span className={cn("mt-1 min-h-5.5 w-0.5 flex-1", state === "done" ? "bg-ok-9" : "bg-line")} />}
             </div>
             <div className="min-w-0 flex-1 pb-4">
               <div className="flex items-center gap-2.5">
-                <span
-                  className="font-mono text-13 font-bold"
-                  style={{
-                    color:
-                      state === "running"
-                        ? "var(--accent-text)"
-                        : state === "done"
-                          ? "var(--ok-11)"
-                          : state === "error"
-                            ? "var(--danger-11)"
-                            : "var(--fg-subtle)",
-                  }}
-                >
+                <span className={cn("font-mono text-13 font-bold", STEP_TEXT[state])}>
                   {enumLabel("jobType", step.jobType)}
                 </span>
                 <StatusBadge family="runStep" value={step.status} />
@@ -475,6 +335,137 @@ function PanelSpinner() {
   return (
     <div className="grid place-items-center py-10">
       <Spinner size={22} />
+    </div>
+  );
+}
+
+/** Title, ask-about link and the issue's own meta (priority, branch, run cost), before any control (ISS-436). */
+function RunHeading({ issue, run, runId, slug }: { issue: PipelineIssueRow | null; run: PipelineRunSummary | undefined; runId: string | null; slug?: string }) {
+  const title = issue?.title ?? "Pipeline run";
+  const branch = issue?.metadata?.branchConfig?.branch ?? null;
+  return (
+    <div className="flex flex-col gap-2.5">
+      <SectionTitle className="leading-tight">{title}</SectionTitle>
+      {slug && runId && (
+        <div>
+          <AskAboutThis about={{ kind: "run", ref: runId }} />
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2.5">
+        {issue && issue.priority !== "none" && (
+          <Badge tone={PRIORITY_TONE[issue.priority] ?? "neutral"}>
+            {priorityLabel(issue.priority as IssuePriority)}
+          </Badge>
+        )}
+        {branch && (
+          <MonoTag>
+            <Icon name="branch" size={12} className="mr-1" />
+            {branch}
+          </MonoTag>
+        )}
+        {run && <Stat icon="dollar">{formatUsd(run.cost.estimatedCost)} this run</Stat>}
+      </div>
+    </div>
+  );
+}
+
+/** Pause (finish the step, then halt) and Stop now (abort) — distinct in look and word — and the overflow menu. */
+function RunControls({ run, runId, canWrite, menuItems }: { run: PipelineRunSummary | undefined; runId: string | null; canWrite: boolean; menuItems: MenuItem[] }) {
+  const pause = usePauseRun();
+  const resume = useResumeRun();
+  const cancel = useCancelRun();
+  // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
+  // the running agent — only Cancel does). So a paused run with a step still
+  // `running` is transitional ("Pausing…"); once that step clears it is fully
+  // halted. `useRun` is WS-live, so the UI flips pausing→halted on its own.
+  const activeStep = run?.steps.find((s) => s.status === "running") ?? null;
+  const isPausing = run?.status === "paused" && !!activeStep;
+  const isHalted = run?.status === "paused" && !activeStep;
+
+  // "Stop now" is the only abort path (wired to the existing cancel mutation).
+  // Guard the destructive click with a lightweight inline two-step confirm —
+  // there is no Dialog primitive in the kit and Stop is terminal.
+  const [confirmStop, setConfirmStop] = useState(false);
+  useEffect(() => {
+    if (!confirmStop) return;
+    const t = setTimeout(() => setConfirmStop(false), 3000);
+    return () => clearTimeout(t);
+  }, [confirmStop]);
+  function onStopClick() {
+    if (!runId) return;
+    if (!confirmStop) {
+      setConfirmStop(true);
+      return;
+    }
+    setConfirmStop(false);
+    cancel.mutate(runId);
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        {canWrite && run?.status === "running" && (
+          <Tooltip label="Finishes the in-flight step, then halts before the next step. Does NOT stop the running agent.">
+            <Button
+              variant="primary"
+              icon="pause"
+              loading={pause.isPending}
+              onClick={() => runId && pause.mutate(runId)}
+            >
+              Pause run
+            </Button>
+          </Tooltip>
+        )}
+        {canWrite && run?.status === "paused" && (
+          <Button
+            variant="primary"
+            icon="play"
+            loading={resume.isPending}
+            onClick={() => runId && resume.mutate(runId)}
+          >
+            Resume run
+          </Button>
+        )}
+        {/* Distinct destructive abort — present whenever an agent could
+            still be running (running, or the finishing step while pausing). */}
+        {canWrite && runId && (run?.status === "running" || isPausing) && (
+          <Tooltip label="Aborts the running agent immediately (cancellationRequested + agent:abort). Terminal — the run cannot be resumed.">
+            <Button
+              variant="danger"
+              icon="stop"
+              loading={cancel.isPending}
+              onClick={onStopClick}
+            >
+              {confirmStop ? "Confirm stop" : "Stop now"}
+            </Button>
+          </Tooltip>
+        )}
+        <Menu
+          align="left"
+          trigger={
+            <Button variant="ghost" icon="more" aria-label="More run actions" className="px-2.5" />
+          }
+          items={menuItems}
+        />
+      </div>
+
+      {/* Transitional vs fully-halted state for a paused run (ISS-376). */}
+      {isPausing && (
+        <p
+          className="fg-body-sm inline-flex items-center gap-2"
+          style={{ color: "var(--warn-11)" }}
+        >
+          <span
+            aria-hidden
+            className="forge-pulse inline-block size-2 flex-none rounded-full"
+            style={{ background: "var(--warn-9)" }}
+          />
+          Pausing — finishing current step: {activeStep?.jobType ?? "the in-flight step"}…
+        </p>
+      )}
+      {isHalted && (
+        <p className="fg-body-sm text-muted">Run halted — no active session.</p>
+      )}
     </div>
   );
 }

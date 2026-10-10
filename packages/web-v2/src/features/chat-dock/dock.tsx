@@ -45,7 +45,7 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
   const pathname = usePathname() ?? "";
   const [picked, setPicked] = useState<ChatTarget | null>(null);
   const [generation, setGeneration] = useState(0);
-  const door = useRef<DockDoor | null>(null);
+  const doorRef = useRef<DockDoor | null>(null);
   const target = targetInScope(picked, projectId);
 
   // the dock remembers the page it was opened on, so a new page — reached in the app or loaded
@@ -111,13 +111,13 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
       toggle: () => {
         const opening = !open;
         setOpen(opening);
-        if (opening && door.current) void door.current().then((t) => t && select(t));
+        if (opening && doorRef.current) void doorRef.current().then((t) => t && select(t));
       },
       select,
       follow,
       askAbout,
       setDoor: (d: DockDoor | null) => {
-        door.current = d;
+        doorRef.current = d;
       },
     }),
     [projectId, open, pinned, setPinned, target, generation, size, setSize, show, setOpen, select, follow, askAbout],

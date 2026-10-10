@@ -4,7 +4,7 @@ import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interfa
 import { useRunnerActivity } from "../../hooks";
 
 /** Lazy-loaded activity feed for one runner: status timeline + recent sessions. */
-export function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
+export function RunnerActivity({ runnerId }: { runnerId: string }) {
 	const activity = useRunnerActivity(runnerId, true);
 	const t = useCopy();
 	const time = useTimeFormat();

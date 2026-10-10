@@ -33,13 +33,13 @@ export function useIssueSelectionBridge(
   selectedRows: readonly SelectableRow[],
   setSelected: (ids: Set<string>) => void,
 ): void {
-  const state = useRef({ rows, selectedRows, setSelected });
-  state.current = { rows, selectedRows, setSelected };
+  const stateRef = useRef({ rows, selectedRows, setSelected });
+  stateRef.current = { rows, selectedRows, setSelected };
   useEffect(() => {
     const bridge: IssueSelectionBridge = {
-      rows: () => state.current.rows,
-      selectedKeys: () => state.current.selectedRows.map((r) => r.displayId),
-      setSelectedIds: (ids) => state.current.setSelected(ids),
+      rows: () => stateRef.current.rows,
+      selectedKeys: () => stateRef.current.selectedRows.map((r) => r.displayId),
+      setSelectedIds: (ids) => stateRef.current.setSelected(ids),
     };
     current = bridge;
     notify();

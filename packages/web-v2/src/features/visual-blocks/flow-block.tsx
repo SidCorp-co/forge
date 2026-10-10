@@ -136,9 +136,9 @@ function FlowDiagram({ block }: { block: VisualBlockOf<"flow"> }) {
   }, [laid, block, sizes]);
 
   // a layered diagram hangs from its root at the centre: a narrow box opens on the middle of it
-  const scroller = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const el = scroller.current;
+    const el = scrollerRef.current;
     if (flow && el) el.scrollLeft = Math.max(0, (el.scrollWidth - el.clientWidth) / 2);
   }, [flow]);
 
@@ -151,7 +151,7 @@ function FlowDiagram({ block }: { block: VisualBlockOf<"flow"> }) {
   }
   if (!flow) return <p className="text-12 text-subtle">Laying out the diagram.</p>;
   return (
-    <div ref={scroller} className={`overflow-auto ${FLOW_BOX} print:max-h-none print:overflow-visible`} data-testid="flow-scroll">
+    <div ref={scrollerRef} className={`overflow-auto ${FLOW_BOX} print:max-h-none print:overflow-visible`} data-testid="flow-scroll">
     <div style={{ height: flow.height, minWidth: flow.width }} className="w-full" data-testid="flow-canvas">
       <ReactFlow
         // the canvas takes no gesture of its own, so a finger on it scrolls the box as anywhere else

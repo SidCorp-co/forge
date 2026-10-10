@@ -5,7 +5,7 @@
 // from the thread's own data (the batches on the conversation detail, the designs on the onboarding
 // read), never from the message, so a card says what is true now.
 
-import { createContext, type ReactNode, useContext } from "react";
+import { createContext, type ReactNode, use } from "react";
 import Link from "next/link";
 import { Markdown } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -35,7 +35,7 @@ interface ThreadData {
 const ThreadDataContext = createContext<ThreadData | null>(null);
 
 export function ThreadDataProvider({ value, children }: { value: ThreadData; children: ReactNode }) {
-  return <ThreadDataContext.Provider value={value}>{children}</ThreadDataContext.Provider>;
+  return <ThreadDataContext value={value}>{children}</ThreadDataContext>;
 }
 
 const STRUCTURED = new Set(["questionnaire", "questionnaire_answers", "designs"]);
@@ -127,7 +127,7 @@ function LinkedItemsNote({ design }: { design: OnboardingDesignView }) {
 
 function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["designs"]>; first: boolean }) {
   const t = useCopy();
-  const data = useContext(ThreadDataContext);
+  const data = use(ThreadDataContext);
   const projectId = data?.projectId ?? "";
   const slug = data?.projectSlug;
   const { byId, onboarding } = useDesigns(projectId, data?.kind === "onboarding");
@@ -208,7 +208,7 @@ export function StructuredMessage({
   message: { id: string; role: string; authorLabel: string | null; createdAt: string; blocks?: readonly ThreadBlock[] | null };
   firstDesigns: boolean;
 }) {
-  const data = useContext(ThreadDataContext);
+  const data = use(ThreadDataContext);
   const blocks = message.blocks ?? [];
   const batchOf = (id?: string) => data?.questionnaires.find((q) => q.id === id);
   const { byId } = useDesigns(data?.projectId ?? "", data?.kind === "onboarding");

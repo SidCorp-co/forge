@@ -41,7 +41,7 @@ const nodeStroke = (n: Node) => (n.type === "c4box" && (n.data as C4BoxData).on 
 export function C4Canvas(props: WorkflowCanvasProps) {
   const { doc, template, diff = null, compact = false, health = null, highlight = null } = props;
   const rf = useReactFlow();
-  const wrap = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const read = useSystemGraph(props.graph ?? null);
   const graph = read.data ?? null;
   const c = useCanvasModel(doc, template);
@@ -51,15 +51,15 @@ export function C4Canvas(props: WorkflowCanvasProps) {
   const canFold = useMemo(() => (graph ? foldable(graph) : false), [graph]);
   const [param, setParam] = useQueryParam("level");
   const level: Level = !compact && param === "containers" ? "containers" : "context";
-  const pendingFit = useRef(true);
+  const pendingFitRef = useRef(true);
   const viewBox = useCallback(() => {
-    const el = wrap.current;
+    const el = wrapRef.current;
     return el && el.clientWidth > 0 ? { width: el.clientWidth - 2 * PAD, height: el.clientHeight - 2 * PAD } : null;
   }, []);
-  const { detail, setDetail, setOpen, diagram } = useC4Diagram(graph, level, canFold, viewBox, pendingFit);
+  const { detail, setDetail, setOpen, diagram } = useC4Diagram(graph, level, canFold, viewBox, pendingFitRef);
   const [zoom, setZoom] = useState(1);
   const [ready, setReady] = useState(false);
-  const centreOn = useRef<string | null>(null);
+  const centreOnRef = useRef<string | null>(null);
 
   /**
    * Fit: as large as the view holds, never below the zoom at which the smallest type reads at 12px.
@@ -86,12 +86,12 @@ export function C4Canvas(props: WorkflowCanvasProps) {
 
   useEffect(() => {
     if (!diagram) return;
-    if (pendingFit.current && fitTo(diagram)) {
-      pendingFit.current = false;
+    if (pendingFitRef.current && fitTo(diagram)) {
+      pendingFitRef.current = false;
       setReady(true);
     }
-    const id = centreOn.current;
-    centreOn.current = null;
+    const id = centreOnRef.current;
+    centreOnRef.current = null;
     const b = id ? boxOfStep(diagram, id) : undefined;
     if (b) void rf.setCenter(b.x + b.w / 2, b.y + b.h / 2, { zoom: rf.getViewport().zoom, duration: 320 });
   }, [diagram, fitTo, rf, boxOfStep]);
@@ -101,7 +101,7 @@ export function C4Canvas(props: WorkflowCanvasProps) {
     setSelection({ step: id });
     const b = diagram ? boxOfStep(diagram, id) : undefined;
     if (b?.node.kind === "group") {
-      centreOn.current = id;
+      centreOnRef.current = id;
       setOpen((prev) => new Set([...prev, b.node.id]));
       return;
     }
@@ -111,11 +111,11 @@ export function C4Canvas(props: WorkflowCanvasProps) {
   const { walkTo, ...frameFocus } = focusChrome(f, { c, reveal, decision: props.decision, compact, focus: props.focus, highlight });
 
   const relayout = (next: () => void) => {
-    pendingFit.current = true;
+    pendingFitRef.current = true;
     next();
   };
   const foldGroup = useCallback((id: string) => {
-    pendingFit.current = true;
+    pendingFitRef.current = true;
     setOpen((prev) => new Set([...prev].filter((x) => x !== id)));
   }, [setOpen]);
 
@@ -146,7 +146,7 @@ export function C4Canvas(props: WorkflowCanvasProps) {
 
   const edges = useMemo(() => (diagram ? c4Edges(diagram, { focus, edge, graph }) : []), [diagram, focus, edge, graph]);
 
-  const el = wrap.current;
+  const el = wrapRef.current;
   const overflowing = Boolean(diagram && el && (diagram.width * zoom > el.clientWidth - 8 || diagram.height * zoom > el.clientHeight - 8));
 
   const toolbar = (
@@ -179,7 +179,7 @@ export function C4Canvas(props: WorkflowCanvasProps) {
   return (
     <Frame
       layout={level === "context" ? "c4-context" : "c4-containers"}
-      wrap={wrap}
+      wrap={wrapRef}
       template={template}
       nodes={nodes}
       edges={edges}

@@ -75,11 +75,11 @@ function Facts({ rows }: { rows: [string, ReactNode][] }) {
   const shown = rows.filter(([, v]) => v !== undefined && v !== null && v !== "");
   if (shown.length === 0) return null;
   return (
-    <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-2.5 gap-y-1.5 text-13 max-sm:grid-cols-[90px_minmax(0,1fr)]">
+    <dl className="grid gap-y-1.5 text-13">
       {shown.map(([k, v]) => (
-        <div key={k} className="contents">
-          <dt className="text-subtle">{k}</dt>
-          <dd className="m-0 [overflow-wrap:anywhere]">{v}</dd>
+        <div key={k} className="flex gap-x-2.5">
+          <dt className="w-27.5 flex-none text-subtle max-sm:w-22.5">{k}</dt>
+          <dd className="m-0 min-w-0 flex-1 wrap-anywhere">{v}</dd>
         </div>
       ))}
     </dl>
