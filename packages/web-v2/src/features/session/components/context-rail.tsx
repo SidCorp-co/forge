@@ -170,7 +170,7 @@ export function ContextRail({
               {session.repoPath && (
                 <div className="flex items-center gap-2 overflow-hidden">
                   <Icon name="folder" size={13} className="flex-none text-subtle" />
-                  <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-11-5)" }} title={session.repoPath}>
+                  <span className="flex-1 truncate font-mono text-12" title={session.repoPath}>
                     {session.repoPath}
                   </span>
                 </div>
@@ -185,7 +185,7 @@ export function ContextRail({
               {session.repoPath && (
                 <div className="flex items-center gap-2 overflow-hidden">
                   <Icon name="folder" size={13} className="flex-none text-subtle" />
-                  <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-11-5)" }} title={session.repoPath}>
+                  <span className="flex-1 truncate font-mono text-12" title={session.repoPath}>
                     {session.repoPath}
                   </span>
                 </div>
@@ -253,7 +253,7 @@ export function ContextRail({
                   {a.label}
                 </span>
                 {a.isError && (
-                  <Icon name="alert" size={12} className="flex-none" style={{ color: "var(--red-600)" }} />
+                  <Icon name="alert" size={12} className="flex-none text-danger-11" />
                 )}
                 <MonoTag hue={a.tool === "Skill" ? "flame" : "cobalt"}>{a.tool}</MonoTag>
               </li>
@@ -316,14 +316,14 @@ export function ContextRail({
             {files.map((f) => (
               <li key={f.path} className="flex items-center gap-2 overflow-hidden">
                 <Icon name={f.isNew ? "plus" : "branch"} size={13} className="flex-none text-subtle" />
-                <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-11-5)" }} title={f.path}>
+                <span className="flex-1 truncate font-mono text-12" title={f.path}>
                   {f.path}
                 </span>
                 {f.added > 0 && (
-                  <span className="flex-none font-mono" style={{ fontSize: "var(--text-11)", color: "var(--green-600)" }}>+{f.added}</span>
+                  <span className="flex-none font-mono text-12 text-ok-11">+{f.added}</span>
                 )}
                 {f.removed > 0 && (
-                  <span className="flex-none font-mono" style={{ fontSize: "var(--text-11)", color: "var(--red-600)" }}>-{f.removed}</span>
+                  <span className="flex-none font-mono text-12 text-danger-11">-{f.removed}</span>
                 )}
               </li>
             ))}

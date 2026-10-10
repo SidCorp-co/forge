@@ -13,7 +13,7 @@ function AttentionLegend({ groups = ISSUE_ATTENTION_GROUPS }: { groups?: readonl
     <ul className="mt-2 flex flex-wrap gap-x-3.5 gap-y-1 text-12 text-muted" aria-label={t("overview.dev.legend")}>
       {groups.map((g) => (
         <li key={g} className="inline-flex items-center gap-1.5">
-          <span aria-hidden className="size-2 rounded-[2px]" style={{ background: LEGEND[ISSUE_ATTENTION_LABELS[g].tone].dot }} />
+          <span aria-hidden className="size-2 rounded-xs" style={{ background: LEGEND[ISSUE_ATTENTION_LABELS[g].tone].dot }} />
           {t(`issues.attention.${g}`)}
         </li>
       ))}
@@ -30,21 +30,21 @@ export function IssueFlow({ flow }: { flow: OverviewFlow }) {
         {flow.stages.map((s, i) => (
           <Fragment key={s.id}>
             {i > 0 ? (
-              <li aria-hidden className="self-start px-1 text-12 leading-[10px] text-[var(--paper-400)]">
+              <li aria-hidden className="self-start px-1 text-12 leading-2.5 text-neutral-8">
                 →
               </li>
             ) : null}
-            <li className="flex min-w-[52px] basis-0 flex-col" style={{ flexGrow: Math.max(s.count, 0.8) }} data-stage={s.id}>
+            <li className="flex min-w-13 basis-0 flex-col" style={{ flexGrow: Math.max(s.count, 0.8) }} data-stage={s.id}>
               <Tooltip label={s.count ? partsLine(s.parts, t) : t("overview.dev.nothingHere")}>
                 <span className="block w-full">
                   {s.count ? (
                     <CoverageBar segments={partSegments(s.parts, t)} legend={false} />
                   ) : (
-                    <span aria-hidden className="block h-2 rounded-pill bg-[var(--paper-200)]" />
+                    <span aria-hidden className="block h-2 rounded-pill bg-neutral-5" />
                   )}
                 </span>
               </Tooltip>
-              <span className="mt-1 truncate text-12-5 font-medium text-muted">{t(`overview.flow.${s.id}`)}</span>
+              <span className="mt-1 truncate text-13 font-medium text-muted">{t(`overview.flow.${s.id}`)}</span>
               <span className="font-mono text-13 font-bold tabular-nums text-fg">{s.count}</span>
             </li>
           </Fragment>

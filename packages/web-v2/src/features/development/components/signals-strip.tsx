@@ -10,8 +10,8 @@ import type { DevelopmentOverview } from "../types";
 function Signal({ label, children, testId }: { label: string; children: ReactNode; testId: string }) {
   return (
     <div className="flex min-w-0 items-baseline gap-2" data-testid={testId}>
-      <dt className="whitespace-nowrap text-12-5 font-medium text-muted">{label}</dt>
-      <dd className="min-w-0 text-12-5 text-fg">{children}</dd>
+      <dt className="whitespace-nowrap text-13 font-medium text-muted">{label}</dt>
+      <dd className="min-w-0 text-13 text-fg">{children}</dd>
     </div>
   );
 }
@@ -40,7 +40,7 @@ function Contracts({ s }: { s: DevelopmentOverview["signals"]["contracts"] }) {
         <HoverCard
           label={t("overview.signal.windows")}
           content={
-            <ul className="grid gap-1.5 text-12-5">
+            <ul className="grid gap-1.5 text-13">
               {s.windows.map((w) => (
                 <li key={`${w.contract}@${w.version}`}>
                   <span className="font-mono text-12 font-semibold">

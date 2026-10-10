@@ -82,7 +82,7 @@ export function PreviewPanel(props: PreviewPanelProps) {
 function Refusal({ error, lead }: { error: unknown; lead: string }) {
   if (!error) return null;
   return (
-    <p role="alert" className="fg-body-sm" style={{ color: "var(--red-600)" }}>
+    <p role="alert" className="fg-body-sm text-danger-11">
       {lead}: {formatApiError(error)}
     </p>
   );

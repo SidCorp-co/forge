@@ -26,8 +26,8 @@ function FirstRequirementsLine({ projectId, first }: { projectId: string; first:
   const t = TONE[first.openBatch?.overdue ? "attention" : first.status === "suggested" || first.openBatch ? "you" : "ready"];
   return (
     <div className="px-4 py-2.5 sm:px-6" style={{ background: t.bg }} data-testid="first-requirements-line" data-status={first.status}>
-      <p className="flex items-baseline gap-2 text-[13.5px] text-fg">
-        <span aria-hidden className="size-2 flex-none translate-y-[-1px] rounded-full" style={{ background: t.dot }} />
+      <p className="flex items-baseline gap-2 text-14 text-fg">
+        <span aria-hidden className="size-2 flex-none -translate-y-px rounded-full" style={{ background: t.dot }} />
         <span className="min-w-0">
           <span className="font-bold">{copy("onboarding.first.lead")}</span> {copy(`onboarding.first.${first.status}`, { n: first.suggested })}
           {first.openBatch && ` · ${copy("onboarding.first.openQuestions", { n: first.openBatch.open })}${first.openBatch.overdue ? ` · ${copy("onboarding.first.waitingDays", { n: first.openBatch.waitingDays })}` : ""}`} ·{" "}
@@ -50,8 +50,8 @@ export function OnboardingHint({ projectId, projectName }: { projectId: string; 
   const t = TONE[hint.tone];
   return (
     <div className="px-4 py-2.5 sm:px-6" style={{ background: t.bg }} data-testid="onboarding-hint">
-      <div className="flex items-baseline gap-2 text-[13.5px] text-fg">
-        <span aria-hidden className="size-2 flex-none translate-y-[-1px] rounded-full" style={{ background: t.dot }} />
+      <div className="flex items-baseline gap-2 text-14 text-fg">
+        <span aria-hidden className="size-2 flex-none -translate-y-px rounded-full" style={{ background: t.dot }} />
         <p className="min-w-0">
           <span className="font-bold">{said(hint.says.lead, language)}</span> {said(hint.says.text, language)} ·{" "}
           <button
@@ -78,14 +78,14 @@ export function OnboardingHint({ projectId, projectName }: { projectId: string; 
           )}
         </p>
       </div>
-      <p className="mt-1 flex items-center gap-1.5 pl-4 text-[11.5px] text-subtle">
-        <span aria-hidden className="text-[color:var(--ai-bar)]">
+      <p className="mt-1 flex items-center gap-1.5 pl-4 text-12 text-subtle">
+        <span aria-hidden className="text-ai-9">
           ✦
         </span>
         {copy("onboarding.hint.master", { name: projectName })}
       </p>
       {error && (
-        <p role="alert" className="mt-1 pl-4 text-[12px] text-[color:var(--red-600)]">
+        <p role="alert" className="mt-1 pl-4 text-12 text-danger-11">
           {error}
         </p>
       )}

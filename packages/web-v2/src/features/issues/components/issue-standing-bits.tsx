@@ -231,12 +231,12 @@ export function IssuePeekFacts({
             </Link>
             {s.requirement.criteria.length ? <span className="ml-1.5 font-mono text-12">{s.requirement.criteria.join(", ")}</span> : null}
             {s.requirement.staleCriteria.length ? (
-              <span className="ml-1.5 text-12-5" data-testid="stale-traces">
+              <span className="ml-1.5 text-13" data-testid="stale-traces">
                 · {t("issues.facts.staleShort", { codes: s.requirement.staleCriteria.join(", ") })}
               </span>
             ) : null}
             {s.requirement.changedSincePlan ? (
-              <span className="ml-1.5 text-12-5" data-testid="changed-since-plan">
+              <span className="ml-1.5 text-13" data-testid="changed-since-plan">
                 · {t("issues.facts.plannedOnShort", { planned: s.requirement.plannedRevision ?? "", now: s.requirement.currentRevision ?? "" })}
               </span>
             ) : null}

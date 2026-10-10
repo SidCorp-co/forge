@@ -14,14 +14,14 @@ function Node({ node, slug }: { node: OverviewChainNode; slug: string }) {
   return (
     <div className="min-w-0" data-testid="chain-node" data-key={node.key} data-held={node.held}>
       <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
-        <Link href={href} className="break-all font-mono text-11-5 font-semibold text-link no-underline hover:underline">
+        <Link href={href} className="break-all font-mono text-12 font-semibold text-link no-underline hover:underline">
           {node.key}
         </Link>
         {node.status ? (
           <StatusBadge family="issue" value={node.status} step={node.step} {...(node.tone ? { tone: node.tone } : {})} />
         ) : null}
       </div>
-      <span className="block truncate text-12-5 text-muted" title={node.waitingOn?.rule ? `${node.title} · ${said(node.waitingOn.says.rule, language)}` : node.title}>
+      <span className="block truncate text-13 text-muted" title={node.waitingOn?.rule ? `${node.title} · ${said(node.waitingOn.says.rule, language)}` : node.title}>
         {node.title}
       </span>
     </div>
@@ -35,11 +35,11 @@ function Chain({ chain, slug }: { chain: OverviewChain; slug: string }) {
         {chain.levels.map((level, i) => (
           <Fragment key={level.map((n) => n.key).join("|")}>
             {i > 0 ? (
-              <span aria-hidden className="px-2 pt-0.5 text-12 text-[var(--paper-400)]">
+              <span aria-hidden className="px-2 pt-0.5 text-12 text-neutral-8">
                 →
               </span>
             ) : null}
-            <div className="flex min-w-0 max-w-[240px] flex-1 basis-[150px] flex-col gap-2">
+            <div className="flex min-w-0 max-w-60 flex-1 basis-37.5 flex-col gap-2">
               {level.map((n) => (
                 <Node key={n.key} node={n} slug={slug} />
               ))}

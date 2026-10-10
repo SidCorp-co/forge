@@ -266,7 +266,7 @@ function AttachmentsField({ staged }: { staged: ReturnType<typeof useStagedFiles
     <Field label={t("issues.attachments.title")}>
       <div
         {...staged.dropZone}
-        className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed px-4 py-5 text-center transition-colors ${
+        className={`flex flex-col items-center justify-center gap-1.5 rounded-md border border-dashed px-4 py-5 text-center transition-colors ${
           staged.dragOver ? "border-cobalt-400 bg-cobalt-50/50" : "border-line-strong bg-sunken"
         }`}
       >

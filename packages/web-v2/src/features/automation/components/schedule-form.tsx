@@ -83,7 +83,7 @@ export function ScheduleForm({
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           {t("schedules.form.cancel")}
         </Button>
-        {error ? <span className="text-12-5 text-danger">{formatRefusal(error)}</span> : null}
+        {error ? <span className="text-13 text-danger">{formatRefusal(error)}</span> : null}
       </span>
     </form>
   );

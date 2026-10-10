@@ -98,7 +98,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
       ) : issuesQ.isLoading ? (
         <KanbanBoard>
           {boardColumns().map((key) => (
-            <div key={key} className="w-[248px] flex-none">
+            <div key={key} className="w-62 flex-none">
               <KanbanColumnSkeleton />
             </div>
           ))}

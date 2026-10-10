@@ -131,10 +131,10 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
                         >
                           {shortenPath(file.path, session.repoPath)}
                         </span>
-                        <span className="fg-caption font-mono" style={{ color: "var(--green-600)" }}>
+                        <span className="fg-caption font-mono text-ok-11">
                           +{time.number(file.added)}
                         </span>
-                        <span className="fg-caption font-mono" style={{ color: "var(--red-600)" }}>
+                        <span className="fg-caption font-mono text-danger-11">
                           −{time.number(file.removed)}
                         </span>
                       </button>

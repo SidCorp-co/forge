@@ -11,7 +11,7 @@ function Row({ m, max }: { m: OverviewModuleRow; max: number }) {
   const time = useTimeFormat();
   return (
     <div className="contents" data-testid="module-row" data-module={m.path || "none"}>
-      <span className={m.path ? "truncate font-mono text-12 font-semibold text-fg" : "truncate text-12-5 text-muted"} title={m.name}>
+      <span className={m.path ? "truncate font-mono text-12 font-semibold text-fg" : "truncate text-13 text-muted"} title={m.name}>
         {m.path || m.name}
       </span>
       <span className="block" title={m.open ? partsLine(m.parts, t) : t("overview.dev.nothingOpen")}>
@@ -20,7 +20,7 @@ function Row({ m, max }: { m: OverviewModuleRow; max: number }) {
             <CoverageBar segments={partSegments(m.parts, t)} legend={false} />
           </span>
         ) : (
-          <span aria-hidden className="block h-2 w-full rounded-pill bg-[var(--paper-200)]" />
+          <span aria-hidden className="block h-2 w-full rounded-pill bg-neutral-5" />
         )}
       </span>
       <span className="whitespace-nowrap text-right font-mono text-12 tabular-nums text-muted" title={m.lastLandingAt ? t("overview.dev.lastLanding", { at: time.dateTime(m.lastLandingAt) }) : t("overview.dev.nothingLanded")}>
@@ -55,7 +55,7 @@ export function ModuleBars({ modules }: { modules: OverviewModules }) {
             type="button"
             aria-expanded={quietOpen}
             onClick={() => setQuietOpen((o) => !o)}
-            className="inline-flex items-center gap-1.5 text-12-5 font-semibold text-muted hover:text-fg"
+            className="inline-flex items-center gap-1.5 text-13 font-semibold text-muted hover:text-fg"
           >
             <Icon name="chevronRight" size={12} className={quietOpen ? "rotate-90" : undefined} />
             {t("overview.dev.quiet", { n: quiet.length })}

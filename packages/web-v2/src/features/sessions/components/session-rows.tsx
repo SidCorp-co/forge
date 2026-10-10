@@ -219,16 +219,16 @@ function SessionTableRow(props: RowProps & {
           )}
           <SessionKindTag row={row} />
           {hasChildren && (
-            <span className="text-11 text-muted" title={t("sessions.owns")}>
+            <span className="text-12 text-muted" title={t("sessions.owns")}>
               &#8226;
             </span>
           )}
         </div>
       </TD>
-      <TD className="max-w-[260px]">
+      <TD className="max-w-65">
         <SessionIdentity row={row} slug={slug} onOpen={open} />
       </TD>
-      <TD className="max-w-[160px]">
+      <TD className="max-w-40">
         <RunnerCell row={row} deviceName={deviceName} display={display} now={now} stuck={stuck} />
       </TD>
       <TD className="whitespace-nowrap font-mono text-muted">{formatShortTime(row.startedAt ?? row.dispatchedAt, time.dateTime)}</TD>

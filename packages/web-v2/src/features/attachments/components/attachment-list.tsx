@@ -52,7 +52,7 @@ export function AttachmentList({ rows }: { rows: AttachmentListItem[] }) {
                   type="button"
                   onClick={() => setLightboxIndex(galleryIndex)}
                   title={`${a.name} · ${formatSize(a.size)}`}
-                  className="block overflow-hidden rounded-md border border-line transition-colors hover:border-line-strong focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                  className="block overflow-hidden rounded-md border border-line transition-colors hover:border-line-strong focus-visible:outline-none focus-visible:shadow-focus"
                 >
                   {/* biome-ignore lint/performance/noImgElement: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
                   <img src={href} alt={a.name} className="h-28 w-28 object-cover" loading="lazy" />
@@ -65,7 +65,7 @@ export function AttachmentList({ rows }: { rows: AttachmentListItem[] }) {
                   className="flex items-center gap-2 rounded-md border border-line bg-surface px-3 py-2 hover:bg-hover"
                 >
                   <Icon name="folder" size={16} className="flex-none text-subtle" />
-                  <span className="fg-body-sm max-w-[14rem] truncate text-fg" title={a.name}>
+                  <span className="fg-body-sm max-w-56 truncate text-fg" title={a.name}>
                     {a.name}
                   </span>
                   <span className="fg-caption flex-none">{formatSize(a.size)}</span>

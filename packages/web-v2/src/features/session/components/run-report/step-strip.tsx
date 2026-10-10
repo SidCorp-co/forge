@@ -36,7 +36,7 @@ export function StepStrip({ run, currentStep }: { run: PipelineRunSummary; curre
           <li
             key={`${step.jobType}-${step.startedAt ?? ""}`}
             aria-current={isCurrent ? "step" : undefined}
-            className="min-w-[112px] flex-1 border-t-2 py-2 pr-2.5"
+            className="min-w-28 flex-1 border-t-2 py-2 pr-2.5"
             style={{ borderColor: isCurrent ? "var(--border-strong)" : "var(--border-subtle)" }}
           >
             <div className="flex items-center gap-1.5">

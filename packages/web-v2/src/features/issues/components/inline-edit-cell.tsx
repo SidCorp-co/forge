@@ -169,7 +169,7 @@ export function StatusEdit({
         <button
           type="button"
           aria-label={t("issues.status.change", { status: statusWord(status) })}
-          className="inline-flex min-h-11 items-center rounded-md px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          className="inline-flex min-h-11 items-center rounded-md px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
         >
           {chip}
         </button>

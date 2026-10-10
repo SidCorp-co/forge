@@ -422,13 +422,13 @@ export function QuestionCard({
   return (
     <PageSection
       data-question-id={question.id}
-      className={highlighted ? "shadow-[var(--shadow-focus)]" : undefined}
+      className={highlighted ? "shadow-focus" : undefined}
     >
       <PageSectionHeader className="flex flex-wrap items-center gap-2">
         <PageSectionTitle
           data-question-title="true"
           tabIndex={-1}
-          className="focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          className="focus-visible:outline-none focus-visible:shadow-focus"
         >
           {answerable ? t("agents.question.waiting") : t("agents.question.decision")}
         </PageSectionTitle>

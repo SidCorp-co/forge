@@ -28,19 +28,19 @@ export function InlineDiff({ diff }: { diff: FileDiff }) {
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: hunks are positional + stable
           <div key={i} className="overflow-x-auto">
-            {i > 0 && <div className="py-0.5 text-center text-subtle" style={{ fontSize: "var(--text-10)" }}>···</div>}
-            <pre className="font-mono leading-relaxed-1-6" style={{ fontSize: "var(--text-11)" }}>
+            {i > 0 && <div className="py-0.5 text-center text-subtle text-12">···</div>}
+            <pre className="font-mono leading-relaxed-1-6 text-12">
               {prefix.map((l, j) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: a hunk's lines are positional and the hunk never changes once rendered
                 <div key={`c0-${j}`} className="px-2 text-subtle">{`  ${l}`}</div>
               ))}
               {removed.map((l, j) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: a hunk's lines are positional and the hunk never changes once rendered
-                <div key={`r-${j}`} className="px-2" style={{ color: "var(--red-600)", background: "var(--red-50)" }}>{`- ${l}`}</div>
+                <div key={`r-${j}`} className="px-2 text-danger-11 bg-danger-3">{`- ${l}`}</div>
               ))}
               {added.map((l, j) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: a hunk's lines are positional and the hunk never changes once rendered
-                <div key={`a-${j}`} className="px-2" style={{ color: "var(--green-600)", background: "var(--green-50)" }}>{`+ ${l}`}</div>
+                <div key={`a-${j}`} className="px-2 text-ok-11 bg-ok-3">{`+ ${l}`}</div>
               ))}
               {suffix.map((l, j) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: a hunk's lines are positional and the hunk never changes once rendered
@@ -68,14 +68,14 @@ function EditCard({ diff, blockKey }: { diff: FileDiff; blockKey?: string }) {
         <Icon
           name="chevronRight"
           size={14}
-          className="flex-none text-subtle transition-transform duration-[150ms]"
+          className="flex-none text-subtle transition-transform duration-150"
           style={{ transform: open ? "rotate(90deg)" : "none" }}
         />
         <Icon name={diff.isNew ? "plus" : "branch"} size={14} className="flex-none text-subtle" />
-        <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-12)" }}>{diff.path}</span>
-        {diff.isNew && <span className="flex-none font-mono" style={{ fontSize: "var(--text-10)", color: "var(--green-600)" }}>{t("sessions.tool.new")}</span>}
-        {diff.added > 0 && <span className="flex-none font-mono" style={{ fontSize: "var(--text-11)", color: "var(--green-600)" }}>+{diff.added}</span>}
-        {diff.removed > 0 && <span className="flex-none font-mono" style={{ fontSize: "var(--text-11)", color: "var(--red-600)" }}>-{diff.removed}</span>}
+        <span className="flex-1 truncate font-mono text-12">{diff.path}</span>
+        {diff.isNew && <span className="flex-none font-mono text-12 text-ok-11">{t("sessions.tool.new")}</span>}
+        {diff.added > 0 && <span className="flex-none font-mono text-12 text-ok-11">+{diff.added}</span>}
+        {diff.removed > 0 && <span className="flex-none font-mono text-12 text-danger-11">-{diff.removed}</span>}
       </button>
       {open && <InlineDiff diff={diff} />}
     </div>
@@ -99,9 +99,9 @@ function SimpleCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boole
           className="flex-none"
           style={{ color: tool.isError ? "var(--red-600)" : "var(--fg-subtle)" }}
         />
-        <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-12)" }}>{getToolLabel(tool, t)}</span>
+        <span className="flex-1 truncate font-mono text-12">{getToolLabel(tool, t)}</span>
         {typeof tool.durationMs === "number" && (
-          <span className="flex-none font-mono text-subtle" style={{ fontSize: "var(--text-11)" }}>
+          <span className="flex-none font-mono text-subtle text-12">
             {tool.durationMs >= 1000 ? `${time.number(Number((tool.durationMs / 1000).toFixed(1)))}s` : `${tool.durationMs}ms`}
           </span>
         )}
@@ -113,7 +113,7 @@ function SimpleCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boole
           aria-expanded={open}
           onClick={toggle}
           className="mt-1 flex w-fit items-center gap-1.5 rounded text-subtle hover:text-default"
-          style={{ fontSize: "var(--text-11)" }}
+          style={{ fontSize: "var(--text-12)" }}
         >
           <Icon name={open ? "chevronDown" : "chevronRight"} size={12} className="flex-none" />
           <span data-testid="tool-result-summary" className="font-mono">{summary.label}</span>
@@ -122,7 +122,7 @@ function SimpleCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boole
         <p
           data-testid="tool-result-summary"
           className="mt-1 font-mono text-subtle"
-          style={{ fontSize: "var(--text-11)" }}
+          style={{ fontSize: "var(--text-12)" }}
         >
           {summary.label}
         </p>
@@ -131,7 +131,7 @@ function SimpleCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boole
         <pre
           data-testid="tool-result-body"
           className="mt-1.5 max-h-64 overflow-auto whitespace-pre-wrap break-all border-l border-line-subtle pl-2 font-mono text-subtle"
-          style={{ fontSize: "var(--text-11)" }}
+          style={{ fontSize: "var(--text-12)" }}
         >
           {formatResultBody(tool.result)}
         </pre>

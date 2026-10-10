@@ -77,7 +77,7 @@ export const scheduleRow =
     state: <StatusBadge family="scheduleStanding" value={s.state} />,
     waitingOn:
       s.waitingOn.kind === "none" ? (
-        <span className="text-12-5 text-subtle">{s.nextFireAt ? t("schedules.nextFire", { at: fmtTime(s.nextFireAt, language) }) : t("schedules.notScheduled")}</span>
+        <span className="text-13 text-subtle">{s.nextFireAt ? t("schedules.nextFire", { at: fmtTime(s.nextFireAt, language) }) : t("schedules.notScheduled")}</span>
       ) : (
         <WaitingOn w={s.waitingOn} />
       ),
@@ -105,7 +105,7 @@ export function RunNow({ s, access }: { s: ScheduleStanding; access: AutomationA
         {t("schedules.runNow")}
       </Button>
       {run.isError ? (
-        <span className="text-12-5 text-danger" data-testid="run-now-refusal">
+        <span className="text-13 text-danger" data-testid="run-now-refusal">
           {formatRefusal(run.error)}
         </span>
       ) : null}
@@ -128,7 +128,7 @@ function ScheduleBanner({ s, className }: { s: ScheduleStanding; className?: str
       className={className}
       testId="schedule-banner"
     >
-      <span className="text-12-5 text-muted">{said(s.says.rule, language)}</span>
+      <span className="text-13 text-muted">{said(s.says.rule, language)}</span>
     </WaitBanner>
   );
 }
@@ -153,7 +153,7 @@ export function ScheduleFacts({ s, slug, failStreak }: { s: ScheduleStanding; sl
           {s.lastFire ? (
             <>
               <StatusBadge family="scheduleRun" value={s.lastFire.status} />
-              <Link href={fireHref(slug, s.lastFire.id)} className="text-12-5 text-link hover:underline" title={time.dateTime(s.lastFire.startedAt)}>
+              <Link href={fireHref(slug, s.lastFire.id)} className="text-13 text-link hover:underline" title={time.dateTime(s.lastFire.startedAt)}>
                 {t("schedules.ago", { age: time.age(s.lastFire.startedAt) })}
               </Link>
             </>
@@ -209,8 +209,8 @@ export function SchedulePeek({
         title={whatItRuns(s, t)}
         action={<RunNow s={s} access={access} />}
       />
-      <ScheduleBanner s={s} className="px-[18px]" />
-      <div className="px-[18px] pb-4 pt-4">
+      <ScheduleBanner s={s} className="px-4.5" />
+      <div className="px-4.5 pb-4 pt-4">
         <ScheduleFacts s={s} slug={access.slug} />
       </div>
     </PeekPanel>
@@ -309,7 +309,7 @@ function WhatItRuns({ s, projectId }: { s: ScheduleStanding; projectId: string }
       {body ? (
         <details className="mt-2">
           <summary className="cursor-pointer text-13 font-semibold text-muted">{config?.kind === "script" ? t("schedules.script") : t("schedules.prompt")}</summary>
-          <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words bg-sunken p-3 text-12-5">{body}</pre>
+          <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words bg-sunken p-3 text-13">{body}</pre>
         </details>
       ) : null}
     </section>
@@ -333,7 +333,7 @@ function Overview({ d, access }: { d: ScheduleDetailResponse; access: Automation
         {marks.length ? (
           <span className="inline-flex items-center gap-2">
             <MarkStrip marks={marks} />
-            <span className="text-12-5 text-subtle">{t("schedules.shownNewestLast", { n: marks.length })}</span>
+            <span className="text-13 text-subtle">{t("schedules.shownNewestLast", { n: marks.length })}</span>
           </span>
         ) : (
           <FactsEmpty>{t("schedules.noFires")}</FactsEmpty>

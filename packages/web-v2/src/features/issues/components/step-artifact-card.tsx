@@ -170,7 +170,7 @@ export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardPr
                     attempt {outcome.handoff.attempt}
                     {outcome.handoff.pipelineRunId ? ` · run ${outcome.handoff.pipelineRunId}` : ""}
                   </p>
-                  <pre className="max-h-72 overflow-auto rounded-md bg-app/60 p-2 text-11 leading-snug">
+                  <pre className="max-h-72 overflow-auto rounded-md bg-app/60 p-2 text-12 leading-snug">
                     {JSON.stringify(outcome.handoff.payload ?? {}, null, 2)}
                   </pre>
                 </div>

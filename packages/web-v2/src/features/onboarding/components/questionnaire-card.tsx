@@ -28,12 +28,12 @@ const answered = (a: DraftAnswers[string] | undefined) =>
 
 function WhyWeAsk({ item, designTitle }: { item: QuestionnaireItemView; designTitle: (ref: string) => string }) {
   return (
-    <HoverNote label="Why we ask" className="ml-1 text-[11px] font-normal text-subtle">
+    <HoverNote label="Why we ask" className="ml-1 text-12 font-normal text-subtle">
       <span>{item.why}</span>
       <br />
       <span className="opacity-70">Evidence</span>{" "}
       {item.evidence.map((e) => (
-        <code key={e} className="mr-1 font-mono text-[10.5px]">
+        <code key={e} className="mr-1 font-mono text-12">
           {e}
         </code>
       ))}
@@ -65,17 +65,17 @@ function Chip({
       type="button"
       {...(multi ? { role: "checkbox", "aria-checked": on } : { role: "radio", "aria-checked": on })}
       onClick={onClick}
-      className={`inline-flex min-h-7 max-w-full items-center gap-[5px] rounded-pill border px-2.5 py-[3px] text-left text-[12px] font-medium text-fg transition-colors ${
-        on ? "border-[color:var(--link)] bg-[color:var(--sel-bg)]" : "border-line bg-surface hover:border-line-strong"
+      className={`inline-flex min-h-7 max-w-full items-center gap-1.25 rounded-pill border px-2.5 py-0.75 text-left text-12 font-medium text-fg transition-colors ${
+        on ? "border-link bg-sel" : "border-line bg-surface hover:border-line-strong"
       }`}
     >
       <span
         aria-hidden
-        className={`grid size-[11px] flex-none place-items-center border-[1.5px] ${multi ? "rounded-[3px]" : "rounded-full"} ${
-          on ? "border-[color:var(--link)]" : "border-line-strong"
+        className={`grid size-2.75 flex-none place-items-center border-2 ${multi ? "rounded-xs" : "rounded-full"} ${
+          on ? "border-link" : "border-line-strong"
         }`}
       >
-        {on && <span className={`size-[5px] bg-[color:var(--link)] ${multi ? "rounded-[1px]" : "rounded-full"}`} />}
+        {on && <span className={`size-1.25 bg-link ${multi ? "rounded-xs" : "rounded-full"}`} />}
       </span>
       <span className="min-w-0">{label}</span>
       {inferred && <AiMark title="Inferred from the code; not chosen until you pick it">Inferred</AiMark>}
@@ -128,10 +128,10 @@ function Control({
           type="button"
           aria-pressed={d === "accept"}
           onClick={() => onChange(d === "accept" ? undefined : { decision: "accept" })}
-          className={`h-7 rounded-md border px-2.5 text-[12px] font-semibold transition-colors ${
+          className={`h-7 rounded-md border px-2.5 text-12 font-semibold transition-colors ${
             d === "accept"
-              ? "border-[color:var(--ai-bar)] bg-[color:var(--ai-bg)] text-[color:var(--ai-fg)]"
-              : "border-[color:color-mix(in_srgb,var(--ai-bar)_55%,transparent)] bg-surface text-[color:var(--ai-fg)]"
+              ? "border-ai-9 bg-ai-bg text-ai"
+              : "border-[color:color-mix(in_srgb,var(--ai-bar)_55%,transparent)] bg-surface text-ai"
           }`}
         >
           Accept
@@ -140,7 +140,7 @@ function Control({
           type="button"
           aria-pressed={d === "reject"}
           onClick={() => onChange(d === "reject" ? undefined : { decision: "reject" })}
-          className={`h-7 rounded-md border px-2.5 text-[12px] font-semibold text-fg transition-colors ${
+          className={`h-7 rounded-md border px-2.5 text-12 font-semibold text-fg transition-colors ${
             d === "reject" ? "border-line-strong bg-sunken" : "border-line bg-surface"
           }`}
         >
@@ -158,7 +158,7 @@ function Control({
         placeholder={item.placeholder ?? "Your answer"}
         value={value?.text ?? ""}
         onChange={(e) => onChange(e.target.value ? { text: e.target.value } : undefined)}
-        className="h-8 w-full rounded-sm border border-line bg-surface px-2.5 text-[12.5px] text-fg placeholder:text-subtle focus:border-[color:var(--link)] focus:outline-none"
+        className="h-8 w-full rounded-sm border border-line bg-surface px-2.5 text-13 text-fg placeholder:text-subtle focus:border-link focus:outline-none"
       />
     </div>
   );
@@ -166,16 +166,16 @@ function Control({
 
 function Counter({ n, of, ids, done }: { n: number; of: number; ids: string[]; done: (id: string) => boolean }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[12px] text-muted">
+    <span className="inline-flex items-center gap-1.5 text-12 text-muted">
         Answered{" "}
         <b className="font-semibold tabular-nums text-fg">
           {n} of {of}
         </b>
-        <span aria-hidden className="inline-flex gap-[2px]">
+        <span aria-hidden className="inline-flex gap-0.5">
           {ids.map((id) => (
             <i
               key={id}
-              className={`block h-[5px] w-[7px] rounded-[2px] ${done(id) ? "bg-[color:var(--green-500)]" : "bg-[color:var(--paper-300)]"}`}
+              className={`block h-1.25 w-1.75 rounded-xs ${done(id) ? "bg-ok-9" : "bg-neutral-7"}`}
             />
           ))}
         </span>
@@ -201,10 +201,10 @@ export function QuestionnaireCard({
 
   if (batch.status === "skipped" && !resumed) {
     return (
-      <div className="mt-1.5 border-l-[3px] border-line-strong bg-sunken" data-testid="questionnaire-skipped">
-        <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5 py-2 pl-[11px] pr-3">
-          <span className="text-[13px] font-bold text-fg">Skipped for now</span>
-          <span className="text-[11.5px] text-subtle">Open {open.length}</span>
+      <div className="mt-1.5 border-l-3 border-line-strong bg-sunken" data-testid="questionnaire-skipped">
+        <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5 py-2 pl-2.75 pr-3">
+          <span className="text-13 font-bold text-fg">Skipped for now</span>
+          <span className="text-12 text-subtle">Open {open.length}</span>
           <span className="flex-1" />
           <Button size="sm" variant="secondary" onClick={() => setResumed(true)}>
             Answer now
@@ -230,18 +230,18 @@ export function QuestionnaireCard({
       aria-label={batch.title}
       data-testid="questionnaire-card"
       onSubmit={(e) => e.preventDefault()}
-      className="mt-1.5 border-l-[3px] border-[color:var(--ai-bar)] bg-surface"
+      className="mt-1.5 border-l-3 border-ai-9 bg-surface"
     >
-      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5 py-2 pl-[11px] pr-3">
-        <span className="text-[13px] font-bold text-fg">{batch.title}</span>
-        <span className="text-[11.5px] text-subtle">
+      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5 py-2 pl-2.75 pr-3">
+        <span className="text-13 font-bold text-fg">{batch.title}</span>
+        <span className="text-12 text-subtle">
           Round {batch.round} of {batch.maxRounds}
         </span>
       </div>
       {/* on a redact or no_egress project the answers reach the agent (scrubbed): the owner's
           2026-10-04 ruling holds them to product information, and the card says so where they are typed */}
       {scrubsOnWrite(batch.sensitiveData) && (
-        <p data-testid="questionnaire-data-warning" className="border-t border-line-subtle py-1.5 pl-[11px] pr-3 text-[11.5px] text-muted">
+        <p data-testid="questionnaire-data-warning" className="border-t border-line-subtle py-1.5 pl-2.75 pr-3 text-12 text-muted">
           Answers are product information. Do not include patient data.
         </p>
       )}
@@ -250,16 +250,16 @@ export function QuestionnaireCard({
         if (mine.length === 0) return null;
         return (
           <div key={g}>
-            <div className="flex items-baseline gap-2 bg-sunken py-1 pl-[11px] pr-3 text-[12px] font-bold text-fg">
+            <div className="flex items-baseline gap-2 bg-sunken py-1 pl-2.75 pr-3 text-12 font-bold text-fg">
               {QUESTIONNAIRE_GROUP_LABELS[g]}
-              <span className="font-mono text-[10.5px] font-semibold text-subtle">{mine.length}</span>
+              <span className="font-mono text-12 font-semibold text-subtle">{mine.length}</span>
             </div>
             {mine.map((item) => {
               num += 1;
               return (
-                <div key={item.id} className="border-b border-line-subtle pb-2.5 pl-[11px] pr-3 pt-2 last:border-b-0">
-                  <div className="flex items-baseline gap-2 text-[12.5px] font-medium text-fg">
-                    <span className="flex-none font-mono text-[10.5px] font-semibold text-subtle">{num}</span>
+                <div key={item.id} className="border-b border-line-subtle pb-2.5 pl-2.75 pr-3 pt-2 last:border-b-0">
+                  <div className="flex items-baseline gap-2 text-13 font-medium text-fg">
+                    <span className="flex-none font-mono text-12 font-semibold text-subtle">{num}</span>
                     <span className="min-w-0">
                       {item.prompt}{" "}
                       {item.isNew && <ToneChip tone="run" label="New" />}
@@ -285,11 +285,11 @@ export function QuestionnaireCard({
         );
       })}
       {error && (
-        <p role="alert" className="border-t border-line-subtle px-3 py-2 text-[12px] text-[color:var(--red-600)]">
+        <p role="alert" className="border-t border-line-subtle px-3 py-2 text-12 text-danger-11">
           {error}
         </p>
       )}
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-line-subtle pb-2.5 pl-[11px] pr-3 pt-2">
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-line-subtle pb-2.5 pl-2.75 pr-3 pt-2">
         <Counter n={n} of={ids.length} ids={ids} done={(id) => answered(draft[id])} />
         <span className="flex-1" />
         {batch.status === "open" && (
@@ -317,7 +317,7 @@ function answerLabel(item: QuestionnaireItemView) {
     <>
       <span className="min-w-0 truncate font-medium text-fg">{text}</span>
       {a.choice && a.choice === item.inferredDefault && (
-        <span className="text-[11px] text-subtle" title="As inferred from the code">
+        <span className="text-12 text-subtle" title="As inferred from the code">
           ✓
         </span>
       )}
@@ -332,16 +332,16 @@ export function QuestionnaireSummary({ batch }: { batch: QuestionnaireView }) {
   const openHere = items.length - answeredHere;
   return (
     <div className="mt-1" data-testid="questionnaire-summary">
-      <div className="mb-0.5 text-[11.5px] text-subtle">
+      <div className="mb-0.5 text-12 text-subtle">
         {batch.title} · Round {batch.round} · Answered {answeredHere} of {items.length}
         {openHere ? ` · Open ${openHere}` : ""}
       </div>
       {items.map((i) => (
-        <div key={i.id} className="flex min-w-0 items-center gap-2 border-t border-line-subtle py-[3px] text-[12.5px]">
+        <div key={i.id} className="flex min-w-0 items-center gap-2 border-t border-line-subtle py-0.75 text-13">
           <span className="min-w-0 flex-1 truncate text-muted" title={i.prompt}>
             {i.prompt}
           </span>
-          <span className="flex min-w-0 max-w-[56%] flex-none items-center justify-end gap-[5px]">{answerLabel(i)}</span>
+          <span className="flex min-w-0 max-w-[56%] flex-none items-center justify-end gap-1.25">{answerLabel(i)}</span>
         </div>
       ))}
     </div>

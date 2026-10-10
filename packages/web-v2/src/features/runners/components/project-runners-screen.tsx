@@ -135,7 +135,7 @@ function AssignDevice({
 						</Button>
 					</div>
 
-					<div className="rounded-lg border border-dashed border-line-strong p-3">
+					<div className="rounded-md border border-dashed border-line-strong p-3">
 						<span className="fg-label">{t("runners.assign.setUpDevice")}</span>
 						<div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
 							<code className="font-mono text-13 text-fg">

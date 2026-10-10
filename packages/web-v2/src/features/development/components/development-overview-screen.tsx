@@ -16,7 +16,7 @@ import { StuckChains } from "./stuck-chains";
 
 const Count = ({ n }: { n: number }) => <span className="font-mono tabular-nums">{n}</span>;
 
-const Note = ({ children }: { children: string }) => <span className="text-12-5 font-normal text-muted">{children}</span>;
+const Note = ({ children }: { children: string }) => <span className="text-13 font-normal text-muted">{children}</span>;
 
 function Coverage({ c }: { c: DevelopmentOverview["coverage"] }) {
   const t = useCopy();

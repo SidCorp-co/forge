@@ -32,15 +32,15 @@ export function FoldRow({
         aria-expanded={open}
         aria-controls={bodyId}
         onClick={onToggle}
-        className="flex w-full min-w-0 items-baseline gap-3 py-2.5 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        className="flex w-full min-w-0 items-baseline gap-3 py-2.5 text-left focus-visible:outline-none focus-visible:shadow-focus"
       >
-        <span className="w-[120px] flex-none text-14 font-medium text-fg max-md:w-24">{label}</span>
+        <span className="w-30 flex-none text-14 font-medium text-fg max-md:w-24">{label}</span>
         <span className="min-w-0 flex-1 truncate text-13 text-muted">{summary}</span>
         <span aria-hidden className={cn("flex-none text-subtle transition-transform", open && "rotate-90")}>
           ›
         </span>
       </button>
-      <div id={bodyId} hidden={!open} className="pb-4 pl-[132px] max-md:pl-0">
+      <div id={bodyId} hidden={!open} className="pb-4 pl-33 max-md:pl-0">
         {open ? children : null}
       </div>
     </div>

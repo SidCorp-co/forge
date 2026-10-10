@@ -128,7 +128,7 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
             <div className="border-b border-line-subtle px-5 max-md:px-2" data-testid="automation-tabs">
               <Tabs tabs={tabs} value={tab} onChange={(v) => setTab(v as AutomationTab)} />
             </div>
-            <div className={cn("grid min-h-[60vh] items-start", open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
+            <div className={cn("grid min-h-128 items-start", open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
                   <ListSearch noun={noun} value={params.get("q") ?? ""} onChange={(v) => setParams({ q: v || null })} />
@@ -138,7 +138,7 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
                     </Button>
                   ) : null}
                   {tab === "fires" && d.firesHasMore ? (
-                    <span className="text-12-5 text-subtle">
+                    <span className="text-13 text-subtle">
                       {t("schedules.newest", { n: d.fires.length, total: d.firesTotal })}
                     </span>
                   ) : null}

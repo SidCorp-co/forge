@@ -60,7 +60,7 @@ export function IssuePageMain(props: {
   const developer = view === "developer";
   const standing = standingQ.data?.standing;
   return (
-          <div className="max-w-[900px] px-8 pb-16 pt-5 max-md:px-4" data-testid="issue-page-main">
+          <div className="max-w-225 px-8 pb-16 pt-5 max-md:px-4" data-testid="issue-page-main">
             <div className="mb-3 flex justify-end" data-testid="issue-view-switch">
               <SegmentedControl
                 options={ISSUE_PAGE_VIEWS.map((v) => ({ value: v, label: t(`issues.view.${v}`) }))}

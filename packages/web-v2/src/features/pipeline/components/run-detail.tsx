@@ -227,7 +227,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
               )}
               {branch && (
                 <MonoTag>
-                  <Icon name="branch" size={12} className="mr-1 align-[-1px]" />
+                  <Icon name="branch" size={12} className="mr-1" />
                   {branch}
                 </MonoTag>
               )}
@@ -361,7 +361,7 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
         const isLast = i === run.steps.length - 1;
         return (
           <div key={step.jobType} className="flex gap-3">
-            <div className="flex w-[18px] flex-none flex-col items-center">
+            <div className="flex w-4.5 flex-none flex-col items-center">
               <span
                 className="mt-0.5 size-3.5 flex-none rounded-full"
                 style={{
@@ -372,7 +372,7 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
               />
               {!isLast && (
                 <span
-                  className="mt-1 min-h-[22px] w-0.5 flex-1"
+                  className="mt-1 min-h-5.5 w-0.5 flex-1"
                   style={{
                     background: state === "done" ? "var(--green-500)" : "var(--border-default)",
                   }}
@@ -382,7 +382,7 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
             <div className="min-w-0 flex-1 pb-4">
               <div className="flex items-center gap-2.5">
                 <span
-                  className="font-mono text-12-5 font-bold"
+                  className="font-mono text-13 font-bold"
                   style={{
                     color:
                       state === "running"
@@ -424,7 +424,7 @@ function CostTab({ run, loading }: { run: PipelineRunSummary | undefined; loadin
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-baseline gap-2">
-        <span className="font-sans text-34 font-extrabold leading-none tracking-tight text-fg">
+        <span className="font-sans text-24 font-extrabold leading-none tracking-tight text-fg">
           {formatUsd(c.estimatedCost)}
         </span>
         <span className="fg-body-sm text-subtle">

@@ -36,7 +36,7 @@ export function IntentPicker({ value, onChange }: { value: ComposerIntent; onCha
 /** A decision in a thread: the same row the decision logs draw, behind an accent bar so it reads apart. */
 export function DecisionInThread({ children }: { children: React.ReactNode }) {
   return (
-    <div className="border-l-[3px] pl-3" style={{ borderColor: "var(--green-500)" }} data-testid="thread-decision">
+    <div className="border-l-3 pl-3 border-ok-9" data-testid="thread-decision">
       {children}
     </div>
   );

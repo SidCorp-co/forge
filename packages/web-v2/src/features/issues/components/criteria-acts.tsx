@@ -170,13 +170,13 @@ export function RecordVerdict({ issueId, row }: { issueId: string; row: Criterio
                 data-testid="verdict-screenshot"
               />
               {refused ? (
-                <p role="alert" className="mt-1 text-12-5 text-danger" data-testid="verdict-evidence-refusal">
+                <p role="alert" className="mt-1 text-13 text-danger" data-testid="verdict-evidence-refusal">
                   {refusalText(t, refused)}
                 </p>
               ) : null}
               {isClip && screenshot ? (
                 <div className="mt-2 grid gap-1" data-testid="verdict-clip-chosen">
-                  <span className="text-12-5 text-muted">{t("issues.verdictAct.clipChosen", { name: screenshot.name, size: formatSize(screenshot.size) })}</span>
+                  <span className="text-13 text-muted">{t("issues.verdictAct.clipChosen", { name: screenshot.name, size: formatSize(screenshot.size) })}</span>
                   {clipUrl ? <video src={clipUrl} controls muted preload="metadata" className="max-h-48 w-full border-y border-line-subtle" /> : null}
                 </div>
               ) : null}
@@ -237,7 +237,7 @@ export function TieCriteria({
           <div className="grid gap-3" data-testid="tie-form">
             {bcs.isLoading ? <p className="text-13 text-subtle">{t("issues.steps.loading")}</p> : null}
             <RefusalLine error={bcs.error} testid="tie-read-refusal" />
-            <ul className="max-h-[50vh] divide-y divide-line-subtle overflow-y-auto border-y border-line-subtle">
+            <ul className="max-h-112 divide-y divide-line-subtle overflow-y-auto border-y border-line-subtle">
               {(bcs.data ?? []).map((bc) => (
                 <li key={bc.code} className="py-2" data-testid={`tie-${bc.code}`}>
                   <Checkbox
