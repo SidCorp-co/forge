@@ -56,7 +56,7 @@ function keepLog(line: string): void {
   if (logCut) return;
   if (logLength + line.length > start.logChars) {
     output.push(
-      `${line.slice(0, Math.max(0, start.logChars - logLength))}\n…[log cut at ${start.logChars} characters]`,
+      `${line.slice(0, Math.max(0, start.logChars - logLength))}\n…[log cut at its cap of ${start.logChars} characters (logChars)]`,
     );
     logCut = true;
     return;
@@ -157,19 +157,28 @@ function finish(done: Omit<WorkerDone, 'type' | 'output' | 'notifications'>): vo
 function stopOf(message: string): ScriptStop | null {
   if (Date.now() > start.deadline || /\binterrupted\b/.test(message)) return 'wallMs';
   if (/out of memory/i.test(message)) return 'memoryMb';
+  if (/stack overflow|maximum call stack/i.test(message)) return 'stackBytes';
   return null;
 }
 
 function capError(stop: ScriptStop, message: string): { name: string; message: string } {
-  return stop === 'wallMs'
-    ? {
+  switch (stop) {
+    case 'wallMs':
+      return {
         name: 'WallTimeLimit',
         message: `the script ran past its wall-time cap of ${start.wallMs} ms (wallMs) and was stopped`,
-      }
-    : {
+      };
+    case 'memoryMb':
+      return {
         name: 'MemoryLimit',
         message: `the script used more than its memory cap of ${start.memoryMb} MB (memoryMb) and was stopped (${message})`,
       };
+    case 'stackBytes':
+      return {
+        name: 'StackLimit',
+        message: `the script nested calls past its stack cap of ${start.stackBytes} bytes (stackBytes) and was stopped`,
+      };
+  }
 }
 
 function errorOf(vm: QuickJSContext, handle: QuickJSHandle): { name: string; message: string } {
