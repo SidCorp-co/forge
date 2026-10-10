@@ -31,7 +31,7 @@ export function composeCopy(files: Record<string, Strings>): Strings {
 }
 
 /** Every language's words as the copy files hold them: what core says has only its vi here. */
-export const PRODUCT_STRINGS: Strings = composeCopy(COPY_FILES as Record<string, Strings>);
+export const PRODUCT_STRINGS: Strings = composeCopy(COPY_FILES);
 
 // What core says (`@forge/contracts/said`) holds its own English, the one core's text is built
 // from; the copy files hold only the other languages' words for those keys.

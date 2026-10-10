@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation';
 import {
   createContext,
   useCallback,
-  useContext,
+  use,
   useEffect,
   useState,
   type ReactNode,
@@ -95,9 +95,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [router]);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, sessionEnded, login, register, logout }}>
+    <AuthContext value={{ user, isLoading, sessionEnded, login, register, logout }}>
       {children}
-    </AuthContext.Provider>
+    </AuthContext>
   );
 }
 
@@ -111,6 +111,6 @@ const defaultAuth: AuthState = {
 };
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
+  const ctx = use(AuthContext);
   return ctx ?? defaultAuth;
 }

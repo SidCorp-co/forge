@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { type RefObject, useEffect, useLayoutEffect, useRef } from 'react';
 import { isUuid } from '@/lib/api/ref-bridge';
 import { wsClient } from './client';
 
@@ -14,14 +14,17 @@ function subscribable(room: string): boolean {
 }
 
 /** When the reads this room covers began: the first time it was wanted, carried over a slug's room. */
-function useWantedSince(room: string | null | undefined, carryFromSlug: boolean): number {
-  const wanted = useRef<{ room: string | null | undefined; at: number } | null>(null);
-  const prior = wanted.current;
-  if (prior?.room !== room) {
+// Read in a layout effect: layout effects run before the passive ones in which the commit's queries
+// subscribe and start fetching, so the instant is taken before any read it covers begins.
+function useWantedSince(room: string | null | undefined, carryFromSlug: boolean): RefObject<{ room: string | null | undefined; at: number } | null> {
+  const wantedRef = useRef<{ room: string | null | undefined; at: number } | null>(null);
+  useLayoutEffect(() => {
+    const prior = wantedRef.current;
+    if (prior?.room === room) return;
     const carried = carryFromSlug && prior?.room && !subscribable(prior.room) ? prior.at : performance.now();
-    wanted.current = { room, at: carried };
-  }
-  return (wanted.current as { at: number }).at;
+    wantedRef.current = { room, at: carried };
+  }, [room, carryFromSlug]);
+  return wantedRef;
 }
 
 /**
@@ -29,22 +32,23 @@ function useWantedSince(room: string | null | undefined, carryFromSlug: boolean)
  * null/undefined to opt out (e.g. while data is still loading).
  */
 export function useRoom(room: string | null | undefined): void {
-  const since = useWantedSince(room, true);
+  const wantedRef = useWantedSince(room, true);
   useEffect(() => {
     if (!room || !subscribable(room)) return;
-    wsClient.subscribe(room, since);
+    wsClient.subscribe(room, wantedRef.current?.at ?? performance.now());
     return () => wsClient.unsubscribe(room);
-  }, [room, since]);
+  }, [room, wantedRef]);
 }
 
 export function useRooms(rooms: readonly string[]): void {
   const key = rooms.filter(subscribable).join(',');
-  const since = useWantedSince(key, false);
+  const wantedRef = useWantedSince(key, false);
   useEffect(() => {
     const list = key ? key.split(',') : [];
+    const since = wantedRef.current?.at ?? performance.now();
     for (const room of list) wsClient.subscribe(room, since);
     return () => {
       for (const room of list) wsClient.unsubscribe(room);
     };
-  }, [key, since]);
+  }, [key, wantedRef]);
 }

@@ -18,7 +18,7 @@ export function instantsOn(clock: EtaClock): BlockInstants {
   const copy = ETA_COPY[clock.lang];
   const calendar = (iso: string) => {
     const [, m, d] = iso.slice(0, 10).split("-").map(Number);
-    return copy.date(d as number, m as number);
+    return copy.date(d, m);
   };
   const day = (iso: string) => {
     if (DAY_ONLY.test(iso)) return calendar(iso);
@@ -54,7 +54,7 @@ export function readProseInstants(text: string, reading: InstantReading): string
     fence.lastIndex = at;
     const f = at === 0 || text[at - 1] === "\n" ? fence.exec(text) : null;
     if (f) {
-      const mark = f[1] as string;
+      const mark = f[1];
       const close = new RegExp(`\\n[ \\t]*${mark[0] === "`" ? "`" : "~"}{${mark.length},}[ \\t]*(?=\\n|$)`, "g");
       close.lastIndex = at + f[0].length - 1;
       const m = close.exec(text);
