@@ -6,6 +6,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, HANG, renderWithQuery } from "@/test/render";
+import type { AgentQuestion } from "@/features/questions/types";
 import type { CommentNode } from "../types";
 import { CommentThread } from "./comment-thread";
 
@@ -81,6 +82,104 @@ describe("recording a decision on an issue", () => {
     await user.click(within(box).getByRole("button", { name: "Record decision" }));
     expect(await within(box).findByRole("alert")).toHaveTextContent("only a person may record a decision");
     expect(within(box).getByRole("textbox", { name: "Decision" })).toHaveValue("ship it");
+  });
+});
+
+// FB-80 (live dev.227, hop ISS-185): two open free-text questions on the issue, and the composer
+// offered none, because it read `currentStep`, which `GET /questions?issueId=` never carries. The
+// question here is that read's own shape: every round as `steps`, the open one's number as `round`.
+describe("a decision that answers the issue's open question", () => {
+  const issueRead: AgentQuestion = {
+    id: "q1",
+    projectId: "p1",
+    issueId: "i1",
+    status: "open",
+    blockerKind: "human",
+    steps: [
+      { round: 1, prompt: "Which tour runs first?", askedAt: "2026-10-09T00:00:00Z", answerShape: "free_text", needed: "the tour", answeredAt: "2026-10-09T01:00:00Z", answerText: "Sales" },
+      { round: 2, prompt: "Which flag guards it?", askedAt: "2026-10-09T02:00:00Z", answerShape: "free_text", needed: "the flag" },
+    ],
+    round: 2,
+    prompt: "Which flag guards it?",
+    askedAt: "2026-10-09T02:00:00Z",
+    answerShape: "free_text",
+    needed: "the flag",
+    recommendedOptionId: "",
+    locked: false,
+    options: [],
+    maxRounds: 3,
+    voidReason: null,
+    endedReason: null,
+    parkDeadlineAt: null,
+    createdAt: "2026-10-09T00:00:00Z",
+    updatedAt: "2026-10-09T02:00:00Z",
+  };
+  const withQuestion = (c: { method: string; path: string }) =>
+    c.method === "GET" && c.path.startsWith("/questions?") ? { body: { questions: [issueRead] } } : undefined;
+
+  it("offers the choice, ticked, and the decision answers the open round", async () => {
+    const calls = fakeCore((c) => withQuestion(c) ?? { status: 201, body: decided });
+    renderWithQuery(<CommentThread issueId="i1" comments={[]} members={[]} />);
+    const { user, box } = await openDecisionMode();
+    const settles = await within(box).findByRole("checkbox", { name: /^This answers the open question/ });
+    expect(settles).toBeChecked();
+    expect(box).toHaveTextContent("Which flag guards it?");
+    await user.type(within(box).getByRole("textbox", { name: "Decision" }), "ship behind the flag");
+    await user.type(within(box).getByRole("textbox", { name: "Reason" }), "the migration is not reversible");
+    await user.click(within(box).getByRole("button", { name: "Record decision" }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        method: "POST",
+        path: "/questions/q1/answer",
+        body: { round: 2, text: "ship behind the flag\n\nthe migration is not reversible" },
+      }),
+    );
+    expect(calls).toContainEqual({
+      method: "POST",
+      path: "/issues/i1/comments",
+      body: { intent: "decision", decision: { decision: "ship behind the flag", reason: "the migration is not reversible" } },
+    });
+  });
+
+  // hop ISS-185 had two: the person names which one the decision answers, or none
+  it("with two open, asks which one it answers and answers only that one", async () => {
+    const other: AgentQuestion = { ...issueRead, id: "q2", steps: [{ round: 1, prompt: "Does it show on a phone?", askedAt: "2026-10-09T03:00:00Z", answerShape: "free_text", needed: "yes or no" }], round: 1, prompt: "Does it show on a phone?" };
+    const calls = fakeCore((c) =>
+      c.method === "GET" && c.path.startsWith("/questions?") ? { body: { questions: [issueRead, other] } } : { status: 201, body: decided },
+    );
+    renderWithQuery(<CommentThread issueId="i1" comments={[]} members={[]} />);
+    const { user, box } = await openDecisionMode();
+    const which = within(await within(box).findByTestId("settles-which"));
+    expect(which.getByRole("radio", { name: "Which flag guards it?" })).toBeChecked();
+    await user.click(which.getByRole("radio", { name: "Does it show on a phone?" }));
+    await user.type(within(box).getByRole("textbox", { name: "Decision" }), "yes");
+    await user.type(within(box).getByRole("textbox", { name: "Reason" }), "reps use phones");
+    await user.click(within(box).getByRole("button", { name: "Record decision" }));
+    await waitFor(() => expect(calls).toContainEqual({ method: "POST", path: "/questions/q2/answer", body: { round: 1, text: "yes\n\nreps use phones" } }));
+    expect(calls.filter((c) => c.path === "/questions/q1/answer")).toEqual([]);
+  });
+
+  it("with None picked, records the decision and answers no question", async () => {
+    const other: AgentQuestion = { ...issueRead, id: "q2", round: 1, prompt: "Does it show on a phone?" };
+    const calls = fakeCore((c) =>
+      c.method === "GET" && c.path.startsWith("/questions?") ? { body: { questions: [issueRead, other] } } : { status: 201, body: decided },
+    );
+    renderWithQuery(<CommentThread issueId="i1" comments={[]} members={[]} />);
+    const { user, box } = await openDecisionMode();
+    await user.click(await within(box).findByRole("radio", { name: "None of these questions" }));
+    await user.type(within(box).getByRole("textbox", { name: "Decision" }), "ship it");
+    await user.type(within(box).getByRole("textbox", { name: "Reason" }), "safe");
+    await user.click(within(box).getByRole("button", { name: "Record decision" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/issues/i1/comments")).toBe(true));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls.filter((c) => c.path.endsWith("/answer"))).toEqual([]);
+  });
+
+  it("offers none when the issue has no open question", async () => {
+    fakeCore(noOpenQuestion);
+    renderWithQuery(<CommentThread issueId="i1" comments={[]} members={[]} />);
+    const { box } = await openDecisionMode();
+    expect(within(box).queryByRole("checkbox")).toBeNull();
   });
 });
 

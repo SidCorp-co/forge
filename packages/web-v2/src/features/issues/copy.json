@@ -419,6 +419,8 @@
     "issues.module.open": "Open the module",
     "issues.module.overviewOf": "Overview of {name}",
     "issues.thread.settlesQuestion": "This answers the open question",
+    "issues.thread.settlesWhich": "This decision answers",
+    "issues.thread.settlesNone": "None of these questions",
     "issues.rail.retract": "Retract",
     "issues.rail.waitOn": "Wait for",
     "issues.rail.waitOnPlaceholder": "ISS-12",
