@@ -7,9 +7,11 @@ export async function backfillMarkedIn(tx: Tx, key: string): Promise<boolean> {
   return (rows[0]?.n ?? 0) > 0;
 }
 
-/** Record a backfill's completion inside a drizzle transaction. */
-export async function markBackfillIn(tx: Tx, key: string): Promise<void> {
+/** Record a backfill's completion inside a drizzle transaction, with what it did where it says. */
+export async function markBackfillIn(tx: Tx, key: string, report?: object): Promise<void> {
   await tx.execute(
-    sql`INSERT INTO backfill_markers (key) VALUES (${key}) ON CONFLICT (key) DO NOTHING`,
+    report === undefined
+      ? sql`INSERT INTO backfill_markers (key) VALUES (${key}) ON CONFLICT (key) DO NOTHING`
+      : sql`INSERT INTO backfill_markers (key, report) VALUES (${key}, ${JSON.stringify(report)}::jsonb) ON CONFLICT (key) DO NOTHING`,
   );
 }

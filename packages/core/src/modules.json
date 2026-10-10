@@ -214,7 +214,7 @@
     "credentials": {
       "kind": "platform",
       "context": "platform",
-      "owns": ["mcpAuditLog", "personalAccessTokens"],
+      "owns": ["mcpAuditLog", "personalAccessTokens", "tokenFenceChanges"],
       "serves": [
         "REQ-27",
         "personal-data-flow#ds-audit",
