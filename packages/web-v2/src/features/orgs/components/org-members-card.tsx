@@ -136,7 +136,6 @@ function OwnerActions({ org, onDeleted }: { org: OrgListItem; onDeleted: () => v
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
               placeholder={org.name}
-              autoFocus
             />
           </Field>
           <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">

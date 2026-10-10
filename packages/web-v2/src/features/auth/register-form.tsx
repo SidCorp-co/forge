@@ -62,7 +62,6 @@ export function RegisterForm() {
           autoComplete="email"
           inputMode="email"
           spellCheck={false}
-          autoFocus
           placeholder="you@studio.com"
           value={email}
           onChange={(e) => {

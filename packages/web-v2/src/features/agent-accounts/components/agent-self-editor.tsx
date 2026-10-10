@@ -3,7 +3,7 @@
 // The self an org admin writes for one agent: who it is (soul, greeting,
 // glyph), what it always does (standing instructions), and when it speaks
 // (presence). Stored in the database, rendered into every turn the agent takes.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { AgentSelf, AgentSelfPatch, AnswerInGroupMode } from "@forge/contracts/assistant-self";
 import {
   Button,
@@ -97,11 +97,10 @@ export function AgentSelfEditor({
   const selfQ = useAgentSelf(orgId, agentUserId);
   const save = useUpdateAgentSelf(orgId);
   const { toast } = useToast();
-  const [draft, setDraft] = useState<Draft | null>(null);
+  // only the edit is local: until one is made, the draft is what core holds
+  const [edit, setEdit] = useState<Draft | null>(null);
+  const draft = edit ?? (selfQ.data ? draftOf(selfQ.data) : null);
   const t = useCopy();
-  useEffect(() => {
-    if (selfQ.data) setDraft(draftOf(selfQ.data));
-  }, [selfQ.data]);
 
   if (selfQ.isError) {
     return (
@@ -114,8 +113,7 @@ export function AgentSelfEditor({
     );
   }
   if (selfQ.isLoading || !draft) return <Skeleton className="h-40 w-full rounded-md" />;
-  const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
-    setDraft((d) => (d ? { ...d, [key]: value } : d));
+  const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setEdit({ ...draft, [key]: value });
 
   async function onSave() {
     if (!draft) return;
