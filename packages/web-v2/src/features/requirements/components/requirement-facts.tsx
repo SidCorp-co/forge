@@ -135,6 +135,47 @@ export function IssueShippedLink({ shippedIn, slug }: { shippedIn: Shipped; slug
   );
 }
 
+/** Where its design binds a contract element: the step, the element, what broke it, and the issues building it. */
+function RequirementBindings({ d, slug }: { d: RequirementDetail; slug: string }) {
+  const t = useCopy();
+  const label = useLabel();
+  if (d.bindings.length === 0) return null;
+  return (
+    <FactsGroup title={t("requirements.facts.bindings")} count={`${d.bindings.length}`} testId="facts-bindings">
+      <ul className="grid gap-1">
+        {d.bindings.map((b) => (
+          <li
+            key={`${b.workflowId}|${b.step}|${b.contract}|${b.element}`}
+            className="grid min-w-0 gap-0.5 text-13"
+            data-testid="rail-binding"
+          >
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0 flex-1 truncate" title={t("requirements.facts.bindingTitle", { flow: b.flow, r: b.designRevision, step: b.step, contract: `${b.contract}${b.pinnedVersion ? `@${b.pinnedVersion}` : ""}` })}>
+                {b.step} <span className="font-mono text-12 text-subtle">{b.element}</span>
+              </span>
+              {b.brokenBy ? (
+                <span className="flex-none text-12 text-danger" title={t("requirements.facts.brokeTitle", { contract: b.contract, v: b.brokenBy })}>
+                  {t("requirements.facts.brokenBy", { v: b.brokenBy })}
+                </span>
+              ) : null}
+            </span>
+            {b.buildingIssues.length > 0 ? (
+              <span className="flex flex-wrap items-center gap-1 text-12 text-subtle" data-testid="rail-binding-builds">
+                {t("requirements.facts.builtBy")}
+                {b.buildingIssues.map((i) => (
+                  <Link key={i.issueId} href={issueHref(slug, i.displayId)} title={`${i.title} (${label("issueStatus", i.status)})`} className="font-mono text-link hover:underline">
+                    {i.displayId}
+                  </Link>
+                ))}
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </FactsGroup>
+  );
+}
+
 export function RequirementProperties({
   d,
   slug,
@@ -149,7 +190,6 @@ export function RequirementProperties({
   onOpenRevisions?: () => void;
 }) {
   const t = useCopy();
-  const label = useLabel();
   const time = useTimeFormat();
   const forecast = useRequirementForecast(projectId, d.key).data;
   const s = d.standing;
@@ -237,40 +277,7 @@ export function RequirementProperties({
         )}
       </FactsGroup>
 
-      {d.bindings.length > 0 ? (
-        <FactsGroup title={t("requirements.facts.bindings")} count={`${d.bindings.length}`} testId="facts-bindings">
-          <ul className="grid gap-1">
-            {d.bindings.map((b) => (
-              <li
-                key={`${b.workflowId}|${b.step}|${b.contract}|${b.element}`}
-                className="grid min-w-0 gap-0.5 text-13"
-                data-testid="rail-binding"
-              >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="min-w-0 flex-1 truncate" title={t("requirements.facts.bindingTitle", { flow: b.flow, r: b.designRevision, step: b.step, contract: `${b.contract}${b.pinnedVersion ? `@${b.pinnedVersion}` : ""}` })}>
-                    {b.step} <span className="font-mono text-12 text-subtle">{b.element}</span>
-                  </span>
-                  {b.brokenBy ? (
-                    <span className="flex-none text-12 text-danger" title={t("requirements.facts.brokeTitle", { contract: b.contract, v: b.brokenBy })}>
-                      {t("requirements.facts.brokenBy", { v: b.brokenBy })}
-                    </span>
-                  ) : null}
-                </span>
-                {b.buildingIssues.length > 0 ? (
-                  <span className="flex flex-wrap items-center gap-1 text-12 text-subtle" data-testid="rail-binding-builds">
-                    {t("requirements.facts.builtBy")}
-                    {b.buildingIssues.map((i) => (
-                      <Link key={i.issueId} href={issueHref(slug, i.displayId)} title={`${i.title} (${label("issueStatus", i.status)})`} className="font-mono text-link hover:underline">
-                        {i.displayId}
-                      </Link>
-                    ))}
-                  </span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </FactsGroup>
-      ) : null}
+      <RequirementBindings d={d} slug={slug} />
 
       {needs.length > 0 ? (
         <FactsGroup title={t("requirements.facts.needs")}>

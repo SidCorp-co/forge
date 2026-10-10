@@ -26,6 +26,7 @@ export function ItemMemory({ projectId, slug, cites }: { projectId: string; slug
   const actError = acts.correct.error ?? acts.retire.error ?? acts.verify.error;
   const busy = acts.correct.isPending || acts.retire.isPending || acts.verify.isPending;
   const hidden = q.data ? (retired ? q.data.counts.live : q.data.counts.retired) : 0;
+  const none = retired ? t("memory.itemNoneRetired") : cites === null ? t("memory.projectNone") : t("memory.itemNone", { ref: cites });
   return (
     <section className="grid gap-3" data-testid="item-memory" aria-label={t("memory.title")}>
       <ViewHeading>{t("memory.title")}</ViewHeading>
@@ -35,7 +36,7 @@ export function ItemMemory({ projectId, slug, cites }: { projectId: string; slug
       ) : !q.data ? (
         <ProjectLoader label={t("memory.loading")} />
       ) : q.data.items.length === 0 ? (
-        <p className="text-13 text-subtle">{retired ? t("memory.itemNoneRetired") : cites === null ? t("memory.projectNone") : t("memory.itemNone", { ref: cites })}</p>
+        <p className="text-13 text-subtle">{none}</p>
       ) : (
         <ul className="-mx-5 border-t border-line-subtle max-md:-mx-3">
           {q.data.items.map((e) => (

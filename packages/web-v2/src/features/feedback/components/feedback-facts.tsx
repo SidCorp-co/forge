@@ -241,6 +241,44 @@ function VerifiedFact({ f }: { f: FeedbackView }) {
   );
 }
 
+/** What carries the feedback onward: its route, the records on it, and the feedback it absorbed as duplicates. */
+function WhatCarriesIt({ f, slug }: { f: FeedbackView; slug: string }) {
+  const tr = useCopy();
+  const r = f.route;
+  const carrierType = r?.route === "issue" ? "issue" : r?.route === "new_requirement" ? "requirement" : r?.route === "duplicate" ? "feedback" : "other";
+  return (
+  <FactsGroup title={tr("feedback.fact.carriedBy")} testId="facts-route">
+    {!r ? (
+      <FactsEmpty>{tr("feedback.fact.notRouted")}</FactsEmpty>
+    ) : (
+      <div className="grid gap-1.5 text-13">
+        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <EnumBadge family="feedbackRoute" value={r.route} />
+        </span>
+        {r.carriers.length ? (
+          <ul className="grid gap-1" data-testid="facts-route-carriers">
+            {keyedByContent(r.carriers, (c) => c.key ?? c.status ?? "").map(({ key, item: c }) => (
+              <li key={key} className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid="facts-route-carrier">
+                {c.key && carrierType !== "other" ? <KeyLink type={carrierType} k={c.key} slug={slug} /> : null}
+                {c.status && CARRIER_FAMILY[r.route] ? <StatusBadge family={CARRIER_FAMILY[r.route] as StatusFamily} value={c.status} /> : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {r.answer ? <p className="whitespace-pre-wrap text-13 text-muted">{r.answer}</p> : null}
+      </div>
+    )}
+    {f.duplicates.length > 0 ? (
+      <Fact label={tr("feedback.fact.duplicates")}>
+        {f.duplicates.map((k) => (
+          <KeyLink key={k} type="feedback" k={k} slug={slug} />
+        ))}
+      </Fact>
+    ) : null}
+  </FactsGroup>
+  );
+}
+
 export function LinkedFeedback({
   f,
   slug,
@@ -258,8 +296,6 @@ export function LinkedFeedback({
   const language = useInterfaceLanguage();
   const t = f.target;
   const stepName = (id: string) => t.stepNames?.[id] ?? id;
-  const r = f.route;
-  const carrierType = r?.route === "issue" ? "issue" : r?.route === "new_requirement" ? "requirement" : r?.route === "duplicate" ? "feedback" : "other";
   return (
     <div data-testid="feedback-facts">
       <FactsGroup title={tr("feedback.fact.status")}>
@@ -309,35 +345,7 @@ export function LinkedFeedback({
         {f.whereSeen && t.type !== "screen" ? <p className="mt-1.5 text-13 text-muted">{tr("feedback.fact.seenAt", { where: f.whereSeen })}</p> : null}
       </FactsGroup>
 
-      <FactsGroup title={tr("feedback.fact.carriedBy")} testId="facts-route">
-        {!r ? (
-          <FactsEmpty>{tr("feedback.fact.notRouted")}</FactsEmpty>
-        ) : (
-          <div className="grid gap-1.5 text-13">
-            <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-              <EnumBadge family="feedbackRoute" value={r.route} />
-            </span>
-            {r.carriers.length ? (
-              <ul className="grid gap-1" data-testid="facts-route-carriers">
-                {keyedByContent(r.carriers, (c) => c.key ?? c.status ?? "").map(({ key, item: c }) => (
-                  <li key={key} className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid="facts-route-carrier">
-                    {c.key && carrierType !== "other" ? <KeyLink type={carrierType} k={c.key} slug={slug} /> : null}
-                    {c.status && CARRIER_FAMILY[r.route] ? <StatusBadge family={CARRIER_FAMILY[r.route] as StatusFamily} value={c.status} /> : null}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {r.answer ? <p className="whitespace-pre-wrap text-13 text-muted">{r.answer}</p> : null}
-          </div>
-        )}
-        {f.duplicates.length > 0 ? (
-          <Fact label={tr("feedback.fact.duplicates")}>
-            {f.duplicates.map((k) => (
-              <KeyLink key={k} type="feedback" k={k} slug={slug} />
-            ))}
-          </Fact>
-        ) : null}
-      </FactsGroup>
+      <WhatCarriesIt f={f} slug={slug} />
 
       <FactsGroup title={tr("feedback.fact.reporter")}>
         <Fact label={tr("feedback.fact.sentBy")}>
