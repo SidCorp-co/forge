@@ -11,7 +11,7 @@
 // The markup is a radiogroup and stays one: `fieldset` + `legend.sr-only` +
 // `input[type=radio]`, one tab stop with the arrows moving between options.
 
-import { type RefObject, useContext, useRef, useState } from "react";
+import { type RefObject, use, useRef, useState } from "react";
 import Link from "next/link";
 import { Icon, Menu, Popover } from "@/design";
 import { ComposerWidthContext } from "@/features/chat";
@@ -218,7 +218,7 @@ export function ConversationModeControl({
 }) {
   const [blockedOpen, setBlockedOpen] = useState(false);
   const holderRef = useRef<HTMLDivElement>(null);
-  const composerWidth = useContext(ComposerWidthContext);
+  const composerWidth = use(ComposerWidthContext);
   const t = useCopy();
   const asMenu = narrow ?? (composerWidth !== null && composerWidth < TRACK_MIN_WIDTH);
 

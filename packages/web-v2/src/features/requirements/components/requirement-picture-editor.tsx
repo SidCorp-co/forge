@@ -86,7 +86,7 @@ export function PictureEditor({
   const t = useCopy();
   const own = picture?.kind === kind ? picture : null;
   const [alt, setAlt] = useState(own?.alt ?? "");
-  const [title, setTitle] = useState(titleOf(own));
+  const [title, setTitle] = useState(() => titleOf(own));
   const [flow, setFlow] = useState(() => (own?.kind === "flow" ? flowToLines(own.content as Content<"flow">) : { steps: "", links: "" }));
   const [rows, setRows] = useState<ExampleTableContent["rows"]>(() => tableRowsOf(own));
   const storedChart = own?.kind === "chart" ? chartDraftOf(own.content as Content<"chart">) : null;
