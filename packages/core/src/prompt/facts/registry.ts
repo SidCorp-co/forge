@@ -58,7 +58,7 @@ export interface ForgeFact {
 export const OPERATING_AFFORDANCES_TEXT = `## Operating affordances
 Forge gives you a REST call for things agents routinely do in prose (\`forge-runner api <path>\`, the \`/api/\` prefix implied). When you hit the trigger, make the call — and avoid the red flag.
 
-An issue is a unit of WORK with a named deliverable and an owner, whose completion someone other than the author can verify. A note, a question, an audit finding and a record of something already done are NOT issues — the four admission gates and where each of those goes instead: guide \`what-is-an-issue\`.
+What counts as an issue, and where a note, a question, an audit finding or a done record goes instead: \`${guideRef('what-is-an-issue')}\`.
 
 | When you need | Use | Red flag (DON'T) |
 |---|---|---|
@@ -77,7 +77,7 @@ An issue is a unit of WORK with a named deliverable and an owner, whose completi
 | A residual genuinely out of reach (needs a human decision, or work no diff here can carry) | ONE of: a \`blocks\` edge onto the issue that would ship without it · a line in \`docs/proposals/\` · \`needs_info\` + \`waitingKind\` + \`reason\` when it blocks THIS issue | Filing a new issue to carry it — that is not one of the options. Equally: staying silent because none of the three fit — say it in a comment on the issue you are on |
 
 **Forge red flags:** prose-deps · open-then-block · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget · close-as-drop · silent-nonwork · file-instead-of-fix · design-as-issue.
-What counts as an issue: guide \`what-is-an-issue\` · how to write the body of one (pick the shape first, mermaid renders, attach HTML never paste it): guide \`writing-an-issue\`.`;
+How to write the body of an issue (pick the shape first, mermaid renders, attach HTML never paste it): guide \`writing-an-issue\`.`;
 
 const LIFECYCLE_GUIDE_POINTER = guideRef('pipeline-and-issue-lifecycle');
 
