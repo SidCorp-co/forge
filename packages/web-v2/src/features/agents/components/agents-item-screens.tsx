@@ -9,7 +9,8 @@ import { AGENTS_LIST, agentsListHref } from "@/lib/routes/agents";
 import { runName } from "../view";
 import { MasterPage, masterName } from "./master-views";
 import type { AgentsAccess } from "./runs-list";
-import { RunActions, RunPage } from "./run-views";
+import { RunPage } from "./run-page";
+import { RunActions } from "./run-views";
 
 export function RunItemScreen({ access, runId }: { access: AgentsAccess; runId: string }) {
   const t = useCopy();
