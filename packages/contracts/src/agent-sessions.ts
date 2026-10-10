@@ -29,7 +29,8 @@ export const AGENT_SESSION_REFUSAL_CODES = [
 	"SESSION_METADATA_CORE_OWNED",
 ] as const;
 
-export type AgentSessionRefusalCode = (typeof AGENT_SESSION_REFUSAL_CODES)[number];
+export type AgentSessionRefusalCode =
+	(typeof AGENT_SESSION_REFUSAL_CODES)[number];
 export const AGENT_SESSION_REFUSAL_STATUSES = {
 	SESSION_STALE: 409,
 	TURN_STALE: 409,
@@ -65,3 +66,5 @@ export const RUN_SESSION_KIND = "run_session";
 export const RUN_ISSUES_METADATA_KEY = "runIssues";
 export const RUN_GROUP_METADATA_KEY = "runGroup";
 export const RUN_ISSUE_STATUSES_METADATA_KEY = "runIssueStatuses";
+/** What each carried issue was given when the run opened (`run-standing.ts:RunGiven`); nothing rewrites it. */
+export const RUN_GIVEN_METADATA_KEY = "runGiven";

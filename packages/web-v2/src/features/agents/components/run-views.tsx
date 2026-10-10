@@ -46,6 +46,7 @@ import { parkRefusalText, useCancelRun } from "@/features/run-control/hooks";
 import { RUNS_STANDING_ROOT, useRunDetail } from "../hooks";
 import { masterHref, runHref } from "@/lib/routes/agents";
 import type { RunEvent, RunStanding, RunStandingDetail } from "../types";
+import { RunGivenView } from "./run-given";
 import { actorName, fmtTime, leaseLeft, runBanner, runKey, runName, stamp, stepLabel, waitingView } from "../view";
 
 const isFinal = (s: RunState) => (RUN_FINAL_STATES as readonly string[]).includes(s);
@@ -314,7 +315,7 @@ export function RunPeek({
   );
 }
 
-export const RUN_TABS = ["overview", "attempts", "events", "lease"] as const;
+export const RUN_TABS = ["overview", "given", "attempts", "events", "lease"] as const;
 
 function Overview({ r }: { r: RunStanding }) {
   const t = useCopy();
@@ -549,6 +550,7 @@ export function RunPage({ projectId, slug, runId }: { projectId: string; slug: s
         const r = d.run;
         const tabs = [
           { value: "overview" as const, label: t("runs.tab.overview") },
+          { value: "given" as const, label: t("runs.tab.given") },
           { value: "attempts" as const, label: t("runs.tab.attempts"), count: Math.max(d.attempts.length, 1) },
           { value: "events" as const, label: t("runs.tab.events"), count: d.events.length },
           { value: "lease" as const, label: t("runs.tab.lease") },
@@ -568,6 +570,7 @@ export function RunPage({ projectId, slug, runId }: { projectId: string; slug: s
             <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="run-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("runs.tab.overview")}>
               {tab === "overview" ? <Overview r={r} /> : null}
+              {tab === "given" ? <RunGivenView given={d.given ?? null} slug={slug} /> : null}
               {tab === "attempts" ? <Attempts d={d} slug={slug} /> : null}
               {tab === "events" ? <Events d={d} /> : null}
               {tab === "lease" ? <Lease r={r} /> : null}

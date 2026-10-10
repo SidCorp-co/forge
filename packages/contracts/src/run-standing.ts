@@ -6,12 +6,12 @@
 // stuck is computed in core and nowhere else (ISS-109, decision 7 on the design): a live run nothing
 // moves reads `stuck` with its rule, since and evidence row, so every screen reads one rule
 
-import type { Said } from "./said.js";
 import type { FailureCause } from "./failure-causes.js";
-import type { IssueLeaseVerdict } from "./issue-standing.js";
 import type { IssueStatus } from "./issue-machine.js";
+import type { IssueLeaseVerdict } from "./issue-standing.js";
 import type { WorkStep } from "./issue-vocabulary.js";
 import type { MasterStanding } from "./master-standing.js";
+import type { Said } from "./said.js";
 import type {
 	Standing,
 	StandingGroup,
@@ -475,9 +475,32 @@ export interface RunEvent {
 	source: string;
 }
 
+/**
+ * What one issue was given when its run opened (REQ-1 BC-3, REQ-4 BC-12): the requirement revision
+ * it was planned on and the one current then, the design revisions and contract versions the
+ * requirement's baseline pinned, the workflow it builds, and its live criteria with the BC each
+ * traces. Recorded once at the open, so a later revision never rewrites what a run worked from.
+ */
+export interface RunGivenIssue {
+	requirement: {
+		key: string;
+		plannedRevision: number | null;
+		currentRevision: number | null;
+	} | null;
+	designs: { flow: string; revision: number }[];
+	contracts: { contract: string; version: string }[];
+	builds: { flow: string; approvedRevision: number | null } | null;
+	criteria: { n: number; traces: string | null }[];
+}
+
+/** Each carried issue's key to what it was given; absent from a run opened before it was recorded. */
+export type RunGiven = Record<string, RunGivenIssue>;
+
 export interface RunStandingDetail {
 	generatedAt: string;
 	run: RunStanding;
+	/** What the run was given at its open; null for a run opened before this was recorded. */
+	given: RunGiven | null;
 	attempts: RunAttemptRow[];
 	events: RunEvent[];
 	eventsHasMore: boolean;
@@ -490,7 +513,10 @@ export const MACHINE_RESUMED_PAUSE_KINDS: readonly string[] = [];
 export const HUMAN_RESUMED_PAUSE_KINDS = ["stage_stalled"] as const;
 
 /** Every machine pause-reason kind that still has code able to clear it. `pauseReason` is written as `<kind>:<detail>`; the orphaned-pause sweep frees any run whose kind is absent here. */
-export const LIVE_PAUSE_REASON_KINDS = [...MACHINE_RESUMED_PAUSE_KINDS, ...HUMAN_RESUMED_PAUSE_KINDS] as const;
+export const LIVE_PAUSE_REASON_KINDS = [
+	...MACHINE_RESUMED_PAUSE_KINDS,
+	...HUMAN_RESUMED_PAUSE_KINDS,
+] as const;
 
 export type PauseReasonKind = (typeof LIVE_PAUSE_REASON_KINDS)[number];
 /** True when `reason` names a kind that still exists in this build. */
@@ -519,11 +545,17 @@ export interface PauseDescription {
 }
 
 /** Read a `pauseReason` as the three things a banner needs: which kind holds the run, what its detail names, and who ends it. */
-export function describePause(reason: string | null | undefined): PauseDescription {
+export function describePause(
+	reason: string | null | undefined,
+): PauseDescription {
 	if (!reason) return { kind: null, detail: null, resumer: "operator" };
 	const separator = reason.indexOf(":");
 	const kind = separator === -1 ? reason : reason.slice(0, separator);
 	const detail = separator === -1 ? null : reason.slice(separator + 1) || null;
 	if (pauseResumesItself(reason)) return { kind, detail, resumer: "machine" };
-	return { kind, detail, resumer: isLivePauseReason(reason) ? "operator" : "sweeper" };
+	return {
+		kind,
+		detail,
+		resumer: isLivePauseReason(reason) ? "operator" : "sweeper",
+	};
 }

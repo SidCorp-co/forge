@@ -374,7 +374,18 @@
     "runs.unit.toolCall.one": "{n} tool call",
     "runs.waitingOnWho": "Waiting on {who} ·",
     "runs.waitingOnYou": "Waiting on you ·",
-    "runs.whyStuck": "Why it is stuck"
+    "runs.whyStuck": "Why it is stuck",
+    "runs.given.builds": "Builds",
+    "runs.given.contracts": "Contracts",
+    "runs.given.criteria": "Criteria",
+    "runs.given.designs": "Designs",
+    "runs.given.noIssues": "This run carried no issue.",
+    "runs.given.none": "None",
+    "runs.given.notRecorded": "Opened before runs recorded what they were given.",
+    "runs.given.requirement": "Requirement",
+    "runs.given.revisions": "planned on r{planned}, r{now} at open",
+    "runs.given.unapproved": "not approved",
+    "runs.tab.given": "Given"
   },
   "vi": {
     "agents.col.meta": "Người giữ · tuổi",
