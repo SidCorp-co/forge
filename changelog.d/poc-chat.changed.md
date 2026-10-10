@@ -1,1 +1,1 @@
-**Chat reaches models only through the gateway and does more from one conversation.** It edits an open idea preview, records feedback from a requirement's room, and reports read cleaner; masters write in the project's language.
+**Chat reaches models only through the gateway and does more from one conversation.** It edits idea previews and records feedback; masters write in the project's language; alerts say when their level changed; storefront MCP credentials stay behind a relay.
