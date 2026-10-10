@@ -1,6 +1,6 @@
 // The automation feature's reads: one key factory and its queryOptions. Every automation read sits
 // under `['automation', projectId]`, so a write that moves a schedule, fire or report invalidates it.
-import { queryOptions } from "@tanstack/react-query";
+import { readOf } from "@/lib/api/query-kit";
 import { automationApi } from "./api";
 import { schedulesApi } from "./schedule-api";
 
@@ -16,18 +16,12 @@ export const automationKeys = {
 };
 
 export const automationQueries = {
-  standing: (projectId: string | undefined) =>
-    queryOptions({ queryKey: automationKeys.standing(projectId), queryFn: () => automationApi.standing(projectId as string), enabled: !!projectId }),
-  schedule: (projectId: string | undefined, id: string, enabled: boolean) =>
-    queryOptions({
-      queryKey: automationKeys.schedule(projectId, id),
-      queryFn: () => automationApi.schedule(projectId as string, id),
-      enabled: enabled && !!projectId && !!id,
-    }),
-  fire: (projectId: string | undefined, id: string) =>
-    queryOptions({ queryKey: automationKeys.fire(projectId, id), queryFn: () => automationApi.fire(projectId as string, id), enabled: !!projectId && !!id }),
-  report: (projectId: string | undefined, id: string) =>
-    queryOptions({ queryKey: automationKeys.report(projectId, id), queryFn: () => automationApi.report(projectId as string, id), enabled: !!projectId && !!id }),
-  scheduleList: (projectId: string | undefined) =>
-    queryOptions({ queryKey: automationKeys.scheduleList(projectId), queryFn: () => schedulesApi.list(projectId as string), enabled: !!projectId }),
+  standing: (projectId: string | undefined) => readOf(automationKeys.standing(projectId), () => automationApi.standing(projectId as string)),
+  schedule: (projectId: string | undefined, id: string, enabled: boolean) => ({
+    ...readOf(automationKeys.schedule(projectId, id), () => automationApi.schedule(projectId as string, id)),
+    enabled: enabled && !!projectId && !!id,
+  }),
+  fire: (projectId: string | undefined, id: string) => readOf(automationKeys.fire(projectId, id), () => automationApi.fire(projectId as string, id)),
+  report: (projectId: string | undefined, id: string) => readOf(automationKeys.report(projectId, id), () => automationApi.report(projectId as string, id)),
+  scheduleList: (projectId: string | undefined) => readOf(automationKeys.scheduleList(projectId), () => schedulesApi.list(projectId as string)),
 };

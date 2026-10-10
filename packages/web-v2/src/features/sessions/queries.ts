@@ -1,6 +1,6 @@
 // The sessions feature's reads: one key factory and its queryOptions. The key shapes are the ones the
 // WebSocket router invalidates by prefix (`lib/ws/event-router.ts`), so they stay as they are.
-import { queryOptions } from "@tanstack/react-query";
+import { readOf } from "@/lib/api/query-kit";
 import { type ListSessionsOpts, sessionsApi } from "./api";
 
 export const sessionsKeys = {
@@ -12,17 +12,7 @@ export const sessionsKeys = {
 };
 
 export const sessionsQueries = {
-  list: (opts: ListSessionsOpts) => queryOptions({ queryKey: sessionsKeys.list(opts), queryFn: () => sessionsApi.list(opts) }),
-  queueStats: (projectId: string | undefined) =>
-    queryOptions({
-      queryKey: sessionsKeys.queueStats(projectId),
-      queryFn: () => sessionsApi.queueStats(projectId as string),
-      enabled: !!projectId,
-    }),
-  cost: (sessionId: string | undefined) =>
-    queryOptions({
-      queryKey: sessionsKeys.cost(sessionId),
-      queryFn: () => sessionsApi.cost(sessionId as string),
-      enabled: !!sessionId,
-    }),
+  list: (opts: ListSessionsOpts) => readOf(sessionsKeys.list(opts), () => sessionsApi.list(opts), 0),
+  queueStats: (projectId: string | undefined) => readOf(sessionsKeys.queueStats(projectId), () => sessionsApi.queueStats(projectId as string), 0),
+  cost: (sessionId: string | undefined) => readOf(sessionsKeys.cost(sessionId), () => sessionsApi.cost(sessionId as string), 0),
 };

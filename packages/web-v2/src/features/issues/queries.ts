@@ -4,6 +4,7 @@
 // display key, scoped by its project (ISS-1160) — `issueKeySegment` folds both into one segment.
 import type { IssueStandingScope } from "@forge/contracts/issue-standing";
 import { queryOptions } from "@tanstack/react-query";
+import { readOf } from "@/lib/api/query-kit";
 import { issueKeySegment } from "@/lib/api/ref-bridge";
 import { issuesApi, releaseBatchApi } from "./api";
 import type { IssueLabel, IssueSearchOpts } from "./types";
@@ -31,54 +32,16 @@ export const issueKeys = {
 
 export const issueQueries = {
   search: (projectId: string | undefined, opts: IssueSearchOpts) =>
-    queryOptions({
-      queryKey: issueKeys.search(projectId, opts),
-      queryFn: () => issuesApi.search(projectId as string, opts),
-      enabled: !!projectId,
-      placeholderData: (prev) => prev,
-    }),
+    queryOptions({ ...readOf(issueKeys.search(projectId, opts), () => issuesApi.search(projectId as string, opts), 0), placeholderData: (prev) => prev }),
   standing: (projectId: string | undefined, scope: IssueStandingScope) =>
-    queryOptions({
-      queryKey: issueKeys.standing(projectId, scope),
-      queryFn: () => issuesApi.standing(projectId as string, scope),
-      enabled: Boolean(projectId),
-      staleTime: 10_000,
-    }),
+    ({ ...readOf(issueKeys.standing(projectId, scope), () => issuesApi.standing(projectId as string, scope), 10_000), enabled: !!projectId }),
   standingOf: (projectId: string | undefined, key: string | undefined) =>
-    queryOptions({
-      queryKey: issueKeys.standingOf(projectId, key),
-      queryFn: () => issuesApi.standingOf(projectId as string, key as string),
-      enabled: Boolean(projectId && key),
-      staleTime: 10_000,
-    }),
+    ({ ...readOf(issueKeys.standingOf(projectId, key), () => issuesApi.standingOf(projectId as string, key as string), 10_000), enabled: !!projectId && !!key }),
   cost: (id: string | undefined, enabled: boolean, projectId?: string) =>
-    queryOptions({
-      queryKey: issueKeys.cost(id, projectId),
-      queryFn: () => issuesApi.costSummary(id as string, projectId),
-      enabled: !!id && enabled,
-      staleTime: 60_000,
-    }),
+    ({ ...readOf(issueKeys.cost(id, projectId), () => issuesApi.costSummary(id as string, projectId), 60_000), enabled: !!id && enabled }),
   deps: (id: string | undefined, enabled: boolean, projectId?: string) =>
-    queryOptions({
-      queryKey: issueKeys.deps(id, projectId),
-      queryFn: () => issuesApi.dependencies(id as string, projectId),
-      enabled: !!id && enabled,
-      staleTime: 30_000,
-    }),
-  members: (projectId: string | undefined) =>
-    queryOptions({
-      queryKey: issueKeys.members(projectId),
-      queryFn: () => issuesApi.members(projectId as string),
-      enabled: !!projectId,
-      staleTime: 5 * 60_000,
-    }),
-  labels: (projectId: string | undefined) =>
-    queryOptions<IssueLabel[]>({
-      queryKey: issueKeys.labels(projectId),
-      queryFn: () => issuesApi.labels(projectId as string),
-      enabled: !!projectId,
-      staleTime: 5 * 60_000,
-    }),
-  roster: (projectId: string | undefined) =>
-    queryOptions({ queryKey: issueKeys.roster(projectId), queryFn: () => releaseBatchApi.roster(projectId as string), enabled: !!projectId }),
+    ({ ...readOf(issueKeys.deps(id, projectId), () => issuesApi.dependencies(id as string, projectId), 30_000), enabled: !!id && enabled }),
+  members: (projectId: string | undefined) => readOf(issueKeys.members(projectId), () => issuesApi.members(projectId as string), 5 * 60_000),
+  labels: (projectId: string | undefined) => readOf<IssueLabel[]>(issueKeys.labels(projectId), () => issuesApi.labels(projectId as string), 5 * 60_000),
+  roster: (projectId: string | undefined) => readOf(issueKeys.roster(projectId), () => releaseBatchApi.roster(projectId as string), 0),
 };
