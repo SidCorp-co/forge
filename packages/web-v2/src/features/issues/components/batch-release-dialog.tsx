@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Banner, Button, SlideOver } from "@/design";
 import { inlineCode } from "@/features/project-settings/components/inline-code";
 import { formatApiError } from "@/lib/api/error";
@@ -30,7 +30,7 @@ export function BatchReleaseDialog({
 }) {
   const openRef = useRef(open);
   openRef.current = open;
-  const showsRefusal = useCallback(() => openRef.current, []);
+  const showsRefusal = () => openRef.current;
   const batch = useBatchRelease(projectId, { showsRefusal });
   const t = useCopy();
   const { reset, isPending } = batch;

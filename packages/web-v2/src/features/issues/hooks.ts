@@ -113,10 +113,7 @@ export function useProjectLabels(projectId: string | undefined) {
  */
 export function useProjectModules(projectId: string | undefined) {
   const q = useProjectLabels(projectId);
-  const modules = useMemo(
-    () => (q.data ?? []).filter((l) => l.kind === "module"),
-    [q.data],
-  );
+  const modules = (q.data ?? []).filter((l) => l.kind === "module");
   return { ...q, data: q.data ? modules : undefined, modules };
 }
 

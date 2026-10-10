@@ -78,8 +78,7 @@ function useZoomPan(index: number, go: (delta: number) => void) {
 
   // ── Pointer gestures (mouse + touch unified): pan when zoomed, pinch with two
   // fingers, swipe-to-navigate when at fit scale, double-tap/click to toggle.
-  const onPointerDown = useCallback(
-    (e: ReactPointerEvent) => {
+  const onPointerDown = (e: ReactPointerEvent) => {
       (e.target as Element).setPointerCapture?.(e.pointerId);
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.current.size === 2) {
@@ -95,12 +94,9 @@ function useZoomPan(index: number, go: (delta: number) => void) {
           moved: false,
         };
       }
-    },
-    [scale, offset],
-  );
+    };
 
-  const onPointerMove = useCallback(
-    (e: ReactPointerEvent) => {
+  const onPointerMove = (e: ReactPointerEvent) => {
       if (!pointers.current.has(e.pointerId)) return;
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -119,12 +115,9 @@ function useZoomPan(index: number, go: (delta: number) => void) {
       const dy = e.clientY - d.y;
       if (!d.moved && Math.hypot(dx, dy) > TAP_SLOP) d.moved = true;
       if (zoomed) setOffset({ x: d.ox + dx, y: d.oy + dy });
-    },
-    [zoomed],
-  );
+    };
 
-  const endPointer = useCallback(
-    (e: ReactPointerEvent) => {
+  const endPointer = (e: ReactPointerEvent) => {
       const d = dragStart.current;
       const wasPinching = pointers.current.size === 2;
       pointers.current.delete(e.pointerId);
@@ -143,24 +136,19 @@ function useZoomPan(index: number, go: (delta: number) => void) {
         if (Math.abs(dx) > SWIPE_THRESHOLD) go(dx < 0 ? 1 : -1);
       }
       dragStart.current = null;
-    },
-    [zoomed, go],
-  );
+    };
 
   // Ctrl/Cmd + wheel zooms; plain wheel is left alone (page is scroll-locked).
-  const onWheel = useCallback(
-    (e: ReactWheelEvent) => {
+  const onWheel = (e: ReactWheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       zoomBy(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
-    },
-    [zoomBy],
-  );
+    };
 
-  const toggleZoom = useCallback(() => {
+  const toggleZoom = () => {
     if (zoomed) resetZoom();
     else setScale(2);
-  }, [zoomed, resetZoom]);
+  };
 
   return {
     scale,

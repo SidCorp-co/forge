@@ -3,7 +3,7 @@
 
 import { Icon } from "@/design";
 import { coreFileUrl } from "@/lib/utils/core-url";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { HtmlAttachmentCard } from "./html-attachment-card";
 import { ImageLightbox, type LightboxImage } from "./image-lightbox";
 import { formatSize } from "./staged-files";
@@ -20,13 +20,9 @@ export function AttachmentList({ rows }: { rows: AttachmentListItem[] }) {
   // The gallery set is just the images in this list, in display order. Each
   // image thumbnail carries its position in that set so clicking opens the
   // lightbox on the right slide.
-  const images = useMemo<LightboxImage[]>(
-    () =>
-      rows
+  const images: LightboxImage[] = rows
         .filter((a) => a.mime.startsWith("image/"))
-        .map((a) => ({ id: a.id, name: a.name, href: coreFileUrl(a.url) })),
-    [rows],
-  );
+        .map((a) => ({ id: a.id, name: a.name, href: coreFileUrl(a.url) }));
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   return (

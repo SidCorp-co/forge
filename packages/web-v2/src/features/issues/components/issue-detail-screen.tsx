@@ -30,7 +30,7 @@ import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isLiveRun, issueQueryKey, parseChecklist, runStatusChip, workStepOf } from "../derive";
 import { deriveQueuedStep } from "../waiting";
 import { useActivity, useAttachments, type useIssue, useCreateComment } from "../detail-hooks";
@@ -95,7 +95,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   const attachmentsQ = useAttachments(canonicalId, projectId);
   const activityQ = useActivity(canonicalId, projectId);
   const membersQ = useProjectMembers(projectId);
-  const checklist = useMemo(() => keyedChecklist(issue?.acceptanceCriteria), [issue?.acceptanceCriteria]);
+  const checklist = keyedChecklist(issue?.acceptanceCriteria);
   useRememberIssue(id, slug, issue?.displayId, issue?.title);
 
   if (issueQ.isLoading || issueQ.isError || !issue) return <IssueUnread query={issueQ} />;
