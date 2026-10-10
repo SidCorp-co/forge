@@ -3,7 +3,9 @@
  * check's report to the probes the issue keeps when it is recorded: a kept probe the report did not
  * run, or an observable criterion keeping none, is refused MERGE_PROBE_MISSING; one that ran red is
  * refused MERGE_PROBE_RED; a code property owes none. A passing record names the probes it ran and no
- * longer says probes are "not yet at merge".
+ * longer says probes are "not yet at merge". Since round 5 only the change's criteria owe a probe: a
+ * criterion the report names standing on its latest pass at a commit the base carries, or one whose
+ * latest verdict is skipped, owes none, and a standing reading the issue does not hold is refused.
  *
  * It reaches its subject over HTTP, so it names what it guards:
  * @direct-test-of packages/core/src/issues/merge-check.ts
@@ -220,5 +222,88 @@ describe("a merge check is held to the issue's kept probes", () => {
     });
     expect(res.status).toBe(400);
     expect(JSON.stringify(res.body)).toContain('is not a `probes` check of this report');
+  });
+});
+
+// ISS-472 round 5 (comment 826f551d): the probes a merge owes are its change's. A criterion judged
+// before the change, on a commit its base carries, stands and owes no probe; a skipped one owes none.
+describe("a merge check owes the change's probes only", () => {
+  const JUDGED = 'c'.repeat(40);
+
+  /** Keep a probe on `criterion` with a pass at `sha`, and answer the verdict's id. */
+  async function judgedAt(issue: string, criterion: number, sha: string): Promise<string> {
+    const res = ok(
+      await call('author', 'POST', `/api/issues/${issue}/verdicts`, {
+        criterion,
+        verdict: 'pass',
+        reason: 'judged on the release',
+        identity: { kind: 'commit', sha },
+        probe: {
+          kind: 'command',
+          command: { argv: ['node', 'scripts/probe.mjs', String(criterion)] },
+          expect: { exitCode: 0 },
+        },
+      }),
+      201,
+    );
+    return res.criterion.latest.id as string;
+  }
+
+  async function skippedLive(issue: string, criterion: number): Promise<void> {
+    ok(
+      await call('author', 'POST', `/api/issues/${issue}/verdicts`, {
+        criterion,
+        verdict: 'skipped',
+        reason: 'needs the live build',
+        identity: { kind: 'commit', sha: HEAD },
+      }),
+      201,
+    );
+  }
+
+  it('records a report whose criteria stand or are skipped, naming the standing ones', async () => {
+    const issue = await designedIssue();
+    const one = await judgedAt(issue, 1, JUDGED);
+    await skippedLive(issue, 3);
+    const before = await record(issue, reportRunning([]));
+    expect(refusalCodes(before)).toEqual(['MERGE_PROBE_MISSING']);
+    expect(detailOf(before)).toContain("criterion 1's kept probe");
+    ok(
+      await record(issue, { ...reportRunning([]), standing: [{ criterion: 1, verdict: one }] }),
+      201,
+    );
+    const [kept] = await verifications(issue);
+    const fields = (kept?.fields ?? []) as Doc[];
+    expect(fields.find((f) => f.key === 'probes')?.value).toBe(
+      'no kept probe to run; criteria 1 stand on verdicts their base carries',
+    );
+  });
+
+  it('refuses a standing reading the issue does not hold, recording nothing', async () => {
+    const issue = await designedIssue();
+    const stale = await judgedAt(issue, 1, JUDGED);
+    const atHead = await judgedAt(issue, 1, HEAD);
+    await skippedLive(issue, 3);
+    const old = await record(issue, {
+      ...reportRunning([]),
+      standing: [{ criterion: 1, verdict: stale }],
+    });
+    expect([old.status, refusalCodes(old)]).toEqual([422, ['MERGE_PROBE_MISSING']]);
+    expect(detailOf(old)).toContain(`and its latest verdict is ${atHead}`);
+    const head = await record(issue, {
+      ...reportRunning([]),
+      standing: [{ criterion: 1, verdict: atHead }],
+    });
+    expect(detailOf(head)).toContain('its latest verdict is at the head checked');
+    const twice = await record(issue, {
+      ...reportRunning([]),
+      standing: [
+        { criterion: 1, verdict: atHead },
+        { criterion: 1, verdict: atHead },
+      ],
+    });
+    expect(twice.status).toBe(400);
+    expect(JSON.stringify(twice.body)).toContain('criterion 1 is named standing twice');
+    expect(await verifications(issue)).toEqual([]);
   });
 });

@@ -4,7 +4,8 @@
  * the typecheck, the direct tests of the touched files, their direct integration tests and the
  * conformance gate, on the change rebased onto the latest base, and the issue's kept probes run
  * against it — and sends its report here. Core refuses a report a merge may not rely on, holds its
- * probes to the ones the issue keeps now (`probeRefusals`), asks the issue's approved new patterns for their catalog
+ * probes to the ones the criteria its change claims keep now and its standing criteria to their live
+ * latest verdicts (`probeRefusals`), asks the issue's approved new patterns for their catalog
  * pages in the change, and records a passing check on the issue: each of its checks once, with its
  * kind and duration, as a check run of the run that sent it (`check-runs.ts`, ISS-474), and the
  * verification record naming them and the catalog pages the change carried (`pattern-entry.ts`). The merge mark then asks for that record (`uncheckedMergeRefusal`).

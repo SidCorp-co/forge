@@ -123,7 +123,10 @@ export function redChecks(checks) {
 
 /**
  * The body `POST /api/issues/:id/merge-check` takes, as this run made it. `probes` binds each probe
- * check to the kept probe it ran, which core holds to the probes the issue keeps.
+ * check to the kept probe it ran, which core holds to the probes the issue keeps. `standing` names
+ * each criterion this run read as standing on a verdict its base carries, and the verdict it read
+ * (`lib/merge-probes.mjs:probesOwed`); core holds each to the criterion's live latest verdict. It is
+ * sent only where one stands, so a report with none is the shape a core older than it still takes.
  */
 export function reportOf({
   branch,
@@ -133,6 +136,7 @@ export function reportOf({
   touched,
   checks,
   probes = [],
+  standing = [],
   lane = 'full',
   patchId,
 }) {
@@ -143,6 +147,9 @@ export function reportOf({
     touched,
     checks,
     probes,
+    ...(standing.length
+      ? { standing: standing.map(({ criterion, verdict }) => ({ criterion, verdict })) }
+      : {}),
     lane,
     patchId,
   };

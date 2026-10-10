@@ -11,9 +11,15 @@
 //             (the merge check holds no credential), a service's request, or any request with no
 //             origin given cannot run here, and is reported with result `none` and why
 //
-// A kept probe that did not run, or an observable criterion keeping none, is MERGE_PROBE_MISSING; a
-// probe that ran and answered something else is MERGE_PROBE_RED. A criterion classed a code property,
-// or one no design classes, that keeps no probe owes none.
+// The probes a merge owes are its change's (ISS-472 round 5). A criterion STANDS, owing none, where its
+// latest verdict is a pass or short on a commit the base already carries: the change did not rework
+// it, and a probe kept only now would re-judge it. Every other criterion is the change's: no verdict
+// yet, a fail, or a verdict at a commit the base does not carry (the change's own head, or one a
+// rebase left behind). A claimed criterion's kept probe runs; a claimed observable one keeping none is
+// MERGE_PROBE_MISSING, and a probe that answered something else MERGE_PROBE_RED. A code property, a
+// criterion no design classes keeping none, and a skipped one (only the live build can show it) owe
+// none. The report names the standing criteria (`standing`), and core holds each to its live latest
+// verdict (`merge-check-rules.ts:probeRefusals`); which commits the base carries is this script's word.
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -30,11 +36,15 @@ export const NO_ISSUE = 'none';
 export const PROBE_TIMEOUT_MS = 10 * 60 * 1000;
 
 const SHAPE =
-  'the saved answer of `GET /api/issues/:id/criteria` (`{ criteria: [{ n, class, probe }] }`), or `none` for a run that names no issue';
+  'the saved answer of `GET /api/issues/:id/criteria` (`{ criteria: [{ n, class, probe, latest }] }`), or `none` for a run that names no issue';
+
+/** The verdicts a criterion stands on (contracts `criterionCountsAsPass`: `short` counts as a pass). */
+const STANDING_VERDICTS = ['pass', 'short'];
 
 /**
  * The criteria a `--probes` file holds, or the refusal naming what is wrong with it. Each criterion
- * keeps `n`, `class` and `probe` from the criteria read; anything else in the file is left alone.
+ * keeps `n`, `class`, `probe` and its `latest` verdict (id, verdict, identity kind, commit) from the
+ * criteria read; anything else in the file is left alone.
  */
 export function criteriaOf(text, path) {
   let parsed;
@@ -61,9 +71,29 @@ export function criteriaOf(text, path) {
         refusal: `--probes ${path}: criterion ${c.n}'s probe has no \`id\` or no \`kind\` of command or request; it is ${SHAPE}`,
       };
     }
+    if (
+      c.latest != null &&
+      (typeof c.latest.id !== 'string' || typeof c.latest.verdict !== 'string')
+    ) {
+      return {
+        refusal: `--probes ${path}: criterion ${c.n}'s latest verdict has no \`id\` or no \`verdict\`; it is ${SHAPE}`,
+      };
+    }
   }
   return {
-    criteria: list.map((c) => ({ n: c.n, class: c.class ?? null, probe: c.probe ?? null })),
+    criteria: list.map((c) => ({
+      n: c.n,
+      class: c.class ?? null,
+      probe: c.probe ?? null,
+      latest: c.latest
+        ? {
+            id: c.latest.id,
+            verdict: c.latest.verdict,
+            identityKind: c.latest.identityKind ?? null,
+            commitSha: c.latest.commitSha ?? null,
+          }
+        : null,
+    })),
   };
 }
 
@@ -100,20 +130,50 @@ export function originOf(value) {
   return { origin: url.origin };
 }
 
+const at = (sha) => (sha ? sha.slice(0, 12) : 'no commit');
+
 /**
- * What the issue's criteria owe the merge: each kept probe to run, and each observable criterion that
- * keeps none. A code property, or a criterion no design classes, that keeps none owes nothing.
+ * Why a criterion is the change's rather than standing, or null where it stands: its latest verdict
+ * is a pass or short on a commit `carried(sha)` says the base carries.
  */
-export function probesOwed(criteria) {
+export function claimedBecause(latest, carried) {
+  if (!latest) return 'it has no verdict yet';
+  if (!STANDING_VERDICTS.includes(latest.verdict))
+    return `its latest verdict is ${latest.verdict} at ${at(latest.commitSha)}`;
+  if (latest.identityKind !== 'commit' || !latest.commitSha)
+    return `its latest verdict is ${latest.verdict} on a ${latest.identityKind ?? 'missing'} identity, not a commit the base could carry`;
+  if (!carried(latest.commitSha))
+    return `its latest verdict is ${latest.verdict} at ${at(latest.commitSha)}, a commit the base does not carry`;
+  return null;
+}
+
+/**
+ * What the issue's criteria owe the merge: each kept probe of a criterion the change claims, each
+ * claimed observable criterion that keeps none, and the criteria that stand on a verdict the base
+ * carries. `carried(sha)` says whether the base contains a commit; without it nothing stands, and
+ * every criterion is owed as before round 5.
+ */
+export function probesOwed(criteria, { carried = () => false } = {}) {
   const runs = [];
   const missing = [];
+  const standing = [];
   for (const c of criteria) {
     if (c.class === 'code_property') continue;
+    const claimed = claimedBecause(c.latest ?? null, carried);
+    if (claimed === null) {
+      standing.push({
+        criterion: c.n,
+        verdict: c.latest.id,
+        reading: `${c.latest.verdict} at ${at(c.latest.commitSha)}`,
+      });
+      continue;
+    }
+    if (c.latest?.verdict === 'skipped') continue;
     if (c.probe) runs.push({ criterion: c.n, probe: c.probe });
     else if (c.class === 'observable')
-      missing.push({ criterion: c.n, why: 'it is observable and keeps no probe' });
+      missing.push({ criterion: c.n, why: `it is observable, ${claimed}, and it keeps no probe` });
   }
-  return { runs, missing };
+  return { runs, missing, standing };
 }
 
 /** The command line a probe's check records: what it ran, never a credential (a probe holds none). */
@@ -226,7 +286,7 @@ export async function runRequestProbe(probe, { origin, fetchImpl = fetch }) {
  * Run what the criteria owe and write each as a `probes` check, bound to the kept probe it ran.
  * `criteria` null is a run naming no issue: one check, result `none`, saying so.
  */
-export async function runProbes(criteria, { root, origin, env, spawn, fetchImpl } = {}) {
+export async function runProbes(criteria, { root, origin, env, spawn, fetchImpl, carried } = {}) {
   if (criteria === null) {
     const c = check({
       name: 'probes',
@@ -239,9 +299,9 @@ export async function runProbes(criteria, { root, origin, env, spawn, fetchImpl 
       durationMs: 0,
       note: 'this run names no issue, so it ran no kept probe; core holds the report to the kept probes of the issue it is recorded on',
     });
-    return { checks: [c], bindings: [], missing: [], red: [] };
+    return { checks: [c], bindings: [], missing: [], red: [], standing: [] };
   }
-  const { runs, missing } = probesOwed(criteria);
+  const { runs, missing, standing } = probesOwed(criteria, { carried });
   const checks = [];
   const bindings = [];
   const red = [];
@@ -273,7 +333,9 @@ export async function runProbes(criteria, { root, origin, env, spawn, fetchImpl 
         name: 'probes',
         kind: 'probes',
         scope: 'issue',
-        command: 'the issue keeps no probe to run',
+        command: standing.length
+          ? 'the change claims no criterion keeping a probe'
+          : 'the issue keeps no probe to run',
         files: [],
         result: 'none',
         startedAt: Date.now(),
@@ -281,7 +343,7 @@ export async function runProbes(criteria, { root, origin, env, spawn, fetchImpl 
       }),
     );
   }
-  return { checks, bindings, missing: notRun, red };
+  return { checks, bindings, missing: notRun, red, standing };
 }
 
 /** The refusals a probe run ends in, by name, in the words core uses: none where every probe held. */

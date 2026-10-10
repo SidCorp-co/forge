@@ -56,6 +56,17 @@ const probeBindingSchema = z.strictObject({
 });
 export type MergeProbeBinding = z.infer<typeof probeBindingSchema>;
 
+/**
+ * A criterion the check read as standing (ISS-472 round 5): its latest verdict, a pass or short on a
+ * commit the base carries, so the change did not claim it and owes it no probe. Core holds `verdict`
+ * to the criterion's live latest; which commits the base carries is the box's word.
+ */
+const standingSchema = z.strictObject({
+	criterion: z.number().int().min(1),
+	verdict: z.uuid("verdict is the id of the criterion's latest verdict, as the criteria read answers it"),
+});
+export type MergeStanding = z.infer<typeof standingSchema>;
+
 /** The checks a report on `lane` needs: the fast lane's three, else every one a merge needs. */
 export function requiredMergeChecksOf(
 	lane: Lane | undefined,
@@ -90,6 +101,11 @@ export const mergeCheckReportSchema = z
 		 * one not run is MERGE_PROBE_MISSING, one red MERGE_PROBE_RED. Absent is none run.
 		 */
 		probes: z.array(probeBindingSchema).max(LIMITS.probes).optional(),
+		/**
+		 * The criteria the check read as standing, each owing no probe. Absent is none: every
+		 * criterion is the change's, as a report from a script older than round 5 reads.
+		 */
+		standing: z.array(standingSchema).max(LIMITS.probes).optional(),
 		/** The lane the change takes; absent is the full lane, as every report written before the fast one. */
 		lane: z.enum(LANES).optional(),
 		/**
@@ -107,6 +123,15 @@ export const mergeCheckReportSchema = z
 			.optional(),
 	})
 	.superRefine((r, ctx) => {
+		for (const [i, s] of (r.standing ?? []).entries()) {
+			if ((r.standing ?? []).findIndex((o) => o.criterion === s.criterion) !== i) {
+				ctx.addIssue({
+					code: "custom",
+					path: ["standing", i, "criterion"],
+					message: `criterion ${s.criterion} is named standing twice; each criterion stands on one verdict`,
+				});
+			}
+		}
 		for (const [i, b] of (r.probes ?? []).entries()) {
 			const ran = r.checks.find((c) => c.id === b.check);
 			if (ran?.kind !== "probes") {
@@ -125,9 +150,9 @@ export const mergeCheckReportSchema = z
 	});
 export type MergeCheckReport = z.infer<typeof mergeCheckReportSchema>;
 
-export const MERGE_CHECK_SHAPE = `{ base: { branch, sha }, head, mode: pre-merge | landed, touched: [{ path, change }], checks: [${CHECK_RUN_SHAPE}], probes?: [{ criterion, probe: <kept probe id>, check: <id of the probes check that ran it> }], lane?: fast | full, patchId?: <40 hex, required on the fast lane> }`;
+export const MERGE_CHECK_SHAPE = `{ base: { branch, sha }, head, mode: pre-merge | landed, touched: [{ path, change }], checks: [${CHECK_RUN_SHAPE}], probes?: [{ criterion, probe: <kept probe id>, check: <id of the probes check that ran it> }], standing?: [{ criterion, verdict: <its latest verdict's id, a pass or short at a commit the base carries> }], lane?: fast | full, patchId?: <40 hex, required on the fast lane> }`;
 
-/** A kept probe of the issue the report did not run, or an observable criterion keeping none. */
+/** A kept probe of a criterion the change claims that the report did not run, a claimed observable criterion keeping none, or a standing reading core does not hold. */
 export const MERGE_PROBE_MISSING = "MERGE_PROBE_MISSING" as const;
 /** A kept probe the report ran that answered something other than what it expects. */
 export const MERGE_PROBE_RED = "MERGE_PROBE_RED" as const;
