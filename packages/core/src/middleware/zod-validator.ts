@@ -112,7 +112,8 @@ export function fieldShape(field: string, code: string, shape: string): Hook {
 /**
  * A body whose one structured field answers its wrong shape under a code of its own, one row per
  * fault at the fault's own path inside it, each naming `shape`. Every other failing field keeps its
- * BAD_REQUEST row.
+ * BAD_REQUEST row. The answer's own detail says every fault at its path, then `shape` once, so a
+ * reader of the sentence alone is never shown the first fault only.
  */
 export function nestedFieldShape(field: string, code: string, shape: string): Hook {
   return ((r: Failed) => {
@@ -124,7 +125,10 @@ export function nestedFieldShape(field: string, code: string, shape: string): Ho
         ? { code, path: jsonPointer(i.path), detail: `${i.message}. \`${field}\` is ${shape}` }
         : { code: 'BAD_REQUEST', path: jsonPointer(i.path), detail: i.message },
     );
-    throw new RefusalError(rows, 'BAD_REQUEST');
+    const faults = issues.map((i) => `at ${jsonPointer(i.path)}, ${i.message}`).join('; ');
+    const count = issues.length === 1 ? 'one fault' : `${issues.length} faults`;
+    const detail = `The body has ${count}: ${faults}. \`${field}\` is ${shape}`;
+    throw new RefusalError(rows, 'BAD_REQUEST', detail);
   }) as Hook;
 }
 

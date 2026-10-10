@@ -1,3 +1,4 @@
+import { criterionProbeSchema } from '@forge/contracts/criterion-probes';
 import { PROBLEM_CONTENT_TYPE } from '@forge/contracts/refusal';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
@@ -6,7 +7,7 @@ import { refused, refuser } from '../lib/refusal.js';
 import { requireAuth } from './auth.js';
 import { errorHandler } from './error.js';
 import type { RequestIdVars } from './request-id.js';
-import { strictBody } from './zod-validator.js';
+import { nestedFieldShape, strictBody, zValidator } from './zod-validator.js';
 
 const refuse = refuser<'SESSION_CONTEXT_MISMATCH' | 'ISSUE_UPDATE_REFUSED'>('ISSUE_UPDATE_REFUSED');
 
@@ -97,5 +98,70 @@ describe('one problem envelope at every door', () => {
     expect(body.error.refusals).toEqual([
       { code: 'UNAUTHENTICATED', path: '', detail: 'authentication required' },
     ]);
+  });
+});
+
+/**
+ * ISS-469: a malformed probe was answered with every fault under `error.refusals`, but the answer's
+ * own `detail` named the first only ("(1 more under error.refusals)"), the shape repeated after
+ * it (judge J1 on 0.4.0-dev.222: no `argv` and a string `exitCode` named only `argv`). One refusal
+ * now says every fault at its path, then the shape once.
+ */
+describe('a structured field with several faults', () => {
+  const SHAPE = '{ kind: "command", command: { argv: [program, …args] }, expect: { exitCode } }';
+  function probeApp() {
+    const a = new Hono<{ Variables: RequestIdVars }>();
+    a.post(
+      '/verdicts',
+      zValidator(
+        'json',
+        z.strictObject({ criterion: z.number(), probe: criterionProbeSchema.optional() }),
+        nestedFieldShape('probe', 'VERDICT_PROBE_SHAPE', SHAPE),
+      ),
+      (c) => c.json({}),
+    );
+    a.onError(errorHandler);
+    return a;
+  }
+  const send = async (body: unknown) => {
+    const res = await probeApp().request('/verdicts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, body: (await res.json()) as Body };
+  };
+
+  it('names every fault at its path in the one detail, and the shape once', async () => {
+    const { status, body } = await send({
+      criterion: 1,
+      probe: { kind: 'command', command: {}, expect: { exitCode: 'zero' } },
+    });
+    expect(status).toBe(422);
+    expect(body.error.refusals.map((r) => r.path)).toEqual([
+      '/probe/command/argv',
+      '/probe/expect/exitCode',
+    ]);
+    expect(body.detail).toContain('/probe/command/argv');
+    expect(body.detail).toContain('/probe/expect/exitCode');
+    expect(body.detail).not.toContain('more under error.refusals');
+    expect(body.detail.split(SHAPE)).toHaveLength(2);
+  });
+
+  it('names a fault outside the field in the same detail', async () => {
+    const { body } = await send({ criterion: 'one', probe: { kind: 'command', command: {}, expect: { exitCode: 0 } } });
+    expect(body.error.refusals.map((r) => [r.code, r.path])).toEqual([
+      ['BAD_REQUEST', '/criterion'],
+      ['VERDICT_PROBE_SHAPE', '/probe/command/argv'],
+    ]);
+    expect(body.detail).toContain('/criterion');
+    expect(body.detail).toContain('/probe/command/argv');
+  });
+
+  it('keeps a lone fault said once, with the shape', async () => {
+    const { body } = await send({ criterion: 1, probe: { kind: 'command', command: {}, expect: { exitCode: 0 } } });
+    expect(body.error.refusals).toHaveLength(1);
+    expect(body.detail).toContain('/probe/command/argv');
+    expect(body.detail.split(SHAPE)).toHaveLength(2);
   });
 });

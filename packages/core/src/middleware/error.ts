@@ -11,6 +11,7 @@ import {
   RefusalError,
   refusalEnvelope,
   requestRefusals,
+  thrownEnvelope,
 } from '../lib/refusal.js';
 import type { RequestIdVars } from './request-id.js';
 
@@ -77,7 +78,7 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
           'ACTIVE_CHILD_UNDER_TERMINAL_RUN',
         );
   if (refusal instanceof RefusalError) {
-    const envelope = refusalEnvelope(refusal.refusals, refusal.fallbackCode);
+    const envelope = thrownEnvelope(refusal);
     log.warn(
       { status: envelope.status, code: envelope.error.code, err: err.message },
       'http.error',

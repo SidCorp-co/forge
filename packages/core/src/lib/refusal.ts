@@ -14,14 +14,29 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
 export type { ProblemBody, Refusal, RefusalEnvelope };
 
+/**
+ * A refusal thrown to either door. `detail` is the answer's own sentence where the thrower words
+ * the refusals as one (a validator naming every fault at its path); absent, the envelope leads with
+ * the first refusal's detail.
+ */
 export class RefusalError extends Error {
   constructor(
     readonly refusals: readonly Refusal[],
     readonly fallbackCode: string,
+    readonly detail?: string,
   ) {
     super(refusals.map((r) => `${r.code}: ${r.detail}`).join('; '));
     this.name = 'RefusalError';
   }
+}
+
+/** The envelope a thrown refusal answers with, its own sentence kept where it carries one. */
+export function thrownEnvelope(err: RefusalError): RefusalEnvelope {
+  return refusalEnvelope(
+    err.refusals,
+    err.fallbackCode,
+    err.detail === undefined ? {} : { detail: err.detail },
+  );
 }
 
 export function jsonPointer(segments: readonly PropertyKey[]): string {

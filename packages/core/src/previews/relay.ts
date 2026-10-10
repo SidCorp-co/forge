@@ -24,7 +24,7 @@ import { previewRecordings } from '../db/schema-preview-recordings.js';
 import type { PreviewRow } from '../db/schema-previews.js';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
-import { RefusalError, refusalEnvelope } from '../lib/refusal.js';
+import { RefusalError, thrownEnvelope } from '../lib/refusal.js';
 import { actorFor, can, projectResource } from '../permissions/index.js';
 import {
   isHostUnderSite,
@@ -281,7 +281,7 @@ async function serveRecorder(req: IncomingMessage, res: ServerResponse, at: Reco
     sendJson(res, 202, await ingestBatch(at.row, at.userId, raw));
   } catch (err) {
     if (!(err instanceof RefusalError)) throw err;
-    const envelope = refusalEnvelope(err.refusals, err.fallbackCode);
+    const envelope = thrownEnvelope(err);
     let owes: number | undefined;
     if (envelope.code === 'RECORDING_SEQ_GAP') {
       const id = (await recordingFor(at.row, at.userId)).id;
