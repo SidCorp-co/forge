@@ -272,7 +272,7 @@ function Thumbnails({ images, index, onPick }: { images: LightboxImage[]; index:
           aria-current={i === index}
           className={`flex-none overflow-hidden rounded-md border-2 transition-colors ${
             i === index
-              ? "border-cobalt-400"
+              ? "border-info-9-400"
               : "border-transparent opacity-60 hover:opacity-100"
           }`}
         >

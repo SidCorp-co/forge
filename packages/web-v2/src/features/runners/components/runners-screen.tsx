@@ -157,7 +157,7 @@ function DeviceNameCell({ device }: { device: DeviceRow | OrgDeviceRow }) {
         <span className="fg-body-sm text-subtle">{t("runners.device.serves", { projects: projects.join(", ") })}</span>
       ) : null}
       {missing.length > 0 ? (
-        <span className="fg-body-sm text-amber-700 dark:text-amber-300">
+        <span className="fg-body-sm text-warn-11">
           {t("runners.device.cannotResolve", { names: missing.map((m) => m.name).join(", ") })}
         </span>
       ) : null}
