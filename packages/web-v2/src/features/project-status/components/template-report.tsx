@@ -10,7 +10,7 @@
 import type { ReportDocument } from "@forge/contracts/report-templates";
 import { narrativeOutcomeLine, type StatusReportDetail, unwrittenNarrativeLine } from "@forge/contracts/status-reports";
 import { Button } from "@/design";
-import type { EtaClock } from "@/features/forecast/eta";
+import type { EtaClock } from "@/features/forecast";
 import { ReportDocumentBody, ShareAction } from "@/features/shares";
 import { formatApiError } from "@/lib/api/error";
 import { formatDateTime } from "@/lib/i18n/format";

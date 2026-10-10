@@ -15,11 +15,11 @@ import type { FeedbackPhase, FeedbackRoute, FeedbackView } from "../types";
 import { FEEDBACK_ATTENTION_LABELS } from "@forge/contracts/feedback";
 import type { FeedbackShipNotice } from "@forge/contracts/feedback";
 import type { FeedbackForecast } from "@forge/contracts/forecast";
-import { EtaInline } from "@/features/forecast/components/eta-cell";
-import { ReleaseLine } from "@/features/forecast/components/release-line";
-import { type EtaClock, etaOfFeedback } from "@/features/forecast/eta";
+import { EtaInline } from "@/features/forecast";
+import { ReleaseLine } from "@/features/forecast";
+import { type EtaClock, etaOfFeedback } from "@/features/forecast";
 import { ETA_COPY } from "@/lib/i18n/eta-copy";
-import { feedbackForecastText } from "@/features/forecast/text";
+import { feedbackForecastText } from "@/features/forecast";
 import { releaseHref } from "@/lib/routes/releases";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 
@@ -72,14 +72,14 @@ export function FeedbackBanner({ f, slug, className }: { f: FeedbackView; slug?:
         ) : approving ? (
           <>
             {t("feedback.banner.approveRelease")}{" "}
-            <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug as string, version as string)}>
+            <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug, version)}>
               {version}
             </Link>
           </>
         ) : verifying ? (
           <>
             {t("feedback.banner.verifyShippedIn")}{" "}
-            <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug as string, version as string)}>
+            <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug, version)}>
               {version}
             </Link>
           </>

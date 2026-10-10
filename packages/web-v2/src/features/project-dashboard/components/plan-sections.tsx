@@ -6,8 +6,8 @@
 import type { Said } from "@forge/contracts/said";
 import Link from "next/link";
 import { SectionTitle } from "@/design/primitives/heading";
-import { EtaCell } from "@/features/forecast/components/eta-cell";
-import type { EtaClock } from "@/features/forecast/eta";
+import { EtaCell } from "@/features/forecast";
+import type { EtaClock } from "@/features/forecast";
 import { releaseHref } from "@/lib/routes/releases";
 import type { PlanRow } from "../ba-derive";
 import { useCopy } from "@/lib/i18n/interface-language";

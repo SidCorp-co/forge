@@ -5,7 +5,7 @@
 // route the record's page calls, as the person who presses it.
 
 import { type NeedsYouDecisions, needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
-import { DecisionList } from "@/features/needs-you/components/decision-list";
+import { DecisionList } from "@/features/needs-you";
 import type { CanonicalBlock } from "@/features/session/types";
 import { toolOutputText } from "@/lib/tool-output";
 

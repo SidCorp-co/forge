@@ -23,7 +23,7 @@ export interface VisualBlockContextValue {
 const VisualBlockContext = createContext<VisualBlockContextValue>({ projectSlug: undefined });
 
 export function VisualBlockProvider({ value, children }: { value: VisualBlockContextValue; children: ReactNode }) {
-  return <VisualBlockContext.Provider value={value}>{children}</VisualBlockContext.Provider>;
+  return <VisualBlockContext value={value}>{children}</VisualBlockContext>;
 }
 
 export const useVisualBlockContext = (): VisualBlockContextValue => useContext(VisualBlockContext);

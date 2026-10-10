@@ -9,10 +9,10 @@
 import Link from "next/link";
 import { type ReactNode, useMemo, useState } from "react";
 import { NativeSelect } from "@/design";
-import { templateFor } from "@/features/workflows/canvas/model";
-import { presentTrace } from "@/features/workflows/canvas/step-focus";
-import { WorkflowCanvas } from "@/features/workflows/canvas/workflow-canvas";
-import { useWorkflowTemplates, useWorkflows } from "@/features/workflows/hooks";
+import { templateFor } from "@/features/workflows";
+import { presentTrace } from "@/features/workflows";
+import { WorkflowCanvas } from "@/features/workflows";
+import { useWorkflowTemplates, useWorkflows } from "@/features/workflows";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { workflowHref } from "@/lib/routes/workflows";
 import type { TracedWorkflow } from "../picture-model";
@@ -22,7 +22,7 @@ import { Figure } from "./picture-figure";
 export function WorkflowPicture({ projectId, slug, traced }: { projectId: string; slug: string; traced: TracedWorkflow[] }) {
   const t = useCopy();
   const [chosen, setChosen] = useState<string | null>(null);
-  const w = traced.find((x) => x.workflowId === chosen) ?? (traced[0] as TracedWorkflow);
+  const w = traced.find((x) => x.workflowId === chosen) ?? (traced[0]);
   const list = useWorkflows(projectId);
   const templates = useWorkflowTemplates(projectId);
   const record = list.data?.workflows.find((r) => r.document.id === w.workflowId) ?? null;

@@ -257,7 +257,7 @@ function Replay({ recordingId, describedBy }: { recordingId: string; describedBy
     import("rrweb")
       .then(({ Replayer }) => {
         if (!current) return;
-        const replayer = new Replayer(events as unknown as ConstructorParameters<typeof Replayer>[0], { root: el, mouseTail: false, showWarning: false });
+        const replayer = new Replayer(events, { root: el, mouseTail: false, showWarning: false });
         player = replayer;
         replayer.play();
       })

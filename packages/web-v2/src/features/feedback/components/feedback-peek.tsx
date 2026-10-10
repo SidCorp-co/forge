@@ -8,7 +8,7 @@ import { PeekHead, PeekPanel, type PeekState, StatusBadge } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
-import { useFeedbackForecasts } from "@/features/forecast/hooks";
+import { useFeedbackForecasts } from "@/features/forecast";
 import { useFeedbackItem } from "../hooks";
 import { FeedbackPrimary } from "./feedback-detail";
 import { FeedbackBanner, LinkedFeedback } from "./feedback-facts";

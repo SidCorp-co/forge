@@ -14,8 +14,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThreadDataProvider } from "@/features/onboarding";
 import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
-import { CONVERSATION_ATTACHMENTS } from "@/features/chat/attachments";
-import { ChatComposer, ReadOnlyComposerNote } from "@/features/chat/components/chat-composer";
+import { CONVERSATION_ATTACHMENTS } from "@/features/chat";
+import { ChatComposer, ReadOnlyComposerNote } from "@/features/chat";
 import {
   TurnStage,
   turnStageOf,

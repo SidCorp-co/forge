@@ -8,7 +8,7 @@
 
 import Link from "next/link";
 import { ActorChip, Fact, FactsEmpty, FactsGroup, LEGEND, StatusBadge, Tooltip } from "@/design";
-import { FeedbackRailItem } from "@/features/feedback/components/feedback-rail-item";
+import { FeedbackRailItem } from "@/features/feedback";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref } from "@/lib/routes/issues";
 import { workflowHref } from "@/lib/routes/workflows";
@@ -17,8 +17,8 @@ import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { FeedbackRoute } from "@forge/contracts/feedback";
-import { progressText } from "@/features/forecast/progress";
-import { useRequirementForecast } from "@/features/forecast/hooks";
+import { progressText } from "@/features/forecast";
+import { useRequirementForecast } from "@/features/forecast";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { LinkIssueControl } from "./link-issue";
 import { PromotableDraft } from "./promote-drafts";

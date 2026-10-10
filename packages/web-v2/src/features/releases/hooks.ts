@@ -39,9 +39,9 @@ export function useReleasePage(projectId: string | undefined, version: string | 
 function useInvalidate(projectId: string) {
   const qc = useQueryClient();
   return () => {
-    qc.invalidateQueries({ queryKey: ["releases", projectId] });
-    qc.invalidateQueries({ queryKey: ["release", projectId] });
-    qc.invalidateQueries({ queryKey: ["release-page", projectId] });
+    void qc.invalidateQueries({ queryKey: ["releases", projectId] });
+    void qc.invalidateQueries({ queryKey: ["release", projectId] });
+    void qc.invalidateQueries({ queryKey: ["release-page", projectId] });
   };
 }
 

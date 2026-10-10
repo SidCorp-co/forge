@@ -1,8 +1,8 @@
 // The public documentation as one corpus: the help pages bundled into the web build, and the
 // guide corpus core serves. Two homes, one list — which is what lets one search and one reader
 // cover every audience. Where each page lives and why: docs/modules/guides/public-pages.md.
-import type { HelpDoc } from "@/features/docs/help-content.generated";
-import { groupSections, HELP_SECTION_ORDER, searchDocs } from "@/features/docs/reader";
+import type { HelpDoc } from "@/features/docs";
+import { groupSections, HELP_SECTION_ORDER, searchDocs } from "@/features/docs";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import type { Guide } from "./api";
 import { AGENT_SECTION, AUDIENCES, type Audience, SEARCH_EXAMPLES } from "./audience";

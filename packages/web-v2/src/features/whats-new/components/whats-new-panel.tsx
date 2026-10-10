@@ -1,7 +1,7 @@
 "use client";
 
 import { SlideOver } from "@/design";
-import { ReleaseHighlightList } from "@/features/releases/components/release-highlights";
+import { ReleaseHighlightList } from "@/features/releases";
 import { useCopy, useCopyLocale } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import type { WhatsNewChange, WhatsNewFeed } from "../types";

@@ -354,8 +354,8 @@ function onLine(r: Rect, points: readonly Pt[]): Rect {
   const c = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
   let best: { d: number; at: Pt } | null = null;
   for (let i = 1; i < points.length; i++) {
-    const a = points[i - 1] as Pt;
-    const b = points[i] as Pt;
+    const a = points[i - 1];
+    const b = points[i];
     const level = Math.abs(a.y - b.y) < 0.5;
     const at = level
       ? { x: Math.min(Math.max(c.x, Math.min(a.x, b.x)), Math.max(a.x, b.x)), y: a.y }

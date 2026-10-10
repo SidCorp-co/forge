@@ -7,9 +7,9 @@ import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import type { Copy } from "@/lib/i18n/product-copy";
-import type { SuggestionView } from "@/features/suggestions/types";
-import { RejectStep } from "@/features/suggestions/components/reject-step";
-import { useSuggestionDecision, useWaitingSuggestions } from "@/features/suggestions/hooks";
+import type { SuggestionView } from "@/features/suggestions";
+import { RejectStep } from "@/features/suggestions";
+import { useSuggestionDecision, useWaitingSuggestions } from "@/features/suggestions";
 import { useFeedbackAction } from "../hooks";
 import { type FeedbackPick, FeedbackPicker } from "./feedback-picker";
 import { RetargetForm } from "./feedback-retarget";
@@ -27,7 +27,7 @@ const OPTIONAL: readonly Choice[] = ["file_issue"];
 /** The issues a person picked, by key: one stays one, several become a list. */
 export function issueKeysOf(picked: readonly IssuePick[]): string | string[] {
   const keys = picked.map((p) => p.key);
-  return keys.length === 1 ? (keys[0] as string) : keys;
+  return keys.length === 1 ? (keys[0]) : keys;
 }
 
 function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {

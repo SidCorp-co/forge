@@ -140,8 +140,8 @@ function useMembershipWrite<Args>(
       qc.setQueryData<ConversationDetail>(["conversations", conversationId], (prev) =>
         prev ? { ...prev, ...membership } : prev,
       );
-      qc.invalidateQueries({ queryKey: ["conversations", conversationId, "candidates"] });
-      qc.invalidateQueries({ queryKey: ["conversations", "list"] });
+      void qc.invalidateQueries({ queryKey: ["conversations", conversationId, "candidates"] });
+      void qc.invalidateQueries({ queryKey: ["conversations", "list"] });
     },
   });
 }
@@ -190,7 +190,7 @@ export function useSendMessage() {
             }
           : prev,
       );
-      qc.invalidateQueries({ queryKey: ["conversations", "list"] });
+      void qc.invalidateQueries({ queryKey: ["conversations", "list"] });
     },
   });
 }

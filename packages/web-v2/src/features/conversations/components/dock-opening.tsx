@@ -6,7 +6,7 @@
 
 import { useEffect } from "react";
 import { ErrorState, StatusBadge } from "@/design";
-import { type ChatTarget, openingTarget, waitingRoom } from "@/features/chat-dock/dock-target";
+import { type ChatTarget, openingTarget, waitingRoom } from "@/features/chat-dock";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useProjectConversations } from "../hooks";

@@ -6,9 +6,9 @@
 
 import { useState } from "react";
 import { ErrorState } from "@/design";
-import { openingTarget } from "@/features/chat-dock/dock-target";
-import { ConversationChat } from "@/features/conversations/components/conversation-chat";
-import { useProjectConversations } from "@/features/conversations/hooks";
+import { openingTarget } from "@/features/chat-dock";
+import { ConversationChat } from "@/features/conversations";
+import { useProjectConversations } from "@/features/conversations";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 

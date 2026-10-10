@@ -13,8 +13,8 @@ import {
   DocsSearchField,
   DocsSearchResults,
   DocsSidebar,
-} from "@/features/docs/components/docs-reader";
-import { deriveToc, searchDocs } from "@/features/docs/reader";
+} from "@/features/docs";
+import { deriveToc, searchDocs } from "@/features/docs";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import { AUDIENCES, type Audience, DOORS, ONE_CORPUS } from "../audience";
 import { type PublicDoc, docsBehind, doorHref, doorSections } from "../corpus";

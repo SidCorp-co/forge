@@ -25,10 +25,10 @@ import {
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { EntityCommentThread } from "@/features/comments/components/entity-comment-thread";
-import { MockupList } from "@/features/mockups/components/mockups-panel";
-import { useMockups } from "@/features/mockups/hooks";
-import { PendingBadge } from "@/features/suggestions/components/suggestion-list";
-import { useWaitingSuggestions } from "@/features/suggestions/hooks";
+import { MockupList } from "@/features/mockups";
+import { useMockups } from "@/features/mockups";
+import { PendingBadge } from "@/features/suggestions";
+import { useWaitingSuggestions } from "@/features/suggestions";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useRequirement, useRequirementDecisions } from "../hooks";
 import type { RequirementDetail, RequirementRevision } from "../types";

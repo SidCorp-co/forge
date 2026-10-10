@@ -29,7 +29,7 @@ export function DraftEditor({ projectId, d, draft }: { projectId: string; d: Req
       }),
     onSuccess: (detail) => {
       qc.setQueryData(["requirement", projectId, d.key], detail);
-      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      void qc.invalidateQueries({ queryKey: ["requirements", projectId] });
       setOpen(false);
     },
   });

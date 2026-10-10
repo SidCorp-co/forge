@@ -15,7 +15,7 @@ import {
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
-import { useDraftReleaseForecast } from "@/features/forecast/hooks";
+import { useDraftReleaseForecast } from "@/features/forecast";
 import { useRelease, useReleasePage, useReleases } from "../hooks";
 import { ContinuedAs, EndedAttempt } from "./release-attempts";
 import { ReleaseBanner } from "./release-bits";

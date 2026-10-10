@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Fact, FactsEmpty, FactsGroup, NotAvailable, StatusBadge } from "@/design";
-import { FeedbackRailItem } from "@/features/feedback/components/feedback-rail-item";
+import { FeedbackRailItem } from "@/features/feedback";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";

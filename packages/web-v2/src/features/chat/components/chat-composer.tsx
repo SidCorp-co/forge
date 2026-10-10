@@ -141,7 +141,7 @@ export function ChatComposer(props: ChatComposerProps) {
   const hint = hintLine(files, frameWidth, t);
 
   return (
-    <ComposerWidthContext.Provider value={frameWidth}>
+    <ComposerWidthContext value={frameWidth}>
       <div className={bandClass(props.sticky ?? true, "px-4 py-3 sm:px-6")} onPaste={staged.onPaste}>
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 xl:max-w-4xl">
           {staged.refusals.length > 0 && <RefusalBanner refusals={staged.refusals} />}
@@ -191,7 +191,7 @@ export function ChatComposer(props: ChatComposerProps) {
         </div>
       </div>
       {sketching && <SketchPad open onClose={() => setSketching(false)} onAttach={(file) => staged.take([file])} />}
-    </ComposerWidthContext.Provider>
+    </ComposerWidthContext>
   );
 }
 

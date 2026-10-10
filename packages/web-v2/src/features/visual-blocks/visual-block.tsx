@@ -138,7 +138,7 @@ export function VisualBlockView({ block: raw, onCsv }: { block: unknown; onCsv?:
   }
   return (
     <Frame kind={kind} title={block.title} finding={block.finding} onCsv={onCsv}>
-      <Renderer block={block as never} />
+      <Renderer block={block} />
       <SourceNote source={block.source} facts={facts} execution={block.source ? executionFacts?.(block.source) : undefined} />
     </Frame>
   );

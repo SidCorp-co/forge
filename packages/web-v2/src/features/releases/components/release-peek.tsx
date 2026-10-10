@@ -3,7 +3,7 @@
 import { PeekHead, PeekPanel, type PeekState, StatusBadge } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { useDraftReleaseForecast } from "@/features/forecast/hooks";
+import { useDraftReleaseForecast } from "@/features/forecast";
 import { useRelease } from "../hooks";
 import { ReleaseActions } from "./release-actions";
 import { ReleaseBanner } from "./release-bits";
