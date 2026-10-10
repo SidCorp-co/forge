@@ -25,14 +25,14 @@ import { enumLabel, statusReading } from "@/design/vocabulary";
 import { issueHref } from "@/lib/routes/issues";
 import { formatRefusal } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
-import { formatAge, formatDateTime } from "@/lib/i18n/format";
+import { formatAge, formatDateTime, formatWhen } from "@/lib/i18n/format";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { said, saidOrNull, saidView } from "@/lib/i18n/said";
 import { parkRefusalText, useCancelRun } from "@/features/run-control";
 import { RUNS_STANDING_ROOT } from "../hooks";
 import { masterHref } from "@/lib/routes/agents";
 import type { RunStanding } from "../types";
-import { actorName, fmtTime, leaseLeft, runBanner, runKey, stamp, stepLabel, waitingView } from "../view";
+import { actorName, leaseLeft, runBanner, runKey, stepLabel, waitingView } from "../view";
 
 const isFinal = (s: RunState) => (RUN_FINAL_STATES as readonly string[]).includes(s);
 
@@ -138,7 +138,7 @@ function RunHolder({ r, slug }: { r: RunStanding; slug: string }) {
             <Fact label={t("runs.fact.pass")}>
               {d.source === "pass" ? (
                 <span title={time.dateTime(d.startedAt)}>
-                  {t("runs.fact.passOf", { when: fmtTime(d.startedAt, language), verb: enumLabel("masterVerb", d.verb, language).toLowerCase() })}
+                  {t("runs.fact.passOf", { when: formatWhen(d.startedAt, language), verb: enumLabel("masterVerb", d.verb, language).toLowerCase() })}
                 </span>
               ) : (
                 <span className="text-muted" title={said(d.says.detail, language)}>
@@ -166,7 +166,7 @@ export function RunProperties({ r, slug }: { r: RunStanding; slug: string }) {
           <StatusBadge family="runStanding" value={r.state} />
         </Fact>
         <Fact label={t("runs.fact.since")}>
-          <span title={`${stamp(r.since, language)} — ${said(r.says.rule, language)}`}>{fmtTime(r.since, language)}</span>
+          <span title={`${formatWhen(r.since, language)} — ${said(r.says.rule, language)}`}>{formatWhen(r.since, language)}</span>
         </Fact>
         {r.stuck.source === "stuck" ? (
           <Fact label={t("runs.fact.stuck")}>
@@ -207,11 +207,11 @@ export function RunProperties({ r, slug }: { r: RunStanding; slug: string }) {
           <StatusBadge family="pipelineRun" value={r.pipelineStatus} />
         </Fact>
         <Fact label={t("runs.fact.started")}>
-          <span title={time.dateTime(r.startedAt)}>{fmtTime(r.startedAt, language)}</span>
+          <span title={time.dateTime(r.startedAt)}>{formatWhen(r.startedAt, language)}</span>
         </Fact>
         {r.finishedAt ? (
           <Fact label={t("runs.fact.finished")}>
-            <span title={time.dateTime(r.finishedAt)}>{fmtTime(r.finishedAt, language)}</span>
+            <span title={time.dateTime(r.finishedAt)}>{formatWhen(r.finishedAt, language)}</span>
           </Fact>
         ) : null}
         {r.boxRunId ? (

@@ -42,10 +42,11 @@ import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interfa
 import { useScheduleDetail } from "../hooks";
 import { automationListHref, fireHref } from "@/lib/routes/automation";
 import type { ScheduleDetailResponse, ScheduleStanding } from "../types";
-import { fmtTime, type RowCtx } from "../view";
+import { type RowCtx } from "../view";
 import { FireLines } from "./fire-views";
 import { ReportLines } from "./report-views";
 import { ScheduleForm } from "./schedule-form";
+import { formatWhen } from "@/lib/i18n/format";
 
 export interface AutomationAccess {
   projectId: string;
@@ -77,7 +78,7 @@ export const scheduleRow =
     state: <StatusBadge family="scheduleStanding" value={s.state} />,
     waitingOn:
       s.waitingOn.kind === "none" ? (
-        <span className="text-13 text-subtle">{s.nextFireAt ? t("schedules.nextFire", { at: fmtTime(s.nextFireAt, language) }) : t("schedules.notScheduled")}</span>
+        <span className="text-13 text-subtle">{s.nextFireAt ? t("schedules.nextFire", { at: formatWhen(s.nextFireAt, language) }) : t("schedules.notScheduled")}</span>
       ) : (
         <WaitingOn w={s.waitingOn} />
       ),

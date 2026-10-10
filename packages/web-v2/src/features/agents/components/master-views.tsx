@@ -36,14 +36,14 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel, statusReading } from "@/design/vocabulary";
 import { issueHref } from "@/lib/routes/issues";
 import { formatApiError } from "@/lib/api/error";
-import { formatAge, formatDateTime, formatRelative, formatNumber } from "@/lib/i18n/format";
+import { formatAge, formatDateTime, formatNumber, formatRelative, formatWhen } from "@/lib/i18n/format";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { productCopy, type Copy } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
 import { useMasterCharter, useMasterPasses, useMasterStanding, useRunStanding } from "../hooks";
 import { MASTER_KEY, runHref } from "@/lib/routes/agents";
 import type { MasterClosedPass, MasterPassView, MasterStanding, RunStanding } from "../types";
-import { fmtTime, leaseLeft, runName } from "../view";
+import { leaseLeft, runName } from "../view";
 
 export const masterName = (m: MasterStanding, language = "en") => m.name ?? productCopy(language)("agents.master.title");
 
@@ -201,7 +201,7 @@ export function MasterProperties({ m }: { m: MasterStanding }) {
           <span className="font-mono text-13">{m.device?.name ?? "—"}</span>
         </Fact>
         <Fact label={t("agents.master.lastBeat")}>{m.lastBeatAt ? <span title={time.dateTime(m.lastBeatAt)}>{formatRelative(m.lastBeatAt, language)}</span> : "—"}</Fact>
-        <Fact label={t("runs.fact.since")}>{fmtTime(m.since, language)}</Fact>
+        <Fact label={t("runs.fact.since")}>{formatWhen(m.since, language)}</Fact>
         <Fact label={t("agents.master.dialogs")}>{dialogsText(m, language)}</Fact>
       </FactsGroup>
       <FactsGroup title={t("runs.fact.properties")}>
@@ -289,7 +289,7 @@ export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPa
             return (
               <TR key={p.id}>
                 <TD>
-                  <span title={time.dateTime(p.startedAt)}>{fmtTime(p.startedAt, language)}</span>
+                  <span title={time.dateTime(p.startedAt)}>{formatWhen(p.startedAt, language)}</span>
                   {c ? null : <span className="ml-1.5 text-12 font-semibold text-link">{t("agents.master.now")}</span>}
                 </TD>
                 <TD>
@@ -379,7 +379,7 @@ function Leased({ m, projectId, slug }: { m: MasterStanding; projectId: string; 
                 <TD>
                   {d?.source === "pass" ? (
                     <span title={time.dateTime(d.startedAt)}>
-                      {fmtTime(d.startedAt, language)} {enumLabel("masterVerb", d.verb, language).toLowerCase()}
+                      {formatWhen(d.startedAt, language)} {enumLabel("masterVerb", d.verb, language).toLowerCase()}
                     </span>
                   ) : (
                     <span className="text-muted" title={d?.source === "master" ? said(d.says.detail, language) : undefined}>
@@ -406,7 +406,7 @@ function Charter({ projectId }: { projectId: string }) {
   if (!c.declared) return <FactsEmpty>{t("agents.master.noCharter")}</FactsEmpty>;
   return (
     <section>
-      <ViewHeading right={c.declaredAt ? <span className="text-13 text-muted">{t("agents.master.declared", { at: fmtTime(c.declaredAt, language) })}</span> : undefined}>{t("agents.master.charterV", { v: c.version ?? "" })}</ViewHeading>
+      <ViewHeading right={c.declaredAt ? <span className="text-13 text-muted">{t("agents.master.declared", { at: formatWhen(c.declaredAt, language) })}</span> : undefined}>{t("agents.master.charterV", { v: c.version ?? "" })}</ViewHeading>
       {c.goal ? <p className="text-14">{c.goal}</p> : null}
       {c.rules.length > 0 ? (
         <ul className="mt-3 border-t border-line-subtle">

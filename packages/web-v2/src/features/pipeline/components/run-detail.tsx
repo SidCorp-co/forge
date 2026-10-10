@@ -36,7 +36,7 @@ import { copyShareLink } from "@/lib/navigation/copy-share-link";
 import { IssueQuickActions } from "@/features/issues";
 import { priorityLabel, runStatusChip, workStepOf } from "@/features/issues";
 import type { IssuePriority, IssueStatus } from "@/features/issues";
-import { drawerRunChip, formatDurationMs, formatUsd } from "../derive";
+import { drawerRunChip } from "../derive";
 import { useCancelRun, usePauseRun, useResumeRun } from "@/features/run-control";
 import { useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
@@ -46,6 +46,7 @@ import type {
   PipelineRunStepSummary,
   PipelineRunSummary,
 } from "../types";
+import { formatDuration, formatUsd } from "@/lib/i18n/format";
 
 interface RunDetailProps {
   open: boolean;
@@ -257,7 +258,7 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
                 <StatusBadge family="runStep" value={step.status} />
                 {step.durationMs != null && (
                   <span className="ml-auto">
-                    <Stat icon="clock">{formatDurationMs(step.durationMs)}</Stat>
+                    <Stat icon="clock">{formatDuration(step.durationMs)}</Stat>
                   </span>
                 )}
               </div>
@@ -311,7 +312,7 @@ function CostTab({ run, loading }: { run: PipelineRunSummary | undefined; loadin
                 tone="cobalt"
               />
               <span className="w-16 flex-none text-right font-mono text-12 text-fg">
-                {formatDurationMs(s.durationMs)}
+                {formatDuration(s.durationMs)}
               </span>
             </div>
           ))}

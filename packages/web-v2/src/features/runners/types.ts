@@ -279,18 +279,6 @@ export interface ActiveRunnersSnapshot {
 	total: number;
 }
 
-export function formatElapsed(startedAt: string | null, language: string, now: number = Date.now()): string | null {
-	if (!startedAt) return null;
-	const start = Date.parse(startedAt);
-	if (!Number.isFinite(start)) return null;
-	const t = productCopy(language);
-	const sec = Math.max(0, Math.floor((now - start) / 1000));
-	if (sec < 60) return t("common.age.seconds", { n: sec });
-	const min = Math.floor(sec / 60);
-	if (min < 60) return t("common.elapsed.minutes", { m: min, s: sec % 60 });
-	const hr = Math.floor(min / 60);
-	return t("common.elapsed.hours", { h: hr, m: min % 60 });
-}
 
 export const PROVISION_STEPS: ProvisionStatus[] = [
 	"queued",

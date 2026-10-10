@@ -12,7 +12,6 @@
 
 import { useState } from "react";
 import { Button, EmptyState, Property, PropertyList, Section, SegmentedControl, useUrlChoice } from "@/design";
-import { formatDurationMs, formatUsd } from "@/features/pipeline";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useRun } from "@/features/pipeline";
@@ -38,6 +37,7 @@ import { StoryLens } from "./story-lens";
 import { Tape } from "./tape";
 import { TimeSpendBar } from "./time-spend-bar";
 import { TranscriptLens } from "./transcript-lens";
+import { formatDuration, formatUsd } from "@/lib/i18n/format";
 
 const LENSES = ["story", "diff", "transcript"] as const;
 type Lens = (typeof LENSES)[number];
@@ -99,7 +99,7 @@ function RunCost({ session, meta }: { session: SessionRow; meta: ReturnType<type
         <Property label={t("runs.report.turns")}>{String(totals?.numTurns ?? session.usage?.turns ?? "—")}</Property>
         <Property label={t("runs.report.apiTime")}>
           {totals?.durationApiMs != null
-            ? t("runs.report.apiOf", { api: formatDurationMs(totals.durationApiMs, language), total: formatDurationMs(totals.durationMs ?? null, language) })
+            ? t("runs.report.apiOf", { api: formatDuration(totals.durationApiMs, language), total: formatDuration(totals.durationMs ?? null, language) })
             : "—"}
         </Property>
         <Property label={t("runs.report.denials")}>{String(totals?.permissionDenials ?? "—")}</Property>

@@ -1,3 +1,4 @@
+import { formatDuration } from "@/lib/i18n/format";
 import {
 	Badge,
 	Banner,
@@ -15,7 +16,6 @@ import {
 	type ActiveRunnerJob,
 	type ProjectRunner,
 	type RunnerLimitDisplay,
-	formatElapsed,
 	provisionHealth,
 	runnerLimitDisplay,
 	runnerLimitLine,
@@ -177,7 +177,7 @@ function CurrentJobLine({ current, now }: { current: ActiveRunnerJob | null; now
 			</div>
 		);
 	}
-	const elapsed = formatElapsed(current.startedAt, language, now);
+	const elapsed = current.startedAt ? formatDuration(now - Date.parse(current.startedAt), language) : null;
 	return (
 		<div className="flex items-center gap-2 rounded-md border border-line bg-sunken px-3 py-1.5">
 			<HealthDot health="healthy" withLabel={false} />

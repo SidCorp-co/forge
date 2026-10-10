@@ -32,7 +32,8 @@ import { said } from "@/lib/i18n/said";
 import { useFireDetail } from "../hooks";
 import { fireHref, reportHref, scheduleHref, sessionHref } from "@/lib/routes/automation";
 import type { FireDetailResponse, FireStanding } from "../types";
-import { fireWhy, fmtDuration, producedLine, type RowCtx, shortId } from "../view";
+import { fireWhy, producedLine, type RowCtx, shortId } from "../view";
+import { formatDurationSec } from "@/lib/i18n/format";
 
 export const fireRow =
   (hrefOf: (id: string) => string, { t, language, time }: RowCtx) =>
@@ -43,7 +44,7 @@ export const fireRow =
       keyLabel: `#${shortId(f.id)}`,
       href: hrefOf(f.id),
       title: f.scheduleName,
-      facts: [enumLabel("fireTrigger", f.trigger, language), fmtDuration(f.durationSeconds, t), producedLine(f.produced, t), ...(why ? [why] : [])],
+      facts: [enumLabel("fireTrigger", f.trigger, language), formatDurationSec(f.durationSeconds, language), producedLine(f.produced, t), ...(why ? [why] : [])],
       state: <StatusBadge family="scheduleRun" value={f.status} />,
       waitingOn: f.waitingOn.kind === "none" ? <span className="text-13 text-subtle">—</span> : <WaitingOn w={f.waitingOn} />,
       owner: enumLabel("fireTrigger", f.trigger, language),
@@ -68,7 +69,7 @@ export function FireLines({ fires, slug }: { fires: readonly FireStanding[]; slu
               <span className="font-mono text-12 font-semibold text-link">#{shortId(f.id)}</span>
               <StatusBadge family="scheduleRun" value={f.status} />
               <span className="text-muted">{enumLabel("fireTrigger", f.trigger, language)}</span>
-              <span className="font-mono text-12 text-subtle">{fmtDuration(f.durationSeconds, t)}</span>
+              <span className="font-mono text-12 text-subtle">{formatDurationSec(f.durationSeconds, language)}</span>
               <span className="text-muted">{producedLine(f.produced, t)}</span>
               {why ? <span className="truncate text-danger">{why}</span> : null}
               <span className="ml-auto font-mono text-12 text-subtle" title={time.dateTime(f.startedAt)}>
@@ -121,7 +122,7 @@ export function FireProperties({ d, slug }: { d: Pick<FireDetailResponse, "fire"
         <Fact label={t("schedules.fire.startedLabel")}>
           <span title={time.dateTime(f.startedAt)}>{t("schedules.ago", { age: time.age(f.startedAt) })}</span>
         </Fact>
-        <Fact label={t("schedules.fire.took")}>{fmtDuration(f.durationSeconds, t)}</Fact>
+        <Fact label={t("schedules.fire.took")}>{formatDurationSec(f.durationSeconds, language)}</Fact>
         <Fact label={t("schedules.fire.trigger")}>
           <EnumBadge family="fireTrigger" value={f.trigger} />
         </Fact>

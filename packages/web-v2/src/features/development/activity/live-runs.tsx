@@ -7,10 +7,10 @@
 import Link from "next/link";
 import { enumLabel, Icon, LiveDot, RowItem, RowList, Section, StatusBadge } from "@/design";
 import { stageColor } from "@/design/stages";
-import { formatUsd } from "@/features/pipeline";
 import type { PipelineRunKind, PipelineRunListItem } from "@/features/pipeline";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
+import { formatUsd } from "@/lib/i18n/format";
 
 const KINDS: readonly PipelineRunKind[] = ["issue", "interactive", "system"];
 function runLabel(kind: PipelineRunKind, t: Copy): string {

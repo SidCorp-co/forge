@@ -1,6 +1,5 @@
 import { Button, PageTitle } from "@/design";
-import { useCopy } from "@/lib/i18n/interface-language";
-import { formatDuration } from "../types";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { SessionStats } from "./session-filters";
 
 /** Title, the four headline figures on one line, and Sweep (ISS-391). */
@@ -14,6 +13,7 @@ export function SessionsHeader({
   onSweep: () => void;
 }) {
   const t = useCopy();
+  const time = useTimeFormat();
   return (
     <header className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
       <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
@@ -28,7 +28,7 @@ export function SessionsHeader({
           />
           <StatPill
             label={t("sessions.stat.medianWait")}
-            value={stats.queued > 0 ? formatDuration(stats.medianWaitMs, t) : "—"}
+            value={stats.queued > 0 ? time.duration(stats.medianWaitMs) : "—"}
           />
         </div>
       </div>

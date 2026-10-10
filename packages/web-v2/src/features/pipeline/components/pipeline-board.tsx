@@ -22,11 +22,12 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { boardColumns, cardStatus, formatUsd, groupIssuesByColumn, runsByIssue } from "../derive";
+import { boardColumns, cardStatus, groupIssuesByColumn, runsByIssue } from "../derive";
 import { useProjectIssues, useProjectRuns } from "../hooks";
 import type { PipelineIssueRow } from "../types";
 import { RunDetail } from "./run-detail";
 import { TopBarActions } from "@/design/primitives/top-bar-slot";
+import { formatUsd } from "@/lib/i18n/format";
 
 interface PipelineBoardProps {
   scope: { projectId: string; slug: string };

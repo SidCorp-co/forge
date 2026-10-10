@@ -321,18 +321,18 @@ export function IssueTableLine({
         </span>
       </TD>
       <TD className="min-w-70 max-w-140">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <button
             type="button"
             onClick={open}
             aria-label={t("issues.row.openTitled", { key: row.displayId, title: row.title })}
-            className="group/title min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-focus"
+            className="group/title min-w-0 max-w-full cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-focus"
           >
             <span className="fg-body-sm block truncate text-fg group-hover/title:text-accent-text group-hover/title:underline">
               {row.title}
             </span>
           </button>
-          <span className="flex flex-none items-center gap-1.5">
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
             {row.category && <EnumBadge family="category" value={row.category} />}
             <WaitingOnPersonChip since={row.waitingOnPersonSince} now={now} />
             <DepBadges deps={row.dependencies} slug={slug} />

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, type ReactNode, use, useMemo } from "react";
-import { formatAge, formatClock, formatClockSeconds, formatCompact, formatCountdown, formatDate, formatDateTime, formatElapsed, formatNumber, formatRelative } from "./format";
+import { formatAge, formatClock, formatClockSeconds, formatCompact, formatCountdown, formatDate, formatDateTime, formatDuration, formatElapsed, formatNumber, formatRelative, formatUsd, formatWhen } from "./format";
 import { labelCopy } from "./labels";
 import { baseOf, copyOr, type Copy, copyLocale, productCopy } from "./product-copy";
 
@@ -74,6 +74,9 @@ export function useTimeFormat() {
       clock: (at: string | number | Date) => formatClock(at, language),
       clockSeconds: (at: string | number | Date) => formatClockSeconds(at, language),
       compact: (n: number) => formatCompact(n, language),
+      duration: (ms: number | null | undefined) => formatDuration(ms, language),
+      usd: (usd: number | null | undefined) => formatUsd(usd, language),
+      when: (at: string | number | null | undefined) => formatWhen(at, language),
     }),
     [language],
   );

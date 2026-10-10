@@ -167,7 +167,7 @@ export function DepBadges({
     return null;
 
   return (
-    <span className="inline-flex items-center gap-1.5">
+    <span className="inline-flex flex-wrap items-center gap-1.5">
       {openBlockers.length > 0 ? (
         <RelationChip
           icon="lock"

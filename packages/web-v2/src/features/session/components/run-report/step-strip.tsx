@@ -7,9 +7,9 @@
 // supplies the accent colour when a step happens to be one of them.
 
 import { enumLabel, STAGES } from "@/design";
-import { formatDurationMs } from "@/features/pipeline";
 import type { PipelineRunSummary } from "@/features/pipeline";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { formatDuration } from "@/lib/i18n/format";
 
 const TICK: Record<string, { glyph: string; color: string }> = {
   completed: { glyph: "✓", color: "var(--ok-11)" },
@@ -47,7 +47,7 @@ export function StepStrip({ run, currentStep }: { run: PipelineRunSummary; curre
                 {enumLabel("jobType", step.jobType, language)}
               </span>
               <span className="fg-caption ml-auto">
-                {step.durationMs != null ? formatDurationMs(step.durationMs, language) : "—"}
+                {step.durationMs != null ? formatDuration(step.durationMs, language) : "—"}
               </span>
             </div>
             <div

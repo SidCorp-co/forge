@@ -18,12 +18,6 @@ function totalTokens(cost: IssueCostSummary | undefined): number {
   return cost.inputTokens + cost.outputTokens + cost.cacheReadTokens + cost.cacheCreationTokens;
 }
 
-function fmtTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
-
 
 /** Artifacts carried between issues: the other issue's key, linked, and the artifact as marked. */
 function CarriageList({ items, slug, from = false }: { items: Array<{ ref: string; key: string }>; slug: string; from?: boolean }) {
@@ -206,7 +200,7 @@ export function DeveloperProperties({
       {tokens > 0 ? (
         <Row label={t("issues.rail.tokens")}>
           <Stat icon="cpu">
-            <span title={t("issues.rail.tokensExact", { n: time.number(tokens) })}>{fmtTokens(tokens)}</span>
+            <span title={t("issues.rail.tokensExact", { n: time.number(tokens) })}>{time.compact(tokens)}</span>
           </Stat>
         </Row>
       ) : null}

@@ -12,17 +12,7 @@
 
 import { useRouter } from "next/navigation";
 import { Banner, enumLabel, HealthDot, Icon, MonoTag, FactsGroup, Stat, StatusBadge, useElapsed } from "@/design";
-import {
-  deriveSessionDisplayStatus,
-  failureReasonAction,
-  failureReasonLabel,
-  formatCost,
-  formatDuration,
-  formatShortTime,
-  sessionStep,
-  statusToChip,
-  type SessionRow,
-} from "@/features/sessions";
+import { deriveSessionDisplayStatus, failureReasonAction, failureReasonLabel, sessionStep, statusToChip, type SessionRow } from "@/features/sessions";
 import { useStuckRuns } from "@/features/agents";
 import { useSessionCost, useSessions } from "@/features/sessions";
 import { isJobDriven, sessionKind } from "@/features/sessions";
@@ -36,12 +26,7 @@ import { deriveAgentTasks, deriveFilesChanged } from "../derive";
 import type { ConversationItem } from "../types";
 import { HeldReplyForRun } from "./held-reply-for-run";
 import { LoadedForRun } from "./loaded-for-run";
-
-function fmtNum(n: number | undefined, num: (n: number) => string): string {
-  if (n == null) return "—";
-  if (n >= 1000) return `${num(Number((n / 1000).toFixed(n >= 10_000 ? 0 : 1)))}k`;
-  return num(n);
-}
+import { formatDuration, formatUsd } from "@/lib/i18n/format";
 
 const GATE_TONE: Record<RunGateNote["verdict"], "info" | "attention" | "success"> = {
   none: "info",
@@ -207,7 +192,7 @@ function RailStats({
   const time = useRailTime();
   const startMs = session.startedAt ? new Date(session.startedAt).getTime() : undefined;
   const elapsed = useElapsed(startMs, live);
-  const duration = !startMs ? "—" : live ? elapsed : formatDuration(new Date(session.updatedAt).getTime() - startMs, t);
+  const duration = !startMs ? "—" : live ? elapsed : formatDuration(new Date(session.updatedAt).getTime() - startMs, language);
   const usage = session.usage ?? {};
   const hasCache = usage.cacheRead != null || usage.cacheWrite != null;
   const cost = useSessionCost(session.id).data;
@@ -230,26 +215,26 @@ function RailStats({
         </Stat>
         <Stat icon="cpu" title={t("sessions.rail.contextTitle")}>
           {t("sessions.rail.ctx", {
-            n: fmtNum(usage.contextUsed, time.number),
+            n: (usage.contextUsed == null ? "—" : time.compact(usage.contextUsed)),
           })}
         </Stat>
         <Stat icon="arrowRight" title={t("sessions.rail.tokensTitle")}>
           {t("sessions.rail.tok", {
-            in: fmtNum(usage.inputTotal, time.number),
-            out: fmtNum(usage.outputTotal, time.number),
+            in: (usage.inputTotal == null ? "—" : time.compact(usage.inputTotal)),
+            out: (usage.outputTotal == null ? "—" : time.compact(usage.outputTotal)),
           })}
         </Stat>
         {hasCache && (
           <Stat icon="cpu" title={t("sessions.rail.cacheTitle")}>
             {t("sessions.rail.cache", {
-              read: fmtNum(usage.cacheRead, time.number),
-              write: fmtNum(usage.cacheWrite, time.number),
+              read: (usage.cacheRead == null ? "—" : time.compact(usage.cacheRead)),
+              write: (usage.cacheWrite == null ? "—" : time.compact(usage.cacheWrite)),
             })}
           </Stat>
         )}
         <Stat icon="dollar" title={t("sessions.rail.costTitle")}>
           {t("sessions.rail.cost", {
-            amount: formatCost(cost?.estimatedCost, language),
+            amount: formatUsd(cost?.estimatedCost, language),
           })}
         </Stat>
         {modelLabel && (
@@ -293,17 +278,17 @@ function RailTiming({ session, live }: { session: SessionRow; live: boolean }) {
       <div className="flex flex-col gap-2.5">
         <Stat icon="calendar" title={t("sessions.rail.dispatchedTitle")}>
           {t("sessions.rail.dispatched", {
-            at: formatShortTime(session.dispatchedAt, time.dateTime),
+            at: time.when(session.dispatchedAt),
           })}
         </Stat>
         <Stat icon="play" title={t("sessions.rail.startedTitle")}>
           {t("sessions.rail.started", {
-            at: formatShortTime(session.startedAt, time.dateTime),
+            at: time.when(session.startedAt),
           })}
         </Stat>
         <Stat icon="check" title={t("sessions.rail.endedTitle")}>
           {t("sessions.rail.ended", {
-            at: live ? "—" : formatShortTime(session.updatedAt, time.dateTime),
+            at: live ? "—" : time.when(session.updatedAt),
           })}
         </Stat>
       </div>

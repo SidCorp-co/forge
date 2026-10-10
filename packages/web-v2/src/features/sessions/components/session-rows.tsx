@@ -1,5 +1,5 @@
 import { useRouter } from "next/navigation";
-import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import {
   Badge,
@@ -15,17 +15,7 @@ import {
   type MenuItem,
   useElapsed,
 } from "@/design";
-import {
-  type StuckRuns,
-  deriveSessionDisplayStatus,
-  sessionStep,
-  isRetryable,
-  formatCost,
-  formatDuration,
-  formatShortTime,
-  type AgentSessionDisplayStatus,
-  type SessionRow,
-} from "../types";
+import { type StuckRuns, deriveSessionDisplayStatus, sessionStep, isRetryable, type AgentSessionDisplayStatus, type SessionRow } from "../types";
 import { RunnerCell, SessionIdentity, SessionKindTag, StatusCell } from "./session-cells";
 import { OWNER_INDENT_PX, type TreeRow } from "./session-tree";
 
@@ -115,7 +105,7 @@ interface RowProps {
 /** A row's display state, its duration and the route it opens. */
 function useRowView({ row, slug, stuck }: RowProps) {
   const router = useRouter();
-  const t = useCopy();
+  const time = useTimeFormat();
   const display = deriveSessionDisplayStatus(row, stuck);
   const live = display === "running" || display === "stalled";
   const startMs = row.startedAt ? new Date(row.startedAt).getTime() : undefined;
@@ -124,7 +114,7 @@ function useRowView({ row, slug, stuck }: RowProps) {
     ? "—"
     : live
       ? elapsed
-      : formatDuration(new Date(row.updatedAt).getTime() - startMs, t);
+      : time.duration(new Date(row.updatedAt).getTime() - startMs);
   const stage = sessionStep(row.metadata) ?? undefined;
   const open = slug ? () => router.push(`/projects/${slug}/agents/${row.id}`) : undefined;
   return { display, duration, stage, open };
@@ -195,7 +185,6 @@ function SessionTableEntry(props: RowProps & {
 }) {
   const { row, slug, deviceName, now, stuck, actions, depth, hasChildren } = props;
   const { display, duration, stage, open } = useRowView(props);
-  const language = useInterfaceLanguage();
   const time = useTimeFormat();
   const t = useCopy();
   return (
@@ -231,10 +220,10 @@ function SessionTableEntry(props: RowProps & {
       <TD className="max-w-40">
         <RunnerCell row={row} deviceName={deviceName} display={display} now={now} stuck={stuck} />
       </TD>
-      <TD className="whitespace-nowrap font-mono text-muted">{formatShortTime(row.startedAt ?? row.dispatchedAt, time.dateTime)}</TD>
+      <TD className="whitespace-nowrap font-mono text-muted">{time.when(row.startedAt ?? row.dispatchedAt)}</TD>
       <TD className="text-right font-mono text-muted">{row.usage?.turns != null ? time.number(row.usage.turns) : "—"}</TD>
       <TD className="text-right font-mono text-muted">{duration}</TD>
-      <TD className="text-right font-mono text-muted">{formatCost(row.estimatedCost, language)}</TD>
+      <TD className="text-right font-mono text-muted">{time.usd(row.estimatedCost)}</TD>
       <TD>
         <StatusCell row={row} display={display} stage={stage} now={now} stuck={stuck} />
       </TD>
@@ -249,7 +238,6 @@ function SessionMobileEntry(props: RowProps) {
   const { row, slug, deviceName, now, stuck, actions, depth } = props;
   const { display, duration, stage, open } = useRowView(props);
   const t = useCopy();
-  const language = useInterfaceLanguage();
   const time = useTimeFormat();
   return (
     // The same edge the table shows, at a width a phone can carry: the nesting
@@ -277,10 +265,10 @@ function SessionMobileEntry(props: RowProps) {
         <div className="flex items-center gap-3">
           <Badge tone="neutral">{t("sessions.turnsCount", { n: time.number(row.usage?.turns ?? 0) })}</Badge>
           <span className="fg-mono text-muted">{duration}</span>
-          <span className="fg-mono text-muted">{formatCost(row.estimatedCost, language)}</span>
+          <span className="fg-mono text-muted">{time.usd(row.estimatedCost)}</span>
         </div>
       </div>
-      <div className="fg-caption mt-1.5 text-subtle">{t("sessions.startedAt", { at: formatShortTime(row.startedAt ?? row.dispatchedAt, time.dateTime) })}</div>
+      <div className="fg-caption mt-1.5 text-subtle">{t("sessions.startedAt", { at: time.when(row.startedAt ?? row.dispatchedAt) })}</div>
       {row.deviceId && (
         <div className="mt-2.5">
           <RunnerCell row={row} deviceName={deviceName} display={display} now={now} stuck={stuck} />

@@ -4,8 +4,8 @@
 import { useState } from "react";
 import { enumLabel, Icon } from "@/design";
 import { stageColor } from "@/design/stages";
+import { formatDurationSec } from "@/lib/i18n/format";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import type { Copy } from "@/lib/i18n/product-copy";
 import type { IssueStepOutcome as StepOutcome, IssueStepState as StepState } from "@forge/contracts/issue-standing";
 
 interface StepArtifactCardProps {
@@ -22,15 +22,6 @@ const STATE_DOT: Record<StepState, string> = {
 
 const SKIP_KEYS = new Set(["step", "schema_version", "schemaVersion"]);
 
-/** An elapsed time in whole seconds, in the reader's words: `42s`, `3m 07s`, `1h 05m`. */
-export function fmtDuration(seconds: number, t: Copy): string {
-  const s = Math.max(0, Math.round(seconds));
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  if (h > 0) return t("common.elapsed.hours", { h, m: String(m % 60).padStart(2, "0") });
-  if (m > 0) return t("common.elapsed.minutes", { m, s: String(s % 60).padStart(2, "0") });
-  return t("common.age.seconds", { n: s });
-}
 
 const ARRAY_TEXT_KEYS = ["path", "file", "title", "name", "test", "what", "step"];
 
@@ -119,7 +110,7 @@ export function StepArtifact({ outcome, open, onToggle }: StepArtifactCardProps)
           {outcome.durationSeconds != null && (
             <span className="fg-caption inline-flex items-center gap-1 text-muted">
               <Icon name="clock" size={12} />
-              {fmtDuration(outcome.durationSeconds, t)}
+              {formatDurationSec(outcome.durationSeconds, language)}
             </span>
           )}
           <span className="fg-caption inline-flex items-center gap-0.5 text-muted">

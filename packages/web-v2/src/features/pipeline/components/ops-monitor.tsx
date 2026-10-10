@@ -34,10 +34,10 @@ import { deriveHealth, type ProjectHealthRow, useOrgScopedProjects, useProjectHe
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { formatDurationSec, formatUsd } from "../derive";
 import { useStepDurations, useThroughput } from "../hooks";
 import type { StepDurationRow, ThroughputRow } from "../types";
 import { RunDetail } from "./run-detail";
+import { formatDurationSec, formatUsd } from "@/lib/i18n/format";
 
 
 const TAB_VALUES = ["monitor", "progress", "health", "runs"] as const;
