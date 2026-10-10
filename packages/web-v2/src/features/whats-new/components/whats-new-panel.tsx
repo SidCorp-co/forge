@@ -1,7 +1,7 @@
 "use client";
 
 import { SlideOver } from "@/design";
-import { ReleaseHighlightsSection } from "@/features/releases/components/release-highlights";
+import { ReleaseHighlightList } from "@/features/releases/components/release-highlights";
 import { useCopy, useCopyLocale } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import type { WhatsNewChange, WhatsNewFeed } from "../types";
@@ -9,10 +9,10 @@ import type { WhatsNewChange, WhatsNewFeed } from "../types";
 function Change({ change, kindLabel }: { change: WhatsNewChange; kindLabel: string }) {
   return (
     <li className="grid grid-cols-[76px_minmax(0,1fr)] gap-x-2.5 border-b border-line py-2.5" data-testid="whats-new-change">
-      <span className={cn("pt-0.5 text-11 uppercase tracking-[0.05em]", change.kind === "new" ? "font-semibold text-accent-text" : "text-subtle")}>
+      <span className={cn("pt-0.5 text-12 uppercase tracking-wider", change.kind === "new" ? "font-semibold text-accent-text" : "text-subtle")}>
         {kindLabel}
       </span>
-      <span className="text-13-5 text-fg">{change.line}</span>
+      <span className="text-14 text-fg">{change.line}</span>
     </li>
   );
 }
@@ -28,7 +28,7 @@ interface WhatsNewPanelProps {
 }
 
 /** What's new: the release this instance serves, its highlights first, then its lines. */
-export function WhatsNewPanel({ open, onClose, feed, failure, loading = false }: WhatsNewPanelProps) {
+export function WhatsNewSheet({ open, onClose, feed, failure, loading = false }: WhatsNewPanelProps) {
   const t = useCopy();
   const locale = useCopyLocale();
   const release = feed?.release ?? null;
@@ -54,7 +54,7 @@ export function WhatsNewPanel({ open, onClose, feed, failure, loading = false }:
               <span className="font-semibold text-fg">{t("whatsNew.release", { version: release.version })}</span>
               {released ? <> · {released}</> : null}
             </p>
-            <ReleaseHighlightsSection highlights={release.highlights} authed={false} />
+            <ReleaseHighlightList highlights={release.highlights} authed={false} />
             {release.changes.length > 0 && (
               <ul className="mt-2" data-testid="whats-new-changes">
                 {release.changes.map((c) => (

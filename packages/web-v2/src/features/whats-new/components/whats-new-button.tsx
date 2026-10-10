@@ -6,7 +6,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { useMarkWhatsNewSeen, useWhatsNew, useWhatsNewSummary } from "../hooks";
 import type { WhatsNewFeed } from "../types";
-import { WhatsNewPanel } from "./whats-new-panel";
+import { WhatsNewSheet } from "./whats-new-panel";
 
 /** The releases this tab has already opened What's new on by itself: once each, however many entries mount. */
 const openedByItself = new Set<string>();
@@ -65,8 +65,8 @@ export function WhatsNewButton({ compact = false }: { compact?: boolean }) {
         data-tour="nav-whats-new"
         aria-label={owed ? `${t("whatsNew.nav")}, ${t("whatsNew.unread")}` : t("whatsNew.nav")}
         className={cn(
-          "relative flex items-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg max-md:min-h-[44px]",
-          compact ? "w-full flex-col gap-0.5 px-1 py-1.5 text-9-5" : "w-full gap-2.5 px-1.5 py-1.5 text-13",
+          "relative flex items-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg max-md:min-h-11",
+          compact ? "w-full flex-col gap-0.5 px-1 py-1.5 text-12" : "w-full gap-2.5 px-1.5 py-1.5 text-13",
         )}
       >
         <Icon name="star" size={compact ? 15 : 16} />
@@ -75,7 +75,7 @@ export function WhatsNewButton({ compact = false }: { compact?: boolean }) {
           <span data-testid="whats-new-dot" aria-hidden className={cn("size-2 rounded-pill bg-accent", compact ? "absolute right-4 top-1" : "flex-none")} />
         )}
       </button>
-      <WhatsNewPanel open={open} onClose={closePanel} feed={shown} failure={failure} loading={open && !shown && !failure} />
+      <WhatsNewSheet open={open} onClose={closePanel} feed={shown} failure={failure} loading={open && !shown && !failure} />
     </>
   );
 }
