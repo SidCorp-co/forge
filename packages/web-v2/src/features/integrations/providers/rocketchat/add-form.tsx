@@ -35,19 +35,14 @@ export function AddRocketchatForm({ projectId }: { projectId: string }) {
     <AddBindingForm
       add={add}
       title={t("integrations.rocket.connectTitle")}
-      intro={<p className="fg-body-sm text-muted">{t("integrations.rocket.connectIntro")}</p>}
       submitLabel={t("integrations.rocket.connectBot")}
       canSubmit={canSubmit}
       onSubmit={handleCreate}
     >
-      <Field label={t("integrations.rocket.server")} hint={t("integrations.rocket.serverHint")} required>
+      <Field label={t("integrations.rocket.server")} required>
         <Input placeholder="https://chat.example.com" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} />
       </Field>
-      <Field
-        label={t("integrations.rocket.token")}
-        hint={t("integrations.rocket.tokenHint")}
-        required
-      >
+      <Field label={t("integrations.rocket.token")} required>
         <Input
           type="password"
           autoComplete="new-password"
@@ -56,7 +51,7 @@ export function AddRocketchatForm({ projectId }: { projectId: string }) {
           onChange={(e) => setAuthToken(e.target.value)}
         />
       </Field>
-      <Field label={t("integrations.rocket.userId")} hint={t("integrations.rocket.userIdHint")} required>
+      <Field label={t("integrations.rocket.userId")} required>
         <Input placeholder={t("integrations.rocket.userIdExample")} value={botUserId} onChange={(e) => setBotUserId(e.target.value)} />
       </Field>
       <FirstRoomField
@@ -103,11 +98,7 @@ function FirstRoomField({
   }
 
   return (
-    <Field
-      label={t("integrations.rocket.room")}
-      hint={t("integrations.rocket.roomHint")}
-      required
-    >
+    <Field label={t("integrations.rocket.room")} required>
       <div className="flex items-center gap-2">
         <RoomSelect
           rooms={rooms ?? []}

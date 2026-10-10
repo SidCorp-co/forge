@@ -139,7 +139,7 @@ function MergeMarkBadge({
         title={
           // Outside git no change request is the normal record; what the mark lacks is a landing.
           landingShape === "outside_git"
-            ? t("issues.merge.noLanding")
+            ? t("issues.merge.landingMissing")
             : t("issues.merge.asserted")
         }
       >

@@ -86,7 +86,6 @@ export function ReproduceSection({ projectId, fbKey, carriers, redacted }: Repro
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-3">
-            <p className="fg-body-sm min-w-0 flex-1 text-muted">{t("previews.reproduce.lead", { fb: fbKey })}</p>
             {serving ? null : (
               <Button size="sm" loading={open.isPending} onClick={() => open.mutate()} data-testid="reproduce-open">
                 {t("previews.reproduce.open", { fb: fbKey })}
@@ -161,7 +160,6 @@ function FixConfirm({ projectId, issueKey, fbKey }: { projectId: string; issueKe
   return (
     <div className="grid gap-2 border-t border-line-subtle pt-3" data-testid="fix-confirm" data-issue={issueKey}>
       <h3 className="fg-label text-fg">{t("previews.fix.title", { issue: issueKey })}</h3>
-      <p className="fg-body-sm text-muted">{t("previews.fix.lead", { issue: issueKey, fb: fbKey })}</p>
       <PreviewFrame preview={preview} issueLabel={issueKey} height={420} />
       {said ? (
         <p role="status" data-testid="fix-recorded" data-verdict={said.verdict} className="fg-body-sm text-fg">

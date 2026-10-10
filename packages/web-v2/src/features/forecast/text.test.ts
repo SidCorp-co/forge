@@ -29,7 +29,7 @@ describe("forecast text", () => {
     expect(line).toBe("Forecast 14:30 – 19:00 today");
     expect(line).not.toMatch(/\d+(\.\d)? (min|h|d)\b/);
     expect(detail).toMatch(/^Within 2\.5 h – 7\.0 h · as of /);
-    expect(detail).toContain("not a promise");
+    expect(detail).toContain("Forecast: half land by");
     expect(detail).toContain("3 ahead of it (ISS-1, ISS-2, ISS-3)");
   });
 
@@ -83,7 +83,7 @@ describe("delivery text: in people's hands, not merged", () => {
     const { line, detail } = deliveryText(delivery({}), CLOCK);
     expect(line).toBe("Forecast live 14:30 – 18:30 today");
     expect(detail).toMatch(/^In people's hands within 2\.5 h – 6\.5 h · as of /);
-    expect(detail).toContain("sampled from 14 releases");
+    expect(detail).toContain("14 releases in 60 days");
   });
 
   it("names the person and the act, with no date for it, where a person cuts the release", () => {

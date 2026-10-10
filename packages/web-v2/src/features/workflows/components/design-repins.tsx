@@ -85,10 +85,7 @@ export function RepinPanel({ projectId, workflowId, slug }: { projectId: string;
     <section className="grid gap-2 border-b border-line-subtle px-6 py-2.5 text-12-5 max-md:px-4" data-testid="design-repins">
       {n > 0 ? (
         <>
-          <span className="grid gap-0.5">
-            <span className="text-13 font-semibold text-fg">{t(n === 1 ? "workflows.repins.headOne" : "workflows.repins.headMany", { n, r })}</span>
-            <span className="text-muted">{t("workflows.repins.why")}</span>
-          </span>
+          <span className="text-13 font-semibold text-fg">{t(n === 1 ? "workflows.repins.headOne" : "workflows.repins.headMany", { n, r })}</span>
           <ul className="grid max-w-[720px]">
             {plan.ready.map((item) => (
               <ReadyRow key={item.workflowId} item={item} slug={slug} />

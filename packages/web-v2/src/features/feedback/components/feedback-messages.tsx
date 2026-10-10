@@ -118,8 +118,6 @@ function Composer({ projectId, f }: { projectId: string; f: FeedbackView }) {
           mode === "note" ? t("feedback.messages.notePlaceholder") : mode === "relay" ? t("feedback.messages.relayPlaceholder") : t("feedback.messages.messagePlaceholder")
         }
       />
-      {mode === "note" ? <p className="text-12 text-muted">{t("feedback.messages.noteWarning")}</p> : null}
-      {mode === "relay" ? <p className="text-12 text-muted">{t("feedback.messages.relayHint")}</p> : null}
       {shown ? <MessagePreview shown={shown} /> : null}
       <RefusalLine error={preview.error ?? send.error} />
       <div className="flex gap-2">

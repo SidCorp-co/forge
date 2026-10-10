@@ -303,7 +303,7 @@ export function ThreadsScreen({ filters, onParam }: { filters: ThreadsFilters; o
       ) : read.ecosystems.length === 0 ? (
         <p className="fg-caption">{t("ecosystem.threads.noEcosystem")}</p>
       ) : rows.length === 0 ? (
-        <p className="fg-caption border-t border-line-subtle pt-3">{t("ecosystem.threads.nothingUnder", { view: inboxLabel(view, t) })}</p>
+        <p className="fg-caption border-t border-line-subtle pt-3">{t("ecosystem.threads.nothingUnder")}</p>
       ) : (
         <ul className="border-t border-line-subtle">
           {rows.map((r) => (

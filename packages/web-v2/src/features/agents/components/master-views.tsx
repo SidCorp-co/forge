@@ -272,7 +272,7 @@ export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPa
   const closed = (p: MasterPassView) => ("endedAt" in p ? p : null);
   return (
     <section>
-      <ViewHeading hint={hasMore ? t("agents.master.newestN", { n: time.number(items.length) }) : time.number(items.length)}>{t("agents.master.tab.passes")}</ViewHeading>
+      <ViewHeading right={<span className="text-12-5 text-muted">{hasMore ? t("agents.master.newestN", { n: time.number(items.length) }) : time.number(items.length)}</span>}>{t("agents.master.tab.passes")}</ViewHeading>
       <Table aria-label={t("agents.master.tab.passes")}>
         <THead className="bg-sunken">
           <TR>
@@ -294,7 +294,7 @@ export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPa
                 </TD>
                 <TD>
                   <EnumBadge family="masterVerb" value={p.verb} />
-                  {p.trigger === "unprompted" ? <span className="ml-1.5 text-12-5 text-muted" title={t("agents.master.unpromptedHint")}>{t("agents.master.unprompted")}</span> : null}
+                  {p.trigger === "unprompted" ? <span className="ml-1.5 text-12-5 text-muted">{t("agents.master.unprompted")}</span> : null}
                   {c?.recovers ? (
                     <>
                       <span className="ml-1.5 text-12 font-semibold text-link">{t("agents.master.recovered")}</span>
@@ -352,7 +352,7 @@ function Leased({ m, projectId, slug }: { m: MasterStanding; projectId: string; 
   if (rows.length === 0) return <FactsEmpty>{t("agents.master.noLeased")}</FactsEmpty>;
   return (
     <section>
-      <ViewHeading hint={time.number(rows.length)}>{t("agents.master.leasedHeading")}</ViewHeading>
+      <ViewHeading right={<span className="text-12-5 text-muted">{time.number(rows.length)}</span>}>{t("agents.master.leasedHeading")}</ViewHeading>
       <Table aria-label={t("agents.master.tab.runs")}>
         <THead className="bg-sunken">
           <TR>
@@ -406,7 +406,7 @@ function Charter({ projectId }: { projectId: string }) {
   if (!c.declared) return <FactsEmpty>{t("agents.master.noCharter")}</FactsEmpty>;
   return (
     <section>
-      <ViewHeading hint={c.declaredAt ? t("agents.master.declared", { at: fmtTime(c.declaredAt, language) }) : undefined}>{t("agents.master.charterV", { v: c.version ?? "" })}</ViewHeading>
+      <ViewHeading right={c.declaredAt ? <span className="text-12-5 text-muted">{t("agents.master.declared", { at: fmtTime(c.declaredAt, language) })}</span> : undefined}>{t("agents.master.charterV", { v: c.version ?? "" })}</ViewHeading>
       {c.goal ? <p className="text-13-5">{c.goal}</p> : null}
       {c.rules.length > 0 ? (
         <ul className="mt-3 border-t border-line-subtle">

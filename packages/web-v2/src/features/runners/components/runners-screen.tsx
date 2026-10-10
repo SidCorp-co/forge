@@ -10,7 +10,6 @@ import {
   EmptyState,
   ErrorState,
   HealthDot,
-  HelpButton,
   Icon,
   EnumBadge,
   PageContainer,
@@ -40,11 +39,9 @@ import {
   type OrgDeviceRow,
 } from "../types";
 import {
-  assignmentBridgeLine,
   type DeviceCount,
   type DeviceScope,
-  emptyState,
-  populationLine,
+  emptyTitle,
   rowActionNote,
   SCOPES,
   scopeCountLabel,
@@ -52,7 +49,6 @@ import {
   UNKNOWN_COUNT,
 } from "../scope";
 import { BuildChip, DeviceDetail } from "./device-detail";
-import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
 export function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
@@ -81,7 +77,6 @@ function PairPanel() {
     <PageSection>
       <PageSectionHeader>
         <PageSectionTitle>{t("runners.pair.title")}</PageSectionTitle>
-        <HelpButton summary={t("runners.pair.help")} actions={[t("runners.pair.helpRun"), t("runners.pair.helpRevoke")]} />
       </PageSectionHeader>
       <PageSectionBody>
         <div className="flex flex-col gap-4">
@@ -91,7 +86,6 @@ function PairPanel() {
               <code className="font-mono text-13 text-fg">forge-runner setup</code>
               <CopyButton value="forge-runner setup" />
             </div>
-            <p className="fg-body-sm text-subtle">{t("runners.pair.body")}</p>
           </div>
         </div>
       </PageSectionBody>
@@ -195,28 +189,16 @@ export function RunnersScreen() {
     mine: mine.isSuccess ? mine.data.length : UNKNOWN_COUNT,
     org: org.isSuccess ? org.data.length : UNKNOWN_COUNT,
   };
-  const assignments: DeviceCount = org.isSuccess
-    ? org.data.reduce((n, d) => n + d.runnerCount, 0)
-    : UNKNOWN_COUNT;
-  const bridge = scope === "org" ? assignmentBridgeLine(counts.org, assignments, t) : null;
 
   const active = scope === "mine" ? mine : org;
   const rows: Array<DeviceRow | OrgDeviceRow> = active.data ?? [];
   // Read off the owner list, not the visible one: Manage is offered in the own
   // scope alone, and re-deriving here keeps rename and status live in the panel.
   const detailDevice = mine.data?.find((d) => d.id === detailId) ?? null;
-  const empty = emptyState(scope, counts, t);
 
   return (
     <PageContainer className="flex flex-col gap-5">
-      <PageTitle hint={t("runners.screen.hint")}>{t("runners.screen.title")}</PageTitle>
-      <TopBarActions>
-        <HelpButton
-          summary={t("runners.screen.help")}
-          actions={[t("runners.screen.helpMine"), t("runners.screen.helpOrg"), t("runners.screen.helpOwner")]}
-          docPath="pair-a-runner"
-        />
-      </TopBarActions>
+      <PageTitle>{t("runners.screen.title")}</PageTitle>
 
       <PairPanel />
 
@@ -226,10 +208,6 @@ export function RunnersScreen() {
           <ScopeTabs scope={scope} counts={counts} onChange={setScope} />
         </PageSectionHeader>
         <PageSectionBody>
-          <p className="mb-3 fg-body-sm text-muted">
-            {populationLine(scope, t)}
-            {bridge ? ` ${bridge}` : null}
-          </p>
           {active.isError ? (
             <ErrorState message={formatApiError(active.error)} onRetry={() => active.refetch()} />
           ) : /* Not `isLoading`: with no active org yet the org query is disabled,
@@ -242,7 +220,7 @@ export function RunnersScreen() {
               <Skeleton className="h-10 w-full" />
             </div>
           ) : rows.length === 0 ? (
-            <EmptyState title={empty.title} message={empty.message} mascot={false} />
+            <EmptyState message={emptyTitle(scope, t)} mascot={false} />
           ) : (
             <Table>
               <THead>

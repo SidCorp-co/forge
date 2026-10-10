@@ -162,14 +162,12 @@ describe("a room scoped to a record", () => {
     );
   });
 
-  it("names its scope and what its agent cannot read, and offers the whole project in one click", async () => {
+  it("names its scope as a state, and offers the whole project in one click", async () => {
     core([later, req17]);
     const dock = dockOn({ kind: "room", projectId: "p1", conversationId: "c-req17" });
     renderWithQuery(<ChatDockBody dock={dock} />);
     const note = await screen.findByTestId("subject-scope-notice");
-    expect(note.textContent).toContain(
-      "This conversation is about REQ-17. Its agent reads REQ-17, the issues you name and similar requirements; it cannot read the rest of the project.",
-    );
+    expect(note.textContent).toContain("Reads REQ-17 only, not the whole project.");
     fireEvent.click(screen.getByRole("button", { name: "New conversation about the whole project" }));
     expect(dock.select).toHaveBeenCalledWith({ kind: "draft", projectId: "p1" });
   });
@@ -180,7 +178,7 @@ describe("a room scoped to a record", () => {
     const { unmount } = renderWithQuery(
       <ChatDockBody dock={dockOn({ kind: "room", projectId: "p1", conversationId: "c-first" })} />,
     );
-    expect((await screen.findByTestId("subject-scope-notice")).textContent).toContain("drafts the first requirements");
+    expect((await screen.findByTestId("subject-scope-notice")).textContent).toContain("Drafts the first requirements");
     unmount();
     renderWithQuery(<ChatDockBody dock={dockOn({ kind: "room", projectId: "p1", conversationId: "c-other" })} />);
     expect(await screen.findByTestId("chat")).toBeTruthy();

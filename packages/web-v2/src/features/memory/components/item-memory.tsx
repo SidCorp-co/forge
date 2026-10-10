@@ -28,7 +28,7 @@ export function ItemMemory({ projectId, slug, cites }: { projectId: string; slug
   const hidden = q.data ? (retired ? q.data.counts.live : q.data.counts.retired) : 0;
   return (
     <section className="grid gap-3" data-testid="item-memory" aria-label={t("memory.title")}>
-      <ViewHeading hint={cites === null ? t("memory.projectHint") : t("memory.itemHint", { ref: cites })}>{t("memory.title")}</ViewHeading>
+      <ViewHeading>{t("memory.title")}</ViewHeading>
       {actError ? <p className="text-13 text-danger">{formatApiError(actError)}</p> : null}
       {q.isError ? (
         <ErrorState title={t("memory.loadFailed")} message={formatApiError(q.error)} onRetry={() => q.refetch()} />

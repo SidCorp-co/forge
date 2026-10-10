@@ -67,7 +67,7 @@ describe("the feedback About picker", () => {
     ]);
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), { target: { value: "Cards vanish" } });
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "The board kept cards" } });
-    expect(screen.getByTestId("feedback-target-unmatched")).toHaveTextContent("No requirement of this project is titled or keyed “The board kept cards”: pick one from the list.");
+    expect(screen.getByTestId("feedback-target-unmatched")).toHaveTextContent("No requirement titled or keyed “The board kept cards”: pick one from the list.");
     expect(screen.getByRole("button", { name: "Send feedback" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "The board keeps its cards" } });
     fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
@@ -116,7 +116,7 @@ describe("the feedback About picker", () => {
     renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
     fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
     const note = await screen.findByTestId("feedback-endpoints-none");
-    expect(note).toHaveTextContent("This project publishes no API routes or tools, so there is none to name here. File it as a Screen instead.");
+    expect(note).toHaveTextContent("No API routes or tools here; file it as a Screen.");
     expect(note.textContent).not.toMatch(/\/api|interface|endpoint/i);
     expect(calls.filter((c) => c.method !== "GET")).toEqual([]);
   });

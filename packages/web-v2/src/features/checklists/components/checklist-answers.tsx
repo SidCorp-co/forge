@@ -127,7 +127,7 @@ export function ChecklistAnswers({
   if (!move && !read.now && !unrecorded) return null;
   const rows = rowsOf(read, move);
   const open = rows.filter((r) => r.kind === "gap").length;
-  const hint = move
+  const state = move
     ? <span title={time.dateTime(move.at)}>{t("checklist.passed", { at: time.relative(move.at) })}</span>
     : unrecorded
       ? t("checklist.noChecklist")
@@ -136,7 +136,7 @@ export function ChecklistAnswers({
         : t("checklist.open", { n: open });
   return (
     <section data-testid="checklist" data-checklist={read.id} data-standing={move ? "passed" : unrecorded ? "no_checklist" : read.now?.complete ? "complete" : "open"}>
-      <ViewHeading hint={hint}>{read.form.title}</ViewHeading>
+      <ViewHeading right={<span className="text-12-5 text-muted">{state}</span>}>{read.form.title}</ViewHeading>
       {rows.length > 0 ? <dl className="grid">{rows.map((r) => (r.kind === "answer" ? <AnswerRow key={r.field.name} row={r} revision={revision} /> : <GapRow key={r.field.name} row={r} answerAt={answerAt} />))}</dl> : null}
     </section>
   );

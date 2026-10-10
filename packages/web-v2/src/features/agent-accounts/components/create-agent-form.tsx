@@ -79,8 +79,7 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
   return (
     <PageSection>
       <PageSectionBody>
-        <PageSectionTitle className="mb-1">{t("settings.agents.new")}</PageSectionTitle>
-        <p className="fg-body-sm mb-4">{t("settings.agents.newIntro")}</p>
+        <PageSectionTitle className="mb-4">{t("settings.agents.new")}</PageSectionTitle>
 
         {minted && (
           <div className="mb-4">
@@ -98,7 +97,6 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
         <div className="flex flex-col gap-4">
           <Field
             label={t("settings.agents.handle")}
-            hint={t("settings.agents.handleHint")}
             error={touched && problem ? t(problem) : undefined}
           >
             <Input
@@ -111,7 +109,6 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
 
           <Field
             label={t("settings.orgs.projects")}
-            hint={t("settings.agents.projectsHint")}
             error={touched && noProjects ? t("settings.agents.pickProject") : undefined}
           >
             {isLoading ? (

@@ -35,7 +35,7 @@ function Section({ title, asOf, clock, children, testId }: { title: string; asOf
   const t = useCopy();
   return (
     <section aria-label={title} data-testid={testId} className="break-inside-avoid">
-      <ViewHeading hint={t("status.readAt", { at: formatDateTime(asOf, clock.lang, clock.timeZone) })}>{title}</ViewHeading>
+      <ViewHeading right={<span className="text-12-5 text-muted">{t("status.readAt", { at: formatDateTime(asOf, clock.lang, clock.timeZone) })}</span>}>{title}</ViewHeading>
       {children}
     </section>
   );

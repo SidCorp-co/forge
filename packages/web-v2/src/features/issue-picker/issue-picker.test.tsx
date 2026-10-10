@@ -100,7 +100,7 @@ describe("the issue picker", () => {
     fakeCore((c) => issueSearch(c.path));
     renderWithQuery(<Harness seen={() => {}} />);
     await userEvent.type(screen.getByRole("combobox", { name: "Issues" }), "zebra");
-    await waitFor(() => expect(screen.getByText("No issue of this project matches “zebra”")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("No matches")).toBeTruthy());
     expect(screen.queryAllByRole("option")).toEqual([]);
   });
 

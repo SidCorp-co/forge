@@ -14,13 +14,13 @@ import { ModulePage, useModuleTab } from "./module-detail";
 import { ModuleLevel } from "./module-level";
 
 const VIEWS = [
-  { value: "children" as const, label: "Modules", title: "Its child modules as a map and a list" },
-  { value: "detail" as const, label: "Detail", title: "Its own issues, code and landings" },
+  { value: "children" as const, label: "Modules" },
+  { value: "detail" as const, label: "Detail" },
 ];
 
 const viewsIn = (t: Copy) => [
-  { value: "children" as const, label: t("modules.title"), title: t("modules.view.childrenTitle") },
-  { value: "detail" as const, label: t("modules.view.detail"), title: t("modules.view.detailTitle") },
+  { value: "children" as const, label: t("modules.title") },
+  { value: "detail" as const, label: t("modules.view.detail") },
 ];
 
 function ModuleDetailBody({ projectId, slug, moduleSlug }: { projectId: string; slug: string; moduleSlug: string }) {

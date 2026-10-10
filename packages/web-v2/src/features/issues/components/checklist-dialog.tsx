@@ -74,7 +74,6 @@ export function ChecklistDialog({ prompt, answers, onAnswer, loading, onConfirm,
   return (
     <SlideOver open onClose={onClose} title={t("issues.checklist.title", { name: read.title })} width={520}>
       <div className="flex h-full flex-col gap-4">
-        <p className="fg-body-sm text-muted">{t("issues.checklist.blurb")}</p>
         {unrecognised.map((r) => (
           <p key={`${r.code}${r.path}`} role="alert" className="fg-body-sm" style={{ color: "var(--red-600)" }}>
             {r.detail}

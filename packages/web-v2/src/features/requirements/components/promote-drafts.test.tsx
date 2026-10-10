@@ -191,7 +191,7 @@ describe("a draft the issue-ready checklist holds back", () => {
     const user = userEvent.setup();
     renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={detail(["draft"])} />);
     await user.click(screen.getByRole("button", { name: "Promote 1 draft issue" }));
-    expect(await screen.findByTestId("refusal")).toHaveTextContent("Nothing linked to this requirement is still a draft");
+    expect(await screen.findByTestId("refusal")).toHaveTextContent("No drafts");
   });
 });
 

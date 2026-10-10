@@ -83,8 +83,7 @@ describe("what the approver reads before and after the click", () => {
     expect(line).toHaveTextContent("WORKFLOW_DESIGN_BASE_UNAPPROVED");
     const base = vi("workflows.refusal.base.stale", { flow: "hop-access-decision", r: 10, approved: 11 });
     expect(line).toHaveTextContent(vi("workflows.refusal.baseUnapproved", { r: 7, bases: base }));
-    expect(vi("workflows.refusal.baseUnapproved", { r: 7, bases: base })).not.toBe(productCopy("en")("workflows.refusal.baseUnapproved", { r: 7, bases: base }));
-    expect(line).not.toHaveTextContent("builds on");
+    expect(line).not.toHaveTextContent(block.detail);
   });
 
   it("reads core's detail where the refusal carries no facts this screen words", () => {
@@ -104,7 +103,7 @@ describe("what the approver reads before and after the click", () => {
     fireEvent.click(approve);
     expect(mutate).not.toHaveBeenCalled();
     render(<ApprovalReading revision={7} block={block} leavesStale={[]} />);
-    expect(screen.getByTestId("design-approve-blocked")).toHaveTextContent("Rev 7 cannot be approved yet: it builds on hop-access-decision r10, which is approved at r11 now.");
+    expect(screen.getByTestId("design-approve-blocked")).toHaveTextContent("Rev 7 builds on unapproved hop-access-decision r10, which is approved at r11 now: approve the base first");
     render(<DecisionNoteControl revision={7} decide={decide} approveBlocked />);
     expect(screen.queryByTestId("design-approve-note-open")).toBeNull();
     expect(screen.getByTestId("design-return-open")).toBeInTheDocument();

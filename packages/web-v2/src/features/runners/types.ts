@@ -361,7 +361,7 @@ export interface DeviceDisk {
 /** One root as a line: both axes, so the one that did not cross is read beside the one that did. */
 export function diskRootLine(r: DiskRootRead, language: string): string {
 	const t = productCopy(language);
-	if (r.refused !== undefined) return t("runners.disk.noReading", { why: r.refused });
+	if (r.refused !== undefined) return t("runners.disk.unread", { why: r.refused });
 	const bytes =
 		r.bytesFreePercent === null
 			? t("runners.disk.bytesNoTotal")

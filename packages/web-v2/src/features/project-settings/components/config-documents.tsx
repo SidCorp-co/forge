@@ -45,7 +45,6 @@ export function ProjectDocumentSection({
 	return (
 		<DocumentEditor
 			title={t("settings.project.raw.projectDocument")}
-			description={t("settings.project.raw.projectDocumentLead")}
 			fixed={PROJECT_IDENTITY}
 			read={q.data}
 			template={projectTemplate(project)}
@@ -64,7 +63,7 @@ export function PolicyDocumentSection({ projectId, canEdit }: { projectId: strin
 	return (
 		<DocumentEditor
 			title={t("settings.project.raw.policy")}
-			description={`${t("settings.project.raw.policyLead")}${q.data.declared ? "" : ` ${t("settings.project.raw.policyUndeclared")}`}`}
+			description={q.data.declared ? undefined : t("settings.project.raw.policyUndeclared")}
 			fixed={IDENTITY_POINTERS}
 			read={q.data}
 			template={policyTemplate()}
@@ -128,7 +127,6 @@ export function TestingProfilesSection({ projectId, canEdit }: { projectId: stri
 	return (
 		<div className="mt-6 border-t border-line pt-5">
 			<PageSectionTitle className="fg-label text-fg">{t("settings.project.raw.profiles")}</PageSectionTitle>
-			<p className="fg-body-sm mt-1 text-muted">{t("settings.project.raw.profilesLead")}</p>
 			{q.data.profiles.length === 0 && pending.length === 0 && (
 				<p className="fg-caption mt-2 text-subtle">{t("settings.project.raw.noProfiles")}</p>
 			)}
@@ -202,7 +200,6 @@ export function BindingsSection({ projectId, canEdit }: { projectId: string; can
 	return (
 		<div className="mt-6 border-t border-line pt-5">
 			<PageSectionTitle className="fg-label text-fg">{t("settings.project.raw.bindings")}</PageSectionTitle>
-			<p className="fg-body-sm mt-1 text-muted">{t("settings.project.raw.bindingsLead")}</p>
 			{q.data.unrepresentable.map((u) => (
 				<Banner key={u.id} tone="attention">
 					{t("settings.project.raw.unrepresentable", { id: u.id, provider: u.provider, role: enumLabel("bindingRole", u.role) })} {u.reason}

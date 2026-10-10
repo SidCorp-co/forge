@@ -144,9 +144,9 @@ describe("the project home (REQ-41 BC-13)", () => {
       return undefined;
     });
     renderWithQuery(<ProjectHome projectId={PROJECT} slug="hop" />);
-    expect(await screen.findByText("No run is on an issue right now.")).toBeInTheDocument();
-    expect(screen.getByText(/Nothing is late/)).toBeInTheDocument();
-    expect(screen.getByText("Nothing waits on you to decide.")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing running")).toBeInTheDocument();
+    expect(screen.getByText("No risks")).toBeInTheDocument();
+    expect(screen.getByText("Nothing")).toBeInTheDocument();
     expect(screen.getByTestId("chat")).toHaveAttribute("data-conversation", "new");
   });
 

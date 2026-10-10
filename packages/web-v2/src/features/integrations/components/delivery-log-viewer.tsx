@@ -96,7 +96,7 @@ export function DeliveryLogViewer({
 
   const items = deliveries.data?.items ?? [];
   if (items.length === 0) {
-    return <EmptyState title={t("integrations.delivery.noneYet")} message={t("integrations.delivery.nothing")} mascot={false} />;
+    return <EmptyState message={t("integrations.delivery.noneYet")} mascot={false} />;
   }
 
   return (

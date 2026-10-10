@@ -275,7 +275,6 @@ export function DeviceDetail({
 					<div className="flex flex-col gap-3">
 						<div className="flex flex-col gap-0.5">
 							<span className="fg-label">{t("runners.detail.projectsServed")}</span>
-							<p className="fg-body-sm text-subtle">{t("runners.detail.projectsServedBody")}</p>
 						</div>
 
 						{device.status === "revoked" ? (
@@ -292,8 +291,7 @@ export function DeviceDetail({
 							/>
 						) : rows.length === 0 ? (
 							<EmptyState
-								title={t("runners.detail.noProjects")}
-								message={t("runners.detail.noProjectsBody")}
+								message={t("runners.detail.noProjects")}
 								mascot={false}
 							/>
 						) : (

@@ -58,8 +58,11 @@ The same rule is project knowledge `ui-copy-rule`, which every agent run reads.
 8. Budget: the first screen at 1440x900 shows at most 300 words; a copy string is at most 12 words (refusals and confirmations 20). A longer string is a defect, not a style choice.
 
 Held by `scripts/check-copy-budget.mjs` (the `language` axis): a copy string over budget is refused
-naming its file, key and word count, and the strings frozen in `.forge/copy-budget-baseline.json`
-only shrink. A key is a refusal or confirmation when a segment of its path matches
-`refusalSegments` in `.forge/conformance.json`. The first-screen budget is held for the issue page
+naming its file, key and word count, with no baseline. What a key is comes from its name, by the
+conventions `checkers.copy-budget` in `.forge/conformance.json` declares: a refusal or
+confirmation when a segment matches `refusalSegments` (20 words); an empty state when its last
+segment matches `emptySegments` (2 words, rule 4); an explanation when its last segment matches
+`explainSegments` (`hint`, `intro`, `help` and the like), refused at any length (rule 2). A label
+is never keyed as a hint. `ViewHeading`, `ListGroup` and `PageTitle` take no explaining line. The first-screen budget is held for the issue page
 by `packages/web-v2/src/features/issues/components/issue-detail-screen.test.tsx`, whose page is the
 reference for rules 1, 3, 5, 6 and 7.

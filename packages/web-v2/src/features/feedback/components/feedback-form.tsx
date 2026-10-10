@@ -104,12 +104,12 @@ export function FeedbackForm({
             options={FEEDBACK_SEVERITIES.map((v) => ({ value: v, label: statusReading("severity", v, language).label }))}
           />
         </Field>
-        <Field label={t("feedback.form.about")} hint={t("feedback.target.hint")} error={refused.at("about")}>
+        <Field label={t("feedback.form.about")} error={refused.at("about")}>
           <TargetPicker projectId={projectId} type={targetType} onType={setTargetType} value={target} onValue={setTarget} />
         </Field>
       </div>
       <div {...staged.dropZone} className={staged.dragOver ? "ring-2 ring-cobalt-400 ring-offset-1" : undefined}>
-        <Field label={t("feedback.form.body")} hint={t("feedback.form.bodyHint")} error={refused.at("body")}>
+        <Field label={t("feedback.form.body")} error={refused.at("body")}>
           <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} />
         </Field>
       </div>

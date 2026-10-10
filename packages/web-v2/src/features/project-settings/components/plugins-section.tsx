@@ -44,7 +44,6 @@ export function PluginsSection({ projectId, canEdit }: { projectId: string; canE
     <div id="plugins" className="mt-6 scroll-mt-24 border-t border-line pt-5">
       <div>
         <PageSectionTitle className="fg-label text-fg">{t("settings.project.plugins.title")}</PageSectionTitle>
-        <p className="fg-caption mt-0.5 text-muted">{t("settings.project.plugins.lead")}</p>
       </div>
       {projectQ.isError ? (
         <div className="mt-3">
@@ -83,8 +82,7 @@ function PluginsEditor({ projectId, agentConfig, canEdit }: { projectId: string;
       {draft.length === 0 ? (
         <div className="mt-3">
           <EmptyState
-            title={t("settings.project.plugins.emptyTitle")}
-            message={t("settings.project.plugins.emptyBody")}
+            message={t("settings.project.plugins.emptyTitle")}
             mascot
             action={canEdit ? { label: t("settings.project.plugins.add"), onClick: addRow } : undefined}
           />
@@ -155,7 +153,7 @@ function PluginRow({
   return (
     <li className="py-3">
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label={t("settings.project.plugins.marketplace")} hint={t("settings.project.plugins.marketplaceHint")}>
+        <Field label={t("settings.project.plugins.marketplace")}>
           <Input
             value={p.marketplace}
             onChange={(e) => onPatch({ marketplace: e.target.value })}
@@ -163,10 +161,10 @@ function PluginRow({
             placeholder="SidCorp-co/forge-plugin"
           />
         </Field>
-        <Field label={t("settings.project.plugins.name")} hint={t("settings.project.plugins.nameHint")}>
+        <Field label={t("settings.project.plugins.name")}>
           <Input value={p.name} onChange={(e) => onPatch({ name: e.target.value })} disabled={!canEdit} placeholder="forge" />
         </Field>
-        <Field label={t("settings.project.plugins.pinned")} hint={t("settings.project.plugins.pinnedHint")}>
+        <Field label={t("settings.project.plugins.pinned")}>
           <Input
             value={p.pinnedRef ?? ""}
             onChange={(e) => onPatch({ pinnedRef: e.target.value.trim() || null })}

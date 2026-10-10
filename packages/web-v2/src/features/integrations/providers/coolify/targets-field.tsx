@@ -54,10 +54,7 @@ export function CoolifyTargetsField({
   return (
     <fieldset className="flex flex-col gap-3 border-t border-line-subtle pt-3">
       <legend className="fg-label px-1 text-subtle">{t("integrations.coolify.targets")}</legend>
-      <p className="fg-body-sm text-muted">
-        {t("integrations.coolify.targetsIntro")}
-        {inherited ? ` ${t("integrations.coolify.targetsInherited")}` : ""}
-      </p>
+      {inherited && <p className="fg-body-sm text-muted">{t("integrations.coolify.targetsInherited")}</p>}
       {apps.isError && <p className="fg-body-sm text-muted">{t("integrations.coolify.appsUnread")}</p>}
       {targets.map((row, idx) => (
         <TargetRow

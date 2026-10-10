@@ -28,15 +28,15 @@ function useModes(projectId: string): ViewMode<Mode>[] {
   const t = useCopy();
   return useMemo(
     () => [
-      { value: "attention", label: t("issues.mode.attention"), title: t("issues.mode.attentionHint") },
+      { value: "attention", label: t("issues.mode.attention") },
       {
         value: "module",
         label: t("issues.mode.module"),
-        title: none ? t("issues.mode.moduleNone") : t("issues.mode.moduleHint"),
+        title: none ? t("issues.mode.moduleNone") : undefined,
         disabled: none,
       },
-      { value: "waves", label: t("issues.mode.waves"), title: t("issues.mode.wavesHint") },
-      { value: "table", label: t("issues.mode.table"), title: t("issues.mode.tableHint") },
+      { value: "waves", label: t("issues.mode.waves") },
+      { value: "table", label: t("issues.mode.table") },
     ],
     [none, t],
   );
@@ -78,7 +78,6 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   const header = (
     <>
       <PageTitle
-        hint={t("issues.screen.hint")}
         after={<ViewModeSwitcher modes={modes} value={mode} onChange={setMode} placement="header" />}
       >
         {t("issues.screen.title")}

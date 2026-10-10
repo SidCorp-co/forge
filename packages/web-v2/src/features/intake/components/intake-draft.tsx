@@ -159,7 +159,7 @@ export function IntakeDraft({ projectId, slug, itemKey, assumptions }: { project
   if (!draft) return null;
   return (
     <section data-testid="intake-draft">
-      <ViewHeading hint={<Applied draft={draft} />}>{t("intake.heading")}</ViewHeading>
+      <ViewHeading right={<Applied draft={draft} />}>{t("intake.heading")}</ViewHeading>
       <IntakeDraftBody draft={draft} slug={slug} assumptions={assumptions} />
     </section>
   );

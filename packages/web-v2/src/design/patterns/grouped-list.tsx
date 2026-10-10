@@ -30,8 +30,7 @@ export interface ListGroup<R> {
   /** Drawn in mono, for a code path such as a module. */
   mono?: boolean;
   tone?: LegendTone | null;
-  hint?: ReactNode;
-  /** Label-first counts after the hint, e.g. "Needs you 1 · Moving 1". */
+  /** Label-first counts after the group's own count, e.g. "Needs you 1 · Moving 1". */
   summary?: { label: string; count: number; tone: LegendTone }[];
   collapsed?: boolean;
   rows: R[];
@@ -130,7 +129,6 @@ function GroupHeader<R>({ g, open, onToggle }: { g: ListGroup<R>; open: boolean;
       <span className="font-mono text-12 font-bold" style={{ color: g.mono ? "var(--fg-muted)" : c }}>
         {g.rows.length}
       </span>
-      {g.hint ? <span className="text-12 font-medium text-subtle">{g.hint}</span> : null}
       {g.summary?.map((s) => (
         <span key={s.label} className="text-11-5 font-semibold" style={{ color: toneText(s.tone) }}>
           {s.label} {s.count}

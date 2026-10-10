@@ -40,7 +40,7 @@ describe("the awaiting-release card", () => {
   it("counts the issues at awaiting_release, never runs, and lists them", () => {
     mount([[["issues", "search", "p1", OPTS], { items: Array.from({ length: 50 }, (_, k) => issue(k + 1)), totalCount: 72 }]]);
     expect(screen.getByTestId("awaiting-release-count").textContent).toBe("72");
-    expect(screen.queryByText("Nothing waiting on a release decision.")).toBeNull();
+    expect(screen.queryByText("Nothing waiting")).toBeNull();
     expect(screen.getAllByTestId("awaiting-release-issue")).toHaveLength(5);
   });
 
@@ -54,7 +54,7 @@ describe("the awaiting-release card", () => {
 
   it("says nothing waits only where no issue stands at awaiting_release", () => {
     mount([[["issues", "search", "p1", OPTS], { items: [], totalCount: 0 }]]);
-    expect(screen.getByText("Nothing waiting on a release decision.")).toBeTruthy();
+    expect(screen.getByText("Nothing waiting")).toBeTruthy();
     expect(screen.queryByTestId("awaiting-release-count")).toBeNull();
   });
 });

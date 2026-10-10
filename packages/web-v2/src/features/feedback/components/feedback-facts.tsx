@@ -380,9 +380,7 @@ export function FeedbackFacts({
         ) : null}
         {f.sensitive ? (
           <Fact label={tr("feedback.fact.data")}>
-            <span className="text-12-5" title={tr("feedback.fact.sensitiveHint")}>
-              {tr("feedback.fact.sensitive")}
-            </span>
+            <span className="text-12-5">{tr("feedback.fact.sensitive")}</span>
           </Fact>
         ) : null}
       </FactsGroup>

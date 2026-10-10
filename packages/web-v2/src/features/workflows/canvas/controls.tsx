@@ -34,8 +34,8 @@ export function ViewBar(p: {
         value={p.language}
         onChange={p.onLanguage}
         options={[
-          { value: "business", label: t("workflows.canvas.business"), title: t("workflows.canvas.businessHint") },
-          { value: "contract", label: t("workflows.panel.contract"), title: t("workflows.canvas.contractHint") },
+          { value: "business", label: t("workflows.canvas.business") },
+          { value: "contract", label: t("workflows.panel.contract") },
         ]}
       />
       {p.banded ? (
@@ -46,20 +46,20 @@ export function ViewBar(p: {
               value={String(p.lod) as "0" | "1" | "2"}
               onChange={(v) => p.onLod(Number(v) as Lod)}
               options={[
-                { value: "0", label: t("workflows.canvas.stages"), title: t("workflows.canvas.stagesHint") },
-                { value: "1", label: t("workflows.tab.steps"), title: t("workflows.canvas.stepsHint") },
-                { value: "2", label: t("workflows.canvas.detail"), title: t("workflows.canvas.detailHint") },
+                { value: "0", label: t("workflows.canvas.stages") },
+                { value: "1", label: t("workflows.tab.steps") },
+                { value: "2", label: t("workflows.canvas.detail") },
               ]}
             />
           </span>
-          <Button type="button" variant="ghost" size="sm" className="wfc-ib" onClick={p.onToggleAll} title={p.allOpen ? t("workflows.canvas.foldAllHint") : t("workflows.canvas.openAllHint")} data-testid="toggle-all">
+          <Button type="button" variant="ghost" size="sm" className="wfc-ib" onClick={p.onToggleAll} data-testid="toggle-all">
             {p.allOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             <span className="wfc-t">{p.allOpen ? t("workflows.canvas.foldAll") : t("workflows.canvas.openAll")}</span>
           </Button>
         </>
       ) : null}
       <span className="wfc-sep" />
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={p.onWalk} title={t("workflows.canvas.walkHint")} data-testid="walk-start-bar">
+      <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={p.onWalk} data-testid="walk-start-bar">
         <Play size={16} />
         <span className="wfc-t">{t("workflows.canvas.walk")}</span>
       </Button>
@@ -97,7 +97,7 @@ export function PageBar({ changes, focus }: { changes?: CanvasChanges | null | u
             className="wfc-ib"
             aria-pressed={focus.on}
             aria-label={focusLabel}
-            title={focus.on ? t("workflows.canvas.focusExitHint") : t("workflows.canvas.focusHint")}
+            title={focus.on ? t("workflows.canvas.focusExitShortcut") : t("workflows.canvas.focusShortcut")}
             onClick={focus.onToggle}
             data-testid="canvas-focus"
           >
@@ -118,7 +118,7 @@ export function HealthBar({ health }: { health: CanvasHealth }) {
   return (
     <>
       <span className="wfc-sep" />
-      <span className="inline-flex items-center gap-1.5 px-1 text-12-5 font-semibold" title={t("workflows.canvas.healthHint")} data-testid="health-toggle">
+      <span className="inline-flex items-center gap-1.5 px-1 text-12-5 font-semibold" data-testid="health-toggle">
         <Toggle checked={health.on} onChange={health.onToggle} aria-label={t("workflows.canvas.healthOverlay")} />
         {t("workflows.col.health")}
       </span>
@@ -128,7 +128,7 @@ export function HealthBar({ health }: { health: CanvasHealth }) {
           <SegmentedControl<HealthLayer>
             value={health.layer}
             onChange={health.onLayer}
-            options={LAYERS.map((value) => ({ value, label: t(`workflows.layer.${value}`), title: t(`workflows.layer.${value}.hint`) }))}
+            options={LAYERS.map((value) => ({ value, label: t(`workflows.layer.${value}`) }))}
           />
         </>
       ) : null}
@@ -209,14 +209,14 @@ export function ZoomBar(p: {
       <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-label={t("workflows.canvas.zoomIn")} title={t("workflows.canvas.zoomIn")} onClick={() => p.onZoom(1.2)}>
         +
       </Button>
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" title={t("workflows.canvas.fitHint")} aria-label={t("workflows.canvas.fit")} onClick={p.onFit}>
+      <Button type="button" variant="ghost" size="sm" className="wfc-ib" title={t("workflows.canvas.fitShortcut")} aria-label={t("workflows.canvas.fit")} onClick={p.onFit}>
         <Maximize size={16} />
       </Button>
       <span className="wfc-sep" />
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-pressed={p.minimap} title={t("workflows.canvas.minimapHint")} aria-label={t("workflows.canvas.minimap")} onClick={p.onMinimap}>
+      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-pressed={p.minimap} title={t("workflows.canvas.minimap")} aria-label={t("workflows.canvas.minimap")} onClick={p.onMinimap}>
         <MapIcon size={16} />
       </Button>
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-pressed={p.legend} title={t("workflows.canvas.legendHint")} aria-label={t("workflows.canvas.legend")} onClick={p.onLegend}>
+      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-pressed={p.legend} title={t("workflows.canvas.legend")} aria-label={t("workflows.canvas.legend")} onClick={p.onLegend}>
         <CircleHelp size={16} />
       </Button>
     </div>
@@ -259,7 +259,7 @@ export function WalkBar({ at, total, onWalk, onStop }: { at: number; total: numb
       <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" aria-label={t("workflows.walk.nextStep")} onClick={() => onWalk(at + 1)}>
         <span className="wfc-t">{at === total - 1 ? t("workflows.walk.finish") : t("workflows.walk.next")}</span> {at === total - 1 ? "✓" : "›"}
       </Button>
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-label={t("workflows.walk.stop")} title={t("workflows.walk.stopHint")} onClick={onStop}>
+      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-label={t("workflows.walk.stop")} title={t("workflows.walk.stopShortcut")} onClick={onStop}>
         ✕
       </Button>
     </div>

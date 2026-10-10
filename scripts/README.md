@@ -71,7 +71,7 @@ passed, because the external record of what shipped belonged to none of them.
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | selection | `check-whole-tree-gates` — `whole-tree`, after the merge | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case or failed to load, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
-| language | `check-source-language` — `lang-check`, `check-copy-budget` | English-only source policy; length of web copy strings | everything else |
+| language | `check-source-language` — `lang-check`, `check-copy-budget` | English-only source policy; length of web copy strings, empty states, no explaining copy | everything else |
 | record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, whether a published entry can leave without a declared reason, and what an added or corrected entry may spend | whether an entry is TRUE, or whether a change deserved one — that is review's |
 
 ### Why `core` lint prints every diagnostic
@@ -1107,15 +1107,17 @@ CI cannot be bypassed — translate the offending strings or add an `i18n-allow:
 ## check-copy-budget.mjs — web copy strings are short
 
 Every English string in `packages/web-v2/src/**/copy*.json` and `lib/i18n/copy/**` is at most 12
-words, a placeholder counting as one; a refusal or confirmation at most 20 (REQ-43 BC-1, BC-2). A
-string is a refusal when a dot-separated segment of its key matches `refusalSegments` in
-`.forge/conformance.json` (`checkers.copy-budget`), never guessed from its sentence. Only English is
-read: the other languages translate it. The strings over budget when the gate landed are frozen in
-`.forge/copy-budget-baseline.json` by file and key with their word count, which the `language` axis
-declares `improves: down`: a new string over budget, one that grew, or a fixed one still listed is
-refused naming file, key, count and budget. `--trim` rewrites the baseline downward only and
-`--freeze` writes the first one. The copy-budget-baseline amnesty prices what it trades. The rule's
-text is the Copy rule in `docs/patterns/screen.md`.
+words, a placeholder counting as one (REQ-43 BC-1, BC-2, BC-4, BC-6). What a key is comes from
+conventions declared in `.forge/conformance.json` (`checkers.copy-budget`), never guessed from its
+sentence:
+- a refusal or confirmation is a key with a segment that matches `refusalSegments`, and holds at most 20 words;
+- an empty state is a key whose last segment matches `emptySegments`, and holds at most 2;
+- an explanation is a key whose last segment matches `explainSegments` (`hint`, `intro`, `help`,
+  `emptyMessage`, …), and is refused at any length.
+A convention the manifest does not declare stops the check with exit 2, and so does a declared
+`baseline`. Each string over budget is refused naming file, key, count and the budget for its
+kind. There is no baseline and no amnesty. Only English is read, since the other languages
+translate it. The rule's text is the Copy rule in `docs/patterns/screen.md`.
 
 ## The web suite's language checks — Forge is not multilingual
 

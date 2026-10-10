@@ -97,7 +97,7 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
           />
         ) : (
           <p className="fg-body-sm text-muted">
-            {t("overview.live2.noHeartbeat", { live, stuck: liveness.stuckRuns.total })}
+            {t("overview.live2.heartbeatGap", { live, stuck: liveness.stuckRuns.total })}
           </p>
         )}
 

@@ -146,12 +146,6 @@ function Control({
         >
           Reject
         </button>
-        {d === "accept" && (
-          <HoverNote label="Becomes a suggestion" className="text-[11.5px] text-muted">
-            Nothing changes until an approver approves it.
-          </HoverNote>
-        )}
-        {d === "reject" && <span className="text-[11.5px] text-muted">Will not be suggested again</span>}
       </div>
     );
   }
@@ -161,7 +155,7 @@ function Control({
         type="text"
         maxLength={280}
         aria-label={item.prompt}
-        placeholder={item.placeholder ?? "A sentence or two is enough"}
+        placeholder={item.placeholder ?? "Your answer"}
         value={value?.text ?? ""}
         onChange={(e) => onChange(e.target.value ? { text: e.target.value } : undefined)}
         className="h-8 w-full rounded-sm border border-line bg-surface px-2.5 text-[12.5px] text-fg placeholder:text-subtle focus:border-[color:var(--link)] focus:outline-none"
@@ -172,8 +166,7 @@ function Control({
 
 function Counter({ n, of, ids, done }: { n: number; of: number; ids: string[]; done: (id: string) => boolean }) {
   return (
-    <HoverNote label={
-      <span className="inline-flex items-center gap-1.5 text-[12px] text-muted no-underline">
+    <span className="inline-flex items-center gap-1.5 text-[12px] text-muted">
         Answered{" "}
         <b className="font-semibold tabular-nums text-fg">
           {n} of {of}
@@ -186,10 +179,7 @@ function Counter({ n, of, ids, done }: { n: number; of: number; ids: string[]; d
             />
           ))}
         </span>
-      </span>
-    }>
-      Send any time. Unanswered items stay open and come back in the next round.
-    </HoverNote>
+    </span>
   );
 }
 
@@ -245,9 +235,7 @@ export function QuestionnaireCard({
       <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5 py-2 pl-[11px] pr-3">
         <span className="text-[13px] font-bold text-fg">{batch.title}</span>
         <span className="text-[11.5px] text-subtle">
-          <HoverNote label={`Round ${batch.round} of ${batch.maxRounds}`}>
-            At most {batch.maxRounds} rounds. After the last, open items stay listed on their designs as open questions.
-          </HoverNote>
+          Round {batch.round} of {batch.maxRounds}
         </span>
       </div>
       {/* on a redact or no_egress project the answers reach the agent (scrubbed): the owner's

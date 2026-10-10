@@ -36,7 +36,7 @@ export function OpenRoom({ projectId, slug, about, brief: initial = "", canWrite
         if (brief.trim()) open.mutate();
       }}
     >
-      <Textarea aria-label={t("previews.room.openHint")} value={brief} rows={2} maxLength={PREVIEW_IDEA_LIMITS.brief} placeholder={t("previews.room.openHint")} onChange={(e) => setBrief(e.target.value)} />
+      <Textarea aria-label={t("previews.room.openLabel")} value={brief} rows={2} maxLength={PREVIEW_IDEA_LIMITS.brief} placeholder={t("previews.room.openLabel")} onChange={(e) => setBrief(e.target.value)} />
       <div>
         <Button type="submit" size="sm" variant="secondary" disabled={brief.trim() === ""} loading={open.isPending}>
           {t("previews.room.open")}

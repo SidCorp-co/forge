@@ -274,7 +274,6 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
     <PageSection>
       <PageSectionBody>
         <SectionTitle className="fg-h3 mb-1 text-accent-text!">{t("settings.project.work.modules")}</SectionTitle>
-        <p className="fg-body-sm mb-4 max-w-[68ch] text-muted">{t("settings.project.work.modulesLead")}</p>
 
         {labelsQ.isLoading ? (
           <div className="space-y-2">
@@ -290,8 +289,7 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
           />
         ) : modules.length === 0 ? (
           <EmptyState
-            title={t("settings.project.work.noModules")}
-            message={t("settings.project.work.noModulesBody")}
+            message={t("settings.project.work.noModules")}
             mascot={false}
           />
         ) : (

@@ -19,7 +19,6 @@ export function EffectiveSection({ projectId }: { projectId: string }) {
 	const heading = (
 		<>
 			<PageSectionTitle className="fg-label text-fg">{t("settings.project.raw.effective")}</PageSectionTitle>
-			<p className="fg-body-sm mt-1 mb-3 text-muted">{t("settings.project.raw.effectiveLead")}</p>
 		</>
 	);
 	if (q.isLoading) return <Skeleton className="mt-6 h-32 w-full rounded-md" />;
@@ -154,7 +153,6 @@ export function EnvironmentStateSection({ projectId }: { projectId: string }) {
 	return (
 		<section aria-label={t("settings.project.raw.environmentState")} className="mt-6 border-t border-line pt-5">
 			<PageSectionTitle className="fg-label text-fg">{t("settings.project.raw.environmentState")}</PageSectionTitle>
-			<p className="fg-body-sm mt-1 mb-3 text-muted">{t("settings.project.raw.environmentStateLead")}</p>
 			{q.isLoading ? (
 				<Skeleton className="h-24 w-full rounded-md" />
 			) : noDocument ? (

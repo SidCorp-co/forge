@@ -322,7 +322,6 @@ export function useMergeMarker(issueId: string) {
       if (answer.action === "already_merged") {
         toast({
           title: t("issues.toast.alreadyMerged"),
-          description: t("issues.toast.alreadyMergedHint"),
           tone: "info",
         });
       } else {
@@ -383,8 +382,6 @@ export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefu
       qc.invalidateQueries({ queryKey: ["release-roster"] });
       toast({
         title: result.issueIds.length === 1 ? t("issues.toast.batchStartedOne") : t("issues.toast.batchStarted", { n: result.issueIds.length }),
-        ...(result.verification === "deployment" ? { description: t("issues.toast.batchByDeployment") } : {}),
-        ...(result.verification === "provider" ? { description: t("issues.toast.batchByProvider") } : {}),
         tone: "success",
       });
     },

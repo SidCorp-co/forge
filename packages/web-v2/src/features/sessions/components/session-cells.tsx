@@ -56,13 +56,8 @@ export function SessionIdentity({
         <p className="fg-body-sm truncate text-fg">{title}</p>
       )}
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-        {/* Pipeline (job-driven) vs interactive chat — a running chat spawns no
-            job, so it is NOT a wedged runner (ISS-378 AC#4). */}
-        <Tooltip
-          label={kind === "chat" ? t("sessions.chatHint") : t("sessions.pipelineHint")}
-        >
-          <MonoTag hue={kind === "chat" ? "flame" : "cobalt"}>{t(`sessions.kindWord.${kind}` as ProductCopyKey)}</MonoTag>
-        </Tooltip>
+        {/* Pipeline (job-driven) vs interactive chat: a running chat spawns no job (ISS-378 AC#4). */}
+        <MonoTag hue={kind === "chat" ? "flame" : "cobalt"}>{t(`sessions.kindWord.${kind}` as ProductCopyKey)}</MonoTag>
         {issueId &&
           (slug ? (
             <IssueRefBadge id={issueId} slug={slug} />
@@ -174,7 +169,7 @@ export function StatusCell({
         </span>
       )}
       {liveness.state === "stale" && liveness.reapInMs != null && (
-        <span className="fg-caption text-subtle" title={t("sessions.autoRecoversHint")}>
+        <span className="fg-caption text-subtle">
           {t("sessions.autoRecovers", { in: formatCountdown(liveness.reapInMs, t) })}
         </span>
       )}

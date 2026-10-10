@@ -63,7 +63,7 @@ export function WhatsNewButton({ compact = false }: { compact?: boolean }) {
         type="button"
         onClick={openPanel}
         data-tour="nav-whats-new"
-        aria-label={owed ? `${t("whatsNew.nav")}, ${t("whatsNew.unreadHint")}` : t("whatsNew.nav")}
+        aria-label={owed ? `${t("whatsNew.nav")}, ${t("whatsNew.unread")}` : t("whatsNew.nav")}
         className={cn(
           "relative flex items-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg max-md:min-h-[44px]",
           compact ? "w-full flex-col gap-0.5 px-1 py-1.5 text-9-5" : "w-full gap-2.5 px-1.5 py-1.5 text-13",

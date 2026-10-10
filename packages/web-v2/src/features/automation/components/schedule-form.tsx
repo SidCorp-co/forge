@@ -56,8 +56,8 @@ export function ScheduleForm({
       <Field label={t("schedules.form.name")} htmlFor={`${testId}-name`} required>
         <Input id={`${testId}-name`} value={name} onChange={(e) => setName(e.target.value)} required maxLength={200} />
       </Field>
-      <Field label={t("schedules.form.when")} htmlFor={`${testId}-cron`} hint={t("schedules.form.whenHint")} required>
-        <Input id={`${testId}-cron`} className="font-mono" value={cron} onChange={(e) => setCron(e.target.value)} required />
+      <Field label={t("schedules.form.when")} htmlFor={`${testId}-cron`} required>
+        <Input id={`${testId}-cron`} className="font-mono" placeholder={t("schedules.form.whenPlaceholder")} value={cron} onChange={(e) => setCron(e.target.value)} required />
       </Field>
       <Field label={t("schedules.form.kind")} htmlFor={`${testId}-kind`}>
         <NativeSelect
@@ -73,7 +73,7 @@ export function ScheduleForm({
           <Textarea id={`${testId}-body`} rows={8} value={body} onChange={(e) => setBody(e.target.value)} required />
         </Field>
       ) : null}
-      <Field label={t("schedules.form.target")} htmlFor={`${testId}-target`} hint={t("schedules.form.targetHint")}>
+      <Field label={t("schedules.form.target")} htmlFor={`${testId}-target`}>
         <Input id={`${testId}-target`} value={target} onChange={(e) => setTarget(e.target.value)} />
       </Field>
       <span className="inline-flex flex-wrap items-center gap-2">

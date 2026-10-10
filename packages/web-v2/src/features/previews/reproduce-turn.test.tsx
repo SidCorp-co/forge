@@ -121,7 +121,7 @@ describe("the recording a turn read, under its reply", () => {
     expect(card).toHaveTextContent("Severity. high");
     expect(card).toHaveTextContent("Recommended");
     fireEvent.click(screen.getByRole("button", { name: "Build the fix, ask the reporter to confirm" }));
-    expect(await screen.findByTestId("turn-diagnosis-done")).toHaveTextContent("Routed FB-52 to ISS-7. Its run builds the fix");
+    expect(await screen.findByTestId("turn-diagnosis-done")).toHaveTextContent("Routed FB-52 to ISS-7.");
     // the press is a triage like any other door's: the route with the checklist's answers (REQ-34 BC-2)
     expect(calls[0]?.body).toEqual({ route: "issue", diagnosis, answers });
   });

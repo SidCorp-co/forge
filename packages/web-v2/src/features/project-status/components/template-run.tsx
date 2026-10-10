@@ -103,7 +103,7 @@ export function TemplateRun({ projectId, slug }: { projectId: string; slug: stri
           run.mutate({ templateId: template.id, params: templateParamsOf(template.id, values) });
         }}
       >
-        <ViewHeading hint={t("status.template.runHint")}>{t("status.template.runTitle")}</ViewHeading>
+        <ViewHeading>{t("status.template.runTitle")}</ViewHeading>
         <TemplatePicker id={`${id}-template`} label={t("status.template.pick")} templates={templates} value={template.id} onChange={pick} />
         <TemplateParamFields template={template} values={values} onChange={setValues} idPrefix={id} />
         <span>

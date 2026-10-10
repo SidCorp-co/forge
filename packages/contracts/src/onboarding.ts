@@ -41,7 +41,7 @@ export const ONBOARDING_STATUS_LABELS: Record<OnboardingStatus, string> = {
 export const THREAD_STATUS_HINTS: Record<OnboardingStatus, string> = {
 	in_progress: "in_progress: the agent is working on the last message",
 	waiting_on_you:
-		"waiting_on_you: the agent's last reply was recorded as awaiting your answer, or a batch waits on you",
+		"waiting_on_you: the agent's last reply, or a batch, awaits your answer",
 	done: "done: nothing in this thread waits on you or on the agent",
 };
 

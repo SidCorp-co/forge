@@ -51,7 +51,7 @@ export function LiveReachValue({ reach }: { reach: LiveReach }) {
   if (reach.state === "not_on_live") {
     return (
       <div className="flex flex-col items-end gap-1">
-        <span title={t("issues.reach.notOnLiveHint", { base: reach.baseBranch, baseSha: short(reach.baseSha), live: reach.deploysFrom, liveSha: short(reach.liveSha), at: reach.measuredAt })}>
+        <span title={t("issues.reach.notOnLiveDetail", { base: reach.baseBranch, baseSha: short(reach.baseSha), live: reach.deploysFrom, liveSha: short(reach.liveSha), at: reach.measuredAt })}>
           <Badge tone="red">{t("issues.reach.notOnLive")}</Badge>
         </span>
         {reach.evidence.map((e) => (
@@ -68,9 +68,9 @@ export function LiveReachValue({ reach }: { reach: LiveReach }) {
       <div className="flex flex-col items-end gap-1">
         <span
           className="fg-caption"
-          title={t("issues.reach.noneWaitingHint", { base: reach.baseBranch, baseSha: short(reach.baseSha), live: reach.deploysFrom, liveSha: short(reach.liveSha), at: reach.measuredAt })}
+          title={t("issues.reach.comparedAt", { base: reach.baseBranch, baseSha: short(reach.baseSha), live: reach.deploysFrom, liveSha: short(reach.liveSha), at: reach.measuredAt })}
         >
-          {t("issues.reach.noneWaiting", { live: reach.deploysFrom })}
+          {t("issues.reach.noneWaiting")}
         </span>
         <Unowned commits={reach.unowned} />
         <Compared reach={reach} />

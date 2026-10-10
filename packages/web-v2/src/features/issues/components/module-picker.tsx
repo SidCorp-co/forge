@@ -117,7 +117,6 @@ export function ModulePicker({
         />
       ) : modules.length === 0 ? (
         <EmptyState
-          title={t("issues.modules.noneTitle")}
           message={t("issues.modules.none")}
           mascot={false}
           action={{
@@ -129,7 +128,6 @@ export function ModulePicker({
         <div className="flex h-full flex-col gap-6">
           <section>
             <PageSectionTitle className="fg-overline mb-2">{t("issues.modules.primary")}</PageSectionTitle>
-            <p className="fg-caption mb-2.5 text-muted">{t("issues.modules.primaryHint")}</p>
             <RadioGroup name="primary-module" value={primary} onChange={choosePrimary}>
               <Radio value={NO_PRIMARY} label={t("issues.modules.noPrimary")} disabled={save.isPending} />
               {modules.map((m) => (
@@ -140,7 +138,6 @@ export function ModulePicker({
 
           <section>
             <PageSectionTitle className="fg-overline mb-2">{t("issues.modules.also")}</PageSectionTitle>
-            <p className="fg-caption mb-2.5 text-muted">{t("issues.modules.alsoHint")}</p>
             <div className="flex flex-col gap-2.5">
               {modules
                 .filter((m) => m.id !== primary)

@@ -24,14 +24,12 @@ export type DialogMode = ReasonStatus | "void_questions" | "move_anyway" | "not_
 interface CopySpec {
   title: string;
   confirm: string;
-  blurb: string;
   placeholder: string;
 }
 
 const copyOf = (t: Copy, mode: DialogMode): CopySpec => ({
   title: t(`issues.reason.${mode}.title`),
   confirm: t(`issues.reason.${mode}.confirm`),
-  blurb: t(`issues.reason.${mode}.blurb`),
   placeholder: t(`issues.reason.${mode}.placeholder`),
 });
 
@@ -88,7 +86,6 @@ export function TransitionReasonDialog({
   return (
     <SlideOver open onClose={onClose} title={copy.title} width={480}>
       <div className="flex h-full flex-col gap-4">
-        <p className="fg-body-sm text-muted">{copy.blurb}</p>
         {status === "void_questions" && openQuestions !== undefined && (
           <p className="fg-body-sm text-fg">
             {openQuestions === 1 ? t("issues.reason.openOne") : t("issues.reason.openMany", { n: openQuestions })}

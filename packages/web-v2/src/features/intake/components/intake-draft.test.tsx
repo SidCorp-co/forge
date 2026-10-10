@@ -88,7 +88,7 @@ describe("the intake draft on an item's page", () => {
 
   it("says it has nothing to ask where it asks nothing (BC-16)", async () => {
     shown(draft({ questions: [], nothingToAsk: "The record settles the triage." }));
-    expect((await screen.findByTestId("intake-nothing-to-ask")).textContent).toBe("Nothing to ask");
+    expect((await screen.findByTestId("intake-nothing-to-ask")).textContent).toBe("Nothing");
     expect(screen.queryByTestId("intake-question")).toBeNull();
   });
 

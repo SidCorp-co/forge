@@ -90,7 +90,7 @@ export function NotificationsTab() {
       )}
 
       {!notificationsQ.isLoading && !notificationsQ.isError && rows.length === 0 && (
-        <EmptyState title={t("shell.bell.caughtUp")} message={t("shell.notify.none")} />
+        <EmptyState message={t("shell.bell.caughtUp")} />
       )}
 
       {!notificationsQ.isLoading && !notificationsQ.isError && rows.length > 0 && (
@@ -137,7 +137,6 @@ function DeliveryPreferences() {
         {prefsQ.data && (
           <ToggleRow
             label={t("shell.notify.mentions")}
-            helper={t("shell.notify.mentionsHint")}
             checked={prefsQ.data.notifyOnMention}
             disabled={update.isPending}
             onChange={(checked) => update.mutate({ notifyOnMention: checked })}
@@ -204,7 +203,7 @@ function DesktopNotificationsToggle() {
       ? t("shell.notify.desktopBlocked")
       : lapsed
         ? t("shell.notify.desktopLapsed")
-        : t("shell.notify.desktopHint");
+        : undefined;
 
   return (
     <ToggleRow
@@ -248,7 +247,7 @@ function SoundNotificationsToggle() {
   return (
     <ToggleRow
       label={t("shell.notify.sound")}
-      helper={supported ? t("shell.notify.soundHint") : t("shell.notify.soundUnsupported")}
+      helper={supported ? undefined : t("shell.notify.soundUnsupported")}
       checked={enabled && supported}
       disabled={!supported}
       onChange={onToggle}
@@ -263,7 +262,7 @@ function ToggleRow({
   ...toggle
 }: {
   label: string;
-  helper: string;
+  helper?: string;
   checked: boolean;
   disabled: boolean;
   onChange: (next: boolean) => void;
@@ -273,7 +272,7 @@ function ToggleRow({
     <div className="flex items-center justify-between gap-3 py-1">
       <div className="min-w-0">
         <p className="fg-label text-fg">{label}</p>
-        <p className="fg-caption text-muted">{helper}</p>
+        {helper ? <p className="fg-caption text-muted">{helper}</p> : null}
       </div>
       <Toggle {...toggle} />
     </div>

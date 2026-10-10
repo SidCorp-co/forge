@@ -70,7 +70,6 @@ export function OnboardingHint({ projectId, projectName }: { projectId: string; 
                 type="button"
                 className="text-link hover:underline disabled:opacity-60"
                 disabled={pending}
-                title={copy("onboarding.hint.reanalyzeTitle")}
                 onClick={() => ask("reanalyze")}
               >
                 {copy("onboarding.hint.reanalyze")}

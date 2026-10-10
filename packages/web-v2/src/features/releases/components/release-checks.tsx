@@ -16,8 +16,8 @@ const STAGE_LABEL: Record<ReleaseAttemptView["stage"], ProductCopyKey> = {
 function verdictBadge(a: ReleaseAttemptView, t: Copy) {
   if (a.verdict === "ok") return <ToneBadge tone="ready" label={t("releases.verdict.passed")} title="ok" />;
   if (a.verdict === "failed") return <ToneBadge tone="err" label={t("releases.verdict.failed")} title="failed" />;
-  if (a.verdict === "unverified") return <ToneBadge tone="you" label={t("releases.verdict.unverified")} title={`unverified: ${t("releases.verdict.unverifiedHint")}`} />;
-  return <ToneBadge tone="run" label={t("releases.verdict.running")} title={t("releases.verdict.runningHint")} pulse />;
+  if (a.verdict === "unverified") return <ToneBadge tone="you" label={t("releases.verdict.unverified")} title="unverified" />;
+  return <ToneBadge tone="run" label={t("releases.verdict.running")} title="running" pulse />;
 }
 
 function Attempt({ a }: { a: ReleaseAttemptView }) {

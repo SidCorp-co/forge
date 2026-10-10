@@ -30,11 +30,9 @@ export function ProposedMarker({ r }: { r: WorkflowRecord }) {
   const pending = r.design.pendingRevision;
   if (pending === null) return null;
   return (
-    <Tooltip label={t("workflows.proposedMarkerHint", { pending, approved: r.design.approvedRevision ?? "" })} side="bottom" multiline>
-      <span className="whitespace-nowrap font-mono text-11-5 font-semibold" style={{ color: TONE_META.attention.fg }} data-testid="proposed-marker">
-        {t("workflows.proposedMarker", { r: pending })}
-      </span>
-    </Tooltip>
+    <span className="whitespace-nowrap font-mono text-11-5 font-semibold" style={{ color: TONE_META.attention.fg }} data-testid="proposed-marker">
+      {t("workflows.proposedMarker", { r: pending })}
+    </span>
   );
 }
 

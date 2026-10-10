@@ -149,7 +149,6 @@ function DecideForm({
     <div className="grid gap-2 rounded-lg border border-line px-4 py-3" data-testid="pattern-decide">
       <Field
         label={t("issues.patterns.reason")}
-        hint={t("issues.patterns.reasonHint", { limit: String(limit) })}
         error={error}
         required
       >

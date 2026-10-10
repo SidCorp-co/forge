@@ -9,7 +9,6 @@ import {
   FactsGroup,
   PersonChip,
   StatusBadge,
-  Tooltip,
 } from "@/design";
 import { ScopeForecastLine } from "@/features/forecast/components/forecast-line";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -37,9 +36,7 @@ export function ApprovalFacts({ r }: { r: ReleaseDetail }) {
   return (
     <FactsGroup title={t("releases.approval")} testId="facts-approval">
       <Fact label={t("releases.policy")}>
-        <Tooltip label={t("releases.policyHint")} multiline>
-          <span>{r.approvalRequired ? t("releases.policyRequired") : t("releases.policyAsked")}</span>
-        </Tooltip>
+        <span>{r.approvalRequired ? t("releases.policyRequired") : t("releases.policyAsked")}</span>
       </Fact>
       {a ? (
         <>

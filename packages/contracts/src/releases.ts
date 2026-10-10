@@ -70,13 +70,13 @@ export const RELEASE_STATE_GLYPHS: Record<ReleaseState, string> = {
 
 export const RELEASE_STATE_HINTS: Record<ReleaseState, string> = {
 	draft:
-		"draft: merged issues wait at the release gate and no version holds them yet",
+		"draft: merged issues wait at the gate; no version holds them yet",
 	in_progress:
 		"in_progress: a release run is promoting, deploying or verifying the version",
 	awaiting_approval:
 		"awaiting_approval: no production act is taken until an admin approves",
 	returned:
-		"returned: an admin sent it back with a reason; the master answers before it asks again",
+		"returned: an admin sent it back; the master answers before asking again",
 	shipped: "shipped: the release run stamped the version released",
 	failed: "failed: the release run ended without shipping",
 	aborted: "aborted: the release run was stopped on purpose",

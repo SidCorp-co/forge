@@ -1,7 +1,8 @@
 // The live QA of ISS-427 (2026-10-08): no project document held a `compute` key and no settings tab
 // showed it, so computation was off only by absence and nobody could see or change it. Advanced now
-// carries it: whether the assistant may compute at all, and which sandboxes may take the data, each
-// with its effect in a line, saved through the project document's own write at the revision read.
+// carries it: whether the assistant may compute at all, and which sandboxes may take the data, as
+// labelled switches with no explaining line (REQ-43 BC-4), saved through the project document's own
+// write at the revision read.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -49,15 +50,12 @@ async function save() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("the compute setting in Advanced", () => {
-  it("reads off where the document has no compute key, with each effect in a line and the sandbox choices held", async () => {
+  it("reads off where the document has no compute key, with the sandbox choices held and no explaining line", async () => {
     core({ declared: true, revision: 6, document: doc() });
     mount();
     expect(await screen.findByRole("switch", { name: "Computation" })).not.toBeChecked();
-    expect(screen.getByText(/running a short JavaScript script in Forge's server-side sandbox/)).toBeInTheDocument();
-    expect(screen.getByText(/read-only, as the person asking/)).toBeInTheDocument();
-    expect(screen.getByText(/whose data leaves Forge for a third party/)).toBeInTheDocument();
     expect(screen.getByTestId("compute-section").textContent).not.toMatch(/runner/i);
-    expect(screen.getByText(/declares zero data retention/)).toBeInTheDocument();
+    expect(screen.getByTestId("compute-section").textContent).not.toMatch(/JavaScript|read-only|leaves Forge/);
     expect(toggle("Third-party sandboxes")).toHaveAttribute("aria-disabled", "true");
     expect(toggle("Zero data retention only")).toHaveAttribute("aria-disabled", "true");
   });

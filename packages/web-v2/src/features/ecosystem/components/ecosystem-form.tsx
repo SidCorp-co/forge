@@ -55,7 +55,7 @@ type Patch = (patch: (d: EcosystemDocument) => EcosystemDocument) => void;
 
 function ReplyWindowsField({ doc, set }: { doc: EcosystemDocument; set: Patch }) {
   return (
-    <Field label="Reply windows" hint="Days a recipient has to reply">
+    <Field label="Reply windows">
       <span className="flex flex-wrap gap-3.5 rounded-md border border-line px-2.5 py-1.5 text-13">
         {WINDOWS.map((t) => (
           <span key={t} className="inline-flex items-center gap-1.5">

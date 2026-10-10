@@ -58,7 +58,7 @@ function HealthGroup({ health, slug, projectId, canDecide }: { health: WorkflowH
         ))}
       </ul>
       {health.needsYou > 0 ? (
-        <p className="mt-2 text-12-5 font-semibold text-accent-text" data-testid="health-needs-you" title={t("workflows.facts.needsPersonHint")}>
+        <p className="mt-2 text-12-5 font-semibold text-accent-text" data-testid="health-needs-you">
           {t("workflows.facts.needsPerson", { n: health.needsYou })}
         </p>
       ) : null}
@@ -127,7 +127,7 @@ function ReconciliationGroup({ health, slug }: { health: WorkflowHealth; slug: s
         {r.criteria.total === 0 ? (
           <span className="text-muted">{t("workflows.facts.noBc")}</span>
         ) : (
-          <span className="font-mono tabular-nums text-12-5" title={t("workflows.facts.bcsProvenHint")}>
+          <span className="font-mono tabular-nums text-12-5">
             {t("workflows.facts.of", { a: r.criteria.proven, b: r.criteria.total })}
           </span>
         )}
@@ -363,7 +363,7 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
           )}
         </Fact>
         <Fact label={t("workflows.facts.approver")}>
-          <span title={t("workflows.facts.approverHint", { perm: d.approver })}>{t("workflows.facts.approverAnyone")}</span>
+          <span>{t("workflows.facts.approverAnyone")}</span>
         </Fact>
         <Fact label={t("workflows.facts.template")}>
           <span title={template ? `${template.id}@${template.version}` : undefined}>{template?.title ?? t("workflows.facts.none")}</span>

@@ -210,7 +210,7 @@ export function runGateNote(gate: RunGate | null | undefined, language = "en"): 
   if (gate === undefined) return null;
   const t = productCopy(language);
   if (gate === null) {
-    return { verdict: "none", headline: t("sessions.gate.noneHead"), detail: t("sessions.gate.noneDetail"), reason: null };
+    return { verdict: "none", headline: t("sessions.gate.unreportedHead"), detail: t("sessions.gate.unreportedDetail"), reason: null };
   }
   if (gate.read === "unreadable") {
     return { verdict: "unreadable", headline: t("sessions.gate.unreadHead"), detail: t("sessions.gate.unreadDetail", { reason: gate.reason }), reason: null };

@@ -10,7 +10,6 @@
 import { useMemo, useState } from "react";
 import {
   ErrorState,
-  IconButton,
   KanbanBoard,
   KanbanCard,
   KanbanColumn,
@@ -18,7 +17,6 @@ import {
   LiveDot,
   PageTitle,
   StatusBadge,
-  Tooltip,
 } from "@/design";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
@@ -82,15 +80,9 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
     >
       {!embedded && (
         <>
-        <PageTitle hint={t("pipeline.board.hint")}>{t("pipeline.board.title")}</PageTitle>
+        <PageTitle>{t("pipeline.board.title")}</PageTitle>
         <TopBarActions>
           <LiveDot state="live" />
-          <Tooltip
-            side="bottom"
-            label={t("pipeline.board.help")}
-          >
-            <IconButton icon="help" variant="ghost" size="sm" aria-label={t("pipeline.board.helpAria")} />
-          </Tooltip>
         </TopBarActions>
         </>
       )}
