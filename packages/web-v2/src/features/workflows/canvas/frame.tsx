@@ -2,7 +2,7 @@
 
 import { fixedHeight } from "@/design";
 import "@xyflow/react/dist/base.css";
-import "./canvas.css";
+import "@/design/patterns/graph-canvas.css";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { type Edge, type EdgeTypes, MiniMap, type Node, type NodeTypes, type OnNodesChange, ReactFlow, useReactFlow, useViewport, type Viewport } from "@xyflow/react";
 import { type ReactNode, type RefObject, useEffect, useState } from "react";

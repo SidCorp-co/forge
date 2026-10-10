@@ -9,7 +9,7 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { AcceptStep, Button, Input, showToast, Tooltip } from "@/design";
+import { AcceptStep, Button, Input, showToast, Tooltip, focusOnMount } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { type DockDoor, useChatDock } from "@/features/chat-dock";
 import { formatApiError } from "@/lib/api/error";
@@ -327,7 +327,7 @@ function ReasonForm({
         onSend(reason.trim(), more.trim());
       }}
     >
-      <Input aria-label={whyLabel} placeholder={whyHint} value={reason} onChange={(e) => setReason(e.target.value)} className="min-w-64 flex-1" ref={(el) => el?.focus()} />
+      <Input aria-label={whyLabel} placeholder={whyHint} value={reason} onChange={(e) => setReason(e.target.value)} className="min-w-64 flex-1" ref={focusOnMount} />
       {extra ? <Input aria-label={extra.label} placeholder={extra.hint} value={more} onChange={(e) => setMore(e.target.value)} /> : null}
       <Button type="submit" size="sm" variant={submitVariant} disabled={!reason.trim()} loading={busy}>
         {submit}

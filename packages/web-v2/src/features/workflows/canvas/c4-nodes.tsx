@@ -112,7 +112,9 @@ function C4Box({ data }: NodeProps & { data: C4BoxData }) {
         title={group ? undefined : tipOf(b, t)}
         {...(group ? card.trigger : {})}
         onClickCapture={() => {
-          if (group && !data.canOpen) card.pinned ? card.close() : card.pin();
+          if (!group || data.canOpen) return;
+          if (card.pinned) card.close();
+          else card.pin();
         }}
       >
         {ends}

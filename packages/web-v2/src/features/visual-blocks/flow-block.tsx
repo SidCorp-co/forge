@@ -71,7 +71,8 @@ const NODE_H_MIN = 36;
 /** The tallest box a diagram is drawn in; a taller diagram scrolls inside it at its own size. */
 const FLOW_BOX = "max-h-130";
 
-type Laid = { placed: Placed } | { failed: string } | null;
+/** A layout, and the block it was laid out for: another block's layout is no layout. */
+type Laid = ({ placed: Placed } | { failed: string }) & { of: VisualBlockOf<"flow"> };
 
 /** Boxes and lines, from the block's own nodes and edges, placed by the layered layout the workflow canvas uses. */
 function FlowDiagram({ block }: { block: VisualBlockOf<"flow"> }) {
@@ -79,19 +80,19 @@ function FlowDiagram({ block }: { block: VisualBlockOf<"flow"> }) {
     () => new Map(block.nodes.map((n) => [n.id, { width: Math.max(96, labelBox(n.label).width + 16), height: Math.max(NODE_H_MIN, labelBox(n.label).height + 14) }])),
     [block],
   );
-  const [laid, setLaid] = useState<Laid>(null);
+  const [kept, setKept] = useState<Laid | null>(null);
+  const laid = kept?.of === block ? kept : null;
 
   useEffect(() => {
     let live = true;
-    setLaid(null);
     layoutGraph({
       direction: "down",
       partitioned: false,
       nodes: block.nodes.map((n) => ({ id: n.id, ...(sizes.get(n.id) as { width: number; height: number }) })),
       edges: block.edges.map((e, i) => ({ id: `e${i}`, from: e.from, to: e.to, ...(e.label ? { label: e.label } : {}) })),
     }).then(
-      (placed) => live && setLaid({ placed }),
-      (err: unknown) => live && setLaid({ failed: err instanceof Error ? err.message : String(err) }),
+      (placed) => live && setKept({ placed, of: block }),
+      (err: unknown) => live && setKept({ failed: err instanceof Error ? err.message : String(err), of: block }),
     );
     return () => {
       live = false;
