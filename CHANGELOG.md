@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.229] - 2026-10-10
+
+Pages say less: short labels, and record pages open on their state
+
+### Changed
+
+- **Pages say less.** Every label and line is twelve words or fewer, an empty list reads as a word or two, and lines explaining a section, a button or who can see it are gone.
+- **What Forge says on a page is shorter too.** Waits, reasons, health lines and gate notes are twelve words or fewer, and agents working in a checkout now read the project's always-applied rules.
+- **Record pages open on their state.** Issue, requirement, feedback and release pages say each fact once, show verdicts as marks with counts in the filters, keep past items in Activity, and fold codes, plans and commits behind a Developer view.
+
 ## [0.4.0-dev.228] - 2026-10-10
 
 Release pages place reopened fixes on their shipping release and name admin asks once

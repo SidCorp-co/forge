@@ -1,1 +1,0 @@
-**Record pages open on their state.** Issue, requirement, feedback and release pages say each fact once, show verdicts as marks with counts in the filters, keep past items in Activity, and fold codes, plans and commits behind a Developer view.
