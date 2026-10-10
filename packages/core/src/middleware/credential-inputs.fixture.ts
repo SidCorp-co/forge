@@ -345,9 +345,9 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     previews/relay.ts IncomingMessage.pipe in relayPreviewUpgrade
     previews/relay.ts IncomingMessage.url in serveRecorder`,
   'the storefront MCP relay, once its relay ticket verified: the transport headers it passes by name, the agent’s message relayed as sent, and the provider’s answer core passes back': lines`
-    integration-door/mcp-relay-routes.ts Headers handed to @types/node:fetch in module code
-    integration-door/mcp-relay-routes.ts Headers handed to undici-types:Response in module code
-    integration-door/mcp-relay-routes.ts Headers.get(name) in module code
+    integrations/mcp-relay.ts Headers handed to @types/node:fetch in relayToUpstream
+    integrations/mcp-relay.ts Headers handed to undici-types:Response in relayToUpstream
+    integrations/mcp-relay.ts Headers.get(name) in relayToUpstream
     integration-door/mcp-relay-routes.ts HonoRequest.arrayBuffer in module code
     integration-door/mcp-relay-routes.ts HonoRequest.header(name) in module code`,
   'a socket ws/server.ts opened for a person or a box, and its frames: subscribe, runner': lines`
