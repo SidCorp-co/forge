@@ -7,8 +7,8 @@
 
 import { FEEDBACK_LIMITS } from "@forge/contracts/feedback";
 import { Button, LEGEND } from "@/design";
-import { AttachmentList } from "@/features/attachments/components/attachment-list";
-import { StagedFileList, useStagedFiles } from "@/features/attachments/components/staged-files";
+import { AttachmentList } from "@/features/attachments";
+import { StagedFileList, useStagedFiles } from "@/features/attachments";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { AttachFailed } from "../api";

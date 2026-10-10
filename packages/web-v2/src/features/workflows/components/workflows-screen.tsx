@@ -8,7 +8,7 @@ import { Button, EmptyState, PageTitle, RowItem, rememberListOrigin } from "@/de
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useAskForDesigns } from "@/features/onboarding";
 import { useOnboardingState } from "@/features/onboarding";
-import { useProjectDocument } from "@/features/project-config/hooks";
+import { useProjectDocument } from "@/features/project-config";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";

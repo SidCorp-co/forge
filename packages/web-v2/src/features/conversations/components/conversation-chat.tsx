@@ -12,16 +12,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThreadDataProvider } from "@/features/onboarding";
-import { useProjects } from "@/features/projects/hooks";
-import { canWriteProject } from "@/features/projects/write-access";
+import { useProjects } from "@/features/projects";
+import { canWriteProject } from "@/features/projects";
 import { CONVERSATION_ATTACHMENTS } from "@/features/chat";
 import { ChatComposer, ReadOnlyComposerNote } from "@/features/chat";
 import {
   TurnStage,
   turnStageOf,
-} from "@/features/session/components/turn-stage";
-import { NewOutput } from "@/features/session/components/new-output";
-import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
+} from "@/features/session";
+import { NewOutput } from "@/features/session";
+import { useStickToBottom } from "@/features/session";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import {

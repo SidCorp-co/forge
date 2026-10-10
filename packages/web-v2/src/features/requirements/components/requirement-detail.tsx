@@ -24,7 +24,7 @@ import {
   ViewHeading,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { EntityCommentThread } from "@/features/comments/components/entity-comment-thread";
+import { EntityCommentThread } from "@/features/comments";
 import { MockupList } from "@/features/mockups";
 import { useMockups } from "@/features/mockups";
 import { PendingBadge } from "@/features/suggestions";

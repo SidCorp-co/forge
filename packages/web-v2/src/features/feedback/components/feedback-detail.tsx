@@ -23,7 +23,7 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { FeedbackChecklists } from "@/features/checklists";
 import { IntakeDraft } from "@/features/intake";
 import { MockupList } from "@/features/mockups";
-import { ReproduceSection } from "@/features/previews/reproduce-section";
+import { ReproduceSection } from "@/features/previews";
 import { useMockups } from "@/features/mockups";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";

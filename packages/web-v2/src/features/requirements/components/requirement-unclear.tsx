@@ -6,7 +6,7 @@
 
 import { useState } from "react";
 import { Button, Textarea, ToneBadge, ViewHeading } from "@/design";
-import { DecisionTarget } from "@/features/comments/components/decision-target";
+import { DecisionTarget } from "@/features/comments";
 import { IntakeSource } from "@/features/intake";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";

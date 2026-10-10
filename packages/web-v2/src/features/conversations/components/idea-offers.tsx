@@ -8,14 +8,14 @@ import { IDEA_OFFER_TOOL, type IdeaOffer, readIdeaOffer } from "@forge/contracts
 import type { PreviewRecord } from "@forge/contracts/preview";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/design";
-import type { CanonicalBlock } from "@/features/session/types";
+import type { CanonicalBlock } from "@/features/session";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { useProjects } from "@/features/projects/hooks";
-import { canWriteProject } from "@/features/projects/write-access";
-import { ideaApi } from "@/features/previews/idea-api";
-import { IdeaPanel } from "@/features/previews/idea-panel";
-import { OpenRoom } from "@/features/previews/room-open";
+import { useProjects } from "@/features/projects";
+import { canWriteProject } from "@/features/projects";
+import { ideaApi } from "@/features/previews";
+import { IdeaPanel } from "@/features/previews";
+import { OpenRoom } from "@/features/previews";
 import { toolOutputText } from "@/lib/tool-output";
 
 /** Every idea offer an entry's blocks carry, in the order the turn made them. */
