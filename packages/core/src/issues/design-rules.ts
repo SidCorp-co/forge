@@ -11,6 +11,7 @@ import {
   DESIGN_RECORD_INCOMPLETE,
   DESIGN_RECORD_MISSING,
   type DesignCheck,
+  type DesignGap,
   type IssueDesignRefusal,
   type RecordDesignRequest,
 } from '@forge/contracts/issue-design';
@@ -136,29 +137,40 @@ export function designCheck(facts: DesignFacts): DesignCheck {
       passed: false,
       code: DESIGN_RECORD_MISSING,
       missing: ['design'],
+      gaps: [{ part: 'design' }],
       detail: `${facts.issueRef} has no design. Record it (PUT /api/issues/:id/design), then move it.`,
     };
   }
   const lines = new Map(facts.design.lines.map((l) => [l.criterionId, l]));
   const missing: string[] = [];
-  if (facts.criteria.length === 0) missing.push('criteria: the issue has none');
+  const gaps: DesignGap[] = [];
+  if (facts.criteria.length === 0) {
+    missing.push('criteria: the issue has none');
+    gaps.push({ part: 'criteria' });
+  }
   for (const c of facts.criteria) {
     const line = lines.get(c.id);
     if (!line) {
       missing.push(`criterion ${c.n}: no class, pattern or proof (written or reworded since)`);
+      gaps.push({ part: 'criterion', criterion: c.n });
       continue;
     }
     const fault = patternFault(c.n, line.pattern, facts);
-    if (fault) missing.push(`criterion ${c.n}: ${fault.code}`);
+    if (fault) {
+      missing.push(`criterion ${c.n}: ${fault.code}`);
+      gaps.push({ part: 'criterion', criterion: c.n });
+    }
   }
   const gone = facts.design.modules.filter((m) => !facts.moduleIds.has(m));
   if (facts.design.modules.length === 0) missing.push('modules: none named');
   for (const m of gone) missing.push(`module ${m}: no longer a module of the project`);
+  if (facts.design.modules.length === 0 || gone.length > 0) gaps.push({ part: 'modules' });
   if (missing.length === 0) return { passed: true };
   return {
     passed: false,
     code: DESIGN_RECORD_INCOMPLETE,
     missing,
+    gaps,
     detail: `The design of ${facts.issueRef} lacks ${missing.join('; ')}. Record it again (PUT /api/issues/:id/design), then move it.`,
   };
 }

@@ -112,10 +112,21 @@ export interface IssueDesignView {
 	recordedAt: string;
 }
 
+/**
+ * One part the design check found missing, as a fact a client words for itself: no record at all,
+ * an issue with no criteria, a criterion with no line (or one whose pattern no longer holds), or
+ * the modules (none named, or one no longer a module of the project).
+ */
+export type DesignGap =
+	| { part: "design" }
+	| { part: "criteria" }
+	| { part: "criterion"; criterion: number }
+	| { part: "modules" };
+
 /** The design check as the issue stands now: passed, or the refusal a move into build gets. */
 export type DesignCheck =
 	| { passed: true }
-	| { passed: false; code: DesignCheckCode; missing: string[]; detail: string };
+	| { passed: false; code: DesignCheckCode; missing: string[]; gaps: DesignGap[]; detail: string };
 
 export interface IssueDesign {
 	/** Whether the project reads a pattern catalog, so whether each criterion names a pattern. */

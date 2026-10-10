@@ -123,6 +123,7 @@ describe('designCheck', () => {
     expect(designCheck(facts({ design: null }))).toMatchObject({
       passed: false,
       code: 'DESIGN_RECORD_MISSING',
+      gaps: [{ part: 'design' }],
     });
   });
 
@@ -140,10 +141,17 @@ describe('designCheck', () => {
       'criterion 3: no class, pattern or proof (written or reworded since)',
       'module m1: no longer a module of the project',
     ]);
+    // the same gaps as facts, so a client words them without parsing the sentence (ISS-467)
+    expect(check.passed ? [] : check.gaps).toEqual([
+      { part: 'criterion', criterion: 1 },
+      { part: 'criterion', criterion: 3 },
+      { part: 'modules' },
+    ]);
   });
 
   it('finds an issue with no criteria incomplete', () => {
     const check = designCheck(facts({ criteria: [] }));
     expect(check.passed ? [] : check.missing).toEqual(['criteria: the issue has none']);
+    expect(check.passed ? [] : check.gaps).toEqual([{ part: 'criteria' }]);
   });
 });

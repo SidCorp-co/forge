@@ -1,3 +1,4 @@
+import type { DesignGap } from '@forge/contracts/issue-design';
 import { ApiError } from './client';
 import { readInstantsNow } from '@/lib/i18n/instants';
 import { refusalFact } from './refusals';
@@ -70,6 +71,39 @@ function mergeMarkSentence(err: ApiError): string | null {
   return null;
 }
 
+const DESIGN_KEPT_BY = 'The run building it records it again; no screen shows it.';
+
+/** The gaps a design-check refusal names, worded: "criterion 2", "criteria 3, 4 and modules". */
+function designGapWords(gaps: readonly DesignGap[]): string | null {
+  const numbers = gaps.flatMap((g) => (g.part === 'criterion' ? [g.criterion] : []));
+  const parts: string[] = [];
+  if (numbers.length === 1) parts.push(`criterion ${numbers[0]}`);
+  if (numbers.length > 1) parts.push(`criteria ${numbers.join(', ')}`);
+  if (gaps.some((g) => g.part === 'criteria')) parts.push('criteria');
+  if (gaps.some((g) => g.part === 'modules')) parts.push('modules');
+  if (parts.length === 0) return null;
+  return parts.length === 1 ? (parts[0] ?? null) : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+}
+
+/**
+ * ISS-467 — the design check's refusals in the web's own words. Core's sentence tells a run which
+ * REST call records a design; a person here has no screen that records or shows one. So the line
+ * says what is missing, that the run building the issue records it, and that no screen shows it,
+ * read off the refusal's `gaps` facts.
+ */
+function designGateSentence(err: ApiError): string | null {
+  if (err.code === 'DESIGN_RECORD_MISSING') {
+    return 'This issue has no design record yet. The run building it records one; no screen shows it.';
+  }
+  if (err.code !== 'DESIGN_RECORD_INCOMPLETE') return null;
+  const details = refusalFact(err, 'details');
+  const gaps = details && typeof details === 'object' ? (details as { gaps?: unknown }).gaps : undefined;
+  const words = Array.isArray(gaps) ? designGapWords(gaps as DesignGap[]) : null;
+  return words
+    ? `The design record lacks ${words}. ${DESIGN_KEPT_BY}`
+    : `The design record is incomplete. ${DESIGN_KEPT_BY}`;
+}
+
 /** A failure in a person's words, its instants read in their timezone like every other screen's. */
 export function formatApiError(err: unknown): string {
   return readInstantsNow(apiErrorSentence(err));
@@ -79,6 +113,8 @@ function apiErrorSentence(err: unknown): string {
   if (err instanceof ApiError) {
     const mergeMark = mergeMarkSentence(err);
     if (mergeMark) return mergeMark;
+    const designGate = designGateSentence(err);
+    if (designGate) return designGate;
     if (err.code && FRIENDLY_CODES[err.code]) return FRIENDLY_CODES[err.code];
     // A 401 under a code with no sentence above is core's own words for a session it refused
     // ("invalid token", "user not found"); a person is told to sign in, never shown those.

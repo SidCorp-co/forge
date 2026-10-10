@@ -313,7 +313,7 @@ async function designGuard(ctx: GuardContext): Promise<GuardFault | null> {
   return {
     code: check.code,
     detail: check.detail,
-    details: { from: ctx.from, to: ctx.to, missing: check.missing },
+    details: { from: ctx.from, to: ctx.to, missing: check.missing, gaps: check.gaps },
   };
 }
 

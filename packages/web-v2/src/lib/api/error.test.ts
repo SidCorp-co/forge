@@ -63,3 +63,78 @@ describe("a message from a tab loaded before the page item", () => {
     expect(line).not.toContain("Invalid input");
   });
 });
+
+/**
+ * ISS-467: picking Approved on an issue with no design toasted core's sentence, which tells a run to
+ * make a REST call; no screen records a design (judge J1 on 0.4.0-dev.222). The web says what is
+ * missing, who records it and where it shows, read off the refusal's `gaps`, never its prose.
+ */
+describe("a move refused by the design check", () => {
+  const refusedWith = (code: string, detail: string, details: Record<string, unknown>) => {
+    const message = `refused, nothing written: ${code} at /status: ${detail}`;
+    return {
+      type: `urn:forge:refusal:${code}`,
+      title: "Design record",
+      status: 422,
+      detail,
+      code,
+      message,
+      error: { code, message, refusals: [{ code, path: "/status", detail, details }] },
+    };
+  };
+  const lineFor = async (body: unknown) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify(body), { status: 422, headers: { "content-type": "application/problem+json" } })),
+    );
+    return formatApiError(await apiClient("/issues/i1/transition", { method: "POST", body: "{}" }).catch((e: unknown) => e));
+  };
+  const NO_HTTP = /\b(GET|PUT|POST|PATCH|DELETE)\b|\/api\//;
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("says a missing record, who records it and that no screen shows it, with no HTTP call", async () => {
+    const line = await lineFor(
+      refusedWith("DESIGN_RECORD_MISSING", "ISS-9 has no design. Record it (PUT /api/issues/:id/design), then move it.", {
+        from: "in_progress",
+        to: "approved",
+        missing: ["design"],
+        gaps: [{ part: "design" }],
+      }),
+    );
+    expect(line).toBe("This issue has no design record yet. The run building it records one; no screen shows it.");
+    expect(line).not.toMatch(NO_HTTP);
+  });
+
+  it("names each gap of an incomplete record by criterion number and part", async () => {
+    const line = await lineFor(
+      refusedWith(
+        "DESIGN_RECORD_INCOMPLETE",
+        "The design of ISS-9 lacks criterion 3: no class, pattern or proof (written or reworded since); criterion 4: DESIGN_PATTERN_UNCATALOGUED; modules: none named. Record it again (PUT /api/issues/:id/design), then move it.",
+        {
+          from: "in_progress",
+          to: "approved",
+          missing: ["criterion 3: no class, pattern or proof", "criterion 4: DESIGN_PATTERN_UNCATALOGUED", "modules: none named"],
+          gaps: [{ part: "criterion", criterion: 3 }, { part: "criterion", criterion: 4 }, { part: "modules" }],
+        },
+      ),
+    );
+    expect(line).toBe("The design record lacks criteria 3, 4 and modules. The run building it records it again; no screen shows it.");
+    expect(line).not.toMatch(NO_HTTP);
+    expect(line.split(/\s+/).length).toBeLessThanOrEqual(20);
+  });
+
+  it("names one criterion, and an issue with no criteria, in the same words", async () => {
+    const one = await lineFor(
+      refusedWith("DESIGN_RECORD_INCOMPLETE", "x (PUT /api/issues/:id/design)", { gaps: [{ part: "criterion", criterion: 2 }] }),
+    );
+    expect(one).toBe("The design record lacks criterion 2. The run building it records it again; no screen shows it.");
+    const none = await lineFor(refusedWith("DESIGN_RECORD_INCOMPLETE", "x (PUT /api/issues/:id/design)", { gaps: [{ part: "criteria" }] }));
+    expect(none).toBe("The design record lacks criteria. The run building it records it again; no screen shows it.");
+  });
+
+  it("still keeps the HTTP call out where the refusal names no gaps", async () => {
+    const line = await lineFor(refusedWith("DESIGN_RECORD_INCOMPLETE", "x (PUT /api/issues/:id/design)", {}));
+    expect(line).toBe("The design record is incomplete. The run building it records it again; no screen shows it.");
+  });
+});
