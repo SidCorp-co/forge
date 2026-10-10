@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.223] - 2026-10-10
+
+Requirements start from a title; box tokens reach their projects over WebSocket
+
+### Changed
+
+- **A requirement starts from its title.** The form asks only a title, then asks why. Its author is told each step change, its page shows the next step, and Needs you lists only your own acts.
+
+### Fixed
+
+- **A box's live updates reach the projects its other calls reach.** A box credential with no project list got no project's live updates, though its other calls reached them all (FB-78).
+
 ## [0.4.0-dev.222] - 2026-10-10
 
 Issues record their design and pattern; Ask Agent sizes; feedback opens on evidence
