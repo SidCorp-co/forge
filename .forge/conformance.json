@@ -81,7 +81,7 @@
       "emptyBudget": 2,
       "refusalSegments": "^(refusal|refused|authority-refused|denied\\w*|cannot\\w*|confirm\\w*|error|failed|revoked|declineMessage|moveConfirm|remove\\w*|delete\\w*(Message|Body)|\\w*(Refused|Refuse\\w*|Denied|Confirm|Confirmation|Error|Failed|Cannot\\w*))$",
       "emptySegments": "^(empty|empty[A-Z]\\w*|\\w*Empty|none|none[A-Z]\\w*|nothing\\w*|no[A-Z]\\w*)$",
-      "explainSegments": "^(hint|\\w*Hint|intro|\\w*Intro|help|\\w*Help|explain\\w*|\\w*Explainer|lede|\\w*Lede|tagline|blurb|emptyMessage|emptyBody|noneBody)$"
+      "explainSegments": "^(hint|\\w*Hint|intro|\\w*Intro|help|\\w*Help|explain\\w*|\\w*Explainer|lede|\\w*Lede|tagline|blurb|effect|\\w*Effect|emptyMessage|emptyBody|noneBody)$"
     },
     "pattern-catalog": {
       "$comment": "ISS-466 (REQ-36 BC-3, BC-4) \u2014 the change kinds this repository builds, each of which must have a page under `dir`. A pattern is the reference a change copies, the test shape it is proven by and the checklist its review reads; a page missing one, or naming a file no tracked file carries, is refused by name, and so is a generated catalog (`generated`, which core reads to tell a catalogued pattern from a new one) that disagrees with the pages. Knowledge axis, because a catalog entry is a document naming this repository\u0027s files; module shape stays relations\u0027, and the core-module page points at its checkers instead of restating them.",

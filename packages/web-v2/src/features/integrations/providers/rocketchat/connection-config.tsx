@@ -29,9 +29,6 @@ export const RocketchatConnectionConfig: ConnectionSection = ({ connection, canM
           disabled={!canManage}
         />
       </Field>
-      <p className="fg-body-sm text-muted">
-        {t("integrations.rocket.connectionNote")}
-      </p>
       {canManage && (
         <div>
           <Button

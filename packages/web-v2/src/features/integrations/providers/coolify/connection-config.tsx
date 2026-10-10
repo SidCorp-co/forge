@@ -29,9 +29,6 @@ export const CoolifyConnectionConfig: ConnectionSection = ({ connection, canMana
           disabled={!canManage}
         />
       </Field>
-      <p className="fg-body-sm text-muted">
-        {t("integrations.coolify.connectionNote")}
-      </p>
       {canManage && (
         <div>
           <Button

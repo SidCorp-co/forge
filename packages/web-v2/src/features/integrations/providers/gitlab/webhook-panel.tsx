@@ -68,9 +68,6 @@ export function GitlabWebhookPanel({ projectId, bindingId }: { projectId: string
           {t("integrations.gitlab.generate")}
         </Button>
       </div>
-      <p className="fg-body-sm text-muted">
-        {t("integrations.gitlab.generateNote")}
-      </p>
     </div>
   );
 }

@@ -50,7 +50,6 @@ export function useAnswerQuestion(issueId: string) {
       qc.invalidateQueries({ queryKey: ["attention"] });
       toast({
         title: t("agents.question.recorded"),
-        description: t("agents.question.recordedBody"),
         tone: "success",
       });
     },
@@ -124,7 +123,6 @@ export function useAnswerProjectQuestion(projectId: string) {
       qc.invalidateQueries({ queryKey: ["attention"] });
       toast({
         title: t("agents.question.recorded"),
-        description: t("agents.question.recordedBody"),
         tone: "success",
       });
     },

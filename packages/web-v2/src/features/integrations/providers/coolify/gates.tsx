@@ -3,18 +3,6 @@
 import { Banner, Button } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 
-/** Forge reads each deploy's outcome back from Coolify; nothing in Coolify to configure. */
-export function DeployConfirmationHint() {
-  const t = useCopy();
-  return (
-    <div className="flex flex-col gap-1 rounded-lg border border-subtle bg-sunken p-3">
-      <span className="fg-label text-subtle">{t("integrations.coolify.confirmation")}</span>
-      <span className="fg-body-sm">{t("integrations.coolify.confirmationBody")}</span>
-      <span className="fg-body-sm text-subtle">{t("integrations.coolify.confirmationTimeout")}</span>
-    </div>
-  );
-}
-
 /**
  * The production approval gate. Whether a release deploys to production without it is the
  * project document's production environment (`deployment.trigger: "on-land"`), not a switch here.

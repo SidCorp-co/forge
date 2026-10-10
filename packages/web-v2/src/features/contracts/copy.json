@@ -19,7 +19,6 @@
     "contracts.consumersBehind": "behind {n}",
     "contracts.consumersCount": "Consumers {n}",
     "contracts.decide.approve": "Approve {v}",
-    "contracts.decide.breakingNote": "Approving files an item per consumer, due when the window ends.",
     "contracts.decide.reasonPlaceholder": "Why it goes back: what the provider should change",
     "contracts.decide.return": "Return",
     "contracts.decide.returnV": "Return {v}",

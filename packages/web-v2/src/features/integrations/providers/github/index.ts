@@ -17,5 +17,4 @@ export const github: ProviderModule = {
   },
   section: () => import("./section").then((m) => ({ default: m.GitHubSection })),
   connectionSection: null,
-  connectionNote: "integrations.note.github",
 };
