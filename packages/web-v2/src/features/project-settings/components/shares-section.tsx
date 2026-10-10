@@ -18,7 +18,7 @@ export function ShareSettings({ projectId, isAdmin }: { projectId: string; isAdm
 		<PageSection>
 			<PageSectionBody>
 				<SectionTitle className="fg-h3 mb-1 text-accent-text!">Share links</SectionTitle>
-				<p className="fg-body-sm mb-4 max-w-[68ch] text-muted">
+				<p className="fg-body-sm mb-4 max-w-prose text-muted">
 					Each link opens one frozen answer, read-only, until it expires or is revoked. A link also stops
 					working once the person who made it leaves the project. Its creator or a project admin can revoke it.
 				</p>

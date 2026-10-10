@@ -13,6 +13,8 @@ export interface SlideOverProps {
   width?: number | string;
   fitBody?: boolean;
   hideHeader?: boolean;
+  /** The edge it slides from: right for a side task, left for a navigation drawer. */
+  side?: "left" | "right";
 }
 
 export function SlideOver({
@@ -23,6 +25,7 @@ export function SlideOver({
   width = 480,
   fitBody = false,
   hideHeader = false,
+  side = "right",
 }: SlideOverProps) {
   const t = useCopy();
   const slideOverWidth = typeof width === "number" ? `${width}px` : width;
@@ -40,9 +43,9 @@ export function SlideOver({
       }}
     >
       <SheetContent
-        side="right"
+        side={side}
         showCloseButton={false}
-        className="gap-0 border-line bg-surface text-fg data-[side=right]:w-full data-[side=right]:max-w-[100vw] data-[side=right]:sm:w-[var(--slide-over-w)] data-[side=right]:sm:max-w-[100vw]"
+        className="gap-0 border-line bg-surface text-fg data-[side=left]:w-[var(--slide-over-w)] data-[side=left]:max-w-[85vw] data-[side=right]:w-full data-[side=right]:max-w-[100vw] data-[side=right]:sm:w-[var(--slide-over-w)] data-[side=right]:sm:max-w-[100vw]"
         style={{ "--slide-over-w": slideOverWidth } as CSSProperties}
       >
         {hideHeader ? (

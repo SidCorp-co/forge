@@ -1,6 +1,6 @@
 "use client";
 
-import { Banner, Field, Input } from "@/design";
+import { Banner, Field, Input, Property, PropertyList } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
@@ -120,17 +120,14 @@ function SiteDetails({ config }: { config: Record<string, unknown> }) {
   const storeName = text(config, "storeName");
   const t = useCopy();
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-12">
-      <dt className="text-subtle">{t("integrations.autoflow.site")}</dt>
-      <dd>
+    <PropertyList>
+      <Property label={t("integrations.autoflow.site")}>
         {text(config, "shop") ?? "—"}
         {storeName && <span className="text-subtle"> · {storeName}</span>}
         {text(config, "storeId") && <span className="text-subtle"> · #{text(config, "storeId")}</span>}
-      </dd>
-      <dt className="text-subtle">{t("integrations.autoflow.workspace")}</dt>
-      <dd>{text(config, "orgId") ?? t("integrations.autoflow.runTest")}</dd>
-      <dt className="text-subtle">{t("integrations.autoflow.platform")}</dt>
-      <dd>{text(config, "baseUrl") ?? "https://auto.sidcorp.co"}</dd>
-    </dl>
+      </Property>
+      <Property label={t("integrations.autoflow.workspace")}>{text(config, "orgId") ?? t("integrations.autoflow.runTest")}</Property>
+      <Property label={t("integrations.autoflow.platform")}>{text(config, "baseUrl") ?? "https://auto.sidcorp.co"}</Property>
+    </PropertyList>
   );
 }

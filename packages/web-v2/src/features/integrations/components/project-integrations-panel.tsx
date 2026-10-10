@@ -225,7 +225,7 @@ function IntegrationItem({
             <span className="sm:hidden">
               <StatusPill card={card} />
             </span>
-            {target && <span className="[overflow-wrap:anywhere] sm:hidden">{target}</span>}
+            {target && <span className="wrap-anywhere sm:hidden">{target}</span>}
             {row.health && <span className="text-subtle sm:hidden">{row.health}</span>}
           </span>
         </span>
@@ -233,8 +233,8 @@ function IntegrationItem({
       <TD className="hidden align-top sm:table-cell">
         <StatusPill card={card} />
       </TD>
-      <TD className="hidden align-top [overflow-wrap:anywhere] sm:table-cell">{target}</TD>
-      <TD className="hidden max-w-[52ch] align-top text-muted sm:table-cell">{row.health}</TD>
+      <TD className="hidden align-top wrap-anywhere sm:table-cell">{target}</TD>
+      <TD className="hidden max-w-prose align-top text-muted sm:table-cell">{row.health}</TD>
       <TD className="text-right align-top whitespace-nowrap" data-tour={tourConnect ? "int-connect" : undefined}>
         {isRepositoryCard(card) ? (
           <RepositoryAction card={card} canEdit={canEdit} owner={owner} />

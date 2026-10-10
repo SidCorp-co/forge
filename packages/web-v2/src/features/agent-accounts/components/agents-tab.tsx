@@ -12,16 +12,13 @@
 import { ORG_ROLE_PERMISSIONS } from "@forge/contracts/permissions";
 import { useState } from "react";
 import {
-  Badge,
   Button,
-  PageSection,
-  PageSectionBody,
-  PageSectionTitle,
   EmptyState,
   ErrorState,
   Field,
   Input,
   MonoTag,
+  Section,
   SectionTitle,
   Skeleton,
   Table,
@@ -29,6 +26,7 @@ import {
   TD,
   TH,
   THead,
+  ToneBadge,
   TR,
 } from "@/design";
 import { useActiveOrg } from "@/features/orgs";
@@ -47,6 +45,8 @@ import type { AgentAccountRow } from "../types";
 import { AgentSelfEditor } from "./agent-self-editor";
 import { CreateAgentForm } from "./create-agent-form";
 
+type Copy = ReturnType<typeof useCopy>;
+
 export function AgentsTab() {
   const [selfOpen, setSelfOpen] = useState<string | null>(null);
   const { activeOrg } = useActiveOrg();
@@ -54,27 +54,16 @@ export function AgentsTab() {
   const agentsQ = useAgentAccounts(orgId);
   const mint = useMintAgentCredential(orgId);
   const revoke = useRevokeAgentCredentials(orgId);
-  const rename = useSetAgentDisplayName(orgId);
-  const { projects } = useOrgScopedProjects();
-  const busy = mint.isPending || revoke.isPending;
   const { toast } = useToast();
   const t = useCopy();
-
   const [revealed, setRevealed] = useState<{ userId: string; plaintext: string } | null>(null);
-  const [renaming, setRenaming] = useState<{ userId: string; value: string } | null>(null);
 
-  if (activeOrg && !ORG_ROLE_PERMISSIONS[activeOrg.role].includes("org.admin")) {
-    return (
-      <EmptyState message={t("settings.agents.adminOnly")} />
-    );
-  }
-
+  if (activeOrg && !ORG_ROLE_PERMISSIONS[activeOrg.role].includes("org.admin")) return <EmptyState message={t("settings.agents.adminOnly")} />;
   if (!orgId || agentsQ.isLoading) return <Skeleton className="h-40 w-full" />;
-  if (agentsQ.isError) {
-    return <ErrorState title={t("settings.agents.loadFailed")} message={formatApiError(agentsQ.error)} />;
-  }
+  if (agentsQ.isError) return <ErrorState title={t("settings.agents.loadFailed")} message={formatApiError(agentsQ.error)} />;
 
   const agents = agentsQ.data ?? [];
+  const busy = mint.isPending || revoke.isPending;
 
   async function onMint(agent: AgentAccountRow) {
     try {
@@ -99,172 +88,168 @@ export function AgentsTab() {
     }
   }
 
-  async function onRename(agent: AgentAccountRow, value: string) {
+  const openAgent = selfOpen ? agents.find((a) => a.userId === selfOpen) : undefined;
+  return (
+    <div className="space-y-6">
+      <SectionTitle className="fg-h3">{t("settings.agents.title", { org: activeOrg?.name ?? t("settings.agents.thisOrg") })}</SectionTitle>
+      {revealed ? <RevealedCredential plaintext={revealed.plaintext} onDone={() => setRevealed(null)} /> : null}
+      <CreateAgentForm orgId={orgId} />
+      {agents.length === 0 ? (
+        <EmptyState message={t("settings.agents.none")} />
+      ) : (
+        <Section>
+          <Table>
+            <THead>
+              <TR>
+                <TH>{t("settings.agents.name")}</TH>
+                <TH>{t("settings.agents.address")}</TH>
+                <TH>{t("settings.orgs.projects")}</TH>
+                <TH>{t("settings.agents.canAct")}</TH>
+                <TH aria-label={t("settings.agents.actions")} />
+              </TR>
+            </THead>
+            <TBody>
+              {agents.map((agent) => (
+                <AgentEntry
+                  key={agent.userId}
+                  orgId={orgId}
+                  agent={agent}
+                  busy={busy}
+                  selfOpen={selfOpen === agent.userId}
+                  onToggleSelf={() => setSelfOpen(selfOpen === agent.userId ? null : agent.userId)}
+                  onMint={() => void onMint(agent)}
+                  onRevoke={() => void onRevoke(agent)}
+                />
+              ))}
+            </TBody>
+          </Table>
+          {openAgent ? (
+            <Section title={t("settings.agents.selfOf", { name: agentLabel(openAgent) })} className="mt-6">
+              <AgentSelfEditor orgId={orgId} agentUserId={openAgent.userId} handle={agentAddress(openAgent)} />
+            </Section>
+          ) : null}
+        </Section>
+      )}
+    </div>
+  );
+}
+
+/** A freshly minted credential, shown once: core keeps only its hash. */
+function RevealedCredential({ plaintext, onDone }: { plaintext: string; onDone: () => void }) {
+  const { toast } = useToast();
+  const t = useCopy();
+  async function copy() {
     try {
-      await rename.mutateAsync({
-        agentUserId: agent.userId,
-        displayName: value.trim() === "" ? null : value.trim(),
-      });
-      setRenaming(null);
+      await navigator.clipboard.writeText(plaintext);
+      toast({ title: t("settings.agents.copied"), tone: "success" });
+    } catch {
+      toast({ title: t("settings.agents.copyFailed"), description: t("settings.agents.copyByHand"), tone: "error" });
+    }
+  }
+  return (
+    <Section title={t("settings.agents.copyNow")}>
+      <p className="fg-body-sm mb-3">{t("settings.agents.hashOnly")}</p>
+      <MonoTag>{plaintext}</MonoTag>
+      <div className="mt-3 flex gap-2">
+        <Button variant="secondary" onClick={() => void copy()}>
+          {t("settings.agents.copy")}
+        </Button>
+        <Button variant="ghost" onClick={onDone}>
+          {t("settings.agents.haveIt")}
+        </Button>
+      </div>
+    </Section>
+  );
+}
+
+/** One agent: its name (renamed in place), address, projects, whether it can act, and its verbs. */
+function AgentEntry({
+  orgId,
+  agent,
+  busy,
+  selfOpen,
+  onToggleSelf,
+  onMint,
+  onRevoke,
+}: {
+  orgId: string;
+  agent: AgentAccountRow;
+  busy: boolean;
+  selfOpen: boolean;
+  onToggleSelf: () => void;
+  onMint: () => void;
+  onRevoke: () => void;
+}) {
+  const t = useCopy();
+  const { projects } = useOrgScopedProjects();
+  const reach = reachOf(agent);
+  const nameOf = (projectId: string) => projects.find((p) => p.id === projectId)?.name;
+  return (
+    <TR>
+      <TD>
+        <AgentName orgId={orgId} agent={agent} t={t} />
+      </TD>
+      <TD>
+        <MonoTag>{agentAddress(agent)}</MonoTag>
+      </TD>
+      <TD>{agentProjectNames(agent, nameOf, t("settings.agents.noProjects"))}</TD>
+      <TD>
+        {reach.canAct ? (
+          <ToneBadge tone="ready" label={t("settings.agents.yes")} title={t("settings.agents.yes")} />
+        ) : (
+          <div>
+            <ToneBadge tone="you" label={t("settings.agents.noWhy", { why: t(reach.why) })} title={t(reach.remedy)} />
+            <p className="fg-body-sm mt-1">{t(reach.remedy)}</p>
+          </div>
+        )}
+      </TD>
+      <TD>
+        <div className="flex gap-2">
+          <Button variant="secondary" disabled={busy} onClick={onMint}>
+            {agent.activeTokens > 0 ? t("settings.agents.mintAnother") : t("settings.agents.give")}
+          </Button>
+          <Button variant="ghost" disabled={busy || agent.activeTokens === 0} onClick={onRevoke}>
+            {t("settings.agents.revoke")}
+          </Button>
+          <Button variant="ghost" aria-expanded={selfOpen} onClick={onToggleSelf}>
+            {selfOpen ? t("settings.agents.closeSelf") : t("settings.agents.self")}
+          </Button>
+        </div>
+      </TD>
+    </TR>
+  );
+}
+
+function AgentName({ orgId, agent, t }: { orgId: string; agent: AgentAccountRow; t: Copy }) {
+  const rename = useSetAgentDisplayName(orgId);
+  const { toast } = useToast();
+  const [value, setValue] = useState<string | null>(null);
+  async function save(next: string) {
+    try {
+      await rename.mutateAsync({ agentUserId: agent.userId, displayName: next.trim() === "" ? null : next.trim() });
+      setValue(null);
     } catch (err) {
       toast({ title: t("settings.agents.nameFailed"), description: formatApiError(err), tone: "error" });
     }
   }
-
-  const nameOf = (projectId: string) => projects.find((p) => p.id === projectId)?.name;
-  const openAgent = selfOpen ? agents.find((a) => a.userId === selfOpen) : undefined;
+  if (value === null) {
+    return (
+      <button type="button" className="text-left" onClick={() => setValue(agent.displayName ?? "")}>
+        {agentLabel(agent)}
+      </button>
+    );
+  }
   return (
-    <div className="space-y-6">
-      <header>
-        <SectionTitle className="fg-h3">
-          {t("settings.agents.title", { org: activeOrg?.name ?? t("settings.agents.thisOrg") })}
-        </SectionTitle>
-      </header>
-
-      {revealed && (
-        <PageSection>
-          <PageSectionBody>
-            <PageSectionTitle className="mb-2">{t("settings.agents.copyNow")}</PageSectionTitle>
-            <p className="fg-body-sm mb-3">{t("settings.agents.hashOnly")}</p>
-            <MonoTag>{revealed.plaintext}</MonoTag>
-            <div className="mt-3 flex gap-2">
-              <Button
-                variant="secondary"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(revealed.plaintext);
-                    toast({ title: t("settings.agents.copied"), tone: "success" });
-                  } catch {
-                    toast({
-                      title: t("settings.agents.copyFailed"),
-                      description: t("settings.agents.copyByHand"),
-                      tone: "error",
-                    });
-                  }
-                }}
-              >
-                {t("settings.agents.copy")}
-              </Button>
-              <Button variant="ghost" onClick={() => setRevealed(null)}>
-                {t("settings.agents.haveIt")}
-              </Button>
-            </div>
-          </PageSectionBody>
-        </PageSection>
-      )}
-
-      <CreateAgentForm orgId={orgId} />
-
-      {agents.length === 0 ? (
-        <EmptyState message={t("settings.agents.none")} />
-      ) : (
-        <PageSection>
-          <PageSectionBody>
-            <Table>
-              <THead>
-                <TR>
-                  <TH>{t("settings.agents.name")}</TH>
-                  <TH>{t("settings.agents.address")}</TH>
-                  <TH>{t("settings.orgs.projects")}</TH>
-                  <TH>{t("settings.agents.canAct")}</TH>
-                  <TH aria-label={t("settings.agents.actions")} />
-                </TR>
-              </THead>
-              <TBody>
-                {agents.map((agent) => {
-                  const reach = reachOf(agent);
-                  return (
-                    <TR key={agent.userId}>
-                      <TD>
-                        {renaming?.userId === agent.userId ? (
-                          <Field label={t("settings.agents.name")}>
-                            <Input
-                              value={renaming.value}
-                              autoFocus
-                              onChange={(e) =>
-                                setRenaming({ userId: agent.userId, value: e.target.value })
-                              }
-                              onBlur={() => void onRename(agent, renaming.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") void onRename(agent, renaming.value);
-                                if (e.key === "Escape") setRenaming(null);
-                              }}
-                            />
-                          </Field>
-                        ) : (
-                          <button
-                            type="button"
-                            className="text-left"
-                            onClick={() =>
-                              setRenaming({
-                                userId: agent.userId,
-                                value: agent.displayName ?? "",
-                              })
-                            }
-                          >
-                            {agentLabel(agent)}
-                          </button>
-                        )}
-                      </TD>
-                      <TD>
-                        <MonoTag>{agentAddress(agent)}</MonoTag>
-                      </TD>
-                      <TD>{agentProjectNames(agent, nameOf, t("settings.agents.noProjects"))}</TD>
-                      <TD>
-                        {reach.canAct ? (
-                          <Badge tone="green">{t("settings.agents.yes")}</Badge>
-                        ) : (
-                          <div>
-                            <Badge tone="amber">{t("settings.agents.noWhy", { why: t(reach.why) })}</Badge>
-                            <p className="fg-body-sm mt-1">{t(reach.remedy)}</p>
-                          </div>
-                        )}
-                      </TD>
-                      <TD>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="secondary"
-                            disabled={busy}
-                            onClick={() => void onMint(agent)}
-                          >
-                            {agent.activeTokens > 0 ? t("settings.agents.mintAnother") : t("settings.agents.give")}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            disabled={busy || agent.activeTokens === 0}
-                            onClick={() => void onRevoke(agent)}
-                          >
-                            {t("settings.agents.revoke")}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            aria-expanded={selfOpen === agent.userId}
-                            onClick={() =>
-                              setSelfOpen(selfOpen === agent.userId ? null : agent.userId)
-                            }
-                          >
-                            {selfOpen === agent.userId ? t("settings.agents.closeSelf") : t("settings.agents.self")}
-                          </Button>
-                        </div>
-                      </TD>
-                    </TR>
-                  );
-                })}
-              </TBody>
-            </Table>
-            {openAgent && (
-              <div className="mt-6 border-t border-line pt-6">
-                <PageSectionTitle className="mb-3">{t("settings.agents.selfOf", { name: agentLabel(openAgent) })}</PageSectionTitle>
-                <AgentSelfEditor
-                  orgId={orgId}
-                  agentUserId={openAgent.userId}
-                  handle={agentAddress(openAgent)}
-                />
-              </div>
-            )}
-          </PageSectionBody>
-        </PageSection>
-      )}
-    </div>
+    <Field label={t("settings.agents.name")}>
+      <Input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => void save(value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") void save(value);
+          if (e.key === "Escape") setValue(null);
+        }}
+      />
+    </Field>
   );
 }

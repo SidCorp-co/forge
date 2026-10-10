@@ -7,12 +7,13 @@
 import { RUN_GROUP_LABELS, RUN_MASTER_GROUP, RUN_STANDING_SCOPES, type RunStandingScope } from "@forge/contracts/run-standing";
 import { needsViewer } from "@forge/contracts/standing";
 import { useRouter } from "next/navigation";
-import { useCallback } from "react";
 import {
   FilterChip,
   GroupedList,
   type ListGroup,
+  ListLayout,
   ListSearch,
+  ListToolbar,
   rememberListOrigin,
   SegmentedControl,
   Signal,
@@ -145,9 +146,18 @@ export function RunsList({ access }: { access: AgentsAccess }) {
         return (
           <div className="grid min-h-full content-start bg-app" data-testid="runs-list">
             <Signals d={d} />
-            <div className={cn("grid min-h-128 items-start", open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3" data-testid="runs-toolbar">
+            <ListLayout
+              peek={
+                open ? (
+                  isRun(open) ? (
+                    <RunPeek key={open.id} r={open} slug={slug} canWrite={canWrite} peek={peek} onOpenFull={() => openFull(open.id)} />
+                  ) : (
+                    <MasterPeek m={open} peek={peek} onOpenFull={() => openFull(MASTER_KEY)} />
+                  )
+                ) : undefined
+              }
+            >
+                <ListToolbar testId="runs-toolbar">
                   <span className="text-13 font-medium text-muted">{t("agents.group")}</span>
                   <SegmentedControl options={GROUP_MODES.map((m) => ({ value: m, label: t(MODE_KEY[m]) }))} value={mode} onChange={setMode} />
                   <SegmentedControl
@@ -167,7 +177,7 @@ export function RunsList({ access }: { access: AgentsAccess }) {
                       {t("agents.newestOf", { n: time.number(d.items.length), total: time.number(d.total) })}
                     </span>
                   ) : null}
-                </div>
+                </ListToolbar>
                 <GroupedList
                   ariaLabel={t("agents.listLabel")}
                   groups={groups}
@@ -178,12 +188,7 @@ export function RunsList({ access }: { access: AgentsAccess }) {
                   empty={empty}
                   columns={{ key: t("agents.col.run"), title: t("agents.col.work"), state: t("agents.col.state"), waitingOn: t("agents.col.waitingOn"), meta: t("agents.col.meta") }}
                 />
-              </div>
-              {open && isRun(open) ? (
-                <RunPeek key={open.id} r={open} slug={slug} canWrite={canWrite} peek={peek} onOpenFull={() => openFull(open.id)} />
-              ) : null}
-              {open && !isRun(open) ? <MasterPeek m={open} peek={peek} onOpenFull={() => openFull(MASTER_KEY)} /> : null}
-            </div>
+            </ListLayout>
           </div>
         );
       }}

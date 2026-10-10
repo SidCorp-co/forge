@@ -3,7 +3,7 @@
 // Settings → Account → how the assistant answers you. The style and the
 // standing instructions save through the same preferences route as the theme;
 // the trail underneath is every write anybody made to them, each restorable.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { AnswerStyle, PreferenceChange } from "@forge/contracts/assistant-self";
 import {
   Button,
@@ -54,14 +54,10 @@ export function AssistantPreferences() {
   const t = useCopy();
   const styleOptions: SelectOption[] = ANSWER_STYLES.map((v) => ({ value: v, label: t(`shell.assistant.style.${v}`) }));
 
-  const [style, setStyle] = useState<AnswerStyle>("default");
-  const [instructions, setInstructions] = useState("");
-  useEffect(() => {
-    if (prefsQ.data) {
-      setStyle(prefsQ.data.answerStyle);
-      setInstructions(prefsQ.data.assistantInstructions ?? "");
-    }
-  }, [prefsQ.data]);
+  const [styleEdit, setStyleEdit] = useState<AnswerStyle | null>(null);
+  const [instructionsEdit, setInstructionsEdit] = useState<string | null>(null);
+  const style = styleEdit ?? prefsQ.data?.answerStyle ?? "default";
+  const instructions = instructionsEdit ?? prefsQ.data?.assistantInstructions ?? "";
 
   const dirty =
     !!prefsQ.data &&
@@ -83,14 +79,14 @@ export function AssistantPreferences() {
               <Select
                 options={styleOptions}
                 value={style}
-                onChange={(v) => setStyle(v as AnswerStyle)}
+                onChange={(v) => setStyleEdit(v as AnswerStyle)}
               />
             </Field>
             <Field label={t("shell.assistant.instructions")}>
               <Textarea
                 value={instructions}
                 maxLength={2000}
-                onChange={(e) => setInstructions(e.target.value)}
+                onChange={(e) => setInstructionsEdit(e.target.value)}
               />
             </Field>
             <div>

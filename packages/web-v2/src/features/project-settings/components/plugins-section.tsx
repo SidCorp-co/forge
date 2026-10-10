@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Badge, Banner, Button, PageSectionTitle, ConfirmDialog, EmptyState, ErrorState, Field, Input, Skeleton } from "@/design";
 import { useProject } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
@@ -51,7 +51,7 @@ export function PluginSettings({ projectId, canEdit }: { projectId: string; canE
           <ErrorState message={formatApiError(projectQ.error)} onRetry={() => void projectQ.refetch()} />
         </div>
       ) : projectQ.data ? (
-        <PluginsEditor projectId={projectId} agentConfig={projectQ.data.agentConfig} canEdit={canEdit} />
+        <PluginsEditor key={JSON.stringify(pluginsOf(projectQ.data.agentConfig))} projectId={projectId} agentConfig={projectQ.data.agentConfig} canEdit={canEdit} />
       ) : (
         <div className="mt-3 space-y-2">
           <Skeleton className="h-16 w-full rounded-md" />
@@ -83,13 +83,11 @@ function PinConflicts({ projectId }: { projectId: string }) {
 function PluginsEditor({ projectId, agentConfig, canEdit }: { projectId: string; agentConfig: unknown; canEdit: boolean }) {
   const t = useCopy();
   const update = useUpdatePlugins(projectId);
-  const nextKey = useRef(0);
-  const keyed = (p: PluginDesignation): DraftRow => ({ ...p, rowKey: `row-${nextKey.current++}` });
+  // a refetched project remounts this editor (its key is the stored list), so the draft starts from what is stored
+  const nextKeyRef = useRef(0);
+  const keyed = (p: PluginDesignation): DraftRow => ({ ...p, rowKey: `row-${nextKeyRef.current++}` });
   const [draft, setDraft] = useState<DraftRow[]>(() => pluginsOf(agentConfig).map(keyed));
   const [removing, setRemoving] = useState<number | null>(null);
-  // A refetched project resets the draft to what is stored.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `keyed` only mints row keys from a ref.
-  useEffect(() => setDraft(pluginsOf(agentConfig).map(keyed)), [agentConfig]);
 
   const errors = draft.map((p) => rowError(p, t));
   const firstError = errors.find((e): e is string => e !== null) ?? null;

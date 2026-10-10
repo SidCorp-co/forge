@@ -1,4 +1,4 @@
-import { Banner } from "@/design";
+import { Banner, Property, PropertyList } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { EpodsystemReadConfig } from "./config";
 
@@ -23,9 +23,8 @@ export function ThemeSettings({ config }: { config: EpodsystemReadConfig }) {
   return (
     <div className="flex flex-col gap-2 border border-subtle bg-sunken p-3">
       <span className="fg-label text-subtle">{t("integrations.epod.storeThemes")}</span>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-12">
-        <dt className="text-subtle">{t("integrations.epod.store")}</dt>
-        <dd>
+      <PropertyList>
+        <Property label={t("integrations.epod.store")}>
           {config.storeName ?? config.storeSlug ?? t("integrations.autoflow.runTest")}
           {config.storeId && (
             <span className="text-subtle"> · #{config.storeId}</span>
@@ -33,31 +32,26 @@ export function ThemeSettings({ config }: { config: EpodsystemReadConfig }) {
           {config.orgId && (
             <span className="text-subtle"> · {t("integrations.epod.org", { id: config.orgId })}</span>
           )}
-        </dd>
-        <dt className="text-subtle">{t("integrations.epod.domain")}</dt>
-        <dd>{config.domain ?? "—"}</dd>
-        <dt className="text-subtle">{t("integrations.epod.themeMain")}</dt>
-        <dd>
+        </Property>
+        <Property label={t("integrations.epod.domain")}>{config.domain ?? "—"}</Property>
+        <Property label={t("integrations.epod.themeMain")}>
           {config.themeId ?? "—"}
           {config.themeName && (
             <span className="text-subtle"> · {config.themeName}</span>
           )}
-        </dd>
-        <dt className="text-subtle">{t("integrations.epod.themeDraft")}</dt>
-        <dd>{config.draftThemeId ?? t("integrations.epod.draftLater")}</dd>
-        <dt className="text-subtle">{t("integrations.epod.commerce")}</dt>
-        <dd>
+        </Property>
+        <Property label={t("integrations.epod.themeDraft")}>{config.draftThemeId ?? t("integrations.epod.draftLater")}</Property>
+        <Property label={t("integrations.epod.commerce")}>
           {config.commerceEnabled == null
             ? "—"
             : config.commerceEnabled
               ? t("integrations.epod.commerceOn")
               : t("integrations.epod.commerceOff")}
-        </dd>
-        <dt className="text-subtle">{t("integrations.epod.scopes")}</dt>
-        <dd translate={scopes && !hasWildcard ? "no" : undefined}>
+        </Property>
+        <Property label={t("integrations.epod.scopes")}>
           {scopes ? (hasWildcard ? t("integrations.epod.scopesFull") : scopes.join(", ")) : "—"}
-        </dd>
-      </dl>
+        </Property>
+      </PropertyList>
       {missingScopes.length > 0 && (
         <Banner tone="attention">
           {t("integrations.epod.missingScopes.lead")} <b translate="no">{missingScopes.join(", ")}</b> —{" "}

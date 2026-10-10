@@ -49,7 +49,7 @@ export function SocialLogin({ redirectTo = '/' }: { redirectTo?: string }) {
       </div>
       <div className="flex items-center gap-3">
         <Divider className="flex-1" />
-        <span className="fg-caption font-mono uppercase tracking-[0.08em]">or</span>
+        <span className="fg-caption font-mono uppercase tracking-wider">or</span>
         <Divider className="flex-1" />
       </div>
     </div>

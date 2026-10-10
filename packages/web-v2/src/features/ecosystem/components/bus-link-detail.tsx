@@ -60,7 +60,7 @@ function UsesGroup({ d }: { d: LinkRecord["document"] }) {
       )}
       {d.outsideContract.length > 0 ? (
         <>
-          <h4 className="pt-2 text-11 font-semibold uppercase tracking-[0.07em]" style={{ color: "var(--amberw-600)" }}>
+          <h4 className="pt-2 text-11 font-semibold uppercase tracking-wider" style={{ color: "var(--amberw-600)" }}>
             Outside the contract
           </h4>
           {d.outsideContract.map((o) => (

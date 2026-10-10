@@ -89,7 +89,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
       </span>
     );
     const labelEl = (
-      <span title={label} className="mt-1 block min-w-0 max-w-full truncate text-center text-10 font-semibold tracking-[-0.01em] text-muted">
+      <span title={label} className="mt-1 block min-w-0 max-w-full truncate text-center text-10 font-semibold tracking-tight text-muted">
         {label}
       </span>
     );
@@ -136,7 +136,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
         <Icon name="users" size={15} />
       </span>
       <span className="flex min-w-0 flex-1 flex-col text-left">
-        <span className="text-10 font-semibold uppercase tracking-[0.06em] text-subtle">{t("shell.org.kicker")}</span>
+        <span className="text-10 font-semibold uppercase tracking-wider text-subtle">{t("shell.org.kicker")}</span>
         <span className="fg-label truncate">{label}</span>
       </span>
       {!isSingle && <Icon name="chevronUpDown" size={15} className="flex-none text-subtle" />}

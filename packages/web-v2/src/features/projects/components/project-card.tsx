@@ -33,13 +33,13 @@ export function PinStar({ pinned, size, onToggle }: { pinned: boolean; size: num
   );
 }
 
-interface ProjectCardProps {
+interface ProjectTileProps {
   project: ProjectConsoleItem;
   now: number;
   onTogglePin: (id: string) => void;
 }
 
-export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
+export function ProjectTile({ project, now, onTogglePin }: ProjectTileProps) {
   const glyph = projectGlyph(project.id);
   return (
     <Link
@@ -47,7 +47,7 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
       className={cn(
         'group flex flex-col gap-3 border-t border-line-subtle pt-4 pb-2',
         'transition-colors duration-150 hover:bg-hover',
-        'focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none',
+        'focus-visible:shadow-focus focus-visible:outline-none',
       )}
     >
       <div className="flex items-start gap-3">

@@ -8,6 +8,7 @@
 // a module's parent and description have no control on this screen, so editing
 // one here could only ever be a partial edit.
 
+import { LABEL_DEFAULT_COLOR } from "@/lib/label-color";
 import { type ReactNode, useMemo, useState } from "react";
 import {
 
@@ -27,7 +28,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProjectLabel } from "../types";
 import { useCreateLabel, useDeleteLabel, useLabels } from "../hooks";
 
-const DEFAULT_COLOR = "#6b7280";
+const DEFAULT_COLOR = LABEL_DEFAULT_COLOR;
 
 export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const t = useCopy();

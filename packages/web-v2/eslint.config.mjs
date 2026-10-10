@@ -61,8 +61,10 @@ const FEATURE_SYNTAX_BANS = [
   ...textMatches(ROUNDED_LG, "No rounded-lg or larger: surfaces are radius 0, controls rounded-sm/rounded-md."),
   { selector: "JSXOpeningElement[name.name='table']", message: "No raw <table> in a feature: use Table from @/design (TanStack Table)." },
   { selector: "JSXOpeningElement[name.name='select']", message: "No raw <select> in a feature: use Select from @/design." },
-  { selector: "CallExpression[callee.name='fetch']", message: "No fetch in a feature: read through the feature's api.ts and a TanStack Query queryOptions factory." },
 ];
+
+/** A component or hook reads server state through a query, never fetch (api.ts and server/ modules are where fetch lives). */
+const NO_FETCH = { selector: "CallExpression[callee.name='fetch']", message: "No fetch in a component or hook: read through the feature's api.ts and a TanStack Query queryOptions factory." };
 
 const configs = tseslint.config(
   {
@@ -102,6 +104,8 @@ const configs = tseslint.config(
       "sonarjs/cognitive-complexity": ["error", 25],
       "@typescript-eslint/no-non-null-assertion": "error",
       "@typescript-eslint/no-explicit-any": "error",
+      // `const { omitted: _x, ...rest } = obj` is how a key is dropped; an underscore marks it read on purpose
+      "@typescript-eslint/no-unused-vars": ["error", { ignoreRestSiblings: true, varsIgnorePattern: "^_", argsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" }],
       "no-restricted-imports": ["error", LIBRARY_BANS],
       "boundaries/dependencies": [
         "error",
@@ -137,6 +141,11 @@ const configs = tseslint.config(
       "no-restricted-syntax": ["error", ...FEATURE_SYNTAX_BANS],
       "ui-grammar/no-layout-name": "error",
     },
+  },
+  {
+    files: ["src/features/**/components/**/*.{ts,tsx}", "src/features/**/hooks.ts", "src/features/**/hooks/**/*.ts"],
+    ignores: ["**/*.test.{ts,tsx}"],
+    rules: { "no-restricted-syntax": ["error", ...FEATURE_SYNTAX_BANS, NO_FETCH] },
   },
   { files: ["src/design/**"], rules: { "no-restricted-imports": "off" } },
   { files: ["src/lib/sentry.ts"], rules: { "no-restricted-imports": "off" } },

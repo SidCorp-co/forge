@@ -1,6 +1,6 @@
 "use client";
 
-import { Banner, Button } from "@/design";
+import { Banner, Button, Property, PropertyList } from "@/design";
 import { useProject } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -41,11 +41,9 @@ export function GitlabWebhook({ projectId, bindingId }: { projectId: string; bin
       <p className="fg-body-sm text-muted">
         <Ticked text={t("integrations.gitlab.webhookHow")} />
       </p>
-      <dl className="fg-body-sm grid grid-cols-1 gap-1 sm:grid-cols-[max-content_1fr] sm:gap-x-3">
-        <dt className="text-muted">URL</dt>
-        <dd className="min-w-0 break-all font-mono">{webhookUrl(project.data?.slug)}</dd>
-        <dt className="text-muted">{t("integrations.gitlab.secret")}</dt>
-        <dd className="min-w-0">
+      <PropertyList>
+        <Property label="URL"><span className="min-w-0 break-all font-mono">{webhookUrl(project.data?.slug)}</span></Property>
+        <Property label={t("integrations.gitlab.secret")}><span className="min-w-0">
           {secret ? (
             <span className="break-all font-mono">{secret}</span>
           ) : (
@@ -53,12 +51,11 @@ export function GitlabWebhook({ projectId, bindingId }: { projectId: string; bin
               {t("integrations.gitlab.secretHidden")}
             </span>
           )}
-        </dd>
-        <dt className="text-muted">{t("integrations.gitlab.trigger")}</dt>
-        <dd>
+        </span></Property>
+        <Property label={t("integrations.gitlab.trigger")}>
           <Ticked text={t("integrations.gitlab.triggerEvents", { events: `\`${GITLAB_WEBHOOK_EVENTS.join(", ")}\`` })} />
-        </dd>
-      </dl>
+        </Property>
+      </PropertyList>
       {secret && (
         <Banner tone="attention">{t("integrations.gitlab.copyNow")}</Banner>
       )}

@@ -7,15 +7,10 @@ import Link from "next/link";
 import { useState } from "react";
 import {
   Button,
-  DetailLayout,
-  DetailMobileTitle,
-  DetailPane,
-  DetailTabs,
   EnumBadge,
   Fact,
   FactsEmpty,
   FactsGroup,
-  FactsRail,
   Input,
   type ListRowView,
   NativeSelect,
@@ -23,14 +18,12 @@ import {
   PeekPanel,
   type PeekState,
   StatusBadge,
-  useUrlTab,
   ViewHeading,
   WaitBanner,
   WaitingOn,
 } from "@/design";
-import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel, statusReading } from "@/design/vocabulary";
-import { useTriageAgentReport } from "@/features/automation/report-hooks";
+import { useTriageAgentReport } from "../report-hooks";
 import { FeedbackForm } from "@/features/feedback";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref } from "@/lib/routes/issues";
@@ -38,16 +31,15 @@ import { formatRefusal } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { baseOf, copyOr } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
-import { useAutomationStanding, useReportDetail } from "../hooks";
+import { useAutomationStanding } from "../hooks";
 import { feedbackDraftOf } from "../report-feedback";
-import { fireHref, reportHref, scheduleHref, sessionHref } from "@/lib/routes/automation";
+import { fireHref, reportHref, scheduleHref } from "@/lib/routes/automation";
 import type { ReportStanding } from "../types";
 import { type RowCtx, shortId } from "../view";
-import { Written, WrittenMark } from "@/lib/i18n/written";
-import type { WrittenLang } from "@forge/contracts/written-lang";
+import { Written } from "@/lib/i18n/written";
 
 /** A step as the reader says it where the vocabulary names it, as the agent wrote it elsewhere. */
-const stageWord = (stage: string, language: string) => (baseOf(language) === "en" ? stage : copyOr(language, `label.workStep.${stage}`, stage));
+export const stageWord = (stage: string, language: string) => (baseOf(language) === "en" ? stage : copyOr(language, `label.workStep.${stage}`, stage));
 
 const aboutOf = (r: ReportStanding, language: string) => `${enumLabel("agentReportTarget", r.target, language)}${r.targetRef ? ` ${r.targetRef}` : ""}`;
 
@@ -95,7 +87,7 @@ export function ReportLines({ reports, slug }: { reports: readonly ReportStandin
   );
 }
 
-function ReportBanner({ r, className }: { r: ReportStanding; className?: string }) {
+export function ReportBanner({ r, className }: { r: ReportStanding; className?: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   if (r.triage !== "new") return null;
@@ -139,7 +131,7 @@ function Outcome({ r, slug }: { r: ReportStanding; slug: string }) {
   return <span>—</span>;
 }
 
-export function ReportFacts({ r, slug }: { r: ReportStanding; slug: string }) {
+export function ReportProperties({ r, slug }: { r: ReportStanding; slug: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
@@ -223,7 +215,7 @@ export function ReportPrimary({ r, projectId, canWrite }: { r: ReportStanding; p
 type Form = "dismiss" | "duplicate" | "promote" | null;
 
 /** Every triage act a writer may take, each posting to the triage door. */
-function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projectId: string; slug: string }) {
+export function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projectId: string; slug: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const triage = useTriageAgentReport(projectId);
@@ -362,148 +354,8 @@ export function ReportPeek({
       <ReportBanner r={r} className="px-4.5" />
       <div className="grid gap-5 px-4.5 pb-4 pt-4">
         {canWrite ? <ReportTriage r={r} projectId={projectId} slug={slug} /> : null}
-        <ReportFacts r={r} slug={slug} />
+        <ReportProperties r={r} slug={slug} />
       </div>
     </PeekPanel>
-  );
-}
-
-const REPORT_TABS = ["report", "source", "history"] as const;
-
-function Prose({ title, children, lang }: { title: string; children: string | null; lang?: WrittenLang | null }) {
-  if (!children) return null;
-  return (
-    <section>
-      <ViewHeading>{title}</ViewHeading>
-      <p className="max-w-3xl whitespace-pre-wrap text-14 leading-relaxed" lang={lang ?? undefined}>
-        {children}
-        <WrittenMark lang={lang} />
-      </p>
-    </section>
-  );
-}
-
-function Source({ r, slug }: { r: ReportStanding; slug: string }) {
-  const t = useCopy();
-  const language = useInterfaceLanguage();
-  return (
-    <dl className="grid max-w-160 grid-cols-[140px_minmax(0,1fr)] gap-y-2 text-13" data-testid="report-source">
-      <dt className="text-muted">{t("schedules.report.signal")}</dt>
-      <dd className="font-mono text-13">{r.signalKey}</dd>
-      {r.fire ? (
-        <>
-          <dt className="text-muted">{t("schedules.report.fire")}</dt>
-          <dd>
-            <Link href={fireHref(slug, r.fire.id)} className="font-mono text-link hover:underline">
-              #{shortId(r.fire.id)}
-            </Link>{" "}
-            {t("schedules.report.of")}{" "}
-            <Link href={scheduleHref(slug, r.fire.scheduleId)} className="text-link hover:underline">
-              {r.fire.scheduleName}
-            </Link>
-          </dd>
-        </>
-      ) : null}
-      {r.sessionId ? (
-        <>
-          <dt className="text-muted">{t("schedules.report.session")}</dt>
-          <dd>
-            <Link href={sessionHref(slug, r.sessionId)} className="font-mono text-link hover:underline">
-              {shortId(r.sessionId)}
-            </Link>
-          </dd>
-        </>
-      ) : null}
-      {r.stage ? (
-        <>
-          <dt className="text-muted">{t("schedules.report.step")}</dt>
-          <dd>{stageWord(r.stage, language)}</dd>
-        </>
-      ) : null}
-      {r.issueId ? (
-        <>
-          <dt className="text-muted">{t("schedules.report.issueRun")}</dt>
-          <dd>
-            <Link href={issueHref(slug, r.issueId)} className="font-mono text-link hover:underline">
-              {shortId(r.issueId)}
-            </Link>
-          </dd>
-        </>
-      ) : null}
-    </dl>
-  );
-}
-
-function History({ r }: { r: ReportStanding }) {
-  const t = useCopy();
-  const language = useInterfaceLanguage();
-  const time = useTimeFormat();
-  const rows = [
-    { at: r.createdAt, text: t("schedules.report.filedByAgent", { kind: enumLabel("agentReportKind", r.kind, language).toLowerCase() }) },
-    ...(r.triagedAt
-      ? [
-          {
-            at: r.triagedAt,
-            text: `${r.triagedBy?.name ? t("schedules.report.triagedBy", { state: statusReading("reportTriage", r.triage, language).label, name: r.triagedBy.name }) : statusReading("reportTriage", r.triage, language).label}${r.triageReason ? `: ${r.triageReason}` : ""}`,
-          },
-        ]
-      : []),
-  ];
-  return (
-    <ol className="border-t border-line-subtle" data-testid="report-history">
-      {rows.reverse().map((h) => (
-        <li key={h.at} className="flex flex-wrap gap-2 border-b border-line-subtle py-2.5 text-13">
-          <span>{h.text}</span>
-          <span className="ml-auto text-subtle" title={time.dateTime(h.at)}>
-            {t("schedules.ago", { age: time.age(h.at) })}
-          </span>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-export function ReportPage({ projectId, slug, reportId, canWrite }: { projectId: string; slug: string; reportId: string; canWrite: boolean }) {
-  const t = useCopy();
-  const q = useReportDetail(projectId, reportId);
-  const [tab, setTab] = useUrlTab(REPORT_TABS);
-  return (
-    <QueryBoundary query={q} loadingLabel={t("schedules.report.loading")}>
-      {(data) => {
-        const r = data.report;
-        const tabs = [
-          { value: "report" as const, label: t("schedules.report.tabReport") },
-          { value: "source" as const, label: t("schedules.report.tabSource") },
-          { value: "history" as const, label: t("schedules.report.tabHistory") },
-        ];
-        return (
-          <DetailLayout
-            testId="report-detail"
-            dataKey={r.id}
-            rail={
-              <FactsRail>
-                <ReportFacts r={r} slug={slug} />
-              </FactsRail>
-            }
-          >
-            <DetailMobileTitle itemKey={shortId(r.id)} title={<Written text={r.summary} lang={r.writtenLang} />} badge={<StatusBadge family="reportTriage" value={r.triage} />} />
-            <ReportBanner r={r} className="px-8 py-2.5 max-md:px-4" />
-            <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="report-tabs" />
-            <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("schedules.report.tabReport")}>
-              {tab === "report" ? (
-                <div className="grid gap-8" data-testid="view-report">
-                  <Prose title={t("schedules.report.summary")} lang={r.writtenLang}>{r.summary}</Prose>
-                  <Prose title={t("schedules.report.detail")} lang={r.writtenLang}>{r.detail}</Prose>
-                  <Prose title={t("schedules.report.suggestion")} lang={r.writtenLang}>{r.suggestion}</Prose>
-                  {canWrite ? <ReportTriage r={r} projectId={projectId} slug={slug} /> : null}
-                </div>
-              ) : null}
-              {tab === "source" ? <Source r={r} slug={slug} /> : null}
-              {tab === "history" ? <History r={r} /> : null}
-            </DetailPane>
-          </DetailLayout>
-        );
-      }}
-    </QueryBoundary>
   );
 }

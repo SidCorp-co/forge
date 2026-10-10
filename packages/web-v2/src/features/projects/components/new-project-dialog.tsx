@@ -2,26 +2,27 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { Banner, Button, Field, Input, Select, SlideOver } from '@/design';
-import { useActiveOrg } from '@/features/orgs/active-org';
-import { useOrgs } from '@/features/orgs/hooks';
+import { useActiveOrg, useOrgs } from '@/features/orgs';
 import { ApiError } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
 import { SLUG_RE, slugify } from '@/lib/slug';
 import { useSubmitGuard } from '@/lib/utils/use-submit-guard';
 import { useToast } from '@/providers/toast-provider';
-import { useAskForDesigns } from '@/features/onboarding/components/ask-for-designs';
+import { useAskForDesigns } from '@/features/onboarding';
 import { useCreateProject } from '../hooks';
 import type { CreatedProject } from '../types';
 
+/** Mounted only while open, so every open starts from an empty form and step one. */
 export function NewProjectDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return open ? <NewProjectFlow onClose={onClose} /> : null;
+}
+
+function NewProjectFlow({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   // Step 2 — "Set up pipeline" (ISS-453). `created` non-null flips the wizard.
   const [created, setCreated] = useState<CreatedProject | null>(null);
-  useEffect(() => {
-    if (open) setCreated(null);
-  }, [open]);
 
   /** Leave the wizard and land on the new project (step-2 exit, incl. ✕). */
   function finish() {
@@ -32,7 +33,7 @@ export function NewProjectDialog({ open, onClose }: { open: boolean; onClose: ()
 
   return (
     <SlideOver
-      open={open}
+      open
       onClose={created ? finish : onClose}
       title={created ? 'Set up pipeline' : 'New project'}
       width={460}
@@ -40,7 +41,7 @@ export function NewProjectDialog({ open, onClose }: { open: boolean; onClose: ()
       {created ? (
         <SetupPipeline created={created} onFinish={finish} />
       ) : (
-        <CreateProjectForm open={open} onCreated={setCreated} onClose={onClose} />
+        <CreateProjectForm onCreated={setCreated} onClose={onClose} />
       )}
     </SlideOver>
   );
@@ -57,11 +58,9 @@ function validate(name: string, slug: string) {
 }
 
 function CreateProjectForm({
-  open,
   onCreated,
   onClose,
 }: {
-  open: boolean;
   onCreated: (row: CreatedProject) => void;
   onClose: () => void;
 }) {
@@ -73,26 +72,13 @@ function CreateProjectForm({
   const [slugEdited, setSlugEdited] = useState(false);
   // Target org — '' = the caller's personal org (server default). Defaults to
   // the active org (ISS-470): a team org preselects its id, Personal → ''.
-  const [orgId, setOrgId] = useState('');
+  const [orgIdChosen, setOrgIdChosen] = useState<string | null>(null);
   const teamOrgs = (useOrgs().data ?? []).filter((o) => !o.isPersonal);
   const { activeOrg } = useActiveOrg();
   const defaultOrgId = activeOrg && !activeOrg.isPersonal ? activeOrg.id : '';
+  const orgId = orgIdChosen ?? defaultOrgId;
   const [errors, setErrors] = useState<{ name?: string; slug?: string; form?: string }>({});
 
-  // Reset the whole form each time the dialog opens — never leak a prior draft
-  // or stale error into a fresh create.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: resets only when the dialog opens; `create` and `defaultOrgId` are read at that moment.
-  useEffect(() => {
-    if (open) {
-      setName('');
-      setSlug('');
-      setSlugEdited(false);
-      setOrgId(defaultOrgId);
-      setErrors({});
-      create.reset();
-      submitting.release();
-    }
-  }, [open, submitting]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -129,7 +115,6 @@ function CreateProjectForm({
             if (!slugEdited) setSlug(slugify(e.target.value));
           }}
           placeholder="Acme Platform"
-          autoFocus
           maxLength={200}
         />
       </Field>
@@ -148,7 +133,7 @@ function CreateProjectForm({
         <Field label="Organization">
           <Select
             value={orgId}
-            onChange={setOrgId}
+            onChange={setOrgIdChosen}
             options={[{ value: '', label: 'Personal' }, ...teamOrgs.map((o) => ({ value: o.id, label: o.name }))]}
           />
         </Field>
