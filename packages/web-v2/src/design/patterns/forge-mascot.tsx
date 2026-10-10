@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Fragment, useEffect, useRef } from "react";
 import { assetPath } from "@/lib/asset";
 
@@ -30,8 +31,8 @@ export function ForgeMascot({
 }: ForgeMascotProps) {
   const lRef = useRef<SVGGElement>(null);
   const rRef = useRef<SVGGElement>(null);
-  const live = useRef({ mode, progress });
-  live.current = { mode, progress };
+  const liveRef = useRef({ mode, progress });
+  liveRef.current = { mode, progress };
 
   useEffect(() => {
     if (reducedMotion()) {
@@ -47,7 +48,7 @@ export function ForgeMascot({
     const BLINK_MS = 150;
 
     const scheduleNext = (now: number) => {
-      const m = live.current.mode;
+      const m = liveRef.current.mode;
       const min = m === "track" ? 4200 : 2400;
       const max = m === "track" ? 9000 : 5600;
       nextBlink = now + min + Math.random() * (max - min);
@@ -55,7 +56,7 @@ export function ForgeMascot({
 
     const frame = (now: number) => {
       if (!running) return;
-      const { mode: m, progress: p } = live.current;
+      const { mode: m, progress: p } = liveRef.current;
       let tx = 0, ty = 0;
       if (m === "track" || m === "both") {
         const ang = ((-90 + p * 360) * Math.PI) / 180;
@@ -124,15 +125,12 @@ export function ForgeMascot({
       />
 
       <div className="fm-breathe" style={{ position: "absolute", inset: 0 }}>
-        {/* biome-ignore lint/performance/noImgElement: the mascot PNG is layered three times with clip paths and blend modes; next/image would wrap each layer and lazy-load it */}
-        <img src={MASCOT_SRC} width={size} height={size} alt="Forge" draggable={false} style={{ position: "absolute", inset: 0, display: "block" }} />
+        <Image src={MASCOT_SRC} unoptimized loading="eager" width={size} height={size} alt="Forge" draggable={false} style={{ position: "absolute", inset: 0, display: "block" }} />
 
         {flicker && (
           <Fragment>
-            {/* biome-ignore lint/performance/noImgElement: a clipped layer of the same mascot PNG, see above */}
-            <img src={MASCOT_SRC} width={size} height={size} alt="" draggable={false} className="fm-flameA" style={{ position: "absolute", inset: 0, clipPath: leftHorn, mixBlendMode: "screen", pointerEvents: "none" }} />
-            {/* biome-ignore lint/performance/noImgElement: a clipped layer of the same mascot PNG, see above */}
-            <img src={MASCOT_SRC} width={size} height={size} alt="" draggable={false} className="fm-flameB" style={{ position: "absolute", inset: 0, clipPath: rightHorn, mixBlendMode: "screen", pointerEvents: "none" }} />
+            <Image src={MASCOT_SRC} unoptimized loading="eager" width={size} height={size} alt="" draggable={false} className="fm-flameA" style={{ position: "absolute", inset: 0, clipPath: leftHorn, mixBlendMode: "screen", pointerEvents: "none" }} />
+            <Image src={MASCOT_SRC} unoptimized loading="eager" width={size} height={size} alt="" draggable={false} className="fm-flameB" style={{ position: "absolute", inset: 0, clipPath: rightHorn, mixBlendMode: "screen", pointerEvents: "none" }} />
           </Fragment>
         )}
 

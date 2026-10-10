@@ -17,7 +17,7 @@ const emit = () => {
 
 export const pageShown = {
   get: (): readonly string[] | null => shown,
-  subscribe(l: () => void) {
+  subscribe: (l: () => void) => {
     listeners.add(l);
     return () => {
       listeners.delete(l);

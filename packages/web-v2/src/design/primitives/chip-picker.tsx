@@ -7,6 +7,7 @@
 import { Combobox } from "@base-ui/react/combobox";
 import type { ReactNode } from "react";
 import { Icon } from "../icons/icon";
+import { useFieldControl } from "./field";
 
 export interface ChipPickerProps<T> {
   /** The picks so far. */
@@ -48,6 +49,7 @@ export function ChipPicker<T>({
   error,
   id,
 }: ChipPickerProps<T>) {
+  const field = useFieldControl();
   return (
     <Combobox.Root
       multiple
@@ -77,7 +79,7 @@ export function ChipPicker<T>({
             </Combobox.Chip>
           ))}
           <Combobox.Input
-            id={id}
+            id={id ?? field.id}
             aria-label={ariaLabel}
             placeholder={value.length > 0 && single ? "" : placeholder}
             className="h-7 min-w-24 flex-1 border-0 bg-transparent p-0 text-14 text-fg outline-none placeholder:text-disabled md:text-13"

@@ -64,12 +64,19 @@ const imgRenderer: Components["img"] = ({ src, alt }) => (
   <BodyImage src={typeof src === "string" ? src : undefined} alt={alt} />
 );
 
+/** The text of a code element's children: react-markdown hands it a string, or strings in an array. */
+function textOf(children: ReactNode): string {
+  if (typeof children === "string" || typeof children === "number") return String(children);
+  if (Array.isArray(children)) return children.map((c: ReactNode) => textOf(c)).join("");
+  return "";
+}
+
 function makeCodeRenderer(blockClass: string, inlineClass: string): Components["code"] {
   return ({ className, children, ...props }: ComponentProps<"code"> & { inline?: boolean }) => {
     if (className === "language-mermaid") {
-      return <MermaidDiagram code={String(children).trimEnd()} className="my-3" />;
+      return <MermaidDiagram code={textOf(children).trimEnd()} className="my-3" />;
     }
-    const isBlock = (className ?? "").includes("language-") || String(children).includes("\n");
+    const isBlock = (className ?? "").includes("language-") || textOf(children).includes("\n");
     return isBlock ? (
       <code className={blockClass} {...props}>
         {children}

@@ -140,6 +140,107 @@ function GroupMembers({
   );
 }
 
+type GroupProps = Pick<NotificationsMenuProps, "expandedId" | "expandedMembers" | "expandedLoading" | "onToggleGroup" | "onSelectMember">;
+
+/** One notification: key, line and age; project, type and verbs below; details and group members under it. */
+function NotificationRow({
+  n,
+  open,
+  onToggleDetails,
+  onSelect,
+  group,
+}: {
+  n: NotificationItem;
+  open: boolean;
+  onToggleDetails: () => void;
+  onSelect: NotificationsMenuProps["onSelect"];
+  group: GroupProps;
+}) {
+  const t = useCopy();
+  return (
+    <li
+      data-testid="notification-row"
+      className="grid grid-cols-[8px_minmax(0,1fr)] gap-x-2.5 border-b border-line-subtle px-3 py-2.5 transition-colors last:border-0 hover:bg-hover"
+    >
+      <span
+        aria-hidden
+        className="mt-[7px] size-2 rounded-pill"
+        style={{ background: n.unread ? HUE_DOT[n.hue] : "var(--border-strong)" }}
+      />
+      <div className="min-w-0">
+        <button
+          type="button"
+          onClick={() => onSelect?.(n.id)}
+          className="flex w-full min-w-0 items-baseline gap-2 rounded-sm text-left focus-visible:shadow-focus focus-visible:outline-none"
+        >
+          {n.subjectKey && (
+            <span className="flex-none font-mono text-12 font-semibold text-link" data-testid="notification-key">
+              {n.subjectKey}
+            </span>
+          )}
+          <span className="fg-body-sm min-w-0 flex-1 truncate text-fg" title={n.text}>
+            {n.text}
+          </span>
+          <span className="fg-caption flex-none whitespace-nowrap text-subtle">{n.time}</span>
+        </button>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          {n.project && (
+            <span className="fg-caption max-w-full truncate text-muted" data-testid="notification-project">
+              {n.project}
+            </span>
+          )}
+          <EnumBadge family="notificationType" value={n.type} />
+          {n.resolved && (
+            <ToneBadge tone="done" label={t("shell.bell.resolved")} glyph="✓" value="resolved" title={t("shell.bell.resolved")} />
+          )}
+          {n.sub && (
+            <button
+              type="button"
+              aria-expanded={open}
+              onClick={onToggleDetails}
+              className="fg-caption text-link hover:underline"
+            >
+              {open ? t("shell.bell.hideDetails") : t("shell.bell.details")}
+            </button>
+          )}
+        </div>
+        {open && n.sub && (
+          <p className="fg-caption mt-1.5 whitespace-pre-line break-words text-muted" data-testid="notification-details">
+            {n.sub}
+          </p>
+        )}
+        {n.group && (
+          <GroupMembers
+            item={{ ...n, group: n.group }}
+            expanded={group.expandedId === n.id}
+            members={group.expandedMembers}
+            loading={group.expandedLoading}
+            onToggle={group.onToggleGroup}
+            onSelectMember={group.onSelectMember}
+          />
+        )}
+        {n.actions && n.actions.length > 0 && (
+          <div className="mt-2 flex items-center gap-2">
+            {n.actions.map((action) => (
+              <Button
+                key={action.id}
+                type="button"
+                variant={action.variant}
+                size="sm"
+                loading={action.loading}
+                disabled={action.disabled}
+                onClick={action.onClick}
+              >
+                {action.label}
+              </Button>
+            ))}
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
+
 // a row reads as the prototype's: the entity key, one line and the age, with the type as an
 // EnumBadge; the long body sits behind Details, closed by default (REQ-11 BC-9, BC-15)
 export function NotificationsMenu({
@@ -157,7 +258,7 @@ export function NotificationsMenu({
   more,
   onOpenAll,
 }: NotificationsMenuProps) {
-  const [details, setDetails] = useState<ReadonlySet<string>>(new Set());
+  const [details, setDetails] = useState<ReadonlySet<string>>(() => new Set());
   const t = useCopy();
   const toggleDetails = (id: string) =>
     setDetails((prev) => {
@@ -202,92 +303,16 @@ export function NotificationsMenu({
         </div>
       ) : (
         <ul className="max-h-[420px] overflow-y-auto">
-          {items.map((n) => {
-            const open = details.has(n.id);
-            return (
-              <li
-                key={n.id}
-                data-testid="notification-row"
-                className="grid grid-cols-[8px_minmax(0,1fr)] gap-x-2.5 border-b border-line-subtle px-3 py-2.5 transition-colors last:border-0 hover:bg-hover"
-              >
-                <span
-                  aria-hidden
-                  className="mt-[7px] size-2 rounded-pill"
-                  style={{ background: n.unread ? HUE_DOT[n.hue] : "var(--border-strong)" }}
-                />
-                <div className="min-w-0">
-                  <button
-                    type="button"
-                    onClick={() => onSelect?.(n.id)}
-                    className="flex w-full min-w-0 items-baseline gap-2 rounded-sm text-left focus-visible:shadow-focus focus-visible:outline-none"
-                  >
-                    {n.subjectKey && (
-                      <span className="flex-none font-mono text-12 font-semibold text-link" data-testid="notification-key">
-                        {n.subjectKey}
-                      </span>
-                    )}
-                    <span className="fg-body-sm min-w-0 flex-1 truncate text-fg" title={n.text}>
-                      {n.text}
-                    </span>
-                    <span className="fg-caption flex-none whitespace-nowrap text-subtle">{n.time}</span>
-                  </button>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    {n.project && (
-                      <span className="fg-caption max-w-full truncate text-muted" data-testid="notification-project">
-                        {n.project}
-                      </span>
-                    )}
-                    <EnumBadge family="notificationType" value={n.type} />
-                    {n.resolved && (
-                      <ToneBadge tone="done" label={t("shell.bell.resolved")} glyph="✓" value="resolved" title={t("shell.bell.resolved")} />
-                    )}
-                    {n.sub && (
-                      <button
-                        type="button"
-                        aria-expanded={open}
-                        onClick={() => toggleDetails(n.id)}
-                        className="fg-caption text-link hover:underline"
-                      >
-                        {open ? t("shell.bell.hideDetails") : t("shell.bell.details")}
-                      </button>
-                    )}
-                  </div>
-                  {open && n.sub && (
-                    <p className="fg-caption mt-1.5 whitespace-pre-line break-words text-muted" data-testid="notification-details">
-                      {n.sub}
-                    </p>
-                  )}
-                  {n.group && (
-                    <GroupMembers
-                      item={{ ...n, group: n.group }}
-                      expanded={expandedId === n.id}
-                      members={expandedMembers}
-                      loading={expandedLoading}
-                      onToggle={onToggleGroup}
-                      onSelectMember={onSelectMember}
-                    />
-                  )}
-                  {n.actions && n.actions.length > 0 && (
-                    <div className="mt-2 flex items-center gap-2">
-                      {n.actions.map((action) => (
-                        <Button
-                          key={action.id}
-                          type="button"
-                          variant={action.variant}
-                          size="sm"
-                          loading={action.loading}
-                          disabled={action.disabled}
-                          onClick={action.onClick}
-                        >
-                          {action.label}
-                        </Button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </li>
-            );
-          })}
+          {items.map((n) => (
+            <NotificationRow
+              key={n.id}
+              n={n}
+              open={details.has(n.id)}
+              onToggleDetails={() => toggleDetails(n.id)}
+              onSelect={onSelect}
+              group={{ expandedId, expandedMembers, expandedLoading, onToggleGroup, onSelectMember }}
+            />
+          ))}
           {more && <MoreRow more={more} />}
         </ul>
       )}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { isValidElement, type ReactNode, useState } from "react";
 
 /** Keys for an editable list whose rows carry no id of their own. */
 export interface ListKeys {
@@ -55,4 +55,19 @@ export function keyedByContent<T>(items: readonly T[], contentOf: (item: T) => s
     seen.set(content, nth + 1);
     return { key: `${content}#${String(nth)}`, item, index };
   });
+}
+
+/** What a node reads as, for a key: its text, else its own key, else its element type's name. */
+function nodeContent(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number" || typeof node === "bigint") return String(node);
+  if (isValidElement(node)) {
+    if (node.key !== null) return `key:${node.key}`;
+    return typeof node.type === "string" ? node.type : (node.type as { name?: string }).name ?? "element";
+  }
+  return typeof node;
+}
+
+/** keyedByContent for a line of nodes (a facts line): each keyed by what it reads as. */
+export function keyedNodes(nodes: readonly ReactNode[]): { key: string; item: ReactNode; index: number }[] {
+  return keyedByContent(nodes, nodeContent);
 }
