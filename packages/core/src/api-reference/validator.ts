@@ -10,11 +10,7 @@ export type ValidatorDeclaration = {
   readonly enforced?: boolean;
 };
 
-const declared = new WeakMap<object, ValidatorDeclaration>();
-
-export function validatorDeclarationOf(handler: object): ValidatorDeclaration | undefined {
-  return declared.get(handler);
-}
+export const validatorDeclarations = new WeakMap<object, ValidatorDeclaration>();
 
 /** `@hono/zod-validator`'s `zValidator`, unchanged in what it answers, that also records what it was built from. */
 export const zValidator: typeof honoZValidator = ((
@@ -29,7 +25,7 @@ export const zValidator: typeof honoZValidator = ((
     hook ?? undefined,
     options,
   );
-  declared.set(middleware, { target, schema, hook: hook ?? null });
+  validatorDeclarations.set(middleware, { target, schema, hook: hook ?? null });
   return middleware;
 }) as typeof honoZValidator;
 
@@ -39,6 +35,6 @@ export function declaresInput(
   schema: ZodType,
 ): MiddlewareHandler {
   const middleware: MiddlewareHandler = async (_c, next) => next();
-  declared.set(middleware, { target, schema, hook: null, enforced: false });
+  validatorDeclarations.set(middleware, { target, schema, hook: null, enforced: false });
   return middleware;
 }

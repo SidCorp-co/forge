@@ -1,7 +1,7 @@
 import { findTargetHandler } from 'hono/utils/handler';
 import { type Refusal, refusalsOf } from '../middleware/declarations.js';
-import { type OperationDeclaration, operationOf } from './describe.js';
-import { type ValidatorDeclaration, validatorDeclarationOf } from './validator.js';
+import { type OperationDeclaration, operationDeclarations } from './describe.js';
+import { type ValidatorDeclaration, validatorDeclarations } from './validator.js';
 
 /** One route the composed app serves, with everything declared on the way to its handler. */
 export type RouteEntry = {
@@ -78,8 +78,8 @@ export function readRoutes(app: RouteSource): RouteEntry[] {
       method,
       path,
       handler: findTargetHandler(last.handler as never) as object,
-      validators: targets.flatMap((h) => validatorDeclarationOf(h) ?? []),
-      operations: targets.flatMap((h) => operationOf(h) ?? []),
+      validators: targets.flatMap((h) => validatorDeclarations.get(h) ?? []),
+      operations: targets.flatMap((h) => operationDeclarations.get(h) ?? []),
       refusals: targets.flatMap((h) => refusalsOf(h)),
       unread:
         chain === null

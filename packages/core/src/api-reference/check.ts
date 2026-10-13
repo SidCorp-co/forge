@@ -85,10 +85,6 @@ export function thrownInline(handlerSource: string): Thrown[] {
   return out;
 }
 
-function sourceOf(handler: object): string {
-  return Function.prototype.toString.call(handler);
-}
-
 function walkRefs(node: unknown, visit: (ref: string) => void): void {
   if (Array.isArray(node)) {
     for (const child of node) walkRefs(child, visit);
@@ -126,7 +122,7 @@ export function checkReference({ reference, source }: CheckInput): Finding[] {
       });
     }
 
-    const text = sourceOf(entry.handler);
+    const text = Function.prototype.toString.call(entry.handler);
     const declared = declaredInputs(entry);
     for (const read of inputsRead(text)) {
       if (declared.has(read)) continue;

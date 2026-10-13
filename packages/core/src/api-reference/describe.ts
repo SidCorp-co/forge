@@ -72,12 +72,8 @@ export type OperationDeclaration = {
   readonly body?: { readonly contentType: string; readonly description: string };
 };
 
-const operations = new WeakMap<object, OperationDeclaration>();
-
-/** What a route's descriptor declared, or undefined for any other handler. */
-export function operationOf(handler: object): OperationDeclaration | undefined {
-  return operations.get(handler);
-}
+/** What a route's descriptor declared, keyed by the middleware it returned; any other handler is absent. */
+export const operationDeclarations = new WeakMap<object, OperationDeclaration>();
 
 /** Declares what a route answers, placed before its handler; the reference reads it from the route table. */
 export function describeOperation(declaration: OperationDeclaration): MiddlewareHandler {
@@ -108,7 +104,7 @@ export function describeOperation(declaration: OperationDeclaration): Middleware
     );
   }
   const middleware: MiddlewareHandler = async (_c, next) => next();
-  operations.set(middleware, declaration);
+  operationDeclarations.set(middleware, declaration);
   return middleware;
 }
 

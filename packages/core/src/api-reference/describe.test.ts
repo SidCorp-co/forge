@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { codeFor, describeOperation, empty, fail, json, operationOf, raw } from './describe.js';
+import { codeFor, describeOperation, empty, fail, json, operationDeclarations, raw } from './describe.js';
 
 describe('describeOperation', () => {
   it('passes a request through untouched and registers what it declared', async () => {
@@ -11,7 +11,7 @@ describe('describeOperation', () => {
       reached = true;
     });
     expect(reached).toBe(true);
-    expect(operationOf(middleware)).toBe(declaration);
+    expect(operationDeclarations.get(middleware)).toBe(declaration);
   });
 
   it('refuses a status that is not an HTTP status, naming the operation', () => {
@@ -39,7 +39,7 @@ describe('describeOperation', () => {
   });
 
   it('returns undefined for a handler that declared nothing', () => {
-    expect(operationOf(async () => undefined)).toBeUndefined();
+    expect(operationDeclarations.get(async () => undefined)).toBeUndefined();
   });
 });
 

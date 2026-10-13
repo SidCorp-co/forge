@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { declaresInput, validatorDeclarationOf, zValidator } from './validator.js';
+import { declaresInput, validatorDeclarations, zValidator } from './validator.js';
 
 const schema = z.object({ n: z.coerce.number().int().min(1) });
 
@@ -79,22 +79,22 @@ describe('what a validator records for the reference', () => {
   it('records its target, its schema and its hook', () => {
     const hook = () => undefined;
     const mw = zValidator('query', schema, hook);
-    expect(validatorDeclarationOf(mw)).toEqual({ target: 'query', schema, hook });
+    expect(validatorDeclarations.get(mw)).toEqual({ target: 'query', schema, hook });
   });
 
   it('records no hook as null', () => {
-    expect(validatorDeclarationOf(zValidator('json', schema))?.hook).toBeNull();
+    expect(validatorDeclarations.get(zValidator('json', schema))?.hook).toBeNull();
   });
 
   it('records nothing for a handler that is not a validator', () => {
-    expect(validatorDeclarationOf(async () => undefined)).toBeUndefined();
+    expect(validatorDeclarations.get(async () => undefined)).toBeUndefined();
   });
 });
 
 describe('declaresInput', () => {
   it('records the schema as declared and not enforced, and lets every request through', async () => {
     const mw = declaresInput('json', schema);
-    expect(validatorDeclarationOf(mw)).toMatchObject({ target: 'json', schema, enforced: false });
+    expect(validatorDeclarations.get(mw)).toMatchObject({ target: 'json', schema, enforced: false });
     let reached = false;
     await mw({} as never, async () => {
       reached = true;
