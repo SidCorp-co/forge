@@ -199,9 +199,9 @@ export default function ProjectOverviewPage() {
   const inFlight = activeSpend(runItems);
   const runners = runnersSummary(
     projectRunnersQ.data,
-    queueQ.data,
+    activityState.read === "ok" ? queueQ.data : undefined,
     anyLimited ? tick : now,
-    activeRunnersQ.data?.runners,
+    activityState.read === "ok" ? activeRunnersQ.data?.runners : undefined,
   );
   const donut = statusDonut(health?.work);
   const awaitingReleaseIssues = health?.work.awaiting_release ?? 0;

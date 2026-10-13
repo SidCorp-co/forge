@@ -41,7 +41,7 @@ let runs: unknown[] | undefined;
 let runsError: unknown;
 let parked: Record<string, unknown>;
 let throughputRows: unknown[];
-type Read = "ok" | "pending" | "failed";
+type Read = "ok" | "pending" | "failed" | "stale";
 let projectRunnerRows: unknown[] = [];
 let queueRead: Read;
 let activeRead: Read;
@@ -50,6 +50,7 @@ let runnersRead: Read;
 let schedulesRead: Read;
 const readOfMock = (read: Read, data: unknown, message: string) =>
   read === "pending" ? noQuery : read === "failed" ? failedQuery(message) : { ...noQuery, data };
+const failedWithData = (data: unknown, message: string) => ({ ...failedQuery(message), data });
 const failedQuery = (message: string) => ({ data: undefined, isLoading: false, isError: true, error: new Error(message) });
 const refetch = vi.fn();
 
@@ -107,7 +108,10 @@ vi.mock("@/features/projects/hooks", () => ({
   }),
 }));
 vi.mock("@/features/runners/hooks", () => ({
-  useActiveRunners: () => readOfMock(activeRead, { runners: [] }, "active runners down"),
+  useActiveRunners: () =>
+    activeRead === "stale"
+      ? failedWithData({ runners: [{ runnerId: "rn1", name: "box-1", current: { issueRef: "ISS-42", stage: "code" } }] }, "refetch down")
+      : readOfMock(activeRead, { runners: [] }, "active runners down"),
   useProjectRunners: () => (runnersRead === "pending" ? noQuery : runnersRead === "failed" ? failedQuery("runners down") : { ...noQuery, data: projectRunnerRows }),
 }));
 vi.mock("@/features/schedules/hooks", () => ({
@@ -427,6 +431,16 @@ describe("a section whose own read has not arrived", () => {
     expect(section).not.toHaveTextContent(/\bidle\b|\bbusy\b/);
     expect(figure("Runs live").getByText("1 runners online · activity not read")).toBeInTheDocument();
     expect(figure("Runs live").queryByText(/0 of 1 runners busy/)).toBeNull();
+  });
+
+  it("shows no execution claim from an earlier active-runner answer once a refetch has failed", () => {
+    activeRead = "stale";
+    projectRunnerRows = [{ runnerId: "rn1", deviceId: "dv1", deviceName: "box-1", deviceStatus: "online", runnerStatus: "enabled", platform: "linux" }];
+    mount();
+    const section = screen.getByRole("region", { name: "Runners" });
+    expect(section).toHaveTextContent("What the runners are doing could not be read: refetch down");
+    expect(section).toHaveTextContent("activity not read");
+    expect(section).not.toHaveTextContent("ISS-42");
   });
 
   it("names the schedules read in Upcoming schedules, not 'none'", () => {
