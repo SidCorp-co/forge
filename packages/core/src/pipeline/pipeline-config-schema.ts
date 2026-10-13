@@ -418,16 +418,18 @@ export const RETIRED_PIPELINE_CONFIG_KEYS: Record<string, string> = {
  * A patch, not a document: it names the keys it changes, the schema above judges the MERGED
  * result, and a key this config does not have is refused rather than dropped.
  */
-export const pipelineConfigPatchSchema = z
-  .unknown()
-  .superRefine((raw, ctx) => {
+// A preprocess over a record, not `unknown.superRefine.transform`: a schema whose input is
+// `unknown` is a body the API reference cannot describe. The refusals below run first and stop the
+// parse, so only an object whose keys are all known ever reaches the record.
+export const pipelineConfigPatchSchema = z.preprocess(
+  (raw, ctx) => {
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
       ctx.addIssue({
         code: 'custom',
         message:
           'a pipeline config patch is an object holding the keys you are changing — `{"intakeGate":{"enabled":true}}`, never a whole document and never a list.',
       });
-      return;
+      return raw;
     }
     for (const key of Object.keys(raw as Record<string, unknown>)) {
       if (PIPELINE_CONFIG_KEYS.includes(key)) continue;
@@ -445,8 +447,10 @@ export const pipelineConfigPatchSchema = z
     }
     refuseRetiredStageKeys((raw as { states?: unknown }).states, ctx);
     refuseUnknownMcpServerNames(raw, ctx);
-  })
-  .transform((raw) => raw as Record<string, unknown>);
+    return raw;
+  },
+  z.record(z.string(), z.unknown()),
+);
 
 export type PipelineConfigPatchInput = Record<string, unknown>;
 

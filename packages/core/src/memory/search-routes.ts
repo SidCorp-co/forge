@@ -1,13 +1,15 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { RULES } from '../config/rate-limits.js';
 import { memorySources } from '../db/schema.js';
-import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../embeddings/index.js';
+import { EmbeddingUnavailableError } from '../embeddings/index.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
+import { searchMemories, searchResultSchema } from './search-routes-reference.js';
 import { memorySearchStrategies, runMemorySearch } from './search-service.js';
 
 const searchBodySchema = z.object({
@@ -33,6 +35,7 @@ memorySearchRoutes.use(
 );
 memorySearchRoutes.post(
   '/search',
+  searchMemories,
   zValidator('json', searchBodySchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -56,11 +59,11 @@ memorySearchRoutes.post(
       if (err instanceof EmbeddingUnavailableError) {
         throw new HTTPException(503, {
           message: 'embeddings service unavailable',
-          cause: { code: EMBEDDING_UNAVAILABLE },
+          cause: { code: 'EMBEDDING_UNAVAILABLE' },
         });
       }
       throw err;
     }
-    return c.json(result);
+    return c.json(answer(searchResultSchema, result));
   },
 );

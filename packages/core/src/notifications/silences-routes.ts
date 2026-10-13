@@ -8,14 +8,21 @@
  * long is still readable afterwards.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { notificationSilences, notificationTypes } from '../db/schema.js';
 import type { AuthVars } from '../middleware/auth.js';
+import {
+  createSilence,
+  endSilence,
+  listSilences,
+  silenceRowSchema,
+} from './silences-routes-reference.js';
 
 const MAX_SILENCE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -34,7 +41,7 @@ const badRequest = (details: unknown) =>
 
 export const silenceRoutes = new Hono<{ Variables: AuthVars }>();
 
-silenceRoutes.get('/', async (c) => {
+silenceRoutes.get('/', listSilences, async (c) => {
   const rows = await db
     .select()
     .from(notificationSilences)
@@ -45,11 +52,12 @@ silenceRoutes.get('/', async (c) => {
       ),
     )
     .orderBy(desc(notificationSilences.createdAt));
-  return c.json(rows);
+  return c.json(answer(z.array(silenceRowSchema), rows));
 });
 
 silenceRoutes.post(
   '/',
+  createSilence,
   zValidator('json', createSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -74,12 +82,14 @@ silenceRoutes.post(
         expiresAt,
       })
       .returning();
-    return c.json(row, 201);
+    if (!row) throw new Error('notification_silences: insert returned no row');
+    return c.json(answer(silenceRowSchema, row), 201);
   },
 );
 
 silenceRoutes.delete(
   '/:id',
+  endSilence,
   zValidator('param', z.object({ id: z.uuid() }), (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),

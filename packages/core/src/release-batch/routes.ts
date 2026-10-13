@@ -1,7 +1,7 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { resolveReleaseChannels } from './channel.js';
@@ -45,6 +45,39 @@ import {
   runParamSchema,
 } from './route-schemas.js';
 import {
+  abortBatch,
+  accountForAttempt,
+  announceBatchMethod,
+  createBatch,
+  finishBatch,
+  lookAtLive,
+  openBatchAttempt,
+  readActiveBatch,
+  readBatch,
+  readBatchState,
+  readDeployment,
+  readReadiness,
+  readRecordedRelease,
+  readRoster,
+  recordRelease,
+} from './routes-reference.js';
+import {
+  abortedSchema,
+  activeSchema,
+  attemptRowSchema,
+  batchContextSchema,
+  createdSchema,
+  finishAcceptedSchema,
+  lookSchema,
+  methodSchema,
+  readinessSchema,
+  recordedSchema,
+  recordViewSchema,
+  rosterSchema,
+  servingSchema,
+  stateSchema,
+} from './routes-reference-shapes.js';
+import {
   abortReleaseBatch,
   BatchInFlightError,
   ClaimConflictError,
@@ -67,6 +100,7 @@ releaseBatchRoutes.use('*', requireAuth(), assertEmailVerified());
 
 releaseBatchRoutes.post(
   '/:projectId/release-batches',
+  createBatch,
   zValidator('param', projectParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -84,7 +118,7 @@ releaseBatchRoutes.post(
 
     try {
       const result = await createReleaseBatch({ projectId, issueIds, userId, recutOf, carried });
-      return c.json(result, 201);
+      return c.json(answer(createdSchema, result), 201);
     } catch (err) {
       // Every reason the enumerator found answers from its own entry, so the
       // arms below are only for what is thrown after it: a race at the claim or
@@ -115,6 +149,7 @@ releaseBatchRoutes.post(
 
 releaseBatchRoutes.get(
   '/:projectId/release-batches/active',
+  readActiveBatch,
   zValidator('param', projectParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -127,12 +162,13 @@ releaseBatchRoutes.get(
     assertProjectRole(access, 'member');
 
     const active = await getActiveReleaseBatch(projectId);
-    return c.json(active ?? null);
+    return c.json(answer(activeSchema, active ?? null));
   },
 );
 
 releaseBatchRoutes.get(
   '/:projectId/release-batches/roster',
+  readRoster,
   zValidator('param', projectParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -145,7 +181,7 @@ releaseBatchRoutes.get(
     assertProjectRole(access, 'member');
 
     try {
-      return c.json(await loadReleaseRoster(projectId));
+      return c.json(answer(rosterSchema, await loadReleaseRoster(projectId)));
     } catch (err) {
       const declined = declarationRefusal(err);
       if (declined) throw declined;
@@ -156,6 +192,7 @@ releaseBatchRoutes.get(
 
 releaseBatchRoutes.get(
   '/:projectId/release-readiness',
+  readReadiness,
   zValidator('param', projectParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -167,12 +204,13 @@ releaseBatchRoutes.get(
 
     const readiness = await loadReleaseReadiness(projectId);
     if (!readiness) throw notFound('project not found');
-    return c.json(readiness);
+    return c.json(answer(readinessSchema, readiness));
   },
 );
 
 releaseBatchRoutes.get(
   '/:projectId/deployment',
+  readDeployment,
   zValidator('param', projectParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -187,9 +225,9 @@ releaseBatchRoutes.get(
     const read = await readServingDeployment(projectId);
     if (!read.ok) {
       if (read.code === 'NO_PROJECT') throw notFound('project not found');
-      throw new HTTPException(409, { message: read.detail, cause: { code: read.code } });
+      throw conflict(read.code, read.detail);
     }
-    return c.json(read.deployment);
+    return c.json(answer(servingSchema, read.deployment));
   },
 );
 
@@ -204,18 +242,20 @@ async function loadRunForProject(runId: string, projectId: string, userId: strin
 
 releaseBatchRoutes.get(
   '/:projectId/release-batches/:runId',
+  readBatch,
   zValidator('param', runParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     await loadRunForProject(runId, projectId, c.get('userId'));
-    return c.json(await loadReleaseBatchContext(runId));
+    return c.json(answer(batchContextSchema, await loadReleaseBatchContext(runId)));
   },
 );
 
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/finish',
+  finishBatch,
   zValidator('param', runParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -234,7 +274,7 @@ releaseBatchRoutes.post(
         c.req.valid('json'),
       );
       return c.json(
-        { runId, finish: accepted.finish },
+        answer(finishAcceptedSchema, { runId, finish: accepted.finish }),
         accepted.finish.state === 'finished' ? 200 : 202,
       );
     } catch (err) {
@@ -248,6 +288,7 @@ releaseBatchRoutes.post(
 // ISS-1282 — the agent decides when Forge reads the live bindings; the finish closes on what it kept.
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/readings',
+  lookAtLive,
   zValidator('param', runParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -260,7 +301,10 @@ releaseBatchRoutes.post(
     await loadRunForProject(runId, projectId, userId);
 
     try {
-      return c.json(await lookAtBatch({ runId, takenBy: userId, ...c.req.valid('json') }), 201);
+      return c.json(
+        answer(lookSchema, await lookAtBatch({ runId, takenBy: userId, ...c.req.valid('json') })),
+        201,
+      );
     } catch (err) {
       const refused = lookRefusal(err);
       if (refused) throw refused;
@@ -271,6 +315,7 @@ releaseBatchRoutes.post(
 
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/abort',
+  abortBatch,
   zValidator('param', runParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -286,12 +331,15 @@ releaseBatchRoutes.post(
     const result = await abortReleaseBatch(runId, reason ?? 'aborted by agent', userId, {
       promotedRoster,
     });
-    return c.json({ aborted: true, releasedIds: result.claimsCleared, ...result });
+    return c.json(
+      answer(abortedSchema, { aborted: true, releasedIds: result.claimsCleared, ...result }),
+    );
   },
 );
 
 releaseBatchRoutes.get(
   '/:projectId/release-batches/:runId/state',
+  readBatchState,
   zValidator('param', runParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -300,12 +348,13 @@ releaseBatchRoutes.get(
     await loadRunForProject(runId, projectId, c.get('userId'));
     const state = await readReleaseRunState(runId);
     if (!state) throw notFound('release batch not found');
-    return c.json(state);
+    return c.json(answer(stateSchema, state));
   },
 );
 
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/method',
+  announceBatchMethod,
   zValidator('param', runParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -315,12 +364,13 @@ releaseBatchRoutes.post(
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     await loadRunForProject(runId, projectId, c.get('userId'));
-    return c.json(await announceMethod({ runId, ...c.req.valid('json') }));
+    return c.json(answer(methodSchema, await announceMethod({ runId, ...c.req.valid('json') })));
   },
 );
 
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/attempts',
+  openBatchAttempt,
   zValidator('param', runParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -344,12 +394,13 @@ releaseBatchRoutes.post(
       idempotencyKey: body.idempotencyKey as string,
       commit: (body.commit as string | undefined) ?? null,
     });
-    return c.json(row, 201);
+    return c.json(answer(attemptRowSchema, row), 201);
   },
 );
 
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/attempts/:key/account',
+  accountForAttempt,
   zValidator('param', attemptKeyParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -379,7 +430,7 @@ releaseBatchRoutes.post(
       idempotencyKey: key,
       ...(await attemptReading(await resolveReleaseChannels(projectId))),
     });
-    return c.json(settled);
+    return c.json(answer(attemptRowSchema.nullable(), settled));
   },
 );
 
@@ -390,6 +441,7 @@ releaseBatchRoutes.post(
 // router file `index.ts` mounts — can see that both reach the fence.
 releaseBatchRoutes.post(
   '/:projectId/release-records',
+  recordRelease,
   zValidator('param', projectParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -406,7 +458,7 @@ releaseBatchRoutes.post(
 
     try {
       const result = await recordPerformedRelease({ projectId, userId, ...c.req.valid('json') });
-      return c.json(result, 201);
+      return c.json(answer(recordedSchema, result), 201);
     } catch (err) {
       throw recordRefusal(err);
     }
@@ -415,6 +467,7 @@ releaseBatchRoutes.post(
 
 releaseBatchRoutes.get(
   '/:projectId/release-records/:runId',
+  readRecordedRelease,
   zValidator('param', runParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -426,6 +479,6 @@ releaseBatchRoutes.get(
 
     const record = await readReleaseRecord(projectId, runId);
     if (!record) throw notFound('no release record under this id on this project');
-    return c.json(record);
+    return c.json(answer(recordViewSchema, record));
   },
 );

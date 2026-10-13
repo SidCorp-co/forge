@@ -1,8 +1,21 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
-import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { assertOrgAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import {
+  createSshKey,
+  createSshKeySchema,
+  deleteSshKey,
+  keyParamSchema,
+  listSshKeys,
+  orgParamSchema,
+  sshConnectionTestSchema,
+  sshKeyListSchema,
+  sshKeyViewSchema,
+  testSshKey,
+  testSshKeySchema,
+} from './ssh-keys-routes-reference.js';
 import {
   createOrgSshKey,
   deleteOrgSshKey,
@@ -13,36 +26,23 @@ import {
 export const sshKeyRoutes = new Hono<{ Variables: AuthVars }>();
 sshKeyRoutes.use('*', requireAuth(), assertEmailVerified());
 
-const orgParamSchema = z.object({ orgId: z.uuid() });
-const keyParamSchema = z.object({ orgId: z.uuid(), keyId: z.uuid() });
-
-const createSchema = z.discriminatedUnion('mode', [
-  z.object({
-    mode: z.literal('generate'),
-    name: z.string().trim().min(1).max(200),
-    note: z.string().trim().max(2000).nullable().optional(),
-  }),
-  z.object({
-    mode: z.literal('provide'),
-    name: z.string().trim().min(1).max(200),
-    note: z.string().trim().max(2000).nullable().optional(),
-    privateKey: z.string().min(1).max(20000),
-  }),
-]);
-
-const testSchema = z.object({ repoUrl: z.string().trim().min(1).max(2000) });
-
-sshKeyRoutes.get('/:orgId/ssh-keys', zValidator('param', orgParamSchema), async (c) => {
-  const { orgId } = c.req.valid('param');
-  const userId = c.get('userId');
-  await assertOrgAccess(orgId, userId, 'member');
-  return c.json(await listOrgSshKeys(orgId));
-});
+sshKeyRoutes.get(
+  '/:orgId/ssh-keys',
+  listSshKeys,
+  zValidator('param', orgParamSchema),
+  async (c) => {
+    const { orgId } = c.req.valid('param');
+    const userId = c.get('userId');
+    await assertOrgAccess(orgId, userId, 'member');
+    return c.json(answer(sshKeyListSchema, await listOrgSshKeys(orgId)));
+  },
+);
 
 sshKeyRoutes.post(
   '/:orgId/ssh-keys',
+  createSshKey,
   zValidator('param', orgParamSchema),
-  zValidator('json', createSchema),
+  zValidator('json', createSshKeySchema),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const body = c.req.valid('json');
@@ -60,28 +60,34 @@ sshKeyRoutes.post(
             privateKey: body.privateKey,
           };
     const view = await createOrgSshKey(orgId, userId, input);
-    return c.json(view, 201);
+    return c.json(answer(sshKeyViewSchema, view), 201);
   },
 );
 
-sshKeyRoutes.delete('/:orgId/ssh-keys/:keyId', zValidator('param', keyParamSchema), async (c) => {
-  const { orgId, keyId } = c.req.valid('param');
-  const userId = c.get('userId');
-  await assertOrgAccess(orgId, userId, 'admin');
-  await deleteOrgSshKey(orgId, keyId);
-  return c.body(null, 204);
-});
+sshKeyRoutes.delete(
+  '/:orgId/ssh-keys/:keyId',
+  deleteSshKey,
+  zValidator('param', keyParamSchema),
+  async (c) => {
+    const { orgId, keyId } = c.req.valid('param');
+    const userId = c.get('userId');
+    await assertOrgAccess(orgId, userId, 'admin');
+    await deleteOrgSshKey(orgId, keyId);
+    return c.body(null, 204);
+  },
+);
 
 sshKeyRoutes.post(
   '/:orgId/ssh-keys/:keyId/test',
+  testSshKey,
   zValidator('param', keyParamSchema),
-  zValidator('json', testSchema),
+  zValidator('json', testSshKeySchema),
   async (c) => {
     const { orgId, keyId } = c.req.valid('param');
     const { repoUrl } = c.req.valid('json');
     const userId = c.get('userId');
     await assertOrgAccess(orgId, userId, 'member');
     const result = await testOrgSshKey(orgId, keyId, repoUrl);
-    return c.json(result);
+    return c.json(answer(sshConnectionTestSchema, result));
   },
 );

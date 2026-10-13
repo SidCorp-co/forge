@@ -6,13 +6,22 @@
  * (config, policies, decisions, escalations, run). These are the reads.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { PM_GRAPH_DEFAULT_DEPTH, PM_GRAPH_MAX_DEPTH, readPmGraph } from './graph-service.js';
+import {
+  graphSchema,
+  readGraph,
+  readRunners,
+  readSnapshot,
+  runnerLoadSchema,
+  snapshotSchema,
+} from './read-routes-reference.js';
 import { readRunnerLoad } from './runner-load-service.js';
 import { readPmSnapshot } from './snapshot-service.js';
 
@@ -38,18 +47,20 @@ async function assertMember(projectId: string, userId: string): Promise<void> {
 
 pmReadRoutes.get(
   '/:id/pm/snapshot',
+  readSnapshot,
   zValidator('param', paramSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
     await assertMember(id, c.get('userId'));
-    return c.json(await readPmSnapshot(id));
+    return c.json(answer(snapshotSchema, await readPmSnapshot(id)));
   },
 );
 
 pmReadRoutes.get(
   '/:id/pm/graph',
+  readGraph,
   zValidator('param', paramSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -60,18 +71,19 @@ pmReadRoutes.get(
     const { id } = c.req.valid('param');
     const { rootIssueId, depth } = c.req.valid('query');
     await assertMember(id, c.get('userId'));
-    return c.json(await readPmGraph({ projectId: id, rootIssueId, depth }));
+    return c.json(answer(graphSchema, await readPmGraph({ projectId: id, rootIssueId, depth })));
   },
 );
 
 pmReadRoutes.get(
   '/:id/pm/runner-load',
+  readRunners,
   zValidator('param', paramSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
     await assertMember(id, c.get('userId'));
-    return c.json(await readRunnerLoad(id));
+    return c.json(answer(runnerLoadSchema, await readRunnerLoad(id)));
   },
 );

@@ -1,10 +1,10 @@
 import type { ConnectionAccess } from '@forge/contracts';
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole, DeployStage } from '../db/schema.js';
-import { effectiveProjectRole, projectWriteRefusal } from '../lib/authz.js';
+import { effectiveProjectRole, orgRoleAtLeast, projectWriteRefusal } from '../lib/authz.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import type { AgentAccess } from './agent-access.js';
+import { type AgentAccess, agentAccessTier, noAgentPathMessage } from './agent-access.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter, getIntegration } from './registry.js';
 import {
@@ -134,6 +134,22 @@ export async function assertProjectWriter(
     });
   }
   return role;
+}
+
+/**
+ * Authorize a write to a binding's agent-access grant (ISS-1071 rule 5): a `direct-mcp` grant puts
+ * the credential on a runner box, so it takes the org-admin escalation; one with no agent path is refused.
+ */
+export async function authorizeAgentAccessWrite(
+  userId: string,
+  projectId: string,
+  provider: string,
+): Promise<void> {
+  const tier = agentAccessTier(getIntegration(provider));
+  if (tier === 'refused') throw badRequest(noAgentPathMessage(provider));
+  if (tier !== 'org-admin') return;
+  const access = await effectiveProjectRole(userId, projectId);
+  if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
 }
 
 export function assertAdmin(role: 'admin' | 'member' | 'viewer'): void {

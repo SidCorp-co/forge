@@ -1,15 +1,36 @@
-import { zValidator } from '@hono/zod-validator';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { activityLog, issues, jobTypes } from '../db/schema.js';
 import { effectiveProjectRole, loadVisibleProjectIds } from '../lib/authz.js';
 import { utcDayText } from '../lib/time-buckets.js';
 import { buildInterventionsReport } from '../metrics/interventions-report.js';
 import { retryRescuesSince } from '../metrics/queries.js';
+import { interventionsSchema } from '../metrics/routes-reference.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import {
+  costSummarySchema,
+  costTrendSchema,
+  cycleTimeSchema,
+  driverComparisonSchema,
+  outliersSchema,
+  readCostOutliers,
+  readCostSummary,
+  readCostTrend,
+  readCycleTime,
+  readDriverComparison,
+  readInterventions,
+  readRetryRescues,
+  readStepDurations,
+  readThroughput,
+  retryRescuesSchema,
+  stepDurationsSchema,
+  throughputSchema,
+} from './analytics-routes-reference.js';
 import { cycleTimeTransitionsSql } from './cycle-time-sql.js';
 import { driverComparison } from './driver-comparison.js';
 import { shippedPerDay } from './throughput-series.js';
@@ -60,6 +81,7 @@ pipelineAnalyticsRoutes.use('*', requireAuth(), assertEmailVerified());
  */
 pipelineAnalyticsRoutes.get(
   '/throughput',
+  readThroughput,
   zValidator('query', querySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -68,9 +90,9 @@ pipelineAnalyticsRoutes.get(
     const userId = c.get('userId');
 
     const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
-    if (projectIds.length === 0) return c.json([]);
+    if (projectIds.length === 0) return c.json(answer(throughputSchema, []));
 
-    return c.json(await shippedPerDay(projectIds, days, new Date()));
+    return c.json(answer(throughputSchema, await shippedPerDay(projectIds, days, new Date())));
   },
 );
 
@@ -87,6 +109,7 @@ pipelineAnalyticsRoutes.get(
  */
 pipelineAnalyticsRoutes.get(
   '/cycle-time',
+  readCycleTime,
   zValidator('query', cycleTimeQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -95,7 +118,7 @@ pipelineAnalyticsRoutes.get(
     const userId = c.get('userId');
 
     const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
-    if (projectIds.length === 0) return c.json([]);
+    if (projectIds.length === 0) return c.json(answer(cycleTimeSchema, []));
 
     const rows = await db.execute(sql`
       WITH transitions AS (${cycleTimeTransitionsSql(projectIds, days)}
@@ -117,12 +140,13 @@ pipelineAnalyticsRoutes.get(
         n: Number(r.n),
       }),
     );
-    return c.json(out);
+    return c.json(answer(cycleTimeSchema, out));
   },
 );
 
 pipelineAnalyticsRoutes.get(
   '/step-durations',
+  readStepDurations,
   zValidator('query', stepDurationsQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -131,7 +155,7 @@ pipelineAnalyticsRoutes.get(
     const userId = c.get('userId');
 
     const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
-    if (projectIds.length === 0) return c.json([]);
+    if (projectIds.length === 0) return c.json(answer(stepDurationsSchema, []));
 
     const stepFilter = step ? sql`AND step = ${step}` : sql``;
     const rows = await db.execute(sql`
@@ -171,7 +195,7 @@ pipelineAnalyticsRoutes.get(
       deviceId: r.device_id,
       modelUsed: r.model_used,
     }));
-    return c.json(out);
+    return c.json(answer(stepDurationsSchema, out));
   },
 );
 
@@ -186,6 +210,7 @@ pipelineAnalyticsRoutes.get(
  */
 pipelineAnalyticsRoutes.get(
   '/retry-rescues',
+  readRetryRescues,
   zValidator('query', querySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -193,7 +218,8 @@ pipelineAnalyticsRoutes.get(
     const { days, projectId } = c.req.valid('query');
     const userId = c.get('userId');
     const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
-    if (projectIds.length === 0) return c.json({ total: 0, reasons: [] });
+    if (projectIds.length === 0)
+      return c.json(answer(retryRescuesSchema, { total: 0, reasons: [] }));
 
     const rows = await db.execute(sql`
       SELECT project_id, failure_kind, failure_reason, count(*)::int AS rescues,
@@ -222,12 +248,18 @@ pipelineAnalyticsRoutes.get(
           : String(row.last_rescued_at),
     }));
 
-    return c.json({ total: reasons.reduce((total, row) => total + row.rescues, 0), reasons });
+    return c.json(
+      answer(retryRescuesSchema, {
+        total: reasons.reduce((total, row) => total + row.rescues, 0),
+        reasons,
+      }),
+    );
   },
 );
 
 pipelineAnalyticsRoutes.get(
   '/interventions',
+  readInterventions,
   zValidator('query', querySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -236,7 +268,7 @@ pipelineAnalyticsRoutes.get(
     const userId = c.get('userId');
 
     const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
-    return c.json(await buildInterventionsReport(projectIds, days));
+    return c.json(answer(interventionsSchema, await buildInterventionsReport(projectIds, days)));
   },
 );
 
@@ -265,6 +297,7 @@ const outliersQuerySchema = z.object({
  */
 projectCostAnalyticsRoutes.get(
   '/:id/analytics/cost-summary',
+  readCostSummary,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -322,7 +355,7 @@ projectCostAnalyticsRoutes.get(
       (r) => ({ issueId: r.issue_id, total: Number(r.total) }),
     );
 
-    return c.json({ total, byState, byIssue });
+    return c.json(answer(costSummarySchema, { total, byState, byIssue }));
   },
 );
 
@@ -334,6 +367,7 @@ projectCostAnalyticsRoutes.get(
  */
 projectCostAnalyticsRoutes.get(
   '/:id/analytics/cost-trend',
+  readCostTrend,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -382,7 +416,7 @@ projectCostAnalyticsRoutes.get(
       kind: 'pipeline_config.updated' as const,
     }));
 
-    return c.json({ daily, annotations });
+    return c.json(answer(costTrendSchema, { daily, annotations }));
   },
 );
 
@@ -393,6 +427,7 @@ projectCostAnalyticsRoutes.get(
  */
 projectCostAnalyticsRoutes.get(
   '/:id/analytics/outliers',
+  readCostOutliers,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -453,18 +488,24 @@ projectCostAnalyticsRoutes.get(
       },
     }));
 
-    return c.json({ threshold, runs });
+    return c.json(answer(outliersSchema, { threshold, runs }));
   },
 );
 
 pipelineAnalyticsRoutes.get(
   '/driver-comparison',
+  readDriverComparison,
   zValidator('query', querySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const { days, projectId } = c.req.valid('query');
     const projectIds = await loadVisibleProjectIdsScoped(c.get('userId'), projectId);
-    return c.json({ days, projects: await driverComparison({ days, projectIds }) });
+    return c.json(
+      answer(driverComparisonSchema, {
+        days,
+        projects: await driverComparison({ days, projectIds }),
+      }),
+    );
   },
 );

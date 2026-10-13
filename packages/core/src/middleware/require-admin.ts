@@ -2,6 +2,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { env } from '../config/env.js';
 import { type AuthVars, authUserRow, readAuthUser } from './auth.js';
+import { refuses } from './declarations.js';
 
 export function parseAdminList(): string[] {
   const raw = env.ADMIN_EMAILS;
@@ -46,8 +47,16 @@ export async function assertPlatformAdmin(c: Context<{ Variables: AuthVars }>): 
 }
 
 export function requireAdmin(): MiddlewareHandler<{ Variables: AuthVars }> {
-  return async (c, next) => {
+  const gate: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
     await assertPlatformAdmin(c);
     await next();
   };
+  return refuses(gate, [
+    {
+      status: 401,
+      code: 'UNAUTHENTICATED',
+      when: 'the user behind the credential no longer exists',
+    },
+    { status: 403, code: 'ADMIN_ONLY', when: 'the caller is not a platform administrator' },
+  ]);
 }

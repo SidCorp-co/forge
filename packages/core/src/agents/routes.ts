@@ -1,13 +1,23 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, asc, count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { agentApprovalModes, agentSchedules, agents } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { wholeList } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import {
+  agentListSchema,
+  agentSchema,
+  createAgent,
+  deleteAgent,
+  listAgents,
+  readAgent,
+  updateAgent,
+} from './routes-reference.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -76,6 +86,7 @@ agentRoutes.use('*', requireAuth(), assertEmailVerified());
 
 agentRoutes.get(
   '/',
+  listAgents,
   zValidator('query', listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -94,12 +105,13 @@ agentRoutes.get(
 
     const [totalRow] = await db.select({ n: count() }).from(agents).where(where);
     const rows = await db.select().from(agents).where(where).orderBy(asc(agents.createdAt));
-    return c.json(wholeList(c, rows, totalRow?.n ?? 0));
+    return c.json(answer(agentListSchema, wholeList(c, rows, totalRow?.n ?? 0)));
   },
 );
 
 agentRoutes.post(
   '/',
+  createAgent,
   zValidator('json', createSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -134,12 +146,13 @@ agentRoutes.post(
       .returning();
     if (!inserted) throw new Error('agents: insert returned no row');
 
-    return c.json(inserted, 201);
+    return c.json(answer(agentSchema, inserted), 201);
   },
 );
 
 agentRoutes.get(
   '/:id',
+  readAgent,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -153,12 +166,13 @@ agentRoutes.get(
     const access = await loadProjectAccess(row.projectId, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    return c.json(row);
+    return c.json(answer(agentSchema, row));
   },
 );
 
 agentRoutes.patch(
   '/:id',
+  updateAgent,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -197,12 +211,13 @@ agentRoutes.patch(
     const [updated] = await db.update(agents).set(updates).where(eq(agents.id, id)).returning();
     if (!updated) throw notFound('agent not found');
 
-    return c.json(updated);
+    return c.json(answer(agentSchema, updated));
   },
 );
 
 agentRoutes.delete(
   '/:id',
+  deleteAgent,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),

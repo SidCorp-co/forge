@@ -7,6 +7,7 @@ import { AUTH_COOKIE_NAME } from '../auth/cookie.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
+import { refuses } from './declarations.js';
 
 export type AuthedUser = {
   id: string;
@@ -32,7 +33,7 @@ function extractToken(c: Context): string | null {
 }
 
 export const requireUser = (): MiddlewareHandler<{ Variables: UserVars }> => {
-  return async (c, next) => {
+  const gate: MiddlewareHandler<{ Variables: UserVars }> = async (c, next) => {
     const token = extractToken(c);
     if (!token) throw unauth('UNAUTHENTICATED', 'authentication required');
 
@@ -61,4 +62,12 @@ export const requireUser = (): MiddlewareHandler<{ Variables: UserVars }> => {
     c.set('user', row);
     await next();
   };
+  return refuses(gate, [
+    {
+      status: 401,
+      code: 'UNAUTHENTICATED',
+      when: 'no token, a token that does not verify, or a user that no longer exists',
+    },
+    { status: 401, code: 'TOKEN_EXPIRED', when: 'the session token has expired' },
+  ]);
 };

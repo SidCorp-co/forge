@@ -7,14 +7,24 @@
  * fan-out is the real caller and dropping it would have broken them silently.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import pkg from '../../package.json' with { type: 'json' };
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { sourceCommit } from '../observability/source-commit.js';
+import {
+  livenessSchema,
+  opsHealthSchema,
+  probeLiveness,
+  readMyOpsHealth,
+  readProjectOpsHealth,
+  readVersion,
+  versionSchema,
+} from './routes-reference.js';
 import { readLiveness, readOpsHealth } from './service.js';
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
@@ -29,15 +39,15 @@ const badRequest = (details: unknown) =>
 
 export const publicHealthRoutes = new Hono();
 
-publicHealthRoutes.get('/health', async (c) => {
+publicHealthRoutes.get('/health', probeLiveness, async (c) => {
   const live = await readLiveness();
   return c.json(
-    {
+    answer(livenessSchema, {
       ok: live.ok,
       db: { ok: live.dbOk },
       queue: { ok: live.queueOk },
       ws: { ok: live.wsOk },
-    },
+    }),
     live.ok ? 200 : 503,
   );
 });
@@ -45,12 +55,14 @@ publicHealthRoutes.get('/health', async (c) => {
 // Mounted at `/` and at `/api` both. Only the second carries CORS — `app.use('/api/*',
 // corsMiddleware)` covers that prefix and nothing else — and only the second is where the
 // web app's client points, so the root copy alone left the page unable to read this.
-publicHealthRoutes.get('/version', (c) =>
-  c.json({
-    version: pkg.version,
-    sourceCommit,
-    uptimeSeconds: Math.floor(process.uptime()),
-  }),
+publicHealthRoutes.get('/version', readVersion, (c) =>
+  c.json(
+    answer(versionSchema, {
+      version: pkg.version,
+      sourceCommit,
+      uptimeSeconds: Math.floor(process.uptime()),
+    }),
+  ),
 );
 
 export const opsHealthProjectRoutes = new Hono<{ Variables: AuthVars }>();
@@ -58,6 +70,7 @@ opsHealthProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 
 opsHealthProjectRoutes.get(
   '/:id/ops-health',
+  readProjectOpsHealth,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -71,7 +84,10 @@ opsHealthProjectRoutes.get(
     assertProjectRole(access, 'member', 'not a project member');
 
     return c.json(
-      await readOpsHealth([projectId], staleJobThresholdSeconds ?? DEFAULT_STALE_JOB_SECONDS),
+      answer(
+        opsHealthSchema,
+        await readOpsHealth([projectId], staleJobThresholdSeconds ?? DEFAULT_STALE_JOB_SECONDS),
+      ),
     );
   },
 );
@@ -81,6 +97,7 @@ opsHealthMeRoutes.use('/ops-health', requireAuth(), assertEmailVerified());
 
 opsHealthMeRoutes.get(
   '/ops-health',
+  readMyOpsHealth,
   zValidator('query', staleQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -89,7 +106,10 @@ opsHealthMeRoutes.get(
     const visibleIds = await loadVisibleProjectIds(c.get('userId'));
 
     return c.json(
-      await readOpsHealth(visibleIds, staleJobThresholdSeconds ?? DEFAULT_STALE_JOB_SECONDS),
+      answer(
+        opsHealthSchema,
+        await readOpsHealth(visibleIds, staleJobThresholdSeconds ?? DEFAULT_STALE_JOB_SECONDS),
+      ),
     );
   },
 );

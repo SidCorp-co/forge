@@ -5,7 +5,7 @@
  * reaper→retry model.
  *
  * Re-exported from `./dispatch.js` because `jobs/loop-monitor.ts` reaches this
- * function through a dynamic `import('../schedules/dispatch.js')`.
+ * function through a dynamic `import('./dispatch.js')`.
  */
 
 import { eq } from 'drizzle-orm';

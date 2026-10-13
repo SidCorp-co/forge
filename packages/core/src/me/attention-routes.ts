@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { answer } from '../api-reference/declare/describe.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
@@ -17,6 +18,7 @@ import {
   selectUnseenDraftCount,
   selectUnseenDrafts,
 } from './attention-buckets.js';
+import { attentionSchema, readAttention } from './attention-routes-reference.js';
 
 type AttentionKind =
   | 'needs_review'
@@ -127,7 +129,7 @@ function skillUpdateItem(r: AttentionReconcileRow): AttentionItem {
 export const meAttentionRoutes = new Hono<{ Variables: AuthVars }>();
 meAttentionRoutes.use('/attention', requireAuth(), assertEmailVerified());
 
-meAttentionRoutes.get('/attention', async (c) => {
+meAttentionRoutes.get('/attention', readAttention, async (c) => {
   const userId = c.get('userId');
 
   const [
@@ -176,5 +178,5 @@ meAttentionRoutes.get('/attention', async (c) => {
       unseenDrafts.length,
   };
 
-  return c.json(response);
+  return c.json(answer(attentionSchema, response));
 });

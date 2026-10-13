@@ -51,6 +51,10 @@ export async function countActiveJobs(): Promise<number> {
   }
 }
 
+function dependencyState(up: boolean): 'ok' | 'down' {
+  return up ? 'ok' : 'down';
+}
+
 export type OpsRunner = {
   id: string;
   name: string | null;
@@ -163,9 +167,9 @@ export async function readOpsHealth(visibleProjectIds: string[], staleJobThresho
   return {
     version: pkg.version,
     uptimeSeconds: Math.floor(process.uptime()),
-    db: dbOk ? 'ok' : 'down',
-    queue: isBossStarted() ? 'ok' : 'down',
-    ws: isWsListening() ? 'ok' : 'down',
+    db: dependencyState(dbOk),
+    queue: dependencyState(isBossStarted()),
+    ws: dependencyState(isWsListening()),
     runners: runnersOut,
     projects: projectsOut,
     stuckJobs,

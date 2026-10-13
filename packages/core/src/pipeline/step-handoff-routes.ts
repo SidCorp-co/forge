@@ -1,7 +1,8 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { resolveIssueKeyInProject } from '../issues/issue-route-ref.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { stepHandoffSchema } from '../memory/step-handoff-schema.js';
@@ -13,6 +14,14 @@ import {
   IssueNotInProject,
   writeIssueContext,
 } from './issue-context-store.js';
+import {
+  deleteHandoff,
+  handoffDeletedSchema,
+  handoffListSchema,
+  handoffWrittenSchema,
+  listHandoffs,
+  writeHandoff,
+} from './step-handoff-routes-reference.js';
 
 /**
  * REST surface for step-handoff persistence (proposal Y). 1-to-1 with the
@@ -65,6 +74,7 @@ stepHandoffRoutes.use('*', requireAuth(), assertEmailVerified());
 
 stepHandoffRoutes.post(
   '/',
+  writeHandoff,
   zValidator('json', writeBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -74,7 +84,7 @@ stepHandoffRoutes.post(
     await assertProjectAccess(body.projectId, userId);
     try {
       const r = await writeIssueContext({ ...body, kind: 'handoff', actor: resolveActor(c) });
-      return c.json(r, 201);
+      return c.json(answer(handoffWrittenSchema, r), 201);
     } catch (err) {
       if (err instanceof IssueNotInProject) {
         throw new HTTPException(404, { message: err.message, cause: { code: 'NOT_FOUND' } });
@@ -86,6 +96,7 @@ stepHandoffRoutes.post(
 
 stepHandoffRoutes.get(
   '/',
+  listHandoffs,
   zValidator('query', listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -103,12 +114,13 @@ stepHandoffRoutes.get(
       limit: q.limit,
       orderDir: q.orderDir,
     });
-    return c.json({ rows });
+    return c.json(answer(handoffListSchema, { rows }));
   },
 );
 
 stepHandoffRoutes.delete(
   '/',
+  deleteHandoff,
   zValidator('query', deleteQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -123,6 +135,6 @@ stepHandoffRoutes.delete(
       step: q.step,
       attempt: q.attempt,
     });
-    return c.json({ deleted: n > 0 });
+    return c.json(answer(handoffDeletedSchema, { deleted: n > 0 }));
   },
 );

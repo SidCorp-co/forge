@@ -2,15 +2,19 @@
  * The read surface: which agent sessions the fleet is running, off the box.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { readProjectRunSessions } from './run-ledger.js';
-
-const paramsSchema = z.object({ id: z.uuid() });
+import {
+  listProjectRunSessions,
+  paramsSchema,
+  runSessionsSchema,
+} from './run-ledger-routes-reference.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -24,6 +28,7 @@ runLedgerRoutes.use('/:id/run-sessions', requireAuth(), assertEmailVerified());
 
 runLedgerRoutes.get(
   '/:id/run-sessions',
+  listProjectRunSessions,
   zValidator('param', paramsSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -32,6 +37,6 @@ runLedgerRoutes.get(
     const access = await loadProjectAccess(id, c.get('userId'));
     if (!access.role) throw forbidden();
     const items = await readProjectRunSessions(id);
-    return c.json({ items, count: items.length });
+    return c.json(answer(runSessionsSchema, { items, count: items.length }));
   },
 );

@@ -1,11 +1,24 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { buildInterventionsReport } from './interventions-report.js';
 import { BUCKETS, METRICS, runTimeseries, stepDurationsForProject } from './queries.js';
+import {
+  interventionsSchema,
+  readInterventions,
+  readRetryRescues,
+  readSessionFailures,
+  readStepDurations,
+  readTimeseries,
+  retryRescuesSchema,
+  sessionFailuresSchema,
+  stepDurationsSchema,
+  timeseriesSchema,
+} from './routes-reference.js';
 import { buildRetryRescuesReport, buildSessionFailuresReport } from './session-failures-report.js';
 
 /**
@@ -35,6 +48,7 @@ const forbidden = (message: string) =>
 
 projectMetricsRoutes.get(
   '/:id/metrics/timeseries',
+  readTimeseries,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -56,7 +70,7 @@ projectMetricsRoutes.get(
       bucket,
       groupByStep: groupBy === 'step',
     });
-    return c.json(result);
+    return c.json(answer(timeseriesSchema, result));
   },
 );
 
@@ -68,6 +82,7 @@ const stepDurationsQuerySchema = z.object({
 
 projectMetricsRoutes.get(
   '/:id/metrics/step-durations',
+  readStepDurations,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -80,10 +95,12 @@ projectMetricsRoutes.get(
     if (!access.role) throw forbidden('not a project member');
 
     const { days, step, breakdown } = c.req.valid('query');
-    return c.json({
-      rows: await stepDurationsForProject(id, days, step, breakdown),
-      windowDays: days,
-    });
+    return c.json(
+      answer(stepDurationsSchema, {
+        rows: await stepDurationsForProject(id, days, step, breakdown),
+        windowDays: days,
+      }),
+    );
   },
 );
 
@@ -93,6 +110,7 @@ const daysQuerySchema = z.object({
 
 projectMetricsRoutes.get(
   '/:id/metrics/retry-rescues',
+  readRetryRescues,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -105,12 +123,13 @@ projectMetricsRoutes.get(
     if (!access.role) throw forbidden('not a project member');
 
     const { days } = c.req.valid('query');
-    return c.json(await buildRetryRescuesReport(id, days));
+    return c.json(answer(retryRescuesSchema, await buildRetryRescuesReport(id, days)));
   },
 );
 
 projectMetricsRoutes.get(
   '/:id/metrics/session-failures',
+  readSessionFailures,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -123,12 +142,13 @@ projectMetricsRoutes.get(
     if (!access.role) throw forbidden('not a project member');
 
     const { days } = c.req.valid('query');
-    return c.json(await buildSessionFailuresReport(id, days));
+    return c.json(answer(sessionFailuresSchema, await buildSessionFailuresReport(id, days)));
   },
 );
 
 projectMetricsRoutes.get(
   '/:id/metrics/interventions',
+  readInterventions,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -141,6 +161,6 @@ projectMetricsRoutes.get(
     if (!access.role) throw forbidden('not a project member');
 
     const { days } = c.req.valid('query');
-    return c.json(await buildInterventionsReport([id], days));
+    return c.json(answer(interventionsSchema, await buildInterventionsReport([id], days)));
   },
 );

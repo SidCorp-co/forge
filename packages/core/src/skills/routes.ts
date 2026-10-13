@@ -1,8 +1,9 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { issueStatuses, skillRegistrations, skills } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
@@ -11,6 +12,16 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { hooks } from '../pipeline/hooks.js';
 import { isMetaSkillName } from './meta-skills.js';
 import { registerSkillForProject, SkillNotProjectScopedError } from './registration-service.js';
+import {
+  listSkillRegistrations,
+  registeredSchema,
+  registerSkill,
+  registrationsSchema,
+  syncProjectSkills,
+  syncResultSchema,
+  unregisteredSchema,
+  unregisterStage,
+} from './routes-reference.js';
 import { getSkillForProject } from './service.js';
 import { computeSkillDiff } from './sync.js';
 
@@ -65,6 +76,7 @@ export const skillSyncRoutes = new Hono<{ Variables: DeviceVars }>();
 skillSyncRoutes.use('/:projectId/skills/sync', requireDevice());
 skillSyncRoutes.post(
   '/:projectId/skills/sync',
+  syncProjectSkills,
   zValidator('param', projectParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -170,7 +182,14 @@ skillSyncRoutes.post(
       removed: diff.toRemove,
     });
 
-    return c.json({ added, updated, unchanged: diff.unchanged, removed: diff.toRemove });
+    return c.json(
+      answer(syncResultSchema, {
+        added,
+        updated,
+        unchanged: diff.unchanged,
+        removed: diff.toRemove,
+      }),
+    );
   },
 );
 
@@ -182,6 +201,7 @@ skillRegisterRoutes.use(
 );
 skillRegisterRoutes.post(
   '/:projectId/skills/:skillId/register',
+  registerSkill,
   zValidator('param', skillParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -206,7 +226,7 @@ skillRegisterRoutes.post(
         stage,
         actorUserId: userId,
       });
-      return c.json(result);
+      return c.json(answer(registeredSchema, result));
     } catch (err) {
       if (err instanceof SkillNotProjectScopedError) {
         throw new HTTPException(400, {
@@ -225,6 +245,7 @@ skillRegisterRoutes.post(
 skillRegisterRoutes.use('/:projectId/skill-registrations', requireAuth(), assertEmailVerified());
 skillRegisterRoutes.get(
   '/:projectId/skill-registrations',
+  listSkillRegistrations,
   zValidator('param', projectParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -247,7 +268,7 @@ skillRegisterRoutes.get(
       .from(skillRegistrations)
       .innerJoin(skills, eq(skills.id, skillRegistrations.skillId))
       .where(eq(skillRegistrations.projectId, projectId));
-    return c.json({ registrations: rows });
+    return c.json(answer(registrationsSchema, { registrations: rows }));
   },
 );
 
@@ -262,6 +283,7 @@ skillRegisterRoutes.use(
 );
 skillRegisterRoutes.delete(
   '/:projectId/skills/registrations/:stage',
+  unregisterStage,
   zValidator('param', stageParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -277,7 +299,7 @@ skillRegisterRoutes.delete(
       .from(skillRegistrations)
       .where(and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.stage, stage)))
       .limit(1);
-    if (!row) return c.json({ deleted: false, stage });
+    if (!row) return c.json(answer(unregisteredSchema, { deleted: false, stage }));
 
     await registerSkillForProject({
       projectId,
@@ -285,6 +307,6 @@ skillRegisterRoutes.delete(
       stage: null,
       actorUserId: userId,
     });
-    return c.json({ deleted: true, stage });
+    return c.json(answer(unregisteredSchema, { deleted: true, stage }));
   },
 );

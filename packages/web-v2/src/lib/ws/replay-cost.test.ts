@@ -202,7 +202,6 @@ describe("what a burst of events costs", () => {
 			["issues", "search"],
 			["attention"],
 			["pulse"],
-			["recent-changes"],
 		]) {
 			const hash = JSON.stringify(key);
 			calls.set(hash, 0);
@@ -212,7 +211,7 @@ describe("what a burst of events costs", () => {
 			});
 		}
 		await tick();
-		expect([...calls.values()]).toEqual([1, 1, 1, 1, 1]);
+		expect([...calls.values()]).toEqual([1, 1, 1, 1]);
 
 		for (let i = 0; i < 20; i += 1) {
 			routeEvent(
@@ -223,6 +222,6 @@ describe("what a burst of events costs", () => {
 		flushInvalidations();
 		await tick();
 
-		expect([...calls.values()]).toEqual([2, 2, 2, 2, 2]);
+		expect([...calls.values()]).toEqual([2, 2, 2, 2]);
 	});
 });

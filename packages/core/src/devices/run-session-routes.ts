@@ -8,45 +8,40 @@
  * against a session another box opened.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { IssueLeaseHeldError } from '../issues/issue-lease.js';
-import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { gateConditionSchema } from './gate-report.js';
-import { policyCopySchema } from './policy-copy.js';
 import { RunnerNotAdmittedError } from './pool-admission.js';
 import { badRequest, conflict, forbidden, notFound, sessionParamsSchema } from './route-errors.js';
 import {
   heldWorktreeSchema,
   resumeChoiceSchema,
-  runCheckpointSchema,
   writeHeldWorktreeReport,
   writeResumeChoice,
   writeRunEvidence,
 } from './run-evidence.js';
 import { closeRunSession, openRunSession } from './run-session.js';
+import {
+  closeBodySchema,
+  closedRunSessionSchema,
+  closeRunSessionRoute,
+  openedRunSessionSchema,
+  openRunSessionRoute,
+  reportHeldWorktree,
+  reportResumeChoice,
+  runEvidenceSchema,
+  runSessionBodySchema,
+} from './run-session-routes-reference.js';
 
 export const deviceRunSessionRoutes = new Hono<{ Variables: DeviceVars }>();
-
-const runSessionBodySchema = z.object({
-  projectId: z.string().uuid(),
-  runId: z.string().uuid(),
-  issueKeys: z.array(z.string().min(1)).min(1).max(16),
-  name: utf16String(60).min(1),
-  // Validated here rather than absorbed: a run is kernel, and a gate condition
-  // this route cannot read is a contract break the box is told about by name
-  // rather than a field quietly dropped. The heartbeat is the other way round,
-  // and for its own stated reason (ISS-1192).
-  gate: gateConditionSchema.optional(),
-  // Refused by name too: the copy a run was decided under is not a field to absorb (ISS-1303).
-  policy: policyCopySchema.optional(),
-});
 
 deviceRunSessionRoutes.post(
   '/me/run-sessions',
   requireDevice(),
+  openRunSessionRoute,
   zValidator('json', runSessionBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -62,7 +57,7 @@ deviceRunSessionRoutes.post(
         ...(body.gate ? { gate: body.gate } : {}),
         ...(body.policy ? { policy: body.policy } : {}),
       });
-      return c.json(session);
+      return c.json(answer(openedRunSessionSchema, session));
     } catch (err) {
       // The refusal IS the deliverable here: a box told only that the open
       // failed retries against the same holder until the lease lapses.
@@ -81,15 +76,10 @@ deviceRunSessionRoutes.post(
   },
 );
 
-const closeBodySchema = z.object({
-  outcome: z.enum(['ended', 'killed_idle', 'died']),
-  detail: utf16String(500).optional(),
-  checkpoint: runCheckpointSchema.optional(),
-});
-
 deviceRunSessionRoutes.post(
   '/me/run-sessions/:sessionId/close',
   requireDevice(),
+  closeRunSessionRoute,
   zValidator('param', sessionParamsSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -113,12 +103,13 @@ deviceRunSessionRoutes.post(
       ...(body.detail === undefined ? {} : { detail: body.detail }),
     });
     if (closed === null) throw notFound('run session');
-    return c.json(closed);
+    return c.json(answer(closedRunSessionSchema, closed));
   },
 );
 deviceRunSessionRoutes.post(
   '/me/run-sessions/:sessionId/held-worktree',
   requireDevice(),
+  reportHeldWorktree,
   zValidator('param', sessionParamsSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -133,13 +124,14 @@ deviceRunSessionRoutes.post(
       held: c.req.valid('json'),
     });
     if (reported === null) throw notFound('run session');
-    return c.json(reported);
+    return c.json(answer(runEvidenceSchema, reported));
   },
 );
 
 deviceRunSessionRoutes.post(
   '/me/run-sessions/:sessionId/resume-choice',
   requireDevice(),
+  reportResumeChoice,
   zValidator('param', sessionParamsSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -154,6 +146,6 @@ deviceRunSessionRoutes.post(
       choice: c.req.valid('json'),
     });
     if (written === null) throw notFound('run session');
-    return c.json(written);
+    return c.json(answer(runEvidenceSchema, written));
   },
 );

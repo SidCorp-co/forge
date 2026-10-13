@@ -357,13 +357,17 @@ describe('what a read spends catching up', () => {
     const vectorOf = (text: string) => vectorAt(angleOfTitle.get(text) ?? 0);
     embeddingsMod.resetEmbeddingsClient({
       embed: async (text: string) => vectorOf(text),
+      // The budget is spent by the clock, not by how long a machine takes: the clock stands still
+      // until the first batch is embedded, and that batch moves it past the budget, so the pass
+      // always starts, always measures one seed, and never has time for a second.
       embedBatch: async (texts: string[]) => {
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        vi.setSystemTime(Date.now() + 1_000);
         return texts.map(vectorOf);
       },
     } as unknown as Parameters<typeof embeddingsMod.resetEmbeddingsClient>[0]);
 
-    const { status, body } = await neighbours('?catchUpMs=100');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const { status, body } = await neighbours('?catchUpMs=100').finally(() => vi.useRealTimers());
 
     expect(status).toBe(409);
     expect(body.code).toBe('ALIKE_INDEX_INCOMPLETE');

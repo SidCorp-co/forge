@@ -1,17 +1,14 @@
-import { zValidator } from '@hono/zod-validator';
-import { asc, count, eq, inArray } from 'drizzle-orm';
+import { asc, count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
-import { commentAttachments, commentMentions, comments, issues } from '../db/schema.js';
+import { commentMentions, comments, issues } from '../db/schema.js';
 import type { ActorRef } from '../issues/actor-identity.js';
 import { resolveActors } from '../issues/actor-resolution.js';
-import {
-  issueRouteIdParamSchema,
-  projectScopeQuerySchema,
-  resolveIssueRouteRef,
-} from '../issues/issue-route-ref.js';
+import { issueRouteIdParamSchema, resolveIssueRouteRef } from '../issues/issue-route-ref.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { pgConstraintName, pgErrorCode } from '../lib/db-errors.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
@@ -31,6 +28,7 @@ import {
 } from '../middleware/client-capabilities.js';
 import { hooks } from '../pipeline/hooks.js';
 import { commentAttachmentRoutes } from './attachment-routes.js';
+import { listCommentAttachmentsForComments } from './attachment-service.js';
 import {
   bodyRefusalHttp,
   commentBodySchema,
@@ -39,6 +37,17 @@ import {
 } from './body-input.js';
 import { CommentCursorInvalidError, decodeCommentCursor } from './cursor.js';
 import { parseMentions, resolveMentions } from './mentions.js';
+import {
+  commentRepliesSchema,
+  commentThreadSchema,
+  createComment,
+  deleteComment,
+  listComments,
+  listReplies,
+  patchComment,
+  threadQuerySchema,
+  writtenCommentSchema,
+} from './routes-reference.js';
 import { messageRefusalHttp } from './screen.js';
 import {
   assertMayChangeComment,
@@ -49,15 +58,9 @@ import {
   listIssueCommentPage,
   updateCommentBody,
 } from './service.js';
-import { attachAuthors, buildCommentTree, type CommentAttachmentLite } from './tree.js';
+import { attachAuthors, buildCommentTree } from './tree.js';
 
-/** The comment projection every REST response here shares. */
 const idParamSchema = z.object({ id: z.uuid() });
-
-const threadQuerySchema = paginationSchema.extend({
-  cursor: z.string().min(1).optional(),
-  projectId: projectScopeQuerySchema.shape.projectId,
-});
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -103,6 +106,7 @@ async function loadComment(commentId: string) {
 export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>): void {
   router.post(
     '/:id/comments',
+    createComment,
     zValidator('param', idParamSchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
@@ -191,7 +195,10 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       }
 
       return c.json(
-        written.warnings.length > 0 ? { ...inserted, warnings: written.warnings } : inserted,
+        answer(
+          writtenCommentSchema,
+          written.warnings.length > 0 ? { ...inserted, warnings: written.warnings } : inserted,
+        ),
         201,
       );
     },
@@ -199,6 +206,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
 
   router.get(
     '/:id/comments',
+    listComments,
     zValidator('param', issueRouteIdParamSchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
@@ -230,37 +238,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       const page = await listIssueCommentPage(issueId, { after, limit });
       const rows = page.rows;
 
-      // Join each comment's attachments in a single grouped query, keyed by
-      // commentId. Guard the empty-ids case so `inArray` never receives an
-      // empty list (which would build a malformed/`false` predicate).
-      const attachmentsByCommentId = new Map<string, CommentAttachmentLite[]>();
-      const commentIds = rows.map((r) => r.id);
-      if (commentIds.length > 0) {
-        const attachmentRows = await db
-          .select({
-            id: commentAttachments.id,
-            commentId: commentAttachments.commentId,
-            name: commentAttachments.name,
-            mime: commentAttachments.mime,
-            size: commentAttachments.size,
-            createdAt: commentAttachments.createdAt,
-          })
-          .from(commentAttachments)
-          .where(inArray(commentAttachments.commentId, commentIds))
-          .orderBy(asc(commentAttachments.createdAt));
-        for (const a of attachmentRows) {
-          const list = attachmentsByCommentId.get(a.commentId) ?? [];
-          list.push({
-            id: a.id,
-            name: a.name,
-            mime: a.mime,
-            size: a.size,
-            createdAt: a.createdAt,
-            url: `/api/comments/attachments/${a.id}`,
-          });
-          attachmentsByCommentId.set(a.commentId, list);
-        }
-      }
+      const attachmentsByCommentId = await listCommentAttachmentsForComments(rows.map((r) => r.id));
 
       const tree = buildCommentTree(
         rows,
@@ -275,7 +253,12 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       );
       attachAuthors(tree, await resolveActors(refs));
 
-      return c.json(cursorList(c, tree, Number(total), { limit, nextCursor: page.nextCursor }));
+      return c.json(
+        answer(
+          commentThreadSchema,
+          cursorList(c, tree, Number(total), { limit, nextCursor: page.nextCursor }),
+        ),
+      );
     },
   );
 }
@@ -284,6 +267,7 @@ export const commentRoutes = new Hono<{ Variables: AuthVars }>();
 
 commentRoutes.get(
   '/:id/replies',
+  listReplies,
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', idParamSchema, (r) => {
@@ -314,12 +298,15 @@ commentRoutes.get(
       .limit(limit)
       .offset(offset);
 
-    return c.json(listResponse(c, rows, Number(n), { limit, offset }));
+    return c.json(
+      answer(commentRepliesSchema, listResponse(c, rows, Number(n), { limit, offset })),
+    );
   },
 );
 
 commentRoutes.patch(
   '/:id',
+  patchComment,
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', idParamSchema, (r) => {
@@ -359,12 +346,15 @@ commentRoutes.patch(
       after: updated.body,
     });
     const { warnings } = written;
-    return c.json(warnings.length > 0 ? { ...updated, warnings } : updated);
+    return c.json(
+      answer(writtenCommentSchema, warnings.length > 0 ? { ...updated, warnings } : updated),
+    );
   },
 );
 
 commentRoutes.delete(
   '/:id',
+  deleteComment,
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', idParamSchema, (r) => {

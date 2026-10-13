@@ -1,6 +1,8 @@
 import { and, eq, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects, runners, workspaceSshKeys } from '../db/schema.js';
 import { isHttpsGitUrl, projectsWithGitHubAppCredential } from '../git/github-app-credential.js';
@@ -8,6 +10,7 @@ import { deviceGitCredentialRoutes } from '../git/github-credential-routes.js';
 import { logger } from '../logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { provisionStalled, workspaceServesProject } from '../runners/liveness-sql.js';
+import { listProvisions, provisionSchema } from './me-provisions-reference.js';
 import { recordProvisionReports } from './provision-reports.js';
 import {
   buildProvisionRow,
@@ -54,7 +57,7 @@ function offerableRows(deviceId: string) {
     );
 }
 
-deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
+deviceProvisionRoutes.get('/me/provisions', requireDevice(), listProvisions, async (c) => {
   const device = c.get('device');
   if (device.status === 'revoked') throw unauth();
 
@@ -124,5 +127,5 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
   // A bare array: a deployed runner decodes `Vec<Provision>` and nothing else,
   // and this endpoint has no way to negotiate a shape, so the reports ride the
   // header instead of an envelope.
-  return c.json(provisions);
+  return c.json(answer(z.array(provisionSchema), provisions));
 });

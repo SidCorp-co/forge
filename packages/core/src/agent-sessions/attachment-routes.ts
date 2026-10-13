@@ -1,8 +1,9 @@
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
@@ -10,6 +11,7 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import { getStorage, isEnoent } from '../storage/index.js';
+import * as ref from './attachment-routes-reference.js';
 import {
   loadSessionAttachment,
   persistSessionAttachment,
@@ -41,9 +43,6 @@ const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-const sessionIdParamSchema = z.object({ sessionId: z.uuid() });
-const downloadParamSchema = z.object({ sessionId: z.uuid(), id: z.uuid() });
 
 /**
  * ISS-499 — agent-chat attachment endpoints. Dual auth (user OR device):
@@ -85,10 +84,11 @@ async function authorizeSession(
 
 agentSessionAttachmentRoutes.post(
   '/:sessionId/attachments',
+  ref.uploadAttachment,
   uploadBodyLimit(() => {
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
-  zValidator('param', sessionIdParamSchema, (r) => {
+  zValidator('param', ref.sessionIdParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid sessionId', 'BAD_REQUEST', z.flattenError(r.error));
   }),
   async (c) => {
@@ -114,7 +114,7 @@ agentSessionAttachmentRoutes.post(
         uploaderId: c.get('userId'),
         uploaderDeviceId: null,
       });
-      return c.json(persisted, 201);
+      return c.json(answer(ref.attachmentSchema, persisted), 201);
     } catch (err) {
       if (err instanceof SessionAttachmentError) throw attachmentErrorToHttp(err);
       throw err;
@@ -124,7 +124,8 @@ agentSessionAttachmentRoutes.post(
 
 agentSessionAttachmentRoutes.get(
   '/:sessionId/attachments/:id/download',
-  zValidator('param', downloadParamSchema, (r) => {
+  ref.downloadAttachment,
+  zValidator('param', ref.downloadParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid params', 'BAD_REQUEST', z.flattenError(r.error));
   }),
   async (c) => {

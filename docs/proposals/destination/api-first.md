@@ -58,8 +58,22 @@ A token keeps the reach it was minted with: each prefix carries the grant epoch 
 each token the epoch it was minted at, so a token issued before a prefix joined the menu is refused
 there, whatever it was granted.
 
-**No API reference exists.** No OpenAPI or other machine-readable description of any route is in
-`packages/core/src` or `docs/`. A route's input and output are read today from its handler.
+**The API publishes its own reference** (ISS-1371). `GET /api/openapi.json` serves an OpenAPI 3.1
+document built from the composed app's route table, `GET /api/reference` renders it and
+`GET /api/reference/flows` draws the four flows an agent drives; none needs a credential, and each
+is named out of the token grant with its reason in `auth/pat-permissions.ts:PAT_UNGRANTABLE`. Every
+route is an operation carrying the input schemas its handler validates with (read from the
+validator the route runs through, `packages/core/src/api-reference/declare/validator.ts:zValidator`, or declared with
+`declaresInput` where the handler parses its own), every status it can answer with a schema or the
+error envelope and the codes it can give, and the permission or the named exclusion that reaches it.
+`api-reference/gates/reference.test.ts` runs in the core unit job over the composed app and names the
+route that has no declared answer, reads an input no schema declares, throws a status or code its
+descriptor omits, carries a schema JSON Schema cannot hold, or is the step of a flow that names no
+route. It holds no baseline of gaps. A handler's body agreeing with its schema is held two ways: `tsc`
+refuses a body the declared schema does not accept (`packages/core/src/api-reference/declare/describe.ts:answer`), and the
+integration run, with `RESPONSE_CONFORMANCE=1`, fails a request whose JSON answer does not validate
+against the schema declared for its status. That run is a post-merge job (ISS-1370), so what the
+integration suite does not exercise is held by `tsc` alone.
 
 **MCP reaches the database beside the API.** 19 of the 49 tool files under
 `packages/core/src/mcp/tools/` import the database module directly, for example
@@ -69,14 +83,9 @@ a tool calls what the route calls.
 
 ## What this direction owes
 
-1. **An API reference generated from the routes** (ISS-1371). It gives each route's exact input and output
-   schema, its errors and the permission it needs. It is served by core and checked in CI, so a
-   route and its document cannot disagree.
-2. **Flow pages beside the reference** (ISS-1371). They show, as diagrams, the order of calls for the flows an
-   agent drives: pair a runner, claim a job, move an issue through its statuses, grant a token.
-3. **Every feature mount grantable to a token** (ISS-1373). An exclusion is refused unless it is named with its
+1. **Every feature mount grantable to a token** (ISS-1373). An exclusion is refused unless it is named with its
    reason.
-4. **MCP and the CLI on the API's path** (ISS-1372; the CLI half is reached by issue in forge-plugin). A capability has one implementation, and every wrapper
+2. **MCP and the CLI on the API's path** (ISS-1372; the CLI half is reached by issue in forge-plugin). A capability has one implementation, and every wrapper
    calls it.
 
 ## Honest costs
@@ -86,7 +95,7 @@ a tool calls what the route calls.
 | Backend first, UI not a focus | the web UI falls behind the API. A capability can land with no screen, and a person reads it through the CLI, MCP or the API reference until the UI catches up |
 | Every feature grantable to a token | each new route must name its permission before it merges, and each exclusion must carry a reason. A feature can no longer ship behind the session cookie alone |
 | MCP and the CLI only wrap the API | a capability that exists only in an MCP tool or a CLI verb today has to move into core first. Until it does, the wrapper is the one path, and this direction counts that as a defect |
-| A reference generated and checked in CI | a route whose schema is loose, or whose output is shaped by hand, fails the check until it is typed. Refactors pay that at the moment they touch a route |
+| A reference generated and checked in CI | a route whose schema is loose, or whose output is shaped by hand, fails the check until it is typed, and a route's answer is written once as a schema beside its router. Refactors pay that at the moment they touch a route |
 | Runner limited to relay and watching | runner features that someone wants wait. Their value is real, and they are out of focus while this holds |
 
 The issues named above track that work. What is built today, and in what order, belongs to the

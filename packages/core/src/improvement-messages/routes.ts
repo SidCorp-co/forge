@@ -1,8 +1,9 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, eq, isNotNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { schedules } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
@@ -11,6 +12,10 @@ import {
   type ImprovementMessage,
   listImprovementMessages,
 } from '../schedules/messages/registry.js';
+import {
+  improvementMessageSchema,
+  listImprovementMessages as listMessages,
+} from './routes-reference.js';
 
 const listQuerySchema = z
   .object({
@@ -35,6 +40,7 @@ improvementMessageRoutes.use('*', requireAuth(), assertEmailVerified());
 
 improvementMessageRoutes.get(
   '/',
+  listMessages,
   zValidator('query', listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -49,7 +55,7 @@ improvementMessageRoutes.get(
         ...msg,
         enablement: null,
       }));
-      return c.json(entries);
+      return c.json(answer(z.array(improvementMessageSchema), entries));
     }
 
     const access = await loadProjectAccess(projectId, userId);
@@ -86,6 +92,6 @@ improvementMessageRoutes.get(
       };
     });
 
-    return c.json(entries);
+    return c.json(answer(z.array(improvementMessageSchema), entries));
   },
 );

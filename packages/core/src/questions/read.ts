@@ -111,12 +111,35 @@ async function readAskedIssue(issueId: string) {
   return issue;
 }
 
+/** One row of a page: the question's columns, how many rounds it has run, and the round now open. */
+export type ProjectQuestionRow = Pick<
+  typeof agentQuestions.$inferSelect,
+  | 'id'
+  | 'projectId'
+  | 'issueId'
+  | 'agentSessionId'
+  | 'status'
+  | 'blockerKind'
+  | 'maxRounds'
+  | 'assumed'
+  | 'voidReason'
+  | 'claimsHeld'
+  | 'workspacesPinned'
+  | 'dependents'
+  | 'parkDeadlineAt'
+  | 'endedBy'
+  | 'endedReason'
+  | 'createdAt'
+  | 'updatedAt'
+> &
+  ReturnType<typeof shapeOf> & { rounds: number; currentStep: QuestionStep | null };
+
 /**
  * One page of a project's questions, newest first, or null when the caller
  * cannot reach the project.
  */
 export type ProjectQuestionPage = {
-  questions: Array<ReturnType<typeof shapeOf> & Record<string, unknown>>;
+  questions: ProjectQuestionRow[];
   total: number;
   hasMore: boolean;
   /** Where the next page starts, as the last row's own `(created_at, id)`. Null on the last page. */

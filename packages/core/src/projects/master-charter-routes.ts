@@ -1,7 +1,8 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import {
   type AuthVars,
@@ -10,6 +11,14 @@ import {
   restAuthored,
 } from '../middleware/auth.js';
 import { MASTER_CHARTER_IS_A_PERSONS_WRITE, parseMasterCharterWrite } from './master-charter.js';
+import {
+  charterReadSchema,
+  charterVersionsSchema,
+  charterWrittenSchema,
+  listMasterCharterVersions,
+  readMasterCharter,
+  writeMasterCharter,
+} from './master-charter-routes-reference.js';
 import {
   declareCharter,
   type MasterCharter,
@@ -49,6 +58,7 @@ const UNDECLARED = {
 
 masterCharterRoutes.get(
   '/:id/master-charter',
+  readMasterCharter,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid project id');
   }),
@@ -57,13 +67,14 @@ masterCharterRoutes.get(
     await assertProjectAccess(id, c.get('userId'), 'viewer');
 
     const charter = await readCurrentCharter(id);
-    if (!charter) return c.json(UNDECLARED);
-    return c.json({ declared: true, ...serialise(charter) });
+    if (!charter) return c.json(answer(charterReadSchema, UNDECLARED));
+    return c.json(answer(charterReadSchema, { declared: true, ...serialise(charter) }));
   },
 );
 
 masterCharterRoutes.get(
   '/:id/master-charter/versions',
+  listMasterCharterVersions,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid project id');
   }),
@@ -72,12 +83,18 @@ masterCharterRoutes.get(
     await assertProjectAccess(id, c.get('userId'), 'viewer');
 
     const versions = await readCharterVersions(id);
-    return c.json({ versions: versions.map(serialise), returned: versions.length });
+    return c.json(
+      answer(charterVersionsSchema, {
+        versions: versions.map(serialise),
+        returned: versions.length,
+      }),
+    );
   },
 );
 
 masterCharterRoutes.put(
   '/:id/master-charter',
+  writeMasterCharter,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid project id');
   }),
@@ -107,6 +124,6 @@ masterCharterRoutes.put(
       userId,
       write: parsed.value,
     });
-    return c.json({ declared: true, created, ...serialise(charter) });
+    return c.json(answer(charterWrittenSchema, { declared: true, created, ...serialise(charter) }));
   },
 );
