@@ -3,8 +3,8 @@ import type { DataTableModelColumn } from '@/design';
 import { isAttention } from './derive';
 import type { ProjectConsoleItem, ProjectSort, ProjectSortState } from './types';
 
-// Worst health sorts first; a project whose health was not read sorts after every one that was.
-const HEALTH_RANK = { down: 0, attention: 1, healthy: 2, idle: 3, unread: 4 } as const;
+// Worst health sorts first; a project whose health was not read has no key, so it is last either way round.
+const HEALTH_RANK = { down: 0, attention: 1, healthy: 2, idle: 3 } as const;
 
 function recency(item: ProjectConsoleItem): number | null {
   return item.healthRead === 'read' && item.lastActivityAt ? Date.parse(item.lastActivityAt) : null;
@@ -17,7 +17,7 @@ export const SORT_COLUMNS: Record<ProjectSort, Column> = {
   name: { id: 'name', sortValue: (p) => p.name, searchText: (p) => p.name },
   health: {
     id: 'health',
-    sortValue: (p) => [HEALTH_RANK[p.healthRead === 'read' ? (p.health ?? 'unread') : 'unread'], -(recency(p) ?? 0)],
+    sortValue: (p) => (p.healthRead === 'read' && p.health ? [HEALTH_RANK[p.health], -(recency(p) ?? 0)] : null),
   },
   recent: { id: 'recent', sortValue: recency },
 };

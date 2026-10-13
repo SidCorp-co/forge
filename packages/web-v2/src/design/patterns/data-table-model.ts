@@ -15,9 +15,10 @@ import {
 } from "@tanstack/react-table";
 import { useMemo } from "react";
 
-export type SortKey = string | number | null | undefined;
+type Key = string | number;
+export type SortKey = Key | null | undefined;
 /** What a column orders by. An array is compared element by element, so a tie on the first key falls to the second. */
-export type SortValue = SortKey | readonly SortKey[];
+export type SortValue = SortKey | readonly Key[];
 export type SortDirection = "asc" | "desc";
 
 export interface DataTableSort {
@@ -74,20 +75,21 @@ function compareKeys(a: string | number, b: string | number, columnId: string): 
   );
 }
 
-// Inside a tuple a missing key is larger than any present one, so it follows the same rule the column does.
 function compareValues(a: SortValue, b: SortValue, columnId: string): number {
-  const left = Array.isArray(a) ? (a as readonly SortKey[]) : [a as SortKey];
-  const right = Array.isArray(b) ? (b as readonly SortKey[]) : [b as SortKey];
-  for (let i = 0; i < Math.max(left.length, right.length); i++) {
+  const left = Array.isArray(a) ? (a as readonly Key[]) : [a as Key];
+  const right = Array.isArray(b) ? (b as readonly Key[]) : [b as Key];
+  for (let i = 0; i < Math.min(left.length, right.length); i++) {
     const x = left[i];
     const y = right[i];
-    if (x == null && y == null) continue;
-    if (x == null) return 1;
-    if (y == null) return -1;
+    if (x == null || y == null) {
+      throw new Error(
+        `DataTable column "${columnId}" has a null or undefined key inside an array sortValue: return null for the whole value to sort the row last, or give every row a key.`,
+      );
+    }
     const by = compareKeys(x, y, columnId);
     if (by !== 0) return by;
   }
-  return 0;
+  return left.length - right.length;
 }
 
 function assertColumns<Row>(columns: readonly DataTableModelColumn<Row>[], options: DataTableModelOptions): void {

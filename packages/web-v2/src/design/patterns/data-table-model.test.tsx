@@ -56,6 +56,12 @@ describe("useDataTableRows: how a column orders", () => {
     expect(ids({ sort: { id: "rank", desc: true } })).toEqual(["c", "a", "d", "b"]);
   });
 
+  it("orders an array that is a prefix of another before it, and reverses that exactly when descending", () => {
+    const columns: DataTableModelColumn<Item>[] = [{ id: "len", sortValue: (r) => (r.id === "a" ? [1] : [1, r.rank]) }];
+    expect(ids({ sort: { id: "len", desc: false } }, columns)[0]).toBe("a");
+    expect(ids({ sort: { id: "len", desc: true } }, columns).at(-1)).toBe("a");
+  });
+
   it("puts a null key last whichever way the column is ordered", () => {
     expect(ids({ sort: { id: "count", desc: false } }).at(-1)).toBe("c");
     expect(ids({ sort: { id: "count", desc: true } }).at(-1)).toBe("c");
@@ -137,6 +143,12 @@ describe("useDataTableRows: refuses what cannot be answered", () => {
   it("refuses two columns that share an id", () => {
     const columns: DataTableModelColumn<Item>[] = [{ id: "name" }, { id: "name" }];
     expect(() => ids({}, columns)).toThrow(/two columns with the id "name"/);
+  });
+
+  it("refuses a missing key inside an array, which no direction can place last", () => {
+    const columns: DataTableModelColumn<Item>[] = [{ id: "tuple", sortValue: (r) => [r.rank, r.count as number] }];
+    expect(() => ids({ sort: { id: "tuple", desc: false } }, columns)).toThrow(/"tuple" has a null or undefined key inside an array/);
+    expect(() => ids({ sort: { id: "tuple", desc: true } }, columns)).toThrow(/"tuple" has a null or undefined key inside an array/);
   });
 
   it("refuses a column that orders a number against a string", () => {

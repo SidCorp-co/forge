@@ -78,6 +78,13 @@ describe("a project whose rollup was not read", () => {
     expect(ids([unread("a"), read("b", { totalActive: 0, liveRuns: 0 })], by("health"))).toEqual(["b", "a"]);
   });
 
+  it("stays after every project whose health was read when the health sort runs the other way", () => {
+    const items = [unread("a"), stale("s", { health: "down" }), read("b", { totalActive: 0, liveRuns: 0 }), read("c", { blockers: [{} as never] })];
+    expect(ids(items, by("health", true)).slice(0, 2)).toEqual(["b", "c"]);
+    expect(ids(items, by("health", false)).slice(0, 2)).toEqual(["c", "b"]);
+    expect(ids(items, by("health", true)).slice(2).sort()).toEqual(["a", "s"]);
+  });
+
   it("keeps the order it was given under the rollup sorts, whatever stale health or activity it holds", () => {
     const a = stale("a", { health: "healthy", lastActivityAt: "2026-10-01T00:00:00Z" });
     const b = stale("b", { health: "down", lastActivityAt: "2026-10-09T00:00:00Z" });
