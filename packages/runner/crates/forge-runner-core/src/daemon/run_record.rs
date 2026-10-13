@@ -26,6 +26,7 @@ pub trait SessionOpener {
         issue_keys: &[String],
         name: &str,
         gate: Option<&crate::daemon::degraded::Condition>,
+        policy: &crate::daemon::policy_copy::PolicyCopy,
     ) -> crate::error::Result<(String, String)>;
 }
 
@@ -39,8 +40,9 @@ impl SessionOpener for CoreSessions<'_> {
         issue_keys: &[String],
         name: &str,
         gate: Option<&crate::daemon::degraded::Condition>,
+        policy: &crate::daemon::policy_copy::PolicyCopy,
     ) -> crate::error::Result<(String, String)> {
-        run_sessions::open(self.0, project_id, run_id, issue_keys, name, gate).await
+        run_sessions::open(self.0, project_id, run_id, issue_keys, name, gate, policy).await
     }
 }
 
@@ -101,8 +103,19 @@ pub async fn open_declared_runs(
             continue;
         }
         let name = run_sessions::session_name(&keys);
+        // What the row was declared under, which a declaration's retries never change.
+        let policy = match crate::daemon::policy_copy::for_open(led, &run.run_id) {
+            Ok(policy) => policy,
+            Err(e) => {
+                tracing::warn!(
+                    "[run-record] run {}: cannot read the policy copy it was declared under: {e}",
+                    run.run_id
+                );
+                continue;
+            }
+        };
         match opener
-            .open(&project_id, &run.run_id, &keys, &name, gate)
+            .open(&project_id, &run.run_id, &keys, &name, gate, &policy)
             .await
         {
             Ok((session_id, _)) => match led.attach_session(&run.run_id, &session_id) {
@@ -255,6 +268,7 @@ mod tests {
         answer: Result<(String, String), (u16, &'static str)>,
         seen: RefCell<Vec<(String, String, Vec<String>)>>,
         gates: RefCell<Vec<Option<crate::daemon::degraded::Verdict>>>,
+        policies: RefCell<Vec<crate::daemon::policy_copy::PolicyCopy>>,
     }
 
     impl SessionOpener for Spy {
@@ -265,7 +279,9 @@ mod tests {
             issue_keys: &[String],
             _name: &str,
             gate: Option<&crate::daemon::degraded::Condition>,
+            policy: &crate::daemon::policy_copy::PolicyCopy,
         ) -> crate::error::Result<(String, String)> {
+            self.policies.borrow_mut().push(policy.clone());
             self.seen.borrow_mut().push((
                 project_id.to_string(),
                 run_id.to_string(),
@@ -283,6 +299,7 @@ mod tests {
             answer,
             seen: RefCell::new(Vec::new()),
             gates: RefCell::new(Vec::new()),
+            policies: RefCell::new(Vec::new()),
         }
     }
 
@@ -323,6 +340,75 @@ mod tests {
         let s = spy(Ok(("sess-9".into(), "core-run-9".into())));
         assert_eq!(open_declared_runs(&s, &mut led, "boot-a", None).await, 1);
         assert_eq!(s.gates.borrow().as_slice(), [None]);
+    }
+
+    /// What the box actually put on the wire for the open, read off a core that
+    /// keeps the bodies it is sent.
+    async fn policy_on_the_wire(led: &mut Option<Ledger>) -> serde_json::Value {
+        let (url, sent) =
+            fake_core::serve_recording("200 OK", r#"{"sessionId":"sess-9","runId":"core-run-9"}"#)
+                .await;
+        let client = CoreClient::new(url, String::from("tok"));
+        let core = CoreSessions(&client);
+        assert_eq!(open_declared_runs(&core, led, "boot-a", None).await, 1);
+        let bodies = sent.lock().unwrap();
+        assert_eq!(bodies.len(), 1);
+        let body: serde_json::Value = serde_json::from_str(&bodies[0]).unwrap();
+        body.get("policy")
+            .cloned()
+            .expect("the open carries a policy field, always (ISS-1303)")
+    }
+
+    /// ISS-1303 criterion 11. The run carries the copy it was declared under,
+    /// read off its row, and not whatever is true when the sweep gets to it.
+    #[tokio::test]
+    async fn a_run_is_opened_carrying_the_policy_copy_its_row_was_declared_under() {
+        let mut led = Some(Ledger::open_in_memory().unwrap());
+        declared(led.as_mut().unwrap(), "run-1", "boot-a", &["ISS-1"]);
+        let copy = crate::daemon::policy_copy::PolicyCopy::Named {
+            plugin: "forge@forge-local".into(),
+            version: "3.36.542".into(),
+            commit: Some("867ef128cec692bbcf4780066fddc2bd350e06a0".into()),
+        };
+        led.as_ref()
+            .unwrap()
+            .record_policy_copy("run-1", &copy.to_stored())
+            .unwrap();
+        assert_eq!(policy_on_the_wire(&mut led).await, copy.to_wire());
+    }
+
+    /// ISS-1303 criterion 12. A row a build that recorded no copy declared is
+    /// sent as having none, which is true, and not as a copy this box guesses.
+    #[tokio::test]
+    async fn a_run_declared_by_a_build_that_recorded_no_copy_is_opened_not_recorded() {
+        let mut led = Some(Ledger::open_in_memory().unwrap());
+        declared(led.as_mut().unwrap(), "run-1", "boot-a", &["ISS-1"]);
+        assert_eq!(
+            policy_on_the_wire(&mut led).await,
+            serde_json::json!({ "named": false, "reason": "not_recorded" })
+        );
+    }
+
+    /// ISS-1303. A policy copy is a field of the row and not of the sweep, so a
+    /// refusal naming it is as final as one naming the run's name: it ends the
+    /// declaration, loudly, rather than sending the same bytes for ever.
+    #[tokio::test]
+    async fn a_refusal_naming_the_policy_copy_ends_the_run_and_says_which_field() {
+        let (mut led, url, sent) =
+            declared_against("400 Bad Request", fake_core::POLICY_REFUSED, &["ISS-1"]).await;
+        let client = CoreClient::new(url, String::from("tok"));
+        let core = CoreSessions(&client);
+
+        assert_eq!(open_declared_runs(&core, &mut led, "boot-a", None).await, 0);
+        assert_eq!(open_declared_runs(&core, &mut led, "boot-a", None).await, 0);
+
+        assert_eq!(sent.lock().unwrap().len(), 1, "sent once, never again");
+        let run = led.as_ref().unwrap().run("run-1").unwrap().unwrap();
+        assert!(run.ended_by.is_some());
+        assert!(run
+            .ended_reason
+            .unwrap_or_default()
+            .contains("policy: policy.version"));
     }
 
     fn declared(led: &mut Ledger, run_id: &str, boot: &str, issues: &[&str]) {

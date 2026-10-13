@@ -4911,12 +4911,16 @@ fn note_placement(
 ) {
     let now = master_build::Standing::this_box(&resolved.repo_path);
     let boot = crate::runner::inflight::boot_identity().unwrap_or_default();
+    // The copy of the policy this pane loads, from the same files it reads (ISS-1303).
+    let policy =
+        crate::daemon::policy_copy::PolicyCopy::placed_under(&resolved.repo_path).to_stored();
     if let Err(e) = led.note_master_placed(
         project_id,
         pane_name,
         &boot,
         &now.build,
         now.plugins.as_deref(),
+        Some(&policy),
     ) {
         tracing::warn!(
             "[master] {}: {pane_name} was placed and the build it was placed under could not be recorded ({e}); the next build will read it as outdated",
@@ -13795,7 +13799,7 @@ mod outdated_tests {
         )
         .unwrap();
         if let Some(build) = build {
-            led.note_master_placed("p", "forge-master-proj", "boot-a", build, None)
+            led.note_master_placed("p", "forge-master-proj", "boot-a", build, None, None)
                 .unwrap();
         }
     }
@@ -14236,6 +14240,7 @@ mod outdated_tests {
             "forge-master-proj",
             "boot-a",
             crate::update::VERSION_LINE,
+            None,
             None,
         )
         .unwrap();

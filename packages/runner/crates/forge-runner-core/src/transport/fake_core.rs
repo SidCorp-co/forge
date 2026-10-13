@@ -164,6 +164,8 @@ pub const FORM_REFUSED: &str = r#"{"code":"BAD_REQUEST","message":"Invalid input
 /// declaration. The one field of an open this box recomputes each sweep, so
 /// the same row can be refused now and accepted later.
 pub const GATE_REFUSED: &str = r#"{"code":"BAD_REQUEST","message":"Invalid input","details":{"formErrors":[],"fieldErrors":{"gate":["Too big: expected array to have <=24 items"]}}}"#;
+/// Core refusing a policy copy it cannot read, by the field, as `policyCopySchema` words it.
+pub const POLICY_REFUSED: &str = r#"{"code":"BAD_REQUEST","message":"Invalid input","details":{"formErrors":[],"fieldErrors":{"policy":["policy.version: must be a semantic version such as 3.36.542"]}}}"#;
 
 /// `409` — another box holds a lease the open would need. Correct, transient,
 /// and observed clearing on retry within 30 seconds.

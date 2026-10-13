@@ -126,7 +126,7 @@ whose status is not re-derived is a claim, not a status.
 | | Question | Answered in | Held in code |
 |---|---|---|---|
 | I1 | Policy admission, and monotone floors | `vision.html` §7 | not checked |
-| I2 | Pinning `policy_version` into the root session | `fact-projection.html` §4.2 | not checked |
+| I2 | Pinning `policy_version` into the root session | `fact-projection.html` §4.2 | partial: the run a box opens carries the plugin copy the box named (`devices/policy-copy.ts:readRunPolicy`, ISS-1303); no session inherits it and core admits none |
 | I3 | Version skew across the three artifacts | `architecture.html` §14 | not checked |
 | I4 | Forward-only migrations for pinned fact types | `architecture.html` §14 | not checked |
 | I5 | Forcing a policy upgrade onto an in-flight session | **open** | not checked |

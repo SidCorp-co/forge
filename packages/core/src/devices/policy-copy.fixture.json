@@ -1,0 +1,76 @@
+{
+  "accepted": [
+    {
+      "case": "an enabled copy with the commit its install recorded",
+      "body": {
+        "named": true,
+        "plugin": "forge@forge-local",
+        "version": "3.36.542",
+        "commit": "867ef128cec692bbcf4780066fddc2bd350e06a0"
+      }
+    },
+    {
+      "case": "an enabled copy whose install recorded no commit",
+      "body": { "named": true, "plugin": "forge@forge", "version": "3.36.542-rc.1" }
+    },
+    { "case": "the placed set could not be read", "body": { "named": false, "reason": "plugins_unknown" } },
+    { "case": "no forge plugin is installed", "body": { "named": false, "reason": "policy_plugin_absent" } },
+    {
+      "case": "forge is installed and not enabled for the repo",
+      "body": { "named": false, "reason": "policy_plugin_not_enabled" }
+    },
+    { "case": "two enabled forge installs apply", "body": { "named": false, "reason": "more_than_one_copy" } },
+    { "case": "the install is not one core can read", "body": { "named": false, "reason": "copy_unreadable" } },
+    { "case": "the run row was declared by a build that recorded none", "body": { "named": false, "reason": "not_recorded" } }
+  ],
+  "refused": [
+    {
+      "case": "a version that is not semver",
+      "body": { "named": true, "plugin": "forge@forge-local", "version": "latest" },
+      "names": "policy.version"
+    },
+    {
+      "case": "a version longer than 64 characters",
+      "body": {
+        "named": true,
+        "plugin": "forge@forge-local",
+        "version": "1.2.3-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "names": "policy.version"
+    },
+    {
+      "case": "a plugin id with no marketplace",
+      "body": { "named": true, "plugin": "forge", "version": "3.36.542" },
+      "names": "policy.plugin"
+    },
+    {
+      "case": "a commit that is not hex",
+      "body": { "named": true, "plugin": "forge@forge-local", "version": "3.36.542", "commit": "not-a-sha" },
+      "names": "policy.commit"
+    },
+    {
+      "case": "a commit shorter than seven characters",
+      "body": { "named": true, "plugin": "forge@forge-local", "version": "3.36.542", "commit": "abc12" },
+      "names": "policy.commit"
+    },
+    {
+      "case": "a key the schema does not name",
+      "body": { "named": true, "plugin": "forge@forge-local", "version": "3.36.542", "channel": "beta" },
+      "names": "channel"
+    },
+    { "case": "a named value that is neither true nor false", "body": { "named": "maybe" }, "names": "policy.named" },
+    { "case": "no named value at all", "body": { "plugin": "forge@forge-local", "version": "3.36.542" }, "names": "policy.named" },
+    { "case": "a reason outside the list", "body": { "named": false, "reason": "because" }, "names": "policy.reason" },
+    {
+      "case": "the core-only reason, which a box may not send",
+      "body": { "named": false, "reason": "not_reported" },
+      "names": "policy.reason"
+    },
+    {
+      "case": "an unnamed copy that still carries a version",
+      "body": { "named": false, "reason": "plugins_unknown", "version": "3.36.542" },
+      "names": "version"
+    },
+    { "case": "a policy that is not an object", "body": "3.36.542", "names": "policy" }
+  ]
+}

@@ -126,6 +126,8 @@
 
 ### Added
 
+- **A run now records which copy of the policy decided it.** The box reports the `forge` plugin copy its pane loaded, or says why it cannot, and the run keeps that. A copy core cannot read is refused by name.
+
 - **A project that ships by version tag can say so.** Name the tags in its release chain's last entry, such as `v*.*.*`, and an issue cannot close until a matching tag contains its landing commit. Other projects close as before.
 
 - **Deleting a memory note through an agent tool now says how many it removed.** The tool answered `deleted: true` where the web answers a count; both now answer the number of rows removed, `0` when none matched.
