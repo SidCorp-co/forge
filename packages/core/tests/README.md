@@ -20,10 +20,11 @@ it does not have one, `TEST_DATABASE_URL` is the only route into the suite, and
 socket surface as a broken suite.
 
 Whichever mode resolves the server, `tests/helpers/global-setup.ts` migrates
-**one template database** for the run and every test file clones it
+**one template database** and every test file clones it
 (`CREATE DATABASE ... TEMPLATE`, a file copy) in `tests/helpers/db.ts`. That
 replaces a container boot plus a full migration replay — measured at ~8.6s —
-per test file.
+per test file. Whose template it is, and whether it outlives the run, is the
+*Shared template* section below.
 
 **Why not just Testcontainers everywhere?** Cold boot is 3–5s per run, painful
 on every local edit-test loop.
@@ -32,16 +33,52 @@ on every local edit-test loop.
 long-lived Postgres. Testcontainers needs only Docker, which GitHub Actions'
 `ubuntu-latest` provides.
 
+### Shared template
+
+The template is a pure function of `drizzle/migrations/`, so on an instance that outlives the run
+(`TEST_DATABASE_URL`) it is built once and every run whose migrations match clones it:
+`forge_test_tpl_<24 hex>`, the hash of every file under that directory
+(`tests/helpers/shared-template.ts:hashMigrations`). A journal that differs by one entry, or a
+migration by one byte, is a different template and the two sit side by side. Global setup prints
+which one it took: `[integration] template forge_test_tpl_…, shared (…): reused in 0.2s`.
+
+`TEST_TEMPLATE_MODE` decides, and a value other than the two below is refused by name:
+
+| Value | Meaning |
+| ----- | ------- |
+| `shared` | One template per migration content on the instance. Needs `TEST_DATABASE_URL`. |
+| `fresh` | A private template this run builds and drops, as every run once did. |
+| unset | `fresh` when `CI` is set or the run starts a container of its own, otherwise `shared`. CI therefore never trusts a template it did not build. |
+
+How concurrent runs share one without stepping on each other:
+
+- **Build once.** A run takes a build lock (a Postgres advisory lock) before it looks, so two runs
+  entering together build one template and the second reuses it. The build happens under a staging
+  name and is renamed into place once its marker is written, so the final name never exists
+  half-built. The marker is the database's own comment, read without connecting to it.
+- **Held while in use.** Every run holds a shared advisory lock on its template for as long as its
+  connection lives, on a connection opened with `max_lifetime: 0` (postgres.js otherwise recycles a
+  connection after 30 to 60 minutes and the lock would go with it). A crash drops the lock with the
+  connection; no clock is involved. Teardown names a connection that was replaced under it.
+- **Reaped only when idle.** `reapAbandoned` drops a shared template only when it can take the
+  exclusive lock **and** the marker's last-used time (stamped when a run takes it and when it lets
+  go) is more than a day old. A template whose comment it cannot read is left alone.
+- **Never dropped by a run's own teardown.** A private (`fresh`) template is dropped by the run that
+  built it; a shared one is not, by the run that built it or by any other.
+- **Refused, not repaired.** A shared name that exists without a valid marker fails setup naming
+  it, and is neither rebuilt nor dropped. A worker cloning a template that has vanished fails naming
+  it (`db.ts:explainCloneFailure`).
+
 ### Concurrent runs on one server
 
-Every database a run creates is named for that run: the template is
-`forge_test_tpl_<stamp>_<rand>`, each file's clone is
+Every database a run creates is named for that run: a private template is
+`forge_test_tpl_<token>`, each file's clone is
 `test_w_<token>_<id>_<stamp>_<rand>` and a migration case's is
 `test_case_<token>_<tag>_<stamp>_<rand>`, all minted in
-`tests/helpers/scratch-db.ts`. The token is the template's own stamp, so a run
-can name its own databases and no other run's. A run drops only what it created;
-anything a crashed run left behind is dropped by `reapAbandoned` once it is
-older than any live run could be.
+`tests/helpers/scratch-db.ts`. The token is minted per run by global setup and read from
+`TEST_PG_RUN_TOKEN`, **not** taken from the template's name, because runs sharing a template must
+still sweep only their own databases. A run drops only what it created; anything a crashed run left
+behind is dropped by `reapAbandoned` once it is older than any live run could be.
 
 None of those drops happens where vitest is timing something. `DROP DATABASE`
 forces a cluster-wide checkpoint and waits for it, which is a wait no test owns,
@@ -108,7 +145,7 @@ pnpm --filter @forge/core test:integration
 ```
 
 `TEST_DATABASE_URL` can point at any Postgres you have handy — including one
-other runs are using. See *Concurrent runs on one server* above for what keeps
+other runs are using. See *Shared template* and *Concurrent runs on one server* above for what keeps
 them apart.
 
 ### Integration tests — CI-style (Testcontainers)
