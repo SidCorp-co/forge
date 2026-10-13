@@ -21,11 +21,16 @@ import { materializeJobUsage } from '../usage-records/materialize.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { SYNTHETIC_REAP_ERRORS, syncAgentSessionLifecycle } from './agent-session-link.js';
+import { endBlockedJob } from './blocked.js';
+import { isBlockedReason } from './blocked-reason.js';
+import { jobBlockedRoutes } from './blocked-routes.js';
+import { UNREAD_BY_OLDER_RUNNER } from './blocked-wire.js';
 import { cancelJob, JobCancelError } from './cancel-job.js';
+import { failOccupyingJob } from './fail-job.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { isResumeFailedError, reclassifyAbortedResume } from './handle-resume-failed.js';
 import { readJobGate } from './job-queries.js';
-import { salvageSchema, salvageSet } from './prior-attempts.js';
+import { salvageSchema } from './prior-attempts.js';
 import { JobResumeError, resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
 import { deriveSessionFinal } from './session-transcript.js';
@@ -84,6 +89,7 @@ async function loadJob(jobId: string) {
 
 export const jobLifecycleDeviceRoutes = new Hono<{ Variables: DeviceVars }>();
 jobLifecycleDeviceRoutes.route('/', jobTurnVerdictRoutes);
+jobLifecycleDeviceRoutes.route('/', jobBlockedRoutes);
 
 // ISS-449 (ISS-442 C3 / I3) — explicit runner ACK for the dispatch→ack hop.
 // The runner calls this right after its pre-claim preflight passes (ISS-451)
@@ -405,35 +411,24 @@ jobLifecycleDeviceRoutes.post(
       throw conflict('job is not in a runnable state', 'INVALID_STATE');
     }
 
-    let [updated] = await applyKernelTransition(db, {
-      entity: 'job',
-      to: 'failed',
-      set: { error: input.error, finishedAt: new Date(), ...salvageSet(input.salvage) },
-      where: and(eq(jobs.id, id), eq(jobs.status, job.status)),
-      fromStatus: job.status,
-      reason: input.error,
-      actor: { type: 'runner', id: device.id },
-      source: 'lifecycle',
-    });
-
-    if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
-
-    // ISS-283 — final transcript derive (see /complete). Fire-and-forget.
-    if (updated.agentSessionId) {
-      void deriveSessionFinal(updated.id, updated.agentSessionId);
-    }
-    void materializeJobUsage(updated);
-
-    const precomputedRetry: RetryOutcome | undefined = undefined;
-    if (isResumeFailedError(input.error)) {
-      updated = await reclassifyAbortedResume(updated);
+    // A runner that predates the blocked door ends a pane stopped on a question with this plain
+    // failure. A retry of the job would stop on the same question, so it is held like the other.
+    if (isBlockedReason(input.error)) {
+      const ended = await endBlockedJob(job, device.id, {
+        error: input.error,
+        asked: UNREAD_BY_OLDER_RUNNER,
+      });
+      return c.json({
+        ...ended,
+        error: input.error,
+        retry: {
+          scheduled: false,
+          reason: ended.heldJobId ? 'awaiting_decision' : 'blocked_on_question',
+        },
+      });
     }
 
-    // ISS-280 — shared finalize path (see /complete).
-    const retry = await finalizeFailedJob(updated, {
-      error: input.error,
-      precomputedRetry,
-    });
+    const { updated, retry } = await failOccupyingJob(job, device.id, input);
 
     return c.json({
       jobId: updated.id,

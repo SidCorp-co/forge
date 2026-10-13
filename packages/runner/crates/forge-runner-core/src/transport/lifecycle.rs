@@ -73,16 +73,60 @@ async fn send(client: &CoreClient, url: &str, body: serde_json::Value) -> Result
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        let said = super::status::refused("lifecycle", code, &text);
-        if code == 403 || code == 409 {
-            return Err(Error::Other(format!(
-                "{}: {said}",
-                crate::transport::events::DISOWNED
-            )));
-        }
-        return Err(Error::Other(said));
+        return Err(refusal(code, &text));
     }
     Ok(())
+}
+
+/// What a non-2xx answer from a lifecycle route is, with a job taken away from
+/// this box marked as disowned.
+fn refusal(code: u16, text: &str) -> Error {
+    let said = super::status::refused("lifecycle", code, text);
+    if code == 403 || code == 409 {
+        return Error::Other(format!("{}: {said}", crate::transport::events::DISOWNED));
+    }
+    Error::Other(said)
+}
+
+/// What core did with a blocked report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockedDoor {
+    /// Core took the question and ended the job.
+    Recorded,
+    /// This core has no such route, so nothing was recorded and nothing ended.
+    Absent,
+}
+
+/// The marker core's not-found handler writes for a route it does not have;
+/// a missing job says `job not found` instead.
+const ROUTE_ABSENT: &str = "Not Found: POST";
+
+/// End a job that was stopped on a question, carrying what it asked
+/// (`daemon::job_asked::Asked::to_json`) so core can put it before a person.
+pub async fn blocked(
+    client: &CoreClient,
+    job_id: &str,
+    error: &str,
+    asked: &serde_json::Value,
+) -> Result<BlockedDoor> {
+    let url = client.url(&format!("/api/jobs/{job_id}/blocked"));
+    let resp = client
+        .http()
+        .post(&url)
+        .bearer_auth(client.device_token())
+        .json(&serde_json::json!({ "error": error, "asked": asked }))
+        .send()
+        .await
+        .map_err(|e| Error::Other(format!("lifecycle request: {e}")))?;
+    if resp.status().is_success() {
+        return Ok(BlockedDoor::Recorded);
+    }
+    let code = resp.status().as_u16();
+    let text = resp.text().await.unwrap_or_default();
+    if code == 404 && text.contains(ROUTE_ABSENT) {
+        return Ok(BlockedDoor::Absent);
+    }
+    Err(refusal(code, &text))
 }
 
 pub async fn turn_is_job_end(client: &CoreClient, job_id: &str) -> bool {
@@ -214,5 +258,51 @@ mod tests {
             .await
             .expect_err("a 400 must not report success");
         assert!(!crate::transport::events::is_disowned(&e), "{e}");
+    }
+
+    #[tokio::test]
+    async fn a_core_with_no_blocked_route_is_absent_and_a_missing_job_is_not() {
+        let asked = serde_json::json!({"kind":"unread","why":"x"});
+        let url = serve_once(
+            "404 Not Found",
+            r#"{"code":"NOT_FOUND","message":"Not Found: POST /api/jobs/job-1/blocked"}"#,
+        )
+        .await;
+        assert_eq!(
+            blocked(&client(url), "job-1", "ended", &asked)
+                .await
+                .unwrap(),
+            BlockedDoor::Absent
+        );
+        let url = serve_once(
+            "404 Not Found",
+            r#"{"code":"NOT_FOUND","message":"job not found"}"#,
+        )
+        .await;
+        let e = blocked(&client(url), "job-1", "ended", &asked)
+            .await
+            .expect_err("a missing job is not a missing route");
+        assert!(!crate::transport::events::is_disowned(&e), "{e}");
+    }
+
+    #[tokio::test]
+    async fn a_recorded_blocked_report_says_so_and_a_taken_job_is_disowned() {
+        let asked = serde_json::json!({"kind":"unread","why":"x"});
+        let url = serve_once("200 OK", r#"{"jobId":"job-1"}"#).await;
+        assert_eq!(
+            blocked(&client(url), "job-1", "ended", &asked)
+                .await
+                .unwrap(),
+            BlockedDoor::Recorded
+        );
+        let url = serve_once(
+            "409 Conflict",
+            r#"{"code":"INVALID_STATE","message":"job is not in a runnable state"}"#,
+        )
+        .await;
+        let e = blocked(&client(url), "job-1", "ended", &asked)
+            .await
+            .expect_err("a 409 must not report success");
+        assert!(crate::transport::events::is_disowned(&e), "{e}");
     }
 }

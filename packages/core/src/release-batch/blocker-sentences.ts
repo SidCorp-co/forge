@@ -288,6 +288,9 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
     const holds = (details?.runners as RunnerHold[] | undefined) ?? [];
     return runnersHeldSentence(holds) ?? remedy;
   }
+  if (code === 'BATCH_IN_FLIGHT' && details?.decision && typeof details.decision === 'object') {
+    return waitingOnDecisionSentence((details.decision as { displayId?: string | null }).displayId);
+  }
   if (code === 'RELEASE_ROSTER_EMPTY' && typeof details?.nearGate === 'number') {
     return nearGateSentence(details.nearGate);
   }
@@ -336,6 +339,12 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   const waiting = details?.waiting;
   if (typeof waiting === 'number') return `${waiting} waiting. ${remedy}`;
   return remedy;
+}
+
+/** A release already in flight that is held on a person's answer, and where the answer is owed. */
+function waitingOnDecisionSentence(displayId: string | null | undefined): string {
+  const where = displayId ? `open on \`${displayId}\`` : "open among this project's questions";
+  return `A release is already running for this project and is waiting on a decision: its agent stopped on a question, ${where}. Answer it there and that release goes on; or abort it with what you found. A second release would claim the same issues, so it is not started.`;
 }
 
 /** The three carried codes, composed from the range and the issues the check named (ISS-1386). */

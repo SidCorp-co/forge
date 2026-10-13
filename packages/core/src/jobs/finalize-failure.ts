@@ -73,6 +73,11 @@ export interface FinalizeFailedJobOptions {
    * so `finalizeFailedJob` skips `scheduleAutoRetryWithVerify`.
    */
   precomputedRetry?: RetryOutcome | undefined;
+  /**
+   * The job's run goes on without a retry of it, because something else under the run holds its
+   * place (a held successor waiting on a person): the run is not closed with the job.
+   */
+  runContinues?: boolean | undefined;
 }
 
 async function reconcileIssueStatusAfterFailure(
@@ -220,7 +225,7 @@ export async function finalizeFailedJob(
   // retryPending so we leave the parent pipeline_run open when a retry has
   // just been scheduled; the retry shares the same run.
   await syncAgentSessionLifecycle(updated, 'failed', {
-    retryPending: retry.scheduled === true,
+    retryPending: retry.scheduled === true || opts.runContinues === true,
   });
 
   roomManager.publish(projectRoom(updated.projectId), {

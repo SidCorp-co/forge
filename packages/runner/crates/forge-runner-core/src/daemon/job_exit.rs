@@ -47,6 +47,9 @@ pub const IDLE_BEFORE_FINISHED: Duration = Duration::from_secs(15 * 60);
 /// call that writes nothing for the whole window, which is concluded with it.
 pub const SILENT_BEFORE_ABANDONED: Duration = Duration::from_secs(60 * 60);
 
+/// What a job ended on a question says it was stopped on; core recognises a plain failure carrying it.
+pub const BLOCKED_PHRASE: &str = "stopped on a question only a human can answer";
+
 /// A duration as every text about a job pane states it, so the line an
 /// operator reads at the ceiling and the reason core is told agree (ISS-1231).
 pub fn minutes(ms: i64) -> String {
@@ -228,7 +231,7 @@ impl Verdict {
                 minutes(quiet_for)
             ),
             Verdict::Blocked { quiet_for } => format!(
-                "the job's pane `{pane}` has been stopped on a question only a human can answer for {} — nothing on this box answers a job pane's question, so that wait had no end of its own and the slot was holding it",
+                "the job's pane `{pane}` has been {BLOCKED_PHRASE} for {} — nothing on this box answers a job pane's question, so that wait had no end of its own and the slot was holding it",
                 minutes(quiet_for)
             ),
             Verdict::Silent { quiet_for } => format!(
@@ -318,6 +321,15 @@ mod tests {
 
     fn ended(at: i64) -> Option<Reported> {
         reported(Doing::Idle, Event::Stopped, at)
+    }
+
+    #[test]
+    fn the_blocked_reason_carries_the_phrase_core_recognises_it_by() {
+        let reason = Verdict::Blocked { quiet_for: IDLE }
+            .reason("forge-job-j1")
+            .expect("a blocked pane is ended");
+        assert!(reason.contains(BLOCKED_PHRASE), "{reason}");
+        assert!(reason.contains("for 15m"), "{reason}");
     }
 
     #[test]
