@@ -59,6 +59,9 @@ function nextSort<Row>(column: DataTableColumn<Row>, current: DataTableSort | nu
   return directions.includes(other) ? { id: column.id, desc: other === "desc" } : current;
 }
 
+// The header cell gives up its padding to the button, so the whole cell is what a press lands on.
+const DENSITY_PY = { paddingTop: "var(--density-row-py)", paddingBottom: "var(--density-row-py)" };
+
 function SortHeader<Row>({
   column,
   active,
@@ -73,7 +76,11 @@ function SortHeader<Row>({
     <button
       type="button"
       onClick={onActivate}
-      className="inline-flex cursor-pointer items-center gap-1 rounded-sm [font:inherit] [letter-spacing:inherit] [text-transform:inherit] hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+      style={DENSITY_PY}
+      className={cn(
+        "flex min-h-6 w-full cursor-pointer items-center gap-1 px-4 [font:inherit] [letter-spacing:inherit] [text-transform:inherit] hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+        column.align === "end" && "justify-end",
+      )}
     >
       {column.header}
       <Icon
@@ -130,6 +137,7 @@ export function DataTable<Row>({
                 aria-sort={column.sortValue ? (sorted ? ARIA_SORT[sorted.desc ? "desc" : "asc"] : "none") : undefined}
                 aria-label={column.sortValue ? undefined : column.headerLabel}
                 className={cn(column.align === "end" && "text-right", column.headerClassName)}
+                style={column.sortValue ? { padding: 0 } : undefined}
               >
                 {column.sortValue ? (
                   <SortHeader column={column} active={active} onActivate={() => activate(column)} />
