@@ -206,6 +206,8 @@ const whole = (label: string, min: number, max: number) =>
     .min(min, `${label} must be at least ${min}.`)
     .max(max, `${label} must be at most ${max}.`);
 
+const BACKLOG_LIMIT = whole("Backlog rows", 1, 100);
+
 export const WEEKLY_INCOMPLETE =
   "Fill in the pinned issue, the judge provider id and the judge model before turning the weekly reading on.";
 export const BACKLOG_NEEDS_INTAKE_GATE_OFF =
@@ -217,10 +219,7 @@ export const pipelineSchema: z.ZodType<PipelineDraft, PipelineDraft> = z
     states: z.record(z.string(), stage),
     mcpServers: z.record(z.string(), z.unknown()),
     intakeGate: z.object({ enabled: z.boolean(), notify: z.boolean() }),
-    poolBacklog: z.object({
-      statuses: z.array(z.string()),
-      limit: whole("Backlog rows", 1, 100),
-    }),
+    poolBacklog: z.object({ statuses: z.array(z.string()), limit: z.number() }),
     knowledgePromotion: z.object({
       enabled: z.boolean(),
       candidatesPerRun: whole("Proposals per night", 1, 10),
@@ -243,6 +242,15 @@ export const pipelineSchema: z.ZodType<PipelineDraft, PipelineDraft> = z
       weekly.judgeModel.trim() !== "";
     if (weekly.enabled && !complete) {
       ctx.addIssue({ code: "custom", path: ["assistantWeekly", "enabled"], message: WEEKLY_INCOMPLETE });
+    }
+    // The row limit is on screen, and written, only while some status is admitted.
+    if (draft.poolBacklog.statuses.length > 0) {
+      const limit = BACKLOG_LIMIT.safeParse(draft.poolBacklog.limit);
+      if (!limit.success) {
+        for (const issue of limit.error.issues) {
+          ctx.addIssue({ code: "custom", path: ["poolBacklog", "limit"], message: issue.message });
+        }
+      }
     }
     if (draft.intakeGate.enabled && draft.poolBacklog.statuses.includes("draft")) {
       ctx.addIssue({

@@ -134,10 +134,17 @@ describe("pipelineSchema", () => {
 	it("bounds the counts the screen states a maximum for", () => {
 		const d = base();
 		d.knowledgePromotion.candidatesPerRun = 11;
+		d.poolBacklog.statuses = ["draft"];
 		d.poolBacklog.limit = 0;
 		expect(issues(d)).toEqual([
-			"poolBacklog.limit: Backlog rows must be at least 1.",
 			"knowledgePromotion.candidatesPerRun: Proposals per night must be at most 10.",
+			"poolBacklog.limit: Backlog rows must be at least 1.",
 		]);
+	});
+
+	it("does not bound a backlog limit while no status is admitted, since it is neither shown nor written", () => {
+		const d = base();
+		d.poolBacklog.limit = 0;
+		expect(issues(d)).toEqual([]);
 	});
 });

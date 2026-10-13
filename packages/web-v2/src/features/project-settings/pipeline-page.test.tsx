@@ -309,6 +309,19 @@ describe("a value the page cannot accept", () => {
 		expect(configWrites).toEqual([]);
 	});
 
+	it("names a backlog limit outside its bounds, and stops naming it once the backlog is switched off", async () => {
+		mountPage();
+		await ready();
+		toggle("Show a backlog to this project's master agents");
+		type("Backlog rows a master may read at once", "0");
+		await screen.findByText("Backlog rows must be at least 1.");
+		expect(saveButton()).toBeDisabled();
+		toggle("Show a backlog to this project's master agents");
+		await waitFor(() => expect(screen.queryByText("Backlog rows must be at least 1.")).toBeNull());
+		expect(screen.queryByText(/Fix what is marked above/)).toBeNull();
+		expect(screen.getByText("No unsaved changes.")).toBeInTheDocument();
+	});
+
 	it("names a count outside its bounds beside the field", async () => {
 		mountPage();
 		await ready();
