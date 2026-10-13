@@ -353,6 +353,14 @@ describe("drawerRunChip — one header reading whichever screen opens the drawer
     expect(drawerRunChip(queuedRun, "queued")).toBe(drawerRunChip(queuedRun, null));
     expect(drawerRunChip(runOf("running", [att("running")]), null)).toBe("running");
   });
+  it("gives one chip for one summary whatever the issue row says beside it", () => {
+    const handedOff = runOf("running", [att("dispatched")]);
+    expect(drawerRunChip(handedOff, "queued")).toBe(drawerRunChip(handedOff, null));
+    expect(drawerRunChip(handedOff, "queued")).toBe("running");
+    const waiting = runOf("running", [att("queued")]);
+    expect(drawerRunChip(waiting, "running")).toBe(drawerRunChip(waiting, null));
+    expect(drawerRunChip(waiting, "running")).toBe("queued");
+  });
   it("keeps a paused run paused whatever the issue's session, queued job or attempts say", () => {
     expect(drawerRunChip(runOf("paused"), "running")).toBe("paused");
     expect(drawerRunChip(runOf("paused"), "queued")).toBe("paused");

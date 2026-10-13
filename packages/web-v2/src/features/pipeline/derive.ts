@@ -83,17 +83,19 @@ export function runSummaryReading(
 
 /**
  * The drawer header's chip, one reading whichever screen opened it. A running pipeline run is as
- * live as its step, so while it is running the header shows its agent's reading: the issue row's
- * (`runStatusChip`) when the board opened it, else the run summary's own — the Ops drawer has no
- * issue row. A paused, finished or cancelled run keeps its own status.
+ * live as its step, so while it is running the header shows its agent's reading: the run summary's
+ * own where it names a live job (the one answer, which the Ops drawer and the board both hold), and
+ * the issue row's (`runStatusChip`) only where the summary names none. A paused, finished or
+ * cancelled run keeps its own status.
  */
 export function drawerRunChip(
   run: Pick<PipelineRunSummary, "status" | "attempts" | "lastSessionBeatAt">,
   issueRun: StatusKey | null,
 ): StatusKey {
   if (run.status !== "running") return runStatusToStatusKey(run.status);
-  if (issueRun === "running" || issueRun === "queued") return issueRun;
-  return runSummaryReading(run) ?? "running";
+  const reading = runSummaryReading(run);
+  if (reading !== null) return reading;
+  return issueRun === "running" || issueRun === "queued" ? issueRun : "running";
 }
 
 /** Format an estimated cost in USD. `$X.XX`, with small-value and zero cases. */
