@@ -1,11 +1,10 @@
 "use client";
 
-// The one file that imports react-hook-form and its resolver. A page holds ONE form: its whole
-// draft, in the stored document's own shape where the page has one. A feature describes its draft
-// and its zod schema and never sees the library, so a new major of it is a change to this file.
+// The one file that imports react-hook-form and its resolver. A page holds ONE form, its whole
+// draft; a feature describes the draft and its zod schema and never sees the library.
 //
-// A re-read of the document never takes the fresh one whole: the held edits ARE a patch, replayed
-// over what is stored now. `takeStored` is the single exception, reached only by an act saying so.
+// A re-read never takes the fresh document whole: the held edits ARE a patch, replayed over what is
+// stored now. `takeStored` is the one exception, reached only by an act saying so.
 
 import {
   canonicalJson,
@@ -27,29 +26,25 @@ export interface SettingsFormOptions<T extends FieldValues> {
   read: T;
   /** What the whole page may hold. Its refusals are named beside the field they are about. */
   schema?: ZodType<T, T>;
-  /** Where a path of the stored document sits in the draft. The draft's own paths where omitted;
-   *  null where the draft does not render that path, so no edit of the person's stands there. */
+  /** Where a path of the stored document sits in the draft: the same path where omitted, null
+   *  where the draft does not render it. */
   locate?: (path: readonly string[]) => string[] | null;
-  /** The shape two drafts are compared in for `dirty`, where the draft carries what the write does
-   *  not (a blank row, an order that means nothing). The draft itself where omitted. */
+  /** The shape two drafts are compared in for `dirty`; the draft itself where omitted. */
   comparable?: (draft: T) => unknown;
 }
 
 export interface SettingsForm<T> {
   draft: T;
-  /** The document as the draft was last seeded from it: what a save is the difference from. */
+  /** The draft as last seeded from the document: what a save is the difference from. */
   seeded: T;
   setDraft: (next: T | ((current: T) => T)) => void;
-  /** Whether the draft differs by value from what was read. */
   dirty: boolean;
-  /** Whether the schema refuses the draft as it stands. */
   invalid: boolean;
   /** What the schema says is wrong at this path of the draft (`previewUrls.0.url`), if anything. */
   errorAt: (path: string) => string | undefined;
-  /** Puts the draft back to what was read. */
   discard: () => void;
-  /** Runs `write` with the draft when the schema accepts it. Resolves true once it has run, false
-   *  where the draft was refused and nothing was sent. What `write` throws is thrown on. */
+  /** Runs `write` with the draft when the schema accepts it: true once it has run, false where
+   *  the draft was refused. What `write` throws is thrown on. */
   save: (write: (draft: T) => Promise<unknown> | unknown) => Promise<boolean>;
   /** Take the stored values at these document paths on the next read. The edits standing there
    *  are replaced — and come back in `replaced` — while the rest are kept. */
@@ -59,9 +54,7 @@ export interface SettingsForm<T> {
 }
 
 interface Yielded {
-  /** The path inside the draft whose edit gives way to the stored value. */
   inside: string[];
-  /** The same path as the document names it, which is what the person is told. */
   document: string;
 }
 

@@ -28,10 +28,9 @@ function baseAt(stored: unknown, patch: Record<string, unknown>): Record<string,
 }
 
 /**
- * The write a page owes: the keys its draft moved, and the values the store held at those keys when
- * the page read them. `seeded` and `held` are the two drafts as the document would hold them; the
- * base comes from the document itself, so a default the draft filled in is never mistaken for a
- * value somebody stored. Null where nothing moved, which is a save that sends nothing.
+ * The write a page owes: the keys its draft moved, and the values the store held at them. The base
+ * comes from the document itself, so a default the draft filled in is never taken for a stored
+ * value. Null where nothing moved.
  */
 export function documentWrite(seeded: unknown, held: unknown, stored: unknown): DocumentWrite | null {
   const { patch } = buildDocumentPatch(seeded, held);
