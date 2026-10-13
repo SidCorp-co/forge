@@ -1,10 +1,6 @@
 /** ISS-1273 — who is working one issue, on whichever of the three lanes opened the work: the job
  *  lane's `agent_sessions.metadata.issueId`, the run-session lane's `issue_leases` row, and
- *  `issues.session_context.lease`. `none` carries its reason: an absent field reads as quiet.
- *
- *  ISS-1320 — a session is HELD or merely OPENED OVER the issue. The lease row says who holds it
- *  now and is gone once a run gives the issue back; the run's recorded group says who was ever
- *  opened over it. Only a holder is a worker, and the absence sentence counts the opened-over. */
+ *  `issues.session_context.lease`. `none` carries its reason: an absent field reads as quiet. */
 
 import {
   type LeaseReading,
@@ -20,9 +16,7 @@ export interface WorkerSession {
   id: string;
   status: string;
   lane: SessionWorkerLane;
-  /** True for a job-lane session, which carries its one issue, and for a run session whose
-   *  `issue_leases` row for the issue still exists. False for a run session that was opened over
-   *  the issue and has since given it back: it may be running, on another issue of its group. */
+  /** A run session opened over the issue and since given back is not a holder, live or not. */
   holds: boolean;
 }
 
@@ -44,7 +38,6 @@ export function unreadableWorker(detail: string): IssueWorker {
   return { lane: 'unreadable', detail };
 }
 
-/** A session working THIS issue: live, and holding it. */
 export function liveSession(session: Pick<WorkerSession, 'status' | 'holds'>): boolean {
   return session.holds && (session.status === 'queued' || session.status === 'running');
 }
@@ -75,10 +68,8 @@ export function classifyIssueWorker(input: {
   return { lane: 'none', detail: absenceOf(claim, input.sessions) };
 }
 
-/** Why no lane answered. What is absent is a LIVE HOLDING session, and the clause says what it
- *  counted and names those sessions' statuses rather than judging them: `idle` is neither live
- *  nor terminal. It may not end at a bare colon either — `session-claim.ts` leaves `detail` empty
- *  for every verdict but `malformed`. */
+/** Why no lane answered: no LIVE HOLDING session, the statuses of those counted named rather than
+ *  judged (`idle` is neither live nor terminal), and no bare colon — `detail` is empty but for `malformed`. */
 function absenceOf(claim: LeaseReading | null, sessions: readonly WorkerSession[]): string {
   return `${sessionClause(sessions)}, and ${claimClause(claim)}`;
 }

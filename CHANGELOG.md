@@ -3158,7 +3158,7 @@
 
 ### Fixed
 
-- **An issue's "no one is working it" line counts the sessions that were opened over it.** It counted only the runs still holding the issue, so an issue worked by six runs read as one, and the statuses it listed were that one's. It now counts every session opened over the issue and lists their statuses, and a run that is still going on another issue is not mistaken for its worker (ISS-1320).
+- **The "nobody is working it" line counts every session opened over the issue.** It counted only runs still holding it, so six runs read as one; it also lists all their statuses (ISS-1320).
 - **An empty product-map screen sends an admin to where it is filled.** Open Automation now lands on the Improve tab, and the words say to enable the Standing product-map refresh there, then run it.
 - **A release pane that stops on a question no longer asks it again every minute.** The question now lands on the release's issues, the release waits, a second press is refused by name, and the answer restarts it.
 - **The run drawer opened from Ops says Queued for a run nothing has started.** It read running, unlike the board, and offered Pause and Stop. It now agrees, names its issue, and offers both once work starts.
