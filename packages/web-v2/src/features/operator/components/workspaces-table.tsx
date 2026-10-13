@@ -1,28 +1,65 @@
 "use client";
 
+import { useMemo } from "react";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  DataTable,
+  type DataTableColumn,
   EmptyState,
-  SegmentedControl,
   Skeleton,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
-  Table,
 } from "@/design";
 import { formatCount, formatMinutes, formatUsd } from "../format";
 import type { AdminWorkspaceRow, OperatorWorkspaceSort } from "../types";
 
-const SORTS: { value: OperatorWorkspaceSort; label: string }[] = [
-  { value: "runs", label: "Runs" },
-  { value: "spend", label: "Spend" },
-  { value: "leadTime", label: "Lead time" },
+const SORTS: readonly OperatorWorkspaceSort[] = ["runs", "spend", "leadTime"];
+const ROW_LIMIT = 10;
+
+// The server ranks the workspaces, largest first, and has no ascending ranking to offer.
+const RANKED = { sortDirections: ["desc"], firstSort: "desc", align: "end" } as const;
+
+const COLUMNS: DataTableColumn<AdminWorkspaceRow>[] = [
+  { id: "workspace", header: "Workspace", cellClassName: "font-mono", cell: (r) => r.slug },
+  {
+    id: "runs",
+    header: "Runs",
+    ...RANKED,
+    cellClassName: "font-mono tabular-nums",
+    sortValue: (r) => r.runs,
+    cell: (r) => formatCount(r.runs),
+  },
+  {
+    id: "spend",
+    header: "Spend",
+    ...RANKED,
+    cellClassName: "font-mono tabular-nums",
+    sortValue: (r) => r.spendUsd,
+    cell: (r) => formatUsd(r.spendUsd),
+  },
+  {
+    id: "leadTime",
+    header: "Median lead",
+    ...RANKED,
+    cellClassName: "font-mono tabular-nums",
+    sortValue: (r) => r.medianLeadTimeMin,
+    cell: (r) => formatMinutes(r.medianLeadTimeMin),
+  },
+  {
+    id: "open",
+    header: "Open",
+    align: "end",
+    cellClassName: "font-mono tabular-nums",
+    cell: (r) => formatCount(r.openIssues),
+  },
 ];
+
+function toWorkspaceSort(id: string): OperatorWorkspaceSort {
+  const sort = SORTS.find((s) => s === id);
+  if (!sort) throw new Error(`The workspaces table cannot rank by "${id}": the server ranks by ${SORTS.join(", ")}.`);
+  return sort;
+}
 
 export function WorkspacesTableSkeleton() {
   return (
@@ -48,11 +85,11 @@ export function WorkspacesTable({
   sort: OperatorWorkspaceSort;
   onSortChange: (sort: OperatorWorkspaceSort) => void;
 }) {
+  const shown = useMemo(() => rows.slice(0, ROW_LIMIT), [rows]);
   return (
     <Card>
       <CardHeader>
         <CardTitle>Top workspaces</CardTitle>
-        <SegmentedControl options={SORTS} value={sort} onChange={onSortChange} />
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
@@ -62,28 +99,16 @@ export function WorkspacesTable({
             mascot={false}
           />
         ) : (
-          <Table className="min-w-[520px]">
-            <THead>
-              <TR>
-                <TH scope="col">Workspace</TH>
-                <TH scope="col" className="text-right">Runs</TH>
-                <TH scope="col" className="text-right">Spend</TH>
-                <TH scope="col" className="text-right">Median lead</TH>
-                <TH scope="col" className="text-right">Open</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {rows.slice(0, 10).map((r) => (
-                <TR key={r.projectId}>
-                  <TD className="font-mono">{r.slug}</TD>
-                  <TD className="text-right font-mono tabular-nums">{formatCount(r.runs)}</TD>
-                  <TD className="text-right font-mono tabular-nums">{formatUsd(r.spendUsd)}</TD>
-                  <TD className="text-right font-mono tabular-nums">{formatMinutes(r.medianLeadTimeMin)}</TD>
-                  <TD className="text-right font-mono tabular-nums">{formatCount(r.openIssues)}</TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
+          <DataTable
+            aria-label="Top workspaces"
+            className="min-w-[520px]"
+            rows={shown}
+            columns={COLUMNS}
+            getRowId={(r) => r.projectId}
+            sort={{ id: sort, desc: true }}
+            onSortChange={(s) => onSortChange(toWorkspaceSort(s.id))}
+            manualSort
+          />
         )}
       </CardContent>
     </Card>
