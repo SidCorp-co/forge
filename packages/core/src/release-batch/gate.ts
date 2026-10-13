@@ -18,14 +18,16 @@ export const RELEASE_GATE_STATUS: IssueStatus = 'awaiting_release';
 /** Thrown where a project declares a release chain and nothing to release onto. */
 export class ReleaseTargetUndeclaredError extends Error {
   readonly code = 'RELEASE_TARGET_UNDECLARED';
+  /** The sentence without its code, for a caller that prefixes the code itself. */
+  readonly detail: string;
   constructor(
     readonly projectId: string,
     readonly releaseChain: ReleaseChain,
   ) {
-    super(
-      `RELEASE_TARGET_UNDECLARED: project ${projectId} declares a release chain ending at '${chainLiveBranch(releaseChain) ?? chainStartBranch(releaseChain)}' but has no active deploy binding carrying the 'live' stage, so there is nowhere for a release to land. Either add one on the integrations screen, or, if this project ships nothing, press "This project ships nothing" on its Repository settings tab.`,
-    );
+    const detail = `project ${projectId} declares a release chain ending at '${chainLiveBranch(releaseChain) ?? chainStartBranch(releaseChain)}' but has no active deploy binding carrying the 'live' stage, so there is nowhere for a release to land. Either add one on the integrations screen, or, if this project ships nothing, press "This project ships nothing" on its Repository settings tab.`;
+    super(`RELEASE_TARGET_UNDECLARED: ${detail}`);
     this.name = 'ReleaseTargetUndeclaredError';
+    this.detail = detail;
   }
 }
 
@@ -83,7 +85,7 @@ export async function resolveReleaseDeclaration(
  * The status issues must be at to join a batch release, or `null` when the project
  * ships nowhere else and the driver's `closed` means what it says.
  *
- * THROWS on `undeclared-target`. The caller 409s with `RELEASE_TARGET_UNDECLARED`; answering
+ * THROWS on `undeclared-target`. The caller refuses with `RELEASE_TARGET_UNDECLARED`; answering
  * `null` there reads to every caller as a project that declared it ships nothing.
  */
 export async function resolveReleaseGate(projectId: string): Promise<IssueStatus | null> {

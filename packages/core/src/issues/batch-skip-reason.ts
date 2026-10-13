@@ -14,6 +14,7 @@ export const BATCH_SKIP_BY_CODE = {
   CLOSE_REQUIRES_SHIPPED: 'close_requires_shipped',
   CLOSE_REQUIRES_RELEASE_TAG: 'close_requires_release_tag',
   RELEASE_TAG_UNREAD: 'release_tag_unread',
+  RELEASE_TARGET_UNDECLARED: 'release_target_undeclared',
   ENTRY_CRITERIA_UNMET: 'entry_criteria_unmet',
   ISSUE_ARCHIVED: 'issue_archived',
   OPEN_QUESTIONS: 'open_questions',

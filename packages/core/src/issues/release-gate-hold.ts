@@ -1,9 +1,10 @@
 import { db } from '../db/client.js';
 import { comments, type IssueStatus } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { resolveReleaseGate } from '../release-batch/gate.js';
+import { ReleaseTargetUndeclaredError, resolveReleaseGate } from '../release-batch/gate.js';
 import type { ActorAgency } from './actor-agency.js';
 import { releaseTagOf } from './release-tag-close.js';
+import { TransitionError } from './transition-error.js';
 
 export interface CloseTargetDecision {
   status: IssueStatus;
@@ -26,9 +27,22 @@ export async function resolveAgentCloseTarget(args: {
   // actor, so rewriting an agent's close to `awaiting_release` would answer a different question.
   if ((await releaseTagOf(args.projectId)) !== null) return pass;
 
-  const gate = await resolveReleaseGate(args.projectId);
+  const gate = await gateOf(args.projectId);
   if (!gate) return pass;
   return { status: gate, held: true };
+}
+
+/** The gate an agent's close is held at, with a project that declares a release and nowhere to land it refused by name: `closed` there is neither held nor allowed. */
+async function gateOf(projectId: string): Promise<IssueStatus | null> {
+  try {
+    return await resolveReleaseGate(projectId);
+  } catch (err) {
+    if (!(err instanceof ReleaseTargetUndeclaredError)) throw err;
+    throw new TransitionError('RELEASE_TARGET_UNDECLARED', err.detail, {
+      projectId: err.projectId,
+      releaseChain: err.releaseChain,
+    });
+  }
 }
 
 /** The note a held close leaves on the issue, after the hold has committed; its failure is logged, never thrown. */
