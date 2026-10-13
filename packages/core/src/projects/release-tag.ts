@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { compareTags } from './release-tag-order.js';
 
 export const RELEASE_TAG_PATTERN_MAX = 100;
 
@@ -49,11 +50,11 @@ export function tagMatchesPattern(pattern: string, name: string): boolean {
   return p === pattern.length;
 }
 
-/** The tags `pattern` names, newest version first, so a refusal can say which one is the latest. */
+/** The tags `pattern` names, newest first by semver precedence (tags of equal precedence by their text, descending), so a refusal can say which one is the latest and a release outranks its own prereleases. */
 export function matchingTagsNewestFirst(pattern: string, names: readonly string[]): string[] {
   return names
     .filter((name) => tagMatchesPattern(pattern, name))
-    .sort((a, b) => b.localeCompare(a, 'en', { numeric: true }));
+    .sort((a, b) => compareTags(b, a) || (a < b ? 1 : a > b ? -1 : 0));
 }
 
 /** The most tags one GitHub reading lists before it refuses rather than read part of the list. */

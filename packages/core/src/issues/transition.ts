@@ -72,6 +72,7 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
     case 'RELEASE_TAG_UNREAD':
       return new HTTPException(503, { message: err.detail, cause });
     case 'NO_WORK_EVIDENCE':
+    case 'RELEASE_TARGET_UNDECLARED':
       return new HTTPException(409, { message: err.detail, cause });
     default:
       return new HTTPException(409, { message: err.detail, cause });

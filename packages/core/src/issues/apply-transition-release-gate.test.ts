@@ -271,13 +271,21 @@ describe('who may still write `closed`', () => {
 });
 
 describe('a project that declares a release it cannot land', () => {
-  it('refuses the close by name instead of letting it through', async () => {
+  it('refuses the close with the typed transition refusal every door maps, never a bare error', async () => {
     undeclaredTarget();
     queueUpdate('closed');
 
-    await expect(transitionIssueStatus(AT_WORK, 'closed', AGENT)).rejects.toThrow(
-      /RELEASE_TARGET_UNDECLARED/,
-    );
+    const err = await transitionIssueStatus(AT_WORK, 'closed', AGENT).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(TransitionError);
+    expect(err).toMatchObject({
+      code: 'RELEASE_TARGET_UNDECLARED',
+      details: {
+        projectId: PROJECT_ID,
+        releaseChain: [{ branch: 'dev' }, { branch: 'master', from: 'merge-branch' }],
+      },
+    });
+    expect(updateSet).not.toHaveBeenCalled();
   });
 
   it('names the project and the two ways out', async () => {
@@ -291,6 +299,19 @@ describe('a project that declares a release it cannot land', () => {
     expect(String(err)).toContain(
       'press "This project ships nothing" on its Repository settings tab',
     );
+    expect((err as Error).message.match(/RELEASE_TARGET_UNDECLARED/g)).toHaveLength(1);
+  });
+
+  it('still lets a human make the claim, and the release path through', async () => {
+    queueUpdate('closed');
+    expect((await transitionIssueStatus(AT_WORK, 'closed', HUMAN)).status).toBe('closed');
+
+    undeclaredTarget();
+    queueUpdate('closed');
+    const viaRelease = await transitionIssueStatus(AT_WORK, 'closed', AGENT, {
+      viaReleasePath: true,
+    });
+    expect(viaRelease.status).toBe('closed');
   });
 });
 
