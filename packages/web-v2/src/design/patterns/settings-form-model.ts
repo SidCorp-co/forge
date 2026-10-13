@@ -91,7 +91,6 @@ export function useSettingsForm<T extends FieldValues>({
   const yielding = useRef<Yielded[]>([]);
   const revision = useRef(readRevision);
   revision.current = readRevision;
-  /** The revision `takeStored` was asked at: the read that answers it is a later one. */
   const askedAt = useRef<number | undefined>(undefined);
   const [replaced, setReplaced] = useState<ReplacedEdit[]>([]);
   const [, bump] = useState(0);
