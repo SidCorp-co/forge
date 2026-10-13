@@ -394,9 +394,6 @@
     "packages/web-v2/src/features/issues/components/issue-table-row.tsx": {
       "lint/correctness/noUnusedFunctionParameters": 1
     },
-    "packages/web-v2/src/features/issues/components/issues-insights-view.tsx": {
-      "lint/suspicious/noArrayIndexKey": 1
-    },
     "packages/web-v2/src/features/issues/components/issues-list-view.tsx": {
       "lint/suspicious/noArrayIndexKey": 1
     },

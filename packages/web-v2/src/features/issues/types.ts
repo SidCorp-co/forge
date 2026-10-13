@@ -187,7 +187,7 @@ export type IssueFilter = "all" | WorkState;
 export type IssueOrigin = "detector" | "human";
 
 /** Client-side grouping for the list. */
-export type GroupBy = "none" | "status" | "priority" | "creator";
+export type GroupBy = "none" | "status" | "priority" | "creator" | "module";
 
 export type IssueSort =
   | "createdAt:desc"

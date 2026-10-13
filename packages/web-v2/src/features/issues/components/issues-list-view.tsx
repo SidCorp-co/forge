@@ -1,6 +1,6 @@
 "use client";
 
-// Issues List view (the "List" tab of the Issues screen, ISS-364/293). Filtering, sorting and
+// The Issues screen's list (ISS-364/293). Filtering, sorting and
 // pagination are SERVER-side through the search endpoint — the rows on screen are one page, so
 // anything derived from `rows` describes the page and never the project. Live via WS on
 // `['issues','search']`, the one key the event-router invalidates.
@@ -15,7 +15,6 @@ import {
   Input,
   Pagination,
   Popover,
-  SectionTitle,
   SegmentedControl,
   Select,
   SlideOver,
@@ -55,6 +54,7 @@ import {
 } from "../derive";
 import {
   useIssues,
+  useModuleRollup,
   usePatchIssue,
   useProjectLabels,
   useProjectMembers,
@@ -71,6 +71,8 @@ import { issueKeyRefusalOf, NO_ISSUE_BUCKETS } from "../key-refusal";
 import { KeyRefusalState } from "./key-refusal-state";
 import { BulkActionBar } from "./bulk-action-bar";
 import { IssueMobileCard, IssueTableRow } from "./issue-row-actions";
+import { GroupHeading, moduleGroupCounts } from "./group-heading";
+import { ReleaseGatePanel } from "./release-gate-panel";
 import type { RowActions } from "./issue-table-row";
 import { useGuardedTransition } from "./use-guarded-transition";
 
@@ -110,8 +112,9 @@ const GROUP_OPTIONS: SelectOption[] = [
   { value: "status", label: "Group: status" },
   { value: "priority", label: "Group: priority" },
   { value: "creator", label: "Group: creator" },
+  { value: "module", label: "Group: module" },
 ];
-const VALID_GROUP_BY: GroupBy[] = ["none", "status", "priority", "creator"];
+const VALID_GROUP_BY: GroupBy[] = ["none", "status", "priority", "creator", "module"];
 
 const SORT_OPTIONS: SelectOption[] = [
   { value: "createdAt:desc", label: "Newest" },
@@ -330,6 +333,9 @@ export function IssuesListView({
   const pageCount = Math.max(1, Math.ceil(total / ISSUES_PAGE_SIZE));
 
   const groups = useMemo(() => groupRows(rows, groupBy), [rows, groupBy]);
+  // The rollup is read only while the list is grouped by module: it supplies the project-wide
+  // counts on each group's header, which one page of rows cannot.
+  const rollupQ = useModuleRollup(groupBy === "module" ? projectId : undefined);
 
   const actions: RowActions = {
     patch: patch.mutate,
@@ -399,7 +405,7 @@ export function IssuesListView({
   return (
     <>
       {reasonDialog}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <Input
           icon="search"
           placeholder="Search issues…"
@@ -657,6 +663,12 @@ export function IssuesListView({
         </div>
       )}
 
+      {filter === "awaiting_release" && (
+        <div className="mb-4">
+          <ReleaseGatePanel projectId={projectId} slug={slug} />
+        </div>
+      )}
+
       {bulkEnabled && (
         <BulkActionBar projectId={projectId} selectedRows={selectedRows} onCleared={clearSelection} />
       )}
@@ -703,7 +715,7 @@ export function IssuesListView({
                 : isFiltered
                   ? "No issues match this search or filter."
                   : projectHasIssues
-                    ? "Work is moving without you — the other tabs say where it is."
+                    ? "Work is moving without you — the pipeline page says where it is."
                     : "Issues for this project will appear here as work is filed."
           }
           mascot={!isFiltered}
@@ -737,9 +749,12 @@ export function IssuesListView({
             {groups.map((g) => (
               <section key={g.key}>
                 {groupBy !== "none" && (
-                  <SectionTitle className="fg-overline mb-2 px-1 font-mono">
-                    {g.label} · {g.rows.length}
-                  </SectionTitle>
+                  <GroupHeading
+                    group={g}
+                    groupBy={groupBy}
+                    counts={groupBy === "module" ? moduleGroupCounts(g, rollupQ) : undefined}
+                    onlyThisModule={(id) => setParams({ module: id, groupBy: "", page: "" })}
+                  />
                 )}
                 <Table>
                   <THead>
@@ -794,9 +809,12 @@ export function IssuesListView({
             {groups.map((g) => (
               <section key={g.key}>
                 {groupBy !== "none" && (
-                  <SectionTitle className="fg-overline mb-2 px-1 font-mono">
-                    {g.label} · {g.rows.length}
-                  </SectionTitle>
+                  <GroupHeading
+                    group={g}
+                    groupBy={groupBy}
+                    counts={groupBy === "module" ? moduleGroupCounts(g, rollupQ) : undefined}
+                    onlyThisModule={(id) => setParams({ module: id, groupBy: "", page: "" })}
+                  />
                 )}
                 <div className="space-y-2.5">
                   {g.rows.map((row) => (

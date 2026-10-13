@@ -236,8 +236,8 @@ export function groupIssuesByLabel(issues: PipelineIssueRow[] | undefined): Labe
   }));
 }
 
-/** Median of a numeric list (`null` for an empty list). Used by the Issues
- *  Insights view's per-stage / where-time-goes aggregates. */
+/** Median of a numeric list (`null` for an empty list). Used by the dashboard's
+ *  where-time-goes aggregate. */
 export function median(values: number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -245,7 +245,7 @@ export function median(values: number[]): number | null {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-/** One row of the Insights view's "Where time goes" — a REAL job type over the window. */
+/** One row of the dashboard's "Where time goes" — a REAL job type over the window. */
 export interface StepCost {
   /** The job type exactly as the `step_durations` rows carry it. */
   step: string;

@@ -87,6 +87,7 @@ function row(over: Partial<IssueRow> & { id: string }): IssueRow {
 		updatedAt: over.updatedAt ?? "2026-01-01T00:00:00.000Z",
 		agentSessions: over.agentSessions,
 		agentStatus: over.agentStatus,
+		modules: over.modules,
 	};
 }
 
@@ -691,6 +692,47 @@ describe("groupRows", () => {
 			"master",
 			"reviewer",
 		]);
+	});
+});
+
+describe("groupRows by module", () => {
+	const mod = (labelId: string, name: string, isPrimary = true) => ({
+		labelId,
+		name,
+		color: "#000",
+		isPrimary,
+	});
+	const rows = [
+		row({ id: "a", modules: [mod("m1", "Auth", false), mod("m2", "Pipeline")] }),
+		row({ id: "b" }),
+		row({ id: "c", modules: [mod("m1", "Auth")] }),
+		row({ id: "d", modules: [mod("m2", "Pipeline")] }),
+		row({ id: "e", modules: [] }),
+	];
+
+	it("files each issue once, under its primary module, never under a secondary", () => {
+		const g = groupRows(rows, "module");
+		expect(g.find((x) => x.moduleId === "m1")?.rows.map((r) => r.id)).toEqual(["c"]);
+		expect(g.find((x) => x.moduleId === "m2")?.rows.map((r) => r.id)).toEqual(["a", "d"]);
+		expect(g.flatMap((x) => x.rows)).toHaveLength(rows.length);
+	});
+
+	it("orders modules by name and puts the issues with none last, under No module", () => {
+		const g = groupRows(rows, "module");
+		expect(g.map((x) => x.label)).toEqual(["Auth", "Pipeline", "No module"]);
+		expect(g[2]).toMatchObject({ moduleId: null, key: "no-module" });
+		expect(g[2].rows.map((r) => r.id)).toEqual(["b", "e"]);
+	});
+
+	it("files an issue with only secondary modules under No module, as its module cell shows it", () => {
+		const g = groupRows([row({ id: "s", modules: [mod("m1", "Auth", false)] })], "module");
+		expect(g).toHaveLength(1);
+		expect(g[0]).toMatchObject({ moduleId: null, label: "No module" });
+	});
+
+	it("has no No module group when every issue carries a module", () => {
+		const g = groupRows([rows[0], rows[2]], "module");
+		expect(g.map((x) => x.moduleId)).toEqual(["m1", "m2"]);
 	});
 });
 

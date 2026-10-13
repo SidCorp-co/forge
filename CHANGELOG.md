@@ -6369,6 +6369,8 @@
 ### Changed
 
 - **The Library is one row of tabs, and Memory is not among them.** Knowledge's readers are a grouped list, or a picker on a phone, not a second tab row. An empty product map opens Automation for an admin.
+- **The Issues screen shows issues, and the board, metrics and modules sit where they belong.** The tabs are gone: the board is the Pipeline page, throughput is on the dashboard, modules are "Group: module". Old `?tab=` links redirect.
+- **A project viewer's Pipeline page hides the run controls.** The Issues Board tab did; the page, now the only way in, did not.
 - **Every screen counts the state of work the same way, and the counts add up.** Six states head the Issues tabs, board and Overview; filters narrow every tab count, and the board says what it leaves out.
 - **The board says how many issues each state holds beyond its page.** Above its columns it names, per state, how many it draws of how many there are, with a link to the rest.
 - **Needs you counts what it names.** A question left on a draft, closed or dropped issue no longer counts, an issue is listed once, and parked issues are worded as states, not raw statuses.
