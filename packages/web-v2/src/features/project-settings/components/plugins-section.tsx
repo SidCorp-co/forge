@@ -63,13 +63,13 @@ export function PluginsSection({
       ) : (
         <ul className="mt-3 divide-y divide-line">
           {plugins.map((p, i) => {
-            const error = form.errorAt(`plugins.${i}`);
+            const rowError = (field: "marketplace" | "name" | "pinnedRef") => form.errorAt(`plugins.${i}.${field}`);
             return (
               // A row IS its position in the list: nothing reorders them, and a half-typed name is not an identity.
               // biome-ignore lint/suspicious/noArrayIndexKey: position is the identity
               <li key={i} className="py-3">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Marketplace" hint="owner/repo of the plugin marketplace">
+                  <Field label="Marketplace" hint="owner/repo of the plugin marketplace" error={rowError("marketplace")}>
                     <Input
                       value={p.marketplace}
                       onChange={(e) => patchRow(i, { marketplace: e.target.value })}
@@ -77,7 +77,7 @@ export function PluginsSection({
                       placeholder="SidCorp-co/forge-plugin"
                     />
                   </Field>
-                  <Field label="Name" hint="kebab-case, as the marketplace lists it">
+                  <Field label="Name" hint="kebab-case, as the marketplace lists it" error={rowError("name")}>
                     <Input
                       value={p.name}
                       onChange={(e) => patchRow(i, { name: e.target.value })}
@@ -88,6 +88,7 @@ export function PluginsSection({
                   <Field
                     label="Pinned SHA"
                     hint="Empty tracks the marketplace head; a SHA freezes it."
+                    error={rowError("pinnedRef")}
                   >
                     <Input
                       value={p.pinnedRef ?? ""}
@@ -108,15 +109,9 @@ export function PluginsSection({
 
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    {error ? (
-                      <p role="alert" className="fg-caption" style={{ color: "var(--dangerw-600)" }}>
-                        {error}
-                      </p>
-                    ) : (
-                      <Badge tone={p.pinnedRef ? "neutral" : "accent"}>
-                        {p.pinnedRef ? "pinned" : "tracks head"}
-                      </Badge>
-                    )}
+                    <Badge tone={p.pinnedRef ? "neutral" : "accent"}>
+                      {p.pinnedRef ? "pinned" : "tracks head"}
+                    </Badge>
                   </div>
                   {canEdit && (
                     <Button variant="ghost" onClick={() => setRemoving(i)}>

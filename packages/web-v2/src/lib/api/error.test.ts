@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from './client';
-import { formatApiError, formatPipelineConfigError, isRetryableApiError } from './error';
+import {
+  describeSettings,
+  formatApiError,
+  formatPipelineConfigError,
+  formatSettingsWriteError,
+  isRetryableApiError,
+} from './error';
 
 describe('formatPipelineConfigError', () => {
   it('names the offending stage for MISSING_SKILL_FOR_ENABLED_STAGE', () => {
@@ -214,5 +220,39 @@ describe('the connection refusals (ISS-1216)', () => {
 
   it('still prints the generic phrase for a plain NOT_FOUND, which is what the named codes are not', () => {
     expect(formatApiError(new ApiError(404, 'connection not found', 'NOT_FOUND'))).toBe('Not found.');
+  });
+});
+
+describe('a refusal because the document moved', () => {
+  const stale = (...paths: string[]) =>
+    new ApiError(409, 'stale', 'CONFIG_STALE', { conflicts: paths.map((path) => ({ path, base: 1, stored: 2 })) });
+
+  it('agrees with one setting that moved', () => {
+    expect(formatSettingsWriteError(stale('plugins'))).toMatch(/^Plugins was changed by someone else/);
+  });
+
+  it('names the fields when two paths of one section moved, and says were', () => {
+    const msg = formatSettingsWriteError(
+      stale('knowledgePromotion.minRetrievals', 'knowledgePromotion.candidatesPerRun'),
+    );
+    expect(msg).toMatch(
+      /^Knowledge promotion \(Proposals per night and Minimum retrievals\) were changed by someone else/,
+    );
+  });
+
+  it('says were for settings in two sections', () => {
+    expect(formatSettingsWriteError(stale('plugins', 'intakeGate.notify'))).toMatch(
+      /^Intake gate \(Notify the owner\) and Plugins were changed/,
+    );
+  });
+});
+
+describe('describeSettings', () => {
+  it('counts the settings named, not the paths sent', () => {
+    expect(describeSettings(['plugins', 'plugins']).count).toBe(1);
+  });
+
+  it('keeps a stage setting in the stage it belongs to', () => {
+    expect(describeSettings(['states.open.deviceIds']).text).toBe('Runner pools (Open)');
   });
 });

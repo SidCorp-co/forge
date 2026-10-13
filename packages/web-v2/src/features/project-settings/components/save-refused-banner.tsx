@@ -11,9 +11,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Banner, Button, type SettingsForm } from "@/design";
 import {
+	describeSettings,
 	formatPipelineConfigError,
 	formatSettingsWriteError,
+	settingLabel,
 	settingsThatMoved,
+	wasOrWere,
 	writeConflicts,
 } from "@/lib/api/error";
 
@@ -33,7 +36,7 @@ export function SaveRefusedBanner({
 	/** The page's form. Both ways out act on it, and it is what reports back which edits a
 	 *  re-read replaced. */
 	// biome-ignore lint/suspicious/noExplicitAny: every page's draft shape, read only through the contract's own paths.
-	draft: Pick<SettingsForm<any>, "takeStored" | "replaced" | "dismissReplaced">;
+	draft: Pick<SettingsForm<any>, "takeStored" | "replaced" | "kept" | "dismissReplaced">;
 }) {
 	const qc = useQueryClient();
 	const conflicts = writeConflicts(error);
@@ -45,11 +48,20 @@ export function SaveRefusedBanner({
 	}
 
 	if (draft.replaced.length > 0 && conflicts.length === 0) {
+		const replaced = describeSettings(draft.replaced.map((edit) => edit.path));
+		const sections = new Set(draft.replaced.map((edit) => settingLabel(edit.path)));
+		const keptHere = draft.kept.filter((path) => sections.has(settingLabel(path)));
+		const kept = describeSettings(keptHere);
 		return (
 			<Banner tone="attention" onDismiss={draft.dismissReplaced}>
-				Loaded what is stored now. Your changes to{" "}
-				{settingsThatMoved(draft.replaced.map((edit) => edit.path))} were replaced by the
-				stored values; every other edit on this page is as you left it.
+				Loaded what is stored now. Your changes to {replaced.text} {wasOrWere(replaced.count)}{" "}
+				replaced by the stored values
+				{keptHere.length > 0 && (
+					<>
+						; your changes to {kept.text} {wasOrWere(kept.count)} kept
+					</>
+				)}
+				. Every other edit on this page is as you left it.
 			</Banner>
 		);
 	}

@@ -31,12 +31,13 @@ import {
   useUpdatePlugins,
 } from "../hooks";
 import {
-  ENTRY_STATUS,
+  entryGateOpen,
   type PipelineDraft,
   pipelineComparable,
   pipelineSchema,
   pipelineWrites,
   readPipeline,
+  withEntryGate,
 } from "../pipeline-form";
 import {
   API_ONLY_KEYS,
@@ -54,11 +55,6 @@ import { ReleaseSection } from "./release-section";
 import { RunnerPoolsSection, unknownPoolDevices } from "./runner-pools-section";
 import { SaveRefusedBanner } from "./save-refused-banner";
 import { StagePermissionsSection } from "./stage-permissions-section";
-
-function entryGateOpen(draft: PipelineDraft): boolean {
-  const entry = draft.states[ENTRY_STATUS];
-  return entry?.enabled !== false && entry?.mode !== "manual";
-}
 
 function StageRow({
   label,
@@ -186,19 +182,7 @@ function PipelinePage({
               control={
                 <Toggle
                   checked={entryGateOpen(draft)}
-                  onChange={(open) =>
-                    form.setDraft((d) => ({
-                      ...d,
-                      states: {
-                        ...d.states,
-                        [ENTRY_STATUS]: {
-                          ...(d.states[ENTRY_STATUS] as PipelineDraft["states"][string]),
-                          enabled: open,
-                          mode: open ? "auto" : "manual",
-                        },
-                      },
-                    }))
-                  }
+                  onChange={(open) => form.setDraft((d) => withEntryGate(d, open))}
                   disabled={!canEdit || !masterEnabled}
                   aria-label="Start queued issues automatically"
                 />

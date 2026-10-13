@@ -115,6 +115,11 @@ function locateField(path: readonly string[]): string[] | null {
   return key ? [key] : null;
 }
 
+function documentPathOfField(path: readonly string[]): string[] | null {
+  const at = Object.entries(FIELD_AT).find(([, key]) => key === path[0]);
+  return at ? at[0].split(".") : null;
+}
+
 function isValidUrl(value: string): boolean {
   try {
     new URL(value);
@@ -267,6 +272,7 @@ function TestingPage({
     read: parse(environments),
     schema: testingSchema,
     locate: locateField,
+    documentPathOf: documentPathOfField,
     comparable: comparableOf,
     readRevision,
   });

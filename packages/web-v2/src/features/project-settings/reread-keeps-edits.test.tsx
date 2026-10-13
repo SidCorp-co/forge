@@ -239,6 +239,45 @@ describe("the way out of a refused save", () => {
 		expect(after.textContent).toContain("Stage permissions (Open)");
 	});
 
+	it("says in grammar what was replaced and what was kept when one section is only partly replaced", async () => {
+		mountPage();
+		await ready();
+		fireEvent.change(retrievalsField(), { target: { value: "7" } });
+		fireEvent.change(screen.getByLabelText("Proposals per night"), { target: { value: "5" } });
+
+		stored = applyDocumentPatch(stored, { knowledgePromotion: { minRetrievals: 9 } });
+		press();
+		const refused = await screen.findByText(/changed by someone else/i);
+		expect(refused.textContent).toMatch(/^Knowledge promotion \(Minimum retrievals\) was changed by someone else/);
+
+		fireEvent.click(screen.getByRole("button", { name: /use the current values/i }));
+		const after = await screen.findByText(/loaded what is stored now/i);
+		expect(after.textContent).toContain(
+			"Your changes to Knowledge promotion (Minimum retrievals) was replaced by the stored values; your changes to Knowledge promotion (Proposals per night) was kept.",
+		);
+		expect((screen.getByLabelText("Proposals per night") as HTMLInputElement).value).toBe("5");
+		expect(retrievalsField().value).toBe("9");
+	});
+
+	it("names every field of a section that moved when two of them did, and says were", async () => {
+		mountPage();
+		await ready();
+		fireEvent.change(retrievalsField(), { target: { value: "7" } });
+		fireEvent.change(screen.getByLabelText("Proposals per night"), { target: { value: "5" } });
+
+		stored = applyDocumentPatch(stored, { knowledgePromotion: { minRetrievals: 9, candidatesPerRun: 8 } });
+		press();
+		const refused = await screen.findByText(/changed by someone else/i);
+		expect(refused.textContent).toMatch(
+			/^Knowledge promotion \(Proposals per night and Minimum retrievals\) were changed by someone else/,
+		);
+		fireEvent.click(screen.getByRole("button", { name: /use the current values/i }));
+		const after = await screen.findByText(/loaded what is stored now/i);
+		expect(after.textContent).toContain(
+			"Your changes to Knowledge promotion (Proposals per night and Minimum retrievals) were replaced by the stored values. Every other edit",
+		);
+	});
+
 	it("lets the person keep their own change and save over the other writer's", async () => {
 		mountPage();
 		await ready();
