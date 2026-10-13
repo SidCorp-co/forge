@@ -91,7 +91,7 @@ export function OperatorOverviewScreen() {
           {(data) => <AdoptionPanel buckets={data} />}
         </Panel>
         <Panel query={workspaces} skeleton={<WorkspacesTableSkeleton />}>
-          {(data) => <WorkspacesTable rows={data.items} sort={sort} onSortChange={setSort} />}
+          {(data) => <WorkspacesTable rows={data.items} sort={sort} onSortChange={setSort} busy={workspaces.isPlaceholderData} />}
         </Panel>
       </div>
     </div>

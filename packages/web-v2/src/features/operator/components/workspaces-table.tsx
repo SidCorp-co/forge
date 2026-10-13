@@ -80,10 +80,13 @@ export function WorkspacesTable({
   rows,
   sort,
   onSortChange,
+  busy = false,
 }: {
   rows: readonly AdminWorkspaceRow[];
   sort: OperatorWorkspaceSort;
   onSortChange: (sort: OperatorWorkspaceSort) => void;
+  /** The ranking asked for is on its way: the rows shown are the previous ranking's, kept so the header pressed keeps focus. */
+  busy?: boolean;
 }) {
   const shown = useMemo(() => rows.slice(0, ROW_LIMIT), [rows]);
   return (
@@ -91,7 +94,7 @@ export function WorkspacesTable({
       <CardHeader>
         <CardTitle>Top workspaces</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent aria-busy={busy || undefined}>
         {rows.length === 0 ? (
           <EmptyState
             title="No workspace activity"

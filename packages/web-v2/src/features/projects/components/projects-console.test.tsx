@@ -91,7 +91,7 @@ describe("the Sort select and the headers are one control", () => {
   it("marks the Health header when Health is chosen in the select, and the rows follow", () => {
     render(<ProjectsConsole />);
     showList();
-    choose("Health");
+    choose("Health (worst first)");
     expect(header(/Health/)).toHaveAttribute("aria-sort", "ascending");
     expect(header(/Active/)).toHaveAttribute("aria-sort", "none");
     expect(listNames()).toEqual(["charlie", "bravo", "alpha"]);
@@ -102,6 +102,24 @@ describe("the Sort select and the headers are one control", () => {
     showList();
     press("Project");
     expect(sortSelect()).toHaveTextContent("Name (A–Z)");
+  });
+
+  it("names the direction the list is in after a header reverses it, and says so again in the other", () => {
+    render(<ProjectsConsole />);
+    showList();
+    press("Project");
+    expect(sortSelect()).toHaveTextContent("Name (A–Z)");
+    press("Project");
+    expect(sortSelect()).toHaveTextContent("Name (Z–A)");
+    expect(listNames()).toEqual(["charlie", "bravo", "alpha"]);
+    press("Health");
+    expect(sortSelect()).toHaveTextContent("Health (worst first)");
+    press("Health");
+    expect(sortSelect()).toHaveTextContent("Health (best first)");
+    press(/Active/);
+    expect(sortSelect()).toHaveTextContent("Recently active");
+    press(/Active/);
+    expect(sortSelect()).toHaveTextContent("Least recently active");
   });
 
   it("gives the cards the order the select chose, the same one the list shows", () => {

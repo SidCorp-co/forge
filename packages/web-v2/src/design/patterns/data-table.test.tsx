@@ -92,6 +92,19 @@ describe("DataTable: sorting by header", () => {
     expect(button).toHaveAttribute("type", "button");
   });
 
+  it("makes the whole header cell the press target: no padding on the cell, the button fills it and is at least 24px tall", () => {
+    render(<Sample />);
+    for (const name of ["Name", "Runs"]) {
+      const th = header(name);
+      expect(th.style.padding, `${name} cell`).toBe("0px");
+      const button = within(th).getByRole("button");
+      expect(button.className, `${name} button`).toMatch(/\bw-full\b/);
+      expect(button.className, `${name} button`).toMatch(/\bmin-h-6\b/);
+      expect(button.style.paddingTop, `${name} button`).toBe("var(--density-row-py)");
+    }
+    expect(within(header("Runs")).getByRole("button").className).toMatch(/justify-end/);
+  });
+
   it("starts from defaultSort", () => {
     render(<Sample defaultSort={{ id: "runs", desc: true }} />);
     expect(names()).toEqual(["alpha", "bravo", "charlie"]);

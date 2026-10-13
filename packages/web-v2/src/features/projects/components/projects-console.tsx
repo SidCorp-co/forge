@@ -164,7 +164,7 @@ export function ProjectsConsole() {
           <ProjectsToolbar
             query={query}
             onQuery={setQuery}
-            sort={sort.id}
+            sort={sort}
             onSort={(id) => setSort({ id, desc: FIRST_DESC[id] })}
             view={view}
             onView={setView}

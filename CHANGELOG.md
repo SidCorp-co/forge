@@ -128,7 +128,7 @@
 
 - **A run now records which copy of the policy decided it.** The box reports the `forge` plugin copy its pane loaded, or says why it cannot, and the run keeps that. A copy core cannot read is refused by name.
 
-- **Tables sort from their headers.** On the projects list, the overview's "Longest without an issue run" table and Top workspaces, a column header sorts the rows, pressing it again reverses them, and the header says which way it runs. (ISS-1263)
+- **Tables sort from their headers.** On the projects list, the overview's "Longest without an issue run" and Top workspaces, a header sorts and says which way. A second press reverses all but Top workspaces, which ranks largest first. (ISS-1263)
 
 - **A project that ships by version tag can say so.** Name the tags in its release chain's last entry, such as `v*.*.*`, and an issue cannot close until a matching tag contains its landing commit. Other projects close as before.
 
@@ -6391,7 +6391,7 @@
 
 ### Changed
 
-- **The projects list has an Active column, and its Sort menu and its headers are one control.** Last activity is a column now rather than trailing Spend, and a sort chosen in the menu marks its header. (ISS-1263)
+- **The projects list has an Active column, and its Sort menu and headers are one control.** A sort chosen in the menu marks its header, and the menu names the direction the list runs. (ISS-1263)
 
 - **An integration run on a box with its own Postgres reuses the template database.** A run whose migrations match one already there clones it; a differing one builds its own. Concurrent runs build it once. CI still builds its own.
 - **The project dashboard opens on a sentence, and its shape follows what the project is doing.** A quiet project says so and shows empty panels as one line; a failing one gets a band linking its oldest item. (ISS-1159)

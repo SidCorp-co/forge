@@ -5,13 +5,24 @@
 // so there is no standalone org filter or "Manage organizations" link; that
 // would contradict the global active-org selection.
 import { Button, Input, SegmentedControl, Select, type SegmentOption } from '@/design';
-import type { ProjectSort, ProjectView } from '../types';
+import { FIRST_DESC } from '../columns';
+import type { ProjectSort, ProjectSortState, ProjectView } from '../types';
 
-const SORT_OPTIONS = [
-  { value: 'recent', label: 'Recently active', icon: 'clock' as const },
-  { value: 'name', label: 'Name (A–Z)', icon: 'list' as const },
-  { value: 'health', label: 'Health', icon: 'activity' as const },
-];
+// What each sort is called going each way, so the select always names the direction the list is in.
+const SORT_LABELS: Record<ProjectSort, { asc: string; desc: string; icon: 'clock' | 'list' | 'activity' }> = {
+  recent: { desc: 'Recently active', asc: 'Least recently active', icon: 'clock' },
+  name: { asc: 'Name (A–Z)', desc: 'Name (Z–A)', icon: 'list' },
+  health: { asc: 'Health (worst first)', desc: 'Health (best first)', icon: 'activity' },
+};
+
+/** The sort menu's rows: the chosen sort reads the way round the list is in, the others the way they would start. */
+export function sortOptions(sort: ProjectSortState) {
+  return (Object.keys(SORT_LABELS) as ProjectSort[]).map((id) => {
+    const { asc, desc, icon } = SORT_LABELS[id];
+    const isDesc = id === sort.id ? sort.desc : FIRST_DESC[id];
+    return { value: id, label: isDesc ? desc : asc, icon };
+  });
+}
 
 const VIEW_OPTIONS: SegmentOption<ProjectView>[] = [
   { value: 'cards', icon: 'grid', label: 'Cards' },
@@ -21,7 +32,7 @@ const VIEW_OPTIONS: SegmentOption<ProjectView>[] = [
 export interface ProjectsToolbarProps {
   query: string;
   onQuery: (q: string) => void;
-  sort: ProjectSort;
+  sort: ProjectSortState;
   onSort: (s: ProjectSort) => void;
   view: ProjectView;
   onView: (v: ProjectView) => void;
@@ -49,8 +60,8 @@ export function ProjectsToolbar({
       />
       <Select
         className="w-[188px]"
-        options={SORT_OPTIONS}
-        value={sort}
+        options={sortOptions(sort)}
+        value={sort.id}
         onChange={(v) => onSort(v as ProjectSort)}
         aria-label="Sort projects"
       />
