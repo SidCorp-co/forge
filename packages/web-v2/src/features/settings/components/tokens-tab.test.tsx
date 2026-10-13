@@ -142,7 +142,7 @@ describe("TokensTab — what the list says each token may reach", () => {
     ];
     render(<TokensTab />);
     expect(screen.getAllByText("Full access").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("1 permission").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("issues:read").length).toBeGreaterThan(0);
     expect(
       screen.getAllByText("Legacy — full access, never stated").length,
     ).toBeGreaterThan(0);
@@ -220,7 +220,28 @@ describe("TokensTab — what still has access comes first", () => {
     expect(buttons).toHaveLength(2);
     for (const b of buttons) expect(b).toBeEnabled();
     fireEvent.click(within(live).getByRole("button", { name: "Revoke, iss974-walk-admin" }));
+    fireEvent.click(screen.getByRole("button", { name: "Revoke token" }));
     expect(revokeMutate).toHaveBeenCalledWith("l2");
+  });
+
+  it("asks first, naming the token, and revokes nothing until it is confirmed", () => {
+    render(<TokensTab />);
+    const live = screen.getByRole("table", { name: "Tokens that can reach your account" });
+    fireEvent.click(within(live).getByRole("button", { name: "Revoke, iss974-walk-2" }));
+    expect(screen.getByText('Revoke "iss974-walk-2"?')).toBeInTheDocument();
+    expect(revokeMutate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(revokeMutate).not.toHaveBeenCalled();
+    expect(screen.queryByText('Revoke "iss974-walk-2"?')).toBeNull();
+  });
+
+  it("names every permission a named token holds, not how many", () => {
+    tokens = [aToken({ id: "n", name: "ci", grant: "named", permissions: ["issues:read", "schedules:write"] })];
+    render(<TokensTab />);
+    const live = screen.getByRole("table", { name: "Tokens that can reach your account" });
+    expect(within(live).getByText("issues:read")).toBeInTheDocument();
+    expect(within(live).getByText("schedules:write")).toBeInTheDocument();
+    expect(within(live).queryByText(/\d permissions?$/)).toBeNull();
   });
 
   it("never makes a row of an assistant chat-turn credential, and says how many there are", () => {
@@ -283,7 +304,7 @@ describe("TokensTab — what still has access comes first", () => {
     expect(within(live).getByText(/made by a paired box/)).toBeInTheDocument();
     expect(within(live).getByText(/made by you/)).toBeInTheDocument();
     expect(within(live).getByText("Full access")).toBeInTheDocument();
-    expect(within(live).getByText("1 permission")).toBeInTheDocument();
+    expect(within(live).getByText("issues:read")).toBeInTheDocument();
     expect(within(live).getAllByText("User-level").length).toBeGreaterThan(0);
   });
 

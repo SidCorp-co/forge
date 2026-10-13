@@ -109,9 +109,15 @@ describe("AgentsTab — a row carries only the controls it can use", () => {
     for (const b of within(table()).getAllByRole("button")) expect(b).toBeEnabled();
   });
 
-  it("revokes the agent whose Revoke was pressed", () => {
+  it("asks first, naming the agent, and revokes the one whose Revoke was pressed only once confirmed", () => {
     render(<AgentsTab />);
     fireEvent.click(screen.getByRole("button", { name: "Revoke, agent-11" }));
+    expect(screen.getByText('Revoke the credentials of "agent-11"?')).toBeInTheDocument();
+    expect(revokeMutate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(revokeMutate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Revoke, agent-11" }));
+    fireEvent.click(screen.getByRole("button", { name: "Revoke credentials" }));
     expect(revokeMutate).toHaveBeenCalledWith("u11");
   });
 });

@@ -6,7 +6,7 @@
 // table only reports which header the user asked to sort by.
 import { useRouter } from 'next/navigation';
 import { useMemo } from 'react';
-import { DataTable, type DataTableColumn, HealthDot, Icon, ProjectMark, Stat } from '@/design';
+import { DataTable, type DataTableColumn, HealthDot, Icon, ProjectMark, Stat, Truncated } from '@/design';
 import { OPEN_WORK_LABEL } from '@forge/contracts/work-state';
 import { FIRST_DESC, SORT_COLUMNS, toProjectSort } from '../columns';
 import { formatRelativeTime, formatSpend } from '../derive';
@@ -40,8 +40,10 @@ export function ProjectList({ items, now, onTogglePin, sort, onSortChange }: Pro
           const glyph = projectGlyph(p.id);
           return (
             <span className="flex items-center gap-2.5">
-              <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(p.name)} size={28} radius="var(--r-sm)" />
-              <span className="min-w-0 font-mono text-13-5 font-semibold text-fg [overflow-wrap:anywhere]">{p.name}</span>
+              <span className="hidden flex-none sm:block">
+                <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(p.name)} size={28} radius="var(--r-sm)" />
+              </span>
+              <Truncated text={p.name} className="font-mono text-13-5 font-semibold text-fg" />
               <button
                 type="button"
                 aria-label={p.pinned ? 'Unpin project' : 'Pin project'}

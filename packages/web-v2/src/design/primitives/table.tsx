@@ -90,10 +90,13 @@ export function TR({ className, ...props }: HTMLAttributes<HTMLTableRowElement>)
 // compact mode tightens rows everywhere the kit Table is used.
 const DENSITY_PY = { paddingTop: "var(--density-row-py)", paddingBottom: "var(--density-row-py)" };
 
-// Opaque, so the row scrolls out of sight under it. Its text wraps within a floor and a cap, so a long
-// value cannot take the width the other columns need to scroll into view on a phone, nor crush to nothing.
+// Opaque, so the row scrolls out of sight under it. It sits within a floor and a cap, so a long value
+// cannot take the width the other columns need to scroll into view on a phone, nor crush to nothing.
+// Its text breaks only between words: what is longer than the cap is cut on one line by `Truncated`,
+// which keeps the whole of it in a title, because a name broken mid-word ("Adm / inH / ub") reads as
+// no name at all.
 const STICKY =
-  "sticky left-0 z-[1] min-w-32 max-w-40 bg-surface [overflow-wrap:anywhere] sm:max-w-72 in-data-[edge-start=true]:shadow-[1px_0_0_var(--color-line)]";
+  "sticky left-0 z-[1] min-w-32 max-w-40 bg-surface sm:max-w-72 in-data-[edge-start=true]:shadow-[1px_0_0_var(--color-line)]";
 
 interface StickyCell {
   sticky?: boolean;

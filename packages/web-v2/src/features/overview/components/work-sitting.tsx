@@ -9,6 +9,7 @@ import {
   type DataTableColumn,
   DotStrip,
   SectionTitle,
+  Truncated,
   Waffle,
 } from "@/design";
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
@@ -26,8 +27,8 @@ const SILENCE_COLUMNS: DataTableColumn<ProjectSilenceRow>[] = [
     sticky: true,
     sortValue: (r) => r.name,
     cell: (r) => (
-      <Link href={`/projects/${r.slug}`} className={LINK}>
-        {r.name}
+      <Link href={`/projects/${r.slug}`} className={`${LINK} block`}>
+        <Truncated text={r.name} />
       </Link>
     ),
   },
