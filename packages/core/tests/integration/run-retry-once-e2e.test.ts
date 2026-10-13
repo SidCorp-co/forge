@@ -109,16 +109,27 @@ async function aRunOver(issSeq: number, next: string) {
   return { user, project, device, issueIds: [issueId], session };
 }
 
-/** Hold `key` until the returned `release` is called, so two callers can be caught waiting on it. */
+/**
+ * Hold `key` until the returned `release` is called, so two callers can be caught waiting on it.
+ * It answers only once Postgres has granted the lock to the holder: a caller started before that
+ * could take the key first, and the case would then depend on which connection got there.
+ */
 async function holding(key: string): Promise<{ release: () => Promise<void> }> {
   let letGo = () => {};
   const held = new Promise<void>((resolve) => {
     letGo = resolve;
   });
+  let granted = () => {};
+  const acquired = new Promise<void>((resolve) => {
+    granted = resolve;
+  });
   const holder = harness.db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
+    granted();
     await held;
   });
+  // A holder that failed before it held the key settles this too, with its own error.
+  await Promise.race([acquired, holder]);
   return {
     release: async () => {
       letGo();
