@@ -268,6 +268,10 @@ mod tests {
         cmd.args(["-S", &sock.to_string_lossy()])
             .args(["new-session", "-d", "-s", "older", "sleep", "600"])
             .env_remove("TMPDIR")
+            // A pane's own shell carries one, and a server started from it
+            // would hold it and be reconciled for it, which the assertions
+            // here do not expect.
+            .env_remove("FORGE_CLI_PATH")
             .stdin(std::process::Stdio::null());
         if let Some(v) = held {
             cmd.env("TMPDIR", v);

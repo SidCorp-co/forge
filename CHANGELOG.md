@@ -3156,6 +3156,7 @@
 
 ### Fixed
 
+- **A master an update left outdated no longer sits for days while its project's work waits.** A run whose worktree release failed for good no longer counts as open, and a master with real runs is nudged like any other.
 - **Two runner commands saving the box's config at once no longer fail or lose each other's change.** They take turns now, and an error names the file and the step.
 
 - **Two installs of the master skill into one checkout no longer fail one of them.** A bind and the daemon's start sweep reaching one checkout together now take turns, and both end with the shipped tree.

@@ -88,7 +88,7 @@ pub fn holding(ledger: &Ledger, row: Option<&MasterRow>) -> Result<Holding> {
     }
     let mut held = Vec::new();
     for run in ledger.runs_for_master(session)? {
-        if close_loop::state(ledger, &run.run_id)?.is_closed() {
+        if !close_loop::holds_open(&run, &close_loop::state(ledger, &run.run_id)?) {
             continue;
         }
         held.push(HeldRun {
@@ -111,7 +111,7 @@ pub fn holding(ledger: &Ledger, row: Option<&MasterRow>) -> Result<Holding> {
 pub fn children(ledger: &Ledger, master_session_id: &str) -> Result<Vec<Child>> {
     let mut out = Vec::new();
     for run in ledger.runs_for_master(master_session_id)? {
-        let closed = close_loop::state(ledger, &run.run_id)?.is_closed();
+        let closed = !close_loop::holds_open(&run, &close_loop::state(ledger, &run.run_id)?);
         out.push(Child {
             run_id: run.run_id,
             closed,
@@ -232,6 +232,129 @@ mod tests {
             holding(&led, Some(&row(Some("sess-a")))).unwrap(),
             Holding::Nothing,
             "counting a PROJECT's runs rather than this master's would ask an operator to force past work belonging to somebody else"
+        );
+    }
+
+    /// Run 14df28bc on the sidpeak pane (ISS-1410): ended, its session over,
+    /// its one lease back, and its worktree release refused for good, so the
+    /// checkout stays and `released_as` is never set.
+    fn a_run_whose_release_was_refused_for_good(
+        led: &mut Ledger,
+        run: &str,
+        issue: &str,
+        session_over: bool,
+        lease_back: bool,
+        decided: bool,
+    ) {
+        led.create_run_group(NewRun {
+            run_id: run.into(),
+            project_id: "proj-1".into(),
+            master_session_id: "sess-a".into(),
+            worktree_path: PathBuf::from(format!("/tmp/forge-{run}")),
+            boot_id: "boot-a".into(),
+            issue_keys: vec![issue.into()],
+        })
+        .unwrap();
+        led.attach_session(run, "agent-session").unwrap();
+        led.end_run(run, "master", "Never started").unwrap();
+        if session_over {
+            led.mark_session_terminal_observed(run).unwrap();
+        }
+        if lease_back {
+            led.mark_lease_returned_observed(run, issue).unwrap();
+        }
+        led.note_release_refusal(run, "run ff1df919 still holds the checkout", 100)
+            .unwrap();
+        if decided {
+            led.conclude_release_refusal(run, 400, "recovery", "release refused")
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn a_run_whose_release_was_refused_for_good_is_not_held_by_its_master() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        a_run_whose_release_was_refused_for_good(&mut led, "run-1", "ISS-530", true, true, true);
+        assert_eq!(
+            holding(&led, Some(&row(Some("sess-a")))).unwrap(),
+            Holding::Nothing,
+            "criterion 1: nothing is left for the pane to do about a checkout the box decided to keep"
+        );
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            run.released_as, None,
+            "the stranded run still owes its checkout: it is not read closed, it is read as not held"
+        );
+    }
+
+    #[test]
+    fn a_refused_release_holds_the_pane_until_it_is_decided_and_its_session_and_leases_are_back() {
+        for (session_over, lease_back, decided, why) in [
+            (
+                true,
+                true,
+                false,
+                "a refusal still being retried is a run still being closed",
+            ),
+            (false, true, true, "core has not called its session over"),
+            (
+                true,
+                false,
+                true,
+                "a lease nobody returned is an issue no run can take",
+            ),
+        ] {
+            let mut led = Ledger::open_in_memory().unwrap();
+            a_run_whose_release_was_refused_for_good(
+                &mut led,
+                "run-1",
+                "ISS-530",
+                session_over,
+                lease_back,
+                decided,
+            );
+            let Holding::These(held) = holding(&led, Some(&row(Some("sess-a")))).unwrap() else {
+                panic!("criterion 2: {why}");
+            };
+            assert_eq!(held[0].run_id, "run-1", "{why}");
+        }
+    }
+
+    #[test]
+    fn a_run_with_no_release_decision_at_all_still_holds_its_master() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "sess-a".into(),
+            worktree_path: PathBuf::from("/tmp/forge-run-1"),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        led.mark_session_terminal_observed("run-1").unwrap();
+        led.mark_lease_returned_observed("run-1", "ISS-1").unwrap();
+        assert!(
+            matches!(
+                holding(&led, Some(&row(Some("sess-a")))).unwrap(),
+                Holding::These(_)
+            ),
+            "criterion 2: session over and leases back is not enough without the decision that the checkout stays"
+        );
+    }
+
+    #[test]
+    fn a_master_idle_for_an_hour_with_only_a_run_refused_for_good_may_leave() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        a_run_whose_release_was_refused_for_good(&mut led, "run-1", "ISS-530", true, true, true);
+        let kids = children(&led, "sess-a").unwrap();
+        assert!(
+            kids[0].closed,
+            "criterion 4: the idle-exit decision reads the stranded run as finished"
+        );
+        assert_eq!(
+            verdict(MASTER_IDLE_BEFORE_EXIT + Duration::from_secs(1), &kids),
+            Verdict::Exit
         );
     }
 
