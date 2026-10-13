@@ -6,8 +6,7 @@ import type { ZodType } from 'zod';
 export type ValidatorDeclaration = {
   readonly target: 'param' | 'query' | 'json' | 'form' | 'header' | 'cookie';
   readonly schema: ZodType;
-    readonly hook: ((...args: never[]) => unknown) | null;
-  /** False for an input the handler parses itself and only declares here. */
+  readonly hook: ((...args: never[]) => unknown) | null;
   readonly enforced?: boolean;
 };
 
