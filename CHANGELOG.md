@@ -3158,6 +3158,7 @@
 
 ### Fixed
 
+- **A link to a documentation address that does not exist shows the refusal inside the docs.** It dropped the reader onto an unstyled page with no header or search; the docs now stay around it (ISS-1292).
 - **Signing in returns you to the page you opened.** A link opened while signed out used to land on the dashboard; it now returns to that address. One pointing off this site is ignored, and the login says so (ISS-1290).
 - **Escape closes the compact rail's project switcher.** It stayed open with focus in the find field; it now closes from the field or any row and puts focus back on the switcher button (ISS-1268).
 - **The "nobody is working it" line counts every session opened over the issue.** It counted only runs still holding it, so six runs read as one; it also lists all their statuses (ISS-1320).

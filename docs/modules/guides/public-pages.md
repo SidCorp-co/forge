@@ -78,10 +78,17 @@ of that shape is one extra core request per guide view on the happy path, paid s
 that a reader without JavaScript gets the refusal instead of a blank document. It
 ends when Next server-renders a `notFound()` body.
 
-A client-side navigation is left alone: the router refetches the same URL with an
-`RSC` header and would choke on an HTML document, and it has JavaScript by
-definition, so `packages/web-v2/src/app/guides/[slug]/not-found.tsx` serves it. Both renderers read
-one set of strings from `packages/web-v2/src/features/guides/missing.ts`.
+A client-side navigation is left alone: the router fetches the same URL for flight data and would
+choke on an HTML document, and it has JavaScript by definition, so the page serves it inside the docs
+shell: `PublicRefusal` for a door or page, and
+`packages/web-v2/src/app/guides/[slug]/not-found.tsx` for a guide. Both renderers read one set of
+strings from `packages/web-v2/src/features/guides/missing.ts`.
+
+The middleware cannot tell the two apart by the `RSC` header: Next 16's middleware adapter
+(`next/dist/server/web/adapter.js`, `FLIGHT_HEADERS`) deletes it, and `_rsc`, before middleware
+runs. `isFlightRequest` in `packages/web-v2/src/features/guides/flight-request.ts` reads `Next-Url`
+and `Sec-Fetch-Dest: empty`, which do reach it (measured on 16.3.8 in a browser: the flight fetch
+arrives with both and no `rsc`). The 404 it does send carries `Vary` on them.
 
 `GUIDE_SLUG` lives in `packages/web-v2/src/features/guides/requested-path.ts` and is read by the
 middleware and by `packages/web-v2/src/features/guides/api.ts`. One test of what a slug is, because

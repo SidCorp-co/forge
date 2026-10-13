@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { HELP_SLUGS } from "@/features/docs/help-slugs.generated";
+import { FLIGHT_SIGNAL_HEADERS, isFlightRequest } from "@/features/guides/flight-request";
 import { missingGuideDocument, refusalDocument } from "@/features/guides/missing-document";
 import { readPublicRequest } from "@/features/guides/requested-page";
 import {
@@ -20,9 +21,12 @@ async function guides(request: NextRequest, pathname: string): Promise<NextRespo
   headers.set(GUIDE_PATH_HEADER, pathname);
   const pass = () => NextResponse.next({ request: { headers } });
 
-  if (request.headers.has("RSC")) return pass();
+  if (isFlightRequest(request.headers)) return pass();
   const notFound = (html: string) =>
-    new NextResponse(html, { status: 404, headers: { "content-type": "text/html; charset=utf-8" } });
+    new NextResponse(html, {
+      status: 404,
+      headers: { "content-type": "text/html; charset=utf-8", vary: FLIGHT_SIGNAL_HEADERS },
+    });
 
   const slug = slugFromGuidePath(pathname);
   if (!slug) {
