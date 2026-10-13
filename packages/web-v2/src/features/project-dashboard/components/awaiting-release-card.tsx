@@ -15,7 +15,7 @@ import { Button, Checkbox, Icon, StatusChip } from "@/design";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues/components/batch-release-dialog";
 import { formatUsd } from "@/features/pipeline/derive";
 import type { PipelineRunListItem } from "@/features/pipeline/types";
-import type { ReadState } from "../shape";
+import { plural, type ReadState } from "../shape";
 import { DashboardSection, EmptyLine, RowList, unreadSection } from "./dashboard-section";
 
 const COLLAPSED_LIMIT = 5;
@@ -112,7 +112,8 @@ export function AwaitingReleaseCard({
         ) : (
           <EmptyLine
             title={title}
-            status={`${awaitingReleaseIssues} ${awaitingReleaseIssues === 1 ? "issue" : "issues"}, no release run at the gate`}
+            status={plural(awaitingReleaseIssues, "issue", "issues")}
+            detail="no release run at the gate"
             action={
               <Link
                 href={`/projects/${slug}/issues?filter=awaiting_release`}

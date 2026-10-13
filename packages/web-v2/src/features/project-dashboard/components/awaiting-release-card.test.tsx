@@ -66,7 +66,8 @@ describe("the Awaiting release card", () => {
   it("does not say nothing is waiting beside issues that are Awaiting release", () => {
     mount([], 5);
     expect(screen.queryByText(/nothing waiting/i)).toBeNull();
-    expect(screen.getByText("5 issues, no release run at the gate")).toBeInTheDocument();
+    expect(screen.getByText("5 issues")).toBeInTheDocument();
+    expect(screen.getByText("no release run at the gate")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "See them in Issues" })).toHaveAttribute(
       "href",
       "/projects/forge-dev/issues?filter=awaiting_release",

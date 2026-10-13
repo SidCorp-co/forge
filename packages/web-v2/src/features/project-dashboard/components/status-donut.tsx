@@ -12,12 +12,12 @@ export function StatusDonut({ data }: { data: StatusDonutData }) {
     <DashboardSection title={title}>
       <div className="flex items-center gap-5 py-1">
         <div
-          className="relative size-[96px] flex-none rounded-full"
+          className="relative size-[112px] flex-none rounded-full"
           style={{ background: conicGradient(segments) }}
           role="img"
           aria-label={`${OPEN_WORK_LABEL} by state, ${total} total`}
         >
-          <div className="absolute inset-[16px] flex flex-col items-center justify-center rounded-full bg-surface">
+          <div className="absolute inset-[14px] flex flex-col items-center justify-center rounded-full bg-surface">
             <span className="font-mono text-xl font-bold tabular-nums text-fg">{total}</span>
             <span className="fg-caption text-subtle">{OPEN_WORK_LABEL.toLowerCase()}</span>
           </div>

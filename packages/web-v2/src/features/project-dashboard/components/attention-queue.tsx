@@ -11,6 +11,7 @@ import { Button, Icon, MonoTag, type IconName } from "@/design";
 import { TONE_META, type SemanticTone } from "@/design/status";
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import type { AttentionActionKind, AttentionCut, DashboardAttentionItem } from "../derive";
+import type { ProjectShape } from "../shape";
 import { AgeChip } from "./age-chip";
 import { DashboardSection, EmptyLine, RowList } from "./dashboard-section";
 
@@ -38,7 +39,7 @@ export function AttentionQueue({
   refusal = null,
   pending = false,
   onRetry,
-  degraded = false,
+  shape = "working",
   slug,
   now,
 }: {
@@ -51,8 +52,12 @@ export function AttentionQueue({
   pending?: boolean;
   /** Asks for the read again; offered under a refusal where the read failed. */
   onRetry?: () => void;
-  /** The page is degraded by something this list does not hold, so it cannot say all is caught up. */
-  degraded?: boolean;
+  /**
+   * What the page reads as. An empty list says all caught up only under quiet or working: degraded
+   * means something this list does not hold is wrong, and unread means a read the list rests on beside
+   * its own has not arrived, so the page cannot yet say nothing needs anyone.
+   */
+  shape?: ProjectShape;
   slug: string;
   now: number;
 }) {
@@ -100,16 +105,31 @@ export function AttentionQueue({
   if (items.length === 0) {
     return (
       <div>
-        {cut || refusal ? (
+        {refusal ? (
+          <DashboardSection title={TITLE}>{notes}</DashboardSection>
+        ) : shape === "unread" && cut ? (
+          <DashboardSection title={TITLE}>
+            <p className="fg-body-sm py-2 text-subtle">
+              Not all of this page is read yet, so this is not an all clear.
+            </p>
+            {notes}
+          </DashboardSection>
+        ) : cut ? (
           <DashboardSection title={TITLE}>
             <p className="fg-body-sm py-2 text-subtle">Nothing is listed to act on here.</p>
             {notes}
           </DashboardSection>
-        ) : degraded ? (
+        ) : shape === "degraded" ? (
           <EmptyLine
             title={TITLE}
             status="No item is waiting on you"
             detail="What is wrong is named above, and it is not an item listed here."
+          />
+        ) : shape === "unread" ? (
+          <EmptyLine
+            title={TITLE}
+            status="Not all of this page is read yet"
+            detail="What it names above is missing here too, so this is not an all clear."
           />
         ) : (
           <EmptyLine title={TITLE} status="All caught up" detail="Nothing in this project needs you right now." />
