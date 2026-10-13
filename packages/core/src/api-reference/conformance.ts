@@ -39,17 +39,26 @@ function wireSchema(schema: ZodType): ZodType {
   return held;
 }
 
+/** The body `@hono/zod-validator` answers with when a validator has no hook: `{ success: false, error }`. */
+function isLibraryRefusal(body: unknown): boolean {
+  if (body === null || typeof body !== 'object') return false;
+  const answer = body as { success?: unknown; error?: unknown; code?: unknown };
+  return answer.success === false && answer.error !== undefined && answer.code === undefined;
+}
+
 /** What is wrong with an answer, judged against the descriptor and the error codes the route can give. */
 export function judgeAnswer(
   declaration: OperationDeclaration | undefined,
   errors: ReadonlyMap<number, ReadonlySet<string>> | undefined,
   status: number,
   body: unknown,
+  libraryDefault = false,
 ): Mismatch | null {
   if (!declaration) return { status, what: 'the route declares no answers at all' };
   const declared = declaration.responses[status];
   if (status >= 400) {
     const code = (body as { code?: unknown } | null)?.code;
+    if (libraryDefault && status === 400 && isLibraryRefusal(body)) return null;
     const known = errors?.get(status);
     if (!known)
       return { status, what: `status ${status} is not an error status the route can give` };
@@ -88,14 +97,20 @@ export function responseConformance(reference: () => Promise<Reference>): Middle
       .at(-1);
     if (!route) return;
     const key = `${route.method} ${route.path}`;
-    const { routes, errors } = await reference();
+    const { routes, errors, libraryDefaults } = await reference();
     const entry = routes.find((r) => r.key === key);
     if (!entry) return;
     const body = await c.res
       .clone()
       .json()
       .catch(() => undefined);
-    const mismatch = judgeAnswer(entry.operations[0], errors.get(key), c.res.status, body);
+    const mismatch = judgeAnswer(
+      entry.operations[0],
+      errors.get(key),
+      c.res.status,
+      body,
+      libraryDefaults.has(key),
+    );
     if (!mismatch) return;
     throw new HTTPException(500, {
       message: `response conformance: ${key} answered ${mismatch.status} and ${mismatch.what}`,

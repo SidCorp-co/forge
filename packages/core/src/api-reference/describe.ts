@@ -68,6 +68,11 @@ export type OperationDeclaration = {
   readonly description?: string;
   /** Keyed by status. A status below 400 takes a success answer, 400 and above `fail`. */
   readonly responses: Readonly<Record<number, Answer>>;
+  /**
+   * Why the route no longer does its work: it answers only a refusal, and the reference marks it
+   * deprecated instead of asking for a success it cannot give.
+   */
+  readonly retired?: string;
   /** A request body that is not JSON, which no validator can describe. */
   readonly body?: { readonly contentType: string; readonly description: string };
 };
@@ -102,6 +107,14 @@ export function describeOperation(declaration: OperationDeclaration): Middleware
         `describeOperation: ${status} is a success status and cannot take fail(...) (${declaration.summary})`,
       );
     }
+  }
+  if (
+    declaration.retired !== undefined &&
+    Object.keys(declaration.responses).some((s) => Number(s) < 400)
+  ) {
+    throw new Error(
+      `describeOperation: a retired route answers only a refusal, so it declares no success (${declaration.summary})`,
+    );
   }
   const middleware: MiddlewareHandler = async (_c, next) => next();
   operations.set(middleware, declaration);

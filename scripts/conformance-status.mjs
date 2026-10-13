@@ -28,7 +28,7 @@ const PROBES = {
     ],
   },
   knowledge: {
-    gate: 'check-honest-costs + check-injected-doc-modes + check-pat-surface + check-status-tuples + check-doc-citations',
+    gate: 'check-honest-costs + check-injected-doc-modes + check-pat-surface + check-status-tuples + check-doc-citations + api-reference',
     probe: ['node', 'scripts/check-honest-costs.mjs'],
     from: 'none',
     also: [
@@ -36,6 +36,19 @@ const PROBES = {
       { from: 'none', probe: ['node', 'scripts/check-pat-surface.mjs'] },
       { from: 'none', probe: ['node', 'scripts/check-status-tuples.mjs', '--all'] },
       { from: 'none', probe: ['node', 'scripts/check-doc-citations.mjs', '--all'] },
+      {
+        from: 'none',
+        probe: [
+          'pnpm',
+          '--filter',
+          '@forge/core',
+          'exec',
+          'vitest',
+          'run',
+          'src/api-reference/reference.test.ts',
+        ],
+        needs: ['deps'],
+      },
     ],
   },
   relations: {

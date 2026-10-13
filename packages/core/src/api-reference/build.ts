@@ -48,6 +48,8 @@ export type Reference = {
   readonly findings: readonly Finding[];
   /** Keyed by `RouteEntry.key`. */
   readonly errors: ReadonlyMap<string, AnsweredErrors>;
+  /** The routes whose input refusal is the validation library's own body, which carries no `code`. */
+  readonly libraryDefaults: ReadonlySet<string>;
 };
 
 const BEARER_SCHEME = 'bearerAuth';
@@ -329,7 +331,7 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
         : {}),
     };
   }
-  if (!succeeded) {
+  if (!succeeded && !declared?.retired) {
     doc.findings.push({
       rule: 'no-response',
       route: entry.key,
@@ -340,7 +342,7 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
   const answered = new Map<number, ReadonlySet<string>>(
     [...errors].map(([status, byCode]) => [status, new Set(byCode.keys())]),
   );
-  return { responses, answered };
+  return { responses, answered, libraryDefault };
 }
 
 function accessExtension(access: Access): Record<string, unknown> {
@@ -381,6 +383,7 @@ export async function buildReference(
   const tags = new Set<string>();
   const ids = new Map<string, string>();
   const errors = new Map<string, AnsweredErrors>();
+  const libraryDefaults = new Set<string>();
 
   for (const entry of routes) {
     if (entry.unread)
@@ -421,6 +424,7 @@ export async function buildReference(
     })();
     const answers = await responsesOf(entry, access, doc);
     errors.set(entry.key, answers.answered);
+    if (answers.libraryDefault) libraryDefaults.add(entry.key);
     const tag = tagOf(entry.path);
     tags.add(tag);
     const openApi = openApiPath(entry.path);
@@ -440,6 +444,7 @@ export async function buildReference(
       tags: [tag],
       ...(declared?.summary ? { summary: declared.summary } : {}),
       ...(declared?.description ? { description: declared.description } : {}),
+      ...(declared?.retired ? { deprecated: true } : {}),
       ...(parameters.length > 0 ? { parameters } : {}),
       ...(requestBody ? { requestBody } : {}),
       responses: answers.responses,
@@ -481,5 +486,6 @@ export async function buildReference(
     routes,
     findings: doc.findings,
     errors,
+    libraryDefaults,
   };
 }

@@ -126,6 +126,8 @@
 
 ### Added
 
+- **The API publishes its own reference.** `/api/openapi.json` describes every route's input, answers, errors and permission, `/api/reference` renders it and `/api/reference/flows` draws four flows; none needs a login.
+
 - **Deleting a memory note through an agent tool now says how many it removed.** The tool answered `deleted: true` where the web answers a count; both now answer the number of rows removed, `0` when none matched.
 
 - **A dependency can now wait for a release to ship.** An edge can carry `holdsUntil: "shipped"`, holding its dependent until the blocker closes. Other edges behave as before; the `forge` CLI's `next` still reads the old rule.

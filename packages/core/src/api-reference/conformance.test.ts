@@ -146,6 +146,14 @@ describe('judgeAnswer', () => {
     ).toBeNull();
   });
 
+  it('accepts the validation library own 400 only for a route whose validator has no hook', () => {
+    const body = { success: false, error: { issues: [] } };
+    const known = new Map([[400, new Set(['BAD'])]]);
+    expect(judgeAnswer(declaration, known, 400, body, true)).toBeNull();
+    expect(judgeAnswer(declaration, known, 400, body, false)?.what).toContain('undefined');
+    expect(judgeAnswer(declaration, known, 400, { code: 'OTHER' }, true)?.what).toContain('OTHER');
+  });
+
   it('names the first field that fails, by its path', () => {
     const verdict = judgeAnswer(declaration, undefined, 200, {
       id: 'a',

@@ -59,6 +59,24 @@ describe('each rule, planted once', () => {
     expect(rules(findings)).toEqual(['no-response GET /api/issues']);
   });
 
+  it('no-response: a retired route that answers only a refusal is not named, and is marked deprecated', async () => {
+    const app = new Hono();
+    app.get(
+      '/api/issues',
+      describeOperation({
+        summary: 's',
+        retired: 'moved to knowledge',
+        responses: { 410: fail('GONE_FOR_GOOD') },
+      }),
+      () => {
+        throw new HTTPException(410, { message: 'gone', cause: { code: 'GONE_FOR_GOOD' } });
+      },
+    );
+    const { findings, reference } = await checked(app, `'GONE_FOR_GOOD' ${BUILT_IN}`);
+    expect(rules(findings)).toEqual([]);
+    expect(reference.document.paths['/api/issues']?.get?.deprecated).toBe(true);
+  });
+
   it('no-response: a route that declares only errors is named too', async () => {
     const app = new Hono();
     app.get(
@@ -141,7 +159,6 @@ describe('each rule, planted once', () => {
     const { findings } = await checked(app);
     expect(rules(findings)).toEqual(['param-not-in-path GET /api/issues']);
   });
-
 });
 
 describe('each rule, planted once, continued', () => {
