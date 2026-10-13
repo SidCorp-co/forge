@@ -241,8 +241,14 @@ describe("the Ops drawer, which opens a run with no issue row (ISS-1297)", () =>
     expect(within(header()).getByText("Queued").textContent).toBe(ops);
   });
 
-  it.each(["running", "dispatched"])("still reads a %s live job as running", (status) => {
-    run = summary("running", { attempts: [attempt(status)] });
+  it("still reads a running live job as running", () => {
+    run = summary("running", { attempts: [attempt("running")] });
+    open();
+    expect(within(opsHeader()).getByText("running · drive")).toBeInTheDocument();
+  });
+
+  it("still reads a job handed to a runner as running", () => {
+    run = summary("running", { attempts: [attempt("dispatched")] });
     open();
     expect(within(opsHeader()).getByText("running · drive")).toBeInTheDocument();
   });
