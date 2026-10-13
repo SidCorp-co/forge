@@ -1,38 +1,19 @@
 "use client";
 
-import {
-  Button,
-  PageContainer,
-  PageTitle,
-  SegmentedControl,
-  type SegmentOption,
-} from "@/design";
-import { PipelineBoard } from "@/features/pipeline/components/pipeline-board";
+import { Button, PageContainer, PageTitle } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
-import { useTabParam } from "@/lib/utils/use-tab-param";
-import { usePathname, useSearchParams } from "next/navigation";
+import { replaceLocationSearch, useLocationSearch } from "@/lib/utils/use-location-search";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { IssuesInsightsView } from "./issues-insights-view";
-import { ModuleRollupView } from "./module-rollup-view";
+import { legacyTab } from "../legacy-tab";
 import { IssuesListView } from "./issues-list-view";
-import { ReleaseGatePanel } from "./release-gate-panel";
 import { NewIssueDialog } from "./new-issue-dialog";
-
-type IssuesView = "board" | "list" | "insights" | "modules";
-const VIEWS = ["list", "board", "insights", "modules"] as const;
-const VIEW_OPTIONS: SegmentOption<IssuesView>[] = [
-  { value: "list", label: "List", icon: "list" },
-  { value: "board", label: "Board", icon: "board" },
-  { value: "insights", label: "Insights", icon: "activity" },
-  { value: "modules", label: "Modules", icon: "book" },
-];
 
 interface IssuesScreenProps {
   scope: { projectId: string; slug: string };
 }
 
 export function IssuesScreen({ scope }: IssuesScreenProps) {
-  const [view, setView] = useTabParam<IssuesView>(VIEWS, "list");
   const projectsQ = useProjects();
   const canWrite =
     projectsQ.data?.find((p) => p.id === scope.projectId)?.role !== "viewer";
@@ -41,11 +22,24 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   const [newOpen, setNewOpen] = useState(false);
   const searchParams = useSearchParams();
   const pathname = usePathname() || "";
+  const router = useRouter();
   const wantsNew = searchParams.get("new") === "1";
 
   useEffect(() => {
     if (wantsNew) setNewOpen(true);
   }, [wantsNew]);
+
+  // An old `?tab=` link goes to the surface that owns that content now. The address bar is read
+  // directly rather than through `useSearchParams`, which Next does not move for a same-route
+  // replace of an entry it wrote itself — the screen would otherwise sit on a link it already sent.
+  const legacy = legacyTab(scope.slug, useLocationSearch());
+  const redirectHref = legacy.kind === "redirect" ? legacy.href : null;
+  const redirectStays = legacy.kind === "redirect" && legacy.onIssues;
+  useEffect(() => {
+    if (redirectHref === null) return;
+    if (redirectStays) replaceLocationSearch(redirectHref);
+    else router.replace(redirectHref);
+  }, [redirectHref, redirectStays, router]);
 
   // Closing drops `new` from this entry and keeps the rest, so Back and reload stay shut. The state
   // is `null` because Next skips syncing `useSearchParams` for a state carrying its `__NA` mark.
@@ -85,45 +79,28 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
             <span className="hidden sm:inline">New issue</span>
           </Button>
         )}
-        <div className="overflow-x-auto">
-          <SegmentedControl
-            options={VIEW_OPTIONS}
-            value={view}
-            onChange={setView}
-          />
-        </div>
       </div>
     </header>
   );
 
+  if (redirectHref !== null) return null;
+
   return (
     <>
-      {view === "board" ? (
-        // Board needs the full-height flex column the standalone /pipeline route
-        // gets, so it lives outside PageContainer and scrolls horizontally.
-        <div className="flex h-full min-h-0 flex-col">
-          <div className="flex-none px-4 pt-5 sm:px-6 sm:pt-6">{header}</div>
-          <div className="min-h-0 flex-1">
-            <PipelineBoard scope={scope} embedded canWrite={canWrite} />
-          </div>
-        </div>
-      ) : (
-        <PageContainer className="min-h-dvh">
-          {header}
-          {view === "list" ? <ReleaseGatePanel projectId={scope.projectId} slug={scope.slug} /> : null}
-          {view === "list" ? (
-            <IssuesListView
-              scope={scope}
-              canWrite={canWrite}
-              onNewIssue={canWrite ? () => setNewOpen(true) : undefined}
-            />
-          ) : view === "modules" ? (
-            <ModuleRollupView scope={scope} />
-          ) : (
-            <IssuesInsightsView scope={scope} />
-          )}
-        </PageContainer>
-      )}
+      <PageContainer className="min-h-dvh">
+        {header}
+        {legacy.kind === "unknown" && (
+          <p role="status" className="fg-body-sm mb-4 text-muted" data-testid="unknown-tab-line">
+            This link names the view <code className="font-mono">{legacy.value}</code>, which the
+            Issues screen does not have, so the list is shown.
+          </p>
+        )}
+        <IssuesListView
+          scope={scope}
+          canWrite={canWrite}
+          onNewIssue={canWrite ? () => setNewOpen(true) : undefined}
+        />
+      </PageContainer>
 
       <NewIssueDialog
         open={newOpen && canWrite}

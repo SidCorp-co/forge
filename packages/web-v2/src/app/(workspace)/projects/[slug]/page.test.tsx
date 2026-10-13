@@ -40,6 +40,7 @@ vi.mock("@/features/attention/hooks", () => ({
 vi.mock("@/features/pipeline/hooks", () => ({
   useProjectRuns: () => noQuery,
   useStepDurations: () => noQuery,
+  useThroughput: () => noQuery,
 }));
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ ...noQuery, data: [{ id: "p1", slug: "pair", name: "Pair" }] }),
@@ -171,5 +172,16 @@ describe("the project dashboard's Needs you", () => {
       expect(screen.getByText("All caught up")).toBeInTheDocument();
       expect(within(needsYouTile()).getByText("0")).toBeInTheDocument();
     });
+  });
+});
+
+// ISS-1154 — the Issues screen's Insights tab went, so its two figures are drawn here.
+describe("the project dashboard's metrics", () => {
+  it("carries Throughput and Where time goes beside the other tiles", () => {
+    attentionView = view({});
+    render(<ProjectOverviewPage />);
+    expect(screen.getByText("Throughput")).toBeInTheDocument();
+    expect(screen.getByText("Where time goes")).toBeInTheDocument();
+    expect(screen.getByText("Open work by state")).toBeInTheDocument();
   });
 });

@@ -23,6 +23,8 @@ import { RunnersCard } from "@/features/project-dashboard/components/runners-car
 import { SchedulesCard } from "@/features/project-dashboard/components/schedules-card";
 import { SpendCard } from "@/features/project-dashboard/components/spend-card";
 import { StatusDonut } from "@/features/project-dashboard/components/status-donut";
+import { StepTimes } from "@/features/project-dashboard/components/step-times";
+import { Throughput, THROUGHPUT_WINDOW_DAYS } from "@/features/project-dashboard/components/throughput";
 import {
   activeRuns,
   attentionCaption,
@@ -39,7 +41,7 @@ import {
   upcomingSchedules,
 } from "@/features/project-dashboard/derive";
 import { useAttention } from "@/features/attention/hooks";
-import { useProjectRuns, useStepDurations } from "@/features/pipeline/hooks";
+import { useProjectRuns, useStepDurations, useThroughput } from "@/features/pipeline/hooks";
 import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
@@ -48,6 +50,9 @@ import { useQueueStats } from "@/features/sessions/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+
+/** The window the spend and where-time-goes tiles read; the throughput tile's is its own. */
+const METRICS_WINDOW_DAYS = 7;
 
 export default function ProjectOverviewPage() {
   const params = useParams<{ slug: string }>();
@@ -67,7 +72,8 @@ export default function ProjectOverviewPage() {
   // on `projectId` so they no-op until the slug resolves.
   const attentionQ = useAttention();
   const runsQ = useProjectRuns(projectId);
-  const durationsQ = useStepDurations({ days: 7, projectId });
+  const durationsQ = useStepDurations({ days: METRICS_WINDOW_DAYS, projectId });
+  const throughputQ = useThroughput({ days: THROUGHPUT_WINDOW_DAYS, projectId });
   const queueQ = useQueueStats(projectId);
   const projectRunnersQ = useProjectRunners(projectId ?? null);
   const activeRunnersQ = useActiveRunners(projectId ?? null);
@@ -228,6 +234,19 @@ export default function ProjectOverviewPage() {
           />
           <StatusDonut data={donut} />
           <SpendCard data={spend} inFlightUsd={inFlight} />
+          <Throughput
+            rows={throughputQ.data}
+            isLoading={throughputQ.isLoading}
+            error={throughputQ.error}
+            onRetry={() => throughputQ.refetch()}
+          />
+          <StepTimes
+            durations={durationsQ.data}
+            windowDays={METRICS_WINDOW_DAYS}
+            isLoading={durationsQ.isLoading}
+            error={durationsQ.error}
+            onRetry={() => durationsQ.refetch()}
+          />
           <RunnersCard summary={runners} slug={project.slug} />
           <SchedulesCard rows={schedules} now={now} slug={project.slug} />
         </div>

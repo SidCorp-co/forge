@@ -1,6 +1,6 @@
 "use client";
 
-// Pipeline kanban screen (`/projects/[slug]/pipeline`, ISS-295), and the Issues screen's Board tab.
+// Pipeline kanban screen (`/projects/[slug]/pipeline`, ISS-295).
 //
 // One column per LANE LABEL — the same word the issue's own status chip says — with the live run
 // status overlaid by issueId. Until ISS-999 the columns were the seven stages of a pipeline the
@@ -41,10 +41,6 @@ import { RunDetail } from "./run-detail";
 
 interface PipelineBoardProps {
   scope: { projectId: string; slug: string };
-  /** When embedded inside another screen (the Issues Board tab, ISS-364) the
-   *  host renders the page header + view switcher, so the board hides its own
-   *  `<header>` and trims its top padding. */
-  embedded?: boolean;
   /** False for project viewers (read-only). The board itself has no
    *  drag-and-drop (cards are click-to-open), so this gates the mutation
    *  affordances in the RunDetail drawer (quick actions + run controls).
@@ -57,7 +53,7 @@ interface Selection {
   runId: string | null;
 }
 
-export function PipelineBoard({ scope, embedded = false, canWrite = true }: PipelineBoardProps) {
+export function PipelineBoard({ scope, canWrite = true }: PipelineBoardProps) {
   const { projectId, slug } = scope;
   const [selected, setSelected] = useState<Selection | null>(null);
 
@@ -88,14 +84,8 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
   }, [selected, issuesQ.data]);
 
   return (
-    <div
-      className={
-        embedded
-          ? "flex h-full min-h-0 flex-col px-4 pb-4 sm:px-6"
-          : "flex h-full min-h-0 flex-col px-4 pb-4 pt-5 sm:px-6"
-      }
-    >
-      <header className={`mb-3 flex flex-none items-center gap-3${embedded ? " hidden" : ""}`}>
+    <div className="flex h-full min-h-0 flex-col px-4 pb-4 pt-5 sm:px-6">
+      <header className="mb-3 flex flex-none items-center gap-3">
         <PageTitle className="fg-h2">Pipeline</PageTitle>
         <p className="fg-body-sm hidden text-muted sm:block">
           One column per state an issue can be in. There is no order between them.

@@ -7,10 +7,10 @@
 // the chart this replaced. The malformed cases are the sparse shape the old server sent.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThroughputRow } from "@/features/pipeline/types";
-import { ThroughputChart } from "./issues-insights-view";
+import { Throughput, ThroughputChart } from "./throughput";
 
 expect.extend(matchers);
 afterEach(cleanup);
@@ -100,5 +100,36 @@ describe("ThroughputChart — a series that is not seven consecutive days is ref
 
   it("refuses a date that is not a calendar date", () => {
     refused([...IN_ORDER.slice(1), row("2026-02-30", 1)], /"2026-02-30" is not a calendar date/);
+  });
+});
+
+describe("Throughput — the tile around the chart (ISS-1154)", () => {
+  const mount = (over: Partial<Parameters<typeof Throughput>[0]> = {}) =>
+    render(<Throughput rows={WEEK} isLoading={false} error={null} onRetry={vi.fn()} {...over} />);
+
+  it("draws the week once it has arrived", () => {
+    mount();
+    expect(counts()).toEqual(["31", "62", "31", "11", "0", "55", "27"]);
+  });
+
+  it("draws no chart, and refuses nothing, while the series is loading", () => {
+    mount({ rows: undefined, isLoading: true });
+    expect(counts()).toEqual([]);
+    expect(screen.queryByText("Throughput can't be drawn")).toBeNull();
+  });
+
+  it("names a failed read and retries it, rather than drawing a refused empty series", () => {
+    const onRetry = vi.fn();
+    mount({ rows: undefined, error: new Error("throughput read failed"), onRetry });
+    expect(screen.getByText("Couldn't load throughput")).toBeInTheDocument();
+    expect(screen.queryByText("Throughput can't be drawn")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a series that is not seven consecutive days by name", () => {
+    mount({ rows: IN_ORDER.slice(1) });
+    expect(screen.getByText("Throughput can't be drawn")).toBeInTheDocument();
+    expect(screen.getByText(/Expected 7 consecutive days, received 6/)).toBeInTheDocument();
   });
 });
