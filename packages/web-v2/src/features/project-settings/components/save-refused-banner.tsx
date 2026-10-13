@@ -6,17 +6,16 @@
 // Two ways out, because only the person knows which they want: take what is stored now at the
 // settings that moved, or keep what they typed and save over it. Both re-read the document, so
 // both leave this section writing against what is actually stored, and neither touches an edit
-// anywhere else on the page — the sections carry their drafts across a re-read (`../draft.ts`).
+// anywhere else on the page — the page's one form carries its draft across a re-read.
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Banner, Button } from "@/design";
+import { Banner, Button, type SettingsForm } from "@/design";
 import {
 	formatPipelineConfigError,
 	formatSettingsWriteError,
 	settingsThatMoved,
 	writeConflicts,
 } from "@/lib/api/error";
-import type { SettingsDraft } from "../draft";
 
 export function SaveRefusedBanner({
 	projectId,
@@ -31,10 +30,10 @@ export function SaveRefusedBanner({
 	onDismiss?: () => void;
 	/** Which settings document to re-read — the query key whose data seeds this section. */
 	document?: "pipeline-config" | "environments";
-	/** The draft this section holds. Both ways out act on it, and it is what reports back
-	 *  which edits a re-read replaced. */
-	// biome-ignore lint/suspicious/noExplicitAny: every section's draft shape, read only through the contract's own paths.
-	draft: Pick<SettingsDraft<any>, "takeStored" | "replaced" | "dismissReplaced">;
+	/** The page's form. Both ways out act on it, and it is what reports back which edits a
+	 *  re-read replaced. */
+	// biome-ignore lint/suspicious/noExplicitAny: every page's draft shape, read only through the contract's own paths.
+	draft: Pick<SettingsForm<any>, "takeStored" | "replaced" | "dismissReplaced">;
 }) {
 	const qc = useQueryClient();
 	const conflicts = writeConflicts(error);

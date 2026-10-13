@@ -1,25 +1,19 @@
 "use client";
 
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   Button,
   CardTitle,
   Icon,
   Input,
+  type SettingsForm,
   Textarea,
   Toggle,
 } from "@/design";
-import { useSettingsDraft } from "../draft";
-import { useUpdatePipelineConfig } from "../hooks";
 import { providerForMcpServerName } from "@/features/integrations/providers/registry";
-import {
-  MCP_CATALOG,
-  MCP_CATALOG_NAMES,
-  type PipelineConfig,
-  sectionWrite,
-} from "../types";
-import { SaveRefusedBanner } from "./save-refused-banner";
+import type { PipelineDraft } from "../pipeline-form";
+import { MCP_CATALOG, MCP_CATALOG_NAMES } from "../types";
 
 type ServerMap = Record<string, unknown>;
 
@@ -38,35 +32,22 @@ function customEntries(map: ServerMap): Array<{ name: string; value: unknown }> 
     .map(([name, value]) => ({ name, value }));
 }
 
-const AT = ["mcpServers"] as const;
-
 export function McpServersSection({
-  projectId,
-  config,
+  form,
   canEdit,
 }: {
-  projectId: string;
-  /** The full server-fetched pipelineConfig (round-tripped on save). */
-  config: PipelineConfig;
+  form: SettingsForm<PipelineDraft>;
   canEdit: boolean;
 }) {
-  const update = useUpdatePipelineConfig(projectId);
-
-  const serverMap = useMemo<ServerMap>(() => {
-    const m = config.mcpServers;
-    return m && typeof m === "object" ? (m as ServerMap) : {};
-  }, [config.mcpServers]);
-
-  const held = useSettingsDraft(serverMap, { at: AT });
-  const { draft, setDraft } = held;
+  const draft = form.draft.mcpServers as ServerMap;
+  const setDraft = (next: (current: ServerMap) => ServerMap) =>
+    form.setDraft((d) => ({ ...d, mcpServers: next(d.mcpServers) }));
 
   // "Add custom server" form state.
   const [addOpen, setAddOpen] = useState(false);
   const [customName, setCustomName] = useState("");
   const [customSpec, setCustomSpec] = useState("");
   const [customError, setCustomError] = useState<string | null>(null);
-
-  const dirty = held.dirty;
 
   function toggleCatalog(name: string, on: boolean) {
     setDraft((d) => {
@@ -114,10 +95,6 @@ export function McpServersSection({
     setCustomName("");
     setCustomSpec("");
     setAddOpen(false);
-  }
-
-  function save() {
-    update.mutate(sectionWrite({ mcpServers: config.mcpServers }, { mcpServers: draft }));
   }
 
   const custom = customEntries(draft);
@@ -226,23 +203,6 @@ export function McpServersSection({
               Add custom server
             </Button>
           )}
-
-          <SaveRefusedBanner
-            projectId={projectId}
-            error={update.isError ? update.error : null}
-            onDismiss={() => update.reset()}
-            draft={held}
-          />
-
-          <Button
-            variant="primary"
-            loading={update.isPending}
-            disabled={!dirty}
-            onClick={save}
-            className="min-h-11"
-          >
-            Save MCP servers
-          </Button>
         </div>
       )}
     </div>

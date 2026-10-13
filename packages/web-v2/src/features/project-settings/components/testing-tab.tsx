@@ -6,7 +6,8 @@
 // (owner-gated, validated by `environmentsPatchSchema`) as the keys this form changed beside
 // the values it read them against; `PATCH /api/projects/:id` refuses `environments` by name
 // (ISS-1170). Passwords are masked by default with a per-row reveal; values are never logged.
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { z } from "zod";
 import {
   Button,
   Card,
@@ -16,18 +17,15 @@ import {
   IconButton,
   Input,
   SectionTitle,
+  SettingsFormBar,
   Skeleton,
   Textarea,
+  useSettingsForm,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useSettingsDraft } from "../draft";
+import { documentWrite } from "../document-write";
 import { useEnvironments, useUpdateEnvironments } from "../hooks";
-import {
-  type EnvironmentsConfig,
-  sectionWrite,
-  type TestCredential,
-  type TestingUrl,
-} from "../types";
+import type { EnvironmentsConfig, TestCredential, TestingUrl } from "../types";
 import { SaveRefusedBanner } from "./save-refused-banner";
 
 // Backend caps (see `testingUrlSchema` / `testCredentialSchema` in core).
@@ -117,14 +115,6 @@ function locateField(path: readonly string[]): string[] | null {
   return key ? [key] : null;
 }
 
-/** The stored preview side as an object, or `null` where the project declares none. */
-function storedPreviewOf(raw: unknown): Record<string, unknown> | null {
-  const preview = ((raw ?? {}) as EnvironmentsConfig).preview;
-  return typeof preview === "object" && preview !== null && !Array.isArray(preview)
-    ? (preview as Record<string, unknown>)
-    : null;
-}
-
 function isValidUrl(value: string): boolean {
   try {
     new URL(value);
@@ -150,12 +140,12 @@ function keptCredentials(rows: CredRow[]): CredRow[] {
     .map((c) => ({ ...c, label: c.label.trim(), username: c.username.trim(), password: c.password }));
 }
 
-/** Canonical JSON of the RENDERED fields, used for dirty detection. Empty URL fields normalize
- *  to null; blank/partial rows are dropped — matching what the save path actually sends, so a
- *  freshly-loaded form reads as not-dirty. A stored key this form does not render appears in
- *  neither side, because neither the comparison nor the write reaches it. */
-function canonical(form: Form): string {
-  return JSON.stringify({
+/** The document the form stands for — only the fields it renders, empty URL fields as null and
+ *  blank or partial rows dropped, which is what a save sends. A stored key this form does not
+ *  render is in neither side of a comparison, because neither the comparison nor the write reaches it. */
+function documentOf(form: Form) {
+  const urls = keptUrlRows(form.previewUrls);
+  return {
     live: {
       url: trimmedOrNull(form.liveUrl),
       commitUrl: trimmedOrNull(form.liveCommitUrl),
@@ -164,28 +154,47 @@ function canonical(form: Form): string {
     preview: {
       url: trimmedOrNull(form.previewUrl),
       apiUrl: trimmedOrNull(form.previewApiUrl),
-      urls: keptUrlRows(form.previewUrls),
+      urls: urls.length > 0 ? urls : null,
     },
     testCredentials: keptCredentials(form.testCredentials),
     limits: trimmedOrNull(form.limits),
-  });
+  };
 }
+
+const URL_MESSAGE = "Enter a valid URL (including http(s)://).";
+
+const optionalUrl = z.string().refine((v) => v.trim() === "" || isValidUrl(v.trim()), URL_MESSAGE);
+
+const urlRow = z.looseObject({ label: z.string(), url: z.string() }).superRefine((row, ctx) => {
+  const label = row.label.trim();
+  const url = row.url.trim();
+  if (label === "" && url === "") return;
+  if (label === "") ctx.addIssue({ code: "custom", message: "Label is required." });
+  else if (url === "") ctx.addIssue({ code: "custom", message: "URL is required." });
+  else if (!isValidUrl(url)) ctx.addIssue({ code: "custom", message: URL_MESSAGE });
+});
+
+const credentialRow = z
+  .looseObject({ label: z.string(), username: z.string(), password: z.string() })
+  .superRefine((row, ctx) => {
+    if (row.label.trim() === "" && (row.username !== "" || row.password !== "")) {
+      ctx.addIssue({ code: "custom", message: "Label is required." });
+    }
+  });
+
+const testingSchema = z.object({
+  liveUrl: optionalUrl,
+  liveCommitUrl: optionalUrl,
+  liveCommitPath: z.string(),
+  previewUrl: optionalUrl,
+  previewApiUrl: optionalUrl,
+  previewUrls: z.array(urlRow),
+  testCredentials: z.array(credentialRow),
+  limits: z.string(),
+}) as unknown as z.ZodType<Form, Form>;
 
 export function TestingTab({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const envQ = useEnvironments(projectId);
-  const update = useUpdateEnvironments(projectId);
-
-  // The document this form writes is also the document it reads its `base` from — one source,
-  // so a write is compared against what this screen actually saw (ISS-1170).
-  const environments = envQ.data?.environments;
-  const held = useSettingsDraft(parse(environments), { locate: locateField });
-  const form = held.draft;
-  const setForm = held.setDraft;
-  const [revealed, setRevealed] = useState<Set<number>>(new Set());
-
-  const storedPreview = useMemo(() => storedPreviewOf(environments), [environments]);
-  const original = useMemo(() => canonical(parse(environments)), [environments]);
-  const dirty = canonical(form) !== original;
 
   // No form before the document is in hand: a blank one over an unread document would let
   // somebody type against a base nobody has seen.
@@ -213,41 +222,36 @@ export function TestingTab({ projectId, canEdit }: { projectId: string; canEdit:
     );
   }
 
-  // Validation — block save on malformed URLs or partially-filled rows.
-  function urlError(value: string): string | undefined {
-    return value.trim() !== "" && !isValidUrl(value.trim())
-      ? "Enter a valid URL (including http(s)://)."
-      : undefined;
-  }
-  const liveUrlError = urlError(form.liveUrl);
-  const liveCommitUrlError = urlError(form.liveCommitUrl);
-  const previewUrlError = urlError(form.previewUrl);
-  const previewApiUrlError = urlError(form.previewApiUrl);
+  return <TestingPage projectId={projectId} canEdit={canEdit} environments={envQ.data?.environments} />;
+}
 
-  function testingUrlError(row: UrlRow): string | undefined {
-    const label = row.label.trim();
-    const url = row.url.trim();
-    if (label === "" && url === "") return undefined; // empty row — dropped on save
-    if (label === "") return "Label is required.";
-    if (url === "") return "URL is required.";
-    if (!isValidUrl(url)) return "Enter a valid URL (including http(s)://).";
-    return undefined;
-  }
+function TestingPage({
+  projectId,
+  canEdit,
+  environments,
+}: {
+  projectId: string;
+  canEdit: boolean;
+  /** The document as stored: this form writes it, and a write's `base` is read from it. */
+  environments: unknown;
+}) {
+  const update = useUpdateEnvironments(projectId);
+  const held = useSettingsForm<Form>({
+    read: parse(environments),
+    schema: testingSchema,
+    locate: locateField,
+    comparable: documentOf,
+  });
+  const form = held.draft;
+  const setForm = held.setDraft;
+  const [revealed, setRevealed] = useState<Set<number>>(new Set());
 
-  function credentialError(row: CredRow): string | undefined {
-    if (row.label.trim() === "" && (row.username !== "" || row.password !== "")) {
-      return "Label is required.";
-    }
-    return undefined;
-  }
-
-  const hasErrors =
-    !!liveUrlError ||
-    !!liveCommitUrlError ||
-    !!previewUrlError ||
-    !!previewApiUrlError ||
-    form.previewUrls.some((r) => !!testingUrlError(r)) ||
-    form.testCredentials.some((r) => !!credentialError(r));
+  const liveUrlError = held.errorAt("liveUrl");
+  const liveCommitUrlError = held.errorAt("liveCommitUrl");
+  const previewUrlError = held.errorAt("previewUrl");
+  const previewApiUrlError = held.errorAt("previewApiUrl");
+  const testingUrlError = (i: number) => held.errorAt(`previewUrls.${i}`);
+  const credentialError = (i: number) => held.errorAt(`testCredentials.${i}`);
 
   function setField(key: keyof Form, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -309,38 +313,12 @@ export function TestingTab({ projectId, canEdit }: { projectId: string; canEdit:
   // Only the fields this form renders, and only where their value moved. Clearing every
   // rendered preview field sends `null` for those three keys alone: a key the form never
   // showed is named by no path here, so nothing can carry it away (ISS-1170).
-  function save() {
-    if (!dirty || hasErrors) return;
-    const stored = (environments ?? {}) as Record<string, unknown>;
-    const storedLive = (stored.live ?? {}) as Record<string, unknown>;
-    const rendered = (side: Record<string, unknown>, fields: Record<string, unknown>) =>
-      Object.fromEntries(Object.keys(fields).map((k) => [k, side[k]]));
-    const liveFields = {
-      url: trimmedOrNull(form.liveUrl),
-      commitUrl: trimmedOrNull(form.liveCommitUrl),
-      commitPath: trimmedOrNull(form.liveCommitPath),
-    };
-    const previewFields = {
-      url: trimmedOrNull(form.previewUrl),
-      apiUrl: trimmedOrNull(form.previewApiUrl),
-      urls: keptUrlRows(form.previewUrls).length > 0 ? keptUrlRows(form.previewUrls) : null,
-    };
-    update.mutate(
-      sectionWrite(
-        {
-          live: rendered(storedLive, liveFields),
-          preview: rendered(storedPreview ?? {}, previewFields),
-          testCredentials: stored.testCredentials,
-          limits: stored.limits,
-        },
-        {
-          live: liveFields,
-          preview: previewFields,
-          testCredentials: keptCredentials(form.testCredentials),
-          limits: trimmedOrNull(form.limits),
-        },
-      ),
-    );
+  async function save() {
+    update.reset();
+    await held.save(async (now) => {
+      const write = documentWrite(documentOf(held.seeded), documentOf(now), environments);
+      if (write) await update.mutateAsync(write);
+    });
   }
 
   return (
@@ -482,7 +460,7 @@ export function TestingTab({ projectId, canEdit }: { projectId: string; canEdit:
           ) : (
             <ul className="space-y-3">
               {form.previewUrls.map((row, i) => {
-                const err = testingUrlError(row);
+                const err = testingUrlError(i);
                 return (
                   <li key={i} className="flex items-start gap-2">
                     <div className="w-40 shrink-0">
@@ -551,7 +529,7 @@ export function TestingTab({ projectId, canEdit }: { projectId: string; canEdit:
           ) : (
             <ul className="space-y-3">
               {form.testCredentials.map((row, i) => {
-                const err = credentialError(row);
+                const err = credentialError(i);
                 return (
                   <li key={i} className="rounded-md border border-line p-3">
                     <div className="flex items-start gap-2">
@@ -632,7 +610,16 @@ export function TestingTab({ projectId, canEdit }: { projectId: string; canEdit:
       </Card>
 
       {canEdit && (
-        <div className="space-y-3">
+        <SettingsFormBar
+          dirty={held.dirty}
+          saving={update.isPending}
+          blockedBy={held.invalid ? "Fix what is marked above before saving." : null}
+          onSave={() => void save().catch(() => undefined)}
+          onDiscard={() => {
+            update.reset();
+            held.discard();
+          }}
+        >
           <SaveRefusedBanner
             projectId={projectId}
             error={update.isError ? update.error : null}
@@ -640,16 +627,7 @@ export function TestingTab({ projectId, canEdit }: { projectId: string; canEdit:
             document="environments"
             draft={held}
           />
-          <Button
-            variant="primary"
-            loading={update.isPending}
-            disabled={!dirty || hasErrors}
-            onClick={save}
-            className="min-h-11"
-          >
-            Save testing config
-          </Button>
-        </div>
+        </SettingsFormBar>
       )}
     </div>
   );

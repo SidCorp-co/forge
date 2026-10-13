@@ -10,6 +10,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LeaveGuardProvider } from "@/design";
 import { ApiError } from "@/lib/api/client";
 import { TestingTab } from "./components/testing-tab";
 
@@ -73,7 +74,9 @@ async function mount() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const view = render(
 		<QueryClientProvider client={qc}>
-			<TestingTab projectId="p1" canEdit />
+			<LeaveGuardProvider>
+					<TestingTab projectId="p1" canEdit />
+				</LeaveGuardProvider>
 		</QueryClientProvider>,
 	);
 	// The form seeds from the environments document's own read, so nothing is on screen until
@@ -88,7 +91,7 @@ function clear(label: RegExp | string) {
 }
 
 function save() {
-	fireEvent.click(screen.getByRole("button", { name: /save testing config/i }));
+	fireEvent.click(screen.getByRole("button", { name: "Save" }));
 }
 
 beforeEach(() => {
@@ -148,10 +151,12 @@ describe("before the document is in hand", () => {
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 		render(
 			<QueryClientProvider client={qc}>
-				<TestingTab projectId="p1" canEdit />
+				<LeaveGuardProvider>
+					<TestingTab projectId="p1" canEdit />
+				</LeaveGuardProvider>
 			</QueryClientProvider>,
 		);
-		expect(screen.queryByRole("button", { name: /save testing config/i })).toBeNull();
+		expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
 		expect(screen.queryByLabelText(/environment limits/i)).toBeNull();
 		opened.release();
 		held = null;
@@ -163,12 +168,14 @@ describe("before the document is in hand", () => {
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 		render(
 			<QueryClientProvider client={qc}>
-				<TestingTab projectId="p1" canEdit />
+				<LeaveGuardProvider>
+					<TestingTab projectId="p1" canEdit />
+				</LeaveGuardProvider>
 			</QueryClientProvider>,
 		);
 		await screen.findByRole("button", { name: /retry/i });
 		expect(screen.queryByLabelText(/environment limits/i)).toBeNull();
-		expect(screen.queryByRole("button", { name: /save testing config/i })).toBeNull();
+		expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
 	});
 });
 
@@ -183,5 +190,39 @@ describe("a limits edit", () => {
 		expect(Object.keys((sent[0] as { patch: Doc }).patch)).toEqual(["limits"]);
 		expect(stored.preview).toEqual(START.preview);
 		expect(stored.live).toEqual(START.live);
+	});
+});
+
+describe("a value the page cannot accept", () => {
+	it("names a malformed URL beside its field and sends nothing", async () => {
+		await mount();
+		fireEvent.change(screen.getByLabelText(/^live url/i), { target: { value: "not a url" } });
+		await screen.findByText("Enter a valid URL (including http(s)://).");
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+		fireEvent.click(screen.getByRole("button", { name: "Save" }));
+		expect(sent).toEqual([]);
+	});
+
+	it("names a half-filled testing URL row, and stops naming it once the row is complete", async () => {
+		await mount();
+		fireEvent.change(screen.getByLabelText("Testing URL 1 label"), { target: { value: "" } });
+		await screen.findByText("Label is required.");
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+		fireEvent.change(screen.getByLabelText("Testing URL 1 label"), { target: { value: "Mail" } });
+		await waitFor(() => expect(screen.queryByText("Label is required.")).toBeNull());
+		expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+	});
+});
+
+describe("the page's one Save", () => {
+	it("is the only Save, disabled until a value moves and again once it is put back", async () => {
+		await mount();
+		expect(screen.getAllByRole("button", { name: /^save/i })).toHaveLength(1);
+		const limits = screen.getByLabelText(/environment limits/i);
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+		fireEvent.change(limits, { target: { value: "changed" } });
+		expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+		fireEvent.change(limits, { target: { value: START.limits as string } });
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 	});
 });

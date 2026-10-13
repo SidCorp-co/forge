@@ -69,6 +69,13 @@ export {
   useDataTableRows, type DataTableModelColumn, type DataTableModelOptions, type DataTableSort,
   type SortValue, type SortKey, type SortDirection,
 } from "./patterns/data-table-model";
+export { SettingsFormBar, type SettingsFormBarProps } from "./patterns/settings-form-bar";
+export {
+  useSettingsForm, type SettingsForm, type SettingsFormOptions, type ReplacedEdit,
+} from "./patterns/settings-form-model";
+export {
+  LeaveGuardProvider, useUnsavedChanges, useLeaveGuardAttempt, useGuardedRouter,
+} from "./patterns/leave-guard";
 export {
   HelpButton, type HelpButtonProps, type HelpContent, type HelpShortcut,
 } from "./primitives/help-button";

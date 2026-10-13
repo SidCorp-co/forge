@@ -10,6 +10,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LeaveGuardProvider } from "@/design";
 import type { ProjectDetail } from "@/features/projects/types";
 import { RepoTab } from "./components/repo-tab";
 import type { ReleaseChainEntry } from "./types";
@@ -50,12 +51,14 @@ function show(p: ProjectDetail) {
 	const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
 	render(
 		<QueryClientProvider client={client}>
-			<RepoTab project={p} canEdit />
+			<LeaveGuardProvider>
+				<RepoTab project={p} canEdit />
+			</LeaveGuardProvider>
 		</QueryClientProvider>,
 	);
 }
 
-const save = () => screen.getByRole("button", { name: "Save repository" });
+const save = () => screen.getByRole("button", { name: "Save" });
 const type = (label: string, value: string) =>
 	fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
@@ -128,5 +131,17 @@ describe("the repository tab hands back the release tag it shows no field for (c
 
 		await waitFor(() => expect(sent).toHaveLength(1));
 		expect(sent[0]).toEqual({ baseBranch: "main", releaseChain: [{ branch: "main" }] });
+	});
+});
+
+describe("the repository page's one Save refuses a chain it cannot send, and says why", () => {
+	it("names a branch that appears twice and sends nothing", async () => {
+		show(project([{ branch: "dev" }]));
+
+		fireEvent.click(screen.getByRole("button", { name: "Add a branch" }));
+		type("2. Branch", "dev");
+		await screen.findByText(/The same branch appears twice/);
+		expect(save()).toBeDisabled();
+		expect(sent).toEqual([]);
 	});
 });

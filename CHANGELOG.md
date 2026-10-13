@@ -6398,6 +6398,8 @@
 
 ### Changed
 
+- **A settings page has one Save, and asks before it is left with unsaved changes.** Basics, Repository, Testing, Pipeline and Account each save everything you changed together, and say what is wrong beside the field instead of greying the button. Reloading, following a link, switching a tab or pressing Back asks first, and Stay keeps your edits. If part of a save lands, the page says which part. (ISS-1262)
+
 - **The projects list has an Active column, and its Sort menu and headers are one control.** A sort chosen in the menu marks its header, and the menu names the direction the list runs. (ISS-1263)
 
 - **An integration run on a box with its own Postgres reuses the template database.** A run whose migrations match one already there clones it; a differing one builds its own. Concurrent runs build it once. CI still builds its own.

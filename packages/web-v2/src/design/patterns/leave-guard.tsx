@@ -1,0 +1,202 @@
+"use client";
+
+// A page holding unsaved edits asks before it is left. The App Router gives a page no way to veto
+// a navigation, so each way out is answered by name: the browser's own prompt for a reload or a
+// close, a click on a same-origin link, a navigation the app starts from code, and the Back button.
+
+import { useRouter } from "next/navigation";
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { ConfirmDialog } from "@/design/primitives/confirm-dialog";
+
+interface Pending {
+  /** Carries out the navigation the person was asked about. */
+  go: () => void;
+  /** Restores what the navigation already did to the history, where it did anything. */
+  stay?: () => void;
+}
+
+interface LeaveGuardApi {
+  mark: (id: string, dirty: boolean) => void;
+  attempt: (go: () => void) => void;
+}
+
+const SENTINEL = "__leaveGuard";
+
+const LeaveGuardContext = createContext<LeaveGuardApi | null>(null);
+
+/** The link a click activates, when it leads to another page of this app. */
+function appLinkTarget(event: MouseEvent): HTMLAnchorElement | null {
+  if (event.defaultPrevented || event.button !== 0) return null;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return null;
+  const anchor = (event.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+  if (!anchor || anchor.hasAttribute("download")) return null;
+  if (anchor.target !== "" && anchor.target !== "_self") return null;
+  const to = new URL(anchor.href, window.location.href);
+  if (to.origin !== window.location.origin) return null;
+  if (to.pathname === window.location.pathname && to.search === window.location.search) return null;
+  return anchor;
+}
+
+export function LeaveGuardProvider({ children }: { children: ReactNode }) {
+  const dirtyIds = useRef(new Set<string>());
+  const [anyDirty, setAnyDirty] = useState(false);
+  const [pending, setPending] = useState<Pending | null>(null);
+  const bypass = useRef(false);
+
+  const mark = useCallback((id: string, dirty: boolean) => {
+    if (dirty) dirtyIds.current.add(id);
+    else dirtyIds.current.delete(id);
+    setAnyDirty(dirtyIds.current.size > 0);
+  }, []);
+
+  const attempt = useCallback((go: () => void) => {
+    if (dirtyIds.current.size === 0) go();
+    else setPending({ go });
+  }, []);
+
+  useEffect(() => {
+    if (!anyDirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [anyDirty]);
+
+  useEffect(() => {
+    if (!anyDirty) return;
+    const onClick = (event: MouseEvent) => {
+      if (bypass.current) return;
+      const anchor = appLinkTarget(event);
+      if (!anchor) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setPending({
+        go: () => {
+          bypass.current = true;
+          try {
+            anchor.click();
+          } finally {
+            bypass.current = false;
+          }
+        },
+      });
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [anyDirty]);
+
+  // While a page is dirty one history entry of the guard's own sits above it, so a press of Back
+  // lands on the same page and can be answered. The entry is dropped once the page is clean, and
+  // only while it is still the entry the browser is on: after a navigation it is not ours to pop.
+  const swallow = useRef(0);
+  useEffect(() => {
+    if (!anyDirty) return;
+    const mine = `${Date.now()}-${Math.random()}`;
+    let onSentinel = false;
+    const push = () => {
+      window.history.pushState({ ...window.history.state, [SENTINEL]: mine }, "", window.location.href);
+      onSentinel = true;
+    };
+    push();
+    const onPop = () => {
+      if (swallow.current > 0) {
+        swallow.current -= 1;
+        return;
+      }
+      if (!onSentinel) return;
+      onSentinel = false;
+      setPending({
+        go: () => {
+          swallow.current += 1;
+          window.history.back();
+        },
+        stay: push,
+      });
+    };
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      if (onSentinel && window.history.state?.[SENTINEL] === mine) {
+        swallow.current += 1;
+        window.history.back();
+      }
+    };
+  }, [anyDirty]);
+
+  const api = useMemo<LeaveGuardApi>(() => ({ mark, attempt }), [mark, attempt]);
+
+  const stay = () => {
+    pending?.stay?.();
+    setPending(null);
+  };
+  const leave = () => {
+    const go = pending?.go;
+    setPending(null);
+    go?.();
+  };
+
+  return (
+    <LeaveGuardContext.Provider value={api}>
+      {children}
+      <ConfirmDialog
+        open={pending !== null}
+        title="Leave without saving?"
+        message="This page has changes you have not saved. If you leave now they are lost."
+        confirmLabel="Leave"
+        cancelLabel="Stay"
+        tone="danger"
+        onClose={stay}
+        onConfirm={leave}
+      />
+    </LeaveGuardContext.Provider>
+  );
+}
+
+/** Tells the guard whether this page holds unsaved edits. A page that holds edits with no guard
+ *  above it would lose them silently, so that is refused by name. */
+export function useUnsavedChanges(dirty: boolean): void {
+  const guard = useContext(LeaveGuardContext);
+  const id = useId();
+  if (guard === null) {
+    throw new Error(
+      "useUnsavedChanges needs a <LeaveGuardProvider> above it: a page that holds unsaved edits has to be able to ask before it is left. The workspace layout mounts one.",
+    );
+  }
+  const { mark } = guard;
+  useEffect(() => {
+    mark(id, dirty);
+    return () => mark(id, false);
+  }, [mark, id, dirty]);
+}
+
+/** Runs a navigation the app starts from code once the person has been asked, where asking is owed. */
+export function useLeaveGuardAttempt(): (go: () => void) => void {
+  const guard = useContext(LeaveGuardContext);
+  return guard?.attempt ?? ((go) => go());
+}
+
+/** The router, with every push and replace asked about first while a page holds unsaved edits. */
+export function useGuardedRouter() {
+  const router = useRouter();
+  const attempt = useLeaveGuardAttempt();
+  return useMemo(
+    () => ({
+      ...router,
+      push: (...args: Parameters<typeof router.push>) => attempt(() => router.push(...args)),
+      replace: (...args: Parameters<typeof router.replace>) => attempt(() => router.replace(...args)),
+    }),
+    [router, attempt],
+  );
+}

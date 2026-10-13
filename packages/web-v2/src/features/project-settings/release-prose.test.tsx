@@ -13,7 +13,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { LeaveGuardProvider, useSettingsForm } from "@/design";
 import type { ProjectRunner } from "@/features/runners/types";
+import { readPipeline } from "./pipeline-form";
 import type { ReleaseReadiness } from "./types";
 
 expect.extend(matchers);
@@ -38,7 +40,17 @@ const { RunnerPoolsSection } = await import("./components/runner-pools-section")
 
 function draw(node: ReactElement) {
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
+	return render(
+		<QueryClientProvider client={client}>
+			<LeaveGuardProvider>{node}</LeaveGuardProvider>
+		</QueryClientProvider>,
+	);
+}
+
+/** The matrix as the Pipeline page hands it: a form over the stored document. */
+function Pools({ canEdit }: { canEdit: boolean }) {
+	const form = useSettingsForm({ read: readPipeline({}, []) });
+	return <RunnerPoolsSection projectId={PROJECT_ID} form={form} canEdit={canEdit} />;
 }
 
 const PROJECT_ID = "55555555-5555-4555-8555-555555555555";
@@ -260,7 +272,7 @@ describe("the Runner pools matrix", () => {
 			isLoading: false,
 		});
 
-		draw(<RunnerPoolsSection projectId={PROJECT_ID} config={{}} canEdit={false} />);
+		draw(<Pools canEdit={false} />);
 
 		expect(screen.getByText("out of the pool")).toBeInTheDocument();
 		expect(screen.queryByText("offline")).toBeNull();
@@ -272,7 +284,7 @@ describe("the Runner pools matrix", () => {
 			isLoading: false,
 		});
 
-		draw(<RunnerPoolsSection projectId={PROJECT_ID} config={{}} canEdit={false} />);
+		draw(<Pools canEdit={false} />);
 
 		expect(screen.getByText("out of the pool")).toBeInTheDocument();
 	});
@@ -283,7 +295,7 @@ describe("the Runner pools matrix", () => {
 			isLoading: false,
 		});
 
-		draw(<RunnerPoolsSection projectId={PROJECT_ID} config={{}} canEdit={false} />);
+		draw(<Pools canEdit={false} />);
 
 		expect(screen.getByText("offline")).toBeInTheDocument();
 		expect(screen.queryByText("out of the pool")).toBeNull();

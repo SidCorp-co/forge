@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   NavRail,
   BottomTabBar,
   type BottomTabItem,
   TopBar,
   CommandPalette,
+  LeaveGuardProvider,
+  useGuardedRouter,
   PinnedTabBar,
   SlideOver,
   ProjectMark,
@@ -66,14 +68,16 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   return (
     <ActiveOrgProvider>
       <SidebarProvider>
-        <WorkspaceShell>{children}</WorkspaceShell>
+        <LeaveGuardProvider>
+          <WorkspaceShell>{children}</WorkspaceShell>
+        </LeaveGuardProvider>
       </SidebarProvider>
     </ActiveOrgProvider>
   );
 }
 
 function WorkspaceShell({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
+  const router = useGuardedRouter();
   const pathname = usePathname() || "/";
   // Reactive query string so the pinned-tab bar can exact-match a pin's
   // deep-link (ISS-436 — pathname-only matching lit up EVERY pin on the route).

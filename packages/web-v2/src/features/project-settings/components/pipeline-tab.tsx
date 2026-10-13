@@ -1,75 +1,63 @@
 "use client";
 
+// Project settings → Pipeline. One page, one form: every section below edits a part of the same
+// draft, and the one save bar at the foot writes whatever moved — the pipeline-config document as
+// one patch, and the plugins list, which lives in the project's agent config, as the second write.
 
-import type { ReactNode } from "react";
-import Link from "next/link";
 import { ISSUE_STATUS_LABELS } from "@forge/contracts/issue-vocabulary";
+import Link from "next/link";
+import { type ReactNode, useMemo, useState } from "react";
 import {
-  Button,
+  Banner,
   Card,
   CardContent,
   Collapsible,
   EmptyState,
   ErrorState,
   SectionTitle,
+  type SettingsForm,
+  SettingsFormBar,
   Skeleton,
   Toggle,
+  useSettingsForm,
 } from "@/design";
-import { formatApiError, } from "@/lib/api/error";
+import { useProject } from "@/features/projects/hooks";
 import { useProjectRunners } from "@/features/runners/hooks";
-import { useSettingsDraft } from "../draft";
-import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hooks";
-import { McpServersSection } from "./mcp-servers-section";
-import { IntakeGateSection } from "./intake-gate-section";
-import { PoolBacklogSection } from "./pool-backlog-section";
-import { AssistantWeeklySection } from "./assistant-weekly-section";
-import { KnowledgePromotionSection } from "./knowledge-promotion-section";
-import { StagePermissionsSection } from "./stage-permissions-section";
-import { RunnerPoolsSection } from "./runner-pools-section";
-import { PluginsSection } from "./plugins-section";
-import { ReleaseSection } from "./release-section";
+import { formatApiError } from "@/lib/api/error";
+import {
+  isFeatureOff,
+  usePipelineConfig,
+  useUpdatePipelineConfig,
+  useUpdatePlugins,
+} from "../hooks";
+import {
+  ENTRY_STATUS,
+  type PipelineDraft,
+  pipelineComparable,
+  pipelineSchema,
+  pipelineWrites,
+  readPipeline,
+} from "../pipeline-form";
 import {
   API_ONLY_KEYS,
   type PipelineConfig,
-  type PipelineStateConfig,
-  sectionWrite,
+  type PluginDesignation,
+  type ProjectAgentConfig,
 } from "../types";
+import { AssistantWeeklySection } from "./assistant-weekly-section";
+import { IntakeGateSection } from "./intake-gate-section";
+import { KnowledgePromotionSection } from "./knowledge-promotion-section";
+import { McpServersSection } from "./mcp-servers-section";
+import { PluginsSection } from "./plugins-section";
+import { PoolBacklogSection } from "./pool-backlog-section";
+import { ReleaseSection } from "./release-section";
+import { RunnerPoolsSection, unknownPoolDevices } from "./runner-pools-section";
 import { SaveRefusedBanner } from "./save-refused-banner";
+import { StagePermissionsSection } from "./stage-permissions-section";
 
-const ENTRY_STATUS = "open";
-
-
-function entryOf(cfg: PipelineConfig): PipelineStateConfig | undefined {
-  return (cfg.states as Record<string, PipelineStateConfig> | undefined)?.[ENTRY_STATUS];
-}
-
-function entryGateOpen(cfg: PipelineConfig): boolean {
-  const entry = entryOf(cfg);
+function entryGateOpen(draft: PipelineDraft): boolean {
+  const entry = draft.states[ENTRY_STATUS];
   return entry?.enabled !== false && entry?.mode !== "manual";
-}
-
-function withEntryGate(cfg: PipelineConfig, open: boolean): PipelineConfig {
-  const states = (cfg.states ?? {}) as Record<string, PipelineStateConfig>;
-  return {
-    ...cfg,
-    states: {
-      ...states,
-      [ENTRY_STATUS]: {
-        ...states[ENTRY_STATUS],
-        enabled: open,
-        mode: open ? "auto" : "manual",
-      },
-    },
-  };
-}
-
-/** The two switches this card owns — the master one and the entry gate — and no other key
- *  of the document, so a section below saving from the same page load is not touched. */
-function masterSlice(cfg: PipelineConfig): PipelineConfig {
-  return {
-    enabled: cfg.enabled,
-    states: { [ENTRY_STATUS]: { enabled: entryOf(cfg)?.enabled, mode: entryOf(cfg)?.mode } },
-  };
 }
 
 function StageRow({
@@ -92,6 +80,199 @@ function StageRow({
   );
 }
 
+function PipelinePage({
+  projectId,
+  canEdit,
+  slug,
+  config,
+  plugins,
+}: {
+  projectId: string;
+  canEdit: boolean;
+  slug?: string;
+  /** The pipeline-config document as stored. */
+  config: PipelineConfig;
+  /** The plugins the project designates, as stored. */
+  plugins: PluginDesignation[];
+}) {
+  const update = useUpdatePipelineConfig(projectId);
+  const updatePlugins = useUpdatePlugins(projectId);
+  const runnersQ = useProjectRunners(projectId);
+  const [pluginsFailure, setPluginsFailure] = useState<{ configSaved: boolean; reason: string } | null>(
+    null,
+  );
+
+  const deviceNames: Record<string, string> = {};
+  for (const r of runnersQ.data ?? []) {
+    if (r.deviceId && r.deviceName) deviceNames[r.deviceId] = r.deviceName;
+  }
+
+  const read = useMemo(() => readPipeline(config, plugins), [config, plugins]);
+  const form: SettingsForm<PipelineDraft> = useSettingsForm<PipelineDraft>({
+    read,
+    schema: pipelineSchema,
+    comparable: pipelineComparable,
+  });
+  const draft = form.draft;
+
+  const unknownDevices = unknownPoolDevices(draft.states, runnersQ.data ?? []);
+  const blockedBy =
+    unknownDevices.length > 0
+      ? "A runner pool names a device this project has no runner for. Clear that pool before saving."
+      : form.invalid
+        ? "Fix what is marked above before saving."
+        : null;
+
+  async function save() {
+    setPluginsFailure(null);
+    update.reset();
+    updatePlugins.reset();
+    await form.save(async (held) => {
+      const writes = pipelineWrites(form.seeded, held, config);
+      if (writes.config) await update.mutateAsync(writes.config);
+      if (writes.plugins) {
+        try {
+          await updatePlugins.mutateAsync(writes.plugins);
+        } catch (err) {
+          setPluginsFailure({ configSaved: writes.config !== null, reason: formatApiError(err) });
+          throw err;
+        }
+      }
+    });
+  }
+
+  const masterEnabled = draft.enabled !== false;
+  const libraryHref = slug ? `/projects/${slug}/library?tab=skills` : undefined;
+  const saving = update.isPending || updatePlugins.isPending;
+
+  return (
+    <>
+      <Card>
+        <CardContent>
+          <SectionTitle className="fg-h3 mb-1">Pipeline</SectionTitle>
+          <p className="fg-body-sm mb-1 text-muted">
+            An issue is picked up at <b>Open</b>, runs as one session, and ends either at{" "}
+            <b>Needs info</b>, <b>{ISSUE_STATUS_LABELS.awaiting_release}</b> or closed. The session is driven by the{" "}
+            <code>issue-flow</code> skill, which this project gets from a plugin — see Plugins below.
+          </p>
+          {libraryHref && (
+            <p className="fg-caption mb-4">
+              <Link href={libraryHref} className="text-accent-text hover:underline">
+                Manage or create skills in Library →
+              </Link>
+            </p>
+          )}
+
+          <div className="divide-y divide-line">
+            <StageRow
+              label="Pipeline enabled"
+              hint="Master switch — when off, nothing is dispatched."
+              control={
+                <Toggle
+                  checked={masterEnabled}
+                  onChange={(v) => form.setDraft((d) => ({ ...d, enabled: v }))}
+                  disabled={!canEdit}
+                  aria-label="Pipeline enabled"
+                />
+              }
+            />
+            <StageRow
+              label="Start queued issues automatically"
+              hint="Off holds every issue at Open until a human starts it. The pipeline stays on — nothing else changes."
+              control={
+                <Toggle
+                  checked={entryGateOpen(draft)}
+                  onChange={(open) =>
+                    form.setDraft((d) => ({
+                      ...d,
+                      states: {
+                        ...d.states,
+                        [ENTRY_STATUS]: {
+                          ...(d.states[ENTRY_STATUS] as PipelineDraft["states"][string]),
+                          enabled: open,
+                          mode: open ? "auto" : "manual",
+                        },
+                      },
+                    }))
+                  }
+                  disabled={!canEdit || !masterEnabled}
+                  aria-label="Start queued issues automatically"
+                />
+              }
+            />
+          </div>
+
+          <ReleaseSection projectId={projectId} slug={slug} />
+
+          <PluginsSection form={form} canEdit={canEdit} />
+
+          <McpServersSection form={form} canEdit={canEdit} />
+
+          <StagePermissionsSection config={config} form={form} canEdit={canEdit} deviceNames={deviceNames} />
+
+          <RunnerPoolsSection projectId={projectId} form={form} canEdit={canEdit} />
+
+          <IntakeGateSection form={form} canEdit={canEdit} />
+
+          <PoolBacklogSection form={form} canEdit={canEdit} />
+
+          <KnowledgePromotionSection form={form} canEdit={canEdit} />
+
+          <AssistantWeeklySection
+            projectId={projectId}
+            form={form}
+            canEdit={canEdit}
+            savedEnabled={config.assistantWeekly?.enabled === true}
+          />
+
+          <div className="mt-6 border-t border-line pt-5">
+            <Collapsible title={`Configured elsewhere — ${API_ONLY_KEYS.length} keys this screen doesn't edit`}>
+              <ul className="space-y-2">
+                {API_ONLY_KEYS.map((k) => (
+                  <li key={k.key}>
+                    <p className="fg-label font-mono text-fg">{k.key}</p>
+                    <p className="fg-caption text-muted">{k.reason}</p>
+                  </li>
+                ))}
+              </ul>
+            </Collapsible>
+          </div>
+        </CardContent>
+      </Card>
+
+      {canEdit && (
+        <SettingsFormBar
+          dirty={form.dirty}
+          saving={saving}
+          blockedBy={blockedBy}
+          onSave={() => void save().catch(() => undefined)}
+          onDiscard={() => {
+            update.reset();
+            updatePlugins.reset();
+            setPluginsFailure(null);
+            form.discard();
+          }}
+        >
+          <SaveRefusedBanner
+            projectId={projectId}
+            error={update.isError ? update.error : null}
+            onDismiss={() => update.reset()}
+            draft={form}
+          />
+          {pluginsFailure && (
+            <Banner tone="danger" onDismiss={() => setPluginsFailure(null)}>
+              {pluginsFailure.configSaved
+                ? "The pipeline settings were saved, but the plugins were not: "
+                : "The plugins were not saved: "}
+              {pluginsFailure.reason} Your plugin edits are still here — Save sends them again.
+            </Banner>
+          )}
+        </SettingsFormBar>
+      )}
+    </>
+  );
+}
+
 export function PipelineTab({
   projectId,
   canEdit,
@@ -102,21 +283,9 @@ export function PipelineTab({
   slug?: string;
 }) {
   const cfgQ = usePipelineConfig(projectId);
-  const update = useUpdatePipelineConfig(projectId);
+  const projectQ = useProject(projectId);
 
-  const runnersQ = useProjectRunners(projectId);
-  const deviceNames: Record<string, string> = {};
-  for (const r of runnersQ.data ?? []) {
-    if (r.deviceId && r.deviceName) deviceNames[r.deviceId] = r.deviceName;
-  }
-
-  // The two switches this card owns, and only those: every other key of the document belongs
-  // to a section below, which holds its own draft over the same read.
-  const seeded = masterSlice(cfgQ.data?.pipelineConfig ?? {});
-  const held = useSettingsDraft(seeded);
-  const draft = held.draft;
-
-  if (cfgQ.isLoading) {
+  if (cfgQ.isLoading || projectQ.isLoading) {
     return (
       <Card>
         <CardContent>
@@ -153,111 +322,27 @@ export function PipelineTab({
     );
   }
 
-  const server = cfgQ.data?.pipelineConfig ?? {};
-  const masterEnabled = draft.enabled !== false;
-  const dirty = held.dirty;
-  const libraryHref = slug ? `/projects/${slug}/library?tab=skills` : undefined;
+  if (projectQ.isError || !projectQ.data) {
+    return (
+      <Card>
+        <CardContent>
+          <ErrorState
+            message={projectQ.error ? formatApiError(projectQ.error) : "The project could not be read."}
+            onRetry={() => projectQ.refetch()}
+          />
+        </CardContent>
+      </Card>
+    );
+  }
 
+  const agentConfig = (projectQ.data.agentConfig ?? {}) as ProjectAgentConfig;
   return (
-    <Card>
-      <CardContent>
-        <SectionTitle className="fg-h3 mb-1">Pipeline</SectionTitle>
-        <p className="fg-body-sm mb-1 text-muted">
-          An issue is picked up at <b>Open</b>, runs as one session, and ends either at{" "}
-          <b>Needs info</b>, <b>{ISSUE_STATUS_LABELS.awaiting_release}</b> or closed. The session is driven by the{" "}
-          <code>issue-flow</code> skill, which this project gets from a plugin — see Plugins below.
-        </p>
-        {libraryHref && (
-          <p className="fg-caption mb-4">
-            <Link href={libraryHref} className="text-accent-text hover:underline">
-              Manage or create skills in Library →
-            </Link>
-          </p>
-        )}
-
-        <div className="divide-y divide-line">
-          <StageRow
-            label="Pipeline enabled"
-            hint="Master switch — when off, nothing is dispatched."
-            control={
-              <Toggle
-                checked={masterEnabled}
-                onChange={(v) => held.setDraft((d) => ({ ...d, enabled: v }))}
-                disabled={!canEdit}
-                aria-label="Pipeline enabled"
-              />
-            }
-          />
-          <StageRow
-            label="Start queued issues automatically"
-            hint="Off holds every issue at Open until a human starts it. The pipeline stays on — nothing else changes."
-            control={
-              <Toggle
-                checked={entryGateOpen(draft)}
-                onChange={(v) => held.setDraft((d) => withEntryGate(d, v))}
-                disabled={!canEdit || !masterEnabled}
-                aria-label="Start queued issues automatically"
-              />
-            }
-          />
-        </div>
-
-        {canEdit && (
-          <div className="mt-4 space-y-3">
-            <SaveRefusedBanner
-              projectId={projectId}
-              error={update.isError ? update.error : null}
-              onDismiss={() => update.reset()}
-              draft={held}
-            />
-            <Button
-              variant="primary"
-              loading={update.isPending}
-              disabled={!dirty}
-              onClick={() => update.mutate(sectionWrite(masterSlice(server), draft))}
-              className="min-h-11"
-            >
-              Save pipeline config
-            </Button>
-          </div>
-        )}
-
-        <ReleaseSection projectId={projectId} slug={slug} />
-
-        <PluginsSection projectId={projectId} canEdit={canEdit} />
-
-        <McpServersSection projectId={projectId} config={server} canEdit={canEdit} />
-
-        <StagePermissionsSection
-          projectId={projectId}
-          config={server}
-          canEdit={canEdit}
-          deviceNames={deviceNames}
-        />
-
-        <RunnerPoolsSection projectId={projectId} config={server} canEdit={canEdit} />
-
-        <IntakeGateSection projectId={projectId} config={server} canEdit={canEdit} />
-
-        <PoolBacklogSection projectId={projectId} config={server} canEdit={canEdit} />
-
-        <KnowledgePromotionSection projectId={projectId} config={server} canEdit={canEdit} />
-
-        <AssistantWeeklySection projectId={projectId} config={server} canEdit={canEdit} />
-
-        <div className="mt-6 border-t border-line pt-5">
-          <Collapsible title={`Configured elsewhere — ${API_ONLY_KEYS.length} keys this screen doesn't edit`}>
-            <ul className="space-y-2">
-              {API_ONLY_KEYS.map((k) => (
-                <li key={k.key}>
-                  <p className="fg-label font-mono text-fg">{k.key}</p>
-                  <p className="fg-caption text-muted">{k.reason}</p>
-                </li>
-              ))}
-            </ul>
-          </Collapsible>
-        </div>
-      </CardContent>
-    </Card>
+    <PipelinePage
+      projectId={projectId}
+      canEdit={canEdit}
+      slug={slug}
+      config={cfgQ.data?.pipelineConfig ?? {}}
+      plugins={agentConfig.plugins ?? []}
+    />
   );
 }
