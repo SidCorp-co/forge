@@ -161,7 +161,9 @@ describe('the pulse names only projects the project page can open (ISS-1261)', (
 
   it('names the project again once it is unarchived', async () => {
     const s = await seed();
-    await harness.db.execute(sql`UPDATE projects SET archived_at = NULL WHERE id = ${s.archived.id}`);
+    await harness.db.execute(
+      sql`UPDATE projects SET archived_at = NULL WHERE id = ${s.archived.id}`,
+    );
     const pulse = await get<PulseResponse>(s.token, '/api/me/pulse');
     expect(pulse.work.perProject.map((r) => r.slug).sort()).toEqual(['archived-one', 'live-one']);
   });
