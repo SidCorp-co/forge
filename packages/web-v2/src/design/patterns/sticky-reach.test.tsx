@@ -106,11 +106,12 @@ const STICKY_FLOOR_PX = 128;
 const STICKY_CAP_PX = 160;
 
 async function measured(markup: string, table: string) {
-  const { reach, overflowing, stickyWidest } = await measureReach(markup, PHONE_COLUMN, PHONE);
+  const { reach, overflowing, stickyWidest, pinned } = await measureReach(markup, PHONE_COLUMN, PHONE);
   return {
     reach: reach.filter((r) => r.table === table),
     overflowing: overflowing.filter((o) => o.startsWith(`${table}:`)),
     stickyWidest: stickyWidest[table] ?? 0,
+    pinned: pinned.filter((p) => p.table === table),
   };
 }
 
@@ -141,14 +142,16 @@ describe("a control in a table with a sticky first column scrolls clear of it at
     expect(stickyWidest).toBeLessThanOrEqual(STICKY_CAP_PX);
   });
 
-  it("Projects list: the pin on a long project name stays in its own cell and the table still scrolls to the end", async () => {
+  it("Projects list: each pin stays inside the sticky cell however long the name, and the rest still scrolls clear", async () => {
     const items = [project("alpha"), project("a-project-with-a-very-long-name-that-keeps-going-and-going"), project("p".repeat(60))];
     const markup = renderToStaticMarkup(
       <ProjectList items={items} now={Date.parse("2026-10-03T00:00:00Z")} onTogglePin={() => {}} sort={{ id: "recent", desc: true }} onSortChange={() => {}} />,
     );
-    const { reach, overflowing, stickyWidest } = await measured(markup, "Projects");
+    const { reach, overflowing, stickyWidest, pinned } = await measured(markup, "Projects");
     expect(clearOf(reach)).toEqual([]);
     expect(overflowing).toEqual([]);
+    expect(pinned.filter((p) => p.control.includes("Pin project")).length).toBe(3);
+    expect(pinned.filter((p) => !p.fits)).toEqual([]);
     expect(stickyWidest).toBeGreaterThanOrEqual(STICKY_FLOOR_PX);
     expect(stickyWidest).toBeLessThanOrEqual(STICKY_CAP_PX);
   });
@@ -166,10 +169,12 @@ describe("a control in a table with a sticky first column scrolls clear of it at
       },
     } as unknown as PulseResponse;
     const markup = renderToStaticMarkup(<WorkSitting pulse={pulse} nowMs={Date.parse("2026-10-03T00:00:00Z")} />);
-    const { reach, overflowing, stickyWidest } = await measured(markup, "Longest without an issue run");
+    const { reach, overflowing, stickyWidest, pinned } = await measured(markup, "Longest without an issue run");
     expect(reach.length).toBeGreaterThan(0);
     expect(clearOf(reach)).toEqual([]);
     expect(overflowing).toEqual([]);
+    expect(pinned.length).toBe(3);
+    expect(pinned.filter((p) => !p.fits)).toEqual([]);
     expect(stickyWidest).toBeGreaterThanOrEqual(STICKY_FLOOR_PX);
     expect(stickyWidest).toBeLessThanOrEqual(STICKY_CAP_PX);
   });

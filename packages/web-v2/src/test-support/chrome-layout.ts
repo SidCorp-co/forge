@@ -39,6 +39,8 @@ export interface Measured {
   overflowing: string[];
   /** The widest a sticky cell came out, per table label, in px. */
   stickyWidest: Record<string, number>;
+  /** Controls inside a sticky cell, which are always in view, and whether each sits inside its cell. */
+  pinned: { table: string; control: string; fits: boolean }[];
 }
 
 export interface Reach {
@@ -58,6 +60,7 @@ const MEASURE = `
 const out = [];
 const overflowing = [];
 const stickyWidest = {};
+const pinned = [];
 for (const table of document.querySelectorAll("table")) {
   const scroller = table.parentElement;
   const sticky = table.querySelector("tbody td.sticky");
@@ -68,7 +71,13 @@ for (const table of document.querySelectorAll("table")) {
     if (cell.scrollWidth > cell.clientWidth + 1) overflowing.push(label + ": " + cell.textContent.trim().slice(0, 40));
   }
   for (const el of table.querySelectorAll("tbody button, tbody a")) {
-    if (el.closest("td.sticky")) continue;
+    const home = el.closest("td.sticky");
+    if (home) {
+      const a = el.getBoundingClientRect();
+      const c = home.getBoundingClientRect();
+      pinned.push({ table: label, control: (el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 40), fits: a.left >= c.left - 0.5 && a.right <= c.right + 0.5 });
+      continue;
+    }
     scroller.scrollLeft = 0;
     const box = el.getBoundingClientRect();
     if (box.width === 0) continue;
@@ -90,7 +99,7 @@ for (const table of document.querySelectorAll("table")) {
     });
   }
 }
-parent.postMessage(JSON.stringify({ viewport: innerWidth, out, overflowing, stickyWidest }), "*");
+parent.postMessage(JSON.stringify({ viewport: innerWidth, out, overflowing, stickyWidest, pinned }), "*");
 `;
 
 /**
@@ -126,11 +135,11 @@ export async function measureReach(markup: string, width: number, viewport: numb
     const body = found?.[1];
     if (!body) throw new Error("Chrome laid the page out but reported no measurement: the frame's script did not run.");
     const text = body.replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
-    const measured = JSON.parse(text) as { viewport: number; out: Reach[]; overflowing: string[]; stickyWidest: Record<string, number> };
+    const measured = JSON.parse(text) as { viewport: number; out: Reach[]; overflowing: string[]; stickyWidest: Record<string, number>; pinned: Measured["pinned"] };
     if (measured.viewport !== viewport) {
       throw new Error(`Chrome laid the page out in a ${measured.viewport}px viewport, not the ${viewport}px asked for, so the responsive classes answered for another screen.`);
     }
-    return { reach: measured.out, overflowing: measured.overflowing, stickyWidest: measured.stickyWidest };
+    return { reach: measured.out, overflowing: measured.overflowing, stickyWidest: measured.stickyWidest, pinned: measured.pinned };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
