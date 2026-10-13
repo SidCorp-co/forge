@@ -1,8 +1,6 @@
 // @vitest-environment jsdom
 //
-// ISS-1262: the workspace shell reserves a fixed strip under every page for the mobile tab bar, and a
-// page's sticky save bar rests on the top of that strip. The bar has to be exactly as tall as the
-// strip, or page content shows through the difference (measured: 3px at 390 wide).
+// ISS-1262: the bar is as tall as the strip the shell reserves for it.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -12,7 +10,6 @@ import { BottomTabBar } from "./bottom-tab-bar";
 
 afterEach(cleanup);
 
-/** The strip the shell reserves, read from the shell's own class. */
 function reservedPx(): number {
   const layout = readFileSync(resolve(process.cwd(), "src/app/(workspace)/layout.tsx"), "utf8");
   const found = /pb-\[calc\((\d+)px\+env\(safe-area-inset-bottom\)\)\] md:pb-0/.exec(layout);

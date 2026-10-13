@@ -32,7 +32,7 @@ export interface SettingsFormOptions<T extends FieldValues> {
   /** Where a path of the stored document sits in the draft: the same path where omitted, null
    *  where the draft does not render it. */
   locate?: (path: readonly string[]) => string[] | null;
-  /** The reverse: where a path of the draft sits in the stored document, null where nowhere. */
+  /** The reverse, null where nowhere. */
   documentPathOf?: (path: readonly string[]) => string[] | null;
   /** The shape two drafts are compared in for `dirty`; the draft itself where omitted. */
   comparable?: (draft: T) => unknown;

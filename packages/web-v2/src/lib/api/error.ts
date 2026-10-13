@@ -278,7 +278,7 @@ export function describeSettings(paths: string[]): { text: string; count: number
   return { text: listOf(named), count };
 }
 
-/** Dotted document paths as one phrase in the screen's own names, for a sentence about them. */
+/** The same phrase without the count. */
 export function settingsThatMoved(paths: string[]): string {
   return describeSettings(paths).text;
 }
