@@ -36,8 +36,12 @@ const write = vi.fn(async (_draft: Doc) => undefined);
 
 function Harness() {
   const [read, set] = useState<Doc>(START);
-  setRead = set;
-  const form = useSettingsForm<Doc>({ read, schema: SCHEMA });
+  const [landed, setLanded] = useState(0);
+  setRead = (next) => {
+    set(next);
+    setLanded((n) => n + 1);
+  };
+  const form = useSettingsForm<Doc>({ read, schema: SCHEMA, readRevision: landed });
   latest = form;
   return (
     <div>
@@ -137,6 +141,25 @@ describe("takeStored", () => {
     await waitFor(() => expect(field("cpu").value).toBe("4"));
     expect(field("name").value).toBe("mine");
     expect(latest.replaced).toEqual([{ path: "limits.cpu", typed: "8", stored: "4" }]);
+  });
+
+  it("answers a re-read that read the same document the draft was seeded from", async () => {
+    mount();
+    type("cpu", "8");
+    act(() => latest.takeStored(["limits.cpu"]));
+    reread({ ...START, limits: { ...START.limits } });
+
+    await waitFor(() => expect(field("cpu").value).toBe("2"));
+    expect(latest.replaced).toEqual([{ path: "limits.cpu", typed: "8", stored: "2" }]);
+    expect(screen.getByTestId("dirty")).toHaveTextContent("false");
+  });
+
+  it("does not take the stored value at a path before a read has landed after the request", async () => {
+    mount();
+    type("cpu", "8");
+    act(() => latest.takeStored(["limits.cpu"]));
+    await act(async () => undefined);
+    expect(field("cpu").value).toBe("8");
   });
 
   it("is forgotten once the person types again", async () => {

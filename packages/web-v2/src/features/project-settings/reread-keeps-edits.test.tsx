@@ -216,6 +216,29 @@ describe("the way out of a refused save", () => {
 		expect(after.textContent).toMatch(/every other edit on this page is as you left it/i);
 	});
 
+	it("still takes the stored values when a background read had already landed before the button was pressed", async () => {
+		mountPage();
+		await ready();
+		expandOpenStage();
+		await typeADeniedTool("qa_probe_typed_X");
+
+		moveDeniedTools();
+		press();
+		await screen.findByText(/changed by someone else/i);
+		// The window regained focus and the document was read again: the draft is now seeded from
+		// the very document the button's own re-read is about to return.
+		const before = reads;
+		await reread();
+		await waitFor(() => expect(reads).toBeGreaterThan(before));
+
+		fireEvent.click(screen.getByRole("button", { name: /use the current values/i }));
+
+		await waitFor(() => expect(deniedChips()).toContain("WebFetch"));
+		expect(deniedChips()).not.toContain("qa_probe_typed_X");
+		const after = await screen.findByText(/loaded what is stored now/i);
+		expect(after.textContent).toContain("Stage permissions (Open)");
+	});
+
 	it("lets the person keep their own change and save over the other writer's", async () => {
 		mountPage();
 		await ready();

@@ -31,6 +31,10 @@ export interface SettingsFormOptions<T extends FieldValues> {
   locate?: (path: readonly string[]) => string[] | null;
   /** The shape two drafts are compared in for `dirty`; the draft itself where omitted. */
   comparable?: (draft: T) => unknown;
+  /** A number that changes each time a read lands, even one that read the same document. A page
+   *  whose refusal offers `takeStored` passes it: the stored document may already be what the
+   *  draft was seeded from, and the re-read that answers the request then differs in nothing. */
+  readRevision?: number;
 }
 
 export interface SettingsForm<T> {
@@ -70,6 +74,7 @@ export function useSettingsForm<T extends FieldValues>({
   schema,
   locate = (path) => [...path],
   comparable = (draft) => draft,
+  readRevision,
 }: SettingsFormOptions<T>): SettingsForm<T> {
   const locateRef = useRef(locate);
   locateRef.current = locate;
@@ -84,12 +89,18 @@ export function useSettingsForm<T extends FieldValues>({
   // What the draft is compared against, and rebased from: the document as it was last taken.
   const seeded = useRef({ value: read, json: canonicalJson(read) });
   const yielding = useRef<Yielded[]>([]);
+  const revision = useRef(readRevision);
+  revision.current = readRevision;
+  /** The revision `takeStored` was asked at: the read that answers it is a later one. */
+  const askedAt = useRef<number | undefined>(undefined);
   const [replaced, setReplaced] = useState<ReplacedEdit[]>([]);
   const [, bump] = useState(0);
 
   const readJson = canonicalJson(read);
   useEffect(() => {
-    if (readJson === seeded.current.json) return;
+    const answersTake =
+      yielding.current.length > 0 && readRevision !== undefined && readRevision !== askedAt.current;
+    if (readJson === seeded.current.json && !answersTake) return;
     const taken = yielding.current;
     const rebased = rebaseDocumentDraft({
       read: seeded.current.value,
@@ -109,7 +120,7 @@ export function useSettingsForm<T extends FieldValues>({
     );
     bump((n) => n + 1);
     void form.trigger();
-  }, [readJson, read, form]);
+  }, [readJson, read, readRevision, form]);
 
   const setDraft = useCallback(
     (next: T | ((current: T) => T)) => {
@@ -136,6 +147,7 @@ export function useSettingsForm<T extends FieldValues>({
         if (inside) taken.push({ inside, document });
       }
       yielding.current = taken;
+      askedAt.current = revision.current;
       setReplaced([]);
     },
     [],

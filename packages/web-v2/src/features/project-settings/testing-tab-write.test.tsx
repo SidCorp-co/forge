@@ -8,7 +8,7 @@
 import { applyDocumentPatch, comparePatchBase } from "@forge/contracts/document-patch";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LeaveGuardProvider } from "@/design";
 import { ApiError } from "@/lib/api/client";
@@ -23,6 +23,7 @@ let sent: unknown[];
 /** Held open, or made to fail, by the cases about a read that has not landed. */
 let held: Promise<void> | null;
 let fails: boolean;
+let client: QueryClient;
 
 vi.mock("@/lib/api/client", async () => {
 	const actual = await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
@@ -72,6 +73,7 @@ const START: Doc = {
 
 async function mount() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	client = qc;
 	const view = render(
 		<QueryClientProvider client={qc}>
 			<LeaveGuardProvider>
@@ -211,6 +213,36 @@ describe("a value the page cannot accept", () => {
 		fireEvent.change(screen.getByLabelText("Testing URL 1 label"), { target: { value: "Mail" } });
 		await waitFor(() => expect(screen.queryByText("Label is required.")).toBeNull());
 		expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+	});
+});
+
+describe("the way out of a refused save", () => {
+	const limits = () => screen.getByLabelText(/environment limits/i) as HTMLTextAreaElement;
+
+	async function refused() {
+		await mount();
+		fireEvent.change(limits(), { target: { value: "mine" } });
+		stored = { ...stored, limits: "theirs" };
+		save();
+		return screen.findByRole("button", { name: /use the current values/i });
+	}
+
+	it("takes what is stored now at the setting that moved, and says so", async () => {
+		fireEvent.click(await refused());
+		await waitFor(() => expect(limits().value).toBe("theirs"));
+		expect(await screen.findByText(/loaded what is stored now/i)).toBeInTheDocument();
+	});
+
+	it("still takes it when a background read had already landed before the button was pressed", async () => {
+		const button = await refused();
+		await act(async () => {
+			await client.refetchQueries({ queryKey: ["project", "p1", "environments"] });
+			// The query cache hands a landed read to its observers on the next task.
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		});
+		fireEvent.click(button);
+		await waitFor(() => expect(limits().value).toBe("theirs"));
+		expect(await screen.findByText(/loaded what is stored now/i)).toBeInTheDocument();
 	});
 });
 

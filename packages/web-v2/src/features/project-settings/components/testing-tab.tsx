@@ -239,18 +239,28 @@ export function TestingTab({ projectId, canEdit }: { projectId: string; canEdit:
     );
   }
 
-  return <TestingPage projectId={projectId} canEdit={canEdit} environments={envQ.data?.environments} />;
+  return (
+    <TestingPage
+      projectId={projectId}
+      canEdit={canEdit}
+      environments={envQ.data?.environments}
+      readRevision={envQ.dataUpdatedAt}
+    />
+  );
 }
 
 function TestingPage({
   projectId,
   canEdit,
   environments,
+  readRevision,
 }: {
   projectId: string;
   canEdit: boolean;
   /** The document as stored: this form writes it, and a write's `base` is read from it. */
   environments: unknown;
+  /** Changes each time that document is read, even when it read the same thing. */
+  readRevision: number;
 }) {
   const update = useUpdateEnvironments(projectId);
   const held = useSettingsForm<Form>({
@@ -258,6 +268,7 @@ function TestingPage({
     schema: testingSchema,
     locate: locateField,
     comparable: comparableOf,
+    readRevision,
   });
   const form = held.draft;
   const setForm = held.setDraft;

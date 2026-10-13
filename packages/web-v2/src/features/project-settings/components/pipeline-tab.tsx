@@ -86,12 +86,15 @@ function PipelinePage({
   slug,
   config,
   plugins,
+  readRevision,
 }: {
   projectId: string;
   canEdit: boolean;
   slug?: string;
   /** The pipeline-config document as stored. */
   config: PipelineConfig;
+  /** Changes each time that document is read, even when it read the same thing. */
+  readRevision: number;
   /** The plugins the project designates, as stored. */
   plugins: PluginDesignation[];
 }) {
@@ -112,6 +115,7 @@ function PipelinePage({
     read,
     schema: pipelineSchema,
     comparable: pipelineComparable,
+    readRevision,
   });
   const draft = form.draft;
 
@@ -342,6 +346,7 @@ export function PipelineTab({
       canEdit={canEdit}
       slug={slug}
       config={cfgQ.data?.pipelineConfig ?? {}}
+      readRevision={cfgQ.dataUpdatedAt}
       plugins={agentConfig.plugins ?? []}
     />
   );
