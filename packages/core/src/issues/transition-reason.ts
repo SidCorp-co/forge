@@ -2,7 +2,7 @@ import { type Db, db } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { comments } from '../db/schema.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
-import { AWAITING_INPUT_STATUSES } from './status-sets.js';
+import { AWAITING_INPUT_STATUSES, ISSUE_STATUS_LABELS } from './status-sets.js';
 
 export const REASON_REQUIRED_STATUSES = new Set<IssueStatus>(['reopen', 'waiting', 'needs_info']);
 
@@ -24,8 +24,12 @@ const HEADINGS: Record<string, (from: IssueStatus, kind?: WaitingKind | null) =>
       : `⏸ **Waiting on a human decision** — moved from \`${from}\``,
 };
 
-/** The first line of every announcement this module writes: a move into a park, or a person leaving one. */
-const ANNOUNCES_A_MOVE = /(?:— moved from `[a-z_]+`|^↩ \*\*Left `[a-z_]+` for `[a-z_]+`\*\*)$/u;
+/**
+ * The first line of every announcement this module writes: a move into a park, or a person leaving one.
+ * A leave names its statuses by label; the stored names are still read, for the ones written before that.
+ */
+const ANNOUNCES_A_MOVE =
+  /(?:— moved from `[a-z_]+`|^↩ \*\*Left (?:`[a-z_]+`|[A-Z][A-Za-z ]*) for (?:`[a-z_]+`|[A-Z][A-Za-z ]*)\*\*)$/u;
 
 /** Whether a comment is one of this module's move announcements rather than something a person wrote. */
 export function announcesAMove(body: string): boolean {
@@ -57,7 +61,11 @@ export function announcesLeave(
 }
 
 export function buildLeaveBody(from: IssueStatus, to: IssueStatus, reason: string): string {
-  return [`↩ **Left \`${from}\` for \`${to}\`**`, '', reason.trim()].join('\n');
+  return [
+    `↩ **Left ${ISSUE_STATUS_LABELS[from]} for ${ISSUE_STATUS_LABELS[to]}**`,
+    '',
+    reason.trim(),
+  ].join('\n');
 }
 
 /** Post a person's reason for leaving a park, in the transition's own transaction. */

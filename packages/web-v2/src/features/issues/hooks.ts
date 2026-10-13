@@ -240,17 +240,29 @@ export function useTransitionIssue() {
       qc.invalidateQueries({ queryKey: ["issues"] });
     },
   });
+  // A second press landing before the mutation's own pending flag reaches the screen sends a second
+  // move, which the server refuses as a conflict and the toast blames on someone else (ISS-1310). The
+  // same move on the same issue is held until it settles; a different issue or target is not a repeat.
+  const inFlight = useRef(new Set<string>());
   return {
     ...mut,
     mutate: (
       args: TransitionArgs,
       options?: { onSuccess?: () => void; onOpenQuestions?: (ids: string[]) => void },
-    ) =>
+    ) => {
+      const move = `${args.id}|${args.toStatus}`;
+      if (inFlight.current.has(move)) return;
+      inFlight.current.add(move);
       mut.mutate(args, {
+        onSettled: () => {
+          inFlight.current.delete(move);
+        },
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: ["issue", args.id] });
           qc.invalidateQueries({ queryKey: ["activities", args.id] });
           qc.invalidateQueries({ queryKey: ["questions", args.id] });
+          // Both dialogs promise the reason is posted on the thread, so the thread is read again (ISS-1310).
+          qc.invalidateQueries({ queryKey: ["comments", args.id] });
           options?.onSuccess?.();
         },
         onError: (err) => {
@@ -261,7 +273,8 @@ export function useTransitionIssue() {
           }
           toast({ title: "Update failed", description: formatApiError(err), tone: "error" });
         },
-      }),
+      });
+    },
   };
 }
 
