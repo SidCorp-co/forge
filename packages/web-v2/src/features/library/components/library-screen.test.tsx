@@ -47,8 +47,12 @@ describe("Library tabs", () => {
     expect(screen.getByRole("tab", { name: "Knowledge" })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("still opens Skills and Updates from their addresses", () => {
-    openAt("?tab=updates");
-    expect(screen.getByText("updates screen")).toBeInTheDocument();
+  it.each([
+    ["skills", "skills screen", "Skills"],
+    ["updates", "updates screen", "Updates"],
+  ])("still opens %s from its address", (tab, screenText, label) => {
+    openAt(`?tab=${tab}`);
+    expect(screen.getByText(screenText)).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "true");
   });
 });
