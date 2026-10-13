@@ -2,30 +2,34 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { MIGRATIONS_FOLDER } from './migrate.js';
 import {
   bornAt,
   CASE_PREFIX,
   caseDbName,
   drainRetiredScratchDbs,
+  freshTemplateName,
   isAbandoned,
+  mintRunToken,
   reapAbandoned,
   retireScratchDb,
   runToken,
   sweepRunScratchDbs,
   TEMPLATE_PREFIX,
-  templateDbName,
   WORKER_PREFIX,
   workerDbName,
 } from './scratch-db.js';
+import { hashMigrations, sharedTemplateName } from './shared-template.js';
 
 const HOUR = 60 * 60 * 1000;
 
-const TOKEN = runToken(templateDbName()) as string;
+const TOKEN = mintRunToken();
+const freshTemplate = () => freshTemplateName(mintRunToken());
 
 describe('names', () => {
-  it('mints a different template for every run', () => {
-    const names = new Set(Array.from({ length: 200 }, () => templateDbName()));
-    expect(names.size).toBe(200);
+  it('mints a different token for every run', () => {
+    const tokens = new Set(Array.from({ length: 200 }, () => mintRunToken()));
+    expect(tokens.size).toBe(200);
   });
 
   it('mints a different file database for every call of the same worker', () => {
@@ -37,17 +41,17 @@ describe('names', () => {
   });
 
   it('refuses a run with no template rather than minting an unsweepable file database', () => {
-    expect(() => workerDbName('3', null)).toThrow(/TEST_PG_TEMPLATE/);
+    expect(() => workerDbName('3', null)).toThrow(/TEST_PG_RUN_TOKEN/);
   });
 
   it('keeps both prefixes, so the reaper can still find them', () => {
-    expect(templateDbName().startsWith(TEMPLATE_PREFIX)).toBe(true);
+    expect(freshTemplate().startsWith(TEMPLATE_PREFIX)).toBe(true);
     expect(workerDbName('0', TOKEN).startsWith(WORKER_PREFIX)).toBe(true);
   });
 
   it('carries the birth time the reaper needs', () => {
     const before = Date.now();
-    const born = bornAt(templateDbName());
+    const born = bornAt(freshTemplate());
     expect(born).not.toBeNull();
     expect(born as number).toBeGreaterThanOrEqual(before - 1000);
     expect(born as number).toBeLessThanOrEqual(Date.now() + 1000);
@@ -60,6 +64,12 @@ describe('names', () => {
     expect(bornAt('postgres')).toBeNull();
   });
 
+  it('refuses to date a template named for its content, so age never claims it', () => {
+    const shared = sharedTemplateName(hashMigrations(MIGRATIONS_FOLDER));
+    expect(bornAt(shared)).toBeNull();
+    expect(isAbandoned(shared, Date.now() + 1000 * HOUR)).toBe(false);
+  });
+
   it('refuses to date the name shape this suite used before', () => {
     expect(bornAt('test_w29_9ed50deb')).toBeNull();
     expect(bornAt('test_w28_2321f868')).toBeNull();
@@ -69,13 +79,13 @@ describe('names', () => {
 
 describe('isAbandoned', () => {
   it('leaves a database a live run could still own', () => {
-    const fresh = templateDbName();
+    const fresh = freshTemplate();
     expect(isAbandoned(fresh, Date.now())).toBe(false);
     expect(isAbandoned(fresh, Date.now() + HOUR)).toBe(false);
   });
 
   it('claims one no live run can own', () => {
-    expect(isAbandoned(templateDbName(), Date.now() + 3 * HOUR)).toBe(true);
+    expect(isAbandoned(freshTemplate(), Date.now() + 3 * HOUR)).toBe(true);
   });
 
   it('never claims a name it cannot date', () => {
@@ -107,7 +117,7 @@ describe('reapAbandoned', () => {
     const now = Date.now();
     const old = `${TEMPLATE_PREFIX}${(now - 3 * HOUR).toString(36)}_aaaaaaaa`;
     const oldWorker = `${WORKER_PREFIX}abc_2_${(now - 3 * HOUR).toString(36)}_bbbbbbbb`;
-    const fresh = templateDbName();
+    const fresh = freshTemplate();
     const { admin, dropped } = fakeAdmin([
       old,
       oldWorker,
@@ -158,7 +168,7 @@ describe('a database minted for one test case', () => {
   });
 
   it('refuses a run with no template rather than minting an unsweepable name', () => {
-    expect(() => caseDbName('iss1046', null)).toThrow(/TEST_PG_TEMPLATE/);
+    expect(() => caseDbName('iss1046', null)).toThrow(/TEST_PG_RUN_TOKEN/);
   });
 
   it('refuses a tag that would not survive the name', () => {
@@ -184,7 +194,7 @@ describe('reapAbandoned, over a case database', () => {
 
   it('leaves one a live run could still be using', async () => {
     const now = Date.now();
-    const fresh = caseDbName('iss1046', runToken(templateDbName()) as string);
+    const fresh = caseDbName('iss1046', mintRunToken());
     const { admin, dropped } = fakeAdmin([fresh]);
 
     // biome-ignore lint/suspicious/noExplicitAny: the fake stands in for a postgres-js tag function
@@ -195,7 +205,7 @@ describe('reapAbandoned, over a case database', () => {
 
 describe('sweepRunScratchDbs', () => {
   it('drops every case database carrying this run\u2019s token', async () => {
-    const mine = runToken(templateDbName()) as string;
+    const mine = mintRunToken();
     const a = caseDbName('iss1046', mine);
     const b = caseDbName('iss1001', mine);
     const { admin, dropped } = fakeAdmin([a, b, 'forge']);
@@ -206,7 +216,7 @@ describe('sweepRunScratchDbs', () => {
   });
 
   it('drops every file database carrying this run\u2019s token', async () => {
-    const mine = runToken(templateDbName()) as string;
+    const mine = mintRunToken();
     const a = workerDbName('1', mine);
     const b = workerDbName('2', mine);
     const { admin, dropped } = fakeAdmin([a, b, 'forge']);
@@ -217,8 +227,8 @@ describe('sweepRunScratchDbs', () => {
   });
 
   it('leaves a case database another live run minted', async () => {
-    const mine = runToken(templateDbName()) as string;
-    const theirs = runToken(templateDbName()) as string;
+    const mine = mintRunToken();
+    const theirs = mintRunToken();
     const ours = caseDbName('iss1046', mine);
     const { admin, dropped } = fakeAdmin([ours, caseDbName('iss1046', theirs)]);
 
@@ -228,8 +238,8 @@ describe('sweepRunScratchDbs', () => {
   });
 
   it('leaves a file database another live run minted', async () => {
-    const mine = runToken(templateDbName()) as string;
-    const theirs = runToken(templateDbName()) as string;
+    const mine = mintRunToken();
+    const theirs = mintRunToken();
     const ours = workerDbName('1', mine);
     const { admin, dropped } = fakeAdmin([ours, workerDbName('1', theirs)]);
 
@@ -239,7 +249,7 @@ describe('sweepRunScratchDbs', () => {
   });
 
   it('keeps going when a drop is refused', async () => {
-    const mine = runToken(templateDbName()) as string;
+    const mine = mintRunToken();
     const a = caseDbName('iss1046', mine);
     const b = caseDbName('iss1001', mine);
     const { admin, catalog } = fakeAdmin([a, b]);
@@ -255,7 +265,7 @@ describe('sweepRunScratchDbs', () => {
   });
 
   it('tries a name again when the first drop of it was refused', async () => {
-    const mine = runToken(templateDbName()) as string;
+    const mine = mintRunToken();
     const a = caseDbName('iss1046', mine);
     const { admin, catalog } = fakeAdmin([a]);
     const real = admin.unsafe;
@@ -271,7 +281,7 @@ describe('sweepRunScratchDbs', () => {
   });
 
   it('names a database it could not drop rather than returning as though it had', async () => {
-    const mine = runToken(templateDbName()) as string;
+    const mine = mintRunToken();
     const a = caseDbName('iss1046', mine);
     const { admin } = fakeAdmin([a]);
     admin.unsafe = async () => {
@@ -339,10 +349,10 @@ describe('the drain', () => {
   });
 
   it('hands what the grace did not reach to the run sweep, and nothing else', async () => {
-    const mine = runToken(templateDbName()) as string;
+    const mine = mintRunToken();
     const a = caseDbName('iss1046', mine);
     const b = workerDbName('1', mine);
-    const theirs = caseDbName('iss1046', runToken(templateDbName()) as string);
+    const theirs = caseDbName('iss1046', mintRunToken());
 
     const h = heldDrain();
     retireScratchDb('postgres://held/4', a, h.connect);
@@ -457,6 +467,7 @@ describe.each(BUDGETED_TEARDOWNS.slice(0, 3))('%s, giving a case database back',
  */
 const MAY_AWAIT_A_DROP = new Set([
   'helpers/scratch-db.ts',
+  'helpers/shared-template.ts',
   'helpers/global-setup.ts',
   'helpers/scratch-db.test.ts',
 ]);

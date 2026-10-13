@@ -1,13 +1,15 @@
-import { randomBytes } from 'node:crypto';
 import postgres, { type Sql } from 'postgres';
+import { reapSharedTemplate, SHARED_TEMPLATE, stamp, TEMPLATE_PREFIX } from './shared-template.js';
 
-export const TEMPLATE_PREFIX = 'forge_test_tpl_';
+export { TEMPLATE_PREFIX };
 export const WORKER_PREFIX = 'test_w_';
 export const CASE_PREFIX = 'test_case_';
 
 const TAG_SHAPE = /^[a-z0-9]{1,16}$/;
 
 const ABANDONED_AFTER_MS = 2 * 60 * 60 * 1000;
+
+const TOKEN_SHAPE = /^[0-9a-z]+_[0-9a-f]{8}$/;
 
 const STAMPED = /_([0-9a-z]+)_[0-9a-f]{8}$/;
 
@@ -17,30 +19,26 @@ let drainer: Sql | undefined;
 let draining: Promise<void> = Promise.resolve();
 let queued = 0;
 
-function stamp(): string {
-  return `${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`;
-}
-
 function requireToken(token: string | null, what: string): string {
   if (token !== null) return token;
   throw new Error(
-    `scratch-db: no TEST_PG_TEMPLATE, so this run has no token and the ${what} minted now ` +
+    `scratch-db: no TEST_PG_RUN_TOKEN, so this run has no token and the ${what} minted now ` +
       'could be swept by neither its own run nor the reaper. Global setup builds the template; ' +
       'a suite reaching here without one has not run it.',
   );
 }
 
-export function templateDbName(): string {
-  return `${TEMPLATE_PREFIX}${stamp()}`;
+export function mintRunToken(): string {
+  return stamp();
 }
 
-/** The token every scratch database of THIS run carries, read off `TEST_PG_TEMPLATE`. */
-export function runToken(
-  template: string | undefined = process.env.TEST_PG_TEMPLATE,
-): string | null {
-  if (template === undefined || !template.startsWith(TEMPLATE_PREFIX)) return null;
-  const token = template.slice(TEMPLATE_PREFIX.length);
-  return token.length > 0 ? token : null;
+export function freshTemplateName(token: string): string {
+  return `${TEMPLATE_PREFIX}${token}`;
+}
+
+/** The token every scratch database of THIS run carries, read off `TEST_PG_RUN_TOKEN`. */
+export function runToken(token: string | undefined = process.env.TEST_PG_RUN_TOKEN): string | null {
+  return token !== undefined && TOKEN_SHAPE.test(token) ? token : null;
 }
 
 export function workerDbName(workerId: string, token: string | null = runToken()): string {
@@ -73,7 +71,7 @@ export function isAbandoned(datname: string, now: number): boolean {
   return born !== null && now - born > ABANDONED_AFTER_MS;
 }
 
-/** Drop the scratch databases left by runs that crashed before their teardown. */
+/** Drop what crashed runs left, and shared templates no run holds that sat unused for a day. */
 export async function reapAbandoned(admin: Sql, now: number = Date.now()): Promise<string[]> {
   const rows = await admin<{ datname: string }[]>`
     SELECT datname FROM pg_database
@@ -83,6 +81,10 @@ export async function reapAbandoned(admin: Sql, now: number = Date.now()): Promi
   `;
   const dropped: string[] = [];
   for (const { datname } of rows) {
+    if (SHARED_TEMPLATE.test(datname)) {
+      if (await reapSharedTemplate(admin, datname, now)) dropped.push(datname);
+      continue;
+    }
     if (!isAbandoned(datname, now)) continue;
     try {
       await admin.unsafe(`DROP DATABASE IF EXISTS "${datname}"`);
