@@ -1,7 +1,9 @@
 import postgres from 'postgres';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { setup as globalSetup, teardown as globalTeardown } from '../helpers/global-setup.js';
+import { MIGRATIONS_FOLDER } from '../helpers/migrate.js';
 import { drainRetiredScratchDbs, retireScratchDb } from '../helpers/scratch-db.js';
+import { hashMigrations, sharedTemplateName } from '../helpers/shared-template.js';
 import { templateRow, useLockHolders } from '../helpers/shared-template-probe.js';
 
 // The real global setup and teardown against this run's own instance: which mode builds what, and
@@ -78,6 +80,10 @@ describe('global setup, run for real against this instance', () => {
     'shares: leaves the template standing at teardown and drops only its own scratch databases',
     async () => {
       const outer = process.env.TEST_PG_RUN_TOKEN as string;
+      // Whether the run executing this file shares the template is its own mode (CI builds a
+      // private one), so the holders already on it are read before, and this run adds one.
+      const shared = sharedTemplateName(hashMigrations(MIGRATIONS_FOLDER));
+      const holdersBefore = (await holders(shared)).length;
       const first = await runWith({ mode: 'shared' });
       const mine = `test_case_${first.token}_x_${Date.now().toString(36)}_aaaaaaaa`;
       const theirs = `test_case_${outer}_x_${Date.now().toString(36)}_bbbbbbbb`;
@@ -86,7 +92,8 @@ describe('global setup, run for real against this instance', () => {
 
       expect(first.token).not.toBe(outer);
       expect(first.name).toBe(process.env.TEST_PG_TEMPLATE);
-      expect((await holders(first.name)).length).toBeGreaterThanOrEqual(2);
+      expect(first.name).toBe(shared);
+      expect((await holders(first.name)).length).toBe(holdersBefore + 1);
 
       await globalTeardown();
 
