@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/declare/describe.js';
+import {
+  describeOperation,
+  fail,
+  json,
+  NO_SUCH_PROJECT,
+} from '../api-reference/declare/describe.js';
 import { skillActivityEventTypes } from '../db/schema.js';
 
 /** The history is capped rather than whole: ISS-1025 found every view an unbounded read of the log. */

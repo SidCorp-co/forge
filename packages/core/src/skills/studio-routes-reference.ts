@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/declare/describe.js';
+import {
+  describeOperation,
+  fail,
+  json,
+  NO_SUCH_PROJECT,
+} from '../api-reference/declare/describe.js';
 import { skillRowSchema, skillSchema, skillWriteRefusals } from './crud-routes-reference.js';
 
 /** A global skill: a read-only template, and the project skill that shadows it if any. */

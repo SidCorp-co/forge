@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/declare/describe.js';
+import {
+  describeOperation,
+  fail,
+  json,
+  NO_SUCH_PROJECT,
+} from '../api-reference/declare/describe.js';
 import { divergenceCharterEntrySchema } from './divergence-charters.js';
 
 const charterSchema = z.object({

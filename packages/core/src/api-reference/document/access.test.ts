@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { PAT_UNGRANTABLE, patPermissionWanted, patPrefixForPath } from '../../auth/pat-permissions.js';
+import {
+  PAT_UNGRANTABLE,
+  patPermissionWanted,
+  patPrefixForPath,
+} from '../../auth/pat-permissions.js';
 import { accessOf } from './access.js';
 
 describe('accessOf', () => {

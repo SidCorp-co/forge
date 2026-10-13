@@ -2,7 +2,11 @@ import { HTTPException } from 'hono/http-exception';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { probeInputRefusal } from './probe-hook.js';
-import { type ValidatorDeclaration, validatorDeclarations, zValidator } from '../declare/validator.js';
+import {
+  type ValidatorDeclaration,
+  validatorDeclarations,
+  zValidator,
+} from '../declare/validator.js';
 
 function declared(hook?: Parameters<typeof zValidator>[2]): ValidatorDeclaration {
   const middleware = zValidator('json', z.object({ a: z.string() }), hook);
