@@ -49,13 +49,15 @@ function mount(runs: PipelineRunListItem[], awaitingReleaseIssues: number) {
 describe("the Awaiting release card", () => {
   it("says nothing is waiting only when no issue is Awaiting release either", () => {
     mount([], 0);
-    expect(screen.getByText("Nothing waiting on a release decision.")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Awaiting release" })).toHaveTextContent(
+      "nothing waiting on a release decision",
+    );
   });
 
   it("does not say nothing is waiting beside issues that are Awaiting release", () => {
     mount([], 5);
-    expect(screen.queryByText(/Nothing waiting/)).toBeNull();
-    expect(screen.getByText(/No release run is parked at the gate, and 5 issues are/)).toBeInTheDocument();
+    expect(screen.queryByText(/nothing waiting/i)).toBeNull();
+    expect(screen.getByText("5 issues, no release run at the gate")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "See them in Issues" })).toHaveAttribute(
       "href",
       "/projects/forge-dev/issues?filter=awaiting_release",

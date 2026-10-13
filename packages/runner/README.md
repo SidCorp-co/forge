@@ -292,8 +292,9 @@ not unix            ─▶ exit 0 for the service manager to start the new build
   onto its ledger row with the carry; a pane whose row names another, or whose
   carry left a run it could not read, is left running until that clears; a run
   whose worktree release was refused for good is not open once its session is
-  over and its leases are back, and the recovery sweep's line for it names
-  `forge-runner run release <run>`), its
+  over and its leases are back; the recovery sweep names it once and
+  `forge-runner status` for as long as it stands, with its checkout, its
+  refusal and `forge-runner run release <run>`), its
   turn is affirmatively over (its hooks say so,
   or, unheard since the handover, its transcript's newest entry is a turn's
   end), its project has admissible work, and the conversation its row records

@@ -11,18 +11,11 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
-import {
-  Button,
-  Card,
-  CardContent,
-  CardTitle,
-  Checkbox,
-  Icon,
-  StatusChip,
-} from "@/design";
+import { Button, Checkbox, Icon, StatusChip } from "@/design";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues/components/batch-release-dialog";
 import { formatUsd } from "@/features/pipeline/derive";
 import type { PipelineRunListItem } from "@/features/pipeline/types";
+import { DashboardSection, EmptyLine, RowList } from "./dashboard-section";
 
 const COLLAPSED_LIMIT = 5;
 
@@ -90,110 +83,7 @@ export function AwaitingReleaseCard({
     });
   };
 
-  return (
-    <>
-    <Card className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-line-subtle px-5 py-3.5">
-        <div className="flex items-center gap-2">
-          <Icon name="check" size={16} className="text-subtle" />
-          <CardTitle>{WORK_STATE_LABELS.awaiting_release}</CardTitle>
-        </div>
-        {runs.length > 0 && <span className="fg-caption font-mono text-subtle">{runs.length}</span>}
-      </div>
-      <CardContent className="flex-1">
-        {runs.length === 0 ? (
-          awaitingReleaseIssues === 0 ? (
-            <p className="fg-body-sm py-6 text-center text-muted">Nothing waiting on a release decision.</p>
-          ) : (
-            <p className="fg-body-sm py-6 text-center text-muted">
-              No release run is parked at the gate, and {awaitingReleaseIssues}{" "}
-              {awaitingReleaseIssues === 1 ? "issue is" : "issues are"}{" "}
-              {WORK_STATE_LABELS.awaiting_release}.{" "}
-              <Link
-                href={`/projects/${slug}/issues?filter=awaiting_release`}
-                className="text-accent-text hover:underline"
-              >
-                See them in Issues
-              </Link>
-            </p>
-          )
-        ) : (
-          <>
-            <p className="fg-caption mb-2 text-muted">
-              {awaitingReleaseIssues} {awaitingReleaseIssues === 1 ? "issue is" : "issues are"}{" "}
-              {WORK_STATE_LABELS.awaiting_release}; this list holds the {runs.length} with a release
-              run parked at the gate.
-            </p>
-            {selectableVisible.length > 0 && (
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <Checkbox
-                  checked={allVisibleSelected}
-                  indeterminate={selectedCount > 0 && !allVisibleSelected}
-                  onChange={toggleAllVisible}
-                  ariaLabel={allVisibleSelected ? "Clear selection" : "Select all"}
-                  label={allVisibleSelected ? "Clear" : "Select all"}
-                />
-                <Button
-                  variant="primary"
-                  size="sm"
-                  className="ml-auto"
-                  disabled={selectedCount === 0}
-                  onClick={() => setBatchDialogOpen(true)}
-                >
-                  {selectedCount > 0 ? `Release ${selectedCount}` : "Release"}
-                </Button>
-              </div>
-            )}
-            <ul className="flex flex-col gap-2">
-              {visible.map((run) => (
-                <li
-                  key={run.id}
-                  className="flex items-center gap-2.5 rounded-md border border-line bg-surface px-2.5 py-2 transition-colors hover:bg-hover"
-                >
-                  {run.issueId && (
-                    <Checkbox
-                      checked={selected.has(run.issueId)}
-                      onChange={(checked) => toggle(run.issueId as string, checked)}
-                      ariaLabel={`Select ${run.issueRef ?? "run"}`}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => open(run)}
-                    className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-                  >
-                    <StatusChip status="passed" domain="session" size="sm" />
-                    <span className="fg-body-sm min-w-0 flex-1 truncate text-muted">
-                      {run.issueRef ? (
-                        <>
-                          <span className="font-mono text-fg">{run.issueRef}</span>
-                          {run.issueTitle ? ` ${run.issueTitle}` : ""}
-                        </>
-                      ) : (
-                        "Run"
-                      )}
-                    </span>
-                    <span className="font-mono text-sm font-semibold tabular-nums text-fg">
-                      {formatUsd(run.cost?.estimatedCost)}
-                    </span>
-                    <Icon name="chevronRight" size={14} className="flex-none text-subtle" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {hiddenCount > 0 && (
-              <button
-                type="button"
-                onClick={() => setExpanded(true)}
-                className="fg-body-sm mt-2 w-full rounded-md py-1.5 text-center text-subtle transition-colors hover:bg-hover hover:text-fg"
-              >
-                Show {hiddenCount} more
-              </button>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
+  const dialog = (
     <BatchReleaseDialog
       projectId={projectId}
       selectedIssues={selectedIssues}
@@ -204,6 +94,109 @@ export function AwaitingReleaseCard({
         qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
       }}
     />
+  );
+
+  if (runs.length === 0) {
+    const title = WORK_STATE_LABELS.awaiting_release;
+    return (
+      <>
+        {awaitingReleaseIssues === 0 ? (
+          <EmptyLine title={title} status="nothing waiting on a release decision" />
+        ) : (
+          <EmptyLine
+            title={title}
+            status={`${awaitingReleaseIssues} ${awaitingReleaseIssues === 1 ? "issue" : "issues"}, no release run at the gate`}
+            action={
+              <Link
+                href={`/projects/${slug}/issues?filter=awaiting_release`}
+                className="fg-caption text-accent-text hover:underline"
+              >
+                See them in Issues
+              </Link>
+            }
+          />
+        )}
+        {dialog}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <DashboardSection
+        title={WORK_STATE_LABELS.awaiting_release}
+        aside={<span className="font-mono">{runs.length}</span>}
+      >
+        <p className="fg-caption mb-2 text-muted">
+          {awaitingReleaseIssues} {awaitingReleaseIssues === 1 ? "issue is" : "issues are"}{" "}
+          {WORK_STATE_LABELS.awaiting_release}; this list holds the {runs.length} with a release
+          run parked at the gate.
+        </p>
+        {selectableVisible.length > 0 && (
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <Checkbox
+              checked={allVisibleSelected}
+              indeterminate={selectedCount > 0 && !allVisibleSelected}
+              onChange={toggleAllVisible}
+              ariaLabel={allVisibleSelected ? "Clear selection" : "Select all"}
+              label={allVisibleSelected ? "Clear" : "Select all"}
+            />
+            <Button
+              variant="primary"
+              size="sm"
+              className="ml-auto"
+              disabled={selectedCount === 0}
+              onClick={() => setBatchDialogOpen(true)}
+            >
+              {selectedCount > 0 ? `Release ${selectedCount}` : "Release"}
+            </Button>
+          </div>
+        )}
+        <RowList>
+          {visible.map((run) => (
+            <li key={run.id} className="flex items-center gap-2.5 py-2 transition-colors hover:bg-hover">
+              {run.issueId && (
+                <Checkbox
+                  checked={selected.has(run.issueId)}
+                  onChange={(checked) => toggle(run.issueId as string, checked)}
+                  ariaLabel={`Select ${run.issueRef ?? "run"}`}
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => open(run)}
+                className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+              >
+                <StatusChip status="passed" domain="session" size="sm" />
+                <span className="fg-body-sm min-w-0 flex-1 truncate text-muted">
+                  {run.issueRef ? (
+                    <>
+                      <span className="font-mono text-fg">{run.issueRef}</span>
+                      {run.issueTitle ? ` ${run.issueTitle}` : ""}
+                    </>
+                  ) : (
+                    "Run"
+                  )}
+                </span>
+                <span className="font-mono text-sm font-semibold tabular-nums text-fg">
+                  {formatUsd(run.cost?.estimatedCost)}
+                </span>
+                <Icon name="chevronRight" size={14} className="flex-none text-subtle" />
+              </button>
+            </li>
+          ))}
+        </RowList>
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="fg-body-sm mt-1 w-full rounded-md py-1.5 text-center text-subtle transition-colors hover:bg-hover hover:text-fg"
+          >
+            Show {hiddenCount} more
+          </button>
+        )}
+      </DashboardSection>
+      {dialog}
     </>
   );
 }

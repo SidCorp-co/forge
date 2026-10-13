@@ -1,12 +1,10 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import {
   Badge,
   EmptyState,
   ErrorState,
-  Icon,
   IconButton,
   MonoTag,
   PageContainer,
@@ -17,11 +15,13 @@ import {
 } from "@/design";
 import { AttentionQueue } from "@/features/project-dashboard/components/attention-queue";
 import { AwaitingReleaseCard } from "@/features/project-dashboard/components/awaiting-release-card";
-import { KpiBand } from "@/features/project-dashboard/components/kpi-band";
+import { ComingSoonNote } from "@/features/project-dashboard/components/dashboard-section";
+import { Headline } from "@/features/project-dashboard/components/headline";
 import { LiveRunsCard } from "@/features/project-dashboard/components/live-runs-card";
 import { RunnersCard } from "@/features/project-dashboard/components/runners-card";
 import { SchedulesCard } from "@/features/project-dashboard/components/schedules-card";
 import { SpendCard } from "@/features/project-dashboard/components/spend-card";
+import { StatStrip } from "@/features/project-dashboard/components/stat-strip";
 import { StatusDonut } from "@/features/project-dashboard/components/status-donut";
 import { StepTimes } from "@/features/project-dashboard/components/step-times";
 import { Throughput, THROUGHPUT_WINDOW_DAYS } from "@/features/project-dashboard/components/throughput";
@@ -40,7 +40,17 @@ import {
   statusDonut,
   upcomingSchedules,
 } from "@/features/project-dashboard/derive";
+import {
+  type ReadState,
+  parkedAges,
+  projectShape,
+  secondsSince,
+  spendComparison,
+  stuckRuns,
+} from "@/features/project-dashboard/shape";
 import { useAttention } from "@/features/attention/hooks";
+import { useIssues } from "@/features/issues/hooks";
+import { formatElapsed } from "@/features/overview/derive";
 import { useProjectRuns, useStepDurations, useThroughput } from "@/features/pipeline/hooks";
 import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
@@ -51,7 +61,7 @@ import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 
-/** The window the spend and where-time-goes tiles read; the throughput tile's is its own. */
+/** The window the spend and where-time-goes sections read; the throughput section's is its own. */
 const METRICS_WINDOW_DAYS = 7;
 
 export default function ProjectOverviewPage() {
@@ -78,6 +88,15 @@ export default function ProjectOverviewPage() {
   const projectRunnersQ = useProjectRunners(projectId ?? null);
   const activeRunnersQ = useActiveRunners(projectId ?? null);
   const schedulesQ = useSchedules(projectId);
+
+  // The health row lists at most five parked issues, with no time on them. Their ages come from the
+  // issues search (newest write first, so the listed five are in it), and only where there are any.
+  const parkedWanted = (healthQ.data?.find((h) => h.projectSlug === slug)?.blockers.length ?? 0) > 0;
+  const parkedQ = useIssues(parkedWanted ? projectId : undefined, {
+    filter: "blocked_on_person",
+    sort: "updatedAt:desc",
+    pageSize: 50,
+  });
 
   // Tick once a second while some runner is limited (live reset countdown);
   // the active-runner card's busy state refreshes via its own 10s poll + WS,
@@ -127,22 +146,40 @@ export default function ProjectOverviewPage() {
   const glyph = projectGlyph(project.id);
   const now = Date.now();
 
-  // Nothing below states a count, a list or "All caught up" the attention answer has not given: until it
-  // is in the Needs you tile and list say they are reading, and where it failed they refuse by name. The
-  // health row's parked list alone is a part of the answer and is not shown as the whole of it.
+  // Nothing below states a count, a list or "All caught up" the reads have not given: until one is in,
+  // the headline, the Needs you figure and the list say they are reading, and where it failed they
+  // refuse by name. The health row's parked list alone is a part of the answer, not the whole of it.
   const attentionPending = attentionQ.read === "pending";
   const readFailure =
     attentionQ.read === "failed" ? attentionReadFailure(formatApiError(attentionQ.error)) : null;
   const attentionRead = attentionQ.read === "read";
-  const attention = attentionRead ? projectAttention(attentionQ.view, project.slug, health?.blockers) : [];
-  // A response that cannot say how much the list leaves out is refused where the tile and the list
+  const parkedState: ReadState = !parkedWanted
+    ? { read: "ok" }
+    : parkedQ.isError
+      ? { read: "failed", reason: formatApiError(parkedQ.error) }
+      : parkedQ.data === undefined || parkedQ.isPlaceholderData
+        ? { read: "pending" }
+        : { read: "ok" };
+  const ages = parkedState.read === "ok" ? parkedAges(parkedQ.data?.items) : undefined;
+  const attention = attentionRead ? projectAttention(attentionQ.view, project.slug, health?.blockers, ages) : [];
+  // A response that cannot say how much the list leaves out is refused where the figure and the list
   // are, so the rest of the dashboard stands rather than the whole page failing.
   const attentionRefused = readFailure ?? (attentionRead ? attentionRefusal(attentionQ.view, project.slug) : null);
   const attentionLeftOut =
     attentionRead && !attentionRefused
       ? attentionCut(attention, attentionQ.view, project.slug, health?.blockersTotal)
       : null;
+  const attentionState: ReadState = attentionPending
+    ? { read: "pending" }
+    : attentionRefused
+      ? { read: "failed", reason: readFailure ? formatApiError(attentionQ.error) : attentionRefused }
+      : { read: "ok" };
   const runItems = runsQ.data?.items;
+  const runsState: ReadState = runsQ.isError
+    ? { read: "failed", reason: formatApiError(runsQ.error) }
+    : runsQ.data === undefined
+      ? { read: "pending" }
+      : { read: "ok" };
   const runsActive = activeRuns(runItems);
   const runsIdle = idleRuns(runItems);
   const runsAwaitingRelease = awaitingReleaseRuns(runItems);
@@ -158,39 +195,66 @@ export default function ProjectOverviewPage() {
   const spend = spendByStage(durationsQ.data);
   const schedules = upcomingSchedules(schedulesQ.data);
 
+  const reading = projectShape({
+    attention: attentionState,
+    runs: runsState,
+    parked: parkedState,
+    items: attention,
+    cut: attentionLeftOut,
+    slug: project.slug,
+    liveRuns: runsActive.length,
+    stuckRuns: stuckRuns(runsIdle, now),
+    failedJobs: attentionState.read === "ok" ? (attentionQ.view?.projectTotals[project.slug]?.failedJobs ?? 0) : 0,
+    releaseRuns: runsAwaitingRelease.length,
+    releaseIssues: awaitingReleaseIssues,
+    now,
+  });
+
+  const oldestSeconds = attention.reduce<number | null>((oldest, it) => {
+    const s = secondsSince(it.since, now);
+    return s === null ? oldest : Math.max(oldest ?? 0, s);
+  }, null);
+
+  const liveRunsSection = <LiveRunsCard runs={runsActive} slug={project.slug} idle={runsIdle} />;
+  const releaseSection = (
+    <AwaitingReleaseCard
+      runs={runsAwaitingRelease}
+      slug={project.slug}
+      projectId={project.id}
+      awaitingReleaseIssues={awaitingReleaseIssues}
+    />
+  );
+  const metricSections = (
+    <>
+      <StatusDonut data={donut} />
+      <SpendCard data={spend} inFlightUsd={inFlight} />
+      <Throughput
+        rows={throughputQ.data}
+        isLoading={throughputQ.isLoading}
+        error={throughputQ.error}
+        onRetry={() => throughputQ.refetch()}
+      />
+      <StepTimes
+        durations={durationsQ.data}
+        windowDays={METRICS_WINDOW_DAYS}
+        isLoading={durationsQ.isLoading}
+        error={durationsQ.error}
+        onRetry={() => durationsQ.refetch()}
+      />
+      <RunnersCard summary={runners} slug={project.slug} />
+      <SchedulesCard rows={schedules} now={now} slug={project.slug} />
+    </>
+  );
+
   return (
     <PageContainer className="min-h-dvh">
-      <header className="mb-6 flex items-center gap-4">
-        <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(project.name)} size={48} />
-        <div className="flex-1">
+      <header className="mb-5 flex items-center gap-4">
+        <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(project.name)} size={40} />
+        <div className="min-w-0 flex-1">
           <PageTitle className="fg-h2">{project.name}</PageTitle>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <div className="mt-1 flex flex-wrap items-center gap-2">
             <MonoTag>{project.slug}</MonoTag>
             <Badge tone={project.role === "admin" ? "accent" : "neutral"}>{project.role ?? "org"}</Badge>
-            {runsActive.length > 0 && (
-              <span
-                className="fg-caption inline-flex items-center gap-1.5 font-semibold"
-                style={{ color: "var(--cobalt-700)" }}
-              >
-                <span className="size-1.5 rounded-full bg-[var(--cobalt-500)] forge-pulse" />
-                {runsActive.length} {runsActive.length === 1 ? "run" : "runs"} live
-              </span>
-            )}
-            {awaitingReleaseIssues > 0 && (
-              <span className="fg-caption inline-flex items-center gap-1.5 font-semibold text-subtle">
-                <span className="size-1.5 rounded-full bg-[var(--green-500)]" />
-                {awaitingReleaseIssues} {WORK_STATE_LABELS.awaiting_release.toLowerCase()}
-              </span>
-            )}
-            {attention.length > 0 && !attentionRefused && (
-              <span
-                className="fg-caption inline-flex items-center gap-1 font-semibold"
-                style={{ color: "var(--accent-text)" }}
-              >
-                <Icon name="inbox" size={13} />
-                needs attention {attentionLeftOut ? `${attention.length} of at least ${attentionLeftOut.atLeast}` : attention.length}
-              </span>
-            )}
           </div>
         </div>
         <IconButton
@@ -200,56 +264,56 @@ export default function ProjectOverviewPage() {
         />
       </header>
 
-      <div className="space-y-4">
-        <KpiBand
-          liveRuns={runsActive.length}
-          busyRunners={runners.busyCount}
-          onlineRunners={runners.onlineCount}
-          needsYou={attention.length}
-          needsYouCaption={attentionCaption(attention, attentionLeftOut)}
-          needsYouRefusal={attentionRefused}
-          needsYouPending={attentionPending}
-          openWork={donut.total}
-          spendTodayUsd={health?.spend24hUsd ?? 0}
-          inFlightUsd={inFlight}
-        />
+      <div className="flex flex-col gap-6" data-shape={reading.shape}>
+        <Headline reading={reading} />
 
-        <AttentionQueue
-          items={attention}
-          cut={attentionLeftOut}
-          refusal={attentionRefused}
-          pending={attentionPending}
-          onRetry={readFailure ? attentionQ.refetch : undefined}
-          slug={project.slug}
-          now={now}
-        />
+        {(reading.shape === "working" || reading.shape === "unread") && (
+          <StatStrip
+            liveRuns={runsActive.length}
+            runsUnread={runsState.read !== "ok"}
+            busyRunners={runners.busyCount}
+            onlineRunners={runners.onlineCount}
+            needsYou={attention.length}
+            needsYouCaption={attentionCaption(attention, attentionLeftOut)}
+            oldestWait={oldestSeconds === null ? null : formatElapsed(oldestSeconds)}
+            needsYouRefusal={attentionRefused}
+            needsYouPending={attentionPending}
+            openWork={donut.total}
+            openWorkMadeOf={donut.segments.map((s) => `${s.count} ${s.label.toLowerCase()}`).join(" · ")}
+            spendTodayUsd={health?.spend24hUsd ?? 0}
+            spendComparison={spendComparison(health?.spend24hUsd ?? 0, spend.total)}
+            inFlightUsd={inFlight}
+          />
+        )}
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-          <LiveRunsCard runs={runsActive} slug={project.slug} idle={runsIdle} />
-          <AwaitingReleaseCard
-            runs={runsAwaitingRelease}
-            slug={project.slug}
-            projectId={project.id}
-            awaitingReleaseIssues={awaitingReleaseIssues}
-          />
-          <StatusDonut data={donut} />
-          <SpendCard data={spend} inFlightUsd={inFlight} />
-          <Throughput
-            rows={throughputQ.data}
-            isLoading={throughputQ.isLoading}
-            error={throughputQ.error}
-            onRetry={() => throughputQ.refetch()}
-          />
-          <StepTimes
-            durations={durationsQ.data}
-            windowDays={METRICS_WINDOW_DAYS}
-            isLoading={durationsQ.isLoading}
-            error={durationsQ.error}
-            onRetry={() => durationsQ.refetch()}
-          />
-          <RunnersCard summary={runners} slug={project.slug} />
-          <SchedulesCard rows={schedules} now={now} slug={project.slug} />
-        </div>
+        {reading.shape === "quiet" ? (
+          // Quiet is short: the headline says nothing needs anyone, every empty section is one line,
+          // and what holds data follows in one column.
+          <div className="flex flex-col gap-4">
+            {liveRunsSection}
+            {releaseSection}
+            {metricSections}
+          </div>
+        ) : (
+          <div className="grid items-start gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+            <div className="flex min-w-0 flex-col gap-5">
+              <AttentionQueue
+                items={attention}
+                cut={attentionLeftOut}
+                refusal={attentionRefused}
+                pending={attentionPending}
+                onRetry={readFailure ? attentionQ.refetch : undefined}
+                slug={project.slug}
+                now={now}
+              />
+              {liveRunsSection}
+              {releaseSection}
+            </div>
+            <div className="flex min-w-0 flex-col gap-5">{metricSections}</div>
+          </div>
+        )}
+
+        <ComingSoonNote />
       </div>
     </PageContainer>
   );

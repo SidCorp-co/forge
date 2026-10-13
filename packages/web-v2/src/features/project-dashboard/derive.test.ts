@@ -162,6 +162,27 @@ describe("projectAttention (ISS-1156)", () => {
     ).toThrow(/parked at `banana`.*not one of the issue statuses/u);
   });
 
+  it("carries the time an attention item entered its state, said to be measured", () => {
+    const [item] = projectAttention(view([awaiting(1, "q1")]), "sable", []);
+    expect(item).toMatchObject({ since: "2026-10-08T00:00:00Z", sinceBasis: "entered" });
+  });
+
+  it("ages a parked issue from the page's ages by its issue id, and lists one it has no age for without a time", () => {
+    const ages = new Map([["doc-9", { since: "2026-06-23T00:00:00Z", basis: "last-write" as const }]]);
+    const items = projectAttention(
+      undefined,
+      "sable",
+      [
+        { issueId: "ISS-9", documentId: "doc-9", status: "needs_info" },
+        { issueId: "ISS-8", documentId: "doc-8", status: "on_hold" },
+      ],
+      ages,
+    );
+    expect(items[0]).toMatchObject({ since: "2026-06-23T00:00:00Z", sinceBasis: "last-write" });
+    expect(items[1]?.since).toBeUndefined();
+    expect(items[1]?.sinceBasis).toBeUndefined();
+  });
+
   it("keeps another project's rows out", () => {
     const other = { ...awaiting(5, "q5"), projectSlug: "tern" };
     expect(projectAttention(view([other]), "sable", [])).toEqual([]);

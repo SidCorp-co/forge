@@ -3166,6 +3166,7 @@
 - **A release pane that stops on a question no longer asks it again every minute.** The question now lands on the release's issues, the release waits, a second press is refused by name, and the answer restarts it.
 - **The run drawer opened from Ops says Queued for a run nothing has started.** It read running, unlike the board, and offered Pause and Stop. It now agrees, names its issue, and offers both once work starts.
 - **A master an update left outdated no longer sits for days while its project's work waits.** A run whose worktree release failed for good no longer counts as open, and a master with real runs is nudged like any other.
+- **A run whose worktree release failed for good stays named.** The runner's journal says it once, and `forge-runner status` for as long as it stands, with its refusal and the command that retries the release.
 - **Two runner commands saving the box's config at once no longer fail or lose each other's change.** They take turns now, and an error names the file and the step.
 
 - **Two installs of the master skill into one checkout no longer fail one of them.** A bind and the daemon's start sweep reaching one checkout together now take turns, and both end with the shipped tree.
@@ -6376,6 +6377,7 @@
 ### Changed
 
 - **An integration run on a box with its own Postgres reuses the template database.** A run whose migrations match one already there clones it; a differing one builds its own. Concurrent runs build it once. CI still builds its own.
+- **The project dashboard opens on a sentence, and its shape follows what the project is doing.** A quiet project says so and shows empty panels as one line; a failing one gets a band linking its oldest item. (ISS-1159)
 - **An issue is one line of five columns that always fits.** The state says what is running, who owes an answer and for how long. Module, cost and complexity left the row; Comfortable density shows module, kind and creator.
 - **The Library is one row of tabs, and Memory is not among them.** Knowledge's readers are a grouped list, or a picker on a phone, not a second tab row. An empty product map opens Automation for an admin.
 - **The Issues screen shows issues, and the board, metrics and modules sit where they belong.** The tabs are gone: the board is the Pipeline page, throughput is on the dashboard, modules are "Group: module". Old `?tab=` links redirect.

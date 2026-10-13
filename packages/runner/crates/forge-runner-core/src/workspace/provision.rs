@@ -1443,13 +1443,30 @@ mod tests {
             .is_ok());
     }
 
+    /// Writes an executable `git` into `dir` that no thread of this process has ever held open
+    /// for writing.
+    ///
+    /// A test thread that writes the script and then runs it races every other test thread's
+    /// `fork`: a child forked while the write descriptor is open holds it until its own `exec`, and
+    /// an `exec` of the script in that window fails `ETXTBSY` ("Text file busy") — about one run in
+    /// four of this module. So the script is written by a child shell, under another name, and
+    /// renamed into place: this process opens no descriptor on it, and each call is a new file, so
+    /// a script an earlier call left running is never written over either.
     #[cfg(unix)]
     fn fake_git(dir: &Path, script: &str) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
         fs::create_dir_all(dir).unwrap();
         let git = dir.join("git");
-        fs::write(&git, format!("#!/bin/sh\n{script}\n")).unwrap();
-        fs::set_permissions(&git, fs::Permissions::from_mode(0o755)).unwrap();
+        let done = std::process::Command::new("/bin/sh")
+            .args([
+                "-c",
+                r#"printf '#!/bin/sh\n%s\n' "$2" > "$1.new" && chmod 755 "$1.new" && mv -f "$1.new" "$1""#,
+                "fake-git",
+            ])
+            .arg(&git)
+            .arg(script)
+            .status()
+            .expect("a shell to write the fake git with");
+        assert!(done.success(), "writing the fake git failed: {done}");
         git
     }
 

@@ -14,7 +14,8 @@ use crate::daemon::{subagent_end, transcript_age};
 use crate::error::Result;
 use crate::runner::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
 use crate::runner::ledger::{
-    Incarnation, Ledger, Liveness, Run, HOST_PANE_GONE, HOST_PANE_STARTED, HOST_PROCESS_GONE,
+    CheckoutPath, Incarnation, Ledger, Liveness, Run, HOST_PANE_GONE, HOST_PANE_STARTED,
+    HOST_PROCESS_GONE,
 };
 use std::path::{Path, PathBuf};
 
@@ -178,6 +179,7 @@ pub async fn reconcile(
     watch: RunWatch<'_>,
 ) -> Result<Vec<Recovered>> {
     end_what_no_master_can_close(ledger);
+    say_the_stranded(ledger, boot_id);
     let mut out = Vec::new();
     let mut unanswered_reads: Vec<String> = Vec::new();
     let mut ended_by_process: Vec<String> = Vec::new();
@@ -550,6 +552,43 @@ fn unbound_reason(age_secs: i64) -> String {
     )
 }
 
+/// Name every run whose release was decided terminal and that nothing else
+/// on this box names any more, once each (ISS-1410).
+///
+/// `unclosed_runs` never selects such a row once its session is over and every
+/// lease is back, so the walk below cannot reach it and its [`Standing::Decided`]
+/// arm cannot say it: the one state in which a checkout stays by decision with
+/// nobody left to be told was the state no line was written for. A pane no
+/// longer holds the run either (`close_loop::holds_open`), so without this its
+/// refusal would stand in the ledger and in no place an operator reads. The
+/// rows are only read; `forge-runner run release` is what puts one back. A
+/// ledger that cannot be read is said, never read as none.
+fn say_the_stranded(ledger: &Ledger, boot_id: &str) {
+    let stranded = match ledger.stranded_by_decision() {
+        Ok(stranded) => stranded,
+        Err(e) => {
+            tracing::warn!(
+                "[recovery] the runs whose release was decided terminal could not be listed ({e}); \
+                 `forge-runner status` reads the same ledger and says whether it can"
+            );
+            return;
+        }
+    };
+    for s in stranded {
+        let state = match close_loop::state(ledger, &s.run.run_id) {
+            Ok(state) => state,
+            Err(e) => {
+                tracing::warn!(
+                    "[recovery] run {}: the marks it stands on could not be read ({e}), so it is not named this sweep",
+                    s.run.run_id
+                );
+                continue;
+            }
+        };
+        say_standing(ledger, &s.run, boot_id, &state, Standing::Stranded);
+    }
+}
+
 /// End the runs no master on this box answers for once their marks close
 /// them, and name each one ended (ISS-1355).
 ///
@@ -865,6 +904,11 @@ enum Standing {
     /// Its release was decided terminal and its checkout stays by decision;
     /// only its leases are still being chased.
     Decided,
+    /// Its release was decided terminal, its session is over and every lease is
+    /// back, and nothing records its checkout returned: no sweep selects it,
+    /// no pane holds it, and only an operator's `run release` takes it up
+    /// again (ISS-1410).
+    Stranded,
     /// Every mark it has left is one core sets — a session core has not called
     /// over, or a lease core has not handed back — and this box is asking core
     /// for it on every sweep. Reaching this arm with the session still open
@@ -884,6 +928,7 @@ fn standing_notice(standing: Standing, state: &CloseState) -> &'static str {
         Standing::Unanswered => "awaiting-leases",
         Standing::ForeignBoot => "foreign-boot",
         Standing::Decided => "decided",
+        Standing::Stranded => "stranded",
         Standing::AwaitingCore if !state.session_terminal => "core-awaiting-session",
         Standing::AwaitingCore => "core-awaiting-leases",
     }
@@ -1001,6 +1046,38 @@ fn say_standing(
             run.worktree_path.display(),
             run.run_id
         )
+        }
+        Standing::Stranded => {
+            let (checkout, retry) = match (CheckoutPath::of(&run.worktree_path), run.worktree_path.display()) {
+                (CheckoutPath::OnDisk, path) => (
+                    format!("its checkout {path} is still on disk and stays there by decision"),
+                    "has the next sweep try the release again",
+                ),
+                (CheckoutPath::Absent, path) => (
+                    format!(
+                        "its recorded checkout path {path} is not on disk, and nothing records what \
+                         became of it"
+                    ),
+                    "has the next sweep ask git what became of the path and record the checkout \
+                     returned, or refuse by name",
+                ),
+                (CheckoutPath::Unreadable(why), path) => (
+                    format!("its recorded checkout path {path} could not be inspected ({why})"),
+                    "has the next sweep try the release again",
+                ),
+            };
+            tracing::warn!(
+                "[recovery] run {} ({issues}) is stranded ({holds}): its release was decided \
+                 terminal ({}), and {checkout}. No sweep selects it and no master pane holds it, \
+                 so nothing but an operator ends it: `forge-runner run release {}` {retry}. \
+                 `forge-runner status` names it for as long as it stands. Said once, not every \
+                 sweep",
+                run.run_id,
+                run.release_refusal
+                    .as_deref()
+                    .unwrap_or("no refusal was recorded"),
+                run.run_id,
+            )
         }
         Standing::AwaitingCore => {
             // The two marks this box cannot set itself, said apart: a session
@@ -2874,6 +2951,7 @@ mod tests {
             Standing::Unanswered,
             Standing::ForeignBoot,
             Standing::Decided,
+            Standing::Stranded,
             Standing::AwaitingCore,
         ] {
             for (terminal, returned) in [(false, false), (true, false), (true, true)] {
@@ -4310,6 +4388,253 @@ mod tests {
         assert!(
             said.contains("leases"),
             "and the second names the mark that is outstanding now: {said}"
+        );
+    }
+
+    /// A run in the state ISS-1410 stops holding on a pane: ended by its master,
+    /// its release decided terminal after refusals, its session over and its
+    /// one lease back, with no mark for its checkout. `worktree` is where the
+    /// row says the checkout is.
+    fn a_stranded_run(worktree: std::path::PathBuf) -> Ledger {
+        a_run_decided_terminal(worktree, true)
+    }
+
+    fn a_run_decided_terminal(worktree: std::path::PathBuf, lease_back: bool) -> Ledger {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-gone".into(),
+            worktree_path: worktree,
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-530".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "core-sess-1").unwrap();
+        led.end_run("run-1", "master", "never started").unwrap();
+        let refusal = "run ff1df919 still holds the checkout in the ledger";
+        led.note_release_refusal("run-1", refusal, 1_790_000_000)
+            .unwrap();
+        led.conclude_release_refusal("run-1", 1_790_000_300, "master", refusal)
+            .unwrap();
+        led.mark_session_terminal_observed("run-1").unwrap();
+        if lease_back {
+            led.mark_lease_returned_observed("run-1", "ISS-530")
+                .unwrap();
+        }
+        led
+    }
+
+    async fn sweep_once(led: &mut Ledger) -> Vec<Recovered> {
+        reconcile(
+            led,
+            "boot-a",
+            &Masters(HashSet::new()),
+            &nothing_refuted(),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// ISS-1410 criterion 8, from run 14df28bc on the sidpeak pane: the state
+    /// the pane stops holding is one no walk of `unclosed_runs` reaches, so the
+    /// line naming it has to come from somewhere that does.
+    #[test]
+    fn a_stranded_run_no_walk_selects_is_still_named_by_the_sweep() {
+        let mut led = a_stranded_run(gone());
+        assert!(
+            led.unclosed_runs().unwrap().is_empty(),
+            "the premise: the sweep's own walk never selects this row, which is why the \
+             Decided arm could never say it"
+        );
+        let before = led.run("run-1").unwrap().unwrap();
+        let said = logged_while(|| {
+            block_on(async {
+                sweep_once(&mut led).await;
+            })
+        });
+        for needle in [
+            "run run-1 (ISS-530) is stranded",
+            "run ff1df919 still holds the checkout in the ledger",
+            gone().to_str().unwrap(),
+            "is not on disk, and nothing records what became of it",
+            "ask git what became of the path",
+            "`forge-runner run release run-1`",
+        ] {
+            assert!(said.contains(needle), "{needle:?} missing from: {said}");
+        }
+        assert!(
+            !said.contains("stays on disk by decision and only its leases"),
+            "and never the Decided wording, which is untrue of a row with every lease back: {said}"
+        );
+        let after = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            (
+                &after.release_refusal,
+                after.release_attempts,
+                after.release_terminal_at,
+                &after.released_as,
+                &after.ended_by,
+            ),
+            (
+                &before.release_refusal,
+                before.release_attempts,
+                before.release_terminal_at,
+                &before.released_as,
+                &before.ended_by,
+            ),
+            "the sweep only reads the stranded row; the one thing it writes is the notice"
+        );
+        assert_eq!(after.kept_notice.as_deref(), Some("stranded"));
+    }
+
+    /// The line is said once per run and not on every sweep, and says itself
+    /// again when the row's standing changes.
+    #[test]
+    fn a_stranded_run_is_said_once_and_the_act_the_line_names_takes_the_row() {
+        let mut led = a_stranded_run(gone());
+        let first = logged_while(|| {
+            block_on(async {
+                sweep_once(&mut led).await;
+            })
+        });
+        let second = logged_while(|| {
+            block_on(async {
+                sweep_once(&mut led).await;
+            })
+        });
+        assert_eq!(first.matches("is stranded").count(), 1, "{first}");
+        assert_eq!(second.matches("is stranded").count(), 0, "{second}");
+        assert!(
+            led.retract_release_refusal("run-1").unwrap(),
+            "the operator's act the line names takes the row"
+        );
+        assert_eq!(
+            led.unclosed_runs().unwrap().len(),
+            1,
+            "and after it the sweep selects the row to try the release again"
+        );
+        assert!(
+            led.stranded_by_decision().unwrap().is_empty(),
+            "so it is no longer stranded"
+        );
+    }
+
+    /// A checkout still on disk is said to be, and the act is the same.
+    #[test]
+    fn a_stranded_run_whose_checkout_is_on_disk_says_so() {
+        let scratch = Scratch::new("stranded-on-disk");
+        let mut led = a_stranded_run(scratch.0.to_path_buf());
+        let said = logged_while(|| {
+            block_on(async {
+                sweep_once(&mut led).await;
+            })
+        });
+        assert!(
+            said.contains("is still on disk and stays there by decision"),
+            "{said}"
+        );
+        assert!(!said.contains("is not on disk"), "{said}");
+        assert!(
+            said.contains("`forge-runner run release run-1`")
+                && !said.contains("ask git what became of the path"),
+            "{said}"
+        );
+    }
+
+    /// A path this process cannot inspect is neither on disk nor gone, and the
+    /// line says so rather than claiming either.
+    #[cfg(unix)]
+    #[test]
+    fn a_stranded_run_whose_checkout_path_cannot_be_inspected_says_that() {
+        use std::os::unix::fs::PermissionsExt;
+        let scratch = Scratch::new("stranded-unreadable");
+        let shut = scratch.0.join("shut");
+        std::fs::create_dir_all(shut.join("wt")).unwrap();
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let mut led = a_stranded_run(shut.join("wt"));
+        let said = logged_while(|| {
+            block_on(async {
+                sweep_once(&mut led).await;
+            })
+        });
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(
+            said.contains("could not be inspected")
+                && !said.contains("is not on disk")
+                && !said.contains("is still on disk"),
+            "{said}"
+        );
+    }
+
+    /// Boundaries of what counts as stranded: a lease still out, a session
+    /// still open, a checkout already recorded returned and a release not yet
+    /// decided are each a run some other path already names.
+    #[test]
+    fn a_run_is_stranded_only_when_every_mark_but_the_checkout_is_back() {
+        let leases_out = a_run_decided_terminal(gone(), false);
+        let mut session_open = Ledger::open_in_memory().unwrap();
+        session_open
+            .create_run_group(NewRun {
+                run_id: "run-1".into(),
+                project_id: "proj-1".into(),
+                master_session_id: "master-gone".into(),
+                worktree_path: gone(),
+                boot_id: "boot-a".into(),
+                issue_keys: vec!["ISS-530".into()],
+            })
+            .unwrap();
+        session_open
+            .note_release_refusal("run-1", "r", 1_790_000_000)
+            .unwrap();
+        session_open
+            .conclude_release_refusal("run-1", 1_790_000_300, "master", "r")
+            .unwrap();
+        session_open
+            .mark_lease_returned_observed("run-1", "ISS-530")
+            .unwrap();
+        let returned = a_stranded_run(gone());
+        returned
+            .mark_checkout_returned_observed("run-1", crate::runner::ledger::CheckoutReturn::Gone)
+            .unwrap();
+        let mut undecided = Ledger::open_in_memory().unwrap();
+        undecided
+            .create_run_group(NewRun {
+                run_id: "run-1".into(),
+                project_id: "proj-1".into(),
+                master_session_id: "master-gone".into(),
+                worktree_path: gone(),
+                boot_id: "boot-a".into(),
+                issue_keys: vec!["ISS-530".into()],
+            })
+            .unwrap();
+        undecided.mark_session_terminal_observed("run-1").unwrap();
+        undecided
+            .mark_lease_returned_observed("run-1", "ISS-530")
+            .unwrap();
+        undecided
+            .note_release_refusal("run-1", "r", 1_790_000_000)
+            .unwrap();
+        for (what, led) in [
+            ("a lease still out", &leases_out),
+            ("a session still open", &session_open),
+            ("a checkout recorded returned", &returned),
+            ("a release refused but not decided", &undecided),
+        ] {
+            assert!(led.stranded_by_decision().unwrap().is_empty(), "{what}");
+        }
+        assert_eq!(
+            a_stranded_run(gone()).stranded_by_decision().unwrap().len(),
+            1
         );
     }
 

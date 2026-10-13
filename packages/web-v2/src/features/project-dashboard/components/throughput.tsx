@@ -3,9 +3,11 @@
 // The project dashboard's throughput tile: issues shipped per day over the last seven UTC days, each counted once.
 
 import { useMemo } from "react";
-import { Card, CardContent, CardTitle, ErrorState, Icon, Skeleton } from "@/design";
+import { ErrorState, Skeleton } from "@/design";
 import type { ThroughputRow } from "@/features/pipeline/types";
 import { formatApiError } from "@/lib/api/error";
+import { throughputComparison } from "../shape";
+import { DashboardSection, EmptyLine } from "./dashboard-section";
 
 export const THROUGHPUT_WINDOW_DAYS = 7;
 const WINDOW_DAYS = THROUGHPUT_WINDOW_DAYS;
@@ -18,30 +20,30 @@ interface ThroughputProps {
 }
 
 export function Throughput({ rows, isLoading, error, onRetry }: ThroughputProps) {
+  const series = useMemo(() => (rows ? readThroughputSeries(rows, WINDOW_DAYS) : null), [rows]);
+  const comparison = series?.ok ? throughputComparison(series.days) : null;
+  const total = series?.ok ? series.days.reduce((a, r) => a + r.count, 0) : null;
+
+  // A week that shipped nothing is one line, as every empty panel is; a failed or malformed read is not empty.
+  if (!error && !isLoading && total === 0) {
+    return <EmptyLine title="Throughput" status={`nothing shipped in ${WINDOW_DAYS} days`} />;
+  }
+
   return (
-    <Card className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-line-subtle px-5 py-3.5">
-        <div className="flex items-center gap-2">
-          <Icon name="activity" size={16} className="text-subtle" />
-          <CardTitle>Throughput</CardTitle>
-        </div>
-        <span className="fg-caption text-subtle">shipped · {WINDOW_DAYS}-day</span>
-      </div>
-      <CardContent className="flex-1">
-        {error ? (
-          <ErrorState
-            title="Couldn't load throughput"
-            message={formatApiError(error)}
-            onRetry={onRetry}
-            mascot={false}
-          />
-        ) : isLoading ? (
-          <Skeleton className="h-40 rounded-lg" />
-        ) : (
-          <ThroughputChart rows={rows} />
-        )}
-      </CardContent>
-    </Card>
+    <DashboardSection title="Throughput" aside={comparison ?? `shipped · ${WINDOW_DAYS}-day`}>
+      {error ? (
+        <ErrorState
+          title="Couldn't load throughput"
+          message={formatApiError(error)}
+          onRetry={onRetry}
+          mascot={false}
+        />
+      ) : isLoading ? (
+        <Skeleton className="h-40 rounded-lg" />
+      ) : (
+        <ThroughputChart rows={rows} />
+      )}
+    </DashboardSection>
   );
 }
 
