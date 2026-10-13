@@ -2,10 +2,22 @@
 // legend, `+$X in flight` where runs are still spending, and the figure against its own normal.
 import { formatUsd } from "@/features/pipeline/derive";
 import type { SpendByStageData } from "../derive";
-import { DashboardSection, EmptyLine } from "./dashboard-section";
+import type { ReadState } from "../shape";
+import { DashboardSection, EmptyLine, unreadSection } from "./dashboard-section";
 
-export function SpendCard({ data, inFlightUsd }: { data: SpendByStageData; inFlightUsd: number }) {
+export function SpendCard({
+  data,
+  inFlightUsd,
+  read,
+}: {
+  data: SpendByStageData;
+  inFlightUsd: number;
+  /** The step-durations read the spend is summed from; until it is in, "none recorded" is not said. */
+  read?: ReadState;
+}) {
   const { segments, total } = data;
+  const unread = unreadSection("7-day spend", "The 7-day spend", read);
+  if (unread) return unread;
   if (total === 0) {
     return (
       <EmptyLine

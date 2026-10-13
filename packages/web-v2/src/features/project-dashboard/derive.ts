@@ -331,6 +331,9 @@ export function attentionCut(
   view: AttentionView | undefined,
   slug: string,
   blockersTotal: number | undefined,
+  /** Issues the health row counts in the Blocked on a person state: each is owed a person's answer, so
+   *  the list cannot hold fewer than that, whichever source listed them. */
+  blockedOnPerson = 0,
 ): AttentionCut | null {
   if (!view) return null;
   const refusal = attentionRefusal(view, slug);
@@ -348,6 +351,7 @@ export function attentionCut(
     listedPeople,
     totals.awaitingInput,
     (blockersTotal ?? 0) + totals.awaitingOutsideBlockers,
+    blockedOnPerson,
   );
   const atLeast =
     Math.max(totals.failedJobs, listed(["retry"])) +

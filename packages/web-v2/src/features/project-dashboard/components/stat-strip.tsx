@@ -16,6 +16,11 @@ export interface StatStripProps {
   liveRuns: number;
   /** The runs read has not arrived or failed: no run count is stated. */
   runsUnread?: boolean;
+  /** Runs open in all, as the navigation rail counts them; the figure says when it counts fewer. */
+  openRuns?: number;
+  /** The runners read has not arrived or failed: no runner count is stated. */
+  runnersUnread?: boolean;
+  activityUnread?: boolean;
   busyRunners: number;
   onlineRunners: number;
   needsYou: number;
@@ -39,13 +44,24 @@ function money(usd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
+function runsCaption(props: StatStripProps): string {
+  if (props.runsUnread) return "runs not read";
+  const runners = props.runnersUnread
+    ? "runners not read"
+    : props.activityUnread
+      ? `${props.onlineRunners} runners online · activity not read`
+      : `${props.busyRunners} of ${props.onlineRunners} runners busy`;
+  const open = props.openRuns ?? props.liveRuns;
+  return open > props.liveRuns ? `${runners} · ${open} runs open in all` : runners;
+}
+
 export function StatStrip(props: StatStripProps) {
   const needsGap = props.needsYouPending || props.needsYouRefusal;
   const stats: Stat[] = [
     {
       label: "Runs live",
       value: props.runsUnread ? "…" : String(props.liveRuns),
-      caption: props.runsUnread ? "runs not read" : `${props.busyRunners} of ${props.onlineRunners} runners busy`,
+      caption: runsCaption(props),
       accent: !props.runsUnread && props.liveRuns > 0,
     },
     {

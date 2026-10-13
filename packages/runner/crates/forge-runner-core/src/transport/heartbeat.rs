@@ -346,6 +346,7 @@ mod tests {
 
     pub(crate) const BLIND_PROJECT: &str = "68567cd4-0000-4000-8000-000000000001";
     pub(crate) const INTERMITTENT_PROJECT: &str = "2126d65a-d732-483b-a0ff-eb74fd88c53f";
+    pub(crate) const UNSERVED_PROJECT: &str = "4b0f2c1e-7d5a-4c6e-9a31-5e8d2f7b9c10";
 
     fn scratch(name: &str) -> crate::test_scratch::Scratch {
         crate::test_scratch::Scratch::new(&format!("pool-body-{name}"))
@@ -353,7 +354,8 @@ mod tests {
 
     /// The planted record the fixture is of: one project blind on 525 for three
     /// passes, one that failed 520 once and read again the pass after — the
-    /// shape of every occurrence measured on ISS-1234.
+    /// shape of every occurrence measured on ISS-1234 — and one core answered
+    /// 404 three passes running (ISS-1326).
     fn planted_pool(dir: &std::path::Path) {
         use crate::daemon::pool_jobs::Took;
         use crate::transport::pool::ReadFailure;
@@ -381,6 +383,13 @@ mod tests {
         );
         for i in 0..3 {
             note(dir, BLIND_PROJECT, &t525, NOW - 30_000 + i * 10_000);
+        }
+        let t404 = f(
+            404,
+            "pool 404 Not Found: Not Found: GET /api/devices/me/pool",
+        );
+        for i in 0..3 {
+            note(dir, UNSERVED_PROJECT, &t404, NOW - 300_000 + i * 10_000);
         }
     }
 

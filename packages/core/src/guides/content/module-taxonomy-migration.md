@@ -16,10 +16,10 @@ Everything here rests on these. Get them wrong and a second run doubles the data
 | Create the module | `(projectId, label name)` | a label with that exact name exists — if it is `kind:"label"`, PROMOTE it to `kind:"module"` rather than creating a second row under a different name |
 | Attribute an issue | `(issueId, labelId, isPrimary)` | the issue's `labels[]` already has that entry with `isPrimary:true` |
 
-Label names are not unique in the database. The name is the key **you** are choosing to treat as
-one, which is why the promote-don't-duplicate rule above is not optional: create-if-absent keyed on
-a name that already exists as a plain label leaves the project with two rows called `billing`, and
-only one of them can ever be a primary.
+Label names are unique within a project: a create under a name that already exists, whatever its
+kind, is refused with `LABEL_NAME_TAKEN`. So the promote-don't-duplicate rule above is not optional
+either: a plain label called `billing` has to be promoted, because creating a module of that name
+cannot succeed beside it.
 
 ### Pass 0 — dry run, reads only
 Produce the whole plan before writing anything. Nothing in this pass writes.
@@ -53,6 +53,12 @@ forge_issues.update({ documentId, labels: [{ labelId: "billing", isPrimary: true
 `labels` REPLACES the set — read the issue's current `labels[]` and send it back WITH the module
 entry, or you will silently strip every other label the issue had. That is the one way this pass
 loses data, and it is not the migration doing it, it is a partial payload.
+
+This pass takes no lease. A `labels` write carries no lease precondition, so it lands over an issue a
+run holds and replaces whatever label that run just set, with no refusal. Run Pass 2
+between waves, while no issue of the project is held by a run: read each issue's
+`sessionContext.lease` through `forge_issues.get` first, and leave one whose lease has not lapsed
+(`renewedAt` plus `minutes` still ahead) for the next window.
 
 At most one entry may be primary, and it must be a module; both are refused rather than half-applied.
 

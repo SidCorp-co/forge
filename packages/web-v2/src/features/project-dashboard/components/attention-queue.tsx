@@ -38,6 +38,7 @@ export function AttentionQueue({
   refusal = null,
   pending = false,
   onRetry,
+  degraded = false,
   slug,
   now,
 }: {
@@ -50,6 +51,8 @@ export function AttentionQueue({
   pending?: boolean;
   /** Asks for the read again; offered under a refusal where the read failed. */
   onRetry?: () => void;
+  /** The page is degraded by something this list does not hold, so it cannot say all is caught up. */
+  degraded?: boolean;
   slug: string;
   now: number;
 }) {
@@ -102,6 +105,12 @@ export function AttentionQueue({
             <p className="fg-body-sm py-2 text-subtle">Nothing is listed to act on here.</p>
             {notes}
           </DashboardSection>
+        ) : degraded ? (
+          <EmptyLine
+            title={TITLE}
+            status="No item is waiting on you"
+            detail="What is wrong is named above, and it is not an item listed here."
+          />
         ) : (
           <EmptyLine title={TITLE} status="All caught up" detail="Nothing in this project needs you right now." />
         )}
@@ -116,7 +125,7 @@ export function AttentionQueue({
           const m = ACTION_META[it.actionKind];
           const t = TONE_META[ACTION_TONE[it.actionKind]];
           return (
-            <li key={it.key} className="flex flex-wrap items-center gap-x-2.5 gap-y-1 py-2">
+            <li key={it.key} className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 py-2">
               <span
                 className="inline-flex flex-none items-center gap-1 whitespace-nowrap rounded-pill px-1.5 py-0.5 font-semibold"
                 style={{ color: t.fg, background: t.bg, fontSize: "var(--text-11)" }}
@@ -125,9 +134,20 @@ export function AttentionQueue({
                 {m.tag}
               </span>
               {it.issueRef && <MonoTag>{it.issueRef}</MonoTag>}
-              <span className="fg-body-sm min-w-0 flex-1 basis-40 truncate text-fg">{it.title}</span>
-              <AgeChip since={it.since} basis={it.sinceBasis} now={now} />
-              <Button size="sm" variant="secondary" onClick={() => router.push(it.link)}>
+              {/* Narrow: kind, ref and age share the first line whatever the title's length, then the title
+                  takes its own, then the action. Wide: one line, in the order they are read. */}
+              <span className="fg-body-sm order-3 min-w-0 basis-full truncate text-fg sm:order-none sm:flex-1 sm:basis-40">
+                {it.title}
+              </span>
+              <span className="ml-auto flex-none sm:ml-0">
+                <AgeChip since={it.since} basis={it.sinceBasis} now={now} />
+              </span>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="order-4 sm:order-none"
+                onClick={() => router.push(it.link)}
+              >
                 {it.actionLabel}
               </Button>
             </li>

@@ -252,6 +252,13 @@ describe("attentionCut (ISS-1156)", () => {
     expect(attentionCut(items, viewWith({ awaitingInput: 3 }), "sable", 2)).toBeNull();
   });
 
+  it("counts at least as many people as Open work counts blocked on one, whichever source listed them", () => {
+    const items = many("input", 2);
+    expect(attentionCut(items, viewWith({ awaitingInput: 2 }), "sable", 0, 5)).toEqual({ shown: 2, atLeast: 5, peopleCut: true });
+    expect(attentionCut(items, viewWith({ awaitingInput: 2 }), "sable", 0, 2)).toBeNull();
+    expect(attentionCut(items, viewWith({ awaitingInput: 2 }), "sable", 0)).toBeNull();
+  });
+
   it("says 8 of at least 10 where 1 question and 9 parked read as 8 parked: the parked read stops at 5 and the questions at the viewer's 20", () => {
     // j3's seed: one issue with a question and nine at needs_info, 10 to act on. The question
     // source lists all ten (its cap is 20) but the viewer's other projects took 12 of the 20.

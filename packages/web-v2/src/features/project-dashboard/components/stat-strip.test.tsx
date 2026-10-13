@@ -41,6 +41,17 @@ describe("the figures strip", () => {
     expect(figure("Spend, 24h").getByText("2.0× the 7-day daily average of $7.00")).toBeInTheDocument();
   });
 
+  it("says how many runs are open where the figure counts fewer, since the navigation rail counts them all", () => {
+    render(<StatStrip {...base} liveRuns={0} openRuns={6} />);
+    expect(figure("Runs live").getByText("2 of 4 runners busy · 6 runs open in all")).toBeInTheDocument();
+  });
+
+  it("states no runner count while the runners read is out", () => {
+    render(<StatStrip {...base} runnersUnread />);
+    expect(figure("Runs live").getByText("runners not read")).toBeInTheDocument();
+    expect(figure("Runs live").queryByText(/runners busy/)).toBeNull();
+  });
+
   it("shows no comparison for spend where the week holds none, and invents none", () => {
     render(<StatStrip {...base} spendComparison={null} />);
     expect(figure("Spend, 24h").queryByText(/average/)).toBeNull();

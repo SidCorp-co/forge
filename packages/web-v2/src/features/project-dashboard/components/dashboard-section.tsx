@@ -5,6 +5,7 @@
 import type { ReactNode } from "react";
 import { EmptyPanelLine } from "@/design";
 import { cn } from "@/lib/utils/cn";
+import { type ReadState, unreadStatement } from "../shape";
 
 export interface DashboardSectionProps {
   title: string;
@@ -43,6 +44,26 @@ export function EmptyLine({ title, status, detail, action }: EmptyLineProps) {
       action={action}
       className="rounded-none border-0 border-t border-line bg-transparent px-0 shadow-none"
     />
+  );
+}
+
+/**
+ * A section whose read has not arrived: it names the read and why, and states no count and no
+ * "nothing". `null` where the read is in, so the caller falls through to its own forms.
+ */
+export function unreadSection(title: string, subject: string, read: ReadState | undefined, plural = false): ReactNode {
+  const statement = read ? unreadStatement(subject, read, plural) : null;
+  if (statement === null) return null;
+  return (
+    <DashboardSection title={title}>
+      <p
+        role={read?.read === "failed" ? "alert" : "status"}
+        data-testid="section-unread"
+        className="fg-body-sm py-1 text-subtle"
+      >
+        {statement}
+      </p>
+    </DashboardSection>
   );
 }
 
