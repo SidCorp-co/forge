@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 //
 // ISS-1263 — "Longest without an issue run" orders itself: a project that never ran leads, then the
-// longest silence, and its headers re-sort it. The order used to be built into the rows the
-// derivation returned; it now belongs to the table, so it is pinned where the table is drawn.
+// longest silence, and its headers re-sort it. The order belongs to the table, so it is pinned where
+// the table is drawn.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";

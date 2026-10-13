@@ -45,9 +45,9 @@ export interface DataTableModelOptions {
   search?: string;
   /** Column id to the value chosen for it. A blank value keeps every row. */
   filters?: Readonly<Record<string, string>>;
-  /** The rows are already in this order, so the engine leaves them as given. */
+  /** The caller ordered the rows, so the engine leaves them as given. */
   manualSort?: boolean;
-  /** The rows are already filtered, so the engine leaves them as given. */
+  /** The caller cut the rows by search and filters before they got here. */
   manualFilter?: boolean;
 }
 

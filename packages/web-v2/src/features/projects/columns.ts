@@ -1,14 +1,11 @@
-// What the projects console sorts, searches and filters by, declared once for every view of the list.
-// The cards and the table both take their rows from `useDataTableRows` over these, so they cannot
-// order or match differently.
+// What the projects console sorts, searches and filters by; cards and table both read through it.
 import type { DataTableModelColumn } from '@/design';
 import { isAttention } from './derive';
 import type { ProjectConsoleItem, ProjectSort, ProjectSortState } from './types';
 
-// Lower rank sorts first under the health sort (worst → best); a project whose health was not read sorts after every one that was.
+// Worst health sorts first; a project whose health was not read sorts after every one that was.
 const HEALTH_RANK = { down: 0, attention: 1, healthy: 2, idle: 3, unread: 4 } as const;
 
-// A project never active, and one whose rollup was not read, have no recency: they sort last.
 function recency(item: ProjectConsoleItem): number | null {
   return item.healthRead === 'read' && item.lastActivityAt ? Date.parse(item.lastActivityAt) : null;
 }

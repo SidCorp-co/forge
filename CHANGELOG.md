@@ -6390,7 +6390,7 @@
 
 ### Changed
 
-- **The projects list has an Active column, and its Sort menu and its headers are one control.** Last activity used to trail the Spend figure; it is a column of its own now, and choosing a sort in the menu marks its header. (ISS-1263)
+- **The projects list has an Active column, and its Sort menu and its headers are one control.** Last activity is a column now rather than trailing Spend, and a sort chosen in the menu marks its header. (ISS-1263)
 
 - **An integration run on a box with its own Postgres reuses the template database.** A run whose migrations match one already there clones it; a differing one builds its own. Concurrent runs build it once. CI still builds its own.
 - **The project dashboard opens on a sentence, and its shape follows what the project is doing.** A quiet project says so and shows empty panels as one line; a failing one gets a band linking its oldest item. (ISS-1159)
