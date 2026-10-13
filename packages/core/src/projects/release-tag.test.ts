@@ -64,6 +64,78 @@ describe('matchingTagsNewestFirst', () => {
     ]);
   });
 
+  it('ranks a release above the prereleases that led up to it', () => {
+    expect(
+      matchingTagsNewestFirst('v0.1.0*', ['v0.1.0-rc.1', 'v0.1.0', 'v0.1.0-rc.10', 'v0.1.0-rc.9']),
+    ).toEqual(['v0.1.0', 'v0.1.0-rc.10', 'v0.1.0-rc.9', 'v0.1.0-rc.1']);
+  });
+
+  it('ranks a prerelease of a later version above an earlier release', () => {
+    expect(matchingTagsNewestFirst('v*', ['v1.9.0', 'v2.0.0-rc.1', 'v1.10.0'])).toEqual([
+      'v2.0.0-rc.1',
+      'v1.10.0',
+      'v1.9.0',
+    ]);
+  });
+
+  it('reads a prerelease off a two-part version too', () => {
+    expect(matchingTagsNewestFirst('v*', ['v1.0-rc1', 'v1.0', 'v0.9'])).toEqual([
+      'v1.0',
+      'v1.0-rc1',
+      'v0.9',
+    ]);
+  });
+
+  it('ranks prerelease identifiers as semver does: numeric below alphanumeric, a shorter list below a longer one', () => {
+    expect(
+      matchingTagsNewestFirst('v*', [
+        'v1.0.0-alpha',
+        'v1.0.0-alpha.1',
+        'v1.0.0-alpha.beta',
+        'v1.0.0-beta',
+        'v1.0.0-beta.2',
+        'v1.0.0-beta.11',
+        'v1.0.0-rc.1',
+        'v1.0.0',
+      ]),
+    ).toEqual([
+      'v1.0.0',
+      'v1.0.0-rc.1',
+      'v1.0.0-beta.11',
+      'v1.0.0-beta.2',
+      'v1.0.0-beta',
+      'v1.0.0-alpha.beta',
+      'v1.0.0-alpha.1',
+      'v1.0.0-alpha',
+    ]);
+  });
+
+  it('orders a prefixed family by its own versions and keeps every tag the pattern names', () => {
+    const tags = ['runner-v1.0.0-rc.1', 'runner-v1.0.0', 'runner-v0.9.0'];
+    expect(matchingTagsNewestFirst('runner-v*', tags)).toEqual([
+      'runner-v1.0.0',
+      'runner-v1.0.0-rc.1',
+      'runner-v0.9.0',
+    ]);
+  });
+
+  it('keeps a tag that is no version at all, ordered by text after the versions it follows', () => {
+    const named = matchingTagsNewestFirst('*', [
+      'edge',
+      'v1.0.0',
+      'nightly-2026-10-9',
+      'nightly-2026-10-10',
+    ]);
+    expect(named).toHaveLength(4);
+    expect(named.indexOf('nightly-2026-10-10')).toBeLessThan(named.indexOf('nightly-2026-10-9'));
+  });
+
+  it('is one total order whatever the input order', () => {
+    const tags = ['v1.0.0', 'v1.0.0-rc.2', 'v1.0.0-rc.10', 'v1.0.1-beta', 'v0.9.9', 'v1.0.0-alpha'];
+    const forward = matchingTagsNewestFirst('v*', tags);
+    expect(matchingTagsNewestFirst('v*', [...tags].reverse())).toEqual(forward);
+  });
+
   it('keeps only the tags the pattern names', () => {
     expect(matchingTagsNewestFirst('v*', ['nightly-3', 'v1.0.0', 'runner-v9.9.9'])).toEqual([
       'v1.0.0',
