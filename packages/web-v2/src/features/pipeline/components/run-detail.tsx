@@ -86,6 +86,8 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
 
   const run = runQ.data;
   const taskIssueId = issue?.id ?? run?.issueId ?? null;
+  // The Ops drawer has no issue row, so the run summary names the issue.
+  const issueRef = issue?.displayId ?? run?.issueRef ?? null;
 
   // Track the opened run as recently-viewed (surfaces in the ⌘K Recent group).
   useEffect(() => {
@@ -93,11 +95,11 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
     pushRecent({
       kind: "run",
       id: runId,
-      label: issue?.displayId ? `${issue.displayId} · run` : `run ${runId.slice(0, 8)}`,
+      label: issueRef ? `${issueRef} · run` : `run ${runId.slice(0, 8)}`,
       href: `/ops?run=${runId}`,
       icon: "pipeline",
     });
-  }, [open, runId, issue?.displayId, pushRecent]);
+  }, [open, runId, issueRef, pushRecent]);
 
   function copyLink() {
     if (!runId) return;
@@ -108,14 +110,15 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
     );
   }
   const chipStep = run?.currentStep ?? undefined;
-  const label = issue?.displayId ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
-  const title = issue?.title ?? "Pipeline run";
+  const label = issueRef ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
+  const title = issue?.title ?? run?.issueTitle ?? "Pipeline run";
   const branch = issue?.metadata?.branchConfig?.branch ?? null;
   // A session-styled chip is the run's; the issue's own status is never drawn in it.
   const issueRun = issue ? runStatusChip(issue) : null;
-  const chipStatus = run ? drawerRunChip(run.status, issueRun) : issueRun;
+  const chipStatus = run ? drawerRunChip(run, issueRun) : issueRun;
+  // A run reading Queued has nothing started, so there is no step to pause after and no agent to stop.
+  const hasStarted = run?.status === "running" && chipStatus !== "queued";
   const issueStatus = issue ? (issue.status as IssueStatus) : null;
-  const isActive = run?.status === "running" || run?.status === "paused";
   // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
   // the running agent — only Cancel does). So a paused run with a step still
   // `running` is transitional ("Pausing…"); once that step clears it is fully
@@ -245,7 +248,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
               visually + verbally distinct: a primary Pause vs a danger Stop. */}
           <div className="flex flex-col gap-2.5">
             <div className="flex flex-wrap items-center gap-2">
-              {canWrite && run?.status === "running" && (
+              {canWrite && hasStarted && (
                 <Tooltip label="Finishes the in-flight step, then halts before the next step. Does NOT stop the running agent.">
                   <Button
                     variant="primary"
@@ -269,7 +272,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
               )}
               {/* Distinct destructive abort — present whenever an agent could
                   still be running (running, or the finishing step while pausing). */}
-              {canWrite && runId && (run?.status === "running" || isPausing) && (
+              {canWrite && runId && (hasStarted || isPausing) && (
                 <Tooltip label="Aborts the running agent immediately (cancellationRequested + agent:abort). Terminal — the run cannot be resumed.">
                   <Button
                     variant="danger"

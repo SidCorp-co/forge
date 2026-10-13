@@ -3,13 +3,20 @@
 // ISS-1277 — the board drawer's header chip and its quick-actions chip read one run state. A job no
 // runner has claimed has no session; under a running pipeline run both chips say it is queued.
 // ISS-1278 — with no run there is no run chip, and the issue's status is only ever its own pill.
+// ISS-1297 — the Ops drawer has no issue row, so the run summary alone gives the same reading, and
+// the issue's name.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render as rtlRender, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PipelineIssueRow, PipelineRunStatus, PipelineRunSummary } from "../types";
+import type {
+  PipelineIssueRow,
+  PipelineRunAttempt,
+  PipelineRunStatus,
+  PipelineRunSummary,
+} from "../types";
 import { RunDetail } from "./run-detail";
 
 expect.extend(matchers);
@@ -37,7 +44,29 @@ const QUEUED_JOB = {
   queuedStep: { jobId: "j1", jobType: "drive", stageStatus: null, queuedAt: "2026-09-05T14:16:00Z", retryAfterAt: null },
 };
 
-function summary(status: PipelineRunStatus): PipelineRunSummary {
+function attempt(status: string, over: Partial<PipelineRunAttempt> = {}): PipelineRunAttempt {
+  return {
+    jobId: "j1",
+    jobType: "drive",
+    status,
+    attempts: 1,
+    retryOf: null,
+    deviceId: null,
+    deviceName: null,
+    failureReason: null,
+    failureCause: null,
+    failureDetail: null,
+    failureKind: null,
+    failureAction: null,
+    queuedAt: "2026-09-05T14:16:00Z",
+    startedAt: status === "queued" ? null : "2026-09-05T14:17:00Z",
+    finishedAt: null,
+    autoRetry: null,
+    ...over,
+  };
+}
+
+function summary(status: PipelineRunStatus, over: Partial<PipelineRunSummary> = {}): PipelineRunSummary {
   return {
     id: "r1",
     projectId: "p1",
@@ -56,6 +85,7 @@ function summary(status: PipelineRunStatus): PipelineRunSummary {
     attempts: [],
     retrySummary: null,
     gateAtOpen: null,
+    ...over,
   } as unknown as PipelineRunSummary;
 }
 
@@ -125,7 +155,7 @@ describe("the board drawer's run chips", () => {
   });
 
   it("reads the run's own status with no issue row", () => {
-    run = summary("running");
+    run = summary("running", { issueId: null, issueRef: null, issueTitle: null });
     render(<RunDetail open onClose={vi.fn()} issue={null} runId="r1" slug="forge-dev" />);
     expect(within(screen.getByText("run r1").parentElement as HTMLElement).getByText("running · drive")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Change status/ })).toBeNull();
@@ -187,5 +217,85 @@ describe("the board drawer with no pipeline run", () => {
     const opsHeader = screen.getByText("run r1").parentElement as HTMLElement;
     expect(opsHeader.children).toHaveLength(1);
     expect(within(opsHeader).queryByText("Queued")).toBeNull();
+  });
+});
+
+describe("the Ops drawer, which opens a run with no issue row (ISS-1297)", () => {
+  const opsHeader = () => screen.getByText("ISS-2").parentElement as HTMLElement;
+  const open = () => render(<RunDetail open onClose={vi.fn()} issue={null} runId="r1" />);
+  const queuedRun = () => summary("running", { attempts: [attempt("queued")] });
+
+  it("reads a run whose only live job is queued and unclaimed as Queued, never running", () => {
+    run = queuedRun();
+    open();
+    expect(within(opsHeader()).getByText("Queued")).toBeInTheDocument();
+    expect(within(opsHeader()).queryByText(/running/i)).toBeNull();
+  });
+
+  it("reads the same header as the board drawer does for that run", () => {
+    run = queuedRun();
+    open();
+    const ops = within(opsHeader()).getByText("Queued").textContent;
+    cleanup();
+    render(<RunDetail open onClose={vi.fn()} issue={issueRow()} runId="r1" slug="forge-dev" />);
+    expect(within(header()).getByText("Queued").textContent).toBe(ops);
+  });
+
+  it.each(["running", "dispatched"])("still reads a %s live job as running", (status) => {
+    run = summary("running", { attempts: [attempt(status)] });
+    open();
+    expect(within(opsHeader()).getByText("running · drive")).toBeInTheDocument();
+  });
+
+  it("reads a queued retry behind a failed attempt as Queued, not running", () => {
+    run = summary("running", {
+      attempts: [attempt("failed", { jobId: "j0", finishedAt: "2026-09-05T14:18:00Z" }), attempt("queued")],
+    });
+    open();
+    expect(within(opsHeader()).getByText("Queued")).toBeInTheDocument();
+  });
+
+  it("reads a run a session has beat for as running even while its job row still says queued", () => {
+    run = summary("running", { attempts: [attempt("queued")], lastSessionBeatAt: "2026-09-05T14:20:00Z" });
+    open();
+    expect(within(opsHeader()).getByText("running · drive")).toBeInTheDocument();
+  });
+
+  it("names the run's issue by ref and title, and a run with none still reads Pipeline run", () => {
+    run = queuedRun();
+    open();
+    expect(screen.getByRole("heading", { name: "A queued issue" })).toBeInTheDocument();
+    cleanup();
+    run = summary("running", { issueId: null, issueRef: null, issueTitle: null, attempts: [attempt("queued")] });
+    open();
+    expect(screen.getByRole("heading", { name: "Pipeline run" })).toBeInTheDocument();
+    expect(screen.getByText("run r1")).toBeInTheDocument();
+  });
+
+  it("offers neither Pause run nor Stop now for a queued run", () => {
+    run = queuedRun();
+    open();
+    expect(screen.queryByRole("button", { name: "Pause run" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^(Stop now|Confirm stop)$/ })).toBeNull();
+  });
+
+  it("still offers both for a running run, and Resume run for a paused one", () => {
+    run = summary("running", { attempts: [attempt("running")] });
+    open();
+    expect(screen.getByRole("button", { name: "Pause run" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop now" })).toBeInTheDocument();
+    cleanup();
+    run = summary("paused", { attempts: [attempt("queued")] });
+    open();
+    expect(screen.getByRole("button", { name: "Resume run" })).toBeInTheDocument();
+  });
+
+  it("draws the reading from the run it fetched, with nothing else read", () => {
+    const fetched = vi.spyOn(globalThis, "fetch");
+    run = queuedRun();
+    open();
+    expect(within(opsHeader()).getByText("Queued")).toBeInTheDocument();
+    expect(fetched).not.toHaveBeenCalled();
+    fetched.mockRestore();
   });
 });

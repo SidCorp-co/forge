@@ -3156,6 +3156,8 @@
 
 ### Fixed
 
+- **The run drawer opened from Ops says Queued for a run nothing has started.** It read "running · drive" and offered Pause and Stop for a run whose only job no runner had picked up, while the board said Queued for the same run. Both now read the one answer, the drawer is titled with its issue, and Pause and Stop appear only once work has started.
+
 - **Two runner commands saving the box's config at once no longer fail or lose each other's change.** They take turns now, and an error names the file and the step.
 
 - **Two installs of the master skill into one checkout no longer fail one of them.** A bind and the daemon's start sweep reaching one checkout together now take turns, and both end with the shipped tree.

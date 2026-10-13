@@ -25,6 +25,7 @@ import {
   type PipelineIssueRow,
   type PipelineRunListItem,
   type PipelineRunStatus,
+  type PipelineRunSummary,
   type RunGate,
   type StepDurationRow,
 } from "./types";
@@ -63,13 +64,36 @@ export function runStatusToStatusKey(status: PipelineRunStatus): StatusKey {
 }
 
 /**
- * The board drawer header's chip. A running pipeline run is as live as its step, so while the
- * issue's run reading (`runStatusChip`) is `running` or `queued` the header shows that reading; a
- * paused, finished or cancelled run keeps its own status.
+ * What a pipeline run's own summary says its agent is doing, for the drawer opened with no issue
+ * row: `running` once a job has been handed to a runner or a session has beat, `queued` while every
+ * live job is still waiting to be claimed, and `null` when the summary names no live job to read.
+ * A queued row with a session beat on the run is the session talking, so the beat wins.
  */
-export function drawerRunChip(runStatus: PipelineRunStatus, issueRun: StatusKey | null): StatusKey {
-  if (runStatus === "running" && (issueRun === "running" || issueRun === "queued")) return issueRun;
-  return runStatusToStatusKey(runStatus);
+export function runSummaryReading(
+  run: Pick<PipelineRunSummary, "attempts" | "lastSessionBeatAt">,
+): "running" | "queued" | null {
+  if (run.lastSessionBeatAt !== null) return "running";
+  let queued = false;
+  for (const a of run.attempts) {
+    if (a.status === "running" || a.status === "dispatched") return "running";
+    if (a.status === "queued") queued = true;
+  }
+  return queued ? "queued" : null;
+}
+
+/**
+ * The drawer header's chip, one reading whichever screen opened it. A running pipeline run is as
+ * live as its step, so while it is running the header shows its agent's reading: the issue row's
+ * (`runStatusChip`) when the board opened it, else the run summary's own — the Ops drawer has no
+ * issue row. A paused, finished or cancelled run keeps its own status.
+ */
+export function drawerRunChip(
+  run: Pick<PipelineRunSummary, "status" | "attempts" | "lastSessionBeatAt">,
+  issueRun: StatusKey | null,
+): StatusKey {
+  if (run.status !== "running") return runStatusToStatusKey(run.status);
+  if (issueRun === "running" || issueRun === "queued") return issueRun;
+  return runSummaryReading(run) ?? "running";
 }
 
 /** Format an estimated cost in USD. `$X.XX`, with small-value and zero cases. */
