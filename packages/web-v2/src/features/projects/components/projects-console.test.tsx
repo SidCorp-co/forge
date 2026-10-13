@@ -59,7 +59,10 @@ const listNames = () =>
   within(screen.getByRole("table", { name: "Projects" }))
     .getAllByRole("row")
     .slice(1)
-    .map((tr) => within(tr).getAllByRole("cell")[0]?.querySelector(".truncate")?.textContent);
+    .map(
+      (tr) =>
+        Array.from(within(tr).getAllByRole("cell")[0]?.querySelectorAll("span") ?? []).find((el) => /^(alpha|bravo|charlie)$/.test(el.textContent ?? ""))?.textContent,
+    );
 const cardNames = () => screen.queryAllByText(/^(alpha|bravo|charlie)$/).map((el) => el.textContent);
 const sortSelect = () => screen.getByRole("combobox", { name: "Sort projects" });
 function choose(label: string) {
