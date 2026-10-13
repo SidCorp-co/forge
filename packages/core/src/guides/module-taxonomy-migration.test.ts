@@ -40,6 +40,14 @@ describe('the Pass 2 section of the module-taxonomy-migration guide', () => {
   });
 });
 
+describe('the page, against the database it describes', () => {
+  it('does not say label names are not unique, which labels_project_id_name_uq refuses', () => {
+    const guide = getGuide('module-taxonomy-migration');
+    expect(guide?.body).not.toMatch(/names are not unique/);
+    expect(guide?.body).toMatch(/LABEL_NAME_TAKEN/);
+  });
+});
+
 describe('that section reader, against planted pages', () => {
   it('refuses a page with no such heading, naming it', () => {
     expect(() => section('### Pass 1\nx\n', 'Pass 2 — attribute the issues')).toThrow(
