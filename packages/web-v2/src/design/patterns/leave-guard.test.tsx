@@ -8,8 +8,16 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { LeaveGuardProvider, useLeaveGuardAttempt, useUnsavedChanges } from "./leave-guard";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  LeaveGuardProvider,
+  useGuardedRouter,
+  useLeaveGuardAttempt,
+  useUnsavedChanges,
+} from "./leave-guard";
+
+const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
 expect.extend(matchers);
 afterEach(cleanup);
@@ -19,6 +27,7 @@ let went: string[];
 function Page() {
   const [dirty, setDirty] = useState(false);
   const attempt = useLeaveGuardAttempt();
+  const guarded = useGuardedRouter();
   useUnsavedChanges(dirty);
   return (
     <div>
@@ -39,6 +48,12 @@ function Page() {
       <button type="button" onClick={() => attempt(() => went.push("code"))}>
         go from code
       </button>
+      <button type="button" onClick={() => guarded.push("/settings")}>
+        push this page
+      </button>
+      <button type="button" onClick={() => guarded.push("/elsewhere")}>
+        push another page
+      </button>
     </div>
   );
 }
@@ -55,6 +70,7 @@ const edit = () => fireEvent.click(screen.getByRole("button", { name: "toggle ed
 const dialog = () => screen.queryByText("Leave without saving?");
 
 beforeEach(() => {
+  router.push.mockClear();
   went = [];
   window.history.replaceState({}, "", "/before");
   window.history.pushState({}, "", "/settings");
@@ -242,5 +258,29 @@ describe("the Back button", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stay" }));
     await popped();
     expect(window.location.pathname).toBe("/settings");
+  });
+});
+
+describe("the guarded router", () => {
+  it("pushes the page already shown at once, since nothing is left and the guard's entry must stay", async () => {
+    mount();
+    edit();
+    fireEvent.click(screen.getByRole("button", { name: "push this page" }));
+    expect(router.push).toHaveBeenCalledWith("/settings");
+    expect(dialog()).toBeNull();
+
+    window.history.back();
+    await waitFor(() => expect(dialog()).toBeInTheDocument());
+    expect(window.location.pathname).toBe("/settings");
+  });
+
+  it("asks before pushing another page, and pushes it once the person says Leave", async () => {
+    mount();
+    edit();
+    fireEvent.click(screen.getByRole("button", { name: "push another page" }));
+    expect(router.push).not.toHaveBeenCalled();
+    expect(dialog()).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/elsewhere"));
   });
 });

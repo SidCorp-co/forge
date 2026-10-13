@@ -226,6 +226,18 @@ export function useLeaveGuardAttempt(): (go: () => void) => void {
   return guard?.attempt ?? ((go) => go());
 }
 
+/** Whether a destination is the page already shown: that navigation unmounts nothing, so it
+ *  is not a way out and is not asked about. */
+function isThisPage(href: unknown): boolean {
+  if (typeof href !== "string") return false;
+  const to = new URL(href, window.location.href);
+  return (
+    to.origin === window.location.origin &&
+    to.pathname === window.location.pathname &&
+    to.search === window.location.search
+  );
+}
+
 /** The router, with every push and replace asked about first while a page holds unsaved edits. */
 export function useGuardedRouter() {
   const router = useRouter();
@@ -233,8 +245,10 @@ export function useGuardedRouter() {
   return useMemo(
     () => ({
       ...router,
-      push: (...args: Parameters<typeof router.push>) => attempt(() => router.push(...args)),
-      replace: (...args: Parameters<typeof router.replace>) => attempt(() => router.replace(...args)),
+      push: (...args: Parameters<typeof router.push>) =>
+        isThisPage(args[0]) ? router.push(...args) : attempt(() => router.push(...args)),
+      replace: (...args: Parameters<typeof router.replace>) =>
+        isThisPage(args[0]) ? router.replace(...args) : attempt(() => router.replace(...args)),
     }),
     [router, attempt],
   );
