@@ -32,6 +32,7 @@ import {
   attentionRefusal,
   attentionCut,
   idleRuns,
+  liveRuns,
   activeSpend,
   awaitingReleaseRuns,
   projectAttention,
@@ -60,6 +61,18 @@ import { useQueueStats } from "@/features/sessions/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+
+/** Where one query stands, in the page's own words: a read that failed (even over an earlier answer) or has not arrived is never an empty one. */
+function readOf(q: { isError: boolean; error: unknown; data: unknown }): ReadState {
+  if (q.isError) return { read: "failed", reason: formatApiError(q.error) };
+  return q.data === undefined ? { read: "pending" } : { read: "ok" };
+}
+
+/** One state for several queries a figure depends on: failed if any failed, else pending if any is. */
+function readOfAll(...qs: Array<{ isError: boolean; error: unknown; data: unknown }>): ReadState {
+  const states = qs.map(readOf);
+  return states.find((r) => r.read === "failed") ?? states.find((r) => r.read === "pending") ?? { read: "ok" };
+}
 
 /** The window the spend and where-time-goes sections read; the throughput section's is its own. */
 const METRICS_WINDOW_DAYS = 7;
@@ -167,7 +180,7 @@ export default function ProjectOverviewPage() {
   const attentionRefused = readFailure ?? (attentionRead ? attentionRefusal(attentionQ.view, project.slug) : null);
   const attentionLeftOut =
     attentionRead && !attentionRefused
-      ? attentionCut(attention, attentionQ.view, project.slug, health?.blockersTotal)
+      ? attentionCut(attention, attentionQ.view, project.slug, health?.blockersTotal, health?.work.blocked_on_person)
       : null;
   const attentionState: ReadState = attentionPending
     ? { read: "pending" }
@@ -175,20 +188,20 @@ export default function ProjectOverviewPage() {
       ? { read: "failed", reason: readFailure ? formatApiError(attentionQ.error) : attentionRefused }
       : { read: "ok" };
   const runItems = runsQ.data?.items;
-  const runsState: ReadState = runsQ.isError
-    ? { read: "failed", reason: formatApiError(runsQ.error) }
-    : runsQ.data === undefined
-      ? { read: "pending" }
-      : { read: "ok" };
+  const runsState = readOf(runsQ);
+  const durationsState = readOf(durationsQ);
+  const runnersState = readOf(projectRunnersQ);
+  const activityState = readOfAll(queueQ, activeRunnersQ);
+  const schedulesState = readOf(schedulesQ);
   const runsActive = activeRuns(runItems);
   const runsIdle = idleRuns(runItems);
   const runsAwaitingRelease = awaitingReleaseRuns(runItems);
   const inFlight = activeSpend(runItems);
   const runners = runnersSummary(
     projectRunnersQ.data,
-    queueQ.data,
+    activityState.read === "ok" ? queueQ.data : undefined,
     anyLimited ? tick : now,
-    activeRunnersQ.data?.runners,
+    activityState.read === "ok" ? activeRunnersQ.data?.runners : undefined,
   );
   const donut = statusDonut(health?.work);
   const awaitingReleaseIssues = health?.work.awaiting_release ?? 0;
@@ -215,19 +228,20 @@ export default function ProjectOverviewPage() {
     return s === null ? oldest : Math.max(oldest ?? 0, s);
   }, null);
 
-  const liveRunsSection = <LiveRunsCard runs={runsActive} slug={project.slug} idle={runsIdle} />;
+  const liveRunsSection = <LiveRunsCard runs={runsActive} slug={project.slug} idle={runsIdle} read={runsState} />;
   const releaseSection = (
     <AwaitingReleaseCard
       runs={runsAwaitingRelease}
       slug={project.slug}
       projectId={project.id}
       awaitingReleaseIssues={awaitingReleaseIssues}
+      read={runsState}
     />
   );
   const metricSections = (
     <>
       <StatusDonut data={donut} />
-      <SpendCard data={spend} inFlightUsd={inFlight} />
+      <SpendCard data={spend} inFlightUsd={inFlight} read={durationsState} />
       <Throughput
         rows={throughputQ.data}
         isLoading={throughputQ.isLoading}
@@ -241,8 +255,8 @@ export default function ProjectOverviewPage() {
         error={durationsQ.error}
         onRetry={() => durationsQ.refetch()}
       />
-      <RunnersCard summary={runners} slug={project.slug} />
-      <SchedulesCard rows={schedules} now={now} slug={project.slug} />
+      <RunnersCard summary={runners} slug={project.slug} read={runnersState} activity={activityState} />
+      <SchedulesCard rows={schedules} now={now} slug={project.slug} read={schedulesState} />
     </>
   );
 
@@ -271,6 +285,9 @@ export default function ProjectOverviewPage() {
           <StatStrip
             liveRuns={runsActive.length}
             runsUnread={runsState.read !== "ok"}
+            openRuns={liveRuns(runItems).length}
+            runnersUnread={runnersState.read !== "ok"}
+            activityUnread={activityState.read !== "ok"}
             busyRunners={runners.busyCount}
             onlineRunners={runners.onlineCount}
             needsYou={attention.length}
@@ -303,6 +320,7 @@ export default function ProjectOverviewPage() {
                 refusal={attentionRefused}
                 pending={attentionPending}
                 onRetry={readFailure ? attentionQ.refetch : undefined}
+                degraded={reading.shape === "degraded"}
                 slug={project.slug}
                 now={now}
               />

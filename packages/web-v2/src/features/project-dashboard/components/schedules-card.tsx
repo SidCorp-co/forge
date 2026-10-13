@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import { Button, MonoTag, StatusChip } from "@/design";
 import { formatRelativeTime } from "@/features/projects/derive";
 import { lastStatusToChip, type ScheduleRow } from "@/features/schedules/types";
-import { DashboardSection, EmptyLine, RowList } from "./dashboard-section";
+import type { ReadState } from "../shape";
+import { DashboardSection, EmptyLine, RowList, unreadSection } from "./dashboard-section";
 
 const MAX_ROWS = 5;
 
@@ -18,9 +19,22 @@ function nextRunLabel(row: ScheduleRow, now: number): string {
   return `in ${formatRelativeTime(row.nextRunAt, now).replace("just now", "moments")}`;
 }
 
-export function SchedulesCard({ rows, now, slug }: { rows: ScheduleRow[]; now: number; slug: string }) {
+export function SchedulesCard({
+  rows,
+  now,
+  slug,
+  read,
+}: {
+  rows: ScheduleRow[];
+  now: number;
+  slug: string;
+  /** The schedules read; until it is in, "none" is not said. */
+  read?: ReadState;
+}) {
   const router = useRouter();
   const shown = rows.slice(0, MAX_ROWS);
+  const unread = unreadSection("Upcoming schedules", "The project's schedules", read, true);
+  if (unread) return unread;
 
   if (rows.length === 0) {
     // ISS-528: the empty line keeps its primary action — schedules are created on the project Automation screen.

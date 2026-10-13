@@ -5,7 +5,8 @@ import { Icon, LiveDot, StatusChip } from "@/design";
 import { stageColor } from "@/design/stages";
 import { formatUsd } from "@/features/pipeline/derive";
 import type { PipelineRunKind, PipelineRunListItem } from "@/features/pipeline/types";
-import { DashboardSection, EmptyLine, RowList } from "./dashboard-section";
+import type { ReadState } from "../shape";
+import { DashboardSection, EmptyLine, RowList, unreadSection } from "./dashboard-section";
 
 const KIND_LABEL: Record<PipelineRunKind, string> = {
   issue: "Issue run",
@@ -21,11 +22,14 @@ export function LiveRunsCard({
   runs,
   slug,
   idle = [],
+  read,
 }: {
   runs: PipelineRunListItem[];
   slug: string;
   /** ISS-789 — runs still open with no live JOB on them. Shown as a count rather than hidden. */
   idle?: PipelineRunListItem[];
+  /** The runs read. Until it is in, the section says so and states no run, none live, and no idle count. */
+  read?: ReadState;
 }) {
   const router = useRouter();
 
@@ -46,6 +50,9 @@ export function LiveRunsCard({
       <Icon name="chevronRight" size={13} className="flex-none text-subtle" />
     </button>
   );
+
+  const unread = unreadSection("Live runs", "The project's runs", read, true);
+  if (unread) return unread;
 
   if (runs.length === 0) {
     return (

@@ -15,7 +15,8 @@ import { Button, Checkbox, Icon, StatusChip } from "@/design";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues/components/batch-release-dialog";
 import { formatUsd } from "@/features/pipeline/derive";
 import type { PipelineRunListItem } from "@/features/pipeline/types";
-import { DashboardSection, EmptyLine, RowList } from "./dashboard-section";
+import type { ReadState } from "../shape";
+import { DashboardSection, EmptyLine, RowList, unreadSection } from "./dashboard-section";
 
 const COLLAPSED_LIMIT = 5;
 
@@ -30,12 +31,15 @@ export function AwaitingReleaseCard({
   slug,
   projectId,
   awaitingReleaseIssues,
+  read,
 }: {
   runs: PipelineRunListItem[];
   slug: string;
   projectId: string;
   /** Issues in the Awaiting release state, from the same health row the donut reads. */
   awaitingReleaseIssues: number;
+  /** The runs read. Until it is in, the section says so: "nothing waiting" is a claim about the runs at the gate. */
+  read?: ReadState;
 }) {
   const router = useRouter();
   const qc = useQueryClient();
@@ -95,6 +99,9 @@ export function AwaitingReleaseCard({
       }}
     />
   );
+
+  const unread = unreadSection(WORK_STATE_LABELS.awaiting_release, "The project's runs", read, true);
+  if (unread) return unread;
 
   if (runs.length === 0) {
     const title = WORK_STATE_LABELS.awaiting_release;
