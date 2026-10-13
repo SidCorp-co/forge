@@ -16,6 +16,7 @@ import { ToastProvider } from "@/providers/toast-provider";
 import { LIST_DENSITY_KEY } from "../list-density";
 import type { IssueRow } from "../types";
 import { GRID } from "./issue-grid";
+import { SUBTEXT } from "./issue-row-actions";
 import { IssuesListView } from "./issues-list-view";
 
 expect.extend(matchers);
@@ -207,6 +208,36 @@ describe("density", () => {
     expect(within(first).getByText("ann.lee@example.co")).toBeInTheDocument();
     expect(within(second).queryByText("web")).toBeNull();
     expect(within(second).queryByText("bug")).toBeNull();
+  });
+
+  it("keeps Comfortable's second line to one line, whatever the module, kind and creator label hold", () => {
+    // jsdom runs no layout, so what is asserted is the markup the 56px bound rests on: a line that
+    // cannot wrap, whose long members give way by ellipsis and whose short ones keep their size.
+    // The measured row heights at 1024 and 1280 are the production-build proof.
+    const longLabel = "a.very.long.creator.address.of.a.person@a-long-company-name.example.co";
+    items = [
+      issue(1, {
+        category: "enhancement",
+        creatorLabel: longLabel,
+        modules: [{ labelId: "m-x", name: "a-module-with-a-rather-long-name", color: "#1f6f4a", isPrimary: true }],
+      }),
+    ];
+    window.localStorage.setItem(LIST_DENSITY_KEY, JSON.stringify("comfortable"));
+    mount();
+    const [row] = rowsOf();
+    const line = within(row).getByText(longLabel, { selector: "span" }).parentElement as HTMLElement;
+    expect(line.className).toBe(SUBTEXT);
+    expect(line.className).not.toMatch(/flex-wrap/);
+    expect(line.className).toMatch(/overflow-hidden/);
+    const members = Array.from(line.children) as HTMLElement[];
+    const [moduleBox, kindBox, creator] = members;
+    expect(moduleBox.className).toMatch(/\bmin-w-0\b/);
+    expect(moduleBox.className).toMatch(/\bshrink\b/);
+    expect(kindBox.className).toMatch(/\bshrink-0\b/);
+    expect(kindBox.className).toMatch(/whitespace-nowrap/);
+    expect(creator.className).toMatch(/\bmin-w-0\b/);
+    expect(creator.className).toMatch(/\btruncate\b/);
+    expect(within(moduleBox).getByText("a-module-with-a-rather-long-name").className).toMatch(/\btruncate\b/);
   });
 
   it("is changed from the header's menu and kept for the next visit", async () => {
