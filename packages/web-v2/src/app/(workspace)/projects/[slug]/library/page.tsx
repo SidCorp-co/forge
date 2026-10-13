@@ -1,7 +1,7 @@
 "use client";
 
 // Project-tier Library view (`/projects/[slug]/library`, Concept C) — merged
-// Knowledge + Memory + Skills. Resolve slug → project (issues-page template),
+// Knowledge + Skills + Updates. Resolve slug → project (issues-page template),
 // then render the scoped tabbed shell. Ingest / registration mutations are
 // owner/admin-only, so pass `canManage` from the membership role.
 import { useParams } from "next/navigation";

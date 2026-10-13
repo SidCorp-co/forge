@@ -412,19 +412,9 @@
     "packages/web-v2/src/features/knowledge/components/graph-tab.tsx": {
       "lint/suspicious/noArrayIndexKey": 1
     },
-    "packages/web-v2/src/features/knowledge/components/knowledge-screen.tsx": {
-      "lint/suspicious/noArrayIndexKey": 2
-    },
     "packages/web-v2/src/features/knowledge/components/rules-tab.tsx": {
       "lint/correctness/noUnusedFunctionParameters": 1,
       "lint/correctness/useExhaustiveDependencies": 5
-    },
-    "packages/web-v2/src/features/memory/api.ts": {
-      "lint/complexity/useOptionalChain": 1
-    },
-    "packages/web-v2/src/features/memory/components/memory-screen.tsx": {
-      "lint/correctness/useExhaustiveDependencies": 1,
-      "lint/suspicious/noArrayIndexKey": 1
     },
     "packages/web-v2/src/features/operator/components/operator-topbar.tsx": {
       "lint/a11y/noNoninteractiveTabindex": 1
