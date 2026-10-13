@@ -9,14 +9,12 @@ import {
   Badge,
   Banner,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
   CardTitle,
   Field,
   Input,
   NativeSelect,
   Spinner,
+  SettingsSection,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useProjects } from "@/features/projects/hooks";
@@ -122,11 +120,11 @@ function ConnectedState({
   const { owner, repo } = repository;
 
   return (
-    <Card>
-      <CardHeader>
+    <SettingsSection>
+      <div className="mb-4 flex items-center justify-between gap-3">
         <CardTitle>GitHub App</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+      </div>
+      <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
           <Badge>{scopeLabel(binding.role, binding.stages)}</Badge>
           <a
@@ -143,8 +141,8 @@ function ConnectedState({
         </div>
 
         <BindingControls projectId={projectId} binding={binding} />
-      </CardContent>
-    </Card>
+      </div>
+    </SettingsSection>
   );
 }
 
@@ -243,11 +241,11 @@ function SetRepository({
   };
 
   return (
-    <Card>
-      <CardHeader>
+    <SettingsSection>
+      <div className="mb-4 flex items-center justify-between gap-3">
         <CardTitle>{current ? "Change repository" : "Connect a repository"}</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      </div>
+      <div className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
           Using <span className="font-semibold">{connectionLabel}</span>. This project already has a
           GitHub binding; picking here points that same binding at a repository.
@@ -275,8 +273,8 @@ function SetRepository({
         </div>
 
         <BindingControls projectId={projectId} binding={binding} />
-      </CardContent>
-    </Card>
+      </div>
+    </SettingsSection>
   );
 }
 
@@ -324,11 +322,11 @@ function UseExistingApp({
   };
 
   return (
-    <Card>
-      <CardHeader>
+    <SettingsSection>
+      <div className="mb-4 flex items-center justify-between gap-3">
         <CardTitle>Connect a repository</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      </div>
+      <div className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
           Using <span className="font-semibold">{connectionLabel}</span>. One App serves every
           project; this project just points at one of its repositories.
@@ -353,8 +351,8 @@ function UseExistingApp({
             Create a separate App instead
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </SettingsSection>
   );
 }
 
@@ -398,11 +396,11 @@ function CreateApp({
   };
 
   return (
-    <Card>
-      <CardHeader>
+    <SettingsSection>
+      <div className="mb-4 flex items-center justify-between gap-3">
         <CardTitle>Create a GitHub App</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      </div>
+      <div className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
           Forge creates one GitHub App for your organization, not one per project. You approve it on
           GitHub and choose which repositories it may see — no token is typed here.
@@ -444,8 +442,8 @@ function CreateApp({
             ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </SettingsSection>
   );
 }
 

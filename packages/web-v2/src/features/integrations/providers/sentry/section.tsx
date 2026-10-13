@@ -4,13 +4,11 @@ import {
   Badge,
   Banner,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
   CardTitle,
   Field,
   Input,
   Textarea,
+  SettingsSection,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
@@ -235,8 +233,8 @@ export function SentrySection({ projectId }: { projectId: string }) {
 
 
   return (
-    <Card>
-      <CardHeader>
+    <SettingsSection>
+      <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center justify-between gap-2">
           <CardTitle>Sentry</CardTitle>
           {existing && (
@@ -245,235 +243,233 @@ export function SentrySection({ projectId }: { projectId: string }) {
             </Badge>
           )}
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-4">
+      </div>
+      <div className="flex flex-col gap-4">
+        <p className="fg-body-sm text-muted">
+          Store one Sentry host + auth token, then register every Sentry project it can read
+          (e.g. backend, frontend, mobile). The official Sentry MCP tools reach this
+          project&apos;s agents only once the grant below is on; the target list is then shared
+          with them so they query the right org/project.
+        </p>
+
+        <Field
+          label="Sentry host"
+          hint="The Sentry instance host without scheme, e.g. logs.canawan.com or sentry.io."
+          required={hostRequired}
+        >
+          <Input
+            value={form.host}
+            onChange={(e) => set("host", e.target.value)}
+            placeholder="logs.canawan.com"
+            disabled={orgLocked}
+          />
+        </Field>
+
+        <Field
+          label="Auth token"
+          hint={
+            existing
+              ? "A token is stored. Leave blank to keep it; enter a new one to rotate."
+              : "Sentry user auth token (sntryu-…). Stored encrypted; never shown again."
+          }
+          required={keyRequired}
+        >
+          <Input
+            type="password"
+            autoComplete="off"
+            placeholder={existing ? "•••••••• (unchanged)" : "sntryu_…"}
+            value={form.authToken}
+            onChange={(e) => set("authToken", e.target.value)}
+            disabled={orgLocked}
+          />
+        </Field>
+
+        {orgLocked && (
           <p className="fg-body-sm text-muted">
-            Store one Sentry host + auth token, then register every Sentry project it can read
-            (e.g. backend, frontend, mobile). The official Sentry MCP tools reach this
-            project&apos;s agents only once the grant below is on; the target list is then shared
-            with them so they query the right org/project.
+            Org-shared credential — only an org owner/admin can change it.
           </p>
+        )}
 
-          <Field
-            label="Sentry host"
-            hint="The Sentry instance host without scheme, e.g. logs.canawan.com or sentry.io."
-            required={hostRequired}
-          >
-            <Input
-              value={form.host}
-              onChange={(e) => set("host", e.target.value)}
-              placeholder="logs.canawan.com"
+        {!existing && (
+          <ConnectionOwnerField
+            projectId={projectId}
+            value={ownerOrgId}
+            onChange={setOwnerOrgId}
+          />
+        )}
+
+        {/* ISS-526 — repeatable target rows. One shared token reads them all. */}
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="fg-label text-muted">Sentry projects</span>
+            <Button
+              variant="secondary"
+              icon="plus"
+              onClick={addTarget}
               disabled={orgLocked}
-            />
-          </Field>
+            >
+              Add project
+            </Button>
+          </div>
 
-          <Field
-            label="Auth token"
-            hint={
-              existing
-                ? "A token is stored. Leave blank to keep it; enter a new one to rotate."
-                : "Sentry user auth token (sntryu-…). Stored encrypted; never shown again."
-            }
-            required={keyRequired}
-          >
-            <Input
-              type="password"
-              autoComplete="off"
-              placeholder={existing ? "•••••••• (unchanged)" : "sntryu_…"}
-              value={form.authToken}
-              onChange={(e) => set("authToken", e.target.value)}
-              disabled={orgLocked}
-            />
-          </Field>
-
-          {orgLocked && (
-            <p className="fg-body-sm text-muted">
-              Org-shared credential — only an org owner/admin can change it.
+          {form.targets.length === 0 ? (
+            <p className="fg-body-sm text-muted rounded-md border border-dashed border-subtle p-4 text-center">
+              No Sentry projects registered yet. Add one (e.g. “Backend” →
+              org/project slug) so agents know which Sentry project to query.
             </p>
-          )}
-
-          {!existing && (
-            <ConnectionOwnerField
-              projectId={projectId}
-              value={ownerOrgId}
-              onChange={setOwnerOrgId}
-            />
-          )}
-
-          {/* ISS-526 — repeatable target rows. One shared token reads them all. */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="fg-label text-muted">Sentry projects</span>
-              <Button
-                variant="secondary"
-                icon="plus"
-                onClick={addTarget}
-                disabled={orgLocked}
+          ) : (
+            form.targets.map((t, i) => (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: rows have no stable id; order is the identity
+                key={i}
+                className="flex flex-col gap-3 rounded-md border border-subtle p-3"
               >
-                Add project
-              </Button>
-            </div>
-
-            {form.targets.length === 0 ? (
-              <p className="fg-body-sm text-muted rounded-md border border-dashed border-subtle p-4 text-center">
-                No Sentry projects registered yet. Add one (e.g. “Backend” →
-                org/project slug) so agents know which Sentry project to query.
-              </p>
-            ) : (
-              form.targets.map((t, i) => (
-                <div
-                  // biome-ignore lint/suspicious/noArrayIndexKey: rows have no stable id; order is the identity
-                  key={i}
-                  className="flex flex-col gap-3 rounded-md border border-subtle p-3"
+                <div className="flex items-start justify-between gap-2">
+                  <span className="fg-label text-muted">
+                    Project {i + 1}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    icon="trash"
+                    onClick={() => removeTarget(i)}
+                    disabled={orgLocked}
+                    aria-label={`Remove project ${i + 1}`}
+                  />
+                </div>
+                <Field
+                  label="Label"
+                  hint="A name the agent recognizes, e.g. Backend prod."
+                  required
+                  error={
+                    rowInvalid(t)
+                      ? "A label is required for this project."
+                      : undefined
+                  }
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="fg-label text-muted">
-                      Project {i + 1}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      icon="trash"
-                      onClick={() => removeTarget(i)}
-                      disabled={orgLocked}
-                      aria-label={`Remove project ${i + 1}`}
-                    />
-                  </div>
-                  <Field
-                    label="Label"
-                    hint="A name the agent recognizes, e.g. Backend prod."
-                    required
-                    error={
-                      rowInvalid(t)
-                        ? "A label is required for this project."
-                        : undefined
-                    }
-                  >
+                  <Input
+                    value={t.label}
+                    onChange={(e) => setTarget(i, "label", e.target.value)}
+                    placeholder="Backend prod"
+                    disabled={orgLocked}
+                  />
+                </Field>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label="Organization slug" hint="Optional — scopes the Sentry org.">
                     <Input
-                      value={t.label}
-                      onChange={(e) => setTarget(i, "label", e.target.value)}
-                      placeholder="Backend prod"
-                      disabled={orgLocked}
-                    />
-                  </Field>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Field label="Organization slug" hint="Optional — scopes the Sentry org.">
-                      <Input
-                        value={t.organizationSlug}
-                        onChange={(e) =>
-                          setTarget(i, "organizationSlug", e.target.value)
-                        }
-                        placeholder="(optional)"
-                        disabled={orgLocked}
-                      />
-                    </Field>
-                    <Field label="Project slug" hint="Optional — scopes the Sentry project.">
-                      <Input
-                        value={t.projectSlug}
-                        onChange={(e) =>
-                          setTarget(i, "projectSlug", e.target.value)
-                        }
-                        placeholder="(optional)"
-                        disabled={orgLocked}
-                      />
-                    </Field>
-                  </div>
-                  <Field
-                    label="Environment"
-                    hint="Optional label only (e.g. prod, staging) — not a separate token."
-                  >
-                    <Input
-                      value={t.environment}
-                      onChange={(e) => setTarget(i, "environment", e.target.value)}
+                      value={t.organizationSlug}
+                      onChange={(e) =>
+                        setTarget(i, "organizationSlug", e.target.value)
+                      }
                       placeholder="(optional)"
                       disabled={orgLocked}
                     />
                   </Field>
-                  <Field
-                    label="Notes"
-                    hint="Optional free text shared with agents (e.g. what lives in this project)."
-                  >
-                    <Textarea
-                      value={t.notes}
-                      onChange={(e) => setTarget(i, "notes", e.target.value)}
-                      rows={2}
+                  <Field label="Project slug" hint="Optional — scopes the Sentry project.">
+                    <Input
+                      value={t.projectSlug}
+                      onChange={(e) =>
+                        setTarget(i, "projectSlug", e.target.value)
+                      }
                       placeholder="(optional)"
                       disabled={orgLocked}
                     />
                   </Field>
                 </div>
-              ))
-            )}
-          </div>
-
-          {testError && <Banner tone="danger">{testError}</Banner>}
-          {testResult &&
-            (testResult.status === "ok" ? (
-              <Banner tone="success">
-                {testResult.message ?? "Connected."}
-              </Banner>
-            ) : (
-              <Banner tone="danger">
-                {testResult.message ?? "Connection failed"}
-              </Banner>
-            ))}
-
-          {existing ? (
-            <AgentAccessControl
-              projectId={projectId}
-              binding={existing}
-              canEdit={true}
-              disabledReason={agentAccessDeniedReason("direct-mcp")}
-            />
-          ) : (
-            <AgentAccessChoice
-              value={agentAccess}
-              onChange={setAgentAccess}
-              pathKind={sentry.agentPathKind}
-              canEdit={mayWriteAgentAccess(sentry.agentPathKind, { canEditProject: true, isOrgAdmin })}
-              disabledReason={agentAccessDeniedReason("direct-mcp")}
-            />
-          )}
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-            <div className="flex items-center gap-3">
-              <Button
-                variant="primary"
-                onClick={handleSave}
-                loading={create.isPending || update.isPending}
-                disabled={!canSave}
-              >
-                {existing ? "Save" : "Create integration"}
-              </Button>
-              {existing && (
-                <Button
-                  variant="secondary"
-                  onClick={handleTest}
-                  loading={test.isPending}
+                <Field
+                  label="Environment"
+                  hint="Optional label only (e.g. prod, staging) — not a separate token."
                 >
-                  Test connection
-                </Button>
-              )}
-            </div>
-            {existing && (
-              <div className="flex items-center gap-4">
-                <IntegrationEnabledControl
-                  projectId={projectId}
-                  binding={existing}
-                />
-                <Button
-                  variant="danger"
-                  icon="trash"
-                  loading={remove.isPending}
-                  onClick={() => remove.mutate(existing.id)}
+                  <Input
+                    value={t.environment}
+                    onChange={(e) => setTarget(i, "environment", e.target.value)}
+                    placeholder="(optional)"
+                    disabled={orgLocked}
+                  />
+                </Field>
+                <Field
+                  label="Notes"
+                  hint="Optional free text shared with agents (e.g. what lives in this project)."
                 >
-                  Remove
-                </Button>
+                  <Textarea
+                    value={t.notes}
+                    onChange={(e) => setTarget(i, "notes", e.target.value)}
+                    rows={2}
+                    placeholder="(optional)"
+                    disabled={orgLocked}
+                  />
+                </Field>
               </div>
+            ))
+          )}
+        </div>
+
+        {testError && <Banner tone="danger">{testError}</Banner>}
+        {testResult &&
+          (testResult.status === "ok" ? (
+            <Banner tone="success">
+              {testResult.message ?? "Connected."}
+            </Banner>
+          ) : (
+            <Banner tone="danger">
+              {testResult.message ?? "Connection failed"}
+            </Banner>
+          ))}
+
+        {existing ? (
+          <AgentAccessControl
+            projectId={projectId}
+            binding={existing}
+            canEdit={true}
+            disabledReason={agentAccessDeniedReason("direct-mcp")}
+          />
+        ) : (
+          <AgentAccessChoice
+            value={agentAccess}
+            onChange={setAgentAccess}
+            pathKind={sentry.agentPathKind}
+            canEdit={mayWriteAgentAccess(sentry.agentPathKind, { canEditProject: true, isOrgAdmin })}
+            disabledReason={agentAccessDeniedReason("direct-mcp")}
+          />
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              loading={create.isPending || update.isPending}
+              disabled={!canSave}
+            >
+              {existing ? "Save" : "Create integration"}
+            </Button>
+            {existing && (
+              <Button
+                variant="secondary"
+                onClick={handleTest}
+                loading={test.isPending}
+              >
+                Test connection
+              </Button>
             )}
           </div>
+          {existing && (
+            <div className="flex items-center gap-4">
+              <IntegrationEnabledControl
+                projectId={projectId}
+                binding={existing}
+              />
+              <Button
+                variant="danger"
+                icon="trash"
+                loading={remove.isPending}
+                onClick={() => remove.mutate(existing.id)}
+              >
+                Remove
+              </Button>
+            </div>
+          )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </SettingsSection>
   );
 }

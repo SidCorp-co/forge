@@ -7,7 +7,7 @@
 // `/integrations` page is now the owner connection directory.
 
 import { type KeyboardEvent, useState } from "react";
-import { Button, Card, CardContent, ErrorState, Icon, type IconName, Skeleton } from "@/design";
+import { Button, ErrorState, Icon, type IconName, Skeleton, SettingsSection } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useIntegrationsStatus } from "../hooks";
@@ -47,69 +47,67 @@ function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => vo
   const clickable = Boolean(onOpen);
 
   return (
-    <Card>
-      <CardContent>
-        <div
-          className={`flex min-h-[120px] flex-col gap-2.5 ${clickable ? "cursor-pointer" : ""}`}
-          {...(clickable
-            ? {
-                role: "button",
-                tabIndex: 0,
-                "aria-label": `Manage ${card.label}`,
-                onClick: onOpen,
-                onKeyDown: (e: KeyboardEvent) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onOpen?.();
-                  }
-                },
-              }
-            : {})}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span className="inline-flex items-center gap-2">
-              <Icon name={cardIcon(card.key)} size={18} className="text-muted" />
-              <span className="fg-h3">{card.label}</span>
-            </span>
-            <StatusPill card={card} />
-          </div>
-
-          <p className="fg-body-sm text-muted">{card.detail}</p>
-
-          {transport && (
-            <p className="fg-body-sm text-subtle">
-              transport: <span className="font-mono">{transport}</span>
-            </p>
-          )}
-
-          <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-            <span className="fg-body-sm text-subtle">
-              {lastSync ? `synced ${lastSync}` : "no sync data"}
-            </span>
-            <span className="inline-flex items-center gap-3">
-              {repoUrl ? (
-                <a
-                  href={repoUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-13 font-semibold text-accent hover:underline"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  Open repo
-                  <Icon name="arrowRight" size={13} />
-                </a>
-              ) : null}
-              {clickable ? (
-                <span className="inline-flex items-center gap-1 text-13 font-semibold text-accent">
-                  Manage
-                  <Icon name="arrowRight" size={13} />
-                </span>
-              ) : null}
-            </span>
-          </div>
+    <SettingsSection>
+      <div
+        className={`flex min-h-[120px] flex-col gap-2.5 ${clickable ? "cursor-pointer" : ""}`}
+        {...(clickable
+          ? {
+              role: "button",
+              tabIndex: 0,
+              "aria-label": `Manage ${card.label}`,
+              onClick: onOpen,
+              onKeyDown: (e: KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onOpen?.();
+                }
+              },
+            }
+          : {})}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-2">
+            <Icon name={cardIcon(card.key)} size={18} className="text-muted" />
+            <span className="fg-h3">{card.label}</span>
+          </span>
+          <StatusPill card={card} />
         </div>
-      </CardContent>
-    </Card>
+
+        <p className="fg-body-sm text-muted">{card.detail}</p>
+
+        {transport && (
+          <p className="fg-body-sm text-subtle">
+            transport: <span className="font-mono">{transport}</span>
+          </p>
+        )}
+
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+          <span className="fg-body-sm text-subtle">
+            {lastSync ? `synced ${lastSync}` : "no sync data"}
+          </span>
+          <span className="inline-flex items-center gap-3">
+            {repoUrl ? (
+              <a
+                href={repoUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-13 font-semibold text-accent hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                Open repo
+                <Icon name="arrowRight" size={13} />
+              </a>
+            ) : null}
+            {clickable ? (
+              <span className="inline-flex items-center gap-1 text-13 font-semibold text-accent">
+                Manage
+                <Icon name="arrowRight" size={13} />
+              </span>
+            ) : null}
+          </span>
+        </div>
+      </div>
+    </SettingsSection>
   );
 }
 
@@ -145,63 +143,61 @@ function GroupedIntegrationCard({
   onOpen?: (card: StatusCard) => void;
 }) {
   return (
-    <Card>
-      <CardContent>
-        <div className="flex min-h-[120px] flex-col gap-3">
-          <span className="inline-flex items-center gap-2">
-            <Icon name={cardIcon(provider)} size={18} className="text-muted" />
-            <span className="fg-h3">{baseProviderLabel(cards[0])}</span>
-          </span>
+    <SettingsSection>
+      <div className="flex min-h-[120px] flex-col gap-3">
+        <span className="inline-flex items-center gap-2">
+          <Icon name={cardIcon(provider)} size={18} className="text-muted" />
+          <span className="fg-h3">{baseProviderLabel(cards[0])}</span>
+        </span>
 
-          <div className="flex flex-col divide-y divide-[var(--border-subtle)]">
-            {cards.map((card) => {
-              const lastSync = formatRelativeTime(card.lastSyncAt);
-              const clickable = Boolean(onOpen);
-              const open = () => onOpen?.(card);
-              return (
-                <div
-                  key={card.key}
-                  className={`flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0 ${
-                    clickable ? "cursor-pointer" : ""
-                  }`}
-                  {...(clickable
-                    ? {
-                        role: "button",
-                        tabIndex: 0,
-                        "aria-label": `Manage ${card.label}`,
-                        onClick: open,
-                        onKeyDown: (e: KeyboardEvent) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            open();
-                          }
-                        },
-                      }
-                    : {})}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="fg-body-sm font-semibold">{scopeOf(card)}</span>
-                    <StatusPill card={card} />
-                  </div>
-                  <p className="fg-body-sm text-muted">{card.detail}</p>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="fg-body-sm text-subtle">
-                      {lastSync ? `synced ${lastSync}` : "no sync data"}
-                    </span>
-                    {clickable ? (
-                      <span className="inline-flex items-center gap-1 text-13 font-semibold text-accent">
-                        Manage
-                        <Icon name="arrowRight" size={13} />
-                      </span>
-                    ) : null}
-                  </div>
+        <div className="flex flex-col divide-y divide-[var(--border-subtle)]">
+          {cards.map((card) => {
+            const lastSync = formatRelativeTime(card.lastSyncAt);
+            const clickable = Boolean(onOpen);
+            const open = () => onOpen?.(card);
+            return (
+              <div
+                key={card.key}
+                className={`flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0 ${
+                  clickable ? "cursor-pointer" : ""
+                }`}
+                {...(clickable
+                  ? {
+                      role: "button",
+                      tabIndex: 0,
+                      "aria-label": `Manage ${card.label}`,
+                      onClick: open,
+                      onKeyDown: (e: KeyboardEvent) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          open();
+                        }
+                      },
+                    }
+                  : {})}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="fg-body-sm font-semibold">{scopeOf(card)}</span>
+                  <StatusPill card={card} />
                 </div>
-              );
-            })}
-          </div>
+                <p className="fg-body-sm text-muted">{card.detail}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="fg-body-sm text-subtle">
+                    {lastSync ? `synced ${lastSync}` : "no sync data"}
+                  </span>
+                  {clickable ? (
+                    <span className="inline-flex items-center gap-1 text-13 font-semibold text-accent">
+                      Manage
+                      <Icon name="arrowRight" size={13} />
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </SettingsSection>
   );
 }
 

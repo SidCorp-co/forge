@@ -9,12 +9,11 @@
 import { useState } from "react";
 import {
   Button,
-  Card,
-  CardContent,
   ErrorState,
   Icon,
   SectionTitle,
   Skeleton,
+  SettingsSection,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
@@ -190,50 +189,48 @@ export function McpServersPanel({
   const dropped = preview.data?.droppedNames ?? [];
 
   return (
-    <Card>
-      <CardContent>
-        <SectionTitle className="fg-h3 mb-1">Agent MCP servers</SectionTitle>
-        <p className="fg-body-sm mb-3 text-muted">
-          Every MCP server injected into a Claude agent dispatched for this project without a
-          per-state override, from both sources that feed them: this project&rsquo;s own pipeline
-          configuration and its granted integrations. The list comes from the same resolver that
-          performs the injection; credentials are attached at dispatch time and never shown here. A
-          connected integration reaches an agent only once it is granted, on the row below.
+    <SettingsSection>
+      <SectionTitle className="fg-h3 mb-1">Agent MCP servers</SectionTitle>
+      <p className="fg-body-sm mb-3 text-muted">
+        Every MCP server injected into a Claude agent dispatched for this project without a
+        per-state override, from both sources that feed them: this project&rsquo;s own pipeline
+        configuration and its granted integrations. The list comes from the same resolver that
+        performs the injection; credentials are attached at dispatch time and never shown here. A
+        connected integration reaches an agent only once it is granted, on the row below.
+      </p>
+      {preview.isLoading ? (
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
+      ) : preview.isError ? (
+        <ErrorState message={formatApiError(preview.error)} onRetry={() => preview.refetch()} />
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {(preview.data?.servers ?? []).map((entry) => (
+            <McpServerRow
+              key={`${entry.source}:${entry.provider ?? entry.serverName}:${entry.bindingId ?? entry.serverName}`}
+              entry={entry}
+              projectId={projectId}
+              binding={entry.bindingId ? byBindingId.get(entry.bindingId) : undefined}
+              canEdit={canEdit}
+            />
+          ))}
+        </ul>
+      )}
+      {dropped.length > 0 && (
+        <p className="fg-body-sm mt-3 text-[var(--amberw-600)]">
+          Declared for this project and not supplied, so the list above does not carry them:{" "}
+          {dropped.join(", ")}. A pipeline state that declares one with a spec of its own may
+          still supply it on that state&rsquo;s dispatches.
         </p>
-        {preview.isLoading ? (
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-          </div>
-        ) : preview.isError ? (
-          <ErrorState message={formatApiError(preview.error)} onRetry={() => preview.refetch()} />
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {(preview.data?.servers ?? []).map((entry) => (
-              <McpServerRow
-                key={`${entry.source}:${entry.provider ?? entry.serverName}:${entry.bindingId ?? entry.serverName}`}
-                entry={entry}
-                projectId={projectId}
-                binding={entry.bindingId ? byBindingId.get(entry.bindingId) : undefined}
-                canEdit={canEdit}
-              />
-            ))}
-          </ul>
-        )}
-        {dropped.length > 0 && (
-          <p className="fg-body-sm mt-3 text-[var(--amberw-600)]">
-            Declared for this project and not supplied, so the list above does not carry them:{" "}
-            {dropped.join(", ")}. A pipeline state that declares one with a spec of its own may
-            still supply it on that state&rsquo;s dispatches.
-          </p>
-        )}
-        {stateOnly.length > 0 && (
-          <p className="fg-body-sm mt-2 text-subtle">
-            Declared only for particular pipeline states, so they are not in the list above and
-            whether each one resolves is decided on that state&rsquo;s dispatch: {stateOnly.join(", ")}.
-          </p>
-        )}
-      </CardContent>
-    </Card>
+      )}
+      {stateOnly.length > 0 && (
+        <p className="fg-body-sm mt-2 text-subtle">
+          Declared only for particular pipeline states, so they are not in the list above and
+          whether each one resolves is decided on that state&rsquo;s dispatch: {stateOnly.join(", ")}.
+        </p>
+      )}
+    </SettingsSection>
   );
 }

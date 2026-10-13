@@ -11,9 +11,6 @@ import {
   Badge,
   Banner,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
   CardTitle,
   ConfirmDialog,
   EmptyState,
@@ -30,6 +27,7 @@ import {
   Skeleton,
   Textarea,
   useNow,
+  SettingsSection,
 } from "@/design";
 import { useUpdateProject } from "@/features/project-settings/hooks";
 import { useProject } from "@/features/projects/hooks";
@@ -136,8 +134,8 @@ function GitConfigCard({
 	];
 
 	return (
-		<Card>
-			<CardHeader>
+		<SettingsSection>
+			<div className="mb-4 flex items-center justify-between gap-3">
 				<CardTitle>Git access</CardTitle>
 				<HelpButton
 					summary="Optional. Set the repo URL + pick a deploy key from this org's Private Keys pool so any device assigned to this project auto-clones and pushes — one key, reusable across every project. Leave blank to set folders up by hand."
@@ -148,173 +146,171 @@ function GitConfigCard({
 						"Write the workspace setup steps so agents do not have to guess them",
 					]}
 				/>
-			</CardHeader>
-			<CardContent>
-				<div className="flex flex-col gap-5">
-					<div className="flex items-end gap-2">
-						<div className="flex-1">
-							<Field
-								label="Repo URL"
-								hint="SSH clone URL. A newly-assigned device clones from here when its folder is missing."
-							>
-								<Input
-									value={url}
-									onChange={(e) => setUrl(e.target.value)}
-									placeholder="git@github.com:org/repo.git"
-									disabled={!canEdit}
-									spellCheck={false}
-									maxLength={500}
-								/>
-							</Field>
-						</div>
+			</div>
+			<div className="flex flex-col gap-5">
+				<div className="flex items-end gap-2">
+					<div className="flex-1">
+						<Field
+							label="Repo URL"
+							hint="SSH clone URL. A newly-assigned device clones from here when its folder is missing."
+						>
+							<Input
+								value={url}
+								onChange={(e) => setUrl(e.target.value)}
+								placeholder="git@github.com:org/repo.git"
+								disabled={!canEdit}
+								spellCheck={false}
+								maxLength={500}
+							/>
+						</Field>
+					</div>
+					<Button
+						variant="secondary"
+						icon="check"
+						loading={update.isPending}
+						disabled={!canEdit || !urlDirty}
+						onClick={() => update.mutate({ repoUrl: url.trim() || null })}
+					>
+						Save
+					</Button>
+				</div>
+
+				<div className="border-t border-line-subtle pt-4">
+					<Field
+						label="Workspace setup"
+						hint="How to bring a fresh or broken checkout of this repo to a state that can build, test and commit — install commands, hook setup, toolchain quirks. Leave blank and an agent works it out each time, then records what it found here."
+					>
+						<Textarea
+							value={setup}
+							onChange={(e) => setSetup(e.target.value)}
+							placeholder={"pnpm install --frozen-lockfile\npnpm prepare   # writes .husky, without it every commit refuses"}
+							disabled={!canEdit}
+							spellCheck={false}
+							maxLength={8000}
+							rows={5}
+						/>
+					</Field>
+					<div className="mt-2 flex justify-end">
 						<Button
 							variant="secondary"
 							icon="check"
 							loading={update.isPending}
-							disabled={!canEdit || !urlDirty}
-							onClick={() => update.mutate({ repoUrl: url.trim() || null })}
+							disabled={!canEdit || !setupDirty}
+							onClick={() => update.mutate({ workspaceSetup: setup.trim() || null })}
 						>
 							Save
 						</Button>
 					</div>
-
-					<div className="border-t border-line-subtle pt-4">
-						<Field
-							label="Workspace setup"
-							hint="How to bring a fresh or broken checkout of this repo to a state that can build, test and commit — install commands, hook setup, toolchain quirks. Leave blank and an agent works it out each time, then records what it found here."
-						>
-							<Textarea
-								value={setup}
-								onChange={(e) => setSetup(e.target.value)}
-								placeholder={"pnpm install --frozen-lockfile\npnpm prepare   # writes .husky, without it every commit refuses"}
-								disabled={!canEdit}
-								spellCheck={false}
-								maxLength={8000}
-								rows={5}
-							/>
-						</Field>
-						<div className="mt-2 flex justify-end">
-							<Button
-								variant="secondary"
-								icon="check"
-								loading={update.isPending}
-								disabled={!canEdit || !setupDirty}
-								onClick={() => update.mutate({ workspaceSetup: setup.trim() || null })}
-							>
-								Save
-							</Button>
-						</div>
-					</div>
-
-					<div className="border-t border-line-subtle pt-4">
-						<span className="fg-label">Deploy key</span>
-						{cred.isLoading ? (
-							<Skeleton className="mt-2 h-20 w-full" />
-						) : cred.isError ? (
-							<ErrorState message={formatApiError(cred.error)} onRetry={() => cred.refetch()} />
-						) : credData?.configured ? (
-							<div className="mt-2 flex flex-col gap-2 rounded-lg border border-line bg-sunken p-3">
-								<div className="flex items-center justify-between gap-2">
-									<span className="inline-flex items-center gap-1.5 text-13 text-fg">
-										<Icon
-											name="check"
-											size={14}
-											className="text-[color:var(--green-600)]"
-										/>
-										{credData.key.name}
-									</span>
-									{credData.key.fingerprint && (
-										<MonoTag>{credData.key.fingerprint}</MonoTag>
-									)}
-								</div>
-								<div className="flex items-center justify-between gap-2">
-									<code className="min-w-0 flex-1 truncate font-mono text-12 text-subtle">
-										{credData.key.publicKey}
-									</code>
-									<CopyButton
-										value={credData.key.publicKey}
-										label="Copy public key"
-									/>
-								</div>
-								<p className="fg-body-sm text-subtle">
-									Add this public key to your repo&apos;s deploy keys (write
-									access) so runners can clone + push.
-								</p>
-								{testCred.data && (
-									<Banner tone={testCred.data.ok ? "success" : "danger"}>
-										{testCred.data.message}
-										{testCred.data.headSha
-											? ` (HEAD ${testCred.data.headSha.slice(0, 10)})`
-											: ""}
-									</Banner>
-								)}
-								<div className="flex items-center justify-between gap-2">
-									<Button
-										variant="secondary"
-										size="sm"
-										icon="activity"
-										loading={testCred.isPending}
-										onClick={() => testCred.mutate()}
-									>
-										Test connection
-									</Button>
-									{canEdit && (
-										<Button
-											variant="ghost"
-											size="sm"
-											icon="trash"
-											loading={delCred.isPending}
-											onClick={() => setDetachConfirmOpen(true)}
-										>
-											Detach key
-										</Button>
-									)}
-								</div>
-							</div>
-						) : (
-							<div className="mt-2 flex flex-col gap-3">
-								{pool.isLoading ? (
-									<Skeleton className="h-9 w-full" />
-								) : pool.isError ? (
-									<ErrorState
-										message={formatApiError(pool.error)}
-										onRetry={() => pool.refetch()}
-									/>
-								) : poolKeys.length === 0 ? (
-									<p className="fg-body-sm text-subtle">
-										This organization has no private keys yet. Create one to
-										connect this project to Git.
-									</p>
-								) : (
-									<p className="fg-body-sm text-subtle">
-										Pick a key from this org&apos;s Private Keys pool. Without a
-										key, devices use whatever git auth they already have.
-									</p>
-								)}
-								{canEdit && (
-									<div className="flex flex-wrap items-center gap-2">
-										{poolKeys.length > 0 && (
-											<Select
-												options={options}
-												value=""
-												onChange={(id) => id && setCred.mutate(id)}
-											/>
-										)}
-										<Button
-											variant={poolKeys.length === 0 ? "primary" : "ghost"}
-											size="sm"
-											icon="plus"
-											onClick={() => setCreateOpen(true)}
-										>
-											Create new key
-										</Button>
-									</div>
-								)}
-							</div>
-						)}
-					</div>
 				</div>
-			</CardContent>
+
+				<div className="border-t border-line-subtle pt-4">
+					<span className="fg-label">Deploy key</span>
+					{cred.isLoading ? (
+						<Skeleton className="mt-2 h-20 w-full" />
+					) : cred.isError ? (
+						<ErrorState message={formatApiError(cred.error)} onRetry={() => cred.refetch()} />
+					) : credData?.configured ? (
+						<div className="mt-2 flex flex-col gap-2 rounded-lg border border-line bg-sunken p-3">
+							<div className="flex items-center justify-between gap-2">
+								<span className="inline-flex items-center gap-1.5 text-13 text-fg">
+									<Icon
+										name="check"
+										size={14}
+										className="text-[color:var(--green-600)]"
+									/>
+									{credData.key.name}
+								</span>
+								{credData.key.fingerprint && (
+									<MonoTag>{credData.key.fingerprint}</MonoTag>
+								)}
+							</div>
+							<div className="flex items-center justify-between gap-2">
+								<code className="min-w-0 flex-1 truncate font-mono text-12 text-subtle">
+									{credData.key.publicKey}
+								</code>
+								<CopyButton
+									value={credData.key.publicKey}
+									label="Copy public key"
+								/>
+							</div>
+							<p className="fg-body-sm text-subtle">
+								Add this public key to your repo&apos;s deploy keys (write
+								access) so runners can clone + push.
+							</p>
+							{testCred.data && (
+								<Banner tone={testCred.data.ok ? "success" : "danger"}>
+									{testCred.data.message}
+									{testCred.data.headSha
+										? ` (HEAD ${testCred.data.headSha.slice(0, 10)})`
+										: ""}
+								</Banner>
+							)}
+							<div className="flex items-center justify-between gap-2">
+								<Button
+									variant="secondary"
+									size="sm"
+									icon="activity"
+									loading={testCred.isPending}
+									onClick={() => testCred.mutate()}
+								>
+									Test connection
+								</Button>
+								{canEdit && (
+									<Button
+										variant="ghost"
+										size="sm"
+										icon="trash"
+										loading={delCred.isPending}
+										onClick={() => setDetachConfirmOpen(true)}
+									>
+										Detach key
+									</Button>
+								)}
+							</div>
+						</div>
+					) : (
+						<div className="mt-2 flex flex-col gap-3">
+							{pool.isLoading ? (
+								<Skeleton className="h-9 w-full" />
+							) : pool.isError ? (
+								<ErrorState
+									message={formatApiError(pool.error)}
+									onRetry={() => pool.refetch()}
+								/>
+							) : poolKeys.length === 0 ? (
+								<p className="fg-body-sm text-subtle">
+									This organization has no private keys yet. Create one to
+									connect this project to Git.
+								</p>
+							) : (
+								<p className="fg-body-sm text-subtle">
+									Pick a key from this org&apos;s Private Keys pool. Without a
+									key, devices use whatever git auth they already have.
+								</p>
+							)}
+							{canEdit && (
+								<div className="flex flex-wrap items-center gap-2">
+									{poolKeys.length > 0 && (
+										<Select
+											options={options}
+											value=""
+											onChange={(id) => id && setCred.mutate(id)}
+										/>
+									)}
+									<Button
+										variant={poolKeys.length === 0 ? "primary" : "ghost"}
+										size="sm"
+										icon="plus"
+										onClick={() => setCreateOpen(true)}
+									>
+										Create new key
+									</Button>
+								</div>
+							)}
+						</div>
+					)}
+				</div>
+			</div>
 			{orgId && (
 				<PrivateKeyCreateSlideOver
 					open={createOpen}
@@ -334,7 +330,7 @@ function GitConfigCard({
 				onConfirm={() => delCred.mutate(undefined, { onSuccess: () => setDetachConfirmOpen(false) })}
 				onClose={() => setDetachConfirmOpen(false)}
 			/>
-		</Card>
+		</SettingsSection>
 	);
 }
 
@@ -830,108 +826,106 @@ function AssignDevice({
 	const picked = available.find((d) => d.id === deviceId) ?? null;
 
 	return (
-		<Card>
-			<CardHeader>
+		<SettingsSection>
+			<div className="mb-4 flex items-center justify-between gap-3">
 				<CardTitle>Add a device</CardTitle>
-			</CardHeader>
-			<CardContent>
-				<div className="flex flex-col gap-4">
-					<div className="grid gap-3 sm:grid-cols-2">
-						<Field label="Device">
-							<Select
-								options={options}
-								value={deviceId}
-								onChange={setDeviceId}
-							/>
-						</Field>
-						<Field
-							label="Repo path"
-							hint="Absolute path on that device. Leave it empty and the device provisions a checkout under its own projects_root."
-						>
-							<Input
-								value={repoPath}
-								onChange={(e) => setRepoPath(e.target.value)}
-								placeholder={defaultRepoPath ?? "/abs/path/on/the/device"}
-								spellCheck={false}
-							/>
-						</Field>
-					</div>
-
-					{/* Both conditions are decided elsewhere (the card above, and
-					    the device itself), and both change what "Assign &
-					    provision" actually does. */}
-					{!hasRepoUrl && (
-						<Banner tone="info">
-							This project has no repo URL, so a device assigned now gets an empty
-							workspace instead of a checkout. Set Git access above first, or point
-							Repo path at a checkout that already exists on the device.
-						</Banner>
-					)}
-					{picked && picked.status !== "online" && (
-						<Banner tone="info">
-							{picked.name} is offline. The assignment is saved now and the device
-							provisions the workspace on its next reconnect.
-						</Banner>
-					)}
-
-					<div className="flex justify-end">
-						<Button
-							variant="primary"
-							icon="plus"
-							loading={assign.isPending}
-							disabled={!deviceId}
-							onClick={() =>
-								assign.mutate(
-									{ deviceId, repoPath: repoPath.trim() || null },
-									{ onSuccess: () => setDeviceId("") },
-								)
-							}
-						>
-							Assign &amp; provision
-						</Button>
-					</div>
-
-					<div className="rounded-lg border border-dashed border-line-strong p-3">
-						<span className="fg-label">No device yet? Set one up</span>
-						<div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
-							<code className="font-mono text-13 text-fg">
-								forge-runner setup
-							</code>
-							<CopyButton value="forge-runner setup" />
-						</div>
-						<p className="fg-body-sm mt-1.5 text-subtle">
-							Run it on the device and approve the code it prints — the device
-							appears in the picker above. Assign it here while setup waits; it
-							then gets the checkout and installs the service on its own. Or{" "}
-							<button
-								type="button"
-								className="text-accent hover:underline"
-								onClick={() => initPairing.mutate("forge-runner")}
-							>
-								generate a pairing code
-							</button>
-							{initPairing.data && (
-								<>
-									{" "}
-									— code{" "}
-									<span className="font-mono font-semibold">
-										{initPairing.data.pairing_code}
-									</span>
-									, approve at{" "}
-									<a
-										href={initPairing.data.verify_url}
-										className="text-accent hover:underline"
-									>
-										{initPairing.data.verify_url}
-									</a>
-								</>
-							)}
-							.
-						</p>
-					</div>
+			</div>
+			<div className="flex flex-col gap-4">
+				<div className="grid gap-3 sm:grid-cols-2">
+					<Field label="Device">
+						<Select
+							options={options}
+							value={deviceId}
+							onChange={setDeviceId}
+						/>
+					</Field>
+					<Field
+						label="Repo path"
+						hint="Absolute path on that device. Leave it empty and the device provisions a checkout under its own projects_root."
+					>
+						<Input
+							value={repoPath}
+							onChange={(e) => setRepoPath(e.target.value)}
+							placeholder={defaultRepoPath ?? "/abs/path/on/the/device"}
+							spellCheck={false}
+						/>
+					</Field>
 				</div>
-			</CardContent>
-		</Card>
+
+				{/* Both conditions are decided elsewhere (the card above, and
+				    the device itself), and both change what "Assign &
+				    provision" actually does. */}
+				{!hasRepoUrl && (
+					<Banner tone="info">
+						This project has no repo URL, so a device assigned now gets an empty
+						workspace instead of a checkout. Set Git access above first, or point
+						Repo path at a checkout that already exists on the device.
+					</Banner>
+				)}
+				{picked && picked.status !== "online" && (
+					<Banner tone="info">
+						{picked.name} is offline. The assignment is saved now and the device
+						provisions the workspace on its next reconnect.
+					</Banner>
+				)}
+
+				<div className="flex justify-end">
+					<Button
+						variant="primary"
+						icon="plus"
+						loading={assign.isPending}
+						disabled={!deviceId}
+						onClick={() =>
+							assign.mutate(
+								{ deviceId, repoPath: repoPath.trim() || null },
+								{ onSuccess: () => setDeviceId("") },
+							)
+						}
+					>
+						Assign &amp; provision
+					</Button>
+				</div>
+
+				<div className="rounded-lg border border-dashed border-line-strong p-3">
+					<span className="fg-label">No device yet? Set one up</span>
+					<div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
+						<code className="font-mono text-13 text-fg">
+							forge-runner setup
+						</code>
+						<CopyButton value="forge-runner setup" />
+					</div>
+					<p className="fg-body-sm mt-1.5 text-subtle">
+						Run it on the device and approve the code it prints — the device
+						appears in the picker above. Assign it here while setup waits; it
+						then gets the checkout and installs the service on its own. Or{" "}
+						<button
+							type="button"
+							className="text-accent hover:underline"
+							onClick={() => initPairing.mutate("forge-runner")}
+						>
+							generate a pairing code
+						</button>
+						{initPairing.data && (
+							<>
+								{" "}
+								— code{" "}
+								<span className="font-mono font-semibold">
+									{initPairing.data.pairing_code}
+								</span>
+								, approve at{" "}
+								<a
+									href={initPairing.data.verify_url}
+									className="text-accent hover:underline"
+								>
+									{initPairing.data.verify_url}
+								</a>
+							</>
+						)}
+						.
+					</p>
+				</div>
+			</div>
+		</SettingsSection>
 	);
 }
 
@@ -1006,46 +1000,44 @@ export function ProjectRunnersScreen({
 				/>
 			)}
 
-			<Card>
-				<CardHeader>
+			<SettingsSection>
+				<div className="mb-4 flex items-center justify-between gap-3">
 					<CardTitle>Assigned devices</CardTitle>
-				</CardHeader>
-				<CardContent>
-					{runners.isLoading ? (
-						<div className="flex flex-col gap-2">
-							<Skeleton className="h-28 w-full" />
-							<Skeleton className="h-28 w-full" />
-						</div>
-					) : runners.isError ? (
-						<ErrorState
-							message={formatApiError(runners.error)}
-							onRetry={() => runners.refetch()}
-						/>
-					) : rows.length === 0 ? (
-						<EmptyState
-							title="No devices assigned"
-							message="Assign a paired device above to start running this project's jobs."
-							mascot={false}
-						/>
-					) : (
-						<div className="flex flex-col gap-3">
-							{rows.map((r) => (
-								<RunnerRow
-									key={r.runnerId}
-									runner={r}
-									current={currentByRunner.get(r.runnerId) ?? null}
-									projectId={projectId}
-									canEdit={!!canEdit}
-									isPrimary={!!r.deviceId && r.deviceId === defaultDeviceId}
-									onSetPrimary={(id) => setDefault.mutate(id)}
-									settingPrimary={setDefault.isPending}
-									slug={project.data?.slug}
-								/>
-							))}
-						</div>
-					)}
-				</CardContent>
-			</Card>
+				</div>
+				{runners.isLoading ? (
+					<div className="flex flex-col gap-2">
+						<Skeleton className="h-28 w-full" />
+						<Skeleton className="h-28 w-full" />
+					</div>
+				) : runners.isError ? (
+					<ErrorState
+						message={formatApiError(runners.error)}
+						onRetry={() => runners.refetch()}
+					/>
+				) : rows.length === 0 ? (
+					<EmptyState
+						title="No devices assigned"
+						message="Assign a paired device above to start running this project's jobs."
+						mascot={false}
+					/>
+				) : (
+					<div className="flex flex-col gap-3">
+						{rows.map((r) => (
+							<RunnerRow
+								key={r.runnerId}
+								runner={r}
+								current={currentByRunner.get(r.runnerId) ?? null}
+								projectId={projectId}
+								canEdit={!!canEdit}
+								isPrimary={!!r.deviceId && r.deviceId === defaultDeviceId}
+								onSetPrimary={(id) => setDefault.mutate(id)}
+								settingPrimary={setDefault.isPending}
+								slug={project.data?.slug}
+							/>
+						))}
+					</div>
+				)}
+			</SettingsSection>
 		</>
 	);
 
