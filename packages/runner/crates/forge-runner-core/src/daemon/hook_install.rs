@@ -259,7 +259,7 @@ fn ignore_settings(cwd: &Path, path: &Path) -> Result<()> {
     }
 }
 
-/// Write beside the file and rename over it, the way `Config::save` writes.
+/// Write beside the file and rename over it, the way `Config::update` writes.
 ///
 /// A bare `std::fs::write` truncates in place, so a failure partway through
 /// leaves a checkout with no hooks AND a file every later sweep refuses as
@@ -1404,7 +1404,7 @@ mod tests {
     ///
     /// `write_atomically` renames over the destination, and `std::fs::rename`
     /// replaces an existing one on every platform this crate builds for —
-    /// `config::Config::save` has written that way in this crate since before
+    /// `config::Config::update` has written that way in this crate since before
     /// this change. A review round said Windows would refuse it; this box runs
     /// only the unix leg, so rather than argue the point the case is stated
     /// here for the other two legs to answer. It carries no `cfg`, no inode

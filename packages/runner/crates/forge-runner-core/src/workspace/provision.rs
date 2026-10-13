@@ -320,43 +320,37 @@ fn install_master_skill(
 /// Best-effort like every other step here: a failure is logged, and the
 /// workspace is still ready.
 fn record_binding(p: &Provision, repo_path: &Path) {
-    let mut cfg = match Config::load() {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            tracing::warn!(
-                "[provision] {}: cannot read config to record the binding: {e}",
-                p.slug
-            );
-            return;
+    let bound = Config::update(|cfg| {
+        let existing = cfg.bindings.get(&p.slug);
+        let branch = p
+            .branch
+            .clone()
+            .or_else(|| existing.and_then(|b| b.branch.clone()));
+        if existing.is_some_and(|b| {
+            b.repo_path == repo_path
+                && b.branch == branch
+                && b.project_id.as_deref() == Some(p.project_id.as_str())
+        }) {
+            return Ok(false);
         }
-    };
-    let existing = cfg.bindings.get(&p.slug);
-    let branch = p
-        .branch
-        .clone()
-        .or_else(|| existing.and_then(|b| b.branch.clone()));
-    if existing.is_some_and(|b| {
-        b.repo_path == repo_path
-            && b.branch == branch
-            && b.project_id.as_deref() == Some(p.project_id.as_str())
-    }) {
-        return;
-    }
-    cfg.bindings.insert(
-        p.slug.clone(),
-        crate::config::Binding {
-            repo_path: repo_path.to_path_buf(),
-            branch,
-            project_id: Some(p.project_id.clone()),
-        },
-    );
-    match cfg.save() {
-        Ok(()) => tracing::info!(
+        cfg.bindings.insert(
+            p.slug.clone(),
+            crate::config::Binding {
+                repo_path: repo_path.to_path_buf(),
+                branch,
+                project_id: Some(p.project_id.clone()),
+            },
+        );
+        Ok(true)
+    });
+    match bound {
+        Ok(true) => tracing::info!(
             "[provision] {}: bound locally to {}",
             p.slug,
             repo_path.display()
         ),
-        Err(e) => tracing::warn!("[provision] {}: binding not saved: {e}", p.slug),
+        Ok(false) => {}
+        Err(e) => tracing::warn!("[provision] {}: binding not recorded: {e}", p.slug),
     }
 }
 

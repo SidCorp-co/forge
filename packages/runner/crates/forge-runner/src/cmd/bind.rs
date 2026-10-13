@@ -128,17 +128,18 @@ pub async fn write_binding(
     path: &std::path::Path,
     branch: Option<String>,
 ) -> anyhow::Result<PathBuf> {
-    let mut cfg = Config::load()?;
     let branch = branch.or_else(|| assignment.branch.clone());
-    cfg.bindings.insert(
-        slug.to_string(),
-        Binding {
-            repo_path: path.to_path_buf(),
-            branch: branch.clone(),
-            project_id: Some(assignment.project_id.clone()),
-        },
-    );
-    cfg.save()?;
+    Config::update(|cfg| {
+        cfg.bindings.insert(
+            slug.to_string(),
+            Binding {
+                repo_path: path.to_path_buf(),
+                branch: branch.clone(),
+                project_id: Some(assignment.project_id.clone()),
+            },
+        );
+        Ok(())
+    })?;
 
     // Before the server is asked: the binding is saved from here on, and a
     // refused PATCH must not leave it without the skill.
@@ -291,7 +292,7 @@ mod tests {
             body.find(n)
                 .unwrap_or_else(|| panic!("`{n}` in write_binding"))
         };
-        assert!(at("cfg.save()?;") < at("install_skill(slug, path,"));
+        assert!(at("Config::update(|cfg| {") < at("install_skill(slug, path,"));
         assert!(at("install_skill(slug, path,") < at("runners::patch_runner("));
     }
 }

@@ -279,11 +279,13 @@ fn parse_selection(answer: &str, known: &[&str]) -> anyhow::Result<Vec<String>> 
 /// `needs_manual_setup`, which is the most common way a fresh box ends up
 /// online with jobs that never start — so setup settles it up front.
 fn ensure_projects_root(args: &Args, chosen: &[String], interactive: bool) -> anyhow::Result<()> {
-    let mut cfg = Config::load()?;
     if let Some(root) = args.projects_root.clone() {
-        cfg.projects_root = Some(root);
-        cfg.save()?;
+        Config::update(|cfg| {
+            cfg.projects_root = Some(root);
+            Ok(())
+        })?;
     }
+    let cfg = Config::load()?;
     if cfg.projects_root.is_some() || args.path.is_some() {
         if let Some(root) = cfg.projects_root.as_ref() {
             println!("✔ projects_root {}", root.display());
@@ -293,7 +295,7 @@ fn ensure_projects_root(args: &Args, chosen: &[String], interactive: bool) -> an
 
     #[expect(
         clippy::disallowed_methods,
-        reason = "the projects_root setup proposes under home, saved through Config::save"
+        reason = "the projects_root setup proposes under home, saved through Config::update"
     )]
     let default = dirs_next::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -315,8 +317,10 @@ fn ensure_projects_root(args: &Args, chosen: &[String], interactive: bool) -> an
         root.display(),
         chosen.len()
     );
-    cfg.projects_root = Some(root);
-    cfg.save()?;
+    Config::update(|cfg| {
+        cfg.projects_root = Some(root);
+        Ok(())
+    })?;
     Ok(())
 }
 
