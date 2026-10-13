@@ -24,15 +24,17 @@ interface Version {
   rest: string[];
 }
 
-const SEMVER_PRERELEASE = /^-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)(?:\+[0-9A-Za-z.-]+)?$/;
+const SEMVER_PRERELEASE = /^-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)$/;
+const BUILD_METADATA = /\+[0-9A-Za-z.-]+$/;
 
 function read(tag: string): Version {
   const at = tag.search(/\d/);
   if (at < 0) return { prefix: tag, core: [], rank: 1, rest: [] };
   const run = /^\d+(?:\.\d+)*/.exec(tag.slice(at));
   const core = run ? run[0] : '';
-  const after = tag.slice(at + core.length);
   const segments = core.split('.');
+  const tail = tag.slice(at + core.length);
+  const after = segments.length >= 2 ? tail.replace(BUILD_METADATA, '') : tail;
   if (after === '') return { prefix: tag.slice(0, at), core: segments, rank: 1, rest: [] };
   const pre = segments.length >= 2 ? SEMVER_PRERELEASE.exec(after) : null;
   return pre?.[1]

@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { matchingTagsNewestFirst, tagMatchesPattern } from './release-tag.js';
+import { compareTags } from './release-tag-order.js';
 
 describe('tagMatchesPattern', () => {
   it('matches the whole name, so a prefix is not a match', () => {
@@ -108,6 +109,13 @@ describe('matchingTagsNewestFirst', () => {
       'v1.0.0-alpha.1',
       'v1.0.0-alpha',
     ]);
+  });
+
+  it('gives a release and the same release with build metadata one precedence', () => {
+    expect(compareTags('v1.0.0+build.2', 'v1.0.0')).toBe(0);
+    expect(compareTags('v1.0.0+build.2', 'v1.0.0+build.10')).toBe(0);
+    expect(compareTags('v1.0.0-rc.1+build.9', 'v1.0.0')).toBeLessThan(0);
+    expect(compareTags('v1.0.1+build.1', 'v1.0.0+build.9')).toBeGreaterThan(0);
   });
 
   it('orders a prefixed family by its own versions and keeps every tag the pattern names', () => {
