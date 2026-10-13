@@ -1,10 +1,7 @@
 "use client";
 
-// Merged project Library surface (Concept C, ISS-307) — Knowledge + Skills +
-// Updates under one tabbed shell. Each tab renders its existing scoped screen
-// unchanged (those screens bring their own page chrome / header), so this shell
-// only adds the tab strip. Active tab is mirrored to `?tab=` (shallow
-// replaceState, hydrated from the URL on mount) so deep-links work.
+// Library: Knowledge, Skills and Updates as one row of peer tabs, mirrored to `?tab=` so
+// deep-links work. Each tab brings its own page chrome.
 import { ScreenTabs, type TabItem } from "@/design";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { KnowledgeScreen } from "@/features/knowledge/components/knowledge-screen";

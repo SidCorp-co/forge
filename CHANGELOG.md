@@ -6368,7 +6368,7 @@
 
 ### Changed
 
-- **The Library is one row of tabs, and Memory is not among them.** Knowledge, Skills and Updates are the tabs; Knowledge's seven readers (Overview, Scenarios, Workflow, Diagrams, Graph, Rules, References) are a grouped list beside it, or one picker on a phone, instead of a second row that ended in a second Memory. The standalone Memory screen is gone, since no requirement, workflow or report holds a memory to read inside it. An empty product map points an admin to a button that opens Automation, where it is run, rather than telling them to type a command.
+- **The Library is one row of tabs, and Memory is not among them.** Knowledge's readers are a grouped list, or a picker on a phone, not a second tab row. An empty product map opens Automation for an admin.
 - **Every screen counts the state of work the same way, and the counts add up.** Six states head the Issues tabs, board and Overview; filters narrow every tab count, and the board says what it leaves out.
 - **The board says how many issues each state holds beyond its page.** Above its columns it names, per state, how many it draws of how many there are, with a link to the rest.
 - **Needs you counts what it names.** A question left on a draft, closed or dropped issue no longer counts, an issue is listed once, and parked issues are worded as states, not raw statuses.
