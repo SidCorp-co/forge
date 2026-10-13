@@ -62,7 +62,7 @@ export function ProjectsToolbar({
         className="w-[188px]"
         options={sortOptions(sort)}
         value={sort.id}
-        onChange={(v) => onSort(v as ProjectSort)}
+        onChange={(v) => v !== sort.id && onSort(v as ProjectSort)}
         aria-label="Sort projects"
       />
       <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={onView} />

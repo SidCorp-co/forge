@@ -122,6 +122,17 @@ describe("the Sort select and the headers are one control", () => {
     expect(sortSelect()).toHaveTextContent("Least recently active");
   });
 
+  it("keeps the direction when the sort already chosen is chosen again in the select", () => {
+    render(<ProjectsConsole />);
+    showList();
+    press("Project");
+    press("Project");
+    choose("Name (Z–A)");
+    expect(listNames()).toEqual(["charlie", "bravo", "alpha"]);
+    expect(header("Project")).toHaveAttribute("aria-sort", "descending");
+    expect(sortSelect()).toHaveTextContent("Name (Z–A)");
+  });
+
   it("gives the cards the order the select chose, the same one the list shows", () => {
     render(<ProjectsConsole />);
     choose("Name (A–Z)");
