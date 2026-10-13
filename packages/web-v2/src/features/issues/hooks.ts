@@ -231,11 +231,7 @@ const moveKey = (args: TransitionArgs) => `${args.id}|${args.toStatus}`;
 export function useTransitionIssue() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  // A second press landing before the mutation's own pending flag reaches the screen sends a second
-  // move, which the server refuses as a conflict and the toast blames on someone else (ISS-1310). The
-  // same move on the same issue is held until it settles; a different issue or target is not a repeat.
-  // The key is released in the mutation's own `onSettled`, which fires for every move, where a per-call
-  // callback belongs to the latest call only.
+  // The same move on the same issue is held until `onSettled` (ISS-1310): a second press lands before the pending flag reaches the screen.
   const inFlight = useRef(new Set<string>());
   const mut = useMutation({
     mutationFn: (args: TransitionArgs) =>
@@ -265,7 +261,6 @@ export function useTransitionIssue() {
           qc.invalidateQueries({ queryKey: ["issue", args.id] });
           qc.invalidateQueries({ queryKey: ["activities", args.id] });
           qc.invalidateQueries({ queryKey: ["questions", args.id] });
-          // Both dialogs promise the reason is posted on the thread, so the thread is read again (ISS-1310).
           qc.invalidateQueries({ queryKey: ["comments", args.id] });
           options?.onSuccess?.();
         },
