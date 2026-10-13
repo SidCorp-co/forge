@@ -23,6 +23,7 @@ const SILENCE_COLUMNS: DataTableColumn<ProjectSilenceRow>[] = [
   {
     id: "project",
     header: "Project",
+    sticky: true,
     sortValue: (r) => r.name,
     cell: (r) => (
       <Link href={`/projects/${r.slug}`} className={LINK}>

@@ -51,9 +51,11 @@ token. Save, then quit and reopen the app.
 
 **The fix**
 
-1. In Forge, open **Account & Settings** › **API Tokens** and find the token
-   under **Your tokens**. If its **Expires** date has passed or its name is
-   followed by *(revoked)*, it no longer works.
+1. In Forge, open **Account & Settings** › **API Tokens**. **Your tokens** says
+   how many tokens can reach your account and lists them. A token that is not in
+   that list no longer works: open the line below it, *tokens no longer reach
+   your account*, and find yours there, marked *revoked* or *expired* with the
+   date.
 2. Create a new token, as in the setup page for your app, and copy it whole — it
    starts with `forge_pat_` and has no spaces in it. Give it a name no active
    token has, or choose **Revoke** on the old one first: Forge refuses a second

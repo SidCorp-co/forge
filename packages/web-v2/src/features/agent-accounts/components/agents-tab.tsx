@@ -16,22 +16,19 @@ import {
   Card,
   CardContent,
   CardTitle,
+  DataTable,
+  type DataTableColumn,
   EmptyState,
   ErrorState,
   Field,
   Input,
   MonoTag,
+  RowActions,
   SectionTitle,
   Skeleton,
-  Table,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
 } from "@/design";
 import { useActiveOrg } from "@/features/orgs/active-org";
-import { useOrgScopedProjects } from "@/features/projects/hooks";
+import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import {
@@ -53,7 +50,7 @@ export function AgentsTab() {
   const mint = useMintAgentCredential(orgId);
   const revoke = useRevokeAgentCredentials(orgId);
   const rename = useSetAgentDisplayName(orgId);
-  const { projects } = useOrgScopedProjects();
+  const projectsQ = useProjectsIncludingArchived();
   const busy = mint.isPending || revoke.isPending;
   const { toast } = useToast();
 
@@ -111,15 +108,100 @@ export function AgentsTab() {
     }
   }
 
-  const nameOf = (projectId: string) => projects.find((p) => p.id === projectId)?.name;
+  const nameOf = (projectId: string) => projectsQ.data?.find((p) => p.id === projectId)?.name;
   const openAgent = selfOpen ? agents.find((a) => a.userId === selfOpen) : undefined;
+
+  const columns: DataTableColumn<AgentAccountRow>[] = [
+    {
+      id: "name",
+      header: "Name",
+      sticky: true,
+      cellClassName: "whitespace-nowrap",
+      sortValue: (agent) => agentLabel(agent),
+      cell: (agent) =>
+        renaming?.userId === agent.userId ? (
+          <Field label="Name" hint="Free text. Nothing resolves against it.">
+            <Input
+              value={renaming.value}
+              autoFocus
+              onChange={(e) => setRenaming({ userId: agent.userId, value: e.target.value })}
+              onBlur={() => onRename(agent, renaming.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onRename(agent, renaming.value);
+                if (e.key === "Escape") setRenaming(null);
+              }}
+            />
+          </Field>
+        ) : (
+          <button
+            type="button"
+            className="text-left"
+            onClick={() => setRenaming({ userId: agent.userId, value: agent.displayName ?? "" })}
+          >
+            {agentLabel(agent)}
+          </button>
+        ),
+    },
+    {
+      id: "address",
+      header: "Address",
+      sortValue: (agent) => agent.handle,
+      cell: (agent) => <MonoTag>{agentAddress(agent)}</MonoTag>,
+    },
+    {
+      id: "projects",
+      header: "Projects",
+      cell: (agent) => agentProjectNames(agent, nameOf, projectsQ.isLoading),
+    },
+    {
+      id: "canAct",
+      header: "Can act",
+      cellClassName: "whitespace-nowrap",
+      sortValue: (agent) => (agent.canAct ? 1 : 0),
+      cell: (agent) => {
+        const reach = reachOf(agent);
+        return reach.canAct ? <Badge tone="green">Yes</Badge> : <Badge tone="amber">No — {reach.why}</Badge>;
+      },
+    },
+    {
+      id: "actions",
+      header: null,
+      headerLabel: "Actions",
+      align: "end",
+      cell: (agent) => (
+        <RowActions
+          subject={agentLabel(agent)}
+          busy={busy}
+          actions={[
+            { id: "give", label: "Give a credential", onClick: () => onMint(agent) },
+            agent.activeTokens > 0 && {
+              id: "revoke",
+              label: "Revoke",
+              variant: "ghost",
+              onClick: () => onRevoke(agent),
+            },
+            {
+              id: "self",
+              label: selfOpen === agent.userId ? "Close self" : "Self",
+              variant: "ghost",
+              expanded: selfOpen === agent.userId,
+              onClick: () => setSelfOpen(selfOpen === agent.userId ? null : agent.userId),
+            },
+          ]}
+        />
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <header>
         <SectionTitle className="fg-h3">Agents in {activeOrg?.name ?? "this organization"}</SectionTitle>
         <p className="fg-body-sm mt-1">
-          An agent is addressed by its handle and read by its name. It can only act while it holds a
-          credential.
+          An agent is addressed by its handle and read by its name. It can act only while it belongs to
+          a project and holds a live credential, and without one it cannot answer in a room. Giving a
+          credential adds one and does not replace the one an agent already holds: revoke that
+          separately.
         </p>
       </header>
 
@@ -158,121 +240,33 @@ export function AgentsTab() {
         </Card>
       )}
 
-      <CreateAgentForm orgId={orgId} />
-
       {agents.length === 0 ? (
         <EmptyState
           title="No agents yet"
-          message="Create one above, or let one appear when a project is first spoken to in a room."
+          message="Create one below, or let one appear when a project is first spoken to in a room."
         />
       ) : (
-        <Card>
-          <CardContent>
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Name</TH>
-                  <TH>Address</TH>
-                  <TH>Projects</TH>
-                  <TH>Can act</TH>
-                  <TH aria-label="Actions" />
-                </TR>
-              </THead>
-              <TBody>
-                {agents.map((agent) => {
-                  const reach = reachOf(agent);
-                  return (
-                    <TR key={agent.userId}>
-                      <TD>
-                        {renaming?.userId === agent.userId ? (
-                          <Field label="Name" hint="Free text. Nothing resolves against it.">
-                            <Input
-                              value={renaming.value}
-                              autoFocus
-                              onChange={(e) =>
-                                setRenaming({ userId: agent.userId, value: e.target.value })
-                              }
-                              onBlur={() => onRename(agent, renaming.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") onRename(agent, renaming.value);
-                                if (e.key === "Escape") setRenaming(null);
-                              }}
-                            />
-                          </Field>
-                        ) : (
-                          <button
-                            type="button"
-                            className="text-left"
-                            onClick={() =>
-                              setRenaming({
-                                userId: agent.userId,
-                                value: agent.displayName ?? "",
-                              })
-                            }
-                          >
-                            {agentLabel(agent)}
-                          </button>
-                        )}
-                      </TD>
-                      <TD>
-                        <MonoTag>{agentAddress(agent)}</MonoTag>
-                      </TD>
-                      <TD>{agentProjectNames(agent, nameOf)}</TD>
-                      <TD>
-                        {reach.canAct ? (
-                          <Badge tone="green">Yes</Badge>
-                        ) : (
-                          <div>
-                            <Badge tone="amber">No — {reach.why}</Badge>
-                            <p className="fg-body-sm mt-1">{reach.remedy}</p>
-                          </div>
-                        )}
-                      </TD>
-                      <TD>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="secondary"
-                            disabled={busy}
-                            onClick={() => onMint(agent)}
-                          >
-                            {agent.activeTokens > 0 ? "Mint another" : "Give a credential"}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            disabled={busy || agent.activeTokens === 0}
-                            onClick={() => onRevoke(agent)}
-                          >
-                            Revoke
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            aria-expanded={selfOpen === agent.userId}
-                            onClick={() =>
-                              setSelfOpen(selfOpen === agent.userId ? null : agent.userId)
-                            }
-                          >
-                            {selfOpen === agent.userId ? "Close self" : "Self"}
-                          </Button>
-                        </div>
-                      </TD>
-                    </TR>
-                  );
-                })}
-              </TBody>
-            </Table>
-            {openAgent && (
-              <div className="mt-6 border-t border-line pt-6">
-                <CardTitle className="mb-3">Self of {agentLabel(openAgent)}</CardTitle>
-                <AgentSelfEditor
-                  orgId={orgId}
-                  agentUserId={openAgent.userId}
-                  handle={agentAddress(openAgent)}
-                />
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <>
+          <DataTable
+            aria-label="Agents"
+            rows={agents}
+            columns={columns}
+            getRowId={(agent) => agent.userId}
+          />
+          {openAgent && (
+            <div className="border-t border-line pt-6">
+              <CardTitle className="mb-3">Self of {agentLabel(openAgent)}</CardTitle>
+              <AgentSelfEditor
+                orgId={orgId}
+                agentUserId={openAgent.userId}
+                handle={agentAddress(openAgent)}
+              />
+            </div>
+          )}
+        </>
       )}
+
+      <CreateAgentForm orgId={orgId} />
     </div>
   );
 }

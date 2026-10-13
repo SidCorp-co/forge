@@ -177,3 +177,27 @@ describe("DataTable: rows and the table itself", () => {
     expect(screen.getByRole("table", { name: "Things" })).toBeInTheDocument();
   });
 });
+
+describe("DataTable: the identifying column", () => {
+  const STICKY_COLUMNS: DataTableColumn<Row>[] = COLUMNS.map((c) => (c.id === "name" ? { ...c, sticky: true } : c));
+
+  it("pins the first column's header and cells, and no other", () => {
+    render(<Sample columns={STICKY_COLUMNS} />);
+    expect(header("Name")).toHaveClass("sticky");
+    expect(header("Runs")).not.toHaveClass("sticky");
+    const cells = within(screen.getAllByRole("row")[1] as HTMLElement).getAllByRole("cell");
+    expect(cells[0]).toHaveClass("sticky");
+    expect(cells[1]).not.toHaveClass("sticky");
+  });
+
+  it("refuses a sticky column that is not the first, naming it", () => {
+    const wrong = COLUMNS.map((c) => (c.id === "runs" ? { ...c, sticky: true } : c));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => render(<Sample columns={wrong} />)).toThrow(/column "runs" is sticky but is column 2/);
+  });
+
+  it("pins nothing when no column says so", () => {
+    render(<Sample />);
+    expect(header("Name")).not.toHaveClass("sticky");
+  });
+});

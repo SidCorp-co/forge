@@ -5,26 +5,18 @@
 // a room, so an org admin who wanted a box to run as an agent had no way to make
 // one at all.
 //
-// The project list is a CHECKBOX SET and not a single select, because
-// `projectIds` is the whole reach a credential for this agent will be fenced to
-// (`orgs/agent-accounts.ts:fenceFor`), and one box serving eight projects is the
-// case that made this issue.
+// The projects are a SET and not a single select, because `projectIds` is the whole
+// reach a credential for this agent will be fenced to (`orgs/agent-accounts.ts:fenceFor`),
+// and one box serving eight projects is the case that made this issue. The set is chosen
+// through a searchable picker, so an organisation with two dozen projects does not push
+// the submit button off the screen (ISS-1169).
 
 import { useState } from "react";
-import {
-  Banner,
-  Button,
-  Card,
-  CardContent,
-  CardTitle,
-  Checkbox,
-  Field,
-  Input,
-  MonoTag,
-} from "@/design";
+import { Banner, Button, Field, Input, MonoTag, SectionTitle } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useCreateAgent } from "../hooks";
+import { ProjectPicker } from "./project-picker";
 
 const HANDLE_RULE = /^[a-z0-9](?:[a-z0-9-]{1,38})[a-z0-9]$/;
 
@@ -71,9 +63,11 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
   }
 
   return (
-    <Card>
-      <CardContent>
-        <CardTitle className="mb-1">New agent</CardTitle>
+    <section aria-labelledby="new-agent" className="border-t border-line pt-6">
+      <div>
+        <SectionTitle id="new-agent" className="fg-h3 mb-1">
+          New agent
+        </SectionTitle>
         <p className="fg-body-sm mb-4">
           An agent is a principal of its own: work it files is filed as the agent, not as whoever
           set it up. Its credential reaches exactly the projects picked here and nothing else.
@@ -118,16 +112,7 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
                 This organization has no projects yet. An agent needs one to act on.
               </p>
             ) : (
-              <div className="flex flex-col gap-1.5">
-                {projects.map((p) => (
-                  <Checkbox
-                    key={p.id}
-                    label={p.name}
-                    checked={picked.includes(p.id)}
-                    onChange={() => toggle(p.id)}
-                  />
-                ))}
-              </div>
+              <ProjectPicker projects={projects} picked={picked} onToggle={toggle} />
             )}
           </Field>
 
@@ -139,7 +124,7 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
             </Button>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

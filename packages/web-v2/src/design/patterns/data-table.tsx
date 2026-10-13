@@ -21,6 +21,11 @@ export interface DataTableColumn<Row> extends DataTableModelColumn<Row> {
   headerLabel?: string;
   /** The direction the first activation sorts in. The first of `sortDirections` unless named. */
   firstSort?: SortDirection;
+  /**
+   * The row's identifying column, which stays at the start edge while the others scroll sideways. It
+   * must be the first column, and a table has one.
+   */
+  sticky?: boolean;
 }
 
 export interface DataTableProps<Row> {
@@ -43,6 +48,15 @@ export interface DataTableProps<Row> {
   className?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;
+}
+
+function assertSticky<Row>(columns: readonly DataTableColumn<Row>[]): void {
+  const at = columns.findIndex((column, i) => column.sticky && i !== 0);
+  if (at !== -1) {
+    throw new Error(
+      `DataTable column "${columns[at]?.id}" is sticky but is column ${at + 1}: only the first column can hold the start edge, because a column left of it would scroll away under it.`,
+    );
+  }
 }
 
 const ARIA_SORT = { asc: "ascending", desc: "descending" } as const;
@@ -114,6 +128,8 @@ export function DataTable<Row>({
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
 }: DataTableProps<Row>) {
+  assertSticky(columns);
+  const stickyStart = columns[0]?.sticky === true;
   const [ownSort, setOwnSort] = useState<DataTableSort | null>(defaultSort);
   const active = sort === undefined ? ownSort : sort;
   const shown = useDataTableRows(rows, columns, { sort: active, search, filters, manualSort, manualFilter });
@@ -125,7 +141,7 @@ export function DataTable<Row>({
   }
 
   return (
-    <Table className={className} aria-label={ariaLabel} aria-labelledby={ariaLabelledBy}>
+    <Table className={className} stickyStart={stickyStart} aria-label={ariaLabel} aria-labelledby={ariaLabelledBy}>
       <THead>
         <TR className="hover:bg-transparent">
           {columns.map((column) => {
@@ -134,6 +150,7 @@ export function DataTable<Row>({
               <TH
                 key={column.id}
                 scope="col"
+                sticky={column.sticky}
                 aria-sort={column.sortValue ? (sorted ? ARIA_SORT[sorted.desc ? "desc" : "asc"] : "none") : undefined}
                 aria-label={column.sortValue ? undefined : column.headerLabel}
                 className={cn(column.align === "end" && "text-right", column.headerClassName)}
@@ -160,7 +177,7 @@ export function DataTable<Row>({
             return (
               <TR key={getRowId(row)} className={rowClass} {...props}>
                 {columns.map((column) => (
-                  <TD key={column.id} className={cn(column.align === "end" && "text-right", column.cellClassName)}>
+                  <TD key={column.id} sticky={column.sticky} className={cn(column.align === "end" && "text-right", column.cellClassName)}>
                     {column.cell(row)}
                   </TD>
                 ))}

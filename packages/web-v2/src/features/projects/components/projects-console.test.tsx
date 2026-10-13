@@ -59,7 +59,7 @@ const listNames = () =>
   within(screen.getByRole("table", { name: "Projects" }))
     .getAllByRole("row")
     .slice(1)
-    .map((tr) => within(tr).getAllByRole("cell")[1]?.textContent?.replace(/Pin project|Unpin project/, ""));
+    .map((tr) => within(tr).getAllByRole("cell")[0]?.querySelector(".truncate")?.textContent);
 const cardNames = () => screen.queryAllByText(/^(alpha|bravo|charlie)$/).map((el) => el.textContent);
 const sortSelect = () => screen.getByRole("combobox", { name: "Sort projects" });
 function choose(label: string) {
@@ -133,6 +133,38 @@ describe("the Sort select and the headers are one control", () => {
     expect(sortSelect()).toHaveTextContent("Name (Z–A)");
   });
 
+  it("offers both directions of every sort, so Name (A–Z) is chosen from the select once Name is sorted descending", () => {
+    render(<ProjectsConsole />);
+    showList();
+    press("Project");
+    press("Project");
+    expect(listNames()).toEqual(["charlie", "bravo", "alpha"]);
+    fireEvent.click(sortSelect());
+    const offered = screen.getAllByRole("option").map((o) => o.textContent);
+    expect(offered).toEqual([
+      "Recently active",
+      "Least recently active",
+      "Name (A–Z)",
+      "Name (Z–A)",
+      "Health (worst first)",
+      "Health (best first)",
+    ]);
+    fireEvent.click(screen.getByRole("option", { name: "Name (A–Z)" }));
+    expect(listNames()).toEqual(["alpha", "bravo", "charlie"]);
+    expect(header("Project")).toHaveAttribute("aria-sort", "ascending");
+    expect(sortSelect()).toHaveTextContent("Name (A–Z)");
+  });
+
+  it("reverses a sort from the select as well, in either direction", () => {
+    render(<ProjectsConsole />);
+    showList();
+    choose("Least recently active");
+    expect(header(/Active/)).toHaveAttribute("aria-sort", "ascending");
+    expect(listNames()).toEqual(["charlie", "bravo", "alpha"]);
+    choose("Health (best first)");
+    expect(header(/Health/)).toHaveAttribute("aria-sort", "descending");
+  });
+
   it("gives the cards the order the select chose, the same one the list shows", () => {
     render(<ProjectsConsole />);
     choose("Name (A–Z)");
@@ -148,6 +180,19 @@ describe("the Sort select and the headers are one control", () => {
     press("Project");
     showCards();
     expect(cardNames()).toEqual(["charlie", "bravo", "alpha"]);
+  });
+});
+
+describe("the projects list keeps its Project column in view", () => {
+  it("holds the start edge with the Project column, which carries the project's mark with its name", () => {
+    render(<ProjectsConsole />);
+    showList();
+    expect(header("Project")).toHaveClass("sticky");
+    const firstRow = within(screen.getByRole("table", { name: "Projects" })).getAllByRole("row")[1] as HTMLElement;
+    const [first, second] = within(firstRow).getAllByRole("cell");
+    expect(first).toHaveClass("sticky");
+    expect(second).not.toHaveClass("sticky");
+    expect(first?.textContent).toContain("alpha");
   });
 });
 
