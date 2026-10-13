@@ -5,7 +5,7 @@
  * core cannot see the fault from its side. The box that received it reports it
  * on the heartbeat, a different route that answered normally around every
  * measured failure. The verdict stays the box's: forge-runner's pool-read record
- * holds the one definition of blind and intermittent, and this module only reads it.
+ * holds the one definition of blind, unserved and intermittent, and this module only reads it.
  */
 
 import { sql } from 'drizzle-orm';
@@ -14,7 +14,11 @@ import { db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { WIRE_UNITS } from './gate-report.js';
 
-export const poolReadVerdicts = ['blind', 'intermittent'] as const;
+/**
+ * `unserved` is a pool core answered `404` for on consecutive reads: the box has
+ * stopped asking, so it is unread like a blind one but will not recover by being read again.
+ */
+export const poolReadVerdicts = ['blind', 'unserved', 'intermittent'] as const;
 export type PoolReadVerdict = (typeof poolReadVerdicts)[number];
 
 /**
@@ -46,30 +50,30 @@ const conditionSchema = z
   })
   .strict()
   .superRefine((c, ctx) => {
-    const blind = c.verdict === 'blind';
-    if (blind !== (c.unreadSince !== null)) {
+    const unread = c.verdict !== 'intermittent';
+    if (unread !== (c.unreadSince !== null)) {
       ctx.addIssue({
         code: 'custom',
         path: ['unreadSince'],
-        message: blind
-          ? 'a blind project names when its run of failed reads began'
-          : 'only a blind project has an unreadSince',
+        message: unread
+          ? 'a blind or unserved project names when its run of failed reads began'
+          : 'only a blind or unserved project has an unreadSince',
       });
     }
-    if (blind ? c.consecutive < 1 : c.consecutive !== 0) {
+    if (unread ? c.consecutive < 1 : c.consecutive !== 0) {
       ctx.addIssue({
         code: 'custom',
         path: ['consecutive'],
-        message: blind
-          ? 'a blind project has at least one consecutive failed read'
-          : 'only a blind project has consecutive failed reads',
+        message: unread
+          ? 'a blind or unserved project has at least one consecutive failed read'
+          : 'only a blind or unserved project has consecutive failed reads',
       });
     }
-    if (blind && c.recoveredAt !== null) {
+    if (unread && c.recoveredAt !== null) {
       ctx.addIssue({
         code: 'custom',
         path: ['recoveredAt'],
-        message: 'a blind project has not recovered',
+        message: 'a blind or unserved project has not recovered',
       });
     }
   });

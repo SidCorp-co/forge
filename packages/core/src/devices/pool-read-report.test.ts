@@ -25,15 +25,22 @@ const fixture = JSON.parse(
   projectIds: { taken: string[]; refused: string[] };
 };
 
-const blind = () => structuredClone(fixture.pool.projects[0]) as Record<string, unknown>;
+const verdictOf = (verdict: string) =>
+  structuredClone(fixture.pool.projects.find((p) => p.verdict === verdict)) as Record<
+    string,
+    unknown
+  >;
+const blind = () => verdictOf('blind');
+const unserved = () => verdictOf('unserved');
+const intermittent = () => verdictOf('intermittent');
 
 beforeEach(() => execute.mockClear());
 
 describe('the report a box sends', () => {
-  it('reads the fixture the box emits, both projects and both verdicts', () => {
+  it('reads the fixture the box emits, every project and every verdict', () => {
     const read = readHeartbeatPool(fixture.pool);
     expect(read.refused).toBeUndefined();
-    expect(read.report?.projects.map((p) => p.verdict)).toEqual(['blind', 'intermittent']);
+    expect(read.report?.projects.map((p) => p.verdict)).toEqual(['blind', 'unserved', 'intermittent']);
     expect(read.report?.projects[0]?.lastFailure).toMatchObject({ status: 525 });
   });
 
@@ -60,7 +67,7 @@ describe('what core refuses, by name', () => {
   it('refuses a blind project that does not say since when', () => {
     const bad = { ...blind(), unreadSince: null };
     expect(readHeartbeatPool({ projects: [bad] }).refused).toMatch(
-      /^pool\.projects\.0\.unreadSince: a blind project names when/,
+      /^pool\.projects\.0\.unreadSince: a blind or unserved project names when/,
     );
   });
 
@@ -72,22 +79,43 @@ describe('what core refuses, by name', () => {
   });
 
   it('refuses an intermittent project that claims consecutive failed reads', () => {
-    const bad = { ...structuredClone(fixture.pool.projects[1]), consecutive: 3 };
+    const bad = { ...intermittent(), consecutive: 3 };
     expect(readHeartbeatPool({ projects: [bad] }).refused).toMatch(
-      /^pool\.projects\.0\.consecutive: only a blind project/,
+      /^pool\.projects\.0\.consecutive: only a blind or unserved project/,
     );
   });
 
   it('refuses a blind project that claims it recovered', () => {
     const bad = { ...blind(), recoveredAt: 1 };
     expect(readHeartbeatPool({ projects: [bad] }).refused).toMatch(
-      /^pool\.projects\.0\.recoveredAt: a blind project has not recovered/,
+      /^pool\.projects\.0\.recoveredAt: a blind or unserved project has not recovered/,
     );
   });
 
   it('refuses an intermittent project that claims an unreadSince', () => {
-    const bad = { ...structuredClone(fixture.pool.projects[1]), unreadSince: 1 };
+    const bad = { ...intermittent(), unreadSince: 1 };
     expect(readHeartbeatPool({ projects: [bad] }).refused).toMatch(/unreadSince: only a blind/);
+  });
+
+  it('refuses an unserved project that does not say since when', () => {
+    const bad = { ...unserved(), unreadSince: null };
+    expect(readHeartbeatPool({ projects: [bad] }).refused).toMatch(
+      /^pool\.projects\.0\.unreadSince: a blind or unserved project names when/,
+    );
+  });
+
+  it('refuses an unserved project with no consecutive failed read', () => {
+    const bad = { ...unserved(), consecutive: 0 };
+    expect(readHeartbeatPool({ projects: [bad] }).refused).toMatch(
+      /^pool\.projects\.0\.consecutive: a blind or unserved project has at least one/,
+    );
+  });
+
+  it('refuses an unserved project that claims it recovered', () => {
+    const bad = { ...unserved(), recoveredAt: 1 };
+    expect(readHeartbeatPool({ projects: [bad] }).refused).toMatch(
+      /^pool\.projects\.0\.recoveredAt: a blind or unserved project has not recovered/,
+    );
   });
 
   it('refuses a status outside HTTP', () => {

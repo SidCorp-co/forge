@@ -26,7 +26,9 @@ function windowLabel(ms: number): string {
  * must never read as an empty pool, so this names it where the runner is read.
  * `what` is the status by number and name, or the transport's reason where no
  * status came back. A report the box stopped renewing is kept and dated, never
- * stated in the present tense.
+ * stated in the present tense. An unserved pool is one core answered `404` for on
+ * consecutive reads (ISS-1326): the box stopped asking rather than retry for ever, so
+ * it says that, and that it asks again when core's list for the box changes.
  */
 export function PoolReadBanner({
 	poolRead,
@@ -63,6 +65,22 @@ export function PoolReadBanner({
 				consecutive failed read(s). Newest:{" "}
 				<code className="font-mono text-12">{lastFailure.what}</code>. It sees no
 				queue while this lasts, which is not the same as an empty one.{asOf}
+			</Banner>
+		);
+	}
+
+	if (poolRead.verdict === "unserved") {
+		return (
+			<Banner tone="attention">
+				<span className="font-semibold">
+					{stale
+						? "Core answered 404 for the project's job pool when this box last reported"
+						: "Core answers 404 for the project's job pool"}
+				</span>{" "}
+				— since {ago(poolRead.unreadSince)}, {poolRead.consecutive} failed read(s). Newest:{" "}
+				<code className="font-mono text-12">{lastFailure.what}</code>. The box stopped
+				asking and sees no queue for this project until core's list of its projects
+				changes or the daemon restarts.{asOf}
 			</Banner>
 		);
 	}

@@ -53,6 +53,21 @@ const intermittent = (over: Partial<RunnerPoolRead> = {}): RunnerPoolRead => ({
 	...over,
 });
 
+const unserved = (over: Partial<RunnerPoolRead> = {}): RunnerPoolRead => ({
+	...blind(),
+	verdict: "unserved",
+	failures: 3,
+	consecutive: 3,
+	unreadSince: Date.now() - 2 * 60 * MIN,
+	lastFailure: {
+		at: Date.now() - 2 * 60 * MIN,
+		status: 404,
+		what: "404 Not Found",
+		reason: "pool 404 Not Found: Not Found: GET /api/devices/me/pool",
+	},
+	...over,
+});
+
 /** The Banner states its tone only as its colours, so that is what is read. */
 const toneOf = (container: HTMLElement) =>
 	(container.firstElementChild as HTMLElement | null)?.getAttribute("style") ?? "";
@@ -87,6 +102,27 @@ describe("a box that cannot read the pool now", () => {
 		const text = container.textContent ?? "";
 		expect(text).toContain("pool request: operation timed out");
 		expect(text).not.toMatch(/null|undefined/);
+	});
+});
+
+describe("a pool core answers 404 for", () => {
+	it("says the box stopped asking, and does not say it cannot read or reads again", () => {
+		const { container } = render(<PoolReadBanner poolRead={unserved()} />);
+		const text = container.textContent ?? "";
+		expect(text).toMatch(/^Core answers 404 for the project's job pool/);
+		expect(text).toContain("404 Not Found");
+		expect(text).toMatch(/since 2h ago, 3 failed read/);
+		expect(text).toMatch(/stopped\s+asking/);
+		expect(text).not.toMatch(/cannot read|reading\s+again/i);
+		expect(toneOf(container)).toContain("--amberw-600");
+	});
+
+	it("dates a report the box stopped renewing instead of stating it now", () => {
+		const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000).toISOString();
+		const { container } = render(<PoolReadBanner poolRead={unserved({ receivedAt: twoDaysAgo })} />);
+		const text = container.textContent ?? "";
+		expect(text).toMatch(/Core answered 404 for the project's job pool when this box last reported/);
+		expect(text).toMatch(/last report,\s+2d ago/);
 	});
 });
 

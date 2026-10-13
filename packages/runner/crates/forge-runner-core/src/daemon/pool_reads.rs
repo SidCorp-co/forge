@@ -19,6 +19,11 @@
 //! the next heartbeat, so the record keeps a trailing window: a project that
 //! failed a read inside it carries a condition, and one that did not carries
 //! nothing.
+//!
+//! A `404` is a different failure from those: the server saying the pool is not
+//! there, which retrying does not change. [`STANDING_AFTER`] of them in a row
+//! make the project [`Verdict::Unserved`], and the daemon stops reading it
+//! until core's list of this box's projects changes (ISS-1326).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -42,6 +47,17 @@ pub const MAX_FAILURES: usize = 200;
 /// it would be cleared at core while it was failing. Past it core refuses the
 /// whole report by name and the box logs that refusal.
 pub const MAX_PROJECTS: usize = 256;
+
+/// How many consecutive `404`s settle that the server has no pool for a
+/// project. One could be a route absent for a moment; three passes running is
+/// thirty seconds of the same answer, while `list_me` in the same sweep still
+/// lists the project.
+pub const STANDING_AFTER: u64 = 3;
+
+/// The status that is the server's answer about the pool rather than a stumble
+/// of its own: asking again does not change a `404`, while a `502` or a `525`
+/// may read the next time.
+const STANDING_STATUS: u16 = 404;
 
 /// `<config dir>/pool-reads.json`.
 pub fn path(config_dir: &Path) -> PathBuf {
@@ -151,9 +167,36 @@ fn apply(p: &mut Project, outcome: Outcome<'_>, now_ms: i64) -> bool {
     *p != before
 }
 
+/// Whether the newest [`STANDING_AFTER`] reads of this project all failed with a
+/// `404` and nothing has read since: the server's answer about the pool, not a
+/// stumble.
+fn standing(p: &Project) -> bool {
+    let n = STANDING_AFTER as usize;
+    p.streak_since.is_some()
+        && p.consecutive >= STANDING_AFTER
+        && p.failures.len() >= n
+        && p.failures
+            .iter()
+            .rev()
+            .take(n)
+            .all(|f| f.status == Some(STANDING_STATUS))
+}
+
 fn prune(p: &mut Project, now_ms: i64) {
     let floor = now_ms - WINDOW_MS;
-    p.failures.retain(|f| f.at >= floor);
+    // A standing project is not read again, so nothing newer will replace the
+    // reads that settled it. Aging them out of the window would drop the row
+    // while the box still does not read the pool.
+    let keep_from = if standing(p) {
+        p.failures.len().saturating_sub(STANDING_AFTER as usize)
+    } else {
+        p.failures.len()
+    };
+    let mut i = 0;
+    p.failures.retain(|f| {
+        i += 1;
+        i > keep_from || f.at >= floor
+    });
     if p.failures.len() > MAX_FAILURES {
         let cut = p.failures.len() - MAX_FAILURES;
         let newest_cut = p.failures[cut - 1].at;
@@ -305,11 +348,113 @@ pub fn note(config_dir: &Path, project_id: &str, took: &Took, now_ms: i64) {
     }
 }
 
+/// The projects this daemon has stopped reading, each with the runner id core
+/// listed it under when the box stopped. Held in memory on purpose: a restart
+/// asks once more, and a daemon that re-reads a stale file would stay deaf to
+/// a pool core has since started serving.
+type Holds = BTreeMap<(PathBuf, String), String>;
+static HELD: std::sync::Mutex<Holds> = std::sync::Mutex::new(Holds::new());
+
+/// Whether the daemon has stopped reading `project_id`'s pool because the
+/// server answered `404` for it, under the runner `runner_id` core still lists
+/// it under. A project listed under another runner is a changed assignment
+/// and is read again.
+pub fn is_held(config_dir: &Path, project_id: &str, runner_id: &str) -> bool {
+    HELD.lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&(config_dir.to_path_buf(), project_id.to_string()))
+        .is_some_and(|held_under| held_under == runner_id)
+}
+
+/// After a pass has been [`note`]d: stop reading a project whose record now
+/// says the server's `404` is standing, and say so once, by name; and release
+/// a project whose latest read was anything else.
+pub fn settle(config_dir: &Path, project_id: &str, runner_id: &str, took: &Took) {
+    let key = (config_dir.to_path_buf(), project_id.to_string());
+    let Some(outcome) = Outcome::of(took) else {
+        return;
+    };
+    let record = load_valid(config_dir)
+        .ok()
+        .and_then(|(mut r, _)| r.projects.remove(project_id));
+    let failure = match (outcome, record) {
+        (Outcome::Failed(f), Some(p)) if standing(&p) => f,
+        _ => {
+            HELD.lock().unwrap_or_else(|e| e.into_inner()).remove(&key);
+            return;
+        }
+    };
+    let first = HELD
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(key, runner_id.to_string())
+        .as_deref()
+        != Some(runner_id);
+    if first {
+        tracing::warn!(
+            "[pool] {project_id}: core answered 404 to {STANDING_AFTER} pool reads in a row ({}) — a standing answer, not a stumble that retrying clears, so this box stops reading the pool until core's list of its projects changes or the daemon restarts; `forge-runner status` names it UNSERVED",
+            crate::daemon::degraded::clip(&failure.reason)
+        );
+    }
+}
+
+/// Keep only what core still lists to this box: `listed` is every
+/// `(project id, runner id)` the sweep's `list_me` returned. A project core no
+/// longer lists is not a pool this box reads, so its record and its hold go,
+/// whatever its verdict; one listed under another runner keeps its record and
+/// loses its hold, which is how the next pass reads it again.
+pub fn retain_served(config_dir: &Path, listed: &[(&str, &str)]) {
+    {
+        let mut held = HELD.lock().unwrap_or_else(|e| e.into_inner());
+        held.retain(|(dir, project), under| {
+            dir != config_dir
+                || listed
+                    .iter()
+                    .any(|(p, runner)| p == project && runner == under)
+        });
+    }
+    let _held = WRITE.lock().unwrap_or_else(|e| e.into_inner());
+    let Ok((mut r, refused)) = load_valid(config_dir) else {
+        return;
+    };
+    let gone: Vec<String> = r
+        .projects
+        .keys()
+        .filter(|id| !listed.iter().any(|(p, _)| p == id))
+        .cloned()
+        .collect();
+    if gone.is_empty() {
+        return;
+    }
+    for id in &refused {
+        tracing::warn!(
+            "[pool] dropped {id:?} from {}: not a project id core takes (a UUID), and while it stood core refused this box's whole pool report",
+            path(config_dir).display()
+        );
+    }
+    for id in &gone {
+        r.projects.remove(id);
+        tracing::info!(
+            "[pool] {id}: core no longer lists this project to this box, so its pool-read record is dropped"
+        );
+    }
+    if let Err(e) = save(config_dir, &r) {
+        tracing::warn!(
+            "[pool] could not write {}: {e} — a project core no longer lists stays in it",
+            path(config_dir).display()
+        );
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Verdict {
     /// The newest read failed: the box cannot see this project's queue now.
     Blind,
+    /// The server answered `404` to the last [`STANDING_AFTER`] reads and the
+    /// box stopped asking. Unread like a blind pool, and unlike one it does not
+    /// recover by being read again.
+    Unserved,
     /// The newest read succeeded, and one inside the window did not.
     Intermittent,
 }
@@ -343,15 +488,21 @@ pub struct WireFailure {
 
 fn condition(project_id: &str, p: &Project, now_ms: i64) -> Option<Condition> {
     let floor = now_ms - WINDOW_MS;
-    let kept: Vec<&Failure> = p.failures.iter().filter(|f| f.at >= floor).collect();
+    // A standing project's settling reads outlive the window (see `prune`).
+    let aged = standing(p);
+    let kept: Vec<&Failure> = p
+        .failures
+        .iter()
+        .filter(|f| aged || f.at >= floor)
+        .collect();
     let last = kept.last()?;
     let blind = p.streak_since.is_some();
     Some(Condition {
         project_id: project_id.to_string(),
-        verdict: if blind {
-            Verdict::Blind
-        } else {
-            Verdict::Intermittent
+        verdict: match (blind, standing(p)) {
+            (true, true) => Verdict::Unserved,
+            (true, false) => Verdict::Blind,
+            (false, _) => Verdict::Intermittent,
         },
         failures: kept.len(),
         count_is_floor: p.dropped_through.is_some_and(|d| d >= floor),
@@ -368,7 +519,8 @@ fn condition(project_id: &str, p: &Project, now_ms: i64) -> Option<Condition> {
     })
 }
 
-/// Every project that failed a read inside the window, blind ones first.
+/// Every project that failed a read inside the window, blind ones first, then
+/// the unserved, then the intermittent.
 /// A project absent from this list read cleanly all window, or was never read.
 pub fn report(config_dir: &Path, now_ms: i64) -> Result<Vec<Condition>, Unreadable> {
     let (r, refused) = load_valid(config_dir)?;
@@ -386,9 +538,14 @@ pub fn report(config_dir: &Path, now_ms: i64) -> Result<Vec<Condition>, Unreadab
         .iter()
         .filter_map(|(id, p)| condition(id, p, now_ms))
         .collect();
+    let rank = |v: Verdict| match v {
+        Verdict::Blind => 0,
+        Verdict::Unserved => 1,
+        Verdict::Intermittent => 2,
+    };
     out.sort_by(|a, b| {
-        (b.verdict == Verdict::Blind)
-            .cmp(&(a.verdict == Verdict::Blind))
+        rank(a.verdict)
+            .cmp(&rank(b.verdict))
             .then_with(|| b.last_failure.at.cmp(&a.last_failure.at))
     });
     Ok(out)
@@ -452,6 +609,220 @@ mod tests {
         assert_eq!(c.failures, 2);
         assert_eq!(c.last_failure.status, Some(525));
         assert_eq!(c.recovered_at, None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    const R1: &str = "runner-1";
+    const R2: &str = "runner-2";
+
+    /// What the box emits for a pool core answers `404` for.
+    fn gone() -> Took {
+        unread(
+            Some(404),
+            "pool 404 Not Found: Not Found: GET /api/devices/me/pool",
+        )
+    }
+
+    fn bad_gateway() -> Took {
+        unread(Some(502), "pool 502 Bad Gateway")
+    }
+
+    /// One daemon pass over `project`: what `take_pool_job` does with the answer.
+    fn pass(d: &Path, project: &str, runner: &str, took: &Took, at: i64) {
+        note(d, project, took, at);
+        settle(d, project, runner, took);
+    }
+
+    /// ISS-1326, planted before the fix and red on main, where this read BLIND:
+    /// a pool core answers `404` for three reads running is not a stumble that
+    /// recovers, so it reads UNSERVED, and the box stops reading it.
+    #[test]
+    fn a_pool_the_server_answers_404_for_reads_unserved_not_blind() {
+        let d = dir("planted-404");
+        for i in (1..=3).rev() {
+            pass(&d, P1, R1, &gone(), NOW - i * 10_000);
+        }
+        let c = &report(&d, NOW)[0];
+        assert_eq!(c.verdict, Verdict::Unserved, "{c:?}");
+        assert_eq!(c.unread_since, Some(NOW - 30_000));
+        assert_eq!(c.consecutive, 3);
+        assert_eq!(c.last_failure.status, Some(404));
+        assert_eq!(c.recovered_at, None);
+        assert!(is_held(&d, P1, R1), "the box stopped reading it");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// The boundary: two `404`s are not yet three, so the pool reads BLIND and
+    /// is read again; and a `502` inside the run means the run is not three.
+    #[test]
+    fn fewer_than_three_404s_in_a_row_stay_blind_and_are_read_again() {
+        let d = dir("two-404");
+        for i in (1..=2).rev() {
+            pass(&d, P1, R1, &gone(), NOW - i * 10_000);
+        }
+        assert_eq!(report(&d, NOW)[0].verdict, Verdict::Blind);
+        assert!(!is_held(&d, P1, R1));
+
+        let d2 = dir("interrupted-404");
+        for took in [gone(), gone(), bad_gateway(), gone()] {
+            pass(&d2, P1, R1, &took, NOW - 10_000);
+        }
+        assert_eq!(report(&d2, NOW)[0].verdict, Verdict::Blind);
+        assert!(!is_held(&d2, P1, R1));
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(&d2);
+    }
+
+    /// The pools that are genuinely degraded keep today's behaviour: any number
+    /// of `502`s and `525`s is BLIND, never held, and ends intermittent.
+    #[test]
+    fn a_stumbling_pool_is_never_held_however_long_it_stumbles() {
+        let d = dir("stumble");
+        for i in (1..=10).rev() {
+            pass(&d, P1, R1, &bad_gateway(), NOW - i * 10_000);
+            pass(&d, BLIND, R1, &gw525(), NOW - i * 10_000);
+        }
+        assert!(report(&d, NOW).iter().all(|c| c.verdict == Verdict::Blind));
+        assert!(!is_held(&d, P1, R1) && !is_held(&d, BLIND, R1));
+        pass(&d, P1, R1, &Took::NothingClaimable, NOW);
+        let c = report(&d, NOW)
+            .into_iter()
+            .find(|c| c.project_id == P1)
+            .unwrap();
+        assert_eq!(c.verdict, Verdict::Intermittent);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// The reads that settled the answer are not read again, so nothing newer
+    /// ever replaces them; they must outlive the window or the row would vanish
+    /// while the pool stayed unread.
+    #[test]
+    fn an_unserved_row_outlives_the_window_because_nothing_will_read_it_again() {
+        let d = dir("unserved-ages");
+        for i in (1..=3).rev() {
+            pass(&d, P1, R1, &gone(), NOW - 3 * WINDOW_MS - i * 10_000);
+        }
+        let c = &report(&d, NOW)[0];
+        assert_eq!(c.verdict, Verdict::Unserved);
+        assert_eq!(c.failures, 3);
+        // A restart's one probe, days on, still finds it unserved: the reads
+        // that settled it are kept beside the new one, not aged away from it.
+        pass(&d, P1, R1, &gone(), NOW);
+        let c = &report(&d, NOW)[0];
+        assert_eq!(c.verdict, Verdict::Unserved, "{c:?}");
+        assert_eq!(c.failures, 3);
+        assert_eq!(c.last_failure.at, NOW);
+        // A project that merely stumbled does age out, as before.
+        note(&d, BLIND, &gw525(), NOW - 3 * WINDOW_MS);
+        assert_eq!(report(&d, NOW).len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Unserved rows sort after the blind ones and before the intermittent.
+    #[test]
+    fn unserved_comes_between_blind_and_intermittent() {
+        let d = dir("unserved-order");
+        note(&d, INTERMITTENT, &gw525(), NOW - 3 * MIN);
+        note(&d, INTERMITTENT, &Took::NothingClaimable, NOW - 2 * MIN);
+        for i in (1..=3).rev() {
+            pass(&d, P1, R1, &gone(), NOW - 20 * MIN - i * 1000);
+        }
+        note(&d, BLIND, &gw525(), NOW - 30 * MIN);
+        let ids: Vec<String> = report(&d, NOW).into_iter().map(|c| c.project_id).collect();
+        assert_eq!(ids, vec![BLIND, P1, INTERMITTENT]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// The hold is per runner: core listing the project under another runner is
+    /// the server's list changing, so it is read again, and a read that
+    /// succeeds ends the condition the way any recovery does.
+    #[test]
+    fn a_changed_runner_is_read_again_and_a_good_read_recovers_it() {
+        let d = dir("reassigned");
+        for i in (1..=3).rev() {
+            pass(&d, P1, R1, &gone(), NOW - i * 10_000);
+        }
+        assert!(is_held(&d, P1, R1));
+        assert!(!is_held(&d, P1, R2), "another runner is not held");
+        retain_served(&d, &[(P1, R2)]);
+        assert!(!is_held(&d, P1, R1), "the hold went with the old runner");
+        assert_eq!(report(&d, NOW)[0].verdict, Verdict::Unserved, "record kept");
+        pass(&d, P1, R2, &Took::NothingClaimable, NOW);
+        let c = &report(&d, NOW)[0];
+        assert_eq!(c.verdict, Verdict::Intermittent);
+        assert!(!is_held(&d, P1, R2));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A project core stops listing is not a pool this box reads: the record
+    /// and the hold go whatever the verdict, and the others stay. Listed again
+    /// it starts from a clean record.
+    #[test]
+    fn a_project_core_stops_listing_leaves_the_record_and_the_hold() {
+        let d = dir("unlisted");
+        for i in (1..=3).rev() {
+            pass(&d, P1, R1, &gone(), NOW - i * 10_000);
+        }
+        pass(&d, BLIND, R1, &gw525(), NOW - 10_000);
+        pass(&d, INTERMITTENT, R1, &gw525(), NOW - 20_000);
+        pass(&d, INTERMITTENT, R1, &Took::NothingClaimable, NOW - 10_000);
+        assert_eq!(report(&d, NOW).len(), 3);
+        retain_served(&d, &[(BLIND, R1)]);
+        let ids: Vec<String> = report(&d, NOW).into_iter().map(|c| c.project_id).collect();
+        assert_eq!(ids, vec![BLIND], "only the listed project is left");
+        assert!(!is_held(&d, P1, R1));
+        pass(&d, P1, R1, &Took::NothingClaimable, NOW);
+        assert_eq!(report(&d, NOW).len(), 1, "listed again, nothing is carried");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Nothing is dropped from a record when everything in it is still listed,
+    /// and an unreadable record is left as it stands.
+    #[test]
+    fn retaining_what_is_all_listed_writes_nothing_and_a_junk_record_is_left() {
+        let d = dir("retain-noop");
+        note(&d, P1, &gw525(), NOW);
+        let before = std::fs::read_to_string(path(&d)).unwrap();
+        retain_served(&d, &[(P1, R1)]);
+        assert_eq!(std::fs::read_to_string(path(&d)).unwrap(), before);
+        std::fs::write(path(&d), "{not json").unwrap();
+        retain_served(&d, &[]);
+        assert_eq!(std::fs::read_to_string(path(&d)).unwrap(), "{not json");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// The standing answer is named once, by project and by what core said.
+    #[test]
+    fn the_standing_404_is_named_once_and_not_on_a_later_pass() {
+        let d = dir("named-once");
+        let said = logged(|| {
+            for i in (1..=3).rev() {
+                pass(&d, P1, R1, &gone(), NOW - i * 10_000);
+            }
+        });
+        assert_eq!(said.matches("core answered 404").count(), 1, "{said}");
+        assert!(said.contains(P1), "{said}");
+        assert!(
+            said.contains("Not Found: GET /api/devices/me/pool"),
+            "{said}"
+        );
+        assert!(said.contains("UNSERVED"), "{said}");
+        let again = logged(|| pass(&d, P1, R1, &gone(), NOW));
+        assert!(!again.contains("core answered 404"), "{again}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A `502` before the three `404`s does not keep the project from settling:
+    /// what matters is the newest three reads.
+    #[test]
+    fn a_stumble_before_three_404s_does_not_keep_it_from_settling() {
+        let d = dir("stumble-then-404");
+        pass(&d, P1, R1, &bad_gateway(), NOW - 40_000);
+        for i in (1..=3).rev() {
+            pass(&d, P1, R1, &gone(), NOW - i * 10_000);
+        }
+        assert_eq!(report(&d, NOW)[0].verdict, Verdict::Unserved);
+        assert_eq!(report(&d, NOW)[0].consecutive, 4);
         let _ = std::fs::remove_dir_all(&d);
     }
 

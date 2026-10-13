@@ -1441,6 +1441,18 @@ async fn sweep(
     masters.note_served(Served::Read(
         served.iter().map(|r| r.project_id.clone()).collect(),
     ));
+    // The list core just answered is the whole of what this box reads a pool
+    // for, so a record or a hold for a project it no longer names is dropped
+    // here, on the one pass that knows (ISS-1326).
+    if let Some(dir) = crate::daemon::control::config_dir() {
+        pool_reads::retain_served(
+            &dir,
+            &served
+                .iter()
+                .map(|r| (r.project_id.as_str(), r.runner_id.as_str()))
+                .collect::<Vec<_>>(),
+        );
+    }
     match crate::mcp::config::sweep_orphaned_sessions(
         &served.iter().map(|r| r.slug.clone()).collect::<Vec<_>>(),
     ) {
@@ -2084,6 +2096,14 @@ async fn take_pool_job(
         return;
     }
     let bound = cfg.runner.max_job_panes.max(1) as usize;
+    let dir = crate::daemon::control::config_dir();
+    // A pool core answered `404` for is not read again while core lists the
+    // same runner for it; `status` carries it as UNSERVED (ISS-1326).
+    if let Some(dir) = &dir {
+        if pool_reads::is_held(dir, &runner.project_id, &runner.runner_id) {
+            return;
+        }
+    }
     let fallback = resolve_repo(served, cfg, &runner.project_id)
         .ok()
         .map(|r| r.repo_path);
@@ -2111,8 +2131,9 @@ async fn take_pool_job(
     .await;
     // What this pass learned about the read itself, on disk where `status`, the
     // heartbeat and a restart all find it (ISS-1234).
-    if let Some(dir) = crate::daemon::control::config_dir() {
-        pool_reads::note(&dir, &runner.project_id, &took, agent_activity::now_ms());
+    if let Some(dir) = &dir {
+        pool_reads::note(dir, &runner.project_id, &took, agent_activity::now_ms());
+        pool_reads::settle(dir, &runner.project_id, &runner.runner_id, &took);
     }
     if let pool_jobs::Took::AtBound = took {
         // Per project and per pass, which is eight projects times six passes a
@@ -5294,12 +5315,52 @@ mod tests {
             .find("let took = pool_jobs::take_one(")
             .expect("the claim is here");
         let noted = body
-            .find("pool_reads::note(&dir, &runner.project_id, &took,")
+            .find("pool_reads::note(dir, &runner.project_id, &took,")
             .expect("the outcome of the read is recorded for this project");
         assert!(
             claim < noted,
             "the record reads the answer, so it follows it"
         );
+    }
+
+    /// ISS-1326. A pool core answered `404` for is not read again, so the hold
+    /// is asked before the read, the answer settles it after the record, and the
+    /// list core just returned is what the records and holds are held to.
+    #[test]
+    fn a_held_pool_is_not_read_and_the_sweep_holds_the_record_to_core_list() {
+        let body = THIS_SOURCE
+            .split("async fn take_pool_job(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .unwrap_or_default();
+        let held = body
+            .find("pool_reads::is_held(")
+            .expect("the hold is asked before the pool is read");
+        let claim = body
+            .find("let took = pool_jobs::take_one(")
+            .expect("the claim is here");
+        let noted = body
+            .find("pool_reads::note(dir,")
+            .expect("the outcome is recorded");
+        let settled = body
+            .find("pool_reads::settle(")
+            .expect("the outcome settles the hold");
+        assert!(held < claim && claim < noted && noted < settled);
+        let sweep = THIS_SOURCE
+            .split("\nasync fn sweep(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .unwrap_or_default();
+        let listed = sweep
+            .find("runners::list_me(client)")
+            .expect("the sweep reads core's list");
+        let retained = sweep
+            .find("pool_reads::retain_served(")
+            .expect("the records and holds are held to that list");
+        let first_pool_read = sweep
+            .find("take_pool_job(")
+            .expect("the sweep reads the pools");
+        assert!(listed < retained && retained < first_pool_read);
     }
 
     #[test]

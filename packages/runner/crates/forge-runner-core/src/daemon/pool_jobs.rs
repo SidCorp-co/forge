@@ -2064,6 +2064,115 @@ mod tests {
         assert_eq!(second["recoveredAt"], t0 + 10_000);
     }
 
+    /// ISS-1326, the crossing on the box. Ten sweeps against a core that
+    /// answers the pool route 404 read it three times and then stop, and a core
+    /// that answers 502 is read all ten, because retrying is right for exactly
+    /// one of them. What a pass does is `take_pool_job`'s: ask whether the pool
+    /// is held, read, note, settle.
+    #[tokio::test]
+    async fn a_404_pool_is_read_three_times_and_a_502_pool_every_pass() {
+        use crate::daemon::pool_reads;
+        use crate::transport::fake_core;
+        let project = "68567cd4-0000-4000-8000-000000000002";
+        let runner = "runner-1";
+        let w = world(Vec::new(), None, None);
+
+        let (absent, absent_reads) = fake_core::serve_recording(
+            "404 Not Found",
+            r#"{"code":"NOT_FOUND","message":"Not Found: GET /api/devices/me/pool"}"#,
+        )
+        .await;
+        let (stumbling, stumbling_reads) =
+            fake_core::serve_recording("502 Bad Gateway", "<!DOCTYPE html><html></html>").await;
+
+        let sweep = |dir: std::path::PathBuf, url: String, runner: &'static str, at: i64| {
+            let registry = &w.registry;
+            let panes = &w.panes;
+            let report = &w.report;
+            let records = &w.records;
+            let tokens = &w.tokens;
+            async move {
+                if pool_reads::is_held(&dir, project, runner) {
+                    return None;
+                }
+                let client = CoreClient::new(url, "device-token");
+                let took = take_one(
+                    &JobPorts {
+                        pool: &CorePool {
+                            client: &client,
+                            limit: 20,
+                            deadline: pool::CALL_DEADLINE,
+                        },
+                        panes,
+                        report,
+                        records,
+                    },
+                    registry,
+                    ServedProject {
+                        id: project,
+                        slug: "slug",
+                    },
+                    "master-session",
+                    Some(&box_repo()),
+                    2,
+                    Some(tokens),
+                )
+                .await;
+                pool_reads::note(&dir, project, &took, at);
+                pool_reads::settle(&dir, project, runner, &took);
+                Some(took)
+            }
+        };
+
+        let home = TempHome::new("pool-404-held");
+        let t0 = now_ms();
+        for i in 0..10 {
+            sweep(
+                home.path().to_path_buf(),
+                absent.clone(),
+                runner,
+                t0 + i * 10_000,
+            )
+            .await;
+        }
+        assert_eq!(
+            absent_reads.lock().unwrap().len(),
+            3,
+            "a standing 404 is read three times and then not again"
+        );
+        let c = &pool_reads::report(home.path(), t0 + 100_000).unwrap()[0];
+        assert_eq!(c.verdict, pool_reads::Verdict::Unserved, "{c:?}");
+        assert_eq!(c.last_failure.status, Some(404));
+
+        // The server's list changing is what reads it again.
+        pool_reads::retain_served(home.path(), &[(project, "runner-2")]);
+        let took = sweep(home.path().to_path_buf(), absent, "runner-2", t0 + 110_000).await;
+        assert!(
+            matches!(took, Some(Took::Unread(ref f)) if f.status == Some(404)),
+            "{took:?}"
+        );
+        assert_eq!(absent_reads.lock().unwrap().len(), 4);
+
+        let other = TempHome::new("pool-502-read");
+        for i in 0..10 {
+            let took = sweep(
+                other.path().to_path_buf(),
+                stumbling.clone(),
+                runner,
+                t0 + i * 10_000,
+            )
+            .await;
+            assert!(took.is_some(), "a 502 pool is never held");
+        }
+        assert_eq!(
+            stumbling_reads.lock().unwrap().len(),
+            10,
+            "a 502 is retried on every pass"
+        );
+        let c = &pool_reads::report(other.path(), t0 + 100_000).unwrap()[0];
+        assert_eq!(c.verdict, pool_reads::Verdict::Blind, "{c:?}");
+    }
+
     /// ISS-1234 criterion 4, the timeout the judge found unrecorded at
     /// ca89a76df. A box already blind on a 525 meets a pool route that accepts
     /// the connection and never answers. The read fails at its deadline instead
