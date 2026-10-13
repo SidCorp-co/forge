@@ -14,7 +14,11 @@ export const commentAttachmentSchema = z.object({
 export const uploadCommentAttachment = describeOperation({
   summary: 'Attach a file to a comment',
   description: 'Send the file in the `file` field of a multipart form.',
-  body: { contentType: 'multipart/form-data', description: 'a `file` field holding the file' },
+  body: {
+    contentType: 'multipart/form-data',
+    description: 'a `file` field holding the file',
+    filePart: 'file',
+  },
   responses: {
     201: json(commentAttachmentSchema),
     400: fail({

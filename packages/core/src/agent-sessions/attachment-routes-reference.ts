@@ -20,7 +20,7 @@ export const uploadAttachment = describeOperation({
   summary: 'Attach a file to a chat session, to ride on a later turn',
   description:
     'Send the file in the multipart field `file`. A device cannot upload; it downloads the files of a turn dispatched to it.',
-  body: { contentType: 'multipart/form-data', description: 'one field, `file`' },
+  body: { contentType: 'multipart/form-data', description: 'one field, `file`', filePart: 'file' },
   responses: {
     201: json(attachmentSchema, 'The stored attachment'),
     400: fail({

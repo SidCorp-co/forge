@@ -75,7 +75,7 @@ export const readGuide = describeOperation({
   description:
     'No sign-in. With a `.md` suffix on the slug the body is the markdown itself, as `text/markdown`; without it the answer is the JSON below.',
   responses: {
-    200: json(guideEnvelopeSchema, 'The guide'),
+    200: json(guideEnvelopeSchema, 'The guide', 'text/markdown'),
     404: fail('NOT_FOUND', 'no guide has this slug; the message lists the valid ones'),
   },
 });

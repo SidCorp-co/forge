@@ -157,6 +157,52 @@ describe('buildReference over a planted app', () => {
     expect(responses['400']?.description).toContain('no hook');
   });
 
+  it('keeps both refusals of a route whose parameter validator has a hook and whose body validator has none', async () => {
+    const app = new Hono();
+    app.post(
+      '/api/mixed/:id',
+      zValidator('param', z.object({ id: z.uuid() }), refuseWith('BAD_MIXED_ID')),
+      zValidator('json', z.object({ name: z.string() })),
+      describeOperation({ summary: 'Mixed', responses: { 200: json(z.object({})) } }),
+      (c) => c.json({}),
+    );
+    const { document } = await buildReference(app, { version: 't' });
+    const refusal = responsesAt(document, '/api/mixed/{id}', 'post')['400'] as unknown as {
+      content: { 'application/json': { schema: { anyOf: unknown[] } } };
+    };
+    const alternatives = JSON.stringify(refusal.content['application/json'].schema.anyOf);
+    expect(refusal.content['application/json'].schema.anyOf).toHaveLength(2);
+    expect(alternatives).toContain('BAD_MIXED_ID');
+    expect(alternatives).toContain('success');
+  });
+
+  it('states a multipart body as an object whose named file part is required, and a second body type beside the JSON one', async () => {
+    const app = new Hono();
+    app.post(
+      '/api/up',
+      describeOperation({
+        summary: 'Upload',
+        body: { contentType: 'multipart/form-data', description: 'a file', filePart: 'file' },
+        responses: { 200: json(z.object({}), 'Stored', 'text/markdown') },
+      }),
+      (c) => c.json({}),
+    );
+    const { document } = await buildReference(app, { version: 't' });
+    const operation = document.paths['/api/up']?.post as {
+      requestBody: { content: Record<string, { schema: unknown }> };
+      responses: Record<string, { content: Record<string, unknown> }>;
+    };
+    expect(operation.requestBody.content['multipart/form-data']?.schema).toEqual({
+      type: 'object',
+      required: ['file'],
+      properties: { file: { type: 'string', format: 'binary' } },
+    });
+    expect(Object.keys(operation.responses['200']?.content ?? {}).sort()).toEqual([
+      'application/json',
+      'text/markdown',
+    ]);
+  });
+
   it('merges a gate refusal with the descriptor and the unexpected-failure answer', async () => {
     const { document } = await buildReference(planted(), { version: 't' });
     const responses = responsesAt(document, '/api/issues/{id}', 'get');

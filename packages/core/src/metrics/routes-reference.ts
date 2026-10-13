@@ -85,7 +85,10 @@ export const interventionsSchema = z.object({
   ),
   events: z.array(
     z.object({
-      source: z.string(),
+      source: z.union([
+        z.enum(['wedge', 'user_run_flip', 'direct_sql']),
+        z.templateLiteral(['manual_', z.string()]),
+      ]),
       projectId: z.string(),
       issueId: z.string().nullable(),
       occurredAt: z.string(),

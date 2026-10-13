@@ -2,6 +2,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { jobStatuses } from '../db/schema.js';
+import { blockedEndSchema } from './blocked-routes-reference.js';
 import { salvageSchema } from './prior-attempts.js';
 
 export const jobIdParamSchema = z.object({ id: z.uuid() });
@@ -74,15 +75,6 @@ export const completedSchema = z.object({
   exitCode: z.number().nullable(),
   retry: retryOutcomeSchema.nullable(),
   reconciled: z.literal(true).optional(),
-});
-
-const blockedEndSchema = z.object({
-  jobId: z.string(),
-  status: z.literal('failed'),
-  heldJobId: z.string().nullable(),
-  questionIds: z.array(z.string()),
-  issueId: z.string().nullable(),
-  replayed: z.boolean(),
 });
 
 export const failedSchema = z.union([

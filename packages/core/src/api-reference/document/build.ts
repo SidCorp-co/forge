@@ -264,6 +264,11 @@ const LIBRARY_DEFAULT_REFUSAL: JsonSchema = {
   },
 };
 
+function jsonSchemaOf(response: JsonSchema): JsonSchema {
+  const content = response.content as Record<string, { schema: JsonSchema }>;
+  return content['application/json']?.schema ?? {};
+}
+
 async function responsesOf(entry: RouteEntry, access: Access | null, doc: Document) {
   const responses: Record<string, JsonSchema> = {};
   const errors: ErrorCodes = new Map();
@@ -279,7 +284,10 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
       const schema = doc.render(entry.key, `the ${status} response`, a.schema, 'output');
       responses[String(status)] = {
         description: a.description,
-        content: { 'application/json': { schema } },
+        content: {
+          'application/json': { schema },
+          ...(a.alsoAs === undefined ? {} : { [a.alsoAs]: { schema: { type: 'string' } } }),
+        },
       };
     } else if (a.kind === 'raw') {
       responses[String(status)] = {
@@ -329,14 +337,17 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
     responses[String(status)] = errorResponse(codes);
   }
   if (libraryDefault) {
-    responses['400'] = {
-      ...LIBRARY_DEFAULT_REFUSAL,
-      ...(responses['400']
-        ? {
-            description: `${String(responses['400'].description)}\n${String(LIBRARY_DEFAULT_REFUSAL.description)}`,
-          }
-        : {}),
-    };
+    const hooked = responses['400'];
+    responses['400'] = hooked
+      ? {
+          description: `${String(hooked.description)}\n${String(LIBRARY_DEFAULT_REFUSAL.description)}`,
+          content: {
+            'application/json': {
+              schema: { anyOf: [jsonSchemaOf(hooked), jsonSchemaOf(LIBRARY_DEFAULT_REFUSAL)] },
+            },
+          },
+        }
+      : LIBRARY_DEFAULT_REFUSAL;
   }
   if (!succeeded && !declared?.retired) {
     doc.findings.push({
@@ -423,7 +434,18 @@ export async function buildReference(
           required: true,
           description: declared.body.description,
           content: {
-            [declared.body.contentType]: { schema: { type: 'string', format: 'binary' } },
+            [declared.body.contentType]: {
+              schema:
+                declared.body.filePart === undefined
+                  ? { type: 'string', format: 'binary' }
+                  : {
+                      type: 'object',
+                      required: [declared.body.filePart],
+                      properties: {
+                        [declared.body.filePart]: { type: 'string', format: 'binary' },
+                      },
+                    },
+            },
           },
         };
       }

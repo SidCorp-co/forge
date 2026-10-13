@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
+import { interventionsSchema } from '../metrics/routes-reference.js';
 
 const SCOPE =
   'Reads the projects the caller can see; `projectId` narrows to one, and a project the caller cannot see reads as no data.';
@@ -36,34 +37,6 @@ export const retryRescuesSchema = z.object({
       failureReason: z.string(),
       rescues: z.number(),
       lastRescuedAt: z.string(),
-    }),
-  ),
-});
-
-export const interventionsSchema = z.object({
-  total: z.number(),
-  byIssue: z.array(
-    z.object({
-      issueId: z.string().nullable(),
-      projectId: z.string(),
-      wedges: z.number(),
-      manualJobActions: z.number(),
-      userRunFlips: z.number(),
-      directSql: z.number(),
-      total: z.number(),
-      lastAt: z.string(),
-    }),
-  ),
-  events: z.array(
-    z.object({
-      source: z.union([
-        z.enum(['wedge', 'user_run_flip', 'direct_sql']),
-        z.templateLiteral(['manual_', z.string()]),
-      ]),
-      projectId: z.string(),
-      issueId: z.string().nullable(),
-      occurredAt: z.string(),
-      detail: z.string().nullable(),
     }),
   ),
 });

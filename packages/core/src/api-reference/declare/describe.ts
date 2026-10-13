@@ -6,6 +6,8 @@ export type JsonAnswer = {
   readonly kind: 'json';
   readonly schema: ZodType;
   readonly description: string;
+  /** A second body this status can carry, chosen by the request, that is not JSON. */
+  readonly alsoAs?: string;
 };
 
 /** No body at all: a 204, or a 200 that says only that it happened. */
@@ -28,8 +30,10 @@ export type FailAnswer = {
 export type Answer = JsonAnswer | EmptyAnswer | RedirectAnswer | RawAnswer | FailAnswer;
 
 /** A JSON answer: the schema describes the body the handler sends, as it crosses the wire. */
-export function json(schema: ZodType, description = 'OK'): JsonAnswer {
-  return { kind: 'json', schema, description };
+export function json(schema: ZodType, description = 'OK', alsoAs?: string): JsonAnswer {
+  return alsoAs === undefined
+    ? { kind: 'json', schema, description }
+    : { kind: 'json', schema, description, alsoAs };
 }
 
 export function empty(description = 'Done, with no body'): EmptyAnswer {
@@ -69,7 +73,12 @@ export type OperationDeclaration = {
   /** Why the route answers only a refusal; the reference marks it deprecated. */
   readonly retired?: string;
   /** A request body that is not JSON, which no validator can describe. */
-  readonly body?: { readonly contentType: string; readonly description: string };
+  readonly body?: {
+    readonly contentType: string;
+    readonly description: string;
+    /** A multipart body's one file part: its name is part of the contract. */
+    readonly filePart?: string;
+  };
 };
 
 /** What a route's descriptor declared, keyed by the middleware it returned; any other handler is absent. */

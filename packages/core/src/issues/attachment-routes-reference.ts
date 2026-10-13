@@ -26,7 +26,11 @@ const UPLOAD_REFUSALS = {
 export const uploadIssueAttachment = describeOperation({
   summary: 'Attach a file to an issue',
   description: 'Send the file in the `file` field of a multipart form.',
-  body: { contentType: 'multipart/form-data', description: 'a `file` field holding the file' },
+  body: {
+    contentType: 'multipart/form-data',
+    description: 'a `file` field holding the file',
+    filePart: 'file',
+  },
   responses: {
     201: json(issueAttachmentSchema),
     400: fail(UPLOAD_REFUSALS),

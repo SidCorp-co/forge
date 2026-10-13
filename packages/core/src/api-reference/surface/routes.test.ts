@@ -1,6 +1,9 @@
-import type { Hono } from 'hono';
+import { Hono } from 'hono';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { PAT_UNGRANTABLE, patUngrantableFor } from '../../auth/pat-permissions.js';
+import { describeOperation, json } from '../declare/describe.js';
+import { referenceOf } from './routes.js';
 
 /** The three pages, read through the composed app with no credential on the request. */
 let app: Hono;
@@ -35,7 +38,7 @@ describe('GET /api/openapi.json', () => {
     });
   });
 
-  it('serves the same document twice, built once', async () => {
+  it('serves the same text to two requests at once', async () => {
     const [a, b] = await Promise.all([
       app.request('/api/openapi.json'),
       app.request('/api/openapi.json'),
@@ -83,5 +86,26 @@ describe('the reference paths are kept out of the token grant by name', () => {
     expect(patUngrantableFor(path, 'GET')).toMatchObject({ admits: 'public' });
     expect(PAT_UNGRANTABLE['/api/openapi.json']?.reason).toBeTruthy();
     expect(PAT_UNGRANTABLE['/api/reference']?.reason).toBeTruthy();
+  });
+});
+
+describe('referenceOf', () => {
+  it('reads the route table once for however many requests ask, at once or later', async () => {
+    let reads = 0;
+    const source = new Hono();
+    source.get(
+      '/ping',
+      describeOperation({ summary: 'Ping', responses: { 200: json(z.object({})) } }),
+      (c) => c.json({}),
+    );
+    const reference = referenceOf(() => {
+      reads += 1;
+      return source;
+    });
+    const [a, b] = await Promise.all([reference(), reference()]);
+    const c = await reference();
+    expect(a).toBe(b);
+    expect(c).toBe(a);
+    expect(reads).toBe(1);
   });
 });

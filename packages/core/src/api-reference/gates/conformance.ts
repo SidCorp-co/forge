@@ -70,6 +70,10 @@ export function judgeAnswer(
         what: `error code ${String(code)} is not one the route declares for ${status} (${[...known].join(', ')})`,
       };
     }
+    const message = (body as { message?: unknown }).message;
+    if (typeof message !== 'string') {
+      return { status, what: `the error envelope's message is ${typeof message}, not a string` };
+    }
     return null;
   }
   if (!declared) return { status, what: `status ${status} is not declared by the route` };

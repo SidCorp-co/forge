@@ -167,6 +167,15 @@ describe('judgeAnswer', () => {
     expect(judgeAnswer(declaration, known, 400, { code: 'OTHER' }, true)?.what).toContain('OTHER');
   });
 
+  it('fails a declared error code inside an envelope whose message is not a string', () => {
+    const known = new Map([[404, new Set(['NOT_FOUND'])]]);
+    expect(judgeAnswer(declaration, known, 404, { code: 'NOT_FOUND', message: 'gone' })).toBeNull();
+    expect(judgeAnswer(declaration, known, 404, { code: 'NOT_FOUND', message: 7 })?.what).toContain(
+      'message',
+    );
+    expect(judgeAnswer(declaration, known, 404, { code: 'NOT_FOUND' })?.what).toContain('message');
+  });
+
   it('judges an error status the route declared as a json body against that body', () => {
     const declared = {
       summary: 's',
