@@ -154,7 +154,7 @@ export interface ProjectRunner {
 
 /** Times are epoch milliseconds, on the box's own clock. */
 export interface RunnerPoolRead {
-	verdict: "blind" | "intermittent";
+	verdict: "blind" | "unserved" | "intermittent";
 	failures: number;
 	countIsFloor: boolean;
 	windowMs: number;

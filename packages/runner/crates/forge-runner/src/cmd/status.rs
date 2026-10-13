@@ -366,6 +366,11 @@ pub fn pool_lines(
                 c.consecutive,
                 span(c.window_ms)
             ),
+            pool_reads::Verdict::Unserved => format!(
+                "  {who}  UNSERVED — core answers 404 for this pool ({} consecutive reads since {} ago), so the box stopped asking; it asks again when core's list of this box's projects changes or the daemon restarts; {newest}",
+                c.consecutive,
+                span((now - c.unread_since.unwrap_or(c.last_failure.at)).max(0)),
+            ),
             pool_reads::Verdict::Intermittent => format!(
                 "  {who}  intermittent — {count} failed read(s) in the last {}; {newest}; reading again for {}",
                 span(c.window_ms),
@@ -993,7 +998,7 @@ mod tests {
         status: Option<u16>,
         what: &str,
     ) -> pool_reads::Condition {
-        let blind = verdict == pool_reads::Verdict::Blind;
+        let blind = verdict != pool_reads::Verdict::Intermittent;
         pool_reads::Condition {
             project_id: "p-1".into(),
             verdict,
@@ -1031,6 +1036,30 @@ mod tests {
             out.contains("newest 10s ago: 520 (gateway: the origin returned an unknown error)"),
             "{out}"
         );
+    }
+
+    /// ISS-1326. A pool the server answers 404 for is not a blind one: the row
+    /// says what the answer was, that the box stopped asking, and what ends it.
+    #[test]
+    fn an_unserved_project_is_named_as_such_and_not_as_blind() {
+        let c = cond(
+            pool_reads::Verdict::Unserved,
+            3,
+            false,
+            Some(404),
+            "404 Not Found",
+        );
+        let out = pool_lines(&Ok(vec![c]), &cfg_binding("sid-desk", "p-1"), NOW).join("\n");
+        assert!(out.contains("sid-desk  UNSERVED"), "{out}");
+        assert!(!out.contains("BLIND"), "{out}");
+        assert!(out.contains("core answers 404 for this pool"), "{out}");
+        assert!(out.contains("30 consecutive reads since 5m ago"), "{out}");
+        assert!(out.contains("the box stopped asking"), "{out}");
+        assert!(
+            out.contains("core's list of this box's projects changes"),
+            "{out}"
+        );
+        assert!(out.contains("newest 10s ago: 404 Not Found"), "{out}");
     }
 
     /// Criterion 10, the floor and the missing status.
