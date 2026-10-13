@@ -223,6 +223,22 @@ describe("a working project", () => {
     expect(within(list).getAllByRole("button", { name: "Provide info" })).toHaveLength(2);
   });
 
+  it("is degraded by a failed job the response counts though its capped list shows none", () => {
+    attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, awaitingOutsideBlockers: 0, failedJobs: 1 } });
+    const { container } = mount();
+    expect(shape(container)).toBe("degraded");
+    expect(screen.getByTestId("degraded-band")).toHaveTextContent("Work is failing — 1 failed job");
+    expect(screen.queryByText(/Nothing needs anyone/)).toBeNull();
+  });
+
+  it("is working, not quiet, with issues Awaiting release and no run at the gate", () => {
+    work = { ...QUIET_WORK, awaiting_release: 5 };
+    const { container } = mount();
+    expect(shape(container)).toBe("working");
+    expect(headline()).toHaveTextContent("5 issues await release.");
+    expect(screen.queryByText(/Nothing needs anyone/)).toBeNull();
+  });
+
   it("is working, not quiet, with only a run at the release gate", () => {
     runs = [run({ currentStep: "tested", liveJobs: 0 })];
     const { container } = mount();

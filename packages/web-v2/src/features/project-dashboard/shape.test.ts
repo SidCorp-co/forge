@@ -43,7 +43,9 @@ const input = (over: Partial<ShapeInput> = {}): ShapeInput => ({
   slug: "p",
   liveRuns: 0,
   stuckRuns: [],
+  failedJobs: 0,
   releaseRuns: 0,
+  releaseIssues: 0,
   now: NOW,
   ...over,
 });
@@ -76,6 +78,17 @@ describe("the shape of a project", () => {
     expect(r.headline).toBe("2 runs wait on a release decision.");
   });
 
+  it("is working, never quiet, with issues Awaiting release and no run at the gate", () => {
+    const r = projectShape(input({ releaseIssues: 5 }));
+    expect(r.shape).toBe("working");
+    expect(r.headline).toBe("5 issues await release.");
+    expect(projectShape(input({ releaseIssues: 1 })).headline).toBe("1 issue awaits release.");
+  });
+
+  it("names the run at the gate rather than the issue behind it where both are counted", () => {
+    expect(projectShape(input({ releaseRuns: 1, releaseIssues: 1 })).headline).toBe("1 run waits on a release decision.");
+  });
+
   it("says at least where the attention list is cut, and is not quiet where it lists none of what it counts", () => {
     const r = projectShape(input({ items: [], cut: { shown: 0, atLeast: 3, peopleCut: true } }));
     expect(r.shape).toBe("working");
@@ -90,6 +103,17 @@ describe("a degraded project", () => {
     expect(r.shape).toBe("degraded");
     expect(r.band?.text).toBe("Work is failing — 1 failed job");
     expect(r.band?.entry).toEqual({ label: "Action needed — oldest item failed 3h", href: "/projects/p/issues/f1" });
+  });
+
+  it("is degraded by a failed job the response counts but the capped list does not show, offering the pipeline", () => {
+    const r = projectShape(input({ failedJobs: 2 }));
+    expect(r.shape).toBe("degraded");
+    expect(r.band?.text).toBe("Work is failing — 2 failed jobs");
+    expect(r.band?.entry).toEqual({ label: "Action needed — open the pipeline", href: "/projects/p/pipeline" });
+  });
+
+  it("takes no failed job from an attention read that did not arrive", () => {
+    expect(projectShape(input({ attention: { read: "pending" }, failedJobs: 2 })).shape).toBe("unread");
   });
 
   it("turns degraded at fourteen days of a measured wait, and not a second before", () => {

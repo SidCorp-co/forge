@@ -204,7 +204,9 @@ export default function ProjectOverviewPage() {
     slug: project.slug,
     liveRuns: runsActive.length,
     stuckRuns: stuckRuns(runsIdle, now),
+    failedJobs: attentionState.read === "ok" ? (attentionQ.view?.projectTotals[project.slug]?.failedJobs ?? 0) : 0,
     releaseRuns: runsAwaitingRelease.length,
+    releaseIssues: awaitingReleaseIssues,
     now,
   });
 

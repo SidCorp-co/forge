@@ -69,8 +69,12 @@ export interface ShapeInput {
   slug: string;
   liveRuns: number;
   stuckRuns: readonly PipelineRunListItem[];
+  /** Failed jobs the attention response counts for this project, listed or not: the list is capped. */
+  failedJobs: number;
   /** Runs parked at the release gate. */
   releaseRuns: number;
+  /** Issues in the Awaiting release state, which have no release run at the gate to show for them. */
+  releaseIssues: number;
   now: number;
 }
 
@@ -135,9 +139,8 @@ function qualifiers(input: ShapeInput): Qualifier[] {
   return out;
 }
 
-function degradedBand(input: ShapeInput, quals: readonly Qualifier[], stuck: readonly PipelineRunListItem[]) {
-  const failed = quals.filter((q) => q.kind === "failed").length;
-  const overdue = quals.length - failed;
+function degradedBand(input: ShapeInput, quals: readonly Qualifier[], stuck: readonly PipelineRunListItem[], failed: number) {
+  const overdue = quals.filter((q) => q.kind === "overdue").length;
   const parts: string[] = [];
   if (failed > 0) parts.push(plural(failed, "failed job", "failed jobs"));
   if (stuck.length > 0) parts.push(`${plural(stuck.length, "run", "runs")} stuck with no job running`);
@@ -161,7 +164,7 @@ function degradedBand(input: ShapeInput, quals: readonly Qualifier[], stuck: rea
     entry = { label: `Action needed — ${oldest} ${how} ${formatElapsed(aged.seconds)}`, href: aged.item.link };
   } else if (quals[0]) {
     entry = { label: "Action needed — open the first failed job", href: quals[0].item.link };
-  } else if (stuck.length > 0) {
+  } else if (stuck.length > 0 || failed > 0) {
     entry = { label: "Action needed — open the pipeline", href: `/projects/${input.slug}/pipeline` };
   }
   return { text: `${lead} — ${parts.join(" · ")}`, entry };
@@ -172,11 +175,17 @@ export function projectShape(input: ShapeInput): ProjectReading {
   const quals = qualifiers(input);
   const stuck = input.runs.read === "ok" ? [...input.stuckRuns] : [];
   const unread = unreadLines(input);
+  // The attention list is capped and the response counts failed jobs whole beside it, so a failure
+  // is known from the count even where none of it is listed.
+  const failed =
+    input.attention.read === "ok"
+      ? Math.max(input.failedJobs, quals.filter((q) => q.kind === "failed").length)
+      : 0;
 
   // Degraded stands on the reads that did arrive: a failed job is a failed job whether or not the
   // parked ages did.
-  if (quals.length > 0 || stuck.length > 0) {
-    const band = degradedBand(input, quals, stuck);
+  if (quals.length > 0 || stuck.length > 0 || failed > 0) {
+    const band = degradedBand(input, quals, stuck, failed);
     return { shape: "degraded", headline: band.text, detail: null, band, unread };
   }
 
@@ -202,6 +211,8 @@ export function projectShape(input: ShapeInput): ProjectReading {
   }
   if (input.releaseRuns > 0) {
     parts.push(`${plural(input.releaseRuns, "run waits", "runs wait")} on a release decision`);
+  } else if (input.releaseIssues > 0) {
+    parts.push(`${plural(input.releaseIssues, "issue awaits", "issues await")} release`);
   }
   if (parts.length > 0) {
     return { shape: "working", headline: sentence(parts), detail: null, band: null, unread: [] };
