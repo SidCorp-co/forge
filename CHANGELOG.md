@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.232] - 2026-10-13
+
+Web leaves Next.js for a Vite SPA served by core, plus five web fixes
+
+### Fixed
+
+- **Detail pages keep their title readable at every width.** Activity no longer runs under the side rail, "Nothing to ask" says why again, viewing a page never rewrites your organization, and /agents/runs opens the Runs list.
+
 ## [0.4.0-dev.231] - 2026-10-10
 
 New requirements need only a title; Ask Agent opens large with a Half/Large switch
