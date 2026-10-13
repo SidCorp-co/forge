@@ -3,12 +3,16 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { type ReleaseCrossing, releaseCrossings } from '../db/release-axes.js';
 import { projects } from '../db/schema.js';
+import { RELEASE_TAG_PATTERN_SHAPE, releaseTagPatternSchema } from './release-tag.js';
 
 /** One branch on a release path, and how the release crosses INTO it. The first entry crosses from
- *  nothing and carries no `from`; every entry after it declares one, and the last entry is live. */
+ *  nothing and carries no `from`; every entry after it declares one, and the last entry is live.
+ *  The last entry alone may carry `tag`: a glob naming the tags that ship the project, so that
+ *  work counts as released only once a matching tag contains it (ADR 0004). */
 export interface ReleaseChainEntry {
   branch: string;
   from?: ReleaseCrossing | undefined;
+  tag?: string | undefined;
 }
 
 /** Ordered: first is where work merges, last is live. Empty means the project ships nothing. */
@@ -23,6 +27,7 @@ export const RELEASE_CHAIN_FIRST_CROSSES_NOTHING = 'RELEASE_CHAIN_FIRST_CROSSES_
 export const RELEASE_CHAIN_EDGE_UNDECLARED = 'RELEASE_CHAIN_EDGE_UNDECLARED';
 export const RELEASE_CHAIN_BRANCH_REPEATED = 'RELEASE_CHAIN_BRANCH_REPEATED';
 export const RELEASE_CHAIN_BASE_MISMATCH = 'RELEASE_CHAIN_BASE_MISMATCH';
+export const RELEASE_CHAIN_TAG_NOT_LAST = 'RELEASE_CHAIN_TAG_NOT_LAST';
 
 /** The longest chain this accepts. Nothing needs more, and an unbounded list is a jsonb nobody reads. */
 export const RELEASE_CHAIN_MAX = 8;
@@ -35,7 +40,11 @@ const branchSchema = z
   .regex(/^[a-zA-Z0-9._/-]+$/, 'a branch name, e.g. `main` or `release/stg`');
 
 const entrySchema = z
-  .object({ branch: branchSchema, from: z.enum(releaseCrossings).optional() })
+  .object({
+    branch: branchSchema,
+    from: z.enum(releaseCrossings).optional(),
+    tag: releaseTagPatternSchema.optional(),
+  })
   .strict();
 
 function edgeIssues(chain: ReleaseChain, ctx: z.RefinementCtx): void {
@@ -54,6 +63,17 @@ function edgeIssues(chain: ReleaseChain, ctx: z.RefinementCtx): void {
         message: `${RELEASE_CHAIN_EDGE_UNDECLARED}: entry ${i} names \`${entry.branch}\` and does not say how the release crosses into it from \`${chain[i - 1]?.branch}\`. Declare \`from\`: ${releaseCrossings.join(' or ')}. It is not defaulted — a project releasing by a crossing nobody chose is the defect this field replaced.`,
       });
     }
+  });
+}
+
+function tagIssues(chain: ReleaseChain, ctx: z.RefinementCtx): void {
+  chain.forEach((entry, i) => {
+    if (entry.tag === undefined || i === chain.length - 1) return;
+    ctx.addIssue({
+      code: 'custom',
+      path: [i, 'tag'],
+      message: `${RELEASE_CHAIN_TAG_NOT_LAST}: entry ${i} names \`${entry.branch}\` and declares \`tag: ${JSON.stringify(entry.tag)}\`, but only the LAST entry of a release chain, the one that is live, may name the tag that ships it. Move \`tag\` to entry ${chain.length - 1} (\`${chain[chain.length - 1]?.branch}\`), or drop it. Valid: ${RELEASE_TAG_PATTERN_SHAPE}.`,
+    });
   });
 }
 
@@ -78,6 +98,7 @@ export const releaseChainSchema = z
   .max(RELEASE_CHAIN_MAX)
   .superRefine((chain, ctx) => {
     edgeIssues(chain, ctx);
+    tagIssues(chain, ctx);
     repeatIssues(chain, ctx);
   });
 
@@ -89,6 +110,11 @@ export const releaseChainPatchFields = {
 /** True where the project declares no release at all. */
 export function chainShipsNothing(chain: ReleaseChain): boolean {
   return chain.length === 0;
+}
+
+/** The last entry's `tag`, or `null` where the project does not release by tag. */
+export function chainReleaseTag(chain: ReleaseChain): string | null {
+  return chain[chain.length - 1]?.tag ?? null;
 }
 
 /** True where a release crosses at least one edge before it deploys. */

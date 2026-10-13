@@ -211,6 +211,11 @@ create, through `packages/core/src/release-batch/close-shortfall.ts`), the work-
 mark writer. The release batch's finish closes through the same transition, so it reads the same
 answer.
 
+A project whose release chain names a `tag` owes a close one more thing, asked after the mark is
+accepted: a tag matching that pattern contains the commit the work landed as
+(`packages/core/src/issues/release-tag-close.ts:holdReleaseTagClose`, ADR 0004). It reads the
+landing commit this page calls `observed` or, where only a claim stands, the claimed commit.
+
 An issue's lane (`laneOf`) is its own declaration where it holds one, else its project's kind. The
 declaration is `issues.declared_landing_shape` (ISS-1384, migration `0320`): `git` or
 `outside_git`, the column's CHECK refusing anything else, and NULL — every issue until somebody

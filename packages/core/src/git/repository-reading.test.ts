@@ -59,6 +59,11 @@ beforeAll(() => {
   sha.tagged = commitFile(work, 'docs/t.md', 't', 'docs: only on a tag (ISS-425)');
   git(work, 'tag', 'only-a-tag');
   git(work, 'checkout', '--quiet', 'main');
+  // The release tags: one lightweight, one annotated (a tag object a commit lookup must see through),
+  // and one the `v*` pattern does not name, on a commit that holds every other fixture commit.
+  git(work, 'tag', 'v1.0.0', sha.shipped);
+  git(work, 'tag', '-a', '-m', 'the second release', 'v1.1.0', sha.judged);
+  git(work, 'tag', 'nightly-1', sha.after);
   // An orphan history sharing nothing with the others.
   git(work, 'checkout', '--quiet', '--orphan', 'orphan');
   sha.orphan = commitFile(work, 'x.txt', 'x', 'chore: unrelated root');
@@ -322,6 +327,74 @@ describe('range', () => {
     expect(await reader().range('staging', sha.merge as string)).toEqual({
       why: `${remote} has no branch staging`,
     });
+  });
+});
+
+describe('tagsContaining (ISS-1391)', () => {
+  it('names the matching tags that hold a commit, newest first, a lightweight tag and an annotated one alike', async () => {
+    const read = await reader().tagsContaining(sha.shipped as string, 'v*');
+    expect(read).toEqual({
+      commit: sha.shipped,
+      matching: ['v1.1.0', 'v1.0.0'],
+      containing: ['v1.1.0', 'v1.0.0'],
+    });
+  });
+
+  it('sees through an annotated tag to the commit it names', async () => {
+    const read = await reader().tagsContaining(sha.judged as string, 'v*');
+    expect(read).toEqual({
+      commit: sha.judged,
+      matching: ['v1.1.0', 'v1.0.0'],
+      containing: ['v1.1.0'],
+    });
+  });
+
+  it('names none for a commit newer than every matching tag, though the tags are listed', async () => {
+    const read = await reader().tagsContaining(sha.after as string, 'v*');
+    expect(read).toEqual({ commit: sha.after, matching: ['v1.1.0', 'v1.0.0'], containing: [] });
+  });
+
+  it('counts only the tags the pattern names: a tag that holds the commit but is not named does not', async () => {
+    const named = await reader().tagsContaining(sha.after as string, 'nightly-*');
+    expect(named).toEqual({
+      commit: sha.after,
+      matching: ['nightly-1'],
+      containing: ['nightly-1'],
+    });
+    const other = await reader().tagsContaining(sha.after as string, 'v*');
+    expect(other).toMatchObject({ containing: [] });
+  });
+
+  it('reads a commit only a tag reaches, which no branch fetch brings', async () => {
+    const read = await reader().tagsContaining(sha.tagged as string, 'only-*');
+    expect(read).toEqual({
+      commit: sha.tagged,
+      matching: ['only-a-tag'],
+      containing: ['only-a-tag'],
+    });
+  });
+
+  it('resolves an abbreviated commit to its whole sha before it looks', async () => {
+    const read = await reader().tagsContaining((sha.judged as string).slice(0, 9), 'v*');
+    expect(read).toMatchObject({ commit: sha.judged, containing: ['v1.1.0'] });
+  });
+
+  it('answers no matching tag at all where the pattern names none, which is not a failure to read', async () => {
+    const read = await reader().tagsContaining(sha.shipped as string, 'zzz*');
+    expect(read).toEqual({ commit: sha.shipped, matching: [], containing: [] });
+  });
+
+  it('says why where the commit is not in the repository, rather than answering no tag holds it', async () => {
+    const read = await reader().tagsContaining('f'.repeat(40), 'v*');
+    expect(read).toEqual({ why: `${remote} holds no commit ${'f'.repeat(40)}` });
+  });
+
+  it('says why where the host cannot be read, rather than answering no tag holds it', async () => {
+    const read = await reader(`file://${join(root, 'no-such-remote.git')}`).tagsContaining(
+      sha.shipped as string,
+      'v*',
+    );
+    expect('why' in read).toBe(true);
   });
 });
 
