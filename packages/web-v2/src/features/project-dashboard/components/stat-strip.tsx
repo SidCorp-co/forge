@@ -1,6 +1,5 @@
-// The figures row: four figures, flush, divided by hairlines, each with the comparison that says
-// whether it is good or bad. Shown where there is something to count; a quiet project has no row.
-// Pass rate, which has no data yet, is not a figure here (ISS-380 owns it; see `ComingSoonNote`).
+// The figures row: four figures, flush, divided by hairlines, each with what it is measured against.
+// Pass rate has no data yet and is not a figure here (ISS-380, `ComingSoonNote`).
 
 import { OPEN_WORK_LABEL } from "@forge/contracts/work-state";
 

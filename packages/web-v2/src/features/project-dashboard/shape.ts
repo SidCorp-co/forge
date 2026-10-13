@@ -1,10 +1,6 @@
-// What the project is doing, said once: quiet, working, degraded, or not yet readable.
-//
-// The dashboard draws a different page for each, so this is the one place that decides, from the
-// reads the page holds, and the one place that refuses to decide when a read has not arrived. A
-// shape is never inferred from a read that is pending, failed or refused: "nothing needs anyone"
-// is a claim about the whole of the reads, and a project whose attention list could not be read is
-// not quiet, it is unread.
+// What the project is doing, said once: quiet, working, degraded, or not yet readable. "Nothing
+// needs anyone" is a claim about every read, so a read that is pending, failed or refused makes the
+// project unread, never quiet.
 
 import { formatElapsed } from "@/features/overview/derive";
 import type { IssueRow } from "@/features/issues/types";
@@ -175,8 +171,7 @@ export function projectShape(input: ShapeInput): ProjectReading {
   const quals = qualifiers(input);
   const stuck = input.runs.read === "ok" ? [...input.stuckRuns] : [];
   const unread = unreadLines(input);
-  // The attention list is capped and the response counts failed jobs whole beside it, so a failure
-  // is known from the count even where none of it is listed.
+  // The list is capped and the count is whole, so a failure is known from the count alone.
   const failed =
     input.attention.read === "ok"
       ? Math.max(input.failedJobs, quals.filter((q) => q.kind === "failed").length)
