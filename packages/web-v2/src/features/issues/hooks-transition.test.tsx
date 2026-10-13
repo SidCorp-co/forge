@@ -82,6 +82,28 @@ describe("a repeated press of one move", () => {
   });
 });
 
+describe("a move whose call was followed by another before it settled", () => {
+  // The per-call callbacks of a mutation belong to its latest call, so a key released only there
+  // stays held for ever for the earlier move, and that move can never be sent again.
+  it("lets the earlier move go again once it settles, though a later one was sent after it", async () => {
+    let failA: (e: Error) => void = () => {};
+    let finishB: () => void = () => {};
+    transition
+      .mockReturnValueOnce(new Promise<void>((_, reject) => (failA = reject)))
+      .mockReturnValueOnce(new Promise<void>((resolve) => (finishB = resolve)))
+      .mockResolvedValue({});
+    const { result } = setup();
+    await act(async () => {
+      result.current.mutate({ id: "i1", toStatus: "developed" });
+      result.current.mutate({ id: "i2", toStatus: "developed" });
+    });
+    await act(async () => failA(new Error("refused")));
+    await act(async () => finishB());
+    await act(async () => result.current.mutate({ id: "i1", toStatus: "developed" }));
+    await waitFor(() => expect(transition).toHaveBeenCalledTimes(3));
+  });
+});
+
 describe("a move that posts its reason on the thread", () => {
   it("reads the thread again, so the reason is there without a reload", async () => {
     transition.mockResolvedValue({});

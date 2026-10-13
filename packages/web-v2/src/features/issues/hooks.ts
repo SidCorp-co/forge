@@ -226,9 +226,17 @@ export function openQuestionIdsOf(err: unknown): string[] | null {
   return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : [];
 }
 
+const moveKey = (args: TransitionArgs) => `${args.id}|${args.toStatus}`;
+
 export function useTransitionIssue() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  // A second press landing before the mutation's own pending flag reaches the screen sends a second
+  // move, which the server refuses as a conflict and the toast blames on someone else (ISS-1310). The
+  // same move on the same issue is held until it settles; a different issue or target is not a repeat.
+  // The key is released in the mutation's own `onSettled`, which fires for every move, where a per-call
+  // callback belongs to the latest call only.
+  const inFlight = useRef(new Set<string>());
   const mut = useMutation({
     mutationFn: (args: TransitionArgs) =>
       issuesApi.transition(args.id, args.toStatus, {
@@ -239,24 +247,20 @@ export function useTransitionIssue() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["issues"] });
     },
+    onSettled: (_data, _err, args) => {
+      inFlight.current.delete(moveKey(args));
+    },
   });
-  // A second press landing before the mutation's own pending flag reaches the screen sends a second
-  // move, which the server refuses as a conflict and the toast blames on someone else (ISS-1310). The
-  // same move on the same issue is held until it settles; a different issue or target is not a repeat.
-  const inFlight = useRef(new Set<string>());
   return {
     ...mut,
     mutate: (
       args: TransitionArgs,
       options?: { onSuccess?: () => void; onOpenQuestions?: (ids: string[]) => void },
     ) => {
-      const move = `${args.id}|${args.toStatus}`;
+      const move = moveKey(args);
       if (inFlight.current.has(move)) return;
       inFlight.current.add(move);
       mut.mutate(args, {
-        onSettled: () => {
-          inFlight.current.delete(move);
-        },
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: ["issue", args.id] });
           qc.invalidateQueries({ queryKey: ["activities", args.id] });
