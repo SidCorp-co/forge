@@ -122,6 +122,20 @@ describe('the pulse names only projects the project page can open (ISS-1261)', (
     }
   });
 
+  it('leaves an archived project out of the silent list, where the active one stands', async () => {
+    const s = await seed();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+      SELECT gen_random_uuid(), project_id, id, 'issue', 'completed', now() - interval '30 days'
+      FROM issues`);
+    for (const path of ['/api/me/pulse', `/api/me/pulse?orgId=${s.orgId}`]) {
+      const pulse = await get<PulseResponse>(s.token, path);
+      expect(pulse.work.silentProjects.total).toBe(1);
+      expect(pulse.work.silentProjects.shown.map((r) => r.slug)).toEqual(['live-one']);
+      expect(pulse.work.neverRanProjects.total).toBe(0);
+    }
+  });
+
   it('counts none of an archived project’s issues in the totals beside the rows', async () => {
     const s = await seed();
     const pulse = await get<PulseResponse>(s.token, '/api/me/pulse');
