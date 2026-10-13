@@ -45,21 +45,23 @@ export function useIssueTasks(issueId: string | undefined, enabled = true) {
   });
 }
 
-/** Cross-project per-step durations + cost. Keyed `['pipeline','step-durations',opts]`. */
-export function useStepDurations(opts: AnalyticsOpts = {}) {
+/** Per-step durations + cost; cross-project when `opts` names no project. `enabled: false` sends nothing meanwhile. */
+export function useStepDurations(opts: AnalyticsOpts = {}, enabled = true) {
   return useQuery({
     queryKey: ["pipeline", "step-durations", opts],
     queryFn: () => pipelineApi.stepDurations(opts),
     staleTime: 30_000,
+    enabled,
   });
 }
 
-/** Cross-project daily throughput. Keyed `['pipeline','throughput',opts]`. */
-export function useThroughput(opts: AnalyticsOpts = {}) {
+/** Daily throughput; cross-project when `opts` names no project. */
+export function useThroughput(opts: AnalyticsOpts = {}, enabled = true) {
   return useQuery({
     queryKey: ["pipeline", "throughput", opts],
     queryFn: () => pipelineApi.throughput(opts),
     staleTime: 30_000,
+    enabled,
   });
 }
 

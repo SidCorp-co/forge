@@ -72,8 +72,8 @@ export default function ProjectOverviewPage() {
   // on `projectId` so they no-op until the slug resolves.
   const attentionQ = useAttention();
   const runsQ = useProjectRuns(projectId);
-  const durationsQ = useStepDurations({ days: METRICS_WINDOW_DAYS, projectId });
-  const throughputQ = useThroughput({ days: THROUGHPUT_WINDOW_DAYS, projectId });
+  const durationsQ = useStepDurations({ days: METRICS_WINDOW_DAYS, projectId }, !!projectId);
+  const throughputQ = useThroughput({ days: THROUGHPUT_WINDOW_DAYS, projectId }, !!projectId);
   const queueQ = useQueueStats(projectId);
   const projectRunnersQ = useProjectRunners(projectId ?? null);
   const activeRunnersQ = useActiveRunners(projectId ?? null);
