@@ -80,6 +80,16 @@ describe("the browser's own prompt", () => {
     expect(unload()).toBe(false);
   });
 
+  it("is asked for again by an edit made after the person said Leave", () => {
+    mount();
+    edit();
+    fireEvent.click(screen.getByRole("button", { name: "go from code" }));
+    fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+    edit();
+    edit();
+    expect(unload()).toBe(true);
+  });
+
   it("is not asked for when nothing is unsaved", () => {
     mount();
     expect(unload()).toBe(false);

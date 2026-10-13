@@ -53,8 +53,10 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
   const asked = useRef(false);
 
   const mark = useCallback((id: string, dirty: boolean) => {
-    if (dirty) dirtyIds.current.add(id);
-    else dirtyIds.current.delete(id);
+    if (dirty) {
+      dirtyIds.current.add(id);
+      asked.current = false;
+    } else dirtyIds.current.delete(id);
     setAnyDirty(dirtyIds.current.size > 0);
   }, []);
 
