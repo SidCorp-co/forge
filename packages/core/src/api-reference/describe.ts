@@ -13,7 +13,6 @@ export type EmptyAnswer = { readonly kind: 'empty'; readonly description: string
 
 export type RedirectAnswer = { readonly kind: 'redirect'; readonly description: string };
 
-/** A body that is not JSON. */
 export type RawAnswer = {
   readonly kind: 'raw';
   readonly contentType: string;
