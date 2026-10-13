@@ -1,8 +1,5 @@
 // @vitest-environment jsdom
-//
-// ISS-1166 / ISS-1169, round 3: a name that has less room than it needs is cut on one line, and the
-// whole of it stays reachable in the element's title. The layout half (never broken mid-word, at 390px)
-// is measured in a real Chrome by `design/patterns/sticky-reach.test.tsx`.
+// The layout half is measured in a real Chrome by sticky-reach.test.tsx.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";

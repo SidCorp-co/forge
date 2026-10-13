@@ -3169,7 +3169,7 @@
 - **An agent's project is never shown as an id.** One that cannot be named reads as removed or not shared with you, and says projects are loading while they are. (ISS-1169)
 - **A new agent's projects are searched, not scrolled.** The picker opens on a search field and the projects chosen, so Create agent stays on the screen however many projects the organisation has. (ISS-1169)
 - **A table that scrolls sideways keeps its first column in view.** On a phone, the projects list, the Overview's longest-without-a-run table, API Tokens and Agents no longer lose which project, token or agent a row is. (ISS-1166)
-- **A name in a table that scrolls sideways reads whole.** On a phone, a project, token or agent name is never broken mid-word, and one too long for its place is cut on one line with the whole name on hover. (ISS-1166)
+- **A name in a table that scrolls sideways reads whole.** On a phone a project, token or agent name is never broken mid-word; one too long is cut on one line, whole on hover. (ISS-1166)
 - **Every Agents action fits inside the table.** At desktop width the third action, Self, sat past the table's edge behind a faint shadow; the actions now wrap onto a second line instead. (ISS-1169)
 - **API Tokens names what each token may do.** The Grant column said "1 permission"; it now lists the permissions. (ISS-1166)
 - **Revoking a token or an agent's credentials asks first.** The dialog names the token or agent, and nothing is revoked until it is confirmed. (ISS-1166, ISS-1169)
