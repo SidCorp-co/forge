@@ -30,6 +30,16 @@ function hopsOf(chain: ReleaseChainEntry[]): Hop[] {
   return chain.slice(1).map((e) => ({ branch: e.branch, from: e.from ?? "merge-branch" }));
 }
 
+/** The tag pattern the project's live (last) entry names, which this screen shows no field for and so must hand back untouched. */
+function tagOf(chain: ReleaseChainEntry[]): string | undefined {
+  return chain[chain.length - 1]?.tag;
+}
+
+/** A chain as its meaning, not its key order: the server's jsonb hands entries back with their keys reordered. */
+function chainKey(chain: ReleaseChainEntry[]): string {
+  return JSON.stringify(chain.map((e) => [e.branch, e.from ?? null, e.tag ?? null]));
+}
+
 export function RepoTab({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
   const update = useUpdateProject(project.id);
   const storedChain = (project.releaseChain ?? []) as ReleaseChainEntry[];
@@ -38,6 +48,7 @@ export function RepoTab({ project, canEdit }: { project: ProjectDetail; canEdit:
   const [baseBranch, setBaseBranch] = useState(project.baseBranch ?? "");
   const [ships, setShips] = useState(storedChain.length > 0);
   const [hops, setHops] = useState<Hop[]>(hopsOf(storedChain));
+  const [releaseTag, setReleaseTag] = useState<string | undefined>(tagOf(storedChain));
 
   useEffect(() => {
     setRepoPath(project.repoPath ?? "");
@@ -45,6 +56,7 @@ export function RepoTab({ project, canEdit }: { project: ProjectDetail; canEdit:
     const chain = (project.releaseChain ?? []) as ReleaseChainEntry[];
     setShips(chain.length > 0);
     setHops(hopsOf(chain));
+    setReleaseTag(tagOf(chain));
   }, [project.repoPath, project.baseBranch, project.releaseChain]);
 
   // Empty string → null (clears the column); a set value trims.
@@ -53,7 +65,7 @@ export function RepoTab({ project, canEdit }: { project: ProjectDetail; canEdit:
 
   // The chain as it would be stored. Its first entry IS the base branch: a release that started
   // anywhere else would deploy a branch work never lands on, which the API refuses by name.
-  const chain: ReleaseChainEntry[] =
+  const entries: ReleaseChainEntry[] =
     !ships || base === null
       ? []
       : [
@@ -62,8 +74,15 @@ export function RepoTab({ project, canEdit }: { project: ProjectDetail; canEdit:
             .filter((h) => h.branch.trim() !== "")
             .map((h) => ({ branch: h.branch.trim(), from: h.from })),
         ];
+  // The pattern belongs to the project's live entry, wherever that now is: dropping the last
+  // branch moves it to the new last one, and a project that ships nothing declares none.
+  const last = entries.length - 1;
+  const chain: ReleaseChainEntry[] =
+    releaseTag === undefined || last < 0
+      ? entries
+      : entries.map((e, i) => (i === last ? { ...e, tag: releaseTag } : e));
 
-  const chainMoved = JSON.stringify(chain) !== JSON.stringify(storedChain);
+  const chainMoved = chainKey(chain) !== chainKey(storedChain);
   const baseMoved = base !== (project.baseBranch ?? null);
   const dirty = norm(repoPath) !== (project.repoPath ?? null) || baseMoved || chainMoved;
 

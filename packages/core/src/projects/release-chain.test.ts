@@ -14,6 +14,7 @@ import {
   chainCrossesByCherryPick,
   chainLiveBranch,
   chainPromotes,
+  chainReleaseTag,
   chainShipsNothing,
   chainStartBranch,
   RELEASE_CHAIN_BASE_MISMATCH,
@@ -21,6 +22,7 @@ import {
   RELEASE_CHAIN_EDGE_UNDECLARED,
   RELEASE_CHAIN_FIRST_CROSSES_NOTHING,
   RELEASE_CHAIN_MAX,
+  RELEASE_CHAIN_TAG_NOT_LAST,
   type ReleaseChain,
   releaseChainGap,
   releaseChainSchema,
@@ -126,6 +128,65 @@ describe('releaseChainSchema — the shapes it refuses by name', () => {
       releaseChainSchema.safeParse([...at, { branch: 'one-too-many', from: 'merge-branch' }])
         .success,
     ).toBe(false);
+  });
+});
+
+describe('releaseChainSchema — the tag that ships a project (ISS-1391)', () => {
+  const TAGGED: ReleaseChain = [{ branch: 'dev', tag: 'v*.*.*' }];
+
+  it('accepts a tag on the only entry, and on the last of several', () => {
+    expect(releaseChainSchema.safeParse(TAGGED).success).toBe(true);
+    const parsed = releaseChainSchema.safeParse([
+      { branch: 'dev' },
+      { branch: 'main', from: 'merge-branch', tag: 'v*' },
+    ]);
+    expect(parsed.success && parsed.data).toEqual([
+      { branch: 'dev' },
+      { branch: 'main', from: 'merge-branch', tag: 'v*' },
+    ]);
+  });
+
+  it('refuses a tag on any entry but the last, naming the entry that is live', () => {
+    const chain = [
+      { branch: 'dev', tag: 'v*' },
+      { branch: 'main', from: 'merge-branch' },
+    ];
+    const out = releaseChainSchema.safeParse(chain);
+    expect(codes(chain)).toEqual([RELEASE_CHAIN_TAG_NOT_LAST]);
+    expect(out.success ? '' : out.error.issues[0]?.message).toContain('entry 1 (`main`)');
+    expect(out.success ? [] : out.error.issues[0]?.path).toEqual([0, 'tag']);
+  });
+
+  it('refuses a pattern that is empty, too long, or holds a character a tag pattern may not', () => {
+    const named = (tag: unknown) => codes([{ branch: 'dev', tag }]);
+    expect(named('')).toEqual(['RELEASE_CHAIN_TAG_PATTERN']);
+    expect(named('v'.repeat(101))).toEqual(['RELEASE_CHAIN_TAG_PATTERN']);
+    expect(named('v 1')).toEqual(['RELEASE_CHAIN_TAG_PATTERN']);
+    expect(named('v?')).toEqual(['RELEASE_CHAIN_TAG_PATTERN']);
+    expect(named('v[0-9]')).toEqual(['RELEASE_CHAIN_TAG_PATTERN']);
+    expect(releaseChainSchema.safeParse([{ branch: 'dev', tag: 'v'.repeat(100) }]).success).toBe(
+      true,
+    );
+  });
+
+  it('refuses a tag that is not a string, which a key presence test would let through', () => {
+    expect(releaseChainSchema.safeParse([{ branch: 'dev', tag: null }]).success).toBe(false);
+    expect(releaseChainSchema.safeParse([{ branch: 'dev', tag: 7 }]).success).toBe(false);
+  });
+
+  it('reads the pattern off the last entry, and null where the chain names none', () => {
+    expect(chainReleaseTag(TAGGED)).toBe('v*.*.*');
+    expect(chainReleaseTag(PUBLISHES)).toBeNull();
+    expect(chainReleaseTag(PROMOTES)).toBeNull();
+    expect(chainReleaseTag(SHIPS_NOTHING)).toBeNull();
+  });
+
+  it('still derives the retired names from a tagged chain, so a reader that has not moved keeps working', () => {
+    expect(retiredReleaseAxes(TAGGED)).toEqual({
+      releaseModel: 'publish',
+      liveBranch: null,
+      releaseStrategy: null,
+    });
   });
 });
 

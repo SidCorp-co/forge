@@ -74,11 +74,20 @@ vi.mock('./merged-at.js', () => ({
   BASE_MERGE_STATE: 'awaiting_release',
   refuseUnshippedClose: (...a: unknown[]) => refuseUnshippedCloseMock(...a),
 }));
+// The release-tag rule reads the project's repository, so these cases script what it answers.
+const releaseTagOfMock = vi.fn(async (..._a: unknown[]) => null as string | null);
+const holdReleaseTagCloseMock = vi.fn(
+  async (_i: unknown, _s: unknown, options: unknown) => options,
+);
+vi.mock('./release-tag-close.js', () => ({
+  releaseTagOf: (...a: unknown[]) => releaseTagOfMock(...a),
+  holdReleaseTagClose: (...a: [unknown, unknown, unknown]) => holdReleaseTagCloseMock(...a),
+}));
 vi.mock('./pipeline-health.js', () => ({
   publishPipelineHealthChanged: vi.fn(async () => undefined),
 }));
 
-const { transitionIssueStatus } = await import('./apply-transition.js');
+const { TransitionError, transitionIssueStatus } = await import('./apply-transition.js');
 
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
@@ -137,6 +146,10 @@ beforeEach(() => {
   projectSelectLimit.mockResolvedValue([{ id: ISSUE_ID, releaseNotes: { section: 'Skip' } }]);
   updateReturning.mockReset();
   updateReturning.mockResolvedValue([]);
+  releaseTagOfMock.mockReset();
+  releaseTagOfMock.mockResolvedValue(null);
+  holdReleaseTagCloseMock.mockReset();
+  holdReleaseTagCloseMock.mockImplementation(async (_i, _s, options) => options);
 });
 
 describe('an agent closing on a project that declared a release gate', () => {
@@ -278,5 +291,83 @@ describe('a project that declares a release it cannot land', () => {
     expect(String(err)).toContain(
       'press "This project ships nothing" on its Repository settings tab',
     );
+  });
+});
+
+describe('a project that ships by version tag (ISS-1391)', () => {
+  const refuse = () =>
+    holdReleaseTagCloseMock.mockRejectedValue(
+      new TransitionError(
+        'CLOSE_REQUIRES_RELEASE_TAG',
+        'a tag matching `v*` must contain the landing',
+        {
+          requires: 'releaseTag',
+        },
+      ),
+    );
+
+  it('does not hold an agent close at the gate, and does not ask the gate for a live binding', async () => {
+    releaseTagOfMock.mockResolvedValue('v*');
+    queueUpdate('closed');
+
+    const result = await transitionIssueStatus(AT_WORK, 'closed', AGENT);
+
+    expect(result.status).toBe('closed');
+    expect(result.rewritten).toBeNull();
+    expect(listBindings).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('refuses a close the tag rule refuses, by its own code, before anything is written', async () => {
+    releaseTagOfMock.mockResolvedValue('v*');
+    refuse();
+
+    const err = await transitionIssueStatus(AT_WORK, 'closed', AGENT).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(TransitionError);
+    expect(err).toMatchObject({
+      code: 'CLOSE_REQUIRES_RELEASE_TAG',
+      details: { requires: 'releaseTag' },
+    });
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it('refuses a human close and the release finish alike, which the gate would have let through', async () => {
+    refuse();
+
+    await expect(transitionIssueStatus(AT_WORK, 'closed', HUMAN)).rejects.toMatchObject({
+      code: 'CLOSE_REQUIRES_RELEASE_TAG',
+    });
+    await expect(
+      transitionIssueStatus(AT_WORK, 'closed', AGENT, { viaReleasePath: true }),
+    ).rejects.toMatchObject({ code: 'CLOSE_REQUIRES_RELEASE_TAG' });
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it('refuses from awaiting_release as it does from testing', async () => {
+    refuse();
+    for (const status of ['testing', 'awaiting_release'] as const) {
+      await expect(
+        transitionIssueStatus({ ...AT_WORK, status }, 'closed', HUMAN),
+      ).rejects.toMatchObject({ code: 'CLOSE_REQUIRES_RELEASE_TAG' });
+    }
+  });
+
+  it('asks the rule about the status the issue would land at, and runs the hook it hands back inside the write', async () => {
+    const inTransaction = vi.fn(async () => undefined);
+    holdReleaseTagCloseMock.mockImplementation(async (_i, _s, options) => ({
+      ...(options as object),
+      beforeStatusWrite: inTransaction,
+    }));
+    queueUpdate('dropped');
+
+    await transitionIssueStatus(AT_WORK, 'dropped', AGENT);
+
+    expect(holdReleaseTagCloseMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: ISSUE_ID, projectId: PROJECT_ID }),
+      'dropped',
+      expect.anything(),
+    );
+    expect(inTransaction).toHaveBeenCalledTimes(1);
   });
 });

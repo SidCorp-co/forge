@@ -1,0 +1,31 @@
+export type TransitionErrorCode =
+  | 'NO_OP'
+  | 'ILLEGAL_TRANSITION'
+  | 'TRANSITION_REASON_REQUIRED'
+  | 'WAITING_KIND_REQUIRED'
+  | 'STALE_TRANSITION'
+  | 'NO_WORK_EVIDENCE'
+  | 'RELEASE_RECORD_REQUIRED'
+  | 'ENTRY_CRITERIA_UNMET'
+  | 'CLOSE_REQUIRES_SHIPPED'
+  | 'CLOSE_REQUIRES_RELEASE_TAG'
+  | 'RELEASE_TAG_UNREAD'
+  | 'WAITING_KIND_NOT_APPLICABLE'
+  | 'ISSUE_ARCHIVED'
+  | 'OPEN_QUESTIONS'
+  | 'VOID_REASON_REQUIRED';
+
+/**
+ * Typed transition failure. `message` keeps the legacy `CODE: detail` shape
+ * the MCP surface exposes; REST callers map `code`/`detail`/`details` onto
+ * HTTPException instead of parsing the string.
+ */
+export class TransitionError extends Error {
+  constructor(
+    readonly code: TransitionErrorCode,
+    readonly detail: string,
+    readonly details: Record<string, unknown> = {},
+  ) {
+    super(`${code}: ${detail}`);
+  }
+}
