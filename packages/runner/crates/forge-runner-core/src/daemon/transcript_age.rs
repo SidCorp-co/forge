@@ -222,6 +222,83 @@ fn decide(tail: &str, whole: bool) -> Option<Newest> {
     whole.then_some(Newest::Turn)
 }
 
+/// A tool call the model made that no `tool_result` has answered yet.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PendingCall {
+    pub id: String,
+    pub name: String,
+    pub input: serde_json::Value,
+}
+
+/// What the end of a lead transcript says about a call awaiting an answer.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Unanswered {
+    Call(PendingCall),
+    /// The newest entry that decides is not a call awaiting an answer.
+    Nothing,
+}
+
+/// The newest tool call in the transcript at `path` that no later `tool_result`
+/// answers, which for a pane stopped on a dialog or a permission prompt is the
+/// call it is stopped on. `None` where the file cannot be opened or read.
+pub fn unanswered_call(path: &Path) -> Option<Unanswered> {
+    read_back(path, decide_call, Unanswered::Nothing)
+}
+
+/// Hook records, progress marks and summaries Claude Code writes beside the
+/// conversation are read past; a `user` entry that answers no call, or an
+/// `assistant` entry that holds no unanswered one, ends the scan.
+fn decide_call(tail: &str, whole: bool) -> Option<Unanswered> {
+    let mut lines = tail.lines();
+    if !whole {
+        lines.next();
+    }
+    let mut answered: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for line in lines.rev().filter(|l| !l.trim().is_empty()) {
+        let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        let blocks = entry["message"]["content"].as_array();
+        match entry["type"].as_str().unwrap_or("") {
+            "user" => {
+                let results: Vec<&str> = blocks
+                    .into_iter()
+                    .flatten()
+                    .filter(|b| b["type"] == "tool_result")
+                    .filter_map(|b| b["tool_use_id"].as_str())
+                    .collect();
+                if results.is_empty() {
+                    return Some(Unanswered::Nothing);
+                }
+                answered.extend(results.into_iter().map(str::to_string));
+            }
+            "assistant" => {
+                let open: Vec<&serde_json::Value> = blocks
+                    .into_iter()
+                    .flatten()
+                    .filter(|b| b["type"] == "tool_use")
+                    .filter(|b| b["id"].as_str().is_some_and(|id| !answered.contains(id)))
+                    .collect();
+                let chosen = open
+                    .iter()
+                    .copied()
+                    .find(|b| b["name"] == "AskUserQuestion")
+                    .or_else(|| open.last().copied());
+                return Some(match chosen {
+                    Some(b) => Unanswered::Call(PendingCall {
+                        id: b["id"].as_str().unwrap_or_default().to_string(),
+                        name: b["name"].as_str().unwrap_or_default().to_string(),
+                        input: b["input"].clone(),
+                    }),
+                    None => Unanswered::Nothing,
+                });
+            }
+            _ => {}
+        }
+    }
+    whole.then_some(Unanswered::Nothing)
+}
+
 fn modified_ms(path: &Path) -> Option<i64> {
     let meta = std::fs::metadata(path).ok()?;
     if !meta.is_file() {
@@ -312,6 +389,132 @@ mod tests {
         std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
         std::fs::write(path, "{}\n").expect("write");
         at(path, secs);
+    }
+
+    fn call_line(id: &str, name: &str, input: &str) -> String {
+        format!(
+            r#"{{"type":"assistant","message":{{"content":[{{"type":"tool_use","id":"{id}","name":"{name}","input":{input}}}]}}}}"#
+        )
+    }
+
+    fn result_line(id: &str) -> String {
+        format!(
+            r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"{id}","content":"ok"}}]}}}}"#
+        )
+    }
+
+    const HOOK: &str =
+        r#"{"type":"attachment","attachment":{"type":"hook_success","hookEvent":"PreToolUse"}}"#;
+
+    fn unanswered(lines: &[String]) -> Option<Unanswered> {
+        let dir = Scratch::new("unanswered");
+        let path = dir.path().join("conv.jsonl");
+        std::fs::write(&path, format!("{}\n", lines.join("\n"))).expect("write");
+        unanswered_call(&path)
+    }
+
+    fn pending(id: &str, name: &str) -> Option<Unanswered> {
+        Some(Unanswered::Call(PendingCall {
+            id: id.into(),
+            name: name.into(),
+            input: serde_json::json!({}),
+        }))
+    }
+
+    #[test]
+    fn a_call_a_tool_result_answers_is_not_pending() {
+        let lines = [call_line("t1", "Bash", "{}"), result_line("t1")];
+        assert_eq!(unanswered(&lines), Some(Unanswered::Nothing));
+    }
+
+    #[test]
+    fn a_call_with_hook_records_written_after_it_is_still_pending() {
+        let lines = [
+            call_line("t1", "AskUserQuestion", "{}"),
+            HOOK.to_string(),
+            HOOK.to_string(),
+        ];
+        assert_eq!(unanswered(&lines), pending("t1", "AskUserQuestion"));
+    }
+
+    #[test]
+    fn a_later_answered_call_ends_the_scan_before_an_older_one() {
+        let lines = [
+            call_line("t1", "Edit", "{}"),
+            call_line("t2", "Bash", "{}"),
+            result_line("t2"),
+        ];
+        assert_eq!(unanswered(&lines), Some(Unanswered::Nothing));
+    }
+
+    #[test]
+    fn an_entry_with_text_only_means_nothing_is_pending() {
+        let text = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"done"}]}}"#;
+        let lines = [
+            call_line("t1", "Bash", "{}"),
+            result_line("t1"),
+            text.to_string(),
+        ];
+        assert_eq!(unanswered(&lines), Some(Unanswered::Nothing));
+        let prompt = r#"{"type":"user","message":{"content":"carry on"}}"#;
+        let lines = [call_line("t1", "Bash", "{}"), prompt.to_string()];
+        assert_eq!(unanswered(&lines), Some(Unanswered::Nothing));
+    }
+
+    #[test]
+    fn of_several_calls_in_one_entry_the_dialog_wins_and_else_the_last() {
+        let entry = |names: &[(&str, &str)]| {
+            let blocks: Vec<String> = names
+                .iter()
+                .map(|(id, n)| {
+                    format!(r#"{{"type":"tool_use","id":"{id}","name":"{n}","input":{{}}}}"#)
+                })
+                .collect();
+            format!(
+                r#"{{"type":"assistant","message":{{"content":[{}]}}}}"#,
+                blocks.join(",")
+            )
+        };
+        assert_eq!(
+            unanswered(&[entry(&[
+                ("a", "Bash"),
+                ("b", "AskUserQuestion"),
+                ("c", "Edit")
+            ])]),
+            pending("b", "AskUserQuestion")
+        );
+        assert_eq!(
+            unanswered(&[entry(&[("a", "Bash"), ("c", "Edit")])]),
+            pending("c", "Edit")
+        );
+    }
+
+    #[test]
+    fn garbage_lines_are_read_past() {
+        let lines = [
+            call_line("t1", "Bash", "{}"),
+            "not json at all".to_string(),
+            "{\"type\":".to_string(),
+        ];
+        assert_eq!(unanswered(&lines), pending("t1", "Bash"));
+    }
+
+    #[test]
+    fn a_call_older_than_the_first_window_is_found_by_widening() {
+        let filler = format!(
+            r#"{{"type":"attachment","attachment":{{"type":"hook_success","hookEvent":"PreToolUse","content":"{}"}}}}"#,
+            "x".repeat(TAIL_BYTES as usize + 100)
+        );
+        let lines = [call_line("t1", "AskUserQuestion", "{}"), filler];
+        assert_eq!(unanswered(&lines), pending("t1", "AskUserQuestion"));
+    }
+
+    #[test]
+    fn a_missing_transcript_says_nothing_rather_than_nothing_pending() {
+        assert_eq!(
+            unanswered_call(Path::new("/no/such/forge/conv.jsonl")),
+            None
+        );
     }
 
     #[test]

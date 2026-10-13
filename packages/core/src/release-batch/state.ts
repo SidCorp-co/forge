@@ -8,6 +8,7 @@ import {
   type ReleaseChannel,
   resolveReleaseChannels,
 } from './channel.js';
+import { type DecisionReading, readDecisionReading } from './decision-state.js';
 import { ReleaseProbesUnreadableError } from './errors.js';
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
 import { type ReleaseStart, readReleaseStart } from './job-start.js';
@@ -57,6 +58,7 @@ export interface ReleaseRunState {
   finish: ReleaseFinishRecord | null;
   /** Whether a box has started this release's job, and if not, why not (ISS-1323). */
   start: ReleaseStart;
+  decision: DecisionReading | null;
 }
 
 /** Every probe the close reads, or none: a refused declaration has nothing to read either. */
@@ -113,9 +115,10 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     listReadings(runId),
   ]);
   const run = (await readRun(runId)) ?? first;
-  const [start, runIssues] = await Promise.all([
+  const [start, runIssues, decision] = await Promise.all([
     readReleaseStart(runId, run.projectId, run.metadata),
     loadRunIssues(run.metadata),
+    readDecisionReading(runId),
   ]);
   const meta = (run.metadata ?? {}) as Record<string, unknown>;
   const method = readMethod(meta);
@@ -136,6 +139,7 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     methodUnloaded: method !== null && !method.loaded,
     finish: readFinishRecord(meta),
     start,
+    decision,
   };
 }
 

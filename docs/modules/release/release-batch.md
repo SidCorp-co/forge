@@ -288,3 +288,42 @@ that makes the repository readable once, at the head of its remedy, ahead of rec
 (`packages/core/src/release-batch/criteria-hold.ts:criteriaHold` carries it as `details.clears`).
 A judged or served commit named by more digits than a whole sha is never read as carried: the
 carriage is unread, naming the length, before the host is asked.
+
+## 5. A pane that stops on a question (ISS-1366)
+
+A `release_batch` pane that stops on a dialog nobody answers is ended `Blocked` by the runner. That
+is a person's question, not an infrastructure fault, so it is never retried into a fresh pane that
+asks it again.
+
+- **The runner names what the pane asked.** It reads the unanswered tool call from the pane's
+  transcript and reports it to `POST /api/jobs/:id/blocked`
+  (`packages/core/src/jobs/blocked-routes.ts:jobBlockedRoutes`), the body shaped by
+  `packages/core/src/jobs/blocked-wire.ts:blockedBodySchema` — a dialog's questions with their
+  options, a refused permission, or `unread` when the transcript could not be read. A runner older
+  than that door sends a plain `/fail` whose error carries
+  `packages/core/src/jobs/blocked-reason.ts:BLOCKED_PHRASE`; core reads the phrase and takes the
+  `unread` path, so core shipped alone already ends the loop for old runners.
+- **The question lands on the tracker.** `packages/core/src/release-batch/decision-hold.ts:holdBlockedRelease`
+  writes each pane question as an `agent_questions` row (choice when the dialog gave two or more
+  options, free text otherwise) on the first open roster member, with a pointer comment on the
+  others. A question the door screen refuses is written as a one-line free-text question saying
+  what was refused. A question that cannot sit on an issue sits on the project.
+- **The run stays open and holds one successor.** The failed job gets a `held` successor under the
+  same run, reason `awaiting_decision`, carrying the typed reference in
+  `packages/core/src/release-batch/decision-state.ts:DecisionRef`. No retry is scheduled, the run
+  is not reaped (it has a non-terminal job), and the roster is not recut. A second press for the
+  same members is refused `BATCH_IN_FLIGHT`, and the sentence says the release waits on a person
+  and names the question.
+- **An answer requeues it.** `packages/core/src/release-batch/decision-hold.ts:requeueOnAnswer`
+  runs on the `questionAnswered` hook; once every question of the decision is answered it releases
+  the held job once, with the answers appended to its prompt
+  (`packages/core/src/release-batch/prompt.ts:decisionsGivenSection`). Resuming the job by hand
+  while a question is open is refused `DECISION_OPEN`.
+- **A run that ends voids its questions.** `voidOnRunEnd` closes the open questions when the run
+  is aborted or fails, so an answer after that finds nothing to requeue.
+
+Only `release_batch` jobs are held this way. Another job kind that ends `Blocked` fails with its
+question carried at project level and no successor.
+
+Skew: core first. A new runner against a core without the door falls back to the plain failure
+and logs the gap at error level, which is the behaviour before this change.

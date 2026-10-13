@@ -39,6 +39,7 @@ import {
 import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
 import { rosterCloseShortfalls } from './close-shortfall.js';
 import { criteriaHold } from './criteria-hold.js';
+import { inFlightDetails } from './decision-state.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 import { getActiveReleaseBatch } from './queries.js';
 import { invalidProbeUrls } from './verify.js';
@@ -487,7 +488,7 @@ async function gatedBlockers(
       async () => await getActiveReleaseBatch(projectId),
       out,
     );
-    if (active) out.push(blocker('BATCH_IN_FLIGHT', { runId: active.runId }));
+    if (active) out.push(blocker('BATCH_IN_FLIGHT', await inFlightDetails(active.runId)));
     if (!issueIds && found) {
       await criteriaHold(
         projectId,

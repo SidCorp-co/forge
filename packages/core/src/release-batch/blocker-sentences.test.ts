@@ -373,3 +373,29 @@ describe('RELEASE_CARRIED_UNREAD — where to give Forge the repository', () => 
     expect(sentence.match(/Git access/g) ?? []).toHaveLength(1);
   });
 });
+
+describe('BATCH_IN_FLIGHT for a release that waits on a person', () => {
+  it('says it waits on a decision and names the issue holding the question', () => {
+    const sentence = releaseBlockerSentence('BATCH_IN_FLIGHT', {
+      runId: 'r1',
+      decision: { displayId: 'ISS-64' },
+    });
+    expect(sentence).toContain('waiting on a decision');
+    expect(sentence).toContain('`ISS-64`');
+    expect(sentence).toContain('abort it');
+  });
+
+  it('says where the question is when it is not on an issue', () => {
+    const sentence = releaseBlockerSentence('BATCH_IN_FLIGHT', {
+      runId: 'r1',
+      decision: { displayId: null },
+    });
+    expect(sentence).toContain("open among this project's questions");
+  });
+
+  it('keeps its ordinary sentence for a release that is simply running', () => {
+    const sentence = releaseBlockerSentence('BATCH_IN_FLIGHT', { runId: 'r1' });
+    expect(sentence).toContain('A release is already running for this project');
+    expect(sentence).not.toContain('waiting on a decision');
+  });
+});

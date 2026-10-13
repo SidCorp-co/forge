@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use crate::daemon::agent_activity::{now_ms, Activities, Activity};
+use crate::daemon::job_asked::{self, Asked};
 use crate::daemon::job_exit;
 use crate::daemon::job_unheard;
 use crate::daemon::transcript_age;
@@ -54,6 +55,10 @@ pub trait Report: Send + Sync {
     async fn progress(&self, job_id: &str, runtime_state: Option<&str>) -> Result<bool>;
     /// `Ok(false)` means core has answered that the job is no longer this box's.
     async fn fail(&self, job_id: &str, error: &str) -> Result<bool>;
+    /// End a job stopped on a question, carrying what it asked so core can put
+    /// it before a person. `Ok(false)` means core has answered that the job is
+    /// no longer this box's.
+    async fn blocked(&self, job_id: &str, error: &str, asked: &Asked) -> Result<bool>;
 }
 
 #[async_trait::async_trait]
@@ -787,7 +792,17 @@ pub async fn supervise(
         );
         if let Evidence::NeverStarted { silent_for } = evidence {
             let reason = turn_evidence::never_started_reason(&live.pane, silent_for);
-            if conclude(panes, report, records, registry, &live, reason).await {
+            if conclude(
+                panes,
+                report,
+                records,
+                registry,
+                &live,
+                reason,
+                &Ending::Failed,
+            )
+            .await
+            {
                 continue;
             }
         }
@@ -817,10 +832,15 @@ pub async fn supervise(
         let written_at = transcript
             .as_deref()
             .and_then(|p| transcript_age::last_written(Path::new(p)));
-        if let Some(reason) =
-            job_exit::verdict(&live.watch, seen, written_at, now).reason(&live.pane)
-        {
-            if conclude(panes, report, records, registry, &live, reason).await {
+        let verdict = job_exit::verdict(&live.watch, seen, written_at, now);
+        if let Some(reason) = verdict.reason(&live.pane) {
+            let ending = match verdict {
+                job_exit::Verdict::Blocked { .. } => {
+                    Ending::Blocked(job_asked::asked_by(transcript.as_deref()))
+                }
+                _ => Ending::Failed,
+            };
+            if conclude(panes, report, records, registry, &live, reason, &ending).await {
                 continue;
             }
         }
@@ -829,7 +849,17 @@ pub async fn supervise(
         // neither of them can ever conclude.
         let watching_since = registry.noted_at(&live.job_id).unwrap_or(now);
         if let Some(reason) = job_unheard::verdict(seen, watching_since, now).reason(&live.pane) {
-            if conclude(panes, report, records, registry, &live, reason).await {
+            if conclude(
+                panes,
+                report,
+                records,
+                registry,
+                &live,
+                reason,
+                &Ending::Failed,
+            )
+            .await
+            {
                 continue;
             }
         }
@@ -855,6 +885,14 @@ pub async fn supervise(
     registry.swept();
 }
 
+/// How a job this box has decided is not work in flight is told to core.
+enum Ending {
+    /// Told as a plain failure carrying the reason.
+    Failed,
+    /// Told as stopped on a question, carrying what the pane asked.
+    Blocked(Asked),
+}
+
 /// End a job this box has decided is not work in flight: tell core by name,
 /// close the pane, and let go of the slot. `true` once the slot is back.
 ///
@@ -867,8 +905,13 @@ async fn conclude(
     registry: &JobPanes,
     live: &Live,
     reason: String,
+    ending: &Ending,
 ) -> bool {
-    if let Err(e) = report.fail(&live.job_id, &reason).await {
+    let told = match ending {
+        Ending::Failed => report.fail(&live.job_id, &reason).await,
+        Ending::Blocked(asked) => report.blocked(&live.job_id, &reason, asked).await,
+    };
+    if let Err(e) = told {
         tracing::warn!(
             "[pool] could not tell core job {} is over: {e} — sending it again next tick",
             live.job_id
@@ -951,6 +994,20 @@ impl Report for CoreReport<'_> {
     async fn fail(&self, job_id: &str, error: &str) -> Result<bool> {
         match lifecycle::fail(self.client, job_id, error).await {
             Ok(()) => Ok(true),
+            Err(e) if events::is_disowned(&e) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn blocked(&self, job_id: &str, error: &str, asked: &Asked) -> Result<bool> {
+        match lifecycle::blocked(self.client, job_id, error, &asked.to_json()).await {
+            Ok(lifecycle::BlockedDoor::Recorded) => Ok(true),
+            Ok(lifecycle::BlockedDoor::Absent) => {
+                tracing::error!(
+                    "[pool] job {job_id} was stopped on a question and this core has no blocked door, so the question was NOT carried to a person and the job is ended as a plain failure — deploy core with POST /api/jobs/:id/blocked, or the same question is asked again on the next attempt"
+                );
+                self.fail(job_id, error).await
+            }
             Err(e) if events::is_disowned(&e) => Ok(false),
             Err(e) => Err(e),
         }
@@ -1176,6 +1233,8 @@ mod tests {
         released: Mutex<Vec<String>>,
         acked: Mutex<Vec<String>>,
         failed: Mutex<Vec<(String, String)>>,
+        /// Every job told to core as stopped on a question: job, reason, what it asked.
+        blocked: Mutex<Vec<(String, String, serde_json::Value)>>,
         beats: Mutex<Vec<String>>,
         /// Every beat as `job|runtimeState`, with `-` for a beat that carried none.
         beat_states: Mutex<Vec<String>>,
@@ -1397,6 +1456,10 @@ mod tests {
         rec: Arc<Recorder>,
         disowned: bool,
         fail_errs: Mutex<usize>,
+        /// A core with no blocked door: the report falls back to a plain failure.
+        door_absent: bool,
+        /// A core that answers the blocked report by taking the job away.
+        blocked_disowned: bool,
     }
 
     #[async_trait::async_trait]
@@ -1426,6 +1489,17 @@ mod tests {
                 .unwrap()
                 .push((job_id.into(), error.into()));
             Ok(true)
+        }
+        async fn blocked(&self, job_id: &str, error: &str, asked: &Asked) -> Result<bool> {
+            if self.door_absent {
+                return self.fail(job_id, error).await;
+            }
+            self.rec
+                .blocked
+                .lock()
+                .unwrap()
+                .push((job_id.into(), error.into(), asked.to_json()));
+            Ok(!self.blocked_disowned)
         }
     }
 
@@ -1472,6 +1546,8 @@ mod tests {
                 rec,
                 disowned: false,
                 fail_errs: Mutex::new(0),
+                door_absent: false,
+                blocked_disowned: false,
             },
             records: FakeRecords {
                 inner: Mutex::new(HashMap::new()),
@@ -2533,8 +2609,74 @@ mod tests {
         );
     }
 
+    const ASKED_LINE: &str = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"AskUserQuestion","input":{"questions":[{"question":"Push and finish unverified?","header":"Release","multiSelect":false,"options":[{"label":"Push + finish unverified"},{"label":"Abort to gate"}]}]}}]}}"#;
+
+    /// A pane stopped on a question for longer than the window, whose
+    /// transcript ends on the dialog call, and what its agent reported.
+    fn blocked_world() -> (World, Activities, TempHome) {
+        use crate::daemon::agent_activity::{Event, Report};
+        let w = world(vec![], None, None);
+        let dir = TempHome::new("blocked-transcript");
+        let path = dir.path().join("conv.jsonl");
+        std::fs::write(&path, format!("{ASKED_LINE}\n")).unwrap();
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let acts = Activities::new();
+        let at = now_ms() - PAST_IDLE;
+        let transcript = path.to_string_lossy().into_owned();
+        for e in [Event::PromptSubmitted, Event::PermissionRequested] {
+            acts.record(
+                "sess-1",
+                Report {
+                    event: e,
+                    at,
+                    subject: None,
+                    conversation: None,
+                    transcript: Some(&transcript),
+                },
+            );
+        }
+        (w, acts, dir)
+    }
+
     #[tokio::test]
-    async fn a_pane_stopped_on_a_question_nobody_answers_gives_the_slot_back() {
+    async fn a_pane_stopped_on_a_question_nobody_answers_carries_it_to_core_and_gives_the_slot_back(
+    ) {
+        let (w, acts, _dir) = blocked_world();
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        assert!(
+            w.rec.failed.lock().unwrap().is_empty(),
+            "a blocked pane is told as blocked, never as a plain failure"
+        );
+        let blocked = w.rec.blocked.lock().unwrap().clone();
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0].0, "j1");
+        assert!(
+            blocked[0].1.contains(job_exit::BLOCKED_PHRASE),
+            "an operator must be able to tell this from a pane that merely went idle: {}",
+            blocked[0].1
+        );
+        assert_eq!(blocked[0].2["kind"], "dialog");
+        assert_eq!(
+            blocked[0].2["questions"][0]["question"],
+            "Push and finish unverified?"
+        );
+        assert_eq!(
+            blocked[0].2["questions"][0]["options"][1]["label"],
+            "Abort to gate"
+        );
+        assert_eq!(w.registry.count(), 0);
+        assert_eq!(
+            w.rec.killed.lock().unwrap().clone(),
+            vec!["forge-job-j1".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_blocked_pane_with_no_transcript_is_still_told_to_core_as_unread() {
         use crate::daemon::agent_activity::Event;
         let w = world(vec![], None, None);
         w.panes.alive.lock().unwrap().push("forge-job-j1".into());
@@ -2545,14 +2687,59 @@ mod tests {
 
         supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
 
-        let failed = w.rec.failed.lock().unwrap().clone();
-        assert_eq!(failed.len(), 1);
-        assert!(
-            failed[0].1.contains("only a human can answer"),
-            "an operator must be able to tell this from a pane that merely went idle: {}",
-            failed[0].1
-        );
+        let blocked = w.rec.blocked.lock().unwrap().clone();
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0].2["kind"], "unread");
+        assert!(w.rec.failed.lock().unwrap().is_empty());
         assert_eq!(w.registry.count(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_core_with_no_blocked_door_still_ends_the_job_as_a_plain_failure() {
+        let (mut w, acts, _dir) = blocked_world();
+        w.report.door_absent = true;
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        let failed = w.rec.failed.lock().unwrap().clone();
+        assert_eq!(failed.len(), 1, "the slot must not be held for ever");
+        assert!(failed[0].1.contains(job_exit::BLOCKED_PHRASE));
+        assert_eq!(w.registry.count(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_blocked_job_core_took_away_is_let_go_like_a_disowned_failure() {
+        let (mut w, acts, _dir) = blocked_world();
+        w.report.blocked_disowned = true;
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        assert_eq!(w.rec.blocked.lock().unwrap().len(), 1);
+        assert_eq!(
+            w.registry.count(),
+            0,
+            "a job that is no longer this box's frees its slot"
+        );
+        assert_eq!(
+            w.rec.killed.lock().unwrap().clone(),
+            vec!["forge-job-j1".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_finished_pane_is_never_told_as_blocked() {
+        use crate::daemon::agent_activity::Event;
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let acts = Activities::new();
+        said(&acts, "sess-1", Event::Stopped, PAST_IDLE);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        assert!(w.rec.blocked.lock().unwrap().is_empty());
+        assert_eq!(w.rec.failed.lock().unwrap().len(), 1);
     }
 
     #[tokio::test]

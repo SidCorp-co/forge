@@ -458,13 +458,16 @@ mod tests {
         use crate::auth::cred_store::ScopedVar;
         let system = p.root.join("system-bin");
         std::fs::create_dir_all(&system).unwrap();
-        // `PATH` is the whole process's, and every other test spawns `git` by name while this one
-        // holds it. A `system-bin` with no `git` in it fails each of those spawns with NotFound
+        // `PATH` is the whole process's, and every other test spawns `git` and `sh` by name while
+        // this one holds it. A `system-bin` with neither fails each of those spawns with NotFound
         // for as long as the guard lives, in tests that never take `ENV_TEST_LOCK` (the daemon::
-        // recovery git fixtures failed in 16 of 30 runs beside these two). The `forge` these tests
-        // look for is the only thing meant to be absent, so `git` stays reachable.
-        if let Some(git) = crate::exe::on_path("git") {
-            std::os::unix::fs::symlink(git, system.join("git")).unwrap();
+        // recovery git fixtures failed in 16 of 30 runs beside these two, and
+        // `daemon::terminal`'s quoting test once failed with `sh must run`). The `forge` these
+        // tests look for is the only thing meant to be absent, so the two stay reachable.
+        for tool in ["git", "sh"] {
+            if let Some(found) = crate::exe::on_path(tool) {
+                std::os::unix::fs::symlink(found, system.join(tool)).unwrap();
+            }
         }
         (
             ScopedVar::set("HOME", p.home()),

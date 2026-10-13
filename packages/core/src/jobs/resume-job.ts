@@ -4,6 +4,8 @@ import { withKernelMarker } from '../db/kernel-marker.js';
 import { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { logger } from '../logger.js';
+import { answeredRequeue } from '../release-batch/decision-hold.js';
+import { readDecisionQuestions, readDecisionRef } from '../release-batch/decision-state.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { buildRequeueUpdate, dispatchRequeuedJob, readHoldState } from './hold.js';
@@ -11,7 +13,7 @@ import { insertInterventionEvent } from './intervention-event.js';
 
 export class JobResumeError extends Error {
   constructor(
-    public readonly code: 'NOT_FOUND' | 'NOT_HELD',
+    public readonly code: 'NOT_FOUND' | 'NOT_HELD' | 'DECISION_OPEN',
     message: string,
   ) {
     super(message);
@@ -54,12 +56,27 @@ export async function resumeHeldJob(
     throw new JobResumeError('NOT_HELD', `job is ${job.status}, not held`);
   }
 
+  let requeue: ReturnType<typeof buildRequeueUpdate> | null = null;
+  const decision = readDecisionRef(job.id, job.payload);
+  if (decision && !decision.answeredAt) {
+    const open = (await readDecisionQuestions(decision.questionIds)).filter(
+      (q) => q.status === 'open',
+    );
+    if (open.length > 0) {
+      throw new JobResumeError(
+        'DECISION_OPEN',
+        `this job waits on ${open.length} open question${open.length === 1 ? '' : 's'} (${open.map((q) => q.id).join(', ')}): answer ${open.length === 1 ? 'it' : 'them'}, and the job goes on by itself, or abort the release it belongs to`,
+      );
+    }
+    requeue = await answeredRequeue(job, decision);
+  }
+
   const heldReason = readHoldState(job.payload)?.reason ?? job.failureReason ?? null;
 
   const updated = await withKernelMarker(db, async (tx) => {
     const [row] = await tx
       .update(jobs)
-      .set(buildRequeueUpdate(job, new Date()))
+      .set(requeue ?? buildRequeueUpdate(job, new Date()))
       .where(and(eq(jobs.id, jobId), eq(jobs.status, 'held')))
       .returning({ id: jobs.id, type: jobs.type, issueId: jobs.issueId });
     if (!row) return null;
