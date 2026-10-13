@@ -129,7 +129,7 @@ The price of closing these, not of leaving them:
 
 | Cost | What it takes |
 |---|---|
-| Each kept drift needs a reason written where the code is | The two kept on purpose carry no comment since the codemap annotations were deleted, so the next reader meets a divergence with nothing saying it was meant. Writing the reason into the code is cheap; finding the person who made the choice is not. |
+| Each kept drift needs a reason written where the code is | The five kept on purpose carry no comment since the codemap annotations were deleted, so the next reader meets a divergence with nothing saying it was meant. Writing the reason into the code is cheap; finding the person who made the choice is not. |
 | Choosing a side changes a contract a caller may rely on | Tightening the tool's transition reason to 2,000 characters refuses a caller that sends more, and loosening REST accepts what it refused. Neither side can move without someone checking which callers sit beyond the bound. |
 | A route per tool-only capability is surface to keep | Each needs a row in the PAT permission surface, a test and a shape both transports agree on; seven routes is seven shapes the web and the CLI may then depend on. |
 | Merging a pair of list queries is a REST redesign | The paging, the total and the filters a screen uses are not the envelope a model reads, so one query serving both either gives a screen a cursor or gives a model a total it must page for. |
