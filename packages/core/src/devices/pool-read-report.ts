@@ -14,10 +14,6 @@ import { db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { WIRE_UNITS } from './gate-report.js';
 
-/**
- * `unserved` is a pool core answered `404` for on consecutive reads: the box has
- * stopped asking, so it is unread like a blind one but will not recover by being read again.
- */
 export const poolReadVerdicts = ['blind', 'unserved', 'intermittent'] as const;
 export type PoolReadVerdict = (typeof poolReadVerdicts)[number];
 

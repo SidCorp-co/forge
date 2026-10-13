@@ -40,7 +40,11 @@ describe('the report a box sends', () => {
   it('reads the fixture the box emits, every project and every verdict', () => {
     const read = readHeartbeatPool(fixture.pool);
     expect(read.refused).toBeUndefined();
-    expect(read.report?.projects.map((p) => p.verdict)).toEqual(['blind', 'unserved', 'intermittent']);
+    expect(read.report?.projects.map((p) => p.verdict)).toEqual([
+      'blind',
+      'unserved',
+      'intermittent',
+    ]);
     expect(read.report?.projects[0]?.lastFailure).toMatchObject({ status: 525 });
   });
 
