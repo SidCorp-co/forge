@@ -96,4 +96,32 @@ describe('POST /api/auth/verify (programmatic — JSON envelope)', () => {
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('TOKEN_EXPIRED');
   });
+
+  it('falls through to the body when the query token is empty', async () => {
+    consumeVerificationToken.mockResolvedValueOnce('ok');
+    const res = await buildApp().request('/api/auth/verify?token=', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'body-token' }),
+    });
+    expect(res.status).toBe(200);
+    expect(consumeVerificationToken).toHaveBeenCalledWith('body-token');
+  });
+
+  it.each([
+    ['a token that is not a string', JSON.stringify({ token: 42 })],
+    ['a body that is not JSON', '{not json'],
+    ['a body that is JSON null', 'null'],
+    ['an empty token', JSON.stringify({ token: '' })],
+  ])('returns 400 INVALID_TOKEN for %s', async (_name, body) => {
+    const res = await buildApp().request('/api/auth/verify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+    });
+    expect(res.status).toBe(400);
+    const parsed = (await res.json()) as { code: string };
+    expect(parsed.code).toBe('INVALID_TOKEN');
+    expect(consumeVerificationToken).not.toHaveBeenCalled();
+  });
 });

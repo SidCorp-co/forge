@@ -20,6 +20,7 @@ import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cro
 import { agentRoutes } from './agents/routes.js';
 import { responseConformance } from './api-reference/conformance.js';
 import { describeOperation, redirect } from './api-reference/describe.js';
+import { describedInstallRoutes } from './api-reference/install-reference.js';
 import { referenceOf, referenceRoutes } from './api-reference/routes.js';
 import { memoryModelRoutes } from './app-config/memory-model-routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
@@ -64,7 +65,6 @@ import { guideRoutes } from './guides/routes.js';
 import { opsHealthMeRoutes, opsHealthProjectRoutes, publicHealthRoutes } from './health/routes.js';
 import { improvementMessageRoutes } from './improvement-messages/routes.js';
 import { registerRunnerReleaseRefetch } from './install/fetch-release.js';
-import { installRoutes } from './install/routes.js';
 import { githubCallbackRoutes, githubConnectRoutes } from './integrations/github/connect-routes.js';
 import { runnerReleaseRoutes } from './integrations/github/runner-release-routes.js';
 import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js';
@@ -103,7 +103,7 @@ import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
 import { registerMaintenanceJobs } from './maintenance-jobs.js';
-import { mcpHandler } from './mcp/handler.js';
+import { mcpRoutes } from './mcp/handler.js';
 import { mcpRequestClass } from './mcp/request-class.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
 import { mePulseRoutes } from './me/pulse-routes.js';
@@ -269,10 +269,10 @@ export async function runShutdown(
 registerEagerSubscribers(hooks);
 
 app.use('/mcp', mcpRequestClass(), requirePat());
-app.on(['POST', 'GET', 'DELETE'], '/mcp', mcpHandler);
+app.route('/mcp', mcpRoutes);
 
-app.route('/', installRoutes);
-app.route('/api', installRoutes);
+app.route('/', describedInstallRoutes());
+app.route('/api', describedInstallRoutes());
 
 app.route('/', guideRoutes);
 app.route('/api', guideRoutes);

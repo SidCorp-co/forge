@@ -2,18 +2,28 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { oauthAccounts, userPreferences, users } from '../db/schema.js';
 import { assertOrgAccess } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
+import {
+  accountPreferencesSchema,
+  accountSchema,
+  patchAccountPreferences,
+  patchProfile,
+  profileAnswerSchema,
+  readAccount,
+  readAccountPreferences,
+} from './me-reference.js';
 
 export const meRoutes = new Hono<{ Variables: AuthVars }>();
 
 meRoutes.use('/me', requireAuth());
 meRoutes.use('/me/*', requireAuth());
 
-meRoutes.get('/me', async (c) => {
+meRoutes.get('/me', readAccount, async (c) => {
   const userId = c.get('userId');
   const [row] = await db
     .select({
@@ -44,16 +54,18 @@ meRoutes.get('/me', async (c) => {
     .where(eq(oauthAccounts.userId, userId));
   const oauthProviders = Array.from(new Set(oauthRows.map((r) => r.provider)));
 
-  return c.json({
-    id: row.id,
-    email: row.email,
-    displayName: row.displayName,
-    emailVerifiedAt: row.emailVerifiedAt,
-    createdAt: row.createdAt,
-    lastFreshAuthAt: row.lastFreshAuthAt,
-    hasPassword: row.passwordHash !== null,
-    oauthProviders,
-  });
+  return c.json(
+    answer(accountSchema, {
+      id: row.id,
+      email: row.email,
+      displayName: row.displayName,
+      emailVerifiedAt: row.emailVerifiedAt,
+      createdAt: row.createdAt,
+      lastFreshAuthAt: row.lastFreshAuthAt,
+      hasPassword: row.passwordHash !== null,
+      oauthProviders,
+    }),
+  );
 });
 
 /**
@@ -68,6 +80,7 @@ const profileSchema = z
 
 meRoutes.patch(
   '/me',
+  patchProfile,
   zValidator('json', profileSchema, (r) => {
     if (!r.success) {
       throw new HTTPException(400, {
@@ -88,7 +101,7 @@ meRoutes.patch(
         cause: { code: 'UNAUTHENTICATED' },
       });
     }
-    return c.json(row);
+    return c.json(answer(profileAnswerSchema, row));
   },
 );
 
@@ -121,7 +134,7 @@ const DEFAULT_PREFS = {
   activeOrgId: null as string | null,
 };
 
-meRoutes.get('/me/preferences', async (c) => {
+meRoutes.get('/me/preferences', readAccountPreferences, async (c) => {
   const userId = c.get('userId');
   const [row] = await db
     .select({
@@ -136,13 +149,14 @@ meRoutes.get('/me/preferences', async (c) => {
     .where(eq(userPreferences.userId, userId))
     .limit(1);
   if (!row) {
-    return c.json({ ...DEFAULT_PREFS, updatedAt: null });
+    return c.json(answer(accountPreferencesSchema, { ...DEFAULT_PREFS, updatedAt: null }));
   }
-  return c.json(row);
+  return c.json(answer(accountPreferencesSchema, row));
 });
 
 meRoutes.patch(
   '/me/preferences',
+  patchAccountPreferences,
   zValidator('json', preferencesSchema, (r) => {
     if (!r.success) {
       throw new HTTPException(400, {
@@ -201,6 +215,8 @@ meRoutes.patch(
         updatedAt: userPreferences.updatedAt,
       });
 
-    return c.json(row);
+    if (!row) throw new Error('user_preferences: upsert returned no row');
+
+    return c.json(answer(accountPreferencesSchema, row));
   },
 );

@@ -2,12 +2,14 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
 import { issueArchiveSide } from '../issues/archive.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
+import { readRecentChanges, recentChangesSchema } from './recent-changes-routes-reference.js';
 
 interface RecentChangeItem {
   id: string;
@@ -44,6 +46,7 @@ meRecentChangesRoutes.use('/recent-changes', requireAuth(), assertEmailVerified(
 
 meRecentChangesRoutes.get(
   '/recent-changes',
+  readRecentChanges,
   zValidator('query', listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -54,7 +57,7 @@ meRecentChangesRoutes.get(
     const visibleIds = await loadVisibleProjectIds(userId);
     if (visibleIds.length === 0) {
       const empty: RecentChangesResponse = { items: [] };
-      return c.json(empty);
+      return c.json(answer(recentChangesSchema, empty));
     }
 
     const rows = await db
@@ -85,6 +88,6 @@ meRecentChangesRoutes.get(
       })),
     };
 
-    return c.json(response);
+    return c.json(answer(recentChangesSchema, response));
   },
 );

@@ -2,11 +2,14 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { refreshTokens } from '../db/schema.js';
+import { declaresInput } from '../middleware/validator.js';
 import { assertNotAgentUser } from './agent-login-gate.js';
 import { REFRESH_COOKIE_NAME, setAuthCookie, setRefreshCookie } from './cookie.js';
 import { signUserToken } from './jwt.js';
+import { refresh, refreshCookieSchema, refreshedSchema } from './refresh-reference.js';
 import {
   generateRefreshToken,
   hashRefreshToken,
@@ -63,7 +66,7 @@ type RefreshOutcome =
   | { kind: 'expired' }
   | { kind: 'replay'; userId: string };
 
-refreshRoutes.post('/refresh', async (c) => {
+refreshRoutes.post('/refresh', refresh, declaresInput('cookie', refreshCookieSchema), async (c) => {
   // Refresh token lives ONLY in the httpOnly cookie at this point — the
   // body fallback was removed in ISS-315 cleanup once every client had
   // landed on the cookie path. A missing cookie returns the same
@@ -126,5 +129,5 @@ refreshRoutes.post('/refresh', async (c) => {
   setRefreshCookie(c, outcome.refreshToken);
   // refreshToken stays out of the JSON body (cookie-only since ISS-315
   // cleanup) — clients should rely on the cookie roundtrip.
-  return c.json({ token });
+  return c.json(answer(refreshedSchema, { token }));
 });

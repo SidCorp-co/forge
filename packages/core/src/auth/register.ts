@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
@@ -12,6 +13,7 @@ import { ensurePersonalOrg } from '../orgs/service.js';
 import { sendVerificationEmail } from './email.js';
 import { hashPassword } from './password.js';
 import { evaluatePasswordStrength, MIN_PASSWORD_SCORE } from './password-strength.js';
+import { register, registeredSchema } from './register-reference.js';
 import { issueVerificationToken } from './verification-token.js';
 
 export const registerSchema = z.object({
@@ -27,6 +29,7 @@ authRoutes.use('/register', rateLimit(RULES.authRegister, { name: 'authRegister'
 
 authRoutes.post(
   '/register',
+  register,
   zValidator('json', registerSchema, (result) => {
     if (!result.success) {
       throw new HTTPException(400, {
@@ -87,7 +90,7 @@ authRoutes.post(
         logger.error({ err: sendErr, userId: row.userId }, 'failed to send verification email');
       }
 
-      return c.json(row, 201);
+      return c.json(answer(registeredSchema, row), 201);
     } catch (err: unknown) {
       if (isUniqueViolation(err)) {
         throw new HTTPException(409, {

@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { answerStyles, userPreferences } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
@@ -14,6 +15,14 @@ import {
   restorePreferenceChange,
   writeAssistantPreferences,
 } from './preference-changes.js';
+import {
+  listPreferenceChangeTrail,
+  patchPreferences,
+  preferenceChangesSchema,
+  preferencesSchema,
+  readPreferences,
+  restorePreferenceChangeOp,
+} from './preferences-reference.js';
 
 export const PREF_THEMES = ['system', 'light', 'dark'] as const;
 export const PREF_LANGUAGES = ['en', 'vi'] as const;
@@ -79,14 +88,17 @@ export const preferenceRoutes = new Hono<{ Variables: AuthVars }>();
 preferenceRoutes.use('/preferences', requireAuth());
 preferenceRoutes.use('/preferences/*', requireAuth());
 
-preferenceRoutes.get('/preferences', async (c) => c.json(await readFull(c.get('userId'))));
+preferenceRoutes.get('/preferences', readPreferences, async (c) =>
+  c.json(answer(preferencesSchema, await readFull(c.get('userId')))),
+);
 
-preferenceRoutes.get('/preferences/changes', async (c) =>
-  c.json({ items: await listPreferenceChanges(c.get('userId')) }),
+preferenceRoutes.get('/preferences/changes', listPreferenceChangeTrail, async (c) =>
+  c.json(answer(preferenceChangesSchema, { items: await listPreferenceChanges(c.get('userId')) })),
 );
 
 preferenceRoutes.post(
   '/preferences/changes/:id/restore',
+  restorePreferenceChangeOp,
   zValidator('param', changeParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -104,7 +116,7 @@ preferenceRoutes.post(
           cause: { code: 'NOT_FOUND' },
         });
       }
-      return c.json(await readFull(userId));
+      return c.json(answer(preferencesSchema, await readFull(userId)));
     } catch (err) {
       if (err instanceof PreferenceRestoreConflict) {
         throw new HTTPException(409, {
@@ -119,6 +131,7 @@ preferenceRoutes.post(
 
 preferenceRoutes.patch(
   '/preferences',
+  patchPreferences,
   zValidator('json', patchBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -133,7 +146,9 @@ preferenceRoutes.patch(
         actor: { kind: 'person', userId },
       });
     }
-    if (theme === undefined && language === undefined) return c.json(await readFull(userId));
+    if (theme === undefined && language === undefined) {
+      return c.json(answer(preferencesSchema, await readFull(userId)));
+    }
 
     // INSERT … ON CONFLICT DO UPDATE upsert. The defaults from the column
     // definitions kick in when this is the user's first PATCH and they only
@@ -163,6 +178,6 @@ preferenceRoutes.patch(
       language: row.language,
     });
 
-    return c.json(row);
+    return c.json(answer(preferencesSchema, row));
   },
 );

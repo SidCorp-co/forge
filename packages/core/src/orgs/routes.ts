@@ -2,14 +2,13 @@ import { and, count, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import {
-  memberLenses,
   organizationMembers,
   organizations,
   orgInvitations,
-  orgMemberRoles,
   projects,
   users,
 } from '../db/schema.js';
@@ -22,6 +21,35 @@ import { zValidator } from '../middleware/validator.js';
 import { sendOrgInvitationEmail } from '../projects/invitation-email.js';
 import { agentAccountRoutes } from './agent-accounts-routes.js';
 import { issueOrgInvitationToken } from './invitations.js';
+import {
+  addedMemberSchema,
+  addMemberSchema,
+  addOrgMember,
+  cancelInvitationQuerySchema,
+  cancelOrgInvitation,
+  createdOrgSchema,
+  createOrg,
+  createOrgSchema,
+  deleteOrg,
+  invitedSchema,
+  listOrgInvitations,
+  listOrgProjects,
+  listOrgs,
+  memberParamSchema,
+  orgMembershipsSchema,
+  orgMembersSchema,
+  orgParamSchema,
+  orgProjectsSchema,
+  orgSchema,
+  patchMemberSchema,
+  patchOrgMember,
+  patchOrgSchema,
+  pendingInvitationsSchema,
+  readOrgMembers,
+  removeOrgMember,
+  renameOrg,
+  updatedMemberSchema,
+} from './routes-reference.js';
 import { listOrgMembers, listOrgsForUser } from './service.js';
 
 const badRequest = (details: unknown) =>
@@ -36,53 +64,20 @@ const forbidden = (message: string) =>
 const conflict = (message: string, code: string, hint?: string) =>
   new HTTPException(409, { message, cause: { code, ...(hint ? { hint } : {}) } });
 
-const createOrgSchema = z.object({
-  slug: z
-    .string()
-    .trim()
-    .regex(/^[a-z0-9-]+$/, 'slug must be lowercase letters, digits, or hyphens')
-    .min(3)
-    .max(64),
-  name: z.string().trim().min(1).max(200),
-});
-
-const patchOrgSchema = z
-  .object({ name: z.string().trim().min(1).max(200).optional() })
-  .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
-
-const addMemberSchema = z.object({
-  email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
-  role: z.enum(orgMemberRoles),
-});
-
-// Both fields optional; at least one required. `role` = permission change (with
-// owner-tier guards below); `lenses` = soft working-lens assignment (ISS
-// role-aware chat) — orthogonal, deduped, no permission effect.
-const patchMemberSchema = z
-  .object({
-    role: z.enum(orgMemberRoles).optional(),
-    lenses: z.array(z.enum(memberLenses)).max(memberLenses.length).optional(),
-  })
-  .refine((o) => o.role !== undefined || o.lenses !== undefined, {
-    message: 'role or lenses required',
-  });
-
-const orgParamSchema = z.object({ orgId: z.uuid() });
-const memberParamSchema = z.object({ orgId: z.uuid(), userId: z.uuid() });
-
 export const orgRoutes = new Hono<{ Variables: AuthVars }>();
 
 orgRoutes.use('*', requireAuth(), assertEmailVerified());
 
 // My orgs + my role. The personal org is included (isPersonal flag lets the
 // UI pin/sort it).
-orgRoutes.get('/', async (c) => {
+orgRoutes.get('/', listOrgs, async (c) => {
   const userId = c.get('userId');
-  return c.json(await listOrgsForUser(userId));
+  return c.json(answer(orgMembershipsSchema, await listOrgsForUser(userId)));
 });
 
 orgRoutes.post(
   '/',
+  createOrg,
   zValidator('json', createOrgSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -105,7 +100,7 @@ orgRoutes.post(
         await tx.insert(organizationMembers).values({ orgId: org.id, userId, role: 'owner' });
         return org;
       });
-      return c.json({ ...created, role: 'owner' as const }, 201);
+      return c.json(answer(createdOrgSchema, { ...created, role: 'owner' as const }), 201);
     } catch (err) {
       if (isUniqueViolation(err)) {
         throw conflict('slug already taken', 'SLUG_TAKEN');
@@ -117,6 +112,7 @@ orgRoutes.post(
 
 orgRoutes.patch(
   '/:orgId',
+  renameOrg,
   zValidator('param', orgParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -142,7 +138,7 @@ orgRoutes.patch(
         createdAt: organizations.createdAt,
       });
     if (!updated) throw notFound('organization not found');
-    return c.json(updated);
+    return c.json(answer(orgSchema, updated));
   },
 );
 
@@ -150,6 +146,7 @@ orgRoutes.patch(
 // (move or delete projects first) and always refused for personal orgs.
 orgRoutes.delete(
   '/:orgId',
+  deleteOrg,
   zValidator('param', orgParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -183,6 +180,7 @@ orgRoutes.delete(
 // effective role on it.
 orgRoutes.get(
   '/:orgId/projects',
+  listOrgProjects,
   zValidator('param', orgParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -202,12 +200,13 @@ orgRoutes.get(
       })
       .from(projects)
       .where(eq(projects.orgId, orgId));
-    return c.json(rows);
+    return c.json(answer(orgProjectsSchema, rows));
   },
 );
 
 orgRoutes.get(
   '/:orgId/members',
+  readOrgMembers,
   zValidator('param', orgParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -217,7 +216,7 @@ orgRoutes.get(
 
     await assertOrgAccess(orgId, userId, 'member');
 
-    return c.json(await listOrgMembers(orgId));
+    return c.json(answer(orgMembersSchema, await listOrgMembers(orgId)));
   },
 );
 
@@ -225,6 +224,7 @@ orgRoutes.get(
 // tier; project invitations keep theirs). Granting `owner` requires owner.
 orgRoutes.post(
   '/:orgId/members',
+  addOrgMember,
   zValidator('param', orgParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -283,7 +283,7 @@ orgRoutes.post(
       }
       const body: { invited: true; expiresAt: Date; token?: string } = { invited: true, expiresAt };
       if (env.SMTP_DEBUG || env.NODE_ENV === 'test') body.token = token;
-      return c.json(body, 202);
+      return c.json(answer(invitedSchema, body), 202);
     }
 
     const [inserted] = await db
@@ -296,12 +296,13 @@ orgRoutes.post(
         createdAt: organizationMembers.createdAt,
       });
     if (!inserted) throw conflict('user is already an org member', 'ALREADY_MEMBER');
-    return c.json({ ...inserted, email }, 201);
+    return c.json(answer(addedMemberSchema, { ...inserted, email }), 201);
   },
 );
 
 orgRoutes.get(
   '/:orgId/invitations',
+  listOrgInvitations,
   zValidator('param', orgParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -323,22 +324,24 @@ orgRoutes.get(
       .where(and(eq(orgInvitations.orgId, orgId), isNull(orgInvitations.acceptedAt)));
 
     const now = Date.now();
-    return c.json(rows.map((r) => ({ ...r, expired: new Date(r.expiresAt).getTime() < now })));
+    return c.json(
+      answer(
+        pendingInvitationsSchema,
+        rows.map((r) => ({ ...r, expired: new Date(r.expiresAt).getTime() < now })),
+      ),
+    );
   },
 );
 
 orgRoutes.delete(
   '/:orgId/invitations',
+  cancelOrgInvitation,
   zValidator('param', orgParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
-  zValidator(
-    'query',
-    z.object({ email: z.string().trim().toLowerCase().pipe(z.email().max(254)) }),
-    (result) => {
-      if (!result.success) throw badRequest(z.flattenError(result.error));
-    },
-  ),
+  zValidator('query', cancelInvitationQuerySchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const { email } = c.req.valid('query');
@@ -364,6 +367,7 @@ orgRoutes.delete(
 
 orgRoutes.patch(
   '/:orgId/members/:userId',
+  patchOrgMember,
   zValidator('param', memberParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -422,12 +426,13 @@ orgRoutes.patch(
         createdAt: organizationMembers.createdAt,
       });
     if (!updated) throw notFound('membership not found');
-    return c.json(updated);
+    return c.json(answer(updatedMemberSchema, updated));
   },
 );
 
 orgRoutes.delete(
   '/:orgId/members/:userId',
+  removeOrgMember,
   zValidator('param', memberParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),

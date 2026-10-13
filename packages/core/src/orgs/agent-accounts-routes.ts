@@ -10,6 +10,7 @@ import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { writeAssistantPreferences } from '../auth/preference-changes.js';
 import { PresenceValidationError } from '../conversations/presence.js';
 import { db } from '../db/client.js';
@@ -27,6 +28,26 @@ import {
   setAgentDisplayName,
   setAgentProjects,
 } from './agent-accounts.js';
+import {
+  agentCredentialSchema,
+  agentListSchema,
+  agentNameSchema,
+  agentProjectsAnswerSchema,
+  agentSelfSchema,
+  createAgent,
+  createdAgentSchema,
+  listAgents,
+  memberAssistantPreferencesSchema,
+  mintAgentToken,
+  patchAgentSelf,
+  patchMemberAssistantPreferences,
+  readAgentSelfOp,
+  renameAgent,
+  retireAgent,
+  revokeAgentTokens,
+  revokedTokensSchema,
+  setAgentProjectList,
+} from './agent-accounts-routes-reference.js';
 import { agentSelfPatchSchema, readAgentSelf, writeAgentSelf } from './agent-selves.js';
 
 export const agentAccountRoutes = new Hono<{ Variables: AuthVars }>();
@@ -59,18 +80,20 @@ const setAgentProjectsSchema = z.object({ projectIds: agentProjectsSchema }).str
 
 agentAccountRoutes.get(
   '/:orgId/agents',
+  listAgents,
   zValidator('param', orgParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
     await assertOrgAccess(orgId, c.get('userId'), 'admin');
-    return c.json({ agents: await listAgentAccounts(orgId) });
+    return c.json(answer(agentListSchema, { agents: await listAgentAccounts(orgId) }));
   },
 );
 
 agentAccountRoutes.post(
   '/:orgId/agents',
+  createAgent,
   zValidator('param', orgParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -90,12 +113,13 @@ agentAccountRoutes.post(
       handle: body.handle,
       ...(body.projectRole ? { projectRole: body.projectRole } : {}),
     });
-    return c.json({ ...agent, plaintext }, 201);
+    return c.json(answer(createdAgentSchema, { ...agent, plaintext }), 201);
   },
 );
 
 agentAccountRoutes.put(
   '/:orgId/agents/:agentUserId/projects',
+  setAgentProjectList,
   zValidator('param', agentParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -107,12 +131,13 @@ agentAccountRoutes.put(
     await assertOrgAccess(orgId, c.get('userId'), 'admin');
     const out = await setAgentProjects(orgId, agentUserId, c.req.valid('json').projectIds);
     if (!out) throw notFound('agent not found');
-    return c.json(out);
+    return c.json(answer(agentProjectsAnswerSchema, out));
   },
 );
 
 agentAccountRoutes.delete(
   '/:orgId/agents/:agentUserId',
+  retireAgent,
   zValidator('param', agentParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -126,6 +151,7 @@ agentAccountRoutes.delete(
 
 agentAccountRoutes.post(
   '/:orgId/agents/:agentUserId/tokens',
+  mintAgentToken,
   zValidator('param', agentParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -135,12 +161,13 @@ agentAccountRoutes.post(
     assertMayMintFullCredential(c);
     const minted = await mintAgentCredential(orgId, agentUserId, mintEpochFor(c));
     if (!minted) throw notFound('agent not found');
-    return c.json(minted, 201);
+    return c.json(answer(agentCredentialSchema, minted), 201);
   },
 );
 
 agentAccountRoutes.delete(
   '/:orgId/agents/:agentUserId/tokens',
+  revokeAgentTokens,
   zValidator('param', agentParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -149,12 +176,13 @@ agentAccountRoutes.delete(
     await assertOrgAccess(orgId, c.get('userId'), 'admin');
     const revoked = await revokeAgentCredentials(orgId, agentUserId);
     if (revoked === null) throw notFound('agent not found');
-    return c.json({ revoked });
+    return c.json(answer(revokedTokensSchema, { revoked }));
   },
 );
 
 agentAccountRoutes.patch(
   '/:orgId/agents/:agentUserId',
+  renameAgent,
   zValidator('param', agentParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -170,7 +198,7 @@ agentAccountRoutes.patch(
       c.req.valid('json').displayName,
     );
     if (displayName === undefined) throw notFound('agent not found');
-    return c.json({ displayName });
+    return c.json(answer(agentNameSchema, { displayName }));
   },
 );
 
@@ -180,6 +208,7 @@ agentAccountRoutes.patch(
 
 agentAccountRoutes.get(
   '/:orgId/agents/:agentUserId/self',
+  readAgentSelfOp,
   zValidator('param', agentParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -188,12 +217,13 @@ agentAccountRoutes.get(
     await assertOrgAccess(orgId, c.get('userId'), 'admin');
     const self = await readAgentSelf(orgId, agentUserId);
     if (!self) throw notFound('agent not found');
-    return c.json(self);
+    return c.json(answer(agentSelfSchema, self));
   },
 );
 
 agentAccountRoutes.patch(
   '/:orgId/agents/:agentUserId/self',
+  patchAgentSelf,
   zValidator('param', agentParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -207,7 +237,7 @@ agentAccountRoutes.patch(
     try {
       const self = await writeAgentSelf(orgId, agentUserId, c.req.valid('json'), actor);
       if (!self) throw notFound('agent not found');
-      return c.json(self);
+      return c.json(answer(agentSelfSchema, self));
     } catch (err) {
       if (err instanceof PresenceValidationError) {
         throw new HTTPException(400, {
@@ -234,6 +264,7 @@ const memberAssistantPrefsSchema = z
 
 agentAccountRoutes.patch(
   '/:orgId/members/:userId/assistant-preferences',
+  patchMemberAssistantPreferences,
   zValidator('param', memberParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -255,6 +286,6 @@ agentAccountRoutes.patch(
       patch: c.req.valid('json'),
       actor: { kind: 'admin', userId: actor },
     });
-    return c.json(prefs);
+    return c.json(answer(memberAssistantPreferencesSchema, prefs));
   },
 );

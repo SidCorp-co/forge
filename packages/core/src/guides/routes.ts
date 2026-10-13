@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { env } from '../config/env.js';
 import { INTEGRATION_PROVIDERS } from '../integrations/types.js';
 import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
+import { declaresInput, zValidator } from '../middleware/validator.js';
 import {
   CORPUS_SCOPE,
   cliServedBullets,
@@ -20,6 +21,25 @@ import {
   upsertIntegrationGuide,
 } from './integration-guides.js';
 import { getGuide, listGuides } from './registry.js';
+import {
+  deletedGuideSchema,
+  deleteIntegrationGuideOp,
+  guideEnvelopeSchema,
+  guideIndexSchema,
+  guideSlugParamSchema,
+  listGuideIndex,
+  listOrgGuides,
+  orgGuideIndexSchema,
+  orgGuideParamSchema,
+  orgGuideSlugParamSchema,
+  orgProviderParamSchema,
+  putIntegrationGuide,
+  readGuide,
+  readLlmsTxt,
+  readOrgGuide,
+  storedGuideSchema,
+  upsertGuideSchema,
+} from './routes-reference.js';
 
 /**
  * Public, read-only surface for Forge capability guides (D2 in the plan —
@@ -37,11 +57,8 @@ import { getGuide, listGuides } from './registry.js';
  */
 export const guideRoutes = new Hono();
 
-const upsertSchema = z.object({
-  title: z.string().trim().min(1).max(200),
-  summary: z.string().trim().min(1).max(500),
-  body: z.string().min(1).max(200000),
-});
+const badRequest = (details: unknown) =>
+  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 const orgGuideRoutes = new Hono<{ Variables: AuthVars }>();
 orgGuideRoutes.use('*', requireAuth());
@@ -65,28 +82,45 @@ function assertKnownProvider(provider: string): void {
   }
 }
 
-orgGuideRoutes.get('/:orgId/guides', async (c) => {
-  const orgId = c.req.param('orgId');
-  await assertOrgAdmin(orgId, c.get('userId'));
-  return c.json({ guides: await resolveGuideIndex(orgId) });
-});
+orgGuideRoutes.get(
+  '/:orgId/guides',
+  listOrgGuides,
+  zValidator('param', orgGuideParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { orgId } = c.req.valid('param');
+    await assertOrgAdmin(orgId, c.get('userId'));
+    return c.json(answer(orgGuideIndexSchema, { guides: await resolveGuideIndex(orgId) }));
+  },
+);
 
-orgGuideRoutes.get('/:orgId/guides/:slug', async (c) => {
-  const orgId = c.req.param('orgId');
-  await assertOrgAdmin(orgId, c.get('userId'));
-  const guide = await resolveGuide(c.req.param('slug'), orgId);
-  if (!guide) {
-    throw new HTTPException(404, { message: validSlugsMessage(), cause: { code: 'NOT_FOUND' } });
-  }
-  return c.json({ guide });
-});
+orgGuideRoutes.get(
+  '/:orgId/guides/:slug',
+  readOrgGuide,
+  zValidator('param', orgGuideSlugParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { orgId, slug } = c.req.valid('param');
+    await assertOrgAdmin(orgId, c.get('userId'));
+    const guide = await resolveGuide(slug, orgId);
+    if (!guide) {
+      throw new HTTPException(404, { message: validSlugsMessage(), cause: { code: 'NOT_FOUND' } });
+    }
+    return c.json(answer(guideEnvelopeSchema, { guide }));
+  },
+);
 
 orgGuideRoutes.put(
   '/:orgId/integration-guides/:provider',
-  zValidator('json', upsertSchema),
+  putIntegrationGuide,
+  zValidator('param', orgProviderParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', upsertGuideSchema),
   async (c) => {
-    const orgId = c.req.param('orgId');
-    const provider = c.req.param('provider');
+    const { orgId, provider } = c.req.valid('param');
     assertKnownProvider(provider);
     const userId = c.get('userId');
     await assertOrgAdmin(orgId, userId);
@@ -96,25 +130,35 @@ orgGuideRoutes.put(
       ...c.req.valid('json'),
       updatedBy: userId,
     });
-    return c.json({
-      guide: {
-        slug: integrationGuideSlug(row.provider),
-        title: row.title,
-        summary: row.summary,
-        version: row.version,
-        updatedAt: row.updatedAt,
-      },
-    });
+    return c.json(
+      answer(storedGuideSchema, {
+        guide: {
+          slug: integrationGuideSlug(row.provider),
+          title: row.title,
+          summary: row.summary,
+          version: row.version,
+          updatedAt: row.updatedAt,
+        },
+      }),
+    );
   },
 );
 
-orgGuideRoutes.delete('/:orgId/integration-guides/:provider', async (c) => {
-  const orgId = c.req.param('orgId');
-  const provider = c.req.param('provider');
-  assertKnownProvider(provider);
-  await assertOrgAdmin(orgId, c.get('userId'));
-  return c.json({ deleted: await deleteIntegrationGuide(orgId, provider) });
-});
+orgGuideRoutes.delete(
+  '/:orgId/integration-guides/:provider',
+  deleteIntegrationGuideOp,
+  zValidator('param', orgProviderParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { orgId, provider } = c.req.valid('param');
+    assertKnownProvider(provider);
+    await assertOrgAdmin(orgId, c.get('userId'));
+    return c.json(
+      answer(deletedGuideSchema, { deleted: await deleteIntegrationGuide(orgId, provider) }),
+    );
+  },
+);
 
 guideRoutes.route('/orgs', orgGuideRoutes);
 
@@ -130,12 +174,17 @@ function validSlugsMessage(): string {
   return `guide not found. Valid slugs: ${slugs}. ${NOT_SERVED_HERE_NOTE} Readable pages: ${humanGuidesUrl()}`;
 }
 
-guideRoutes.get('/guides', (c) => {
+guideRoutes.get('/guides', listGuideIndex, (c) => {
   c.header('Cache-Control', 'public, max-age=300');
-  return c.json({ guides: listGuides(), corpus: CORPUS_SCOPE });
+  return c.json(
+    answer(guideIndexSchema, {
+      guides: listGuides(),
+      corpus: { ...CORPUS_SCOPE, cliServed: [...CORPUS_SCOPE.cliServed] },
+    }),
+  );
 });
 
-guideRoutes.get('/llms.txt', (c) => {
+guideRoutes.get('/llms.txt', readLlmsTxt, (c) => {
   const url = new URL(c.req.url);
   const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();
   if (proto === 'https' || proto === 'http') url.protocol = `${proto}:`;
@@ -175,8 +224,8 @@ guideRoutes.get('/llms.txt', (c) => {
 // Hono routes `:slug` as a literal path segment — it will NOT split
 // `deploy-safety.md` into a separate `.md` route. Strip the suffix inside
 // this one handler instead and switch the response shape/content-type.
-guideRoutes.get('/guides/:slug', (c) => {
-  const raw = c.req.param('slug');
+guideRoutes.get('/guides/:slug', readGuide, declaresInput('param', guideSlugParamSchema), (c) => {
+  const raw = guideSlugParamSchema.parse(c.req.param()).slug;
   const isMarkdown = raw.endsWith('.md');
   const slug = isMarkdown ? raw.slice(0, -3) : raw;
 
@@ -192,5 +241,5 @@ guideRoutes.get('/guides/:slug', (c) => {
   if (isMarkdown) {
     return c.body(guide.body, 200, { 'content-type': 'text/markdown; charset=utf-8' });
   }
-  return c.json({ guide });
+  return c.json(answer(guideEnvelopeSchema, { guide }));
 });

@@ -3,6 +3,10 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { Hono } from 'hono';
+import { z } from 'zod';
+
+/** The target triple is any string: the handler strips what it does not allow and answers 404 for a target it has no build of. */
+export const installTargetParamSchema = z.object({ target: z.string() });
 
 export const installRoutes = new Hono();
 
@@ -128,7 +132,9 @@ installRoutes.get('/install.sh', (c) =>
 );
 
 installRoutes.get('/install/latest.json', async (c) => {
-  if (!RELEASE_DIR) return c.json({ error: 'RUNNER_RELEASE_DIR not configured' }, 501);
+  if (!RELEASE_DIR) {
+    return c.json({ error: 'RUNNER_RELEASE_DIR not configured' }, 501);
+  }
   const published = await getPublishedRunnerBuild();
   if (!published) return c.json({ error: 'no release published' }, 404);
   const { version, commit } = published;
@@ -152,8 +158,12 @@ installRoutes.get('/install/latest.json', async (c) => {
 });
 
 installRoutes.get('/install/bin/:target', async (c) => {
-  if (!RELEASE_DIR) return c.json({ error: 'RUNNER_RELEASE_DIR not configured' }, 501);
-  const target = c.req.param('target').replace(/[^a-zA-Z0-9._-]/g, '');
+  if (!RELEASE_DIR) {
+    return c.json({ error: 'RUNNER_RELEASE_DIR not configured' }, 501);
+  }
+  const target = installTargetParamSchema
+    .parse(c.req.param())
+    .target.replace(/[^a-zA-Z0-9._-]/g, '');
   try {
     const buf = await readFile(join(RELEASE_DIR, `${ASSET_PREFIX}${target}`));
     return c.body(buf, 200, {

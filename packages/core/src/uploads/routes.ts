@@ -5,6 +5,7 @@ import {
   persistSessionAttachment,
   SessionAttachmentError,
 } from '../agent-sessions/attachment-service.js';
+import { answer } from '../api-reference/describe.js';
 import {
   AttachmentError as CommentAttachmentError,
   persistCommentAttachment,
@@ -23,6 +24,12 @@ import { zValidator } from '../middleware/validator.js';
 import { getStorage } from '../storage/index.js';
 import { loadAttachmentBytesTarget } from './attachment-bytes.js';
 import { resolveDownloadTicket } from './download-ticket-service.js';
+import {
+  downloadAttachment,
+  type UploadedAttachment,
+  uploadAttachment,
+  uploadedAttachmentSchema,
+} from './routes-reference.js';
 import { claimUploadTicket, releaseUploadTicket } from './ticket-service.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
@@ -51,6 +58,7 @@ export const uploadRoutes = new Hono();
 
 uploadRoutes.put(
   '/:uploadId',
+  uploadAttachment,
   uploadBodyLimit(() => {
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
@@ -67,7 +75,7 @@ uploadRoutes.put(
       const bytes = Buffer.from(await c.req.arrayBuffer());
       if (bytes.length === 0) throw badRequest('empty file', 'EMPTY_FILE');
 
-      let persisted: unknown;
+      let persisted: UploadedAttachment;
       if (ticket.targetType === 'issue') {
         persisted = await persistIssueAttachment({
           issueId: ticket.targetId,
@@ -105,7 +113,7 @@ uploadRoutes.put(
         });
       }
 
-      return c.json(persisted, 201);
+      return c.json(answer(uploadedAttachmentSchema, persisted), 201);
     } catch (err) {
       await releaseUploadTicket(uploadId);
       if (
@@ -123,6 +131,7 @@ uploadRoutes.put(
 
 uploadRoutes.get(
   '/download/:ticketId',
+  downloadAttachment,
   zValidator('param', z.object({ ticketId: z.uuid() }), (r) => {
     if (!r.success) throw badRequest('invalid ticketId', 'BAD_REQUEST');
   }),

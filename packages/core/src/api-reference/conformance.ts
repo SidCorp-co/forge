@@ -56,7 +56,9 @@ export function judgeAnswer(
 ): Mismatch | null {
   if (!declaration) return { status, what: 'the route declares no answers at all' };
   const declared = declaration.responses[status];
-  if (status >= 400) {
+  // A route that answers an error in its own shape (a liveness body, a JSON-RPC error) declares that
+  // shape with json(...), and it is judged against it as any other body is.
+  if (status >= 400 && declared?.kind !== 'json') {
     const code = (body as { code?: unknown } | null)?.code;
     if (libraryDefault && status === 400 && isLibraryRefusal(body)) return null;
     const known = errors?.get(status);

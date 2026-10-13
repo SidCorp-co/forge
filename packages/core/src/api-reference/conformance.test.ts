@@ -154,6 +154,15 @@ describe('judgeAnswer', () => {
     expect(judgeAnswer(declaration, known, 400, { code: 'OTHER' }, true)?.what).toContain('OTHER');
   });
 
+  it('judges an error status the route declared as a json body against that body', () => {
+    const declared = {
+      summary: 's',
+      responses: { 503: json(z.object({ status: z.literal('down') })) },
+    };
+    expect(judgeAnswer(declared, undefined, 503, { status: 'down' })).toBeNull();
+    expect(judgeAnswer(declared, undefined, 503, { status: 'up' })?.what).toContain('status');
+  });
+
   it('names the first field that fails, by its path', () => {
     const verdict = judgeAnswer(declaration, undefined, 200, {
       id: 'a',

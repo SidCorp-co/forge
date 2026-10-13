@@ -13,6 +13,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { foldWorkStates, openWorkCountsOf } from '../issues/work-state.js';
@@ -22,13 +23,12 @@ import { zValidator } from '../middleware/validator.js';
 import { readPulseFlow } from './pulse-flow.js';
 import { readPulseLiveness } from './pulse-liveness.js';
 import { readPulseQuality } from './pulse-quality.js';
+import { pulseQuerySchema, pulseSchema, readPulse } from './pulse-routes-reference.js';
 import { PULSE_THRESHOLDS, type PulseResponse, type PulseWork } from './pulse-types.js';
 import { readPulseWork } from './pulse-work.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const pulseQuerySchema = z.object({ orgId: z.uuid().optional() });
 
 const emptyWork = (): PulseWork => ({
   buckets: openWorkCountsOf(foldWorkStates([])),
@@ -79,6 +79,7 @@ mePulseRoutes.use('/pulse', requireAuth(), assertEmailVerified());
 
 mePulseRoutes.get(
   '/pulse',
+  readPulse,
   zValidator('query', pulseQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -87,7 +88,7 @@ mePulseRoutes.get(
     const now = new Date();
 
     const visibleIds = await loadVisibleProjectIds(c.get('userId'));
-    if (visibleIds.length === 0) return c.json(emptyPulse(now));
+    if (visibleIds.length === 0) return c.json(answer(pulseSchema, emptyPulse(now)));
 
     const projectIds = orgId
       ? (
@@ -98,7 +99,7 @@ mePulseRoutes.get(
         ).map((r) => r.id)
       : visibleIds;
 
-    if (projectIds.length === 0) return c.json(emptyPulse(now));
+    if (projectIds.length === 0) return c.json(answer(pulseSchema, emptyPulse(now)));
 
     const [liveness, work, flow, quality] = await Promise.all([
       readPulseLiveness(projectIds, PULSE_THRESHOLDS, now),
@@ -115,6 +116,6 @@ mePulseRoutes.get(
       flow,
       quality,
     };
-    return c.json(response);
+    return c.json(answer(pulseSchema, response));
   },
 );
