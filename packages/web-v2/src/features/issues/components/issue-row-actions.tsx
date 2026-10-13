@@ -208,7 +208,7 @@ function RowMenu({
 
 // One line, never two: a row that wraps its second line outgrows the 56px Comfortable bound on the
 // narrowest desktop width. Module and creator give way (ellipsis), the kind and relations keep their size.
-export const SUBTEXT = "hidden min-w-0 flex-nowrap items-center gap-x-3 overflow-hidden lg:flex";
+const SUBTEXT = "hidden min-w-0 flex-nowrap items-center gap-x-3 overflow-hidden lg:flex";
 
 export function IssueLine({
   row,

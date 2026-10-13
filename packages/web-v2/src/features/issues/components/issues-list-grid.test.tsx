@@ -16,7 +16,6 @@ import { ToastProvider } from "@/providers/toast-provider";
 import { LIST_DENSITY_KEY } from "../list-density";
 import type { IssueRow } from "../types";
 import { GRID } from "./issue-grid";
-import { SUBTEXT } from "./issue-row-actions";
 import { IssuesListView } from "./issues-list-view";
 
 expect.extend(matchers);
@@ -226,9 +225,14 @@ describe("density", () => {
     mount();
     const [row] = rowsOf();
     const line = within(row).getByText(longLabel, { selector: "span" }).parentElement as HTMLElement;
-    expect(line.className).toBe(SUBTEXT);
-    expect(line.className).not.toMatch(/flex-wrap/);
-    expect(line.className).toMatch(/overflow-hidden/);
+    const tokens = line.className.split(/\s+/);
+    // Each token is asserted on its own, so dropping any one of them goes red naming it: without
+    // lg:flex the line never shows, without flex-nowrap it wraps again (criterion 13).
+    expect(tokens).toContain("lg:flex");
+    expect(tokens).toContain("flex-nowrap");
+    expect(tokens).toContain("overflow-hidden");
+    expect(tokens).toContain("min-w-0");
+    expect(tokens).not.toContain("flex-wrap");
     const members = Array.from(line.children) as HTMLElement[];
     const [moduleBox, kindBox, creator] = members;
     expect(moduleBox.className).toMatch(/\bmin-w-0\b/);
