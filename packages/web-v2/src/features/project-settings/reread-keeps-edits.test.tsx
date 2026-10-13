@@ -342,25 +342,26 @@ describe("the way out of a refused save", () => {
 		expect(banner.textContent).toMatch(/nothing was saved/i);
 	});
 
-	it("keeps the refusal compact on a phone: the explanation is folded behind a toggle, the two ways out are not", async () => {
+	it("keeps the refusal compact on a phone: the message is two lines and the choice is folded behind a toggle", async () => {
 		mountPage();
 		await ready();
 		expandOpenStage();
 		await typeADeniedTool("qa_probe_typed_X");
 		moveDeniedTools();
 		press();
-		await screen.findByText(/changed by someone else/i);
+		const message = await screen.findByText(/changed by someone else/i);
+		expect(message.className).toContain("line-clamp-2");
+		expect(message.className).toContain("md:line-clamp-none");
 
-		const explanation = screen.getByText(/your edits everywhere else on this page are kept/i).parentElement as HTMLElement;
-		expect(explanation.className).toContain("hidden");
-		expect(explanation.className).toContain("md:block");
-		expect(screen.getByRole("button", { name: /use the current values/i })).toBeVisible();
-		expect(screen.getByRole("button", { name: /keep my changes/i })).toBeVisible();
+		const choice = screen.getByRole("button", { name: /use the current values/i }).parentElement?.parentElement as HTMLElement;
+		expect(choice.className).toContain("hidden");
+		expect(choice.className).toContain("md:block");
 
-		const toggle = screen.getByRole("button", { name: "What each does" });
+		const toggle = screen.getByRole("button", { name: "Choose what to do" });
 		expect(toggle).toHaveAttribute("aria-expanded", "false");
 		fireEvent.click(toggle);
-		expect(screen.getByRole("button", { name: "Hide details" })).toHaveAttribute("aria-expanded", "true");
-		expect(explanation.className).not.toContain("hidden");
+		expect(screen.getByRole("button", { name: "Hide" })).toHaveAttribute("aria-expanded", "true");
+		expect(choice.className).not.toContain("hidden");
+		expect(message.className).not.toContain("line-clamp-2");
 	});
 });

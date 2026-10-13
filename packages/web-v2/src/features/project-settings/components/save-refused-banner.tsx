@@ -75,35 +75,35 @@ export function SaveRefusedBanner({
 	return (
 		<Banner tone={conflicts.length > 0 ? "attention" : "danger"} onDismiss={onDismiss}>
 			<div className="space-y-2">
-				<p>
+				<p className={explained ? undefined : "line-clamp-2 md:line-clamp-none"}>
 					{document === "environments"
 						? formatSettingsWriteError(error)
 						: formatPipelineConfigError(error)}
 				</p>
 				{conflicts.length > 0 && (
 					<>
-						<div className="flex flex-wrap items-center gap-2">
-							<Button
-								variant="secondary"
-								size="sm"
-								onClick={() => reread(conflicts.map((c) => c.path))}
-							>
-								Use the current values
-							</Button>
-							<Button variant="secondary" size="sm" onClick={() => reread([])}>
-								Keep my changes
-							</Button>
-							<Button
-								variant="ghost"
-								size="sm"
-								className="md:hidden"
-								aria-expanded={explained}
-								onClick={() => setExplained((open) => !open)}
-							>
-								{explained ? "Hide details" : "What each does"}
-							</Button>
-						</div>
-						<div className={explained ? "space-y-1" : "hidden space-y-1 md:block"}>
+						<Button
+							variant="ghost"
+							size="sm"
+							className="md:hidden"
+							aria-expanded={explained}
+							onClick={() => setExplained((open) => !open)}
+						>
+							{explained ? "Hide" : "Choose what to do"}
+						</Button>
+						<div className={explained ? "space-y-2" : "hidden space-y-2 md:block"}>
+							<div className="flex flex-wrap items-center gap-2">
+								<Button
+									variant="secondary"
+									size="sm"
+									onClick={() => reread(conflicts.map((c) => c.path))}
+								>
+									Use the current values
+								</Button>
+								<Button variant="secondary" size="sm" onClick={() => reread([])}>
+									Keep my changes
+								</Button>
+							</div>
 							<p className="fg-caption text-muted">
 								Your edits everywhere else on this page are kept either way.
 							</p>

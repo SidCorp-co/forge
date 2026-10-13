@@ -115,7 +115,7 @@ function McpServerRow({
   const checked = formatRelativeTime(entry.lastHealthAt);
 
   return (
-    <li className="flex flex-col gap-1.5 rounded-md border border-line bg-surface px-3 py-2.5">
+    <li className="flex flex-col gap-1.5 border-t border-line py-3">
       <div className="flex items-center gap-2">
         <Icon name="command" size={15} className="text-muted" />
         <span className="font-mono text-13 font-semibold text-fg">{entry.serverName}</span>
@@ -206,7 +206,7 @@ export function McpServersPanel({
       ) : preview.isError ? (
         <ErrorState message={formatApiError(preview.error)} onRetry={() => preview.refetch()} />
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col">
           {(preview.data?.servers ?? []).map((entry) => (
             <McpServerRow
               key={`${entry.source}:${entry.provider ?? entry.serverName}:${entry.bindingId ?? entry.serverName}`}
