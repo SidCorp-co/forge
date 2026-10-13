@@ -9,11 +9,12 @@
  * would have had to fan out over every project it can see.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { foldWorkStates, openWorkCountsOf } from '../issues/work-state.js';
@@ -22,13 +23,12 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { readPulseFlow } from './pulse-flow.js';
 import { readPulseLiveness } from './pulse-liveness.js';
 import { readPulseQuality } from './pulse-quality.js';
+import { pulseQuerySchema, pulseSchema, readPulse } from './pulse-routes-reference.js';
 import { PULSE_THRESHOLDS, type PulseResponse, type PulseWork } from './pulse-types.js';
 import { readPulseWork } from './pulse-work.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const pulseQuerySchema = z.object({ orgId: z.uuid().optional() });
 
 const emptyWork = (): PulseWork => ({
   buckets: openWorkCountsOf(foldWorkStates([])),
@@ -79,6 +79,7 @@ mePulseRoutes.use('/pulse', requireAuth(), assertEmailVerified());
 
 mePulseRoutes.get(
   '/pulse',
+  readPulse,
   zValidator('query', pulseQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -87,7 +88,7 @@ mePulseRoutes.get(
     const now = new Date();
 
     const visibleIds = await loadVisibleProjectIds(c.get('userId'));
-    if (visibleIds.length === 0) return c.json(emptyPulse(now));
+    if (visibleIds.length === 0) return c.json(answer(pulseSchema, emptyPulse(now)));
 
     // An archived project is out of the project list the Overview's links resolve against, so it is
     // out of the scope here: the pulse never names a project its own link cannot open (ISS-1261).
@@ -104,7 +105,7 @@ mePulseRoutes.get(
         )
     ).map((r) => r.id);
 
-    if (projectIds.length === 0) return c.json(emptyPulse(now));
+    if (projectIds.length === 0) return c.json(answer(pulseSchema, emptyPulse(now)));
 
     const [liveness, work, flow, quality] = await Promise.all([
       readPulseLiveness(projectIds, PULSE_THRESHOLDS, now),
@@ -121,6 +122,6 @@ mePulseRoutes.get(
       flow,
       quality,
     };
-    return c.json(response);
+    return c.json(answer(pulseSchema, response));
   },
 );

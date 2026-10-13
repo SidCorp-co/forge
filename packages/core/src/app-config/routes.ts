@@ -1,13 +1,15 @@
-import { zValidator } from '@hono/zod-validator';
 import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { chatTurnKinds } from '../assistant/providers/registry.js';
 import { db } from '../db/client.js';
 import { appConfig } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { configRowSchema, putAppConfig, readAppConfig } from './routes-reference.js';
 
 const projectIdParamSchema = z.object({ projectId: z.uuid() });
 
@@ -36,6 +38,7 @@ appConfigRoutes.use('*', requireAuth(), assertEmailVerified());
 
 appConfigRoutes.get(
   '/:projectId',
+  readAppConfig,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -51,12 +54,13 @@ appConfigRoutes.get(
       .from(appConfig)
       .where(eq(appConfig.projectId, projectId))
       .limit(1);
-    return c.json(row ?? null);
+    return c.json(answer(configRowSchema.nullable(), row ?? null));
   },
 );
 
 appConfigRoutes.put(
   '/:projectId',
+  putAppConfig,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -94,6 +98,6 @@ appConfigRoutes.put(
       .returning();
     if (!row) throw new Error('app_config: upsert returned no row');
 
-    return c.json(row);
+    return c.json(answer(configRowSchema, row));
   },
 );

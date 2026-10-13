@@ -1,8 +1,9 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { deviceSkills, skillActivityEvents, skills } from '../db/schema.js';
 import { assertProjectAccess } from '../lib/authz.js';
@@ -11,6 +12,24 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { recordSkillActivityEvent, resolvePacketIdForHash } from '../skills/activity.js';
 import { loadDeviceSkillStatus, resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { assertDeviceBoundToProject } from './device-project.js';
+import {
+  contentParamSchema,
+  contentQuerySchema,
+  okSchema,
+  projectQuerySchema,
+  readDeviceSkillStatus,
+  readSkillContent,
+  readSkillManifest,
+  reportBodySchema,
+  reportInstalledSkills,
+  reportSkillSyncFailed,
+  skillContentSchema,
+  skillManifestSchema,
+  skillReportSchema,
+  skillStatusSchema,
+  statusParamSchema,
+  syncFailedBodySchema,
+} from './skills-routes-reference.js';
 
 // Skill Studio 4 (ISS-278) — server-driven device skill sync.
 //
@@ -29,34 +48,6 @@ const notFound = (message: string) =>
 const unauth = () =>
   new HTTPException(401, { message: 'unauthenticated', cause: { code: 'UNAUTHENTICATED' } });
 
-const projectQuerySchema = z.object({
-  projectId: z.uuid(),
-  includeFiles: z.string().optional(),
-});
-
-const contentQuerySchema = z.object({ projectId: z.uuid() });
-
-const contentParamSchema = z.object({ skillId: z.uuid() });
-
-const reportBodySchema = z
-  .object({
-    skills: z
-      .array(
-        z
-          .object({
-            skillId: z.uuid(),
-            installedHash: z.string().min(1).max(128),
-            installedVersion: z.number().int().nonnegative().optional(),
-            observedSha: z.string().min(1).max(128).optional(),
-            shadowedBy: z.string().max(1024).optional(),
-          })
-          .strict(),
-      )
-      .max(500),
-    pruned: z.array(z.string().min(1).max(128)).max(500).optional(),
-  })
-  .strict();
-
 function truthy(v: string | undefined): boolean {
   return v === '1' || v === 'true' || v === 'yes';
 }
@@ -66,6 +57,7 @@ export const deviceSkillRoutes = new Hono<{ Variables: DeviceVars }>();
 deviceSkillRoutes.get(
   '/me/skills',
   requireDevice(),
+  readSkillManifest,
   zValidator('query', projectQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -96,7 +88,7 @@ deviceSkillRoutes.get(
           },
     );
 
-    return c.json({ skills });
+    return c.json(answer(skillManifestSchema, { skills }));
   },
 );
 
@@ -106,6 +98,7 @@ deviceSkillRoutes.get(
 deviceSkillRoutes.get(
   '/me/skills/:skillId/content',
   requireDevice(),
+  readSkillContent,
   zValidator('param', contentParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -123,14 +116,16 @@ deviceSkillRoutes.get(
     const entry = entries.find((e) => e.skillId === skillId);
     if (!entry) throw notFound('skill not registered to project');
 
-    return c.json({
-      skillId: entry.skillId,
-      name: entry.name,
-      version: entry.version,
-      effectiveHash: entry.effectiveHash,
-      skillMd: entry.skillMd,
-      files: entry.files,
-    });
+    return c.json(
+      answer(skillContentSchema, {
+        skillId: entry.skillId,
+        name: entry.name,
+        version: entry.version,
+        effectiveHash: entry.effectiveHash,
+        skillMd: entry.skillMd,
+        files: entry.files,
+      }),
+    );
   },
 );
 
@@ -139,6 +134,7 @@ deviceSkillRoutes.get(
 deviceSkillRoutes.post(
   '/me/skills/report',
   requireDevice(),
+  reportInstalledSkills,
   zValidator('query', contentQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -161,15 +157,16 @@ deviceSkillRoutes.post(
       await recordPrunedSkill({ projectId, deviceId: device.id, name });
     }
 
-    return c.json({ upserted: reported.length, pruned: pruned?.length ?? 0 });
+    return c.json(
+      answer(skillReportSchema, { upserted: reported.length, pruned: pruned?.length ?? 0 }),
+    );
   },
 );
-
-const syncFailedBodySchema = z.object({ error: z.string().min(1).max(2000) }).strict();
 
 deviceSkillRoutes.post(
   '/me/skills/sync-failed',
   requireDevice(),
+  reportSkillSyncFailed,
   zValidator('query', contentQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -209,7 +206,7 @@ deviceSkillRoutes.post(
       });
     });
 
-    return c.json({ ok: true });
+    return c.json(answer(okSchema, { ok: true }));
   },
 );
 
@@ -384,12 +381,11 @@ async function recordPrunedSkill(input: {
 
 export const deviceSkillStatusRoutes = new Hono<{ Variables: AuthVars }>();
 
-const statusParamSchema = z.object({ projectId: z.uuid(), deviceId: z.uuid() });
-
 deviceSkillStatusRoutes.get(
   '/:projectId/devices/:deviceId/skills',
   requireAuth(),
   assertEmailVerified(),
+  readDeviceSkillStatus,
   zValidator('param', statusParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -399,7 +395,7 @@ deviceSkillStatusRoutes.get(
     await assertProjectAccess(projectId, userId, 'viewer');
 
     const status = await loadDeviceSkillStatus(projectId, deviceId);
-    return c.json({ skills: status });
+    return c.json(answer(skillStatusSchema, { skills: status }));
   },
 );
 

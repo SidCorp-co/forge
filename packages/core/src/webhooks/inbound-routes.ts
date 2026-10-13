@@ -1,6 +1,8 @@
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { answer } from '../api-reference/declare/describe.js';
+import { declaresInput } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { recordTurnedAwayInboundCall } from '../integrations/inbound-door.js';
@@ -14,6 +16,11 @@ import type { IntegrationProvider } from '../integrations/types.js';
 import { logger } from '../logger.js';
 import { withSentryCause } from '../middleware/error.js';
 import { SignatureVerificationError, verifyHmacSignature } from './hmac.js';
+import {
+  deliveryAcceptedSchema,
+  receiveWebhook,
+  webhookSlugParamSchema,
+} from './inbound-routes-reference.js';
 
 const GENERIC_SIGNATURE_HEADERS = ['x-hub-signature-256', 'x-forge-signature-256'] as const;
 
@@ -89,115 +96,124 @@ function providerHeaderMap(): ProviderRoute[] {
 
 export const webhookInboundRoutes = new Hono();
 
-webhookInboundRoutes.post('/in/:slug', async (c) => {
-  const slug = c.req.param('slug');
-  if (!slug) throw badRequest({ slug: 'required' });
+webhookInboundRoutes.post(
+  '/in/:slug',
+  receiveWebhook,
+  declaresInput('param', webhookSlugParamSchema),
+  async (c) => {
+    const slug = webhookSlugParamSchema.parse(c.req.param()).slug;
+    if (!slug) throw badRequest({ slug: 'required' });
 
-  // Raw body first — HMAC covers the untouched bytes.
-  const rawBody = await c.req.raw.clone().text();
+    // Raw body first — HMAC covers the untouched bytes.
+    const rawBody = await c.req.raw.clone().text();
 
-  const [project] = await db
-    .select({ id: projects.id, secret: projects.webhookSecret })
-    .from(projects)
-    .where(eq(projects.slug, slug))
-    .limit(1);
-  if (!project) throw notFound();
+    const [project] = await db
+      .select({ id: projects.id, secret: projects.webhookSecret })
+      .from(projects)
+      .where(eq(projects.slug, slug))
+      .limit(1);
+    if (!project) throw notFound();
 
-  for (const map of providerHeaderMap()) {
-    if (!c.req.header(map.header)) continue;
-    const adapter = getAdapter(map.provider);
-    if (!adapter) throw badRequest({ provider: map.provider }, 'ADAPTER_NOT_REGISTERED');
+    for (const map of providerHeaderMap()) {
+      if (!c.req.header(map.header)) continue;
+      const adapter = getAdapter(map.provider);
+      if (!adapter) throw badRequest({ provider: map.provider }, 'ADAPTER_NOT_REGISTERED');
 
-    const candidatePairs = await listActiveBindingsForProjectProvider(project.id, map.provider);
-    if (candidatePairs.length === 0) {
-      throw badRequest({ provider: map.provider }, 'INTEGRATION_NOT_CONFIGURED');
+      const candidatePairs = await listActiveBindingsForProjectProvider(project.id, map.provider);
+      if (candidatePairs.length === 0) {
+        throw badRequest({ provider: map.provider }, 'INTEGRATION_NOT_CONFIGURED');
+      }
+
+      if (!map.signatureHeader) {
+        throw badRequest({ provider: map.provider }, 'PROVIDER_DECLARES_NO_SIGNATURE_HEADER');
+      }
+      const signatureHeader = c.req.header(map.signatureHeader);
+      if (!signatureHeader) {
+        await noteTurnedAway(candidatePairs, 'MISSING_SIGNATURE', { slug, provider: map.provider });
+        throw unauthorized('MISSING_SIGNATURE');
+      }
+
+      const pair = candidatePairs.find(
+        (p) =>
+          p.binding.integrationSecret !== null &&
+          verifyHmacSignature(p.binding.integrationSecret, rawBody, signatureHeader),
+      );
+      if (!pair) {
+        await noteTurnedAway(candidatePairs, 'INVALID_SIGNATURE', { slug, provider: map.provider });
+        throw unauthorized('INVALID_SIGNATURE');
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = rawBody.length > 0 ? JSON.parse(rawBody) : {};
+      } catch {
+        throw badRequest({ body: 'invalid json' });
+      }
+      const ctx = buildContextFromBinding(pair);
+      try {
+        const result = await adapter.handleInbound(ctx, {
+          headers: collectHeaders(c.req.raw.headers),
+          rawBody,
+          payload: parsed,
+        });
+        return c.json(
+          answer(deliveryAcceptedSchema, {
+            accepted: true,
+            handler: map.provider,
+            role: pair.binding.role,
+            stages: pair.binding.stages,
+            deliveryId: result.deliveryId,
+            actions: result.actions,
+            ...(result.refusal ? { refusal: result.refusal } : {}),
+          }),
+        );
+      } catch (err) {
+        if (err instanceof SignatureVerificationError) {
+          await noteTurnedAway([pair], 'INVALID_SIGNATURE', { slug, provider: map.provider });
+          throw unauthorized('INVALID_SIGNATURE');
+        }
+        logger.error(
+          { err, slug, provider: map.provider, bindingId: pair.binding.id },
+          'integration adapter: handler threw',
+        );
+        throw withSentryCause(
+          new HTTPException(500, { message: 'handler failed', cause: { code: 'HANDLER_FAILED' } }),
+          {
+            error: err,
+            tags: {
+              'webhook.provider': map.provider,
+              'webhook.slug': slug,
+              'webhook.binding_id': pair.binding.id,
+            },
+          },
+        );
+      }
     }
 
-    if (!map.signatureHeader) {
-      throw badRequest({ provider: map.provider }, 'PROVIDER_DECLARES_NO_SIGNATURE_HEADER');
-    }
-    const signatureHeader = c.req.header(map.signatureHeader);
-    if (!signatureHeader) {
-      await noteTurnedAway(candidatePairs, 'MISSING_SIGNATURE', { slug, provider: map.provider });
-      throw unauthorized('MISSING_SIGNATURE');
+    if (!project.secret) {
+      throw badRequest({ slug: 'webhook not enabled' }, 'WEBHOOK_DISABLED');
     }
 
-    const pair = candidatePairs.find(
-      (p) =>
-        p.binding.integrationSecret !== null &&
-        verifyHmacSignature(p.binding.integrationSecret, rawBody, signatureHeader),
-    );
-    if (!pair) {
-      await noteTurnedAway(candidatePairs, 'INVALID_SIGNATURE', { slug, provider: map.provider });
+    const signatureHeader =
+      GENERIC_SIGNATURE_HEADERS.map((h) => c.req.header(h)).find(
+        (v): v is string => typeof v === 'string' && v.length > 0,
+      ) ?? null;
+    if (!verifyHmacSignature(project.secret, rawBody, signatureHeader)) {
       throw unauthorized('INVALID_SIGNATURE');
     }
 
-    let parsed: unknown;
     try {
-      parsed = rawBody.length > 0 ? JSON.parse(rawBody) : {};
+      if (rawBody.length > 0) JSON.parse(rawBody);
     } catch {
       throw badRequest({ body: 'invalid json' });
     }
-    const ctx = buildContextFromBinding(pair);
-    try {
-      const result = await adapter.handleInbound(ctx, {
-        headers: collectHeaders(c.req.raw.headers),
-        rawBody,
-        payload: parsed,
-      });
-      return c.json({
-        accepted: true,
-        handler: map.provider,
-        role: pair.binding.role,
-        stages: pair.binding.stages,
-        deliveryId: result.deliveryId,
-        actions: result.actions,
-        ...(result.refusal ? { refusal: result.refusal } : {}),
-      });
-    } catch (err) {
-      if (err instanceof SignatureVerificationError) {
-        await noteTurnedAway([pair], 'INVALID_SIGNATURE', { slug, provider: map.provider });
-        throw unauthorized('INVALID_SIGNATURE');
-      }
-      logger.error(
-        { err, slug, provider: map.provider, bindingId: pair.binding.id },
-        'integration adapter: handler threw',
-      );
-      throw withSentryCause(
-        new HTTPException(500, { message: 'handler failed', cause: { code: 'HANDLER_FAILED' } }),
-        {
-          error: err,
-          tags: {
-            'webhook.provider': map.provider,
-            'webhook.slug': slug,
-            'webhook.binding_id': pair.binding.id,
-          },
-        },
-      );
-    }
-  }
 
-  if (!project.secret) {
-    throw badRequest({ slug: 'webhook not enabled' }, 'WEBHOOK_DISABLED');
-  }
-
-  const signatureHeader =
-    GENERIC_SIGNATURE_HEADERS.map((h) => c.req.header(h)).find(
-      (v): v is string => typeof v === 'string' && v.length > 0,
-    ) ?? null;
-  if (!verifyHmacSignature(project.secret, rawBody, signatureHeader)) {
-    throw unauthorized('INVALID_SIGNATURE');
-  }
-
-  try {
-    if (rawBody.length > 0) JSON.parse(rawBody);
-  } catch {
-    throw badRequest({ body: 'invalid json' });
-  }
-
-  logger.info({ slug, bytes: rawBody.length }, 'webhook: generic receive');
-  return c.json({ accepted: true, handler: 'generic', actions: 0 });
-});
+    logger.info({ slug, bytes: rawBody.length }, 'webhook: generic receive');
+    return c.json(
+      answer(deliveryAcceptedSchema, { accepted: true, handler: 'generic', actions: 0 }),
+    );
+  },
+);
 
 function collectHeaders(headers: Headers): Record<string, string | undefined> {
   const out: Record<string, string | undefined> = {};

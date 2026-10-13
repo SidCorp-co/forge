@@ -4,26 +4,27 @@
  * Overview's runner figure is taken over, so both answer for one project set.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { devices, projects, runners } from '../db/schema.js';
 import { assertOrgAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { annotateDeviceBuilds } from './build-state.js';
+import { listOrgDevices, orgDeviceSchema, orgIdParamSchema } from './org-routes-reference.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const orgIdParamSchema = z.object({ orgId: z.uuid() });
 
 export const deviceOrgRoutes = new Hono<{ Variables: AuthVars }>();
 
 deviceOrgRoutes.get(
   '/:orgId/devices',
+  listOrgDevices,
   zValidator('param', orgIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -33,7 +34,7 @@ deviceOrgRoutes.get(
     await assertOrgAccess(orgId, userId, 'member');
 
     const visibleIds = await loadVisibleProjectIds(userId);
-    if (visibleIds.length === 0) return c.json([]);
+    if (visibleIds.length === 0) return c.json(answer(z.array(orgDeviceSchema), []));
 
     // `capabilities` and the gate report are a box's own diagnostics, held back
     // from everyone but its owner. `array_agg` is not DISTINCT: one runner per
@@ -66,7 +67,10 @@ deviceOrgRoutes.get(
 
     const annotated = await annotateDeviceBuilds(rows);
     return c.json(
-      annotated.map(({ ownerId, ...device }) => ({ ...device, ownedByMe: ownerId === userId })),
+      answer(
+        z.array(orgDeviceSchema),
+        annotated.map(({ ownerId, ...device }) => ({ ...device, ownedByMe: ownerId === userId })),
+      ),
     );
   },
 );

@@ -1,6 +1,7 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { assertOrgRoleOnProject, loadProjectAccess } from '../lib/authz.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import type { AuthVars } from '../middleware/auth.js';
@@ -21,6 +22,14 @@ import {
   pipelineFlagOff,
   refuseByName,
 } from './route-errors.js';
+import {
+  environmentsReadSchema,
+  environmentsWrittenSchema,
+  getEnvironments,
+  pipelineConfigWrittenSchema,
+  writeEnvironments,
+  writePipelineConfig,
+} from './settings-write-routes-reference.js';
 
 // The two settings documents a screen writes, under one contract: a write says what it read
 // (`base`) and what it wants changed (`patch`), the server compares at the paths the patch
@@ -32,19 +41,19 @@ export const projectSettingsWriteRoutes = new Hono<{ Variables: AuthVars }>();
 
 /** `{ base, patch }`, refused by name where a caller sends the document itself. */
 function writeShape<T extends z.ZodType>(message: string, patch: T) {
-  return z
-    .unknown()
-    .superRefine((raw, ctx) => {
-      const body = raw as Record<string, unknown> | null;
-      if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-        ctx.addIssue({ code: 'custom', message });
-        return;
-      }
-      if (!('patch' in body) || !('base' in body)) {
-        ctx.addIssue({ code: 'custom', message });
-      }
-    })
-    .pipe(z.object({ base: z.record(z.string(), z.unknown()), patch }).strict());
+  // A preprocess and not `unknown.superRefine.pipe`: the pipe's input is `unknown`, so the API
+  // reference could not say what the body is. A refusal here still stops before the inner parse.
+  return z.preprocess((raw, ctx) => {
+    const body = raw as Record<string, unknown> | null;
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      ctx.addIssue({ code: 'custom', message });
+      return raw;
+    }
+    if (!('patch' in body) || !('base' in body)) {
+      ctx.addIssue({ code: 'custom', message });
+    }
+    return raw;
+  }, z.object({ base: z.record(z.string(), z.unknown()), patch }).strict());
 }
 
 export const PIPELINE_CONFIG_WRITE_SHAPE_MESSAGE =
@@ -52,6 +61,7 @@ export const PIPELINE_CONFIG_WRITE_SHAPE_MESSAGE =
 
 projectSettingsWriteRoutes.patch(
   '/:id/pipeline-config',
+  writePipelineConfig,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(flatten(result.error));
   }),
@@ -74,7 +84,12 @@ projectSettingsWriteRoutes.patch(
     assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
     try {
-      return c.json(await updatePipelineConfig({ projectId: id, patch, base }));
+      return c.json(
+        answer(
+          pipelineConfigWrittenSchema,
+          await updatePipelineConfig({ projectId: id, patch, base }),
+        ),
+      );
     } catch (err) {
       throw pipelineConfigHttpError(err);
     }
@@ -83,6 +98,7 @@ projectSettingsWriteRoutes.patch(
 
 projectSettingsWriteRoutes.get(
   '/:id/environments',
+  getEnvironments,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(flatten(result.error));
   }),
@@ -91,7 +107,7 @@ projectSettingsWriteRoutes.get(
     const access = await loadProjectAccess(id, c.get('userId'));
     if (!access.role) throw forbidden('not a project member');
     try {
-      return c.json({ environments: await readEnvironments(id) });
+      return c.json(answer(environmentsReadSchema, { environments: await readEnvironments(id) }));
     } catch (err) {
       throw environmentsHttpError(err);
     }
@@ -100,6 +116,7 @@ projectSettingsWriteRoutes.get(
 
 projectSettingsWriteRoutes.patch(
   '/:id/environments',
+  writeEnvironments,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(flatten(result.error));
   }),
@@ -118,7 +135,9 @@ projectSettingsWriteRoutes.patch(
     const access = await loadProjectAccess(id, c.get('userId'));
     assertOrgRoleOnProject(access, 'admin', 'org admin required');
     try {
-      return c.json(await updateEnvironments({ projectId: id, patch, base }));
+      return c.json(
+        answer(environmentsWrittenSchema, await updateEnvironments({ projectId: id, patch, base })),
+      );
     } catch (err) {
       throw environmentsHttpError(err);
     }

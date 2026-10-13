@@ -703,6 +703,20 @@ describe('PATCH /api/projects/:id · environments has its own door now', () => {
     expect(body.message).toContain('{ base, patch }');
   });
 
+  it('refuses `environments` alone when an invalid field travels with it', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({ environments: {}, name: '' }),
+      token,
+    });
+    const body = (await res.json()) as { code?: string; details?: { fieldErrors?: object } };
+    expect(body.code).toBe('ENVIRONMENTS_MOVED');
+    expect(body.details).toBeUndefined();
+  });
+
   it('200 leaves the column alone for a patch that omits environments', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);

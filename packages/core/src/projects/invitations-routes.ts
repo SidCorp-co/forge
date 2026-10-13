@@ -1,6 +1,8 @@
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { answer } from '../api-reference/declare/describe.js';
+import { declaresInput } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import {
   organizations,
@@ -11,6 +13,17 @@ import {
 } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { consumeInvitationToken } from './invitation-token.js';
+import {
+  acceptInvitation,
+  declineInvitation,
+  invitationAcceptedSchema,
+  invitationDismissedSchema,
+  invitationPreviewSchema,
+  invitationTokenParamSchema,
+  listPendingInvitations,
+  pendingInvitationsSchema,
+  previewInvitation,
+} from './invitations-routes-reference.js';
 
 const badRequest = (code: string, message: string) =>
   new HTTPException(400, { message, cause: { code } });
@@ -26,7 +39,7 @@ export const invitationRoutes = new Hono<{ Variables: AuthVars }>();
 // GET /api/invitations/pending — ISS-597.
 // Unified list of pending project + org invitations for the authed user.
 // MUST be registered BEFORE /:token or Hono will match token='pending'.
-invitationRoutes.get('/pending', requireAuth(), async (c) => {
+invitationRoutes.get('/pending', listPendingInvitations, requireAuth(), async (c) => {
   const userId = c.get('userId');
   const [user] = await db
     .select({ email: users.email })
@@ -86,116 +99,140 @@ invitationRoutes.get('/pending', requireAuth(), async (c) => {
     ...orgRows.map((r) => ({ kind: 'org' as const, ...r })),
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  return c.json(pending);
+  return c.json(answer(pendingInvitationsSchema, pending));
 });
 
-invitationRoutes.get('/:token', async (c) => {
-  const token = c.req.param('token');
-  if (!token || token.length === 0) {
-    throw badRequest('INVALID_INVITATION_TOKEN', 'invalid invitation token');
-  }
+invitationRoutes.get(
+  '/:token',
+  previewInvitation,
+  declaresInput('param', invitationTokenParamSchema),
+  async (c) => {
+    const token = c.req.param('token');
+    if (!token || token.length === 0) {
+      throw badRequest('INVALID_INVITATION_TOKEN', 'invalid invitation token');
+    }
 
-  const [row] = await db
-    .select({
-      email: projectInvitations.email,
-      role: projectInvitations.role,
-      expiresAt: projectInvitations.expiresAt,
-      acceptedAt: projectInvitations.acceptedAt,
-      projectName: projects.name,
-      inviterEmail: users.email,
-    })
-    .from(projectInvitations)
-    .innerJoin(projects, eq(projects.id, projectInvitations.projectId))
-    .innerJoin(users, eq(users.id, projectInvitations.inviterId))
-    .where(eq(projectInvitations.token, token))
-    .limit(1);
+    const [row] = await db
+      .select({
+        email: projectInvitations.email,
+        role: projectInvitations.role,
+        expiresAt: projectInvitations.expiresAt,
+        acceptedAt: projectInvitations.acceptedAt,
+        projectName: projects.name,
+        inviterEmail: users.email,
+      })
+      .from(projectInvitations)
+      .innerJoin(projects, eq(projects.id, projectInvitations.projectId))
+      .innerJoin(users, eq(users.id, projectInvitations.inviterId))
+      .where(eq(projectInvitations.token, token))
+      .limit(1);
 
-  if (!row) throw notFound('INVITATION_NOT_FOUND', 'invitation not found');
-  if (row.acceptedAt !== null) {
-    throw gone('ALREADY_ACCEPTED', 'invitation already accepted');
-  }
-  if (new Date(row.expiresAt).getTime() < Date.now()) {
-    throw gone('EXPIRED_TOKEN', 'invitation has expired');
-  }
-
-  return c.json({
-    projectName: row.projectName,
-    inviterEmail: row.inviterEmail,
-    role: row.role,
-    email: row.email,
-    expiresAt: row.expiresAt,
-  });
-});
-
-invitationRoutes.post('/:token/accept', requireAuth(), async (c) => {
-  const token = c.req.param('token');
-  if (!token || token.length === 0) {
-    throw badRequest('INVALID_INVITATION_TOKEN', 'invalid invitation token');
-  }
-
-  const userId = c.get('userId');
-
-  const [user] = await db
-    .select({ id: users.id, email: users.email })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (!user) {
-    throw new HTTPException(401, {
-      message: 'user not found',
-      cause: { code: 'UNAUTHENTICATED' },
-    });
-  }
-
-  const result = await consumeInvitationToken(token, { userId: user.id, email: user.email });
-
-  switch (result.status) {
-    case 'invalid':
-      throw notFound('INVITATION_NOT_FOUND', 'invitation not found');
-    case 'expired':
-      throw gone('EXPIRED_TOKEN', 'invitation has expired');
-    case 'already_accepted':
+    if (!row) throw notFound('INVITATION_NOT_FOUND', 'invitation not found');
+    if (row.acceptedAt !== null) {
       throw gone('ALREADY_ACCEPTED', 'invitation already accepted');
-    case 'email_mismatch':
-      throw new HTTPException(403, {
-        message: 'invitation was sent to a different email address',
-        cause: { code: 'INVITATION_EMAIL_MISMATCH' },
+    }
+    if (new Date(row.expiresAt).getTime() < Date.now()) {
+      throw gone('EXPIRED_TOKEN', 'invitation has expired');
+    }
+
+    return c.json(
+      answer(invitationPreviewSchema, {
+        projectName: row.projectName,
+        inviterEmail: row.inviterEmail,
+        role: row.role,
+        email: row.email,
+        expiresAt: row.expiresAt,
+      }),
+    );
+  },
+);
+
+invitationRoutes.post(
+  '/:token/accept',
+  acceptInvitation,
+  requireAuth(),
+  declaresInput('param', invitationTokenParamSchema),
+  async (c) => {
+    const token = c.req.param('token');
+    if (!token || token.length === 0) {
+      throw badRequest('INVALID_INVITATION_TOKEN', 'invalid invitation token');
+    }
+
+    const userId = c.get('userId');
+
+    const [user] = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!user) {
+      throw new HTTPException(401, {
+        message: 'user not found',
+        cause: { code: 'UNAUTHENTICATED' },
       });
-    case 'ok':
-      return c.json({ projectId: result.projectId, role: result.role });
-  }
-});
+    }
+
+    const result = await consumeInvitationToken(token, { userId: user.id, email: user.email });
+
+    switch (result.status) {
+      case 'invalid':
+        throw notFound('INVITATION_NOT_FOUND', 'invitation not found');
+      case 'expired':
+        throw gone('EXPIRED_TOKEN', 'invitation has expired');
+      case 'already_accepted':
+        throw gone('ALREADY_ACCEPTED', 'invitation already accepted');
+      case 'email_mismatch':
+        throw new HTTPException(403, {
+          message: 'invitation was sent to a different email address',
+          cause: { code: 'INVITATION_EMAIL_MISMATCH' },
+        });
+      case 'ok':
+        return c.json(
+          answer(invitationAcceptedSchema, { projectId: result.projectId, role: result.role }),
+        );
+    }
+  },
+);
 
 // POST /api/invitations/:token/decline — ISS-597.
 // Sets dismissedAt. Idempotent. Email-match guard mirrors accept.
-invitationRoutes.post('/:token/decline', requireAuth(), async (c) => {
-  const token = c.req.param('token');
-  if (!token || token.length === 0) {
-    throw badRequest('INVALID_INVITATION_TOKEN', 'invalid invitation token');
-  }
+invitationRoutes.post(
+  '/:token/decline',
+  declineInvitation,
+  requireAuth(),
+  declaresInput('param', invitationTokenParamSchema),
+  async (c) => {
+    const token = c.req.param('token');
+    if (!token || token.length === 0) {
+      throw badRequest('INVALID_INVITATION_TOKEN', 'invalid invitation token');
+    }
 
-  const userId = c.get('userId');
-  const [user] = await db
-    .select({ email: users.email })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (!user) {
-    throw new HTTPException(401, { message: 'user not found', cause: { code: 'UNAUTHENTICATED' } });
-  }
+    const userId = c.get('userId');
+    const [user] = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!user) {
+      throw new HTTPException(401, {
+        message: 'user not found',
+        cause: { code: 'UNAUTHENTICATED' },
+      });
+    }
 
-  const [updated] = await db
-    .update(projectInvitations)
-    .set({ dismissedAt: new Date() })
-    .where(
-      and(
-        eq(projectInvitations.token, token),
-        sql`lower(${projectInvitations.email}) = lower(${user.email})`,
-        isNull(projectInvitations.acceptedAt),
-      ),
-    )
-    .returning({ token: projectInvitations.token });
+    const [updated] = await db
+      .update(projectInvitations)
+      .set({ dismissedAt: new Date() })
+      .where(
+        and(
+          eq(projectInvitations.token, token),
+          sql`lower(${projectInvitations.email}) = lower(${user.email})`,
+          isNull(projectInvitations.acceptedAt),
+        ),
+      )
+      .returning({ token: projectInvitations.token });
 
-  if (!updated) throw notFound('NOT_FOUND', 'invitation not found or email mismatch');
-  return c.json({ dismissed: true });
-});
+    if (!updated) throw notFound('NOT_FOUND', 'invitation not found or email mismatch');
+    return c.json(answer(invitationDismissedSchema, { dismissed: true }));
+  },
+);

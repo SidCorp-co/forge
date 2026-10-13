@@ -1,12 +1,20 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, type SQL, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { knowledgeEdges } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import {
+  createKnowledgeEdge,
+  deleteKnowledgeEdge,
+  knowledgeEdgeListSchema,
+  knowledgeEdgeSchema,
+  listKnowledgeEdges,
+} from './routes-reference.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -48,6 +56,7 @@ knowledgeEdgeRoutes.use('*', requireAuth(), assertEmailVerified());
 
 knowledgeEdgeRoutes.get(
   '/',
+  listKnowledgeEdges,
   zValidator('query', listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -70,12 +79,13 @@ knowledgeEdgeRoutes.get(
       .orderBy(desc(knowledgeEdges.createdAt))
       .limit(limit);
 
-    return c.json(rows);
+    return c.json(answer(knowledgeEdgeListSchema, rows));
   },
 );
 
 knowledgeEdgeRoutes.post(
   '/',
+  createKnowledgeEdge,
   zValidator('json', createSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -107,7 +117,7 @@ knowledgeEdgeRoutes.post(
         ),
       )
       .limit(1);
-    if (existing) return c.json(existing, 200);
+    if (existing) return c.json(answer(knowledgeEdgeSchema, existing), 200);
 
     const [inserted] = await db
       .insert(knowledgeEdges)
@@ -125,12 +135,13 @@ knowledgeEdgeRoutes.post(
       .returning();
     if (!inserted) throw new Error('knowledge_edges: insert returned no row');
 
-    return c.json(inserted, 201);
+    return c.json(answer(knowledgeEdgeSchema, inserted), 201);
   },
 );
 
 knowledgeEdgeRoutes.delete(
   '/:id',
+  deleteKnowledgeEdge,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),

@@ -7,18 +7,23 @@
  * can go stale if there is nothing between them.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { moduleDiagramSchema, readModuleDiagram } from './module-diagram-routes-reference.js';
 import { loadModuleDiagramSnapshot } from './module-diagram-source.js';
 import {
   generateModuleDiagram,
   ModuleDiagramError,
   moduleDiagramKinds,
 } from './module-diagrams.js';
+
+const refusedHttp = (err: ModuleDiagramError) =>
+  new HTTPException(409, { message: err.message, cause: { code: err.code } });
 
 const paramSchema = z.object({ id: z.uuid(), kind: z.enum(moduleDiagramKinds) });
 
@@ -27,6 +32,7 @@ moduleDiagramRoutes.use('*', requireAuth(), assertEmailVerified());
 
 moduleDiagramRoutes.get(
   '/:id/module-diagrams/:kind',
+  readModuleDiagram,
   zValidator('param', paramSchema, (r) => {
     if (!r.success) {
       throw new HTTPException(400, {
@@ -42,16 +48,16 @@ moduleDiagramRoutes.get(
 
     const snapshot = await loadModuleDiagramSnapshot(projectId);
     try {
-      return c.json({
-        kind,
-        mermaid: generateModuleDiagram(kind, snapshot),
-        moduleCount: snapshot.modules.length,
-        generatedAt: new Date().toISOString(),
-      });
+      return c.json(
+        answer(moduleDiagramSchema, {
+          kind,
+          mermaid: generateModuleDiagram(kind, snapshot),
+          moduleCount: snapshot.modules.length,
+          generatedAt: new Date().toISOString(),
+        }),
+      );
     } catch (err) {
-      if (err instanceof ModuleDiagramError) {
-        throw new HTTPException(409, { message: err.message, cause: { code: err.code } });
-      }
+      if (err instanceof ModuleDiagramError) throw refusedHttp(err);
       throw err;
     }
   },

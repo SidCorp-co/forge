@@ -227,9 +227,15 @@ describe('assistant preferences (ISS-1034)', () => {
       { method: 'POST', headers: await headers() },
     );
     expect(res.status).toBe(409);
-    const body = (await res.json()) as { code: string; message: string; laterChangeId?: string };
+    const body = (await res.json()) as {
+      code: string;
+      message: string;
+      details?: { laterChangeId?: string };
+    };
     expect(body.code).toBe('PREFERENCE_CHANGE_SUPERSEDED');
     expect(body.message).toContain('c-2');
+    // The later change rides under `details`, the only cause key the error envelope puts on the wire.
+    expect(body.details?.laterChangeId).toBe('c-2');
   });
 
   it('POST restore answers the full row when it applied (criterion 60)', async () => {

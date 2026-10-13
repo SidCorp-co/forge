@@ -4,12 +4,14 @@
  * read surface and this is the only write in the family.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { pinnedSchema, pinSkill } from './pin-routes-reference.js';
 import { setSkillPinned } from './pin-service.js';
 
 const paramSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() });
@@ -30,6 +32,7 @@ skillPinRoutes.use('/:projectId/skills/:skillId/pin', requireAuth(), assertEmail
 
 skillPinRoutes.put(
   '/:projectId/skills/:skillId/pin',
+  pinSkill,
   zValidator('param', paramSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -45,9 +48,11 @@ skillPinRoutes.put(
     assertProjectRole(access, 'admin', 'not a project admin');
 
     try {
-      return c.json({
-        skill: await setSkillPinned({ projectId, skillId, pinned, reason, actorUserId: userId }),
-      });
+      return c.json(
+        answer(pinnedSchema, {
+          skill: await setSkillPinned({ projectId, skillId, pinned, reason, actorUserId: userId }),
+        }),
+      );
     } catch (err) {
       if (err instanceof Error && err.message.startsWith('NOT_FOUND:')) {
         throw new HTTPException(404, { message: 'skill not found', cause: { code: 'NOT_FOUND' } });

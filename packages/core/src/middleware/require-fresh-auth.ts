@@ -4,9 +4,10 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import type { AuthVars } from './auth.js';
+import { refuses } from './declarations.js';
 
 export function requireFreshAuth(minutes = 5): MiddlewareHandler<{ Variables: AuthVars }> {
-  return async (c, next) => {
+  const gate: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
     const userId = c.get('userId');
 
     const stale = () =>
@@ -28,4 +29,11 @@ export function requireFreshAuth(minutes = 5): MiddlewareHandler<{ Variables: Au
 
     await next();
   };
+  return refuses(gate, [
+    {
+      status: 403,
+      code: 'FRESH_AUTH_REQUIRED',
+      when: 'the session has not re-authenticated within the last few minutes',
+    },
+  ]);
 }

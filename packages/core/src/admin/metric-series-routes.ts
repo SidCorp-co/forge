@@ -8,10 +8,11 @@
  * router can be imported standalone in a vitest suite.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
 import {
@@ -22,6 +23,7 @@ import {
   METRIC_SOURCES,
   WINDOW_SPECS,
 } from './metric-series.js';
+import { metricSeriesSchema, readMetricSeries } from './routes-reference.js';
 import { readThresholds } from './thresholds.js';
 import { type AdminMetricSeries, GLANCE_METRIC_NAMES, GLANCE_WINDOWS } from './types.js';
 
@@ -38,6 +40,7 @@ adminMetricSeriesRoutes.use('*', requireAuth(), assertEmailVerified(), requireAd
 
 adminMetricSeriesRoutes.get(
   '/metrics/:metric/timeseries',
+  readMetricSeries,
   zValidator('param', paramSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -62,6 +65,6 @@ adminMetricSeriesRoutes.get(
       deltaPct: deltaPct(series.value, series.baseline),
       points: series.points,
     };
-    return c.json(body);
+    return c.json(answer(metricSeriesSchema, body));
   },
 );

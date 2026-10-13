@@ -76,7 +76,7 @@ export const policyCopySchema = z.discriminatedUnion(
 );
 
 /** What a run holds: the same, plus core's own answer for a box that sent nothing. */
-const storedPolicySchema = z.discriminatedUnion(
+export const storedPolicySchema = z.discriminatedUnion(
   'named',
   [namedCopy, unnamed(storedUnnamedReasons)],
   { error: NAMED_ERROR },

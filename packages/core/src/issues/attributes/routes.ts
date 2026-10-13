@@ -8,16 +8,23 @@
  * What a door still owns is its own shape — the body schema, the issue, the caller's role.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../../api-reference/declare/describe.js';
+import { zValidator } from '../../api-reference/declare/validator.js';
 import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
 import type { AuthVars } from '../../middleware/auth.js';
 import { loadIssueAttributes } from './read.js';
+import {
+  attributesSchema,
+  attributesWrittenSchema,
+  readAttributes,
+  writeAttributes,
+} from './routes-reference.js';
 import { setIssueAttributes } from './service.js';
 import { AttributeRefusal, type AttributeRefusalCode } from './write.js';
 
@@ -64,6 +71,7 @@ function refusalHttp(err: AttributeRefusal): HTTPException {
 export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars }>): void {
   router.post(
     '/:id/attributes',
+    writeAttributes,
     zValidator('param', idParamSchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
@@ -87,7 +95,7 @@ export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars 
             assertedByUserId: c.get('userId'),
           })),
         );
-        return c.json(result, 201);
+        return c.json(answer(attributesWrittenSchema, result), 201);
       } catch (err) {
         if (err instanceof AttributeRefusal) throw refusalHttp(err);
         throw err;
@@ -97,6 +105,7 @@ export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars 
 
   router.get(
     '/:id/attributes',
+    readAttributes,
     zValidator('param', idParamSchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
@@ -105,7 +114,7 @@ export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars 
       const issue = await loadIssueRow(issueId);
       const access = await loadProjectAccess(issue.projectId, c.get('userId'));
       assertProjectRole(access, 'viewer');
-      return c.json({ attributes: await loadIssueAttributes(issue.id) });
+      return c.json(answer(attributesSchema, { attributes: await loadIssueAttributes(issue.id) }));
     },
   );
 }

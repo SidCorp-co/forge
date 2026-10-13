@@ -1,8 +1,9 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { declaresInput, zValidator } from '../api-reference/declare/validator.js';
 import { countActivePatsForUser, mintPat, revokePat, rotatePat } from '../auth/pat.js';
 import {
   PAT_ACCOUNT_ONLY_PERMISSIONS,
@@ -21,6 +22,17 @@ import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { forgetPatThrottle } from '../middleware/require-pat.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import {
+  auditSchema,
+  listTokens,
+  mintedTokenSchema,
+  mintToken,
+  publicTokenSchema,
+  readTokenAudit,
+  revokeToken,
+  rotateToken,
+  tokenListSchema,
+} from './routes-reference.js';
 
 const SCOPES = ['read', 'write', 'admin'] as const;
 
@@ -64,7 +76,9 @@ function grantOf(permissions: string[] | null): 'legacy' | 'full' | 'named' {
   return patGrantIsStatedFull(permissions) ? 'full' : 'named';
 }
 
-function publicShape(row: typeof personalAccessTokens.$inferSelect) {
+function publicShape(
+  row: typeof personalAccessTokens.$inferSelect,
+): z.input<typeof publicTokenSchema> {
   return {
     id: row.id,
     name: row.name,
@@ -87,25 +101,28 @@ export const patRoutes = new Hono<{ Variables: AuthVars }>();
 patRoutes.use('/pat', requireAuth(), assertEmailVerified());
 patRoutes.use('/pat/*', requireAuth(), assertEmailVerified());
 
-patRoutes.get('/pat', async (c) => {
+patRoutes.get('/pat', listTokens, async (c) => {
   const userId = c.get('userId');
   const rows = await db
     .select()
     .from(personalAccessTokens)
     .where(eq(personalAccessTokens.userId, userId))
     .orderBy(desc(personalAccessTokens.createdAt));
-  return c.json({
-    tokens: rows.map(publicShape),
-    menu: {
-      permissions: PAT_PERMISSION_NAMES,
-      accountOnly: PAT_ACCOUNT_ONLY_PERMISSIONS,
-      full: PAT_PERMISSION_ALL,
-    },
-  });
+  return c.json(
+    answer(tokenListSchema, {
+      tokens: rows.map(publicShape),
+      menu: {
+        permissions: [...PAT_PERMISSION_NAMES],
+        accountOnly: [...PAT_ACCOUNT_ONLY_PERMISSIONS],
+        full: PAT_PERMISSION_ALL,
+      },
+    }),
+  );
 });
 
 patRoutes.post(
   '/pat',
+  mintToken,
   requireFreshAuth(5),
   zValidator('json', createBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
@@ -226,10 +243,7 @@ patRoutes.post(
     });
 
     return c.json(
-      {
-        ...publicShape(minted.row),
-        plaintext: minted.plaintext,
-      },
+      answer(mintedTokenSchema, { ...publicShape(minted.row), plaintext: minted.plaintext }),
       201,
     );
   },
@@ -237,6 +251,7 @@ patRoutes.post(
 
 patRoutes.delete(
   '/pat/:id',
+  revokeToken,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -250,12 +265,13 @@ patRoutes.delete(
       event: 'pat.revoked',
       data: { tokenId: row.id, userId, ts: new Date().toISOString() },
     });
-    return c.json(publicShape(row));
+    return c.json(answer(publicTokenSchema, publicShape(row)));
   },
 );
 
 patRoutes.get(
   '/pat/:id/audit',
+  readTokenAudit,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -288,12 +304,14 @@ patRoutes.get(
       .where(eq(mcpAuditLog.tokenId, id))
       .orderBy(desc(mcpAuditLog.createdAt))
       .limit(limit);
-    return c.json({ entries: rows });
+    return c.json(answer(auditSchema, { entries: rows }));
   },
 );
 
 patRoutes.post(
   '/pat/:id/rotate',
+  rotateToken,
+  declaresInput('json', rotateBodySchema),
   requireFreshAuth(5),
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
@@ -323,7 +341,9 @@ patRoutes.post(
       event: 'pat.revoked',
       data: { tokenId: id, userId, ts: new Date().toISOString() },
     });
-    return c.json({ ...publicShape(minted.row), plaintext: minted.plaintext });
+    return c.json(
+      answer(mintedTokenSchema, { ...publicShape(minted.row), plaintext: minted.plaintext }),
+    );
   },
 );
 

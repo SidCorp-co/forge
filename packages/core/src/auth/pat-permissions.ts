@@ -166,6 +166,8 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, PatExclusion>> = Object.fr
   '/api/guides': PUBLIC,
   '/api/llms.txt': PUBLIC,
   '/pair': PUBLIC,
+  '/api/openapi.json': PUBLIC,
+  '/api/reference': PUBLIC,
   '/api/pipeline/registry': PUBLIC,
   '/orgs': {
     admits: 'orgs',

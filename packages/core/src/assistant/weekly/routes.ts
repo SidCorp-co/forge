@@ -5,15 +5,17 @@
  * and the same already-posted check — so pressing it twice posts once.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { answer } from '../../api-reference/declare/describe.js';
+import { zValidator } from '../../api-reference/declare/validator.js';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
 import { assertOrgRoleOnProject, loadProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { readAssistantWeekly } from './config.js';
+import { runAssistantWeekly, weeklyOutcomeSchema } from './routes-reference.js';
 import { realDeps, runAssistantWeeklyForProject } from './run.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -23,6 +25,7 @@ assistantWeeklyRoutes.use('*', requireAuth(), assertEmailVerified());
 
 assistantWeeklyRoutes.post(
   '/:id/assistant-weekly/run',
+  runAssistantWeekly,
   zValidator('param', idParamSchema, (result, c) => {
     if (!result.success)
       return c.json(
@@ -68,6 +71,6 @@ assistantWeeklyRoutes.post(
       realDeps(),
       new Date(),
     );
-    return c.json(outcome);
+    return c.json(answer(weeklyOutcomeSchema, outcome));
   },
 );

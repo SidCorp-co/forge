@@ -126,6 +126,8 @@
 
 ### Added
 
+- **The API publishes its own reference.** `/api/openapi.json` describes every route's input, answers, errors and permission, `/api/reference` renders it and `/api/reference/flows` draws four flows; none needs a login.
+
 - **A run now records which copy of the policy decided it.** The box reports the `forge` plugin copy its pane loaded, or says why it cannot, and the run keeps that. A copy core cannot read is refused by name.
 
 - **Tables sort from their headers.** On the projects list, the overview's "Longest without an issue run" and Top workspaces, a header sorts and says which way. A second press reverses all but Top workspaces, which ranks largest first. (ISS-1263)
@@ -2538,6 +2540,7 @@
   (ISS-1313)
 
 ### Removed
+- **`GET /api/me/recent-changes` is gone.** Nothing called it, and it still listed issues of archived projects. (ISS-1371)
 - **The Runs / Spend / Lead time switch on Top workspaces is gone.** Press the Runs, Spend or Median lead header instead; the ranking is still the server's, largest first. (ISS-1263)
 - **Forge no longer writes your release steps.** A project that declares its own procedure gets it;
   one that declares none is told where its method lives, instead of being refused for a deploy

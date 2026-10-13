@@ -7,11 +7,12 @@
  * for the reason the block below states.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issues } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
@@ -20,6 +21,11 @@ import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { requireAnyAuth } from '../middleware/require-any-auth.js';
 import { getStorage, isEnoent } from '../storage/index.js';
+import {
+  commentAttachmentSchema,
+  downloadCommentAttachment,
+  uploadCommentAttachment,
+} from './attachment-routes-reference.js';
 import { AttachmentError, persistCommentAttachment } from './attachment-service.js';
 
 const notFound = (message: string) =>
@@ -68,6 +74,7 @@ export const commentAttachmentRoutes = new Hono<{ Variables: AuthVars }>();
  */
 commentAttachmentRoutes.post(
   '/:commentId/attachments',
+  uploadCommentAttachment,
   requireAnyAuth(),
   // Reject the request before parseBody buffers the entire payload — this
   // caps memory regardless of file size.
@@ -114,12 +121,13 @@ commentAttachmentRoutes.post(
       throw err;
     }
 
-    return c.json(persisted, 201);
+    return c.json(answer(commentAttachmentSchema, persisted), 201);
   },
 );
 
 commentAttachmentRoutes.get(
   '/attachments/:id',
+  downloadCommentAttachment,
   requireAnyAuth(),
   zValidator('param', idParamSchema, (r) => {
     if (!r.success)

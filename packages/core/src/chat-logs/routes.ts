@@ -1,14 +1,24 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, count, desc, eq, gte, inArray, lte, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { chatLogs, type ProjectMemberRole, projects, qaRatings } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { findProjectIdBySlug } from '../projects/service.js';
+import {
+  chatLogListSchema,
+  chatLogSchema,
+  flaggedChatLogs,
+  listChatLogs,
+  rateChatLog,
+  readChatLog,
+  recentChatLogs,
+} from './routes-reference.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -68,6 +78,7 @@ chatLogRoutes.use('*', requireAuth(), assertEmailVerified());
 
 chatLogRoutes.get(
   '/',
+  listChatLogs,
   zValidator('query', listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -87,7 +98,7 @@ chatLogRoutes.get(
       // resolver.
       const visibleIds = await loadVisibleProjectIds(userId);
       if (visibleIds.length === 0) {
-        return c.json(listResponse(c, [], 0, fromPage(page, pageSize)));
+        return c.json(answer(chatLogListSchema, listResponse(c, [], 0, fromPage(page, pageSize))));
       }
 
       const visible = await db
@@ -96,7 +107,7 @@ chatLogRoutes.get(
         .where(inArray(projects.id, visibleIds));
 
       if (visible.length === 0) {
-        return c.json(listResponse(c, [], 0, fromPage(page, pageSize)));
+        return c.json(answer(chatLogListSchema, listResponse(c, [], 0, fromPage(page, pageSize))));
       }
 
       conditions.push(
@@ -128,12 +139,18 @@ chatLogRoutes.get(
         .where(and(...conditions)),
     ]);
 
-    return c.json(listResponse(c, rows, totalRow?.n ?? 0, { limit: pageSize, offset }));
+    return c.json(
+      answer(
+        chatLogListSchema,
+        listResponse(c, rows, totalRow?.n ?? 0, { limit: pageSize, offset }),
+      ),
+    );
   },
 );
 
 chatLogRoutes.get(
   '/recent',
+  recentChatLogs,
   zValidator('query', recentQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -151,16 +168,20 @@ chatLogRoutes.get(
       .limit(limit);
 
     return c.json(
-      rows.map((r) => ({
-        ...r,
-        reply: r.reply && r.reply.length > 500 ? `${r.reply.slice(0, 500)}…` : r.reply,
-      })),
+      answer(
+        z.array(chatLogSchema),
+        rows.map((r) => ({
+          ...r,
+          reply: r.reply && r.reply.length > 500 ? `${r.reply.slice(0, 500)}…` : r.reply,
+        })),
+      ),
     );
   },
 );
 
 chatLogRoutes.get(
   '/flagged',
+  flaggedChatLogs,
   zValidator('query', flaggedQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -179,12 +200,13 @@ chatLogRoutes.get(
       .orderBy(desc(chatLogs.createdAt))
       .limit(limit);
 
-    return c.json(rows);
+    return c.json(answer(z.array(chatLogSchema), rows));
   },
 );
 
 chatLogRoutes.get(
   '/:id',
+  readChatLog,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -196,12 +218,13 @@ chatLogRoutes.get(
     if (!row) throw notFound('chat log not found');
 
     await assertChatLogAccess(row.projectSlug, userId);
-    return c.json(row);
+    return c.json(answer(chatLogSchema, row));
   },
 );
 
 chatLogRoutes.patch(
   '/:id',
+  rateChatLog,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -229,6 +252,6 @@ chatLogRoutes.patch(
     const [updated] = await db.update(chatLogs).set(updates).where(eq(chatLogs.id, id)).returning();
     if (!updated) throw notFound('chat log not found');
 
-    return c.json(updated);
+    return c.json(answer(chatLogSchema, updated));
   },
 );

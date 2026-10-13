@@ -12,7 +12,6 @@
  */
 
 import type { DeployStage } from '../../db/schema.js';
-import { effectiveConfig, listActiveDeployBindingsForProvider } from '../../integrations/store.js';
 import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
 import {
   type DispatchOutcome,
@@ -26,6 +25,7 @@ import { isOpenReleaseBatchRun } from '../../release-batch/service.js';
 import { grantHolds, notGrantedMessage } from '../agent-access.js';
 import { findLastOutbound, findLastOutboundForTarget } from '../deliveries.js';
 import { getIntegration } from '../registry.js';
+import { effectiveConfig, listActiveDeployBindingsForProvider } from '../store.js';
 import type { CoolifyConfig } from './types.js';
 
 export class CoolifyCommandError extends Error {

@@ -1,8 +1,9 @@
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects, workspaceSshKeys } from '../db/schema.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
@@ -12,6 +13,14 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { getOrgSshKey } from '../orgs/ssh-keys-service.js';
+import {
+  pickGitCredential,
+  projectGitAccessSchema,
+  readGitCredential,
+  removeGitCredential,
+  sshConnectionTestSchema,
+  testGitCredential,
+} from './git-credential-routes-reference.js';
 
 export const gitCredentialRoutes = new Hono<{ Variables: AuthVars }>();
 gitCredentialRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -21,6 +30,7 @@ const pickSchema = z.object({ sshKeyId: z.uuid() });
 
 gitCredentialRoutes.get(
   '/:projectId/git-credential',
+  readGitCredential,
   zValidator('param', paramSchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -42,17 +52,20 @@ gitCredentialRoutes.get(
       .from(projectGitCredentials)
       .where(eq(projectGitCredentials.projectId, projectId))
       .limit(1);
-    if (!ref) return c.json({ configured: false as const });
+    if (!ref) return c.json(answer(projectGitAccessSchema, { configured: false as const }));
 
     const key = await getOrgSshKey(access.orgId, ref.sshKeyId);
-    if (!key) return c.json({ configured: false as const });
+    if (!key) return c.json(answer(projectGitAccessSchema, { configured: false as const }));
 
-    return c.json({ configured: true as const, repoUrl: project.repoUrl, key });
+    return c.json(
+      answer(projectGitAccessSchema, { configured: true as const, repoUrl: project.repoUrl, key }),
+    );
   },
 );
 
 gitCredentialRoutes.put(
   '/:projectId/git-credential',
+  pickGitCredential,
   zValidator('param', paramSchema),
   zValidator('json', pickSchema),
   async (c) => {
@@ -86,12 +99,20 @@ gitCredentialRoutes.put(
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
-    return c.json({ configured: true as const, repoUrl: project?.repoUrl ?? null, key }, 201);
+    return c.json(
+      answer(projectGitAccessSchema, {
+        configured: true as const,
+        repoUrl: project?.repoUrl ?? null,
+        key,
+      }),
+      201,
+    );
   },
 );
 
 gitCredentialRoutes.post(
   '/:projectId/git-credential/test',
+  testGitCredential,
   zValidator('param', paramSchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -149,12 +170,13 @@ gitCredentialRoutes.post(
 
     const result = await testSshConnection(repoUrl, privateKey);
     logger.info({ projectId, code: result.code, ok: result.ok }, 'git-credential: connection test');
-    return c.json(result);
+    return c.json(answer(sshConnectionTestSchema, result));
   },
 );
 
 gitCredentialRoutes.delete(
   '/:projectId/git-credential',
+  removeGitCredential,
   zValidator('param', paramSchema),
   async (c) => {
     const { projectId } = c.req.valid('param');

@@ -1,7 +1,7 @@
 import { and, desc, eq, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { memorySources } from '../db/schema.js';
+import { type MemorySource, memorySources } from '../db/schema.js';
 import { memoryRevisions } from '../db/schema-memory-revisions.js';
 
 /**
@@ -27,7 +27,7 @@ export type MemoryRevisionsInput = z.infer<typeof memoryRevisionsInputSchema>;
 export interface MemoryRevisionRow {
   id: string;
   memoryId: string;
-  source: string;
+  source: MemorySource;
   sourceRef: string;
   textContent: string;
   metadata: unknown;

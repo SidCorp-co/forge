@@ -4,10 +4,11 @@
  * project archive routes use one level down.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { declaresInput, zValidator } from '../api-reference/declare/validator.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import {
@@ -16,6 +17,7 @@ import {
   issueArchiveRequestSchema,
   runIssueArchive,
 } from './archive.js';
+import { archiveIssues, archiveReportSchema, unarchiveIssues } from './archive-routes-reference.js';
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 
@@ -24,6 +26,9 @@ const badRequest = (details: unknown) =>
 
 export const issueArchiveRoutes = new Hono<{ Variables: AuthVars }>();
 issueArchiveRoutes.use('*', requireAuth(), assertEmailVerified());
+
+const refusedHttp = (err: IssueArchiveRefusedError) =>
+  new HTTPException(409, { message: err.message, cause: { code: err.code, details: err.report } });
 
 function archiveHandler(direction: ArchiveDirection) {
   return async (c: Context<{ Variables: AuthVars }>) => {
@@ -40,14 +45,9 @@ function archiveHandler(direction: ArchiveDirection) {
         dryRun: parsed.data.dryRun === true,
         actor: restActor(c),
       });
-      return c.json(report);
+      return c.json(answer(archiveReportSchema, report));
     } catch (err) {
-      if (err instanceof IssueArchiveRefusedError) {
-        throw new HTTPException(409, {
-          message: err.message,
-          cause: { code: err.code, details: err.report },
-        });
-      }
+      if (err instanceof IssueArchiveRefusedError) throw refusedHttp(err);
       throw err;
     }
   };
@@ -57,5 +57,19 @@ const validProjectId = zValidator('param', projectIdParamSchema, (r) => {
   if (!r.success) throw badRequest(z.flattenError(r.error));
 });
 
-issueArchiveRoutes.post('/:id/issues/archive', validProjectId, archiveHandler('archive'));
-issueArchiveRoutes.post('/:id/issues/unarchive', validProjectId, archiveHandler('unarchive'));
+const declaresFilter = declaresInput('json', issueArchiveRequestSchema);
+
+issueArchiveRoutes.post(
+  '/:id/issues/archive',
+  archiveIssues,
+  validProjectId,
+  declaresFilter,
+  archiveHandler('archive'),
+);
+issueArchiveRoutes.post(
+  '/:id/issues/unarchive',
+  unarchiveIssues,
+  validProjectId,
+  declaresFilter,
+  archiveHandler('unarchive'),
+);

@@ -1,16 +1,23 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, asc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { skills } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { skillSchema } from './crud-routes-reference.js';
 import { globalEffectiveMd } from './effective.js';
 import { SkillLockedError } from './lock.js';
 import { MetaSkillReservedError } from './meta-skills.js';
 import { applyGlobalSkillDefault, SkillAlreadyShadowedError } from './service.js';
+import {
+  applyDefaultSkill,
+  effectiveSkillsSchema,
+  listEffectiveSkills,
+} from './studio-routes-reference.js';
 
 /**
  * Skill Studio listing + apply-default (ISS-388). Global skills are immutable
@@ -40,6 +47,7 @@ skillStudioRoutes.use('/:projectId/skills/apply-default', requireAuth(), assertE
 
 skillStudioRoutes.get(
   '/:projectId/skills/effective',
+  listEffectiveSkills,
   zValidator('param', projectParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -85,12 +93,13 @@ skillStudioRoutes.get(
       };
     });
 
-    return c.json([...globalRows, ...projectRows]);
+    return c.json(answer(effectiveSkillsSchema, [...globalRows, ...projectRows]));
   },
 );
 
 skillStudioRoutes.post(
   '/:projectId/skills/apply-default',
+  applyDefaultSkill,
   zValidator('param', projectParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -113,7 +122,7 @@ skillStudioRoutes.post(
 
     try {
       const created = await applyGlobalSkillDefault({ projectId, global });
-      return c.json(created, 201);
+      return c.json(answer(skillSchema, created), 201);
     } catch (err) {
       if (err instanceof SkillAlreadyShadowedError) {
         throw new HTTPException(400, {

@@ -1,8 +1,9 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { agentSessions, agentSessionTurns, projects } from '../db/schema.js';
@@ -21,6 +22,7 @@ import {
   noClaudeClient,
   resolveChatDevice,
 } from './chat-turn.js';
+import { sessionSchema } from './routes-reference.js';
 import {
   assertAgentChatOwner,
   assertSessionOwnerOrAdmin,
@@ -41,43 +43,21 @@ import {
   syncTurnsWithMessages,
   truncateTurnsAfter,
 } from './turns-helpers.js';
+import * as ref from './turns-routes-reference.js';
 
 function isUserEntry(m: unknown): boolean {
   return !!m && typeof m === 'object' && (m as { type?: string }).type === 'user';
 }
 
-const turnIdParamSchema = z.object({
-  id: z.uuid(),
-  turnId: z.uuid(),
-});
-
-const turnsQuerySchema = z.object({
-  after: z.uuid().optional(),
-  limit: z.coerce.number().int().min(1).max(500).optional(),
-});
-
-const editTurnBodySchema = z
-  .object({
-    content: z.string().min(1).max(40_000),
-    expectedEditedAt: z.string().datetime({ offset: true }).nullable().optional(),
-  })
-  .strict();
-
-const forkBodySchema = z
-  .object({
-    fromTurnId: z.uuid(),
-    title: z.string().min(1).max(500).optional(),
-  })
-  .strict();
-
 export const agentSessionTurnsRoutes = new Hono<{ Variables: AuthVars }>();
 
 agentSessionTurnsRoutes.get(
   '/:id/turns',
+  ref.listTurns,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
-  zValidator('query', turnsQuerySchema, (r) => {
+  zValidator('query', ref.turnsQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
@@ -96,16 +76,17 @@ agentSessionTurnsRoutes.get(
     if (limit !== undefined) opts.limit = limit;
 
     const result = await loadTurns(id, opts);
-    return c.json(result);
+    return c.json(answer(ref.turnPageSchema, result));
   },
 );
 
 agentSessionTurnsRoutes.patch(
   '/:id/turns/:turnId',
-  zValidator('param', turnIdParamSchema, (r) => {
+  ref.editTurn,
+  zValidator('param', ref.turnIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
-  zValidator('json', editTurnBodySchema, (r) => {
+  zValidator('json', ref.editTurnBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
@@ -186,13 +167,14 @@ agentSessionTurnsRoutes.patch(
     });
 
     broadcastTurnEdited(updatedSession, turnId);
-    return c.json(updatedTurn);
+    return c.json(answer(ref.turnSchema, updatedTurn));
   },
 );
 
 agentSessionTurnsRoutes.post(
   '/:id/turns/:turnId/regenerate',
-  zValidator('param', turnIdParamSchema, (r) => {
+  ref.regenerateTurn,
+  zValidator('param', ref.turnIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
@@ -276,16 +258,17 @@ agentSessionTurnsRoutes.post(
       client,
       message: targetMessage,
     });
-    return c.json({ status: updated.status });
+    return c.json(answer(ref.regeneratedSchema, { status: updated.status }));
   },
 );
 
 agentSessionTurnsRoutes.post(
   '/:id/fork',
+  ref.forkSession,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
-  zValidator('json', forkBodySchema, (r) => {
+  zValidator('json', ref.forkBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
@@ -347,12 +330,13 @@ agentSessionTurnsRoutes.post(
 
     await recordSessionCreatedActivity(inserted, restActor(c));
 
-    return c.json(inserted, 201);
+    return c.json(answer(sessionSchema, inserted), 201);
   },
 );
 
 agentSessionTurnsRoutes.post(
   '/:id/rerun',
+  ref.rerunSession,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -408,6 +392,6 @@ agentSessionTurnsRoutes.post(
 
     await recordSessionCreatedActivity(updated, restActor(c));
 
-    return c.json(updated, 201);
+    return c.json(answer(sessionSchema, updated), 201);
   },
 );

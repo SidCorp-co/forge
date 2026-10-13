@@ -9,11 +9,12 @@
  * ISS-975, shared with `GET /metrics/:metric/timeseries`.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { count, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import {
   devices,
@@ -43,6 +44,14 @@ import {
   toGlance,
   WINDOW_SPECS,
 } from './metric-series.js';
+import {
+  adoptionSchema,
+  listWorkspaces,
+  overviewSchema,
+  readAdoption,
+  readOverview,
+  workspaceListSchema,
+} from './routes-reference.js';
 import { readThresholds } from './thresholds.js';
 import {
   type AdminAdoptionBucket,
@@ -64,6 +73,7 @@ adminAggregateRoutes.use('*', requireAuth(), assertEmailVerified(), requireAdmin
 
 adminAggregateRoutes.get(
   '/overview',
+  readOverview,
   zValidator('query', overviewQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -146,7 +156,7 @@ adminAggregateRoutes.get(
       glance,
     };
 
-    return c.json(overview);
+    return c.json(answer(overviewSchema, overview));
   },
 );
 
@@ -157,6 +167,7 @@ const adoptionQuerySchema = z.object({
 
 adminAggregateRoutes.get(
   '/adoption',
+  readAdoption,
   zValidator('query', adoptionQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -203,7 +214,7 @@ adminAggregateRoutes.get(
       };
     });
 
-    return c.json(rows);
+    return c.json(answer(adoptionSchema, rows));
   },
 );
 
@@ -215,6 +226,7 @@ const workspacesQuerySchema = z.object({
 
 adminAggregateRoutes.get(
   '/workspaces',
+  listWorkspaces,
   zValidator('query', workspacesQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -288,6 +300,11 @@ adminAggregateRoutes.get(
     };
     rows.sort((a, b) => sortKey[sort](b) - sortKey[sort](a));
 
-    return c.json(listResponse(c, rows.slice(0, limit), allProjects.length, { limit, offset: 0 }));
+    return c.json(
+      answer(
+        workspaceListSchema,
+        listResponse(c, rows.slice(0, limit), allProjects.length, { limit, offset: 0 }),
+      ),
+    );
   },
 );
