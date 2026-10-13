@@ -3156,6 +3156,7 @@
 
 ### Fixed
 
+- **A release pane that stops on a question no longer asks it again every minute.** The question now lands on the release's issues, the release waits, a second press is refused by name, and the answer restarts it.
 - **The run drawer opened from Ops says Queued for a run nothing has started.** It read running, unlike the board, and offered Pause and Stop. It now agrees, names its issue, and offers both once work starts.
 - **A master an update left outdated no longer sits for days while its project's work waits.** A run whose worktree release failed for good no longer counts as open, and a master with real runs is nudged like any other.
 - **Two runner commands saving the box's config at once no longer fail or lose each other's change.** They take turns now, and an error names the file and the step.
@@ -6367,6 +6368,9 @@
 
 ### Changed
 
+- **The Library is one row of tabs, and Memory is not among them.** Knowledge's readers are a grouped list, or a picker on a phone, not a second tab row. An empty product map opens Automation for an admin.
+- **The Issues screen shows issues, and the board, metrics and modules sit where they belong.** The tabs are gone: the board is the Pipeline page, throughput is on the dashboard, modules are "Group: module". Old `?tab=` links redirect.
+- **A project viewer's Pipeline page hides the run controls.** The Issues Board tab did; the page, now the only way in, did not.
 - **Every screen counts the state of work the same way, and the counts add up.** Six states head the Issues tabs, board and Overview; filters narrow every tab count, and the board says what it leaves out.
 - **The board says how many issues each state holds beyond its page.** Above its columns it names, per state, how many it draws of how many there are, with a link to the rest.
 - **Needs you counts what it names.** A question left on a draft, closed or dropped issue no longer counts, an issue is listed once, and parked issues are worded as states, not raw statuses.

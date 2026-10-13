@@ -184,3 +184,23 @@ REPAIR FORWARD, and never roll back. You may push a fix and deploy again. You ma
 
 Where you cannot repair forward inside this run: \`abort\` with the reason, and comment on each issue with what failed and what state production is in. The abort closes nothing, and its answer says where each issue now is. Rolling back is a human decision and this is how you hand it to one.${declared}`;
 }
+
+export interface GivenDecision {
+  question: string;
+  answer: string;
+}
+
+/**
+ * What a person decided while this release was held, handed to the agent that takes the release up
+ * again so it carries on from the answer instead of asking the same thing.
+ */
+export function decisionsGivenSection(given: readonly GivenDecision[]): string {
+  const each = given.map(
+    (d) =>
+      `- ${markUntrusted(d.question, { source: 'release.decision.question' })}\n  Answer: ${markUntrusted(d.answer, { source: 'release.decision.answer' })}`,
+  );
+  return `### Decisions already given
+An earlier agent on this release stopped and asked a person, who has answered. Do not ask these again; carry on from the answers.
+${each.join('\n')}
+`;
+}

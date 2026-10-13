@@ -359,6 +359,38 @@ export interface IssueGroup {
 	key: string;
 	label: string;
 	rows: IssueRow[];
+	/** Only under `groupBy: "module"`: the module label's id, or null for the group of issues with none. */
+	moduleId?: string | null;
+}
+
+export const NO_MODULE_LABEL = "No module";
+
+/** The module an issue is filed under: its primary, wherever core put it in the array. An issue
+ *  with only secondary modules has none, as `ModuleCell` shows it. */
+function primaryModuleOf(row: Pick<IssueRow, "modules">) {
+	return row.modules?.find((m) => m.isPrimary) ?? null;
+}
+
+function groupByModule(rows: IssueRow[]): IssueGroup[] {
+	const buckets = new Map<string | null, IssueGroup>();
+	for (const r of rows) {
+		const module = primaryModuleOf(r);
+		const id = module?.labelId ?? null;
+		const bucket = buckets.get(id);
+		if (bucket) bucket.rows.push(r);
+		else
+			buckets.set(id, {
+				key: id ?? "no-module",
+				label: module?.name ?? NO_MODULE_LABEL,
+				rows: [r],
+				moduleId: id,
+			});
+	}
+	return [...buckets.values()].sort((a, b) => {
+		if (a.moduleId === null || b.moduleId === null)
+			return Number(a.moduleId === null) - Number(b.moduleId === null);
+		return a.label.localeCompare(b.label);
+	});
 }
 
 /** Resolve a member display label (email local-part) for grouping/avatars. */
@@ -394,12 +426,14 @@ export function initials(label: string): string {
 /**
  * Group rows client-side. `none` returns a single group. Within each group the
  * server-provided order is preserved (server already sorted). Group ordering is
- * deterministic (by the natural enum/status order, Unassigned last for people).
+ * deterministic (by the natural enum/status order, Unassigned last for people, modules by name with
+ * the issues that have none last).
  */
 export function groupRows(rows: IssueRow[], groupBy: GroupBy): IssueGroup[] {
 	if (groupBy === "none") {
 		return [{ key: "all", label: "All issues", rows }];
 	}
+	if (groupBy === "module") return groupByModule(rows);
 	const buckets = new Map<string, IssueRow[]>();
 	for (const r of rows) {
 		let key: string;

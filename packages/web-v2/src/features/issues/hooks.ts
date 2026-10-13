@@ -90,7 +90,7 @@ export function useProjectLabels(projectId: string | undefined) {
  * and the picker off one cache entry.
  */
 /**
- * ISS-949 — the module rollup behind the Modules view. Keyed
+ * ISS-949 — the module rollup behind the group headers of the list grouped by module. Keyed
  * `['project', projectId, 'modules', 'rollup', activeWithinDays]`.
  */
 export function useModuleRollup(projectId: string | undefined, activeWithinDays?: number) {

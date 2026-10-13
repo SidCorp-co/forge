@@ -1,17 +1,18 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import {
   EmptyState,
   ErrorState,
+  Kicker,
   PageContainer,
   PageTitle,
-  ScreenTabs,
+  Select,
   Skeleton,
-  type TabItem,
+  type SelectOption,
 } from "@/design";
-import { MemoryScreen } from "@/features/memory/components/memory-screen";
+import { cn } from "@/lib/utils/cn";
 import { formatApiError } from "@/lib/api/error";
 import { useKnowledgeEntries } from "../hooks";
 import { EntryCard } from "./entry-card";
@@ -23,18 +24,32 @@ import { RulesTab } from "./rules-tab";
  *  lint diagnostic even where the list never reorders. */
 const SKELETON_ROWS = ["s1", "s2", "s3"];
 
-type KTab = "overview" | "diagrams" | "scenarios" | "workflow" | "rules" | "references" | "graph" | "memory";
+type KTab = "overview" | "diagrams" | "scenarios" | "workflow" | "rules" | "references" | "graph";
 
-const KTABS: TabItem[] = [
-  { value: "overview", label: "Overview" },
-  { value: "diagrams", label: "Diagrams" },
-  { value: "scenarios", label: "Scenarios" },
-  { value: "workflow", label: "Workflow" },
-  { value: "rules", label: "Rules" },
-  { value: "references", label: "References" },
-  { value: "graph", label: "Graph" },
-  { value: "memory", label: "Memory" },
+/** The seven readers, grouped by what they hold. A list rather than a second row of tabs: the
+ *  Library's own tabs are the peers, and these are the contents of one of them. */
+const KGROUPS: { label: string; readers: { value: KTab; label: string }[] }[] = [
+  {
+    label: "Product map",
+    readers: [
+      { value: "overview", label: "Overview" },
+      { value: "scenarios", label: "Scenarios" },
+      { value: "workflow", label: "Workflow" },
+      { value: "diagrams", label: "Diagrams" },
+      { value: "graph", label: "Graph" },
+    ],
+  },
+  {
+    label: "Rules and terms",
+    readers: [
+      { value: "rules", label: "Rules" },
+      { value: "references", label: "References" },
+    ],
+  },
 ];
+
+const KREADERS = KGROUPS.flatMap((g) => g.readers);
+const KOPTIONS: SelectOption[] = KREADERS.map((r) => ({ value: r.value, label: r.label }));
 
 interface KnowledgeScreenProps {
   scope: { projectId: string; canManage: boolean };
@@ -44,7 +59,7 @@ export function KnowledgeScreen({ scope }: KnowledgeScreenProps) {
   const { projectId, canManage } = scope;
   const sub = useSearchParams()?.get("sub");
   const [ktab, setKtab] = useState<KTab>(
-    KTABS.some((t) => t.value === sub) ? (sub as KTab) : "overview",
+    KREADERS.some((r) => r.value === sub) ? (sub as KTab) : "overview",
   );
 
   return (
@@ -56,40 +71,101 @@ export function KnowledgeScreen({ scope }: KnowledgeScreenProps) {
         </p>
       </header>
 
-      <ScreenTabs
-        tabs={KTABS}
-        value={ktab}
-        onChange={(v) => setKtab(v as KTab)}
-        width="max-w-full"
-      />
+      <div className="mt-6 lg:grid lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-10">
+        <nav aria-label="Knowledge readers" className="hidden space-y-5 lg:block">
+          {KGROUPS.map((g) => (
+            <div key={g.label}>
+              <Kicker className="px-3">{g.label}</Kicker>
+              <ul className="mt-1.5">
+                {g.readers.map((r) => (
+                  <li key={r.value}>
+                    <button
+                      type="button"
+                      aria-current={r.value === ktab ? "page" : undefined}
+                      onClick={() => setKtab(r.value)}
+                      className={cn(
+                        "block w-full border-l-2 px-3 py-1.5 text-left text-13-5 font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+                        r.value === ktab
+                          ? "border-accent text-fg"
+                          : "border-transparent text-muted hover:text-fg",
+                      )}
+                    >
+                      {r.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </nav>
 
-      <div className="mt-6">
-        {ktab === "overview" && <OverviewTab projectId={projectId} canManage={canManage} />}
-        {ktab === "diagrams" && <DiagramsTab projectId={projectId} />}
-        {ktab === "scenarios" && (
-          <EntriesTab
-            projectId={projectId}
-            canManage={canManage}
-            kind="scenario"
-            emptyTitle="No scenario entries yet"
-            emptyMessage="Run forge-product-map bootstrap to generate user-journey flowcharts."
+        <div className="mb-4 lg:hidden">
+          <Select
+            options={KOPTIONS}
+            value={ktab}
+            onChange={(v) => setKtab(v as KTab)}
+            aria-label="Knowledge reader"
+            className="w-full"
           />
-        )}
-        {ktab === "workflow" && (
-          <EntriesTab
-            projectId={projectId}
-            canManage={canManage}
-            kind="workflow"
-            emptyTitle="No workflow entries yet"
-            emptyMessage="Run forge-product-map bootstrap to generate state diagrams."
-          />
-        )}
-        {ktab === "rules" && <RulesTab projectId={projectId} canManage={canManage} />}
-        {ktab === "references" && <ReferencesTab projectId={projectId} canManage={canManage} />}
-        {ktab === "graph" && <GraphTab projectId={projectId} canManage={canManage} />}
-        {ktab === "memory" && <MemoryScreen scope={{ projectId }} />}
+        </div>
+
+        <div className="min-w-0">
+          {ktab === "overview" && <OverviewTab projectId={projectId} canManage={canManage} />}
+          {ktab === "diagrams" && <DiagramsTab projectId={projectId} />}
+          {ktab === "scenarios" && (
+            <EntriesTab
+              projectId={projectId}
+              canManage={canManage}
+              kind="scenario"
+              emptyTitle="No scenario entries yet"
+              emptyWhat="user-journey flowcharts"
+            />
+          )}
+          {ktab === "workflow" && (
+            <EntriesTab
+              projectId={projectId}
+              canManage={canManage}
+              kind="workflow"
+              emptyTitle="No workflow entries yet"
+              emptyWhat="state diagrams"
+            />
+          )}
+          {ktab === "rules" && <RulesTab projectId={projectId} canManage={canManage} />}
+          {ktab === "references" && <ReferencesTab projectId={projectId} canManage={canManage} />}
+          {ktab === "graph" && <GraphTab projectId={projectId} canManage={canManage} />}
+        </div>
       </div>
     </PageContainer>
+  );
+}
+
+/** The product map is drawn by a schedule, so the way forward is the screen that runs it. An admin
+ *  gets the button; anyone else is told what fills it, and nothing they cannot do. */
+function ProductMapEmpty({
+  title,
+  what,
+  canManage,
+}: {
+  title: string;
+  what: string;
+  canManage: boolean;
+}) {
+  const router = useRouter();
+  const slug = useParams<{ slug: string }>()?.slug;
+  return (
+    <EmptyState
+      title={title}
+      message={
+        canManage
+          ? `The product-map refresh schedule draws ${what}. Run it from Automation.`
+          : `The project's product-map refresh schedule draws ${what}.`
+      }
+      action={
+        canManage && slug
+          ? { label: "Open Automation", onClick: () => router.push(`/projects/${slug}/automation`) }
+          : undefined
+      }
+    />
   );
 }
 
@@ -98,13 +174,13 @@ function EntriesTab({
   canManage,
   kind,
   emptyTitle,
-  emptyMessage,
+  emptyWhat,
 }: {
   projectId: string;
   canManage: boolean;
   kind: string;
   emptyTitle: string;
-  emptyMessage: string;
+  emptyWhat: string;
 }) {
   const q = useKnowledgeEntries(projectId, kind);
 
@@ -130,7 +206,7 @@ function EntriesTab({
 
   const rows = q.data?.rows ?? [];
   if (rows.length === 0) {
-    return <EmptyState title={emptyTitle} message={emptyMessage} />;
+    return <ProductMapEmpty title={emptyTitle} what={emptyWhat} canManage={canManage} />;
   }
 
   return (
@@ -160,10 +236,7 @@ function OverviewTab({ projectId, canManage }: { projectId: string; canManage: b
   const rows = q.data?.rows ?? [];
   if (rows.length === 0) {
     return (
-      <EmptyState
-        title="No overview entry yet"
-        message="Run forge-product-map bootstrap to generate a product overview mindmap."
-      />
+      <ProductMapEmpty title="No overview entry yet" what="the product overview mindmap" canManage={canManage} />
     );
   }
 
@@ -215,7 +288,7 @@ function ReferencesTab({ projectId, canManage }: { projectId: string; canManage:
     return (
       <EmptyState
         title="No references yet"
-        message="Add reference or glossary entries via the forge_knowledge MCP tool."
+        message="Reference and glossary entries appear here once the project's agents add them."
       />
     );
   }

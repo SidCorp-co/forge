@@ -8,12 +8,16 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useMemo, useSyncExternalStore } from "react";
-import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildWorkspaceCommands } from "@/features/shell/commands";
 import { IssuesScreen } from "./issues-screen";
 
 expect.extend(matchers);
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  next.replaced.length = 0;
+  next.list.drawn = 0;
+});
 
 // A model of the one thing Next 16's app router does that this change stands on: `useSearchParams`
 // reads the router's own URL, not `window.location`. A router push and a popstate move it; an
@@ -27,6 +31,9 @@ const next = vi.hoisted(() => {
     replace: window.history.replaceState.bind(window.history),
   };
   const state = { href: "/" };
+  /** Each replace the router was asked for, with how many times the list had drawn by then. */
+  const replaced: { href: string; drawn: number }[] = [];
+  const list = { drawn: 0 };
   const commit = (href: string) => {
     state.href = href;
     native.replace({ __NA: true }, "", href);
@@ -36,12 +43,19 @@ const next = vi.hoisted(() => {
   return {
     native,
     state,
+    replaced,
+    list,
     listeners,
     commit,
     here,
     router: {
       push: (href: string) => {
         native.push({ __NA: true }, "", href);
+        commit(href);
+      },
+      replace: (href: string) => {
+        replaced.push({ href, drawn: list.drawn });
+        native.replace({ __NA: true }, "", href);
         commit(href);
       },
     },
@@ -90,9 +104,13 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", slug: "forge-dev", role: "admin" }] }),
 }));
-vi.mock("./release-gate-panel", () => ({ ReleaseGatePanel: () => null }));
-vi.mock("./issues-list-view", () => ({ IssuesListView: () => null }));
-vi.mock("./issues-insights-view", () => ({ IssuesInsightsView: () => null }));
+
+vi.mock("./issues-list-view", () => ({
+  IssuesListView: () => {
+    next.list.drawn += 1;
+    return <div data-testid="issues-list" />;
+  },
+}));
 // The dialog's own behaviour has its own tests; this stub keeps the two exits it hands back to
 // the screen — a plain close, and the close that the real dialog makes before it routes to the
 // issue it created.
@@ -167,16 +185,16 @@ it("opens the form when the list mounts fresh at ?new=1, as it does from another
 });
 
 it("clears new=1 on close, keeps the list's other parameters, and opens again on the next push", () => {
-  mountAt("/projects/forge-dev/issues?tab=insights&new=1");
+  mountAt("/projects/forge-dev/issues?filter=awaiting_release&new=1");
   expect(form()).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
   expect(form()).toBeNull();
   expect(window.location.pathname).toBe("/projects/forge-dev/issues");
-  expect(window.location.search).toBe("?tab=insights");
+  expect(window.location.search).toBe("?filter=awaiting_release");
 
-  act(() => router.push("/projects/forge-dev/issues?tab=insights&new=1"));
+  act(() => router.push("/projects/forge-dev/issues?filter=awaiting_release&new=1"));
   expect(form()).toBeInTheDocument();
 });
 
@@ -192,4 +210,55 @@ it("leaves no entry that reopens the form when Back is taken from the issue just
   await waitFor(() => expect(window.location.pathname).toBe("/projects/forge-dev/issues"));
   expect(window.location.search).toBe("");
   expect(form()).toBeNull();
+});
+
+// ISS-1154 — the Issues screen has no tabs, and an old `?tab=` link goes where its content lives now.
+// The router model above is Next's: `replace` moves `useSearchParams`, a same-route
+// `replaceState` of an entry Next wrote does not, which is why the screen reads the address bar.
+describe("an old ?tab= link", () => {
+  const list = () => screen.queryByTestId("issues-list");
+
+  it("sends ?tab=board to the pipeline page and draws no list on the way", () => {
+    mountAt("/projects/forge-dev/issues?tab=board");
+
+    expect(next.replaced).toEqual([{ href: "/projects/forge-dev/pipeline", drawn: 0 }]);
+  });
+
+  it("sends ?tab=insights to the project dashboard", () => {
+    mountAt("/projects/forge-dev/issues?tab=insights");
+
+    expect(next.replaced).toEqual([{ href: "/projects/forge-dev", drawn: 0 }]);
+  });
+
+  it("opens the list grouped by module for ?tab=modules, over a groupBy, keeping q", () => {
+    mountAt("/projects/forge-dev/issues?tab=modules&groupBy=priority&q=crash");
+
+    expect(window.location.pathname).toBe("/projects/forge-dev/issues");
+    expect(new URLSearchParams(window.location.search).get("groupBy")).toBe("module");
+    expect(new URLSearchParams(window.location.search).get("q")).toBe("crash");
+    expect(window.location.search).not.toContain("tab=");
+    expect(list()).toBeInTheDocument();
+  });
+
+  it("drops the parameter for ?tab=list and shows the list", () => {
+    mountAt("/projects/forge-dev/issues?tab=list&module=m1");
+
+    expect(window.location.search).toBe("?module=m1");
+    expect(list()).toBeInTheDocument();
+  });
+
+  it("keeps the list and names a tab the screen never had", () => {
+    mountAt("/projects/forge-dev/issues?tab=nope");
+
+    expect(list()).toBeInTheDocument();
+    expect(screen.getByTestId("unknown-tab-line")).toHaveTextContent("nope");
+    expect(window.location.search).toBe("?tab=nope");
+  });
+
+  it("says nothing for a link with no tab", () => {
+    mountAt("/projects/forge-dev/issues");
+
+    expect(list()).toBeInTheDocument();
+    expect(screen.queryByTestId("unknown-tab-line")).toBeNull();
+  });
 });

@@ -43,6 +43,9 @@ export default function ProjectPipelinePage() {
   }
 
   return (
-      <PipelineBoard scope={{ projectId: project.id, slug: project.slug }} />
+    <PipelineBoard
+      scope={{ projectId: project.id, slug: project.slug }}
+      canWrite={project.role !== "viewer"}
+    />
   );
 }

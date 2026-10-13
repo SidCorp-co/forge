@@ -152,6 +152,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'release-batch/carried.ts':
     'every landing in a release range, archived or not: an archived commit reaches production too',
   'release-batch/claim-conflicts.ts': 'the ids passed in',
+  'release-batch/decision-hold.ts': 'rows of one release run',
   'release-batch/finish-job.ts':
     'counts rows of one release run: releasing, or closed by it, so never archived live work',
   'release-batch/queries.ts': 'reads only the gate status, or rows of one release run',

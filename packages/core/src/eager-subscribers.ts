@@ -10,6 +10,7 @@ import { registerPipelineSentryBreadcrumbs } from './pipeline/sentry-breadcrumbs
 import { registerActivitySubscribers } from './pipeline/subscribers.js';
 import { registerPmSubscribers } from './pm/subscribers.js';
 import { registerReleaseBatchClaimSubscriber } from './release-batch/claim-subscriber.js';
+import { registerReleaseDecisionSubscriber } from './release-batch/decision-subscriber.js';
 import { registerWsBroadcastSubscribers } from './ws/broadcast-subscribers.js';
 import { registerMasterWakeSubscribers } from './ws/master-wake.js';
 
@@ -25,6 +26,7 @@ export function registerEagerSubscribers(bus: HooksBus): void {
   registerTransitionNotifications(bus);
   registerPmSubscribers(bus);
   registerReleaseBatchClaimSubscriber(bus);
+  registerReleaseDecisionSubscriber(bus);
   registerMasterWakeSubscribers(bus);
   registerContractCheckSubscribers(bus);
 }

@@ -214,6 +214,7 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, PatExclusion>> = Object.fr
   'POST /api/jobs/:id/ack': DEVICE,
   'POST /api/jobs/:id/complete': DEVICE,
   'POST /api/jobs/:id/fail': DEVICE,
+  'POST /api/jobs/:id/blocked': DEVICE,
   'POST /api/jobs/:id/kill-ack': DEVICE,
   'POST /api/projects/:projectId/skills/sync': DEVICE,
 });
