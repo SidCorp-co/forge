@@ -12,17 +12,15 @@ import {
   Checkbox,
   EmptyState,
   ErrorState,
+  IconButton,
   Input,
+  Menu,
   Pagination,
   Popover,
   SegmentedControl,
   Select,
   SlideOver,
-  Table,
-  TBody,
-  TH,
-  THead,
-  TR,
+  type MenuItem,
   type SegmentOption,
   type SelectOption,
 } from "@/design";
@@ -42,6 +40,7 @@ import { usePathname } from "next/navigation";
 // change — a pinned-view click on this same route, back/forward — restores the
 // exact view without a remount (the old hydrate-once useState went stale).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "@/lib/utils/cn";
 import { type IssueBuckets, ISSUES_PAGE_SIZE } from "../api";
 import {
   ANY_AGENT_LABEL,
@@ -70,11 +69,13 @@ import {
 import { issueKeyRefusalOf, NO_ISSUE_BUCKETS } from "../key-refusal";
 import { KeyRefusalState } from "./key-refusal-state";
 import { BulkActionBar } from "./bulk-action-bar";
-import { IssueMobileCard, IssueTableRow } from "./issue-row-actions";
+import { IssueLine } from "./issue-row-actions";
+import { CELL, GRID, GridPart, gridStyle } from "./issue-grid";
 import { GroupHeading, moduleGroupCounts } from "./group-heading";
 import { ReleaseGatePanel } from "./release-gate-panel";
-import type { RowActions } from "./issue-table-row";
+import type { RowActions } from "./issue-row-parts";
 import { useGuardedTransition } from "./use-guarded-transition";
+import { DENSITY_LABELS, LIST_DENSITIES, useListDensity } from "../list-density";
 
 // One segment per work state, so the segments are a partition and the counts on them add up to the
 // count on All. What a segment counts is its state's definition in `@forge/contracts/work-state`.
@@ -262,6 +263,16 @@ export function IssuesListView({
   const labelsQ = useProjectLabels(projectId);
   const modulesQ = useProjectModules(projectId);
   const patch = usePatchIssue();
+  const [density, setDensity] = useListDensity();
+  const densityItems = useMemo<MenuItem[]>(
+    () =>
+      LIST_DENSITIES.map((d) => ({
+        label: DENSITY_LABELS[d],
+        icon: d === density ? "check" : undefined,
+        onSelect: () => setDensity(d),
+      })),
+    [density, setDensity],
+  );
   const {
     requestTransition,
     dialog: reasonDialog,
@@ -674,7 +685,7 @@ export function IssuesListView({
       )}
 
       {issuesQ.isLoading && (
-        <div className="overflow-hidden rounded-lg border border-line bg-surface">
+        <div className="border-y border-line">
           {Array.from({ length: 6 }).map((_, i) => (
             <BoardRowSkeleton key={i} />
           ))}
@@ -745,99 +756,90 @@ export function IssuesListView({
 
       {!issuesQ.isLoading && !issuesQ.isError && rows.length > 0 && (
         <>
-          <div className="hidden space-y-6 lg:block">
-            {groups.map((g) => (
-              <section key={g.key}>
-                {groupBy !== "none" && (
-                  <GroupHeading
-                    group={g}
-                    groupBy={groupBy}
-                    counts={groupBy === "module" ? moduleGroupCounts(g, rollupQ) : undefined}
-                    onlyThisModule={(id) => setParams({ module: id, groupBy: "", page: "" })}
+          <GridPart role="table" aria-label="Issues" className="relative">
+            <GridPart
+              role="row"
+              style={gridStyle(bulkEnabled)}
+              className={cn(
+                GRID,
+                "sr-only items-center border-b border-line lg:not-sr-only lg:grid lg:py-2",
+              )}
+            >
+              <GridPart role="columnheader" className={cn(CELL.select, "pl-3")}>
+                {bulkEnabled && (
+                  <Checkbox
+                    checked={allOnPageSelected}
+                    indeterminate={someOnPageSelected}
+                    onChange={toggleAllOnPage}
+                    ariaLabel="Select all issues on this page"
                   />
                 )}
-                <Table>
-                  <THead>
-                    <TR>
-                      {bulkEnabled && (
-                        <TH className="w-9 pr-0">
-                          <Checkbox
-                            checked={allOnPageSelected}
-                            indeterminate={someOnPageSelected}
-                            onChange={toggleAllOnPage}
-                            ariaLabel="Select all issues on this page"
-                          />
-                        </TH>
-                      )}
-                      <TH>ID</TH>
-                      <TH>Issue</TH>
-                      <TH>Module</TH>
-                      <TH>Status</TH>
-                      <TH>Updated</TH>
-                      <TH>Priority</TH>
-                      <TH>Complexity</TH>
-                      <TH className="text-right">Cost</TH>
-                      <TH>Creator</TH>
-                      <TH className="sr-only">Actions</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {g.rows.map((row) => (
-                      <IssueTableRow
-                        key={row.id}
-                        row={row}
-                        slug={slug}
-                        actions={actions}
-                        now={now}
-                        selection={
-                          bulkEnabled
-                            ? {
-                                selected: selected.has(row.id),
-                                onToggle: (next) => toggleRow(row.id, next),
-                              }
-                            : undefined
-                        }
-                      />
-                    ))}
-                  </TBody>
-                </Table>
-              </section>
-            ))}
-          </div>
-
-          <div className="space-y-4 lg:hidden">
-            {groups.map((g) => (
-              <section key={g.key}>
-                {groupBy !== "none" && (
-                  <GroupHeading
-                    group={g}
-                    groupBy={groupBy}
-                    counts={groupBy === "module" ? moduleGroupCounts(g, rollupQ) : undefined}
-                    onlyThisModule={(id) => setParams({ module: id, groupBy: "", page: "" })}
-                  />
-                )}
-                <div className="space-y-2.5">
-                  {g.rows.map((row) => (
-                    <IssueMobileCard
-                      key={row.id}
-                      row={row}
-                      slug={slug}
-                      actions={actions}
-                      now={now}
-                      selection={
-                        bulkEnabled
-                          ? {
-                              selected: selected.has(row.id),
-                              onToggle: (next) => toggleRow(row.id, next),
-                            }
-                          : undefined
-                      }
+              </GridPart>
+              <GridPart role="columnheader" className={cn(CELL.id, "fg-overline px-2 font-mono")}>
+                ID
+              </GridPart>
+              <GridPart role="columnheader" className={cn(CELL.title, "fg-overline px-2 font-mono")}>
+                Title
+              </GridPart>
+              <GridPart role="columnheader" className={cn(CELL.state, "fg-overline px-2 font-mono")}>
+                State
+              </GridPart>
+              <GridPart role="columnheader" className={cn(CELL.priority, "fg-overline px-2 font-mono")}>
+                Priority
+              </GridPart>
+              <GridPart role="columnheader" className={cn(CELL.who, "sr-only")}>
+                Creator
+              </GridPart>
+              <GridPart role="columnheader" className={cn(CELL.menu, "hidden justify-center lg:flex")}>
+                <Menu
+                  align="right"
+                  items={densityItems}
+                  trigger={
+                    <IconButton
+                      icon="rows"
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`Row density: ${DENSITY_LABELS[density]}`}
                     />
-                  ))}
-                </div>
-              </section>
+                  }
+                />
+              </GridPart>
+            </GridPart>
+            {groups.map((g) => (
+              <GridPart key={g.key} role="rowgroup" aria-label={groupBy !== "none" ? g.label : undefined}>
+                {groupBy !== "none" && (
+                  <GridPart role="row" className="pt-5">
+                    <GridPart role="rowheader" aria-colspan={5} className="px-3">
+                      <GroupHeading
+                        group={g}
+                        groupBy={groupBy}
+                        counts={groupBy === "module" ? moduleGroupCounts(g, rollupQ) : undefined}
+                        onlyThisModule={(id) => setParams({ module: id, groupBy: "", page: "" })}
+                      />
+                    </GridPart>
+                  </GridPart>
+                )}
+                {g.rows.map((row) => (
+                  <IssueLine
+                    key={row.id}
+                    row={row}
+                    slug={slug}
+                    actions={actions}
+                    density={density}
+                    now={now}
+                    selection={
+                      bulkEnabled
+                        ? {
+                            selected: selected.has(row.id),
+                            onToggle: (next) => toggleRow(row.id, next),
+                          }
+                        : undefined
+                    }
+                  />
+                ))}
+              </GridPart>
             ))}
-          </div>
+          </GridPart>
 
           {pageCount > 1 && (
             <div className="mt-6 flex justify-end">

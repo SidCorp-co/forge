@@ -8,7 +8,7 @@
 
 import type { ComponentProps } from "react";
 import { Avatar, Badge, Button, MonoTag, Stat, StatusChip } from "@/design";
-import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
+import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-row-parts";
 import { IssueRefBadge } from "./issue-ref-badge";
 import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";

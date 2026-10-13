@@ -28,7 +28,7 @@ import { useToast } from "@/providers/toast-provider";
 import { useCreateIssue } from "../hooks";
 import type { IssueComplexity, IssuePriority } from "../types";
 import { BodyEditor } from "./body-editor";
-import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
+import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-row-parts";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_FILES = 10;

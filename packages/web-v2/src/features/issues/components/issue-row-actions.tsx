@@ -1,60 +1,36 @@
 "use client";
 
-// Calmer issue row renderers for the Issues list (ISS-293 redesign).
+// The Issues list's row: five columns on one grid, and the actions that hang off it (ISS-1155).
 
 import {
   Avatar,
-  Badge,
-  Card,
-  CardContent,
   Checkbox,
+  Icon,
   IconButton,
   Menu,
   type MenuItem,
   MonoTag,
   Spinner,
-  StatusChip,
-  TD,
-  Tooltip,
-  TR,
+  STATUS_META,
 } from "@/design";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { cn } from "@/lib/utils/cn";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import {
   complexityLabel,
   creatorLabelOf,
+  groupedTransitions,
   initials,
   priorityLabel,
-  statusLabel,
-  statusToChip,
+  transitionLabels,
 } from "../derive";
-import {
-  deriveQueuedStep,
-  hasLiveAgentSession,
-  queuedChipStatus,
-  type QueuedStepView,
-} from "../waiting";
-import { groupedTransitions, transitionLabels } from "../derive";
 import { useStatusExits } from "../hooks";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
-import { sinceLastWrite } from "../waiting";
-import {
-  ISSUE_COMPLEXITIES,
-  ISSUE_PRIORITIES,
-  type IssueFailureInfo,
-  type IssuePriority,
-  type IssueRow,
-} from "../types";
-import {
-  CostCell,
-  DepBadges,
-  ModuleCell,
-  type RowActions,
-  type RowSelection,
-  LastWriteCell,
-} from "./issue-table-row";
-import { WaitingOnPersonChip } from "./waiting-on-person-chip";
+import type { ListDensity } from "../list-density";
+import { stateReading } from "../state-reading";
+import { ISSUE_COMPLEXITIES, ISSUE_PRIORITIES, type IssuePriority, type IssueRow } from "../types";
+import { CELL, GRID, GridPart, gridStyle } from "./issue-grid";
+import { DepBadges, ModuleCell, type RowActions, type RowSelection } from "./issue-row-parts";
 
 /** ISS-700 — shared row-open behaviour: a pending flag set synchronously
  *  before navigation (so the row can dim + show a spinner) and a double-click
@@ -72,109 +48,68 @@ function useOpenIssue(slug: string, id: string) {
   return { open, pending };
 }
 
-/** ISS-700 — step · reason · time label for the Failed-badge tooltip. Falls
- *  back to a calm line when no failure data reached the row (AC #2). */
-function failureTooltipLabel(info?: IssueFailureInfo | null): string {
-  if (!info) return "No failure details available";
-  const step = info.failedStep.charAt(0).toUpperCase() + info.failedStep.slice(1);
-  const when = formatRelativeTime(info.failedAt);
-  const reason = info.failureReason?.trim();
-  const short = reason && reason.length > 140 ? `${reason.slice(0, 139)}…` : reason;
-  return short ? `${step} failed · ${short} · ${when}` : `${step} failed · ${when}`;
-}
-
-const hasLiveAgent = (s: IssueRow["agentStatus"]): boolean =>
-  s === "running" || s === "queued" || s === "failed";
-
-/** Compact execution-state chip — rendered only while an agent is live. The
- *  `failed` chip is wrapped in a `Tooltip` (AC #1) showing the failed step,
- *  reason, and timestamp — non-Failed statuses never get one (AC #6). */
-function AgentChip({
-  agentStatus,
-  failureInfo,
-}: {
-  agentStatus: IssueRow["agentStatus"];
-  failureInfo?: IssueFailureInfo | null;
-}) {
-  if (!hasLiveAgent(agentStatus)) return null;
-  const status =
-    agentStatus === "running"
-      ? "running"
-      : agentStatus === "queued"
-        ? "queued"
-        : "failed";
-  const chip = <StatusChip status={status} domain="session" size="sm" />;
-  if (status !== "failed") return chip;
+/** The row's one state signal: a dot whose colour means something, the issue's own status word, what
+ *  the run is doing about it, and how long. Everything it says comes from `stateReading`; the
+ *  words stand beside the dot so the colour is never the only thing telling a state apart. */
+export function StatusCell({ row, now = Date.now() }: { row: IssueRow; now?: number }) {
+  const state = stateReading(row, now);
+  const detail = state.runs.find((r) => r.detail)?.detail ?? undefined;
+  const elapsed = state.elapsed;
   return (
-    <Tooltip label={failureTooltipLabel(failureInfo)} multiline>
-      {chip}
-    </Tooltip>
-  );
-}
-
-/** ISS-436 merged status cell: the issue's lifecycle chip, the live agent's chip, and the gate
- *  holding a queued step — three chips, each carrying a fact something recorded. */
-export function StatusCell({ row }: { row: IssueRow }) {
-  const queuedStep = deriveQueuedStep(
-    row.pipelineHealth,
-    hasLiveAgentSession(row.agentStatus),
-  );
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <StatusChip
-        status={statusToChip(row.status)}
-        label={statusLabel(row.status)}
-        size="sm"
+    <div className="flex min-w-0 items-center gap-2" data-state-tone={state.tone}>
+      <span
+        aria-hidden
+        className={cn("size-2 shrink-0 rounded-full", state.live && "forge-pulse")}
+        style={{ background: STATUS_META[state.tone].dot }}
       />
-      <AgentChip agentStatus={row.agentStatus} failureInfo={row.failureInfo} />
-      {queuedStep && <QueuedChip step={queuedStep} />}
+      <span className="text-13-5 shrink-0 whitespace-nowrap text-fg" data-testid="issue-state-word">
+        {state.statusWord}
+      </span>
+      {state.runs.length > 0 && (
+        <span className="fg-caption min-w-0 truncate" title={detail}>
+          {state.runs.map((run, i) => (
+            <span key={run.word}>
+              {i > 0 && " · "}
+              <span>{run.word}</span>
+              {run.step && <span className="font-mono"> {run.step}</span>}
+            </span>
+          ))}
+        </span>
+      )}
+      {state.waitingOnPerson ? (
+        <span className="fg-caption shrink-0 whitespace-nowrap tabular-nums" data-testid="waiting-on-person" title={elapsed?.title}>
+          Waiting on a person · {state.waitingOnPerson.age}
+        </span>
+      ) : (
+        elapsed && (
+          <span
+            className={cn(
+              "shrink-0 whitespace-nowrap tabular-nums",
+              elapsed.stale ? "fg-caption fg-caption-stale inline-flex items-center gap-1" : "fg-caption",
+            )}
+            title={elapsed.title}
+          >
+            {elapsed.stale && <Icon name="clock" size={12} />}
+            {elapsed.label}
+          </span>
+        )
+      )}
     </div>
   );
 }
 
-/** ISS-903 — a queued step with no session, labelled with the gate holding it
- *  (or with "Queued" when nothing is). Colour resolves through an existing
- *  StatusKey's tone, like every other chip. */
-function QueuedChip({ step }: { step: QueuedStepView }) {
-  const chip = (
-    <StatusChip
-      status={queuedChipStatus(step)}
-      domain="session"
-      size="sm"
-      label={step.gate?.short ?? "Queued"}
-    />
-  );
-  if (!step.gate) return chip;
-  return (
-    <Tooltip label={`${step.jobType} · ${step.gate.detail}`} multiline>
-      {chip}
-    </Tooltip>
-  );
-}
-
-const PRIORITY_TONE: Record<IssuePriority, "red" | "amber" | "neutral"> = {
-  critical: "red",
-  high: "amber",
-  medium: "neutral",
-  low: "neutral",
-  none: "neutral",
+const PRIORITY_CLASS: Record<IssuePriority, string> = {
+  critical: "font-semibold text-[color:var(--red-600)]",
+  high: "font-semibold text-[color:var(--amberw-600)]",
+  medium: "text-fg",
+  low: "text-muted",
+  none: "text-subtle",
 };
 
-/** Read-only priority pill. `none` collapses to a muted dash. */
+/** Priority as coloured text, not a pill: `none` is a dash. */
 function PriorityCell({ priority }: { priority: IssuePriority }) {
-  if (priority === "none")
-    return <span className="fg-caption text-subtle">—</span>;
-  return (
-    <Badge tone={PRIORITY_TONE[priority]}>{priorityLabel(priority)}</Badge>
-  );
-}
-
-/** Read-only complexity pill (was the cryptic "Cx" column). */
-function ComplexityCell({
-  complexity,
-}: { complexity: IssueRow["complexity"] }) {
-  if (!complexity) return <span className="fg-caption text-subtle">—</span>;
-  return <MonoTag>{complexityLabel(complexity)}</MonoTag>;
+  if (priority === "none") return <span className="text-13-5 text-subtle">—</span>;
+  return <span className={cn("text-13-5 whitespace-nowrap", PRIORITY_CLASS[priority])}>{priorityLabel(priority)}</span>;
 }
 
 /**
@@ -260,6 +195,7 @@ function RowMenu({
           icon="more"
           size="sm"
           variant="ghost"
+          className="max-lg:size-11"
           aria-label="Row actions"
           disabled={actions.isPending}
         />
@@ -268,181 +204,107 @@ function RowMenu({
   );
 }
 
-export function IssueTableRow({
+export function IssueLine({
   row,
   slug,
   actions,
   selection,
+  density,
   now,
 }: {
   row: IssueRow;
   slug: string;
   actions: RowActions;
+  /** Present for a reader who can select; absent for a viewer, whose select track is 0 wide. */
   selection?: RowSelection;
-  /** One instant for the whole table, so the waiting figures on two rows are a
-   *  comparison and not two independent readings of the clock. */
+  density: ListDensity;
+  /** One instant for the whole list, so the figures on two rows are a comparison and not two
+   *  independent readings of the clock. */
   now: number;
 }) {
   const { open, pending } = useOpenIssue(slug, row.id);
+  const comfortable = density === "comfortable";
+  const primaryModule = row.modules?.some((m) => m.isPrimary) ? row.modules : undefined;
+  const label = creatorLabelOf(row);
 
   return (
-    <TR className={`group ${pending ? "opacity-60" : ""}`} aria-busy={pending}>
-      {selection && (
-        <TD className="w-9 pr-0">
-          {/* biome-ignore lint/a11y/useKeyWithClickEvents: wrapper only blocks bubbling; the Checkbox button is the control. */}
-          <span
-            className="inline-flex"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Checkbox
-              checked={selection.selected}
-              onChange={selection.onToggle}
-              disabled={actions.isPending}
-              ariaLabel={`Select ${row.displayId}`}
-            />
-          </span>
-        </TD>
+    <GridPart
+      role="row"
+      aria-busy={pending}
+      style={gridStyle(selection !== undefined)}
+      className={cn(
+        GRID,
+        "group items-center border-b border-line-subtle py-1 transition-colors last:border-b-0 hover:bg-hover lg:py-0",
+        comfortable ? "lg:py-1" : "lg:min-h-9",
+        "[@media(pointer:coarse)]:min-h-11",
+        pending && "opacity-60",
       )}
-      <TD>
+    >
+      <GridPart role="cell" className={cn(CELL.select, "pl-3 max-lg:flex max-lg:h-11 max-lg:items-center")}>
+        {selection && (
+          <Checkbox
+            checked={selection.selected}
+            onChange={selection.onToggle}
+            disabled={actions.isPending}
+            ariaLabel={`Select ${row.displayId}`}
+          />
+        )}
+      </GridPart>
+      <GridPart role="cell" className={cn(CELL.id, "px-2")}>
         <span className="inline-flex items-center gap-1.5">
           <button
             type="button"
             onClick={open}
             aria-label={`Open ${row.displayId}`}
-            className="cursor-pointer rounded-sm hover:opacity-80 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="inline-flex cursor-pointer items-center rounded-sm hover:opacity-80 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-lg:min-h-11"
           >
             <MonoTag hue="cobalt">{row.displayId}</MonoTag>
           </button>
           {pending && <Spinner size={14} />}
         </span>
-      </TD>
-      <TD className="max-w-[320px]">
-        <button
-          type="button"
-          onClick={open}
-          aria-label={`Open ${row.displayId}: ${row.title}`}
-          className="group/title block w-full cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-        >
-          <span className="fg-body-sm block truncate text-fg group-hover/title:text-accent-text group-hover/title:underline">
-            {row.title}
+      </GridPart>
+      <GridPart role="cell" className={cn(CELL.title, "min-w-0 px-2")}>
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={open}
+            aria-label={`Open ${row.displayId}: ${row.title}`}
+            className="group/title min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          >
+            <span className="text-13-5 line-clamp-2 text-fg group-hover/title:text-accent-text group-hover/title:underline lg:truncate lg:line-clamp-none">
+              {row.title}
+            </span>
+          </button>
+          {/* The one relation a one-line row still owes its reader; Comfortable's second line carries it from lg up. */}
+          <span className={cn("shrink-0", comfortable && "lg:hidden")}>
+            <DepBadges deps={row.dependencies} slug={slug} show="blocking" />
           </span>
-        </button>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          {row.category && <MonoTag>{row.category}</MonoTag>}
-          <WaitingOnPersonChip since={row.waitingOnPersonSince} status={row.status} now={now} />
-          <DepBadges deps={row.dependencies} slug={slug} />
         </div>
-      </TD>
-      <TD className="max-w-[160px]">
-        <ModuleCell modules={row.modules} />
-      </TD>
-      <TD>
-        <StatusCell row={row} />
-      </TD>
-      <TD>
-        <LastWriteCell written={sinceLastWrite(row, now)} />
-      </TD>
-      <TD>
+        {comfortable && (
+          <div className="hidden min-w-0 flex-wrap items-center gap-x-3 gap-y-1 lg:flex">
+            {primaryModule && <ModuleCell modules={primaryModule} />}
+            {row.category && <MonoTag>{row.category}</MonoTag>}
+            <span className="fg-caption truncate">{label}</span>
+            <DepBadges deps={row.dependencies} slug={slug} />
+          </div>
+        )}
+      </GridPart>
+      <GridPart role="cell" className={cn(CELL.state, "min-w-0 px-2")}>
+        <StatusCell row={row} now={now} />
+      </GridPart>
+      <GridPart role="cell" className={cn(CELL.priority, "px-2")}>
         <PriorityCell priority={row.priority} />
-      </TD>
-      <TD>
-        <ComplexityCell complexity={row.complexity} />
-      </TD>
-      <TD className="text-right">
-        <CostCell value={row.estimatedCost} />
-      </TD>
-      <TD>
-        <div className="flex items-center gap-2">
-          <Avatar initials={initials(creatorLabelOf(row))} size={22} />
-          <span className="fg-caption truncate text-muted" title={creatorLabelOf(row)}>
-            {creatorLabelOf(row)}
-          </span>
-        </div>
-      </TD>
-      <TD className="text-right">
-        <div className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      </GridPart>
+      <GridPart role="cell" className={cn(CELL.who, "px-1")}>
+        <span role="img" aria-label={label} title={label} className="inline-flex">
+          <Avatar initials={initials(label)} size={22} />
+        </span>
+      </GridPart>
+      <GridPart role="cell" className={cn(CELL.menu, "flex justify-center px-1 max-lg:h-11 max-lg:items-center")}>
+        <div className="opacity-100 transition-opacity focus-within:opacity-100 lg:opacity-0 lg:group-hover:opacity-100">
           <RowMenu row={row} actions={actions} open={open} />
         </div>
-      </TD>
-    </TR>
-  );
-}
-
-export function IssueMobileCard({
-  row,
-  slug,
-  actions,
-  selection,
-  now,
-}: {
-  row: IssueRow;
-  slug: string;
-  actions: RowActions;
-  selection?: RowSelection;
-  now: number;
-}) {
-  const { open, pending } = useOpenIssue(slug, row.id);
-
-  return (
-    <Card>
-      <CardContent className={pending ? "opacity-60" : ""} aria-busy={pending}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-2.5">
-            {selection && (
-              <span className="mt-0.5 inline-flex">
-                <Checkbox
-                  checked={selection.selected}
-                  onChange={selection.onToggle}
-                  disabled={actions.isPending}
-                  ariaLabel={`Select ${row.displayId}`}
-                />
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={open}
-              aria-label={`Open ${row.displayId}: ${row.title}`}
-              className="group/title min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <MonoTag hue="cobalt">{row.displayId}</MonoTag>
-                {pending && <Spinner size={14} />}
-              </span>
-              <span className="fg-body-sm mt-1.5 block truncate text-fg group-hover/title:text-accent-text group-hover/title:underline">
-                {row.title}
-              </span>
-            </button>
-          </div>
-          <RowMenu row={row} actions={actions} open={open} side="bottom" />
-        </div>
-
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {row.category && <MonoTag>{row.category}</MonoTag>}
-          {row.modules && row.modules.length > 0 && <ModuleCell modules={row.modules} />}
-          <WaitingOnPersonChip since={row.waitingOnPersonSince} status={row.status} now={now} />
-          <DepBadges deps={row.dependencies} slug={slug} />
-        </div>
-
-        <div className="mt-3 flex items-center justify-between gap-2">
-          <StatusCell row={row} />
-          <LastWriteCell written={sinceLastWrite(row, now)} />
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <PriorityCell priority={row.priority} />
-          <ComplexityCell complexity={row.complexity} />
-          <span className="ml-auto">
-            <CostCell value={row.estimatedCost} />
-          </span>
-        </div>
-
-        <div className="mt-3 flex items-center gap-2">
-          <Avatar initials={initials(creatorLabelOf(row))} size={22} />
-          <span className="fg-caption truncate text-muted" title={creatorLabelOf(row)}>
-            {creatorLabelOf(row)}
-          </span>
-        </div>
-      </CardContent>
-    </Card>
+      </GridPart>
+    </GridPart>
   );
 }

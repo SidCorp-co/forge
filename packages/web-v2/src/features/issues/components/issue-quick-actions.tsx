@@ -6,7 +6,7 @@
 import { Button, StatusChip } from "@/design";
 import { runStatusChip } from "../derive";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
-import { PRIORITY_OPTIONS } from "./issue-table-row";
+import { PRIORITY_OPTIONS } from "./issue-row-parts";
 import { usePatchIssue } from "../hooks";
 import { useGuardedTransition } from "./use-guarded-transition";
 import type { IssueAgentStatus, IssuePriority, IssueStatus, PipelineHealth } from "../types";

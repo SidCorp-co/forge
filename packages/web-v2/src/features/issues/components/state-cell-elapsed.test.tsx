@@ -7,24 +7,60 @@
 // two facts the rendered colour actually rests on, each of which can go red on
 // its own: the span asks for the mark by a class the cascade lets through, and
 // that class is declared where it outranks `.fg-caption`.
+// ISS-1155 — the figure sits in the state cell, the last write only where nothing better is recorded.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { statusLabel } from "../derive";
-import { ISSUE_STATUSES } from "../types";
-import { LastWriteCell } from "./issue-table-row";
+import { ISSUE_STATUSES, type IssueRow, type IssueStatus } from "../types";
+import { StatusCell } from "./issue-row-actions";
 
 expect.extend(matchers);
 
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+
 afterEach(cleanup);
 
-const classesOf = (waited: { label: string; stale: boolean } | null) => {
-  const { container } = render(<LastWriteCell written={waited} />);
-  const span = container.querySelector("span");
-  if (!span) throw new Error("LastWriteCell rendered no span");
+const NOW = Date.parse("2026-09-20T12:00:00.000Z");
+const HOUR = 3_600_000;
+
+/** A row last written `agoMs` before NOW, at a status whose state carries a figure. */
+const rowWrittenAgo = (agoMs: number, status: IssueStatus = "open"): IssueRow =>
+  ({
+    id: "i",
+    projectId: "p",
+    issSeq: 1033,
+    displayId: "ISS-1033",
+    title: "A row",
+    status,
+    priority: "medium",
+    category: null,
+    complexity: null,
+    assigneeId: null,
+    createdById: "u",
+    creatorEmail: null,
+    creatorIsAgent: false,
+    creatorLabel: "A person",
+    reopenCount: 0,
+    mergedAt: null,
+    createdAt: "2026-09-01T00:00:00.000Z",
+    updatedAt: new Date(NOW - agoMs).toISOString(),
+    agentStatus: null,
+  }) as IssueRow;
+
+/** The span that carries the figure: the one that is neither the status word nor the dot. */
+const figureSpan = (row: IssueRow) => {
+  const { container } = render(<StatusCell row={row} now={NOW} />);
+  const span = [...container.querySelectorAll("span")].find((s) => s.classList.contains("tabular-nums"));
+  return span ?? null;
+};
+
+const classesOf = (agoMs: number) => {
+  const span = figureSpan(rowWrittenAgo(agoMs));
+  if (!span) throw new Error("the state cell rendered no figure");
   return span.className.split(/\s+/).filter(Boolean);
 };
 
@@ -36,20 +72,21 @@ const SWALLOWED =
 
 describe("the stale mark reaches the cascade", () => {
   it("asks for the mark by a class that is not swallowed by fg-caption", () => {
-    const stale = classesOf({ label: "2d", stale: true });
+    const stale = classesOf(48 * HOUR);
     expect(stale).toContain("fg-caption-stale");
     expect(stale.filter((c) => SWALLOWED.test(c))).toEqual([]);
   });
 
   it("leaves a freshly moved row unmarked, and asks it for no dead colour either", () => {
-    const fresh = classesOf({ label: "2h", stale: false });
+    const fresh = classesOf(2 * HOUR);
     expect(fresh).not.toContain("fg-caption-stale");
     expect(fresh.filter((c) => SWALLOWED.test(c))).toEqual([]);
   });
 
-  it("renders a dash for a settled row rather than a figure or a zero", () => {
-    const { container } = render(<LastWriteCell written={null} />);
-    expect(container.textContent).toBe("—");
+  it("prints no figure for a settled row rather than a dash or a zero", () => {
+    for (const status of ["closed", "dropped"] as const) {
+      expect(figureSpan(rowWrittenAgo(48 * HOUR, status)), status).toBeNull();
+    }
   });
 });
 
@@ -58,11 +95,9 @@ describe("the stale mark reaches the cascade", () => {
 // reset by an agent's claim or lease renewal, in which no field of the issue changes, and is not
 // moved at all by a comment. So the copy has to name the measurement AND both surprises: a reader
 // who is told only "last updated" still reads the reset as movement.
-describe("the column says what it measures", () => {
-  const titleOf = (stale: boolean) => {
-    const { container } = render(<LastWriteCell written={{ label: "2d", stale }} />);
-    return container.querySelector("span")?.getAttribute("title") ?? "";
-  };
+describe("the figure says what it measures", () => {
+  const titleOf = (stale: boolean) =>
+    figureSpan(rowWrittenAgo(stale ? 48 * HOUR : 2 * HOUR))?.getAttribute("title") ?? "";
 
   it("names the measurement as a write to this issue, on both branches", () => {
     for (const stale of [true, false]) {
@@ -93,26 +128,18 @@ describe("the column says what it measures", () => {
 });
 
 describe("the column heading", () => {
-  const view = readFileSync(
-    join(import.meta.dirname, "issues-list-view.tsx"),
-    "utf8",
-  );
-  const headings = [...view.matchAll(/<TH[^>]*>([^<]+)<\/TH>/gu)].map((m) => m[1].trim());
+  const view = readFileSync(join(import.meta.dirname, "issues-list-view.tsx"), "utf8");
+  const headings = [...view.matchAll(/role="columnheader"[^>]*>\s*([A-Za-z]+)\s*<\/GridPart>/gu)].map((m) => m[1].trim());
 
-  it("is read from a file that actually has the table in it", () => {
-    expect(headings).toContain("Status");
-    expect(headings.length).toBeGreaterThan(5);
+  it("is read from a file that actually has the header in it", () => {
+    expect(headings).toContain("State");
+    expect(headings).toEqual(expect.arrayContaining(["ID", "Title", "Priority"]));
   });
 
   it("is no kernel status's word", () => {
     const words = new Set(ISSUE_STATUSES.map(statusLabel));
-    const beside = headings[headings.indexOf("Status") + 1];
-    expect(beside).toBeDefined();
-    expect(words.has(beside)).toBe(false);
-  });
-
-  it("names what the figure measures", () => {
-    expect(headings[headings.indexOf("Status") + 1]).toBe("Updated");
+    expect(words.has("State")).toBe(false);
+    for (const h of headings) expect(words.has(h), h).toBe(false);
   });
 });
 

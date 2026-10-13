@@ -387,13 +387,6 @@
       "lint/a11y/useKeyWithClickEvents": 3,
       "lint/performance/noImgElement": 2
     },
-    "packages/web-v2/src/features/issues/components/issue-row-actions.tsx": {
-      "lint/a11y/noStaticElementInteractions": 1,
-      "lint/correctness/noUnusedImports": 1
-    },
-    "packages/web-v2/src/features/issues/components/issue-table-row.tsx": {
-      "lint/correctness/noUnusedFunctionParameters": 1
-    },
     "packages/web-v2/src/features/issues/components/issues-list-view.tsx": {
       "lint/suspicious/noArrayIndexKey": 1
     },

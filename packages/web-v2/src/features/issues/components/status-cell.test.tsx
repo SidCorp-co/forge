@@ -73,15 +73,16 @@ const row = (status: IssueStatus): IssueRow =>
     agentStatus: null,
   }) as IssueRow;
 
-/** The word the STATUS column prints for a row at this status. */
+/** The word the state cell prints for the issue's own status. The cell carries more than that word
+ *  now (the run's reading, how long), so the word is read from the element that holds it. */
 function printed(status: IssueStatus): string {
-  const { container, unmount } = render(<StatusCell row={row(status)} />);
-  const text = container.textContent ?? "";
+  const { getByTestId, unmount } = render(<StatusCell row={row(status)} />);
+  const text = getByTestId("issue-state-word").textContent ?? "";
   unmount();
   return text.trim();
 }
 
-describe("the column headed STATUS prints the kernel status", () => {
+describe("the state cell prints the kernel status", () => {
   it("prints the fixture's word for every kernel status", () => {
     for (const s of ISSUE_STATUSES) {
       expect(EXPECTED[s], `no expected word written for ${s}`).toBeTruthy();

@@ -6368,6 +6368,7 @@
 
 ### Changed
 
+- **An issue is one line of five columns that always fits.** The state says what is running, who owes an answer and for how long. Module, cost and complexity left the row; Comfortable density shows module, kind and creator.
 - **The Library is one row of tabs, and Memory is not among them.** Knowledge's readers are a grouped list, or a picker on a phone, not a second tab row. An empty product map opens Automation for an admin.
 - **The Issues screen shows issues, and the board, metrics and modules sit where they belong.** The tabs are gone: the board is the Pipeline page, throughput is on the dashboard, modules are "Group: module". Old `?tab=` links redirect.
 - **A project viewer's Pipeline page hides the run controls.** The Issues Board tab did; the page, now the only way in, did not.
