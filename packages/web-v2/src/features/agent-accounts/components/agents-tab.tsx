@@ -116,7 +116,6 @@ export function AgentsTab() {
       id: "name",
       header: "Name",
       sticky: true,
-      cellClassName: "whitespace-nowrap",
       sortValue: (agent) => agentLabel(agent),
       cell: (agent) =>
         renaming?.userId === agent.userId ? (
@@ -145,6 +144,7 @@ export function AgentsTab() {
     {
       id: "address",
       header: "Address",
+      cellClassName: "whitespace-nowrap",
       sortValue: (agent) => agent.handle,
       cell: (agent) => <MonoTag>{agentAddress(agent)}</MonoTag>,
     },

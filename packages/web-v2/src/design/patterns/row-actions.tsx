@@ -21,7 +21,7 @@ export function RowActions({ actions, busy = false, subject }: RowActionsProps) 
   const shown = actions.filter((a): a is RowAction => Boolean(a));
   if (shown.length === 0) return null;
   return (
-    <div className="flex justify-end gap-2">
+    <div className="flex max-w-[9.5rem] flex-wrap justify-end gap-2 sm:max-w-none sm:flex-nowrap">
       {shown.map((a) => (
         <Button
           key={a.id}
