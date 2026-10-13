@@ -3,6 +3,7 @@ import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { comments, issues, pmConfig, pmDecisions, pmPolicies } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
@@ -19,6 +20,27 @@ import {
 import { zValidator } from '../middleware/validator.js';
 import { closeEscalationTasks } from '../notifications/close-escalation.js';
 import { hooks } from '../pipeline/hooks.js';
+import {
+  configPatchSchema,
+  createPolicy,
+  decisionListSchema,
+  decisionsQuerySchema,
+  deletePolicy,
+  listDecisions,
+  listPolicies,
+  pmConfigSchema,
+  policyCreateSchema,
+  policyListSchema,
+  policyPatchSchema,
+  policySchema,
+  readPmConfig,
+  respondBody,
+  respondEscalation,
+  respondedSchema,
+  runPm,
+  updatePmConfig,
+  updatePolicy,
+} from './routes-reference.js';
 import { PM_NO_PROMPT_MESSAGE, type SpawnPmSessionResult, spawnPmSession } from './spawner.js';
 
 const projectIdParam = z.object({ projectId: z.uuid() });
@@ -26,61 +48,6 @@ const projectIdParam = z.object({ projectId: z.uuid() });
 const projectAndIdParam = z.object({ projectId: z.uuid(), id: z.uuid() });
 
 const respondParam = z.object({ projectId: z.uuid(), decisionId: z.uuid() });
-
-const respondBody = z
-  .object({
-    choice: z.enum(['approve', 'defer', 'reassign', 'reject', 'free_text']),
-    payload: z.record(z.string(), z.unknown()).optional(),
-    comment: z.string().max(10_000).optional(),
-  })
-  .strict();
-
-const eventTriggersSchema = z
-  .object({
-    jobFailed: z.boolean(),
-    pipelineStalled: z.boolean(),
-    needsInfo: z.boolean(),
-    queuePressure: z.boolean(),
-    graphChanged: z.boolean(),
-  })
-  .strict();
-
-const configPatchSchema = z
-  .object({
-    enabled: z.boolean(),
-    cadenceCron: z.string().trim().min(1).max(120).nullable(),
-    eventTriggers: eventTriggersSchema,
-    customInstructions: z.string().trim().max(8000).nullable(),
-    modelOverride: z.string().trim().min(1).max(120).nullable(),
-    maxRunsPerHour: z.number().int().min(1).max(60),
-  })
-  .partial()
-  .strict();
-
-const policyCreateSchema = z
-  .object({
-    name: z.string().trim().min(1).max(255),
-    body: z.string().trim().min(1).max(8000),
-    enabled: z.boolean().optional(),
-    priority: z.number().int().min(0).max(1000).optional(),
-  })
-  .strict();
-
-const policyPatchSchema = z
-  .object({
-    name: z.string().trim().min(1).max(255),
-    body: z.string().trim().min(1).max(8000),
-    enabled: z.boolean(),
-    priority: z.number().int().min(0).max(1000),
-  })
-  .partial()
-  .strict();
-
-const decisionsQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(25),
-  cause: z.string().trim().min(1).max(120).optional(),
-});
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -118,6 +85,7 @@ export const pmRoutes = new Hono<{ Variables: AuthVars }>();
  */
 pmRoutes.post(
   '/:projectId/pm/run',
+  runPm,
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectIdParam, (r) => {
@@ -148,6 +116,7 @@ pmRoutes.post(
  */
 pmRoutes.post(
   '/:projectId/pm/escalations/:decisionId/respond',
+  respondEscalation,
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', respondParam, (r) => {
@@ -212,14 +181,15 @@ pmRoutes.post(
         { projectId, decisionId, reason: spawn.reason },
         'pm-respond: follow-up spawn suppressed',
       );
-      return c.json({ ok: true, jobId: null, reason: spawn.reason });
+      return c.json(answer(respondedSchema, { ok: true, jobId: null, reason: spawn.reason }));
     }
-    return c.json({ ok: true, jobId: spawn.jobId });
+    return c.json(answer(respondedSchema, { ok: true, jobId: spawn.jobId }));
   },
 );
 
 pmRoutes.get(
   '/:projectId/pm/config',
+  readPmConfig,
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectIdParam, (r) => {
@@ -236,14 +206,14 @@ pmRoutes.get(
       .from(pmConfig)
       .where(eq(pmConfig.projectId, projectId))
       .limit(1);
-    if (existing) return c.json(existing);
+    if (existing) return c.json(answer(pmConfigSchema, existing));
 
     const [inserted] = await db
       .insert(pmConfig)
       .values({ projectId })
       .onConflictDoNothing({ target: pmConfig.projectId })
       .returning();
-    if (inserted) return c.json(inserted);
+    if (inserted) return c.json(answer(pmConfigSchema, inserted));
 
     const [row] = await db
       .select()
@@ -251,12 +221,13 @@ pmRoutes.get(
       .where(eq(pmConfig.projectId, projectId))
       .limit(1);
     if (!row) throw new HTTPException(500, { message: 'pm_config lazy-create failed' });
-    return c.json(row);
+    return c.json(answer(pmConfigSchema, row));
   },
 );
 
 pmRoutes.put(
   '/:projectId/pm/config',
+  updatePmConfig,
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectIdParam, (r) => {
@@ -283,12 +254,13 @@ pmRoutes.put(
       .where(eq(pmConfig.projectId, projectId))
       .returning();
     if (!updated) throw new HTTPException(500, { message: 'pm_config update failed' });
-    return c.json(updated);
+    return c.json(answer(pmConfigSchema, updated));
   },
 );
 
 pmRoutes.get(
   '/:projectId/pm/policies',
+  listPolicies,
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectIdParam, (r) => {
@@ -314,12 +286,13 @@ pmRoutes.get(
       .from(pmPolicies)
       .where(eq(pmPolicies.projectId, projectId))
       .orderBy(desc(pmPolicies.priority), desc(pmPolicies.createdAt));
-    return c.json(rows);
+    return c.json(answer(policyListSchema, rows));
   },
 );
 
 pmRoutes.post(
   '/:projectId/pm/policies',
+  createPolicy,
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectIdParam, (r) => {
@@ -366,12 +339,13 @@ pmRoutes.post(
       }),
     );
 
-    return c.json(inserted, 201);
+    return c.json(answer(policySchema, inserted), 201);
   },
 );
 
 pmRoutes.patch(
   '/:projectId/pm/policies/:id',
+  updatePolicy,
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectAndIdParam, (r) => {
@@ -415,12 +389,13 @@ pmRoutes.patch(
       );
     }
 
-    return c.json(updated);
+    return c.json(answer(policySchema, updated));
   },
 );
 
 pmRoutes.delete(
   '/:projectId/pm/policies/:id',
+  deletePolicy,
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectAndIdParam, (r) => {
@@ -447,6 +422,7 @@ pmRoutes.delete(
 
 pmRoutes.get(
   '/:projectId/pm/decisions',
+  listDecisions,
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectIdParam, (r) => {
@@ -486,7 +462,9 @@ pmRoutes.get(
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 
-    return c.json(listResponse(c, rows, totalRow?.n ?? 0, fromPage(page, pageSize)));
+    return c.json(
+      answer(decisionListSchema, listResponse(c, rows, totalRow?.n ?? 0, fromPage(page, pageSize))),
+    );
   },
 );
 

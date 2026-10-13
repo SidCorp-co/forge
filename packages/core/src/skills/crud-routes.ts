@@ -2,12 +2,29 @@ import { and, asc, eq, inArray, or, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { skillRegistrations, skills, skillTargets } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
 import { SkillContentBlockedError } from '../security/findings.js';
+import {
+  bulkPushAnswerSchema,
+  bulkPushSkills,
+  createSkill,
+  deleteSkill,
+  invokableSchema,
+  listedSkillsSchema,
+  listInvokableSkills,
+  listSkills,
+  readSkill,
+  skillRowSchema,
+  skillSchema,
+  skillSyncStatus,
+  syncStatusAnswerSchema,
+  updateSkill,
+} from './crud-routes-reference.js';
 import { MANAGED_META_SKILLS, resolveRegisteredEffectiveSkills } from './effective.js';
 import { SkillLockedError } from './lock.js';
 import { MetaSkillReservedError } from './meta-skills.js';
@@ -95,6 +112,7 @@ skillCrudRoutes.use('*', requireAuth(), assertEmailVerified());
 
 skillCrudRoutes.get(
   '/',
+  listSkills,
   zValidator('query', listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -135,7 +153,12 @@ skillCrudRoutes.get(
     // sync-status, no stage registration). Computed from the core constant, by
     // name, so both the global template and any project-adopted copy carry it.
     const metaNames = new Set<string>(MANAGED_META_SKILLS);
-    return c.json(rows.map((r) => ({ ...r, managedMeta: metaNames.has(r.name) })));
+    return c.json(
+      answer(
+        listedSkillsSchema,
+        rows.map((r) => ({ ...r, managedMeta: metaNames.has(r.name) })),
+      ),
+    );
   },
 );
 
@@ -151,6 +174,7 @@ skillCrudRoutes.get(
  */
 skillCrudRoutes.get(
   '/invokable',
+  listInvokableSkills,
   zValidator('query', invokableQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -167,12 +191,13 @@ skillCrudRoutes.get(
       .map((e) => ({ name: e.name, description: e.description }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    return c.json({ skills: invokable });
+    return c.json(answer(invokableSchema, { skills: invokable }));
   },
 );
 
 skillCrudRoutes.get(
   '/:id',
+  readSkill,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -188,12 +213,13 @@ skillCrudRoutes.get(
       if (!access.role) throw forbidden('not a project member');
     }
 
-    return c.json(row);
+    return c.json(answer(skillRowSchema, row));
   },
 );
 
 skillCrudRoutes.post(
   '/',
+  createSkill,
   zValidator('json', skillCreateSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -227,7 +253,7 @@ skillCrudRoutes.post(
         files: input.files,
         localGuide: input.localGuide ?? null,
       });
-      return c.json(inserted, 201);
+      return c.json(answer(skillSchema, inserted), 201);
     } catch (err) {
       if (err instanceof SkillContentBlockedError) {
         throw new HTTPException(400, {
@@ -254,6 +280,7 @@ skillCrudRoutes.post(
 
 skillCrudRoutes.put(
   '/:id',
+  updateSkill,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -278,7 +305,7 @@ skillCrudRoutes.put(
 
     try {
       const updated = await updateProjectSkill(row, patch);
-      return c.json(updated);
+      return c.json(answer(skillSchema, updated));
     } catch (err) {
       if (err instanceof SkillContentBlockedError) {
         throw new HTTPException(400, {
@@ -305,6 +332,7 @@ skillCrudRoutes.put(
 
 skillCrudRoutes.delete(
   '/:id',
+  deleteSkill,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -333,6 +361,7 @@ skillCrudRoutes.delete(
 
 skillCrudRoutes.post(
   '/sync-status',
+  skillSyncStatus,
   zValidator('json', syncStatusSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -357,7 +386,7 @@ skillCrudRoutes.post(
       .from(skills)
       .where(or(eq(skills.scope, 'global'), eq(skills.projectId, projectId)) as SQL);
 
-    if (projectSkills.length === 0) return c.json([]);
+    if (projectSkills.length === 0) return c.json(answer(syncStatusAnswerSchema, []));
 
     const skillIds = projectSkills.map((s) => s.id);
     const registrations = await db
@@ -391,12 +420,13 @@ skillCrudRoutes.post(
       registeredStages: stagesBySkill.get(s.id) ?? [],
     }));
 
-    return c.json(result);
+    return c.json(answer(syncStatusAnswerSchema, result));
   },
 );
 
 skillCrudRoutes.post(
   '/bulk-push',
+  bulkPushSkills,
   zValidator('json', bulkPushSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -422,6 +452,6 @@ skillCrudRoutes.post(
       status: 'signalled' as const,
       deviceId: id,
     }));
-    return c.json({ results, deviceCount: deviceIds.length });
+    return c.json(answer(bulkPushAnswerSchema, { results, deviceCount: deviceIds.length }));
   },
 );

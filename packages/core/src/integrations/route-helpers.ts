@@ -1,10 +1,10 @@
 import type { ConnectionAccess } from '@forge/contracts';
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole, DeployStage } from '../db/schema.js';
-import { effectiveProjectRole, projectWriteRefusal } from '../lib/authz.js';
+import { effectiveProjectRole, orgRoleAtLeast, projectWriteRefusal } from '../lib/authz.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import type { AgentAccess } from './agent-access.js';
+import { type AgentAccess, agentAccessTier, noAgentPathMessage } from './agent-access.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter, getIntegration } from './registry.js';
 import {
@@ -134,6 +134,28 @@ export async function assertProjectWriter(
     });
   }
   return role;
+}
+
+/**
+ * Authorize a write to a binding's agent-access grant, and refuse one that means nothing.
+ *
+ * ISS-1071 rule 5 — the tier is a property of the provider's declared agent path, not of the route:
+ * a `direct-mcp` grant hands the project's credential to a runner box, so it takes the same
+ * org-admin escalation that already guards `secrets`, `config` and `active` on an org-owned
+ * connection; a `core-mediated` grant only widens who may ask core to make a call core was already
+ * making, so it stays with the project-admin fields. A provider declaring no agent path is refused
+ * by name rather than storing a column value nothing will ever read.
+ */
+export async function authorizeAgentAccessWrite(
+  userId: string,
+  projectId: string,
+  provider: string,
+): Promise<void> {
+  const tier = agentAccessTier(getIntegration(provider));
+  if (tier === 'refused') throw badRequest(noAgentPathMessage(provider));
+  if (tier !== 'org-admin') return;
+  const access = await effectiveProjectRole(userId, projectId);
+  if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
 }
 
 export function assertAdmin(role: 'admin' | 'member' | 'viewer'): void {

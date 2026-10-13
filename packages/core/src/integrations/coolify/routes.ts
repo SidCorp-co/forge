@@ -20,7 +20,9 @@
 import type { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../../api-reference/describe.js';
 import type { AuthVars } from '../../middleware/auth.js';
+import { declaresInput } from '../../middleware/validator.js';
 import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
 import {
   assertAdmin,
@@ -50,35 +52,32 @@ import {
   runCoolifyRollback,
 } from './controls.js';
 import { CoolifyReadFailedError } from './rollback-images-read.js';
+import {
+  applicationsBodySchema,
+  applicationsSchema,
+  cancelBodySchema,
+  cancelCoolify,
+  confirmedSchema,
+  confirmProdDeploy,
+  controlSchema,
+  deliveriesSchema,
+  deployBodySchema,
+  deployCoolify,
+  dispatchedSchema,
+  integrationQuerySchema,
+  integrationsSchema,
+  listCoolify,
+  listCoolifyApplications,
+  readCoolifyStatus,
+  readRollbackImages,
+  readTargets,
+  rollbackBodySchema,
+  rollbackCoolify,
+  rollbackImagesQuerySchema,
+  rollbackImagesSchema,
+  targetsSchema,
+} from './routes-reference.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
-
-const deployBodySchema = z
-  .object({
-    issueId: z.uuid().optional(),
-    pipelineRunId: z.uuid().optional(),
-    integrationId: z.uuid().optional(),
-  })
-  .strict();
-
-const cancelBodySchema = z
-  .object({
-    integrationId: z.uuid().optional(),
-    deploymentUuid: z.string().min(1).max(200).optional(),
-  })
-  .strict();
-
-const rollbackBodySchema = z
-  .object({
-    integrationId: z.uuid().optional(),
-    resourceUuid: z.string().min(1).max(200).optional(),
-    commit: z.string().min(1).max(200),
-  })
-  .strict();
-
-const applicationsBodySchema = z.union([
-  z.object({ integrationId: z.uuid() }).strict(),
-  z.object({ baseUrl: z.string().url().max(500), apiToken: z.string().min(8).max(2000) }).strict(),
-]);
 
 const asHttp = (err: unknown): never => {
   if (err instanceof CoolifyCommandError) {
@@ -106,201 +105,254 @@ const lockedAsHttp = (err: unknown): never => {
   if (err instanceof DeployEnvironmentLockedError) {
     throw new HTTPException(409, {
       message: err.message,
-      cause: { code: err.code },
+      cause: { code: 'DEPLOY_ENVIRONMENT_LOCKED' },
     });
   }
   throw err;
 };
 
-export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }>): void {
-  routes.get('/:projectId/integrations/coolify', async (c) => {
+const invalidBody = (error: z.core.$ZodError) =>
+  new HTTPException(400, {
+    message: 'Invalid input',
+    cause: { code: 'BAD_REQUEST', details: z.flattenError(error) },
+  });
+
+function registerCoolifyCommandRoutes(routes: Hono<{ Variables: AuthVars }>): void {
+  routes.get('/:projectId/integrations/coolify', ...listCoolify, async (c) => {
     const projectId = c.req.param('projectId');
     await assertProjectMember(projectId, c.get('userId'));
-    return c.json(await listCoolifyIntegrations(projectId));
+    return c.json(answer(integrationsSchema, await listCoolifyIntegrations(projectId)));
   });
 
-  routes.get('/:projectId/integrations/coolify/status', async (c) => {
-    const projectId = c.req.param('projectId');
-    await assertProjectMember(projectId, c.get('userId'));
-    const integrationId = c.req.query('integrationId');
-    try {
-      return c.json(
-        await coolifyDeliveryStatus({
-          projectId,
-          ...(integrationId ? { integrationId } : {}),
-        }),
-      );
-    } catch (err) {
-      return asHttp(err);
-    }
-  });
-
-  routes.post('/:projectId/integrations/coolify/deploy', async (c) => {
-    const projectId = c.req.param('projectId');
-    await assertProjectWriter(projectId, c.get('userId'));
-
-    const raw = await c.req.json().catch(() => ({}));
-    const parsed = deployBodySchema.safeParse(raw ?? {});
-    if (!parsed.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid input',
-        cause: { code: 'BAD_REQUEST', details: z.flattenError(parsed.error) },
-      });
-    }
-
-    try {
-      return c.json(await runCoolifyDeploy({ projectId, ...parsed.data }));
-    } catch (err) {
-      return asHttp(err);
-    }
-  });
-
-  routes.post('/:projectId/integrations/coolify/cancel', async (c) => {
-    const projectId = c.req.param('projectId');
-    await assertProjectWriter(projectId, c.get('userId'));
-    const raw = await c.req.json().catch(() => ({}));
-    const parsed = cancelBodySchema.safeParse(raw ?? {});
-    if (!parsed.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid input',
-        cause: { code: 'BAD_REQUEST', details: z.flattenError(parsed.error) },
-      });
-    }
-    try {
-      return c.json(await runCoolifyCancel({ projectId, ...parsed.data }));
-    } catch (err) {
-      return asHttp(err);
-    }
-  });
-
-  routes.get('/:projectId/integrations/coolify/rollback-images', async (c) => {
-    const projectId = c.req.param('projectId');
-    await assertProjectMember(projectId, c.get('userId'));
-    const integrationId = c.req.query('integrationId');
-    const resourceUuid = c.req.query('resourceUuid');
-    try {
-      return c.json(
-        await listCoolifyRollbackImages({
-          projectId,
-          ...(integrationId ? { integrationId } : {}),
-          ...(resourceUuid ? { resourceUuid } : {}),
-        }),
-      );
-    } catch (err) {
-      // 424, not the 502 the writes answer: Cloudflare replaces an origin 502's body with its own
-      // `error code: 502`, so the refusal named here never reached a caller (ISS-1194).
-      if (err instanceof CoolifyApiError) {
-        throw new HTTPException(424, {
-          message: describeCoolifyRollbackImagesRefusal(err),
-          cause: { code: 'COOLIFY_API_ERROR' },
-        });
+  routes.get(
+    '/:projectId/integrations/coolify/status',
+    ...readCoolifyStatus,
+    declaresInput('query', integrationQuerySchema),
+    async (c) => {
+      const projectId = c.req.param('projectId');
+      await assertProjectMember(projectId, c.get('userId'));
+      const integrationId = c.req.query('integrationId');
+      try {
+        return c.json(
+          answer(
+            deliveriesSchema,
+            await coolifyDeliveryStatus({
+              projectId,
+              ...(integrationId ? { integrationId } : {}),
+            }),
+          ),
+        );
+      } catch (err) {
+        return asHttp(err);
       }
-      if (err instanceof CoolifyReadFailedError) {
-        throw new HTTPException(424, {
-          message: err.message,
+    },
+  );
+
+  routes.post(
+    '/:projectId/integrations/coolify/deploy',
+    ...deployCoolify,
+    declaresInput('json', deployBodySchema),
+    async (c) => {
+      const projectId = c.req.param('projectId');
+      await assertProjectWriter(projectId, c.get('userId'));
+
+      const raw = await c.req.json().catch(() => ({}));
+      const parsed = deployBodySchema.safeParse(raw ?? {});
+      if (!parsed.success) throw invalidBody(parsed.error);
+
+      try {
+        return c.json(
+          answer(dispatchedSchema, await runCoolifyDeploy({ projectId, ...parsed.data })),
+        );
+      } catch (err) {
+        return asHttp(err);
+      }
+    },
+  );
+
+  routes.post(
+    '/:projectId/integrations/coolify/cancel',
+    ...cancelCoolify,
+    declaresInput('json', cancelBodySchema),
+    async (c) => {
+      const projectId = c.req.param('projectId');
+      await assertProjectWriter(projectId, c.get('userId'));
+      const raw = await c.req.json().catch(() => ({}));
+      const parsed = cancelBodySchema.safeParse(raw ?? {});
+      if (!parsed.success) throw invalidBody(parsed.error);
+      try {
+        return c.json(answer(controlSchema, await runCoolifyCancel({ projectId, ...parsed.data })));
+      } catch (err) {
+        return asHttp(err);
+      }
+    },
+  );
+
+  routes.get(
+    '/:projectId/integrations/coolify/rollback-images',
+    ...readRollbackImages,
+    declaresInput('query', rollbackImagesQuerySchema),
+    async (c) => {
+      const projectId = c.req.param('projectId');
+      await assertProjectMember(projectId, c.get('userId'));
+      const integrationId = c.req.query('integrationId');
+      const resourceUuid = c.req.query('resourceUuid');
+      try {
+        return c.json(
+          answer(
+            rollbackImagesSchema,
+            await listCoolifyRollbackImages({
+              projectId,
+              ...(integrationId ? { integrationId } : {}),
+              ...(resourceUuid ? { resourceUuid } : {}),
+            }),
+          ),
+        );
+      } catch (err) {
+        // 424, not the 502 the writes answer: Cloudflare replaces an origin 502's body with its own
+        // `error code: 502`, so the refusal named here never reached a caller (ISS-1194).
+        if (err instanceof CoolifyApiError) {
+          throw new HTTPException(424, {
+            message: describeCoolifyRollbackImagesRefusal(err),
+            cause: { code: 'COOLIFY_API_ERROR' },
+          });
+        }
+        if (err instanceof CoolifyReadFailedError) {
           // Coolify answering something that is not JSON did reach Coolify: its own code, so a caller
           // acting on the code is not told Forge could not connect.
-          cause: {
-            code: err.kind === 'not-json' ? 'COOLIFY_ANSWER_NOT_JSON' : 'COOLIFY_UNREACHABLE',
-          },
-        });
+          if (err.kind === 'not-json') {
+            throw new HTTPException(424, {
+              message: err.message,
+              cause: { code: 'COOLIFY_ANSWER_NOT_JSON' },
+            });
+          }
+          throw new HTTPException(424, {
+            message: err.message,
+            cause: { code: 'COOLIFY_UNREACHABLE' },
+          });
+        }
+        return asHttp(err);
       }
-      return asHttp(err);
-    }
-  });
+    },
+  );
 
-  routes.post('/:projectId/integrations/coolify/rollback', async (c) => {
-    const projectId = c.req.param('projectId');
-    await assertProjectWriter(projectId, c.get('userId'));
-    const raw = await c.req.json().catch(() => ({}));
-    const parsed = rollbackBodySchema.safeParse(raw ?? {});
-    if (!parsed.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid input',
-        cause: { code: 'BAD_REQUEST', details: z.flattenError(parsed.error) },
-      });
-    }
-    try {
-      return c.json(await runCoolifyRollback({ projectId, ...parsed.data }));
-    } catch (err) {
-      return asHttp(err);
-    }
-  });
-
-  routes.post('/:projectId/integrations/coolify/applications', async (c) => {
-    const projectId = c.req.param('projectId');
-    await assertProjectMember(projectId, c.get('userId'));
-    const raw = await c.req.json().catch(() => ({}));
-    const parsed = applicationsBodySchema.safeParse(raw ?? {});
-    if (!parsed.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid input',
-        cause: { code: 'BAD_REQUEST', details: z.flattenError(parsed.error) },
-      });
-    }
-    const body = parsed.data;
-    let auth: { baseUrl: string; apiToken: string; previousApiToken?: string };
-    if ('integrationId' in body) {
-      const existing = await findBindingWithConnectionById(body.integrationId);
-      if (
-        !existing ||
-        existing.binding.projectId !== projectId ||
-        existing.binding.provider !== 'coolify'
-      ) {
-        throw notFound();
+  routes.post(
+    '/:projectId/integrations/coolify/rollback',
+    ...rollbackCoolify,
+    declaresInput('json', rollbackBodySchema),
+    async (c) => {
+      const projectId = c.req.param('projectId');
+      await assertProjectWriter(projectId, c.get('userId'));
+      const raw = await c.req.json().catch(() => ({}));
+      const parsed = rollbackBodySchema.safeParse(raw ?? {});
+      if (!parsed.success) throw invalidBody(parsed.error);
+      try {
+        return c.json(
+          answer(controlSchema, await runCoolifyRollback({ projectId, ...parsed.data })),
+        );
+      } catch (err) {
+        return asHttp(err);
       }
-      const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(existing);
-      if (!ctx.config?.baseUrl || !ctx.secrets?.apiToken) {
-        throw new HTTPException(409, {
-          message: 'coolify connection is missing baseUrl or apiToken',
-          cause: { code: 'MISSING_CREDENTIALS' },
-        });
-      }
-      auth = credentialFromSecrets(ctx.config, ctx.secrets);
-    } else {
-      auth = { baseUrl: body.baseUrl, apiToken: body.apiToken };
-    }
-    return c.json({ applications: (await fetchCoolifyApplications(auth)).slice(0, 500) });
-  });
+    },
+  );
+}
 
-  routes.get('/:projectId/integrations/coolify/targets', async (c) => {
-    const projectId = c.req.param('projectId');
-    await assertProjectMember(projectId, c.get('userId'));
-    const integrationId = c.req.query('integrationId');
-    try {
+function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): void {
+  routes.post(
+    '/:projectId/integrations/coolify/applications',
+    ...listCoolifyApplications,
+    declaresInput('json', applicationsBodySchema),
+    async (c) => {
+      const projectId = c.req.param('projectId');
+      await assertProjectMember(projectId, c.get('userId'));
+      const raw = await c.req.json().catch(() => ({}));
+      const parsed = applicationsBodySchema.safeParse(raw ?? {});
+      if (!parsed.success) throw invalidBody(parsed.error);
+      const body = parsed.data;
+      let auth: { baseUrl: string; apiToken: string; previousApiToken?: string };
+      if ('integrationId' in body) {
+        const existing = await findBindingWithConnectionById(body.integrationId);
+        if (
+          !existing ||
+          existing.binding.projectId !== projectId ||
+          existing.binding.provider !== 'coolify'
+        ) {
+          throw notFound();
+        }
+        const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(existing);
+        if (!ctx.config?.baseUrl || !ctx.secrets?.apiToken) {
+          throw new HTTPException(409, {
+            message: 'coolify connection is missing baseUrl or apiToken',
+            cause: { code: 'MISSING_CREDENTIALS' },
+          });
+        }
+        auth = credentialFromSecrets(ctx.config, ctx.secrets);
+      } else {
+        auth = { baseUrl: body.baseUrl, apiToken: body.apiToken };
+      }
       return c.json(
-        await resolveCoolifyTargets({
-          projectId,
-          ...(integrationId ? { integrationId } : {}),
+        answer(applicationsSchema, {
+          applications: (await fetchCoolifyApplications(auth)).slice(0, 500),
         }),
       );
-    } catch (err) {
-      return asHttp(err);
-    }
-  });
+    },
+  );
 
-  routes.post('/:projectId/integrations/:id/confirm-prod-deploy', async (c) => {
-    const projectId = c.req.param('projectId');
-    const id = c.req.param('id');
-    const userId = c.get('userId');
-    const role = await assertProjectMember(projectId, userId);
-    assertAdmin(role);
+  routes.get(
+    '/:projectId/integrations/coolify/targets',
+    ...readTargets,
+    declaresInput('query', integrationQuerySchema),
+    async (c) => {
+      const projectId = c.req.param('projectId');
+      await assertProjectMember(projectId, c.get('userId'));
+      const integrationId = c.req.query('integrationId');
+      try {
+        return c.json(
+          answer(
+            targetsSchema,
+            await resolveCoolifyTargets({
+              projectId,
+              ...(integrationId ? { integrationId } : {}),
+            }),
+          ),
+        );
+      } catch (err) {
+        return asHttp(err);
+      }
+    },
+  );
 
-    const existing = await findBindingWithConnectionById(id);
-    if (!existing || existing.binding.projectId !== projectId) throw notFound();
-    if (!(existing.binding.stages ?? []).includes('live')) {
-      throw new HTTPException(400, {
-        message:
-          'confirm-prod-deploy is only valid on a deploy binding carrying the `live` stage — this binding serves no live environment, so there is no production deploy for a human to confirm',
-        cause: { code: 'NOT_LIVE_BINDING' },
+  routes.post(
+    '/:projectId/integrations/:id/confirm-prod-deploy',
+    ...confirmProdDeploy,
+    async (c) => {
+      const projectId = c.req.param('projectId');
+      const id = c.req.param('id');
+      const userId = c.get('userId');
+      const role = await assertProjectMember(projectId, userId);
+      assertAdmin(role);
+
+      const existing = await findBindingWithConnectionById(id);
+      if (!existing || existing.binding.projectId !== projectId) throw notFound();
+      if (!(existing.binding.stages ?? []).includes('live')) {
+        throw new HTTPException(400, {
+          message:
+            'confirm-prod-deploy is only valid on a deploy binding carrying the `live` stage — this binding serves no live environment, so there is no production deploy for a human to confirm',
+          cause: { code: 'NOT_LIVE_BINDING' },
+        });
+      }
+      const { confirmPendingProdDeploy } = await import('../../pipeline/release-coolify.js');
+      const result = await confirmPendingProdDeploy(id).catch(lockedAsHttp);
+      broadcastIntegrationChanged(projectId, {
+        bindingId: id,
+        connectionId: existing.connection.id,
       });
-    }
-    const { confirmPendingProdDeploy } = await import('../../pipeline/release-coolify.js');
-    const result = await confirmPendingProdDeploy(id).catch(lockedAsHttp);
-    broadcastIntegrationChanged(projectId, {
-      bindingId: id,
-      connectionId: existing.connection.id,
-    });
-    return c.json(result);
-  });
+      return c.json(answer(confirmedSchema, result));
+    },
+  );
+}
+
+export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }>): void {
+  registerCoolifyCommandRoutes(routes);
+  registerCoolifyPickerRoutes(routes);
 }

@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { effectiveProjectRole, loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
@@ -22,6 +23,21 @@ import {
   roleSchema,
   stagesSchema,
 } from './binding-shape.js';
+import {
+  bindConnection,
+  bindingListSchema,
+  boundConnectionSchema,
+  changeConnection,
+  connectionAnswerSchema,
+  directorySchema,
+  healthResultSchema,
+  listConnectionBindings,
+  listConnections,
+  okSchema,
+  removeConnection,
+  storeConnection,
+  testConnection,
+} from './connection-routes-reference.js';
 import { ownerNamesOf } from './owner-names.js';
 import { raceWithTimeout } from './probe.js';
 import {
@@ -96,28 +112,31 @@ async function loadManageableConnection(
 export const integrationConnectionsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationConnectionsRoutes.use('*', requireAuth(), assertEmailVerified());
 
-integrationConnectionsRoutes.get('/', async (c) => {
+integrationConnectionsRoutes.get('/', listConnections, async (c) => {
   const userId = c.get('userId');
   const reached = await listReachableConnections(userId);
   const bindings = await listBindingsByConnectionIds(reached.map((r) => r.connection.id));
   const ownerNames = await ownerNamesOf(reached.map((r) => r.connection));
-  return c.json({
-    items: reached.map((r) =>
-      summarizeConnectionWithUsage(
-        r.connection,
-        bindingsVisibleTo(r, bindings.get(r.connection.id) ?? [], (b) => b.projectId),
-        {
-          reach: r.reach,
-          canManage: r.canManage,
-          ownerName: ownerNames.get(r.connection.id) ?? null,
-        },
+  return c.json(
+    answer(directorySchema, {
+      items: reached.map((r) =>
+        summarizeConnectionWithUsage(
+          r.connection,
+          bindingsVisibleTo(r, bindings.get(r.connection.id) ?? [], (b) => b.projectId),
+          {
+            reach: r.reach,
+            canManage: r.canManage,
+            ownerName: ownerNames.get(r.connection.id) ?? null,
+          },
+        ),
       ),
-    ),
-  });
+    }),
+  );
 });
 
 integrationConnectionsRoutes.post(
   '/',
+  storeConnection,
   zValidator('json', connectionCreateSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -142,7 +161,10 @@ integrationConnectionsRoutes.post(
       secrets: body.secrets,
     });
     notifyConnectionChanged(body.provider, connection.id);
-    return c.json({ connection: summarizeConnection(connection) }, 201);
+    return c.json(
+      answer(connectionAnswerSchema, { connection: summarizeConnection(connection) }),
+      201,
+    );
   },
 );
 
@@ -170,6 +192,7 @@ const bindExistingSchema = z
 
 integrationConnectionsRoutes.post(
   '/:id/bindings',
+  ...bindConnection,
   zValidator('json', bindExistingSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -261,16 +284,16 @@ integrationConnectionsRoutes.post(
     // Re-probe on bind so the target project starts from current health rather
     // than whatever the connection last recorded (ISS-429).
     return c.json(
-      {
+      answer(boundConnectionSchema, {
         ...(await buildCreatedBindingResponse({ binding, connection }, integrationSecret)),
         ...bindEffects,
-      },
+      }),
       201,
     );
   },
 );
 
-integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
+integrationConnectionsRoutes.get('/:id/bindings', ...listConnectionBindings, async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
   const reached = await loadVisibleConnection(id, userId);
@@ -280,10 +303,10 @@ integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
     (pair) => pair.binding.projectId,
   );
   const bindings = pairs.map(summarizeBinding);
-  return c.json({ bindings, items: bindings });
+  return c.json(answer(bindingListSchema, { bindings, items: bindings }));
 });
 
-integrationConnectionsRoutes.post('/:id/test', async (c) => {
+integrationConnectionsRoutes.post('/:id/test', ...testConnection, async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
   await loadManageableConnection(id, userId);
@@ -314,13 +337,16 @@ integrationConnectionsRoutes.post('/:id/test', async (c) => {
     TEST_PROBE_TIMEOUT_MS,
   );
   if (result === null) {
-    return c.json({ status: 'error', message: 'healthcheck timed out after 10s' });
+    return c.json(
+      answer(healthResultSchema, { status: 'error', message: 'healthcheck timed out after 10s' }),
+    );
   }
-  return c.json(result);
+  return c.json(answer(healthResultSchema, result));
 });
 
 integrationConnectionsRoutes.patch(
   '/:id',
+  ...changeConnection,
   zValidator('json', connectionUpdateSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -357,11 +383,11 @@ integrationConnectionsRoutes.patch(
     const updated = await updateConnection(id, connPatch);
     if (!updated) throw notFound('connection');
     notifyConnectionChanged(existing.provider, id);
-    return c.json({ connection: summarizeConnection(updated) });
+    return c.json(answer(connectionAnswerSchema, { connection: summarizeConnection(updated) }));
   },
 );
 
-integrationConnectionsRoutes.delete('/:id', async (c) => {
+integrationConnectionsRoutes.delete('/:id', ...removeConnection, async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
   const existing = await loadManageableConnection(id, userId);
@@ -370,5 +396,5 @@ integrationConnectionsRoutes.delete('/:id', async (c) => {
   // findActiveBinding's `connection.active` filter without dropping audit rows.
   await softDeleteConnection(id);
   notifyConnectionChanged(existing.provider, id);
-  return c.json({ ok: true });
+  return c.json(answer(okSchema, { ok: true }));
 });

@@ -2,6 +2,7 @@ import { and, eq, lte, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { scheduleKinds, schedules } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -9,6 +10,19 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { zValidator } from '../middleware/validator.js';
 import { nextRunFor } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
+import {
+  createScheduleOp,
+  deleteScheduleOp,
+  listProjectSchedules,
+  listRuns,
+  readSchedule,
+  runScheduleOp,
+  scheduleListSchema,
+  scheduleRunsSchema,
+  scheduleSchema,
+  scheduleTriggeredSchema,
+  updateScheduleOp,
+} from './routes-reference.js';
 import {
   createSchedule,
   deleteSchedule,
@@ -146,6 +160,7 @@ scheduleRoutes.use('*', requireAuth(), assertEmailVerified());
 
 scheduleRoutes.get(
   '/',
+  listProjectSchedules,
   zValidator('query', listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -156,19 +171,20 @@ scheduleRoutes.get(
       c.get('userId'),
       enabled === 'true' ? true : enabled === 'false' ? false : undefined,
     );
-    return c.json(rows);
+    return c.json(answer(scheduleListSchema, rows));
   },
 );
 
 scheduleRoutes.get(
   '/:id',
+  readSchedule,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
     const row = await getSchedule(id, c.get('userId'));
-    return c.json(row);
+    return c.json(answer(scheduleSchema, row));
   },
 );
 
@@ -179,6 +195,7 @@ scheduleRoutes.get(
 // span + terminal status, newest first.
 scheduleRoutes.get(
   '/:id/runs',
+  listRuns,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -189,24 +206,26 @@ scheduleRoutes.get(
     const { id } = c.req.valid('param');
     const { limit } = c.req.valid('query');
     const result = await listScheduleRuns(id, c.get('userId'), limit);
-    return c.json(result);
+    return c.json(answer(scheduleRunsSchema, result));
   },
 );
 
 scheduleRoutes.post(
   '/',
+  createScheduleOp,
   zValidator('json', createSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const input = c.req.valid('json');
     const inserted = await createSchedule(input, c.get('userId'));
-    return c.json(inserted, 201);
+    return c.json(answer(scheduleSchema, inserted), 201);
   },
 );
 
 scheduleRoutes.put(
   '/:id',
+  updateScheduleOp,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -217,12 +236,13 @@ scheduleRoutes.put(
     const { id } = c.req.valid('param');
     const patch = c.req.valid('json');
     const updated = await updateSchedule(id, patch, c.get('userId'));
-    return c.json(updated);
+    return c.json(answer(scheduleSchema, updated));
   },
 );
 
 scheduleRoutes.delete(
   '/:id',
+  deleteScheduleOp,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -235,13 +255,14 @@ scheduleRoutes.delete(
 
 scheduleRoutes.post(
   '/:id/run',
+  runScheduleOp,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
     const result = await runScheduleNow(id, c.get('userId'));
-    return c.json(result, 202);
+    return c.json(answer(scheduleTriggeredSchema, result), 202);
   },
 );
 

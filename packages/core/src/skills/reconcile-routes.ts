@@ -8,9 +8,22 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
+import {
+  acknowledgeReconcile,
+  applyReconcile,
+  listReconcileRuns,
+  okSchema,
+  readReconcileRun,
+  rejectReconcile,
+  runListSchema,
+  runOneSchema,
+  spawnedSchema,
+  spawnReconcile,
+} from './reconcile-routes-reference.js';
 import {
   acknowledgeReconcileRun,
   applyReconcileRun,
@@ -37,6 +50,7 @@ reconcileRoutes.use('/:projectId/reconcile-runs*', requireAuth(), assertEmailVer
 
 reconcileRoutes.post(
   '/:projectId/reconcile-runs',
+  spawnReconcile,
   zValidator('param', projectParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -70,12 +84,13 @@ reconcileRoutes.post(
       throw new HTTPException(500, { message: result.detail });
     }
 
-    return c.json({ runId: result.runId }, 201);
+    return c.json(answer(spawnedSchema, { runId: result.runId }), 201);
   },
 );
 
 reconcileRoutes.get(
   '/:projectId/reconcile-runs',
+  listReconcileRuns,
   zValidator('param', projectParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -87,12 +102,13 @@ reconcileRoutes.get(
     if (!access.role) throw forbidden('not a project member');
 
     const runs = await listReconcileRunsForProject(projectId);
-    return c.json({ runs });
+    return c.json(answer(runListSchema, { runs }));
   },
 );
 
 reconcileRoutes.get(
   '/:projectId/reconcile-runs/:runId',
+  readReconcileRun,
   zValidator('param', runParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -106,12 +122,13 @@ reconcileRoutes.get(
     const run = await getReconcileRun(runId);
     if (!run || run.projectId !== projectId) throw notFound(`reconcile run ${runId} not found`);
 
-    return c.json({ run });
+    return c.json(answer(runOneSchema, { run }));
   },
 );
 
 reconcileRoutes.post(
   '/:projectId/reconcile-runs/:runId/apply',
+  applyReconcile,
   zValidator('param', runParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -134,12 +151,13 @@ reconcileRoutes.post(
       throw err;
     }
 
-    return c.json({ ok: true });
+    return c.json(answer(okSchema, { ok: true }));
   },
 );
 
 reconcileRoutes.post(
   '/:projectId/reconcile-runs/:runId/reject',
+  rejectReconcile,
   zValidator('param', runParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -166,12 +184,13 @@ reconcileRoutes.post(
       throw err;
     }
 
-    return c.json({ ok: true });
+    return c.json(answer(okSchema, { ok: true }));
   },
 );
 
 reconcileRoutes.post(
   '/:projectId/reconcile-runs/:runId/acknowledge',
+  acknowledgeReconcile,
   zValidator('param', runParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -198,6 +217,6 @@ reconcileRoutes.post(
       throw err;
     }
 
-    return c.json({ ok: true });
+    return c.json(answer(okSchema, { ok: true }));
   },
 );

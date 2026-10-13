@@ -193,7 +193,9 @@ export interface IssueContextRow {
   kind: IssueStepContextKind;
   step: string | null;
   attempt: number;
-  payload: unknown;
+  payload: StepHandoffPayload;
+  /** Set on the row at write time and sent with it. */
+  verdict: StepVerdict | null;
   createdAt: Date;
   updatedAt: Date;
 }

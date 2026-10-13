@@ -2,12 +2,19 @@ import { and, count, desc, eq, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { pipelineRunStatuses, pipelineRuns } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
+import {
+  listProjectPipelineRuns,
+  pipelineRunListSchema,
+  pipelineRunSummarySchema,
+  readPipelineRunSummary,
+} from './runs-read-routes-reference.js';
 import { listItemsFromRows, loadPipelineRunSummary } from './runs-rollup.js';
 
 const badRequest = (details: unknown) =>
@@ -32,6 +39,7 @@ pipelineRunReadRoutes.use('*', requireAuth(), assertEmailVerified());
 
 pipelineRunReadRoutes.get(
   '/:id',
+  readPipelineRunSummary,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -51,7 +59,7 @@ pipelineRunReadRoutes.get(
 
     const summary = await loadPipelineRunSummary(id);
     if (!summary) throw notFound('pipeline run not found');
-    return c.json(summary);
+    return c.json(answer(pipelineRunSummarySchema, summary));
   },
 );
 
@@ -61,6 +69,7 @@ pipelineRunProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 
 pipelineRunProjectRoutes.get(
   '/:id/pipeline-runs',
+  listProjectPipelineRuns,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -91,6 +100,6 @@ pipelineRunProjectRoutes.get(
       .offset(q.offset);
 
     const items = await listItemsFromRows(rows);
-    return c.json(listResponse(c, items, Number(n), q));
+    return c.json(answer(pipelineRunListSchema, listResponse(c, items, Number(n), q)));
   },
 );

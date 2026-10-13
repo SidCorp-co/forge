@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { RULES } from '../config/rate-limits.js';
-import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../embeddings/index.js';
+import { EmbeddingUnavailableError } from '../embeddings/index.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -12,6 +13,12 @@ import {
   memoryFeedbackInputSchema,
   runMemoryFeedback,
 } from './feedback-service.js';
+import {
+  feedbackResultSchema,
+  memoryFeedback,
+  writeMemory,
+  writeResultSchema,
+} from './write-routes-reference.js';
 import {
   MemoryWriteValidationError,
   runMemoryWrite,
@@ -32,6 +39,7 @@ memoryWriteRoutes.use(
 
 memoryWriteRoutes.post(
   '/',
+  writeMemory,
   zValidator('json', writeMemoryInputSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -42,7 +50,7 @@ memoryWriteRoutes.post(
 
     try {
       const result = await runMemoryWrite(body);
-      return c.json(result, 201);
+      return c.json(answer(writeResultSchema, result), 201);
     } catch (err) {
       if (err instanceof MemoryWriteValidationError) {
         throw badRequest({ textContent: [err.message] });
@@ -50,7 +58,7 @@ memoryWriteRoutes.post(
       if (err instanceof EmbeddingUnavailableError) {
         throw new HTTPException(503, {
           message: 'embeddings service unavailable',
-          cause: { code: EMBEDDING_UNAVAILABLE },
+          cause: { code: 'EMBEDDING_UNAVAILABLE' },
         });
       }
       throw err;
@@ -63,6 +71,7 @@ memoryWriteRoutes.post(
 // bucket — feedback is a write-path mutation.
 memoryWriteRoutes.post(
   '/feedback',
+  memoryFeedback,
   zValidator('json', memoryFeedbackInputSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -73,7 +82,7 @@ memoryWriteRoutes.post(
 
     try {
       const result = await runMemoryFeedback(body);
-      return c.json(result, result.found ? 200 : 404);
+      return c.json(answer(feedbackResultSchema, result), result.found ? 200 : 404);
     } catch (err) {
       if (err instanceof MemoryFeedbackValidationError) {
         throw badRequest({ evidence: [err.message] });

@@ -26,8 +26,8 @@ type GraphEdge = {
 
 type GraphNode = {
   id: string;
-  status: string;
-  priority: string;
+  status: (typeof issues.$inferSelect)['status'];
+  priority: (typeof issues.$inferSelect)['priority'];
   assigneeId: string | null;
 };
 

@@ -16,10 +16,18 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../../api-reference/describe.js';
 import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/validator.js';
 import { startRunnerRelease } from './runner-release.js';
+import {
+  listReleases,
+  readRelease,
+  releaseAnswerSchema,
+  releaseListSchema,
+  startRelease,
+} from './runner-release-routes-reference.js';
 import { findById, listForProject } from './runner-release-store.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
@@ -41,15 +49,16 @@ const notFound = (message: string) =>
 export const runnerReleaseRoutes = new Hono<{ Variables: AuthVars }>();
 runnerReleaseRoutes.use('*', requireAuth(), assertEmailVerified());
 
-const REFUSAL_STATUS = {
-  no_repository: 409,
-  bad_version: 400,
-  already_attempted: 409,
-  stopped: 422,
+const REFUSAL = {
+  no_repository: { status: 409, code: 'RUNNER_RELEASE_NO_REPOSITORY' },
+  bad_version: { status: 400, code: 'RUNNER_RELEASE_BAD_VERSION' },
+  already_attempted: { status: 409, code: 'RUNNER_RELEASE_ALREADY_ATTEMPTED' },
+  stopped: { status: 422, code: 'RUNNER_RELEASE_STOPPED' },
 } as const;
 
 runnerReleaseRoutes.post(
   '/:projectId/runner-releases',
+  startRelease,
   zValidator('param', projectParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -71,16 +80,19 @@ runnerReleaseRoutes.post(
       ...(body.commit ? { commit: body.commit } : {}),
       requestedById: userId,
     });
-    if (outcome.started) return c.json({ release: outcome.release }, 202);
-    throw new HTTPException(REFUSAL_STATUS[outcome.kind], {
+    if (outcome.started)
+      return c.json(answer(releaseAnswerSchema, { release: outcome.release }), 202);
+    const refusal = REFUSAL[outcome.kind];
+    throw new HTTPException(refusal.status, {
       message: outcome.message,
-      cause: { code: `RUNNER_RELEASE_${outcome.kind.toUpperCase()}`, details: outcome.release },
+      cause: { code: refusal.code, details: outcome.release },
     });
   },
 );
 
 runnerReleaseRoutes.get(
   '/:projectId/runner-releases',
+  listReleases,
   zValidator('param', projectParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -88,12 +100,13 @@ runnerReleaseRoutes.get(
     const { projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
     if (!access) throw notFound('project not found');
-    return c.json({ releases: await listForProject(projectId) });
+    return c.json(answer(releaseListSchema, { releases: await listForProject(projectId) }));
   },
 );
 
 runnerReleaseRoutes.get(
   '/:projectId/runner-releases/:id',
+  readRelease,
   zValidator('param', releaseParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -103,6 +116,6 @@ runnerReleaseRoutes.get(
     if (!access) throw notFound('project not found');
     const release = await findById(id);
     if (!release || release.projectId !== projectId) throw notFound('runner release not found');
-    return c.json({ release });
+    return c.json(answer(releaseAnswerSchema, { release }));
   },
 );

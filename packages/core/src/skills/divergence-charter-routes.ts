@@ -10,9 +10,16 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
+import {
+  readCharterSchema,
+  readDivergenceCharter,
+  saveDivergenceCharter,
+  savedCharterSchema,
+} from './divergence-charter-routes-reference.js';
 import { divergenceCharterEntrySchema } from './divergence-charters.js';
 import { readCharter, upsertCharterAtomic } from './divergence-charters-service.js';
 
@@ -33,6 +40,7 @@ divergenceCharterRoutes.use('*', requireAuth(), assertEmailVerified());
 
 divergenceCharterRoutes.get(
   '/:id/divergence-charter',
+  readDivergenceCharter,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -41,12 +49,13 @@ divergenceCharterRoutes.get(
     const access = await loadProjectAccess(projectId, c.get('userId'));
     assertProjectRole(access, 'member', 'not a project member');
 
-    return c.json({ charter: await readCharter(projectId) });
+    return c.json(answer(readCharterSchema, { charter: await readCharter(projectId) }));
   },
 );
 
 divergenceCharterRoutes.put(
   '/:id/divergence-charter',
+  saveDivergenceCharter,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -68,6 +77,6 @@ divergenceCharterRoutes.put(
       ...(reason !== undefined ? { reason } : {}),
     });
 
-    return c.json({ charter });
+    return c.json(answer(savedCharterSchema, { charter }));
   },
 );

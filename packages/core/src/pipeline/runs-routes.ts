@@ -10,9 +10,10 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
+import { declaresInput, zValidator } from '../middleware/validator.js';
 import { readPipelineRun } from './runs.js';
 import {
   cancelPipelineRun,
@@ -20,6 +21,13 @@ import {
   pausePipelineRun,
   resumePipelineRun,
 } from './runs-control.js';
+import {
+  cancelResultSchema,
+  cancelRun,
+  pauseRun,
+  pipelineRunRowSchema,
+  resumeRun,
+} from './runs-routes-reference.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -58,6 +66,7 @@ pipelineRunRoutes.use('*', requireAuth(), assertEmailVerified());
 
 pipelineRunRoutes.post(
   '/:id/pause',
+  pauseRun,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -67,7 +76,7 @@ pipelineRunRoutes.post(
     await loadRunWithAccess(id, userId);
     try {
       const run = await pausePipelineRun(id);
-      return c.json(run);
+      return c.json(answer(pipelineRunRowSchema, run));
     } catch (err) {
       rethrowControlError(err);
     }
@@ -76,6 +85,7 @@ pipelineRunRoutes.post(
 
 pipelineRunRoutes.post(
   '/:id/resume',
+  resumeRun,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -85,7 +95,7 @@ pipelineRunRoutes.post(
     await loadRunWithAccess(id, userId);
     try {
       const run = await resumePipelineRun(id);
-      return c.json(run);
+      return c.json(answer(pipelineRunRowSchema, run));
     } catch (err) {
       rethrowControlError(err);
     }
@@ -94,6 +104,8 @@ pipelineRunRoutes.post(
 
 pipelineRunRoutes.post(
   '/:id/cancel',
+  cancelRun,
+  declaresInput('json', cancelBodySchema),
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -109,7 +121,7 @@ pipelineRunRoutes.post(
         actorAgency: restActor(c).agency,
         ...(body.data.parkIssue !== undefined ? { parkIssue: body.data.parkIssue } : {}),
       });
-      return c.json(result);
+      return c.json(answer(cancelResultSchema, result));
     } catch (err) {
       rethrowControlError(err);
     }

@@ -13,18 +13,14 @@ import { desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { integrationDeliveries } from '../db/schema.js';
 import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
-import {
-  AGENT_ACCESS_CLOSED,
-  type AgentAccess,
-  agentAccessTier,
-  noAgentPathMessage,
-} from './agent-access.js';
+import { AGENT_ACCESS_CLOSED, type AgentAccess } from './agent-access.js';
 import { registerCoolifyDeployRoutes } from './coolify/routes.js';
 import { findDeliveryById } from './deliveries.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
@@ -36,7 +32,7 @@ import {
   updateSchema,
 } from './provider-schemas.js';
 import { enqueueOutboundDispatch } from './queue.js';
-import { getAdapter, getIntegration } from './registry.js';
+import { getAdapter } from './registry.js';
 import { withdrawNulls } from './release-channel-schema.js';
 import { rocketChatBindingOfProject } from './rocketchat/binding.js';
 import { fetchBotRooms } from './rocketchat/rest-client.js';
@@ -46,6 +42,7 @@ import {
   assertNoActiveBindingClash,
   assertProjectMember,
   assertVaultConfigured,
+  authorizeAgentAccessWrite,
   badRequest,
   broadcastIntegrationChanged,
   buildCreatedBindingResponse,
@@ -55,6 +52,31 @@ import {
   notifyConnectionChanged,
   summarizeBinding,
 } from './route-helpers.js';
+import {
+  bindingChangedSchema,
+  bindingListSchema,
+  createdBindingSchema,
+  createIntegration,
+  deliveryListSchema,
+  healthResultSchema,
+  listDeliveries,
+  listIntegrations,
+  listRocketchatRooms,
+  mcpPreviewSchema,
+  okSchema,
+  previewMcpServers,
+  readIntegrationsStatus,
+  removeIntegration,
+  retryDelivery,
+  retryQueuedSchema,
+  rocketchatRoomsSchema,
+  roomsSchema,
+  rotatedSecretSchema,
+  rotateIntegrationSecret,
+  statusCardsSchema,
+  testIntegration,
+  updateIntegration,
+} from './routes-reference.js';
 import { buildIntegrationsStatusCards } from './status-service.js';
 import {
   buildContextFromBinding,
@@ -72,34 +94,12 @@ import {
 // `src/index.ts` keeps importing both routers from `./integrations/routes.js`.
 export { integrationConnectionsRoutes } from './connection-routes.js';
 
-/**
- * Authorize a write to a binding's agent-access grant, and refuse one that means nothing.
- *
- * ISS-1071 rule 5 — the tier is a property of the provider's declared agent path, not of the route:
- * a `direct-mcp` grant hands the project's credential to a runner box, so it takes the same
- * org-admin escalation that already guards `secrets`, `config` and `active` on an org-owned
- * connection; a `core-mediated` grant only widens who may ask core to make a call core was already
- * making, so it stays with the project-admin fields. A provider declaring no agent path is refused
- * by name rather than storing a column value nothing will ever read.
- */
-async function authorizeAgentAccessWrite(
-  userId: string,
-  projectId: string,
-  provider: string,
-): Promise<void> {
-  const tier = agentAccessTier(getIntegration(provider));
-  if (tier === 'refused') throw badRequest(noAgentPathMessage(provider));
-  if (tier !== 'org-admin') return;
-  const access = await effectiveProjectRole(userId, projectId);
-  if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
-}
-
 export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationsRoutes.use('*', requireAuth(), assertEmailVerified());
 
 registerCoolifyDeployRoutes(integrationsRoutes);
 
-integrationsRoutes.get('/:projectId/integrations', async (c) => {
+integrationsRoutes.get('/:projectId/integrations', ...listIntegrations, async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
   await assertProjectMember(projectId, userId);
@@ -107,11 +107,12 @@ integrationsRoutes.get('/:projectId/integrations', async (c) => {
   const pairs = await listBindingsForProject(projectId);
   // One array under both keys: `items` is the alias the `forge` CLI and the runner read (ISS-1191).
   const bindings = pairs.map(summarizeBinding);
-  return c.json({ bindings, items: bindings });
+  return c.json(answer(bindingListSchema, { bindings, items: bindings }));
 });
 
 integrationsRoutes.post(
   '/:projectId/integrations',
+  ...createIntegration,
   zValidator('json', createSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -183,7 +184,10 @@ integrationsRoutes.post(
     // Probe immediately so the new integration starts with real health (and
     // epodsystem store identity) instead of an unverified card (ISS-429).
     return c.json(
-      await buildCreatedBindingResponse({ binding, connection }, integrationSecret),
+      answer(
+        createdBindingSchema,
+        await buildCreatedBindingResponse({ binding, connection }, integrationSecret),
+      ),
       201,
     );
   },
@@ -191,6 +195,7 @@ integrationsRoutes.post(
 
 integrationsRoutes.patch(
   '/:projectId/integrations/:id',
+  ...updateIntegration,
   zValidator('json', updateSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -299,11 +304,11 @@ integrationsRoutes.patch(
     if (!refreshed) throw notFound();
     broadcastIntegrationChanged(projectId, { bindingId: id, connectionId: connection.id });
     notifyConnectionChanged(binding.provider, connection.id);
-    return c.json({ integration: summarizeBinding(refreshed) });
+    return c.json(answer(bindingChangedSchema, { integration: summarizeBinding(refreshed) }));
   },
 );
 
-integrationsRoutes.delete('/:projectId/integrations/:id', async (c) => {
+integrationsRoutes.delete('/:projectId/integrations/:id', ...removeIntegration, async (c) => {
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
   const userId = c.get('userId');
@@ -322,10 +327,10 @@ integrationsRoutes.delete('/:projectId/integrations/:id', async (c) => {
     connectionId: existing.connection.id,
   });
   notifyConnectionChanged(existing.binding.provider, existing.connection.id);
-  return c.json({ ok: true });
+  return c.json(answer(okSchema, { ok: true }));
 });
 
-integrationsRoutes.post('/:projectId/integrations/:id/test', async (c) => {
+integrationsRoutes.post('/:projectId/integrations/:id/test', ...testIntegration, async (c) => {
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
   const userId = c.get('userId');
@@ -343,28 +348,12 @@ integrationsRoutes.post('/:projectId/integrations/:id/test', async (c) => {
   }
   const ctx = buildContextFromBinding(existing);
   const result = await adapter.healthcheck(ctx);
-  return c.json(result);
+  return c.json(answer(healthResultSchema, result));
 });
-
-// List the Rocket.Chat rooms the bot can serve, so the UI offers a name picker
-// instead of making the operator dig up raw rids. Two modes: `integrationId`
-// reuses the stored (decrypted) bot credential of an existing binding; the
-// bare credential fields serve the first-time connect form, before anything
-// is persisted. Rooms = whatever the bot user is a member of (channels +
-// private groups) — exactly the set it can read/reply in.
-const rocketchatRoomsSchema = z
-  .object({
-    integrationId: z.string().uuid().optional(),
-    serverUrl: z.string().url().max(500).optional(),
-    authToken: z.string().min(8).max(2000).optional(),
-    userId: z.string().min(1).max(200).optional(),
-  })
-  .refine((b) => b.integrationId || (b.serverUrl && b.authToken && b.userId), {
-    message: 'pass integrationId, or serverUrl + authToken + userId',
-  });
 
 integrationsRoutes.post(
   '/:projectId/integrations/rocketchat/rooms',
+  ...listRocketchatRooms,
   zValidator('json', rocketchatRoomsSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -397,34 +386,43 @@ integrationsRoutes.post(
     }
 
     const rooms = (await fetchBotRooms(auth)).slice(0, 200);
-    return c.json({ rooms });
+    return c.json(answer(roomsSchema, { rooms }));
   },
 );
 
-integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) => {
-  const projectId = c.req.param('projectId');
-  const id = c.req.param('id');
-  const userId = c.get('userId');
-  const role = await assertProjectMember(projectId, userId);
-  assertAdmin(role);
+integrationsRoutes.post(
+  '/:projectId/integrations/:id/rotate-secret',
+  ...rotateIntegrationSecret,
+  async (c) => {
+    const projectId = c.req.param('projectId');
+    const id = c.req.param('id');
+    const userId = c.get('userId');
+    const role = await assertProjectMember(projectId, userId);
+    assertAdmin(role);
 
-  const existing = await findBindingWithConnectionById(id);
-  if (!existing || existing.binding.projectId !== projectId) throw notFound();
+    const existing = await findBindingWithConnectionById(id);
+    if (!existing || existing.binding.projectId !== projectId) throw notFound();
 
-  // The inbound HMAC secret is per-binding (an inbound webhook is project+env
-  // scoped), so rotation targets the binding.
-  const newSecret = `whsec_${randomBytes(24).toString('hex')}`;
-  await updateBinding(id, { integrationSecret: newSecret });
-  const refreshed = await findBindingWithConnectionById(id);
-  if (!refreshed) throw notFound();
-  broadcastIntegrationChanged(projectId, {
-    bindingId: id,
-    connectionId: existing.connection.id,
-  });
-  return c.json({ integration: summarizeBinding(refreshed), integrationSecret: newSecret });
-});
+    // The inbound HMAC secret is per-binding (an inbound webhook is project+env
+    // scoped), so rotation targets the binding.
+    const newSecret = `whsec_${randomBytes(24).toString('hex')}`;
+    await updateBinding(id, { integrationSecret: newSecret });
+    const refreshed = await findBindingWithConnectionById(id);
+    if (!refreshed) throw notFound();
+    broadcastIntegrationChanged(projectId, {
+      bindingId: id,
+      connectionId: existing.connection.id,
+    });
+    return c.json(
+      answer(rotatedSecretSchema, {
+        integration: summarizeBinding(refreshed),
+        integrationSecret: newSecret,
+      }),
+    );
+  },
+);
 
-integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
+integrationsRoutes.get('/:projectId/integrations/:id/deliveries', ...listDeliveries, async (c) => {
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
   const userId = c.get('userId');
@@ -439,64 +437,70 @@ integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
     .where(eq(integrationDeliveries.bindingId, id))
     .orderBy(desc(integrationDeliveries.createdAt))
     .limit(50);
-  return c.json({ items: rows });
+  return c.json(answer(deliveryListSchema, { items: rows }));
 });
 
 // Re-dispatch a failed outbound delivery. Async by design: we re-enqueue the SAME outbound path
 // the original used (enqueueOutboundDispatch → worker → dispatchThrough → that binding's own
 // adapter) with a FRESH requestId, so the worker/adapter records the new delivery row. The route
 // must NOT pre-record it — the (binding_id, request_id) partial unique index would collide.
-integrationsRoutes.post('/:projectId/integrations/:id/deliveries/:deliveryId/retry', async (c) => {
-  const projectId = c.req.param('projectId');
-  const id = c.req.param('id');
-  const deliveryId = c.req.param('deliveryId');
-  const userId = c.get('userId');
-  const role = await assertProjectMember(projectId, userId);
-  assertAdmin(role);
+integrationsRoutes.post(
+  '/:projectId/integrations/:id/deliveries/:deliveryId/retry',
+  ...retryDelivery,
+  async (c) => {
+    const projectId = c.req.param('projectId');
+    const id = c.req.param('id');
+    const deliveryId = c.req.param('deliveryId');
+    const userId = c.get('userId');
+    const role = await assertProjectMember(projectId, userId);
+    assertAdmin(role);
 
-  const existing = await findBindingWithConnectionById(id);
-  if (!existing || existing.binding.projectId !== projectId) throw notFound();
+    const existing = await findBindingWithConnectionById(id);
+    if (!existing || existing.binding.projectId !== projectId) throw notFound();
 
-  const delivery = await findDeliveryById(deliveryId);
-  if (!delivery || delivery.bindingId !== id) throw notFound('delivery');
+    const delivery = await findDeliveryById(deliveryId);
+    if (!delivery || delivery.bindingId !== id) throw notFound('delivery');
 
-  if (delivery.direction !== 'outbound' || delivery.status !== 'failed') {
-    throw new HTTPException(409, {
-      message: 'only failed outbound deliveries can be retried',
-      cause: { code: 'NOT_RETRYABLE' },
+    if (delivery.direction !== 'outbound' || delivery.status !== 'failed') {
+      throw new HTTPException(409, {
+        message: 'only failed outbound deliveries can be retried',
+        cause: { code: 'NOT_RETRYABLE' },
+      });
+    }
+
+    const p = (delivery.payload ?? {}) as { runId?: string | null; issueId?: string | null };
+    const requestId = `retry_${randomBytes(12).toString('hex')}`;
+    await enqueueOutboundDispatch({
+      jobKind: 'coolify.dispatch',
+      bindingId: id,
+      runId: p.runId ?? null,
+      issueId: p.issueId ?? null,
+      eventName: delivery.eventName,
+      requestId,
+      payload: (delivery.payload ?? {}) as Record<string, unknown>,
     });
-  }
-
-  const p = (delivery.payload ?? {}) as { runId?: string | null; issueId?: string | null };
-  const requestId = `retry_${randomBytes(12).toString('hex')}`;
-  await enqueueOutboundDispatch({
-    jobKind: 'coolify.dispatch',
-    bindingId: id,
-    runId: p.runId ?? null,
-    issueId: p.issueId ?? null,
-    eventName: delivery.eventName,
-    requestId,
-    payload: (delivery.payload ?? {}) as Record<string, unknown>,
-  });
-  return c.json({ requestId, queued: true }, 202);
-});
+    return c.json(answer(retryQueuedSchema, { requestId, queued: true }), 202);
+  },
+);
 
 // ISS-305 — composed read-only integrations status for the web hub; the
 // aggregation lives in status-service.ts.
-integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
+integrationsRoutes.get('/:projectId/integrations/status', ...readIntegrationsStatus, async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
   await assertProjectMember(projectId, userId);
 
-  return c.json({ cards: await buildIntegrationsStatusCards(projectId) });
+  return c.json(
+    answer(statusCardsSchema, { cards: await buildIntegrationsStatusCards(projectId) }),
+  );
 });
 
 // MCP preview (ISS-429, ISS-1191) — every server a project-wide agent session receives, composed
 // in mcp-preview-service.ts from resolveSessionMcpServers, so nothing here resolves a second time.
-integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
+integrationsRoutes.get('/:projectId/integrations/mcp-preview', ...previewMcpServers, async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
   await assertProjectMember(projectId, userId);
 
-  return c.json(await buildMcpPreview(projectId));
+  return c.json(answer(mcpPreviewSchema, await buildMcpPreview(projectId)));
 });

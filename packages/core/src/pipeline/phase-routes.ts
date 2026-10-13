@@ -1,11 +1,22 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { phaseJournalOutcomes } from '../db/schema-journal.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
 import { endPhase, listPhases, resumePoint, startPhase } from './phase-journal.js';
+import {
+  endPhaseOp,
+  listRunPhases,
+  openedPhaseSchema,
+  phaseEndedSchema,
+  phaseListSchema,
+  readResumePoint,
+  resumePointSchema,
+  startPhaseOp,
+} from './phase-routes-reference.js';
 import { readPipelineRun } from './runs.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -47,6 +58,7 @@ phaseRoutes.use('*', requireAuth(), assertEmailVerified());
 
 phaseRoutes.post(
   '/:id/phases',
+  startPhaseOp,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -65,12 +77,20 @@ phaseRoutes.post(
       jobId: body.jobId ?? null,
       agentSessionId: body.agentSessionId ?? null,
     });
-    return c.json({ phase: row.phase, attempt: row.attempt, startedAt: row.startedAt }, 201);
+    return c.json(
+      answer(openedPhaseSchema, {
+        phase: row.phase,
+        attempt: row.attempt,
+        startedAt: row.startedAt,
+      }),
+      201,
+    );
   },
 );
 
 phaseRoutes.post(
   '/:id/phases/end',
+  endPhaseOp,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -88,12 +108,19 @@ phaseRoutes.post(
       outcome: body.outcome,
       ...(body.note ? { artifact: { kind: 'note' as const, text: body.note } } : {}),
     });
-    return c.json({ phase: body.phase, attempt: body.attempt, outcome: body.outcome });
+    return c.json(
+      answer(phaseEndedSchema, {
+        phase: body.phase,
+        attempt: body.attempt,
+        outcome: body.outcome,
+      }),
+    );
   },
 );
 
 phaseRoutes.get(
   '/:id/resume-point',
+  readResumePoint,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -101,16 +128,19 @@ phaseRoutes.get(
     const { id } = c.req.valid('param');
     await runProjectFor(id, c.get('userId'), 'viewer');
     const row = await resumePoint(id);
-    return c.json({
-      resumePoint: row
-        ? { phase: row.phase, attempt: row.attempt, startedAt: row.startedAt }
-        : null,
-    });
+    return c.json(
+      answer(resumePointSchema, {
+        resumePoint: row
+          ? { phase: row.phase, attempt: row.attempt, startedAt: row.startedAt }
+          : null,
+      }),
+    );
   },
 );
 
 phaseRoutes.get(
   '/:id/phases',
+  listRunPhases,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -118,16 +148,18 @@ phaseRoutes.get(
     const { id } = c.req.valid('param');
     await runProjectFor(id, c.get('userId'), 'viewer');
     const rows = await listPhases(id);
-    return c.json({
-      phases: rows.map((row) => ({
-        phase: row.phase,
-        attempt: row.attempt,
-        source: row.source,
-        outcome: row.outcome,
-        startedAt: row.startedAt,
-        endedAt: row.endedAt,
-        artifact: row.artifact,
-      })),
-    });
+    return c.json(
+      answer(phaseListSchema, {
+        phases: rows.map((row) => ({
+          phase: row.phase,
+          attempt: row.attempt,
+          source: row.source,
+          outcome: row.outcome,
+          startedAt: row.startedAt,
+          endedAt: row.endedAt,
+          artifact: row.artifact,
+        })),
+      }),
+    );
   },
 );

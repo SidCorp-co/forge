@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { memories, memorySources } from '../db/schema.js';
 import { assertProjectAccess } from '../lib/authz.js';
@@ -10,6 +11,15 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { zValidator } from '../middleware/validator.js';
 import { runMemoryGet } from './get-service.js';
 import { deleteMemory } from './indexer.js';
+import {
+  deleteMemoriesBySource,
+  deleteMemoryById,
+  listMemories,
+  listMemoryRevisions,
+  memoryDeletedSchema,
+  memoryListSchema,
+  memoryRevisionListSchema,
+} from './list-routes-reference.js';
 import { memoryRevisionsInputSchema, runMemoryRevisions } from './revisions-service.js';
 
 const listQuerySchema = paginationSchema.extend({
@@ -40,6 +50,7 @@ memoryListRoutes.use('*', requireAuth(), assertEmailVerified());
 
 memoryListRoutes.get(
   '/',
+  listMemories,
   zValidator('query', listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -59,12 +70,13 @@ memoryListRoutes.get(
       orderDir: 'desc',
     });
 
-    return c.json(listResponse(c, rows, total, { limit, offset }));
+    return c.json(answer(memoryListSchema, listResponse(c, rows, total, { limit, offset })));
   },
 );
 
 memoryListRoutes.get(
   '/revisions',
+  listMemoryRevisions,
   zValidator('query', revisionsQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -82,12 +94,15 @@ memoryListRoutes.get(
       offset,
     });
 
-    return c.json(listResponse(c, rows, total, { limit, offset }));
+    return c.json(
+      answer(memoryRevisionListSchema, listResponse(c, rows, total, { limit, offset })),
+    );
   },
 );
 
 memoryListRoutes.delete(
   '/by-source',
+  deleteMemoriesBySource,
   zValidator('query', deleteQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -96,7 +111,9 @@ memoryListRoutes.delete(
     const userId = c.get('userId');
     await assertProjectAccess(projectId, userId);
 
-    return c.json({ deleted: await deleteMemory(projectId, source, sourceRef) });
+    return c.json(
+      answer(memoryDeletedSchema, { deleted: await deleteMemory(projectId, source, sourceRef) }),
+    );
   },
 );
 
@@ -104,6 +121,7 @@ const idParamSchema = z.object({ id: z.uuid() });
 
 memoryListRoutes.delete(
   '/:id',
+  deleteMemoryById,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
