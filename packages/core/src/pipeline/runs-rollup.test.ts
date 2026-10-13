@@ -349,25 +349,6 @@ describe('loadPipelineRunSummary', () => {
     expect((await loadPipelineRunSummary(RUN_ID))?.gateAtOpen).toBeNull();
   });
 
-  // ISS-1303: the stamp is only useful if the run's own read returns it.
-  it('ISS-1303: returns the policy copy the run opened under', async () => {
-    const stamped = { named: true, plugin: 'forge@forge-local', version: '3.36.542' };
-    runRowQueue.push([{ ...runRow, metadata: { policyAtOpen: stamped } }]);
-    stepsQueue.push([]);
-    costQueue.push([]);
-    expect((await loadPipelineRunSummary(RUN_ID))?.policyAtOpen).toEqual({
-      read: 'ok',
-      policy: stamped,
-    });
-  });
-
-  it('ISS-1303: a run opened before the stamp existed reads none, not a guess', async () => {
-    runRowQueue.push([{ ...runRow, metadata: { runIssues: ['ISS-1'] } }]);
-    stepsQueue.push([]);
-    costQueue.push([]);
-    expect((await loadPipelineRunSummary(RUN_ID))?.policyAtOpen).toBeNull();
-  });
-
   it('ISS-789: a run with no live jobs reads 0, so a dead run is distinguishable from a live one', async () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);

@@ -34,7 +34,7 @@ import {
 } from '../pipeline/runs.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { liveMasterSessionId } from './master-owner.js';
-import { type PolicyCopy, POLICY_AT_OPEN_METADATA_KEY, stampPolicy } from './policy-copy.js';
+import { POLICY_AT_OPEN_METADATA_KEY, type PolicyCopy, stampPolicy } from './policy-copy.js';
 import { projectAdmission, RunnerNotAdmittedError } from './pool-admission.js';
 import { returnIssuesForRun } from './run-issue-return.js';
 import {

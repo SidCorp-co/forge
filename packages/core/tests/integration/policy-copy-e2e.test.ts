@@ -14,8 +14,8 @@ import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
-  createTestUser,
   createTestProject,
+  createTestUser,
   pairMockDevice,
   registerIntegrationsForTest,
   setupTestDatabase,
@@ -32,10 +32,8 @@ const fixture = JSON.parse(
   refused: Array<{ case: string; body: unknown; names: string }>;
 };
 
-const named = fixture.accepted.find((a) => a.body.named === true && 'commit' in a.body)?.body as Record<
-  string,
-  unknown
->;
+const named = fixture.accepted.find((a) => a.body.named === true && 'commit' in a.body)
+  ?.body as Record<string, unknown>;
 
 describe('a run a box opens carries the policy copy the box named', () => {
   let harness: TestDatabase;

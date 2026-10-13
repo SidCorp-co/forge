@@ -181,43 +181,6 @@ describe('POST /me/run-sessions', () => {
     });
   });
 
-  // ISS-1303: the route is where a policy core cannot read is refused by name,
-  // before the open writes a run, a session or a lease.
-  it('carries the policy copy the box named through to the open', async () => {
-    openRunSession.mockResolvedValue({ sessionId: 's9', runId: 'r9' });
-    const policy = { named: true, plugin: 'forge@forge-local', version: '3.36.542' };
-    await app.request('/api/devices/me/run-sessions', {
-      method: 'POST',
-      headers: { ...AUTH, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        projectId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        runId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
-        issueKeys: ['ISS-957'],
-        name: 'grp',
-        policy,
-      }),
-    });
-    expect(openRunSession.mock.calls.at(-1)?.[0]).toMatchObject({ policy });
-  });
-
-  it('refuses a policy it cannot read naming the field, and opens nothing', async () => {
-    openRunSession.mockClear();
-    const res = await app.request('/api/devices/me/run-sessions', {
-      method: 'POST',
-      headers: { ...AUTH, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        projectId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        runId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
-        issueKeys: ['ISS-957'],
-        name: 'grp',
-        policy: { named: true, plugin: 'forge@forge-local', version: 'latest' },
-      }),
-    });
-    expect(res.status).toBe(400);
-    expect(JSON.stringify(await res.json())).toContain('policy.version');
-    expect(openRunSession).not.toHaveBeenCalled();
-  });
-
   it('answers a box that may not serve the project with 403, naming the reason', async () => {
     const { RunnerNotAdmittedError } = await import('./pool-admission.js');
     const projectId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';

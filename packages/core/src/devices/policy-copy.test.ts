@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import {
   POLICY_AT_OPEN_METADATA_KEY,
   policyCopySchema,
@@ -69,7 +69,10 @@ describe('readRunPolicy', () => {
       policy: stored,
     });
     expect(
-      readRunPolicy({ [POLICY_AT_OPEN_METADATA_KEY]: { named: false, reason: 'not_reported' } }, RUN),
+      readRunPolicy(
+        { [POLICY_AT_OPEN_METADATA_KEY]: { named: false, reason: 'not_reported' } },
+        RUN,
+      ),
     ).toEqual({ read: 'ok', policy: { named: false, reason: 'not_reported' } });
   });
 
@@ -82,7 +85,10 @@ describe('readRunPolicy', () => {
   // Half a record is worse than none: a version this reader cannot vouch for
   // would read as a copy that ran.
   it('says unreadable for a stored value it cannot read, never as a copy or as none', () => {
-    const read = readRunPolicy({ [POLICY_AT_OPEN_METADATA_KEY]: { named: true, plugin: 'forge' } }, RUN);
+    const read = readRunPolicy(
+      { [POLICY_AT_OPEN_METADATA_KEY]: { named: true, plugin: 'forge' } },
+      RUN,
+    );
     expect(read?.read).toBe('unreadable');
     expect(read).toHaveProperty('reason');
     expect(read).not.toHaveProperty('policy');
