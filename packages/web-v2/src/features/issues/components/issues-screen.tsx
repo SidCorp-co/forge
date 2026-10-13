@@ -54,7 +54,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   }, [pathname]);
 
   const header = (
-    <header className="mb-4 flex flex-wrap items-start justify-between gap-3 sm:mb-6">
+    <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
       <div>
         {/* Two headings, only one ever visible per breakpoint (`hidden` is
             display:none, so assistive tech only sees the active one) — avoids

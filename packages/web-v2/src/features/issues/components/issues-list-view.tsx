@@ -405,7 +405,7 @@ export function IssuesListView({
   return (
     <>
       {reasonDialog}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <Input
           icon="search"
           placeholder="Search issues…"
