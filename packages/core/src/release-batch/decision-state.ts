@@ -8,7 +8,7 @@
 
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { agentQuestions, isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
@@ -64,8 +64,8 @@ export interface HeldDecision {
 }
 
 /** The held successor an earlier report of this blocked job left, if it left one. */
-export async function heldDecisionOf(jobId: string): Promise<HeldDecision | null> {
-  const rows = await db
+export async function heldDecisionOf(jobId: string, exec: Tx = db): Promise<HeldDecision | null> {
+  const rows = await exec
     .select({ id: jobs.id, payload: jobs.payload })
     .from(jobs)
     .where(and(eq(jobs.retryOf, jobId), JOB_HAS_DECISION));

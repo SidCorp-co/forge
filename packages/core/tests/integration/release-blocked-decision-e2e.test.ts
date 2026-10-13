@@ -340,6 +340,50 @@ describe('the decision is answered, or the release ends first', () => {
   });
 });
 
+describe('two moments the answer and the hold can meet', () => {
+  it('leaves one held job when two reports of one blocked job are taken at the same moment', async () => {
+    const release = await runningRelease();
+    const { holdBlockedRelease } = await import('../../src/release-batch/decision-hold.js');
+    const { jobs } = await import('../../src/db/schema.js');
+    const { eq } = await import('drizzle-orm');
+    const [job] = await harness.db.select().from(jobs).where(eq(jobs.id, release.jobId));
+
+    const both = await Promise.all(
+      [1, 2, 3].map(() => holdBlockedRelease(job as never, DIALOG as never)),
+    );
+
+    expect(new Set(both.map((h) => h?.heldJobId)).size).toBe(1);
+    expect((await jobsOf(release.runId)).filter((j) => j.status === 'held')).toHaveLength(1);
+    expect(await questionsOn(release.ids[0] as string)).toHaveLength(1);
+  });
+
+  it('hands an operator resume that lands after the last answer the answers, and requeues once', async () => {
+    const release = await runningRelease();
+    const { heldJobId, questionIds } = await (await blocked(release.jobId)).json();
+    await harness.db.execute(sql`
+      UPDATE agent_questions
+         SET status = 'answered',
+             steps = jsonb_set(steps, '{0,chosenOptionId}', '"o3"')
+       WHERE id = ${questionIds[0]}
+    `);
+
+    const res = await post(`/api/jobs/${heldJobId}/resume`, userToken, {});
+    expect(res.status).toBe(200);
+
+    const rows = await harness.db.execute(
+      sql`SELECT payload, status FROM jobs WHERE id = ${heldJobId}`,
+    );
+    const payload = rows[0]?.payload as { promptString: string } | undefined;
+    expect(rows[0]?.status).toBe('queued');
+    expect(String(payload?.promptString)).toContain('Decisions already given');
+    expect(String(payload?.promptString)).toContain('Abort to gate');
+
+    const { requeueOnAnswer } = await import('../../src/release-batch/decision-hold.js');
+    expect(await requeueOnAnswer(questionIds[0])).toBe(false);
+    expect((await jobsOf(release.runId)).filter((j) => j.status === 'queued')).toHaveLength(1);
+  });
+});
+
 describe('an answer that reaches a release already ended', () => {
   it('leaves its held job as it is instead of requeueing it under a closed run', async () => {
     const release = await runningRelease();

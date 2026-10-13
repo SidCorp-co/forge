@@ -44,6 +44,8 @@ type JobRow = typeof jobs.$inferSelect;
 
 const WHO = 'release agent';
 
+const HOLD_LOCK_NAMESPACE = 'release_decision_hold';
+
 interface ClaimedMember {
   id: string;
   status: string;
@@ -123,7 +125,12 @@ export async function holdBlockedRelease(
     unknown
   >;
 
-  const heldJobId = await db.transaction(async (tx) => {
+  const written = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${HOLD_LOCK_NAMESPACE}), hashtext(${job.id}))`,
+    );
+    const raced = await heldDecisionOf(job.id, tx);
+    if (raced) return raced;
     for (const [i, pane] of panes.entries()) {
       await writePaneQuestion(tx, {
         id: questionIds[i] as string,
@@ -155,8 +162,10 @@ export async function holdBlockedRelease(
       })
       .returning({ id: jobs.id });
     if (!held) throw new Error('decision-hold: the held successor was not written');
-    return held.id;
+    return { heldJobId: held.id, questionIds, issueId: anchor, replayed: false };
   });
+  if (written.replayed) return written;
+  const { heldJobId } = written;
   logger.info(
     { jobId: job.id, heldJobId, runId: job.pipelineRunId, anchor, questions: questionIds.length },
     'release-batch: a blocked release is held on a decision',
@@ -173,6 +182,31 @@ function givenOf(views: readonly DecisionQuestionView[], expected: number): Give
     return null;
   }
   return views.map((v) => ({ question: v.prompt, answer: v.answer as string }));
+}
+
+/**
+ * What a held job is requeued with once its whole decision is answered: the ordinary requeue, and the
+ * answers written into its prompt. `null` while any question is open, withdrawn or missing. The
+ * answer subscriber and an operator's resume both take their update from here, so a resume that
+ * lands between the last answer and the subscriber still hands the agent what was decided.
+ */
+export async function answeredRequeue(
+  job: JobRow,
+  ref: DecisionRef,
+): Promise<ReturnType<typeof buildRequeueUpdate> | null> {
+  const given = givenOf(await readDecisionQuestions(ref.questionIds), ref.questionIds.length);
+  if (!given) return null;
+  const payload = (job.payload ?? {}) as Record<string, unknown>;
+  const base = buildRequeueUpdate(job, new Date());
+  const prompt = typeof payload.promptString === 'string' ? payload.promptString : '';
+  return {
+    ...base,
+    payload: {
+      ...base.payload,
+      promptString: `${prompt}\n${decisionsGivenSection(given)}`,
+      [DECISION_KEY]: { ...ref, answeredAt: new Date().toISOString() },
+    },
+  };
 }
 
 /**
@@ -202,22 +236,12 @@ export async function requeueOnAnswer(questionId: string): Promise<boolean> {
       continue;
     }
     if (!ref) continue;
-    const given = givenOf(await readDecisionQuestions(ref.questionIds), ref.questionIds.length);
-    if (!given) continue;
-    const payload = (job.payload ?? {}) as Record<string, unknown>;
-    const base = buildRequeueUpdate(job, new Date());
-    const prompt = typeof payload.promptString === 'string' ? payload.promptString : '';
+    const answered = await answeredRequeue(job, ref);
+    if (!answered) continue;
     const [updated] = await withKernelMarker(db, async (tx) =>
       tx
         .update(jobs)
-        .set({
-          ...base,
-          payload: {
-            ...base.payload,
-            promptString: `${prompt}\n${decisionsGivenSection(given)}`,
-            [DECISION_KEY]: { ...ref, answeredAt: new Date().toISOString() },
-          },
-        })
+        .set(answered)
         .where(
           and(
             eq(jobs.id, job.id),

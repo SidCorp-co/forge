@@ -18,6 +18,19 @@ pub const DIALOG_TOOL: &str = "AskUserQuestion";
 /// How much of a non-dialog call's input travels.
 const INPUT_CUT: usize = 2000;
 
+/// The bounds core's blocked door validates a report against, counted the way it counts them (UTF-16
+/// code units). A report outside them is refused whole with a 400 that no retry changes, so a dialog
+/// outside them is sent as `Unread` naming the bound instead. `blocked-wire.test.ts` in core reads
+/// this block and holds the two sides to the same numbers.
+const WIRE_QUESTIONS_MAX: usize = 10;
+const WIRE_QUESTION_MAX: usize = 4000;
+const WIRE_HEADER_MAX: usize = 200;
+const WIRE_OPTIONS_MAX: usize = 10;
+const WIRE_LABEL_MAX: usize = 500;
+const WIRE_DESCRIPTION_MAX: usize = 2000;
+const WIRE_TOOL_MAX: usize = 200;
+const WIRE_WHY_MAX: usize = 1000;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DialogOption {
     pub label: String,
@@ -77,6 +90,19 @@ fn option_json(o: &DialogOption) -> Value {
 
 /// What the pane whose conversation is written at `transcript` is stopped on.
 pub fn asked_by(transcript: Option<&str>) -> Asked {
+    match read_asked(transcript) {
+        Asked::Unread(why) => Asked::Unread(units(&why, WIRE_WHY_MAX)),
+        Asked::Permission { tool, .. } if tool.is_empty() || len(&tool) > WIRE_TOOL_MAX => {
+            Asked::Unread(format!(
+                "the pane's pending call names a tool of {} characters, outside the 1 to {WIRE_TOOL_MAX} core takes",
+                len(&tool)
+            ))
+        }
+        other => other,
+    }
+}
+
+fn read_asked(transcript: Option<&str>) -> Asked {
     let Some(path) = transcript else {
         return Asked::Unread(
             "this box knows no transcript for the pane, so what it asked could not be read".into(),
@@ -100,6 +126,68 @@ pub fn asked_by(transcript: Option<&str>) -> Asked {
 
 fn cut(text: &str, chars: usize) -> String {
     text.chars().take(chars).collect()
+}
+
+/// UTF-16 code units, which is what core's string bounds count.
+fn len(text: &str) -> usize {
+    text.encode_utf16().count()
+}
+
+/// `text` shortened to at most `max` UTF-16 code units, never through a character.
+fn units(text: &str, max: usize) -> String {
+    let mut used = 0;
+    let mut out = String::new();
+    for c in text.chars() {
+        used += c.len_utf16();
+        if used > max {
+            break;
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// The first bound a dialog breaks, said by name, or `None` where core will take it as it is.
+fn outside_the_wire(questions: &[DialogQuestion]) -> Option<String> {
+    if questions.len() > WIRE_QUESTIONS_MAX {
+        return Some(format!(
+            "the dialog asks {} questions and core takes {WIRE_QUESTIONS_MAX}",
+            questions.len()
+        ));
+    }
+    for (i, q) in questions.iter().enumerate() {
+        let n = i + 1;
+        let breaks = |what: &str, got: usize, max: usize, min: usize| {
+            (got < min || got > max).then(|| {
+                format!("question {n} of the dialog has a {what} of {got} characters, outside the {min} to {max} core takes")
+            })
+        };
+        if let Some(said) = breaks("text", len(&q.question), WIRE_QUESTION_MAX, 1) {
+            return Some(said);
+        }
+        if let Some(header) = &q.header {
+            if let Some(said) = breaks("header", len(header), WIRE_HEADER_MAX, 0) {
+                return Some(said);
+            }
+        }
+        if q.options.len() > WIRE_OPTIONS_MAX {
+            return Some(format!(
+                "question {n} of the dialog offers {} options and core takes {WIRE_OPTIONS_MAX}",
+                q.options.len()
+            ));
+        }
+        for o in &q.options {
+            if let Some(said) = breaks("option label", len(&o.label), WIRE_LABEL_MAX, 1) {
+                return Some(said);
+            }
+            if let Some(d) = &o.description {
+                if let Some(said) = breaks("option description", len(d), WIRE_DESCRIPTION_MAX, 0) {
+                    return Some(said);
+                }
+            }
+        }
+    }
+    None
 }
 
 fn dialog_of(input: &Value) -> Asked {
@@ -133,7 +221,12 @@ fn dialog_of(input: &Value) -> Asked {
             options,
         });
     }
-    Asked::Dialog(questions)
+    match outside_the_wire(&questions) {
+        Some(said) => Asked::Unread(format!(
+            "{said}, so the dialog could not be carried whole and is not carried cut"
+        )),
+        None => Asked::Dialog(questions),
+    }
 }
 
 #[cfg(test)]
@@ -185,6 +278,63 @@ mod tests {
                 "options":[{"label":"Push + finish unverified","description":"ships now"},{"label":"Abort to gate"}]
             }]})
         );
+    }
+
+    fn dialog_line(question: &str, label: &str) -> String {
+        format!(
+            r#"{{"type":"assistant","message":{{"content":[{{"type":"tool_use","id":"t1","name":"AskUserQuestion","input":{{"questions":[{{"question":"{question}","options":[{{"label":"{label}"}},{{"label":"No"}}]}}]}}}}]}}}}"#
+        )
+    }
+
+    #[test]
+    fn a_dialog_core_would_refuse_whole_is_sent_as_unread_naming_the_bound_it_broke() {
+        let over = dialog_line(&"q".repeat(WIRE_QUESTION_MAX + 1), "Yes");
+        let blank = dialog_line("Ship it?", "");
+        let wide = dialog_line("Ship it?", &"l".repeat(WIRE_LABEL_MAX + 1));
+        for (line, said) in [
+            (
+                over,
+                "question 1 of the dialog has a text of 4001 characters",
+            ),
+            (blank, "option label of 0 characters"),
+            (wide, "option label of 501 characters"),
+        ] {
+            let (_d, path) = transcript(&[&line]);
+            let Asked::Unread(why) = asked_by(Some(&path)) else {
+                panic!("a dialog outside core's bounds is never sent as it is");
+            };
+            assert!(why.contains(said), "{why}");
+            assert!(why.contains("not carried cut"), "{why}");
+            assert!(len(&why) <= WIRE_WHY_MAX, "{why}");
+        }
+    }
+
+    #[test]
+    fn a_dialog_at_core_s_bounds_is_carried_whole() {
+        let line = dialog_line(&"q".repeat(WIRE_QUESTION_MAX), &"l".repeat(WIRE_LABEL_MAX));
+        let (_d, path) = transcript(&[&line]);
+        assert!(matches!(asked_by(Some(&path)), Asked::Dialog(_)));
+    }
+
+    #[test]
+    fn bounds_are_counted_in_utf16_units_as_core_counts_them() {
+        let wide = "😀".repeat(WIRE_QUESTION_MAX / 2 + 1);
+        assert_eq!(wide.chars().count(), WIRE_QUESTION_MAX / 2 + 1);
+        let line = dialog_line(&wide, "Yes");
+        let (_d, path) = transcript(&[&line]);
+        assert!(matches!(asked_by(Some(&path)), Asked::Unread(_)));
+        assert_eq!(units("a😀b", 2), "a");
+        assert_eq!(units("a😀b", 3), "a😀");
+    }
+
+    #[test]
+    fn an_unread_reason_naming_a_long_path_still_fits_core() {
+        let path = format!("/{}/conv.jsonl", "d".repeat(2000));
+        let Asked::Unread(why) = asked_by(Some(&path)) else {
+            panic!("a transcript that is not there is unread");
+        };
+        assert!(len(&why) <= WIRE_WHY_MAX);
+        assert!(!why.is_empty());
     }
 
     #[test]
