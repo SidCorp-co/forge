@@ -21,6 +21,7 @@ use crate::daemon::agent_activity::{now_ms, Activities, Activity};
 use crate::daemon::job_asked::{self, Asked};
 use crate::daemon::job_exit;
 use crate::daemon::job_unheard;
+use crate::daemon::pool_reads;
 use crate::daemon::transcript_age;
 use crate::daemon::turn_evidence::{self, Evidence, Watch};
 use crate::daemon::{control, hook_install, session_tokens, terminal};
@@ -491,6 +492,51 @@ pub struct JobPorts<'a> {
 pub struct ServedProject<'a> {
     pub id: &'a str,
     pub slug: &'a str,
+}
+
+/// What one daemon pass is given beside the pool and the project.
+pub struct Pass<'a> {
+    pub session_id: &'a str,
+    pub fallback_cwd: Option<&'a Path>,
+    pub bound: usize,
+    pub tokens: Option<&'a session_tokens::SessionTokens>,
+    /// Where `status`, the heartbeat and a restart read what the pass learned
+    /// about the read (ISS-1234); `None` where this box has no such directory.
+    pub config_dir: Option<&'a Path>,
+    /// The runner core lists the project under. A pool core answered `404` for
+    /// is held for it and read again once core lists another (ISS-1326).
+    pub runner_id: &'a str,
+}
+
+/// One pass over one project's pool, as the sweep takes it: skip a pool that is
+/// held, otherwise read it, record what the read said, and settle whether the
+/// box keeps reading. `None` is a held pool, which nothing was asked of.
+pub async fn take_recorded(
+    ports: &JobPorts<'_>,
+    registry: &JobPanes,
+    project: ServedProject<'_>,
+    pass: Pass<'_>,
+) -> Option<Took> {
+    if let Some(dir) = pass.config_dir {
+        if pool_reads::is_held(dir, project.id, pass.runner_id) {
+            return None;
+        }
+    }
+    let took = take_one(
+        ports,
+        registry,
+        project,
+        pass.session_id,
+        pass.fallback_cwd,
+        pass.bound,
+        pass.tokens,
+    )
+    .await;
+    if let Some(dir) = pass.config_dir {
+        pool_reads::note(dir, project.id, &took, now_ms());
+        pool_reads::settle(dir, project.id, pass.runner_id, &took);
+    }
+    Some(took)
 }
 
 pub async fn take_one(
@@ -2085,18 +2131,15 @@ mod tests {
         let (stumbling, stumbling_reads) =
             fake_core::serve_recording("502 Bad Gateway", "<!DOCTYPE html><html></html>").await;
 
-        let sweep = |dir: std::path::PathBuf, url: String, runner: &'static str, at: i64| {
+        let sweep = |dir: std::path::PathBuf, url: String, runner: &'static str| {
             let registry = &w.registry;
             let panes = &w.panes;
             let report = &w.report;
             let records = &w.records;
             let tokens = &w.tokens;
             async move {
-                if pool_reads::is_held(&dir, project, runner) {
-                    return None;
-                }
                 let client = CoreClient::new(url, "device-token");
-                let took = take_one(
+                take_recorded(
                     &JobPorts {
                         pool: &CorePool {
                             client: &client,
@@ -2112,41 +2155,35 @@ mod tests {
                         id: project,
                         slug: "slug",
                     },
-                    "master-session",
-                    Some(&box_repo()),
-                    2,
-                    Some(tokens),
+                    Pass {
+                        session_id: "master-session",
+                        fallback_cwd: Some(&box_repo()),
+                        bound: 2,
+                        tokens: Some(tokens),
+                        config_dir: Some(&dir),
+                        runner_id: runner,
+                    },
                 )
-                .await;
-                pool_reads::note(&dir, project, &took, at);
-                pool_reads::settle(&dir, project, runner, &took);
-                Some(took)
+                .await
             }
         };
 
         let home = TempHome::new("pool-404-held");
-        let t0 = now_ms();
-        for i in 0..10 {
-            sweep(
-                home.path().to_path_buf(),
-                absent.clone(),
-                runner,
-                t0 + i * 10_000,
-            )
-            .await;
+        for _ in 0..10 {
+            sweep(home.path().to_path_buf(), absent.clone(), runner).await;
         }
         assert_eq!(
             absent_reads.lock().unwrap().len(),
             3,
             "a standing 404 is read three times and then not again"
         );
-        let c = &pool_reads::report(home.path(), t0 + 100_000).unwrap()[0];
+        let c = &pool_reads::report(home.path(), now_ms()).unwrap()[0];
         assert_eq!(c.verdict, pool_reads::Verdict::Unserved, "{c:?}");
         assert_eq!(c.last_failure.status, Some(404));
 
         // The server's list changing is what reads it again.
         pool_reads::retain_served(home.path(), &[(project, "runner-2")]);
-        let took = sweep(home.path().to_path_buf(), absent, "runner-2", t0 + 110_000).await;
+        let took = sweep(home.path().to_path_buf(), absent, "runner-2").await;
         assert!(
             matches!(took, Some(Took::Unread(ref f)) if f.status == Some(404)),
             "{took:?}"
@@ -2154,14 +2191,8 @@ mod tests {
         assert_eq!(absent_reads.lock().unwrap().len(), 4);
 
         let other = TempHome::new("pool-502-read");
-        for i in 0..10 {
-            let took = sweep(
-                other.path().to_path_buf(),
-                stumbling.clone(),
-                runner,
-                t0 + i * 10_000,
-            )
-            .await;
+        for _ in 0..10 {
+            let took = sweep(other.path().to_path_buf(), stumbling.clone(), runner).await;
             assert!(took.is_some(), "a 502 pool is never held");
         }
         assert_eq!(
@@ -2169,7 +2200,7 @@ mod tests {
             10,
             "a 502 is retried on every pass"
         );
-        let c = &pool_reads::report(other.path(), t0 + 100_000).unwrap()[0];
+        let c = &pool_reads::report(other.path(), now_ms()).unwrap()[0];
         assert_eq!(c.verdict, pool_reads::Verdict::Blind, "{c:?}");
     }
 
