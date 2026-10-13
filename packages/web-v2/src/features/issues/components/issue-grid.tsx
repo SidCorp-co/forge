@@ -2,7 +2,7 @@ import type { CSSProperties, HTMLAttributes } from "react";
 
 // Every flexible track is minmax(0, …): a track that may not shrink below its content is what made the old table push the page sideways.
 export const GRID =
-  "grid grid-cols-[var(--sel)_minmax(0,1fr)_auto_auto_2.75rem] lg:grid-cols-[var(--sel)_5.5rem_minmax(0,1fr)_minmax(0,14rem)_5rem_2.25rem_2.25rem]";
+  "grid grid-cols-[var(--sel)_minmax(0,1fr)_auto_auto_2.75rem] lg:grid-cols-[var(--sel)_5.5rem_minmax(0,1fr)_minmax(0,16rem)_5rem_2.25rem_2.25rem]";
 
 export const CELL = {
   select: "col-start-1 row-start-1 row-span-3 self-start lg:row-span-1 lg:self-center",

@@ -82,6 +82,27 @@ describe("issue list row · queued chip", () => {
     expect(screen.getByText("Failed")).toBeInTheDocument();
   });
 
+  it("keeps both explanations on a failed run whose retry is held by a gate", () => {
+    const failed = {
+      ...row(health("runner_stale"), "failed"),
+      failureInfo: { failedStep: "review", failureReason: "tests red", failureKind: null, failedAt: QUEUED_AT },
+    } as IssueRow;
+    const { container } = render(<StatusCell row={failed} now={Date.parse(QUEUED_AT) + 300_000} />);
+    const title = container.querySelector("[title*='tests red']")?.getAttribute("title") ?? "";
+    expect(title).toMatch(/No runner is online/);
+    expect(title).toMatch(/Review failed · tests red/);
+  });
+
+  it("lets a long waiting label shrink inside its cell, keeping the age beside it", () => {
+    const owed = { ...row(), waitingOnPersonSince: "2026-09-01T00:00:00.000Z" } as IssueRow;
+    render(<StatusCell row={owed} now={Date.parse("2026-09-04T00:00:00.000Z")} />);
+    const wait = screen.getByTestId("waiting-on-person");
+    expect(wait).toHaveTextContent("Waiting on a person · 3d");
+    expect(wait.className).toContain("min-w-0");
+    expect(wait.firstElementChild?.className).toContain("truncate");
+    expect(wait.lastElementChild?.className).toContain("shrink-0");
+  });
+
   it("renders no queued chip for a row with no queued step", () => {
     render(<StatusCell row={row()} />);
     expect(screen.queryByText("Queued")).not.toBeInTheDocument();

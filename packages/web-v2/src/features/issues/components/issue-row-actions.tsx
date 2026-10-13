@@ -53,7 +53,7 @@ function useOpenIssue(slug: string, id: string) {
  *  words stand beside the dot so the colour is never the only thing telling a state apart. */
 export function StatusCell({ row, now = Date.now() }: { row: IssueRow; now?: number }) {
   const state = stateReading(row, now);
-  const detail = state.runs.find((r) => r.detail)?.detail ?? undefined;
+  const detail = state.runs.flatMap((r) => (r.detail ? [r.detail] : [])).join("\n") || undefined;
   const elapsed = state.elapsed;
   return (
     <div className="flex min-w-0 items-center gap-2" data-state-tone={state.tone}>
@@ -77,8 +77,9 @@ export function StatusCell({ row, now = Date.now() }: { row: IssueRow; now?: num
         </span>
       )}
       {state.waitingOnPerson ? (
-        <span className="fg-caption shrink-0 whitespace-nowrap tabular-nums" data-testid="waiting-on-person" title={elapsed?.title}>
-          Waiting on a person · {state.waitingOnPerson.age}
+        <span className="fg-caption flex min-w-0 whitespace-nowrap tabular-nums" data-testid="waiting-on-person" title={elapsed?.title}>
+          <span className="truncate">Waiting on a person</span>
+          <span className="shrink-0"> · {state.waitingOnPerson.age}</span>
         </span>
       ) : (
         elapsed && (
