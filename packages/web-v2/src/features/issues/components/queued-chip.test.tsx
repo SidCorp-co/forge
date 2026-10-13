@@ -103,6 +103,35 @@ describe("issue list row · queued chip", () => {
     expect(wait.lastElementChild?.className).toContain("shrink-0");
   });
 
+  // A flex item is blockified and a block drops its leading space, so " · 3d" as its own flex
+  // child printed "Waiting on a person· 3d" while textContent still read right. jsdom loads no
+  // stylesheet, so the fact asserted is the one the rendering rests on: a flex child that opens
+  // or closes on whitespace asks to keep it.
+  it("keeps the separator's space on every flex child of the state cell that carries one", () => {
+    const owed = { ...row(), waitingOnPersonSince: "2026-09-01T00:00:00.000Z" } as IssueRow;
+    const failed = {
+      ...row(health("runner_stale"), "failed"),
+      failureInfo: { failedStep: "review", failureReason: "tests red", failureKind: null, failedAt: QUEUED_AT },
+    } as IssueRow;
+    const now = Date.parse("2026-09-04T00:00:00.000Z");
+    const cases = [owed, row(), row(health("runner_stale")), row(undefined, "running"), failed];
+    let checked = 0;
+    for (const r of cases) {
+      const { container } = render(<StatusCell row={r} now={now} />);
+      for (const el of container.querySelectorAll("*")) {
+        const parent = el.parentElement;
+        const inFlex = !!parent && /(^|\s)(inline-)?flex(\s|$)/.test(parent.className);
+        const first = el.firstChild?.nodeType === 3 ? (el.firstChild.textContent ?? "") : "";
+        const last = el.lastChild?.nodeType === 3 ? (el.lastChild.textContent ?? "") : "";
+        if (!inFlex || !(/^\s/.test(first) || /\s$/.test(last))) continue;
+        checked += 1;
+        expect(el.className, `${el.outerHTML} is a flex child that opens or closes on a space`).toMatch(/(^|\s)whitespace-pre(\s|$)/);
+      }
+      cleanup();
+    }
+    expect(checked, "the waiting reading's separator was never reached").toBeGreaterThan(0);
+  });
+
   it("renders no queued chip for a row with no queued step", () => {
     render(<StatusCell row={row()} />);
     expect(screen.queryByText("Queued")).not.toBeInTheDocument();
