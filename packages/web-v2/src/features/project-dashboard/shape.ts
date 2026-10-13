@@ -92,7 +92,7 @@ export interface ProjectReading {
   unread: string[];
 }
 
-function plural(n: number, one: string, many: string): string {
+export function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
@@ -103,8 +103,8 @@ function sentence(parts: readonly string[]): string {
 }
 
 /** What a section or the page says of a read that has not arrived: which, and why. Null where it is in. */
-export function unreadStatement(subject: string, s: ReadState, plural = false): string | null {
-  if (s.read === "pending") return `${subject} ${plural ? "are" : "is"} still being read.`;
+export function unreadStatement(subject: string, s: ReadState, isPlural = false): string | null {
+  if (s.read === "pending") return `${subject} ${isPlural ? "are" : "is"} still being read.`;
   if (s.read === "failed") return `${subject} could not be read: ${s.reason}`;
   return null;
 }
@@ -203,7 +203,7 @@ export function projectShape(input: ShapeInput): ProjectReading {
   if (input.items.length > 0 || input.cut) {
     parts.push(
       input.cut
-        ? `at least ${input.cut.atLeast} items need a person`
+        ? `at least ${plural(input.cut.atLeast, "item needs", "items need")} a person`
         : `${plural(input.items.length, "item needs", "items need")} a person`,
     );
   }

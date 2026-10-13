@@ -3,11 +3,11 @@
 // The project dashboard's throughput tile: issues shipped per day over the last seven UTC days, each counted once.
 
 import { useMemo } from "react";
-import { ErrorState, Skeleton } from "@/design";
+import { ErrorState } from "@/design";
 import type { ThroughputRow } from "@/features/pipeline/types";
 import { formatApiError } from "@/lib/api/error";
 import { throughputComparison } from "../shape";
-import { DashboardSection, EmptyLine } from "./dashboard-section";
+import { DashboardSection, EmptyLine, unreadSection } from "./dashboard-section";
 
 export const THROUGHPUT_WINDOW_DAYS = 7;
 const WINDOW_DAYS = THROUGHPUT_WINDOW_DAYS;
@@ -24,6 +24,9 @@ export function Throughput({ rows, isLoading, error, onRetry }: ThroughputProps)
   const comparison = series?.ok ? throughputComparison(series.days) : null;
   const total = series?.ok ? series.days.reduce((a, r) => a + r.count, 0) : null;
 
+  // A read that has not arrived says so by name; it is neither a week that shipped nothing nor a skeleton.
+  if (!error && isLoading) return unreadSection("Throughput", "The throughput", { read: "pending" });
+
   // A week that shipped nothing is one line, as every empty panel is; a failed or malformed read is not empty.
   if (!error && !isLoading && total === 0) {
     return <EmptyLine title="Throughput" status={`nothing shipped in ${WINDOW_DAYS} days`} />;
@@ -38,8 +41,6 @@ export function Throughput({ rows, isLoading, error, onRetry }: ThroughputProps)
           onRetry={onRetry}
           mascot={false}
         />
-      ) : isLoading ? (
-        <Skeleton className="h-40 rounded-lg" />
       ) : (
         <ThroughputChart rows={rows} />
       )}

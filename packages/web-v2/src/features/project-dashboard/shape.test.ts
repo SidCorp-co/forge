@@ -94,6 +94,9 @@ describe("the shape of a project", () => {
     const r = projectShape(input({ items: [], cut: { shown: 0, atLeast: 3, peopleCut: true } }));
     expect(r.shape).toBe("working");
     expect(r.headline).toBe("At least 3 items need a person.");
+    expect(projectShape(input({ items: [], cut: { shown: 0, atLeast: 1, peopleCut: true } })).headline).toBe(
+      "At least 1 item needs a person.",
+    );
   });
 });
 

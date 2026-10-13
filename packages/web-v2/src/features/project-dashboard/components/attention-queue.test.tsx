@@ -29,10 +29,23 @@ describe("the Needs your attention list with nothing in it", () => {
     render(<AttentionQueue items={[]} cut={null} refusal="Needs you cannot say how much it leaves out." slug="pair" now={0} />);
     expect(screen.queryByText("All caught up")).toBeNull();
     expect(screen.getByTestId("attention-refusal")).toBeInTheDocument();
+    expect(screen.queryByText("Nothing is listed to act on here.")).toBeNull();
+  });
+
+  it("does not say all caught up while a read beside its own has not arrived", () => {
+    render(<AttentionQueue items={[]} cut={null} shape="unread" slug="pair" now={0} />);
+    expect(screen.queryByText("All caught up")).toBeNull();
+    expect(screen.getByText("Not all of this page is read yet")).toBeInTheDocument();
+    expect(screen.getByText(/not an all clear/u)).toBeInTheDocument();
+  });
+
+  it.each(["quiet", "working"] as const)("says all caught up under a %s page", (shape) => {
+    render(<AttentionQueue items={[]} cut={null} shape={shape} slug="pair" now={0} />);
+    expect(screen.getByText("All caught up")).toBeInTheDocument();
   });
 
   it("does not say all caught up under a degraded page the list does not hold the cause of", () => {
-    render(<AttentionQueue items={[]} cut={null} degraded slug="pair" now={0} />);
+    render(<AttentionQueue items={[]} cut={null} shape="degraded" slug="pair" now={0} />);
     expect(screen.queryByText("All caught up")).toBeNull();
     expect(screen.getByText("No item is waiting on you")).toBeInTheDocument();
   });

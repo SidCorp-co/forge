@@ -5,12 +5,12 @@
 // reads, folded onto the job type each row carries.
 
 import { useMemo } from "react";
-import { ErrorState, Skeleton } from "@/design";
+import { ErrorState } from "@/design";
 import { aggregateStepCosts, formatDurationSec, formatUsd } from "@/features/pipeline/derive";
 import type { StepDurationRow } from "@/features/pipeline/types";
 import { formatApiError } from "@/lib/api/error";
 import { slowestComparison } from "../shape";
-import { DashboardSection, EmptyLine } from "./dashboard-section";
+import { DashboardSection, EmptyLine, unreadSection } from "./dashboard-section";
 
 interface StepTimesProps {
   durations: StepDurationRow[] | undefined;
@@ -27,7 +27,10 @@ export function StepTimes({ durations, windowDays, isLoading, error, onRetry }: 
   const versus = slowestComparison(steps);
   const samples = durations?.length ?? 0;
 
-  if (!error && !isLoading && slowest == null) {
+  // A read that has not arrived says so by name; it is neither an empty window nor a skeleton.
+  if (!error && isLoading) return unreadSection("Where time goes", "The step times", { read: "pending" }, true);
+
+  if (!error && slowest == null) {
     return <EmptyLine title="Where time goes" status={`no agent step finished in ${windowDays} days`} />;
   }
 
@@ -35,7 +38,7 @@ export function StepTimes({ durations, windowDays, isLoading, error, onRetry }: 
     <DashboardSection
       title="Where time goes"
       aside={
-        !error && !isLoading ? (
+        !error ? (
           <>
             {samples} step{samples === 1 ? "" : "s"} · {windowDays}d
           </>
@@ -49,9 +52,7 @@ export function StepTimes({ durations, windowDays, isLoading, error, onRetry }: 
           onRetry={onRetry}
           mascot={false}
         />
-      ) : isLoading || slowest == null ? (
-        <Skeleton className="h-40 rounded-lg" />
-      ) : (
+      ) : slowest === null ? null : (
         <>
           <div className="flex flex-col gap-2.5">
             {steps.map((s) => (

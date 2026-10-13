@@ -190,6 +190,7 @@ export default function ProjectOverviewPage() {
   const runItems = runsQ.data?.items;
   const runsState = readOf(runsQ);
   const durationsState = readOf(durationsQ);
+  const throughputState = readOf(throughputQ);
   const runnersState = readOf(projectRunnersQ);
   const activityState = readOfAll(queueQ, activeRunnersQ);
   const schedulesState = readOf(schedulesQ);
@@ -244,14 +245,14 @@ export default function ProjectOverviewPage() {
       <SpendCard data={spend} inFlightUsd={inFlight} read={durationsState} />
       <Throughput
         rows={throughputQ.data}
-        isLoading={throughputQ.isLoading}
+        isLoading={throughputState.read === "pending"}
         error={throughputQ.error}
         onRetry={() => throughputQ.refetch()}
       />
       <StepTimes
         durations={durationsQ.data}
         windowDays={METRICS_WINDOW_DAYS}
-        isLoading={durationsQ.isLoading}
+        isLoading={durationsState.read === "pending"}
         error={durationsQ.error}
         onRetry={() => durationsQ.refetch()}
       />
@@ -320,7 +321,7 @@ export default function ProjectOverviewPage() {
                 refusal={attentionRefused}
                 pending={attentionPending}
                 onRetry={readFailure ? attentionQ.refetch : undefined}
-                degraded={reading.shape === "degraded"}
+                shape={reading.shape}
                 slug={project.slug}
                 now={now}
               />

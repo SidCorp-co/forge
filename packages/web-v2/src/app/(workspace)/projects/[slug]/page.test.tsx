@@ -48,6 +48,8 @@ let activeRead: Read;
 let durationsRead: Read;
 let runnersRead: Read;
 let schedulesRead: Read;
+let throughputRead: Read;
+let parkedRead: Read;
 const readOfMock = (read: Read, data: unknown, message: string) =>
   read === "pending" ? noQuery : read === "failed" ? failedQuery(message) : { ...noQuery, data };
 const failedWithData = (data: unknown, message: string) => ({ ...failedQuery(message), data });
@@ -70,6 +72,8 @@ function reset() {
   durationsRead = "ok";
   runnersRead = "ok";
   schedulesRead = "ok";
+  throughputRead = "ok";
+  parkedRead = "ok";
 }
 reset();
 afterEach(() => {
@@ -94,11 +98,23 @@ vi.mock("@/features/pipeline/hooks", () => ({
   }),
   useStepDurations: () =>
     durationsRead === "pending" ? noQuery : durationsRead === "failed" ? failedQuery("durations down") : { data: [], ...settled },
-  useThroughput: () => ({ data: throughputRows, ...settled, refetch: vi.fn() }),
+  useThroughput: () => ({
+    ...(throughputRead === "pending"
+      ? { ...noQuery, isLoading: true }
+      : throughputRead === "failed"
+        ? failedQuery("throughput down")
+        : { data: throughputRows, ...settled }),
+    refetch: vi.fn(),
+  }),
 }));
 vi.mock("@/features/issues/hooks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/features/issues/hooks")>()),
-  useIssues: () => parked,
+  useIssues: () =>
+    parkedRead === "pending"
+      ? { ...noQuery, isLoading: true, isPlaceholderData: false }
+      : parkedRead === "failed"
+        ? { ...failedQuery("parked down"), isPlaceholderData: false }
+        : parked,
 }));
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ ...noQuery, data: [{ id: "p1", slug: "pair", name: "Pair" }] }),
@@ -398,6 +414,83 @@ describe("a section whose own read has not arrived", () => {
     for (const zero of RUNS_ZEROS) expect(screen.queryByText(zero), zero).toBeNull();
   });
 
+  it.each(["pending", "failed"] as const)(
+    "says no all caught up in Needs your attention while only the runs read is %s: a stuck run is what it would show",
+    (read) => {
+      runs = undefined;
+      if (read === "failed") runsError = new Error("Gateway Timeout");
+      const { container } = mount();
+      expect(shape(container)).toBe("unread");
+      const list = screen.getByRole("region", { name: "Needs your attention" });
+      expect(list).not.toHaveTextContent("All caught up");
+      expect(list).not.toHaveTextContent("Nothing in this project needs you");
+      expect(list).toHaveTextContent("not an all clear");
+    },
+  );
+
+  // Every read the page leans on, put out in turn: no section that draws on it may say nothing, none or
+  // all caught up in its place, and each names the read. The table is the page's own dependency list, so a
+  // section added without a row here is not covered, and a row whose section says a zero fails by name.
+  describe("every section against every read it depends on, pending and failed", () => {
+    const UNREAD = /still being read|Reading what|could not be read|Couldn't load|read yet/u;
+    const EMPTY_CLAIM =
+      /none live|nothing waiting|all caught up|nothing in this project needs you|none recorded|none bound|nothing shipped|no agent step|no open work|^none$/iu;
+    type Case = { read: string; sections: string[]; set: (r: Read) => void };
+    const READS: Case[] = [
+      { read: "attention", sections: ["Needs your attention"], set: () => {} },
+      { read: "runs", sections: ["Needs your attention", "Live runs", "Awaiting release"], set: () => {} },
+      { read: "parked ages", sections: ["Needs your attention"], set: (r) => (parkedRead = r) },
+      { read: "step durations", sections: ["7-day spend", "Where time goes"], set: (r) => (durationsRead = r) },
+      { read: "throughput", sections: ["Throughput"], set: (r) => (throughputRead = r) },
+      { read: "runners", sections: ["Runners"], set: (r) => (runnersRead = r) },
+      { read: "queue", sections: ["Runners"], set: (r) => (queueRead = r) },
+      { read: "active runners", sections: ["Runners"], set: (r) => (activeRead = r) },
+      { read: "schedules", sections: ["Upcoming schedules"], set: (r) => (schedulesRead = r) },
+    ];
+
+    function putOut(c: Case, state: "pending" | "failed") {
+      blockers = c.read === "parked ages" ? PAIR_BLOCKERS : [];
+      c.set(state);
+      // The three reads the shape stands on are not mocked by `set`.
+      if (c.read === "attention") {
+        attentionRead = state;
+        attentionError = state === "failed" ? new Error("attention down") : null;
+      }
+      if (c.read === "runs") {
+        runs = undefined;
+        if (state === "failed") runsError = new Error("runs down");
+      }
+      // An online runner, so a runners-side read that is out shows in the section rather than behind "none bound".
+      projectRunnerRows = [{ runnerId: "rn1", deviceId: "dv1", deviceName: "box-1", deviceStatus: "online", runnerStatus: "enabled", platform: "linux" }];
+    }
+
+    it.each(READS.flatMap((c) => (["pending", "failed"] as const).map((state) => [c.read, state, c] as const)))(
+      "%s %s",
+      (_read, state, c) => {
+        putOut(c, state);
+        const { container } = mount();
+        for (const title of c.sections) {
+          const section = screen.getByRole("region", { name: title });
+          if (title === "Runners" && c.read === "runners" && state === "pending") {
+            expect(section, title).toHaveTextContent("still being read");
+          }
+          // A refusal may quote the phrase it refuses to say; only a bare one is the claim.
+          const said = (section.textContent ?? "").replace(/"[^"]*"/gu, "");
+          expect(said, `${title} under ${c.read} ${state}`).not.toMatch(EMPTY_CLAIM);
+          if (title !== "Needs your attention" || c.read === "attention" || c.read === "runs") {
+            expect(section, `${title} under ${c.read} ${state}`).toHaveTextContent(UNREAD);
+          }
+        }
+        // The page never opens on an all clear while a read the shape stands on is out.
+        if (["attention", "runs", "parked ages"].includes(c.read)) {
+          expect(shape(container)).toBe("unread");
+          expect(headline()).not.toHaveTextContent(/Nothing needs anyone/);
+          expect(screen.getByTestId("headline-unread")).toBeInTheDocument();
+        }
+      },
+    );
+  });
+
   it("names the step-durations read in 7-day spend, not 'none recorded'", () => {
     durationsRead = "failed";
     mount();
@@ -429,7 +522,7 @@ describe("a section whose own read has not arrived", () => {
     expect(section).toHaveTextContent(statement);
     expect(section).toHaveTextContent("activity not read");
     expect(section).not.toHaveTextContent(/\bidle\b|\bbusy\b/);
-    expect(figure("Runs live").getByText("1 runners online · activity not read")).toBeInTheDocument();
+    expect(figure("Runs live").getByText("1 runner online · activity not read")).toBeInTheDocument();
     expect(figure("Runs live").queryByText(/0 of 1 runners busy/)).toBeNull();
   });
 

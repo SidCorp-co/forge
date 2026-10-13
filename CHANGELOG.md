@@ -3160,6 +3160,7 @@
 
 - **The Overview no longer lists an archived project.** Its link opened a page saying the project does not exist; archived projects are now left out of the Overview's rows and totals, and come back when unarchived. (ISS-1261)
 - **A dashboard section whose data has not arrived says which read it is waiting on.** It no longer says "none live" or "nothing waiting" for a failed read, and the runs figure says how many are open. (ISS-1159)
+- **The dashboard no longer says all is well while a read is missing.** Needs your attention, Throughput and Where time goes name the read they wait on, and the open-work ring and the Awaiting release line fit a phone. (ISS-1159)
 - **The module-taxonomy migration guide says its attribution pass takes no lease.** A label write is not refused over an issue a run holds, so the guide now says to run Pass 2 between waves, while no issue is held (ISS-1388).
 - **The module-taxonomy migration guide no longer says label names are not unique.** A project refuses a second label under a name already taken, with `LABEL_NAME_TAKEN`; the guide now says so (ISS-1388).
 - **A link to a documentation address that does not exist shows the refusal inside the docs.** It dropped the reader onto an unstyled page with no header or search; the docs now stay around it (ISS-1292).

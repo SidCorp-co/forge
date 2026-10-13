@@ -57,6 +57,7 @@ describe("StepTimes", () => {
 
   it("shows neither the empty nor the filled state while the window is loading", () => {
     mount({ isLoading: true });
+    expect(screen.getByText("The step times are still being read.")).toBeInTheDocument();
     expect(screen.queryByText(/no agent step finished/)).toBeNull();
     expect(screen.queryByText(/Slowest step:/)).toBeNull();
   });

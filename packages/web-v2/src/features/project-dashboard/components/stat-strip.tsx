@@ -2,6 +2,7 @@
 // Pass rate has no data yet and is not a figure here (ISS-380, `ComingSoonNote`).
 
 import { OPEN_WORK_LABEL } from "@forge/contracts/work-state";
+import { plural } from "../shape";
 
 interface Stat {
   label: string;
@@ -49,10 +50,10 @@ function runsCaption(props: StatStripProps): string {
   const runners = props.runnersUnread
     ? "runners not read"
     : props.activityUnread
-      ? `${props.onlineRunners} runners online · activity not read`
+      ? `${plural(props.onlineRunners, "runner", "runners")} online · activity not read`
       : `${props.busyRunners} of ${props.onlineRunners} runners busy`;
   const open = props.openRuns ?? props.liveRuns;
-  return open > props.liveRuns ? `${runners} · ${open} runs open in all` : runners;
+  return open > props.liveRuns ? `${runners} · ${plural(open, "run", "runs")} open in all` : runners;
 }
 
 export function StatStrip(props: StatStripProps) {

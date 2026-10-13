@@ -112,9 +112,11 @@ describe("Throughput — the tile around the chart (ISS-1154)", () => {
     expect(counts()).toEqual(["31", "62", "31", "11", "0", "55", "27"]);
   });
 
-  it("draws no chart, and refuses nothing, while the series is loading", () => {
+  it("draws no chart, refuses nothing and says the read is not in while the series is loading", () => {
     mount({ rows: undefined, isLoading: true });
     expect(counts()).toEqual([]);
+    expect(screen.getByText("The throughput is still being read.")).toBeInTheDocument();
+    expect(screen.queryByText(/nothing shipped/)).toBeNull();
     expect(screen.queryByText("Throughput can't be drawn")).toBeNull();
   });
 
