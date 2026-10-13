@@ -79,17 +79,19 @@ function compareValues(a: SortValue, b: SortValue, columnId: string): number {
   const left = Array.isArray(a) ? (a as readonly Key[]) : [a as Key];
   const right = Array.isArray(b) ? (b as readonly Key[]) : [b as Key];
   for (let i = 0; i < Math.min(left.length, right.length); i++) {
-    const x = left[i];
-    const y = right[i];
-    if (x == null || y == null) {
-      throw new Error(
-        `DataTable column "${columnId}" has a null or undefined key inside an array sortValue: return null for the whole value to sort the row last, or give every row a key.`,
-      );
-    }
-    const by = compareKeys(x, y, columnId);
+    const by = compareKeys(left[i] as Key, right[i] as Key, columnId);
     if (by !== 0) return by;
   }
   return left.length - right.length;
+}
+
+/** An array key is read whole before any comparison, so a missing element cannot hide behind an earlier one that differs. */
+function assertKeys(value: SortValue, columnId: string): void {
+  if (Array.isArray(value) && value.some((key) => key == null)) {
+    throw new Error(
+      `DataTable column "${columnId}" has a null or undefined key inside an array sortValue: return null for the whole value to sort the row last, or give every row a key.`,
+    );
+  }
 }
 
 function assertColumns<Row>(columns: readonly DataTableModelColumn<Row>[], options: DataTableModelOptions): void {
@@ -146,6 +148,7 @@ export function useDataTableRows<Row>(
         id: c.id,
         accessorFn: (item) => {
           const value = c.sortValue?.(item.row);
+          if (value != null) assertKeys(value, c.id);
           return value === null ? undefined : value;
         },
         enableSorting: Boolean(c.sortValue),

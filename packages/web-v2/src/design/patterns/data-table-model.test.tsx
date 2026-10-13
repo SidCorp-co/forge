@@ -151,6 +151,13 @@ describe("useDataTableRows: refuses what cannot be answered", () => {
     expect(() => ids({ sort: { id: "tuple", desc: true } }, columns)).toThrow(/"tuple" has a null or undefined key inside an array/);
   });
 
+  it("refuses a missing key past the first element even when the first elements already differ", () => {
+    const columns: DataTableModelColumn<Item>[] = [{ id: "tuple", sortValue: (r) => [r.rank, r.id === "c" ? (null as never) : r.count ?? 0] }];
+    const rows = [ITEMS[1] as Item, ITEMS[2] as Item];
+    expect(() => ids({ sort: { id: "tuple", desc: false } }, columns, rows)).toThrow(/"tuple" has a null or undefined key inside an array/);
+    expect(() => ids({ sort: { id: "tuple", desc: true } }, columns, rows)).toThrow(/"tuple" has a null or undefined key inside an array/);
+  });
+
   it("refuses a column that orders a number against a string", () => {
     const columns: DataTableModelColumn<Item>[] = [{ id: "mixed", sortValue: (r) => (r.id === "a" ? 1 : r.id) }];
     expect(() => ids({ sort: { id: "mixed", desc: false } }, columns)).toThrow(/"mixed" sorts a (number|string) against a (number|string)/);
