@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { Badge, Button, HealthDot, Icon } from "@/design";
 import type { RunnersSummary } from "../derive";
-import type { ReadState } from "../shape";
+import { type ReadState, unreadStatement } from "../shape";
 import { DashboardSection, EmptyLine, RowList, unreadSection } from "./dashboard-section";
 
 const PLATFORM_LABEL: Record<string, string> = { macos: "macOS", linux: "Linux", windows: "Windows" };
@@ -12,14 +12,19 @@ export function RunnersCard({
   summary,
   slug,
   read,
+  activity,
 }: {
   summary: RunnersSummary;
   slug: string;
   /** The project's runners read; until it is in, "none bound" is not said. */
   read?: ReadState;
+  /** The queue and active-runner reads; until both are in, no runner is called idle or busy. */
+  activity?: ReadState;
 }) {
   const router = useRouter();
   const { lines, onlineCount, total } = summary;
+  const activityUnread = activity !== undefined && activity.read !== "ok";
+  const activityStatement = activity ? unreadStatement("What the runners are doing", activity) : null;
   const unread = unreadSection("Runners", "The project's runners", read, true);
   if (unread) return unread;
 
@@ -68,6 +73,8 @@ export function RunnersCard({
                 {r.activeIssueRef}
                 {r.activeStage ? ` · ${r.activeStage}` : ""}
               </span>
+            ) : activityUnread && r.online ? (
+              <span className="fg-caption flex-none text-right text-subtle">activity not read</span>
             ) : (
               <span
                 className="fg-caption min-w-12 flex-none text-right font-semibold"
@@ -79,6 +86,11 @@ export function RunnersCard({
           </li>
         ))}
       </RowList>
+      {activityStatement && (
+        <p role={activity?.read === "failed" ? "alert" : "status"} data-testid="runners-activity-unread" className="fg-caption mt-1 text-subtle">
+          {activityStatement}
+        </p>
+      )}
       <div className="mt-1 flex items-center gap-4 border-t border-line-subtle pt-2">
         <button
           type="button"

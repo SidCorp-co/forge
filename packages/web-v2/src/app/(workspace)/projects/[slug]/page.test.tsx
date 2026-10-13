@@ -42,9 +42,14 @@ let runsError: unknown;
 let parked: Record<string, unknown>;
 let throughputRows: unknown[];
 type Read = "ok" | "pending" | "failed";
+let projectRunnerRows: unknown[] = [];
+let queueRead: Read;
+let activeRead: Read;
 let durationsRead: Read;
 let runnersRead: Read;
 let schedulesRead: Read;
+const readOfMock = (read: Read, data: unknown, message: string) =>
+  read === "pending" ? noQuery : read === "failed" ? failedQuery(message) : { ...noQuery, data };
 const failedQuery = (message: string) => ({ data: undefined, isLoading: false, isError: true, error: new Error(message) });
 const refetch = vi.fn();
 
@@ -58,6 +63,9 @@ function reset() {
   runsError = null;
   parked = { data: { items: [], totalCount: 0 }, ...settled, isPlaceholderData: false };
   throughputRows = WEEK;
+  projectRunnerRows = [];
+  queueRead = "ok";
+  activeRead = "ok";
   durationsRead = "ok";
   runnersRead = "ok";
   schedulesRead = "ok";
@@ -99,13 +107,13 @@ vi.mock("@/features/projects/hooks", () => ({
   }),
 }));
 vi.mock("@/features/runners/hooks", () => ({
-  useActiveRunners: () => noQuery,
-  useProjectRunners: () => (runnersRead === "pending" ? noQuery : runnersRead === "failed" ? failedQuery("runners down") : { ...noQuery, data: [] }),
+  useActiveRunners: () => readOfMock(activeRead, { runners: [] }, "active runners down"),
+  useProjectRunners: () => (runnersRead === "pending" ? noQuery : runnersRead === "failed" ? failedQuery("runners down") : { ...noQuery, data: projectRunnerRows }),
 }));
 vi.mock("@/features/schedules/hooks", () => ({
   useSchedules: () => (schedulesRead === "pending" ? noQuery : schedulesRead === "failed" ? failedQuery("schedules down") : { ...noQuery, data: [] }),
 }));
-vi.mock("@/features/sessions/hooks", () => ({ useQueueStats: () => noQuery }));
+vi.mock("@/features/sessions/hooks", () => ({ useQueueStats: () => readOfMock(queueRead, { devices: [] }, "queue down") }));
 
 const { default: ProjectOverviewPage } = await import("./page");
 
@@ -403,6 +411,24 @@ describe("a section whose own read has not arrived", () => {
     expect(screen.queryByText(/0 of 0 runners busy/)).toBeNull();
   });
 
+  it.each([
+    ["queue", "queueRead", "pending", "What the runners are doing is still being read."],
+    ["active-runner", "activeRead", "failed", "What the runners are doing could not be read: active runners down"],
+  ] as const)("calls no online runner idle or busy while the %s read is out", (_name, which, read, statement) => {
+    runnersRead = "ok";
+    if (which === "queueRead") queueRead = read;
+    else activeRead = read;
+    runs = [run()];
+    projectRunnerRows = [{ runnerId: "rn1", deviceId: "dv1", deviceName: "box-1", deviceStatus: "online", runnerStatus: "enabled", platform: "linux" }];
+    mount();
+    const section = screen.getByRole("region", { name: "Runners" });
+    expect(section).toHaveTextContent(statement);
+    expect(section).toHaveTextContent("activity not read");
+    expect(section).not.toHaveTextContent(/\bidle\b|\bbusy\b/);
+    expect(figure("Runs live").getByText("1 runners online · activity not read")).toBeInTheDocument();
+    expect(figure("Runs live").queryByText(/0 of 1 runners busy/)).toBeNull();
+  });
+
   it("names the schedules read in Upcoming schedules, not 'none'", () => {
     schedulesRead = "failed";
     mount();
@@ -457,7 +483,8 @@ describe("a page whose figures sit beside other counts of the same things", () =
     expect(figure("Needs you").getByText(/2 of at least 5$/u)).toBeInTheDocument();
   });
 
-  it("keeps each attention row's age chip beside its kind and ref on a narrow screen, with the title on its own line", () => {
+  // The class contract only: jsdom lays nothing out, so where the chip falls at 390px is the judge's read of the running page.
+  it("gives each attention row's chip the first-line classes beside its kind and ref, and its title a full-width basis", () => {
     attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, awaitingOutsideBlockers: 0, failedJobs: 0 } }, {
       awaitingInput: [attentionItem(7, ago(2 * 3600)), attentionItem(8, ago(5 * DAY), { title: "A title long enough to need the whole line to itself on a phone" })],
     });

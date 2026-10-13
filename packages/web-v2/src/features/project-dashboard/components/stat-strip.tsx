@@ -20,6 +20,7 @@ export interface StatStripProps {
   openRuns?: number;
   /** The runners read has not arrived or failed: no runner count is stated. */
   runnersUnread?: boolean;
+  activityUnread?: boolean;
   busyRunners: number;
   onlineRunners: number;
   needsYou: number;
@@ -47,7 +48,9 @@ function runsCaption(props: StatStripProps): string {
   if (props.runsUnread) return "runs not read";
   const runners = props.runnersUnread
     ? "runners not read"
-    : `${props.busyRunners} of ${props.onlineRunners} runners busy`;
+    : props.activityUnread
+      ? `${props.onlineRunners} runners online · activity not read`
+      : `${props.busyRunners} of ${props.onlineRunners} runners busy`;
   const open = props.openRuns ?? props.liveRuns;
   return open > props.liveRuns ? `${runners} · ${open} runs open in all` : runners;
 }

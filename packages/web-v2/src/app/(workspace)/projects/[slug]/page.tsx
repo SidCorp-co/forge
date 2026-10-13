@@ -68,6 +68,12 @@ function readOf(q: { isError: boolean; error: unknown; data: unknown }): ReadSta
   return q.data === undefined ? { read: "pending" } : { read: "ok" };
 }
 
+/** One state for several queries a figure depends on: failed if any failed, else pending if any is. */
+function readOfAll(...qs: Array<{ isError: boolean; error: unknown; data: unknown }>): ReadState {
+  const states = qs.map(readOf);
+  return states.find((r) => r.read === "failed") ?? states.find((r) => r.read === "pending") ?? { read: "ok" };
+}
+
 /** The window the spend and where-time-goes sections read; the throughput section's is its own. */
 const METRICS_WINDOW_DAYS = 7;
 
@@ -185,6 +191,7 @@ export default function ProjectOverviewPage() {
   const runsState = readOf(runsQ);
   const durationsState = readOf(durationsQ);
   const runnersState = readOf(projectRunnersQ);
+  const activityState = readOfAll(queueQ, activeRunnersQ);
   const schedulesState = readOf(schedulesQ);
   const runsActive = activeRuns(runItems);
   const runsIdle = idleRuns(runItems);
@@ -248,7 +255,7 @@ export default function ProjectOverviewPage() {
         error={durationsQ.error}
         onRetry={() => durationsQ.refetch()}
       />
-      <RunnersCard summary={runners} slug={project.slug} read={runnersState} />
+      <RunnersCard summary={runners} slug={project.slug} read={runnersState} activity={activityState} />
       <SchedulesCard rows={schedules} now={now} slug={project.slug} read={schedulesState} />
     </>
   );
@@ -280,6 +287,7 @@ export default function ProjectOverviewPage() {
             runsUnread={runsState.read !== "ok"}
             openRuns={liveRuns(runItems).length}
             runnersUnread={runnersState.read !== "ok"}
+            activityUnread={activityState.read !== "ok"}
             busyRunners={runners.busyCount}
             onlineRunners={runners.onlineCount}
             needsYou={attention.length}
