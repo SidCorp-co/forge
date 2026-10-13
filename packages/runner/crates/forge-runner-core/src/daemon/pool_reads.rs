@@ -378,7 +378,7 @@ pub fn settle(config_dir: &Path, project_id: &str, runner_id: &str, took: &Took)
         .ok()
         .and_then(|(mut r, _)| r.projects.remove(project_id));
     let failure = match (outcome, record) {
-        (Outcome::Failed(f), Some(p)) if standing(&p) => f,
+        (Outcome::Failed(f), Some(p)) if f.status == Some(STANDING_STATUS) && standing(&p) => f,
         _ => {
             HELD.lock().unwrap_or_else(|e| e.into_inner()).remove(&key);
             return;
@@ -809,6 +809,36 @@ mod tests {
         assert!(said.contains("UNSERVED"), "{said}");
         let again = logged(|| pass(&d, P1, R1, &gone(), NOW));
         assert!(!again.contains("core answered 404"), "{again}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// The hold follows the read just made, not only the record: where a
+    /// probe's `502` could not be written, the file still says standing, and the
+    /// project must still be read again rather than held on a stale record.
+    #[test]
+    fn a_stumble_whose_record_could_not_be_written_does_not_hold_the_project() {
+        let d = dir("unwritable");
+        for i in (1..=3).rev() {
+            pass(&d, P1, R1, &gone(), NOW - i * 10_000);
+        }
+        retain_served(&d, &[(P1, R2)]);
+        assert!(!is_held(&d, P1, R1));
+        // `save` writes through a sibling named for this process; a directory
+        // standing there makes the write fail and leaves the old record whole.
+        let sibling = d.join(format!("pool-reads.json.{}.tmp", std::process::id()));
+        std::fs::create_dir(&sibling).unwrap();
+        for stumble in [bad_gateway(), gw525()] {
+            pass(&d, P1, R2, &stumble, NOW);
+            assert!(
+                !is_held(&d, P1, R2),
+                "held on a stale record after {stumble:?}"
+            );
+        }
+        assert_eq!(
+            report(&d, NOW)[0].verdict,
+            Verdict::Unserved,
+            "the old record stands"
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 
