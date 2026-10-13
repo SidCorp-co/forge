@@ -208,3 +208,84 @@ describe("the live runs under the project mark", () => {
 		expect(within(screen.getByRole("dialog")).getByLabelText("how many live runs could not be read").textContent).toBe("!");
 	});
 });
+
+// ISS-1268 — the project switcher's panel closed only on an outside press, so a keyboard user who
+// opened it could not leave it: Escape did nothing and focus stayed in the find field. Menu and the
+// Help popover close on Escape and give focus back to their trigger; this surface has to as well.
+describe("the project switcher and the Escape key", () => {
+	const row = (id: string, name: string) => ({
+		id, slug: id, name, initials: name.slice(0, 2).toUpperCase(), tint: "#eee", ink: "#333", pinned: false, liveRuns: 0, liveRunsRead: "read" as const,
+	});
+	const PROJECTS = [row("forge-dev", "Forge"), row("epod", "Epod")];
+
+	function openSwitcher() {
+		renderRail({ switcherProjects: PROJECTS });
+		const trigger = screen.getByRole("button", { name: /Switch project/ });
+		fireEvent.click(trigger);
+		return trigger;
+	}
+	const pressEscape = (on: Element | null = document.activeElement) => fireEvent.keyDown(on ?? document.body, { key: "Escape" });
+
+	it("closes on Escape pressed in the find field, and gives focus back to the switcher button", () => {
+		const trigger = openSwitcher();
+		const field = screen.getByPlaceholderText("Find a project…");
+		expect(document.activeElement).toBe(field);
+
+		pressEscape();
+
+		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(document.activeElement).toBe(trigger);
+	});
+
+	it("closes on Escape pressed on a project row, a pin button and the footer buttons", () => {
+		const targets: ((panel: HTMLElement) => HTMLElement)[] = [
+			(panel) => within(panel).getByText("Epod").closest("button") as HTMLElement,
+			(panel) => within(panel).getByRole("button", { name: "Pin Epod" }),
+			(panel) => within(panel).getByRole("button", { name: "View all" }),
+			(panel) => within(panel).getByRole("button", { name: "New project" }),
+		];
+		for (const find of targets) {
+			const trigger = openSwitcher();
+			const target = find(screen.getByRole("dialog"));
+			target.focus();
+
+			pressEscape(target);
+
+			expect(screen.queryByRole("dialog")).toBeNull();
+			expect(document.activeElement).toBe(trigger);
+			cleanup();
+		}
+	});
+
+	it("stays open for every other key, and typing in the field still filters the rows", () => {
+		openSwitcher();
+		const field = screen.getByPlaceholderText("Find a project…");
+
+		fireEvent.keyDown(field, { key: "Enter" });
+		fireEvent.keyDown(field, { key: "Tab" });
+		fireEvent.change(field, { target: { value: "epo" } });
+
+		const panel = screen.getByRole("dialog");
+		expect(within(panel).queryByText("Forge")).toBeNull();
+		expect(within(panel).getByText("Epod")).toBeTruthy();
+	});
+
+	it("still closes on a press outside the panel", () => {
+		openSwitcher();
+
+		fireEvent.mouseDown(document.body);
+
+		expect(screen.queryByRole("dialog")).toBeNull();
+	});
+
+	it("leaves the rail alone when Escape is pressed with the panel closed", () => {
+		renderRail({ switcherProjects: PROJECTS });
+		const issues = screen.getByRole("button", { name: "Issues" });
+		issues.focus();
+
+		pressEscape(issues);
+
+		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(document.activeElement).toBe(issues);
+	});
+});

@@ -9,7 +9,8 @@ import { validateLogin, type LoginFieldErrors, type LoginFieldKey } from './vali
 
 const FIELD_KEYS: readonly LoginFieldKey[] = ['email', 'password'];
 
-export function LoginForm({ presetEmail = '' }: { presetEmail?: string }) {
+/** `returnTo` is a path already read by `readReturnPath`; the form follows it as given. */
+export function LoginForm({ presetEmail = '', returnTo = '/' }: { presetEmail?: string; returnTo?: string }) {
   const { login } = useAuth();
   const router = useRouter();
 
@@ -32,7 +33,7 @@ export function LoginForm({ presetEmail = '' }: { presetEmail?: string }) {
     try {
       await login({ email: email.trim(), password });
       // basePath-relative — resolves to the /v2 workspace shell.
-      router.push('/');
+      router.push(returnTo);
     } catch (err) {
       const fieldMap = extractFieldErrors(err, FIELD_KEYS);
       if (Object.keys(fieldMap).length > 0) {

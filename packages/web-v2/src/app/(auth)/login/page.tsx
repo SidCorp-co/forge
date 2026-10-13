@@ -3,12 +3,14 @@ import { Banner } from '@/design';
 import { AuthShell } from '@/features/auth/components/auth-shell';
 import { SocialLogin } from '@/features/auth/components/social-login';
 import { LoginForm } from '@/features/auth/login-form';
+import { RETURN_PARAM, readReturnPath } from '@/features/auth/return-path';
 
 interface LoginPageProps {
   searchParams: Promise<{
     registered?: string;
     email?: string;
     oauth_error?: string;
+    [RETURN_PARAM]?: string | string[];
   }>;
 }
 
@@ -27,6 +29,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const justRegistered = sp.registered === '1';
   const presetEmail = typeof sp.email === 'string' ? sp.email : '';
   const oauthErrorCode = typeof sp.oauth_error === 'string' ? sp.oauth_error : null;
+  const ret = readReturnPath(sp[RETURN_PARAM]);
+  const returnTo = ret.kind === 'path' ? ret.path : undefined;
   const oauthError = oauthErrorCode
     ? OAUTH_ERROR_MESSAGES[oauthErrorCode] ?? OAUTH_ERROR_MESSAGES.provider_error
     : null;
@@ -55,8 +59,16 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </div>
       )}
 
-      <SocialLogin redirectTo="/" />
-      <LoginForm presetEmail={presetEmail} />
+      {ret.kind === 'refused' && (
+        <div className="mb-4">
+          <Banner tone="attention">
+            The return address was ignored: {ret.why}. You will land on the dashboard after signing in.
+          </Banner>
+        </div>
+      )}
+
+      <SocialLogin redirectTo={returnTo} />
+      <LoginForm presetEmail={presetEmail} returnTo={returnTo} />
     </AuthShell>
   );
 }

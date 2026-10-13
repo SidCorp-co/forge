@@ -185,6 +185,7 @@ export function NavRailCompact({
   const [q, setQ] = useState('');
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const switcherRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const show = useCallback(() => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -193,6 +194,16 @@ export function NavRailCompact({
   const hide = useCallback(() => {
     closeTimer.current = setTimeout(() => setFlyOpen(false), 150);
   }, []);
+
+  // Escape from the button, the find field or anything in the panel closes it and puts focus back
+  // on the button. The panel is portalled, but React bubbles its key events to the wrapper below.
+  const closeOnEscape = useCallback((e: React.KeyboardEvent) => {
+    if (e.key !== 'Escape' || !flyOpen) return;
+    e.preventDefault();
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setFlyOpen(false);
+    triggerRef.current?.focus();
+  }, [flyOpen]);
 
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -239,8 +250,15 @@ export function NavRailCompact({
       {orgSwitcher && <div className="mb-3">{orgSwitcher}</div>}
 
       {projectItems && projectItems.length > 0 && activeProject && (
-        <div ref={switcherRef} className="relative" onMouseEnter={show} onMouseLeave={hide}>
+        <div
+          ref={switcherRef}
+          className="relative"
+          onMouseEnter={show}
+          onMouseLeave={hide}
+          onKeyDown={closeOnEscape}
+        >
           <button
+            ref={triggerRef}
             type="button"
             onClick={show}
             aria-haspopup="dialog"
