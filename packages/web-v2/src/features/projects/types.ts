@@ -94,6 +94,12 @@ export interface OnboardResult {
 /** Sort options for the projects console toolbar. */
 export type ProjectSort = 'recent' | 'name' | 'health';
 
+/** One sort and the way round it runs. */
+export interface ProjectSortState {
+  id: ProjectSort;
+  desc: boolean;
+}
+
 /** Cards ⇄ List view toggle. */
 export type ProjectView = 'cards' | 'list';
 

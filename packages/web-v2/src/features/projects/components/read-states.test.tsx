@@ -7,6 +7,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { QueryRead } from "@/design/patterns/badge-read";
+import { DEFAULT_PROJECT_SORT } from "../columns";
 import type { ProjectConsoleItem, WorkspaceTotals } from "../types";
 import { AttentionBanner } from "./attention-banner";
 import { LiveCount } from "./live-count";
@@ -50,6 +51,7 @@ const read: ProjectConsoleItem = {
   ...unread("read"), health: "healthy", liveRuns: 2, openIssues: 29, runnerCount: 1, spend24hUsd: 1.5, memberCount: 3, members: ["AB"],
   lastActivityAt: "2026-10-02T00:00:00Z",
 };
+const SORT = DEFAULT_PROJECT_SORT;
 const totals = (healthRead: QueryRead): WorkspaceTotals =>
   healthRead === "read"
     ? { projects: 2, healthRead, liveRuns: 2, openIssues: 29, runners: 1, spend24hUsd: 1.5 }
@@ -92,7 +94,7 @@ describe.each([
   });
 
   it("is named in the projects list for the description, never as the dash of no value", () => {
-    render(<ProjectList items={[unread(state)]} now={0} onTogglePin={() => {}} />);
+    render(<ProjectList items={[unread(state)]} now={0} onTogglePin={() => {}} sort={SORT} onSortChange={() => {}} />);
     expect(marks(name).map((m) => m.getAttribute("aria-label"))).toContain(
       state === "failed" ? "the description could not be read" : "reading the description",
     );
@@ -100,7 +102,7 @@ describe.each([
   });
 
   it("is named in the projects list, row by row", () => {
-    render(<ProjectList items={[unread(state)]} now={0} onTogglePin={() => {}} />);
+    render(<ProjectList items={[unread(state)]} now={0} onTogglePin={() => {}} sort={SORT} onSortChange={() => {}} />);
     expect(marks(name).length).toBeGreaterThanOrEqual(5);
     expect(marks(name).map((m) => m.getAttribute("aria-label")).join("|")).toMatch(/health/);
     expect(document.body.textContent).not.toMatch(/\$0\.00/);
@@ -138,7 +140,7 @@ describe("a health read that came in", () => {
     expect(document.body.textContent).toContain("—");
     expect(marks(/repository|description/)).toHaveLength(0);
     cleanup();
-    render(<ProjectList items={[{ ...read, description: null }]} now={0} onTogglePin={() => {}} />);
+    render(<ProjectList items={[{ ...read, description: null }]} now={0} onTogglePin={() => {}} sort={SORT} onSortChange={() => {}} />);
     expect(document.body.textContent).toContain("—");
   });
 
