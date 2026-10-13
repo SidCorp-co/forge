@@ -1,9 +1,9 @@
 /**
  * The ranking inputs for a whole backlog, one item at a time (ISS-1173).
  *
- * This streams what a ranking READS and never a ranking. `forge next`'s weight table lives in the
- * CLI, where a project overrides one weight at a time in a settings file this server cannot see; a
- * server that ranked here would drop those overrides without saying so.
+ * This streams what a ranking READS and never a ranking, for the caller that wants the inputs.
+ * The ranking itself is `rank-read.ts`, answered from a maintained index (ISS-1336) against the
+ * weights in the project's pipeline config, so what this stream hands back is not what scores one.
  *
  * Paging is keyset rather than offset, because the stream outlives any single snapshot: an offset
  * page over a table somebody is writing to skips and repeats rows. The boundary is `page-read.ts`.

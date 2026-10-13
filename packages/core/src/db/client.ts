@@ -9,6 +9,7 @@ import * as adminThresholdsSchema from './schema-admin-thresholds.js';
 import * as agentSelvesSchema from './schema-agent-selves.js';
 import * as agentSessionEventsSchema from './schema-agent-session-events.js';
 import * as backfillMarkersSchema from './schema-backfill-markers.js';
+import * as backlogIndexSchema from './schema-backlog-index.js';
 import * as conversationsSchema from './schema-conversations.js';
 import * as deployLocksSchema from './schema-deploy-locks.js';
 import * as issueLeasesSchema from './schema-issue-leases.js';
@@ -44,6 +45,7 @@ const schema = {
   ...memoryRevisionsSchema,
   ...deployLocksSchema,
   ...issueLeasesSchema,
+  ...backlogIndexSchema,
   ...runLedgerSchema,
   ...speakerLinksSchema,
   ...unauditedTransitionsSchema,

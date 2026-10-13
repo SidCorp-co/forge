@@ -1,7 +1,8 @@
 /**
- * Two routes whose unit is the whole backlog (ISS-1173), each answering in one streamed call.
+ * The routes whose unit is the whole backlog: two streams of inputs (ISS-1173), each answering in
+ * one streamed call, and the two maintained-index reads beside them (`index-routes.ts`, ISS-1336).
  *
- * These are the first production routes here to emit `text/event-stream`. The fan-out they do is
+ * The streams are the first production routes here to emit `text/event-stream`. The fan-out they do is
  * in-process on purpose: `middleware/rate-limit.ts:rateLimit` charges once at middleware entry and
  * knows nothing of what the handler does afterwards, so one request is one tick however many
  * searches or pages it reads. Looping back through `fetch` to a rate-limited route would charge
@@ -13,7 +14,7 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { RULES } from '../../config/rate-limits.js';
-import { type IssueStatus, issueStatuses } from '../../db/schema.js';
+import { issueStatuses } from '../../db/schema.js';
 import { assertProjectAccess } from '../../lib/authz.js';
 import { queryBadRequest } from '../../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
@@ -21,18 +22,13 @@ import { rateLimit } from '../../middleware/rate-limit.js';
 import { alikeSource } from './alike-source.js';
 import { Cancellation } from './cancellation.js';
 import { emitBacklogStream } from './emitter.js';
+import { registerBacklogIndexRoutes } from './index-routes.js';
+import { TAKEABLE_STATUSES, UNSETTLED_STATUSES } from './index-sql.js';
 import { orderingSource } from './ordering-source.js';
 import { countMatching } from './page-read.js';
 
-/** What `forge next` calls takeable: the statuses a run may claim work from. */
-export const TAKEABLE_STATUSES: IssueStatus[] = ['open', 'confirmed', 'approved', 'reopen'].filter(
-  (s): s is IssueStatus => (issueStatuses as readonly string[]).includes(s),
-);
-
-/** What `forge alike` calls open: everything the tracker has not settled. */
-export const UNSETTLED_STATUSES: IssueStatus[] = issueStatuses.filter(
-  (s) => s !== 'closed' && s !== 'dropped',
-);
+/** The two status sets live in `index-sql.ts`, where the maintained indexes read them too. */
+export { TAKEABLE_STATUSES, UNSETTLED_STATUSES };
 
 const LIMIT_MIN = 1;
 const LIMIT_MAX = 5_000;
@@ -113,6 +109,8 @@ backlogStreamRoutes.use(
 function streamHeaders(c: { header: (k: string, v: string) => void }): void {
   c.header('X-Accel-Buffering', 'no');
 }
+
+registerBacklogIndexRoutes(backlogStreamRoutes);
 
 backlogStreamRoutes.get(
   '/:id/backlog/ordering',
