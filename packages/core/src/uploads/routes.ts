@@ -5,8 +5,8 @@ import {
   persistSessionAttachment,
   SessionAttachmentError,
 } from '../agent-sessions/attachment-service.js';
-import { answer } from '../api-reference/describe.js';
-import { zValidator } from '../api-reference/validator.js';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import {
   AttachmentError as CommentAttachmentError,
   persistCommentAttachment,

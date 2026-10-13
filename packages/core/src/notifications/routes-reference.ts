@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { describeOperation, empty, fail, json } from '../api-reference/describe.js';
-import { tableRow } from '../api-reference/rows.js';
+import { describeOperation, empty, fail, json } from '../api-reference/declare/describe.js';
+import { tableRow } from '../api-reference/declare/rows.js';
 import { notificationDeliveries, notificationTypes } from '../db/schema.js';
 
 const NOT_FOUND = 'The notification is not one of the caller’s own';

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { REFRESH_COOKIE_NAME } from './cookie-names.js';
 
 /** The refresh token rides only in its httpOnly cookie. */

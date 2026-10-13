@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { installRoutes, installTargetParamSchema } from '../install/routes.js';
-import { describeOperation, json, raw } from './describe.js';
-import { declaresInput } from './validator.js';
+import { installRoutes, installTargetParamSchema } from '../../install/routes.js';
+import { describeOperation, json, raw } from '../declare/describe.js';
+import { declaresInput } from '../declare/validator.js';
 
 /** These routes answer `{ error }` and not the error envelope, which the install script and the runner updater read. */
 export const installErrorSchema = z.object({ error: z.string() });

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 
 const NOT_FOUND = fail('NOT_FOUND', 'the project does not exist');
 const NOT_A_MEMBER = fail('FORBIDDEN', 'the caller is not a member of the project');

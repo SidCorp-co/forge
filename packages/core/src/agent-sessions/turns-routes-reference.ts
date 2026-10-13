@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
-import { tableRow } from '../api-reference/rows.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
+import { tableRow } from '../api-reference/declare/rows.js';
 import { agentSessionTurns } from '../db/schema.js';
 import { sessionSchema } from './routes-reference.js';
 

@@ -2,7 +2,7 @@ import { and, eq, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { answer } from '../api-reference/describe.js';
+import { answer } from '../api-reference/declare/describe.js';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects, runners, workspaceSshKeys } from '../db/schema.js';
 import { isHttpsGitUrl, projectsWithGitHubAppCredential } from '../git/github-app-credential.js';

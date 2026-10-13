@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 
 /** Why the probe is a flag per dependency: a monitor reads which one is down. */
 export const livenessSchema = z.object({

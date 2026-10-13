@@ -1,7 +1,7 @@
 import { findTargetHandler } from 'hono/utils/handler';
-import { type Refusal, refusalsOf } from '../middleware/declarations.js';
-import { type OperationDeclaration, operationDeclarations } from './describe.js';
-import { type ValidatorDeclaration, validatorDeclarations } from './validator.js';
+import { type Refusal, refusalsOf } from '../../middleware/declarations.js';
+import { type OperationDeclaration, operationDeclarations } from '../declare/describe.js';
+import { type ValidatorDeclaration, validatorDeclarations } from '../declare/validator.js';
 
 /** One route the composed app serves, with everything declared on the way to its handler. */
 export type RouteEntry = {

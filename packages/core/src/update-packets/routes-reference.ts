@@ -1,5 +1,5 @@
-import { describeOperation, json } from '../api-reference/describe.js';
-import { tableRow } from '../api-reference/rows.js';
+import { describeOperation, json } from '../api-reference/declare/describe.js';
+import { tableRow } from '../api-reference/declare/rows.js';
 import { updatePackets } from '../db/schema.js';
 
 export const updatePacketSchema = tableRow(updatePackets);

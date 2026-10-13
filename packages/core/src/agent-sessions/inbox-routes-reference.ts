@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { okSchema } from './routes-reference.js';
 
 export const paramSchema = z.object({ id: z.uuid(), seq: z.coerce.number().int().positive() });

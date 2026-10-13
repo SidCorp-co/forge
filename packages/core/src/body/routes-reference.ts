@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { BODY_FORMATS } from './formats.js';
 
 /** One node of a parsed HTML body; an element holds its children. */

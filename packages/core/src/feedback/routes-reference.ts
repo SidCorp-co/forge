@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
-import { tableRow } from '../api-reference/rows.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
+import { tableRow } from '../api-reference/declare/rows.js';
 import { feedbackReports } from '../db/schema.js';
 
 /** A report as the feed shows it: the ids of the run that wrote it are left out and dates are ISO strings. */

@@ -9,7 +9,7 @@
 
 import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { answer } from '../api-reference/describe.js';
+import { answer } from '../api-reference/declare/describe.js';
 import { db } from '../db/client.js';
 import { issues, jobs, projects } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';

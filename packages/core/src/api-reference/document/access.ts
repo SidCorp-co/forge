@@ -4,8 +4,8 @@ import {
   type PatReach,
   patPrefixForPath,
   patUngrantableFor,
-} from '../auth/pat-permissions.js';
-import { scopeForMethod } from '../middleware/pat-rest-surface.js';
+} from '../../auth/pat-permissions.js';
+import { scopeForMethod } from '../../middleware/pat-rest-surface.js';
 
 /** What a route asks of whoever calls it, read from the maps the gate itself reads. */
 export type Access =

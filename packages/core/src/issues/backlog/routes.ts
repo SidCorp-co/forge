@@ -12,7 +12,7 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
-import { zValidator } from '../../api-reference/validator.js';
+import { zValidator } from '../../api-reference/declare/validator.js';
 import { RULES } from '../../config/rate-limits.js';
 import { issueStatuses } from '../../db/schema.js';
 import { assertProjectAccess } from '../../lib/authz.js';

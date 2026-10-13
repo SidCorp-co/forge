@@ -15,8 +15,8 @@ import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { answer } from '../api-reference/describe.js';
-import { zValidator } from '../api-reference/validator.js';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { resolveProjectHandle } from '../conversations/handles.js';
 import {
   addableHandles,

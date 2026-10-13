@@ -5,8 +5,8 @@ import {
   fail,
   json,
   NO_SUCH_PROJECT,
-} from '../api-reference/describe.js';
-import { tableRow } from '../api-reference/rows.js';
+} from '../api-reference/declare/describe.js';
+import { tableRow } from '../api-reference/declare/rows.js';
 import { agents } from '../db/schema.js';
 
 export const agentSchema = tableRow(agents);

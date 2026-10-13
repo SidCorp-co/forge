@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../../api-reference/describe.js';
-import { tableRow } from '../../api-reference/rows.js';
+import { describeOperation, fail, json } from '../../api-reference/declare/describe.js';
+import { tableRow } from '../../api-reference/declare/rows.js';
 import { conversationAdapters } from '../../db/schema-conversations.js';
 import { assistantSpeakerLinks } from '../../db/schema-speaker-links.js';
 

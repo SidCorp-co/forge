@@ -1,4 +1,4 @@
-import { describeOperation, fail, raw } from '../../api-reference/describe.js';
+import { describeOperation, fail, raw } from '../../api-reference/declare/describe.js';
 
 const STREAM_REFUSALS = {
   400: fail({

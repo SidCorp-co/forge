@@ -13,7 +13,7 @@ import { eq } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { answer } from '../../api-reference/describe.js';
+import { answer } from '../../api-reference/declare/describe.js';
 import { db } from '../../db/client.js';
 import { organizations, projects } from '../../db/schema.js';
 import { loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';

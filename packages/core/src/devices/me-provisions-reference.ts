@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 
 /** One checkout a box is asked to provision, with the credentials it needs to clone and push. */
 export const provisionSchema = z.object({

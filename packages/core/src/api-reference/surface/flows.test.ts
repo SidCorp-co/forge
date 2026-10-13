@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { buildReference } from './build.js';
-import { describeOperation, json } from './describe.js';
+import { buildReference } from '../document/build.js';
+import { describeOperation, json } from '../declare/describe.js';
 import { checkFlows, FLOWS, type Flow, operationOfStep, toMermaid } from './flows.js';
 import { renderFlowsPage, renderReferencePage } from './page.js';
 

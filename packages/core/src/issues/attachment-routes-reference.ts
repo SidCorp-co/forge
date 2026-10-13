@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, empty, fail, json, raw } from '../api-reference/describe.js';
+import { describeOperation, empty, fail, json, raw } from '../api-reference/declare/describe.js';
 import { ISSUE_REF_REFUSALS } from './search-reference.js';
 
 export const issueAttachmentSchema = z.object({

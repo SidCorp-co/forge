@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { orgMemberRoles } from '../db/schema.js';
 
 /** The token is an opaque string from the invitation mail. */

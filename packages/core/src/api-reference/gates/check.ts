@@ -1,6 +1,6 @@
-import { statusToCode } from '../middleware/error.js';
-import { type Finding, openApiPath, type Reference } from './build.js';
-import type { RouteEntry } from './registry.js';
+import { statusToCode } from '../../middleware/error.js';
+import { type Finding, openApiPath, type Reference } from '../document/build.js';
+import type { RouteEntry } from '../document/registry.js';
 
 /**
  * Every way the reference can fall short of the routes, each as a finding that names the route.

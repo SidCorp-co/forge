@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 
 /** The invitation token is a secret handed out by email, and it is looked up as the opaque string it is. */
 export const invitationTokenParamSchema = z.object({ token: z.string() });

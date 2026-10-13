@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 
 /** A token as a listing shows it: never the secret, which only a mint or a rotation returns. */
 export const publicTokenSchema = z.object({

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json, redirect } from '../api-reference/describe.js';
+import { describeOperation, fail, json, redirect } from '../api-reference/declare/describe.js';
 
 export const verifyQuerySchema = z.object({ token: z.string().optional() });
 

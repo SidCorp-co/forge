@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { answer } from '../api-reference/describe.js';
-import { zValidator } from '../api-reference/validator.js';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';

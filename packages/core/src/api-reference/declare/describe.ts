@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import type { ZodType, z } from 'zod';
-import { statusToCode } from '../middleware/error.js';
+import { statusToCode } from '../../middleware/error.js';
 
 export type JsonAnswer = {
   readonly kind: 'json';

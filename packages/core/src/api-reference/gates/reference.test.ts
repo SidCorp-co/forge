@@ -3,10 +3,10 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Hono } from 'hono';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { PAT_UNGRANTABLE } from '../auth/pat-permissions.js';
-import { buildReference, type Reference } from './build.js';
+import { PAT_UNGRANTABLE } from '../../auth/pat-permissions.js';
+import { buildReference, type Reference } from '../document/build.js';
 import { checkReference, describeFinding } from './check.js';
-import { checkFlows, FLOWS } from './flows.js';
+import { checkFlows, FLOWS } from '../surface/flows.js';
 
 /**
  * The reference against the composed app: every route the app serves is an operation that states
@@ -16,7 +16,7 @@ import { checkFlows, FLOWS } from './flows.js';
  * how a change to one domain reads its own routes without wading through the rest. The gate runs
  * without it.
  */
-const SRC = fileURLToPath(new URL('..', import.meta.url));
+const SRC = fileURLToPath(new URL('../..', import.meta.url));
 
 function sourceText(): string {
   return readdirSync(SRC, { recursive: true, encoding: 'utf8' })
@@ -29,7 +29,7 @@ let reference: Reference;
 let source: string;
 
 beforeAll(async () => {
-  const { app } = (await import('../index.js')) as unknown as { app: Hono };
+  const { app } = (await import('../../index.js')) as unknown as { app: Hono };
   reference = await buildReference(app, { version: 'test' });
   source = sourceText();
 }, 120_000);

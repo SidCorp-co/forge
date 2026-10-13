@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { bindingRoles } from '../db/schema.js';
 
 /** The slug names a project. One that names none is a 404, so any string is a legal request. */

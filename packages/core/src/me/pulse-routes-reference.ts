@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, json } from '../api-reference/describe.js';
+import { describeOperation, json } from '../api-reference/declare/describe.js';
 import { FAILURE_CAUSES } from '../pipeline/failure-causes.js';
 
 /** A set counted whole and named only as far as `thresholds.identityCap`. */

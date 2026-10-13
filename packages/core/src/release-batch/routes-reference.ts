@@ -1,4 +1,4 @@
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import {
   abortedSchema,
   activeSchema,

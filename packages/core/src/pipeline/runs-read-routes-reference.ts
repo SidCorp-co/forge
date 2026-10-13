@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/describe.js';
+import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/declare/describe.js';
 import { pipelineRunKinds, pipelineRunStatuses } from '../db/schema.js';
 import { gateConditionSchema } from '../devices/gate-report.js';
 import { storedPolicySchema } from '../devices/policy-copy.js';

@@ -1,8 +1,8 @@
 import type { MiddlewareHandler } from 'hono';
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
-import { tableRow } from '../api-reference/rows.js';
-import { zValidator } from '../api-reference/validator.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
+import { tableRow } from '../api-reference/declare/rows.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import {
   bindingRoles,
   deployStages,

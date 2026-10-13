@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/describe.js';
-import { tableRow } from '../api-reference/rows.js';
+import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/declare/describe.js';
+import { tableRow } from '../api-reference/declare/rows.js';
 import { issueDependencyKinds, issues, jobs, runners } from '../db/schema.js';
 
 const VIEWER = fail('FORBIDDEN', 'the caller is not a member of the project');

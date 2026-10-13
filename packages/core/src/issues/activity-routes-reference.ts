@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, empty, fail, json } from '../api-reference/describe.js';
+import { describeOperation, empty, fail, json } from '../api-reference/declare/describe.js';
 import { ISSUE_REF_REFUSALS } from './search-reference.js';
 
 /** Who did something, as a person or a paired device's agent. */

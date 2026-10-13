@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { gateConditionSchema } from './gate-report.js';
 import { policyCopySchema } from './policy-copy.js';

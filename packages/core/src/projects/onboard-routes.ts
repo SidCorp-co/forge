@@ -8,8 +8,8 @@ import {
   noClaudeClient,
   resolveChatDevice,
 } from '../agent-sessions/chat-turn.js';
-import { answer } from '../api-reference/describe.js';
-import { zValidator } from '../api-reference/validator.js';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';

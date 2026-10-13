@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 
 const SCOPE =
   'Reads the projects the caller can see; `projectId` narrows to one, and a project the caller cannot see reads as no data.';

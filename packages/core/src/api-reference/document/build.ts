@@ -1,11 +1,11 @@
-import { PAT_DOOR_REFUSALS } from '../middleware/pat-rest-surface.js';
+import { PAT_DOOR_REFUSALS } from '../../middleware/pat-rest-surface.js';
 import { type Access, accessOf } from './access.js';
-import { type Answer, codeFor } from './describe.js';
-import { ERROR_ENVELOPE, ERROR_ENVELOPE_NAME, errorResponse } from './errors.js';
+import { type Answer, codeFor } from '../declare/describe.js';
+import { ERROR_ENVELOPE, ERROR_ENVELOPE_NAME, errorResponse } from '../declare/errors.js';
 import { type InputRefusal, probeInputRefusal } from './probe-hook.js';
 import { type RouteEntry, type RouteSource, readRoutes } from './registry.js';
-import { type JsonSchema, renderSchema } from './schema.js';
-import type { ValidatorDeclaration } from './validator.js';
+import { type JsonSchema, renderSchema } from '../declare/schema.js';
+import type { ValidatorDeclaration } from '../declare/validator.js';
 
 /** The rules the build itself can find a route in breach of. `check.ts` adds the ones it reads source for. */
 export type BuildRule =

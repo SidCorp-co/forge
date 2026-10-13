@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { tableRow } from '../api-reference/rows.js';
+import { tableRow } from '../api-reference/declare/rows.js';
 import { issueStatuses, pipelineRunStatuses, releaseCrossings } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 

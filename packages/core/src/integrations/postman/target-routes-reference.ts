@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../../api-reference/describe.js';
+import { describeOperation, fail, json } from '../../api-reference/declare/describe.js';
 import { noRoleOnProject, onProject } from '../routes-reference.js';
 
 /** `configured: false` alone where the project has no Postman binding, the target where it has. */

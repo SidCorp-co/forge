@@ -1,6 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { jobStatuses } from '../db/schema.js';
 import { salvageSchema } from './prior-attempts.js';
 

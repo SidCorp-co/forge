@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { answer } from '../api-reference/describe.js';
+import { answer } from '../api-reference/declare/describe.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {

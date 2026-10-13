@@ -11,8 +11,8 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { answer } from '../api-reference/describe.js';
-import { zValidator } from '../api-reference/validator.js';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { logger } from '../logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { GitCredentialError, mintGitCredentialForDevice } from './github-app-credential.js';

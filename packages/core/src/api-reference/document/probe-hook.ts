@@ -1,7 +1,7 @@
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { statusToCode } from '../middleware/error.js';
-import type { ValidatorDeclaration } from './validator.js';
+import { statusToCode } from '../../middleware/error.js';
+import type { ValidatorDeclaration } from '../declare/validator.js';
 
 /** What a route answers when its input fails the schema it declares. */
 export type InputRefusal =

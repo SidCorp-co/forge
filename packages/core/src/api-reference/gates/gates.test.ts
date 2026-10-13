@@ -1,15 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { refusalsOf } from '../middleware/declarations.js';
-import { PAT_DOOR_REFUSALS } from '../middleware/pat-rest-surface.js';
+import { refusalsOf } from '../../middleware/declarations.js';
+import { PAT_DOOR_REFUSALS } from '../../middleware/pat-rest-surface.js';
 
 /**
  * The refusals a gate declares are the ones its source throws. A gate is read from its declaration
  * by the API reference, so a code thrown and never declared would be an error no reference lists.
  */
 const MIDDLEWARE = (file: string) =>
-  fileURLToPath(new URL(`../middleware/${file}`, import.meta.url));
+  fileURLToPath(new URL(`../../middleware/${file}`, import.meta.url));
 
 const read = (file: string) => readFileSync(MIDDLEWARE(file), 'utf8');
 
@@ -22,14 +22,14 @@ function codesWritten(text: string): string[] {
 
 async function gates() {
   const [auth, fresh, admin, device, anyAuth, user, apiKey, limit] = await Promise.all([
-    import('../middleware/auth.js'),
-    import('../middleware/require-fresh-auth.js'),
-    import('../middleware/require-admin.js'),
-    import('../middleware/require-device.js'),
-    import('../middleware/require-any-auth.js'),
-    import('../middleware/require-user.js'),
-    import('../middleware/api-key.js'),
-    import('../middleware/rate-limit.js'),
+    import('../../middleware/auth.js'),
+    import('../../middleware/require-fresh-auth.js'),
+    import('../../middleware/require-admin.js'),
+    import('../../middleware/require-device.js'),
+    import('../../middleware/require-any-auth.js'),
+    import('../../middleware/require-user.js'),
+    import('../../middleware/api-key.js'),
+    import('../../middleware/rate-limit.js'),
   ]);
   const declared = (...built: object[]) =>
     [...new Set(built.flatMap((gate) => refusalsOf(gate).map((r) => r.code)))].sort();

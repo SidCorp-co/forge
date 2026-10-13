@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, json } from '../api-reference/describe.js';
+import { describeOperation, json } from '../api-reference/declare/describe.js';
 
 export const registrySchema = z.object({
   version: z.number(),

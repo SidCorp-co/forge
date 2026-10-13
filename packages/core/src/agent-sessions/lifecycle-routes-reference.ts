@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { okSchema, sessionSchema } from './routes-reference.js';
 
 /** Exactly one of the two must be given; a caller with neither is told so. */

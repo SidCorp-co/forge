@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { phaseJournalOutcomes, phaseJournalSources } from '../db/schema-journal.js';
 
 const NOT_A_MEMBER = 'the caller holds a lower project role than the route needs';

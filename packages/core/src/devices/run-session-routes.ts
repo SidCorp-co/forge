@@ -10,8 +10,8 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { answer } from '../api-reference/describe.js';
-import { zValidator } from '../api-reference/validator.js';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { IssueLeaseHeldError } from '../issues/issue-lease.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { RunnerNotAdmittedError } from './pool-admission.js';

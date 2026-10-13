@@ -45,7 +45,7 @@ const PROBES = {
           'exec',
           'vitest',
           'run',
-          'src/api-reference/reference.test.ts',
+          'src/api-reference/gates/reference.test.ts',
         ],
         needs: ['deps'],
       },

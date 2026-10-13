@@ -1,4 +1,4 @@
-import { describeOperation, fail } from '../api-reference/describe.js';
+import { describeOperation, fail } from '../api-reference/declare/describe.js';
 
 const RETIRED =
   'always: project facts were retired, and the answer names the knowledge routes that replace them';

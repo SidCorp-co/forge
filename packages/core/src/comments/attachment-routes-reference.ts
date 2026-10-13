@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json, raw } from '../api-reference/describe.js';
+import { describeOperation, fail, json, raw } from '../api-reference/declare/describe.js';
 
 export const commentAttachmentSchema = z.object({
   id: z.string(),

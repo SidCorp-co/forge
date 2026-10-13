@@ -1,6 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { describeOperation, empty, fail, json } from '../api-reference/describe.js';
+import { describeOperation, empty, fail, json } from '../api-reference/declare/describe.js';
 
 // Crockford base32 with the easy-to-confuse glyphs removed.
 export const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';

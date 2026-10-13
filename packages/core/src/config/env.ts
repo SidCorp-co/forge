@@ -97,7 +97,7 @@ const EnvSchema = z.object({
   PIPELINE_ADVISORY_LOCK_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
   /**
    * `1` makes every JSON answer under `/api` be checked against the schema its route declares for
-   * that status (`api-reference/conformance.ts`), and a mismatch fail the request. Off in service:
+   * that status (`api-reference/gates/conformance.ts`), and a mismatch fail the request. Off in service:
    * it is for a run that drives the routes against a real database.
    */
   RESPONSE_CONFORMANCE: z.enum(['0', '1']).default('0'),

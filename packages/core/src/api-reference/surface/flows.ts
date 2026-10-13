@@ -1,5 +1,5 @@
-import type { OpenApiDocument } from './build.js';
-import { openApiPath } from './build.js';
+import type { OpenApiDocument } from '../document/build.js';
+import { openApiPath } from '../document/build.js';
 
 /** Who sends a call: the people and programs around core, not core itself. */
 export type Actor = 'Person' | 'Runner' | 'Master' | 'Agent';

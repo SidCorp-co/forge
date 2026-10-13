@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, empty, fail, json } from '../api-reference/describe.js';
+import { describeOperation, empty, fail, json } from '../api-reference/declare/describe.js';
 import { projectGitCredentialSources, workspaceSshKeyTypes } from '../db/schema.js';
 
 /** A pool key as every surface shows it: the public half only, never the private key. */

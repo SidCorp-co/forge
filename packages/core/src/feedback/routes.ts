@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { answer } from '../api-reference/describe.js';
-import { declaresInput, zValidator } from '../api-reference/validator.js';
+import { answer } from '../api-reference/declare/describe.js';
+import { declaresInput, zValidator } from '../api-reference/declare/validator.js';
 import { feedbackKinds, feedbackSeverities, feedbackTargets } from '../db/feedback-vocabulary.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';

@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { describeOperation, json } from '../api-reference/describe.js';
-import { tableRow } from '../api-reference/rows.js';
+import { describeOperation, json } from '../api-reference/declare/describe.js';
+import { tableRow } from '../api-reference/declare/rows.js';
 import { activityLog, devices } from '../db/schema.js';
 import { GLANCE_METRIC_NAMES, GLANCE_WINDOWS } from './types.js';
 

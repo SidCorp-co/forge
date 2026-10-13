@@ -1,7 +1,7 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
-import { describeOperation, empty, json, raw } from '../api-reference/describe.js';
+import { describeOperation, empty, json, raw } from '../api-reference/declare/describe.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
 import { formatDeprecationHeader } from './deprecation.js';
 import { createMcpServer } from './server.js';

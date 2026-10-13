@@ -2,10 +2,10 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { matchedRoutes } from 'hono/route';
 import { type ZodType, z } from 'zod';
-import { env } from '../config/env.js';
-import type { Reference } from './build.js';
-import type { OperationDeclaration } from './describe.js';
-import { renderSchema } from './schema.js';
+import { env } from '../../config/env.js';
+import type { Reference } from '../document/build.js';
+import type { OperationDeclaration } from '../declare/describe.js';
+import { renderSchema } from '../declare/schema.js';
 
 type Mismatch = { readonly status: number; readonly what: string };
 

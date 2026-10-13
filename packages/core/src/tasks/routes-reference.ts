@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { describeOperation, empty, fail, json } from '../api-reference/describe.js';
-import { tableRow } from '../api-reference/rows.js';
+import { describeOperation, empty, fail, json } from '../api-reference/declare/describe.js';
+import { tableRow } from '../api-reference/declare/rows.js';
 import { tasks } from '../db/schema.js';
 import { ISSUE_REF_REFUSALS } from '../issues/search-reference.js';
 

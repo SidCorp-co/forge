@@ -1,12 +1,12 @@
 import type { Hono } from 'hono';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { PAT_UNGRANTABLE, patUngrantableFor } from '../auth/pat-permissions.js';
+import { PAT_UNGRANTABLE, patUngrantableFor } from '../../auth/pat-permissions.js';
 
 /** The three pages, read through the composed app with no credential on the request. */
 let app: Hono;
 
 beforeAll(async () => {
-  ({ app } = (await import('../index.js')) as unknown as { app: Hono });
+  ({ app } = (await import('../../index.js')) as unknown as { app: Hono });
 }, 120_000);
 
 describe('GET /api/openapi.json', () => {

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../../api-reference/describe.js';
+import { describeOperation, fail, json } from '../../api-reference/declare/describe.js';
 
 const indexStateSchema = z.object({
   state: z.enum(['fresh', 'stale']),

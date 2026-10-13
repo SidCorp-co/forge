@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json, redirect } from '../../api-reference/describe.js';
+import { describeOperation, fail, json, redirect } from '../../api-reference/declare/describe.js';
 
 /** The provider is any string: one the server does not know is refused with a 404, not a 400. */
 export const providerParamSchema = z.object({ provider: z.string() });

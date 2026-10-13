@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 
 /** How many lines one POST may carry, matching the runner's own chunking. */
 const MAX_BATCH = 100;

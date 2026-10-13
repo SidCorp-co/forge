@@ -2,11 +2,11 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { PAT_DOOR_REFUSALS } from '../middleware/pat-rest-surface.js';
-import { buildReference, type Reference } from './build.js';
+import { PAT_DOOR_REFUSALS } from '../../middleware/pat-rest-surface.js';
+import { buildReference, type Reference } from '../document/build.js';
 import { checkReference, describeFinding, inputsRead, thrownInline } from './check.js';
-import { describeOperation, fail, json } from './describe.js';
-import { zValidator } from './validator.js';
+import { describeOperation, fail, json } from '../declare/describe.js';
+import { zValidator } from '../declare/validator.js';
 
 const ok = describeOperation({ summary: 'ok', responses: { 200: json(z.object({})) } });
 const hook = (r: { success: boolean }) => {

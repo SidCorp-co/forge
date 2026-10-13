@@ -9,8 +9,8 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { answer } from '../api-reference/describe.js';
-import { declaresInput, zValidator } from '../api-reference/validator.js';
+import { answer } from '../api-reference/declare/describe.js';
+import { declaresInput, zValidator } from '../api-reference/declare/validator.js';
 import type { AnswerShape, QuestionBlockerKind, QuestionOption } from '../db/schema-questions.js';
 import {
   type ResolvedLeaseKey,

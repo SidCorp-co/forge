@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/describe.js';
-import { tableRow } from '../api-reference/rows.js';
+import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/declare/describe.js';
+import { tableRow } from '../api-reference/declare/rows.js';
 import { reconcileRuns } from '../db/schema.js';
 
 const reconcileRunSchema = tableRow(reconcileRuns);

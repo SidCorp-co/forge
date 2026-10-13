@@ -1,6 +1,6 @@
 import { inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { answer } from '../api-reference/describe.js';
+import { answer } from '../api-reference/declare/describe.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import {

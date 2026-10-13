@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, empty, fail, json } from '../api-reference/describe.js';
+import { describeOperation, empty, fail, json } from '../api-reference/declare/describe.js';
 import { presenceConfigSchema } from '../conversations/presence.js';
 import { answerStyles, projectMemberRoles } from '../db/schema.js';
 

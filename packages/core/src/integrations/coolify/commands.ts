@@ -12,7 +12,7 @@
  */
 
 import type { DeployStage } from '../../db/schema.js';
-import { effectiveConfig, listActiveDeployBindingsForProvider } from '../../integrations/store.js';
+import { effectiveConfig, listActiveDeployBindingsForProvider } from '../store.js';
 import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
 import {
   type DispatchOutcome,

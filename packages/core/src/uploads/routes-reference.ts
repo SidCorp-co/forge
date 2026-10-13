@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json, raw } from '../api-reference/describe.js';
+import { describeOperation, fail, json, raw } from '../api-reference/declare/describe.js';
 
 /** The attachment as the target type stores it; the ticket decides which of the four it is. */
 export const uploadedAttachmentSchema = z.union([

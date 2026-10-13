@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, empty, fail, json } from '../api-reference/describe.js';
+import { describeOperation, empty, fail, json } from '../api-reference/declare/describe.js';
 import { answerInGroupModes } from '../db/schema-agent-selves.js';
 import {
   conversationAdapters,

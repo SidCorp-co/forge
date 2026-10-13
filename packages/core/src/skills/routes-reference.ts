@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/describe.js';
+import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/declare/describe.js';
 import { issueStatuses } from '../db/schema.js';
 
 const stageSchema = z.enum(issueStatuses);

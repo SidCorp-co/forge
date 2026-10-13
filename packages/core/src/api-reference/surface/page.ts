@@ -1,4 +1,4 @@
-import type { OpenApiDocument } from './build.js';
+import type { OpenApiDocument } from '../document/build.js';
 import { type Flow, operationOfStep, toMermaid } from './flows.js';
 
 /** Third-party renderers, loaded from a CDN at an exact version with the hash of the file read. */

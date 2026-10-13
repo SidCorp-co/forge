@@ -9,8 +9,8 @@
 
 import type { Hono } from 'hono';
 import { z } from 'zod';
-import { answer } from '../../api-reference/describe.js';
-import { zValidator } from '../../api-reference/validator.js';
+import { answer } from '../../api-reference/declare/describe.js';
+import { zValidator } from '../../api-reference/declare/validator.js';
 import { assertProjectAccess } from '../../lib/authz.js';
 import { queryBadRequest } from '../../lib/query-strict.js';
 import type { AuthVars } from '../../middleware/auth.js';

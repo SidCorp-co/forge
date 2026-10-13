@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json, raw } from '../api-reference/describe.js';
+import { describeOperation, fail, json, raw } from '../api-reference/declare/describe.js';
 import { CORE_GUIDE_AUDIENCES } from './types.js';
 
 export const guideSlugParamSchema = z.object({ slug: z.string() });

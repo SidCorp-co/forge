@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { skillSchema } from './crud-routes-reference.js';
 
 export const pinnedSchema = z.object({ skill: skillSchema });

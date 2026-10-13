@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 
 /** What git's credential helper reads back: the username, the installation token and when it dies. */
 export const gitCredentialGrantSchema = z.object({

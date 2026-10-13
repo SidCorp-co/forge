@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json, raw } from '../api-reference/describe.js';
+import { describeOperation, fail, json, raw } from '../api-reference/declare/describe.js';
 
 export const sessionIdParamSchema = z.object({ sessionId: z.uuid() });
 export const downloadParamSchema = z.object({ sessionId: z.uuid(), id: z.uuid() });

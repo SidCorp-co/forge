@@ -1,4 +1,4 @@
-import { describeOperation, empty } from '../api-reference/describe.js';
+import { describeOperation, empty } from '../api-reference/declare/describe.js';
 
 export const logout = describeOperation({
   summary: 'Sign out and retire every refresh token of the caller',

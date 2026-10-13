@@ -1,8 +1,8 @@
 import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { answer } from '../../api-reference/describe.js';
-import { declaresInput } from '../../api-reference/validator.js';
+import { answer } from '../../api-reference/declare/describe.js';
+import { declaresInput } from '../../api-reference/declare/validator.js';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { oauthAccounts } from '../../db/schema.js';

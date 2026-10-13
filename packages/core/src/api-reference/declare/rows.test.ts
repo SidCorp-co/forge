@@ -1,7 +1,7 @@
 import { getTableName, is } from 'drizzle-orm';
 import { PgTable } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
-import * as schema from '../db/schema.js';
+import * as schema from '../../db/schema.js';
 import { tableRow } from './rows.js';
 import { renderSchema } from './schema.js';
 

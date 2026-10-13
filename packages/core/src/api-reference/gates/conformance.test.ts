@@ -2,12 +2,12 @@ import { type ErrorHandler, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { buildReference } from './build.js';
+import { buildReference } from '../document/build.js';
 import { judgeAnswer, responseConformance } from './conformance.js';
-import { describeOperation, fail, json } from './describe.js';
+import { describeOperation, fail, json } from '../declare/describe.js';
 
 const state = vi.hoisted(() => ({ RESPONSE_CONFORMANCE: '1' }));
-vi.mock('../config/env.js', () => ({ env: state }));
+vi.mock('../../config/env.js', () => ({ env: state }));
 
 const issue = z.object({ id: z.string(), createdAt: z.date(), title: z.string().nullable() });
 

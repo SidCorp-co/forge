@@ -9,8 +9,8 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
-import { answer } from '../api-reference/describe.js';
-import { declaresInput } from '../api-reference/validator.js';
+import { answer } from '../api-reference/declare/describe.js';
+import { declaresInput } from '../api-reference/declare/validator.js';
 import {
   optionAuthorities,
   optionBindings,
