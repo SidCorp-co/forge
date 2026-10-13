@@ -18,6 +18,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LeaveGuardProvider } from "@/design";
+import { MCP_CATALOG } from "./types";
 import { ApiError } from "@/lib/api/client";
 import { PipelineTab } from "./components/pipeline-tab";
 
@@ -371,6 +372,29 @@ describe("the way out of a refused save", () => {
 		expect(deniedChips()).not.toContain("qa_probe_typed_X");
 		const editor = screen.getByText("Allowed tools (allowlist)").parentElement as HTMLElement;
 		expect(within(editor).getAllByRole("button").map((el) => el.getAttribute("title"))).toContain("qa_probe_allowed_Y");
+	});
+
+	it("tells one MCP server's edit from another's in one stage when only one is replaced", async () => {
+		mountPage();
+		await ready();
+		expandOpenStage();
+		const names = Object.keys(MCP_CATALOG);
+		const [first, second] = names as [string, string];
+		const box = (name: string) => screen.getByRole("checkbox", { name: new RegExp(`^${MCP_CATALOG[name]?.label}`) });
+		fireEvent.click(box(first));
+		fireEvent.click(box(second));
+
+		stored = applyDocumentPatch(stored, { states: { open: { mcpServers: { [first]: { type: "stdio", command: "theirs" } } } } });
+		press();
+		const refused = await screen.findByText(/changed by someone else/i);
+		expect(refused.textContent).toContain(`Stage permissions (Open) (MCP server ${first}) was changed`);
+
+		fireEvent.click(screen.getByRole("button", { name: /use the current values/i }));
+		const after = await screen.findByText(/loaded what is stored now/i);
+		expect(after.textContent).toContain(`Your changes to Stage permissions (Open) (MCP server ${first}) were replaced`);
+		expect(after.textContent).toContain(`your changes to Stage permissions (Open) (MCP server ${second}) were kept`);
+		await waitFor(() => expect(box(first)).not.toBeChecked());
+		expect(box(second)).toBeChecked();
 	});
 
 	it("shows a refusal that is not a conflict whole on a phone, since nothing else offers to expand it", async () => {

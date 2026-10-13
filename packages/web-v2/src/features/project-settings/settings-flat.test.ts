@@ -40,15 +40,17 @@ describe("the settings pages are flat", () => {
     expect(source).not.toMatch(/<Card[\s>]|<CardContent|<CardHeader/);
   });
 
-  it.each([
-    "project-settings/components/members-tab.tsx",
-    "project-settings/components/labels-tab.tsx",
-    "project-settings/components/modules-tab.tsx",
-    "project-settings/components/testing-tab.tsx",
-    "integrations/components/mcp-servers-panel.tsx",
-  ])("%s rules its rows with a hairline and boxes none of them", (file) => {
+  const RULED_ROWS: Array<[file: string, rule: string, owners: number]> = [
+    ["project-settings/components/members-tab.tsx", "divide-y divide-line", 2],
+    ["project-settings/components/labels-tab.tsx", "divide-y divide-line", 1],
+    ["project-settings/components/modules-tab.tsx", "divide-y divide-line", 1],
+    ["project-settings/components/testing-tab.tsx", "divide-y divide-line", 1],
+    ["integrations/components/mcp-servers-panel.tsx", "border-t border-line", 1],
+  ];
+
+  it.each(RULED_ROWS)("%s rules each of its %#th row lists with a hairline and boxes none", (file, rule, owners) => {
     const source = readFileSync(resolve(FEATURES, file), "utf8");
     expect(source).not.toMatch(/<li[^>]*rounded-md border border-line|className="[^"]*rounded-md border border-line (px-3 py-2|p-3)/);
-    expect(source).toMatch(/divide-y divide-line|border-t border-line/);
+    expect(source.split(rule).length - 1).toBeGreaterThanOrEqual(owners);
   });
 });

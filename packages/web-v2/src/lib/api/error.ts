@@ -1,3 +1,4 @@
+import { parsePath } from '@forge/contracts/document-patch';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import { claimConflictSentence } from './claim-conflict';
 import { ApiError } from './client';
@@ -244,8 +245,10 @@ const STAGE_FIELD_LABELS: Record<string, string> = {
 };
 
 function stageFieldLabel(path: string): string | undefined {
-  const parts = path.split('.');
-  return parts[0] === 'states' && parts.length >= 3 ? STAGE_FIELD_LABELS[parts[2]] : undefined;
+  const parts = parsePath(path);
+  if (parts[0] !== 'states' || parts.length < 3) return undefined;
+  if (parts[2] === 'mcpServers' && parts.length >= 4) return `MCP server ${parts[3]}`;
+  return STAGE_FIELD_LABELS[parts[2] as string];
 }
 
 /** The fields of a section that a sentence about a change has to be able to tell apart. */
