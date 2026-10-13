@@ -1,6 +1,7 @@
 "use client";
 
-// Settings → API Tokens. List + create (one-time plaintext reveal) + revoke.
+// Settings → API Tokens. The list comes first (what can still reach the account), then create
+// (one-time plaintext reveal); revoke is on a live row.
 // Create/revoke require fresh auth (≤5 min); a 403 FRESH_AUTH_REQUIRED swaps the
 // form for an inline re-auth prompt, then retries the pending create.
 //
@@ -12,28 +13,18 @@
 //     `?reauth_error=<code>` which this tab consumes on mount.
 import { useEffect, useState } from "react";
 import {
-  Badge,
   Button,
-  Card,
-  CardContent,
   Checkbox,
   EmptyState,
   ErrorState,
   Field,
   Input,
-  MonoTag,
   Radio,
   RadioGroup,
   SectionTitle,
   Select,
   Skeleton,
   SlideOver,
-  Table,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
 } from "@/design";
 import { reauthStartUrl } from "@/features/auth/oauth-api";
 import { useProjects } from "@/features/projects/hooks";
@@ -49,14 +40,7 @@ import {
   type PatToken,
   type PatTokenCreated,
 } from "../types";
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-}
+import { TokenList } from "./token-list";
 
 // Where the SSO reauth round-trip returns to (this tab).
 const RETURN_PATH = "/settings?tab=tokens";
@@ -289,10 +273,39 @@ export function TokensTab() {
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardContent>
-          <SectionTitle className="fg-h3 mb-4">Create a token</SectionTitle>
+    <div className="space-y-8">
+      {tokensQ.isLoading && (
+        <div className="space-y-2.5">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-14 w-full rounded-lg" />
+          ))}
+        </div>
+      )}
+
+      {tokensQ.isError && (
+        <ErrorState
+          title="Couldn't load tokens"
+          message={formatApiError(tokensQ.error)}
+          onRetry={() => tokensQ.refetch()}
+        />
+      )}
+
+      {!tokensQ.isLoading && !tokensQ.isError && tokens.length === 0 && (
+        <EmptyState title="No tokens" message="Create a personal access token below to use the API." />
+      )}
+
+      {!tokensQ.isLoading && !tokensQ.isError && tokens.length > 0 && (
+        <TokenList
+          tokens={tokens}
+          level={levelLabel}
+          onRevoke={(t) => revoke.mutate(t.id)}
+          revoking={revoke.isPending}
+        />
+      )}
+
+      <section aria-labelledby="create-a-token" className="border-t border-line pt-6">
+        <div>
+          <SectionTitle id="create-a-token" className="fg-h3 mb-4">Create a token</SectionTitle>
           <div className="space-y-4">
             <Field label="Name" required error={errors.name}>
               <Input
@@ -426,75 +439,8 @@ export function TokensTab() {
               )}
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      <div>
-        <SectionTitle className="fg-h3 mb-3">Your tokens</SectionTitle>
-
-        {tokensQ.isLoading && (
-          <div className="space-y-2.5">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-14 w-full rounded-lg" />
-            ))}
-          </div>
-        )}
-
-        {tokensQ.isError && (
-          <ErrorState
-            title="Couldn't load tokens"
-            message={formatApiError(tokensQ.error)}
-            onRetry={() => tokensQ.refetch()}
-          />
-        )}
-
-        {!tokensQ.isLoading && !tokensQ.isError && tokens.length === 0 && (
-          <EmptyState title="No tokens" message="Create a personal access token above to use the API." />
-        )}
-
-        {!tokensQ.isLoading && !tokensQ.isError && tokens.length > 0 && (
-          <>
-            <div className="hidden md:block">
-              <Table>
-                <THead>
-                  <TR>
-                    <TH>Name</TH>
-                    <TH>Level</TH>
-                    <TH>Prefix</TH>
-                    <TH>Scopes</TH>
-                    <TH>Grant</TH>
-                    <TH>Expires</TH>
-                    <TH>Last used</TH>
-                    <TH className="text-right">Actions</TH>
-                  </TR>
-                </THead>
-                <TBody>
-                  {tokens.map((t) => (
-                    <TokenRow
-                      key={t.id}
-                      token={t}
-                      level={levelLabel(t)}
-                      onRevoke={() => revoke.mutate(t.id)}
-                      pending={revoke.isPending}
-                    />
-                  ))}
-                </TBody>
-              </Table>
-            </div>
-            <div className="space-y-2.5 md:hidden">
-              {tokens.map((t) => (
-                <TokenMobileCard
-                  key={t.id}
-                  token={t}
-                  level={levelLabel(t)}
-                  onRevoke={() => revoke.mutate(t.id)}
-                  pending={revoke.isPending}
-                />
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+        </div>
+      </section>
 
       <SlideOver open={!!revealed} onClose={() => setRevealed(null)} title="Token created">
         {revealed && (
@@ -529,130 +475,5 @@ export function TokensTab() {
         )}
       </SlideOver>
     </div>
-  );
-}
-
-/**
- * What this token may reach, in the three shapes the column has: full access
- * its minter chose, the names it was given, and the legacy shape a token
- * minted before a grant could be stated still carries — which reaches
- * everything too, and says so rather than reading as an absence.
- */
-function GrantBadge({ token }: { token: PatToken }) {
-  if (token.grant === "full") return <Badge tone="red">Full access</Badge>;
-  if (token.grant === "legacy")
-    return <Badge tone="amber">Legacy — full access, never stated</Badge>;
-  const names = token.permissions ?? [];
-  return (
-    <Badge tone="neutral">
-      {names.length} permission{names.length === 1 ? "" : "s"}
-    </Badge>
-  );
-}
-
-function ScopeBadges({ scopes }: { scopes: PatScope[] }) {
-  return (
-    <div className="flex flex-wrap gap-1">
-      {scopes.map((s) => (
-        <Badge key={s} tone={s === "admin" ? "red" : s === "write" ? "amber" : "neutral"}>
-          {s}
-        </Badge>
-      ))}
-    </div>
-  );
-}
-
-function TokenRow({
-  token,
-  level,
-  onRevoke,
-  pending,
-}: {
-  token: PatToken;
-  level: string;
-  onRevoke: () => void;
-  pending: boolean;
-}) {
-  const revoked = !!token.revokedAt;
-  return (
-    <TR>
-      <TD className="font-medium text-fg">
-        {token.name}
-        {revoked && <span className="fg-caption ml-2">(revoked)</span>}
-      </TD>
-      <TD>
-        <Badge tone={token.boundProjectId ? "cobalt" : "neutral"}>{level}</Badge>
-      </TD>
-      <TD>
-        <MonoTag>{token.prefix}…</MonoTag>
-      </TD>
-      <TD>
-        <ScopeBadges scopes={token.scopes} />
-      </TD>
-      <TD>
-        <GrantBadge token={token} />
-      </TD>
-      <TD className="font-mono text-muted">{fmtDate(token.expiresAt)}</TD>
-      <TD className="font-mono text-muted">{fmtDate(token.lastUsedAt)}</TD>
-      <TD className="text-right">
-        <Button
-          variant="danger"
-          size="sm"
-          disabled={revoked || pending}
-          onClick={onRevoke}
-          className="min-h-11"
-        >
-          Revoke
-        </Button>
-      </TD>
-    </TR>
-  );
-}
-
-function TokenMobileCard({
-  token,
-  level,
-  onRevoke,
-  pending,
-}: {
-  token: PatToken;
-  level: string;
-  onRevoke: () => void;
-  pending: boolean;
-}) {
-  const revoked = !!token.revokedAt;
-  return (
-    <Card>
-      <CardContent>
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="fg-body-sm font-medium text-fg">
-              {token.name}
-              {revoked && <span className="fg-caption ml-2">(revoked)</span>}
-            </p>
-            <div className="mt-1.5 flex items-center gap-1.5">
-              <MonoTag>{token.prefix}…</MonoTag>
-              <Badge tone={token.boundProjectId ? "cobalt" : "neutral"}>{level}</Badge>
-            </div>
-          </div>
-          <Button
-            variant="danger"
-            size="sm"
-            disabled={revoked || pending}
-            onClick={onRevoke}
-            className="min-h-11"
-          >
-            Revoke
-          </Button>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <ScopeBadges scopes={token.scopes} />
-          <GrantBadge token={token} />
-        </div>
-        <p className="fg-caption mt-2 font-mono">
-          Expires {fmtDate(token.expiresAt)} · Last used {fmtDate(token.lastUsedAt)}
-        </p>
-      </CardContent>
-    </Card>
   );
 }
