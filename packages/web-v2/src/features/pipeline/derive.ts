@@ -63,12 +63,7 @@ export function runStatusToStatusKey(status: PipelineRunStatus): StatusKey {
   }
 }
 
-/**
- * What a pipeline run's own summary says its agent is doing, for the drawer opened with no issue
- * row: `running` once a job has been handed to a runner or a session has beat, `queued` while every
- * live job is still waiting to be claimed, and `null` when the summary names no live job to read.
- * A queued row with a session beat on the run is the session talking, so the beat wins.
- */
+/** What a run's own summary says its agent is doing: a session beat or a started job is running, only unclaimed jobs is queued, no live job is null. */
 export function runSummaryReading(
   run: Pick<PipelineRunSummary, "attempts" | "lastSessionBeatAt">,
 ): "running" | "queued" | null {
@@ -81,13 +76,7 @@ export function runSummaryReading(
   return queued ? "queued" : null;
 }
 
-/**
- * The drawer header's chip, one reading whichever screen opened it. A running pipeline run is as
- * live as its step, so while it is running the header shows its agent's reading: the run summary's
- * own where it names a live job (the one answer, which the Ops drawer and the board both hold), and
- * the issue row's (`runStatusChip`) only where the summary names none. A paused, finished or
- * cancelled run keeps its own status.
- */
+/** The drawer header's chip, one reading on every screen: a running run reads its summary, the issue row only where the summary names no live job. */
 export function drawerRunChip(
   run: Pick<PipelineRunSummary, "status" | "attempts" | "lastSessionBeatAt">,
   issueRun: StatusKey | null,
