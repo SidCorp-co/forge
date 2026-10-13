@@ -111,6 +111,15 @@ describe("DecisionPanel, on a park whose question is only in the thread", () => 
     expect(screen.queryByText(/No questions on this issue/i)).toBeNull();
   });
 
+  // j2: a person's own reason, typed when they moved the issue, was shown as something the run asked.
+  it("does not say the run wrote the sentence, which a person may have typed", () => {
+    const { container } = render(
+      <DecisionPanel issueId="i-1" parkedForInfo threadQuestion={asked} onAnswerInThread={vi.fn()} />,
+    );
+    expect(container.textContent ?? "").not.toMatch(/\bthe run\b asked/i);
+    expect(screen.getByText(/written in the comments when the issue stopped/i)).toBeInTheDocument();
+  });
+
   it("shows the answer a person gave and no box, once one is on the thread", () => {
     const answered = {
       ...asked,

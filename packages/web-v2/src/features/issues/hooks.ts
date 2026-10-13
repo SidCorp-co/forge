@@ -226,9 +226,13 @@ export function openQuestionIdsOf(err: unknown): string[] | null {
   return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : [];
 }
 
+const moveKey = (args: TransitionArgs) => `${args.id}|${args.toStatus}`;
+
 export function useTransitionIssue() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  // The same move on the same issue is held until `onSettled` (ISS-1310): a second press lands before the pending flag reaches the screen.
+  const inFlight = useRef(new Set<string>());
   const mut = useMutation({
     mutationFn: (args: TransitionArgs) =>
       issuesApi.transition(args.id, args.toStatus, {
@@ -239,18 +243,25 @@ export function useTransitionIssue() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["issues"] });
     },
+    onSettled: (_data, _err, args) => {
+      inFlight.current.delete(moveKey(args));
+    },
   });
   return {
     ...mut,
     mutate: (
       args: TransitionArgs,
       options?: { onSuccess?: () => void; onOpenQuestions?: (ids: string[]) => void },
-    ) =>
+    ) => {
+      const move = moveKey(args);
+      if (inFlight.current.has(move)) return;
+      inFlight.current.add(move);
       mut.mutate(args, {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: ["issue", args.id] });
           qc.invalidateQueries({ queryKey: ["activities", args.id] });
           qc.invalidateQueries({ queryKey: ["questions", args.id] });
+          qc.invalidateQueries({ queryKey: ["comments", args.id] });
           options?.onSuccess?.();
         },
         onError: (err) => {
@@ -261,7 +272,8 @@ export function useTransitionIssue() {
           }
           toast({ title: "Update failed", description: formatApiError(err), tone: "error" });
         },
-      }),
+      });
+    },
   };
 }
 

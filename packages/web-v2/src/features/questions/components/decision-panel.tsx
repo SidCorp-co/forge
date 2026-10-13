@@ -110,7 +110,8 @@ function ThreadQuestionCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="fg-caption text-muted">The run asked this in the comments.</p>
+        {/* The sentence is the park's reason, which a run or a person wrote; naming the run as its author is false for one a person typed (ISS-1310). */}
+        <p className="fg-caption text-muted">This was written in the comments when the issue stopped.</p>
         {question.prompt && <p className="fg-body-sm whitespace-pre-wrap text-fg">{question.prompt}</p>}
         {question.why && (
           <p className="fg-body-sm text-muted">

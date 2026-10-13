@@ -302,10 +302,23 @@ describe('announcesAMove — the announcements an answer is never read from', ()
     }
   });
 
+  // j2: the heading this change writes showed `waiting` and `in_progress` to a person.
+  it('names a leave by the statuses’ labels, never their stored names', () => {
+    const first = buildLeaveBody('waiting', 'in_progress', 'why').split('\n')[0];
+    expect(first).toBe('↩ **Left Waiting for In progress**');
+    expect(first).not.toMatch(/[`_]/);
+  });
+
+  it('still knows a leave written under the stored names', () => {
+    expect(announcesAMove('↩ **Left `waiting` for `in_progress`**\n\nwhy')).toBe(true);
+  });
+
   it('is false for what a person writes, even one that mentions a move', () => {
     for (const body of [
       'keep the legacy order',
       'it moved from `in_progress` yesterday, keep it',
+      'Left Waiting for In progress, keep it',
+      '↩ Left Waiting for In progress',
     ]) {
       expect(announcesAMove(body), body).toBe(false);
     }
