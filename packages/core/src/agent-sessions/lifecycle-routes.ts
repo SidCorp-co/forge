@@ -3,6 +3,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { agentSessions, devices, issues, projects, runners, schedules } from '../db/schema.js';
@@ -32,6 +33,7 @@ import {
   noClaudeClient,
   resolveChatDevice,
 } from './chat-turn.js';
+import * as ref from './lifecycle-routes-reference.js';
 import {
   abortBodySchema,
   buildPromptBodySchema,
@@ -41,6 +43,7 @@ import {
   setRunnerBodySchema,
   startBodySchema,
 } from './lifecycle-schemas.js';
+import { okSchema, sessionSchema } from './routes-reference.js';
 import {
   badRequest,
   ensureSessionOwnerOrAdmin,
@@ -69,6 +72,7 @@ export const agentSessionLifecycleRoutes = new Hono<{ Variables: AuthVars }>();
 
 agentSessionLifecycleRoutes.post(
   '/start',
+  ref.startSession,
   zValidator('json', startBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -154,12 +158,13 @@ agentSessionLifecycleRoutes.post(
     });
 
     await recordSessionCreatedActivity(updated, restActor(c));
-    return c.json(updated, 201);
+    return c.json(answer(sessionSchema, updated), 201);
   },
 );
 
 agentSessionLifecycleRoutes.post(
   '/send',
+  ref.sendToSession,
   zValidator('json', sendBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -198,12 +203,13 @@ agentSessionLifecycleRoutes.post(
       attachmentIds: input.attachmentIds,
       model: input.model,
     });
-    return c.json({ ok: true });
+    return c.json(answer(okSchema, { ok: true }));
   },
 );
 
 agentSessionLifecycleRoutes.post(
   '/abort',
+  ref.abortSession,
   zValidator('json', abortBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -240,15 +246,13 @@ agentSessionLifecycleRoutes.post(
     }
 
     broadcastSession(updated, 'agent-session.status');
-    return c.json({ ok: true });
+    return c.json(answer(okSchema, { ok: true }));
   },
 );
 
-// /cancel marks terminal as `failed` with reason='user_cancelled' (vs
-// /abort which sets 'idle' so the user can resume). The sweeper then
-// routes the linked job through recovery or escalation.
 agentSessionLifecycleRoutes.post(
   '/:id/cancel',
+  ref.cancelSession,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -260,7 +264,7 @@ agentSessionLifecycleRoutes.post(
 
     if (session.status === 'completed' || session.status === 'failed') {
       // Already terminal — return current state, idempotent.
-      return c.json(session);
+      return c.json(answer(sessionSchema, session));
     }
 
     const cancelNow = new Date();
@@ -288,7 +292,7 @@ agentSessionLifecycleRoutes.post(
         .where(eq(agentSessions.id, id))
         .limit(1);
       if (!current) throw notFound('agent session not found');
-      return c.json(current);
+      return c.json(answer(sessionSchema, current));
     }
 
     // ISS-101 — close the one-shot run for cancelled interactive sessions.
@@ -305,12 +309,13 @@ agentSessionLifecycleRoutes.post(
     }
 
     broadcastSession(updated, 'agent-session.status', { failureReason: 'user_cancelled' });
-    return c.json(updated);
+    return c.json(answer(sessionSchema, updated));
   },
 );
 
 agentSessionLifecycleRoutes.post(
   '/:id/runner',
+  ref.setSessionRunner,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -337,7 +342,7 @@ agentSessionLifecycleRoutes.post(
     };
     const pinned = prevMeta.deviceId ?? session.deviceId ?? null;
 
-    if (input.deviceId === pinned) return c.json(session);
+    if (input.deviceId === pinned) return c.json(answer(sessionSchema, session));
 
     const [project] = await db
       .select({ id: projects.id, repoPath: projects.repoPath })
@@ -380,12 +385,13 @@ agentSessionLifecycleRoutes.post(
     if (!updated) throw notFound('agent session not found');
 
     broadcastSession(updated, 'agent-session.updated');
-    return c.json(updated);
+    return c.json(answer(sessionSchema, updated));
   },
 );
 
 agentSessionLifecycleRoutes.post(
   '/build-prompt',
+  ref.requestPromptBuild,
   zValidator('json', buildPromptBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -423,7 +429,7 @@ agentSessionLifecycleRoutes.post(
       data: { requestId, projectSlug: input.projectSlug, issueIds: input.issueIds },
     });
 
-    return c.json({ requestId });
+    return c.json(answer(ref.buildPromptRequestedSchema, { requestId }));
   },
 );
 
@@ -432,6 +438,7 @@ agentSessionLifecycleRoutes.post(
 // client is waiting on `requestId`.
 agentSessionLifecycleRoutes.post(
   '/prompt-built',
+  ref.relayPromptBuilt,
   zValidator('json', promptBuiltBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -447,12 +454,13 @@ agentSessionLifecycleRoutes.post(
         error: input.error ?? null,
       },
     });
-    return c.json({ ok: true });
+    return c.json(answer(okSchema, { ok: true }));
   },
 );
 
 agentSessionLifecycleRoutes.post(
   '/desktop/status',
+  ref.setDesktopSessionStatus,
   zValidator('json', desktopStatusSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -562,27 +570,14 @@ agentSessionLifecycleRoutes.post(
     }
 
     broadcastSession(updated, 'agent-session.status', { note: note ?? null });
-    return c.json(updated);
+    return c.json(answer(sessionSchema, updated));
   },
 );
 
-// Web → core probe: "is any desktop device for this project currently online?"
-// The agent page polls this on mount + on WS reconnect to decide whether to
-// show the "Desktop offline" pill. Returns the Strapi-era envelope shape
-// `{ data: { connected } }` for FE-compat. Inputs: `?deviceId` for an
-// explicit check, or `?projectSlug` to scan the project's pool + default.
-const desktopStatusQuerySchema = z
-  .object({
-    deviceId: z.uuid().optional(),
-    projectSlug: z.string().min(1).max(120).optional(),
-  })
-  .refine((o) => o.deviceId || o.projectSlug, {
-    message: 'deviceId or projectSlug is required',
-  });
-
 agentSessionLifecycleRoutes.get(
   '/desktop/status',
-  zValidator('query', desktopStatusQuerySchema, (r) => {
+  ref.readDesktopStatus,
+  zValidator('query', ref.desktopStatusQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
@@ -592,7 +587,8 @@ agentSessionLifecycleRoutes.get(
     // Non-revealing default: any caller without ownership/membership of the
     // queried target gets `connected:false` and cannot tell a real offline
     // device/slug from one that exists in another tenant (ISS-492).
-    const notConnected = () => c.json({ data: { connected: false } });
+    const notConnected = () =>
+      c.json(answer(ref.desktopConnectedSchema, { data: { connected: false } }));
 
     if (deviceId) {
       const [row] = await db
@@ -618,7 +614,9 @@ agentSessionLifecycleRoutes.get(
       }
       if (!allowed) return notConnected();
 
-      return c.json({ data: { connected: row.status === 'online' } });
+      return c.json(
+        answer(ref.desktopConnectedSchema, { data: { connected: row.status === 'online' } }),
+      );
     }
 
     if (!projectSlug) {
@@ -634,6 +632,6 @@ agentSessionLifecycleRoutes.get(
     if (!access?.role) return notConnected();
 
     const available = await findAvailableDeviceForProject(project.id);
-    return c.json({ data: { connected: available !== null } });
+    return c.json(answer(ref.desktopConnectedSchema, { data: { connected: available !== null } }));
   },
 );

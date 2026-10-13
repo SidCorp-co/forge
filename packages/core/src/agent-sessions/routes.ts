@@ -2,15 +2,14 @@ import { and, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import {
   type AgentSessionStatus,
-  agentSessionStatuses,
   agentSessions,
   agentSessionTurns,
   issues,
-  sessionRuntimeStates,
   terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
@@ -42,6 +41,7 @@ import { assertCallerDeclaresNoKind, kindFromQuery } from './kind-query.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
 import { applyTranscriptPatch } from './patch-transcript.js';
 import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
+import * as ref from './routes-reference.js';
 import {
   BLIND_SCHEDULE_RUN_REASON,
   countTranscriptToolCalls,
@@ -72,54 +72,6 @@ import { onTerminalPatch } from './terminal-effects.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
 
-const listQuerySchema = z
-  .object({
-    projectId: z.uuid().optional(),
-    deviceId: z.uuid().optional(),
-    status: z.enum(agentSessionStatuses).optional(),
-    metadataType: z.string().min(1).max(100).optional(),
-    issueId: z.uuid().optional(),
-    archived: z.enum(['true', 'false']).optional(),
-    page: z.coerce.number().int().min(1).default(1),
-    pageSize: z.coerce.number().int().min(1).max(200).default(50),
-  })
-  .strict();
-
-const createSchema = z
-  .object({
-    projectId: z.uuid(),
-    deviceId: z.uuid().nullable().optional(),
-    title: z.string().max(500).nullable().optional(),
-    repoPath: z.string().max(2000).nullable().optional(),
-    claudeSessionId: z.string().max(500).nullable().optional(),
-    metadata: z.unknown().optional(),
-  })
-  .strict();
-
-const patchSchema = z
-  .object({
-    title: z.string().max(500).nullable().optional(),
-    status: z.enum(agentSessionStatuses).optional(),
-    claudeSessionId: z.string().max(500).nullable().optional(),
-    repoPath: z.string().max(2000).nullable().optional(),
-    messages: z.array(z.unknown()).optional(),
-    usage: z.unknown().optional(),
-    metadata: z.unknown().optional(),
-    diff: z.unknown().optional(),
-    toolCallCount: z.number().int().min(0).optional(),
-    turnError: z.string().max(4000).optional(),
-    runtimeState: z.enum(sessionRuntimeStates).nullable().optional(),
-  })
-  .strict()
-  .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
-
-const relayBodySchema = z
-  .object({
-    event: z.string().min(1).max(200),
-    data: z.unknown(),
-  })
-  .strict();
-
 const TERMINAL_SESSION_STATUSES: ReadonlySet<AgentSessionStatus> = new Set(
   terminalAgentSessionStatuses,
 );
@@ -139,6 +91,7 @@ agentSessionRoutes.route('/', agentSessionEventsRoutes);
 // no-op.
 agentSessionRoutes.post(
   '/:id/retry',
+  ref.retrySession,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -184,12 +137,13 @@ agentSessionRoutes.post(
       reason: { manualRetry: { sessionId: id, prevFailureReason: session.failureReason } },
     });
 
-    return c.json({ ok: true, issueId: issue.id });
+    return c.json(answer(ref.retriedSchema, { ok: true, issueId: issue.id }));
   },
 );
 
 agentSessionRoutes.get(
   '/:id/cost',
+  ref.readSessionCost,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -216,25 +170,22 @@ agentSessionRoutes.get(
       .groupBy(usageRecords.model)
       .orderBy(desc(sql`sum(${usageRecords.estimatedCost})`));
 
-    return c.json({
-      sessionId: id,
-      projectId: session.projectId,
-      ...(totals ?? EMPTY_USAGE_TOTALS),
-      models,
-    });
+    return c.json(
+      answer(ref.costSchema, {
+        sessionId: id,
+        projectId: session.projectId,
+        ...(totals ?? EMPTY_USAGE_TOTALS),
+        models,
+      }),
+    );
   },
 );
 
 // Queue depth per device — backs the worker panel + session placeholder.
-const queueStatsQuerySchema = z
-  .object({
-    projectId: z.uuid(),
-  })
-  .strict();
-
 agentSessionRoutes.get(
   '/queue-stats',
-  zValidator('query', queueStatsQuerySchema, (r) => {
+  ref.readQueueStats,
+  zValidator('query', ref.queueStatsQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
@@ -270,20 +221,15 @@ agentSessionRoutes.get(
       if (r.status === 'running') b.running = Number(r.count);
       buckets.set(key, b);
     }
-    return c.json({ devices: Array.from(buckets.values()) });
+    return c.json(answer(ref.queueStatsSchema, { devices: Array.from(buckets.values()) }));
   },
 );
 
 // Manual sweep trigger — flush zombies without waiting for the cron tick.
-const sweepQuerySchema = z
-  .object({
-    projectId: z.uuid(),
-  })
-  .strict();
-
 agentSessionRoutes.post(
   '/sweep-zombies',
-  zValidator('query', sweepQuerySchema, (r) => {
+  ref.sweepZombies,
+  zValidator('query', ref.sweepQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
@@ -297,13 +243,14 @@ agentSessionRoutes.post(
     // sweepZombieSessions was demoted to an alarm pass.
     const { reapZombieSessions } = await import('../jobs/loop-monitor.js');
     const result = await reapZombieSessions(new Date(), { projectId });
-    return c.json(result);
+    return c.json(answer(ref.zombieReapSchema, result));
   },
 );
 
 agentSessionRoutes.get(
   '/',
-  zValidator('query', listQuerySchema, (r) => {
+  ref.listSessions,
+  zValidator('query', ref.listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
@@ -325,7 +272,9 @@ agentSessionRoutes.get(
       // scopes the rows.
       const visible = await loadVisibleProjectIds(userId);
       if (visible.length === 0) {
-        return c.json(listResponse(c, [], 0, fromPage(page, pageSize)));
+        return c.json(
+          answer(ref.sessionListSchema, listResponse(c, [], 0, fromPage(page, pageSize))),
+        );
       }
       conditions.push(eq(agentSessions.deviceId, deviceId));
       conditions.push(inArray(agentSessions.projectId, visible));
@@ -335,7 +284,9 @@ agentSessionRoutes.get(
       const visible = await loadVisibleProjectIds(userId);
 
       if (visible.length === 0) {
-        return c.json(listResponse(c, [], 0, fromPage(page, pageSize)));
+        return c.json(
+          answer(ref.sessionListSchema, listResponse(c, [], 0, fromPage(page, pageSize))),
+        );
       }
 
       conditions.push(inArray(agentSessions.projectId, visible));
@@ -433,13 +384,19 @@ agentSessionRoutes.get(
       estimatedCost: costById.get(r.id) ?? 0,
       lastMessagePreview: previewById.get(r.id) ?? null,
     }));
-    return c.json(listResponse(c, items, totalRow?.n ?? 0, fromPage(page, pageSize)));
+    return c.json(
+      answer(
+        ref.sessionListSchema,
+        listResponse(c, items, totalRow?.n ?? 0, fromPage(page, pageSize)),
+      ),
+    );
   },
 );
 
 agentSessionRoutes.post(
   '/',
-  zValidator('json', createSchema, (r) => {
+  ref.createSession,
+  zValidator('json', ref.createSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
@@ -469,12 +426,13 @@ agentSessionRoutes.post(
 
     await recordSessionCreatedActivity(inserted, restActor(c));
 
-    return c.json(inserted, 201);
+    return c.json(answer(ref.sessionSchema, inserted), 201);
   },
 );
 
 agentSessionRoutes.get(
   '/:id',
+  ref.readSession,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -499,7 +457,7 @@ agentSessionRoutes.get(
       assertAgentChatOwner(row, access, userId);
     }
 
-    return c.json(row);
+    return c.json(answer(ref.sessionSchema, row));
   },
 );
 
@@ -511,6 +469,7 @@ agentSessionRoutes.get(
 // idempotent; only flips a still-`running` session (never resurrects a terminal one).
 agentSessionRoutes.post(
   '/:id/ack',
+  ref.ackSession,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -529,16 +488,19 @@ agentSessionRoutes.post(
         .set({ metadata: { ...meta, acked: true, ackedAt: new Date().toISOString() } })
         .where(and(eq(agentSessions.id, id), eq(agentSessions.status, 'running')));
     }
-    return c.json({ sessionId: id, acked: existing.status === 'running', already });
+    return c.json(
+      answer(ref.ackedSchema, { sessionId: id, acked: existing.status === 'running', already }),
+    );
   },
 );
 
 agentSessionRoutes.patch(
   '/:id',
+  ref.patchSession,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
-  zValidator('json', patchSchema, (r) => {
+  zValidator('json', ref.patchSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
@@ -775,12 +737,13 @@ agentSessionRoutes.patch(
       await onTerminalPatch(updated);
     }
 
-    return c.json(updated);
+    return c.json(answer(ref.sessionSchema, updated));
   },
 );
 
 agentSessionRoutes.delete(
   '/:id',
+  ref.deleteSession,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -802,10 +765,11 @@ agentSessionRoutes.delete(
 
 agentSessionRoutes.post(
   '/:id/relay',
+  ref.relayToSession,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
-  zValidator('json', relayBodySchema, (r) => {
+  zValidator('json', ref.relayBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
@@ -816,7 +780,7 @@ agentSessionRoutes.post(
     const { session: existing } = await ensureSessionRole(id, userId, 'member');
 
     broadcastSession(existing, `agent-session.relay.${event}`, { payload: data });
-    return c.json({ relayed: true });
+    return c.json(answer(ref.relayedSchema, { relayed: true }));
   },
 );
 

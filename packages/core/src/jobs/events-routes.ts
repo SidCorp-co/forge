@@ -2,12 +2,12 @@ import { and, asc, eq, gt, inArray, isNull, notInArray, sql } from 'drizzle-orm'
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import type { JobStatus } from '../db/schema.js';
 import {
   agentSessions,
-  jobEventKinds,
   jobEvents,
   jobs,
   type SessionRuntimeState,
@@ -22,6 +22,15 @@ import { zValidator } from '../middleware/validator.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
+import {
+  eventBatchSchema,
+  eventListSchema,
+  eventsAcceptedSchema,
+  eventsListQuerySchema,
+  jobIdParamSchema,
+  listJobEvents,
+  postJobEvents,
+} from './events-routes-reference.js';
 import { readJobGate } from './job-queries.js';
 import { maybeDeriveIncremental } from './session-transcript.js';
 import { TERMINAL_JOB_STATUSES } from './status-sets.js';
@@ -38,28 +47,7 @@ const forbidden = (message: string) =>
 const conflict = (message: string, code: string) =>
   new HTTPException(409, { message, cause: { code } });
 
-const jobIdParamSchema = z.object({ id: z.uuid() });
-
-const eventInputSchema = z.object({
-  kind: z.enum(jobEventKinds),
-  data: z.record(z.string(), z.unknown()).default({}),
-  ts: z.iso.datetime().optional(),
-});
-
-const eventBatchSchema = z
-  .object({
-    events: z.array(eventInputSchema).min(1).max(100),
-  })
-  .strict();
-
 const TERMINAL_STATUSES = new Set<JobStatus>(TERMINAL_JOB_STATUSES);
-
-const eventsListQuerySchema = z
-  .object({
-    sinceSeq: z.coerce.number().int().min(0).optional(),
-    limit: z.coerce.number().int().min(1).max(500).default(200),
-  })
-  .strict();
 
 export const jobEventsRoutes = new Hono<{ Variables: DeviceVars }>();
 
@@ -68,6 +56,7 @@ jobEventsListRoutes.get(
   '/:id/events',
   requireAuth(),
   assertEmailVerified(),
+  listJobEvents,
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -97,7 +86,7 @@ jobEventsListRoutes.get(
       .limit(limit);
 
     const lastSeq = items.length > 0 ? Number(items[items.length - 1]?.seq ?? 0) : (sinceSeq ?? 0);
-    return c.json({ items, lastSeq });
+    return c.json(answer(eventListSchema, { items, lastSeq }));
   },
 );
 
@@ -147,6 +136,7 @@ function isPartialStreamEvent(e: { kind: string; data?: unknown }): boolean {
 jobEventsRoutes.post(
   '/:id/events',
   requireDevice(),
+  postJobEvents,
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -316,11 +306,11 @@ jobEventsRoutes.post(
     const first = inserted[0];
     const last = inserted[inserted.length - 1];
     return c.json(
-      {
+      answer(eventsAcceptedSchema, {
         accepted: inserted.length,
         firstSeq: first?.seq ?? null,
         lastSeq: last?.seq ?? null,
-      },
+      }),
       200,
     );
   },

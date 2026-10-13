@@ -9,40 +9,19 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { runnerLimitReasons } from '../db/schema.js';
+import { answer } from '../api-reference/describe.js';
 import type { AnswerShape, QuestionBlockerKind, QuestionOption } from '../db/schema-questions.js';
-import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
-import { utf16String } from '../lib/utf16-string.js';
-import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { zValidator } from '../middleware/validator.js';
-import { PARK_PROTECTIONS } from '../questions/protections.js';
-import { answerOf, registerWaiter, waiterFor } from '../questions/read.js';
-import { type AskAnswer, askQuestion, QuestionRefused } from '../questions/write.js';
-import { assertDeviceBoundToProject } from './device-project.js';
-import { badRequest, conflict, notFound, sessionParamsSchema } from './route-errors.js';
-
-type AskBody = {
-  id?: string;
-  projectId?: string;
-  issueId?: string;
-  agentSessionId?: string;
-  runId?: string;
-  prompt?: string;
-  blockerKind?: QuestionBlockerKind;
-  answerShape?: AnswerShape;
-  options?: QuestionOption[];
-  recommendedOptionId?: string;
-  needed?: string;
-  assumed?: Record<string, unknown>;
-  cost?: { claimsHeld?: number; workspacesPinned?: number; dependents?: number };
-  sensitive?: boolean;
-};
-
 import {
   type ResolvedLeaseKey,
   readDeviceIssueLease,
   resolveLeaseKey,
 } from '../issues/issue-lease.js';
+import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
+import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { declaresInput, zValidator } from '../middleware/validator.js';
+import { PARK_PROTECTIONS } from '../questions/protections.js';
+import { answerOf, registerWaiter, waiterFor } from '../questions/read.js';
+import { type AskAnswer, type AskInput, askQuestion, QuestionRefused } from '../questions/write.js';
 import { readAdmissibleIssues } from './admissible.js';
 import {
   prepareJobForMaster,
@@ -50,10 +29,57 @@ import {
   releaseJobFromMaster,
   startJobForMaster,
 } from './claim.js';
+import { assertDeviceBoundToProject } from './device-project.js';
 import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
 import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
 import { closeMasterSession, ensureMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
+import {
+  admissibleSchema,
+  askQuestionBodySchema,
+  askQuestionRoute,
+  claimBodySchema,
+  clearMasterLimitRoute,
+  closeMasterSessionRoute,
+  giveIssueLeaseBack,
+  issueLeaseSchema,
+  leaseGivenBackSchema,
+  leaseParamsSchema,
+  leaseQuerySchema,
+  limitStampedSchema,
+  listProtections,
+  loadQuerySchema,
+  loadSchema,
+  masterCloseBodySchema,
+  masterClosedSchema,
+  masterLimitSchema,
+  masterSessionBodySchema,
+  masterSessionSchema,
+  poolQuerySchema,
+  poolSchema,
+  prepareJob,
+  prepareResultSchema,
+  protectionsSchema,
+  questionAnswerSchema,
+  questionAskedSchema,
+  questionParamSchema,
+  questionQuerySchema,
+  readAdmissible,
+  readIssueLease,
+  readLoad,
+  readPoolRoute,
+  readQuestionAnswer,
+  readRunSessionTerminalRoute,
+  registerMasterSession,
+  releaseBodySchema,
+  releasedSchema,
+  releaseJob,
+  reportMasterLimit,
+  runSessionTerminalSchema,
+  startJob,
+  startResultSchema,
+} from './pool-routes-reference.js';
+import { badRequest, conflict, notFound, sessionParamsSchema } from './route-errors.js';
 import { readRunSessionTerminal, releaseIssueLease } from './run-session.js';
 import { deviceRunSessionRoutes } from './run-session-routes.js';
 
@@ -63,14 +89,10 @@ export const devicePoolRoutes = new Hono<{ Variables: DeviceVars }>();
 // serves are unchanged and no caller can tell the two apart.
 devicePoolRoutes.route('/', deviceRunSessionRoutes);
 
-const poolQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  projectId: z.string().uuid().optional(),
-});
-
 devicePoolRoutes.get(
   '/me/pool',
   requireDevice(),
+  readPoolRoute,
   zValidator('query', poolQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -78,25 +100,23 @@ devicePoolRoutes.get(
     const { limit, projectId } = c.req.valid('query');
     const deviceId = c.get('device').id;
     const items = await readPool({ deviceId, projectId, limit });
-    return c.json({ items, count: items.length });
+    return c.json(answer(poolSchema, { items, count: items.length }));
   },
 );
 
 devicePoolRoutes.get(
   '/me/issues/admissible',
   requireDevice(),
+  readAdmissible,
   zValidator('query', poolQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const { projectId } = c.req.valid('query');
     const items = await readAdmissibleIssues({ deviceId: c.get('device').id, projectId });
-    return c.json({ items, count: items.length });
+    return c.json(answer(admissibleSchema, { items, count: items.length }));
   },
 );
-
-const leaseParamsSchema = z.object({ issueKey: z.string().min(1).max(64) });
-const leaseQuerySchema = z.object({ projectId: z.string().uuid().optional() });
 
 /**
  * The lease this request is about, or the refusal that says why there is none.
@@ -115,6 +135,7 @@ async function leaseKeyOf(rawKey: string, projectId?: string): Promise<ResolvedL
 devicePoolRoutes.get(
   '/me/run-sessions/:sessionId',
   requireDevice(),
+  readRunSessionTerminalRoute,
   zValidator('param', sessionParamsSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -122,13 +143,14 @@ devicePoolRoutes.get(
     const { sessionId } = c.req.valid('param');
     const terminal = await readRunSessionTerminal({ deviceId: c.get('device').id, sessionId });
     if (terminal === null) throw notFound('run session');
-    return c.json({ sessionTerminal: terminal });
+    return c.json(answer(runSessionTerminalSchema, { sessionTerminal: terminal }));
   },
 );
 
 devicePoolRoutes.get(
   '/me/issue-leases/:issueKey',
   requireDevice(),
+  readIssueLease,
   zValidator('param', leaseParamsSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -142,11 +164,14 @@ devicePoolRoutes.get(
     // "have I given this back" means. Answering the second under the first
     // name is the defect ISS-1109 closed.
     return c.json(
-      await readDeviceIssueLease({
-        deviceId: c.get('device').id,
-        issueKey: key.issueKey,
-        projectId: key.projectId,
-      }),
+      answer(
+        issueLeaseSchema,
+        await readDeviceIssueLease({
+          deviceId: c.get('device').id,
+          issueKey: key.issueKey,
+          projectId: key.projectId,
+        }),
+      ),
     );
   },
 );
@@ -154,6 +179,7 @@ devicePoolRoutes.get(
 devicePoolRoutes.delete(
   '/me/issue-leases/:issueKey',
   requireDevice(),
+  giveIssueLeaseBack,
   zValidator('param', leaseParamsSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -169,7 +195,13 @@ devicePoolRoutes.delete(
       projectId: key.projectId,
     });
     if (outcome.released) {
-      return c.json({ ok: true, issueKey: key.issueKey, projectId: outcome.projectId });
+      return c.json(
+        answer(leaseGivenBackSchema, {
+          ok: true,
+          issueKey: key.issueKey,
+          projectId: outcome.projectId,
+        }),
+      );
     }
     // A delete that matched nothing is not a success: the box reads the ack as
     // the issue handed back and stops watching it (ISS-1139).
@@ -191,11 +223,6 @@ devicePoolRoutes.delete(
   },
 );
 
-const claimBodySchema = z.object({
-  jobId: z.string().uuid(),
-  sessionId: z.string().uuid(),
-});
-
 /**
  * Take a job without starting it (ISS-919 B2).
  *
@@ -205,13 +232,14 @@ const claimBodySchema = z.object({
 devicePoolRoutes.post(
   '/me/pool/prepare',
   requireDevice(),
+  prepareJob,
   zValidator('json', claimBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
     const result = await prepareJobForMaster({ jobId, deviceId: c.get('device').id, sessionId });
-    return c.json(result);
+    return c.json(answer(prepareResultSchema, result));
   },
 );
 
@@ -219,24 +247,21 @@ devicePoolRoutes.post(
 devicePoolRoutes.post(
   '/me/pool/start',
   requireDevice(),
+  startJob,
   zValidator('json', claimBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
     const result = await startJobForMaster({ jobId, deviceId: c.get('device').id, sessionId });
-    return c.json(result);
+    return c.json(answer(startResultSchema, result));
   },
 );
-
-const releaseBodySchema = z.object({
-  jobId: z.string().uuid().optional(),
-  sessionId: z.string().uuid(),
-});
 
 devicePoolRoutes.post(
   '/me/pool/release',
   requireDevice(),
+  releaseJob,
   zValidator('json', releaseBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -244,20 +269,17 @@ devicePoolRoutes.post(
     const { jobId, sessionId } = c.req.valid('json');
     if (jobId) {
       const released = await releaseJobFromMaster({ jobId, sessionId });
-      return c.json({ released: released ? 1 : 0 });
+      return c.json(answer(releasedSchema, { released: released ? 1 : 0 }));
     }
     const released = await releaseAllHeldBySession(sessionId);
-    return c.json({ released });
+    return c.json(answer(releasedSchema, { released }));
   },
 );
-
-const loadQuerySchema = z.object({
-  projectId: z.string().uuid().optional(),
-});
 
 devicePoolRoutes.get(
   '/me/load',
   requireDevice(),
+  readLoad,
   zValidator('query', loadQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -270,14 +292,9 @@ devicePoolRoutes.get(
     const project = projectId ? await readProjectLoad(projectId) : null;
     const fleet = projectId ? await readFleetLoad(projectId, livenessSeconds) : [];
 
-    return c.json({ device, project, fleet });
+    return c.json(answer(loadSchema, { device, project, fleet }));
   },
 );
-
-const masterSessionBodySchema = z.object({
-  projectId: z.string().uuid(),
-  name: z.string().min(1).max(120),
-});
 
 /**
  * Register (or re-find) this box's resident master for one project — B1's
@@ -286,38 +303,60 @@ const masterSessionBodySchema = z.object({
 devicePoolRoutes.post(
   '/me/master-session',
   requireDevice(),
+  registerMasterSession,
   zValidator('json', masterSessionBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const { projectId, name } = c.req.valid('json');
     const session = await ensureMasterSession({ deviceId: c.get('device').id, projectId, name });
-    return c.json(session);
+    return c.json(answer(masterSessionSchema, session));
   },
 );
-
-const masterCloseBodySchema = z.object({
-  sessionId: z.string().uuid(),
-  reason: z.string().min(1).max(500),
-});
 
 /** The runner reporting a master it watched die (ISS-919 B3). */
 devicePoolRoutes.post(
   '/me/master-session/close',
   requireDevice(),
+  closeMasterSessionRoute,
   zValidator('json', masterCloseBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const { sessionId, reason } = c.req.valid('json');
     const closed = await closeMasterSession({ deviceId: c.get('device').id, sessionId, reason });
-    return c.json({ closed });
+    return c.json(answer(masterClosedSchema, { closed }));
   },
 );
 
-devicePoolRoutes.get('/me/protections', requireDevice(), async (c) =>
-  c.json({ protections: PARK_PROTECTIONS }),
+devicePoolRoutes.get('/me/protections', requireDevice(), listProtections, async (c) =>
+  c.json(answer(protectionsSchema, { protections: [...PARK_PROTECTIONS] })),
 );
+
+/** The body as the kernel takes it: a parsed JSON body never holds an explicit `undefined`. */
+type AskBody = Pick<AskInput, 'issueId' | 'agentSessionId' | 'assumed' | 'cost' | 'sensitive'> & {
+  id: string;
+  projectId: string;
+  prompt: string;
+  runId?: string | null;
+  blockerKind?: QuestionBlockerKind | null;
+  answerShape?: AnswerShape | null;
+  options?: QuestionOption[] | null;
+  recommendedOptionId?: string | null;
+  needed?: string | null;
+};
+
+/**
+ * The trio a box must always send keeps the refusal it has always had; any other field of the
+ * wrong type is refused with the failing paths, where it used to reach the kernel as it came.
+ */
+function askBodyRefusal(error: z.ZodError): unknown {
+  const required = ['id', 'projectId', 'prompt'];
+  const trio = error.issues.some(
+    (i) => i.path.length === 0 || required.includes(String(i.path[0])),
+  );
+  return trio ? 'id, projectId and prompt are required' : z.flattenError(error);
+}
 
 function askAnswerOf(body: AskBody): AskAnswer {
   if (body.answerShape === 'free_text') return { shape: 'free_text', needed: body.needed ?? '' };
@@ -328,61 +367,60 @@ function askAnswerOf(body: AskBody): AskAnswer {
   };
 }
 
-devicePoolRoutes.post('/me/questions', requireDevice(), async (c) => {
-  const body = await c.req.json<AskBody>().catch(() => null);
-  if (!body?.id || !body.projectId || !body.prompt) {
-    throw badRequest('id, projectId and prompt are required');
-  }
-  await assertDeviceBoundToProject(c.get('device').id, body.projectId);
-  try {
-    const q = await askQuestion({
-      ...body,
-      id: body.id,
-      projectId: body.projectId,
-      prompt: body.prompt,
-      blockerKind: body.blockerKind ?? 'human',
-      answer: askAnswerOf(body),
-    });
-    if (body.runId) {
-      await registerWaiter({ questionId: q.id, deviceId: c.get('device').id, runId: body.runId });
-    }
-    return c.json({ questionId: q.id });
-  } catch (e) {
-    if (e instanceof QuestionRefused) {
-      throw new HTTPException(400, {
-        message: e.message,
-        cause: { code: e.code, details: e.message },
+devicePoolRoutes.post(
+  '/me/questions',
+  requireDevice(),
+  askQuestionRoute,
+  declaresInput('json', askQuestionBodySchema),
+  async (c) => {
+    const parsed = askQuestionBodySchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) throw badRequest(askBodyRefusal(parsed.error));
+    const body = parsed.data as AskBody;
+    await assertDeviceBoundToProject(c.get('device').id, body.projectId);
+    try {
+      const q = await askQuestion({
+        ...body,
+        id: body.id,
+        projectId: body.projectId,
+        prompt: body.prompt,
+        blockerKind: body.blockerKind ?? 'human',
+        answer: askAnswerOf(body),
       });
+      if (body.runId) {
+        await registerWaiter({ questionId: q.id, deviceId: c.get('device').id, runId: body.runId });
+      }
+      return c.json(answer(questionAskedSchema, { questionId: q.id }));
+    } catch (e) {
+      if (e instanceof QuestionRefused) {
+        throw new HTTPException(400, {
+          message: e.message,
+          cause: { code: e.code, details: e.message },
+        });
+      }
+      throw e;
     }
-    throw e;
-  }
-});
+  },
+);
 
-devicePoolRoutes.get('/me/questions/:questionId', requireDevice(), async (c) => {
-  const questionId = c.req.param('questionId');
-  const waiter = await waiterFor({
-    questionId,
-    deviceId: c.get('device').id,
-    runId: c.req.query('runId') ?? '',
-  });
-  if (!waiter) throw notFound('question');
-  return c.json({ answer: await answerOf(questionId) });
-});
-
-const masterLimitSchema = z.object({
-  reason: z.enum(runnerLimitReasons),
-  resetsInSeconds: z
-    .number()
-    .int()
-    .min(0)
-    .max(7 * 24 * 60 * 60)
-    .nullish(),
-  detail: utf16String(200).min(1),
-});
+devicePoolRoutes.get(
+  '/me/questions/:questionId',
+  requireDevice(),
+  readQuestionAnswer,
+  declaresInput('param', questionParamSchema),
+  declaresInput('query', questionQuerySchema),
+  async (c) => {
+    const { questionId } = questionParamSchema.parse({ questionId: c.req.param('questionId') });
+    const { runId } = questionQuerySchema.parse({ runId: c.req.query('runId') });
+    const waiter = await waiterFor({ questionId, deviceId: c.get('device').id, runId });
+    if (!waiter) throw notFound('question');
+    return c.json(answer(questionAnswerSchema, { answer: await answerOf(questionId) }));
+  },
+);
 
 devicePoolRoutes.post(
   '/me/limit',
   requireDevice(),
+  reportMasterLimit,
   zValidator('json', masterLimitSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -401,12 +439,12 @@ devicePoolRoutes.post(
       detail: body.detail,
     });
     if (!stamped) throw notFound('claude-code runner for this device');
-    return c.json({ runnerId: stamped.runnerId });
+    return c.json(answer(limitStampedSchema, { runnerId: stamped.runnerId }));
   },
 );
 
-devicePoolRoutes.delete('/me/limit', requireDevice(), async (c) => {
+devicePoolRoutes.delete('/me/limit', requireDevice(), clearMasterLimitRoute, async (c) => {
   const cleared = await clearMasterLimit(c.get('device').id);
   if (!cleared) throw notFound('claude-code runner for this device');
-  return c.json({ runnerId: cleared.runnerId });
+  return c.json(answer(limitStampedSchema, { runnerId: cleared.runnerId }));
 });

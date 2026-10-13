@@ -2,25 +2,17 @@ import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
-import {
-  devices,
-  issues,
-  jobStatuses,
-  jobs,
-  jobTypes,
-  modelTiers,
-  promptBlobs,
-  usageRecords,
-} from '../db/schema.js';
+import { devices, issues, jobs, promptBlobs, usageRecords } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { listResponse, paginationSchema } from '../lib/pagination.js';
+import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
 import { openIssueRun, openOneShotRun } from '../pipeline/runs.js';
 import { canonicalSessionId, usageSessionMatch } from '../usage-records/rollup.js';
 import { readJob } from './job-queries.js';
-import { noPromptMessage, POOL_JOB_NO_PROMPT, poolPrompt } from './pool-served.js';
+import { noPromptMessage, type POOL_JOB_NO_PROMPT, poolPrompt } from './pool-served.js';
 import {
   type ActualUsage,
   extractPayloadExtras,
@@ -28,6 +20,23 @@ import {
   type PromptEnvelope,
   redactMcpSecrets,
 } from './prompt-route.js';
+import {
+  archivedPromptSchema,
+  createJob,
+  jobCreateSchema,
+  jobDetailSchema,
+  jobIdParamSchema,
+  jobListFiltersSchema,
+  jobListSchema,
+  jobPatchSchema,
+  jobRowSchema,
+  listProjectJobs,
+  patchQueuedJob,
+  projectIdParamSchema,
+  promptEnvelopeSchema,
+  readJobDetail,
+  readJobPrompt,
+} from './routes-reference.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -37,32 +46,6 @@ const notFound = (message: string) =>
 
 const conflict = (message: string, code: string) =>
   new HTTPException(409, { message, cause: { code } });
-
-const jobCreateSchema = z
-  .object({
-    type: z.enum(jobTypes),
-    payload: z.record(z.string(), z.unknown()).optional(),
-    issueId: z.uuid().nullable().optional(),
-    modelTier: z.enum(modelTiers).nullable().optional(),
-  })
-  .strict();
-
-const jobPatchSchema = z
-  .object({
-    payload: z.record(z.string(), z.unknown()).optional(),
-    modelTier: z.enum(modelTiers).nullable().optional(),
-  })
-  .strict()
-  .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
-
-const jobListFiltersSchema = paginationSchema.extend({
-  status: z.enum(jobStatuses).optional(),
-  type: z.enum(jobTypes).optional(),
-  issueId: z.uuid().optional(),
-});
-
-const projectIdParamSchema = z.object({ id: z.uuid() });
-const jobIdParamSchema = z.object({ id: z.uuid() });
 
 async function assertIssueInProject(projectId: string, issueId: string): Promise<void> {
   const [row] = await db
@@ -115,6 +98,7 @@ jobProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 
 jobProjectRoutes.post(
   '/:id/jobs',
+  createJob,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -133,7 +117,7 @@ jobProjectRoutes.post(
     if (poolPrompt(input.payload) === null) {
       throw new HTTPException(422, {
         message: noPromptMessage(input.type),
-        cause: { code: POOL_JOB_NO_PROMPT },
+        cause: { code: 'POOL_JOB_NO_PROMPT' satisfies typeof POOL_JOB_NO_PROMPT },
       });
     }
 
@@ -162,12 +146,13 @@ jobProjectRoutes.post(
       .returning();
     if (!inserted) throw new Error('jobs: insert returned no row');
 
-    return c.json(inserted, 201);
+    return c.json(answer(jobRowSchema, inserted), 201);
   },
 );
 
 jobProjectRoutes.get(
   '/:id/jobs',
+  listProjectJobs,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -198,7 +183,7 @@ jobProjectRoutes.get(
       .limit(q.limit)
       .offset(q.offset);
 
-    return c.json(listResponse(c, rows, Number(n), q));
+    return c.json(answer(jobListSchema, listResponse(c, rows, Number(n), q)));
   },
 );
 
@@ -211,6 +196,7 @@ jobRoutes.get(
   '/:id',
   requireAuth(),
   assertEmailVerified(),
+  readJobDetail,
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -232,7 +218,7 @@ jobRoutes.get(
       device = d ?? null;
     }
 
-    return c.json({ ...job, device });
+    return c.json(answer(jobDetailSchema, { ...job, device }));
   },
 );
 
@@ -240,6 +226,7 @@ jobRoutes.patch(
   '/:id',
   requireAuth(),
   assertEmailVerified(),
+  patchQueuedJob,
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -268,7 +255,7 @@ jobRoutes.patch(
       .where(eq(jobs.id, id))
       .returning();
     if (!updated) throw notFound('job not found');
-    return c.json(updated);
+    return c.json(answer(jobRowSchema, updated));
   },
 );
 
@@ -279,6 +266,7 @@ jobRoutes.get(
   '/:id/prompt',
   requireAuth(),
   assertEmailVerified(),
+  readJobPrompt,
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -292,7 +280,7 @@ jobRoutes.get(
 
     // Archive-path stub (W2.1.5 will land the real fetcher).
     if (job.archivePath && !job.userPromptSnapshot && !job.systemPromptHash) {
-      return c.json({ archived: true, path: job.archivePath }, 410);
+      return c.json(answer(archivedPromptSchema, { archived: true, path: job.archivePath }), 410);
     }
 
     let systemPrompt: string | null = null;
@@ -332,6 +320,6 @@ jobRoutes.get(
         modelUsed: job.modelUsed,
       }),
     };
-    return c.json(envelope);
+    return c.json(answer(promptEnvelopeSchema, envelope));
   },
 );

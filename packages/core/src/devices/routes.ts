@@ -3,23 +3,17 @@ import { and, desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
-import {
-  devicePlatforms,
-  devices,
-  pairingCodes,
-  projects,
-  runnerProvisionStatuses,
-  runners,
-} from '../db/schema.js';
+import { devices, pairingCodes, projects, runners } from '../db/schema.js';
 import { assertOrgAccess, assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { zValidator } from '../middleware/validator.js';
+import { declaresInput, zValidator } from '../middleware/validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
@@ -33,6 +27,39 @@ import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
 import { redeemPairingCode } from './pair.js';
 import { heartbeatPool } from './pool-read-report.js';
+import {
+  assignmentSchema,
+  deviceHeartbeat,
+  deviceIdParamSchema,
+  deviceRunnerAssignmentSchema,
+  deviceStateSchema,
+  heartbeatAckSchema,
+  heartbeatBodySchema,
+  listDeviceRunners,
+  listOwnDevices,
+  meRunnerPatchSchema,
+  mintCodeParamSchema,
+  mintedCodeSchema,
+  mintPairingCode,
+  orgIdSchema,
+  ownDeviceSchema,
+  ownDevicesQuerySchema,
+  pairBodySchema,
+  pairDevice,
+  pairResponseSchema,
+  patchOwnRunner,
+  pluginsSchema,
+  provisionStatusSchema,
+  readOwnAssignments,
+  readOwnPlugins,
+  reportProvisionStatus,
+  revokeDevice,
+  runnerIdParamSchema,
+  runnerPathSchema,
+  runnerProvisionedSchema,
+  updateDevice,
+  updateDeviceSchema,
+} from './routes-reference.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -57,43 +84,13 @@ function generatePairingCode(): string {
 
 const PAIR_CODE_TTL_MS = 5 * 60 * 1000;
 
-const platformEnum = z.enum(devicePlatforms);
-
-const pairBodySchema = z
-  .object({
-    code: z.string().min(8).max(64),
-    name: z.string().min(1).max(80),
-    platform: platformEnum,
-    agentVersion: z.string().max(80).optional(),
-    capabilities: z.record(z.string(), z.unknown()).optional(),
-    // Stable machine id (e.g. /etc/machine-id). When present, re-pairing from
-    // the same machine rotates the existing device row instead of duplicating.
-    machineId: z.string().min(1).max(256).optional(),
-  })
-  .strict();
-
-const heartbeatBodySchema = z
-  .object({
-    agentVersion: z.string().max(80).optional(),
-    // The commit the running binary was built from. A box that does not send one
-    // is not a published build, and is reported as such rather than as current.
-    agentCommit: z.string().max(80).optional(),
-    capabilities: z.record(z.string(), z.unknown()).optional(),
-    // Read by `heartbeatGate`, not here: a malformed gate field must not 400 a
-    // heartbeat and take the box offline with it (ISS-1192).
-    gate: z.unknown().optional(),
-    pool: z.unknown().optional(),
-  })
-  .strict();
-
-const mintCodeParamSchema = z.object({ id: z.uuid() });
-
 // Public — no auth middleware; device exchanges a pairing code for a token.
 export const devicePublicRoutes = new Hono();
 
 devicePublicRoutes.post(
   '/pair',
   rateLimit(RULES.devicesPair, { name: 'devices:pair' }),
+  pairDevice,
   zValidator('json', pairBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -108,11 +105,11 @@ devicePublicRoutes.post(
       ...(input.machineId !== undefined ? { machineId: input.machineId } : {}),
     });
     return c.json(
-      {
+      answer(pairResponseSchema, {
         deviceId: result.device.id,
         deviceToken: result.plaintext,
         projectId: result.projectId,
-      },
+      }),
       201,
     );
   },
@@ -125,62 +122,61 @@ devicePublicRoutes.post(
  */
 export const deviceOwnerRoutes = new Hono<{ Variables: AuthVars }>();
 
-deviceOwnerRoutes.get('/me/devices', requireAuth(), assertEmailVerified(), async (c) => {
-  const userId = c.get('userId');
-  // ISS-477 — optional org scope, NARROWING this owner-scoped list: the filter
-  // sits on top of `devices.ownerId`, so the answer is always a subset of the
-  // caller's own, and an unassigned box has no runner row and so falls under no
-  // org scope at all. The organisation's devices are a different population,
-  // served by `/api/orgs/:orgId/devices` in `devices/org-routes.ts` (ISS-1162).
-  const orgIdParam = c.req.query('orgId');
-  let orgId: string | undefined;
-  if (orgIdParam !== undefined) {
-    const parsed = z.uuid().safeParse(orgIdParam);
-    if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-    orgId = parsed.data;
-    await assertOrgAccess(orgId, userId, 'member');
-  }
+deviceOwnerRoutes.get(
+  '/me/devices',
+  requireAuth(),
+  assertEmailVerified(),
+  listOwnDevices,
+  declaresInput('query', ownDevicesQuerySchema),
+  async (c) => {
+    const userId = c.get('userId');
+    // ISS-477 — optional org scope, NARROWING this owner-scoped list: the filter
+    // sits on top of `devices.ownerId`, so the answer is always a subset of the
+    // caller's own, and an unassigned box has no runner row and so falls under no
+    // org scope at all. The organisation's devices are a different population,
+    // served by `/api/orgs/:orgId/devices` in `devices/org-routes.ts` (ISS-1162).
+    const orgIdParam = c.req.query('orgId');
+    let orgId: string | undefined;
+    if (orgIdParam !== undefined) {
+      const parsed = orgIdSchema.safeParse(orgIdParam);
+      if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+      orgId = parsed.data;
+      await assertOrgAccess(orgId, userId, 'member');
+    }
 
-  const rows = orgId
-    ? await db
-        .selectDistinct(DEVICE_LIST_COLUMNS)
-        .from(devices)
-        .innerJoin(runners, eq(runners.deviceId, devices.id))
-        .innerJoin(projects, eq(projects.id, runners.projectId))
-        .where(and(eq(devices.ownerId, userId), eq(projects.orgId, orgId)))
-        .orderBy(desc(devices.pairedAt))
-    : await db
-        .select(DEVICE_LIST_COLUMNS)
-        .from(devices)
-        .where(eq(devices.ownerId, userId))
-        .orderBy(desc(devices.pairedAt));
-  // ISS-392, widened by ISS-1165 — each box is compared against the published
-  // release AND the runner head on the default branch. The second is what catches
-  // a release that was never cut, where every box reports the number the last one
-  // carried and nothing reads as behind.
-  const annotated = withDeviceGate(await annotateDeviceBuilds(rows));
-  // Literally true, not defaulted: the WHERE above filters on `devices.ownerId`.
-  return c.json(annotated.map((d) => ({ ...d, ownedByMe: true })));
-});
-
-const deviceIdParamSchema = z.object({ id: z.uuid() });
-
-const updateDeviceSchema = z
-  .object({
-    name: z.string().trim().min(1).max(80).optional(),
-    // Reversible "turn off" switch — true = ignore this device across every
-    // project's dispatch + chat; false = re-enable. Distinct from revoke.
-    disabled: z.boolean().optional(),
-  })
-  .strict()
-  .refine((v) => v.name !== undefined || v.disabled !== undefined, {
-    message: 'provide at least one of `name` or `disabled`',
-  });
+    const rows = orgId
+      ? await db
+          .selectDistinct(DEVICE_LIST_COLUMNS)
+          .from(devices)
+          .innerJoin(runners, eq(runners.deviceId, devices.id))
+          .innerJoin(projects, eq(projects.id, runners.projectId))
+          .where(and(eq(devices.ownerId, userId), eq(projects.orgId, orgId)))
+          .orderBy(desc(devices.pairedAt))
+      : await db
+          .select(DEVICE_LIST_COLUMNS)
+          .from(devices)
+          .where(eq(devices.ownerId, userId))
+          .orderBy(desc(devices.pairedAt));
+    // ISS-392, widened by ISS-1165 — each box is compared against the published
+    // release AND the runner head on the default branch. The second is what catches
+    // a release that was never cut, where every box reports the number the last one
+    // carried and nothing reads as behind.
+    const annotated = withDeviceGate(await annotateDeviceBuilds(rows));
+    // Literally true, not defaulted: the WHERE above filters on `devices.ownerId`.
+    return c.json(
+      answer(
+        z.array(ownDeviceSchema),
+        annotated.map((d) => ({ ...d, ownedByMe: true as const })),
+      ),
+    );
+  },
+);
 
 deviceOwnerRoutes.patch(
   '/devices/:id',
   requireAuth(),
   assertEmailVerified(),
+  updateDevice,
   zValidator('param', deviceIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -240,7 +236,7 @@ deviceOwnerRoutes.patch(
       }
     }
 
-    return c.json(updated);
+    return c.json(answer(deviceStateSchema, updated));
   },
 );
 
@@ -248,6 +244,7 @@ deviceOwnerRoutes.delete(
   '/devices/:id',
   requireAuth(),
   assertEmailVerified(),
+  revokeDevice,
   zValidator('param', deviceIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -298,6 +295,7 @@ deviceOwnerRoutes.get(
   '/devices/:id/runners',
   requireAuth(),
   assertEmailVerified(),
+  listDeviceRunners,
   zValidator('param', deviceIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -335,7 +333,7 @@ deviceOwnerRoutes.get(
       .innerJoin(projects, eq(projects.id, runners.projectId))
       .where(and(eq(runners.deviceId, id), eq(runners.type, 'claude-code')));
 
-    return c.json(rows);
+    return c.json(answer(z.array(deviceRunnerAssignmentSchema), rows));
   },
 );
 
@@ -345,6 +343,7 @@ deviceUserRoutes.use('*', requireAuth(), assertEmailVerified());
 
 deviceUserRoutes.post(
   '/:id/devices/pairing-codes',
+  mintPairingCode,
   zValidator('param', mintCodeParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -367,7 +366,7 @@ deviceUserRoutes.post(
           grantEpoch: mintEpochFor(c),
           expiresAt,
         });
-        return c.json({ code, expiresAt: expiresAt.toISOString() }, 201);
+        return c.json(answer(mintedCodeSchema, { code, expiresAt: expiresAt.toISOString() }), 201);
       } catch (err: unknown) {
         if (!isUniqueViolation(err)) throw err;
       }
@@ -384,6 +383,7 @@ deviceAuthRoutes.route('/', deviceProvisionRoutes);
 deviceAuthRoutes.post(
   '/heartbeat',
   requireDevice(),
+  deviceHeartbeat,
   zValidator('json', heartbeatBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -426,7 +426,14 @@ deviceAuthRoutes.post(
       });
     }
 
-    return c.json({ ok: true, serverTime: new Date().toISOString(), ...gate.ack, ...pool.ack });
+    return c.json(
+      answer(heartbeatAckSchema, {
+        ok: true,
+        serverTime: new Date().toISOString(),
+        ...gate.ack,
+        ...pool.ack,
+      }),
+    );
   },
 );
 
@@ -434,13 +441,13 @@ deviceAuthRoutes.post(
 // which projects this device is bound to and the server-side repo path/branch,
 // so the path no longer has to be hand-typed into config.toml. `requireDevice`
 // already 401s on a missing/invalid/revoked token, so no extra auth handling.
-deviceAuthRoutes.get('/me/runners', requireDevice(), async (c) => {
+deviceAuthRoutes.get('/me/runners', requireDevice(), readOwnAssignments, async (c) => {
   const device = c.get('device');
   if (device.status === 'revoked') throw unauth();
-  return c.json(await listDeviceAssignments(device.id));
+  return c.json(answer(z.array(assignmentSchema), await listDeviceAssignments(device.id)));
 });
 
-deviceAuthRoutes.get('/me/plugins', requireDevice(), async (c) => {
+deviceAuthRoutes.get('/me/plugins', requireDevice(), readOwnPlugins, async (c) => {
   const device = c.get('device');
   if (device.status === 'revoked') throw unauth();
 
@@ -454,26 +461,17 @@ deviceAuthRoutes.get('/me/plugins', requireDevice(), async (c) => {
     rows.map((r) => ({ slug: r.slug, designations: readPluginDesignations(r.agentConfig) })),
   );
 
-  return c.json({ plugins });
+  return c.json(answer(pluginsSchema, { plugins }));
 });
 
-// ISS-271 — device self-service PATCH of its own runner repo path/branch.
-// The runner CLI (`forge-runner bind`) holds a device token, not a user JWT,
-// so it cannot use the owner/admin PATCH on `projectRoutes`. This endpoint lets
-// a device write the SAME `runners.repoPath`/`branch` field web writes, scoped
-// to runners that belong to the calling device. 404 if the runner isn't this
-// device's.
-const meRunnerPatchSchema = z
-  .object({
-    repoPath: z.string().trim().max(500).nullable().optional(),
-    branch: z.string().trim().max(100).nullable().optional(),
-  })
-  .strict();
-
+// ISS-271 — device self-service PATCH of its own runner repo path/branch: the runner CLI
+// (`forge-runner bind`) holds a device token, so it cannot use the owner PATCH on `projectRoutes`.
+// Scoped to runners that belong to the calling device; 404 if the runner isn't this device's.
 deviceAuthRoutes.patch(
   '/me/runners/:runnerId',
   requireDevice(),
-  zValidator('param', z.object({ runnerId: z.uuid() }), (r) => {
+  patchOwnRunner,
+  zValidator('param', runnerIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   zValidator('json', meRunnerPatchSchema, (r) => {
@@ -509,23 +507,16 @@ deviceAuthRoutes.patch(
       });
     }
 
-    return c.json(runner);
+    return c.json(answer(runnerPathSchema, runner));
   },
 );
 
-// Device → server provision progress report. Scoped to runners owned by the
-// calling device (404 otherwise). Bridges to the project room (live stepper).
-const provisionStatusSchema = z
-  .object({
-    status: z.enum(runnerProvisionStatuses),
-    detail: z.string().trim().max(2000).nullable().optional(),
-  })
-  .strict();
-
+// Device → server provision progress report, scoped to the calling device's runners.
 deviceAuthRoutes.post(
   '/me/runners/:runnerId/provision-status',
   requireDevice(),
-  zValidator('param', z.object({ runnerId: z.uuid() }), (r) => {
+  reportProvisionStatus,
+  zValidator('param', runnerIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   zValidator('json', provisionStatusSchema, (r) => {
@@ -571,6 +562,6 @@ deviceAuthRoutes.post(
       detail: detail ?? null,
     });
 
-    return c.json(runner);
+    return c.json(answer(runnerProvisionedSchema, runner));
   },
 );

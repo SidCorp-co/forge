@@ -2,15 +2,14 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import {
   agentSessions,
   type RunnerStatus,
   type RunnerType,
   runnerEvents,
-  runnerStatuses,
   runners,
-  runnerTypes,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -22,10 +21,40 @@ import { roomManager } from '../ws/server.js';
 import { runnerHealthWithBuild } from './build-comparison.js';
 import { clearRunnerQuarantine } from './quarantine.js';
 import { getRunnerAdapter, listRunnerTypes } from './registry.js';
+import {
+  activeQuery,
+  activeRunnersSchema,
+  activityQuery,
+  checkRunnerHealth,
+  clearRunnerQuarantineRoute,
+  createBody,
+  createRunner,
+  deleteRunner,
+  excludeRunner,
+  healthSchema,
+  idParam,
+  includeRunner,
+  listActiveRunners,
+  listQuery,
+  listRunners,
+  listRunnerTypesRoute,
+  okSchema,
+  patchBody,
+  patchRunner,
+  publicRunner,
+  quotaSchema,
+  readRunner,
+  readRunnerActivity,
+  refreshRunnerQuota,
+  rowToRunner,
+  runnerActivitySchema,
+  runnerListSchema,
+  runnerOneSchema,
+  runnerTypesSchema,
+} from './routes-reference.js';
 import { setRunnerStatus } from './runner-events.js';
 import { defaultRunnerCapabilities } from './select.js';
 import { insertRunner, RunnerAlreadyBoundError } from './service.js';
-import type { Runner } from './types.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -36,78 +65,21 @@ const notFound = () =>
 const forbidden = (msg: string) =>
   new HTTPException(403, { message: msg, cause: { code: 'FORBIDDEN' } });
 
-function rowToRunner(r: typeof runners.$inferSelect): Runner {
-  return {
-    id: r.id,
-    projectId: r.projectId,
-    type: r.type,
-    deviceId: r.deviceId,
-    name: r.name,
-    labels: Array.isArray(r.labels) ? (r.labels as string[]) : [],
-    capabilities: (r.capabilities ?? {}) as Record<string, unknown>,
-    config: (r.config ?? {}) as Record<string, unknown>,
-    status: r.status,
-    lastSeenAt: r.lastSeenAt,
-    lastError: r.lastError,
-    limitReason: r.limitReason,
-    rateLimitedUntil: r.rateLimitedUntil,
-    limitDetail: r.limitDetail,
-    quarantinedUntil: r.quarantinedUntil,
-    quarantineReason: r.quarantineReason,
-  };
-}
-
-function publicRunner(r: Runner): Omit<Runner, 'config'> & { config: Record<string, unknown> } {
-  const config = { ...r.config };
-  if ('apiKey' in config) config.apiKey = '***';
-  if ('callbackSecret' in config) config.callbackSecret = '***';
-  return { ...r, config };
-}
-
-const createBody = z
-  .object({
-    projectId: z.uuid(),
-    type: z.enum(runnerTypes),
-    name: z.string().min(1).max(120),
-    deviceId: z.uuid(),
-    labels: z.array(z.string()).optional(),
-    capabilities: z.record(z.string(), z.unknown()).optional(),
-    config: z.record(z.string(), z.unknown()).default({}),
-  })
-  .strict();
-
-const patchBody = z
-  .object({
-    name: z.string().min(1).max(120).optional(),
-    labels: z.array(z.string()).optional(),
-    capabilities: z.record(z.string(), z.unknown()).optional(),
-    config: z.record(z.string(), z.unknown()).optional(),
-    status: z.enum(['draining', 'disabled', 'offline', 'online']).optional(),
-  })
-  .strict();
-
-const idParam = z.object({ id: z.uuid() });
-
-const listQuery = z.object({
-  projectId: z.uuid().optional(),
-  type: z.enum(runnerTypes).optional(),
-  status: z.enum(runnerStatuses).optional(),
-});
-
 export const runnerRoutes = new Hono<{ Variables: AuthVars }>();
 
 runnerRoutes.use('*', requireAuth(), assertEmailVerified());
 
-runnerRoutes.get('/types', async (c) => {
+runnerRoutes.get('/types', listRunnerTypesRoute, async (c) => {
   const types = listRunnerTypes().map((a) => ({
     type: a.type,
     configSchema: 'configSchema' in a && a.configSchema ? '<zod>' : null,
   }));
-  return c.json({ types });
+  return c.json(answer(runnerTypesSchema, { types }));
 });
 
 runnerRoutes.get(
   '/',
+  listRunners,
   zValidator('query', listQuery, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -120,7 +92,7 @@ runnerRoutes.get(
       if (!access.role) throw forbidden('not a project member');
       filters.push(eq(runners.projectId, q.projectId));
     } else {
-      return c.json({ runners: [] });
+      return c.json(answer(runnerListSchema, { runners: [] }));
     }
     if (q.type) filters.push(eq(runners.type, q.type as RunnerType));
     if (q.status) filters.push(eq(runners.status, q.status as RunnerStatus));
@@ -128,14 +100,15 @@ runnerRoutes.get(
       .select()
       .from(runners)
       .where(and(...filters));
-    return c.json({ runners: rows.map((r) => publicRunner(rowToRunner(r))) });
+    return c.json(
+      answer(runnerListSchema, { runners: rows.map((r) => publicRunner(rowToRunner(r))) }),
+    );
   },
 );
 
-const activeQuery = z.object({ projectId: z.uuid() });
-
 runnerRoutes.get(
   '/active',
+  listActiveRunners,
   zValidator('query', activeQuery, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -209,12 +182,15 @@ runnerRoutes.get(
     }));
 
     const busy = runnersOut.filter((r) => r.current).length;
-    return c.json({ runners: runnersOut, busy, total: runnersOut.length });
+    return c.json(
+      answer(activeRunnersSchema, { runners: runnersOut, busy, total: runnersOut.length }),
+    );
   },
 );
 
 runnerRoutes.get(
   '/:id',
+  readRunner,
   zValidator('param', idParam, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -225,7 +201,7 @@ runnerRoutes.get(
     if (!row) throw notFound();
     const access = await loadProjectAccess(row.projectId, userId);
     if (!access.role) throw forbidden('not a project member');
-    return c.json({ runner: publicRunner(rowToRunner(row)) });
+    return c.json(answer(runnerOneSchema, { runner: publicRunner(rowToRunner(row)) }));
   },
 );
 
@@ -236,12 +212,9 @@ runnerRoutes.get(
 // Read-only; any project member. Powers the "Activity" disclosure on the project
 // Runners screen so an operator can see e.g. a session's `[RESULT_ERROR] 401`
 // without leaving the runner row.
-const activityQuery = z.object({
-  limit: z.coerce.number().int().min(1).max(50).default(15),
-});
-
 runnerRoutes.get(
   '/:id/activity',
+  readRunnerActivity,
   zValidator('param', idParam, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -302,16 +275,19 @@ runnerRoutes.get(
           .limit(limit)
       : [];
 
-    return c.json({
-      events,
-      sessions,
-      retentionDays: resolvedWindowDaysFor('runner_events'),
-    });
+    return c.json(
+      answer(runnerActivitySchema, {
+        events,
+        sessions,
+        retentionDays: resolvedWindowDaysFor('runner_events'),
+      }),
+    );
   },
 );
 
 runnerRoutes.post(
   '/',
+  createRunner,
   zValidator('json', createBody, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -353,12 +329,13 @@ runnerRoutes.post(
       data: { runnerId: row.id, type: row.type },
     });
 
-    return c.json({ runner: publicRunner(rowToRunner(row)) }, 201);
+    return c.json(answer(runnerOneSchema, { runner: publicRunner(rowToRunner(row)) }), 201);
   },
 );
 
 runnerRoutes.patch(
   '/:id',
+  patchRunner,
   zValidator('param', idParam, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -406,12 +383,13 @@ runnerRoutes.patch(
       data: { runnerId: row.id, status: row.status },
     });
 
-    return c.json({ runner: publicRunner(rowToRunner(row)) });
+    return c.json(answer(runnerOneSchema, { runner: publicRunner(rowToRunner(row)) }));
   },
 );
 
 runnerRoutes.delete(
   '/:id',
+  deleteRunner,
   zValidator('param', idParam, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -427,12 +405,13 @@ runnerRoutes.delete(
       event: 'runner.deleted',
       data: { runnerId: id },
     });
-    return c.json({ ok: true });
+    return c.json(answer(okSchema, { ok: true }));
   },
 );
 
 runnerRoutes.post(
   '/:id/health-check',
+  checkRunnerHealth,
   zValidator('param', idParam, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -445,12 +424,18 @@ runnerRoutes.post(
     if (!access.role) throw forbidden('not a project member');
     const adapter = getRunnerAdapter(existing.type);
     if (!adapter) throw badRequest({ type: 'no adapter registered' });
-    return c.json(await runnerHealthWithBuild(adapter, rowToRunner(existing), existing.deviceId));
+    return c.json(
+      answer(
+        healthSchema,
+        await runnerHealthWithBuild(adapter, rowToRunner(existing), existing.deviceId),
+      ),
+    );
   },
 );
 
 runnerRoutes.post(
   '/:id/refresh-quota',
+  refreshRunnerQuota,
   zValidator('param', idParam, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -463,7 +448,7 @@ runnerRoutes.post(
     assertProjectRole(access, 'member');
     const adapter = getRunnerAdapter(existing.type);
     if (!adapter?.refreshQuota) {
-      return c.json({ remaining: null, limit: null });
+      return c.json(answer(quotaSchema, { remaining: null, limit: null }));
     }
     const result = await adapter.refreshQuota({ runner: rowToRunner(existing) });
     if (Object.keys(result).length > 0) {
@@ -481,12 +466,13 @@ runnerRoutes.post(
         .set({ config: next, updatedAt: new Date() })
         .where(eq(runners.id, id));
     }
-    return c.json(result);
+    return c.json(answer(quotaSchema, result));
   },
 );
 
 runnerRoutes.post(
   '/:id/exclude',
+  excludeRunner,
   zValidator('param', idParam, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -499,12 +485,13 @@ runnerRoutes.post(
     // Same gate as PATCH `status` — exclude/include are status mutations.
     assertProjectRole(access, 'admin', 'project admin only');
     await setRunnerStatus({ runnerId: id, newStatus: 'disabled', reason: 'operator_exclude' });
-    return c.json({ ok: true });
+    return c.json(answer(okSchema, { ok: true }));
   },
 );
 
 runnerRoutes.post(
   '/:id/include',
+  includeRunner,
   zValidator('param', idParam, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -516,12 +503,13 @@ runnerRoutes.post(
     const access = await loadProjectAccess(existing.projectId, userId);
     assertProjectRole(access, 'admin', 'project admin only');
     await setRunnerStatus({ runnerId: id, newStatus: 'offline', reason: 'operator_include' });
-    return c.json({ ok: true });
+    return c.json(answer(okSchema, { ok: true }));
   },
 );
 
 runnerRoutes.post(
   '/:id/clear-quarantine',
+  clearRunnerQuarantineRoute,
   zValidator('param', idParam, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -533,6 +521,6 @@ runnerRoutes.post(
     const access = await loadProjectAccess(existing.projectId, userId);
     assertProjectRole(access, 'admin', 'project admin only');
     await clearRunnerQuarantine(id, existing.projectId);
-    return c.json({ ok: true });
+    return c.json(answer(okSchema, { ok: true }));
   },
 );

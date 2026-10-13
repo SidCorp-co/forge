@@ -1,9 +1,10 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
-import { jobEvents, jobs, skills } from '../db/schema.js';
+import { type JobStatus, jobEvents, jobs, skills } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
@@ -11,7 +12,7 @@ import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { assertPlatformAdmin } from '../middleware/require-admin.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { zValidator } from '../middleware/validator.js';
+import { declaresInput, zValidator } from '../middleware/validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { clearRunnerLimit } from '../runners/apply-runner-limit.js';
 import { clearRunnerQuarantine } from '../runners/quarantine.js';
@@ -30,7 +31,27 @@ import { failOccupyingJob } from './fail-job.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { isResumeFailedError, reclassifyAbortedResume } from './handle-resume-failed.js';
 import { readJobGate } from './job-queries.js';
-import { salvageSchema } from './prior-attempts.js';
+import {
+  ackBodySchema,
+  ackedSchema,
+  ackJob,
+  cancelBodySchema,
+  cancelJob as cancelJobRoute,
+  cancelledSchema,
+  completeBodySchema,
+  completedSchema,
+  completeJob,
+  failBodySchema,
+  failedSchema,
+  failJob,
+  jobIdParamSchema,
+  killAckBodySchema,
+  killAckedSchema,
+  killAckJob,
+  readReasonBody,
+  resumedSchema,
+  resumeJob,
+} from './lifecycle-routes-reference.js';
 import { JobResumeError, resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
 import { deriveSessionFinal } from './session-transcript.js';
@@ -49,42 +70,20 @@ const forbidden = (message: string) =>
 const conflict = (message: string, code: string) =>
   new HTTPException(409, { message, cause: { code } });
 
-const jobIdParamSchema = z.object({ id: z.uuid() });
-
-const ackBodySchema = z
-  .object({
-    skillsRanWith: z.record(z.string(), z.string().max(128)).optional(),
-  })
-  .passthrough();
-
-const completeBodySchema = z
-  .object({
-    exitCode: z.number().int(),
-    error: z.string().max(10_000).nullable().optional(),
-    summary: z.string().max(10_000).optional(),
-  })
-  .strict();
-
-const failBodySchema = z
-  .object({ error: z.string().max(10_000), salvage: salvageSchema.optional() })
-  .strict();
-
-const cancelBodySchema = z
-  .object({
-    reason: z.string().max(500).optional(),
-  })
-  .strict();
-
-const killAckBodySchema = z
-  .object({
-    outcome: z.enum(['killed', 'not_found']),
-  })
-  .strict();
-
 async function loadJob(jobId: string) {
   const row = await readJobGate(jobId);
   if (!row) throw notFound('job not found');
   return row;
+}
+
+/** The ack answer: the job's own ack time, which is the first one when this call was a repeat. */
+function ackedAnswer(
+  c: Context,
+  row: { id: string; status: JobStatus; ackedAt: Date | null },
+  acked: boolean,
+) {
+  const ackedAt = row.ackedAt ? row.ackedAt.toISOString() : null;
+  return c.json(answer(ackedSchema, { jobId: row.id, status: row.status, ackedAt, acked }));
 }
 
 export const jobLifecycleDeviceRoutes = new Hono<{ Variables: DeviceVars }>();
@@ -101,6 +100,7 @@ jobLifecycleDeviceRoutes.route('/', jobBlockedRoutes);
 jobLifecycleDeviceRoutes.post(
   '/:id/ack',
   requireDevice(),
+  ackJob,
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -116,12 +116,7 @@ jobLifecycleDeviceRoutes.post(
     if (job.deviceId !== device.id) throw forbidden('job is not dispatched to this device');
 
     if (job.ackedAt) {
-      return c.json({
-        jobId: job.id,
-        status: job.status,
-        ackedAt: job.ackedAt.toISOString(),
-        acked: false,
-      });
+      return ackedAnswer(c, job, false);
     }
 
     const now = new Date();
@@ -187,25 +182,16 @@ jobLifecycleDeviceRoutes.post(
     });
     if (!updated) {
       const fresh = await loadJob(id);
-      return c.json({
-        jobId: fresh.id,
-        status: fresh.status,
-        ackedAt: fresh.ackedAt ? fresh.ackedAt.toISOString() : null,
-        acked: false,
-      });
+      return ackedAnswer(c, fresh, false);
     }
-    return c.json({
-      jobId: updated.id,
-      status: updated.status,
-      ackedAt: now.toISOString(),
-      acked: true,
-    });
+    return ackedAnswer(c, { id: updated.id, status: updated.status, ackedAt: now }, true);
   },
 );
 
 jobLifecycleDeviceRoutes.post(
   '/:id/complete',
   requireDevice(),
+  completeJob,
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -281,13 +267,15 @@ jobLifecycleDeviceRoutes.post(
           if (reclaimed.issueId) {
             await publishPipelineHealthChanged(reclaimed.projectId, [reclaimed.issueId]);
           }
-          return c.json({
-            jobId: reclaimed.id,
-            status: 'done',
-            exitCode: 0,
-            retry: null,
-            reconciled: true,
-          });
+          return c.json(
+            answer(completedSchema, {
+              jobId: reclaimed.id,
+              status: 'done',
+              exitCode: 0,
+              retry: null,
+              reconciled: true,
+            }),
+          );
         }
       }
     }
@@ -340,12 +328,14 @@ jobLifecycleDeviceRoutes.post(
         exitCode: input.exitCode,
         precomputedRetry,
       });
-      return c.json({
-        jobId: updated.id,
-        status: updated.status,
-        exitCode: updated.exitCode,
-        retry,
-      });
+      return c.json(
+        answer(completedSchema, {
+          jobId: updated.id,
+          status: updated.status,
+          exitCode: updated.exitCode,
+          retry,
+        }),
+      );
     }
 
     // done / cancelled — mirror lifecycle to the linked agent_session row so
@@ -382,18 +372,21 @@ jobLifecycleDeviceRoutes.post(
       await publishPipelineHealthChanged(updated.projectId, [updated.issueId]);
     }
 
-    return c.json({
-      jobId: updated.id,
-      status: updated.status,
-      exitCode: updated.exitCode,
-      retry: null,
-    });
+    return c.json(
+      answer(completedSchema, {
+        jobId: updated.id,
+        status: updated.status,
+        exitCode: updated.exitCode,
+        retry: null,
+      }),
+    );
   },
 );
 
 jobLifecycleDeviceRoutes.post(
   '/:id/fail',
   requireDevice(),
+  failJob,
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -418,24 +411,28 @@ jobLifecycleDeviceRoutes.post(
         error: input.error,
         asked: UNREAD_BY_OLDER_RUNNER,
       });
-      return c.json({
-        ...ended,
-        error: input.error,
-        retry: {
-          scheduled: false,
-          reason: ended.heldJobId ? 'awaiting_decision' : 'blocked_on_question',
-        },
-      });
+      return c.json(
+        answer(failedSchema, {
+          ...ended,
+          error: input.error,
+          retry: {
+            scheduled: false,
+            reason: ended.heldJobId ? 'awaiting_decision' : 'blocked_on_question',
+          },
+        }),
+      );
     }
 
     const { updated, retry } = await failOccupyingJob(job, device.id, input);
 
-    return c.json({
-      jobId: updated.id,
-      status: updated.status,
-      error: updated.error,
-      retry,
-    });
+    return c.json(
+      answer(failedSchema, {
+        jobId: updated.id,
+        status: updated.status,
+        error: updated.error,
+        retry,
+      }),
+    );
   },
 );
 
@@ -451,6 +448,7 @@ jobLifecycleDeviceRoutes.post(
 jobLifecycleDeviceRoutes.post(
   '/:id/kill-ack',
   requireDevice(),
+  killAckJob,
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -477,7 +475,9 @@ jobLifecycleDeviceRoutes.post(
       await insertKillAckEvent(tx, id, outcome, device.id, recorded);
     });
 
-    return c.json({ jobId: id, killOutcome: outcome, acked: true, recorded });
+    return c.json(
+      answer(killAckedSchema, { jobId: id, killOutcome: outcome, acked: true, recorded }),
+    );
   },
 );
 
@@ -517,6 +517,8 @@ jobLifecycleUserRoutes.post(
   '/:id/cancel',
   requireAuth(),
   assertEmailVerified(),
+  cancelJobRoute,
+  declaresInput('json', cancelBodySchema),
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -530,18 +532,16 @@ jobLifecycleUserRoutes.post(
 
     // Optional `{ reason }` body; tolerate an empty/absent body (the cancel
     // button sends none) by defaulting to {} before schema-validating.
-    const rawBody = await c.req.json().catch(() => ({}));
-    const parsedBody = cancelBodySchema.safeParse(rawBody ?? {});
-    if (!parsedBody.success) throw badRequest(z.flattenError(parsedBody.error));
+    const { reason } = await readReasonBody(c.req);
 
     try {
       const result = await cancelJob(id, {
         actorUserId: userId,
         actorAgency: restActor(c).agency,
-        reason: parsedBody.data.reason ?? 'manual cancel (REST)',
+        reason: reason ?? 'manual cancel (REST)',
         source: 'rest',
       });
-      return c.json(result);
+      return c.json(answer(cancelledSchema, result));
     } catch (e) {
       if (e instanceof JobCancelError) {
         if (e.code === 'NOT_FOUND') throw notFound(e.message);
@@ -556,6 +556,8 @@ jobLifecycleUserRoutes.post(
   '/:id/resume',
   requireAuth(),
   assertEmailVerified(),
+  resumeJob,
+  declaresInput('json', cancelBodySchema),
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -567,17 +569,15 @@ jobLifecycleUserRoutes.post(
     const access = await loadProjectAccess(job.projectId, userId);
     assertProjectRole(access, 'member', 'not a project member');
 
-    const rawBody = await c.req.json().catch(() => ({}));
-    const parsedBody = cancelBodySchema.safeParse(rawBody ?? {});
-    if (!parsedBody.success) throw badRequest(z.flattenError(parsedBody.error));
+    const { reason } = await readReasonBody(c.req);
 
     try {
       const result = await resumeHeldJob(id, {
         actorUserId: userId,
-        reason: parsedBody.data.reason ?? 'manual resume (REST)',
+        reason: reason ?? 'manual resume (REST)',
         source: 'rest',
       });
-      return c.json(result);
+      return c.json(answer(resumedSchema, result));
     } catch (e) {
       if (e instanceof JobResumeError) {
         if (e.code === 'NOT_FOUND') throw notFound(e.message);
