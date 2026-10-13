@@ -90,17 +90,6 @@ beforeEach(async () => {
 });
 
 describe('the discovery reads outside the plan inventory', () => {
-  it('leaves an archived issue out of recent changes, however recently it moved', async () => {
-    await seed(1, 'closed');
-    await seed(2, 'closed');
-    await archive(['ISS-1']);
-    const { meRecentChangesRoutes } = await import('../../src/me/recent-changes-routes.js');
-    const body = (await get('/api/me/recent-changes', meRecentChangesRoutes, '/api/me')) as {
-      items: { issSeq: number }[];
-    };
-    expect(body.items.map((i) => i.issSeq)).toEqual([2]);
-  });
-
   it('leaves an archived issue out of a module edge, and its count', async () => {
     const [a, b] = await Promise.all([seed(1, 'closed'), seed(2, 'closed')]);
     const [m1, m2] = [randomUUID(), randomUUID()];

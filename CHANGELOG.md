@@ -2540,6 +2540,7 @@
   (ISS-1313)
 
 ### Removed
+- **`GET /api/me/recent-changes` is gone.** Nothing called it, and it still listed issues of archived projects. The Overview reads its changes from the pulse. (ISS-1371)
 - **The Runs / Spend / Lead time switch on Top workspaces is gone.** Press the Runs, Spend or Median lead header instead; the ranking is still the server's, largest first. (ISS-1263)
 - **Forge no longer writes your release steps.** A project that declares its own procedure gets it;
   one that declares none is told where its method lives, instead of being refused for a deploy
