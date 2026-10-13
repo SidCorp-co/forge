@@ -6,7 +6,6 @@ import {
   Menu,
   type MenuItem,
   type SelectOption,
-  Stat,
 } from "@/design";
 import { useRouter } from "next/navigation";
 import type { PatchIssueInput } from "../api";
@@ -68,7 +67,6 @@ const isParentEdge = (k: IssueDependencyEdge["kind"]) =>
 function edgeToMenuItem(
   e: IssueDependencyEdge,
   dir: "in" | "out",
-  slug: string,
   navigate: (id: string) => void,
 ): MenuItem {
   const isIncoming = dir === "in";
@@ -132,9 +130,12 @@ function RelationChip({
 export function DepBadges({
   deps,
   slug,
+  show = "all",
 }: {
   deps: IssueDependencies | undefined;
   slug: string;
+  /** `blocking` keeps only the chip for an open blocker, which a one-line row still owes its reader. */
+  show?: "all" | "blocking";
 }) {
   const router = useRouter();
   const navigate = (otherId: string) =>
@@ -162,42 +163,46 @@ export function DepBadges({
   )
     return null;
 
+  const blockedChip =
+    openBlockers.length > 0 ? (
+      <RelationChip
+        icon="lock"
+        tone="danger"
+        label={
+          openBlockers.length === 1
+            ? `Blocked by ${openBlockers[0].displayId}`
+            : `Blocked by ${openBlockers.length}`
+        }
+        items={openBlockers.map(refToMenuItem)}
+      />
+    ) : (
+      <RelationChip
+        icon="lock"
+        label={`Blocked by ${blockedBy.length}`}
+        items={blockedBy.map((e) => edgeToMenuItem(e, "in", navigate))}
+      />
+    );
+  if (show === "blocking") return openBlockers.length > 0 ? blockedChip : null;
+
   return (
     <span className="inline-flex items-center gap-1.5">
-      {openBlockers.length > 0 ? (
-        <RelationChip
-          icon="lock"
-          tone="danger"
-          label={
-            openBlockers.length === 1
-              ? `Blocked by ${openBlockers[0].displayId}`
-              : `Blocked by ${openBlockers.length}`
-          }
-          items={openBlockers.map(refToMenuItem)}
-        />
-      ) : (
-        <RelationChip
-          icon="lock"
-          label={`Blocked by ${blockedBy.length}`}
-          items={blockedBy.map((e) => edgeToMenuItem(e, "in", slug, navigate))}
-        />
-      )}
+      {blockedChip}
       <RelationChip
         icon="arrowRight"
         label={`Blocks ${blocks.length}`}
-        items={blocks.map((e) => edgeToMenuItem(e, "out", slug, navigate))}
+        items={blocks.map((e) => edgeToMenuItem(e, "out", navigate))}
       />
       <RelationChip
         icon="grid"
         label={`${subtasks.length} subtask${subtasks.length === 1 ? "" : "s"}`}
-        items={subtasks.map((e) => edgeToMenuItem(e, "out", slug, navigate))}
+        items={subtasks.map((e) => edgeToMenuItem(e, "out", navigate))}
       />
       <RelationChip
         icon="fork"
         label={
           parents.length > 1 ? `Subtask of ${parents.length}` : "Subtask of"
         }
-        items={parents.map((e) => edgeToMenuItem(e, "in", slug, navigate))}
+        items={parents.map((e) => edgeToMenuItem(e, "in", navigate))}
       />
     </span>
   );
@@ -223,46 +228,6 @@ export function ModuleCell({ modules }: { modules: ModuleAttribution[] | undefin
       />
       <span className="fg-body-sm truncate text-fg">{primary.name}</span>
       {extra > 0 && <span className="fg-caption text-muted">+{extra}</span>}
-    </span>
-  );
-}
-
-/** Per-issue cost from the search row itself (`withCost=1`, ISS-437) — the
- *  old per-row `useIssueCost` lazy fetch was a 25-request N+1 whose silent
- *  failures rendered as "—" exactly like a real zero. `<$0.01` marks a
- *  non-zero cost that would otherwise round down to a misleading dash. */
-export function CostCell({ value }: { value: number | undefined }) {
-  const cost = value ?? 0;
-  const text = cost <= 0 ? "—" : cost < 0.01 ? "<$0.01" : `$${cost.toFixed(2)}`;
-  return <Stat icon="dollar">{text}</Stat>;
-}
-
-/** How long the row has sat where it is. A settled row renders a dash rather
- *  than a figure, and a row past the stale threshold is told apart by its
- *  colour and its icon before the number is read at all. */
-export function LastWriteCell({
-  written,
-}: {
-  written: { label: string; stale: boolean } | null;
-}) {
-  if (!written) return <span className="fg-caption">—</span>;
-  const measures =
-    "A status move, a field edit, a merge mark or an agent's claim or lease renewal resets this; a comment on its own does not.";
-  return (
-    <span
-      className={
-        written.stale
-          ? "fg-caption fg-caption-stale inline-flex items-center gap-1 tabular-nums"
-          : "fg-caption inline-flex items-center gap-1 tabular-nums"
-      }
-      title={
-        written.stale
-          ? `Nothing has been written to this issue in ${written.label}. ${measures}`
-          : `This issue was last written to ${written.label} ago. ${measures}`
-      }
-    >
-      {written.stale && <Icon name="clock" size={12} />}
-      {written.label}
     </span>
   );
 }

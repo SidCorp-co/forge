@@ -15,7 +15,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ModuleCell } from "./components/issue-table-row";
+import { ModuleCell } from "./components/issue-row-parts";
 import { IssuesListView } from "./components/issues-list-view";
 import { ToastProvider } from "@/providers/toast-provider";
 import type { IssueSearchOpts } from "./types";

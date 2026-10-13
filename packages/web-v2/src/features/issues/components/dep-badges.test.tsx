@@ -10,7 +10,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DepBadges } from "./issue-table-row";
+import { DepBadges } from "./issue-row-parts";
 import type { IssueDependencies, IssueDependencyEdge } from "../types";
 
 expect.extend(matchers);

@@ -172,10 +172,10 @@ describe("Group: module", () => {
 
   it("files each issue once under its primary module, the issues with none under No module", () => {
     mountAt("?groupBy=module");
-    // The desktop table and the mobile cards each draw every group, so a heading appears twice.
-    expect(screen.getAllByText(/^core · 1 on this page$/)).toHaveLength(2);
-    expect(screen.getAllByText(/^web · 2 on this page$/)).toHaveLength(2);
-    expect(screen.getAllByText(/^No module · 1 on this page$/)).toHaveLength(2);
+    // One list draws every group once, at every width.
+    expect(screen.getAllByText(/^core · 1 on this page$/)).toHaveLength(1);
+    expect(screen.getAllByText(/^web · 2 on this page$/)).toHaveLength(1);
+    expect(screen.getAllByText(/^No module · 1 on this page$/)).toHaveLength(1);
   });
 
   it("prints the rollup's primary total and open count for a module, and its secondary tagging apart", () => {
