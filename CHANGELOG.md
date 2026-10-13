@@ -3163,7 +3163,7 @@
 
 ### Fixed
 
-- **"Start queued issues automatically" can be switched off, and settings pages are flat.** It holds the entry gate instead of sending a refused value. A backlog starts valid under the intake gate, refusals read correctly, and cards give way to hairline sections. (ISS-1262)
+- **"Start queued issues automatically" can be switched off, and settings pages are flat.** It holds the entry gate instead of sending a refused value; cards give way to hairline sections. A backlog starts valid under the intake gate. (ISS-1262)
 - **API Tokens opens on what can still reach your account.** It says how many tokens can and lists them; revoked and expired ones wait behind one line with their number and end date, and carry no Revoke. (ISS-1166)
 - **The assistant's per-chat-turn credentials are one line on API Tokens, not a row each.** The line says how many exist and how many are live. (ISS-1166)
 - **The Agents table says once what every agent needs.** The advice and what giving a credential does stand above the table, not in each row; the action has one name, and a row with nothing to revoke has none. (ISS-1169)
