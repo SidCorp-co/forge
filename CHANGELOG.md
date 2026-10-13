@@ -3163,6 +3163,13 @@
 
 ### Fixed
 
+- **API Tokens opens on what can still reach your account.** It says how many tokens can and lists them; revoked and expired ones wait behind one line with their number and end date, and carry no Revoke. (ISS-1166)
+- **The assistant's per-chat-turn credentials are one line on API Tokens, not a row each.** The line says how many exist and how many are live. (ISS-1166)
+- **The Agents table says once what every agent needs.** The advice and what giving a credential does stand above the table, not in each row; the action has one name, and a row with nothing to revoke has none. (ISS-1169)
+- **An agent's project is never shown as an id.** One that cannot be named reads as removed or not shared with you, and says projects are loading while they are. (ISS-1169)
+- **A new agent's projects are searched, not scrolled.** The picker opens on a search field and the projects chosen, so Create agent stays on the screen however many projects the organisation has. (ISS-1169)
+- **A table that scrolls sideways keeps its first column in view.** On a phone, the projects list, the Overview's longest-without-a-run table, API Tokens and Agents no longer lose which project, token or agent a row is. (ISS-1166)
+- **The projects Sort menu offers every sort both ways.** Once Name was sorted Z to A the menu offered only that, so A to Z could be reached from the header alone. (ISS-1166)
 - **A project's page no longer calls an unread list all clear.** While runs or parked ages are unread, Needs you reads "—" instead of "0 · nothing to act on", and the Awaiting release line wraps on a phone. (ISS-1263)
 - **The Overview no longer lists an archived project.** Its link opened a page saying the project does not exist; archived projects are now left out of the Overview's rows and totals, and come back when unarchived. (ISS-1261)
 - **A dashboard section whose data has not arrived says which read it is waiting on.** It no longer says "none live" or "nothing waiting" for a failed read, and the runs figure says how many are open. (ISS-1159)
