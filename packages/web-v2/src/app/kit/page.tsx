@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Avatar, Badge, Banner, BoardRowSkeleton, Breadcrumb, Button, Card, CardContent,
-  CardHeader, CardTitle, Checkbox, Collapsible, CommandPalette, Divider, EmptyState,
+  CardHeader, CardTitle, Checkbox, Collapsible, CommandPalette, DataTable, Divider, EmptyState,
   ErrorState, Field, Highlight, HealthDot, Icon, IconButton, Input,
   KanbanBoard, KanbanCardSkeleton, KanbanColumn, KanbanColumnSkeleton, Kicker, KanbanCard, LiveDot, Menu,
   MonoTag, NavRail, NotificationsMenu, Pagination, ProgressBar,
@@ -13,7 +13,7 @@ import {
   STAGES, Stat, StatusChip,
   StreamingText, Table, TBody, TD, TH, THead, TR, Tabs, Textarea, Toggle, Tooltip,
   TopBar, HelpButton, PinnedTabBar, useAnimatedNumber, useElapsed,
-  type Command, type NotificationItem, type PinnedTab,
+  type Command, type DataTableColumn, type NotificationItem, type PinnedTab,
   type StageKey, type StatusKey, type TopBarDensity,
 } from "@/design";
 import {
@@ -104,7 +104,7 @@ const NAV_ANCHORS = [
   "tokens", "type", "buttons", "status", "avatars", "tags", "forms", "cards",
   "pipeline", "kanban", "navrail", "topbar", "shell", "overlays", "states",
   "mascot", "skeletons", "progress", "feedback", "realtime",
-  "formcontrols", "display", "disclosure", "data", "overlays2", "pageload",
+  "formcontrols", "display", "disclosure", "data", "datatable", "overlays2", "pageload",
 ];
 
 function MascotProgressDemo() {
@@ -347,6 +347,99 @@ function TabsDemo() {
       />
       <p className="fg-body-sm mt-3 capitalize">{tab} panel</p>
     </div>
+  );
+}
+
+const DEMO_SESSIONS = [
+  { sid: "S-1043", iss: "FRG-241", st: "running" as StatusKey, cost: 0.42 },
+  { sid: "S-1042", iss: "FRG-238", st: "review" as StatusKey, cost: 1.08 },
+  { sid: "S-1039", iss: "FRG-224", st: "failed" as StatusKey, cost: 0.91 },
+  { sid: "S-1031", iss: "FRG-219", st: "done" as StatusKey, cost: 2.4 },
+  { sid: "S-1027", iss: "FRG-241", st: "failed" as StatusKey, cost: 0.17 },
+];
+
+type DemoSession = (typeof DEMO_SESSIONS)[number];
+
+const DEMO_COLUMNS: DataTableColumn<DemoSession>[] = [
+  { id: "session", header: "session", cell: (r) => <MonoTag>{r.sid}</MonoTag>, sortValue: (r) => r.sid, searchText: (r) => r.sid },
+  { id: "issue", header: "issue", cell: (r) => <MonoTag hue="cobalt">{r.iss}</MonoTag>, sortValue: (r) => r.iss, searchText: (r) => r.iss },
+  { id: "status", header: "status", cell: (r) => <StatusChip status={r.st} size="sm" />, filterValue: (r) => r.st },
+  { id: "cost", header: "cost", align: "end", firstSort: "desc", cell: (r) => <span className="font-mono">${r.cost.toFixed(2)}</span>, sortValue: (r) => r.cost },
+];
+
+function DataTableDemo() {
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  return (
+    <div className="flex flex-col gap-3">
+      <Row>
+        <Input
+          icon="search"
+          className="min-w-[200px] max-w-[320px] flex-1"
+          placeholder="Search sessions…"
+          aria-label="Search sessions"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <Select
+          className="w-[160px]"
+          aria-label="Status"
+          value={status}
+          onChange={setStatus}
+          options={[
+            { value: "", label: "Any status" },
+            { value: "failed", label: "Failed" },
+            { value: "running", label: "Running" },
+            { value: "done", label: "Done" },
+          ]}
+        />
+      </Row>
+      <DataTable
+        aria-label="Sessions"
+        rows={DEMO_SESSIONS}
+        columns={DEMO_COLUMNS}
+        getRowId={(r) => r.sid}
+        defaultSort={{ id: "cost", desc: true }}
+        search={search}
+        filters={{ status }}
+        empty="No session matches."
+      />
+    </div>
+  );
+}
+
+const DEMO_WORKSPACES = [
+  { slug: "forge-core", runs: 38, spend: 41.2 },
+  { slug: "forge-web", runs: 21, spend: 63.9 },
+  { slug: "data-pipeline", runs: 9, spend: 12.4 },
+];
+
+const RANKINGS = {
+  runs: (a: (typeof DEMO_WORKSPACES)[number], b: (typeof DEMO_WORKSPACES)[number]) => b.runs - a.runs,
+  spend: (a: (typeof DEMO_WORKSPACES)[number], b: (typeof DEMO_WORKSPACES)[number]) => b.spend - a.spend,
+};
+
+const RANKED_COLUMNS: DataTableColumn<(typeof DEMO_WORKSPACES)[number]>[] = [
+  { id: "workspace", header: "workspace", cell: (r) => <MonoTag>{r.slug}</MonoTag> },
+  { id: "runs", header: "runs", align: "end", firstSort: "desc", sortDirections: ["desc"], sortValue: (r) => r.runs, cell: (r) => <span className="font-mono">{r.runs}</span> },
+  { id: "spend", header: "spend", align: "end", firstSort: "desc", sortDirections: ["desc"], sortValue: (r) => r.spend, cell: (r) => <span className="font-mono">${r.spend.toFixed(2)}</span> },
+];
+
+// A ranking the server answers, as the operator overview's is: the table reports which header was
+// pressed and shows the rows in the order that answer arrives, largest first and never ascending.
+function RankedDemo() {
+  const [by, setBy] = useState<"runs" | "spend">("runs");
+  const ranked = [...DEMO_WORKSPACES].sort(RANKINGS[by]);
+  return (
+    <DataTable
+      aria-label="Ranked workspaces"
+      rows={ranked}
+      columns={RANKED_COLUMNS}
+      getRowId={(r) => r.slug}
+      sort={{ id: by, desc: true }}
+      onSortChange={(s) => setBy(s.id === "spend" ? "spend" : "runs")}
+      manualSort
+    />
   );
 }
 
@@ -873,6 +966,13 @@ export default function KitPage() {
                 ))}
               </TBody>
             </Table>
+          </Section>
+
+          <Section id="datatable" title="DataTable" hint="A Table whose headers sort it and whose rows take a search and a filter. The screen owns the controls; the table owns the ordering, unless the rows arrive ranked by the server.">
+            <div className="flex flex-col gap-6">
+              <DataTableDemo />
+              <RankedDemo />
+            </div>
           </Section>
 
           <Section id="overlays2" title="Slide-over & menu" hint="Right-hand detail drawer (RunDetail) + dropdown menus.">
