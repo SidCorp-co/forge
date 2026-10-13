@@ -16,6 +16,8 @@ export interface WorkerSession {
   id: string;
   status: string;
   lane: SessionWorkerLane;
+  /** A run session opened over the issue and since given back is not a holder, live or not. */
+  holds: boolean;
 }
 
 export type IssueWorker =
@@ -36,8 +38,8 @@ export function unreadableWorker(detail: string): IssueWorker {
   return { lane: 'unreadable', detail };
 }
 
-function liveSession(session: WorkerSession): boolean {
-  return session.status === 'queued' || session.status === 'running';
+export function liveSession(session: Pick<WorkerSession, 'status' | 'holds'>): boolean {
+  return session.holds && (session.status === 'queued' || session.status === 'running');
 }
 
 /** A session outranks a claim: core wrote that row itself and only classifies the claim. */
@@ -66,21 +68,20 @@ export function classifyIssueWorker(input: {
   return { lane: 'none', detail: absenceOf(claim, input.sessions) };
 }
 
-/** Why no lane answered. What is absent is a LIVE session, and the clause names their statuses
- *  rather than judging them: `idle` is neither live nor terminal. It may not end at a bare colon
- *  either — `session-claim.ts` leaves `detail` empty for every verdict but `malformed`. */
+/** Why no lane answered: no LIVE HOLDING session, the statuses of those counted named rather than
+ *  judged (`idle` is neither live nor terminal), and no bare colon — `detail` is empty but for `malformed`. */
 function absenceOf(claim: LeaseReading | null, sessions: readonly WorkerSession[]): string {
   return `${sessionClause(sessions)}, and ${claimClause(claim)}`;
 }
 
 function sessionClause(sessions: readonly WorkerSession[]): string {
   if (sessions.length === 0) {
-    return 'no agent session is bound to this issue on either session lane';
+    return 'no agent session is on record as opened over this issue on either session lane';
   }
   const lanes = [...new Set(sessions.map((s) => s.lane))].sort().join(' and ');
   const statuses = [...new Set(sessions.map((s) => s.status))].sort().join(', ');
   const n = sessions.length;
-  return `none of the ${n} agent session${n === 1 ? '' : 's'} bound to this issue on the ${lanes} lane is queued or running (${statuses})`;
+  return `none of the ${n} agent session${n === 1 ? '' : 's'} on record as opened over this issue on the ${lanes} lane is queued or running and holding it (${statuses})`;
 }
 
 function claimClause(claim: LeaseReading | null): string {

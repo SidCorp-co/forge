@@ -78,6 +78,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/merge-routes.ts': 'by issue id',
   'issues/park-routes.ts': 'the one issue its path names, to check the reader may see it',
   'issues/park-view.ts': 'the park of the one issue asked for by id',
+  'issues/pipeline-health-loaders.ts': 'the ids passed in',
   'issues/pipeline-health.ts': 'the ids passed in',
   'issues/read-service.ts': 'retrieval by id or key, which answers an archived issue by design',
   'issues/release-record-required.ts': 'the ids passed in',

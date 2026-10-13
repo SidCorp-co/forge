@@ -3158,6 +3158,7 @@
 
 ### Fixed
 
+- **The "nobody is working it" line counts every session opened over the issue.** It counted only runs still holding it, so six runs read as one; it also lists all their statuses (ISS-1320).
 - **A dispatch another hook refused no longer blocks the master's next one.** The box frees the declared run once the call's error shows, and a held run's refusal names the run and the call.
 - **An empty product-map screen sends an admin to where it is filled.** Open Automation now lands on the Improve tab, and the words say to enable the Standing product-map refresh there, then run it.
 - **A release pane that stops on a question no longer asks it again every minute.** The question now lands on the release's issues, the release waits, a second press is refused by name, and the answer restarts it.
