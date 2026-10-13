@@ -118,6 +118,13 @@ describe('matchingTagsNewestFirst', () => {
     expect(compareTags('v1.0.1+build.1', 'v1.0.0+build.9')).toBeGreaterThan(0);
   });
 
+  it('puts tags of equal precedence in one order whichever way they arrive', () => {
+    const forward = matchingTagsNewestFirst('v*', ['v1.0.0', 'v1.0.0+build.2', 'v0.9.0']);
+    const backward = matchingTagsNewestFirst('v*', ['v0.9.0', 'v1.0.0+build.2', 'v1.0.0']);
+    expect(forward).toEqual(['v1.0.0+build.2', 'v1.0.0', 'v0.9.0']);
+    expect(backward).toEqual(forward);
+  });
+
   it('orders a prefixed family by its own versions and keeps every tag the pattern names', () => {
     const tags = ['runner-v1.0.0-rc.1', 'runner-v1.0.0', 'runner-v0.9.0'];
     expect(matchingTagsNewestFirst('runner-v*', tags)).toEqual([
