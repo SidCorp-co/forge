@@ -41,7 +41,7 @@ export function ProjectList({ items, now, onTogglePin, sort, onSortChange }: Pro
           return (
             <span className="flex items-center gap-2.5">
               <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(p.name)} size={28} radius="var(--r-sm)" />
-              <span className="max-w-[9rem] truncate font-mono text-13-5 font-semibold text-fg sm:max-w-[16rem]">{p.name}</span>
+              <span className="min-w-0 font-mono text-13-5 font-semibold text-fg [overflow-wrap:anywhere]">{p.name}</span>
               <button
                 type="button"
                 aria-label={p.pinned ? 'Unpin project' : 'Pin project'}
