@@ -7,6 +7,7 @@ import {
   RETIRED_PROJECT_FACTS_CONFIG_MESSAGE,
   RETIRED_PROJECT_FACTS_MESSAGE,
 } from './project-facts.js';
+import { patchProjectFacts, readProjectFacts } from './project-facts-routes-reference.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -25,10 +26,10 @@ const param = zValidator('param', idParamSchema, (result) => {
   if (!result.success) throw badRequest(z.flattenError(result.error));
 });
 
-projectFactsRoutes.get('/:id/project-facts', param, () => {
+projectFactsRoutes.get('/:id/project-facts', readProjectFacts, param, () => {
   throw gone();
 });
 
-projectFactsRoutes.patch('/:id/project-facts', param, () => {
+projectFactsRoutes.patch('/:id/project-facts', patchProjectFacts, param, () => {
   throw gone();
 });

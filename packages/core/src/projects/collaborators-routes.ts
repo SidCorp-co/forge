@@ -9,10 +9,12 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
-import { listCollaborators } from './collaborators-service.js';
+import { collaboratorsSchema, listCollaborators } from './collaborators-routes-reference.js';
+import { listCollaborators as readCollaborators } from './collaborators-service.js';
 
 const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional(),
@@ -25,6 +27,7 @@ collaboratorsMeRoutes.use('/collaborators', requireAuth(), assertEmailVerified()
 
 collaboratorsMeRoutes.get(
   '/collaborators',
+  listCollaborators,
   zValidator('query', querySchema, (r) => {
     if (!r.success) {
       throw new HTTPException(400, {
@@ -38,12 +41,15 @@ collaboratorsMeRoutes.get(
     const visibleProjectIds = await loadVisibleProjectIds(c.get('userId'));
 
     return c.json(
-      await listCollaborators({
-        visibleProjectIds,
-        limit: limit ?? 50,
-        offset: offset ?? 0,
-        search,
-      }),
+      answer(
+        collaboratorsSchema,
+        await readCollaborators({
+          visibleProjectIds,
+          limit: limit ?? 50,
+          offset: offset ?? 0,
+          search,
+        }),
+      ),
     );
   },
 );

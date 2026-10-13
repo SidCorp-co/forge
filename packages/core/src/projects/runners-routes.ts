@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
 import { liveMasterOf } from '../devices/master-owner.js';
@@ -15,6 +16,16 @@ import { clearRunnerFaultFlags } from '../runners/clear-fault-flags.js';
 import { provisionStalledSeconds } from '../runners/provision-stall.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { defaultRunnerCapabilities } from '../runners/select.js';
+import {
+  bindRunner,
+  clearRunnerError,
+  listProjectRunners,
+  runnerBindingSchema,
+  runnerFaultsClearedSchema,
+  runnerListSchema,
+  unbindRunner,
+  updateRunner,
+} from './runners-routes-reference.js';
 
 // ISS-172 Slice A — runner-shaped binding endpoints. `POST /:id/runners`
 // upserts a (project, device, 'claude-code') runner row; `DELETE
@@ -52,6 +63,7 @@ export const projectRunnerRoutes = new Hono<{ Variables: AuthVars }>();
 // (the inverse of the device-centric GET /api/devices/:id/runners). Any member.
 projectRunnerRoutes.get(
   '/:id/runners',
+  listProjectRunners,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -105,23 +117,27 @@ projectRunnerRoutes.get(
 
     const now = new Date();
     return c.json(
-      rows.map((r) => ({
-        ...r,
-        poolRead: readRunnerPoolRead(r.poolRead),
-        // Seconds a provision has stood in flight with nothing written, or null: the
-        // status alone reads `cloning` the same for a clone running now and one that died.
-        provisionStalledSeconds: provisionStalledSeconds(
-          r.provisionStatus,
-          r.provisionStatusAt,
-          now,
-        ),
-      })),
+      answer(
+        runnerListSchema,
+        rows.map((r) => ({
+          ...r,
+          poolRead: readRunnerPoolRead(r.poolRead),
+          // Seconds a provision has stood in flight with nothing written, or null: the
+          // status alone reads `cloning` the same for a clone running now and one that died.
+          provisionStalledSeconds: provisionStalledSeconds(
+            r.provisionStatus,
+            r.provisionStatusAt,
+            now,
+          ),
+        })),
+      ),
     );
   },
 );
 
 projectRunnerRoutes.post(
   '/:id/runners',
+  bindRunner,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -240,7 +256,7 @@ projectRunnerRoutes.post(
       });
     }
 
-    return c.json(runner, 201);
+    return c.json(answer(runnerBindingSchema, runner), 201);
   },
 );
 
@@ -260,6 +276,7 @@ const patchRunnerBodySchema = z
 
 projectRunnerRoutes.patch(
   '/:id/runners/:runnerId',
+  updateRunner,
   zValidator('param', runnerParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -301,12 +318,13 @@ projectRunnerRoutes.patch(
       });
     }
 
-    return c.json(runner);
+    return c.json(answer(runnerBindingSchema, runner));
   },
 );
 
 projectRunnerRoutes.post(
   '/:id/runners/:runnerId/clear-error',
+  clearRunnerError,
   zValidator('param', runnerParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -330,12 +348,13 @@ projectRunnerRoutes.post(
     }
 
     const cleared = await clearRunnerFaultFlags(runnerId, id);
-    return c.json({ runnerId, cleared });
+    return c.json(answer(runnerFaultsClearedSchema, { runnerId, cleared }));
   },
 );
 
 projectRunnerRoutes.delete(
   '/:id/runners/:runnerId',
+  unbindRunner,
   zValidator('param', runnerParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),

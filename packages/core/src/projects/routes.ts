@@ -2,6 +2,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { type IssueBranchOverride, resolveIssueBranches } from '../branches/resolve.js';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
@@ -29,7 +30,7 @@ import {
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
+import { declaresInput, zValidator } from '../middleware/validator.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
@@ -60,6 +61,29 @@ import {
   pipelineFlagOff,
   refuseByName,
 } from './route-errors.js';
+import {
+  archivedProjectSchema,
+  archiveProject,
+  branchConfigSchema,
+  createdProjectSchema,
+  createNewProject,
+  deleteProject,
+  getBranchConfig,
+  getPipelineConfig,
+  getProject,
+  listProjects,
+  listProjectsQuerySchema,
+  patchedProjectSchema,
+  patchPlugins,
+  patchProject,
+  pipelineConfigReadSchema,
+  pluginsWrittenSchema,
+  projectDetailSchema,
+  projectListSchema,
+  rotatedApiKeySchema,
+  rotateProjectApiKey,
+  unarchiveProject,
+} from './routes-reference.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
 import { projectSettingsWriteRoutes } from './settings-write-routes.js';
@@ -102,10 +126,12 @@ export const updateProjectSchema = z
   })
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
-export const updateProjectPatchSchema = z
-  .unknown()
-  .superRefine(refuseRetiredProjectKeys)
-  .pipe(updateProjectSchema);
+// A preprocess and not `unknown.superRefine.pipe`: the pipe's input is `unknown`, so the API
+// reference could not say what the body is. A retired key is still refused before the field parse.
+export const updateProjectPatchSchema = z.preprocess((raw, ctx) => {
+  refuseRetiredProjectKeys(raw, ctx);
+  return raw;
+}, updateProjectSchema);
 
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 
@@ -115,6 +141,7 @@ projectRoutes.use('*', requireAuth(), assertEmailVerified());
 
 projectRoutes.post(
   '/',
+  createNewProject,
   zValidator('json', createProjectSchema, (result) => {
     if (!result.success) {
       throw badRequest(flatten(result.error));
@@ -151,7 +178,7 @@ projectRoutes.post(
         kind,
       });
 
-      return c.json(created, 201);
+      return c.json(answer(createdProjectSchema, created), 201);
     } catch (err: unknown) {
       if (err instanceof ProjectSlugTakenError) {
         throw new HTTPException(409, {
@@ -164,9 +191,10 @@ projectRoutes.post(
   },
 );
 
-projectRoutes.get('/', async (c) => {
+projectRoutes.get('/', listProjects, declaresInput('query', listProjectsQuerySchema), async (c) => {
   const userId = c.get('userId');
-  const includeArchived = ['1', 'true'].includes((c.req.query('archived') ?? '').toLowerCase());
+  const { archived } = listProjectsQuerySchema.parse(c.req.query());
+  const includeArchived = ['1', 'true'].includes((archived ?? '').toLowerCase());
   // Visible = explicit membership (any role) OR org owner/admin on the
   // project's org (implicit admin) — same rule as lib/authz.ts.
   const rows = await db
@@ -210,20 +238,24 @@ projectRoutes.get('/', async (c) => {
   // the desktop MCP install (key.length < 16 → 401) and the web widget
   // snippet generator.
   return c.json(
-    rows.map(({ memberRole, orgRole, apiKey, ...row }) => {
-      const role = maxProjectRole(memberRole ?? null, orgDerivedProjectRole(orgRole ?? null));
-      return {
-        ...row,
-        apiKey: role === 'viewer' ? null : apiKey,
-        role,
-        orgRole: orgRole ?? null,
-      };
-    }),
+    answer(
+      projectListSchema,
+      rows.map(({ memberRole, orgRole, apiKey, ...row }) => {
+        const role = maxProjectRole(memberRole ?? null, orgDerivedProjectRole(orgRole ?? null));
+        return {
+          ...row,
+          apiKey: role === 'viewer' ? null : apiKey,
+          role,
+          orgRole: orgRole ?? null,
+        };
+      }),
+    ),
   );
 });
 
 projectRoutes.get(
   '/:id',
+  getProject,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(flatten(result.error));
   }),
@@ -269,20 +301,23 @@ projectRoutes.get(
 
     // apiKey is returned for member+ (ADR 0013); the viewer tier is read-only
     // and the key is execution-grade (MCP pairing / widget), so it's withheld.
-    return c.json({
-      ...withRetiredReleaseAxes(project),
-      apiKey: access.role === 'viewer' ? null : project.apiKey,
-      role: access.role,
-      orgRole: access.orgRole,
-      members,
-      labels: labelRows,
-      devicePool,
-    });
+    return c.json(
+      answer(projectDetailSchema, {
+        ...withRetiredReleaseAxes(project),
+        apiKey: access.role === 'viewer' ? null : project.apiKey,
+        role: access.role,
+        orgRole: access.orgRole,
+        members,
+        labels: labelRows,
+        devicePool,
+      }),
+    );
   },
 );
 
 projectRoutes.post(
   '/:id/api-key/rotate',
+  rotateProjectApiKey,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(flatten(result.error));
   }),
@@ -326,12 +361,13 @@ projectRoutes.post(
       throw notFound();
     }
 
-    return c.json({ id: updated.id, apiKey: updated.apiKey });
+    return c.json(answer(rotatedApiKeySchema, { id: updated.id, apiKey: updated.apiKey }));
   },
 );
 
 projectRoutes.patch(
   '/:id',
+  patchProject,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(flatten(result.error));
   }),
@@ -395,7 +431,7 @@ projectRoutes.patch(
     if (!updated) throw notFound();
     await announceContractInput(id, patch);
 
-    return c.json(withRetiredReleaseAxes(updated));
+    return c.json(answer(patchedProjectSchema, withRetiredReleaseAxes(updated)));
   },
 );
 
@@ -407,6 +443,7 @@ projectRoutes.route('/', projectRunnerRoutes);
 
 projectRoutes.delete(
   '/:id',
+  deleteProject,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(flatten(result.error));
   }),
@@ -444,6 +481,7 @@ const ARCHIVE_PROJECTION = {
 
 projectRoutes.post(
   '/:id/archive',
+  archiveProject,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(flatten(result.error));
   }),
@@ -460,12 +498,13 @@ projectRoutes.post(
       .where(eq(projects.id, id))
       .returning(ARCHIVE_PROJECTION);
     if (!updated) throw notFound();
-    return c.json(updated);
+    return c.json(answer(archivedProjectSchema, updated));
   },
 );
 
 projectRoutes.post(
   '/:id/unarchive',
+  unarchiveProject,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(flatten(result.error));
   }),
@@ -482,7 +521,7 @@ projectRoutes.post(
       .where(eq(projects.id, id))
       .returning(ARCHIVE_PROJECTION);
     if (!updated) throw notFound();
-    return c.json(updated);
+    return c.json(answer(archivedProjectSchema, updated));
   },
 );
 
@@ -498,6 +537,7 @@ projectRoutes.post(
 
 projectRoutes.get(
   '/:id/pipeline-config',
+  getPipelineConfig,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(flatten(result.error));
   }),
@@ -526,12 +566,13 @@ projectRoutes.get(
     // ISS-232 Phase 3 — `runnerFallback` was removed. The v2 selector picks
     // primary → standby deterministically with no type-chain fallback; per-
     // stage `runner` overrides on step toggles continue to work.
-    return c.json({ pipelineConfig });
+    return c.json(answer(pipelineConfigReadSchema, { pipelineConfig }));
   },
 );
 
 projectRoutes.patch(
   '/:id/plugins',
+  patchPlugins,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(flatten(result.error));
   }),
@@ -547,7 +588,7 @@ projectRoutes.patch(
     if ((await readAgentConfig(id)) === null) throw notFound();
     await patchAgentConfigKeys(id, { plugins });
 
-    return c.json({ plugins: plugins ?? [] });
+    return c.json(answer(pluginsWrittenSchema, { plugins: plugins ?? [] }));
   },
 );
 
@@ -568,6 +609,7 @@ const branchConfigParamSchema = z.object({
 
 projectRoutes.get(
   '/:id/issues/:issueId/branch-config',
+  getBranchConfig,
   zValidator('param', branchConfigParamSchema, (result) => {
     if (!result.success) throw badRequest(flatten(result.error));
   }),
@@ -630,7 +672,7 @@ projectRoutes.get(
       project,
     );
 
-    return c.json(resolved);
+    return c.json(answer(branchConfigSchema, resolved));
   },
 );
 

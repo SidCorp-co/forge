@@ -8,6 +8,7 @@ import {
   noClaudeClient,
   resolveChatDevice,
 } from '../agent-sessions/chat-turn.js';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
@@ -16,6 +17,7 @@ import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
 import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { requestSkillSync } from '../skills/service.js';
+import { onboardStartedSchema, startOnboarding } from './onboard-routes-reference.js';
 
 // ISS-733 — the "Build Project Brain" trigger: web calls this once, after
 // bootstrap, to open a fresh chat session that runs `forge-onboard` as turn 1
@@ -44,6 +46,7 @@ export const projectOnboardRoutes = new Hono<{ Variables: AuthVars }>();
 
 projectOnboardRoutes.post(
   '/:id/onboard',
+  startOnboarding,
   zValidator('param', onboardParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -120,6 +123,6 @@ projectOnboardRoutes.post(
       });
     }
 
-    return c.json({ sessionId: session.id }, 201);
+    return c.json(answer(onboardStartedSchema, { sessionId: session.id }), 201);
   },
 );

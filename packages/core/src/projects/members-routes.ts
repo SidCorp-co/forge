@@ -2,6 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import {
@@ -18,6 +19,20 @@ import { zValidator } from '../middleware/validator.js';
 import { emitNotification } from '../notifications/emit.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';
+import {
+  addedMemberSchema,
+  addMember,
+  cancelMemberInvitation,
+  changeMemberRole,
+  invitationIssuedSchema,
+  inviteMember,
+  listMembers,
+  listPendingMemberInvitations,
+  memberListSchema,
+  membershipSchema,
+  pendingInvitationListSchema,
+  removeMember,
+} from './members-routes-reference.js';
 
 // Every project role is assignable (admin|member|viewer) — there is no
 // project 'owner' anymore; the org tier carries ownership.
@@ -64,6 +79,7 @@ memberRoutes.use('*', requireAuth(), assertEmailVerified());
 
 memberRoutes.get(
   '/:projectId/members',
+  listMembers,
   zValidator('param', projectParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -91,12 +107,13 @@ memberRoutes.get(
       .innerJoin(users, eq(users.id, projectMembers.userId))
       .where(eq(projectMembers.projectId, projectId));
 
-    return c.json(rows);
+    return c.json(answer(memberListSchema, rows));
   },
 );
 
 memberRoutes.get(
   '/:projectId/members/invitations',
+  listPendingMemberInvitations,
   zValidator('param', projectParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -124,12 +141,18 @@ memberRoutes.get(
     // Never leak `token` (the accept secret / PK). Surface an `expired` flag so
     // the UI can hint at stale invites that are still cancellable.
     const now = Date.now();
-    return c.json(rows.map((r) => ({ ...r, expired: new Date(r.expiresAt).getTime() < now })));
+    return c.json(
+      answer(
+        pendingInvitationListSchema,
+        rows.map((r) => ({ ...r, expired: new Date(r.expiresAt).getTime() < now })),
+      ),
+    );
   },
 );
 
 memberRoutes.post(
   '/:projectId/members',
+  addMember,
   zValidator('param', projectParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -176,12 +199,13 @@ memberRoutes.post(
       .from(users)
       .where(eq(users.id, targetUserId))
       .limit(1);
-    return c.json({ ...inserted, email: email?.email ?? null }, 201);
+    return c.json(answer(addedMemberSchema, { ...inserted, email: email?.email ?? null }), 201);
   },
 );
 
 memberRoutes.post(
   '/:projectId/members/invite',
+  inviteMember,
   zValidator('param', projectParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -271,12 +295,13 @@ memberRoutes.post(
     if (env.SMTP_DEBUG || env.NODE_ENV === 'test') {
       body.token = token;
     }
-    return c.json(body, 201);
+    return c.json(answer(invitationIssuedSchema, body), 201);
   },
 );
 
 memberRoutes.patch(
   '/:projectId/members/:userId',
+  changeMemberRole,
   zValidator('param', memberParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -310,12 +335,13 @@ memberRoutes.patch(
       });
     if (!updated) throw notFound('NOT_FOUND', 'membership not found');
 
-    return c.json(updated);
+    return c.json(answer(membershipSchema, updated));
   },
 );
 
 memberRoutes.delete(
   '/:projectId/members/invitations',
+  cancelMemberInvitation,
   zValidator('param', projectParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -349,6 +375,7 @@ memberRoutes.delete(
 
 memberRoutes.delete(
   '/:projectId/members/:userId',
+  removeMember,
   zValidator('param', memberParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
