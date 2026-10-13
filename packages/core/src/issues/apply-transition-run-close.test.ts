@@ -14,7 +14,7 @@ vi.mock('../questions/issue-coupling.js', () => ({ settleOpenQuestions: async ()
 // A project naming no release tag owes a close nothing more, and these cases script every select.
 vi.mock('./release-tag-close.js', () => ({
   releaseTagOf: vi.fn(async () => null),
-  refuseUnreleasedClose: vi.fn(async () => null),
+  holdReleaseTagClose: vi.fn(async (_issue: unknown, _to: unknown, options: unknown) => options),
 }));
 vi.mock('./archive.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./archive.js')>()),

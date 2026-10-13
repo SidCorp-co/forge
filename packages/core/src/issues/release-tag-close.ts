@@ -3,11 +3,12 @@
 // and so runs before the transition's transaction opens, never inside it.
 
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { type Db, db } from '../db/client.js';
 import { type IssueStatus, issues, projects } from '../db/schema.js';
 import { chainReleaseTag } from '../projects/release-chain.js';
 import { withRepository } from '../projects/repository-access.js';
 import { saying, type TagContainment } from '../projects/repository-reader.js';
+import { TransitionError } from './transition-error.js';
 
 /** Where a tag-released issue rests until a tag that contains it is cut. */
 export const RELEASE_TAG_RESTING_STATUS: IssueStatus = 'awaiting_release';
@@ -28,13 +29,16 @@ export async function releaseTagOf(projectId: string): Promise<string | null> {
   return row ? chainReleaseTag(row.releaseChain) : null;
 }
 
-/** The commit this issue's work landed as: the one Forge observed, else the one a caller claimed. */
-async function landingCommitOf(issueId: string): Promise<string | null> {
-  const [row] = await db
+type Transaction = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+/** The commit this issue's work landed as: the one Forge observed, else the one a caller claimed; `lock` holds the row until the transaction ends. */
+async function landingCommitOf(issueId: string, executor: Pick<Db, 'select'> = db, lock = false) {
+  const read = executor
     .select({ observed: issues.mergedCommitSha, claimed: issues.mergedClaimedCommit })
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
+  const [row] = await (lock ? read.for('update') : read);
   const commit = (row?.observed ?? row?.claimed ?? '').trim();
   return commit === '' ? null : commit;
 }
@@ -95,21 +99,25 @@ function notContainedRefusal(pattern: string, read: Extract<TagContainment, { co
   return refusal;
 }
 
-/**
- * Why this issue may not be written `closed`, or `null` where it may. A project declaring no tag is
- * none of this rule's business; one declaring a tag is refused unless a matching tag is shown to
- * contain the landing commit, and a tag list that could not be read is a refusal of its own.
- */
-export async function refuseUnreleasedClose(
+/** What judging a close found: why it is refused, or the commit whose tag was read to allow it. */
+interface Judgement {
+  refusal: ReleaseTagRefusal | null;
+  /** Set only where a tag held the commit, so the transaction can hold the issue to it. */
+  carried: string | null;
+}
+
+const NOT_APPLICABLE: Judgement = { refusal: null, carried: null };
+
+async function judge(
   issue: { id: string; projectId: string },
   toStatus: IssueStatus,
-): Promise<ReleaseTagRefusal | null> {
-  if (toStatus !== 'closed') return null;
+): Promise<Judgement> {
+  if (toStatus !== 'closed') return NOT_APPLICABLE;
   const pattern = await releaseTagOf(issue.projectId);
-  if (pattern === null) return null;
+  if (pattern === null) return NOT_APPLICABLE;
 
   const landing = await landingCommitOf(issue.id);
-  if (landing === null) return noLandingRefusal(pattern);
+  if (landing === null) return { refusal: noLandingRefusal(pattern), carried: null };
 
   let read: TagContainment;
   try {
@@ -121,6 +129,34 @@ export async function refuseUnreleasedClose(
   } catch (err) {
     read = { why: err instanceof Error ? err.message : String(err) };
   }
-  if ('why' in read) return unreadRefusal(pattern, landing, read.why);
-  return read.containing.length > 0 ? null : notContainedRefusal(pattern, read);
+  if ('why' in read) return { refusal: unreadRefusal(pattern, landing, read.why), carried: null };
+  if (read.containing.length > 0) return { refusal: null, carried: landing };
+  return { refusal: notContainedRefusal(pattern, read), carried: null };
+}
+
+/**
+ * Refuses a close that a project shipping by version tag is not owed, and otherwise returns
+ * `options` holding the issue, inside the transaction, to the landing commit whose tag was read: a
+ * mark cleared and made again while the repository was being read would otherwise close on a commit
+ * no tag was shown to hold. A project naming no tag, and any status but `closed`, change nothing.
+ */
+export async function holdReleaseTagClose<
+  O extends { beforeStatusWrite?: ((tx: Transaction) => Promise<void>) | undefined },
+>(issue: { id: string; projectId: string }, toStatus: IssueStatus, options: O): Promise<O> {
+  const { refusal, carried } = await judge(issue, toStatus);
+  if (refusal) throw new TransitionError(refusal.code, refusal.detail, refusal.details);
+  if (carried === null) return options;
+  return {
+    ...options,
+    beforeStatusWrite: async (tx: Transaction) => {
+      if ((await landingCommitOf(issue.id, tx, true)) !== carried) {
+        throw new TransitionError(
+          'STALE_TRANSITION',
+          `the landing commit this issue's close was judged on (${carried}) changed while the repository's tags were being read, so the close was not made. Read where the issue stands now and close it again.`,
+          { requires: 'releaseTag', judged: carried },
+        );
+      }
+      await options.beforeStatusWrite?.(tx);
+    },
+  };
 }

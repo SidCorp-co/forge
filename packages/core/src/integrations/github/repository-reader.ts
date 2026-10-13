@@ -120,32 +120,38 @@ async function listTags(client: GitHubRepoClient): Promise<Map<string, string> |
   return `${repository} holds more than ${RELEASE_TAG_LIST_CEILING} tags, more than one reading lists whole, so whether a tag holds the commit cannot be read`;
 }
 
-/** The matching tags, newest first, that contain `sha`: batches of compares until one holds it. */
+/**
+ * The matching tags, newest first, that contain `sha`: batches of compares until one holds it. A
+ * compare that fails never hides a tag another one shows; it only makes "none hold it" unreadable.
+ */
 async function holding(
   client: GitHubRepoClient,
   sha: string,
   matching: string[],
   tags: Map<string, string>,
-) {
+): Promise<string[]> {
   const repository = client.fullName;
   const containing: string[] = [];
+  const failures: unknown[] = [];
   for (
     let at = 0;
     at < matching.length && containing.length === 0;
     at += RELEASE_TAG_COMPARE_BATCH
   ) {
     const batch = matching.slice(at, at + RELEASE_TAG_COMPARE_BATCH);
-    const statuses = await Promise.all(
+    const settled = await Promise.allSettled(
       batch.map((name) =>
         client.get<CompareRead>(
           `/repos/${repository}/compare/${encodeURIComponent(sha)}...${encodeURIComponent(tags.get(name) as string)}?per_page=1`,
         ),
       ),
     );
-    batch.forEach((name, i) => {
-      if (DESCENDS.has(statuses[i]?.status ?? '')) containing.push(name);
+    settled.forEach((result, i) => {
+      if (result.status === 'rejected') failures.push(result.reason);
+      else if (DESCENDS.has(result.value.status ?? '')) containing.push(batch[i] as string);
     });
   }
+  if (containing.length === 0 && failures.length > 0) throw failures[0];
   return containing;
 }
 

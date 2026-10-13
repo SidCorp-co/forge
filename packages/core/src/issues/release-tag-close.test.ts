@@ -8,9 +8,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RepositoryAccess, TagContainment } from '../projects/repository-reader.js';
 
 const selects: unknown[][] = [];
-const dbSelect = vi.fn(() => ({
-  from: () => ({ where: () => ({ limit: async () => selects.shift() ?? [] }) }),
-}));
+const limit = () => {
+  const rows = selects.shift() ?? [];
+  return Object.assign(Promise.resolve(rows), { for: async () => rows });
+};
+const selectBuilder = () => ({ from: () => ({ where: () => ({ limit }) }) });
+const dbSelect = vi.fn(selectBuilder);
 vi.mock('../db/client.js', () => ({ db: { select: () => dbSelect() } }));
 
 const tagsContaining = vi.fn(
@@ -34,7 +37,7 @@ vi.mock('../projects/repository-access.js', () => ({
   withRepository: (...a: Parameters<typeof withRepository>) => withRepository(...a),
 }));
 
-const { refuseUnreleasedClose, releaseTagOf } = await import('./release-tag-close.js');
+const { holdReleaseTagClose, releaseTagOf } = await import('./release-tag-close.js');
 
 const PROJECT = '22222222-2222-4222-8222-222222222222';
 const ISSUE = '11111111-1111-4111-8111-111111111111';
@@ -47,8 +50,20 @@ function issue(observed: string | null, claimed: string | null = null) {
   selects.push([{ observed, claimed }]);
 }
 const TAGGED = [{ branch: 'dev', tag: 'v*.*.*' }];
-const close = (toStatus: 'closed' | 'dropped' | 'awaiting_release' = 'closed') =>
-  refuseUnreleasedClose({ id: ISSUE, projectId: PROJECT }, toStatus);
+type Options = { beforeStatusWrite?: ((tx: never) => Promise<void>) | undefined };
+const hold = (
+  toStatus: 'closed' | 'dropped' | 'awaiting_release' = 'closed',
+  options: Options = {},
+) => holdReleaseTagClose({ id: ISSUE, projectId: PROJECT }, toStatus, options as never);
+/** What a refused close rejects with, so a case names the code and not "it threw". */
+const refused = async (toStatus?: 'closed') => {
+  const err = await hold(toStatus).then(
+    () => null,
+    (e: unknown) => e as { code: string; detail: string; details: Record<string, unknown> },
+  );
+  expect(err, 'the close was not refused').not.toBeNull();
+  return err as { code: string; detail: string; details: Record<string, unknown> };
+};
 
 beforeEach(() => {
   selects.length = 0;
@@ -69,13 +84,16 @@ describe('a project that names no release tag', () => {
     ['promotes across two', [{ branch: 'dev' }, { branch: 'main', from: 'merge-branch' }]],
   ])('is owed nothing, and its repository is never read, when its chain %s', async (_, chain) => {
     project(chain);
-    expect(await close()).toBeNull();
+    const options = {};
+
+    expect(await hold('closed', options)).toBe(options);
     expect(withRepository).not.toHaveBeenCalled();
   });
 
   it('is asked nothing at all for a status that is not a close', async () => {
-    expect(await close('awaiting_release')).toBeNull();
-    expect(await close('dropped')).toBeNull();
+    const options = {};
+    expect(await hold('awaiting_release', options)).toBe(options);
+    expect(await hold('dropped', options)).toBe(options);
     expect(dbSelect).not.toHaveBeenCalled();
   });
 });
@@ -98,7 +116,8 @@ describe('a project that ships by version tag', () => {
       containing: ['v1.19.0'],
     });
 
-    expect(await close()).toBeNull();
+    await hold();
+
     expect(tagsContaining).toHaveBeenCalledWith(LANDING, 'v*.*.*');
   });
 
@@ -111,14 +130,14 @@ describe('a project that ships by version tag', () => {
       containing: [],
     });
 
-    const refusal = await close();
+    const refusal = await refused();
 
-    expect(refusal?.code).toBe('CLOSE_REQUIRES_RELEASE_TAG');
-    expect(refusal?.detail).toContain(LANDING);
-    expect(refusal?.detail).toContain('`v1.18.0`');
-    expect(refusal?.detail).toContain('`awaiting_release`');
-    expect(refusal?.detail).toContain('`v*.*.*`');
-    expect(refusal?.details).toMatchObject({
+    expect(refusal.code).toBe('CLOSE_REQUIRES_RELEASE_TAG');
+    expect(refusal.detail).toContain(LANDING);
+    expect(refusal.detail).toContain('`v1.18.0`');
+    expect(refusal.detail).toContain('`awaiting_release`');
+    expect(refusal.detail).toContain('`v*.*.*`');
+    expect(refusal.details).toMatchObject({
       requires: 'releaseTag',
       pattern: 'v*.*.*',
       landing: LANDING,
@@ -133,10 +152,10 @@ describe('a project that ships by version tag', () => {
     issue(LANDING);
     tagsContaining.mockResolvedValue({ commit: LANDING, matching: [], containing: [] });
 
-    const refusal = await close();
+    const refusal = await refused();
 
-    expect(refusal?.detail).toContain('no tag matching it exists yet');
-    expect(refusal?.details).toMatchObject({ newestTag: null, matchingTags: 0 });
+    expect(refusal.detail).toContain('no tag matching it exists yet');
+    expect(refusal.details).toMatchObject({ newestTag: null, matchingTags: 0 });
   });
 
   it('looks for the commit a caller claimed where none was observed', async () => {
@@ -148,7 +167,8 @@ describe('a project that ships by version tag', () => {
       containing: ['v1.0.0'],
     });
 
-    expect(await close()).toBeNull();
+    await hold();
+
     expect(tagsContaining).toHaveBeenCalledWith('abc1234', 'v*.*.*');
   });
 
@@ -156,18 +176,18 @@ describe('a project that ships by version tag', () => {
     project(TAGGED);
     issue(null, null);
 
-    const refusal = await close();
+    const refusal = await refused();
 
-    expect(refusal?.code).toBe('CLOSE_REQUIRES_RELEASE_TAG');
-    expect(refusal?.detail).toContain('carries no landing commit');
-    expect(refusal?.details).toMatchObject({ landing: null, rests: 'awaiting_release' });
+    expect(refusal.code).toBe('CLOSE_REQUIRES_RELEASE_TAG');
+    expect(refusal.detail).toContain('carries no landing commit');
+    expect(refusal.details).toMatchObject({ landing: null, rests: 'awaiting_release' });
     expect(withRepository).not.toHaveBeenCalled();
   });
 
   it('treats a blank commit as none', async () => {
     project(TAGGED);
     issue('   ', '');
-    expect((await close())?.details).toMatchObject({ landing: null });
+    expect((await refused()).details).toMatchObject({ landing: null });
   });
 });
 
@@ -177,11 +197,11 @@ describe('a tag list that could not be read is never read as one holding no tag'
     issue(LANDING);
     tagsContaining.mockResolvedValue({ why: 'o/r could not read which tags hold it: HTTP 502' });
 
-    const refusal = await close();
+    const refusal = await refused();
 
-    expect(refusal?.code).toBe('RELEASE_TAG_UNREAD');
-    expect(refusal?.detail).toContain('HTTP 502');
-    expect(refusal?.details).toMatchObject({ read: 'unread', landing: LANDING });
+    expect(refusal.code).toBe('RELEASE_TAG_UNREAD');
+    expect(refusal.detail).toContain('HTTP 502');
+    expect(refusal.details).toMatchObject({ read: 'unread', landing: LANDING });
   });
 
   it('refuses RELEASE_TAG_UNREAD where the project has no repository access, naming the act that clears it', async () => {
@@ -195,10 +215,10 @@ describe('a tag list that could not be read is never read as one holding no tag'
       clears: 'bind one',
     };
 
-    const refusal = await close();
+    const refusal = await refused();
 
-    expect(refusal?.code).toBe('RELEASE_TAG_UNREAD');
-    expect(refusal?.detail).toContain('no repository is bound — bind one');
+    expect(refusal.code).toBe('RELEASE_TAG_UNREAD');
+    expect(refusal.detail).toContain('no repository is bound — bind one');
     expect(tagsContaining).not.toHaveBeenCalled();
   });
 
@@ -207,9 +227,56 @@ describe('a tag list that could not be read is never read as one holding no tag'
     issue(LANDING);
     access = new Error('connection reset');
 
-    const refusal = await close();
+    const refusal = await refused();
 
-    expect(refusal?.code).toBe('RELEASE_TAG_UNREAD');
-    expect(refusal?.detail).toContain('connection reset');
+    expect(refusal.code).toBe('RELEASE_TAG_UNREAD');
+    expect(refusal.detail).toContain('connection reset');
+  });
+});
+
+describe('the landing commit a tag was shown to hold is held inside the transaction', () => {
+  async function allowed(before?: () => Promise<void>) {
+    project(TAGGED);
+    issue(LANDING);
+    tagsContaining.mockResolvedValue({
+      commit: LANDING,
+      matching: ['v1.0.0'],
+      containing: ['v1.0.0'],
+    });
+    const out = (await hold('closed', before ? { beforeStatusWrite: before } : {})) as Options;
+    return out.beforeStatusWrite as (tx: { select: typeof selectBuilder }) => Promise<void>;
+  }
+  const tx = { select: selectBuilder };
+
+  it('lets the write on where the issue still holds that commit, and runs the caller`s own hook after it', async () => {
+    const own = vi.fn(async () => undefined);
+    const guard = await allowed(own);
+    issue(LANDING);
+
+    await guard(tx);
+
+    expect(own).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops the write, as a stale transition, where the mark was cleared and made again on another commit', async () => {
+    const own = vi.fn(async () => undefined);
+    const guard = await allowed(own);
+    issue('b'.repeat(40));
+
+    const err = await guard(tx).then(
+      () => null,
+      (e: unknown) => e as { code: string; detail: string; details: Record<string, unknown> },
+    );
+
+    expect(err).toMatchObject({ code: 'STALE_TRANSITION', details: { judged: LANDING } });
+    expect(err?.detail).toContain(LANDING);
+    expect(own).not.toHaveBeenCalled();
+  });
+
+  it('stops the write where the mark was cleared and not made again', async () => {
+    const guard = await allowed();
+    issue(null, null);
+
+    await expect(guard(tx)).rejects.toMatchObject({ code: 'STALE_TRANSITION' });
   });
 });

@@ -35,10 +35,13 @@ one, because it is the entry that is live: a `tag` anywhere else is refused
 `projects_release_chain_ok` (migration `0328`), so a write around the API meets it too.
 
 **A close on such a project is refused unless a tag matching the pattern contains the issue's
-landing commit.** The rule is `packages/core/src/issues/release-tag-close.ts:refuseUnreleasedClose`,
+landing commit.** The rule is `packages/core/src/issues/release-tag-close.ts:holdReleaseTagClose`,
 called by `packages/core/src/issues/apply-transition.ts:transitionIssueStatus` before its
 transaction opens, so every surface that writes `closed` meets it: REST single, REST batch, MCP, the
-release finish. It applies to every actor. Its answers:
+release finish. It applies to every actor. The tags are read before the transaction opens, so the
+transaction re-reads the landing commit under a row lock and stops as `STALE_TRANSITION` where the
+mark moved to another commit meanwhile: a close is made on the landing a tag was shown to hold and
+on no other. Its answers:
 
 | reading | answer |
 |---|---|

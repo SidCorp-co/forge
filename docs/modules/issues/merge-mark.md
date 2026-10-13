@@ -213,7 +213,7 @@ answer.
 
 A project whose release chain names a `tag` owes a close one more thing, asked after the mark is
 accepted: a tag matching that pattern contains the commit the work landed as
-(`packages/core/src/issues/release-tag-close.ts:refuseUnreleasedClose`, ADR 0004). It reads the
+(`packages/core/src/issues/release-tag-close.ts:holdReleaseTagClose`, ADR 0004). It reads the
 landing commit this page calls `observed` or, where only a claim stands, the claimed commit.
 
 An issue's lane (`laneOf`) is its own declaration where it holds one, else its project's kind. The

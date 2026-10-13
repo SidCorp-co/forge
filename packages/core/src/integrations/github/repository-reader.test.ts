@@ -86,12 +86,15 @@ describe('tagsContaining, on a GitHub binding', () => {
   const HOLDER = 'a'.repeat(40);
   const OTHER = 'b'.repeat(40);
 
+  const BROKEN = 'c'.repeat(40);
+
   function tagged(
-    tags: Array<{ name: string; holds: boolean }>,
+    tags: Array<{ name: string; holds: boolean; broken?: boolean }>,
     opts: { failCompare?: boolean } = {},
   ): GitHubRepoClient & { asked: string[] } {
     const client = github();
-    const shaOf = (t: { holds: boolean }) => (t.holds ? HOLDER : OTHER);
+    const shaOf = (t: { holds: boolean; broken?: boolean }) =>
+      t.broken ? BROKEN : t.holds ? HOLDER : OTHER;
     return {
       ...client,
       async get<T>(path: string): Promise<T> {
@@ -109,6 +112,7 @@ describe('tagsContaining, on a GitHub binding', () => {
         const cmp = /\/compare\/[0-9a-f]+\.\.\.([0-9a-f]+)\?per_page=1$/.exec(path);
         if (cmp) {
           if (opts.failCompare) throw new GitHubReadError(500, `GET ${path} returned HTTP 500`);
+          if (cmp[1] === BROKEN) throw new GitHubReadError(404, `GET ${path} returned HTTP 404`);
           return { status: cmp[1] === HOLDER ? 'ahead' : 'diverged' } as T;
         }
         throw new GitHubReadError(404, `GET ${path} returned HTTP 404`);
@@ -175,6 +179,36 @@ describe('tagsContaining, on a GitHub binding', () => {
       why: 'o/r holds more than 1000 tags, more than one reading lists whole, so whether a tag holds the commit cannot be read',
     });
     expect(compares(client)).toEqual([]);
+  });
+
+  it('finds a tag that holds the commit though another compare in the same batch fails', async () => {
+    const read = await githubRepositoryReader(
+      tagged([
+        { name: 'v1.3.0', holds: false, broken: true },
+        { name: 'v1.2.0', holds: true },
+      ]),
+    ).tagsContaining(LANDING, 'v*');
+    expect(read).toMatchObject({ commit: LANDING, containing: ['v1.2.0'] });
+  });
+
+  it('finds a tag in a later batch though a compare in an earlier one failed', async () => {
+    const all = Array.from({ length: 25 }, (_, i) => ({
+      name: `v1.${25 - i}.0`,
+      holds: i === 24,
+      broken: i === 3,
+    }));
+    const read = await githubRepositoryReader(tagged(all)).tagsContaining(LANDING, 'v*');
+    expect(read).toMatchObject({ commit: LANDING, containing: ['v1.1.0'] });
+  });
+
+  it('says why, rather than answering that no tag holds the commit, where a compare failed and none does', async () => {
+    const read = await githubRepositoryReader(
+      tagged([
+        { name: 'v1.2.0', holds: false, broken: true },
+        { name: 'v1.1.0', holds: false },
+      ]),
+    ).tagsContaining(LANDING, 'v*');
+    expect(read).toMatchObject({ why: expect.stringContaining('HTTP 404') });
   });
 
   it('says why where a compare fails, rather than answering that no tag holds the commit', async () => {

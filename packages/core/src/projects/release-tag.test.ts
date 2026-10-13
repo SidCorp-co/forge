@@ -36,6 +36,25 @@ describe('tagMatchesPattern', () => {
   });
 });
 
+describe('tagMatchesPattern against a pattern built to make a backtracking matcher explode', () => {
+  it('answers a non-match promptly for many wildcards and a name that nearly fits', () => {
+    const started = performance.now();
+    expect(tagMatchesPattern(`${'*a'.repeat(40)}b`, 'a'.repeat(80))).toBe(false);
+    expect(tagMatchesPattern(`${'*'.repeat(50)}z`, 'a'.repeat(200))).toBe(false);
+    expect(performance.now() - started).toBeLessThan(250);
+  });
+
+  it('still finds a match that needs a wildcard to give characters back', () => {
+    expect(tagMatchesPattern('a*b*c', 'aXbYbZc')).toBe(true);
+    expect(tagMatchesPattern('*a*a*b', 'aaaab')).toBe(true);
+    expect(tagMatchesPattern('v*.*.*', 'v1.2.3.4')).toBe(true);
+    expect(tagMatchesPattern('a*b', 'ab')).toBe(true);
+    expect(tagMatchesPattern('a*b', 'a')).toBe(false);
+    expect(tagMatchesPattern('', '')).toBe(true);
+    expect(tagMatchesPattern('', 'a')).toBe(false);
+  });
+});
+
 describe('matchingTagsNewestFirst', () => {
   it('orders by version, not by text, so v1.18.0 is newer than v1.9.0 and v1.2.0', () => {
     expect(matchingTagsNewestFirst('v*', ['v1.2.0', 'v1.18.0', 'v1.9.0'])).toEqual([

@@ -23,13 +23,30 @@ export const releaseTagPatternSchema = z
       `${RELEASE_CHAIN_TAG_PATTERN}: the release tag pattern ${JSON.stringify(issue.input)} holds a character a tag pattern may not. Send ${RELEASE_TAG_PATTERN_SHAPE}.`,
   });
 
-const WILDCARD = /\*/g;
-const LITERAL_SPECIALS = /[.+?^${}()|[\]\\]/g;
-
-/** Whether `name` is a tag the pattern names. The whole name must match; `*` is the only wildcard. */
+/** Whether `name` is a tag the pattern names: the whole name, `*` the only wildcard. Matched in one pass with a single backtrack point, so no pattern can make it explode. */
 export function tagMatchesPattern(pattern: string, name: string): boolean {
-  const source = pattern.replace(LITERAL_SPECIALS, '\\$&').replace(WILDCARD, '.*');
-  return new RegExp(`^${source}$`, 's').test(name);
+  let p = 0;
+  let n = 0;
+  let star = -1;
+  let resume = 0;
+  while (n < name.length) {
+    if (pattern[p] === '*') {
+      star = p;
+      p += 1;
+      resume = n;
+    } else if (p < pattern.length && pattern[p] === name[n]) {
+      p += 1;
+      n += 1;
+    } else if (star >= 0) {
+      p = star + 1;
+      resume += 1;
+      n = resume;
+    } else {
+      return false;
+    }
+  }
+  while (pattern[p] === '*') p += 1;
+  return p === pattern.length;
 }
 
 /** The tags `pattern` names, newest version first, so a refusal can say which one is the latest. */
