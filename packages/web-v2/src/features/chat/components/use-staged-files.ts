@@ -1,4 +1,3 @@
-"use client";
 
 import { type ClipboardEvent, useCallback, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";

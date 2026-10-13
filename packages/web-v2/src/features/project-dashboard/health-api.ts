@@ -1,4 +1,3 @@
-"use client";
 
 import type { HealthWindow, ProjectHealth } from "@forge/contracts/project-health";
 import { useQuery } from "@tanstack/react-query";

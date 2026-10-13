@@ -1,4 +1,3 @@
-"use client";
 
 import { FEEDBACK_TARGET_TYPES } from "@forge/contracts/feedback";
 import { useEffect, useId, useState } from "react";

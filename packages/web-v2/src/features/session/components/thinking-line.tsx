@@ -1,4 +1,3 @@
-"use client";
 
 // The one renderer for a turn's pauses (ISS-1079). Three shapes meet here and
 // the reader is shown the same line by all of them: readable reasoning from the

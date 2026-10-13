@@ -1,4 +1,3 @@
-"use client";
 
 import { fixedHeight } from "@/design";
 import "@xyflow/react/dist/base.css";

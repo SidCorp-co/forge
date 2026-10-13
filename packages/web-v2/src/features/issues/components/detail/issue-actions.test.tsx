@@ -9,7 +9,7 @@ import { renderWithQuery } from "@/test/render";
 import type { IssueDetail } from "../../types";
 import { IssueActions } from "./issue-actions";
 
-vi.mock("next/navigation", () => ({
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   usePathname: () => "/projects/forge/issues/ISS-441",
   useRouter: () => ({ push: () => undefined }),
 }));

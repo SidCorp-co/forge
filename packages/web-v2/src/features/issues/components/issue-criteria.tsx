@@ -1,4 +1,3 @@
-"use client";
 
 // The issue's criteria with the act that ties the issue to its requirement's criteria, taken on a
 // closed issue too: judging shipped work is the point.

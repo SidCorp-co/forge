@@ -1,7 +1,6 @@
-"use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { Icon } from "@/design/icons/icon";

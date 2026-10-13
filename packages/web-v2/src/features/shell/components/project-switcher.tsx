@@ -1,4 +1,3 @@
-"use client";
 
 import { useMemo, useRef, useState } from "react";
 import { Icon, type IconName, Popover, ProjectMark } from "@/design";

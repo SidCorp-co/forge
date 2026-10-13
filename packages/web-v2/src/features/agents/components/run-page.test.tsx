@@ -10,7 +10,7 @@ import { Seeded } from "@/test/vi-chrome-requirements";
 import type { RunStanding } from "../types";
 import { RunItemScreen } from "./agents-item-screens";
 
-vi.mock("next/navigation", () => ({
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
   usePathname: () => "/projects/hop/agents/runs/x",
   useParams: () => ({ slug: "hop" }),

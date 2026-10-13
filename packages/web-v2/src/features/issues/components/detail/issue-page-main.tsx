@@ -1,4 +1,3 @@
-"use client";
 
 import type { IssueBlocker } from "@forge/contracts/issue-standing";
 import type { ParkThreadQuestion } from "@forge/contracts/park";

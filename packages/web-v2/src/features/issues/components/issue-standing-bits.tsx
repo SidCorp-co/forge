@@ -1,4 +1,3 @@
-"use client";
 
 // What an issue's standing (core `issues/standing.ts`) says, put into the shared design pieces: the
 // list row, whose turn as the shared WaitingOn and banner, the step bar, the criteria bar, and the
@@ -7,7 +6,7 @@
 import type { Forecast } from "@forge/contracts/forecast";
 import type { IssueStanding, IssueStandingRow } from "@forge/contracts/issue-standing";
 import { WORK_STEPS } from "@forge/contracts/issue-vocabulary";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
 import {
   ActorChip,

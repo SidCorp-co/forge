@@ -1,4 +1,3 @@
-"use client";
 
 // The turns a thread shows while they run: the viewer's own live answer, the room's, and an agent run with its held reply.
 

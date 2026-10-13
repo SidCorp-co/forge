@@ -6,12 +6,12 @@
 //   pnpm --filter web-v2 witness witness/project-menu.witness.tsx --out <dir>
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { createRoot } from "react-dom/client";
 import { NavRail } from "@/design";
 import { MobileNavDrawer } from "@/features/shell/components/mobile-nav-drawer";
 import { projectMenu, workspaceNavItems } from "@/features/shell/nav-model";
 import "./entry";
+import { InRouter } from "./router";
 
 const PRODUCT = ["Requirements", "Workflows", "Releases", "Feedback"];
 const DELIVERY = ["Overview", "Issues", "Modules", "Agents / Runs", "Contracts", "Automation"];
@@ -22,8 +22,6 @@ window.localStorage.clear();
 window.fetch = () => new Promise<Response>(() => {});
 
 const noop = () => {};
-// the drawer's org switcher reads the router; nothing here navigates
-const router = { push: noop, replace: noop, prefetch: noop, back: noop, forward: noop, refresh: noop, hmrRefresh: noop };
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 const phone = window.innerWidth < PHONE;
 const rail = (compact: boolean) => (
@@ -33,32 +31,32 @@ const rail = (compact: boolean) => (
 );
 
 createRoot(document.getElementById("root") as HTMLElement).render(
-  <QueryClientProvider client={client}>
-    <AppRouterContext.Provider value={router as never}>
-    {phone ? (
-      <MobileNavDrawer
-        open
-        onClose={noop}
-        slug="hop"
-        railSlug="hop"
-        railProjectName="HOP"
-        activeKey="proj-requirements"
-        attentionCount={0}
-        badges={{}}
-        scopedProjects={[]}
-        onNavigate={noop}
-        onOpenProject={noop}
-        onCreateProject={noop}
-        onViewAllProjects={noop}
-      />
-    ) : (
-      <div style={{ display: "flex", gap: 24 }}>
-        {rail(false)}
-        {rail(true)}
-      </div>
-    )}
-    </AppRouterContext.Provider>
-  </QueryClientProvider>,
+  <InRouter>
+    <QueryClientProvider client={client}>
+      {phone ? (
+        <MobileNavDrawer
+          open
+          onClose={noop}
+          slug="hop"
+          railSlug="hop"
+          railProjectName="HOP"
+          activeKey="proj-requirements"
+          attentionCount={0}
+          badges={{}}
+          scopedProjects={[]}
+          onNavigate={noop}
+          onOpenProject={noop}
+          onCreateProject={noop}
+          onViewAllProjects={noop}
+        />
+      ) : (
+        <div style={{ display: "flex", gap: 24 }}>
+          {rail(false)}
+          {rail(true)}
+        </div>
+      )}
+    </QueryClientProvider>
+  </InRouter>,
 );
 
 const shown = (el: Element) => {

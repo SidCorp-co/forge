@@ -1,4 +1,3 @@
-"use client";
 
 // ISS-376 Part 2 — session-group continuity timeline. Shows, per pipeline step,
 // whether it RESUMED the prior same-group Claude session or started FRESH, with

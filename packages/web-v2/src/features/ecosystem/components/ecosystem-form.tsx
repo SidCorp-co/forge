@@ -1,7 +1,5 @@
-"use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useRouter } from "@/lib/navigation/router";
 import { useState } from "react";
 import { Button, Input, NativeSelect, Select } from "@/design";
 import { useOrgs } from "@/features/orgs";

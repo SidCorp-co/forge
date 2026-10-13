@@ -1,6 +1,5 @@
-"use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useMemo, useState } from "react";
 import { Badge, Button, Icon, Input, MonoTag, PageTitle, SegmentedControl, Tooltip } from "@/design";
 import { useProjects } from "@/features/projects";

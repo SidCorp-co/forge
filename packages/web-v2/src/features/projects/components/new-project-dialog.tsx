@@ -1,7 +1,5 @@
-'use client';
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { Link, useRouter } from "@/lib/navigation/router";
 import { type FormEvent, useState } from 'react';
 import { Banner, Button, Field, Input, Select, SlideOver } from '@/design';
 import { useActiveOrg, useOrgs } from '@/features/orgs';

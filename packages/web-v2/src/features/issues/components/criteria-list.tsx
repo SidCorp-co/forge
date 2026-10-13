@@ -1,4 +1,3 @@
-"use client";
 
 // ISS-55 — the issue's acceptance criteria as one line each: its number, the statement clipped to the
 // line, and a mark for the verdict (REQ-43 BC-10). The filter pills carry the counts, so no row does.

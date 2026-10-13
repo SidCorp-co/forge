@@ -5,9 +5,11 @@
 import { say, sentence } from "@/test/said";
 import type { WorkflowHealth } from "@forge/contracts/workflow-health";
 import { render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkflowDesign } from "../types";
 import { WorkflowDesignProperties } from "./workflow-design-facts";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const OPEN = say("designs.gate.open", { r: "2" });
 const design = {

@@ -1,4 +1,3 @@
-"use client";
 
 // IssueQuickActions (ISS-390) — a compact, always-visible quick-action row for
 // the board quick-open drawer (the pipeline `RunDetail` SlideOver, the live

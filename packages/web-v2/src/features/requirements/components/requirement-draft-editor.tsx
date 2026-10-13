@@ -1,4 +1,3 @@
-"use client";
 
 // A draft revision written in place: its summary and one criterion per line. Proposing an empty
 // draft is refused by core by name (REQUIREMENT_REVISION_EMPTY), so this is where it gets its words.

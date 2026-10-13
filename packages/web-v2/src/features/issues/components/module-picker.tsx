@@ -1,4 +1,3 @@
-"use client";
 
 // Issue detail → the module picker (ISS-594). One primary module and any number
 // of secondary ones, saved as one `PATCH /api/issues/:id` label write.
@@ -9,7 +8,7 @@
 // so nothing is hand-rolled here.
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import {
   Button,
   Checkbox,

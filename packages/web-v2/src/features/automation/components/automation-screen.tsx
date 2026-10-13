@@ -1,4 +1,3 @@
-"use client";
 
 // Development > Automation (ISS-116, prototype #/dev/automation, design automation rev 1 step
 // screen): one area with tabs Schedules, Fires and Reports (`?tab=`), each the shared GroupedList with

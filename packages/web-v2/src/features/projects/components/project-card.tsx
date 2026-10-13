@@ -1,6 +1,5 @@
-'use client';
 
-import Link from 'next/link';
+import { Link } from "@/lib/navigation/router";
 import { HealthDot, Icon, ProjectMark, Stat } from '@/design';
 import { useCopy } from '@/lib/i18n/interface-language';
 import { cn } from '@/lib/utils/cn';

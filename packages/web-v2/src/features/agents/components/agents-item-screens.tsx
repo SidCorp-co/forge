@@ -1,4 +1,3 @@
-"use client";
 
 // a run's and the master's sticky header is the shared DetailHeader: back to the list view it was
 // opened from, the key, the title, the state badge and the one primary act

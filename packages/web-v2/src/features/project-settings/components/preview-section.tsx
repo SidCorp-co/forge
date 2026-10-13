@@ -1,4 +1,3 @@
-"use client";
 
 // Settings → Preview: the project document's `preview` key (how a run's dev server starts for a live
 // preview, REQ-39 BC-11) and its `fastLane` key (which approved changes may skip the full gates). Both

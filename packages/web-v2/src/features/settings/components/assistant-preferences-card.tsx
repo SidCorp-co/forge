@@ -1,4 +1,3 @@
-"use client";
 
 // Settings → Account → how the assistant answers you. The style and the
 // standing instructions save through the same preferences route as the theme;

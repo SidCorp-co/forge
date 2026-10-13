@@ -1,7 +1,6 @@
-"use client";
 
-// Excalidraw is reached only through this file, which sketch-pad loads with next/dynamic and ssr:false —
-// the package touches window at import, so a static import on a server-rendered path breaks the build.
+// Excalidraw is reached only through this file, which sketch-pad loads lazily on first use, so the
+// package stays out of every chunk a screen without a sketch loads.
 
 import "@excalidraw/excalidraw/index.css";
 import { Excalidraw, exportToBlob } from "@excalidraw/excalidraw";

@@ -5,8 +5,6 @@
 // which `issues/progress.ts` correctly discounts. The work was therefore counted as "closed with
 // NO evidence it shipped" with no way for the person who shipped it to say otherwise.
 
-"use client";
-
 import { useState } from "react";
 import { Button, Field, Input, Textarea } from "@/design";
 import { SlideOver } from "@/design/patterns/slide-over";

@@ -1,4 +1,3 @@
-"use client";
 
 import { useState, useSyncExternalStore } from "react";
 

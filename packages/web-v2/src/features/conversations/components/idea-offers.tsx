@@ -1,4 +1,3 @@
-"use client";
 
 // The idea the assistant offers to build as a live preview (`offer_preview`, REQ-41 BC-14): a button
 // in the thread. Pressing it opens the preview as the person, through the project's preview route;

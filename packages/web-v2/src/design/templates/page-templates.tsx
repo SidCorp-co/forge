@@ -1,4 +1,3 @@
-"use client";
 
 // The five page templates. Each is a layout with named slots and nothing else: no data, no copy.
 // A screen picks one, fills the slots with blocks, and owns only what goes in them.

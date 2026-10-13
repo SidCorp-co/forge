@@ -1,4 +1,3 @@
-"use client";
 
 // What is true of an issue right now, in three lines and a stepper: Now, Needs you, Done by. The
 // words are the standing's own (core's `waitingOn`) and the forecast's, so the page writes no

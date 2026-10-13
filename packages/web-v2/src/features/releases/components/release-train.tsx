@@ -1,7 +1,6 @@
-"use client";
 
 import { RELEASE_PROOF_TONES, RELEASE_STATE_TONES } from "@forge/contracts/releases";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { LEGEND, MarkStrip, ViewHeading } from "@/design";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";

@@ -1,4 +1,3 @@
-"use client";
 
 // Where requirements are placed (REQ-29): the project's list of areas, edited where the list is read,
 // and the assistant's proposed area and short name, taken by a person. Nothing here fills a field alone.

@@ -1,4 +1,4 @@
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { Badge, HealthDot, Icon, MonoTag, StatusBadge, Tooltip } from "@/design";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";

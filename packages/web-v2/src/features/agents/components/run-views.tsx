@@ -1,4 +1,3 @@
-"use client";
 
 // a run as core's runs read model serves it (ISS-111, design agent-run-standing rev 1): its state,
 // group, holder, wait, stuck and outcome are derived in core, so the list row, the peek and the run page
@@ -6,7 +5,7 @@
 // and folds core's own sentences, codes, ids and the lease's clocks behind the developer view
 // (REQ-43 BC-5, BC-7); the peek reads as a person's view.
 import { RUN_FINAL_STATES, type RunState } from "@forge/contracts/run-standing";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import {
   Button,
   EnumBadge,

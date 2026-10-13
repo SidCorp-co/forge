@@ -19,16 +19,17 @@ import { DOCK_OPEN_ON_KEY, useChatDockState } from "@/features/chat-dock/dock";
 import { DOCK_SIZE_KEY, LEGACY_DOCK_WIDTH_KEY, PAGE_MIN_WIDTH } from "@/features/chat-dock/dock-size";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
 import "./entry";
+import { InRouter } from "./router";
 
 const SIDEBAR = 280;
 const PANEL_FLOOR = 360;
 const BOARD = 880;
 
 // every case is a browser's first open after this change: it kept a 650px width under the old key,
-// and the panel was left open on this page
+// and the panel was left open on this page, the one InRouter opens at
 window.localStorage.clear();
 window.localStorage.setItem(LEGACY_DOCK_WIDTH_KEY, "650");
-window.localStorage.setItem(DOCK_OPEN_ON_KEY, JSON.stringify(""));
+window.localStorage.setItem(DOCK_OPEN_ON_KEY, JSON.stringify("/"));
 
 window.fetch = async (input: RequestInfo | URL) =>
   String(input).includes("/projects")
@@ -279,7 +280,9 @@ const root = document.getElementById("root");
 if (!root) throw new Error("the witness page has no #root to mount into");
 const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 createRoot(root).render(
-  <QueryClientProvider client={queries}>
-    <Shell />
-  </QueryClientProvider>,
+  <InRouter>
+    <QueryClientProvider client={queries}>
+      <Shell />
+    </QueryClientProvider>
+  </InRouter>,
 );

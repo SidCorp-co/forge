@@ -1,4 +1,3 @@
-"use client";
 
 // A write a chat turn proposed waits here, above the composer, until the person it answers agrees
 // (REQ-30 BC-4, workflow chat-turn step confirm): what it would record, what it relates to, and for

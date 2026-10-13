@@ -1,4 +1,3 @@
-"use client";
 
 // The Transcript lens — every tool call, one row each, newest last.
 //

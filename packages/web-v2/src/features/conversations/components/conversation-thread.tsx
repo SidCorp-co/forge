@@ -1,4 +1,3 @@
-"use client";
 
 // The durable conversation, rendered: what was said, and — where nothing was —
 // the decision that says why.

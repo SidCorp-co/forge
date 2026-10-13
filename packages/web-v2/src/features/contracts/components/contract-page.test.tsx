@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { SCREENS } from "@/test/vi-chrome-contracts";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useParams: () => ({ slug: "hop" }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useParams: () => ({ slug: "hop" }) }));
 vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
 
 const page = (search: string) => {

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import { INDEX_HREF } from "../missing";
 

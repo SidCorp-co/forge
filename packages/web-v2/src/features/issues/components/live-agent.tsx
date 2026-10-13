@@ -1,4 +1,3 @@
-"use client";
 
 // ISS-377 Tier-1 live-agent detail: the current step, runner/device, elapsed
 // time, and a heartbeat alive-vs-stale dot, deep-linking to the agents view for
@@ -10,7 +9,7 @@
 // when there is neither" the caller's obligation and the type's to enforce.
 
 import { type ReactNode, useState } from "react";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { Icon, MonoTag, Section } from "@/design";
 import { useElapsed } from "@/design/hooks/use-elapsed";
 import { WORK_STEP_LABELS } from "@forge/contracts/issue-vocabulary";

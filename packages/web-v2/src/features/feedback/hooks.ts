@@ -1,4 +1,3 @@
-"use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { feedbackForecastKey } from "@/features/forecast";

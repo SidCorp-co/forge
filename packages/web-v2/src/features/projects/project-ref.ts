@@ -1,4 +1,3 @@
-"use client";
 
 import { isUuid, type Rekey, useBridgedRef } from "@/lib/api/ref-bridge";
 import { useProjects } from "./hooks";

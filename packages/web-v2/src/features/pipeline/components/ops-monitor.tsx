@@ -1,4 +1,3 @@
-"use client";
 
 // Ops monitor (`/ops`, ISS-295) — ONE tabbed surface (Monitor / Progress /
 // Health / Runs) collapsing the old /pipeline,/progress,/health,/runs into a

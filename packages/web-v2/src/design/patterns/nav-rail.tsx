@@ -1,6 +1,4 @@
-"use client";
 
-import Image from "next/image";
 import { cn } from "@/lib/utils/cn";
 import { assetPath } from "@/lib/asset";
 import { Icon, type IconName } from "@/design/icons/icon";
@@ -360,10 +358,9 @@ export function NavRail({
       )}
     >
       <div data-testid="brand-row" className={cn("flex items-center gap-1.5", !compact && "px-1")}>
-        <Image
+        <img
           src={assetPath("/forge-mark-32.png")}
-          preload
-          unoptimized
+          fetchPriority="high"
           width={28}
           height={28}
           alt={t("common.brand")}

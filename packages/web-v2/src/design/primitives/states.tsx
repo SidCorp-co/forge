@@ -1,4 +1,3 @@
-"use client";
 
 // The three states a page section can be in besides its content: nothing there yet, still reading,
 // and could not read. One layout for all three, so a screen never invents its own.

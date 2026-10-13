@@ -1,4 +1,3 @@
-"use client";
 
 // The project home's header (journey walk 2026-10-08): what the project is, its business modules
 // (the roots of the module tree, owner ruling 2026-10-04: about ten, code directories only on
@@ -6,7 +5,7 @@
 // next. Flat lines on hairlines, each saying plainly when it has nothing to show.
 
 import type { RoadmapItem } from "@forge/contracts/project-status";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { moduleHref, modulesHref } from "@/lib/routes/modules";

@@ -1,6 +1,5 @@
-"use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { Badge, type BadgeProps, Button, NativeSelect, PageTitle, ProjectMark, SegmentedControl, Tooltip } from "@/design";
 import { readingOf, refusalsOf } from "@/lib/api/refusals";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";

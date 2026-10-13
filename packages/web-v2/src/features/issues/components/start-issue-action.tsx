@@ -1,4 +1,3 @@
-"use client";
 
 import { Button } from "@/design";
 import type { V1Read } from "@/features/project-config";

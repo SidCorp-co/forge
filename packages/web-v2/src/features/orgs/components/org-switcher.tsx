@@ -1,4 +1,3 @@
-"use client";
 
 // Global org switcher (ISS-469) — the always-visible "current org" control in
 // the app chrome. Reads the active-org context and renders:
@@ -8,8 +7,7 @@
 //   • a static, non-interactive label when the user has a single org (AC5).
 // Two variants match the two rail widths; `expanded` is also used in the mobile
 // drawer. Presentational beyond the context read — no data fetching of its own.
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useRouter } from "@/lib/navigation/router";
 import { Icon } from "@/design/icons/icon";
 import { Menu, type MenuItem } from "@/design/patterns/menu";
 import { useCopy } from "@/lib/i18n/interface-language";

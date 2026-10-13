@@ -19,7 +19,7 @@ import { FeedbackEvidence } from "./feedback-evidence";
 import { LinkedFeedback } from "./feedback-facts";
 
 // the page's room entry (REQ-44) reads the router to open the room it starts; nothing here navigates
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/features/workflows/canvas/workflow-canvas", () => ({
   WorkflowCanvas: ({ highlight }: { highlight: { steps: Set<string>; edges: Set<string> } | null }) => (
     <div data-testid="canvas" data-steps={[...(highlight?.steps ?? [])].join(",")} data-edges={[...(highlight?.edges ?? [])].join(",")} />

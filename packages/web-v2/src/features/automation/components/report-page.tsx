@@ -1,9 +1,8 @@
-"use client";
 
 // A report's full page: what the agent wrote, where it came from, and its triage history. The person
 // view is its state and its summary, which the header cuts to one line; the agent's detail and
 // suggestion, its signal, ids and source sit in the Developer view (REQ-43 BC-7).
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import {
   DetailLayout,
   DetailMobileTitle,

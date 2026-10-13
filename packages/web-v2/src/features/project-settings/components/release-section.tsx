@@ -1,11 +1,10 @@
-"use client";
 
 // Settings → Delivery → Release state: what a release can do right now, read from core's release
 // readiness. Each reason is core's own reading of it (`gates`, the words a release's page uses), drawn
 // by its weight: a project as it normally stands (nothing waiting, a release already running) is a
 // neutral line, a reason a release cannot start keeps its severity. What the project has not written
 // down yet is fixed here, in the page.
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useState, type ReactNode } from "react";
 import { Button, ErrorState, LEGEND, Skeleton, Textarea } from "@/design";
 import { GateLine, type GateTone } from "@/features/releases";

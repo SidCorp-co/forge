@@ -5,12 +5,14 @@
 
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { RequirementQuestionView } from "@forge/contracts/requirements";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { LinkIssueControl } from "./link-issue";
 import { RequirementDecisions } from "./requirement-decisions";
 import { Assumptions, OpenQuestions } from "./requirement-unclear";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const question = (over: Partial<RequirementQuestionView>): RequirementQuestionView => ({
   id: "q1",

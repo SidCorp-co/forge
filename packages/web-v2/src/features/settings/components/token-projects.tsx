@@ -1,4 +1,3 @@
-"use client";
 
 // FB-48 — a token's project list, edited in place: add or remove one project at a time, the secret
 // kept. Each act is `PATCH /api/pat/:id` behind a fresh sign-in; a 403 FRESH_AUTH_REQUIRED asks for

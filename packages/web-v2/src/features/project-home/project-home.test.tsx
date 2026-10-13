@@ -11,7 +11,7 @@ import { RULE, say, waitingOn } from "@/test/said";
 import { atRiskRows, runningRows } from "./derive";
 import { ProjectHome } from "./components/project-home";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/features/conversations/components/conversation-chat", () => ({
   ConversationChat: ({ conversationId }: { conversationId?: string }) => (
     <div data-testid="chat" data-conversation={conversationId ?? "new"}>

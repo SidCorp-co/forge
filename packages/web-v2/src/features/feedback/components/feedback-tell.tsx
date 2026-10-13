@@ -1,4 +1,3 @@
-"use client";
 
 // "Tell the reporter now": one act for a shipped item nobody told, above all one that shipped before
 // the project's releases sent notices. Core sends the release and what changed in each reporter's

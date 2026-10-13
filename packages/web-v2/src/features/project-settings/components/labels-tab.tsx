@@ -1,4 +1,3 @@
-"use client";
 
 // Project settings → Labels. List + create (name + #rrggbb color) + delete.
 // Core enforces `color` matches /^#[0-9a-f]{6}$/i, so a native colour input

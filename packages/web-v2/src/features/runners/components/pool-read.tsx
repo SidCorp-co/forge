@@ -1,4 +1,3 @@
-"use client";
 
 import { Banner, useNow } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";

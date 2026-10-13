@@ -1,4 +1,3 @@
-"use client";
 
 import type { DecisionMaker } from "@forge/contracts/comments";
 import type { RequirementKind, WritePictureRequest } from "@forge/contracts/requirement-pictures";

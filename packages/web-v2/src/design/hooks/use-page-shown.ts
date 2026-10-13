@@ -1,4 +1,3 @@
-"use client";
 
 // The rows the list beside the chat shows, top first (REQ-41 BC-8): every list reports its visible row
 // keys here while it is on screen, and the page snapshot each message carries reads them, so "the

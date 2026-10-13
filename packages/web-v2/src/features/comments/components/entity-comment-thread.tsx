@@ -1,4 +1,3 @@
-"use client";
 
 // The comment thread of a requirement (or a workflow or feedback item): every comment newest first,
 // a decision drawn apart from the talk with an accent bar and its badge, and one composer that

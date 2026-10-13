@@ -1,6 +1,5 @@
-"use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { releaseHref } from "@/lib/routes/releases";
 import type { Said } from "../text";
 

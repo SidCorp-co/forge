@@ -1,4 +1,3 @@
-"use client";
 
 // What a turn read with `forge_recording` (REQ-41 BC-17, BC-19), drawn under its reply from the
 // tool's own result, as the needs-you decisions are: the recording's timeline, the Reproduce entry
@@ -14,7 +13,7 @@ import {
   type TimelineEntry,
 } from "@forge/contracts/reproduce";
 import { useMutation } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import { Button } from "@/design";
 import { RefusedLine } from "@/lib/api/refusal-line";
 import { toolOutputText } from "@/lib/tool-output";

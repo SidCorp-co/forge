@@ -13,6 +13,8 @@ import { ApproveAction, DecisionNoteControl } from "./design-decision";
 import { WorkflowDesignProperties } from "./workflow-design-facts";
 import { WorkflowDesignPage } from "./workflow-design-page";
 
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
+
 const AT = "2026-10-07T10:00:00.000Z";
 const NOTE = "REQ-36 BC-16 drawn as act-qa; rule-merge is the gate.";
 

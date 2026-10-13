@@ -6,7 +6,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 
-vi.mock("next/navigation", () => ({
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/p/epod/requirements",
   useSearchParams: () => new URLSearchParams(),

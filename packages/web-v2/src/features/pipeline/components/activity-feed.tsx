@@ -1,4 +1,3 @@
-"use client";
 
 // The run/job Activity Feed (ISS-885) — the History tab of RunDetail.
 //

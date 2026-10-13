@@ -18,7 +18,7 @@ vi.mock("@forge/contracts/tours", async (actual) => {
   };
 });
 vi.mock("@/design/primitives/toast", () => ({ showToast: vi.fn(), Toaster: () => null }));
-vi.mock("next/navigation", () => ({
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/projects/forge/settings",
 }));

@@ -10,7 +10,7 @@ import { fakeCore, renderWithQuery } from "@/test/render";
 import { recordingReadIn, TurnReproduce } from "@/features/previews/components/reproduce-turn";
 
 const push = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push }) }));
 
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
 const REC = "99999999-9999-4999-8999-999999999999";

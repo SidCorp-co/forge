@@ -1,4 +1,3 @@
-"use client";
 
 import type { ReactNode } from "react";
 import { ErrorState, ProjectLoader } from "@/design";

@@ -1,4 +1,3 @@
-"use client";
 
 import { type ButtonHTMLAttributes, createContext, type ReactNode, type Ref, use } from "react";
 import { Button as ShadcnButton } from "@/components/ui/button";

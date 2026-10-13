@@ -1,4 +1,3 @@
-"use client";
 
 // The conversation the project home opens on: the composer and its thread, the same room the chat
 // dock would open (`openingTarget`), drawn in the page. It mounts `ConversationChat` as it is, so the

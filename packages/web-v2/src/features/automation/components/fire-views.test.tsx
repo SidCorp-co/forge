@@ -13,7 +13,7 @@ import { FireProperties } from "./fire-views";
 // REQ-37 BC-9 on the page: a fire says who ran it, by name, and every read it made with its status,
 // a refused one named; and a Run now whose script failed is a fire the Fires tab lists at once.
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useParams: () => ({ slug: "hop" }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useParams: () => ({ slug: "hop" }) }));
 
 const AT = "2026-10-09T08:00:00.000Z";
 const own = "/api/projects/p1/requirements";

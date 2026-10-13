@@ -1,4 +1,3 @@
-"use client";
 
 import { type QueryKey } from "@tanstack/react-query";
 import { formatRefusal } from "@/lib/api/error";

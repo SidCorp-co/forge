@@ -1,4 +1,3 @@
-"use client";
 
 import { DetailHeader, StatusBadge, useListOrigin, useUrlTab } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";

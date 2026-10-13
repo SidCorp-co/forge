@@ -31,14 +31,15 @@ the typecheck configs map `@forge/contracts` to `src/`, so core's build no longe
 reproducible in that shape on dev; what remains is a cycle with no order, which turbo reports on
 every run.
 
-Three places still impose the ordering by hand:
+Two places still impose the ordering by hand:
 
 - `packages/core/Dockerfile`, which names the 2026-09-23 race as its reason;
-- `packages/web-v2/Dockerfile` and `.github/actions/setup-workspace/action.yml`, which name a
-  different one: contracts' export map points at `dist/`, which a checkout does not hold, so it has
-  to be built before anything resolves `@forge/contracts/<module>`.
+- `.github/actions/setup-workspace/action.yml`, which names a different one: contracts' export map
+  points at `dist/`, which a checkout does not hold, so it has to be built before anything resolves
+  `@forge/contracts/<module>`.
 
-The last two stand without the cycle; the first is the one that stands only because of it.
+The second stands without the cycle; the first is the one that stands only because of it. The web
+reads neither: its Vite build and its typecheck resolve `@forge/contracts/*` to `src/`.
 
 ## Why the declaration exists, and why it reads as wrong
 
@@ -54,16 +55,16 @@ second.
 
 ## What is not established
 
-- Whether moving `"@forge/core"` to `devDependencies` in `packages/contracts` is safe for
-  `packages/web-v2`'s image. Every export now points at `dist/`, and web-v2's `next build`
-  type-checks against those five `.d.ts`, which name `@forge/core/public` and
-  `@forge/core/admin-types`; whether `pnpm install --filter web-v2...` still links core for them
-  once it is a dev dependency has not been run. **Untested — do not assume either direction.**
+- Whether moving `"@forge/core"` to `devDependencies` in `packages/contracts` is safe for core's
+  image, which builds the web inside it with `pnpm install --filter @forge/core... --filter web-v2...`.
+  The web resolves contracts from `src/`, whose type imports name `@forge/core/public` and
+  `@forge/core/admin-types`; the build checks no types, so it should not need core linked, but no
+  image has been built with the dependency moved. **Untested — do not assume either direction.**
 
 ## Honest costs
 
 | Choice | What it costs whoever adopts it |
 |---|---|
-| Leave the cycle, keep the three hand-written orderings | Turbo warns on every run, and core's Dockerfile keeps stating a reason the emit-only builds no longer have. `pnpm verify` runs no docker build, so nothing here can gate either. |
-| Move `"@forge/core"` to `devDependencies` in `packages/contracts` | One line to write, and a validation that has to be bought before the answer is known: a web-v2 image build with a real `next build`, because contracts' declarations name core's types. Its runtime cannot need core (the emitted `.js` imports none of it); if the type resolution fails, the line comes back and the work is spent. |
-| Remove an ordering early, on the argument the race is gone | Cheap, and only safe once it is established that no consumer type-checks against contracts' `dist` in the same invocation that builds it. Keep all three until that is read. |
+| Leave the cycle, keep the two hand-written orderings | Turbo warns on every run, and core's Dockerfile keeps stating a reason the emit-only builds no longer have. `pnpm verify` runs no docker build, so nothing here can gate either. |
+| Move `"@forge/core"` to `devDependencies` in `packages/contracts` | One line to write, and a validation that has to be bought before the answer is known: a core image build, which builds the web inside it. Its runtime cannot need core (the emitted `.js` imports none of it); if the type resolution fails, the line comes back and the work is spent. |
+| Remove an ordering early, on the argument the race is gone | Cheap, and only safe once it is established that no consumer type-checks against contracts' `dist` in the same invocation that builds it. Keep both until that is read. |

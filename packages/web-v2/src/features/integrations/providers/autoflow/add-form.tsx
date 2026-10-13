@@ -1,4 +1,3 @@
-"use client";
 
 import { Field, Input, Select, type SelectOption } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";

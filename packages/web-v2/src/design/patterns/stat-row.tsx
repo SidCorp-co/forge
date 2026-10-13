@@ -1,4 +1,3 @@
-"use client";
 
 // A report's numbers: one flush row of cells, label above value, hairlines between them, never tiles.
 // Charts sit in a Section under it.

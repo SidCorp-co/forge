@@ -4,10 +4,12 @@
 // @direct-test-of packages/web-v2/src/features/visual-blocks/visual-block.tsx
 
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { executionFactsIn, VisualBlockProvider, VisualBlockView } from ".";
 import { refHref } from "./ref-link";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 afterEach(cleanup);
 

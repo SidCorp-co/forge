@@ -1,4 +1,3 @@
-"use client";
 
 import type { Said } from "@forge/contracts/said";
 import { HoverCard, Signal, SignalsStrip, Tooltip } from "@/design";

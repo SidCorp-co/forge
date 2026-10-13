@@ -1,4 +1,3 @@
-"use client";
 
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";

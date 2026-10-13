@@ -1,4 +1,3 @@
-"use client";
 
 // An idea preview beside the chat (REQ-41 BC-14, BC-15, BC-16): the sketch run's page in a frame,
 // the box that asks it for a change, and Keep, which makes what the person sees the requirement's
@@ -7,7 +6,7 @@
 
 import type { PreviewFailureReason, PreviewRecord } from "@forge/contracts/preview";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useRef, useState } from "react";
 import { Button, Field, Input } from "@/design";
 import { RefusedLine } from "@/lib/api/refusal-line";

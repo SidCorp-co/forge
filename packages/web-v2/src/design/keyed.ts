@@ -1,6 +1,6 @@
 import { isValidElement, type ReactNode } from "react";
 
-/* Keys for lists without ids. Pure, so a server component can key its rows too. */
+/* Keys for lists without ids. Pure: no hook, so any function can key its rows. */
 
 /** Pairs a list with its keys, so a row is keyed by its minted key rather than its position. */
 export function keyedRows<T>(rows: readonly T[], keys: readonly string[]): { key: string; row: T; index: number }[] {

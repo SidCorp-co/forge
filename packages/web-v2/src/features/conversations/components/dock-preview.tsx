@@ -1,4 +1,3 @@
-"use client";
 
 // The preview beside the chat (REQ-39 BC-3, BC-6): when the page the dock sits on is an issue whose run
 // holds a preview, the dock shows that preview, compact, with the message box that asks the run for a

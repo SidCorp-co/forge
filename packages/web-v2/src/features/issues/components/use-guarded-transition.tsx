@@ -2,8 +2,6 @@
 // offering a status change goes through `requestTransition` and renders the
 // returned `dialog`; nothing calls `useTransitionIssue().mutate` directly.
 
-"use client";
-
 import { REASON_REQUIRED_STATUSES } from "@forge/contracts/issue-machine";
 import { type ReactNode, useState } from "react";
 import type { Refusal } from "@/lib/api/refusals";

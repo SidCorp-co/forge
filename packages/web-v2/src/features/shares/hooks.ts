@@ -1,4 +1,3 @@
-"use client";
 
 import type { ShareCreate } from "@forge/contracts/shares";
 import type { StatusReportMeta } from "@forge/contracts/status-reports";

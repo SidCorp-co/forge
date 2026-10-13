@@ -1,4 +1,3 @@
-"use client";
 
 // The collapsible "Preview" disclosure, lifted out of the knowledge rules tab
 // so the body composer draws the same one rather than a second pane that

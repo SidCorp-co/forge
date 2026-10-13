@@ -1,4 +1,3 @@
-"use client";
 
 import { type Refusal, readRefusal } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";

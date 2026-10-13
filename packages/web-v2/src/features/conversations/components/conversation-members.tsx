@@ -1,4 +1,3 @@
-"use client";
 
 // Who is in this room — the roster, and the way in and out of it (ISS-1011).
 //

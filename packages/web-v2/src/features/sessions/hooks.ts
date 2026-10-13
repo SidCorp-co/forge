@@ -1,4 +1,3 @@
-"use client";
 
 import { useQuery } from "@tanstack/react-query";
 import { useCopy } from "@/lib/i18n/interface-language";

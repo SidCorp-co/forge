@@ -1,4 +1,3 @@
-"use client";
 
 import type { Ref } from "react";
 import { Icon } from "@/design";

@@ -1,4 +1,3 @@
-"use client";
 
 // A requirement's Overview tab: its summary, its checklists' answers and gaps (REQ-34 r2 BC-5, BC-26),
 // what is still unclear, what it assumes, whom it serves and its scope, and the suggestions waiting on

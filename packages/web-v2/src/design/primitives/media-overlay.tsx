@@ -1,4 +1,3 @@
-"use client";
 
 // A full-screen overlay for media (an image gallery, a recording): Base UI Dialog parts as documented,
 // so the focus trap, Escape, focus return and scroll lock are the primitive's. The feature draws the

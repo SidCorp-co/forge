@@ -1,10 +1,9 @@
-"use client";
 
 // The Dashboard's figures for a BA or PM, one flat row on a hairline: requirements by state,
 // feedback open and aging, the next release and when it is in people's hands. Every figure links to
 // the list it counts. Delivery's health over a window is `health-panel.tsx`, beside it.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { EtaInline } from "@/features/forecast";
 import type { Eta, EtaClock } from "@/features/forecast";
 import { feedbackListHref } from "@/lib/routes/feedback";

@@ -1,4 +1,3 @@
-"use client";
 
 import type { ScopeForecast } from "@forge/contracts/forecast";
 import {

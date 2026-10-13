@@ -1,4 +1,3 @@
-"use client";
 
 // The status control at a park: the decision the person has, then the transitions map behind one
 // more click (ISS-1310). The park view is read once and every surface below takes it from here.

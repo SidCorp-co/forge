@@ -1,4 +1,3 @@
-"use client";
 
 // The Modules screen opens on the business modules, the roots of the module tree, with every count
 // rolled up from the modules beneath them; a module's children are on its own page.

@@ -1,6 +1,5 @@
-"use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import { ErrorState } from "@/design";
 
 export function OperatorLoadError({ title, message }: { title?: string; message: string }) {

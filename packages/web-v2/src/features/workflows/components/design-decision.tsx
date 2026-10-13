@@ -1,8 +1,7 @@
-"use client";
 
 import type { OrphanedTrace } from "@forge/contracts/workflow-health";
 import type { DesignApprovalBlock, DesignLeftStale } from "@forge/contracts/workflows";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useState } from "react";
 import { Button, LEGEND, Textarea, Tooltip, useRecordView } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";

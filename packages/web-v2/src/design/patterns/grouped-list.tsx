@@ -1,4 +1,3 @@
-"use client";
 
 // Every entity list draws this one grid: Key · Title (with one secondary facts line) · State ·
 // Waiting on · [ETA] · Owner·age, grouped under sticky headers that read label-first ("Needs you 4") and

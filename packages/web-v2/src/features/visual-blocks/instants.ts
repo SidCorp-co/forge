@@ -1,4 +1,3 @@
-"use client";
 
 import { useMemo } from "react";
 import { useEtaClock } from "@/lib/i18n/eta-clock";

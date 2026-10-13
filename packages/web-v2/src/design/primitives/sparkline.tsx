@@ -1,4 +1,3 @@
-"use client";
 
 import { Line, LineChart, YAxis } from "recharts";
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";

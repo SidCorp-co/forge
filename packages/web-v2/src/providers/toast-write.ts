@@ -1,4 +1,3 @@
-"use client";
 
 // The write most features repeat: the reads it touches are read again on success, what it did is
 // toasted, and a refusal is toasted under the feature's title in core's own words.

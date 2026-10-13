@@ -1,4 +1,3 @@
-"use client";
 
 // REQ-33 BC-4, BC-5, BC-7: what agents and people wrote down about one requirement, workflow or
 // issue, read on that item and nowhere else — or, naming none, about the project, read on its Dashboard: each memory naming it, with who wrote it, when, when it was last

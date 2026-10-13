@@ -1,4 +1,3 @@
-"use client";
 
 import type { ExecutionFacts } from "@forge/contracts/report-executions";
 import type { ReportRunFacts } from "@forge/contracts/report-queries";

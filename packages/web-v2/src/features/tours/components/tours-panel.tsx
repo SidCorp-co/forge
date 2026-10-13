@@ -1,6 +1,5 @@
-"use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter } from "@/lib/navigation/router";
 import { Button, SlideOver } from "@/design";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useStartTour, useTourCopy, useTourStates, useTourTarget } from "../hooks";

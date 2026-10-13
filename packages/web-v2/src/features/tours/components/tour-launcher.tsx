@@ -1,6 +1,5 @@
-"use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter } from "@/lib/navigation/router";
 import { useEffect, useRef } from "react";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useStartTour } from "../hooks";

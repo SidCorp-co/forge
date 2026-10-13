@@ -1,4 +1,3 @@
-"use client";
 
 // Settings → Agents. An org admin's view of the agent accounts in their
 // organization: what each one is called, what it is addressed as, whether it

@@ -1,4 +1,3 @@
-"use client";
 
 import type { CSSProperties, ReactNode, RefObject } from "react";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";

@@ -1,10 +1,9 @@
-"use client";
 
 // A module's full page: one main column in three views (Overview, Code, Landings) beside a sticky rail of
 // its relations and properties. Whom it waits on is the banner's alone; each other fact is stated once,
 // in the rail or in a view. Everything derived (attention, counts, landings, couplings) is core's read model.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import {
   RowItem,
   RowList,

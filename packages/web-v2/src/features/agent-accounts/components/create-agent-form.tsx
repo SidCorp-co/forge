@@ -1,4 +1,3 @@
-"use client";
 
 // Settings → Agents → "New agent". The one caller `POST /api/orgs/:orgId/agents`
 // has ever had: before ISS-1093 an agent could only appear by being spoken to in

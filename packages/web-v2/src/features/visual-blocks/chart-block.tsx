@@ -1,4 +1,3 @@
-"use client";
 
 import { cellText, type VisualBlockOf } from "@forge/contracts/visual-blocks";
 import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from "recharts";

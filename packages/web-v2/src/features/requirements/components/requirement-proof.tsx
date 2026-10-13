@@ -1,11 +1,10 @@
-"use client";
 
 // The full page's views below the facts: the criteria as a checklist with their verdicts and evidence, the
 // revisions and the diff a proposal carries, and the history by source.
 
 import { Written } from "@/lib/i18n/written";
 import { BC_VERDICTS, type BcVerdict, type CoverageIssue, type HistorySource, type RequirementCriteriaChanges, type RequirementHistoryEntry } from "@forge/contracts/requirements";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { type ReactNode, useState } from "react";
 import { ActorChip, FilterChip, LEGEND, SegmentedControl, StatusBadge, statusReading, VerdictEvidence, WhoMark } from "@/design";
 import { cn } from "@/lib/utils/cn";

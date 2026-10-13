@@ -1,4 +1,3 @@
-"use client";
 
 import { Button, useUrlParams } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";

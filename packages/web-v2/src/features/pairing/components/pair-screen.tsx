@@ -1,7 +1,6 @@
-"use client";
 
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams } from "@/lib/navigation/router";
 import { Banner, Button, EmptyState, enumLabel, Field, Icon, PageTitle, Property, PropertyList, Section, Select } from "@/design";
 import { agentAddress, agentLabel } from "@/features/agent-accounts";
 import { formatApiError } from "@/lib/api/error";

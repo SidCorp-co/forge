@@ -1,4 +1,3 @@
-"use client";
 
 import { Banner, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, Field, Input } from "@/design";
 import { useProjects } from "@/features/projects";

@@ -3,9 +3,11 @@
 // with the visual blocks the session drew for it (REQ-32 criteria 5 and 6) — and nobody else sees them.
 
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AgentTurn, ConversationMessage, ConversationWindow } from "../types";
 import { ConversationThread } from "./conversation-thread";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const asked: ConversationMessage = {
   id: "m1",

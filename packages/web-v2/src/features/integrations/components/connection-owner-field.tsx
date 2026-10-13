@@ -1,4 +1,3 @@
-"use client";
 
 // Owner picker for NEW connections: Personal (default) vs the project's org.
 // Renders nothing unless the project lives in a team org the caller

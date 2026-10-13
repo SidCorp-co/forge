@@ -1,8 +1,14 @@
-"use client";
+import { useRouterState } from "@tanstack/react-router";
 
-import NextTopLoader from "nextjs-toploader";
-
-/** The 2px bar along the top while a route loads: nextjs-toploader, in the accent. */
+/** The 2px bar along the top while the router loads a route, in the accent. */
 export function RouteProgress() {
-  return <NextTopLoader color="var(--accent)" height={2} showSpinner={false} shadow={false} zIndex={80} />;
+  const loading = useRouterState({ select: (state) => state.status === "pending" });
+  return (
+    <div
+      aria-hidden
+      className={`pointer-events-none fixed inset-x-0 top-0 z-[80] h-0.5 origin-left bg-accent transition-[transform,opacity] duration-300 ${
+        loading ? "scale-x-75 opacity-100" : "scale-x-100 opacity-0"
+      }`}
+    />
+  );
 }

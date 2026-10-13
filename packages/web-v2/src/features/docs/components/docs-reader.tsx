@@ -1,9 +1,8 @@
-"use client";
 
 // The documentation reader's furniture — the three-column grid, the sidebar with its search
 // field and grouped page list, the article, the table of contents. The in-app `/docs` screen
 // and the public `/guides` pages both compose these, so there is one reading UI, not two.
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { type ReactNode, useEffect, useRef } from "react";
 import { PageSection, PageSectionBody, Icon, Input, Markdown, fixedHeight } from "@/design";
 import { cn } from "@/lib/utils/cn";

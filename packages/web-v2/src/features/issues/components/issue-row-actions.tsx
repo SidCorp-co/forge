@@ -1,4 +1,3 @@
-"use client";
 
 // Calmer issue row renderers for the Issues list (ISS-293 redesign).
 
@@ -20,7 +19,7 @@ import {
 } from "@/design";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import { useState } from "react";
 import { initials, workStepOf } from "../derive";
 import { useStatusTone } from "../release-approval";

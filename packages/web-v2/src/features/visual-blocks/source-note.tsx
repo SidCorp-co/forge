@@ -1,4 +1,3 @@
-"use client";
 
 import type { ExecutionFacts } from "@forge/contracts/report-executions";
 import type { BlockSource } from "@forge/contracts/visual-blocks";

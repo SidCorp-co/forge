@@ -1,4 +1,3 @@
-"use client";
 
 import type { TriageAgentReportRequest } from "@forge/contracts/agent-reports";
 import { automationKeys } from "./queries";

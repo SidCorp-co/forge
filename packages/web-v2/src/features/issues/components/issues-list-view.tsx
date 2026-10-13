@@ -1,4 +1,3 @@
-"use client";
 
 // Issues List view (the "List" tab of the Issues screen, ISS-364/293). Filtering, sorting and
 // pagination are SERVER-side through the search endpoint — the rows on screen are one page, so

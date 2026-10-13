@@ -1,4 +1,3 @@
-"use client";
 
 // The peek (`?peek=FB-3`) beside the list: a summary, not the page — the header with the one
 // primary act, whose turn it is, and the facts the full page's rail shows.

@@ -1,4 +1,3 @@
-"use client";
 
 // Settings → MCP. There is no backend "MCP config" to persist (the `/mcp`
 // endpoint is the protocol surface; access is by PAT). So this tab does the two
@@ -7,7 +6,7 @@
 //      secrets are never echoed here; the plaintext shows once, on Tokens).
 //   2. Test the connection live via JSON-RPC `tools/list`.
 import { Fragment, type ReactNode, useEffect, useState } from "react";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { Badge, Banner, Button, EmptyState, ErrorState, Field, Input, MonoTag, PageSection, PageSectionBody, SectionTitle, Select, Skeleton, Tabs, useBrowserValue } from "@/design";
 import { useProjects } from "@/features/projects";
 import { useCurrentProject } from "@/features/projects";

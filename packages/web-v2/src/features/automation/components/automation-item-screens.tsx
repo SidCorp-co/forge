@@ -1,4 +1,3 @@
-"use client";
 
 // each automation page's sticky header is the shared DetailHeader: "← Automation" back to the
 // list view it was opened from (or to its schedule, for a fire; to its fire, for a report), the key,

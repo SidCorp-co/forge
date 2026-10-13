@@ -1,8 +1,7 @@
-"use client";
 
 // The session page's sticky header: back, title and status, and its acts. The id, the task count and
 // the rail toggles are the developer view's (REQ-43 BC-7), switched beside the acts.
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
 import { Badge, Button, IconButton, Menu, type MenuItem, MonoTag, PageTitle, type RecordView, RecordViewSwitch, StatusBadge } from "@/design";
 import { type deriveSessionDisplayStatus, sessionStep, statusToChip, useCancelSession, useRerunSession } from "@/features/sessions";

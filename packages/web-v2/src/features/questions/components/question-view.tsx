@@ -1,4 +1,3 @@
-"use client";
 
 // One `agent_questions` row, rendered wherever it is reached from — the issue's
 // own panel and the project-wide queue on the Agents screen.

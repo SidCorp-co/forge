@@ -1,4 +1,3 @@
-"use client";
 
 // The workflow step or link a feedback item hits (REQ-35 BC-8; Feedback lifecycle step `evidence`):
 // that workflow on the canvas with the item's step lit and the rest dimmed, the highlight a process
@@ -6,7 +5,7 @@
 // nothing and is named, never guessed at.
 
 import type { NodeRef } from "@forge/contracts/workflow-health";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { type ReactNode, useMemo } from "react";
 import { templateFor } from "@/features/workflows";
 import { presentTrace } from "@/features/workflows";

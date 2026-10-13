@@ -1,4 +1,3 @@
-"use client";
 
 // A modal: Base UI Dialog through shadcn, so focus trap, Escape, outside press and scroll lock are the
 // primitive's. Title on top, the body, then the footer's acts at the right.

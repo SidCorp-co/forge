@@ -1,4 +1,3 @@
-"use client";
 
 // Advanced → Computation: the project document's `compute` key, which decides whether the assistant
 // may run a short script over this project's data in an isolated sandbox, and which sandboxes may

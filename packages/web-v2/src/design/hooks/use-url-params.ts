@@ -1,4 +1,3 @@
-"use client";
 
 import { useCallback } from "react";
 import { notifyLocationChange, useLocationSearch } from "@/lib/utils/use-location-search";

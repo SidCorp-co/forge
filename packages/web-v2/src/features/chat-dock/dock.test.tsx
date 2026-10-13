@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatDockState } from "./dock";
 import { DOCK_SIZE_KEY, LEGACY_DOCK_WIDTH_KEY } from "./dock-size";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/projects/forge/issues" }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ usePathname: () => "/projects/forge/issues" }));
 
 afterEach(() => window.localStorage.clear());
 

@@ -1,4 +1,3 @@
-"use client";
 
 // History (the status page's second tab): every report the project kept, newest first, each dated
 // and naming who or what produced it; opening one shows what changed since the report before it

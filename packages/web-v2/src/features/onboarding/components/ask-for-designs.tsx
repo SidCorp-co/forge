@@ -1,4 +1,3 @@
-"use client";
 
 import type { OnboardingHint } from "@forge/contracts/onboarding";
 import { ONBOARDING_REQUEST_MAX } from "@forge/contracts/onboarding";

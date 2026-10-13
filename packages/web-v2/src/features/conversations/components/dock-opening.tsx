@@ -1,4 +1,3 @@
-"use client";
 
 // What Ask Agent opens on when nothing is picked, and the one-click way back to a conversation in
 // which the agent asked the person something (ISS-277, FB-88). Both read the project's rooms through

@@ -1,4 +1,3 @@
-"use client";
 
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { useState } from "react";

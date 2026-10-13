@@ -3,9 +3,11 @@
 // run, and a block this screen cannot draw named in place, never dropped.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage, ConversationWindow } from "../types";
 import { ConversationThread } from "./conversation-thread";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 afterEach(cleanup);
 

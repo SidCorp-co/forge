@@ -1,4 +1,3 @@
-"use client";
 
 // The list (REQ-29 BC-4, BC-5): one line per requirement, in groups by attention or by area, the
 // finished group folded, drawn by the shared GroupedList every entity list uses. Its columns are a

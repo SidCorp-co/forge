@@ -1,4 +1,3 @@
-"use client";
 
 import { Banner, Button, Property, PropertyList } from "@/design";
 import { useProject } from "@/features/projects";

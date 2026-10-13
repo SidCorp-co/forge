@@ -1,4 +1,3 @@
-"use client";
 
 import type { VisualBlockOf } from "@forge/contracts/visual-blocks";
 import {

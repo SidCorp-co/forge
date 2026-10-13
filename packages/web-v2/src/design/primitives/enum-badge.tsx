@@ -1,4 +1,3 @@
-"use client";
 
 // The one way a fixed enum reaches the screen: a mark plus a sentence-case label, the raw value only
 // in the tooltip. A state family (StatusBadge) wears its legend tone; any other family (EnumBadge:

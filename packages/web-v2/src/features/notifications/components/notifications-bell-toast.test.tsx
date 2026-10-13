@@ -9,7 +9,7 @@ import { NotificationsBell } from "./notifications-bell";
 
 const push = vi.hoisted(() => vi.fn());
 const navigate = vi.hoisted(() => ({ current: null as ((n: DeliveryNotification) => void) | null }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push }) }));
 vi.mock("../use-notification-delivery", () => ({
   useNotificationDelivery: (onNavigate: (n: DeliveryNotification) => void) => {
     navigate.current = onNavigate;

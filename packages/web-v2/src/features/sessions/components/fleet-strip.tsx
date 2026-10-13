@@ -1,4 +1,3 @@
-"use client";
 
 // Fleet-runner rollup strip (ISS-378 A/B). Turns the flat counters into a
 // per-runner operator view: one chip per device in the project pool showing

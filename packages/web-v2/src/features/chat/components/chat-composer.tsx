@@ -1,4 +1,3 @@
-"use client";
 
 // The one composer, for the conversations pane and the run thread: one bordered frame, staged
 // files and the box on top, the controls underneath. Each surface brings its attachment policy,

@@ -1,4 +1,3 @@
-"use client";
 
 // A report template's choice and params, as a person fills them: the templates core lists for this
 // build, and each param the chosen one takes, labelled and typed as the shared registry declares it

@@ -1,4 +1,3 @@
-"use client";
 
 // Bulk-action bar for the Issues list (ISS-463). Renders when ≥1 row is
 // selected and applies ONE field — status or priority — to every selected

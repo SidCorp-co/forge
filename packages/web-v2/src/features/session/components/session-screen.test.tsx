@@ -6,7 +6,7 @@ import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SCREENS } from "@/test/vi-chrome-sessions";
 
-vi.mock("next/navigation", () => ({
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/projects/hop/agents/s-run",
   useSearchParams: () => new URLSearchParams(window.location.search),

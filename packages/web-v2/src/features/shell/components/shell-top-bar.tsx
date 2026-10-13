@@ -1,4 +1,3 @@
-"use client";
 
 import { Button, useTopBarSlotTargets } from "@/design";
 import { dockTitle } from "@/features/conversations";

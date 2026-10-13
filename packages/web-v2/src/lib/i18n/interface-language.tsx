@@ -1,4 +1,3 @@
-"use client";
 
 import { createContext, type ReactNode, use, useMemo } from "react";
 import { formatAge, formatClock, formatClockSeconds, formatCompact, formatCountdown, formatDate, formatDateTime, formatDuration, formatElapsed, formatNumber, formatRelative, formatUsd, formatWhen } from "./format";

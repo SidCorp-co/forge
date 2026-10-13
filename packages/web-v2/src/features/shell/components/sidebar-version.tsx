@@ -1,4 +1,3 @@
-"use client";
 
 import { Icon, Tooltip } from "@/design";
 import { ForgeVersion } from "@/features/version";

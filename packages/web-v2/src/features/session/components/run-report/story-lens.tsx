@@ -1,4 +1,3 @@
-"use client";
 
 // The Story lens — every tool call folded into at most five expandable rows.
 //

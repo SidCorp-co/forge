@@ -1,4 +1,3 @@
-"use client";
 
 // Activity timeline for the issue detail. Renders the reverse-chron activity
 // log: status transitions (from → to), field edits (the paths each write

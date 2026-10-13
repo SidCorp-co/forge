@@ -159,6 +159,7 @@ import { deviceSkillRoutes, skillCrudRoutes, skillStudioRoutes } from './skills/
 import { statusReportRoutes } from './status-reports/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
+import { hostTheWeb } from './web-host/index.js';
 import { whatsNewRoutes } from './whats-new/routes.js';
 import { workflowJsonSchemas } from './workflows/index.js';
 import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/routes.js';
@@ -167,6 +168,7 @@ import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/rou
 registerIssueCommentRoutes(issueRoutes);
 
 export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
+  hostTheWeb(app);
   mountPublicDoors(app);
   mountAccountRoutes(app);
   mountProjectDocumentRoutes(app);

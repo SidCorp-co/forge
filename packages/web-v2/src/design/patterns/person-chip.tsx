@@ -1,4 +1,3 @@
-"use client";
 
 // Who did or owns something, drawn one way everywhere: a person's initial in a round mark, an
 // agent's mark in a violet square (never mistaken for a person's or a run's), and the name beside.

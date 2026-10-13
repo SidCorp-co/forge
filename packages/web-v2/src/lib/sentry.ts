@@ -7,17 +7,17 @@ let installed = false;
 
 /**
  * The browser's own error reporting, behind the error-tracking port: installs @sentry/react as the
- * port's tracker when NEXT_PUBLIC_SENTRY_DSN is set. False when it is not, and the port then drops
+ * port's tracker when VITE_SENTRY_DSN is set. False when it is not, and the port then drops
  * every report. The one module in web-v2 that imports the SDK.
  */
 export function installSentryErrorTracking(): boolean {
   if (installed) return true;
-  const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
+  const dsn = import.meta.env.VITE_SENTRY_DSN;
   if (!dsn) return false;
   Sentry.init({
     dsn,
     release: sourceCommit ?? undefined,
-    environment: process.env.NEXT_PUBLIC_SENTRY_ENV ?? "production",
+    environment: import.meta.env.VITE_SENTRY_ENV ?? "production",
     tracesSampleRate: 0,
     sendDefaultPii: false,
     beforeSend: scrubSentryEvent,

@@ -10,13 +10,12 @@
 //   pnpm --filter web-v2 witness witness/feedback-evidence.witness.tsx --out <dir>
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { PathnameContext, SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { createRoot } from "react-dom/client";
 import { FeedbackPage } from "@/features/feedback/components/feedback-detail";
 import type { FeedbackView } from "@/features/feedback/types";
 import { RULE, say, waitingOn } from "@/test/said";
 import "./entry";
+import { InRouter } from "./router";
 
 const P = "22222222-2222-4222-8222-222222222222";
 const ANN = "66666666-6666-4666-8666-666666666666";
@@ -115,20 +114,14 @@ window.fetch = async (input: RequestInfo | URL) => {
   return new Promise<Response>(() => {});
 };
 
-const router = { push() {}, replace() {}, prefetch() {}, back() {}, forward() {}, refresh() {}, hmrRefresh() {} };
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 client.setQueryData(["feedback-item", P, item.key], { feedback: item });
 createRoot(document.getElementById("root") as HTMLElement).render(
-  // the page keeps its view in the URL, so it is mounted under a router as the app mounts it
-  <AppRouterContext.Provider value={router as never}>
-    <PathnameContext.Provider value={`/projects/hop/feedback/${item.key}`}>
-      <SearchParamsContext.Provider value={new URLSearchParams() as never}>
-        <QueryClientProvider client={client}>
-          <FeedbackPage projectId={P} slug="hop" fbKey={item.key} tab="overview" onTab={() => {}} />
-        </QueryClientProvider>
-      </SearchParamsContext.Provider>
-    </PathnameContext.Provider>
-  </AppRouterContext.Provider>,
+  <InRouter at="/projects/hop/feedback/FB-52" pattern="/projects/$slug/feedback/$feedback">
+    <QueryClientProvider client={client}>
+      <FeedbackPage projectId={P} slug="hop" fbKey={item.key} tab="overview" onTab={() => {}} />
+    </QueryClientProvider>
+  </InRouter>,
 );
 
 const q = <T extends Element = HTMLElement>(sel: string) => document.querySelector<T>(sel);

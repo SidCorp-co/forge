@@ -1,4 +1,3 @@
-"use client";
 
 import {
   Icon,
@@ -8,7 +7,7 @@ import {
   type SelectOption,
 } from "@/design";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import type { PatchIssueInput } from "../api";
 import {
   COMPLEXITY_LABELS,

@@ -1,4 +1,3 @@
-"use client";
 
 // One highlight on the page beside the chat at a time (REQ-41 BC-6): the chat's ui.highlight names a
 // section, a workflow step or a row, the page scrolls to it and marks it with the shared

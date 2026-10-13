@@ -7,7 +7,7 @@ import { releasePage, TECHNICAL } from "@/test/release-page";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { ReleasePage } from "./release-page";
 
-vi.mock("next/navigation", () => ({
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/projects/forge/releases/0.4.0",
   useSearchParams: () => new URLSearchParams(window.location.search),

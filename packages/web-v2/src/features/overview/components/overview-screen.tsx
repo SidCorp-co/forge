@@ -1,5 +1,4 @@
-'use client';
-import { useRouter } from 'next/navigation';
+import { useRouter } from "@/lib/navigation/router";
 import { EmptyState, ErrorState, PageContainer, PageTitle, Skeleton, useNow } from '@/design';
 import { useActiveOrg } from "@/features/orgs";
 import { useProjectsConsole } from "@/features/projects";
@@ -18,7 +17,7 @@ const PLACEHOLDERS = ["work", "flow", "quality", "liveness", "sitting"] as const
 export function OverviewScreen() {
   const router = useRouter();
   const { activeOrg, activeOrgId } = useActiveOrg();
-  const pulse = usePulse(activeOrgId ?? undefined);
+  const pulse = usePulse(activeOrgId);
   const { items: allItems } = useProjectsConsole();
   const t = useCopy();
 

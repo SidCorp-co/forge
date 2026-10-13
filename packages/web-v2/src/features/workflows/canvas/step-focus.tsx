@@ -1,4 +1,3 @@
-"use client";
 
 import { type ReactNode, useMemo, useState } from "react";
 import { SearchBox, WalkBar } from "./controls";

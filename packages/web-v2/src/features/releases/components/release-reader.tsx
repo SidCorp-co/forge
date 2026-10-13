@@ -1,4 +1,3 @@
-"use client";
 
 // The release as its reader reads it (REQ-40): the header, the highlights, what the release proves,
 // improvements and fixes, what an admin must do, and what is still open. The same component draws a
@@ -10,7 +9,7 @@
 
 import { cn } from "@/lib/utils/cn";
 import { actionSaysRef, type ReleasePage, type ReleasePageCriteria, type ReleasePageProven, type ReleasePageRequirement } from "@forge/contracts/release-page";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useState } from "react";
 import { FilterChip, ViewHeading } from "@/design";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";

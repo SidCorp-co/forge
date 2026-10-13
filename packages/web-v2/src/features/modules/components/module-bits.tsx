@@ -1,9 +1,7 @@
-"use client";
 
 import { ISSUE_ATTENTION_LABELS } from "@forge/contracts/issue-standing";
 import { MODULE_ATTENTION_LABELS, MODULE_OPEN_KINDS } from "@forge/contracts/modules";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useRouter } from "@/lib/navigation/router";
 import { type BannerTone, Button, type CoverageSegment, LEGEND, ToneBadge, WaitBanner, type WaitingOnView } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { copyOr, productCopy } from "@/lib/i18n/product-copy";

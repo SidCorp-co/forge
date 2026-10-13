@@ -2,7 +2,7 @@ import { Button, HelpButton, IconButton, Menu, type MenuItem } from "@/design";
 import { AskAboutThis } from "@/features/chat-dock";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { copyShareLink } from "@/lib/navigation/copy-share-link";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import type { IssueDetail, IssueStatus } from "../../types";
 import { type StartReading, StartIssueAction } from "../start-issue-action";
 import { issueSessionsHref } from "@/lib/routes/agents";

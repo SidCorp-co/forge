@@ -9,7 +9,7 @@ import type { StatusCard } from "../types";
 import { ProjectIntegrations } from "./project-integrations-panel";
 import { cardDetail, say } from "@/test/said";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/" }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/" }));
 
 const caps = { capabilities: { hasDeliveryLog: false } };
 

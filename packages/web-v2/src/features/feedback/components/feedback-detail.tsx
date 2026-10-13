@@ -1,4 +1,3 @@
-"use client";
 
 // A feedback item's full page: its screenshots, recordings and the step it hits, then, while it waits
 // on triage, its triage checklist's answers and gaps (REQ-34 r2 BC-5), the acts a person can take and
@@ -196,7 +195,7 @@ export function FeedbackPage({
                 </div>
               ) : null}
               {tab === "activity" ? (
-                <section className="grid gap-8" aria-label={t("feedback.tab.activity")} data-testid="view-activity">
+                <section className="grid grid-cols-1 gap-8" aria-label={t("feedback.tab.activity")} data-testid="view-activity">
                   <FeedbackHistory f={f} />
                   {f.can.triage ? null : checklists}
                 </section>

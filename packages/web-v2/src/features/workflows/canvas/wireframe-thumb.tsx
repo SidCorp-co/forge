@@ -1,6 +1,4 @@
-"use client";
 
-import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -20,6 +18,6 @@ export function WireframeThumb({ attachment, title }: { attachment: string; titl
   const url = useMemo(() => (q.data ? URL.createObjectURL(q.data) : null), [q.data]);
   useEffect(() => () => (url ? URL.revokeObjectURL(url) : undefined), [url]);
   if (!url) return null;
-  // unoptimized: a blob URL of an attachment, which the Next image optimizer cannot fetch; its size is its own
-  return <Image unoptimized src={url} alt={t("workflows.wireframeOf", { title })} width={0} height={0} sizes="100vw" className="h-auto w-auto max-w-full" data-testid="workflow-wireframe" />;
+  // a blob URL of an attachment: its size is its own
+  return <img src={url} alt={t("workflows.wireframeOf", { title })} className="h-auto w-auto max-w-full" data-testid="workflow-wireframe" />;
 }

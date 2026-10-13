@@ -1,4 +1,3 @@
-"use client";
 
 import { type Edge, MarkerType, type Node, useNodesInitialized, useNodesState, useReactFlow } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

@@ -1,4 +1,3 @@
-"use client";
 
 // Project settings → Advanced: whether the assistant may compute over the project's data, then the technical view. The documents every other section's fields are
 // stored in, edited raw (who each document is stays fixed), what a run reads of them, the plugins a

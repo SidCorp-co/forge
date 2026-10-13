@@ -1,6 +1,5 @@
-'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter } from "@/lib/navigation/router";
 import { useState } from 'react';
 import { Banner, Button, Field, Input } from '@/design';
 import { formatApiError } from '@/lib/api/error';

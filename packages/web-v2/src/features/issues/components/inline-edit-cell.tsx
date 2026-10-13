@@ -1,4 +1,3 @@
-"use client";
 
 import type { IssueMove } from "@forge/contracts/issue-machine";
 // Inline-edit primitives shared by the table row + mobile card. `InlineSelect`

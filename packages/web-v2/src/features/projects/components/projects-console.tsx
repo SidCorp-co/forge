@@ -1,6 +1,5 @@
-'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from "@/lib/navigation/router";
 import { type ReactNode, useState } from 'react';
 import {
   Banner,

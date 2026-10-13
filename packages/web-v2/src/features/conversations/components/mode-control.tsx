@@ -1,4 +1,3 @@
-"use client";
 
 // What this conversation is talking to, picked by the person typing in it.
 //
@@ -12,7 +11,7 @@
 // `input[type=radio]`, one tab stop with the arrows moving between options.
 
 import { type RefObject, use, useRef, useState } from "react";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { Icon, Menu, Popover } from "@/design";
 import { ComposerWidthContext } from "@/features/chat";
 import { useCopy } from "@/lib/i18n/interface-language";

@@ -11,12 +11,6 @@ export interface ChromeScreen {
   act?: () => void;
 }
 
-declare global {
-  interface ImportMeta {
-    glob<T>(patterns: string | string[], options: { eager: true }): Record<string, T>;
-  }
-}
-
 /** Every file's screens; a file registering none, or two screens sharing a name, is refused by name. */
 function gatherScreens(files: Record<string, { SCREENS?: ChromeScreen[] }>): ChromeScreen[] {
   const where = new Map<string, string>();

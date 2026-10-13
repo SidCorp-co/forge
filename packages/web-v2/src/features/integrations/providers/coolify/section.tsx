@@ -1,4 +1,3 @@
-"use client";
 
 import { Button, Field, Input, SegmentedControl } from "@/design";
 import { formatApiError } from "@/lib/api/error";

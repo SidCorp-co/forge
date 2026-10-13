@@ -1,10 +1,9 @@
-"use client";
 
 // The Table's view lives in the query string (ISS-436): every filter is read from it on each render,
 // so a pinned-view click or Back restores the view without a remount, and each write merges into it
 // so the host's `?tab=` survives (ISS-364/331). The search box writes after 300ms of quiet.
 
-import { usePathname } from "next/navigation";
+import { usePathname } from "@/lib/navigation/router";
 import { useEffect, useRef, useState } from "react";
 import { useUrlParams } from "@/design";
 import { statusesFromParam } from "../../derive";

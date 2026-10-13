@@ -1,4 +1,3 @@
-"use client";
 
 import { useCopy } from "@/lib/i18n/interface-language";
 import { Icon } from "../icons/icon";

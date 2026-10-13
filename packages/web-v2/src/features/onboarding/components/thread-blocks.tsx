@@ -1,4 +1,3 @@
-"use client";
 
 // The structured messages a thread can hold beside prose (ISS-63): a questionnaire card, a
 // person's answers, and a list of designs with their live status. Every one of them reads its state
@@ -6,7 +5,7 @@
 // read), never from the message, so a card says what is true now.
 
 import { createContext, type ReactNode, use } from "react";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { Markdown } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";

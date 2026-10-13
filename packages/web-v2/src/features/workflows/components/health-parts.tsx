@@ -1,4 +1,3 @@
-"use client";
 
 import { HEALTH_MARKER_KINDS, type HealthMarkerKind, type WorkflowHealthSummary } from "@forge/contracts/workflow-health";
 import { Tooltip } from "@/design";

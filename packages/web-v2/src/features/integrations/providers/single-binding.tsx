@@ -1,4 +1,3 @@
-"use client";
 
 import { Button } from "@/design";
 import type { AgentPathKind } from "@forge/contracts/integrations";

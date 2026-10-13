@@ -1,4 +1,3 @@
-"use client";
 
 import type { HTMLAttributes, TdHTMLAttributes, ThHTMLAttributes } from "react";
 import {

@@ -1,8 +1,7 @@
-"use client";
 
 // The public documentation at `/guides`: a landing with the two doors and a search over every
 // page, and a reader built from the same furniture as the in-app `/docs` screen.
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useMemo, useState } from "react";
 import { EmptyState, PageTitle } from "@/design";
 import { LINK_CLASS } from "@/design/patterns/body-tags";

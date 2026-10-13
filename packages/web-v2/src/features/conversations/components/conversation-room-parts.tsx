@@ -1,4 +1,3 @@
-"use client";
 
 import type { ComponentProps, ReactNode } from "react";
 import { EmptyState, ErrorState, IconButton, ProjectLoader } from "@/design";

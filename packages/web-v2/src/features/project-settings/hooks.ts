@@ -1,4 +1,3 @@
-"use client";
 
 // Every mutation invalidates the SHARED keys `['project', id]` and `['projects']` rather than a key
 // of its own: those are what the dashboard, the console and the WS reconnect-replay read, and a

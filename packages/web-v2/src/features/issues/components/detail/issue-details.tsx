@@ -1,4 +1,3 @@
-"use client";
 
 // The Details of an issue page: folded rows, one per kind of long record. A row shows its label and
 // one short summary; the body opens under it. The developer view opens every row and adds the ones

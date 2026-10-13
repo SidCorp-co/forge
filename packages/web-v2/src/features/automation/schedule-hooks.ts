@@ -1,4 +1,3 @@
-"use client";
 
 // web-v2 feature module: schedules — React Query hooks. Keyed
 // `['schedules', projectId]`; mutations invalidate the subtree on success, and a run also on refusal.

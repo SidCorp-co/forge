@@ -1,8 +1,6 @@
-"use client";
 
-// Excalidraw is reached only through this file, which board-panel loads with next/dynamic and
-// ssr:false — the package touches window at import, so a static import anywhere on a server-rendered path
-// breaks the build.
+// Excalidraw is reached only through this file, which features/board/lazy.tsx loads on first use,
+// so the package stays out of every chunk a screen without a board loads.
 
 import "@excalidraw/excalidraw/index.css";
 import {

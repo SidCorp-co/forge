@@ -1,4 +1,3 @@
-"use client";
 
 // The grouped Issues views (`forge-prototype.html` #/dev/issues): Attention (whose turn), Module (by
 // primary module) and Waves (by layers of open blockers), over core's read model

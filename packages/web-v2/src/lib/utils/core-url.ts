@@ -1,5 +1,5 @@
 
-export const CORE_URL = (process.env.NEXT_PUBLIC_API_URL || "/api").replace(/\/api\/?$/, "");
+export const CORE_URL = (import.meta.env.VITE_API_URL || "/api").replace(/\/api\/?$/, "");
 
 export function coreFileUrl(path: string): string {
   if (!path) return path;

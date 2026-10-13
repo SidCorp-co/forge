@@ -1,4 +1,3 @@
-"use client";
 
 // The project's health and its trend (REQ-24 BC-1): throughput, step failures, retries and
 // interventions over a window the reader picks, one flat row on a hairline. Each figure is the

@@ -1,4 +1,3 @@
-"use client";
 
 // The issue description, read and written. Reading is `<BodyView>`, which draws
 // a component body as components and a markdown body exactly as before.

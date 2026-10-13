@@ -11,7 +11,7 @@ import type { CanvasHighlight } from "@/features/workflows/canvas/workflow-canva
 import { BOARD, CHECKOUT_LINK, core, detail, FLOW, page, picture, puts, refusing, TABLE } from "@/test/requirement-pictures";
 import type { Call } from "@/test/render";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/projects/hop/requirements/REQ-1", useParams: () => ({ slug: "hop" }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/projects/hop/requirements/REQ-1", useParams: () => ({ slug: "hop" }) }));
 
 const canvases = vi.hoisted(() => [] as { flow: string; highlight: CanvasHighlight | null | undefined }[]);
 vi.mock("@/features/workflows/canvas/workflow-canvas", () => ({

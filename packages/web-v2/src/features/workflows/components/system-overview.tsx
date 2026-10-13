@@ -1,7 +1,6 @@
-"use client";
 
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { type FormEvent, useMemo, useState } from "react";
 import { Button, HoverCard, Icon, Input, rememberListOrigin, fixedHeight, focusOnMount } from "@/design";
 import { useAskForDesigns } from "@/features/onboarding";

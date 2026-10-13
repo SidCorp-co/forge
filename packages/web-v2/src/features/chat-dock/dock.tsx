@@ -1,6 +1,5 @@
-"use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname } from "@/lib/navigation/router";
 import { createContext, type RefObject, use, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useBrowserValue } from "@/design";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";

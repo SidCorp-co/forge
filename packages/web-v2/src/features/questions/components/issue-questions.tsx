@@ -1,4 +1,3 @@
-"use client";
 
 import type { ParkThreadQuestion } from "@forge/contracts/park";
 import { useState } from "react";

@@ -1,4 +1,3 @@
-"use client";
 
 import { Icon, Spinner } from "@/design";
 import type { AgentSessionDisplayStatus } from "@/features/sessions";

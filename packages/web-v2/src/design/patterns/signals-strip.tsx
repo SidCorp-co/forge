@@ -1,4 +1,3 @@
-"use client";
 
 // The one line of signals under a list's title: label-first facts on the surface tone, a hairline
 // under them, never a row of cards. Each value names its source on hover.

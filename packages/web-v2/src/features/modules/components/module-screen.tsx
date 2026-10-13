@@ -1,4 +1,3 @@
-"use client";
 
 import { useMemo } from "react";
 import { DetailHeader, useListOrigin, useViewMode, ViewModeSwitcher } from "@/design";

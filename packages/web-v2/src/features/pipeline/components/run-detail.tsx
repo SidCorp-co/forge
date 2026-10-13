@@ -1,4 +1,3 @@
-"use client";
 
 // RunDetail SlideOver (ISS-295) — an issue's pipeline run opens here rather
 // than navigating away. Reordered for ISS-436 so it reads top-down as a
@@ -9,7 +8,7 @@
 // have NO backend (info toast, no phantom call).
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import {
   Button,
   EmptyState,

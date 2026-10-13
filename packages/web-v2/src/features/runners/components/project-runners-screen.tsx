@@ -1,4 +1,3 @@
-"use client";
 
 // Project-centric Runners screen. Rendered as the Project Settings → Runners
 // tab (`/projects/[slug]/settings?tab=connections#runners`, `embedded`). The project is the

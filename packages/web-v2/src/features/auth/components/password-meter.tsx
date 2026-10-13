@@ -1,4 +1,3 @@
-'use client';
 
 const LABELS = ['Very weak', 'Weak', 'Fair', 'Good', 'Strong'] as const;
 

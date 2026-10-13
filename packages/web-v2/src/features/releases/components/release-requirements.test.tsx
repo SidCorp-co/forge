@@ -4,10 +4,12 @@
 // out of its total, labelled for a screen reader, and the text no longer repeats what the bar says.
 
 import { screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/render";
 import type { ReleaseDetail, ReleaseRequirementView } from "../types";
 import { OverviewPane } from "./release-panes";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const requirement = (key: string, coverage: ReleaseRequirementView["coverage"], over: Partial<ReleaseRequirementView> = {}): ReleaseRequirementView => ({
   key,

@@ -15,8 +15,8 @@ export const demoRoutes = new Hono();
  * Signs the demo member in with no credential and sends the browser to the app (REQ-39: Forge
  * previewing itself on demo data). It exists only while the process is a demo core
  * (FORGE_DEMO_MODE=1, which a deployed NODE_ENV refuses at boot); anywhere else it answers
- * DEMO_MODE_OFF and sets nothing. The demo web calls it from its server, never the browser, and
- * keeps the credential it sets (web-v2 lib/demo-signin.ts).
+ * DEMO_MODE_OFF and sets nothing. A demo core also signs in every request that carries no
+ * credential (web-host/demo-credential.ts), so a browser needs no call here to be signed in.
  */
 demoRoutes.get('/demo', async (c) => {
   if (!env.FORGE_DEMO_MODE) {

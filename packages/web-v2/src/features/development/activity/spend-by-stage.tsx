@@ -1,4 +1,3 @@
-"use client";
 
 // Seven days of spend by stage (ISS-379, AC#4): one stacked Recharts bar in the shared
 // ChartContainer, its legend under it, and what is in flight now. The trend over time waits on

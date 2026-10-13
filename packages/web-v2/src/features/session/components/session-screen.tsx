@@ -1,4 +1,3 @@
-"use client";
 
 import {
   ErrorState,
@@ -14,7 +13,7 @@ import { formatRefusal } from "@/lib/api/error";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import { useCopy } from "@/lib/i18n/interface-language";
 // Run-conversation orchestrator (ISS-292). Header (id/title/status + Stop /
 // Rerun / Fork), two-pane body (thread + context rail), sticky composer.

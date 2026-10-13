@@ -1,10 +1,9 @@
-"use client";
 
 // The state every ListPage wires the same way: the search box in `?q=`, the rows it and the
 // caller's filters leave, their groups and which are folded, the row open in the peek (`?peek=`),
 // j/k/Enter over the rows that show, and the full page a row opens remembering the list it left.
 
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import { rememberListOrigin } from "../patterns/detail-header";
 import { type GroupFold, type ListGroup, useGroupFold, visibleRows } from "../patterns/grouped-list";
 import { type PeekState, usePeek, usePeekKeys } from "../patterns/peek-panel";

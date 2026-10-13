@@ -1,4 +1,3 @@
-"use client";
 
 // Project settings → Modules (ISS-594). The project's module taxonomy: create,
 // rename, recolour, re-describe, re-parent and delete.

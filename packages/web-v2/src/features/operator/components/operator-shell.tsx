@@ -1,7 +1,6 @@
-"use client";
 
 import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter } from "@/lib/navigation/router";
 import { NavRail, ScreenTabs, type NavItem } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useAuth } from "@/providers/auth-provider";

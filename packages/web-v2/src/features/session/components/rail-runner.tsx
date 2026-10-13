@@ -1,4 +1,3 @@
-"use client";
 
 import { enumLabel, FactsGroup, HealthDot, Icon, MonoTag } from "@/design";
 import { deviceHealth, useDeviceVersionLabel, useDevices } from "@/features/runners";

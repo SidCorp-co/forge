@@ -1,4 +1,3 @@
-"use client";
 
 // below md this drawer, opened from the More tab, is the whole of the sidebar: the project tier, the workspace destinations, the project switcher, the bell beside the org picker as the sidebar has it at its top, and the search, account and version the sidebar carries above md
 import { Icon, type IconName, isNavGroup, ProjectMark, SlideOver } from "@/design";

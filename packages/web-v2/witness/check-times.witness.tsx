@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client";
 import { CheckTimes } from "@/features/issues/components/detail/check-times";
 import type { IssueAgentSession } from "@/features/issues/types";
 import "./entry";
+import { InRouter } from "./router";
 
 const SESSION = "5e55a0b1-0000-4000-8000-000000000001";
 const sessions: IssueAgentSession[] = [
@@ -131,22 +132,24 @@ const root = document.getElementById("root");
 if (!root) throw new Error("the witness page has no #root to mount into");
 const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 createRoot(root).render(
-  <QueryClientProvider client={queries}>
-    <main className="mx-auto max-w-[1100px] space-y-6 p-4">
-      <CheckTimes issueId="witness" slug="forge" sessions={sessions} />
-      <section className="space-y-1">
-        <p className="fg-caption text-danger" data-witness="fg-caption">
-          Refused on an fg-caption line
-        </p>
-        <p className="fg-body-sm text-danger" data-witness="fg-body-sm">
-          Refused on an fg-body-sm line
-        </p>
-        <div data-theme="dark" data-witness="dark">
-          <p className="text-danger" data-witness="dark-danger">
-            Refused in the dark theme
+  <InRouter>
+    <QueryClientProvider client={queries}>
+      <main className="mx-auto max-w-[1100px] space-y-6 p-4">
+        <CheckTimes issueId="witness" slug="forge" sessions={sessions} />
+        <section className="space-y-1">
+          <p className="fg-caption text-danger" data-witness="fg-caption">
+            Refused on an fg-caption line
           </p>
-        </div>
-      </section>
-    </main>
-  </QueryClientProvider>,
+          <p className="fg-body-sm text-danger" data-witness="fg-body-sm">
+            Refused on an fg-body-sm line
+          </p>
+          <div data-theme="dark" data-witness="dark">
+            <p className="text-danger" data-witness="dark-danger">
+              Refused in the dark theme
+            </p>
+          </div>
+        </section>
+      </main>
+    </QueryClientProvider>
+  </InRouter>,
 );

@@ -1,11 +1,10 @@
-"use client";
 
 // The dashboard's first group (JU-3): what last reached people — the release, when, how many issues
 // it carried, what was verified and the requirements now fully shipped — and the way to everything
 // shipped in the window. Said plainly when nothing has shipped. Core's project status read.
 
 import { PROJECT_STATUS_DAYS_DEFAULT, type StatusShipped } from "@forge/contracts/project-status";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import type { EtaClock } from "@/features/forecast";
 import { formatDateTime } from "@/lib/i18n/format";
 import { useCopy } from "@/lib/i18n/interface-language";

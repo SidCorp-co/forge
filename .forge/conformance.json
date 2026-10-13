@@ -102,8 +102,8 @@
           { "dir": "packages/web-v2/src/test", "why": "the test fixtures and walking tests: data a test plants, not a page" },
           { "dir": "packages/web-v2/src/features/guides", "why": "REQ-43 scopes guides and docs pages out" },
           { "dir": "packages/web-v2/src/features/docs", "why": "REQ-43 scopes guides and docs pages out" },
-          { "dir": "packages/web-v2/src/app/guides", "why": "REQ-43 scopes guides and docs pages out" },
-          { "dir": "packages/web-v2/src/app/(workspace)/dev/design", "why": "the design gallery: sample data that renders every @/design block for the people building pages, not a page a product user reads" }
+          { "dir": "packages/web-v2/src/routes/guides", "why": "REQ-43 scopes guides and docs pages out" },
+          { "dir": "packages/web-v2/src/routes/_workspace/dev/design", "why": "the design gallery: sample data that renders every @/design block for the people building pages, not a page a product user reads" }
         ]
       }
     },

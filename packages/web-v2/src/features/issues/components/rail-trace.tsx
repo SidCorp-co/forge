@@ -1,4 +1,3 @@
-"use client";
 
 // The issue rail's trace rows (REQ-11 BC-3): the requirement revision the plan was made on when the
 // requirement has moved since, the criteria it traces (an earlier wording's named stale), the workflow it builds or proposes, the feedback routed to it, the
@@ -6,7 +5,7 @@
 // its standing; a row with nothing to say is left out.
 
 import type { IssueStanding } from "@forge/contracts/issue-standing";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { MonoTag, statusReading, ToneBadge } from "@/design";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { feedbackHref } from "@/lib/routes/feedback";

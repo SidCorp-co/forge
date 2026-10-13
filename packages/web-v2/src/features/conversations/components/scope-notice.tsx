@@ -1,4 +1,3 @@
-"use client";
 
 // What a room is about, said where a person can see it, and said as derived.
 //

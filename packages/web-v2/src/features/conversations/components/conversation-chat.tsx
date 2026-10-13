@@ -1,4 +1,3 @@
-"use client";
 
 // One conversation, open: its thread, and the box you type in.
 //

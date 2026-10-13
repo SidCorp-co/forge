@@ -1,4 +1,3 @@
-"use client";
 
 import { useEffect } from "react";
 import { setFaviconBadge, setTitleOpenCount } from "@/lib/notifications/favicon";

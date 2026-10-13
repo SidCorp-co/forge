@@ -1,4 +1,3 @@
-"use client";
 
 // Adding a member to a room: pick one, then read what the addition does (ISS-1011).
 //

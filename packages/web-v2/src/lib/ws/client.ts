@@ -1,4 +1,3 @@
-'use client';
 
 import type { WsFrame } from '@forge/contracts/ws-frames';
 import { WS_URL } from '@/lib/api/client';

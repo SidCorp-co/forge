@@ -1,6 +1,5 @@
-'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter } from "@/lib/navigation/router";
 import { HealthDot, ProjectMark, Stat, TBody, TD, TH, THead, TR, Table } from '@/design';
 import { useCopy } from '@/lib/i18n/interface-language';
 import { formatRelativeTime, formatSpend } from '../derive';

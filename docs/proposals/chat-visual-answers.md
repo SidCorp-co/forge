@@ -391,7 +391,7 @@ ruling and is not registered.
   (`packages/contracts/src/report-queries.ts:stateLabel` over `REPORT_VOCABULARY_LABELS`, the
   domain's own label maps the web badge reads), so `toText` and the CSV never print a stored token.
   A kept report and `/s/[token]` print as the report alone: the print block in
-  `packages/web-v2/src/app/globals.css` drops what a page marks `data-print="chrome"`, every action
+  `packages/web-v2/src/styles/globals.css` drops what a page marks `data-print="chrome"`, every action
   carries `print:hidden`, a table row never breaks across a page and a table prints all its rows.
 - **Grounding a figure.** `MessageFacts` (`packages/core/src/messaging/facts.ts:FigureFacts`) carries
   the values of the turn's report runs: every run a result of this turn or a block it drew names by

@@ -1,4 +1,3 @@
-"use client";
 
 // The act that answers "promote N draft issues" (FB-93): one press among the requirement's acts, and
 // one on each draft row. Both read the drafts from `draftIssuesToPromote`, the rule core's standing

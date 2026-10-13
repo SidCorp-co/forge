@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
 import { StatusBadge } from "@/design";
 import { feedbackHref } from "@/lib/routes/feedback";

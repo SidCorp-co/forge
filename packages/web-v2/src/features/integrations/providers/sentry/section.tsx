@@ -1,4 +1,3 @@
-"use client";
 
 import { Banner, Field, Input } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";

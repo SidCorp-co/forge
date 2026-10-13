@@ -1,4 +1,3 @@
-"use client";
 
 import { DetailHeader, StatusBadge, useListOrigin } from "@/design";
 import { useChatDockDoor } from "@/features/chat-dock";

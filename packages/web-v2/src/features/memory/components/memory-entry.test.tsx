@@ -5,6 +5,8 @@ import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { renderWithQuery } from "@/test/render";
 import { MemoryEntryItem } from "./memory-entry";
 
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
+
 // MJ-1, MJ-3: a person reads a memory with who wrote it, when, whether anyone checked it and which of
 // the records it names no longer resolve, and corrects or retires it with a reason. A mirror of an
 // issue offers neither act: it follows its record.

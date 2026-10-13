@@ -1,4 +1,3 @@
-"use client";
 
 // Comment thread for the issue detail. Renders the nested comment tree with a
 // derived lifecycle-kind badge (`deriveCommentKind`), the body through

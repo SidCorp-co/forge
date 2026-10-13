@@ -1,4 +1,3 @@
-"use client";
 
 import { ProjectMark, StatusBadge, Tooltip } from "@/design";
 import { readingOf } from "@/lib/api/refusals";

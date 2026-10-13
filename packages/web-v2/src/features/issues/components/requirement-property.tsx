@@ -1,11 +1,10 @@
-"use client";
 
 // The issue rail's Requirement property: the requirement the issue delivers, which a person links
 // or unlinks there. An issue serves one requirement, so a linked one is unlinked before another is
 // picked; picking one asks before it links, since a link changes what the issue is read against.
 // Core refuses a requirement not agreed yet, or one the issue cannot join, by name.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useState } from "react";
 import { Button, ConfirmDialog, Select } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";

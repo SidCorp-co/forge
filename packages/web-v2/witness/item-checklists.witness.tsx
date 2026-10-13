@@ -17,6 +17,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { FeedbackChecklists, RequirementChecklists } from "@/features/checklists/components/item-checklists";
 import "./entry";
+import { InRouter } from "./router";
 
 const P = "22222222-2222-4222-8222-222222222222";
 const AT = "2026-10-09T10:00:00.000Z";
@@ -77,12 +78,14 @@ window.fetch = async (input: RequestInfo | URL) => {
 
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 createRoot(document.getElementById("root") as HTMLElement).render(
-  <QueryClientProvider client={client}>
-    <main className="grid max-w-[900px] gap-10 px-8 py-6 max-md:px-4">
-      <RequirementChecklists projectId={P} reqKey="REQ-7" onRevise={() => {}} />
-      <FeedbackChecklists projectId={P} fbKey="FB-52" canTriage />
-    </main>
-  </QueryClientProvider>,
+  <InRouter>
+    <QueryClientProvider client={client}>
+      <main className="grid max-w-[900px] gap-10 px-8 py-6 max-md:px-4">
+        <RequirementChecklists projectId={P} reqKey="REQ-7" onRevise={() => {}} />
+        <FeedbackChecklists projectId={P} fbKey="FB-52" canTriage />
+      </main>
+    </QueryClientProvider>
+  </InRouter>,
 );
 
 const rows = () => [...document.querySelectorAll<HTMLElement>("[data-testid=checklist-row]")];

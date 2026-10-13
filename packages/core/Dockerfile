@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for @forge/core.
+# Multi-stage Dockerfile for @forge/core, and the web (packages/web-v2) it serves.
 # BUILD CONTEXT: repo root so pnpm workspace can resolve `workspace:*`
 # dependencies (e.g. `@forge/observability`). Build with:
 #   docker build -f packages/core/Dockerfile .
@@ -15,7 +15,7 @@ WORKDIR /repo
 COPY .npmrc pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages ./packages
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store,sharing=locked \
-    pnpm install --frozen-lockfile --filter @forge/core...
+    pnpm install --frozen-lockfile --filter @forge/core... --filter web-v2...
 # @forge/core and @forge/contracts declare each other, so turbo prints
 # `Circular package dependency detected` and there is NO topological order
 # between them: left to `--filter @forge/core...` alone, `packages/core build`
@@ -38,6 +38,15 @@ RUN pnpm --filter @forge/core build
 # deployed branch is refused by name, never measured by something else, when the
 # runtime finds no binary of that version at /usr/local/bin/oasdiff.
 RUN node packages/core/dist/ecosystem/contract/oasdiff-fetch.js /oasdiff
+# The web: a Vite build of packages/web-v2 that core serves from WEB_DIST_DIR (src/web-host). Vite
+# inlines VITE_* into the bundle, so they are build args. The web calls core on its own origin
+# (`/api`, `/ws`), so no API URL is baked in.
+ARG VITE_SENTRY_DSN=
+ARG VITE_WS_URL=
+ARG WEB_V2_BASE_PATH=
+ARG SOURCE_COMMIT=
+RUN VITE_SENTRY_DSN=$VITE_SENTRY_DSN VITE_WS_URL=$VITE_WS_URL WEB_V2_BASE_PATH=$WEB_V2_BASE_PATH \
+    VITE_SOURCE_COMMIT=$SOURCE_COMMIT pnpm --filter web-v2 build
 # `pnpm deploy` materialises a self-contained app at /prod/core with
 # zero workspace symlinks — every dependency is a real install. The
 # runtime stage just copies that directory and runs node. Honors the
@@ -63,10 +72,11 @@ RUN apk add --no-cache openssh-keygen openssh-client git
 COPY --from=build /prod/core ./
 COPY --from=build /repo/CHANGELOG.md ./CHANGELOG.md
 COPY --from=build /oasdiff/oasdiff /usr/local/bin/oasdiff
+COPY --from=build /repo/packages/web-v2/dist ./web
+ENV WEB_DIST_DIR=/app/web
 # NOTE: the repo `docs/` tree is INTERNAL engineering documentation and is
 # deliberately NOT shipped here or served to users. End-user product docs live
-# in packages/web-v2/content/help and are bundled into the WEB build — the core
-# image serves no documentation.
+# in packages/web-v2/content/help and are bundled into the web build above.
 
 ARG SOURCE_COMMIT=
 ENV SOURCE_COMMIT=$SOURCE_COMMIT

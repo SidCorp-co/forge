@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery, type Call } from "@/test/render";
 import { IssueDetailScreen } from "./issue-detail-screen";
 
-vi.mock("next/navigation", () => ({
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/projects/forge/issues/ISS-451",
   useSearchParams: () => new URLSearchParams(window.location.search),

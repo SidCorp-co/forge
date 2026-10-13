@@ -1,4 +1,3 @@
-"use client";
 
 import { useRef, useState } from "react";
 import { Banner, Button, SlideOver } from "@/design";

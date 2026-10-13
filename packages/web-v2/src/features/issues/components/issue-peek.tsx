@@ -1,4 +1,3 @@
-"use client";
 
 import type { Forecast } from "@forge/contracts/forecast";
 import type { IssueStandingRow } from "@forge/contracts/issue-standing";

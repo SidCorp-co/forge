@@ -1,4 +1,3 @@
-"use client";
 
 // The preview inside Forge (REQ-39 BC-3): an iframe on the preview host, entered with a one-minute
 // ticket so the host sets its own viewer cookie, and "Open in tab" for a browser that holds back the

@@ -2,10 +2,12 @@
   "compilerOptions": {
     "target": "ES2017",
     "lib": ["dom", "dom.iterable", "esnext"],
+    "types": ["vite/client"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
@@ -14,7 +16,6 @@
     "jsx": "react-jsx",
     "incremental": true,
     "tsBuildInfoFile": "node_modules/.cache/tsc/typecheck.tsbuildinfo",
-    "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./src/*"],
       "@forge/contracts/*": ["../contracts/src/*"],
@@ -24,14 +25,12 @@
     }
   },
   "include": [
-    "next-env.d.ts",
     "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    "**/*.tsx"
   ],
   "exclude": [
     "node_modules",
+    "dist",
     "**/*.test.ts",
     "**/*.test.tsx",
     "src/test/**",

@@ -4,12 +4,14 @@
 // the re-tie act, and a Short reads Short (it still counts as a pass in coverage).
 
 import { screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { IssueStandingRow } from "@forge/contracts/issue-standing";
 import type { IssueDetail } from "../types";
 import { IssueCriteria } from "./issue-criteria";
 import { RailTraceRows } from "./rail-trace";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const AT = "2026-10-08T21:49:14.000Z";
 

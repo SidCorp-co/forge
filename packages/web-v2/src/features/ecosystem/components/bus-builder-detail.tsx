@@ -1,4 +1,3 @@
-"use client";
 
 import { enumLabel, ProjectMark, StatusBadge, Tooltip } from "@/design";
 import { readingOf } from "@/lib/api/refusals";

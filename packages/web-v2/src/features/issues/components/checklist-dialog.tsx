@@ -4,8 +4,6 @@
 // person types is held by the caller (`use-guarded-transition.tsx`), so a second refusal or a close
 // never clears it.
 
-"use client";
-
 import { CHECKLISTS, isChecklistId } from "@forge/contracts/checklist-registry";
 import { type ChecklistFormField, checklistFormOf } from "@forge/contracts/checklists";
 import type { Refusal } from "@forge/contracts/refusal";

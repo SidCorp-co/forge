@@ -1,4 +1,3 @@
-"use client";
 
 import { PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, EmptyState, Skeleton } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";

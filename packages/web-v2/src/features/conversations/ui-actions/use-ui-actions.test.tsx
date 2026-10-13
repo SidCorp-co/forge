@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage, ConversationProgressEntry } from "../types";
 
 const push = vi.fn();
-vi.mock("next/navigation", () => ({
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push }),
   usePathname: () => "/projects/demo",
 }));

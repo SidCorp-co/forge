@@ -34,7 +34,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-API <http://localhost:8080> · dashboard <http://localhost:3000>. Then pair a device:
+API and dashboard <http://localhost:8080>. Then pair a device:
 `curl <core-url>/install.sh | sh` and `forge-runner login`, then approve the device in the browser.
 
 Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
@@ -44,7 +44,7 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 | Package | Role |
 |---|---|
 | [`packages/core/`](packages/core/) | Control plane — Hono, Drizzle, pg-boss, WebSocket, MCP |
-| [`packages/web-v2/`](packages/web-v2/) | Next.js dashboard — kanban, replay, pipeline health, devices |
+| [`packages/web-v2/`](packages/web-v2/) | Vite + React SPA dashboard, served by core — kanban, replay, pipeline health, devices |
 | [`packages/runner/`](packages/runner/) | `forge-runner` — the Rust device agent |
 | [`packages/contracts/`](packages/contracts/) | Types and registries shared across apps |
 | [`packages/observability/`](packages/observability/) | Shared telemetry helpers, including the secret scrubber |

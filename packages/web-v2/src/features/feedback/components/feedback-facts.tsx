@@ -1,4 +1,3 @@
-"use client";
 
 // The at-a-glance facts of one feedback item: where it stands on the phases, what it is about, what
 // carries it, and who sent it. The full page's sticky rail and the peek draw this one component, so the
@@ -6,7 +5,7 @@
 // badge and whose turn it is the banner's, so neither is a row here (REQ-43 BC-5); the agent report an
 // item was filed from is the developer view's (BC-7).
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { ActorChip, EnumBadge, enumLabel, Fact, FactsEmpty, FactsGroup, StatusBadge, type StatusFamily, StepBar, WaitBanner, keyedByContent } from "@/design";
 import { requirementHref } from "@/lib/routes/requirements";
 import { issueHref } from "@/lib/routes/issues";

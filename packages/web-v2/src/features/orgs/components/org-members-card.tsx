@@ -1,4 +1,3 @@
-"use client";
 
 // Org members management card (ISS-468), used in Settings → Organizations and in the org home,
 // bound to the active org: members, invitations, the org's projects, and (owner only)

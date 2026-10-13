@@ -2,8 +2,10 @@
 // now names each release that shipped its issues, and each issue the release that shipped it.
 
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { IssueShippedLink, RequirementShipped } from "./requirement-facts";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const R72 = { version: "0.4.0-dev.72", at: "2026-10-05T12:00:00.000Z" };
 const R80 = { version: "0.4.0-dev.80", at: "2026-10-06T12:00:00.000Z" };

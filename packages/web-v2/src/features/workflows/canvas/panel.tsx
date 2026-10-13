@@ -1,6 +1,5 @@
-"use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
 import { Button, IconButton, Kicker, SectionTitle } from "@/design";
 import type { WorkflowStep } from "../types";

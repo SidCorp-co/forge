@@ -40,6 +40,11 @@ const EnvSchema = z.object({
     .optional(),
   PORT: z.coerce.number().int().positive().default(8080),
   /**
+   * The web build this core serves (packages/web-v2 `dist/`, written by `vite build`), under the
+   * base path the build was made for. Unset, core serves no web: the web's dev server proxies here.
+   */
+  WEB_DIST_DIR: z.string().trim().min(1).optional(),
+  /**
    * Set to 1, this core is a throwaway demo (the stack `pnpm preview:demo` starts, REQ-39): its one
    * seeded demo member signs in at `GET /api/auth/demo` with no credential. Refused at boot under
    * NODE_ENV production or staging, so a real deployment can never open that door.

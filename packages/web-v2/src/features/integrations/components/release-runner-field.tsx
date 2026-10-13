@@ -1,4 +1,3 @@
-"use client";
 
 // ISS-1275 — the release runner label, on the two tiers the release warning names. It offered
 // clearing the label as the free way out while the key was on no editable surface at all.

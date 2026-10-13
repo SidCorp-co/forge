@@ -1,4 +1,3 @@
-"use client";
 
 // An uploaded `text/html` attachment, rendered inline as an artifact instead of
 // being offered as a download. The bytes are read (api.ts) rather than pointed at

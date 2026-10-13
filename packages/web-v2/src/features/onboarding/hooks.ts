@@ -1,4 +1,3 @@
-"use client";
 
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { onboardingApi } from "./api";

@@ -1,4 +1,3 @@
-"use client";
 
 // The small marks the onboarding thread and the questionnaire share: a hover note with rich
 // content (the evidence behind "Why we ask") and the design status.

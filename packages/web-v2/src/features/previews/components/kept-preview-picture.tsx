@@ -1,4 +1,3 @@
-"use client";
 
 // A kept idea preview drawn as a requirement's picture (REQ-41 BC-16): the page's one rrweb snapshot,
 // drawn still by rrweb's own replayer paused on it (a sandboxed frame it makes itself, scripts off),

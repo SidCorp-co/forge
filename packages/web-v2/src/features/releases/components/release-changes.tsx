@@ -1,7 +1,6 @@
-"use client";
 
 import type { ReleaseChanges, ReleaseSurfaceChanges } from "@forge/contracts/releases";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useState } from "react";
 import { EnumBadge, FieldLabel, LEGEND, ViewHeading } from "@/design";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";

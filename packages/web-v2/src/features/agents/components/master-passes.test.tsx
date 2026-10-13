@@ -5,9 +5,11 @@
 // touch screen, never only in a hover title.
 
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { MasterClosedPass } from "../types";
 import { PassesTable } from "./master-views";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const WORDS = "You've hit your session limit · resets 2:30am (Asia/Ho_Chi_Minh)";
 

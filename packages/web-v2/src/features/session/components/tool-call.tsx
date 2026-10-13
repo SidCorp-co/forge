@@ -1,4 +1,3 @@
-"use client";
 
 // One tool call per `tool_use` block, flat with a left rule. Edit/Write/MultiEdit render an
 // inline unified diff (collapsible); reads/searches/runs render a compact

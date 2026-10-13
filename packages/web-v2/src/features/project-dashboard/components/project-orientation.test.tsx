@@ -4,8 +4,10 @@
 // release, and what comes next; each line says so plainly when there is nothing to show.
 
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ProjectOrientation, type OrientationProps } from "./project-orientation";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const item = (key: string, title: string) => ({ key, title, state: "in_delivery" as const, delivery: null, deferral: null });
 

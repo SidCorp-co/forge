@@ -1,4 +1,3 @@
-"use client";
 
 // Under a room's title: who answers in it, and the thread's status (In progress, Waiting on you,
 // Done), the badge the conversation list carries too.

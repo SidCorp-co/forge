@@ -1,4 +1,3 @@
-"use client";
 
 // A POC room (REQ-44): the chat on one side and the live preview on the other. Every member reads the
 // same record on a short clock (BC-5), each ask says when the preview showed it and the commit that
@@ -9,7 +8,7 @@
 import type { Room, RoomTurn } from "@forge/contracts/poc-room";
 import { ROOM_LIMITS } from "@forge/contracts/poc-room";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { useEffect, useRef, useState } from "react";
 import { Button, Field, Input, Textarea } from "@/design";
 import { RefusedLine } from "@/lib/api/refusal-line";

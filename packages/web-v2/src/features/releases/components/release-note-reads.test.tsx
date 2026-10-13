@@ -3,11 +3,13 @@
 // production build a demo (HOP 0.5.0, 2026-10-08).
 
 import { screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/render";
 import type { ReleaseDetail } from "../types";
 import { ReleaseBanner } from "./release-bits";
 import { ApprovedDesigns, DemoNotesWarning, NotesAttention } from "./release-note-reads";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const release = {
   key: "0.1.0",

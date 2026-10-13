@@ -1,4 +1,3 @@
-"use client";
 
 import { DetailHeader, ErrorState, ProjectLoader, RecordViewSwitch, useListOrigin, useRecordView } from "@/design";
 import { useEntityDecisions } from "@/features/comments";

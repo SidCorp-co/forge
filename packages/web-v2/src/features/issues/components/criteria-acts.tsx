@@ -1,4 +1,3 @@
-"use client";
 
 // The acts a person takes on an issue's criteria from its Criteria tab: record a verdict on one
 // criterion (pass, pass short of its wording, fail, or could not judge with a reason, judged against

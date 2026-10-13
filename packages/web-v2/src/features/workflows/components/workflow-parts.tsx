@@ -1,4 +1,3 @@
-"use client";
 
 import type { SensitiveDataLevel } from "@forge/contracts/data-policy";
 import { StatusBadge, statusReading, Tooltip, WaitingOn } from "@/design";

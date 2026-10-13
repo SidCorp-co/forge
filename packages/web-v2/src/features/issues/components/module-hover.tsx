@@ -1,9 +1,8 @@
-"use client";
 
 // A module named on an issue opens its overview on hover: what it is for, what stands in it now, and
 // the way to its page. The detail is read only once the card opens.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { HoverCard, MonoTag } from "@/design";
 import { useModuleDetail } from "@/features/modules";
 import { useCopy } from "@/lib/i18n/interface-language";

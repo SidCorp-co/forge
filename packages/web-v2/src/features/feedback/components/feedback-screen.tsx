@@ -1,4 +1,3 @@
-"use client";
 
 // The Feedback list (`forge-prototype.html` #/feedback): the grouping in the top header, a search,
 // the triage funnel, then the shared GroupedList — the same columns as Requirements and Issues — by

@@ -1,4 +1,3 @@
-"use client";
 
 // The create-token form's draft, and its round-trip through the SSO re-auth
 // redirect (ISS-167): the draft is stashed in sessionStorage before the

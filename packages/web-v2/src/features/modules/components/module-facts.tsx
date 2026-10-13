@@ -1,6 +1,5 @@
-"use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { Fact, FactsEmpty, FactsGroup, NotAvailable, StatusBadge } from "@/design";
 import { FeedbackRailItem } from "@/features/feedback";
 import { useCopy } from "@/lib/i18n/interface-language";

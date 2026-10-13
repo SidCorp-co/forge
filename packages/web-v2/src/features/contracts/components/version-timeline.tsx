@@ -1,4 +1,3 @@
-"use client";
 
 import { LEGEND, statusReading, Tooltip, useNow } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";

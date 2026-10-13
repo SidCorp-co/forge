@@ -1,11 +1,10 @@
-"use client";
 
 // Flush rows for anything that is not an entity standing somewhere (GroupedList draws those): tokens,
 // members, connections, runs, files. One row is a lead (a key, a mark), a title with one facts line
 // under it, and its trailing state and acts; rows are ruled by hairlines, never boxed. A row with
 // `href` is a link, one with `onClick` a button, else plain.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
 import { keyedNodes } from "../keyed";

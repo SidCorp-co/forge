@@ -12,8 +12,6 @@
 //   pnpm --filter web-v2 witness witness/page-beside-dock.witness.tsx --out <dir>
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { PathnameContext, PathParamsContext, SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { Component, type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { type ChatDockApi, DOCK_OPEN_ON_KEY, useChatDockState } from "@/features/chat-dock/dock";
@@ -26,6 +24,7 @@ import { SCREENS as AGENT_SCREENS } from "@/test/vi-chrome-agents";
 import { SCREENS as ISSUE_SCREENS } from "@/test/vi-chrome-issues";
 import { SCREENS as REQUIREMENT_SCREENS } from "@/test/vi-chrome-requirements";
 import "./entry";
+import { InRouter } from "./router";
 
 const SIDEBAR = 280;
 const PANEL_FLOOR = 360;
@@ -62,7 +61,6 @@ const PAGES = [
   { name: "run", path: "/projects/hop/agents/runs/run-5", screen: named(AGENT_SCREENS, "Run page · attempts") },
 ] as const;
 
-const router = { push() {}, replace() {}, prefetch() {}, back() {}, forward() {}, refresh() {}, hmrRefresh() {} };
 
 const at: { page: number; dock: ChatDockApi | null; show: (i: number) => void } = { page: 0, dock: null, show: () => {} };
 
@@ -77,27 +75,21 @@ function Shell() {
   });
   const p = PAGES[page] ?? PAGES[0];
   return (
-    <AppRouterContext.Provider value={router as never}>
-      <PathnameContext.Provider value={p.path}>
-        <PathParamsContext.Provider value={{ slug: "hop" }}>
-          <SearchParamsContext.Provider value={new URLSearchParams() as never}>
-            <TopBarSlotProvider>
-              {/* as app/(workspace)/layout.tsx draws it: data-shell and data-page are what globals.css reads */}
-              <div className="flex h-dvh overflow-hidden bg-app" data-shell>
-                <div className="hidden h-full flex-none border-r border-line bg-surface md:block" style={{ width: SIDEBAR }} data-witness="sidebar" />
-                <div ref={column} className="flex min-w-0 flex-1 flex-col" data-witness="page" data-witness-page={p.name} data-page>
-                  <ShellTopBar chatOpen={dock.open} onToggleChat={dock.toggle} />
-                  <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(56px+env(safe-area-inset-bottom))] window-md:pb-0" data-witness="main">
-                    <Page key={p.name} screen={p.screen} />
-                  </main>
-                </div>
-                <ChatDock dock={dock} page={column} />
-              </div>
-            </TopBarSlotProvider>
-          </SearchParamsContext.Provider>
-        </PathParamsContext.Provider>
-      </PathnameContext.Provider>
-    </AppRouterContext.Provider>
+    <InRouter key={p.path} at={p.path} pattern="/projects/$slug/$">
+      <TopBarSlotProvider>
+        {/* as app/(workspace)/layout.tsx draws it: data-shell and data-page are what globals.css reads */}
+        <div className="flex h-dvh overflow-hidden bg-app" data-shell>
+          <div className="hidden h-full flex-none border-r border-line bg-surface md:block" style={{ width: SIDEBAR }} data-witness="sidebar" />
+          <div ref={column} className="flex min-w-0 flex-1 flex-col" data-witness="page" data-witness-page={p.name} data-page>
+            <ShellTopBar chatOpen={dock.open} onToggleChat={dock.toggle} />
+            <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(56px+env(safe-area-inset-bottom))] window-md:pb-0" data-witness="main">
+              <Page key={p.name} screen={p.screen} />
+            </main>
+          </div>
+          <ChatDock dock={dock} page={column} />
+        </div>
+      </TopBarSlotProvider>
+    </InRouter>
   );
 }
 

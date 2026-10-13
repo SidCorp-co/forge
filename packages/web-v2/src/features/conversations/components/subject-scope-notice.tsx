@@ -1,4 +1,3 @@
-"use client";
 
 // A room scoped to one record or to the onboarding answers through an agent that cannot read the
 // project, and the dock reopens such a room on pages that are not its own. FB-100: on the Dashboard,

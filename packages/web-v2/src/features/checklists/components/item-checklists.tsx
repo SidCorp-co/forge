@@ -1,4 +1,3 @@
-"use client";
 
 // The checklists of one requirement or feedback item, each drawn by `ChecklistAnswers` from core's
 // read. A gap points to where it is answered: a requirement's revision for a question its head

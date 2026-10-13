@@ -1,4 +1,3 @@
-"use client";
 
 // The reader's half of the one parse. Core parses the ```forge-record fence a
 // comment carries and ships the result on the comment node; nothing here parses

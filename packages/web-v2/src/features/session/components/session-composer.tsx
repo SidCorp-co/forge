@@ -1,4 +1,3 @@
-"use client";
 
 import { SESSION_ATTACHMENTS } from "@/features/chat";
 import { ChatComposer, ReadOnlyComposerNote } from "@/features/chat";

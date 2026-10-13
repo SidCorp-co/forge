@@ -5,6 +5,8 @@ import { fakeCore, renderWithQuery } from "@/test/render";
 import type { ConversationMessage, ConversationWindow } from "../types";
 import { ConversationThread } from "./conversation-thread";
 
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
+
 // Share sits in an answer's own row beside Copy, on every message of an assistant turn: whichever one
 // is pressed, core freezes the whole turn (lane A8d). A person's message, a recorded silence and a
 // room with no project offer nothing.
@@ -88,7 +90,7 @@ describe("the Share action on an answer", () => {
     expect(shares).toHaveLength(2);
     expect(shares.map((s) => s.getAttribute("data-subject-kind"))).toEqual(["message", "message"]);
     const rows = screen.getAllByTestId("message-actions");
-    expect(within(rows[0] as HTMLElement).queryByTestId("message-share")).toBeNull();
+    expect(within(rows[0]).queryByTestId("message-share")).toBeNull();
   });
 
   it("shares the turn by the message pressed, even one that ran a template", async () => {

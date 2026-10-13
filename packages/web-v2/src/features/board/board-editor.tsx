@@ -1,4 +1,3 @@
-"use client";
 
 // The board a person draws a requirement's wireframe on (REQ-35, ISS-460): the same Excalidraw
 // canvas `board-canvas.tsx` shows read-only, open for drawing. It opens on the wireframe it is given
@@ -9,7 +8,7 @@
 // hides their toolbar buttons and the extra-tools menu (frame, embed, diagram), and a tool reached
 // another way (a shortcut, the command palette) is put back to the selection the moment it is
 // taken. An element that still arrives, pasted or from a library, is refused by name on save.
-// Like the read-only board it is reached only through next/dynamic with ssr:false.
+// Like the read-only board it is reached only through features/board/lazy.tsx.
 
 import "@excalidraw/excalidraw/index.css";
 import "./board-editor.css";

@@ -1,4 +1,3 @@
-"use client";
 
 // Each list's filter, as one row in its toolbar (REQ-41 BC-5, BC-7): whom a row waits on (anyone, you,
 // an agent, running), then every other field the URL holds as a removable chip. The list, the chat's

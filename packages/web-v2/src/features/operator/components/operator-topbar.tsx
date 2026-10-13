@@ -1,4 +1,3 @@
-"use client";
 
 import { HealthDot, IconButton, Kicker, Menu, Tooltip } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";

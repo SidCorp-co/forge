@@ -1,4 +1,3 @@
-"use client";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useToastWrite } from "@/providers/toast-write";

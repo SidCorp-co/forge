@@ -1,6 +1,5 @@
-"use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import type { CheckKindTime, IssueCheckRunView } from "@forge/contracts/check-runs";
 import { EmptyPanelLine, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";

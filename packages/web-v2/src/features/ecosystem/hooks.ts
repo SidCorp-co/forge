@@ -1,4 +1,3 @@
-"use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { questionsApi } from "@/features/questions";

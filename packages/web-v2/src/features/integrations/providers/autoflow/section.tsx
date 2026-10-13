@@ -1,4 +1,3 @@
-"use client";
 
 import { Banner, Field, Input, Property, PropertyList } from "@/design";
 import { formatApiError } from "@/lib/api/error";

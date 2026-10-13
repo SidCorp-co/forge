@@ -1,4 +1,3 @@
-"use client";
 
 import { describePicture, draftPictureSchema } from "@forge/contracts/requirement-pictures";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";

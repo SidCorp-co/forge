@@ -1,4 +1,3 @@
-"use client";
 
 // A kept template report, opened from the history: how its summary came to be (a schedule fire's
 // outcome), its narrative as it was kept (a slot nobody wrote is named with why, never drawn empty),

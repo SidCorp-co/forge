@@ -31,9 +31,8 @@ PAT_PEPPER=<random>
 POSTGRES_PASSWORD=<choose-one>
 
 # URLs (defaults work for local Docker Compose)
-CORS_ORIGINS=http://localhost:3000
-APP_BASE_URL=http://localhost:3000
-NEXT_PUBLIC_API_URL=http://localhost:8080/api
+CORS_ORIGINS=http://localhost:8080
+APP_BASE_URL=http://localhost:8080
 
 # SMTP — optional in the core env schema. Blank, an invitation is refused MAIL_NOT_CONFIGURED;
 # set SMTP_DEBUG=true to log verification and invitation links to container logs instead
@@ -53,12 +52,12 @@ docker compose up -d
 Wait ~30 seconds for services to become healthy.
 
 - Core API + health: <http://localhost:8080/health>
-- Web dashboard: <http://localhost:3000>
+- Web dashboard: <http://localhost:8080> (core serves it)
 - DB inspector (dev only): `pnpm --filter @forge/core db:studio` → Drizzle Studio
 
 ## 2. Create first user and project
 
-1. Open <http://localhost:3000> — register a user.
+1. Open <http://localhost:8080> — register a user.
 2. **Verify your email** (required before creating your first project) — click the link in the email.
 3. Create a project. Note its slug (used when pairing a device).
 

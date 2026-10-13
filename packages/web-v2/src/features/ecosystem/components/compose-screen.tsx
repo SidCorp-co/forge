@@ -1,4 +1,3 @@
-"use client";
 
 import { useState } from "react";
 import { Button, Checkbox, Field, Input, NativeSelect, Textarea } from "@/design";

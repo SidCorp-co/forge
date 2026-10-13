@@ -11,6 +11,7 @@ import { createRoot } from "react-dom/client";
 import { ReleaseReader } from "@/features/releases/components/release-reader";
 import { releasePage, TECHNICAL } from "@/test/release-page";
 import "./entry";
+import { InRouter } from "./router";
 
 const BC18 = "A refusal says in plain words what to fix, on that field.";
 const SEVEN = [
@@ -42,11 +43,13 @@ const page = releasePage({
 const root = document.getElementById("root");
 if (!root) throw new Error("the page has no #root");
 createRoot(root).render(
-  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-    <div className="mx-auto max-w-3xl p-4">
-      <ReleaseReader page={page} authed={false} />
-    </div>
-  </QueryClientProvider>,
+  <InRouter>
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <div className="mx-auto max-w-3xl p-4">
+        <ReleaseReader page={page} authed={false} />
+      </div>
+    </QueryClientProvider>
+  </InRouter>,
 );
 
 const req = () => document.querySelector("[data-testid=page-requirement]");

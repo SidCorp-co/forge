@@ -1,4 +1,3 @@
-"use client";
 
 // Pipeline kanban screen (`/projects/[slug]/pipeline`, ISS-295), and the Issues screen's Board tab.
 //

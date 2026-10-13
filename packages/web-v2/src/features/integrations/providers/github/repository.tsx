@@ -1,4 +1,3 @@
-"use client";
 
 import { Banner, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, Field, NativeSelect, Spinner } from "@/design";
 import { formatApiError } from "@/lib/api/error";

@@ -1,4 +1,3 @@
-"use client";
 
 // The intake assistant's draft of a requirement or feedback item (REQ-34 BC-12..BC-16), as core keeps
 // it: what the item duplicates, conflicts with, affects and relates to, each a link, and each workflow it
@@ -7,7 +6,7 @@
 // nothing to ask and why. Rows, not prose; nothing shows before a
 // draft exists.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { FieldLabel, ViewHeading } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { feedbackHref } from "@/lib/routes/feedback";
@@ -144,8 +143,9 @@ function IntakeDraftBody({ draft, slug, assumptions }: { draft: IntakeDraftView;
       <div>
         <FieldLabel>{t("intake.questions")}</FieldLabel>
         {draft.questions.length === 0 ? (
-          <p className="text-13 text-subtle" data-testid="intake-nothing-to-ask">
-            {t("intake.nothingToAsk")}
+          <p className="text-13 leading-snug" data-testid="intake-nothing-to-ask">
+            <span className="font-medium text-fg">{t("intake.nothingToAsk")}</span>
+            {draft.nothingToAsk ? <span className="text-subtle"> · {draft.nothingToAsk}</span> : null}
           </p>
         ) : (
           <ul className="grid">

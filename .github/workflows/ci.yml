@@ -489,16 +489,14 @@ jobs:
       # package that consumes the values.
       - run: pnpm --filter @forge/contracts test
       - run: pnpm --filter web-v2 test
-      # `next build` checks no types (`ignoreBuildErrors`) and runs no lint, so the
-      # types are checked here, once. web-v2's paths reach core's and contracts'
-      # sources, so this is also what catches a core change that breaks the web.
+      # `vite build` checks no types and runs no lint, so the types are checked
+      # here, once. web-v2's paths reach core's and contracts' sources, so this is
+      # also what catches a core change that breaks the web.
       # Contracts' test files are type-checked by its own vitest run (typecheck mode).
       - run: pnpm --filter @forge/contracts typecheck
       - run: pnpm --filter web-v2 typecheck
       - run: pnpm --filter web-v2 typecheck:test
       - run: pnpm --filter web-v2 build
-        env:
-          NEXT_PUBLIC_API_URL: http://localhost:8080/api
 
   core:
     needs: changes

@@ -1,9 +1,8 @@
-"use client";
 
 // What the issue changes for a reader, as one line: the release note's first line, and the release
 // that shipped it. The developer view draws the whole note.
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { Markdown } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { releaseHref } from "@/lib/routes/releases";

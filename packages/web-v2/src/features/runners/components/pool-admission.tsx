@@ -1,4 +1,3 @@
-"use client";
 
 import { Toggle } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";

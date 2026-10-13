@@ -1,4 +1,3 @@
-"use client";
 
 import type { IssueProgress } from "@forge/contracts/forecast";
 import { useCopy } from "@/lib/i18n/interface-language";

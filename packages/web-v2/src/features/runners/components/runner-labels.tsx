@@ -1,4 +1,3 @@
-"use client";
 
 import { Button, Input, MonoTag } from "@/design";
 import { useState } from "react";

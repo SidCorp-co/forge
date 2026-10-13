@@ -1,4 +1,3 @@
-"use client";
 
 import { useState } from "react";
 import { Badge, Banner, Button, PageSectionTitle, Field, Input, Table, TBody, TD, TH, THead, TR } from "@/design";

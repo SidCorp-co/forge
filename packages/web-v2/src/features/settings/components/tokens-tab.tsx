@@ -1,4 +1,3 @@
-"use client";
 
 // Settings → API Tokens. List + create (one-time plaintext reveal) + revoke.
 import { useState } from "react";

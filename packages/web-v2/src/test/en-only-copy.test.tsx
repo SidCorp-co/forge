@@ -25,7 +25,7 @@ vi.mock("@/lib/i18n/copy-files", async (load) => {
   );
   return { COPY_FILES: files };
 });
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useParams: () => ({ slug: "hop" }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useParams: () => ({ slug: "hop" }) }));
 
 describe("a copy key written in English only", () => {
   it("reads its English in vi through every reader", () => {

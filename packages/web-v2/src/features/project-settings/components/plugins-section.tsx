@@ -1,4 +1,3 @@
-"use client";
 
 import { useRef, useState } from "react";
 import { Badge, Banner, Button, PageSectionTitle, ConfirmDialog, EmptyState, ErrorState, Field, Input, Skeleton } from "@/design";

@@ -27,8 +27,7 @@
 // browser binary is `WITNESS_CHROME`, else `google-chrome`.
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -54,44 +53,47 @@ function argsOf(argv) {
   return { entry: path, out: resolve(process.cwd(), out), clip };
 }
 
-const need = createRequire(resolve(WEB, "package.json"));
-function load(name) {
-  try {
-    return need(name);
-  } catch {
-    cannot(`${name} does not resolve from packages/web-v2; run pnpm install at the repository root`);
-  }
+
+/** Vite with the app's own Tailwind and React plugins and its aliases, read from vite.config.ts. */
+async function viteFor(mode) {
+  const [vite, { default: tailwindcss }, { default: react }] = await Promise.all(
+    ["vite", "@tailwindcss/vite", "@vitejs/plugin-react"].map((name) =>
+      import(name).catch(() => cannot(`${name} does not resolve from packages/web-v2; run pnpm install at the repository root`)),
+    ),
+  );
+  const app = await vite.loadConfigFromFile({ command: "build", mode }, resolve(WEB, "vite.config.ts"), WEB, "silent");
+  if (!app) cannot("packages/web-v2/vite.config.ts did not load");
+  const shared = { root: WEB, configFile: false, logLevel: "error", resolve: { alias: app.config.resolve?.alias } };
+  return { vite, shared, plugins: [tailwindcss(), react()] };
 }
 
 async function buildPage(entry, out) {
-  const esbuild = load("esbuild");
-  // the stylesheets components import themselves (the workflow canvas, the board) are bundled beside
-  // app.js and kept as components.css, so a canvas is drawn as the app draws it; nothing an earlier run
-  // left in `<out>` is read as this one's
-  for (const old of ["app.css", "components.css"]) rmSync(resolve(out, old), { force: true });
-  await esbuild.build({
-    entryPoints: [entry],
-    outfile: resolve(out, "app.js"),
-    bundle: true,
-    format: "iife",
-    jsx: "automatic",
-    loader: { ".woff": "dataurl", ".woff2": "dataurl", ".ttf": "dataurl", ".png": "dataurl", ".svg": "dataurl" },
-    tsconfig: resolve(WEB, "tsconfig.json"),
+  const { vite, shared, plugins } = await viteFor("production");
+  // the entry and the app's stylesheet are bundled as one page: the stylesheets components import
+  // themselves (the workflow canvas, the board) land in the same app.css, so a canvas is drawn as the
+  // app draws it; nothing an earlier run left in `<out>` is read as this one's
+  for (const old of ["app.js", "app.css", "components.css", "page.ts"]) rmSync(resolve(out, old), { force: true });
+  const page = resolve(out, "page.ts");
+  writeFileSync(page, `import ${JSON.stringify(resolve(WEB, "src/styles/globals.css"))};\nimport ${JSON.stringify(entry)};\n`);
+  await vite.build({
+    ...shared,
+    plugins,
+    mode: "production",
     define: { "process.env.NODE_ENV": '"production"' },
-    // a package that exports its files per build (excalidraw's css) resolves the production one, as the define says
-    conditions: ["production"],
-    logLevel: "error",
+    build: {
+      outDir: out,
+      emptyOutDir: false,
+      copyPublicDir: false,
+      minify: false,
+      // fonts and images ride inside app.css and app.js: the page is opened from file:// with no server
+      assetsInlineLimit: Number.MAX_SAFE_INTEGER,
+      lib: { entry: page, formats: ["iife"], name: "witness", fileName: () => "app.js", cssFileName: "app" },
+    },
   });
-  if (existsSync(resolve(out, "app.css"))) renameSync(resolve(out, "app.css"), resolve(out, "components.css"));
-  const postcss = load("postcss");
-  const tailwind = load("@tailwindcss/postcss");
-  const from = resolve(WEB, "src/app/globals.css");
-  const css = await postcss([tailwind({ base: WEB })]).process(readFileSync(from, "utf8"), { from });
-  writeFileSync(resolve(out, "app.css"), css.css);
-  const components = existsSync(resolve(out, "components.css")) ? '<link rel="stylesheet" href="components.css">' : "";
+  rmSync(page, { force: true });
   writeFileSync(
     resolve(out, "index.html"),
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="app.css">${components}</head>` +
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="app.css"></head>` +
       '<body><div id="root"></div><script>window.process={env:{NODE_ENV:"production"}}</script><script src="app.js"></script></body></html>',
   );
   return pathToFileURL(resolve(out, "index.html")).href;
@@ -159,22 +161,9 @@ const CLIP_HEIGHT = 900;
 
 /** The clip ceiling a release page shows (`@forge/contracts/release-page`), read from where it is declared. */
 async function clipCeiling() {
-  const esbuild = load("esbuild");
-  const built = await esbuild.build({
-    stdin: {
-      contents: 'export { RELEASE_CLIP_MAX_SECONDS, RELEASE_CLIP_MAX_BYTES } from "@forge/contracts/release-page";',
-      resolveDir: WEB,
-      loader: "ts",
-    },
-    bundle: true,
-    format: "esm",
-    platform: "node",
-    write: false,
-    tsconfig: resolve(WEB, "tsconfig.json"),
-    logLevel: "error",
-  });
-  const mod = await import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString("base64")}`);
-  return { seconds: mod.RELEASE_CLIP_MAX_SECONDS, bytes: mod.RELEASE_CLIP_MAX_BYTES };
+  const { vite, shared } = await viteFor("production");
+  const { module } = await vite.runnerImport(resolve(WEB, "../contracts/src/release-page.ts"), shared);
+  return { seconds: module.RELEASE_CLIP_MAX_SECONDS, bytes: module.RELEASE_CLIP_MAX_BYTES };
 }
 
 /** The page's screencast frames while a case runs, each stamped on a clock that leaves out the time spent shooting. */

@@ -1,4 +1,3 @@
-"use client";
 
 // REQ-33 BC-7: the Dashboard's Memory section, the memories naming no requirement, workflow or issue
 // of the project, read with the same fields and acts as an item's Memory tab. `#project-memory` is

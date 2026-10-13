@@ -1,4 +1,3 @@
-"use client";
 
 // Opening a POC room (REQ-44 BC-1) from a requirement, a feedback item or a chat offer: the first ask,
 // then the room's page. `slug` and `canWrite` come from the page that mounts it; nothing above this
@@ -6,7 +5,7 @@
 
 import { PREVIEW_IDEA_LIMITS } from "@forge/contracts/preview";
 import { useMutation } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import { useState } from "react";
 import { Button, Textarea } from "@/design";
 import { RefusedLine } from "@/lib/api/refusal-line";

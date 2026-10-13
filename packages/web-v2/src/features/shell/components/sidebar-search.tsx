@@ -1,4 +1,3 @@
-"use client";
 
 import { Icon, Kbd } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";

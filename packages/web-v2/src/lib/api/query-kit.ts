@@ -1,4 +1,3 @@
-"use client";
 
 // The two shapes every feature's hooks repeat: a keyed read that waits for its key, and a write that
 // shows the answer it gets and has the reads it touched read again. A feature keeps its own key

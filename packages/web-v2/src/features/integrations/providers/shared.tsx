@@ -1,4 +1,3 @@
-"use client";
 
 import { Badge, type BadgeProps, keyedByContent, Banner, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle } from "@/design";
 import { formatApiError } from "@/lib/api/error";

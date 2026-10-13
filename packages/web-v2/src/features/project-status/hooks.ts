@@ -1,4 +1,3 @@
-"use client";
 
 import { PROJECT_STATUS_DAYS_DEFAULT } from "@forge/contracts/project-status";
 import { useMutation, useQuery } from "@tanstack/react-query";

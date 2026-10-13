@@ -1,4 +1,3 @@
-"use client";
 
 import type { IssueStatus } from "@forge/contracts/issue-machine";
 import { type IssueStatusTone, issueStatusToneOn } from "@forge/contracts/issue-vocabulary";

@@ -1,4 +1,3 @@
-'use client';
 
 import { useWebSocket } from './use-websocket';
 

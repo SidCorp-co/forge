@@ -2,11 +2,13 @@
 // reading in the viewer's timezone, never the ISO a model wrote, while code keeps its text as written.
 
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { doneDayText } from "@/lib/i18n/eta-clock-words";
 import { instantsOn, readProseInstants } from "@/lib/i18n/instants";
 import type { ConversationMessage, ConversationWindow } from "../types";
 import { ConversationThread } from "./conversation-thread";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const SHIPPED = "2026-10-04T18:19:08.744Z";
 

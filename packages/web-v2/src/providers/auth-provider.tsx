@@ -1,11 +1,10 @@
-'use client';
 
 import type { LoginInput, RegisterInput } from '@forge/contracts/requests';
 import type { MeResponse } from '@forge/contracts/responses';
 
 /** The signed-in user; settings surfaces branch on `hasPassword` / `oauthProviders` (SSO reauth). */
 export type User = MeResponse;
-import { useRouter } from 'next/navigation';
+import { useRouter } from "@/lib/navigation/router";
 import {
   createContext,
   useCallback,

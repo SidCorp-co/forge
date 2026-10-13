@@ -1,4 +1,3 @@
-"use client";
 
 // REQ-33 BC-4, BC-5: a requirement's Memory tab, each memory naming its key, read through the one
 // item memory section a workflow's and an issue's pages use.

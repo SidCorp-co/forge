@@ -1,4 +1,3 @@
-"use client";
 
 // Context rail for the run thread: the session's status chip + run stats + a
 // files-changed list derived from edit-tool blocks across turns (no diff REST
@@ -10,7 +9,7 @@
 // an "Agents & tasks" list (derived from Task/Skill transcript blocks), and a
 // "Sessions for this issue" list (sibling sessions via the existing list API).
 
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import { Banner, enumLabel, Icon, MonoTag, FactsGroup, Stat, StatusBadge, useElapsed } from "@/design";
 import { deriveSessionDisplayStatus, failureReasonAction, failureReasonLabel, sessionStep, statusToChip, type SessionRow } from "@/features/sessions";
 import { useStuckRuns } from "@/features/agents";

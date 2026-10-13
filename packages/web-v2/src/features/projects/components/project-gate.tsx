@@ -1,6 +1,5 @@
-"use client";
 
-import { useParams } from "next/navigation";
+import { useParams } from "@/lib/navigation/router";
 import { ErrorState, ProjectLoader } from "@/design";
 import { useProjectRef } from "@/features/projects/project-ref";
 import type { ProjectListItem } from "@/features/projects/types";

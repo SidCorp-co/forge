@@ -1,8 +1,7 @@
-"use client";
 
 import { type ReportCell, type ReportField, type ReportFieldVocabulary, stateLabel } from "@forge/contracts/report-queries";
 import { cellText } from "@forge/contracts/visual-blocks";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { StatusBadge, ToneBadge } from "@/design/primitives/enum-badge";
 import { type StatusFamily, statusReading } from "@/design/vocabulary";
 import { useInterfaceLanguage } from "@/lib/i18n/interface-language";

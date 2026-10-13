@@ -1,8 +1,6 @@
-"use client";
 
 
-import Image from "next/image";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
@@ -81,8 +79,7 @@ export function BodyImage({ src, alt }: { src?: string; alt?: string }): ReactNo
     );
   }
   return (
-    // An attachment or external URL of no known size: unoptimized (no remote host to configure), and
-    // width/height 0 with auto CSS size, Next's documented form for an image of unknown dimensions.
-    <Image src={target.href} alt={alt ?? ""} width={0} height={0} sizes="100vw" unoptimized className={COMPACT_TAG_CLASS.img} style={{ width: "auto", height: "auto" }} />
+    // an attachment or external URL of no known size: drawn at its own
+    <img src={target.href} alt={alt ?? ""} className={COMPACT_TAG_CLASS.img} />
   );
 }

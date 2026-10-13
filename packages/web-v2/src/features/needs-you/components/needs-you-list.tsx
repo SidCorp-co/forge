@@ -1,9 +1,8 @@
-"use client";
 
 // The rows the one needs-you read model answers (`GET /api/projects/:id/needs-you`), drawn as the
 // shared grouped list, one group per area; nothing here decides what waits on the viewer.
 
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation/router";
 import { useMemo } from "react";
 import { GroupedList, type ListGroup, type ListRowView, useGroupFold, WaitingOn } from "@/design";
 import { formatDateTime } from "@/lib/i18n/format";

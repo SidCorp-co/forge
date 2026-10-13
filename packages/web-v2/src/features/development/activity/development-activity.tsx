@@ -1,4 +1,3 @@
-"use client";
 
 // The engineers' figures and cards for one project: runs, runners, spend and open issues by state.
 // They sat on the project Dashboard until it became the BA's page; the data is the same reads.

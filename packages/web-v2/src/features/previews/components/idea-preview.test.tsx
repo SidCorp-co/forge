@@ -36,7 +36,7 @@ vi.mock("rrweb", () => ({
   },
 }));
 vi.mock("rrweb/dist/style.css", () => ({}));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/projects/hop", useParams: () => ({ slug: "hop" }) }));
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/projects/hop", useParams: () => ({ slug: "hop" }) }));
 vi.mock("@/features/projects/hooks", () => ({ useProjects: () => ({ data: [{ id: "7f1c1d1e-0000-4000-8000-000000000001", slug: "hop", role: "member" }] }) }));
 
 const { IdeaPreview } = await import("@/features/previews/components/idea-preview");
@@ -65,6 +65,9 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("keeping the idea (BC-16)", () => {
+  // the snapshot is the frame's to give, so a keep waits for the page to be on screen, entered with its ticket
+  const framed = (about: string) => screen.findByTitle(`Preview of ${about}`);
+
   const live = (extra: Record<string, (c: Call) => { status?: number; body: unknown } | undefined> = {}) =>
     core({
       [`GET /previews/${PREVIEW_ID}`]: () => ({ body: { preview: idea() } }),
@@ -80,6 +83,7 @@ describe("keeping the idea (BC-16)", () => {
       }),
     });
     renderWithQuery(<IdeaPreview preview={idea()} about="REQ-41" canWrite slug="hop" />);
+    await framed("REQ-41");
     const keepBtn = await screen.findByRole("button", { name: "Keep as the picture" });
     expect(keepBtn).toBeDisabled();
     fireEvent.change(screen.getByLabelText("What this page shows"), { target: { value: "The home with a larger chat box" } });
@@ -96,7 +100,8 @@ describe("keeping the idea (BC-16)", () => {
     asked.answer = new SnapshotUnavailable("silent", "the preview page did not answer: reload it and try again");
     const calls = live();
     renderWithQuery(<IdeaPreview preview={idea()} about="REQ-41" canWrite slug="hop" />);
-    fireEvent.change(await screen.findByLabelText("What this page shows"), { target: { value: "x" } });
+    await framed("REQ-41");
+    fireEvent.change(screen.getByLabelText("What this page shows"), { target: { value: "x" } });
     fireEvent.click(screen.getByRole("button", { name: "Keep as the picture" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't keep the preview: the preview page did not answer");
     expect(calls.some((c) => c.path.endsWith("/keep"))).toBe(false);
@@ -105,7 +110,8 @@ describe("keeping the idea (BC-16)", () => {
   it("names core's refusal of the keep", async () => {
     live({ [`POST /previews/${PREVIEW_ID}/keep`]: () => ({ status: 409, body: refusal("PREVIEW_KEEP_NOT_IDEA", "preview serves an issue's run") }) });
     renderWithQuery(<IdeaPreview preview={idea()} about="REQ-41" canWrite slug="hop" />);
-    fireEvent.change(await screen.findByLabelText("What this page shows"), { target: { value: "x" } });
+    await framed("REQ-41");
+    fireEvent.change(screen.getByLabelText("What this page shows"), { target: { value: "x" } });
     fireEvent.click(screen.getByRole("button", { name: "Keep as the picture" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("preview serves an issue's run");
   });
@@ -118,7 +124,8 @@ describe("keeping the idea (BC-16)", () => {
       }),
     });
     renderWithQuery(<IdeaPreview preview={idea()} about="FB-61" canWrite slug="hop" />);
-    fireEvent.change(await screen.findByLabelText("What this page shows"), { target: { value: "x" } });
+    await framed("FB-61");
+    fireEvent.change(screen.getByLabelText("What this page shows"), { target: { value: "x" } });
     fireEvent.click(screen.getByRole("button", { name: "Keep as the picture" }));
     const kept = await screen.findByTestId("idea-kept");
     expect(kept).toHaveTextContent("Started REQ-41 from FB-61");

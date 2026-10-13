@@ -1,6 +1,5 @@
-"use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
 import { enumLabel, Tooltip } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";

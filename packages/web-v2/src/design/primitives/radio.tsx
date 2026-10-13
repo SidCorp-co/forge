@@ -1,4 +1,3 @@
-"use client";
 
 import type { ReactNode } from "react";
 import { RadioGroup as ShadcnRadioGroup, RadioGroupItem } from "@/components/ui/radio-group";

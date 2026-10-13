@@ -1,4 +1,3 @@
-"use client";
 
 import {
   Banner,
@@ -14,7 +13,7 @@ import {
   Property,
   PropertyList,
 } from "@/design";
-import Link from "next/link";
+import { Link } from "@/lib/navigation/router";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useState } from "react";
