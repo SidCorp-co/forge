@@ -1055,27 +1055,28 @@ fn say_standing(
                 )
             } else {
                 format!(
-                    "its checkout {} is gone from disk, so there is nothing left to release and \
-                     only the row was never told",
+                    "its recorded checkout path {} is not on disk, and nothing records what became \
+                     of it",
                     run.worktree_path.display()
                 )
+            };
+            let retry = if on_disk {
+                "has the next sweep try the release again"
+            } else {
+                "has the next sweep ask git what became of the path and record the checkout \
+                 returned, or refuse by name"
             };
             tracing::warn!(
                 "[recovery] run {} ({issues}) is stranded ({holds}): its release was decided \
                  terminal ({}), and {checkout}. No sweep selects it and no master pane holds it, \
-                 so nothing but an operator ends it: `forge-runner run release {}` has the next \
-                 sweep try the release again{}. `forge-runner status` names it for as long as it \
-                 stands. Said once, not every sweep",
+                 so nothing but an operator ends it: `forge-runner run release {}` {retry}. \
+                 `forge-runner status` names it for as long as it stands. Said once, not every \
+                 sweep",
                 run.run_id,
                 run.release_refusal
                     .as_deref()
                     .unwrap_or("no refusal was recorded"),
                 run.run_id,
-                if on_disk {
-                    ""
-                } else {
-                    ", which records the checkout gone"
-                }
             )
         }
         Standing::AwaitingCore => {
@@ -4465,7 +4466,8 @@ mod tests {
             "run run-1 (ISS-530) is stranded",
             "run ff1df919 still holds the checkout in the ledger",
             gone().to_str().unwrap(),
-            "gone from disk",
+            "is not on disk, and nothing records what became of it",
+            "ask git what became of the path",
             "`forge-runner run release run-1`",
         ] {
             assert!(said.contains(needle), "{needle:?} missing from: {said}");
@@ -4541,10 +4543,10 @@ mod tests {
             said.contains("is still on disk and stays there by decision"),
             "{said}"
         );
-        assert!(!said.contains("gone from disk"), "{said}");
+        assert!(!said.contains("is not on disk"), "{said}");
         assert!(
             said.contains("`forge-runner run release run-1`")
-                && !said.contains("records the checkout gone"),
+                && !said.contains("ask git what became of the path"),
             "{said}"
         );
     }

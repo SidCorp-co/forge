@@ -202,12 +202,19 @@ fn unanswered_runs(path: &std::path::Path, cfg: &Config) -> Vec<String> {
 /// master pane holds, read without writing the ledger (ISS-1410). Nothing
 /// else names them once their session and leases are back, and only an
 /// operator's `run release` takes one up again, so this is where that is said
-/// for as long as the row stands. Silent when there are none, and a ledger
-/// that cannot be read is already said by the line above.
+/// for as long as the row stands. Silent when there are none, and when there
+/// is no ledger at all (the line above says so); a ledger that exists and
+/// cannot be read is said, never read as none.
 fn stranded_runs(path: &std::path::Path, cfg: &Config) -> Vec<String> {
+    if !path.exists() {
+        return Vec::new();
+    }
     match Ledger::open_read_only(path).and_then(|led| led.stranded_by_decision()) {
         Ok(runs) => stranded_lines(&runs, cfg),
-        Err(_) => Vec::new(),
+        Err(e) => vec![format!(
+            "stranded   UNREADABLE — {}: {e}. Which runs a terminal release stranded cannot be said",
+            path.display()
+        )],
     }
 }
 
@@ -235,7 +242,7 @@ fn stranded_lines(runs: &[Stranded], cfg: &Config) -> Vec<String> {
         let on_disk = if s.run.worktree_path.exists() {
             "on disk"
         } else {
-            "gone from disk"
+            "path not on disk"
         };
         let refusal = s
             .run
@@ -879,10 +886,26 @@ mod tests {
         );
         assert_eq!(
             out[1],
-            "  14df28bc  sidpeak  ISS-530  checkout /tmp/forge-status-absent-by-construction (gone from disk) — run ff1df919 still holds the checkout"
+            "  14df28bc  sidpeak  ISS-530  checkout /tmp/forge-status-absent-by-construction (path not on disk) — run ff1df919 still holds the checkout"
         );
 
         drop(led);
+        let torn = s.path().join("torn.sqlite");
+        std::fs::write(
+            &torn,
+            b"this is not a database, and it is long enough to say so",
+        )
+        .unwrap();
+        let out = stranded_runs(&torn, &cfg);
+        assert!(
+            out.len() == 1
+                && out[0].starts_with(&format!("stranded   UNREADABLE — {}: ", torn.display())),
+            "an unreadable ledger is named, never read as none stranded: {out:?}"
+        );
+        assert!(
+            stranded_runs(&s.path().join("absent.sqlite"), &cfg).is_empty(),
+            "a missing ledger is the line above's to say"
+        );
         let none = s.path().join("none.sqlite");
         drop(Ledger::open(&none).unwrap());
         assert!(
