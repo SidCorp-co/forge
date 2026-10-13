@@ -22,7 +22,6 @@ import {
   type WorkState,
   workStateOf,
 } from "@forge/contracts/work-state";
-import type { ScheduleRow } from "@/features/schedules/types";
 import type { QueueStats } from "@/features/sessions/types";
 
 /* ------------------------------------------------------------------ *
@@ -450,18 +449,4 @@ export function runnersSummary(
     busyCount: lines.filter((l) => l.busy).length,
     total: lines.length,
   };
-}
-
-/* ------------------------------------------------------------------ *
- * Upcoming schedules (AC#6)
- * ------------------------------------------------------------------ */
-
-/** Schedules ordered by soonest next run (nulls last). Pure — no slicing; the
- *  card caps the visible rows. */
-export function upcomingSchedules(rows: ScheduleRow[] | undefined): ScheduleRow[] {
-  return [...(rows ?? [])].sort((a, b) => {
-    const at = a.nextRunAt ? Date.parse(a.nextRunAt) : Number.POSITIVE_INFINITY;
-    const bt = b.nextRunAt ? Date.parse(b.nextRunAt) : Number.POSITIVE_INFINITY;
-    return at - bt;
-  });
 }

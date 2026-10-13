@@ -501,6 +501,11 @@ describe("a section whose own read has not arrived", () => {
           expect(shape(container)).toBe("unread");
           expect(headline()).not.toHaveTextContent(/Nothing needs anyone/);
           expect(screen.getByTestId("headline-unread")).toBeInTheDocument();
+          // Nor does a figure on the strip: Needs you states no zero and no "nothing to act on" beside
+          // the list that says it is not an all clear.
+          const needs = figure("Needs you");
+          expect(figures()?.textContent ?? "", `the figures under ${c.read} ${state}`).not.toMatch(/nothing to act on/iu);
+          expect(needs.queryByText("0"), `Needs you under ${c.read} ${state}`).toBeNull();
         }
       },
     );

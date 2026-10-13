@@ -66,8 +66,7 @@ describe("the Awaiting release card", () => {
   it("does not say nothing is waiting beside issues that are Awaiting release", () => {
     mount([], 5);
     expect(screen.queryByText(/nothing waiting/i)).toBeNull();
-    expect(screen.getByText("5 issues")).toBeInTheDocument();
-    expect(screen.getByText("no release run at the gate")).toBeInTheDocument();
+    expect(screen.getByText("5 issues · no release run at the gate")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "See them in Issues" })).toHaveAttribute(
       "href",
       "/projects/forge-dev/issues?filter=awaiting_release",
@@ -79,5 +78,19 @@ describe("the Awaiting release card", () => {
     expect(
       screen.getByText(/5 issues are Awaiting release; this list holds the 2 with a release run parked at the gate/),
     ).toBeInTheDocument();
+  });
+
+  it("says the line whole, wrapping where it must, with nothing in it that truncates", () => {
+    mount([], 5);
+    const line = screen.getByText("5 issues · no release run at the gate");
+    expect(line.className).not.toMatch(/truncate|whitespace-nowrap|overflow-hidden|text-ellipsis/);
+    expect(line.closest("section")?.querySelector(".truncate")).toBeNull();
+  });
+
+  it("lists the parked runs oldest first, and one whose start is not a time last", () => {
+    const at = (n: number, startedAt: string) => ({ ...run(n), startedAt }) as PipelineRunListItem;
+    mount([at(1, "2026-09-07T00:00:00Z"), at(2, "not a time"), at(3, "2026-09-05T00:00:00Z"), at(4, "2026-09-06T00:00:00Z")], 4);
+    const refs = screen.getAllByText(/^ISS-\d$/).map((el) => el.textContent);
+    expect(refs).toEqual(["ISS-3", "ISS-4", "ISS-1", "ISS-2"]);
   });
 });

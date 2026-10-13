@@ -3163,6 +3163,7 @@
 
 ### Fixed
 
+- **A project's page no longer calls an unread list all clear.** While runs or parked ages are unread, Needs you reads "—" instead of "0 · nothing to act on", and the Awaiting release line wraps on a phone. (ISS-1263)
 - **The Overview no longer lists an archived project.** Its link opened a page saying the project does not exist; archived projects are now left out of the Overview's rows and totals, and come back when unarchived. (ISS-1261)
 - **A dashboard section whose data has not arrived says which read it is waiting on.** It no longer says "none live" or "nothing waiting" for a failed read, and the runs figure says how many are open. (ISS-1159)
 - **The dashboard no longer says all is well while a read is missing.** Needs your attention, Throughput and Where time goes name the read they wait on, and the open-work ring and the Awaiting release line fit a phone. (ISS-1159)

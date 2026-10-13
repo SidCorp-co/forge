@@ -154,9 +154,10 @@ function degradedBand(input: ShapeInput, quals: readonly Qualifier[], stuck: rea
         : "Work is blocked";
 
   const oldest = input.cut ? "oldest listed item" : "oldest item";
-  const aged = quals
-    .filter((q) => q.seconds !== null)
-    .sort((a, b) => (b.seconds ?? 0) - (a.seconds ?? 0))[0];
+  const aged = quals.reduce<(typeof quals)[number] | undefined>(
+    (oldest, q) => (q.seconds !== null && (!oldest || q.seconds > (oldest.seconds ?? 0)) ? q : oldest),
+    undefined,
+  );
   let entry: BandEntry | null = null;
   if (aged && aged.seconds !== null) {
     const how = aged.kind === "failed" ? "failed" : "waiting";
