@@ -1,10 +1,10 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { feedbackKinds, feedbackSeverities, feedbackTargets } from '../db/feedback-vocabulary.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/validator.js';
 import { issueVisibleIn, listReports, readReport, stampReviewed } from './service.js';
 
 const listQuerySchema = z

@@ -17,6 +17,8 @@ import { agentSessionProjectReadRoutes } from './agent-sessions/project-read-rou
 import { agentSessionRoutes } from './agent-sessions/routes.js';
 import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { agentRoutes } from './agents/routes.js';
+import { responseConformance } from './api-reference/conformance.js';
+import { referenceOf, referenceRoutes } from './api-reference/routes.js';
 import { memoryModelRoutes } from './app-config/memory-model-routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
 import { registerWebConversationAdapter } from './assistant/conversation-drain.js';
@@ -212,6 +214,9 @@ const corsMiddleware = cors({
 app.use('/api/*', corsMiddleware);
 app.use('/mcp', corsMiddleware);
 
+const apiReference = referenceOf(() => app);
+app.use('/api/*', responseConformance(apiReference));
+
 for (const at of ['/', '/api']) app.route(at, publicHealthRoutes);
 
 app.notFound(notFoundHandler);
@@ -268,6 +273,8 @@ app.route('/api', installRoutes);
 
 app.route('/', guideRoutes);
 app.route('/api', guideRoutes);
+
+app.route('/api', referenceRoutes(apiReference));
 
 app.get('/pair', (c) => {
   const code = c.req.query('code');

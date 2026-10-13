@@ -1,6 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { RateLimitRule } from '../config/rate-limits.js';
+import { refuses } from './declarations.js';
 
 type Bucket = { count: number; resetAt: number };
 
@@ -85,7 +86,7 @@ export type RateLimitOptions = {
 export function rateLimit(rule: RateLimitRule, opts: RateLimitOptions = {}): MiddlewareHandler {
   const ruleName = opts.name ?? 'default';
 
-  return async (c, next) => {
+  const gate: MiddlewareHandler = async (c, next) => {
     const derived = deriveKey(rule, ruleName, c);
     if (!derived) {
       // No identifier available — let the request through rather than share a
@@ -120,4 +121,11 @@ export function rateLimit(rule: RateLimitRule, opts: RateLimitOptions = {}): Mid
 
     await next();
   };
+  return refuses(gate, [
+    {
+      status: 429,
+      code: 'RATE_LIMITED',
+      when: "this caller has used the route's allowance for the window; Retry-After says when it renews",
+    },
+  ]);
 }

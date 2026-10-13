@@ -1,8 +1,8 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { zValidator } from '../middleware/validator.js';
 import { heldDecisionOf } from '../release-batch/decision-state.js';
 import { BlockedJobMissing, endBlockedJob } from './blocked.js';
 import { blockedBodySchema } from './blocked-wire.js';

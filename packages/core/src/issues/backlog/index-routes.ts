@@ -7,12 +7,12 @@
  * charge and one authorization answer for the whole `/:id/backlog/*` surface.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { assertProjectAccess } from '../../lib/authz.js';
 import { queryBadRequest } from '../../lib/query-strict.js';
 import type { AuthVars } from '../../middleware/auth.js';
+import { zValidator } from '../../middleware/validator.js';
 import {
   ALIKE_TOP_K,
   NEIGHBOURS_LIMIT_DEFAULT,

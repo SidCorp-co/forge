@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -8,6 +7,7 @@ import { users } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { rateLimit } from '../middleware/rate-limit.js';
+import { zValidator } from '../middleware/validator.js';
 import { ensurePersonalOrg } from '../orgs/service.js';
 import { sendVerificationEmail } from './email.js';
 import { hashPassword } from './password.js';

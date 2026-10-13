@@ -1,5 +1,4 @@
 import { redactedMessage } from '@forge/observability';
-import { zValidator } from '@hono/zod-validator';
 import { and, count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -30,6 +29,7 @@ import {
   restActor,
   restCredential,
 } from '../middleware/auth.js';
+import { zValidator } from '../middleware/validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { issueArchiveSide } from './archive.js';

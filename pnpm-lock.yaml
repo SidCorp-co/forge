@@ -97,6 +97,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.3
         version: 0.45.3(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.23.1)(better-sqlite3@12.9.0)(knex@3.0.1(better-sqlite3@12.9.0)(pg@8.23.1))(pg@8.23.1)(postgres@3.4.9)
+      drizzle-zod:
+        specifier: 0.8.3
+        version: 0.8.3(drizzle-orm@0.45.3(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.23.1)(better-sqlite3@12.9.0)(knex@3.0.1(better-sqlite3@12.9.0)(pg@8.23.1))(pg@8.23.1)(postgres@3.4.9))(zod@4.6.5)
       forge-plugin:
         specifier: https://codeload.github.com/SidCorp-co/forge-plugin/tar.gz/2f3f40e245dd79c416f1abdbdd52e6487c632b97
         version: https://codeload.github.com/SidCorp-co/forge-plugin/tar.gz/2f3f40e245dd79c416f1abdbdd52e6487c632b97
@@ -2582,6 +2585,12 @@ packages:
         optional: true
       sqlite3:
         optional: true
+
+  drizzle-zod@0.8.3:
+    resolution: {integrity: sha512-66yVOuvGhKJnTdiqj1/Xaaz9/qzOdRJADpDa68enqS6g3t0kpNkwNYjUuaeXgZfO/UWuIM9HIhSlJ6C5ZraMww==}
+    peerDependencies:
+      drizzle-orm: '>=0.36.0'
+      zod: ^3.25.0 || ^4.0.0
 
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
@@ -6822,6 +6831,11 @@ snapshots:
       knex: 3.0.1(better-sqlite3@12.9.0)(pg@8.23.1)
       pg: 8.23.1
       postgres: 3.4.9
+
+  drizzle-zod@0.8.3(drizzle-orm@0.45.3(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.23.1)(better-sqlite3@12.9.0)(knex@3.0.1(better-sqlite3@12.9.0)(pg@8.23.1))(pg@8.23.1)(postgres@3.4.9))(zod@4.6.5):
+    dependencies:
+      drizzle-orm: 0.45.3(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.23.1)(better-sqlite3@12.9.0)(knex@3.0.1(better-sqlite3@12.9.0)(pg@8.23.1))(pg@8.23.1)(postgres@3.4.9)
+      zod: 4.6.5
 
   dunder-proto@1.0.1:
     dependencies:

@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -20,6 +19,7 @@ import {
 } from '../issues/attachment-service.js';
 import { contentDisposition } from '../lib/attachment-headers.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
+import { zValidator } from '../middleware/validator.js';
 import { getStorage } from '../storage/index.js';
 import { loadAttachmentBytesTarget } from './attachment-bytes.js';
 import { resolveDownloadTicket } from './download-ticket-service.js';

@@ -8,7 +8,6 @@
  * status codes and wording.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -22,6 +21,7 @@ import {
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, projectWriteRefusal } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { zValidator } from '../middleware/validator.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { loadIssueDependencyEdges } from './dependency-read.js';
