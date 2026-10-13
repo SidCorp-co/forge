@@ -33,42 +33,35 @@ export function ProjectList({ items, now, onTogglePin, sort, onSortChange }: Pro
   const columns = useMemo<DataTableColumn<ProjectConsoleItem>[]>(
     () => [
       {
-        id: 'mark',
-        header: null,
-        headerLabel: 'Project icon',
-        headerClassName: 'w-px',
+        ...sortable('name'),
+        header: 'Project',
+        sticky: true,
         cell: (p) => {
           const glyph = projectGlyph(p.id);
           return (
-            <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(p.name)} size={28} radius="var(--r-sm)" />
+            <span className="flex items-center gap-2.5">
+              <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(p.name)} size={28} radius="var(--r-sm)" />
+              <span className="max-w-[9rem] truncate font-mono text-13-5 font-semibold text-fg sm:max-w-[16rem]">{p.name}</span>
+              <button
+                type="button"
+                aria-label={p.pinned ? 'Unpin project' : 'Pin project'}
+                aria-pressed={p.pinned}
+                className="flex-none rounded-sm p-0.5 text-subtle hover:text-amber"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTogglePin(p.id);
+                }}
+              >
+                <Icon
+                  name="star"
+                  size={12}
+                  className={p.pinned ? 'text-amber' : ''}
+                  style={p.pinned ? { fill: 'currentColor' } : undefined}
+                />
+              </button>
+            </span>
           );
         },
-      },
-      {
-        ...sortable('name'),
-        header: 'Project',
-        cell: (p) => (
-          <span className="flex items-center gap-1.5">
-            <span className="truncate font-mono text-13-5 font-semibold text-fg">{p.name}</span>
-            <button
-              type="button"
-              aria-label={p.pinned ? 'Unpin project' : 'Pin project'}
-              aria-pressed={p.pinned}
-              className="flex-none rounded-sm p-0.5 text-subtle hover:text-amber"
-              onClick={(e) => {
-                e.stopPropagation();
-                onTogglePin(p.id);
-              }}
-            >
-              <Icon
-                name="star"
-                size={12}
-                className={p.pinned ? 'text-amber' : ''}
-                style={p.pinned ? { fill: 'currentColor' } : undefined}
-              />
-            </button>
-          </span>
-        ),
       },
       {
         id: 'description',

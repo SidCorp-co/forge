@@ -8,20 +8,41 @@ import { Button, Input, SegmentedControl, Select, type SegmentOption } from '@/d
 import { FIRST_DESC } from '../columns';
 import type { ProjectSort, ProjectSortState, ProjectView } from '../types';
 
-// What each sort is called going each way, so the select always names the direction the list is in.
+// What each sort is called going each way. Every sort is offered both ways, so a direction the list is
+// not in is one choice away whichever header put it there.
 const SORT_LABELS: Record<ProjectSort, { asc: string; desc: string; icon: 'clock' | 'list' | 'activity' }> = {
   recent: { desc: 'Recently active', asc: 'Least recently active', icon: 'clock' },
   name: { asc: 'Name (A–Z)', desc: 'Name (Z–A)', icon: 'list' },
   health: { asc: 'Health (worst first)', desc: 'Health (best first)', icon: 'activity' },
 };
 
-/** The sort menu's rows: the chosen sort reads the way round the list is in, the others the way they would start. */
-export function sortOptions(sort: ProjectSortState) {
-  return (Object.keys(SORT_LABELS) as ProjectSort[]).map((id) => {
+const SORT_ORDER: readonly ProjectSort[] = ['recent', 'name', 'health'];
+
+const sortValue = (id: ProjectSort, desc: boolean) => `${id}:${desc ? 'desc' : 'asc'}`;
+
+/** The sort menu's rows: each sort going each way, the way it starts first. */
+export function sortOptions() {
+  return SORT_ORDER.flatMap((id) => {
     const { asc, desc, icon } = SORT_LABELS[id];
-    const isDesc = id === sort.id ? sort.desc : FIRST_DESC[id];
-    return { value: id, label: isDesc ? desc : asc, icon };
+    const rows = [
+      { value: sortValue(id, true), label: desc, icon },
+      { value: sortValue(id, false), label: asc, icon },
+    ];
+    return FIRST_DESC[id] ? rows : rows.reverse();
   });
+}
+
+/** The row of `sortOptions` that names the way round the list is in. */
+export function sortSelectValue(sort: ProjectSortState): string {
+  return sortValue(sort.id, sort.desc);
+}
+
+function parseSort(value: string): ProjectSortState {
+  const [id, direction] = value.split(':');
+  if (!SORT_ORDER.includes(id as ProjectSort) || (direction !== 'asc' && direction !== 'desc')) {
+    throw new Error(`The sort menu offered "${value}", which is not a sort and a direction: expected recent, name or health, then asc or desc.`);
+  }
+  return { id: id as ProjectSort, desc: direction === 'desc' };
 }
 
 const VIEW_OPTIONS: SegmentOption<ProjectView>[] = [
@@ -33,7 +54,7 @@ export interface ProjectsToolbarProps {
   query: string;
   onQuery: (q: string) => void;
   sort: ProjectSortState;
-  onSort: (s: ProjectSort) => void;
+  onSort: (s: ProjectSortState) => void;
   view: ProjectView;
   onView: (v: ProjectView) => void;
   onNewProject: () => void;
@@ -60,9 +81,9 @@ export function ProjectsToolbar({
       />
       <Select
         className="w-[188px]"
-        options={sortOptions(sort)}
-        value={sort.id}
-        onChange={(v) => v !== sort.id && onSort(v as ProjectSort)}
+        options={sortOptions()}
+        value={sortSelectValue(sort)}
+        onChange={(v) => onSort(parseSort(v))}
         aria-label="Sort projects"
       />
       <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={onView} />
