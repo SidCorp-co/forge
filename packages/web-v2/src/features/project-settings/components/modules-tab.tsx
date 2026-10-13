@@ -132,8 +132,8 @@ function ModuleRow({
   }
 
   return (
-    <li className="rounded-md border border-line" style={{ marginLeft: depth * INDENT_PER_DEPTH_PX }}>
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+    <li style={{ marginLeft: depth * INDENT_PER_DEPTH_PX }}>
+      <div className="flex flex-wrap items-center gap-2 py-2.5">
         <span
           aria-hidden
           className="h-3 w-3 shrink-0 rounded-full border border-line"
@@ -191,11 +191,11 @@ function ModuleRow({
       </div>
 
       {!canEdit && m.description && (
-        <p className="fg-body-sm px-3 pb-2 text-muted">{m.description}</p>
+        <p className="fg-body-sm pb-2 text-muted">{m.description}</p>
       )}
 
       {canEdit && expanded && (
-        <div className="px-3 pb-3">
+        <div className="pb-3">
           <Textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -259,7 +259,7 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
           mascot={false}
         />
       ) : (
-        <ul className="space-y-1.5">
+        <ul className="divide-y divide-line">
           {tree.map((node) => (
             <ModuleRow
               key={node.module.id}

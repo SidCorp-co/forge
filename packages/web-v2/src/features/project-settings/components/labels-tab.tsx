@@ -64,11 +64,11 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
       ) : plainLabels.length === 0 ? (
         <EmptyState title="No labels yet" message="Create a label to organize issues." mascot={false} />
       ) : (
-        <ul className="space-y-1.5">
+        <ul className="divide-y divide-line">
           {plainLabels.map((label) => (
             <li
               key={label.id}
-              className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
+              className="flex items-center justify-between gap-3 py-2.5"
             >
               <span className="flex min-w-0 items-center gap-2">
                 <span

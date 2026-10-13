@@ -104,11 +104,11 @@ export function MembersTab({
           onRetry={() => membersQ.refetch()}
         />
       ) : (
-        <ul className="space-y-1.5">
+        <ul className="divide-y divide-line">
           {(membersQ.data ?? []).map((m) => (
             <li
               key={m.userId}
-              className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
+              className="flex items-center justify-between gap-3 py-2.5"
             >
               <span className="min-w-0 truncate text-fg">{m.email}</span>
               <span className="flex shrink-0 items-center gap-2">
@@ -156,11 +156,11 @@ export function MembersTab({
           ) : (invitationsQ.data ?? []).length === 0 ? (
             <p className="fg-body-sm text-subtle">No pending invitations.</p>
           ) : (
-            <ul className="space-y-1.5">
+            <ul className="divide-y divide-line">
               {(invitationsQ.data ?? []).map((inv) => (
                 <li
                   key={inv.email}
-                  className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
+                  className="flex items-center justify-between gap-3 py-2.5"
                 >
                   <span className="min-w-0 truncate text-fg">
                     {inv.email}

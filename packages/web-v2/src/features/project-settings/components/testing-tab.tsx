@@ -547,11 +547,11 @@ function TestingPage({
         {form.testCredentials.length === 0 ? (
           <p className="fg-body-sm text-muted">No test credentials.</p>
         ) : (
-          <ul className="space-y-3">
+          <ul className="divide-y divide-line">
             {form.testCredentials.map((row, i) => {
               const err = credentialError(i);
               return (
-                <li key={i} className="rounded-md border border-line p-3">
+                <li key={i} className="py-3">
                   <div className="flex items-start gap-2">
                     <div className="grid flex-1 gap-2 sm:grid-cols-3">
                       <Input

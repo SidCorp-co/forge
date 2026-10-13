@@ -39,4 +39,15 @@ describe("the settings pages are flat", () => {
     const source = readFileSync(resolve(FEATURES, file), "utf8");
     expect(source).not.toMatch(/<Card[\s>]|<CardContent|<CardHeader/);
   });
+
+  it.each([
+    "project-settings/components/members-tab.tsx",
+    "project-settings/components/labels-tab.tsx",
+    "project-settings/components/modules-tab.tsx",
+    "project-settings/components/testing-tab.tsx",
+    "integrations/components/mcp-servers-panel.tsx",
+  ])("%s rules its rows with a hairline and boxes none of them", (file) => {
+    const source = readFileSync(resolve(FEATURES, file), "utf8");
+    expect(source).not.toMatch(/<li[^>]*rounded-md border border-line|className="[^"]*rounded-md border border-line (px-3 py-2|p-3)/);
+  });
 });
