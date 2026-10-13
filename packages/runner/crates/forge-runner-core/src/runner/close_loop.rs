@@ -14,7 +14,7 @@
 use std::path::Path;
 
 use crate::error::Result;
-use crate::runner::ledger::{CheckoutReturn, Ledger};
+use crate::runner::ledger::{CheckoutReturn, Ledger, Run};
 pub use crate::transport::run_sessions::Outcome;
 use crate::workspace::worktree::Residence;
 
@@ -80,6 +80,27 @@ impl CloseState {
     pub fn is_closed(&self) -> bool {
         self.session_terminal && self.checkout_returned && self.leases_returned == self.leases_total
     }
+}
+
+/// Whether the master that declared a run still holds it open.
+///
+/// A closed run holds nothing. So does one whose worktree release was decided
+/// terminal (`release_terminal_at`) once its session is over and every lease is
+/// back: the checkout stays on disk by that decision, so `released_as` is never
+/// set and the three marks of [`CloseState::is_closed`] never all hold, yet
+/// nothing is left for the pane to do about it. A pane read as holding such a
+/// run is held for as long as the row lives, and an outdated one is never
+/// replaced (ISS-1410). The run stays in the close loop's own listing until its
+/// leases are back and is reported by the recovery sweep; this answers only
+/// what a pane holds.
+pub fn holds_open(run: &Run, state: &CloseState) -> bool {
+    if state.is_closed() {
+        return false;
+    }
+    let stranded = run.release_terminal_at.is_some()
+        && state.session_terminal
+        && state.leases_returned == state.leases_total;
+    !stranded
 }
 
 pub fn state(ledger: &Ledger, run_id: &str) -> Result<CloseState> {
