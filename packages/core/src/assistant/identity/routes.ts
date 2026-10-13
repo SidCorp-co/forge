@@ -13,12 +13,12 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../../api-reference/describe.js';
+import { declaresInput, zValidator } from '../../api-reference/validator.js';
 import { db } from '../../db/client.js';
 import type { ConversationAdapter } from '../../db/schema-conversations.js';
 import { assistantSpeakerLinks } from '../../db/schema-speaker-links.js';
 import { assertProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
-import { declaresInput, zValidator } from '../../middleware/validator.js';
 import { proposeCandidates, type SpeakerCandidate } from './candidates.js';
 import { lookupSpeakerProfile, type SpeakerProfile } from './directory.js';
 import {

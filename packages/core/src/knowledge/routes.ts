@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { RULES } from '../config/rate-limits.js';
 import { issueStatuses } from '../db/schema.js';
 import { masterVerbs } from '../db/schema-master-charter.js';
@@ -9,7 +10,6 @@ import { EmbeddingUnavailableError } from '../embeddings/index.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { zValidator } from '../middleware/validator.js';
 import {
   ALWAYS_INJECT_GUARANTEE_NOTE,
   ALWAYS_INJECT_MAX_CHARS,

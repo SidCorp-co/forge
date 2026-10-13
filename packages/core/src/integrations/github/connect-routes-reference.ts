@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { describeOperation, fail, json, redirect } from '../../api-reference/describe.js';
-import { declaresInput } from '../../middleware/validator.js';
+import { declaresInput } from '../../api-reference/validator.js';
 import { noRoleOnProject, notProjectAdmin, onProject, vaultMissing } from '../routes-reference.js';
 
 /** Which org owns the App on github.com (`org`) and which Forge org owns the connection (`orgId`). */

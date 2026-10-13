@@ -2,10 +2,10 @@ import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { answer } from '../api-reference/describe.js';
+import { declaresInput } from '../api-reference/validator.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { emailVerificationTokens, users } from '../db/schema.js';
-import { declaresInput } from '../middleware/validator.js';
 import { forcedSchema, forceVerify, forceVerifySchema } from './dev-force-verify-reference.js';
 
 export const devForceVerifyRoutes = new Hono();

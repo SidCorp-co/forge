@@ -11,9 +11,9 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { IssueLeaseHeldError } from '../issues/issue-lease.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { zValidator } from '../middleware/validator.js';
 import { RunnerNotAdmittedError } from './pool-admission.js';
 import { badRequest, conflict, forbidden, notFound, sessionParamsSchema } from './route-errors.js';
 import {

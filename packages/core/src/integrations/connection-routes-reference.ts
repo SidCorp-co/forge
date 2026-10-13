@@ -1,4 +1,4 @@
-import { CONNECTION_REACH_VALUES } from '@forge/contracts';
+import type { ConnectionReach } from '@forge/contracts';
 import type { MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 import { describeOperation, fail, json } from '../api-reference/describe.js';
@@ -13,11 +13,15 @@ import {
   vaultMissing,
 } from './routes-reference.js';
 
+// Listed here, not imported: core loads no runtime value from the contracts root. A value added there
+// fails `tsc` where a handler answers it, because `answer` holds the body to this schema.
+const REACH = ['owner', 'org', 'binding'] as const satisfies readonly ConnectionReach[];
+
 const onConnection = (op: MiddlewareHandler) => [op, inConnection] as const;
 
 const directoryItemSchema = connectionSummarySchema.extend({
   access: z.object({
-    reach: z.enum(CONNECTION_REACH_VALUES),
+    reach: z.enum(REACH),
     canManage: z.boolean(),
     ownerName: z.string().nullable(),
   }),

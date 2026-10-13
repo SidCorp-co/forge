@@ -2,10 +2,10 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { type JobType, jobTypes } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
 // Single source of truth for stage-override schemas. Reused here so the
 // preview endpoint inherits the F12 refinement (replace mode requires
 // non-empty extras) and any future invariants stay in lockstep.

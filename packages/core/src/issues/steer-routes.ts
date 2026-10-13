@@ -13,13 +13,13 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { SteerError, steerIssue } from '../agent-sessions/steer-session.js';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { bodyRefusalHttp } from '../body/http-error.js';
 import { messageRefusalHttp } from '../comments/screen.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
 import { steerIssueRoute, steerResultSchema } from './steer-routes-reference.js';
 
 const idParamSchema = z.object({ id: z.uuid() });

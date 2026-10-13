@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { answer } from '../api-reference/describe.js';
+import { declaresInput } from '../api-reference/validator.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { recordTurnedAwayInboundCall } from '../integrations/inbound-door.js';
@@ -14,7 +15,6 @@ import {
 import type { IntegrationProvider } from '../integrations/types.js';
 import { logger } from '../logger.js';
 import { withSentryCause } from '../middleware/error.js';
-import { declaresInput } from '../middleware/validator.js';
 import { SignatureVerificationError, verifyHmacSignature } from './hmac.js';
 import {
   deliveryAcceptedSchema,

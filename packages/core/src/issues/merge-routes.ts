@@ -24,6 +24,7 @@ import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
@@ -40,7 +41,6 @@ import {
 } from '../integrations/github/projection-health.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
 import { mergedLandingSchema } from './landing-evidence.js';
 import { applyMergeMarker, MergeMarkerError, mergedCommitShaSchema } from './merge-marker.js';
 import {

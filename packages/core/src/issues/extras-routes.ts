@@ -3,13 +3,13 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { db } from '../db/client.js';
 import { activityLog, type IssueStatus, issues, jobs, usageRecords } from '../db/schema.js';
 import { noPromptMessage, POOL_JOB_NO_PROMPT } from '../jobs/pool-served.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
 import {

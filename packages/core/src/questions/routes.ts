@@ -10,6 +10,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { declaresInput } from '../api-reference/validator.js';
 import {
   optionAuthorities,
   optionBindings,
@@ -18,7 +19,6 @@ import {
   questionStatuses,
 } from '../db/schema-questions.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { declaresInput } from '../middleware/validator.js';
 import {
   answerAs,
   askAs,

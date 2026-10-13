@@ -18,12 +18,12 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { agentSessionEvents } from '../db/schema-agent-session-events.js';
 import { maybeDeriveIncrementalFor } from '../jobs/session-transcript.js';
 import type { AuthVars } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
 import * as ref from './events-routes-reference.js';
 import {
   assertDeviceOwnsSession,

@@ -63,7 +63,7 @@ document built from the composed app's route table, `GET /api/reference` renders
 `GET /api/reference/flows` draws the four flows an agent drives; none needs a credential, and each
 is named out of the token grant with its reason in `auth/pat-permissions.ts:PAT_UNGRANTABLE`. Every
 route is an operation carrying the input schemas its handler validates with (read from the
-validator the route runs through, `middleware/validator.ts:zValidator`, or declared with
+validator the route runs through, `api-reference/validator.ts:zValidator`, or declared with
 `declaresInput` where the handler parses its own), every status it can answer with a schema or the
 error envelope and the codes it can give, and the permission or the named exclusion that reaches it.
 `api-reference/reference.test.ts` runs in the core unit job over the composed app and names the

@@ -22,6 +22,7 @@ import {
   readConversationAgentTurns,
 } from '../agent-sessions/conversation-agent.js';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { listConversationAttachmentsByIds } from '../conversations/attachment-service.js';
 import { resolveProjectHandle } from '../conversations/handles.js';
 import {
@@ -51,7 +52,6 @@ import { conversationModes } from '../db/schema-conversations.js';
 import { assertProjectRole, effectiveProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
 import {
   mayChangeMembership,
   readableConversation,

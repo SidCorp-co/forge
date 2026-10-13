@@ -2,13 +2,13 @@ import type { MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 import { describeOperation, fail, json } from '../api-reference/describe.js';
 import { tableRow } from '../api-reference/rows.js';
+import { zValidator } from '../api-reference/validator.js';
 import {
   bindingRoles,
   deployStages,
   integrationDeliveries,
   integrationOwnerTypes,
 } from '../db/schema.js';
-import { zValidator } from '../middleware/validator.js';
 import { AGENT_ACCESS_VALUES } from './agent-access.js';
 import { badRequest } from './route-helpers.js';
 import { INTEGRATION_PROVIDERS } from './types.js';

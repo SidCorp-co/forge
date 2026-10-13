@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { declaresInput, zValidator } from '../api-reference/validator.js';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { devices, pairingCodes, projects, runners } from '../db/schema.js';
@@ -13,7 +14,6 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { declaresInput, zValidator } from '../middleware/validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';

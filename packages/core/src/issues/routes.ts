@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { BodyInvalidError } from '../body/errors.js';
 import { bodyInvalidHttp } from '../body/http-error.js';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
@@ -22,7 +23,6 @@ import {
   restActor,
   restCredential,
 } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { issueArchiveSide } from './archive.js';

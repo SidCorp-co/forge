@@ -14,6 +14,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { db } from '../db/client.js';
 import {
   devices,
@@ -31,7 +32,6 @@ import { listResponse } from '../lib/pagination.js';
 import { utcDateTrunc } from '../lib/time-buckets.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
-import { zValidator } from '../middleware/validator.js';
 import { computeAlerts } from './alert-queries.js';
 import {
   type BucketUnit,

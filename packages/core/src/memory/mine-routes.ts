@@ -7,9 +7,9 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
 import { deleteMyNote, listMyNotes, mineSchema } from './mine-routes-reference.js';
 import { deleteMine, findMine, listMine } from './mine-service.js';
 

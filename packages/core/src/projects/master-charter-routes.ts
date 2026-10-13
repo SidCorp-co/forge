@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import {
   type AuthVars,
@@ -9,7 +10,6 @@ import {
   requireAuth,
   restAuthored,
 } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
 import { MASTER_CHARTER_IS_A_PERSONS_WRITE, parseMasterCharterWrite } from './master-charter.js';
 import {
   charterReadSchema,

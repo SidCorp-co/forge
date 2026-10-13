@@ -3,13 +3,13 @@ import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import * as ref from './attachment-routes-reference.js';
 import {

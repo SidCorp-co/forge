@@ -3,9 +3,9 @@ import { HTTPException } from 'hono/http-exception';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { refuses } from '../middleware/declarations.js';
-import { zValidator } from '../middleware/validator.js';
 import { buildReference, openApiPath } from './build.js';
 import { describeOperation, empty, fail, json, raw, redirect } from './describe.js';
+import { zValidator } from './validator.js';
 
 const gate = refuses(
   async (_c: unknown, next: () => Promise<void>) => next(),

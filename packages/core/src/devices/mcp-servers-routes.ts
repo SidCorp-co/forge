@@ -2,9 +2,9 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { zValidator } from '../middleware/validator.js';
 import { assertDeviceBoundToProject } from './device-project.js';
 import {
   mcpServersSchema,

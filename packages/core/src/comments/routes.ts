@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { db } from '../db/client.js';
 import { commentMentions, comments, issues } from '../db/schema.js';
 import type { ActorRef } from '../issues/actor-identity.js';
@@ -25,7 +26,6 @@ import {
   declares,
   RECORD_ROUTE_CAPABILITY,
 } from '../middleware/client-capabilities.js';
-import { zValidator } from '../middleware/validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { commentAttachmentRoutes } from './attachment-routes.js';
 import { listCommentAttachmentsForComments } from './attachment-service.js';

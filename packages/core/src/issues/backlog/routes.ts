@@ -12,13 +12,13 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
+import { zValidator } from '../../api-reference/validator.js';
 import { RULES } from '../../config/rate-limits.js';
 import { issueStatuses } from '../../db/schema.js';
 import { assertProjectAccess } from '../../lib/authz.js';
 import { queryBadRequest } from '../../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { rateLimit } from '../../middleware/rate-limit.js';
-import { zValidator } from '../../middleware/validator.js';
 import { alikeSource } from './alike-source.js';
 import { Cancellation } from './cancellation.js';
 import { emitBacklogStream } from './emitter.js';

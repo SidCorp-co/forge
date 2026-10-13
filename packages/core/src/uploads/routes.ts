@@ -6,6 +6,7 @@ import {
   SessionAttachmentError,
 } from '../agent-sessions/attachment-service.js';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import {
   AttachmentError as CommentAttachmentError,
   persistCommentAttachment,
@@ -20,7 +21,6 @@ import {
 } from '../issues/attachment-service.js';
 import { contentDisposition } from '../lib/attachment-headers.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
-import { zValidator } from '../middleware/validator.js';
 import { getStorage } from '../storage/index.js';
 import { loadAttachmentBytesTarget } from './attachment-bytes.js';
 import { resolveDownloadTicket } from './download-ticket-service.js';

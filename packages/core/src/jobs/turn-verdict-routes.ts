@@ -3,10 +3,10 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { zValidator } from '../middleware/validator.js';
 import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
 import {
   paramSchema,

@@ -3,11 +3,11 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { db } from '../db/client.js';
 import { oauthAccounts, userPreferences, users } from '../db/schema.js';
 import { assertOrgAccess } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
 import {
   accountPreferencesSchema,
   accountSchema,

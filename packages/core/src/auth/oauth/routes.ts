@@ -2,12 +2,12 @@ import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { answer } from '../../api-reference/describe.js';
+import { declaresInput } from '../../api-reference/validator.js';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { oauthAccounts } from '../../db/schema.js';
 import { isEnabled } from '../../lib/feature-flags.js';
 import { type AuthVars, requireAuth } from '../../middleware/auth.js';
-import { declaresInput } from '../../middleware/validator.js';
 import { handleCallback, handleStart } from './handler.js';
 import { getEnabledProviders, type ProviderId, toPublic } from './providers.js';
 import {

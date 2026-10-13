@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects, workspaceSshKeys } from '../db/schema.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
@@ -11,7 +12,6 @@ import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
 import { getOrgSshKey } from '../orgs/ssh-keys-service.js';
 import {
   pickGitCredential,

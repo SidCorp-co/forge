@@ -23,6 +23,7 @@ import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { answer } from '../api-reference/describe.js';
+import { declaresInput } from '../api-reference/validator.js';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { deviceLoginCodes, organizationMembers, users } from '../db/schema.js';
@@ -32,7 +33,6 @@ import { logger } from '../logger.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { declaresInput } from '../middleware/validator.js';
 import { Sentry } from '../observability/sentry.js';
 import { issueDeviceCredential } from './credential.js';
 import {

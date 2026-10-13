@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { db } from '../db/client.js';
 import { comments, issues, pmConfig, pmDecisions, pmPolicies } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
@@ -17,7 +18,6 @@ import {
   restActor,
   restAuthored,
 } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
 import { closeEscalationTasks } from '../notifications/close-escalation.js';
 import { hooks } from '../pipeline/hooks.js';
 import {

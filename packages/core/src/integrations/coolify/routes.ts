@@ -21,8 +21,8 @@ import type { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../../api-reference/describe.js';
+import { declaresInput } from '../../api-reference/validator.js';
 import type { AuthVars } from '../../middleware/auth.js';
-import { declaresInput } from '../../middleware/validator.js';
 import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
 import {
   assertAdmin,

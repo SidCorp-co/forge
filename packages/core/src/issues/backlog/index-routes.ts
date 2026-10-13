@@ -10,10 +10,10 @@
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { answer } from '../../api-reference/describe.js';
+import { zValidator } from '../../api-reference/validator.js';
 import { assertProjectAccess } from '../../lib/authz.js';
 import { queryBadRequest } from '../../lib/query-strict.js';
 import type { AuthVars } from '../../middleware/auth.js';
-import { zValidator } from '../../middleware/validator.js';
 import {
   ALIKE_TOP_K,
   NEIGHBOURS_LIMIT_DEFAULT,

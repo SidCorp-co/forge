@@ -11,6 +11,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { writeAssistantPreferences } from '../auth/preference-changes.js';
 import { PresenceValidationError } from '../conversations/presence.js';
 import { db } from '../db/client.js';
@@ -18,7 +19,6 @@ import { answerStyles, organizationMembers, projectMemberRoles } from '../db/sch
 import { assertOrgAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
-import { zValidator } from '../middleware/validator.js';
 import {
   createAgentAccount,
   listAgentAccounts,

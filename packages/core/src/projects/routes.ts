@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { declaresInput, zValidator } from '../api-reference/validator.js';
 import { type IssueBranchOverride, resolveIssueBranches } from '../branches/resolve.js';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
@@ -30,7 +31,6 @@ import {
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { declaresInput, zValidator } from '../middleware/validator.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,

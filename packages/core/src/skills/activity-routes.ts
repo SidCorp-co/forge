@@ -2,10 +2,10 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { declaresInput } from '../api-reference/validator.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { assertPlatformAdmin } from '../middleware/require-admin.js';
-import { declaresInput } from '../middleware/validator.js';
 import { checkSkillActivityChainIntegrity } from './activity-chain-integrity.js';
 import {
   activityQuerySchema,

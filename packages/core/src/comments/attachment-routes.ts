@@ -12,6 +12,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issues } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
@@ -19,7 +20,6 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { requireAnyAuth } from '../middleware/require-any-auth.js';
-import { zValidator } from '../middleware/validator.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import {
   commentAttachmentSchema,

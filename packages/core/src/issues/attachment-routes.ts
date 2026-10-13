@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { db } from '../db/client.js';
 import { issueAttachments, issues } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
@@ -10,7 +11,6 @@ import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { restActor } from '../middleware/auth.js';
 import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
-import { zValidator } from '../middleware/validator.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import {

@@ -10,12 +10,12 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { readConversationAgentTurns } from '../agent-sessions/conversation-agent.js';
 import { answer } from '../api-reference/describe.js';
+import { zValidator } from '../api-reference/validator.js';
 import { loadConversationAttachment } from '../conversations/attachment-service.js';
 import { listWindowsForConversation } from '../conversations/windows.js';
 import { contentDisposition } from '../lib/attachment-headers.js';
 import { allowedSetForTarget } from '../lib/attachment-mime.js';
 import type { AuthVars } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
 import { getStorage } from '../storage/index.js';
 import {
   createUploadTicket,
