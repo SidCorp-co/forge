@@ -79,7 +79,8 @@ export function StatusCell({ row, now = Date.now() }: { row: IssueRow; now?: num
       {state.waitingOnPerson ? (
         <span className="fg-caption flex min-w-0 whitespace-nowrap tabular-nums" data-testid="waiting-on-person" title={elapsed?.title}>
           <span className="truncate">Waiting on a person</span>
-          <span className="shrink-0"> · {state.waitingOnPerson.age}</span>
+          {/* `whitespace-pre`: a flex item is blockified, and a block drops its leading space, so a bare " · " ran into the label. */}
+          <span className="shrink-0 whitespace-pre"> · {state.waitingOnPerson.age}</span>
         </span>
       ) : (
         elapsed && (
