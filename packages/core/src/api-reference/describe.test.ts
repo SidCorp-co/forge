@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { codeFor, describeOperation, empty, fail, json, operationDeclarations, raw } from './describe.js';
+import {
+  codeFor,
+  describeOperation,
+  empty,
+  fail,
+  json,
+  operationDeclarations,
+  raw,
+} from './describe.js';
 
 describe('describeOperation', () => {
   it('passes a request through untouched and registers what it declared', async () => {

@@ -94,7 +94,11 @@ describe('what a validator records for the reference', () => {
 describe('declaresInput', () => {
   it('records the schema as declared and not enforced, and lets every request through', async () => {
     const mw = declaresInput('json', schema);
-    expect(validatorDeclarations.get(mw)).toMatchObject({ target: 'json', schema, enforced: false });
+    expect(validatorDeclarations.get(mw)).toMatchObject({
+      target: 'json',
+      schema,
+      enforced: false,
+    });
     let reached = false;
     await mw({} as never, async () => {
       reached = true;
