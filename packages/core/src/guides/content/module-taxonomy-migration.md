@@ -55,7 +55,7 @@ entry, or you will silently strip every other label the issue had. That is the o
 loses data, and it is not the migration doing it, it is a partial payload.
 
 This pass takes no lease. A `labels` write carries no lease precondition, so it lands over an issue a
-run holds and replaces whatever label that run just set, with no refusal and no trace. Run Pass 2
+run holds and replaces whatever label that run just set, with no refusal. Run Pass 2
 between waves, while no issue of the project is held by a run: read each issue's
 `sessionContext.lease` through `forge_issues.get` first, and leave one whose lease has not lapsed
 (`renewedAt` plus `minutes` still ahead) for the next window.
