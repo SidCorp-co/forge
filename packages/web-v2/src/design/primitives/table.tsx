@@ -18,10 +18,14 @@ const DEFAULT_REGION_NAME = "Table, scrolls sideways";
  */
 export function Table({
   className,
+  stickyStart = false,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
   ...props
-}: HTMLAttributes<HTMLTableElement>) {
+}: HTMLAttributes<HTMLTableElement> & {
+  /** The first column is `sticky`: the start cue gives way to the hairline its cells draw. */
+  stickyStart?: boolean;
+}) {
   const [scrollerRef, edges] = useScrollEdges<HTMLDivElement>();
   const overflows = edges.start || edges.end;
   const regionName = ariaLabelledBy
@@ -31,6 +35,7 @@ export function Table({
     <div className="relative overflow-hidden rounded-lg border border-line bg-surface has-[>[role=region]:focus-visible]:outline-2 has-[>[role=region]:focus-visible]:outline-offset-2 has-[>[role=region]:focus-visible]:outline-cobalt">
       <div
         ref={scrollerRef}
+        data-edge-start={edges.start}
         className="relative overflow-x-auto [contain:inline-size] focus-visible:shadow-none"
         {...(overflows ? { role: "region", tabIndex: 0, ...regionName } : {})}
       >
@@ -41,7 +46,7 @@ export function Table({
           {...props}
         />
       </div>
-      <EdgeCue side="start" visible={edges.start} />
+      <EdgeCue side="start" visible={edges.start && !stickyStart} />
       <EdgeCue side="end" visible={edges.end} />
     </div>
   );
@@ -74,7 +79,7 @@ export function TBody(props: HTMLAttributes<HTMLTableSectionElement>) {
 export function TR({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
   return (
     <tr
-      className={cn("border-b border-line-subtle transition-colors last:border-0 hover:bg-hover", className)}
+      className={cn("group/row border-b border-line-subtle transition-colors last:border-0 hover:bg-hover", className)}
       {...props}
     />
   );
@@ -85,10 +90,25 @@ export function TR({ className, ...props }: HTMLAttributes<HTMLTableRowElement>)
 // compact mode tightens rows everywhere the kit Table is used.
 const DENSITY_PY = { paddingTop: "var(--density-row-py)", paddingBottom: "var(--density-row-py)" };
 
-export function TH({ className, style, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th className={cn("fg-overline px-4 font-mono", className)} style={{ ...DENSITY_PY, ...style }} {...props} />;
+// Opaque, so the row scrolls out of sight under it; the hairline shows once the scroller has scrolled.
+const STICKY = "sticky left-0 z-[1] bg-surface in-data-[edge-start=true]:shadow-[1px_0_0_var(--color-line)]";
+
+interface StickyCell {
+  sticky?: boolean;
 }
 
-export function TD({ className, style, ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn("fg-body-sm px-4 text-fg", className)} style={{ ...DENSITY_PY, ...style }} {...props} />;
+export function TH({ className, style, sticky, ...props }: ThHTMLAttributes<HTMLTableCellElement> & StickyCell) {
+  return (
+    <th
+      className={cn("fg-overline px-4 font-mono", sticky && STICKY, className)}
+      style={{ ...DENSITY_PY, ...style }}
+      {...props}
+    />
+  );
+}
+
+export function TD({ className, style, sticky, ...props }: TdHTMLAttributes<HTMLTableCellElement> & StickyCell) {
+  return (
+    <td className={cn("fg-body-sm px-4 text-fg", sticky && `${STICKY} group-hover/row:bg-hover`, className)} style={{ ...DENSITY_PY, ...style }} {...props} />
+  );
 }

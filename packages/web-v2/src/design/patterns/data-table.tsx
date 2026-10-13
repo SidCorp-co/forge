@@ -21,6 +21,11 @@ export interface DataTableColumn<Row> extends DataTableModelColumn<Row> {
   headerLabel?: string;
   /** The direction the first activation sorts in. The first of `sortDirections` unless named. */
   firstSort?: SortDirection;
+  /**
+   * The row's identifying column, which stays at the start edge while the others scroll sideways. It
+   * must be the first column, and a table has one.
+   */
+  sticky?: boolean;
 }
 
 export interface DataTableProps<Row> {
@@ -45,6 +50,15 @@ export interface DataTableProps<Row> {
   "aria-labelledby"?: string;
 }
 
+function assertSticky<Row>(columns: readonly DataTableColumn<Row>[]): void {
+  const at = columns.findIndex((column, i) => column.sticky && i !== 0);
+  if (at !== -1) {
+    throw new Error(
+      `DataTable column "${columns[at]?.id}" is sticky but is column ${at + 1}: only the first column can hold the start edge, because a column left of it would scroll away under it.`,
+    );
+  }
+}
+
 const ARIA_SORT = { asc: "ascending", desc: "descending" } as const;
 
 function directionsOf<Row>(column: DataTableColumn<Row>): readonly SortDirection[] {
@@ -58,6 +72,9 @@ function nextSort<Row>(column: DataTableColumn<Row>, current: DataTableSort | nu
   const other: SortDirection = current.desc ? "asc" : "desc";
   return directions.includes(other) ? { id: column.id, desc: other === "desc" } : current;
 }
+
+// The header cell gives up its padding to the button, so the whole cell is what a press lands on.
+const DENSITY_PY = { paddingTop: "var(--density-row-py)", paddingBottom: "var(--density-row-py)" };
 
 function SortHeader<Row>({
   column,
@@ -73,7 +90,11 @@ function SortHeader<Row>({
     <button
       type="button"
       onClick={onActivate}
-      className="inline-flex cursor-pointer items-center gap-1 rounded-sm [font:inherit] [letter-spacing:inherit] [text-transform:inherit] hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+      style={DENSITY_PY}
+      className={cn(
+        "flex min-h-6 w-full cursor-pointer items-center gap-1 px-4 [font:inherit] [letter-spacing:inherit] [text-transform:inherit] hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+        column.align === "end" && "justify-end",
+      )}
     >
       {column.header}
       <Icon
@@ -107,6 +128,8 @@ export function DataTable<Row>({
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
 }: DataTableProps<Row>) {
+  assertSticky(columns);
+  const stickyStart = columns[0]?.sticky === true;
   const [ownSort, setOwnSort] = useState<DataTableSort | null>(defaultSort);
   const active = sort === undefined ? ownSort : sort;
   const shown = useDataTableRows(rows, columns, { sort: active, search, filters, manualSort, manualFilter });
@@ -118,7 +141,7 @@ export function DataTable<Row>({
   }
 
   return (
-    <Table className={className} aria-label={ariaLabel} aria-labelledby={ariaLabelledBy}>
+    <Table className={className} stickyStart={stickyStart} aria-label={ariaLabel} aria-labelledby={ariaLabelledBy}>
       <THead>
         <TR className="hover:bg-transparent">
           {columns.map((column) => {
@@ -127,9 +150,11 @@ export function DataTable<Row>({
               <TH
                 key={column.id}
                 scope="col"
+                sticky={column.sticky}
                 aria-sort={column.sortValue ? (sorted ? ARIA_SORT[sorted.desc ? "desc" : "asc"] : "none") : undefined}
                 aria-label={column.sortValue ? undefined : column.headerLabel}
                 className={cn(column.align === "end" && "text-right", column.headerClassName)}
+                style={column.sortValue ? { padding: 0 } : undefined}
               >
                 {column.sortValue ? (
                   <SortHeader column={column} active={active} onActivate={() => activate(column)} />
@@ -152,7 +177,7 @@ export function DataTable<Row>({
             return (
               <TR key={getRowId(row)} className={rowClass} {...props}>
                 {columns.map((column) => (
-                  <TD key={column.id} className={cn(column.align === "end" && "text-right", column.cellClassName)}>
+                  <TD key={column.id} sticky={column.sticky} className={cn(column.align === "end" && "text-right", column.cellClassName)}>
                     {column.cell(row)}
                   </TD>
                 ))}

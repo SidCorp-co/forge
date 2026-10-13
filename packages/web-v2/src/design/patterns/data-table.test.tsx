@@ -92,6 +92,19 @@ describe("DataTable: sorting by header", () => {
     expect(button).toHaveAttribute("type", "button");
   });
 
+  it("makes the whole header cell the press target: no padding on the cell, the button fills it and is at least 24px tall", () => {
+    render(<Sample />);
+    for (const name of ["Name", "Runs"]) {
+      const th = header(name);
+      expect(th.style.padding, `${name} cell`).toBe("0px");
+      const button = within(th).getByRole("button");
+      expect(button.className, `${name} button`).toMatch(/\bw-full\b/);
+      expect(button.className, `${name} button`).toMatch(/\bmin-h-6\b/);
+      expect(button.style.paddingTop, `${name} button`).toBe("var(--density-row-py)");
+    }
+    expect(within(header("Runs")).getByRole("button").className).toMatch(/justify-end/);
+  });
+
   it("starts from defaultSort", () => {
     render(<Sample defaultSort={{ id: "runs", desc: true }} />);
     expect(names()).toEqual(["alpha", "bravo", "charlie"]);
@@ -162,5 +175,29 @@ describe("DataTable: rows and the table itself", () => {
     fireEvent.click(screen.getByText("alpha"));
     expect(onClick).toHaveBeenCalledWith("2");
     expect(screen.getByRole("table", { name: "Things" })).toBeInTheDocument();
+  });
+});
+
+describe("DataTable: the identifying column", () => {
+  const STICKY_COLUMNS: DataTableColumn<Row>[] = COLUMNS.map((c) => (c.id === "name" ? { ...c, sticky: true } : c));
+
+  it("pins the first column's header and cells, and no other", () => {
+    render(<Sample columns={STICKY_COLUMNS} />);
+    expect(header("Name")).toHaveClass("sticky");
+    expect(header("Runs")).not.toHaveClass("sticky");
+    const cells = within(screen.getAllByRole("row")[1] as HTMLElement).getAllByRole("cell");
+    expect(cells[0]).toHaveClass("sticky");
+    expect(cells[1]).not.toHaveClass("sticky");
+  });
+
+  it("refuses a sticky column that is not the first, naming it", () => {
+    const wrong = COLUMNS.map((c) => (c.id === "runs" ? { ...c, sticky: true } : c));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => render(<Sample columns={wrong} />)).toThrow(/column "runs" is sticky but is column 2/);
+  });
+
+  it("pins nothing when no column says so", () => {
+    render(<Sample />);
+    expect(header("Name")).not.toHaveClass("sticky");
   });
 });

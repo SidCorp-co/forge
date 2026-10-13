@@ -369,7 +369,7 @@ describe('the moves the park menu sends', () => {
     });
     const posted = await bodies(issueId);
     expect(posted).toHaveLength(1);
-    expect(posted[0]).toContain('Left `needs_info` for `in_progress`');
+    expect(posted[0]).toContain('Left Needs info for In progress');
     expect(posted[0]).toContain('answered on a call');
   });
 

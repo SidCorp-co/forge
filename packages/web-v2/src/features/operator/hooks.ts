@@ -50,6 +50,7 @@ export function useOperatorWorkspaces(window: OperatorWindow, sort: OperatorWork
   return useQuery({
     queryKey: opsKey("workspaces", window, sort),
     queryFn: () => operatorApi.workspaces(window, sort),
+    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[3] === window ? previous : undefined),
   });
 }
 

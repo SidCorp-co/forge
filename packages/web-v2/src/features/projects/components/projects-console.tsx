@@ -20,7 +20,7 @@ import {
 import { formatApiError } from '@/lib/api/error';
 import { useActiveOrg } from '@/features/orgs/active-org';
 import { blindSearchEmpty, isAttention, unreadStatements, workspaceTotals } from '../derive';
-import { DEFAULT_PROJECT_SORT, FIRST_DESC, isDefaultSort, PROJECT_MODEL_COLUMNS } from '../columns';
+import { DEFAULT_PROJECT_SORT, isDefaultSort, PROJECT_MODEL_COLUMNS } from '../columns';
 import { useProjectsConsole } from '../hooks';
 import type { ProjectConsoleItem, ProjectSortState, ProjectView } from '../types';
 import { AttentionBanner } from './attention-banner';
@@ -164,8 +164,8 @@ export function ProjectsConsole() {
           <ProjectsToolbar
             query={query}
             onQuery={setQuery}
-            sort={sort.id}
-            onSort={(id) => setSort({ id, desc: FIRST_DESC[id] })}
+            sort={sort}
+            onSort={setSort}
             view={view}
             onView={setView}
             onNewProject={onNewProject}

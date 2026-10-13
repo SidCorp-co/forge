@@ -64,6 +64,7 @@ export { Pagination, type PaginationProps } from "./primitives/pagination";
 export { Collapsible, type CollapsibleProps } from "./primitives/collapsible";
 export { Table, THead, TBody, TR, TH, TD } from "./primitives/table";
 export { DataTable, type DataTableProps, type DataTableColumn } from "./patterns/data-table";
+export { RowActions, type RowAction, type RowActionsProps } from "./patterns/row-actions";
 export {
   useDataTableRows, type DataTableModelColumn, type DataTableModelOptions, type DataTableSort,
   type SortValue, type SortKey, type SortDirection,

@@ -9,7 +9,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { Table, TBody, TD, TR } from "./table";
+import { Table, TBody, TD, TH, THead, TR } from "./table";
 
 expect.extend(matchers);
 
@@ -149,5 +149,59 @@ describe("Table — the table element", () => {
     const table = screen.getByTestId("t");
     expect(table.tagName).toBe("TABLE");
     expect(table).toHaveClass("min-w-[520px]", "w-full");
+  });
+});
+
+describe("Table — a sticky first column holds the start edge", () => {
+  beforeEach(() => {
+    Object.assign(geometry, { scrollWidth: 1218, clientWidth: 882 });
+  });
+
+  function Stuck() {
+    return (
+      <Table stickyStart>
+        <THead>
+          <TR>
+            <TH sticky>Name</TH>
+            <TH>Other</TH>
+          </TR>
+        </THead>
+        <TBody>
+          <TR>
+            <TD sticky>first</TD>
+            <TD>second</TD>
+          </TR>
+        </TBody>
+      </Table>
+    );
+  }
+
+  it("gives the sticky cells, and only them, the classes that pin them to the start edge", () => {
+    render(<Stuck />);
+    for (const name of ["Name", "first"]) {
+      expect(screen.getByText(name)).toHaveClass("sticky", "left-0", "bg-surface");
+    }
+    for (const name of ["Other", "second"]) expect(screen.getByText(name)).not.toHaveClass("sticky");
+  });
+
+  it("lets the body cell take the row's hover colour and the header cell not", () => {
+    render(<Stuck />);
+    expect(screen.getByText("first")).toHaveClass("group-hover/row:bg-hover");
+    expect(screen.getByText("Name")).not.toHaveClass("group-hover/row:bg-hover");
+  });
+
+  it("marks the scroller once it has scrolled, so the sticky cell can draw its hairline, and draws no start cue over the column", () => {
+    const { container } = render(<Stuck />);
+    expect(scroller(container)).toHaveAttribute("data-edge-start", "false");
+    act(() => scrollTo(scroller(container), 100));
+    expect(scroller(container)).toHaveAttribute("data-edge-start", "true");
+    expect(cue(container, "start")).toHaveAttribute("data-visible", "false");
+    expect(cue(container, "end")).toHaveAttribute("data-visible", "true");
+  });
+
+  it("keeps the start cue for a table with no sticky column", () => {
+    const { container } = render(<Sample />);
+    act(() => scrollTo(scroller(container), 100));
+    expect(cue(container, "start")).toHaveAttribute("data-visible", "true");
   });
 });
