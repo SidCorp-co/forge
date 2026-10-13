@@ -14,7 +14,8 @@ use crate::daemon::{subagent_end, transcript_age};
 use crate::error::Result;
 use crate::runner::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
 use crate::runner::ledger::{
-    Incarnation, Ledger, Liveness, Run, HOST_PANE_GONE, HOST_PANE_STARTED, HOST_PROCESS_GONE,
+    CheckoutPath, Incarnation, Ledger, Liveness, Run, HOST_PANE_GONE, HOST_PANE_STARTED,
+    HOST_PROCESS_GONE,
 };
 use std::path::{Path, PathBuf};
 
@@ -1047,24 +1048,23 @@ fn say_standing(
         )
         }
         Standing::Stranded => {
-            let on_disk = run.worktree_path.exists();
-            let checkout = if on_disk {
-                format!(
-                    "its checkout {} is still on disk and stays there by decision",
-                    run.worktree_path.display()
-                )
-            } else {
-                format!(
-                    "its recorded checkout path {} is not on disk, and nothing records what became \
-                     of it",
-                    run.worktree_path.display()
-                )
-            };
-            let retry = if on_disk {
-                "has the next sweep try the release again"
-            } else {
-                "has the next sweep ask git what became of the path and record the checkout \
-                 returned, or refuse by name"
+            let (checkout, retry) = match (CheckoutPath::of(&run.worktree_path), run.worktree_path.display()) {
+                (CheckoutPath::OnDisk, path) => (
+                    format!("its checkout {path} is still on disk and stays there by decision"),
+                    "has the next sweep try the release again",
+                ),
+                (CheckoutPath::Absent, path) => (
+                    format!(
+                        "its recorded checkout path {path} is not on disk, and nothing records what \
+                         became of it"
+                    ),
+                    "has the next sweep ask git what became of the path and record the checkout \
+                     returned, or refuse by name",
+                ),
+                (CheckoutPath::Unreadable(why), path) => (
+                    format!("its recorded checkout path {path} could not be inspected ({why})"),
+                    "has the next sweep try the release again",
+                ),
             };
             tracing::warn!(
                 "[recovery] run {} ({issues}) is stranded ({holds}): its release was decided \
@@ -4547,6 +4547,31 @@ mod tests {
         assert!(
             said.contains("`forge-runner run release run-1`")
                 && !said.contains("ask git what became of the path"),
+            "{said}"
+        );
+    }
+
+    /// A path this process cannot inspect is neither on disk nor gone, and the
+    /// line says so rather than claiming either.
+    #[cfg(unix)]
+    #[test]
+    fn a_stranded_run_whose_checkout_path_cannot_be_inspected_says_that() {
+        use std::os::unix::fs::PermissionsExt;
+        let scratch = Scratch::new("stranded-unreadable");
+        let shut = scratch.0.join("shut");
+        std::fs::create_dir_all(shut.join("wt")).unwrap();
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let mut led = a_stranded_run(shut.join("wt"));
+        let said = logged_while(|| {
+            block_on(async {
+                sweep_once(&mut led).await;
+            })
+        });
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(
+            said.contains("could not be inspected")
+                && !said.contains("is not on disk")
+                && !said.contains("is still on disk"),
             "{said}"
         );
     }

@@ -257,6 +257,25 @@ pub struct Stranded {
     pub issues: Vec<Membership>,
 }
 
+/// What a run's recorded checkout path reads as: on disk, not on disk, or a path this
+/// process could not inspect, which is never read as either.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckoutPath {
+    OnDisk,
+    Absent,
+    Unreadable(String),
+}
+
+impl CheckoutPath {
+    pub fn of(path: &std::path::Path) -> Self {
+        match path.try_exists() {
+            Ok(true) => Self::OnDisk,
+            Ok(false) => Self::Absent,
+            Err(e) => Self::Unreadable(e.to_string()),
+        }
+    }
+}
+
 /// What will end a run no master answers for, read off its own row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WhatEndsIt {

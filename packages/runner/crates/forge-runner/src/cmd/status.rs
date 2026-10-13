@@ -5,7 +5,9 @@ use forge_runner_core::daemon::degraded::{
     Condition, Last, Verdict, KEPT_AFTER_TRIM, MIN_WINDOW_MS, RECENT_WITHIN_MS,
 };
 use forge_runner_core::daemon::pool_reads;
-use forge_runner_core::runner::ledger::{short_id, Ledger, Stranded, Unanswered, WhatEndsIt};
+use forge_runner_core::runner::ledger::{
+    short_id, CheckoutPath, Ledger, Stranded, Unanswered, WhatEndsIt,
+};
 
 use super::Ctx;
 
@@ -239,10 +241,10 @@ fn stranded_lines(runs: &[Stranded], cfg: &Config) -> Vec<String> {
             .map(|m| m.issue_key.as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        let on_disk = if s.run.worktree_path.exists() {
-            "on disk"
-        } else {
-            "path not on disk"
+        let on_disk = match CheckoutPath::of(&s.run.worktree_path) {
+            CheckoutPath::OnDisk => "on disk".to_string(),
+            CheckoutPath::Absent => "path not on disk".to_string(),
+            CheckoutPath::Unreadable(why) => format!("path could not be inspected: {why}"),
         };
         let refusal = s
             .run
