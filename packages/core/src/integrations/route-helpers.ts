@@ -137,14 +137,8 @@ export async function assertProjectWriter(
 }
 
 /**
- * Authorize a write to a binding's agent-access grant, and refuse one that means nothing.
- *
- * ISS-1071 rule 5 — the tier is a property of the provider's declared agent path, not of the route:
- * a `direct-mcp` grant hands the project's credential to a runner box, so it takes the same
- * org-admin escalation that already guards `secrets`, `config` and `active` on an org-owned
- * connection; a `core-mediated` grant only widens who may ask core to make a call core was already
- * making, so it stays with the project-admin fields. A provider declaring no agent path is refused
- * by name rather than storing a column value nothing will ever read.
+ * Authorize a write to a binding's agent-access grant (ISS-1071 rule 5): a `direct-mcp` grant puts
+ * the credential on a runner box, so it takes the org-admin escalation; one with no agent path is refused.
  */
 export async function authorizeAgentAccessWrite(
   userId: string,

@@ -2,7 +2,6 @@ import type { MiddlewareHandler } from 'hono';
 import type { ZodType, z } from 'zod';
 import { statusToCode } from '../middleware/error.js';
 
-/** A JSON body with this shape. */
 export type JsonAnswer = {
   readonly kind: 'json';
   readonly schema: ZodType;
@@ -12,10 +11,9 @@ export type JsonAnswer = {
 /** No body at all: a 204, or a 200 that says only that it happened. */
 export type EmptyAnswer = { readonly kind: 'empty'; readonly description: string };
 
-/** A redirect. The `Location` is the answer. */
 export type RedirectAnswer = { readonly kind: 'redirect'; readonly description: string };
 
-/** A body that is not JSON: a script, a page, an event stream, a file. */
+/** A body that is not JSON. */
 export type RawAnswer = {
   readonly kind: 'raw';
   readonly contentType: string;
@@ -43,16 +41,11 @@ export function redirect(description: string): RedirectAnswer {
   return { kind: 'redirect', description };
 }
 
-/** An answer that is not JSON: `raw('text/plain', 'the install script')`. */
 export function raw(contentType: string, description: string): RawAnswer {
   return { kind: 'raw', contentType, description };
 }
 
-/**
- * An error answer. `fail('NOT_FOUND', 'the issue does not exist')` names one code and when it
- * happens; `fail({ A: 'when a', B: 'when b' })` names several for one status; `fail()` is the
- * code `middleware/error.ts` derives from the status, which the handler gets by throwing no code.
- */
+/** An error answer: `fail('CODE', 'when')`, `fail({ A: 'when a', B: 'when b' })`, or `fail()` for the code derived from the status. */
 export function fail(code?: string | Readonly<Record<string, string>>, when = ''): FailAnswer {
   if (code === undefined) return { kind: 'fail', codes: [{ code: '', when }] };
   if (typeof code === 'string') return { kind: 'fail', codes: [{ code, when }] };
@@ -68,10 +61,7 @@ export type OperationDeclaration = {
   readonly description?: string;
   /** Keyed by status. A status below 400 takes a success answer, 400 and above `fail`. */
   readonly responses: Readonly<Record<number, Answer>>;
-  /**
-   * Why the route no longer does its work: it answers only a refusal, and the reference marks it
-   * deprecated instead of asking for a success it cannot give.
-   */
+  /** Why the route answers only a refusal; the reference marks it deprecated. */
   readonly retired?: string;
   /** A request body that is not JSON, which no validator can describe. */
   readonly body?: { readonly contentType: string; readonly description: string };
@@ -84,11 +74,7 @@ export function operationOf(handler: object): OperationDeclaration | undefined {
   return operations.get(handler);
 }
 
-/**
- * Declares what a route answers. It is placed before the handler and passes every request through;
- * the reference reads it from the route table, so the answer is declared where the handler is and
- * not in a document beside it.
- */
+/** Declares what a route answers, placed before its handler; the reference reads it from the route table. */
 export function describeOperation(declaration: OperationDeclaration): MiddlewareHandler {
   for (const [status, answer] of Object.entries(declaration.responses)) {
     const code = Number(status);
@@ -126,14 +112,7 @@ export function codeFor(status: number, code: string): string {
   return code === '' ? statusToCode(status) : code;
 }
 
-/**
- * Returns `body` as it is. It exists so the compiler holds a handler to its declaration: `body`
- * must be what `schema` accepts, so a handler that sends a field the schema lacks, omits one it
- * requires or sends the wrong type fails `tsc`, in the gate every change meets, and no longer in a
- * run against a real database after the merge.
- *
- * `return c.json(answer(tokenSchema, publicShape(row)))`
- */
+/** Returns `body` as it is, so `tsc` holds a handler's answer to its schema: `c.json(answer(schema, body))`. */
 export function answer<S extends ZodType>(_schema: S, body: z.input<S>): z.input<S> {
   return body;
 }

@@ -20,12 +20,8 @@ function pascal(name: string): string {
 }
 
 /**
- * The schema of a row as the table declares it, for a handler that answers with a row. It is read
- * from the table's own columns, so a column added or retyped changes the reference with no edit
- * here, and it is named for the table so a document that returns it from fifty routes holds it once.
- *
- * A handler that answers with some of a row's columns takes `.pick()` or `.omit()` of this, and one
- * that reshapes a row writes the shape it sends: the schema describes the answer, never the row.
+ * The schema of a row as the table declares it, named for the table. A handler that answers with
+ * some columns takes `.pick()` or `.omit()` of it; one that reshapes a row writes the shape it sends.
  */
 export function tableRow<T extends PgTable>(table: T): TableRow<T> {
   const held = cache.get(table);

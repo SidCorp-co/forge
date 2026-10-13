@@ -23,12 +23,8 @@ const WRAPPERS = new Set([
 ]);
 
 /**
- * A zod schema as JSON Schema, for what a client SENDS (`input`) or what it RECEIVES (`output`).
- *
- * A type JSON Schema cannot hold, a `transform` or a `custom` check, is reported by its path rather
- * than rendered as a schema that accepts anything: the library's own switch for that substitutes an
- * empty schema in silence, which is how a reference ends up promising nothing about a field.
- * A `Date` is a string on the wire, so it renders as `date-time`.
+ * A zod schema as JSON Schema, for what a client SENDS (`input`) or RECEIVES (`output`). A type it
+ * cannot hold is reported by its path, never rendered as a schema that accepts anything.
  */
 export function renderSchema(schema: ZodType, io: 'input' | 'output'): Rendered {
   const unrepresentable: string[] = [];

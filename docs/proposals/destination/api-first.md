@@ -63,14 +63,14 @@ document built from the composed app's route table, `GET /api/reference` renders
 `GET /api/reference/flows` draws the four flows an agent drives; none needs a credential, and each
 is named out of the token grant with its reason in `auth/pat-permissions.ts:PAT_UNGRANTABLE`. Every
 route is an operation carrying the input schemas its handler validates with (read from the
-validator the route runs through, `api-reference/validator.ts:zValidator`, or declared with
+validator the route runs through, `packages/core/src/api-reference/validator.ts:zValidator`, or declared with
 `declaresInput` where the handler parses its own), every status it can answer with a schema or the
 error envelope and the codes it can give, and the permission or the named exclusion that reaches it.
 `api-reference/reference.test.ts` runs in the core unit job over the composed app and names the
 route that has no declared answer, reads an input no schema declares, throws a status or code its
 descriptor omits, carries a schema JSON Schema cannot hold, or is the step of a flow that names no
 route. It holds no baseline of gaps. A handler's body agreeing with its schema is held two ways: `tsc`
-refuses a body the declared schema does not accept (`api-reference/describe.ts:answer`), and the
+refuses a body the declared schema does not accept (`packages/core/src/api-reference/describe.ts:answer`), and the
 integration run, with `RESPONSE_CONFORMANCE=1`, fails a request whose JSON answer does not validate
 against the schema declared for its status. That run is a post-merge job (ISS-1370), so what the
 integration suite does not exercise is held by `tsc` alone.

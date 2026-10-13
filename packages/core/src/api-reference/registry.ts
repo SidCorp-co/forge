@@ -5,7 +5,7 @@ import { type ValidatorDeclaration, validatorDeclarationOf } from './validator.j
 
 /** One route the composed app serves, with everything declared on the way to its handler. */
 export type RouteEntry = {
-  /** `GET /api/issues/:id`, the key the route table and the pat-mount test both use. */
+  /** `GET /api/issues/:id`. */
   readonly key: string;
   readonly method: string;
   /** Hono's path, `:name` segments and all. */
@@ -40,11 +40,8 @@ function samplePath(path: string, sample: string): string {
 }
 
 /**
- * Every route of the composed app, read off its own route table and its own router, so nothing
- * here is a parse of `index.ts` and a router nested with `.route()` is as visible as one mounted
- * directly. The chain a request would run is what the router matches for a path that reaches the
- * route, so a gate mounted with `use('/x/*')` is read as the route's, and a gate that does not
- * reach it is not.
+ * Every route of the composed app, read off its route table and router. The chain is what the
+ * router matches for a path that reaches the route, so a `use('/x/*')` gate is read as the route's.
  */
 export function readRoutes(app: RouteSource): RouteEntry[] {
   const own = new Map<string, RouteRecord[]>();

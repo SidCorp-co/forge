@@ -194,7 +194,6 @@ export interface IssueContextRow {
   step: string | null;
   attempt: number;
   payload: StepHandoffPayload;
-  /** Set on the row at write time and sent with it. */
   verdict: StepVerdict | null;
   createdAt: Date;
   updatedAt: Date;

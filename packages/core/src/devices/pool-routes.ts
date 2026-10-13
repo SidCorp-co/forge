@@ -348,7 +348,7 @@ type AskBody = Pick<AskInput, 'issueId' | 'agentSessionId' | 'assumed' | 'cost' 
 
 /**
  * The trio a box must always send keeps the refusal it has always had; any other field of the
- * wrong type is refused with the failing paths, where it used to reach the kernel as it came.
+ * wrong type is refused with the failing paths before it can reach the kernel.
  */
 function askBodyRefusal(error: z.ZodError): unknown {
   const required = ['id', 'projectId', 'prompt'];

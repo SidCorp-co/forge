@@ -16,6 +16,19 @@ const refuseWith = (code: string) => (r: { success: boolean }) => {
   if (!r.success) throw new HTTPException(400, { message: 'no', cause: { code } });
 };
 
+/** The responses of one operation of the document, refusing by name when the document has none. */
+function responsesAt(
+  document: { paths: Record<string, Record<string, unknown>> },
+  path: string,
+  method: string,
+): Record<string, { description: string }> {
+  const operation = document.paths[path]?.[method] as
+    | { responses: Record<string, { description: string }> }
+    | undefined;
+  if (!operation) throw new Error(`the document has no ${method} ${path}`);
+  return operation.responses;
+}
+
 function planted() {
   const app = new Hono();
   const idParam = z.object({ id: z.uuid() });
@@ -133,26 +146,20 @@ describe('buildReference over a planted app', () => {
 
   it('reads the refusal a validator hook sends by running the hook', async () => {
     const { document } = await buildReference(planted(), { version: 't' });
-    const responses = (
-      document.paths['/api/issues/{id}']?.get as { responses: Record<string, unknown> }
-    ).responses;
+    const responses = responsesAt(document, '/api/issues/{id}', 'get');
     const schema = JSON.stringify(responses['400']);
     expect(schema).toContain('BAD_ISSUE_ID');
   });
 
   it('gives a validator with no hook the library default 400', async () => {
     const { document } = await buildReference(planted(), { version: 't' });
-    const responses = (
-      document.paths['/api/issues']?.post as { responses: Record<string, { description: string }> }
-    ).responses;
+    const responses = responsesAt(document, '/api/issues', 'post');
     expect(responses['400']?.description).toContain('no hook');
   });
 
   it('merges a gate refusal with the descriptor and the unexpected-failure answer', async () => {
     const { document } = await buildReference(planted(), { version: 't' });
-    const responses = (
-      document.paths['/api/issues/{id}']?.get as { responses: Record<string, unknown> }
-    ).responses;
+    const responses = responsesAt(document, '/api/issues/{id}', 'get');
     expect(Object.keys(responses).sort()).toEqual([
       '200',
       '400',
@@ -193,10 +200,8 @@ describe('buildReference over a planted app', () => {
 
   it('adds the credential door refusals to a token route and not to a public one', async () => {
     const { document } = await buildReference(planted(), { version: 't' });
-    const token = JSON.stringify(
-      (document.paths['/api/issues']?.get as { responses: unknown }).responses,
-    );
-    const open = JSON.stringify((document.paths['/pair']?.get as { responses: unknown }).responses);
+    const token = JSON.stringify(responsesAt(document, '/api/issues', 'get'));
+    const open = JSON.stringify(responsesAt(document, '/pair', 'get'));
     expect(token).toContain('PAT_PERMISSION_REQUIRED');
     expect(open).not.toContain('PAT_PERMISSION_REQUIRED');
   });

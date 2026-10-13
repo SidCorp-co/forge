@@ -23,13 +23,7 @@ export type Access =
       readonly instead: string;
     };
 
-/**
- * The access a request to this method and path is held to, or null where the path is in neither
- * `PAT_UNGRANTABLE` nor the grant menu, which no route may be (`pat-mount-coverage.test.ts`).
- *
- * The permission is `patPermissionWanted`'s own answer for the route, so a route moved to another
- * resource is documented under it with no edit here.
- */
+/** The access a method and path is held to, or null where the path is in neither `PAT_UNGRANTABLE` nor the grant menu. */
 export function accessOf(method: string, path: string): Access | null {
   const excluded = patUngrantableFor(path, method);
   if (excluded) {
