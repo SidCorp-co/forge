@@ -52,6 +52,10 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/attachment-routes.ts': 'by issue or attachment id',
   'issues/attributes/read.ts': 'the ids attribute values reference',
   'issues/attributes/routes.ts': 'by issue id',
+  'issues/backlog/rank-chain.ts':
+    'walks edges to dependents that are not in an ended status, which an archived issue always is (archiving takes closed and dropped only)',
+  'issues/live-blockers-sql.ts':
+    'the blockers of one dependent, by edge; an archived blocker is closed or dropped, which releases its edge',
   'issues/commit-landing.ts': 'by issue id, the issue a mark names',
   'issues/create-service.ts': 'the existing row a dedup names',
   'issues/issue-lease.ts':
@@ -184,7 +188,9 @@ const READS_ISSUES = [
   /\b(?:from|join)\s+(?:"?public"?\.)?"?issues"?\b/i,
   /\bquery\.issues\.find(?:First|Many)\b/,
 ];
-const DECIDES = /issueArchiveSide\(|memoryOfLiveIssue|is(?:Not)?Null\(\s*issues\.archivedAt\)/;
+/** The raw-SQL form is `i.archived_at`, the alias every reader of `issues` there gives it; `p.archived_at` is a project's. */
+const DECIDES =
+  /issueArchiveSide\(|memoryOfLiveIssue|is(?:Not)?Null\(\s*issues\.archivedAt\)|\bi\.archived_at\s+IS\s+(?:NOT\s+)?NULL\b/i;
 
 type Reading = 'reads-and-decides' | 'reads-undecided' | 'no-read';
 

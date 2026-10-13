@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { issueStatuses } from '../db/schema.js';
+import { rankWeightsProblem } from '../issues/backlog/rank-weights.js';
 import { ENTRY_CRITERION_KEYS } from '../issues/entry-criteria-keys.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
@@ -331,6 +332,15 @@ const pipelineConfigObject = z.object({
   [QA_JUDGEMENT_KEY]: z.enum(QA_JUDGEMENT_MODES).optional(),
   statusEntryCriteria: z
     .partialRecord(z.enum(issueStatuses), z.array(z.enum(ENTRY_CRITERION_KEYS)).min(1).max(16))
+    .optional(),
+  // ISS-1336 — the weights a backlog ordering is scored against, one override at a time over the
+  // built-in table. A record and not a strict object: the refusal names the key and what is valid.
+  rank: z
+    .record(z.string(), z.unknown())
+    .superRefine((value, ctx) => {
+      const problem = rankWeightsProblem(value);
+      if (problem) ctx.addIssue({ code: 'custom', message: problem });
+    })
     .optional(),
 });
 

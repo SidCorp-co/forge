@@ -42,10 +42,8 @@ import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { deviceLoginRoutes } from './devices/login-routes.js';
-import { registerMasterReaper } from './devices/master-reaper.js';
 import { deviceMcpServerRoutes } from './devices/mcp-servers-routes.js';
 import { devicePoolRoutes } from './devices/pool-routes.js';
-import { registerDevicePrune } from './devices/prune.js';
 import {
   deviceAuthRoutes,
   deviceOwnerRoutes,
@@ -53,9 +51,7 @@ import {
   deviceUserRoutes,
 } from './devices/routes.js';
 import { runLedgerRoutes } from './devices/run-ledger-routes.js';
-import { registerRunSessionReaper } from './devices/run-session-reaper.js';
 import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-routes.js';
-import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
 import { registerEagerSubscribers } from './eager-subscribers.js';
@@ -81,6 +77,7 @@ import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
 import { issueArchiveRoutes } from './issues/archive-routes.js';
 import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-routes.js';
+import { unregisterBacklogIndexSweeper } from './issues/backlog/index-sweeper.js';
 import { backlogStreamRoutes, closeBacklogStreams } from './issues/backlog/routes.js';
 import { issueDependencyRoutes } from './issues/dependency-routes.js';
 import { issueExtrasRoutes } from './issues/extras-routes.js';
@@ -101,18 +98,12 @@ import { moduleDiagramRoutes } from './labels/module-diagram-routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
+import { registerMaintenanceJobs } from './maintenance-jobs.js';
 import { mcpHandler } from './mcp/handler.js';
 import { mcpRequestClass } from './mcp/request-class.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
 import { mePulseRoutes } from './me/pulse-routes.js';
 import { meRecentChangesRoutes } from './me/recent-changes-routes.js';
-import { registerChunkReindex } from './memory/chunk-reindex.js';
-import {
-  registerMemoryConsolidation,
-  registerMemoryReconcileWorker,
-} from './memory/consolidation.js';
-import { registerMemoryDecay } from './memory/decay.js';
-import { registerEmbeddingBackfill } from './memory/embedding-backfill.js';
 import { memoryListRoutes } from './memory/list-routes.js';
 import { memoryMineRoutes } from './memory/mine-routes.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
@@ -168,9 +159,7 @@ import { startBoss, stopBoss } from './queue/boss.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
 import { registerReleaseUnstartedRecovery } from './release-batch/unstarted-recovery.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
-import { registerGhostRunnerReaper } from './runners/ghost-reaper.js';
 import { runnerRoutes } from './runners/routes.js';
-import { registerRunnerStaleDetector } from './runners/stale-detector.js';
 import { scheduleRoutes } from './schedules/routes.js';
 import { registerScheduleTicker, unregisterScheduleTicker } from './schedules/runner.js';
 import { skillFactsRoutes } from './skill-facts/routes.js';
@@ -248,6 +237,7 @@ export async function runShutdown(
     await unregisterPmCadenceTicker();
     await unregisterAgentCronTicker();
     await unregisterPmEscalationSweeper();
+    await unregisterBacklogIndexSweeper();
     await unregisterAssistantWeekly();
     await stopOutboxWorker();
     await stopBoss();
@@ -448,18 +438,8 @@ if (isMain) {
   bootstrapRunnerAdapters();
   await registerStaleDetector();
   await registerIntegrationsHealthSweep();
-  await registerDeviceStaleDetector();
-  await registerEmbeddingBackfill();
-  await registerChunkReindex();
-  await registerMemoryDecay();
-  await registerMemoryConsolidation();
+  await registerMaintenanceJobs();
   await registerAssistantWeekly();
-  await registerMemoryReconcileWorker();
-  await registerDevicePrune();
-  await registerMasterReaper();
-  await registerRunSessionReaper();
-  await registerRunnerStaleDetector();
-  await registerGhostRunnerReaper();
   await registerRetentionSweeper();
   await registerPipelineSweeper();
   await registerReleaseUnstartedRecovery();
