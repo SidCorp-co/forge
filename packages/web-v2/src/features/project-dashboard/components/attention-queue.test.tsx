@@ -39,6 +39,14 @@ describe("the Needs your attention list with nothing in it", () => {
     expect(screen.getByText(/not an all clear/u)).toBeInTheDocument();
   });
 
+  it("keeps the cut under an unread page and says nothing is listed to act on only where the read is whole", () => {
+    render(<AttentionQueue items={[]} cut={{ shown: 0, atLeast: 3, peopleCut: true }} shape="unread" slug="pair" now={0} />);
+    expect(screen.queryByText("All caught up")).toBeNull();
+    expect(screen.queryByText("Nothing is listed to act on here.")).toBeNull();
+    expect(screen.getByText(/not all of this page is read yet/iu)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 0 of at least 3\./u)).toBeInTheDocument();
+  });
+
   it.each(["quiet", "working"] as const)("says all caught up under a %s page", (shape) => {
     render(<AttentionQueue items={[]} cut={null} shape={shape} slug="pair" now={0} />);
     expect(screen.getByText("All caught up")).toBeInTheDocument();

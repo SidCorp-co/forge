@@ -107,6 +107,13 @@ export function AttentionQueue({
       <div>
         {refusal ? (
           <DashboardSection title={TITLE}>{notes}</DashboardSection>
+        ) : shape === "unread" && cut ? (
+          <DashboardSection title={TITLE}>
+            <p className="fg-body-sm py-2 text-subtle">
+              Not all of this page is read yet, so this is not an all clear.
+            </p>
+            {notes}
+          </DashboardSection>
         ) : cut ? (
           <DashboardSection title={TITLE}>
             <p className="fg-body-sm py-2 text-subtle">Nothing is listed to act on here.</p>

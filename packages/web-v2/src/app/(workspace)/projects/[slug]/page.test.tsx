@@ -415,6 +415,21 @@ describe("a section whose own read has not arrived", () => {
   });
 
   it.each(["pending", "failed"] as const)(
+    "keeps the cut and says nothing is listed only once the runs read is in: attention listing none of at least 2, runs %s",
+    (read) => {
+      attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, awaitingOutsideBlockers: 0, failedJobs: 0 } });
+      runs = undefined;
+      if (read === "failed") runsError = new Error("Gateway Timeout");
+      const { container } = mount();
+      expect(shape(container)).toBe("unread");
+      const list = screen.getByRole("region", { name: "Needs your attention" });
+      expect(list).not.toHaveTextContent("Nothing is listed to act on here");
+      expect(list).not.toHaveTextContent("All caught up");
+      expect(list).toHaveTextContent(/Showing 0 of at least 2/u);
+    },
+  );
+
+  it.each(["pending", "failed"] as const)(
     "says no all caught up in Needs your attention while only the runs read is %s: a stuck run is what it would show",
     (read) => {
       runs = undefined;
