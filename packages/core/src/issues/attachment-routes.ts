@@ -2,6 +2,7 @@ import { asc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { issueAttachments, issues } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
@@ -12,6 +13,14 @@ import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth
 import { zValidator } from '../middleware/validator.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage, isEnoent } from '../storage/index.js';
+import {
+  deleteIssueAttachment,
+  downloadIssueAttachment,
+  issueAttachmentListSchema,
+  issueAttachmentSchema,
+  listIssueAttachments,
+  uploadIssueAttachment,
+} from './attachment-routes-reference.js';
 import { AttachmentError, persistIssueAttachment } from './attachment-service.js';
 import {
   issueRouteIdParamSchema,
@@ -46,6 +55,7 @@ issueAttachmentRoutes.use('/:id/attachments', requireAnyAuth());
 
 issueAttachmentRoutes.post(
   '/:id/attachments',
+  uploadIssueAttachment,
   uploadBodyLimit(() => {
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
@@ -79,7 +89,7 @@ issueAttachmentRoutes.post(
         uploaderId: userId,
         uploaderAgency: restActor(c).agency,
       });
-      return c.json(row, 201);
+      return c.json(answer(issueAttachmentSchema, row), 201);
     } catch (err) {
       if (err instanceof AttachmentError) {
         throw badRequest(err.message, err.code, err.details);
@@ -91,6 +101,7 @@ issueAttachmentRoutes.post(
 
 issueAttachmentRoutes.get(
   '/:id/attachments',
+  listIssueAttachments,
   zValidator('param', issueRouteIdParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
   }),
@@ -118,7 +129,12 @@ issueAttachmentRoutes.get(
       .where(eq(issueAttachments.issueId, issue.id))
       .orderBy(asc(issueAttachments.createdAt));
 
-    return c.json(rows.map((r) => ({ ...r, url: `/api/attachments/${r.id}/download` })));
+    return c.json(
+      answer(
+        issueAttachmentListSchema,
+        rows.map((r) => ({ ...r, url: `/api/attachments/${r.id}/download` })),
+      ),
+    );
   },
 );
 
@@ -133,6 +149,7 @@ attachmentRoutes.use('*', requireAnyAuth());
 
 attachmentRoutes.get(
   '/:id/download',
+  downloadIssueAttachment,
   zValidator('param', attachmentIdParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
   }),
@@ -176,6 +193,7 @@ attachmentRoutes.get(
 
 attachmentRoutes.delete(
   '/:id',
+  deleteIssueAttachment,
   zValidator('param', attachmentIdParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
   }),

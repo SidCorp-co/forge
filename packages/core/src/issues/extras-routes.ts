@@ -2,16 +2,9 @@ import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
-import {
-  activityLog,
-  type IssueStatus,
-  issuePriorities,
-  issueStatuses,
-  issues,
-  jobs,
-  usageRecords,
-} from '../db/schema.js';
+import { activityLog, type IssueStatus, issues, jobs, usageRecords } from '../db/schema.js';
 import { noPromptMessage, POOL_JOB_NO_PROMPT } from '../jobs/pool-served.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -27,6 +20,20 @@ import {
 import { TransitionError, transitionIssueStatus } from './apply-transition.js';
 import { BATCH_SKIP_BY_CODE, type BatchSkipReason } from './batch-skip-reason.js';
 import type { TransitionRewrite } from './close-substitution.js';
+import {
+  type BatchResult,
+  batchPatchBodySchema,
+  batchResultSchema,
+  costSummarySchema,
+  enrichIssue,
+  patchIssuesBatch,
+  pipelineTimingQuerySchema,
+  pipelineTimingSchema,
+  readCostSummary,
+  readPipelineTiming,
+  runPipelineStep,
+  runPipelineStepAnswerSchema,
+} from './extras-routes-reference.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import {
   issueRouteIdParamSchema,
@@ -39,29 +46,6 @@ const idParamSchema = z.object({ id: z.uuid() });
 
 const runPipelineStepBodySchema = z.object({}).strict();
 
-const batchPatchBodySchema = z
-  .object({
-    ids: z.array(z.uuid()).min(1).max(100),
-    data: z
-      .object({
-        status: z.enum(issueStatuses).optional(),
-        priority: z.enum(issuePriorities).optional(),
-        category: z.string().trim().min(1).max(100).nullable().optional(),
-      })
-      .strict()
-      .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' }),
-  })
-  .strict();
-
-const pipelineTimingQuerySchema = z
-  .object({
-    projectId: z.uuid(),
-    from: z.coerce.date().optional(),
-    to: z.coerce.date().optional(),
-    limit: z.coerce.number().int().min(1).max(5000).default(1000),
-  })
-  .strict();
-
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
@@ -71,23 +55,18 @@ const notFound = (message: string) =>
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
+const noEnrichPrompt = () =>
+  new HTTPException(422, {
+    message: noPromptMessage('custom'),
+    cause: { code: POOL_JOB_NO_PROMPT, lane: 'enrich' },
+  });
+
 export const issueExtrasRoutes = new Hono<{ Variables: AuthVars }>();
 issueExtrasRoutes.use('*', requireAuth(), assertEmailVerified());
 
-type BatchResult = {
-  updated: Array<{
-    id: string;
-    displayId: string;
-    skipReason?: BatchSkipReason;
-    /** Where a rule stored another status than the one asked for (ISS-1365). */
-    rewritten?: TransitionRewrite;
-  }>;
-  skipped: Array<{ id: string; reason: BatchSkipReason }>;
-  failed: Array<{ id: string; error: string }>;
-};
-
 issueExtrasRoutes.patch(
   '/batch',
+  patchIssuesBatch,
   zValidator('json', batchPatchBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -265,12 +244,13 @@ issueExtrasRoutes.patch(
       await triggerTerminalDispatch(terminalTransitions);
     }
 
-    return c.json(result);
+    return c.json(answer(batchResultSchema, result));
   },
 );
 
 issueExtrasRoutes.post(
   '/:id/enrich',
+  enrichIssue,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -290,15 +270,13 @@ issueExtrasRoutes.post(
 
     // No enrich prompt is built anywhere, and the job pool runs only the prompt a
     // job is minted with (ISS-1135).
-    throw new HTTPException(422, {
-      message: noPromptMessage('custom'),
-      cause: { code: POOL_JOB_NO_PROMPT, lane: 'enrich' },
-    });
+    throw noEnrichPrompt();
   },
 );
 
 issueExtrasRoutes.post(
   '/:id/run-pipeline-step',
+  runPipelineStep,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -327,7 +305,10 @@ issueExtrasRoutes.post(
         actor: restActor(c),
         reason: { manual: true },
       });
-      return c.json({ issueId: issue.id, status: 'awaiting_release' }, 202);
+      return c.json(
+        answer(runPipelineStepAnswerSchema, { issueId: issue.id, status: 'awaiting_release' }),
+        202,
+      );
     } catch (err) {
       if (err instanceof ActiveJobConflictError) {
         throw new HTTPException(409, {
@@ -356,6 +337,7 @@ issueExtrasRoutes.post(
 // as the dwell time of `current.from` status. Returns avg/median/p90 per status.
 issueExtrasRoutes.get(
   '/pipeline-timing',
+  readPipelineTiming,
   zValidator('query', pipelineTimingQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -435,12 +417,13 @@ issueExtrasRoutes.get(
 
     stats.sort((a, b) => a.status.localeCompare(b.status));
 
-    return c.json({ projectId, stats });
+    return c.json(answer(pipelineTimingSchema, { projectId, stats }));
   },
 );
 
 issueExtrasRoutes.get(
   '/:id/cost-summary',
+  readCostSummary,
   zValidator('param', issueRouteIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -466,10 +449,12 @@ issueExtrasRoutes.get(
       .from(usageRecords)
       .where(usageSessionMatch(sql`IN ${sessionIdSubquery}`));
 
-    return c.json({
-      issueId,
-      projectId: issue.projectId,
-      ...(totals ?? EMPTY_USAGE_TOTALS),
-    });
+    return c.json(
+      answer(costSummarySchema, {
+        issueId,
+        projectId: issue.projectId,
+        ...(totals ?? EMPTY_USAGE_TOTALS),
+      }),
+    );
   },
 );

@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import {
   type IssueStatus,
@@ -25,6 +26,11 @@ import type { UnblockedDependent } from './drop-cascade.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { parkQuestionNotMinted } from './park-question.js';
 import { issueParkRoutes } from './park-routes.js';
+import {
+  TRANSITION_REFUSAL_STATUS,
+  transitionIssue,
+  transitionResultSchema,
+} from './transition-reference.js';
 
 const transitionBodySchema = z
   .object({
@@ -58,21 +64,10 @@ const _forbidden = (message: string, code = 'FORBIDDEN') =>
  * `closed`. A fixed message here reports the first when it means the second.
  */
 function transitionErrorToHttp(err: TransitionError): HTTPException {
-  const cause = { code: err.code, details: err.details };
-  switch (err.code) {
-    case 'TRANSITION_REASON_REQUIRED':
-    case 'WAITING_KIND_REQUIRED':
-    case 'WAITING_KIND_NOT_APPLICABLE':
-    case 'RELEASE_RECORD_REQUIRED':
-    case 'CLOSE_REQUIRES_SHIPPED':
-    case 'ENTRY_CRITERIA_UNMET':
-    case 'VOID_REASON_REQUIRED':
-      return new HTTPException(422, { message: err.detail, cause });
-    case 'NO_WORK_EVIDENCE':
-      return new HTTPException(409, { message: err.detail, cause });
-    default:
-      return new HTTPException(409, { message: err.detail, cause });
-  }
+  return new HTTPException(TRANSITION_REFUSAL_STATUS[err.code], {
+    message: err.detail,
+    cause: { code: err.code, details: err.details },
+  });
 }
 
 /** Cap on the number of dependents named in a single `issue.unblockCascade`
@@ -220,6 +215,7 @@ transitionRoutes.route('/', issueParkRoutes);
 
 transitionRoutes.post(
   '/:id/transition',
+  transitionIssue,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
@@ -285,13 +281,15 @@ transitionRoutes.post(
       actor: restActor(c),
       options: { needs },
     });
-    return c.json({
-      id: result.id,
-      status: result.status,
-      reopenCount: result.reopenCount,
-      transitionedAt: result.updatedAt,
-      rewritten: result.rewritten,
-      ...(unasked ? { warnings: [unasked] } : {}),
-    });
+    return c.json(
+      answer(transitionResultSchema, {
+        id: result.id,
+        status: result.status,
+        reopenCount: result.reopenCount,
+        transitionedAt: result.updatedAt,
+        rewritten: result.rewritten,
+        ...(unasked ? { warnings: [unasked] } : {}),
+      }),
+    );
   },
 );

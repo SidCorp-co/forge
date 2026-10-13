@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { RULES } from '../config/rate-limits.js';
 import { issueStatuses } from '../db/schema.js';
 import { masterVerbs } from '../db/schema-master-charter.js';
-import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../embeddings/index.js';
+import { EmbeddingUnavailableError } from '../embeddings/index.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -13,6 +14,18 @@ import {
   ALWAYS_INJECT_GUARANTEE_NOTE,
   ALWAYS_INJECT_MAX_CHARS,
 } from '../projects/project-facts.js';
+import {
+  deleteKnowledge,
+  getKnowledge,
+  knowledgeDeletedSchema,
+  knowledgeEntrySchema,
+  knowledgeListSchema,
+  knowledgeSearchSchema,
+  knowledgeUpsertSchema,
+  listKnowledge,
+  putKnowledge,
+  searchKnowledge,
+} from './routes-reference.js';
 import {
   deleteKnowledgeEntry,
   getKnowledgeEntry,
@@ -80,6 +93,7 @@ knowledgeRoutes.use('*', requireAuth(), assertEmailVerified());
 
 knowledgeRoutes.get(
   '/:id/knowledge',
+  listKnowledge,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid project id');
   }),
@@ -95,11 +109,13 @@ knowledgeRoutes.get(
     await assertProjectAccess(id, userId);
 
     const result = await listKnowledgeEntries({ projectId: id, kind, injection, verb, status });
-    return c.json({
-      ...result,
-      maxAlwaysInjectChars: ALWAYS_INJECT_MAX_CHARS,
-      alwaysInjectGuarantee: ALWAYS_INJECT_GUARANTEE_NOTE,
-    });
+    return c.json(
+      answer(knowledgeListSchema, {
+        ...result,
+        maxAlwaysInjectChars: ALWAYS_INJECT_MAX_CHARS,
+        alwaysInjectGuarantee: ALWAYS_INJECT_GUARANTEE_NOTE,
+      }),
+    );
   },
 );
 
@@ -112,6 +128,7 @@ const searchBodySchema = z.object({
 
 knowledgeRoutes.post(
   '/:id/knowledge/search',
+  searchKnowledge,
   rateLimit(RULES.knowledgeSearch, { name: 'knowledge-search' }),
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid project id');
@@ -127,12 +144,12 @@ knowledgeRoutes.post(
 
     try {
       const result = await runUnifiedSearch({ projectId: id, ...body });
-      return c.json(result);
+      return c.json(answer(knowledgeSearchSchema, result));
     } catch (err) {
       if (err instanceof EmbeddingUnavailableError) {
         throw new HTTPException(503, {
           message: 'embeddings service unavailable',
-          cause: { code: EMBEDDING_UNAVAILABLE },
+          cause: { code: 'EMBEDDING_UNAVAILABLE' },
         });
       }
       throw err;
@@ -142,6 +159,7 @@ knowledgeRoutes.post(
 
 knowledgeRoutes.get(
   '/:id/knowledge/:slug{.+}',
+  getKnowledge,
   zValidator('param', slugParamSchema, (r, c) => {
     if (!r.success) throw badSlug(c.req.param('slug') ?? '');
   }),
@@ -152,7 +170,7 @@ knowledgeRoutes.get(
 
     const entry = await getKnowledgeEntry(id, slug);
     if (!entry) throw notFound();
-    return c.json(entry);
+    return c.json(answer(knowledgeEntrySchema, entry));
   },
 );
 
@@ -160,6 +178,7 @@ const upsertBodySchema = upsertKnowledgeInputSchema.omit({ projectId: true, slug
 
 knowledgeRoutes.put(
   '/:id/knowledge/:slug{.+}',
+  putKnowledge,
   zValidator('param', slugParamSchema, (r, c) => {
     if (!r.success) throw badSlug(c.req.param('slug') ?? '');
   }),
@@ -174,7 +193,7 @@ knowledgeRoutes.put(
 
     try {
       const result = await upsertKnowledgeEntry({ projectId: id, slug, ...body });
-      return c.json(result);
+      return c.json(answer(knowledgeUpsertSchema, result));
     } catch (err) {
       if (err instanceof EmbeddingUnavailableError) {
         throw new HTTPException(503, {
@@ -195,6 +214,7 @@ knowledgeRoutes.put(
 
 knowledgeRoutes.delete(
   '/:id/knowledge/:slug{.+}',
+  deleteKnowledge,
   zValidator('param', slugParamSchema, (r, c) => {
     if (!r.success) throw badSlug(c.req.param('slug') ?? '');
   }),
@@ -204,6 +224,6 @@ knowledgeRoutes.delete(
     await assertProjectAccess(id, userId);
 
     const removed = await deleteKnowledgeEntry(id, slug);
-    return c.json({ deleted: removed > 0 });
+    return c.json(answer(knowledgeDeletedSchema, { deleted: removed > 0 }));
   },
 );

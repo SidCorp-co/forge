@@ -2,11 +2,20 @@ import { and, desc, eq, like, lt } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
+import {
+  activityPageSchema,
+  activityRowSchema,
+  deleteActivity,
+  evaluateActivity,
+  readIssueActivity,
+  readProjectActivity,
+} from './activity-routes-reference.js';
 import type { ActorAgency } from './actor-agency.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
 import { resolveActors } from './actor-resolution.js';
@@ -99,6 +108,7 @@ issueActivityRoutes.use('*', requireAuth(), assertEmailVerified());
 
 issueActivityRoutes.get(
   '/:id/activity',
+  readIssueActivity,
   zValidator('param', issueRouteIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -127,7 +137,7 @@ issueActivityRoutes.get(
       .limit(limit);
 
     const withActors = await attachActors(rows as ActivityRow[]);
-    return c.json(envelope(withActors, limit));
+    return c.json(answer(activityPageSchema, envelope(withActors, limit)));
   },
 );
 
@@ -158,6 +168,7 @@ async function loadActivity(activityId: string) {
 
 issueActivityRoutes.patch(
   '/:id/activity/:activityId/evaluate',
+  evaluateActivity,
   zValidator('param', activityIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -195,12 +206,14 @@ issueActivityRoutes.patch(
       });
     if (!updated) throw notFound('activity not found');
     const [withActor] = await attachActors([updated as ActivityRow]);
-    return c.json(withActor);
+    if (!withActor) throw notFound('activity not found');
+    return c.json(answer(activityRowSchema, withActor));
   },
 );
 
 issueActivityRoutes.delete(
   '/:id/activity/:activityId',
+  deleteActivity,
   zValidator('param', activityIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -224,6 +237,7 @@ projectActivityRoutes.use('*', requireAuth(), assertEmailVerified());
 
 projectActivityRoutes.get(
   '/:id/activity',
+  readProjectActivity,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -253,7 +267,7 @@ projectActivityRoutes.get(
       .limit(limit);
 
     const withActors = await attachActors(rows as ActivityRow[]);
-    return c.json(envelope(withActors, limit));
+    return c.json(answer(activityPageSchema, envelope(withActors, limit)));
   },
 );
 

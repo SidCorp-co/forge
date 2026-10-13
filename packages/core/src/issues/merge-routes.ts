@@ -23,6 +23,7 @@ import { and, eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
@@ -42,6 +43,13 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { zValidator } from '../middleware/validator.js';
 import { mergedLandingSchema } from './landing-evidence.js';
 import { applyMergeMarker, MergeMarkerError, mergedCommitShaSchema } from './merge-marker.js';
+import {
+  markMerged,
+  mergeMarkAnswerSchema,
+  mergePullRequest,
+  mergePullRequestAnswerSchema,
+  unmarkMerged,
+} from './merge-routes-reference.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -108,7 +116,7 @@ async function runMergeMarker(
     // caller reads `action: 'merged'` and has no way to learn that what it wrote is a claim
     // Forge did not observe; the sentence has been composed for the audit trail since ISS-959
     // and never reached the one party that could act on it.
-    return c.json({ id: issueId, action, mark, detail: markDetail });
+    return c.json(answer(mergeMarkAnswerSchema, { id: issueId, action, mark, detail: markDetail }));
   } catch (err) {
     if (err instanceof MergeMarkerError) {
       if (err.code === 'ISSUE_NOT_FOUND') throw notFound('issue not found');
@@ -135,8 +143,12 @@ const mergeMarkerValidators = [
   }),
 ] as const;
 
-issueMergeRoutes.post('/:id/merge', ...mergeMarkerValidators, (c) => runMergeMarker(c, 'mark'));
-issueMergeRoutes.delete('/:id/merge', ...mergeMarkerValidators, (c) => runMergeMarker(c, 'unmark'));
+issueMergeRoutes.post('/:id/merge', markMerged, ...mergeMarkerValidators, (c) =>
+  runMergeMarker(c, 'mark'),
+);
+issueMergeRoutes.delete('/:id/merge', unmarkMerged, ...mergeMarkerValidators, (c) =>
+  runMergeMarker(c, 'unmark'),
+);
 
 const kernelMergeBodySchema = z
   .object({
@@ -202,8 +214,12 @@ async function resolveStoredPullRequest(
   return { id: open[0] as string };
 }
 
+const noPullRequestHttp = (stored: { refusal: string; code: string }) =>
+  new HTTPException(422, { message: stored.refusal, cause: { code: stored.code } });
+
 issueMergeRoutes.post(
   '/:id/merge-pull-request',
+  mergePullRequest,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -227,10 +243,7 @@ issueMergeRoutes.post(
 
     const stored = await resolveStoredPullRequest(issue.projectId, issueId, body.pullRequest);
     if ('refusal' in stored) {
-      throw new HTTPException(422, {
-        message: stored.refusal,
-        cause: { code: stored.code },
-      });
+      throw noPullRequestHttp(stored);
     }
 
     const actor = restActor(c);
@@ -249,15 +262,17 @@ issueMergeRoutes.post(
           cause: { code: 'MERGE_REFUSED', reason: outcome.reason },
         });
       }
-      return c.json({
-        id: issueId,
-        merged: true,
-        alreadyMerged: outcome.kind === 'already-merged',
-        commitSha: outcome.commitSha,
-        mergedAt: outcome.mergedAt.toISOString(),
-        stamped: outcome.stamped,
-        deliveryId: outcome.deliveryId,
-      });
+      return c.json(
+        answer(mergePullRequestAnswerSchema, {
+          id: issueId,
+          merged: true,
+          alreadyMerged: outcome.kind === 'already-merged',
+          commitSha: outcome.commitSha,
+          mergedAt: outcome.mergedAt.toISOString(),
+          stamped: outcome.stamped,
+          deliveryId: outcome.deliveryId,
+        }),
+      );
     } catch (err) {
       if (err instanceof MergeInputError) {
         throw new HTTPException(400, {

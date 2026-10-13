@@ -3,22 +3,15 @@ import { and, count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { BodyInvalidError } from '../body/errors.js';
-import { BODY_FORMATS } from '../body/formats.js';
 import { bodyInvalidHttp } from '../body/http-error.js';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
 import { db } from '../db/client.js';
-import {
-  issueComplexities,
-  issuePriorities,
-  issueStatuses,
-  issues,
-  jobTypes,
-  projectMembers,
-} from '../db/schema.js';
+import { issues, jobTypes, projectMembers } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
-import { listResponse, paginationSchema } from '../lib/pagination.js';
+import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
@@ -35,12 +28,11 @@ import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { issueArchiveSide } from './archive.js';
 import { AttachmentError } from './attachment-service.js';
 import { registerIssueAttributeRoutes } from './attributes/routes.js';
-import { CREATE_ENTRY_STATUSES, createIssue, IssueCreateError } from './create-service.js';
+import { createIssue, IssueCreateError } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import { toHttpDependencyError } from './dependency-routes.js';
 import { IssueDependencyError } from './dependency-service.js';
 import { serializeIssue } from './detail-projection.js';
-import { attachmentInputSchema, labelAttachItemSchema } from './input-schemas.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
 import {
   issueRouteIdParamSchema,
@@ -54,17 +46,34 @@ import {
   type ResolvedLabelAttach,
   resolveLabelIdsForWrite,
 } from './label-service.js';
-import { landingShapeInputSchema, readLandingShape } from './landing-evidence.js';
+import { readLandingShape } from './landing-evidence.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { liveReachForIssue } from './live-reach-read.js';
-import { isSelfReferentialBranch, issueMetadataSchema } from './metadata.js';
+import { isSelfReferentialBranch } from './metadata.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
-import { issueRelationInputSchema } from './relations-service.js';
+import {
+  createdIssueSchema,
+  createIssueRoute,
+  dedupedIssueSchema,
+  deleteIssue,
+  issueByDisplaySchema,
+  issueCreateSchema,
+  issueDetailSchema,
+  issueFiltersSchema,
+  issueListSchema,
+  issuePatchSchema,
+  jobHistorySchema,
+  listIssuesRoute,
+  patchedIssueSchema,
+  patchIssue,
+  readIssue,
+  readIssueByDisplay,
+  readJobHistory,
+} from './routes-reference.js';
 import { jobHistoryForStep } from './search.js';
-import { sessionContextExpectSchema, sessionContextSchema } from './session-context.js';
-import { buildIssueOrderBy, issueSortValues } from './sort.js';
+import { buildIssueOrderBy } from './sort.js';
 import { toHttpUpdateError } from './update-http-errors.js';
 import { IssueUpdateNotFound, updateIssueFields } from './update-service.js';
 
@@ -74,80 +83,16 @@ export {
   isSelfReferentialBranch,
   issueMetadataSchema,
 } from './metadata.js';
+export {
+  type IssueCreateInput,
+  type IssueFilters,
+  type IssuePatchInput,
+  issueCreateSchema,
+  issueFiltersSchema,
+  issuePatchSchema,
+} from './routes-reference.js';
 
 import { withKernelMarker } from '../db/kernel-marker.js';
-import { ReleaseNotesSchema } from './release-notes.js';
-
-export const issueCreateSchema = z
-  .object({
-    title: z.string().trim().min(1).max(500),
-    description: z.string().max(100_000).nullable().optional(),
-    descriptionFormat: z.enum(BODY_FORMATS).optional(),
-    priority: z.enum(issuePriorities).optional(),
-    category: z.string().trim().min(1).max(100).nullable().optional(),
-    complexity: z.enum(issueComplexities).nullable().optional(),
-    reportedBy: z.string().trim().min(1).max(200).nullable().optional(),
-    assigneeId: z.uuid().nullable().optional(),
-    labels: z.array(labelAttachItemSchema).max(100).optional(),
-    attachments: z.array(attachmentInputSchema).max(10).optional(),
-    detectorKey: z.string().trim().min(1).max(120).optional(),
-    relations: z.array(issueRelationInputSchema).max(20).optional(),
-    status: z.enum(CREATE_ENTRY_STATUSES).optional(),
-  })
-  .strict();
-
-export type IssueCreateInput = z.infer<typeof issueCreateSchema>;
-
-export const issuePatchSchema = z
-  .object({
-    title: z.string().trim().min(1).max(500).optional(),
-    description: z.string().max(100_000).nullable().optional(),
-    descriptionFormat: z.enum(BODY_FORMATS).optional(),
-    priority: z.enum(issuePriorities).optional(),
-    category: z.string().trim().min(1).max(100).nullable().optional(),
-    complexity: z.enum(issueComplexities).nullable().optional(),
-    plan: z.string().max(200_000).nullable().optional(),
-    acceptanceCriteria: z.string().max(100_000).nullable().optional(),
-    assigneeId: z.uuid().nullable().optional(),
-    labels: z.array(labelAttachItemSchema).max(100).optional(),
-    metadata: issueMetadataSchema.optional(),
-    releaseNotes: ReleaseNotesSchema.nullable().optional(),
-    sessionContext: sessionContextSchema,
-    detectorKey: z.string().trim().min(1).max(120).optional(),
-    landingShape: landingShapeInputSchema.optional(),
-    expect: sessionContextExpectSchema.optional(),
-  })
-  .strict()
-  .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' })
-  .refine((o) => Object.keys(o).some((k) => k !== 'expect'), {
-    message: '`expect` is a precondition on a write — send the field(s) to write alongside it',
-  });
-
-export type IssuePatchInput = z.infer<typeof issuePatchSchema>;
-
-const issueKeyFilterSchema = z
-  .string()
-  .trim()
-  .regex(
-    /^(?:[A-Za-z][A-Za-z0-9]{1,5}-)?\d{1,10}$/,
-    'expected a display id like `ISS-42`, or its bare sequence number',
-  );
-
-export const issueFiltersSchema = paginationSchema
-  .extend({
-    status: z.enum(issueStatuses).optional(),
-    priority: z.enum(issuePriorities).optional(),
-    assigneeId: z.uuid().optional(),
-    category: z.string().trim().min(1).max(100).optional(),
-    key: issueKeyFilterSchema.optional(),
-    sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
-    withAgentSessions: z.coerce.boolean().optional().default(false),
-    /** ISS-1237 — archived issues are left out unless asked for; a `key` is retrieval and always answers. */
-    includeArchived: z.stringbool().optional(),
-  })
-  .strict();
-
-export type IssueFilters = z.infer<typeof issueFiltersSchema>;
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 const issueIdParamSchema = z.object({ id: z.uuid() });
@@ -182,6 +127,7 @@ issueProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 
 issueProjectRoutes.post(
   '/:id/issues',
+  createIssueRoute,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -214,18 +160,20 @@ issueProjectRoutes.post(
       throw toHttpCreateError(err);
     }
 
-    if (result.deduped) return c.json(result, 200);
+    if (result.deduped) return c.json(answer(dedupedIssueSchema, result), 200);
 
-    const response: Record<string, unknown> = serializeIssue(
-      result.issue as IssueRow,
-      await activeIssuePrefix(projectId),
-      await readLandingShape(db, projectId),
-    );
-    response.attachments = result.attachments;
-    if (result.attachmentErrors.length > 0) response.attachmentErrors = result.attachmentErrors;
-    if (result.relations.length > 0) response.relations = result.relations;
-    if (result.bodyWarnings.length > 0) response.warnings = result.bodyWarnings;
-    return c.json(response, 201);
+    const response = {
+      ...serializeIssue(
+        result.issue as IssueRow,
+        await activeIssuePrefix(projectId),
+        await readLandingShape(db, projectId),
+      ),
+      attachments: result.attachments,
+      ...(result.attachmentErrors.length > 0 ? { attachmentErrors: result.attachmentErrors } : {}),
+      ...(result.relations.length > 0 ? { relations: result.relations } : {}),
+      ...(result.bodyWarnings.length > 0 ? { warnings: result.bodyWarnings } : {}),
+    };
+    return c.json(answer(createdIssueSchema, response), 201);
   },
 );
 
@@ -258,6 +206,7 @@ const displayIdParamSchema = z.object({
 
 issueProjectRoutes.get(
   '/:id/issues/by-display/:displayId',
+  readIssueByDisplay,
   zValidator('param', displayIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -287,20 +236,23 @@ issueProjectRoutes.get(
     const creatorMap = await hydrateCreatorsForIssues([
       { id: issue.id, createdById: issue.createdById },
     ]);
-    return c.json({
-      ...serialized,
-      ...creatorMap.get(issue.id),
-      pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
-      liveReach: await liveReachForIssue(issue),
-      labels: labelRows,
-      comments: [],
-      activity: [],
-    });
+    return c.json(
+      answer(issueByDisplaySchema, {
+        ...serialized,
+        ...creatorMap.get(issue.id),
+        pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
+        liveReach: await liveReachForIssue(issue),
+        labels: labelRows,
+        comments: [],
+        activity: [],
+      }),
+    );
   },
 );
 
 issueProjectRoutes.get(
   '/:id/issues',
+  listIssuesRoute,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -345,7 +297,7 @@ issueProjectRoutes.get(
     const listPrefix = await activeIssuePrefix(projectId);
     const serialized = rows.map((r) => serializeRestListRow(r, listPrefix));
     if (serialized.length === 0) {
-      return c.json(listResponse(c, serialized, total, q));
+      return c.json(answer(issueListSchema, listResponse(c, [], total, q)));
     }
 
     const ids = serialized.map((r) => r.id);
@@ -356,35 +308,41 @@ issueProjectRoutes.get(
 
     if (!q.withAgentSessions) {
       return c.json(
-        listResponse(
-          c,
-          serialized.map((r) => ({
-            ...r,
-            ...creatorMap.get(r.id),
-            pipelineHealth: healthMap.get(r.id) ?? pipelineHealthUnderived(r.status),
-          })),
-          total,
-          q,
+        answer(
+          issueListSchema,
+          listResponse(
+            c,
+            serialized.map((r) => ({
+              ...r,
+              ...creatorMap.get(r.id),
+              pipelineHealth: healthMap.get(r.id) ?? pipelineHealthUnderived(r.status),
+            })),
+            total,
+            q,
+          ),
         ),
       );
     }
 
     const map = await hydrateAgentSessionsForIssues(projectId, ids);
     return c.json(
-      listResponse(
-        c,
-        serialized.map((r) => {
-          const bucket = map.get(r.id);
-          return {
-            ...r,
-            ...creatorMap.get(r.id),
-            agentSessions: bucket?.agentSessions ?? [],
-            agentStatus: bucket?.agentStatus ?? null,
-            pipelineHealth: healthMap.get(r.id) ?? pipelineHealthUnderived(r.status),
-          };
-        }),
-        total,
-        q,
+      answer(
+        issueListSchema,
+        listResponse(
+          c,
+          serialized.map((r) => {
+            const bucket = map.get(r.id);
+            return {
+              ...r,
+              ...creatorMap.get(r.id),
+              agentSessions: bucket?.agentSessions ?? [],
+              agentStatus: bucket?.agentStatus ?? null,
+              pipelineHealth: healthMap.get(r.id) ?? pipelineHealthUnderived(r.status),
+            };
+          }),
+          total,
+          q,
+        ),
       ),
     );
   },
@@ -404,6 +362,7 @@ async function loadIssue(issueId: string): Promise<IssueRow> {
 
 issueRoutes.get(
   '/:id',
+  readIssue,
   zValidator('param', issueRouteIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -431,17 +390,19 @@ issueRoutes.get(
     const creatorMap = await hydrateCreatorsForIssues([
       { id: issue.id, createdById: issue.createdById },
     ]);
-    return c.json({
-      ...serialized,
-      ...creatorMap.get(issue.id),
-      agentSessions: agentBucket?.agentSessions ?? [],
-      agentStatus: agentBucket?.agentStatus ?? null,
-      pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
-      liveReach: await liveReachForIssue(issue),
-      labels: labelRows,
-      comments: [],
-      activity: [],
-    });
+    return c.json(
+      answer(issueDetailSchema, {
+        ...serialized,
+        ...creatorMap.get(issue.id),
+        agentSessions: agentBucket?.agentSessions ?? [],
+        agentStatus: agentBucket?.agentStatus ?? null,
+        pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
+        liveReach: await liveReachForIssue(issue),
+        labels: labelRows,
+        comments: [],
+        activity: [],
+      }),
+    );
   },
 );
 
@@ -451,6 +412,7 @@ const jobHistoryQuerySchema = z.object({
 
 issueRoutes.get(
   '/:id/job-history',
+  readJobHistory,
   zValidator('param', issueIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -466,12 +428,13 @@ issueRoutes.get(
     const access = await loadProjectAccess(issue.projectId, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    return c.json(await jobHistoryForStep(id, step));
+    return c.json(answer(jobHistorySchema, await jobHistoryForStep(id, step)));
   },
 );
 
 issueRoutes.patch(
   '/:id',
+  patchIssue,
   zValidator('param', issueIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -565,13 +528,17 @@ issueRoutes.patch(
       await readLandingShape(db, issue.projectId),
     );
     return c.json(
-      collected.warnings.length > 0 ? { ...patched, warnings: collected.warnings } : patched,
+      answer(
+        patchedIssueSchema,
+        collected.warnings.length > 0 ? { ...patched, warnings: collected.warnings } : patched,
+      ),
     );
   },
 );
 
 issueRoutes.delete(
   '/:id',
+  deleteIssue,
   zValidator('param', issueIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),

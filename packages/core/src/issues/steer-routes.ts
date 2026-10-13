@@ -12,11 +12,15 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { SteerError, steerIssue } from '../agent-sessions/steer-session.js';
+import { answer } from '../api-reference/describe.js';
+import { bodyRefusalHttp } from '../body/http-error.js';
+import { messageRefusalHttp } from '../comments/screen.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
+import { steerIssueRoute, steerResultSchema } from './steer-routes-reference.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -39,6 +43,7 @@ issueSteerRoutes.use('/:id/steer', requireAuth(), assertEmailVerified());
 
 issueSteerRoutes.post(
   '/:id/steer',
+  steerIssueRoute,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success)
       throw new HTTPException(400, {
@@ -70,12 +75,15 @@ issueSteerRoutes.post(
 
     try {
       return c.json(
-        await steerIssue(id, body, {
-          actorUserId: userId,
-          actorAgency: restActor(c).agency,
-          reason: reason ?? 'steer (REST)',
-          source: 'rest',
-        }),
+        answer(
+          steerResultSchema,
+          await steerIssue(id, body, {
+            actorUserId: userId,
+            actorAgency: restActor(c).agency,
+            reason: reason ?? 'steer (REST)',
+            source: 'rest',
+          }),
+        ),
       );
     } catch (e) {
       if (e instanceof SteerError) {
@@ -84,6 +92,10 @@ issueSteerRoutes.post(
           cause: { code: e.code },
         });
       }
+      // The comment the steer posts passes the same two doors a comment does: their refusals are the
+      // caller's to fix, and left unmapped they surfaced as a 500.
+      const refused = bodyRefusalHttp(e) ?? messageRefusalHttp(e);
+      if (refused) throw refused;
       throw e;
     }
   },

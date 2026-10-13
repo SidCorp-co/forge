@@ -26,6 +26,7 @@ import { registerBacklogIndexRoutes } from './index-routes.js';
 import { TAKEABLE_STATUSES, UNSETTLED_STATUSES } from './index-sql.js';
 import { orderingSource } from './ordering-source.js';
 import { countMatching } from './page-read.js';
+import { streamAlike, streamOrdering } from './routes-reference.js';
 
 /** The two status sets live in `index-sql.ts`, where the maintained indexes read them too. */
 export { TAKEABLE_STATUSES, UNSETTLED_STATUSES };
@@ -114,6 +115,7 @@ registerBacklogIndexRoutes(backlogStreamRoutes);
 
 backlogStreamRoutes.get(
   '/:id/backlog/ordering',
+  streamOrdering,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw queryBadRequest(idParamSchema, r.error);
   }),
@@ -145,6 +147,7 @@ backlogStreamRoutes.get(
 
 backlogStreamRoutes.get(
   '/:id/backlog/alike',
+  streamAlike,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw queryBadRequest(idParamSchema, r.error);
   }),

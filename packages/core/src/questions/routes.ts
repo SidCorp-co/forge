@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import {
   optionAuthorities,
   optionBindings,
@@ -17,6 +18,7 @@ import {
   questionStatuses,
 } from '../db/schema-questions.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { declaresInput } from '../middleware/validator.js';
 import {
   answerAs,
   askAs,
@@ -25,6 +27,22 @@ import {
   readQuestionFor,
   readQuestionsForIssue,
 } from './read.js';
+import {
+  answerQuestionBodySchema,
+  answerQuestionRoute,
+  askQuestionRoute,
+  issueQuestionsSchema,
+  listQuestions,
+  projectQuestionsSchema,
+  questionIdParamSchema,
+  questionListQuerySchema,
+  questionViewSchema,
+  questionVoidedSchema,
+  readQuestion,
+  seenQuestionSchema,
+  voidQuestionBodySchema,
+  voidQuestionRoute,
+} from './routes-reference.js';
 import { type QuestionRefusalCode, QuestionRefused, voidQuestion } from './write.js';
 
 const uuid = z.uuid();
@@ -76,9 +94,18 @@ const notFound = (what: 'question' | 'issue' = 'question') =>
   new HTTPException(404, { message: `${what} not found`, cause: { code: 'NOT_FOUND' } });
 
 function questionId(c: { req: { param: (k: string) => string } }): string {
-  const id = c.req.param('id');
-  if (!uuid.safeParse(id).success) throw badRequest('the question id must be a uuid');
-  return id;
+  const parsed = questionIdParamSchema.safeParse({ id: c.req.param('id') });
+  if (!parsed.success) throw badRequest('the question id must be a uuid');
+  return parsed.data.id;
+}
+
+/**
+ * A body that is not an object, or a field of the wrong type, reads as absent, so the refusal the
+ * route gives is the one for the missing field and not a failure of its own.
+ */
+function readBody<S extends z.ZodType>(schema: S, raw: unknown): z.output<S> {
+  const parsed = schema.safeParse(raw);
+  return parsed.success ? parsed.data : schema.parse({});
 }
 
 const REFUSAL_STATUS: Record<QuestionRefusalCode, ContentfulStatusCode> = {
@@ -136,50 +163,55 @@ export const questionRoutes = new Hono<{ Variables: AuthVars }>();
 questionRoutes.use('/', requireAuth(), assertEmailVerified());
 questionRoutes.use('*', requireAuth(), assertEmailVerified());
 
-questionRoutes.get('/', async (c) => {
-  const issueId = c.req.query('issueId');
-  const projectId = c.req.query('projectId');
-  if (!issueId && !projectId) throw badRequest('issueId or projectId is required');
-  if (issueId && projectId) {
-    throw badRequest('name issueId or projectId, not both — they are two different questions');
-  }
-  const issueScope = c.req.query('issue');
-  if (issueScope !== undefined && issueScope !== 'none') {
-    throw badRequest('issue takes one value, `none`, for the questions that name no issue');
-  }
-  const status = c.req.query('status');
-  if (status && !questionStatuses.includes(status as (typeof questionStatuses)[number])) {
-    throw badRequest(`status must be one of ${questionStatuses.join(', ')}`);
-  }
-  if (projectId) {
-    if (!uuid.safeParse(projectId).success) throw badRequest('projectId must be a uuid');
-    const page = pageSchema.safeParse({
-      limit: c.req.query('limit'),
-      cursor: c.req.query('cursor'),
-    });
-    if (!page.success) throw badRequest(z.prettifyError(page.error));
-    try {
-      const open = await projectQuestionsFor(
-        projectId,
-        c.get('userId'),
-        status as (typeof questionStatuses)[number] | undefined,
-        page.data,
-        issueScope === 'none',
-      );
-      if (!open) throw notFound();
-      return c.json(open);
-    } catch (e) {
-      if (e instanceof QuestionRefused) throw refused(e);
-      throw e;
+questionRoutes.get(
+  '/',
+  listQuestions,
+  declaresInput('query', questionListQuerySchema),
+  async (c) => {
+    const query = questionListQuerySchema.parse(c.req.query());
+    const { issueId, projectId } = query;
+    if (!issueId && !projectId) throw badRequest('issueId or projectId is required');
+    if (issueId && projectId) {
+      throw badRequest('name issueId or projectId, not both — they are two different questions');
     }
-  }
-  if (!uuid.safeParse(issueId).success) throw badRequest('issueId must be a uuid');
-  const seen = await readQuestionsForIssue(issueId as string, c.get('userId'));
-  if (!seen) throw notFound();
-  return c.json({ questions: seen });
-});
+    const issueScope = query.issue;
+    if (issueScope !== undefined && issueScope !== 'none') {
+      throw badRequest('issue takes one value, `none`, for the questions that name no issue');
+    }
+    const { status } = query;
+    if (status && !questionStatuses.includes(status as (typeof questionStatuses)[number])) {
+      throw badRequest(`status must be one of ${questionStatuses.join(', ')}`);
+    }
+    if (projectId) {
+      if (!uuid.safeParse(projectId).success) throw badRequest('projectId must be a uuid');
+      const page = pageSchema.safeParse({
+        limit: query.limit,
+        cursor: query.cursor,
+      });
+      if (!page.success) throw badRequest(z.prettifyError(page.error));
+      try {
+        const open = await projectQuestionsFor(
+          projectId,
+          c.get('userId'),
+          status as (typeof questionStatuses)[number] | undefined,
+          page.data,
+          issueScope === 'none',
+        );
+        if (!open) throw notFound();
+        return c.json(answer(projectQuestionsSchema, open));
+      } catch (e) {
+        if (e instanceof QuestionRefused) throw refused(e);
+        throw e;
+      }
+    }
+    if (!uuid.safeParse(issueId).success) throw badRequest('issueId must be a uuid');
+    const seen = await readQuestionsForIssue(issueId as string, c.get('userId'));
+    if (!seen) throw notFound();
+    return c.json(answer(issueQuestionsSchema, { questions: seen }));
+  },
+);
 
-questionRoutes.post('/', async (c) => {
+questionRoutes.post('/', askQuestionRoute, declaresInput('json', askSchema), async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = askSchema.safeParse(body);
   if (!parsed.success) throw badRequest(z.prettifyError(parsed.error));
@@ -197,63 +229,81 @@ questionRoutes.post('/', async (c) => {
       userId: c.get('userId'),
     });
     if (!asked) throw notFound('issue');
-    return c.json(asked, 201);
+    return c.json(answer(questionViewSchema, asked), 201);
   } catch (e) {
     if (e instanceof QuestionRefused) throw refused(e);
     throw e;
   }
 });
 
-questionRoutes.get('/:id', async (c) => {
-  const seen = await readQuestionFor(questionId(c), c.get('userId'));
-  if (!seen) throw notFound();
-  return c.json(seen);
-});
-
-questionRoutes.post('/:id/answer', async (c) => {
-  if (c.get('principal') === 'pat') {
-    const agentUserId = c.get('agentUserId');
-    const seen = await readQuestionFor(questionId(c), agentUserId ?? c.get('userId'));
+questionRoutes.get(
+  '/:id',
+  readQuestion,
+  declaresInput('param', questionIdParamSchema),
+  async (c) => {
+    const seen = await readQuestionFor(questionId(c), c.get('userId'));
     if (!seen) throw notFound();
-    if (seen.blockerKind !== 'master_or_peer') throw sessionOnly('answered');
-    if (!agentUserId) throw peerBlockedOnly();
-  }
-  const body = await c.req
-    .json<{ optionId?: string; text?: string; round?: number }>()
-    .catch(() => ({}) as { optionId?: string; text?: string; round?: number });
-  const hasOption = typeof body.optionId === 'string' && body.optionId.length > 0;
-  const hasText = typeof body.text === 'string' && body.text.trim().length > 0;
-  if (hasOption && hasText) throw badRequest('send optionId or text, never both');
-  if (!hasOption && !hasText) throw badRequest('optionId or text is required');
-  if (!Number.isInteger(body.round)) throw badRequest('round is required, as an integer');
-  try {
-    return c.json(
-      await answerAs({
-        questionId: questionId(c),
-        answer: hasOption
-          ? { kind: 'option', optionId: body.optionId as string }
-          : { kind: 'text', text: body.text as string },
-        round: body.round as number,
-        userId: c.get('userId'),
-      }),
-    );
-  } catch (e) {
-    if (e instanceof QuestionRefused) throw refused(e);
-    throw e;
-  }
-});
+    return c.json(answer(seenQuestionSchema, seen));
+  },
+);
 
-questionRoutes.post('/:id/void', async (c) => {
-  if (c.get('principal') === 'pat') throw sessionOnly('voided');
-  const body = await c.req.json<{ reason?: string }>().catch(() => ({}) as { reason?: string });
-  const id = questionId(c);
-  const seen = await readQuestionFor(id, c.get('userId'));
-  if (!seen) throw notFound();
-  try {
-    await voidQuestion({ questionId: id, reason: body.reason ?? '' });
-    return c.json({ ok: true });
-  } catch (e) {
-    if (e instanceof QuestionRefused) throw refused(e);
-    throw e;
-  }
-});
+questionRoutes.post(
+  '/:id/answer',
+  answerQuestionRoute,
+  declaresInput('param', questionIdParamSchema),
+  declaresInput('json', answerQuestionBodySchema),
+  async (c) => {
+    if (c.get('principal') === 'pat') {
+      const agentUserId = c.get('agentUserId');
+      const seen = await readQuestionFor(questionId(c), agentUserId ?? c.get('userId'));
+      if (!seen) throw notFound();
+      if (seen.blockerKind !== 'master_or_peer') throw sessionOnly('answered');
+      if (!agentUserId) throw peerBlockedOnly();
+    }
+    const body = readBody(answerQuestionBodySchema, await c.req.json().catch(() => ({})));
+    const hasOption = typeof body.optionId === 'string' && body.optionId.length > 0;
+    const hasText = typeof body.text === 'string' && body.text.trim().length > 0;
+    if (hasOption && hasText) throw badRequest('send optionId or text, never both');
+    if (!hasOption && !hasText) throw badRequest('optionId or text is required');
+    if (!Number.isInteger(body.round)) throw badRequest('round is required, as an integer');
+    try {
+      return c.json(
+        answer(
+          questionViewSchema,
+          await answerAs({
+            questionId: questionId(c),
+            answer: hasOption
+              ? { kind: 'option', optionId: body.optionId as string }
+              : { kind: 'text', text: body.text as string },
+            round: body.round as number,
+            userId: c.get('userId'),
+          }),
+        ),
+      );
+    } catch (e) {
+      if (e instanceof QuestionRefused) throw refused(e);
+      throw e;
+    }
+  },
+);
+
+questionRoutes.post(
+  '/:id/void',
+  voidQuestionRoute,
+  declaresInput('param', questionIdParamSchema),
+  declaresInput('json', voidQuestionBodySchema),
+  async (c) => {
+    if (c.get('principal') === 'pat') throw sessionOnly('voided');
+    const body = readBody(voidQuestionBodySchema, await c.req.json().catch(() => ({})));
+    const id = questionId(c);
+    const seen = await readQuestionFor(id, c.get('userId'));
+    if (!seen) throw notFound();
+    try {
+      await voidQuestion({ questionId: id, reason: body.reason ?? '' });
+      return c.json(answer(questionVoidedSchema, { ok: true }));
+    } catch (e) {
+      if (e instanceof QuestionRefused) throw refused(e);
+      throw e;
+    }
+  },
+);

@@ -2,6 +2,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import {
   issuePriorities,
@@ -20,6 +21,16 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
 import { hooks } from '../pipeline/hooks.js';
+import {
+  createTaskRoute,
+  deleteTaskRoute,
+  listTasksRoute,
+  patchTaskRoute,
+  readTaskRoute,
+  reorderTasksRoute,
+  taskListSchema,
+  taskSchema,
+} from './routes-reference.js';
 import { createTask, deleteTask, findTaskById, updateTask } from './task-service.js';
 
 const issueIdParamSchema = z.object({ id: z.uuid() });
@@ -99,6 +110,7 @@ taskIssueRoutes.use('*', requireAuth(), assertEmailVerified());
 
 taskIssueRoutes.post(
   '/:id/tasks',
+  createTaskRoute,
   zValidator('param', issueIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -138,12 +150,13 @@ taskIssueRoutes.post(
       actor: restActor(c),
     });
 
-    return c.json(inserted, 201);
+    return c.json(answer(taskSchema, inserted), 201);
   },
 );
 
 taskIssueRoutes.get(
   '/:id/tasks',
+  listTasksRoute,
   zValidator('param', issueRouteIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -163,7 +176,7 @@ taskIssueRoutes.get(
       .where(eq(tasks.issueId, issue.id))
       .orderBy(asc(tasks.sortOrder), asc(tasks.createdAt));
 
-    return c.json(rows);
+    return c.json(answer(taskListSchema, rows));
   },
 );
 
@@ -171,6 +184,7 @@ taskIssueRoutes.get(
 // exactly once; partial reorders are rejected to keep sortOrder gap-free.
 taskIssueRoutes.post(
   '/:id/tasks/reorder',
+  reorderTasksRoute,
   zValidator('param', issueIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -255,6 +269,7 @@ async function loadTask(taskId: string) {
 
 taskRoutes.get(
   '/:taskId',
+  readTaskRoute,
   zValidator('param', taskIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -266,12 +281,13 @@ taskRoutes.get(
     const access = await loadProjectAccess(task.projectId, userId);
     assertProjectRole(access, 'viewer', 'not a project member');
 
-    return c.json(task);
+    return c.json(answer(taskSchema, task));
   },
 );
 
 taskRoutes.patch(
   '/:taskId',
+  patchTaskRoute,
   zValidator('param', taskIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -298,12 +314,13 @@ taskRoutes.patch(
     const updated = await updateTask(task, updates, restActor(c), TASK_JSONB_FIELDS);
     if (!updated) throw notFound('task not found');
 
-    return c.json(updated);
+    return c.json(answer(taskSchema, updated));
   },
 );
 
 taskRoutes.delete(
   '/:taskId',
+  deleteTaskRoute,
   zValidator('param', taskIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),

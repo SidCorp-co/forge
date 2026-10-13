@@ -1,10 +1,12 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
+import { ingestKnowledge, knowledgeIngestSchema } from './routes-reference.js';
 import { upsertKnowledgeEntries } from './service.js';
 
 function toKebabSlug(id: string): string {
@@ -86,6 +88,7 @@ knowledgeIngestRoutes.use('*', requireAuth(), assertEmailVerified());
 
 knowledgeIngestRoutes.post(
   '/ingest',
+  ingestKnowledge,
   zValidator('json', ingestSchema, (r) => {
     if (!r.success) throw badRequest('Invalid input', z.flattenError(r.error));
   }),
@@ -156,6 +159,6 @@ knowledgeIngestRoutes.post(
     }
     const totalChunks = processed;
 
-    return c.json({ ok: true, processed, totalChunks, skipped });
+    return c.json(answer(knowledgeIngestSchema, { ok: true, processed, totalChunks, skipped }));
   },
 );

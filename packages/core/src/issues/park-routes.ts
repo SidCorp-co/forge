@@ -1,13 +1,14 @@
-import type { IssueParkResponse } from '@forge/contracts';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
+import { issueParkSchema, readIssuePark } from './park-routes-reference.js';
 import { loadIssuePark } from './park-view.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -19,6 +20,7 @@ issueParkRoutes.use('*', requireAuth(), assertEmailVerified());
 /** `GET /api/issues/:id/park` — what a person owes this issue, or `{ park: null }` (ISS-1310). */
 issueParkRoutes.get(
   '/:id/park',
+  readIssuePark,
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) {
       throw new HTTPException(400, {
@@ -39,7 +41,6 @@ issueParkRoutes.get(
     }
     const access = await loadProjectAccess(issue.projectId, c.get('userId'));
     assertProjectRole(access, 'viewer');
-    const body: IssueParkResponse = { park: await loadIssuePark(id) };
-    return c.json(body);
+    return c.json(answer(issueParkSchema, { park: await loadIssuePark(id) }));
   },
 );

@@ -12,6 +12,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import {
   issueDependencies,
@@ -26,6 +27,13 @@ import { safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { loadIssueDependencyEdges } from './dependency-read.js';
 import {
+  addDependency,
+  dependencyRemovedSchema,
+  dependencyWrittenSchema,
+  readDependencies,
+  removeDependency,
+} from './dependency-routes-reference.js';
+import {
   IssueDependencyError,
   type SetIssueDependencyInput,
   setIssueDependency,
@@ -35,6 +43,7 @@ import {
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
+import { dependencyEdgesSchema } from './search-reference.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 const edgeParamSchema = z.object({ id: z.uuid(), edgeId: z.uuid() });
@@ -69,6 +78,7 @@ issueDependencyRoutes.use('*', requireAuth(), assertEmailVerified());
  */
 issueDependencyRoutes.get(
   '/:id/dependencies',
+  readDependencies,
   zValidator('param', issueRouteIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -82,7 +92,9 @@ issueDependencyRoutes.get(
 
     const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
 
-    return c.json(await loadIssueDependencyEdges(issue.id, issue.projectId));
+    return c.json(
+      answer(dependencyEdgesSchema, await loadIssueDependencyEdges(issue.id, issue.projectId)),
+    );
   },
 );
 
@@ -95,6 +107,7 @@ issueDependencyRoutes.get(
  */
 issueDependencyRoutes.post(
   '/:id/dependencies',
+  addDependency,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -141,7 +154,7 @@ issueDependencyRoutes.post(
         actor: restActor(c),
         createdById: userId,
       });
-      return c.json(result, result.created ? 201 : 200);
+      return c.json(answer(dependencyWrittenSchema, result), result.created ? 201 : 200);
     } catch (err) {
       throw toHttpDependencyError(err, input);
     }
@@ -192,6 +205,7 @@ export function toHttpDependencyError(
  */
 issueDependencyRoutes.delete(
   '/:id/dependencies/:edgeId',
+  removeDependency,
   zValidator('param', edgeParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -248,6 +262,6 @@ issueDependencyRoutes.delete(
       }),
     ]);
 
-    return c.json({ deleted: true });
+    return c.json(answer(dependencyRemovedSchema, { deleted: true }));
   },
 );
