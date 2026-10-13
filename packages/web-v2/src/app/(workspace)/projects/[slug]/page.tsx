@@ -39,7 +39,6 @@ import {
   runnersSummary,
   spendByStage,
   statusDonut,
-  upcomingSchedules,
 } from "@/features/project-dashboard/derive";
 import {
   type ReadState,
@@ -207,7 +206,7 @@ export default function ProjectOverviewPage() {
   const donut = statusDonut(health?.work);
   const awaitingReleaseIssues = health?.work.awaiting_release ?? 0;
   const spend = spendByStage(durationsQ.data);
-  const schedules = upcomingSchedules(schedulesQ.data);
+  const schedules = schedulesQ.data ?? [];
 
   const reading = projectShape({
     attention: attentionState,
@@ -296,6 +295,7 @@ export default function ProjectOverviewPage() {
             oldestWait={oldestSeconds === null ? null : formatElapsed(oldestSeconds)}
             needsYouRefusal={attentionRefused}
             needsYouPending={attentionPending}
+            needsYouUnread={reading.unread}
             openWork={donut.total}
             openWorkMadeOf={donut.segments.map((s) => `${s.count} ${s.label.toLowerCase()}`).join(" · ")}
             spendTodayUsd={health?.spend24hUsd ?? 0}

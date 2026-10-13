@@ -5,14 +5,60 @@ import {
   Card,
   CardContent,
   CardTitle,
+  DataTable,
+  type DataTableColumn,
   DotStrip,
   SectionTitle,
   Waffle,
 } from "@/design";
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
-import { bucketHref, formatElapsed, projectSilenceRows, waffleCells } from "../derive";
-import { BUCKET_ORDER } from "../derive";
+import { BUCKET_ORDER, bucketHref, formatElapsed, type ProjectSilenceRow, projectSilenceRows, waffleCells } from "../derive";
 import type { PulseResponse } from "../types";
+
+const LINK =
+  "rounded-sm px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
+
+// A project that never ran has been silent for longer than any that did, so it leads the longest-first order.
+const SILENCE_COLUMNS: DataTableColumn<ProjectSilenceRow>[] = [
+  {
+    id: "project",
+    header: "Project",
+    sortValue: (r) => r.name,
+    cell: (r) => (
+      <Link href={`/projects/${r.slug}`} className={LINK}>
+        {r.name}
+      </Link>
+    ),
+  },
+  ...BUCKET_ORDER.map<DataTableColumn<ProjectSilenceRow>>((b) => ({
+    id: b,
+    header: WORK_STATE_LABELS[b],
+    align: "end",
+    firstSort: "desc",
+    sortValue: (r) => r.buckets[b],
+    cell: (r) =>
+      r.buckets[b] === 0 ? (
+        <span className="text-disabled">0</span>
+      ) : (
+        <Link
+          href={bucketHref(r.slug, b)}
+          aria-label={`${r.name}: ${r.buckets[b]} ${WORK_STATE_LABELS[b]} — open the list`}
+          className={LINK}
+        >
+          {r.buckets[b]}
+        </Link>
+      ),
+  })),
+  {
+    id: "silence",
+    header: "Last run",
+    align: "end",
+    firstSort: "desc",
+    cellClassName: "text-muted",
+    sortValue: (r) => (r.neverRan ? Number.POSITIVE_INFINITY : (r.silenceSeconds ?? 0)),
+    cell: (r) => (r.neverRan ? "never ran" : formatElapsed(r.silenceSeconds)),
+  },
+];
 
 export interface WorkSittingProps {
   pulse: PulseResponse;
@@ -70,53 +116,14 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
           {rows.length === 0 ? (
             <p className="fg-body-sm text-muted">No projects in scope.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[32rem]">
-                <thead>
-                  <tr className="fg-body-sm text-subtle">
-                    <th scope="col" className="py-1 text-left font-normal">Project</th>
-                    {BUCKET_ORDER.map((b) => (
-                      <th key={b} scope="col" className="py-1 text-right font-normal">
-                        {WORK_STATE_LABELS[b]}
-                      </th>
-                    ))}
-                    <th scope="col" className="py-1 text-right font-normal">Last run</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id} className="fg-body-sm border-t border-line-subtle">
-                      <td className="py-1 text-left">
-                        <Link
-                          href={`/projects/${r.slug}`}
-                          className="rounded-sm px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-                        >
-                          {r.name}
-                        </Link>
-                      </td>
-                      {BUCKET_ORDER.map((b) => (
-                        <td key={b} className="py-1 text-right tabular-nums">
-                          {r.buckets[b] === 0 ? (
-                            <span className="text-disabled">0</span>
-                          ) : (
-                            <Link
-                              href={bucketHref(r.slug, b)}
-                              aria-label={`${r.name}: ${r.buckets[b]} ${WORK_STATE_LABELS[b]} — open the list`}
-                              className="rounded-sm px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-                            >
-                              {r.buckets[b]}
-                            </Link>
-                          )}
-                        </td>
-                      ))}
-                      <td className="py-1 text-right tabular-nums text-muted">
-                        {r.neverRan ? "never ran" : formatElapsed(r.silenceSeconds)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              aria-label="Longest without an issue run"
+              className="min-w-[32rem]"
+              rows={rows}
+              columns={SILENCE_COLUMNS}
+              getRowId={(r) => r.id}
+              defaultSort={{ id: "silence", desc: true }}
+            />
           )}
         </div>
       </CardContent>

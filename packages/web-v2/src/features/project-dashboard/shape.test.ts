@@ -6,7 +6,6 @@ import type { IssueRow } from "@/features/issues/types";
 import type { PipelineRunListItem } from "@/features/pipeline/types";
 import type { DashboardAttentionItem } from "./derive";
 import {
-  OVERDUE_WAIT_SECONDS,
   STUCK_RUN_SECONDS,
   type ShapeInput,
   ageBand,
@@ -122,8 +121,8 @@ describe("a degraded project", () => {
 
   it("turns degraded at fourteen days of a measured wait, and not a second before", () => {
     const at = (s: number) => projectShape(input({ items: [item({ since: ago(s) })] })).shape;
-    expect(at(OVERDUE_WAIT_SECONDS - 1)).toBe("working");
-    expect(at(OVERDUE_WAIT_SECONDS)).toBe("degraded");
+    expect(at(14 * DAY - 1)).toBe("working");
+    expect(at(14 * DAY)).toBe("degraded");
   });
 
   it("never degrades on a last-write age, which is not time parked", () => {
@@ -205,8 +204,8 @@ describe("an age's band", () => {
     [DAY, "aging"],
     [3 * DAY - 1, "aging"],
     [3 * DAY, "stale"],
-    [OVERDUE_WAIT_SECONDS - 1, "stale"],
-    [OVERDUE_WAIT_SECONDS, "overdue"],
+    [14 * DAY - 1, "stale"],
+    [14 * DAY, "overdue"],
     [112 * DAY, "overdue"],
   ] as const)("%i seconds is %s", (seconds, band) => {
     expect(ageBand(seconds)).toBe(band);

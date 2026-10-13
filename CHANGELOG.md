@@ -128,6 +128,8 @@
 
 - **A run now records which copy of the policy decided it.** The box reports the `forge` plugin copy its pane loaded, or says why it cannot, and the run keeps that. A copy core cannot read is refused by name.
 
+- **Tables sort from their headers.** On the projects list, the overview's "Longest without an issue run" table and Top workspaces, a column header sorts the rows, pressing it again reverses them, and the header says which way it runs. (ISS-1263)
+
 - **A project that ships by version tag can say so.** Name the tags in its release chain's last entry, such as `v*.*.*`, and an issue cannot close until a matching tag contains its landing commit. Other projects close as before.
 
 - **Deleting a memory note through an agent tool now says how many it removed.** The tool answered `deleted: true` where the web answers a count; both now answer the number of rows removed, `0` when none matched.
@@ -2536,6 +2538,7 @@
   (ISS-1313)
 
 ### Removed
+- **The Runs / Spend / Lead time switch on Top workspaces is gone.** Press the Runs, Spend or Median lead header instead; the ranking is still the server's, largest first. (ISS-1263)
 - **Forge no longer writes your release steps.** A project that declares its own procedure gets it;
   one that declares none is told where its method lives, instead of being refused for a deploy
   target Forge has no steps for.
@@ -3160,6 +3163,7 @@
 
 ### Fixed
 
+- **A project's page no longer calls an unread list all clear.** While runs or parked ages are unread, Needs you reads "—" instead of "0 · nothing to act on", and the Awaiting release line wraps on a phone. (ISS-1263)
 - **The Overview no longer lists an archived project.** Its link opened a page saying the project does not exist; archived projects are now left out of the Overview's rows and totals, and come back when unarchived. (ISS-1261)
 - **A dashboard section whose data has not arrived says which read it is waiting on.** It no longer says "none live" or "nothing waiting" for a failed read, and the runs figure says how many are open. (ISS-1159)
 - **The dashboard no longer says all is well while a read is missing.** Needs your attention, Throughput and Where time goes name the read they wait on, and the open-work ring and the Awaiting release line fit a phone. (ISS-1159)
@@ -6386,6 +6390,8 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **The projects list has an Active column, and its Sort menu and its headers are one control.** Last activity is a column now rather than trailing Spend, and a sort chosen in the menu marks its header. (ISS-1263)
 
 - **An integration run on a box with its own Postgres reuses the template database.** A run whose migrations match one already there clones it; a differing one builds its own. Concurrent runs build it once. CI still builds its own.
 - **The project dashboard opens on a sentence, and its shape follows what the project is doing.** A quiet project says so and shows empty panels as one line; a failing one gets a band linking its oldest item. (ISS-1159)

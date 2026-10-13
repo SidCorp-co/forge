@@ -33,6 +33,8 @@ export interface StatStripProps {
   needsYouRefusal?: string | null;
   /** The attention answer is not in yet: no figure is stated. */
   needsYouPending?: boolean;
+  /** Reads the list stands on that are out (runs, parked ages), already worded. With no item listed the figure is not zero, it is unknown. */
+  needsYouUnread?: readonly string[];
   openWork: number;
   /** What the open count is made of, since the data holds no history to compare it with. */
   openWorkMadeOf: string;
@@ -57,7 +59,8 @@ function runsCaption(props: StatStripProps): string {
 }
 
 export function StatStrip(props: StatStripProps) {
-  const needsGap = props.needsYouPending || props.needsYouRefusal;
+  const unreadReads = props.needsYou === 0 && !props.needsYouPending && !props.needsYouRefusal ? (props.needsYouUnread ?? []) : [];
+  const needsGap = props.needsYouPending || props.needsYouRefusal || unreadReads.length > 0;
   const stats: Stat[] = [
     {
       label: "Runs live",
@@ -67,11 +70,13 @@ export function StatStrip(props: StatStripProps) {
     },
     {
       label: "Needs you",
-      value: props.needsYouPending ? "…" : props.needsYouRefusal ? "—" : String(props.needsYou),
+      value: props.needsYouPending ? "…" : props.needsYouRefusal || unreadReads.length > 0 ? "—" : String(props.needsYou),
       caption: props.needsYouPending
         ? "reading what needs you…"
         : (props.needsYouRefusal ??
-          [props.oldestWait ? `oldest ${props.oldestWait}` : null, props.needsYouCaption].filter(Boolean).join(" · ")),
+          (unreadReads.length > 0
+            ? `not an all clear · ${unreadReads.join(" ")}`
+            : [props.oldestWait ? `oldest ${props.oldestWait}` : null, props.needsYouCaption].filter(Boolean).join(" · "))),
       accent: !needsGap && props.needsYou > 0,
     },
     { label: OPEN_WORK_LABEL, value: String(props.openWork), caption: props.openWorkMadeOf },

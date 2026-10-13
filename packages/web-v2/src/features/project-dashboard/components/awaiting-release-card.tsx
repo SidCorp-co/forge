@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
-import { Button, Checkbox, Icon, StatusChip } from "@/design";
+import { Button, type DataTableModelColumn, Checkbox, Icon, StatusChip, useDataTableRows } from "@/design";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues/components/batch-release-dialog";
 import { formatUsd } from "@/features/pipeline/derive";
 import type { PipelineRunListItem } from "@/features/pipeline/types";
@@ -20,11 +20,18 @@ import { DashboardSection, EmptyLine, RowList, unreadSection } from "./dashboard
 
 const COLLAPSED_LIMIT = 5;
 
-/** Oldest-parked first — the longest a run has sat awaiting release is the
- *  clearest signal of what to triage first. */
-function byOldestFirst(runs: PipelineRunListItem[]): PipelineRunListItem[] {
-  return [...runs].sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
-}
+/** Oldest-parked first — the longest a run has sat awaiting release is the clearest signal of what to
+ *  triage first. The order is the shared engine's: a run whose start is not a time sorts last. */
+const PARKED: DataTableModelColumn<PipelineRunListItem>[] = [
+  {
+    id: "parked",
+    sortValue: (run) => {
+      const t = Date.parse(run.startedAt);
+      return Number.isNaN(t) ? null : t;
+    },
+  },
+];
+const OLDEST_FIRST = { sort: { id: "parked", desc: false } } as const;
 
 export function AwaitingReleaseCard({
   runs,
@@ -46,7 +53,7 @@ export function AwaitingReleaseCard({
   const [expanded, setExpanded] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
-  const sorted = byOldestFirst(runs);
+  const sorted = useDataTableRows(runs, PARKED, OLDEST_FIRST);
   const visible = expanded ? sorted : sorted.slice(0, COLLAPSED_LIMIT);
   const hiddenCount = sorted.length - visible.length;
   const selectableAll = sorted.filter((run) => run.issueId != null);
@@ -110,19 +117,17 @@ export function AwaitingReleaseCard({
         {awaitingReleaseIssues === 0 ? (
           <EmptyLine title={title} status="nothing waiting on a release decision" />
         ) : (
-          <EmptyLine
-            title={title}
-            status={plural(awaitingReleaseIssues, "issue", "issues")}
-            detail="no release run at the gate"
-            action={
-              <Link
-                href={`/projects/${slug}/issues?filter=awaiting_release`}
-                className="fg-caption text-accent-text hover:underline"
-              >
-                See them in Issues
-              </Link>
-            }
-          />
+          <DashboardSection title={title}>
+            <p className="fg-body-sm py-1 text-muted">
+              {plural(awaitingReleaseIssues, "issue", "issues")} · no release run at the gate
+            </p>
+            <Link
+              href={`/projects/${slug}/issues?filter=awaiting_release`}
+              className="fg-caption text-accent-text hover:underline"
+            >
+              See them in Issues
+            </Link>
+          </DashboardSection>
         )}
         {dialog}
       </>

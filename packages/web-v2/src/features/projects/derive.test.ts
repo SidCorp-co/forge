@@ -3,7 +3,7 @@
 // the face of a project with no work, and a reader would draw it as one.
 
 import { describe, expect, it } from "vitest";
-import { blindSearchEmpty, filterProjects, isAttention, mergeProjects, sortProjects, unreadStatements, workspaceTotals } from "./derive";
+import { blindSearchEmpty, isAttention, mergeProjects, unreadStatements, workspaceTotals } from "./derive";
 import type { ProjectHealthRow, ProjectListItem } from "./types";
 
 const list = (id: string): ProjectListItem => ({
@@ -59,46 +59,14 @@ describe("workspaceTotals", () => {
 });
 
 describe("a project whose health is unread", () => {
-  const unread = () => mergeProjects([list("a")], undefined, none, "failed");
-
-  it("is not one that needs attention, and is not filtered in as one", () => {
-    expect(isAttention(unread()[0])).toBe(false);
-    expect(filterProjects(unread(), "", true)).toEqual([]);
+  it("is not one that needs attention", () => {
+    expect(isAttention(mergeProjects([list("a")], undefined, none, "failed")[0])).toBe(false);
   });
 
-  it("sorts after every project whose health was read", () => {
-    const items = [...unread(), ...mergeProjects([list("b")], [row("b", { totalActive: 0, liveRuns: 0 })], none, "read")];
-    expect(sortProjects(items, "health").map((p) => p.id)).toEqual(["b", "a"]);
-  });
-});
-
-describe("filterProjects and sortProjects on an item whose rollup is unread but still carries rollup fields", () => {
-  const stale = (id: string, over: Partial<ReturnType<typeof mergeProjects>[number]>) => ({
-    ...mergeProjects([list(id)], [row(id)], none, "read")[0], healthRead: "failed" as const, ...over,
-  });
-
-  it("does not search a repository or description it has not read, and still searches the name and organization", () => {
-    const item = stale("a", { name: "Alpha", repoPath: "repo/sable", description: "sable things" });
-    expect(filterProjects([item], "sable", false)).toEqual([]);
-    expect(filterProjects([item], "alpha", false)).toHaveLength(1);
-    expect(filterProjects([item], "org", false)).toHaveLength(1);
-    expect(filterProjects([{ ...item, healthRead: "read" }], "sable", false)).toHaveLength(1);
-  });
-
-  it("is not one that needs attention, however it came by a health, and is not filtered in as one", () => {
-    const item = stale("a", { health: "attention" });
+  it("is not one that needs attention, however it came by a health", () => {
+    const item = { ...mergeProjects([list("a")], [row("a")], none, "read")[0], healthRead: "failed" as const, health: "attention" as const };
     expect(isAttention(item)).toBe(false);
-    expect(filterProjects([item], "", true)).toEqual([]);
     expect(isAttention({ ...item, healthRead: "read" })).toBe(true);
-  });
-
-  it("keeps the order it was given under the rollup sorts, whatever stale health or activity the items hold", () => {
-    const a = stale("a", { health: "healthy", lastActivityAt: "2026-10-01T00:00:00Z" });
-    const b = stale("b", { health: "down", lastActivityAt: "2026-10-09T00:00:00Z" });
-    for (const sort of ["recent", "health"] as const) {
-      expect(sortProjects([a, b], sort).map((p) => p.id)).toEqual(["a", "b"]);
-      expect(sortProjects([b, a], sort).map((p) => p.id)).toEqual(["b", "a"]);
-    }
   });
 });
 

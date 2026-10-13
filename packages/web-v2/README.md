@@ -7,7 +7,8 @@ The Forge cloud UI — canonical at root `/` since ISS-397 (2026-06-07; legacy
   action accent, cobalt structure, one hue per staged job type. Hanken Grotesk +
   JetBrains Mono.
 - **Stack:** Next.js 16 (App Router) · React 19 · Tailwind v4 (CSS `@theme`, no config
-  file) · custom primitives (no shadcn) · lucide-react · TanStack Query. Consumes the
+  file) · custom primitives (no shadcn) · lucide-react · TanStack Query · TanStack Table, imported
+  only by `design/patterns/data-table-model.ts` behind `DataTable`. Consumes the
   `core` REST/WS contract via `@forge/contracts`.
 
 ## Tokens — 2 layers (light-only now, dark drop-in)
@@ -44,7 +45,7 @@ src/
 │  │                        #   HealthDot, Stat, Card, Kicker, Spinner, EmptyState,
 │  │                        #   Input, Field, Toggle, SegmentedControl
 │  ├─ patterns/             # KanbanCard, KanbanColumn, NavRail, TopBar,
-│  │                        #   CommandPalette, NotificationsMenu
+│  │                        #   CommandPalette, NotificationsMenu, DataTable
 │  └─ index.ts              # barrel — import from "@/design"
 ├─ features/                # ← every screen lives here, one module per domain
 │                          #   (api.ts + types.ts + components/ + hooks/);

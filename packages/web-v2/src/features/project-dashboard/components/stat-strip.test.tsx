@@ -65,6 +65,33 @@ describe("the figures strip", () => {
     expect(n.getByText("reading what needs you…")).toBeInTheDocument();
   });
 
+  it("states no zero and no 'nothing to act on' where the list is empty because a read it stands on is out", () => {
+    render(
+      <StatStrip
+        {...base}
+        needsYou={0}
+        needsYouCaption="nothing to act on"
+        oldestWait={null}
+        needsYouUnread={["The project's runs are still being read."]}
+      />,
+    );
+    const n = figure("Needs you");
+    expect(n.getByText("—")).toBeInTheDocument();
+    expect(n.queryByText("0")).toBeNull();
+    expect(n.queryByText(/nothing to act on/)).toBeNull();
+    expect(n.getByText(/not an all clear · The project's runs are still being read\./)).toBeInTheDocument();
+  });
+
+  it("keeps the count of what is listed even while a read is out, since those items are real", () => {
+    render(<StatStrip {...base} needsYouUnread={["The project's runs are still being read."]} />);
+    expect(figure("Needs you").getByText("2")).toBeInTheDocument();
+  });
+
+  it("still says nothing to act on once every read is in", () => {
+    render(<StatStrip {...base} needsYou={0} needsYouCaption="nothing to act on" oldestWait={null} needsYouUnread={[]} />);
+    expect(figure("Needs you").getByText("nothing to act on")).toBeInTheDocument();
+  });
+
   it("refuses by name in place of the figure where the response cannot support one", () => {
     render(<StatStrip {...base} needsYouRefusal="Needs you could not be read: offline." />);
     const n = figure("Needs you");

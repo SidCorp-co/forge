@@ -4,13 +4,19 @@
 // (cron) + next-run time + last-outcome chip. Data from `useSchedules`
 // (`GET /api/schedules`, JWT/cookie auth via apiClient).
 import { useRouter } from "next/navigation";
-import { Button, MonoTag, StatusChip } from "@/design";
+import { Button, type DataTableModelColumn, MonoTag, StatusChip, useDataTableRows } from "@/design";
 import { formatRelativeTime } from "@/features/projects/derive";
 import { lastStatusToChip, type ScheduleRow } from "@/features/schedules/types";
 import type { ReadState } from "../shape";
 import { DashboardSection, EmptyLine, RowList, unreadSection } from "./dashboard-section";
 
 const MAX_ROWS = 5;
+
+/** Soonest next run first; a schedule with no next run sorts last. The order is the shared engine's. */
+const NEXT_RUN: DataTableModelColumn<ScheduleRow>[] = [
+  { id: "next", sortValue: (row) => (row.nextRunAt ? Date.parse(row.nextRunAt) : null) },
+];
+const SOONEST_FIRST = { sort: { id: "next", desc: false } } as const;
 
 /** Compact "next run" label: relative time when scheduled, else paused/—. */
 function nextRunLabel(row: ScheduleRow, now: number): string {
@@ -32,7 +38,8 @@ export function SchedulesCard({
   read?: ReadState;
 }) {
   const router = useRouter();
-  const shown = rows.slice(0, MAX_ROWS);
+  const ordered = useDataTableRows(rows, NEXT_RUN, SOONEST_FIRST);
+  const shown = ordered.slice(0, MAX_ROWS);
   const unread = unreadSection("Upcoming schedules", "The project's schedules", read, true);
   if (unread) return unread;
 
