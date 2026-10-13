@@ -41,7 +41,7 @@ export const restorePreferenceChangeOp = describeOperation({
     404: fail('NOT_FOUND', "the change is not in the caller's own trail"),
     409: fail(
       'PREFERENCE_CHANGE_SUPERSEDED',
-      'the setting has changed since, so restoring would undo that later change',
+      'the setting has changed since, so restoring would undo that later change; `details.laterChangeId` names it',
     ),
   },
 });

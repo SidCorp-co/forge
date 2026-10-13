@@ -121,7 +121,10 @@ preferenceRoutes.post(
       if (err instanceof PreferenceRestoreConflict) {
         throw new HTTPException(409, {
           message: err.message,
-          cause: { code: 'PREFERENCE_CHANGE_SUPERSEDED', laterChangeId: err.later?.id ?? null },
+          cause: {
+            code: 'PREFERENCE_CHANGE_SUPERSEDED',
+            details: { laterChangeId: err.later?.id ?? null },
+          },
         });
       }
       throw err;
