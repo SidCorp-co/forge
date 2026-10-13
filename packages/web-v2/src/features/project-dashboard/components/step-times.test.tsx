@@ -36,19 +36,28 @@ describe("StepTimes", () => {
     });
     const steps = screen.getAllByTitle(/^(code|test)$/).map((n) => n.textContent);
     expect(steps).toEqual(["code", "test"]);
-    expect(screen.getByText(/Slowest step:/)).toHaveTextContent("Slowest step: code at a 15m 00s median over 2 runs.");
+    expect(screen.getByText(/Slowest step:/)).toHaveTextContent(
+      "Slowest step: code at a 15m 00s median over 2 runs, 15.0× slower than test.",
+    );
     expect(screen.getByText("3 steps · 7d")).toBeInTheDocument();
   });
 
-  it("says no step finished when the window holds nothing", () => {
+  it("names no comparison where there is only one step to compare", () => {
+    mount({ durations: [duration("code", 600, 1.5)] });
+    expect(screen.getByText(/Slowest step:/)).toHaveTextContent("Slowest step: code at a 10m 00s median over 1 run.");
+  });
+
+  it("says no step finished, in one flat line, when the window holds nothing", () => {
     mount();
-    expect(screen.getByText("No steps yet")).toBeInTheDocument();
-    expect(screen.getByText("No agent step finished in the last 7 days.")).toBeInTheDocument();
+    const line = screen.getByRole("region", { name: "Where time goes" });
+    expect(line).toHaveTextContent("Where time goes·no agent step finished in 7 days");
+    expect(line.className).toMatch(/\bh-10\b/);
+    expect(line.className).not.toMatch(/\bshadow-sm\b|\brounded-lg\b/);
   });
 
   it("shows neither the empty nor the filled state while the window is loading", () => {
     mount({ isLoading: true });
-    expect(screen.queryByText("No steps yet")).toBeNull();
+    expect(screen.queryByText(/no agent step finished/)).toBeNull();
     expect(screen.queryByText(/Slowest step:/)).toBeNull();
   });
 
@@ -56,7 +65,7 @@ describe("StepTimes", () => {
     const onRetry = vi.fn();
     mount({ error: new Error("the step-durations read failed"), onRetry });
     expect(screen.getByText("Couldn't load step times")).toBeInTheDocument();
-    expect(screen.queryByText("No steps yet")).toBeNull();
+    expect(screen.queryByText(/no agent step finished/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });

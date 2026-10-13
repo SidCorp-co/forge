@@ -178,6 +178,15 @@ export function activeSpend(runs: PipelineRunListItem[] | undefined): number {
 /** `input` holds an open question; `parked` is stopped at a status a person moves it from, with no question. */
 export type AttentionActionKind = "retry" | "diff" | "input" | "parked";
 
+/** `entered`: time in the state, measured. `last-write`: when the issue was last written to, which is
+ *  not time parked (a claim or a comment resets it), so it ages a chip and never degrades a project. */
+export type AgeBasis = "entered" | "last-write";
+
+export interface ParkedAge {
+  since: string;
+  basis: AgeBasis;
+}
+
 export interface DashboardAttentionItem {
   key: string;
   actionKind: AttentionActionKind;
@@ -189,6 +198,8 @@ export interface DashboardAttentionItem {
   /** basePath-relative destination (Next prepends `/v2`). */
   link: string;
   since?: string;
+  /** What `since` was measured from; absent where the item has no time. */
+  sinceBasis?: AgeBasis;
   status?: string;
 }
 
@@ -208,8 +219,13 @@ function mapAttention(
       issueRef: it.issueRef,
       link: it.link,
       since: it.since,
+      sinceBasis: "entered" as const,
       status: it.status,
     }));
+}
+
+function ageOf(age: ParkedAge | undefined): { since?: string; sinceBasis?: AgeBasis } {
+  return age ? { since: age.since, sinceBasis: age.basis } : {};
 }
 
 /** The work state's word, then the status the issue sits at. */
@@ -231,6 +247,8 @@ export function projectAttention(
   view: AttentionView | undefined,
   slug: string,
   blockers: ProjectHealthRow["blockers"] | undefined,
+  /** The parked issues' ages by issue id; a blocker with none is listed without a time. */
+  ages?: ReadonlyMap<string, ParkedAge>,
 ): DashboardAttentionItem[] {
   const out: DashboardAttentionItem[] = [];
   const parked: DashboardAttentionItem[] = [];
@@ -263,6 +281,7 @@ export function projectAttention(
       issueRef: b.issueId,
       link,
       status: b.status,
+      ...ageOf(ages?.get(b.documentId)),
     });
   }
   return [...out, ...parked];
