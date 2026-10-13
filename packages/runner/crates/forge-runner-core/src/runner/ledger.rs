@@ -248,6 +248,34 @@ pub struct Unanswered {
     pub master_row_has_no_session: bool,
 }
 
+/// A run whose release was decided terminal and which nothing but an
+/// operator's `forge-runner run release` takes up again (ISS-1410): see
+/// [`Ledger::stranded_by_decision`].
+#[derive(Debug, Clone)]
+pub struct Stranded {
+    pub run: Run,
+    pub issues: Vec<Membership>,
+}
+
+/// What a run's recorded checkout path reads as: on disk, not on disk, or a path this
+/// process could not inspect, which is never read as either.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckoutPath {
+    OnDisk,
+    Absent,
+    Unreadable(String),
+}
+
+impl CheckoutPath {
+    pub fn of(path: &std::path::Path) -> Self {
+        match path.try_exists() {
+            Ok(true) => Self::OnDisk,
+            Ok(false) => Self::Absent,
+            Err(e) => Self::Unreadable(e.to_string()),
+        }
+    }
+}
+
 /// What will end a run no master answers for, read off its own row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WhatEndsIt {
@@ -1252,6 +1280,41 @@ impl Ledger {
             .map_err(sql_err)?;
         let rows = stmt.query_map([], map_run).map_err(sql_err)?;
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
+    }
+
+    /// Every run whose release was decided terminal and that nothing else on
+    /// this box names any more, oldest first (ISS-1410).
+    ///
+    /// Its session is over, every lease is back and its checkout was never
+    /// recorded returned, so [`Self::unclosed_runs`] passes over it, a pane
+    /// does not hold it (`close_loop::holds_open`) and no sweep takes it up.
+    /// Only an operator's `forge-runner run release` puts it back, and this is
+    /// the one listing that says which runs are waiting for that. Read only:
+    /// the rows are never written by asking.
+    pub fn stranded_by_decision(&self) -> Result<Vec<Stranded>> {
+        let runs = {
+            let mut stmt = self
+                .conn
+                .prepare(&format!(
+                    "{SELECT_RUN} WHERE release_terminal_at IS NOT NULL
+                       AND session_terminal_at IS NOT NULL AND released_as IS NULL
+                       AND NOT EXISTS (SELECT 1 FROM run_issues m
+                                        WHERE m.run_id = runs.run_id AND m.lease_returned_at IS NULL)
+                     ORDER BY created_at, run_id"
+                ))
+                .map_err(sql_err)?;
+            let rows = stmt.query_map([], map_run).map_err(sql_err)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(sql_err)?
+        };
+        let mut out = Vec::with_capacity(runs.len());
+        for run in runs {
+            out.push(Stranded {
+                issues: self.issues(&run.run_id)?,
+                run,
+            });
+        }
+        Ok(out)
     }
 
     /// The runs a master pane started now for `project_id` inherits: declared on

@@ -91,8 +91,9 @@ impl CloseState {
 /// nothing is left for the pane to do about it. A pane read as holding such a
 /// run is held for as long as the row lives, and an outdated one is never
 /// replaced (ISS-1410). The run stays in the close loop's own listing until its
-/// leases are back and is reported by the recovery sweep; this answers only
-/// what a pane holds.
+/// leases are back; once they are, `Ledger::stranded_by_decision` is the
+/// listing that still names it (the recovery sweep once, `forge-runner status`
+/// for as long as it stands). This answers only what a pane holds.
 pub fn holds_open(run: &Run, state: &CloseState) -> bool {
     if state.is_closed() {
         return false;
