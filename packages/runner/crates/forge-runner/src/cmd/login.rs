@@ -77,16 +77,22 @@ pub async fn pair_device(
     open: bool,
 ) -> anyhow::Result<()> {
     let core_url = core_url.to_string();
-    let mut cfg = Config::load()?;
+    // A config that cannot be read is refused before a code is spent on it. What is
+    // written is written to the file as it is when the pairing is done, which can be
+    // eleven minutes on: a copy read here would put back what any other command
+    // saved in that time.
+    Config::load()?;
 
     // Back-compat: explicit --code keeps the paste-code project-pairing flow.
     if let Some(code) = code {
         let resp = pairing::pair(&core_url, &code, name).await?;
         cred_store::store_device_token(&resp.device_token)?;
-        cfg.core_url = Some(core_url);
-        cfg.device_id = Some(resp.device_id.clone());
-        cfg.device_name = Some(name.to_string());
-        cfg.save()?;
+        Config::update(|cfg| {
+            cfg.core_url = Some(core_url);
+            cfg.device_id = Some(resp.device_id.clone());
+            cfg.device_name = Some(name.to_string());
+            Ok(())
+        })?;
         println!(
             "✔ paired device {} (token store: {})",
             resp.device_id,
@@ -138,10 +144,12 @@ pub async fn pair_device(
     };
 
     cred_store::store_device_token(&approved.device_token)?;
-    cfg.core_url = Some(core_url);
-    cfg.device_id = Some(approved.device_id.clone());
-    cfg.device_name = Some(name.to_string());
-    cfg.save()?;
+    Config::update(|cfg| {
+        cfg.core_url = Some(core_url);
+        cfg.device_id = Some(approved.device_id.clone());
+        cfg.device_name = Some(name.to_string());
+        Ok(())
+    })?;
 
     println!(
         "✔ logged in device {} (token store: {})",

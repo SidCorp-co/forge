@@ -403,7 +403,7 @@ impl Config {
         if !p.exists() {
             return Ok(Self::default());
         }
-        let raw = std::fs::read_to_string(&p)?;
+        let raw = std::fs::read_to_string(&p).map_err(|e| io_step("read", &p, &e))?;
         warn_on_retired_concurrency_keys(&raw, &p);
         let mut cfg: Config = toml::from_str(&raw)
             .map_err(|e| Error::Config(format!("parse {}: {e}", p.display())))?;
@@ -411,18 +411,95 @@ impl Config {
         Ok(cfg)
     }
 
-    /// Atomic write (`.tmp` + rename).
-    pub fn save(&self) -> Result<()> {
-        let p = base_dir()?.join("config.toml");
-        if let Some(parent) = p.parent() {
-            std::fs::create_dir_all(parent)?;
+    /// Change the config and write it back, as one step no other writer
+    /// interleaves with.
+    ///
+    /// Every writer of `config.toml` goes through here. A writer that loaded
+    /// the file, changed it and saved the whole of it overwrote what any other
+    /// writer saved in between: two `bind`s at once each saved a config
+    /// missing the other's binding, and both wrote through the one temp name,
+    /// so one rename took the other's file away and failed naming no path.
+    /// Here the file is read again under an OS lock beside it, so `change`
+    /// sees what the last writer left, and the write lands through a temp file
+    /// that no other writer can be using. The lock is the OS's, so a process that dies holding
+    /// it leaves none behind.
+    ///
+    /// `change` runs under the lock and must not wait on anything: it
+    /// edits the loaded config and returns. An `Err` from it writes nothing,
+    /// and a config it leaves as it found it is not rewritten.
+    pub fn update<T>(change: impl FnOnce(&mut Config) -> Result<T>) -> Result<T> {
+        let dir = base_dir()?;
+        std::fs::create_dir_all(&dir).map_err(|e| io_step("create", &dir, &e))?;
+        let file = dir.join("config.toml");
+        let _turn = take_turn(&dir.join(CONFIG_LOCK))?;
+        let mut cfg = Self::load()?;
+        let before = render(&cfg)?;
+        let out = change(&mut cfg)?;
+        let after = render(&cfg)?;
+        if after != before || !file.exists() {
+            write_beside(&file, &after)?;
         }
-        let body = toml::to_string_pretty(self).map_err(|e| Error::Config(e.to_string()))?;
-        let tmp = p.with_extension("toml.tmp");
-        std::fs::write(&tmp, body)?;
-        std::fs::rename(&tmp, &p)?;
-        Ok(())
+        Ok(out)
     }
+}
+
+fn render(cfg: &Config) -> Result<String> {
+    toml::to_string_pretty(cfg).map_err(|e| Error::Config(format!("serialise the config: {e}")))
+}
+
+fn io_step(step: &str, path: &std::path::Path, e: &std::io::Error) -> Error {
+    Error::Config(format!("cannot {step} {}: {e}", path.display()))
+}
+
+/// The lock every writer of `config.toml` takes, beside it. It holds nothing:
+/// the OS keeps who holds it.
+const CONFIG_LOCK: &str = "config.toml.lock";
+
+/// Wait for every other writer to finish, then hold the right to be the only
+/// one until the returned file is dropped.
+fn take_turn(lock: &std::path::Path) -> Result<std::fs::File> {
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(lock)
+        .map_err(|e| io_step("open the lock", lock, &e))?;
+    file.lock()
+        .map_err(|e| io_step("take the lock", lock, &e))?;
+    Ok(file)
+}
+
+/// Write `body` to a temp file beside `file`, then rename it over `file`: a
+/// reader sees the old config or the new and never a half-written one.
+///
+/// Only the holder of [`CONFIG_LOCK`] gets here, so the one temp name is its
+/// own for as long as it holds the lock. A file under that name is what a
+/// process that died mid-write left, and it is overwritten rather than refused:
+/// a temp name made unique per process would leave that file for ever, or
+/// collide with it when the process id came round again.
+fn write_beside(file: &std::path::Path, body: &str) -> Result<()> {
+    use std::io::Write;
+    let tmp = file.with_extension("toml.tmp");
+    let written = std::fs::File::create(&tmp)
+        .map_err(|e| io_step("create", &tmp, &e))
+        .and_then(|mut f| {
+            f.write_all(body.as_bytes())
+                .and_then(|()| f.sync_all())
+                .map_err(|e| io_step("write", &tmp, &e))
+        });
+    let moved = written.and_then(|()| {
+        std::fs::rename(&tmp, file).map_err(|e| {
+            Error::Config(format!(
+                "cannot move {} over {}: {e}",
+                tmp.display(),
+                file.display()
+            ))
+        })
+    });
+    if moved.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    moved
 }
 
 #[cfg(test)]
@@ -467,7 +544,7 @@ mod tests {
             assert!(crate::daemon::control::socket_path().is_none());
             assert!(crate::daemon::pool_jobs::FileRecords::default_dir().is_none());
             assert!(crate::auth::git_cred::git_credentials_path().is_err());
-            assert!(Config::default().save().is_err());
+            assert!(Config::update(|_| Ok(())).is_err());
         }
         #[cfg(target_os = "linux")]
         {
@@ -489,9 +566,7 @@ mod tests {
             crate::daemon::control::config_dir(),
             Some(own.path().join("forge-runner"))
         );
-        Config::default()
-            .save()
-            .expect("a test's own scratch takes the write");
+        Config::update(|_| Ok(())).expect("a test's own scratch takes the write");
         assert!(own
             .path()
             .join("forge-runner")
@@ -729,7 +804,7 @@ mod tests {
                 "forge-runner/src/cmd/setup.rs",
                 [4, 4, 4],
                 "the PATH a binary is looked up on; the projects_root it proposes under home, \
-                 saved through Config::save; and shellexpand's `~` and its test",
+                 saved through Config::update; and shellexpand's `~` and its test",
             ),
             (
                 "forge-runner/src/cmd/start.rs",
@@ -1523,6 +1598,182 @@ mod tests {
             out.extend(renamed_dependencies(child, &path));
         }
         out
+    }
+
+    fn binding_at(path: &str) -> Binding {
+        Binding {
+            repo_path: PathBuf::from(path),
+            branch: None,
+            project_id: None,
+        }
+    }
+
+    /// ISS-1330. Writers of `config.toml` that overlap each keep their own
+    /// change. Four `bind`s at once exited 1 in 8 of 30 rounds with an io error
+    /// naming no path, because every writer renamed the one temp name and a
+    /// rename took another's file away, and a writer that read the file before
+    /// another saved wrote a config without that binding.
+    #[test]
+    fn writers_at_once_each_keep_their_binding_and_none_fails() {
+        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
+        const WRITERS: usize = 6;
+        const ROUNDS: usize = 25;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let own = crate::test_scratch::Scratch::new("config-racing");
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", own.path());
+        let start = std::sync::Barrier::new(WRITERS);
+        let failures: Vec<String> = std::thread::scope(|scope| {
+            let writers: Vec<_> = (0..WRITERS)
+                .map(|w| {
+                    let start = &start;
+                    scope.spawn(move || {
+                        let mut failed = Vec::new();
+                        for r in 0..ROUNDS {
+                            start.wait();
+                            let slug = format!("w{w}-r{r}");
+                            let at = format!("/work/{slug}");
+                            if let Err(e) = Config::update(|cfg| {
+                                cfg.bindings.insert(slug.clone(), binding_at(&at));
+                                Ok(())
+                            }) {
+                                failed.push(format!("{slug}: {e}"));
+                            }
+                        }
+                        failed
+                    })
+                })
+                .collect();
+            writers
+                .into_iter()
+                .flat_map(|w| w.join().expect("a writer panicked"))
+                .collect()
+        });
+        assert!(
+            failures.is_empty(),
+            "{} writes failed, first: {:?}",
+            failures.len(),
+            failures.first()
+        );
+        let kept = Config::load().unwrap().bindings;
+        assert_eq!(
+            kept.len(),
+            WRITERS * ROUNDS,
+            "a writer's binding was overwritten by another's save"
+        );
+        let leftovers: Vec<_> = std::fs::read_dir(own.path().join("forge-runner"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".tmp"))
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "a temp file was left behind: {leftovers:?}"
+        );
+    }
+
+    /// ISS-1330. The change is made to what is on disk when the lock is held,
+    /// not to what an earlier read saw: a value written by another process
+    /// between the caller's own `load` and its `update` is still there after.
+    #[test]
+    fn an_update_changes_what_the_last_writer_left() {
+        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let own = crate::test_scratch::Scratch::new("config-rereads");
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", own.path());
+        let stale = Config::load().unwrap();
+        Config::update(|cfg| {
+            cfg.device_id = Some("dev-1".into());
+            Ok(())
+        })
+        .unwrap();
+        assert!(stale.device_id.is_none());
+        Config::update(|cfg| {
+            cfg.core_url = Some("https://core.example.com".into());
+            Ok(())
+        })
+        .unwrap();
+        let now = Config::load().unwrap();
+        assert_eq!(now.device_id.as_deref(), Some("dev-1"));
+        assert_eq!(now.core_url.as_deref(), Some("https://core.example.com"));
+    }
+
+    /// ISS-1330. A temp file a dead process left under the temp name does not
+    /// fail the next save, and is not left behind by it.
+    #[test]
+    fn a_temp_file_a_dead_writer_left_is_overwritten_by_the_next_save() {
+        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let own = crate::test_scratch::Scratch::new("config-leftover");
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", own.path());
+        let dir = own.path().join("forge-runner");
+        std::fs::create_dir_all(&dir).unwrap();
+        let abandoned = dir.join("config.toml.tmp");
+        std::fs::write(&abandoned, "half a config from a writer that died").unwrap();
+        Config::update(|cfg| {
+            cfg.device_id = Some("dev-1".into());
+            Ok(())
+        })
+        .expect("an abandoned temp file must not fail the save");
+        assert_eq!(Config::load().unwrap().device_id.as_deref(), Some("dev-1"));
+        assert!(!abandoned.exists(), "the temp file was left behind");
+    }
+
+    /// ISS-1330. A change that fails writes nothing, and one that leaves the
+    /// config as it found it does not rewrite the file.
+    #[test]
+    fn a_failed_or_empty_change_leaves_the_file_as_it_was() {
+        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let own = crate::test_scratch::Scratch::new("config-nochange");
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", own.path());
+        Config::update(|cfg| {
+            cfg.device_id = Some("dev-1".into());
+            Ok(())
+        })
+        .unwrap();
+        let file = own.path().join("forge-runner").join("config.toml");
+        let hand_edited = format!(
+            "# kept by hand\n{}",
+            std::fs::read_to_string(&file).unwrap()
+        );
+        std::fs::write(&file, &hand_edited).unwrap();
+
+        Config::update(|_| Ok(())).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), hand_edited);
+
+        let refused: Result<()> = Config::update(|cfg| {
+            cfg.device_id = Some("dev-2".into());
+            Err(Error::Config("no".into()))
+        });
+        assert!(refused.is_err());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), hand_edited);
+    }
+
+    /// ISS-1330. An io failure names the path and the step: it was
+    /// `io error: No such file or directory (os error 2)` and nothing else.
+    #[test]
+    fn an_io_failure_names_the_path_and_the_step() {
+        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let own = crate::test_scratch::Scratch::new("config-iofail");
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", own.path());
+        let dir = own.path().join("forge-runner");
+
+        std::fs::write(&dir, "a file where the config dir belongs").unwrap();
+        let said = Config::update(|_| Ok(())).unwrap_err().to_string();
+        assert!(
+            said.contains("cannot create") && said.contains(&dir.display().to_string()),
+            "{said}"
+        );
+        std::fs::remove_file(&dir).unwrap();
+
+        let file = dir.join("config.toml");
+        std::fs::create_dir_all(&file).unwrap();
+        let said = Config::update(|_| Ok(())).unwrap_err().to_string();
+        assert!(
+            said.contains("cannot read") && said.contains(&file.display().to_string()),
+            "{said}"
+        );
     }
 
     #[test]
