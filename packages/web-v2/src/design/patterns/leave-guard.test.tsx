@@ -182,4 +182,18 @@ describe("the Back button", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/before"));
     expect(dialog()).toBeNull();
   });
+
+  it("still answers the first Back after edits were put away and made again", async () => {
+    mount();
+    edit();
+    edit();
+    await popped();
+    edit();
+    window.history.back();
+    await waitFor(() => expect(dialog()).toBeInTheDocument());
+    expect(window.location.pathname).toBe("/settings");
+    fireEvent.click(screen.getByRole("button", { name: "Stay" }));
+    await popped();
+    expect(window.location.pathname).toBe("/settings");
+  });
 });

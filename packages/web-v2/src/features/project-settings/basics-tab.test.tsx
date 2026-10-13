@@ -68,6 +68,24 @@ describe("the Basics page", () => {
 		expect(sent[0]).toEqual({ description: "The control plane for agents." });
 	});
 
+	it("treats surrounding whitespace as no edit: the page stays clean and nothing is sent", () => {
+		mount();
+		type("Description", "  The control plane.  ");
+		expect(save()).toBeDisabled();
+		type("Name", " Forge ");
+		expect(save()).toBeDisabled();
+		expect(sent).toEqual([]);
+	});
+
+	it("does not send a description that only gained whitespace beside a name that moved", async () => {
+		mount();
+		type("Name", "Forge 2");
+		type("Description", " The control plane. ");
+		fireEvent.click(save());
+		await waitFor(() => expect(sent).toHaveLength(1));
+		expect(sent[0]).toEqual({ name: "Forge 2" });
+	});
+
 	it("clears the description with null", async () => {
 		mount();
 		type("Description", "");

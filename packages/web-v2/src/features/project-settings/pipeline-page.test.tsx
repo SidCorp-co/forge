@@ -29,6 +29,8 @@ let plugins: Plugin[];
 let configWrites: Array<{ base: Doc; patch: Doc }>;
 let pluginWrites: Plugin[][];
 let pluginsFail: boolean;
+/** The runners the project answers for. */
+let runners: Array<{ deviceId: string; deviceName: string; deviceStatus: string; runnerStatus: string }>;
 
 vi.mock("@/lib/api/client", async () => {
 	const actual = await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
@@ -74,10 +76,7 @@ vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
 
 vi.mock("@/features/runners/hooks", () => ({
 	useProjectRunners: () => ({
-		data: [
-			{ deviceId: "box-a", deviceName: "box-a", deviceStatus: "online", runnerStatus: "online" },
-			{ deviceId: "box-b", deviceName: "box-b", deviceStatus: "online", runnerStatus: "online" },
-		],
+		data: runners,
 		isPending: false,
 	}),
 }));
@@ -119,6 +118,10 @@ beforeEach(() => {
 	configWrites = [];
 	pluginWrites = [];
 	pluginsFail = false;
+	runners = [
+		{ deviceId: "box-a", deviceName: "box-a", deviceStatus: "online", runnerStatus: "online" },
+		{ deviceId: "box-b", deviceName: "box-b", deviceStatus: "online", runnerStatus: "online" },
+	];
 	toast.mockClear();
 });
 afterEach(cleanup);
@@ -323,5 +326,22 @@ describe("a pool that names a box this project has no runner for", () => {
 		toggle("Require human approval for new issues");
 		expect(saveButton()).toBeDisabled();
 		expect(screen.getByText(/names a device this project has no runner for/i)).toBeInTheDocument();
+	});
+
+	it("can be cleared when the project has no runner at all, and the page saves once it is", async () => {
+		runners = [];
+		stored = applyDocumentPatch(stored, { states: { open: { deviceIds: ["box-gone"] } } });
+		mountPage();
+		await ready();
+		toggle("Require human approval for new issues");
+		expect(saveButton()).toBeDisabled();
+		fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+		await waitFor(() => expect(saveButton()).toBeEnabled());
+		press();
+		await waitFor(() => expect(configWrites).toHaveLength(1));
+		expect(configWrites[0]?.patch).toEqual({
+			intakeGate: { enabled: true },
+			states: { open: { deviceIds: null } },
+		});
 	});
 });

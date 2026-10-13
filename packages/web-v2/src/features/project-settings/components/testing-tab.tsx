@@ -161,6 +161,23 @@ function documentOf(form: Form) {
   };
 }
 
+/** The rows a save drops because they are typed only in part. They are not in what a save sends,
+ *  but they are in what the person holds, so the page counts them as an edit rather than let a
+ *  half-typed row leave without a question. A row with nothing in it is not an edit. */
+function partialRows(form: Form) {
+  return {
+    urls: form.previewUrls.filter((u) => (u.label.trim() === "") !== (u.url.trim() === "")),
+    credentials: form.testCredentials.filter(
+      (c) => c.label.trim() === "" && (c.username !== "" || c.password !== ""),
+    ),
+  };
+}
+
+/** The shape two forms are compared in for dirtiness: what a save sends, and what it would drop. */
+function comparableOf(form: Form) {
+  return { document: documentOf(form), partial: partialRows(form) };
+}
+
 const URL_MESSAGE = "Enter a valid URL (including http(s)://).";
 
 const optionalUrl = z.string().refine((v) => v.trim() === "" || isValidUrl(v.trim()), URL_MESSAGE);
@@ -240,7 +257,7 @@ function TestingPage({
     read: parse(environments),
     schema: testingSchema,
     locate: locateField,
-    comparable: documentOf,
+    comparable: comparableOf,
   });
   const form = held.draft;
   const setForm = held.setDraft;

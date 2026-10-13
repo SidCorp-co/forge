@@ -100,23 +100,26 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
   // While a page is dirty one history entry of the guard's own sits above it, so a press of Back
   // lands on the same page and can be answered. The entry is dropped once the page is clean, and
   // only while it is still the entry the browser is on: after a navigation it is not ours to pop.
+  // One listener lives as long as the provider: the Back that drops the entry lands after the
+  // page may already be clean, and it has to be consumed there or the next real Back is.
   const swallow = useRef(0);
+  const sentinel = useRef<{ token: string; onIt: boolean } | null>(null);
+  const push = useCallback(() => {
+    const armed = sentinel.current;
+    if (!armed) return;
+    window.history.pushState({ ...window.history.state, [SENTINEL]: armed.token }, "", window.location.href);
+    armed.onIt = true;
+  }, []);
+
   useEffect(() => {
-    if (!anyDirty) return;
-    const mine = `${Date.now()}-${Math.random()}`;
-    let onSentinel = false;
-    const push = () => {
-      window.history.pushState({ ...window.history.state, [SENTINEL]: mine }, "", window.location.href);
-      onSentinel = true;
-    };
-    push();
     const onPop = () => {
       if (swallow.current > 0) {
         swallow.current -= 1;
         return;
       }
-      if (!onSentinel) return;
-      onSentinel = false;
+      const armed = sentinel.current;
+      if (!armed?.onIt) return;
+      armed.onIt = false;
       setPending({
         go: () => {
           swallow.current += 1;
@@ -126,14 +129,22 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
       });
     };
     window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [push]);
+
+  useEffect(() => {
+    if (!anyDirty) return;
+    const armed = { token: `${Date.now()}-${Math.random()}`, onIt: false };
+    sentinel.current = armed;
+    push();
     return () => {
-      window.removeEventListener("popstate", onPop);
-      if (onSentinel && window.history.state?.[SENTINEL] === mine) {
+      sentinel.current = null;
+      if (armed.onIt && window.history.state?.[SENTINEL] === armed.token) {
         swallow.current += 1;
         window.history.back();
       }
     };
-  }, [anyDirty]);
+  }, [anyDirty, push]);
 
   const api = useMemo<LeaveGuardApi>(() => ({ mark, attempt }), [mark, attempt]);
 

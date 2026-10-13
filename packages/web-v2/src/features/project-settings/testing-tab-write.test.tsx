@@ -214,6 +214,37 @@ describe("a value the page cannot accept", () => {
 	});
 });
 
+describe("a row typed only in part", () => {
+	it("is an unsaved edit: Discard is offered, the leave warning is armed, and Save stays blocked", async () => {
+		await mount();
+		fireEvent.click(screen.getByRole("button", { name: "Add URL" }));
+		fireEvent.change(screen.getByLabelText("Testing URL 2 label"), { target: { value: "Admin" } });
+		await screen.findByText("URL is required.");
+		expect(screen.getByRole("button", { name: "Discard" })).toBeEnabled();
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+		const unload = new Event("beforeunload", { cancelable: true });
+		window.dispatchEvent(unload);
+		expect(unload.defaultPrevented).toBe(true);
+	});
+
+	it("is an unsaved edit for a credential with a password and no label", async () => {
+		await mount();
+		fireEvent.click(screen.getByRole("button", { name: "Add credential" }));
+		fireEvent.change(screen.getByLabelText("Credential 2 password"), { target: { value: "pw" } });
+		await screen.findByText("Label is required.");
+		expect(screen.getByRole("button", { name: "Discard" })).toBeEnabled();
+	});
+
+	it("is not an edit while the added row is still blank", async () => {
+		await mount();
+		fireEvent.click(screen.getByRole("button", { name: "Add URL" }));
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+		const unload = new Event("beforeunload", { cancelable: true });
+		window.dispatchEvent(unload);
+		expect(unload.defaultPrevented).toBe(false);
+	});
+});
+
 describe("the page's one Save", () => {
 	it("is the only Save, disabled until a value moves and again once it is put back", async () => {
 		await mount();

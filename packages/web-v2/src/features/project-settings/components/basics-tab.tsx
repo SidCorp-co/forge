@@ -38,7 +38,7 @@ export function BasicsTab({ project, canEdit }: { project: ProjectDetail; canEdi
   const form = useSettingsForm<BasicsDraft>({
     read: readOf(project),
     schema,
-    comparable: (d) => ({ name: d.name.trim(), description: d.description }),
+    comparable: (d) => ({ name: d.name.trim(), description: d.description.trim() }),
   });
   const { name, description } = form.draft;
 
@@ -46,8 +46,9 @@ export function BasicsTab({ project, canEdit }: { project: ProjectDetail; canEdi
     await form.save(async (held) => {
       const patch: ProjectUpdateInput = {};
       if (held.name.trim() !== project.name) patch.name = held.name.trim();
-      if (held.description !== (project.description ?? "")) {
-        patch.description = held.description.trim() === "" ? null : held.description.trim();
+      const description = held.description.trim();
+      if (description !== (project.description ?? "").trim()) {
+        patch.description = description === "" ? null : description;
       }
       if (Object.keys(patch).length > 0) await update.mutateAsync(patch);
     });

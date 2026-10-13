@@ -111,6 +111,19 @@ export function RunnerPoolsSection({
             No device runner is bound to this project, so there is nothing to pool. Pair a device on
             the Runners tab first.
           </p>
+          {PIPELINE_STATUS_ROWS.filter((stage) => pools(stage.status).length > 0).map((stage) => (
+            <div key={stage.status} className="mt-2 flex items-center justify-between gap-3 border-line border-t pt-2">
+              <p className="fg-label text-fg">
+                {stage.label}
+                <span className="fg-caption ml-2 text-muted">pinned to a device no runner answers for</span>
+              </p>
+              {canEdit && (
+                <Button variant="ghost" size="sm" onClick={() => clearStage(stage.status)}>
+                  Clear
+                </Button>
+              )}
+            </div>
+          ))}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-md border border-line">
