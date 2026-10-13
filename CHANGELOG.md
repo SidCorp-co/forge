@@ -3156,6 +3156,7 @@
 
 ### Fixed
 
+- **The run drawer opened from Ops says Queued for a run nothing has started.** It read running, unlike the board, and offered Pause and Stop. It now agrees, names its issue, and offers both once work starts.
 - **A master an update left outdated no longer sits for days while its project's work waits.** A run whose worktree release failed for good no longer counts as open, and a master with real runs is nudged like any other.
 - **Two runner commands saving the box's config at once no longer fail or lose each other's change.** They take turns now, and an error names the file and the step.
 

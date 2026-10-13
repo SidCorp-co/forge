@@ -25,6 +25,7 @@ import {
   type PipelineIssueRow,
   type PipelineRunListItem,
   type PipelineRunStatus,
+  type PipelineRunSummary,
   type RunGate,
   type StepDurationRow,
 } from "./types";
@@ -62,14 +63,28 @@ export function runStatusToStatusKey(status: PipelineRunStatus): StatusKey {
   }
 }
 
-/**
- * The board drawer header's chip. A running pipeline run is as live as its step, so while the
- * issue's run reading (`runStatusChip`) is `running` or `queued` the header shows that reading; a
- * paused, finished or cancelled run keeps its own status.
- */
-export function drawerRunChip(runStatus: PipelineRunStatus, issueRun: StatusKey | null): StatusKey {
-  if (runStatus === "running" && (issueRun === "running" || issueRun === "queued")) return issueRun;
-  return runStatusToStatusKey(runStatus);
+/** What a run's own summary says its agent is doing: a session beat or a started job is running, only unclaimed jobs is queued, no live job is null. */
+export function runSummaryReading(
+  run: Pick<PipelineRunSummary, "attempts" | "lastSessionBeatAt">,
+): "running" | "queued" | null {
+  if (run.lastSessionBeatAt !== null) return "running";
+  let queued = false;
+  for (const a of run.attempts) {
+    if (a.status === "running" || a.status === "dispatched") return "running";
+    if (a.status === "queued") queued = true;
+  }
+  return queued ? "queued" : null;
+}
+
+/** The drawer header's chip, one reading on every screen: a running run reads its summary, the issue row only where the summary names no live job. */
+export function drawerRunChip(
+  run: Pick<PipelineRunSummary, "status" | "attempts" | "lastSessionBeatAt">,
+  issueRun: StatusKey | null,
+): StatusKey {
+  if (run.status !== "running") return runStatusToStatusKey(run.status);
+  const reading = runSummaryReading(run);
+  if (reading !== null) return reading;
+  return issueRun === "running" || issueRun === "queued" ? issueRun : "running";
 }
 
 /** Format an estimated cost in USD. `$X.XX`, with small-value and zero cases. */
